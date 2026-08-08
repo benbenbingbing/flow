@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
 /**
  * 实体定义服务
  */
@@ -63,7 +64,7 @@ public class EntityDefinitionService {
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
     private final MigrationAssetHandler migrationAssetHandler;
-    
+
     /**
      * 查询所有实体定义
      */
@@ -81,8 +82,7 @@ public class EntityDefinitionService {
         EntityDefinitionQueryDTO safeQuery = query == null ? new EntityDefinitionQueryDTO() : query;
         Page<EntityDefinition> page = new Page<>(
                 safeQuery.getPageNum() != null && safeQuery.getPageNum() > 0 ? safeQuery.getPageNum() : 1,
-                safeQuery.getPageSize() != null && safeQuery.getPageSize() > 0 ? safeQuery.getPageSize() : 10
-        );
+                safeQuery.getPageSize() != null && safeQuery.getPageSize() > 0 ? safeQuery.getPageSize() : 10);
 
         Page<EntityDefinition> resultPage = entityMapper.selectPage(
                 page,
@@ -113,7 +113,7 @@ public class EntityDefinitionService {
                                 : processItems.get(entity.getProcessDefinitionId())))
                 .collect(Collectors.toList());
     }
-    
+
     /**
      * 根据ID查询
      */
@@ -133,7 +133,7 @@ public class EntityDefinitionService {
                 : process.processName();
         return convertToDTO(entity, processName, process);
     }
-    
+
     /**
      * 根据编码查询
      */
@@ -151,7 +151,7 @@ public class EntityDefinitionService {
                 : process.processName();
         return convertToDTO(entity, processName, process);
     }
-    
+
     /**
      * 驼峰命名转下划线命名
      */
@@ -161,7 +161,7 @@ public class EntityDefinitionService {
         }
         return camelCase.replaceAll("([a-z])([A-Z]+)", "$1_$2").toLowerCase();
     }
-    
+
     private String getProcessName(String processId) {
         if (processId == null || processId.isEmpty()) {
             return null;
@@ -175,27 +175,20 @@ public class EntityDefinitionService {
         }
         return processCatalogPort.findItemsByIds(List.of(processId)).get(processId);
     }
-    
+
     /**
      * 保存实体定义
      */
     @Transactional
-    @SystemAudit(
-            module = AuditModule.ENTITY,
-            action = AuditAction.CREATE,
-            operation = "创建实体定义",
-            risk = AuditRiskLevel.HIGH,
-            targetType = "ENTITY_DEFINITION",
-            captureArguments = true,
-            captureResult = true)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CREATE, operation = "创建实体定义", risk = AuditRiskLevel.HIGH, targetType = "ENTITY_DEFINITION", captureArguments = true, captureResult = true)
     public EntityDefinitionDTO save(EntityDefinitionDTO dto) {
         // 校验实体编码唯一性（不区分大小写）
         validateEntityCodeUnique(dto.getEntityCode());
-        
+
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
         fieldValidationRuleService.validateAndNormalizeAll(dto.getFields());
-        
+
         EntityDefinition entity = convertToEntity(dto);
         entity.setLifecycleMode(dto.getLifecycleMode() == null
                 ? EntityDefinition.LifecycleMode.STANDALONE
@@ -211,10 +204,10 @@ public class EntityDefinitionService {
         }
         entity.setPhysicalTableName(physicalTableNaming.generate(entity.getEntityCode()));
         entityMapper.insert(entity);
-        
+
         // 添加系统标准字段
         addSystemFields(entity.getId());
-        
+
         // 保存字段（新建时确保字段ID为空，避免重复使用旧ID）
         if (dto.getFields() != null) {
             for (EntityFieldDTO fieldDTO : dto.getFields()) {
@@ -231,10 +224,10 @@ public class EntityDefinitionService {
 
         entityPermissionCatalogService.synchronizeEntity(entity);
         entityListScopeService.ensureDefaultAndRelease(entity.getEntityCode());
-        
+
         return convertToDTO(entity);
     }
-    
+
     /**
      * 为实体添加系统标准字段
      * 系统字段说明：
@@ -244,44 +237,44 @@ public class EntityDefinitionService {
      */
     private void addSystemFields(String entityId) {
         int sortOrder = 0;
-        
+
         // 1. name - 数据名称（可编辑）
-        EntityField nameField = createSystemField(entityId, "name", "数据名称", 
+        EntityField nameField = createSystemField(entityId, "name", "数据名称",
                 EntityField.FieldType.STRING, "varchar(200)", 200, true, ++sortOrder);
         fieldMapper.insert(nameField);
-        
+
         // 2. code - 数据编码（可编辑）
-        EntityField codeField = createSystemField(entityId, "code", "数据编码", 
+        EntityField codeField = createSystemField(entityId, "code", "数据编码",
                 EntityField.FieldType.STRING, "varchar(100)", 100, true, ++sortOrder);
         codeField.setIsUnique(true); // 编码默认唯一
         fieldMapper.insert(codeField);
-        
+
         // 3. status - 状态（不可编辑，系统维护）
-        EntityField statusField = createSystemField(entityId, "status", "状态", 
+        EntityField statusField = createSystemField(entityId, "status", "状态",
                 EntityField.FieldType.STRING, "varchar(20)", 20, false, ++sortOrder);
         statusField.setDefaultValue("DRAFT");
         fieldMapper.insert(statusField);
-        
+
         // 4. processInstanceId - 流程实例ID（不可编辑）
-        EntityField processIdField = createSystemField(entityId, "processInstanceId", "流程实例ID", 
+        EntityField processIdField = createSystemField(entityId, "processInstanceId", "流程实例ID",
                 EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder);
         fieldMapper.insert(processIdField);
-        
+
         // 5. processStartTime - 流程开始时间（不可编辑）
-        EntityField processStartField = createSystemField(entityId, "processStartTime", "流程开始时间", 
+        EntityField processStartField = createSystemField(entityId, "processStartTime", "流程开始时间",
                 EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder);
         fieldMapper.insert(processStartField);
-        
+
         // 6. processEndTime - 流程结束时间（不可编辑）
-        EntityField processEndField = createSystemField(entityId, "processEndTime", "流程结束时间", 
+        EntityField processEndField = createSystemField(entityId, "processEndTime", "流程结束时间",
                 EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder);
         fieldMapper.insert(processEndField);
-        
+
         // 7. submitterId - 提交人ID（不可编辑）
-        EntityField submitterIdField = createSystemField(entityId, "submitterId", "提交人ID", 
+        EntityField submitterIdField = createSystemField(entityId, "submitterId", "提交人ID",
                 EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder);
         fieldMapper.insert(submitterIdField);
-        
+
         // 8. submitterName - 提交人姓名（不可编辑）
         EntityField submitterNameField = createSystemField(entityId, "submitterName", "提交人",
                 EntityField.FieldType.STRING, "varchar(100)", 100, false, ++sortOrder);
@@ -314,12 +307,12 @@ public class EntityDefinitionService {
 
         log.info("已为实体 [{}] 添加系统标准字段", LogValue.safe(entityId));
     }
-    
+
     /**
      * 创建系统字段
      */
-    private EntityField createSystemField(String entityId, String fieldCode, String fieldName, 
-            EntityField.FieldType fieldType, String dbType, Integer fieldLength, 
+    private EntityField createSystemField(String entityId, String fieldCode, String fieldName,
+            EntityField.FieldType fieldType, String dbType, Integer fieldLength,
             boolean editable, int sortOrder) {
         EntityField field = new EntityField();
         field.setEntityId(entityId);
@@ -385,7 +378,7 @@ public class EntityDefinitionService {
                 sortOrder + 1));
         return sortOrder + 1;
     }
-    
+
     /**
      * 校验实体编码唯一性（不区分大小写）
      */
@@ -393,17 +386,17 @@ public class EntityDefinitionService {
         if (entityCode == null || entityCode.trim().isEmpty()) {
             throw new RuntimeException("实体编码不能为空");
         }
-        
+
         // 检查是否已存在相同编码（不区分大小写）
         List<EntityDefinition> allEntities = entityMapper.selectList(null);
         for (EntityDefinition existing : allEntities) {
-            if (existing.getEntityCode() != null && 
-                existing.getEntityCode().equalsIgnoreCase(entityCode.trim())) {
+            if (existing.getEntityCode() != null &&
+                    existing.getEntityCode().equalsIgnoreCase(entityCode.trim())) {
                 throw new RuntimeException("实体编码 [" + entityCode + "] 已存在，请更换其他编码");
             }
         }
     }
-    
+
     /**
      * 校验字段编码唯一性（同一实体内字段编码不能重复）
      */
@@ -411,7 +404,7 @@ public class EntityDefinitionService {
         if (fields == null || fields.isEmpty()) {
             return;
         }
-        
+
         java.util.Set<String> fieldCodes = new java.util.HashSet<>();
         for (EntityFieldDTO field : fields) {
             if (field.getFieldCode() == null || field.getFieldCode().trim().isEmpty()) {
@@ -423,26 +416,18 @@ public class EntityDefinitionService {
             }
         }
     }
-    
+
     /**
      * 更新实体定义
      * 注意：实体发布后，已保存的字段不能再删除，只能添加新字段
      */
     @Transactional
-    @SystemAudit(
-            module = AuditModule.ENTITY,
-            action = AuditAction.UPDATE,
-            operation = "更新实体定义",
-            risk = AuditRiskLevel.HIGH,
-            targetType = "ENTITY_DEFINITION",
-            targetIdArg = 0,
-            captureArguments = true,
-            captureResult = true)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.UPDATE, operation = "更新实体定义", risk = AuditRiskLevel.HIGH, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO update(String id, EntityDefinitionDTO dto) {
         // 校验字段编码唯一性
         validateFieldCodeUnique(dto.getFields());
         fieldValidationRuleService.validateAndNormalizeAll(dto.getFields());
-        
+
         EntityDefinition existing = entityMapper.selectById(id);
         if (existing == null) {
             throw new RuntimeException("实体不存在: " + id);
@@ -454,7 +439,7 @@ public class EntityDefinitionService {
             entityMapper.updateById(existing);
             return convertToDTO(existing);
         }
-        
+
         // 检查实体是否已发布
         boolean isPublished = existing.getStatus() == EntityDefinition.Status.PUBLISHED;
         EntityDefinition.LifecycleMode currentMode = lifecycleMode(existing);
@@ -467,7 +452,7 @@ public class EntityDefinitionService {
                     "ENTITY_LIFECYCLE_DOWNGRADE_FORBIDDEN",
                     "流程实体不允许降级为独立业务实体");
         }
-        
+
         existing.setEntityName(dto.getEntityName());
         existing.setDescription(dto.getDescription());
         existing.setLifecycleMode(requestedMode);
@@ -480,47 +465,47 @@ public class EntityDefinitionService {
                 && !java.util.Objects.equals(dto.getProcessDefinitionId(), existing.getProcessDefinitionId())) {
             throw new IllegalArgumentException("请通过流程绑定接口修改实体绑定流程");
         }
-        
+
         entityMapper.updateById(existing);
         if (currentMode == EntityDefinition.LifecycleMode.STANDALONE
                 && requestedMode == EntityDefinition.LifecycleMode.WORKFLOW) {
             ensureWorkflowSystemFields(existing.getId());
         }
         entityPermissionCatalogService.synchronizeEntity(existing);
-        
+
         // 更新字段
         if (dto.getFields() != null) {
             // 获取现有字段
             List<EntityField> existingFields = fieldMapper.findByEntityId(id);
             Map<String, EntityField> existingFieldMap = existingFields.stream()
                     .collect(Collectors.toMap(EntityField::getFieldCode, f -> f));
-            
+
             // 收集需要保留的字段编码
             List<String> newFieldCodes = dto.getFields().stream()
                     .map(EntityFieldDTO::getFieldCode)
                     .filter(code -> code != null && !code.isEmpty())
                     .collect(Collectors.toList());
-            
+
             if (isPublished) {
                 // 已发布的实体：不允许删除字段，只能添加新字段
                 for (EntityField existingField : existingFields) {
-                    if (!Boolean.TRUE.equals(existingField.getIsSystem()) && 
-                        !newFieldCodes.contains(existingField.getFieldCode())) {
-                        throw new RuntimeException("实体已发布，不允许删除字段: " + existingField.getFieldCode() + 
+                    if (!Boolean.TRUE.equals(existingField.getIsSystem()) &&
+                            !newFieldCodes.contains(existingField.getFieldCode())) {
+                        throw new RuntimeException("实体已发布，不允许删除字段: " + existingField.getFieldCode() +
                                 "。已发布的实体只能添加新字段，不能删除已有字段。");
                     }
                 }
             } else {
                 // 未发布的实体：可以删除非系统字段
                 for (EntityField field : existingFields) {
-                    if (!Boolean.TRUE.equals(field.getIsSystem()) && 
-                        !newFieldCodes.contains(field.getFieldCode())) {
+                    if (!Boolean.TRUE.equals(field.getIsSystem()) &&
+                            !newFieldCodes.contains(field.getFieldCode())) {
                         fieldOptionService.delete(field.getId());
                         fieldMapper.deleteById(field.getId());
                     }
                 }
             }
-            
+
             // 保存字段（系统字段允许更新部分属性，非系统字段正常更新）
             for (EntityFieldDTO fieldDTO : dto.getFields()) {
                 String fieldCode = fieldDTO.getFieldCode();
@@ -537,7 +522,7 @@ public class EntityDefinitionService {
                     }
                     // 新字段，添加到字段定义表（不立即同步到数据表，等发布时同步）
                     fieldDefinitionService.createDefinition(id, fieldDTO);
-                    
+
                     // 注意：不再自动添加字段到数据表，只有点击发布时才同步
                 }
             }
@@ -546,10 +531,11 @@ public class EntityDefinitionService {
                     existing,
                     dto.getFields(),
                     fieldMapper.findByEntityId(id));
-            
-            // Physical schema changes are applied only by the explicitly locked publish flow.
+
+            // Physical schema changes are applied only by the explicitly locked publish
+            // flow.
         }
-        
+
         return convertToDTO(existing);
     }
 
@@ -557,14 +543,7 @@ public class EntityDefinitionService {
      * 删除实体定义
      */
     @Transactional
-    @SystemAudit(
-            module = AuditModule.ENTITY,
-            action = AuditAction.DELETE,
-            operation = "删除实体定义",
-            risk = AuditRiskLevel.CRITICAL,
-            required = true,
-            targetType = "ENTITY_DEFINITION",
-            targetIdArg = 0)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.DELETE, operation = "删除实体定义", risk = AuditRiskLevel.CRITICAL, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0)
     public void delete(String id) {
         EntityDefinition entity = entityMapper.selectById(id);
         if (entity != null && storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
@@ -579,7 +558,7 @@ public class EntityDefinitionService {
             entityPermissionCatalogService.disableEntityPermissions(entity.getEntityCode());
         }
     }
-    
+
     /**
      * 发布实体
      * 发布时自动创建数据表，并记录版本历史
@@ -590,20 +569,11 @@ public class EntityDefinitionService {
     }
 
     @Transactional
-    @SystemAudit(
-            module = AuditModule.ENTITY,
-            action = AuditAction.PUBLISH,
-            operation = "发布实体定义",
-            risk = AuditRiskLevel.CRITICAL,
-            required = true,
-            targetType = "ENTITY_DEFINITION",
-            targetIdArg = 0,
-            captureArguments = true,
-            captureResult = true)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.PUBLISH, operation = "发布实体定义", risk = AuditRiskLevel.CRITICAL, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO publish(String id,
-                                       String userId,
-                                       String userName,
-                                       ConfigMigrationPublishRequest request) {
+            String userId,
+            String userName,
+            ConfigMigrationPublishRequest request) {
         if (!schemaPublishLock.tryAcquire(id)) {
             throw new BusinessConflictException(
                     "ENTITY_SCHEMA_PUBLISH_BUSY",
@@ -630,26 +600,26 @@ public class EntityDefinitionService {
                     "ENTITY_SYSTEM_DEFINITION_PROTECTED",
                     "平台系统实体不执行动态建表和发布");
         }
-        
+
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(id);
         entity.setFields(fields);
-        
+
         // 判断是首次发布还是字段变更
         boolean isFirstPublish = entity.getStatus() != EntityDefinition.Status.PUBLISHED;
-        EntityPublishHistory.PublishType publishType = isFirstPublish 
-                ? EntityPublishHistory.PublishType.CREATE 
+        EntityPublishHistory.PublishType publishType = isFirstPublish
+                ? EntityPublishHistory.PublishType.CREATE
                 : EntityPublishHistory.PublishType.ALTER;
-        
+
         // 同步表结构（创建表或添加字段）
         List<String> executedDdls = dynamicTableService.syncEntityTableStructure(entity);
         entityRecordTeamService.ensureTeamTable(entity);
-        
+
         // 标记已同步的字段为已发布状态
         int publishedFieldCount = 0;
         for (EntityField field : fields) {
-            if (!Boolean.TRUE.equals(field.getIsSystem()) && 
-                !Boolean.TRUE.equals(field.getIsPublished())) {
+            if (!Boolean.TRUE.equals(field.getIsSystem()) &&
+                    !Boolean.TRUE.equals(field.getIsPublished())) {
                 field.setIsPublished(true);
                 fieldMapper.updateById(field);
                 publishedFieldCount++;
@@ -658,18 +628,19 @@ public class EntityDefinitionService {
         if (publishedFieldCount > 0) {
             log.info("实体 [{}] 发布完成，标记 {} 个字段为已发布状态", entity.getEntityCode(), publishedFieldCount);
         }
-        
+
         // 构建变更描述
         String changesDesc = buildChangesDescription(isFirstPublish, executedDdls, fields);
-        
+
         // 记录版本历史
         String ddlString = executedDdls.isEmpty() ? null : String.join(";\n", executedDdls);
         ConfigMigrationPublishRequest publishRequest = request == null
-                ? new ConfigMigrationPublishRequest() : request;
+                ? new ConfigMigrationPublishRequest()
+                : request;
         EntityPublishHistory history = publishHistoryService.createVersion(
                 entity, fields, ddlString, publishType, changesDesc, userId, userName,
                 publishRequest.getVersionDescription());
-        
+
         entity.setStatus(EntityDefinition.Status.PUBLISHED);
         entityMapper.updateById(entity);
         entityListScopeService.publish(
@@ -678,19 +649,20 @@ public class EntityDefinitionService {
         migrationAssetHandler.recordEntity(entity.getId(), history.getId(), publishRequest);
         return convertToDTO(entity);
     }
-    
+
     /**
      * 构建变更描述
      */
-    private String buildChangesDescription(boolean isFirstPublish, List<String> executedDdls, List<EntityField> fields) {
+    private String buildChangesDescription(boolean isFirstPublish, List<String> executedDdls,
+            List<EntityField> fields) {
         if (isFirstPublish) {
             return "首次发布，创建数据表，包含 " + fields.size() + " 个字段";
         }
-        
+
         if (executedDdls.isEmpty()) {
             return "无字段变更";
         }
-        
+
         // 统计新增字段
         int addCount = 0;
         for (String ddl : executedDdls) {
@@ -698,31 +670,23 @@ public class EntityDefinitionService {
                 addCount++;
             }
         }
-        
+
         if (addCount > 0) {
             return "新增 " + addCount + " 个字段到数据表";
         }
-        
+
         return "表结构同步完成";
     }
-    
+
     /**
      * 绑定流程
-     * @param entityId 实体ID
+     * 
+     * @param entityId  实体ID
      * @param processId 流程定义ID
      * @return 更新后的实体DTO
      */
     @Transactional
-    @SystemAudit(
-            module = AuditModule.ENTITY,
-            action = AuditAction.CONFIGURE,
-            operation = "绑定实体流程",
-            risk = AuditRiskLevel.HIGH,
-            required = true,
-            targetType = "ENTITY_DEFINITION",
-            targetIdArg = 0,
-            captureArguments = true,
-            captureResult = true)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "绑定实体流程", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO bindWorkflow(String entityId, String processId) {
         EntityDefinition entity = entityMapper.selectById(entityId);
         if (entity == null) {
@@ -754,7 +718,7 @@ public class EntityDefinitionService {
                         "该实体已有 " + processDataCount + " 条流程实例数据，无法切换绑定流程");
             }
         }
-        
+
         entity.setProcessDefinitionId(processId);
         entity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
         entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
@@ -768,15 +732,7 @@ public class EntityDefinitionService {
     }
 
     @Transactional
-    @SystemAudit(
-            module = AuditModule.ENTITY,
-            action = AuditAction.CONFIGURE,
-            operation = "解除实体流程绑定",
-            risk = AuditRiskLevel.HIGH,
-            required = true,
-            targetType = "ENTITY_DEFINITION",
-            targetIdArg = 0,
-            captureResult = true)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "解除实体流程绑定", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureResult = true)
     public EntityDefinitionDTO unbindWorkflow(String entityId) {
         EntityDefinition entity = entityMapper.selectById(entityId);
         if (entity == null) {
@@ -801,16 +757,7 @@ public class EntityDefinitionService {
     }
 
     @Transactional
-    @SystemAudit(
-            module = AuditModule.ENTITY,
-            action = AuditAction.CONFIGURE,
-            operation = "更新实体生命周期模式",
-            risk = AuditRiskLevel.HIGH,
-            required = true,
-            targetType = "ENTITY_DEFINITION",
-            targetIdArg = 0,
-            captureArguments = true,
-            captureResult = true)
+    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "更新实体生命周期模式", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO updateLifecycleMode(
             String entityId,
             EntityDefinition.LifecycleMode requestedMode) {
@@ -882,7 +829,8 @@ public class EntityDefinitionService {
         }
         Map<String, EntityRelation> relationMap = relations.stream()
                 .filter(relation -> relation.getParentFieldCode() != null)
-                .collect(Collectors.toMap(EntityRelation::getParentFieldCode, relation -> relation, (left, right) -> left));
+                .collect(Collectors.toMap(EntityRelation::getParentFieldCode, relation -> relation,
+                        (left, right) -> left));
         for (EntityFieldDTO field : dto.getFields()) {
             EntityRelation relation = relationMap.get(field.getFieldCode());
             if (relation == null) {
@@ -918,7 +866,7 @@ public class EntityDefinitionService {
                 : process.processName();
         return convertToDTO(entity, processName, process);
     }
-    
+
     private EntityDefinitionDTO convertToDTO(EntityDefinition entity, String processName) {
         return convertToDTO(entity, processName, getProcessItem(entity.getProcessDefinitionId()));
     }
@@ -937,8 +885,7 @@ public class EntityDefinitionService {
         dto.setProcessName(processName);
         dto.setLifecycleMode(lifecycleMode(entity));
         dto.setStorageMode(storageMode(entity));
-        boolean systemEntity =
-                storageMode(entity) == EntityDefinition.StorageMode.SYSTEM;
+        boolean systemEntity = storageMode(entity) == EntityDefinition.StorageMode.SYSTEM;
         boolean uiConfigurable = !systemEntity
                 || systemEntityFieldPolicy.isSupportedEntity(
                         entity.getEntityCode());
@@ -955,17 +902,17 @@ public class EntityDefinitionService {
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
         dto.setCreatedBy(entity.getCreatedBy());
-        
+
         if (entity.getFields() != null) {
             dto.setFields(entity.getFields().stream()
                     .map(field -> convertToDTO(entity, field))
                     .collect(Collectors.toList()));
             enrichRelationFields(dto);
         }
-        
+
         return dto;
     }
-    
+
     private EntityFieldDTO convertToDTO(
             EntityDefinition entity,
             EntityField field) {
@@ -982,8 +929,7 @@ public class EntityDefinitionService {
         dto.setIsUnique(field.getIsUnique());
         dto.setDefaultValue(field.getDefaultValue());
         dto.setOptionsJson(field.getOptionsJson());
-        List<Map<String, Object>> structuredOptions =
-                fieldOptionService.findOptions(field.getId());
+        List<Map<String, Object>> structuredOptions = fieldOptionService.findOptions(field.getId());
         if (structuredOptions.isEmpty() && StringUtils.isNotBlank(field.getOptionsJson())) {
             try {
                 structuredOptions = fieldOptionService.parseDocument(field.getOptionsJson());
@@ -1008,12 +954,11 @@ public class EntityDefinitionService {
         dto.setFileMaxCount(field.getFileMaxCount());
         // 实体引用/子表单字段
         dto.setRefEntityId(field.getRefEntityId());
-        EntityField.RefEntityType referenceType =
-                field.getRefEntityType() != null
-                        ? field.getRefEntityType()
-                        : systemEntityFieldPolicy.referenceType(
-                                entity == null ? null : entity.getEntityCode(),
-                                field.getFieldCode());
+        EntityField.RefEntityType referenceType = field.getRefEntityType() != null
+                ? field.getRefEntityType()
+                : systemEntityFieldPolicy.referenceType(
+                        entity == null ? null : entity.getEntityCode(),
+                        field.getFieldCode());
         dto.setRefEntityType(
                 referenceType == null ? null : referenceType.name());
         dto.setRefFieldCode(field.getRefFieldCode());
@@ -1047,7 +992,7 @@ public class EntityDefinitionService {
         entity.setCreatedBy(dto.getCreatedBy());
         return entity;
     }
-    
+
     private EntityField convertToEntity(EntityFieldDTO dto) {
         EntityField field = new EntityField();
         field.setId(dto.getId());
@@ -1089,8 +1034,8 @@ public class EntityDefinitionService {
     private String resolveValueStorage(EntityFieldDTO field) {
         if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE
                 || ((field.getFieldType() == EntityField.FieldType.MULTI_SELECT
-                || field.getFieldType() == EntityField.FieldType.CHECKBOX)
-                && StringUtils.isNotBlank(field.getDictType()))) {
+                        || field.getFieldType() == EntityField.FieldType.CHECKBOX)
+                        && StringUtils.isNotBlank(field.getDictType()))) {
             return "MULTI_TABLE";
         }
         return StringUtils.isNotBlank(field.getValueStorage())

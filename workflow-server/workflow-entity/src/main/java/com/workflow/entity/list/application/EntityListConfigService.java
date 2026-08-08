@@ -1,5 +1,4 @@
 package com.workflow.entity.list.application;
-
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -23,6 +22,7 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -44,9 +44,8 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @Autowired)
 public class EntityListConfigService {
-
     private static final Set<String> SYSTEM_QUERY_OPERATORS =
             Set.of(
                     "EQ",
@@ -59,12 +58,10 @@ public class EntityListConfigService {
                     "LT",
                     "LE",
                     "IS_NULL");
-
     private enum SaveMode {
         USER_CAS,
         SYSTEM_IMPORT
     }
-
     private final EntityListConfigMapper configMapper;
     private final EntityListFieldMapper fieldMapper;
     private final EntityDefinitionMapper definitionMapper;
@@ -78,6 +75,28 @@ public class EntityListConfigService {
     private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
     private final JsonDocumentCodec jsonDocumentCodec;
     private final EntityListRelationalConfigService relationalConfigService;
+    private final EntityListFieldPropertySupport fieldProperties;
+
+    public EntityListConfigService(
+            EntityListConfigMapper configMapper,
+            EntityListFieldMapper fieldMapper,
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper definitionFieldMapper,
+            SystemEntityFieldPolicy systemEntityFieldPolicy,
+            com.workflow.entity.permission.application.EntityListActionConfigService actionConfigService,
+            com.workflow.entity.permission.application.EntityPermissionCatalogService permissionCatalogService,
+            com.workflow.entity.permission.application.EntityActionCapabilityService actionCapabilityService,
+            EntityListConfigurationValidator configurationValidator,
+            CurrentUserRoleService currentUserRoleService,
+            EntityUiConfigurationPolicy entityUiConfigurationPolicy,
+            JsonDocumentCodec jsonDocumentCodec,
+            EntityListRelationalConfigService relationalConfigService) {
+        this(configMapper, fieldMapper, definitionMapper, definitionFieldMapper,
+                systemEntityFieldPolicy, actionConfigService, permissionCatalogService,
+                actionCapabilityService, configurationValidator, currentUserRoleService,
+                entityUiConfigurationPolicy, jsonDocumentCodec, relationalConfigService,
+                new EntityListFieldPropertySupport());
+    }
 
     /**
      * 查询实体的所有列表配置
@@ -86,7 +105,6 @@ public class EntityListConfigService {
         List<EntityListConfig> configs = configMapper.findByEntityId(entityId);
         return configs.stream().map(this::convertToDTO).collect(Collectors.toList());
     }
-
     /**
      * 根据ID查询配置（含字段）
      */
@@ -97,7 +115,6 @@ public class EntityListConfigService {
         }
         return convertToDTOWithFields(config);
     }
-
     /**
      * 兼容既有迁移模块的系统导入入口。
      *
@@ -116,7 +133,6 @@ public class EntityListConfigService {
     public EntityListConfigDTO saveConfig(EntityListConfigDTO dto) {
         return saveConfigInternal(dto, null, SaveMode.SYSTEM_IMPORT);
     }
-
     /**
      * 普通整包列表保存，已有配置必须携带 expectedRevision。
      */
@@ -126,7 +142,6 @@ public class EntityListConfigService {
             Integer expectedRevision) {
         return saveConfigInternal(dto, expectedRevision, SaveMode.USER_CAS);
     }
-
     /**
      * 显式系统导入入口。
      */
@@ -134,7 +149,6 @@ public class EntityListConfigService {
     public EntityListConfigDTO saveConfigForImport(EntityListConfigDTO dto) {
         return saveConfigInternal(dto, null, SaveMode.SYSTEM_IMPORT);
     }
-
     private EntityListConfigDTO saveConfigInternal(
             EntityListConfigDTO source,
             Integer expectedRevision,
@@ -156,13 +170,11 @@ public class EntityListConfigService {
                         "列表配置已被其他人修改");
             }
         }
-
         EntityListConfigDTO candidate = buildCandidate(source, current);
         requireEntityAccess(candidate);
         validateSystemListConfiguration(candidate);
         configurationValidator.validate(candidate);
         requireOverridePermission(candidate);
-
         EntityListConfig config = buildPersistentConfig(
                 candidate,
                 current,
@@ -170,7 +182,6 @@ public class EntityListConfigService {
         actionConfigService.normalizeForSave(config);
         LocalDateTime now = LocalDateTime.now();
         config.setUpdatedAt(now);
-
         if (isNew) {
             config.setPublishedVersion(0);
             config.setRevision(1);
@@ -191,7 +202,6 @@ public class EntityListConfigService {
                         "列表配置已被其他人修改，请刷新后重试");
             }
         }
-
         if (source.getFields() != null) {
             synchronizeFieldsByDiff(
                     config,
@@ -202,7 +212,6 @@ public class EntityListConfigService {
         permissionCatalogService.synchronizeCustomPermissions(config);
         return findById(config.getId());
     }
-
     @Transactional(rollbackFor = Exception.class)
     public EntityListField createField(
             String listConfigId,
@@ -230,7 +239,6 @@ public class EntityListConfigService {
         touchList(listConfigId);
         return field;
     }
-
     @Transactional(rollbackFor = Exception.class)
     public EntityListField patchField(
             String listConfigId,
@@ -250,7 +258,7 @@ public class EntityListConfigService {
         }
         EntityListField updated = new EntityListField();
         BeanUtils.copyProperties(current, updated);
-        copyMutableFieldProperties(
+        fieldProperties.copyMutable(
                 patch,
                 updated,
                 request.getClearFields() == null
@@ -259,13 +267,12 @@ public class EntityListConfigService {
         updated.setRevision(current.getRevision() + 1);
         updated.setUpdatedAt(LocalDateTime.now());
         validateSingleField(requireConfig(listConfigId), updated, fieldId);
-
         UpdateWrapper<EntityListField> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", fieldId)
                 .eq("list_config_id", listConfigId)
                 .eq("revision", current.getRevision())
                 .eq("deleted", 0);
-        setFieldColumns(wrapper, updated);
+        fieldProperties.setColumns(wrapper, updated);
         if (fieldMapper.update(null, wrapper) != 1) {
             throw new RevisionConflictException(
                     "列表字段已被其他人修改，请刷新后重试",
@@ -274,7 +281,6 @@ public class EntityListConfigService {
         touchList(listConfigId);
         return requireField(listConfigId, fieldId);
     }
-
     @Transactional(rollbackFor = Exception.class)
     public EntityListField reorderField(
             String listConfigId,
@@ -314,7 +320,6 @@ public class EntityListConfigService {
         saveRequest.setField(patch);
         return patchField(listConfigId, fieldId, saveRequest);
     }
-
     @Transactional(rollbackFor = Exception.class)
     public void deleteField(
             String listConfigId,
@@ -340,7 +345,6 @@ public class EntityListConfigService {
         }
         touchList(listConfigId);
     }
-
     /**
      * 删除列表配置（逻辑删除，级联删除字段）
      */
@@ -360,7 +364,6 @@ public class EntityListConfigService {
         fieldMapper.deleteByListConfigId(id);
         actionConfigService.deleteRelationalConfig(id);
     }
-
     private EntityListConfigDTO convertToDTO(EntityListConfig config) {
         EntityListConfigDTO dto = new EntityListConfigDTO();
         BeanUtils.copyProperties(config, dto);
@@ -386,14 +389,12 @@ public class EntityListConfigService {
         }
         return dto;
     }
-
     private EntityListConfigDTO convertToDTOWithFields(EntityListConfig config) {
         EntityListConfigDTO dto = convertToDTO(config);
         List<EntityListField> fields = fieldMapper.findByListConfigId(config.getId());
         dto.setFields(fields);
         return dto;
     }
-
     private void synchronizeFieldsByDiff(
             EntityListConfig config,
             List<EntityListField> incoming,
@@ -477,12 +478,12 @@ public class EntityListConfigService {
             updated.setDeleted(0);
             updated.setCreatedAt(current.getCreatedAt());
             updated.setUpdatedAt(LocalDateTime.now());
-            if (!sameField(updated, current)) {
+            if (!fieldProperties.same(updated, current)) {
                 UpdateWrapper<EntityListField> wrapper =
                         listFieldRevisionCondition(
                                 config.getId(),
                                 current);
-                setFieldColumns(wrapper, updated);
+                fieldProperties.setColumns(wrapper, updated);
                 if (fieldMapper.update(null, wrapper) != 1) {
                     throw listConflict(
                             config.getId(),
@@ -490,7 +491,7 @@ public class EntityListConfigService {
                 }
             }
             source.setId(current.getId());
-            source.setRevision(sameField(updated, current)
+            source.setRevision(fieldProperties.same(updated, current)
                     ? current.getRevision()
                     : updated.getRevision());
         }
@@ -511,7 +512,6 @@ public class EntityListConfigService {
             }
         }
     }
-
     private EntityListConfigDTO buildCandidate(
             EntityListConfigDTO source,
             EntityListConfig current) {
@@ -544,7 +544,6 @@ public class EntityListConfigService {
         candidate.setFields(source.getFields());
         return candidate;
     }
-
     private EntityListConfig buildPersistentConfig(
             EntityListConfigDTO candidate,
             EntityListConfig current,
@@ -598,7 +597,6 @@ public class EntityListConfigService {
         applyConfigDefaults(config);
         return config;
     }
-
     private void applyConfigDefaults(EntityListConfig config) {
         if (!StringUtils.hasText(config.getDataScopeMode())) {
             config.setDataScopeMode("INHERIT");
@@ -614,7 +612,6 @@ public class EntityListConfigService {
                             + "\"returnMappings\":[]}");
         }
     }
-
     private void requireEntityAccess(EntityListConfigDTO candidate) {
         if (StringUtils.hasText(candidate.getEntityId())) {
             entityUiConfigurationPolicy.requireConfigurableById(
@@ -624,7 +621,6 @@ public class EntityListConfigService {
                     candidate.getEntityCode());
         }
     }
-
     private void requireOverridePermission(EntityListConfigDTO candidate) {
         if ("OVERRIDE".equalsIgnoreCase(candidate.getDataScopeMode())
                 && !currentUserRoleService.isSuperAdmin()) {
@@ -632,7 +628,6 @@ public class EntityListConfigService {
                     "只有超级管理员可以将列表配置为独立数据范围");
         }
     }
-
     private void setMutableConfigColumns(
             UpdateWrapper<EntityListConfig> wrapper,
             EntityListConfig config) {
@@ -654,7 +649,6 @@ public class EntityListConfigService {
                 .set("query_provider_code", config.getQueryProviderCode())
                 .set("query_data_source_id", config.getQueryDataSourceId());
     }
-
     private UpdateWrapper<EntityListConfig> configRevisionCondition(
             EntityListConfig current) {
         UpdateWrapper<EntityListConfig> wrapper = new UpdateWrapper<>();
@@ -666,7 +660,6 @@ public class EntityListConfigService {
         }
         return wrapper;
     }
-
     private void requireExpectedRevision(
             Integer expectedRevision,
             EntityListConfig current,
@@ -680,7 +673,6 @@ public class EntityListConfigService {
                     findById(current.getId()));
         }
     }
-
     private EntityListConfig lockList(String listConfigId) {
         EntityListConfig current =
                 configMapper.selectByIdForUpdate(listConfigId);
@@ -689,7 +681,6 @@ public class EntityListConfigService {
         }
         return current;
     }
-
     private RevisionConflictException listConflict(
             String listConfigId,
             String message) {
@@ -697,15 +688,12 @@ public class EntityListConfigService {
                 message,
                 findById(listConfigId));
     }
-
     private int revisionOf(EntityListConfig config) {
         return config.getRevision() == null ? 0 : config.getRevision();
     }
-
     private int revisionOf(EntityListField field) {
         return field.getRevision() == null ? 0 : field.getRevision();
     }
-
     private void copyWholeFieldProperties(
             EntityListField source,
             EntityListField target) {
@@ -730,7 +718,6 @@ public class EntityListConfigService {
         target.setLocalOverridesDocument(
                 source.getLocalOverridesDocument());
     }
-
     private UpdateWrapper<EntityListField> listFieldRevisionCondition(
             String listConfigId,
             EntityListField current) {
@@ -745,7 +732,6 @@ public class EntityListConfigService {
         }
         return wrapper;
     }
-
     private EntityListConfigDTO requireConfig(String listConfigId) {
         EntityListConfigDTO config = findById(listConfigId);
         if (config == null) {
@@ -753,7 +739,6 @@ public class EntityListConfigService {
         }
         return config;
     }
-
     private EntityListField requireField(String listConfigId, String fieldId) {
         EntityListField field = fieldMapper.selectById(fieldId);
         if (field == null || !listConfigId.equals(field.getListConfigId())
@@ -762,7 +747,6 @@ public class EntityListConfigService {
         }
         return field;
     }
-
     private void validateSingleField(
             EntityListConfigDTO config,
             EntityListField field,
@@ -776,7 +760,6 @@ public class EntityListConfigService {
         validateSystemListConfiguration(config);
         configurationValidator.validate(config);
     }
-
     private void validateSystemListConfiguration(
             EntityListConfigDTO config) {
         EntityDefinition entity =
@@ -877,7 +860,6 @@ public class EntityListConfigService {
             }
         }
     }
-
     private long nextFieldOrderKey(String listConfigId) {
         List<EntityListField> fields = fieldMapper.findByListConfigId(listConfigId);
         return fields.isEmpty()
@@ -885,7 +867,6 @@ public class EntityListConfigService {
                 : fields.get(fields.size() - 1).getOrderKey()
                         + EntityFormNodeService.ORDER_STEP;
     }
-
     private long boundaryOrder(
             String listConfigId,
             String fieldId,
@@ -895,7 +876,6 @@ public class EntityListConfigService {
         }
         return requireField(listConfigId, fieldId).getOrderKey();
     }
-
     private void rebalanceFields(String listConfigId) {
         long order = EntityFormNodeService.ORDER_STEP;
         for (EntityListField field : fieldMapper.findByListConfigId(listConfigId)) {
@@ -910,7 +890,6 @@ public class EntityListConfigService {
             order += EntityFormNodeService.ORDER_STEP;
         }
     }
-
     private void touchList(String listConfigId) {
         EntityListConfig current = lockList(listConfigId);
         UpdateWrapper<EntityListConfig> wrapper =
@@ -924,120 +903,14 @@ public class EntityListConfigService {
                     "列表配置已被其他人修改，请刷新后重试");
         }
     }
-
-    private void copyMutableFieldProperties(
-            EntityListField source,
-            EntityListField target,
-            Set<String> clearFields) {
-        if (source.getFieldId() != null) target.setFieldId(source.getFieldId());
-        if (source.getFieldCode() != null) target.setFieldCode(source.getFieldCode());
-        if (source.getFieldName() != null) target.setFieldName(source.getFieldName());
-        if (source.getSortOrder() != null) target.setSortOrder(source.getSortOrder());
-        if (source.getOrderKey() != null) target.setOrderKey(source.getOrderKey());
-        if (source.getWidth() != null) target.setWidth(source.getWidth());
-        if (source.getShowInList() != null) target.setShowInList(source.getShowInList());
-        if (source.getIsQuery() != null) target.setIsQuery(source.getIsQuery());
-        if (source.getQueryType() != null) target.setQueryType(source.getQueryType());
-        if (source.getAlign() != null) target.setAlign(source.getAlign());
-        if (source.getDataSourceType() != null) {
-            target.setDataSourceType(source.getDataSourceType());
-        }
-        if (source.getDataSourceConfig() != null) {
-            target.setDataSourceConfig(source.getDataSourceConfig());
-        }
-        if (clearFields.contains("dataSourceId")) {
-            target.setDataSourceId(null);
-        } else if (source.getDataSourceId() != null) {
-            target.setDataSourceId(source.getDataSourceId());
-        }
-        if (source.getRenderComponent() != null) {
-            target.setRenderComponent(source.getRenderComponent());
-        }
-        if (source.getFormatter() != null) target.setFormatter(source.getFormatter());
-        if (source.getColumnConfig() != null) target.setColumnConfig(source.getColumnConfig());
-        if (source.getQueryConfig() != null) target.setQueryConfig(source.getQueryConfig());
-        if (source.getRenderConfig() != null) target.setRenderConfig(source.getRenderConfig());
-        if (clearFields.contains("templateId")) {
-            target.setTemplateId(null);
-        } else if (source.getTemplateId() != null) {
-            target.setTemplateId(source.getTemplateId());
-        }
-        if (clearFields.contains("templateVersion")) {
-            target.setTemplateVersion(null);
-        } else if (source.getTemplateVersion() != null) {
-            target.setTemplateVersion(source.getTemplateVersion());
-        }
-        if (clearFields.contains("localOverridesDocument")) {
-            target.setLocalOverridesDocument(null);
-        } else if (source.getLocalOverridesDocument() != null) {
-            target.setLocalOverridesDocument(source.getLocalOverridesDocument());
-        }
-    }
-
-    private void setFieldColumns(
-            UpdateWrapper<EntityListField> wrapper,
-            EntityListField field) {
-        wrapper.set("field_id", field.getFieldId())
-                .set("field_code", field.getFieldCode())
-                .set("field_name", field.getFieldName())
-                .set("sort_order", field.getSortOrder())
-                .set("order_key", field.getOrderKey())
-                .set("width", field.getWidth())
-                .set("show_in_list", field.getShowInList())
-                .set("is_query", field.getIsQuery())
-                .set("query_type", field.getQueryType())
-                .set("align", field.getAlign())
-                .set("data_source_type", field.getDataSourceType())
-                .set("data_source_config", field.getDataSourceConfig())
-                .set("data_source_id", field.getDataSourceId())
-                .set("render_component", field.getRenderComponent())
-                .set("formatter", field.getFormatter())
-                .set("column_config", field.getColumnConfig())
-                .set("query_config", field.getQueryConfig())
-                .set("render_config", field.getRenderConfig())
-                .set("template_id", field.getTemplateId())
-                .set("template_version", field.getTemplateVersion())
-                .set("local_overrides_document", field.getLocalOverridesDocument())
-                .set("revision", field.getRevision())
-                .set("update_time", field.getUpdatedAt());
-    }
-
-    private boolean sameField(EntityListField left, EntityListField right) {
-        return Objects.equals(left.getFieldId(), right.getFieldId())
-                && Objects.equals(left.getFieldCode(), right.getFieldCode())
-                && Objects.equals(left.getFieldName(), right.getFieldName())
-                && Objects.equals(left.getSortOrder(), right.getSortOrder())
-                && Objects.equals(left.getOrderKey(), right.getOrderKey())
-                && Objects.equals(left.getWidth(), right.getWidth())
-                && Objects.equals(left.getShowInList(), right.getShowInList())
-                && Objects.equals(left.getIsQuery(), right.getIsQuery())
-                && Objects.equals(left.getQueryType(), right.getQueryType())
-                && Objects.equals(left.getAlign(), right.getAlign())
-                && Objects.equals(left.getDataSourceType(), right.getDataSourceType())
-                && Objects.equals(left.getDataSourceConfig(), right.getDataSourceConfig())
-                && Objects.equals(left.getDataSourceId(), right.getDataSourceId())
-                && Objects.equals(left.getRenderComponent(), right.getRenderComponent())
-                && Objects.equals(left.getFormatter(), right.getFormatter())
-                && Objects.equals(left.getColumnConfig(), right.getColumnConfig())
-                && Objects.equals(left.getQueryConfig(), right.getQueryConfig())
-                && Objects.equals(left.getRenderConfig(), right.getRenderConfig())
-                && Objects.equals(left.getTemplateId(), right.getTemplateId())
-                && Objects.equals(left.getTemplateVersion(), right.getTemplateVersion())
-                && Objects.equals(
-                        left.getLocalOverridesDocument(),
-                        right.getLocalOverridesDocument());
-    }
-
     private String write(Object value, String label) {
         return value == null ? null : jsonDocumentCodec.write(value, label);
     }
-
     private Map<String, Object> readMap(String document, String label) {
         return StringUtils.hasText(document)
                 ? jsonDocumentCodec.readObject(document, label)
                 : new LinkedHashMap<>();
     }
-
     private List<String> readList(String document, String label) {
         if (!StringUtils.hasText(document)) {
             return List.of();

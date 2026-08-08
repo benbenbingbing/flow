@@ -87,6 +87,7 @@ application:
   corsAllowedOrigins: ""
   trustForwardedHeaders: true
   httpAllowedHosts: ""
+  httpAllowPrivateAddresses: false
   logLevel: INFO
   shutdownTimeout: 30s
   environment: production

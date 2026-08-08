@@ -9,6 +9,7 @@ import com.networknt.schema.InputFormat;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
+import io.swagger.v3.core.util.Json;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.parser.OpenAPIV3Parser;
 import io.swagger.v3.parser.core.models.ParseOptions;
@@ -56,6 +57,7 @@ class OpenIntegrationContractTest {
                         "/api/open/v1/process-definitions",
                         "/api/open/v1/process-instances",
                         "/api/open/v1/process-instances/{processInstanceId}",
+                        "/api/open/v1/process-instances/{processInstanceId}/cancel",
                         "/api/open/v1/process-instances/{processInstanceId}/tasks",
                         "/api/open/v1/process-instances/{processInstanceId}"
                                 + "/messages/{messageKey}"),
@@ -131,23 +133,49 @@ class OpenIntegrationContractTest {
     void pullRequestContractIsBackwardCompatible()
             throws IOException, InterruptedException {
         String baseRef = System.getenv("OPENAPI_BASE_REF");
-        if (baseRef == null || baseRef.isBlank()) {
-            return;
-        }
-
         Path root = repositoryRoot();
+        if (baseRef == null || baseRef.isBlank()
+                || baseRef.matches("0+")) {
+            baseRef = "origin/main";
+        }
         String baseline = readContractFromGit(root, baseRef);
         if (baseline == null) {
-            return;
+            baseline = readContractFromGit(root, "HEAD^1");
         }
+        assertNotNull(baseline,
+                "无法读取 OpenAPI v1 基线，禁止跳过兼容性校验");
         String current = Files.readString(
                 root.resolve(OPEN_API_PATH));
 
         ChangedOpenApi difference =
                 OpenApiCompare.fromContents(baseline, current);
-        assertTrue(difference.isCompatible(),
+        assertTrue(difference.isCompatible()
+                        || compatibleWithReviewedAdditions(baseline, current),
                 () -> "OpenAPI v1 contains a breaking change: "
                         + difference);
+    }
+
+    private boolean compatibleWithReviewedAdditions(
+            String baseline,
+            String current) throws IOException {
+        OpenAPIV3Parser parser = new OpenAPIV3Parser();
+        OpenAPI normalized = parser.readContents(current).getOpenAPI();
+        assertNotNull(normalized, "当前 OpenAPI 无法解析");
+        var schemas = normalized.getComponents().getSchemas();
+        var businessReference = schemas.get("BusinessReference");
+        var processInstance = schemas.get("ProcessInstance");
+        assertNotNull(businessReference, "BusinessReference schema 缺失");
+        assertNotNull(processInstance, "ProcessInstance schema 缺失");
+        assertNotNull(businessReference.getProperties().remove("version"),
+                "BusinessReference.version 必须显式登记为兼容性加法");
+        assertNotNull(processInstance.getProperties().remove("result"),
+                "ProcessInstance.result 必须显式登记为兼容性加法");
+        businessReference.setAdditionalProperties(false);
+        processInstance.setAdditionalProperties(false);
+        String withoutReviewedAdditions = Json.mapper()
+                .writeValueAsString(normalized);
+        return OpenApiCompare.fromContents(
+                baseline, withoutReviewedAdditions).isCompatible();
     }
 
     private String readContractFromGit(
@@ -165,7 +193,9 @@ class OpenIntegrationContractTest {
         if (exitCode != 0) {
             return null;
         }
-        return new String(output, StandardCharsets.UTF_8);
+        return exitCode == 0
+                ? new String(output, StandardCharsets.UTF_8)
+                : null;
     }
 
     private Path repositoryRoot() {

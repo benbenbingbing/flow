@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -152,6 +153,18 @@ class WebhookHttpClientTest {
                 SocketTimeoutException.class,
                 () -> client(Duration.ofMillis(100))
                         .send(delivery("/slow")));
+    }
+
+    @Test
+    void privateAddressAllowanceRequiresExplicitConfiguration()
+            throws Exception {
+        properties.setAllowPrivateAddresses(true);
+        when(transport.execute(any(HttpTransportRequest.class), eq(true)))
+                .thenReturn(new HttpTransportResult(204, "", null, false));
+
+        client(Duration.ofSeconds(2)).send(delivery("/internal"));
+
+        verify(transport).execute(any(HttpTransportRequest.class), eq(true));
     }
 
     private WebhookHttpClient client(Duration timeout) {

@@ -49,7 +49,13 @@ function textContent(node) {
   for (const child of node.children || []) {
     if (child.type === NodeTypes.TEXT) text += child.content.trim()
     if (child.type === NodeTypes.INTERPOLATION) text += '{}'
-    if (child.type === NodeTypes.ELEMENT) text += textContent(child)
+    if (child.type === NodeTypes.ELEMENT) {
+      const label = (child.props || []).find(
+        prop => prop.type === NodeTypes.ATTRIBUTE && prop.name === 'label'
+      )
+      if (label?.value?.content) text += label.value.content
+      text += textContent(child)
+    }
   }
   return text
 }

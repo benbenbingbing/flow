@@ -1,15 +1,23 @@
 package com.workflow.openapi.webhook.application;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenProcessEvent;
 import com.workflow.contracts.process.open.OpenProcessEventPort;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessBindingMapper;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessBindingRecord;
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.api.OutboxPublisher;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,12 +38,25 @@ public class WebhookDomainEventPublisher
             "com.flow.process.failed.v1");
 
     private final IntegrationProcessBindingMapper bindingMapper;
+    private final IntegrationWorkflowScenarioMapper scenarioMapper;
+    private final ObjectMapper objectMapper;
     private final OutboxPublisher outboxPublisher;
 
     public WebhookDomainEventPublisher(
             IntegrationProcessBindingMapper bindingMapper,
             OutboxPublisher outboxPublisher) {
+        this(bindingMapper, null, null, outboxPublisher);
+    }
+
+    @Autowired
+    public WebhookDomainEventPublisher(
+            IntegrationProcessBindingMapper bindingMapper,
+            IntegrationWorkflowScenarioMapper scenarioMapper,
+            ObjectMapper objectMapper,
+            OutboxPublisher outboxPublisher) {
         this.bindingMapper = bindingMapper;
+        this.scenarioMapper = scenarioMapper;
+        this.objectMapper = objectMapper;
         this.outboxPublisher = outboxPublisher;
     }
 
@@ -47,6 +68,9 @@ public class WebhookDomainEventPublisher
                 bindingMapper.findOwnerByProcessInstance(
                         event.processInstanceId());
         if (binding == null) {
+            return;
+        }
+        if (!scenarioAllows(binding, event.eventType())) {
             return;
         }
         String eventId = IdWorker.getIdStr();
@@ -67,7 +91,14 @@ public class WebhookDomainEventPublisher
                                 || event.traceId().isBlank()
                                 ? eventId
                                 : event.traceId(),
-                        event.occurredAt());
+                        event.occurredAt(),
+                        binding.getScenarioKey(),
+                        binding.getScenarioRevision(),
+                        binding.getBusinessVersion(),
+                        binding.getIdentityNamespace(),
+                        projectAttributes(
+                                binding,
+                                event.attributes()));
         outboxPublisher.publish(new OutboxPublishRequest(
                 TOPIC,
                 event.eventKey(),
@@ -75,6 +106,82 @@ public class WebhookDomainEventPublisher
                 event.processInstanceId(),
                 payload,
                 20));
+    }
+
+    private Map<String, Object> projectAttributes(
+            IntegrationProcessBindingRecord binding,
+            Map<String, Object> attributes) {
+        Map<String, Object> supplied = attributes == null
+                ? Map.of()
+                : attributes;
+        Object rawSources = supplied.get(
+                OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES);
+        if (binding.getScenarioId() == null) {
+            Map<String, Object> legacy = new LinkedHashMap<>(supplied);
+            legacy.remove(OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES);
+            return Map.copyOf(legacy);
+        }
+        if (!(rawSources instanceof Map<?, ?> sources)
+                || binding.getOutcomeMappingSnapshotJson() == null
+                || objectMapper == null) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> result = new LinkedHashMap<>();
+            JsonNode mapping = objectMapper.readTree(
+                    binding.getOutcomeMappingSnapshotJson());
+            mapping.fields().forEachRemaining(entry -> {
+                if ("status".equals(entry.getKey())) {
+                    return;
+                }
+                String source = entry.getValue().asText();
+                if (source.startsWith("variables.")) {
+                    source = source.substring("variables.".length());
+                }
+                Object value = sources.get(source);
+                if (value instanceof String || value instanceof Number
+                        || value instanceof Boolean) {
+                    result.put(entry.getKey(), value);
+                }
+            });
+            return Map.copyOf(result);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "结果映射快照损坏", exception);
+        }
+    }
+
+    private boolean scenarioAllows(
+            IntegrationProcessBindingRecord binding,
+            String eventType) {
+        if (binding.getScenarioId() == null || objectMapper == null) {
+            return true;
+        }
+        if (binding.getEventTypesSnapshotJson() != null) {
+            try {
+                return objectMapper.readValue(
+                        binding.getEventTypesSnapshotJson(),
+                        new TypeReference<Set<String>>() {
+                        }).contains(eventType);
+            } catch (Exception exception) {
+                throw new IllegalStateException("运行事件白名单快照损坏", exception);
+            }
+        }
+        if (scenarioMapper == null) {
+            return false;
+        }
+        var scenario = scenarioMapper.findById(binding.getScenarioId());
+        if (scenario == null || !"ACTIVE".equals(scenario.getStatus())) {
+            return false;
+        }
+        try {
+            return objectMapper.readValue(
+                    scenario.getEventTypesJson(),
+                    new TypeReference<Set<String>>() {
+                    }).contains(eventType);
+        } catch (Exception exception) {
+            throw new IllegalStateException("场景事件白名单损坏", exception);
+        }
     }
 
     private void validate(OpenProcessEvent event) {

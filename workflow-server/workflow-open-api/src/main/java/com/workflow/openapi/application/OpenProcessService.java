@@ -1,12 +1,9 @@
 package com.workflow.openapi.application;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenApplicationActor;
-import com.workflow.contracts.process.open.OpenBusinessReference;
+import com.workflow.contracts.process.open.OpenProcessCancelCommand;
 import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
 import com.workflow.contracts.process.open.OpenProcessCatalogPort;
 import com.workflow.contracts.process.open.OpenProcessDefinition;
@@ -17,10 +14,11 @@ import com.workflow.contracts.process.open.OpenProcessRuntimePort;
 import com.workflow.contracts.process.open.OpenProcessStartCommand;
 import com.workflow.contracts.process.open.OpenProcessStateConflictException;
 import com.workflow.contracts.process.open.OpenProcessView;
+import com.workflow.contracts.process.open.OpenProcessIdentityNotResolvedException;
 import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenCorrelateMessageRequest;
+import com.workflow.openapi.api.request.OpenCancelProcessRequest;
 import com.workflow.openapi.api.request.OpenStartProcessRequest;
-import com.workflow.openapi.api.response.OpenBusinessReferenceView;
 import com.workflow.openapi.api.response.OpenMessageCorrelationView;
 import com.workflow.openapi.api.response.OpenPage;
 import com.workflow.openapi.api.response.OpenPageMetadata;
@@ -29,18 +27,18 @@ import com.workflow.openapi.api.response.OpenProcessInstanceView;
 import com.workflow.openapi.api.response.OpenTaskSummaryView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessBindingMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessGrantMapper;
+import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessBindingRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessGrantRecord;
+import com.workflow.openapi.infrastructure.persistence.record.IntegrationWorkflowScenarioRecord;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,9 +50,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class OpenProcessService {
 
-    private static final TypeReference<List<String>> STRING_LIST =
-            new TypeReference<>() {
-            };
     private static final int DEFAULT_LIMIT = 50;
     private static final int MAX_LIMIT = 200;
     private static final Pattern PUBLIC_ID = Pattern.compile(
@@ -63,6 +58,9 @@ public class OpenProcessService {
             "[A-Za-z][A-Za-z0-9._-]{0,127}");
 
     private final IntegrationProcessGrantMapper grantMapper;
+    private final IntegrationWorkflowScenarioMapper scenarioMapper;
+    private final OpenProcessScenarioSupport scenarioSupport;
+    private final OpenProcessResponseAssembler responseAssembler;
     private final IntegrationProcessBindingMapper bindingMapper;
     private final OpenProcessCatalogPort catalogPort;
     private final OpenProcessRuntimePort runtimePort;
@@ -70,13 +68,13 @@ public class OpenProcessService {
     private final OpenIdempotencyService idempotencyService;
     private final OpenCursorCodec cursorCodec;
     private final OpenProcessEventPort eventPort;
-    private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
     @Autowired
     public OpenProcessService(
             IntegrationProcessGrantMapper grantMapper,
+            IntegrationWorkflowScenarioMapper scenarioMapper,
             IntegrationProcessBindingMapper bindingMapper,
             OpenProcessCatalogPort catalogPort,
             OpenProcessRuntimePort runtimePort,
@@ -88,6 +86,7 @@ public class OpenProcessService {
             PlatformTransactionManager transactionManager) {
         this(
                 grantMapper,
+                scenarioMapper,
                 bindingMapper,
                 catalogPort,
                 runtimePort,
@@ -112,7 +111,30 @@ public class OpenProcessService {
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager,
             Clock clock) {
+        this(grantMapper, null, bindingMapper, catalogPort, runtimePort,
+                variableSchemaService, idempotencyService, cursorCodec,
+                eventPort, objectMapper, transactionManager, clock);
+    }
+
+    OpenProcessService(
+            IntegrationProcessGrantMapper grantMapper,
+            IntegrationWorkflowScenarioMapper scenarioMapper,
+            IntegrationProcessBindingMapper bindingMapper,
+            OpenProcessCatalogPort catalogPort,
+            OpenProcessRuntimePort runtimePort,
+            IntegrationVariableSchemaService variableSchemaService,
+            OpenIdempotencyService idempotencyService,
+            OpenCursorCodec cursorCodec,
+            OpenProcessEventPort eventPort,
+            ObjectMapper objectMapper,
+            PlatformTransactionManager transactionManager,
+            Clock clock) {
         this.grantMapper = grantMapper;
+        this.scenarioMapper = scenarioMapper;
+        this.scenarioSupport = new OpenProcessScenarioSupport(
+                scenarioMapper, variableSchemaService, objectMapper);
+        this.responseAssembler = new OpenProcessResponseAssembler(
+                scenarioMapper, scenarioSupport, objectMapper);
         this.bindingMapper = bindingMapper;
         this.catalogPort = catalogPort;
         this.runtimePort = runtimePort;
@@ -120,7 +142,6 @@ public class OpenProcessService {
         this.idempotencyService = idempotencyService;
         this.cursorCodec = cursorCodec;
         this.eventPort = eventPort;
-        this.objectMapper = objectMapper;
         this.transactionTemplate =
                 new TransactionTemplate(transactionManager);
         this.clock = clock;
@@ -157,7 +178,7 @@ public class OpenProcessService {
         List<OpenProcessDefinitionView> items = definitions
                 .subList(offset, end)
                 .stream()
-                .map(definition -> toDefinitionView(
+                .map(definition -> responseAssembler.toDefinitionView(
                         definition,
                         contractsByKey.get(definition.processKey())))
                 .toList();
@@ -173,11 +194,28 @@ public class OpenProcessService {
             OpenApplicationActor actor,
             String idempotencyKey,
             OpenStartProcessRequest request) {
+        if ((request.scenarioKey() == null || request.scenarioKey().isBlank())
+                && (request.processKey() == null || request.processKey().isBlank())) {
+            throw new OpenApiException(
+                    400, "INVALID_REQUEST",
+                    "processKey is required when scenarioKey is omitted");
+        }
+        IntegrationWorkflowScenarioRecord scenario = scenarioSupport.resolve(
+                actor.applicationId(), request.scenarioKey());
+        String processKey = scenario == null
+                ? request.processKey()
+                : scenario.getProcessKey();
         IntegrationProcessGrantRecord contract = requireGrant(
                 actor.applicationId(),
-                request.processKey(),
+                processKey,
                 true);
-        validateVariables(contract, request.variables());
+        if (scenario == null) {
+            validateVariables(contract, request.variables());
+        } else {
+            scenarioSupport.validateVariables(scenario, request.variables());
+        }
+        String externalInitiatorId = scenarioSupport.resolveInitiator(
+                scenario, request);
         OpenIdempotencyService.Claim claim =
                 idempotencyService.claim(
                         actor.applicationId(),
@@ -199,33 +237,93 @@ public class OpenProcessService {
                         String bindingId = IdWorker.getIdStr();
                         OpenProcessView process = runtimePort.start(
                                 new OpenProcessStartCommand(
-                                        request.processKey(),
+                                        processKey,
                                         bindingId,
-                                        toBusinessReference(
+                                        responseAssembler.toBusinessReference(
                                                 request),
-                                        request.initiator() == null
-                                                ? null
-                                                : request.initiator()
-                                                .externalUserId(),
+                                        externalInitiatorId,
                                         request.variables(),
-                                        actor));
-                        bindingMapper.insert(
-                                bindingId,
-                                actor.applicationId(),
-                                request.businessReference().system(),
-                                request.businessReference().type(),
-                                request.businessReference().id(),
-                                process.processInstanceId(),
-                                process.processKey(),
-                                now());
+                                        actor,
+                                        scenario == null
+                                                ? null
+                                                : scenario.getProcessDefinitionVersion(),
+                                        scenario == null
+                                                ? null
+                                                : scenarioSupport.namespace(scenario),
+                                        scenario == null
+                                                ? null
+                                                : scenario.getOutcomeMappingJson()));
+                        if (scenario == null) {
+                            if (request.businessReference().version() == null) {
+                                bindingMapper.insert(
+                                        bindingId,
+                                        actor.applicationId(),
+                                        request.businessReference().system(),
+                                        request.businessReference().type(),
+                                        request.businessReference().id(),
+                                        process.processInstanceId(),
+                                        process.processKey(),
+                                        now());
+                            } else {
+                                bindingMapper.insertWithVersion(
+                                        bindingId,
+                                        actor.applicationId(),
+                                        request.businessReference().system(),
+                                        request.businessReference().type(),
+                                        request.businessReference().id(),
+                                        request.businessReference().version(),
+                                        process.processInstanceId(),
+                                        process.processKey(),
+                                        now());
+                            }
+                        } else {
+                            String snapshot = scenarioSupport.snapshot(
+                                    request.variables());
+                            bindingMapper.insertScenario(
+                                    bindingId,
+                                    actor.applicationId(),
+                                    scenario.getId(),
+                                    scenario.getScenarioKey(),
+                                    scenario.getRevision(),
+                                    scenario.getConfigHash(),
+                                    request.businessReference().system(),
+                                    request.businessReference().type(),
+                                    request.businessReference().id(),
+                                    request.businessReference().version(),
+                                    process.processInstanceId(),
+                                    process.processKey(),
+                                    snapshot,
+                                    scenarioSupport.sha256(snapshot),
+                                    scenario.getOutcomeMappingJson(),
+                                    scenario.getEventTypesJson(),
+                                    externalInitiatorId,
+                                    scenario == null ? null
+                                            : scenarioSupport.namespace(scenario),
+                                    scenario == null ? null
+                                            : scenario.getIdentityMappingJson(),
+                                    now());
+                        }
+                        runtimePort.releaseIntegrationEvents(
+                                process.processInstanceId(), actor);
                         publishInitialEvents(
                                 actor,
-                                process);
-                        OpenProcessInstanceView view = toInstanceView(
+                                process,
+                                externalInitiatorId,
+                                scenario == null
+                                        ? null
+                                        : scenario.getOutcomeMappingJson());
+                        OpenProcessInstanceView view = responseAssembler.toInstanceView(
                                 process,
                                 request.businessReference().system(),
                                 request.businessReference().type(),
-                                request.businessReference().id());
+                                request.businessReference().id(),
+                                request.businessReference().version(),
+                                scenario == null ? null : scenario.getScenarioKey(),
+                                scenario == null ? null : scenario.getRevision(),
+                                scenarioSupport.projectResult(process,
+                                        scenario == null
+                                                ? null
+                                                : scenario.getOutcomeMappingJson()));
                         idempotencyService
                                 .completeInBusinessTransaction(
                                         claim,
@@ -246,6 +344,12 @@ public class OpenProcessService {
                     409,
                     "PROCESS_STATE_CONFLICT",
                     "Business reference is already bound");
+        } catch (OpenProcessIdentityNotResolvedException exception) {
+            idempotencyService.failRetryable(claim);
+            throw new OpenApiException(
+                    422,
+                    "IDENTITY_NOT_RESOLVED",
+                    exception.getMessage());
         } catch (OpenProcessStateConflictException exception) {
             idempotencyService.failRetryable(claim);
             throw new OpenApiException(
@@ -263,7 +367,16 @@ public class OpenProcessService {
 
     private void publishInitialEvents(
             OpenApplicationActor actor,
-            OpenProcessView process) {
+            OpenProcessView process,
+            String externalInitiatorId,
+            String outcomeMappingJson) {
+        Map<String, Object> attributes = new LinkedHashMap<>(
+                scenarioSupport.projectEventAttributes(
+                        process.variables(), outcomeMappingJson));
+        if (externalInitiatorId != null
+                && !externalInitiatorId.isBlank()) {
+            attributes.put("actorId", externalInitiatorId);
+        }
         eventPort.publish(new OpenProcessEvent(
                 "OPEN_PROCESS_STARTED:"
                         + process.processInstanceId(),
@@ -273,7 +386,8 @@ public class OpenProcessService {
                 null,
                 null,
                 actor.traceId(),
-                process.createdAt()));
+                process.createdAt(),
+                attributes));
         runtimePort.listActiveTasks(
                         process.processInstanceId(),
                         0,
@@ -292,6 +406,32 @@ public class OpenProcessService {
                                 task.name(),
                                 actor.traceId(),
                                 task.createdAt())));
+        if (!"RUNNING".equals(process.status())) {
+            eventPort.publish(new OpenProcessEvent(
+                    "OPEN_PROCESS_TERMINAL:"
+                            + process.processInstanceId()
+                            + ":"
+                            + process.status(),
+                    terminalEventType(process.status()),
+                    process.processInstanceId(),
+                    null,
+                    null,
+                    null,
+                    actor.traceId(),
+                    process.completedAt() == null
+                            ? clock.instant()
+                            : process.completedAt(),
+                    attributes));
+        }
+    }
+
+    private String terminalEventType(String status) {
+        return switch (status) {
+            case "COMPLETED" -> "com.flow.process.completed.v1";
+            case "TERMINATED" -> "com.flow.process.terminated.v1";
+            case "FAILED" -> "com.flow.process.failed.v1";
+            default -> "com.flow.process.failed.v1";
+        };
     }
 
     public OpenProcessInstanceView get(
@@ -308,7 +448,62 @@ public class OpenProcessService {
         } catch (RuntimeException exception) {
             throw unavailable(exception);
         }
-        return toInstanceView(process, binding);
+        return responseAssembler.toInstanceView(process, binding);
+    }
+
+    public OperationResult<OpenProcessInstanceView> cancel(
+            OpenApplicationActor actor,
+            String processInstanceId,
+            String idempotencyKey,
+            OpenCancelProcessRequest request) {
+        validatePublicId(processInstanceId);
+        IntegrationProcessBindingRecord binding = requireBinding(
+                actor, processInstanceId);
+        OpenIdempotencyService.Claim claim = idempotencyService.claim(
+                actor.applicationId(),
+                "PROCESS_CANCEL",
+                idempotencyKey,
+                Map.of("processInstanceId", processInstanceId,
+                        "reason", request.reason()));
+        if (claim.replay()) {
+            return new OperationResult<>(200, true,
+                    idempotencyService.readReplay(
+                            claim, OpenProcessInstanceView.class));
+        }
+        requireAcquired(claim);
+        try {
+            OpenProcessInstanceView cancelled = transactionTemplate.execute(
+                    status -> {
+                        OpenProcessView process = runtimePort.cancel(
+                                new OpenProcessCancelCommand(
+                                        processInstanceId,
+                                        request.reason().trim(),
+                                        actor));
+                        OpenProcessInstanceView view = responseAssembler.toInstanceView(
+                                process, binding);
+                        idempotencyService.completeInBusinessTransaction(
+                                claim, "PROCESS_INSTANCE", processInstanceId,
+                                200, view);
+                        return view;
+                    });
+            if (cancelled == null) {
+                throw new IllegalStateException("取消流程事务没有返回结果");
+            }
+            return new OperationResult<>(200, false, cancelled);
+        } catch (OpenProcessStateConflictException exception) {
+            idempotencyService.failRetryable(claim);
+            throw new OpenApiException(409, "PROCESS_STATE_CONFLICT",
+                    exception.getMessage());
+        } catch (OpenProcessNotFoundException exception) {
+            idempotencyService.failRetryable(claim);
+            throw notFound();
+        } catch (OpenApiException exception) {
+            idempotencyService.failRetryable(claim);
+            throw exception;
+        } catch (RuntimeException exception) {
+            idempotencyService.failRetryable(claim);
+            throw unavailable(exception);
+        }
     }
 
     public OpenPage<OpenTaskSummaryView> listTasks(
@@ -334,7 +529,10 @@ public class OpenProcessService {
                             task.taskDefinitionKey(),
                             task.name(),
                             task.status(),
-                            task.createdAt()))
+                            task.createdAt(),
+                            task.assignee(),
+                            task.candidateUserIds(),
+                            task.candidateGroupIds()))
                     .toList();
             return new OpenPage<>(
                     items,
@@ -371,7 +569,7 @@ public class OpenProcessService {
                 actor.applicationId(),
                 binding.getProcessDefinitionKey(),
                 false);
-        if (!readMessageKeys(contract).contains(messageKey)) {
+        if (!responseAssembler.readMessageKeys(contract).contains(messageKey)) {
             throw new OpenApiException(
                     403,
                     "PROCESS_NOT_GRANTED",
@@ -480,11 +678,11 @@ public class OpenProcessService {
     }
 
     private void validateVariables(
-            IntegrationProcessGrantRecord contract,
+            String schemaJson,
             Map<String, Object> variables) {
         List<IntegrationVariableSchemaService.Violation> violations =
                 variableSchemaService.validateVariables(
-                        contract.inputSchemaJson(),
+                        schemaJson,
                         variables);
         if (!violations.isEmpty()) {
             throw new OpenApiException(
@@ -496,72 +694,10 @@ public class OpenProcessService {
         }
     }
 
-    private Set<String> readMessageKeys(
-            IntegrationProcessGrantRecord contract) {
-        try {
-            return new LinkedHashSet<>(objectMapper.readValue(
-                    contract.allowedMessageKeys(),
-                    STRING_LIST));
-        } catch (JsonProcessingException exception) {
-            throw unavailable(exception);
-        }
-    }
-
-    private OpenProcessDefinitionView toDefinitionView(
-            OpenProcessDefinition definition,
-            IntegrationProcessGrantRecord contract) {
-        if (contract == null) {
-            throw new IllegalStateException(
-                    "流程目录返回了未授权流程");
-        }
-        try {
-            JsonNode schema = objectMapper.readTree(
-                    contract.inputSchemaJson());
-            return new OpenProcessDefinitionView(
-                    definition.processKey(),
-                    definition.name(),
-                    definition.version(),
-                    definition.description(),
-                    schema,
-                    definition.publishedAt());
-        } catch (JsonProcessingException exception) {
-            throw unavailable(exception);
-        }
-    }
-
-    private OpenBusinessReference toBusinessReference(
-            OpenStartProcessRequest request) {
-        return new OpenBusinessReference(
-                request.businessReference().system(),
-                request.businessReference().type(),
-                request.businessReference().id());
-    }
-
-    private OpenProcessInstanceView toInstanceView(
-            OpenProcessView process,
-            IntegrationProcessBindingRecord binding) {
-        return toInstanceView(
-                process,
-                binding.getExternalSystem(),
-                binding.getBusinessType(),
-                binding.getBusinessId());
-    }
-
-    private OpenProcessInstanceView toInstanceView(
-            OpenProcessView process,
-            String externalSystem,
-            String businessType,
-            String businessId) {
-        return new OpenProcessInstanceView(
-                process.processInstanceId(),
-                process.processKey(),
-                process.status(),
-                new OpenBusinessReferenceView(
-                        externalSystem,
-                        businessType,
-                        businessId),
-                process.createdAt(),
-                process.completedAt());
+    private void validateVariables(
+            IntegrationProcessGrantRecord contract,
+            Map<String, Object> variables) {
+        validateVariables(contract.inputSchemaJson(), variables);
     }
 
     private void requireAcquired(

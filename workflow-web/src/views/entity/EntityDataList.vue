@@ -3,7 +3,6 @@
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
     </div>
-
     <PageState
       v-else-if="loadError"
       type="error"
@@ -12,10 +11,8 @@
       retryable
       @retry="loadEntityDefinition"
     />
-    
     <el-empty v-else-if="!entityCode" description="未配置实体编码" />
     <el-empty v-else-if="!entityDefinition.id" description="实体不存在或未发布" />
-    
     <template v-else>
       <PageState
         v-if="dataError"
@@ -26,7 +23,6 @@
         compact
         @retry="loadDataList"
       />
-
       <component
         v-if="!dataError && customListComponent && hasCustomListComponent(customListComponent)"
         :is="getCustomListComponent(customListComponent)"
@@ -74,7 +70,6 @@
           @search="handleSearch"
           @reset="handleReset"
         />
-
         <EntityDataTable
           :dataList="dataList"
           :loading="tableLoading"
@@ -113,7 +108,6 @@
           @page-change="handlePageChange"
         />
       </template>
-
       <div v-if="selectionScene" class="selection-footer">
         <span>已选择 {{ selectedRows.length }} 条</span>
         <div>
@@ -128,7 +122,6 @@
         </div>
       </div>
     </template>
-
     <EntityDataFormDialog
       ref="formDialogRef"
       :entityCode="entityCode"
@@ -139,7 +132,6 @@
       :entity-status-options="entityStatusOptions"
       @success="loadDataList"
     />
-
     <EntityApprovalDialog
       ref="approvalDialogRef"
       :entityCode="entityCode"
@@ -150,14 +142,12 @@
       :entity-status-options="entityStatusOptions"
       @success="loadDataList"
     />
-
     <EntityRecordVersionDrawer
       ref="versionDrawerRef"
       :entityCode="entityCode"
     />
   </div>
 </template>
-
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, toRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -198,11 +188,9 @@ import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue
 import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vue'
 import { useEntityDataSelectionState } from './composables/useEntityDataSelectionState'
 import PageState from '@/components/PageState.vue'
-
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-
 const props = withDefaults(defineProps<{
   entityCode?: string
   listKey?: string
@@ -249,7 +237,6 @@ const emit = defineEmits<{
   confirm: [rows: any[]]
   cancel: []
 }>()
-
 const entityCode = computed(() =>
   props.entityCode
   || route.params.entityCode as string
@@ -266,22 +253,18 @@ const runtimeScene = computed(() =>
 const listConfig = ref<any>(null), listConfigFields = ref<any[]>([])
 const { effectiveSelectionMode, selectionScene, selectedRows } =
   useEntityDataSelectionState(props, runtimeScene, listConfig)
-
 const loading = ref(false)
 const tableLoading = ref(false)
 const loadError = ref('')
 const dataError = ref('')
-
 const entityDefinition = ref<any>({})
 const entityFields = ref<any[]>([])
-
 const DEFAULT_VIEW_CONFIG = {
   search: { defaultVisibleCount: 4, collapsible: true, labelWidth: 100 },
   table: { stripe: true, border: false, showIndex: true, size: 'default' },
   pagination: { pageSize: 10, pageSizes: [10, 20, 50, 100] },
   customComponentProps: {}
 }
-
 const viewConfig = computed(() => {
   const saved = safeParseConfig(listConfig.value?.viewConfig)
   return {
@@ -293,14 +276,11 @@ const viewConfig = computed(() => {
     customComponentProps: saved.customComponentProps || {}
   }
 })
-
 const dataList = ref<any[]>([])
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
-
 const queryForm = reactive<Record<string, any>>({})
-
 const defaultForm = ref<any>(null)
 const createFormLoading = ref(false)
 const dictOptionMap = ref<Record<string, any[]>>({})
@@ -308,11 +288,9 @@ const dictOptionMap = ref<Record<string, any[]>>({})
 const formDialogRef = ref<InstanceType<typeof EntityDataFormDialog>>()
 const approvalDialogRef = ref<InstanceType<typeof EntityApprovalDialog>>()
 const versionDrawerRef = ref<InstanceType<typeof EntityRecordVersionDrawer>>()
-
 // 计算属性
 const entityName = computed(() => entityDefinition.value?.entityName)
 const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')
-
 // 查询字段（使用列表配置）
 const queryFields = computed(() => {
   if (listConfigFields.value.length > 0) {
@@ -358,7 +336,6 @@ const queryFields = computed(() => {
       )
     })
 })
-
 // 列表显示字段（使用列表配置）
 const listFields = computed(() => {
   if (listConfigFields.value.length > 0) {
@@ -404,7 +381,6 @@ const listFields = computed(() => {
 
 // 是否使用列表配置
 const useListConfig = computed(() => listConfigFields.value.length > 0)
-
 // 自定义列表组件名
 const customListComponent = computed(() =>
   props.embedded ? '' : (listConfig.value?.customComponent || '')
@@ -429,7 +405,6 @@ const customListRuntime = computed(() => ({
   entityStatusOptions: entityStatusOptions.value,
   getStatusText
 }))
-
 function buttonOrder(button: any) {
   const orderKey = Number(button?.orderKey)
   if (Number.isFinite(orderKey) && orderKey > 0) {
@@ -437,7 +412,6 @@ function buttonOrder(button: any) {
   }
   return Number(button?.sort || 0) * 1000000
 }
-
 // 工具栏按钮（按配置 + 权限过滤）
 const toolbarButtons = computed(() => {
   if (selectionScene.value || isSystemEntity.value) return []
@@ -460,7 +434,6 @@ const toolbarButtons = computed(() => {
     .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
   return buttons
 })
-
 // 操作列按钮（按配置 + 权限过滤）
 const rowActionButtons = computed(() => {
   if (selectionScene.value) return []
@@ -493,7 +466,6 @@ const rowActionButtons = computed(() => {
     .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
   return buttons
 })
-
 // 是否显示选择列
 const showSelectionColumn = computed(() => {
   if (isSystemEntity.value) return false
@@ -501,7 +473,6 @@ const showSelectionColumn = computed(() => {
     || effectiveSelectionMode.value !== 'NONE'
     || toolbarButtons.value.some((b: any) => b.key === 'exportSelected' || b.key === 'batchDelete')
 })
-
 // 引用实体名称缓存
 const refEntityNameMap = ref<Record<string, string>>({})
 
@@ -538,7 +509,6 @@ watch(
 // 加载引用实体名称
 async function loadRefEntityNames() {
   if (!dataList.value.length) return
-
   const sourceFields = listFields.value.length > 0 ? listFields.value : entityFields.value
   if (!sourceFields.length) return
 
@@ -546,24 +516,19 @@ async function loadRefEntityNames() {
     isReferenceListField(field)
   )
   if (!refFields.length) return
-
   const groupMap = new Map<string, Set<string>>()
-
   for (const row of dataList.value) {
     for (const field of refFields) {
       const val = getCellValue(row, field, null)
       if (!val) continue
-
       const entityType = field.refEntityType || field.fieldType || 'CUSTOM'
       const refEntityId = field.refEntityId || ''
       const groupKey = `${entityType}:${refEntityId}`
-
       let idSet = groupMap.get(groupKey)
       if (!idSet) {
         idSet = new Set<string>()
         groupMap.set(groupKey, idSet)
       }
-
       if (field.fieldType === 'MULTI_REFERENCE') {
         let ids = val
         if (typeof ids === 'string') {
@@ -577,7 +542,6 @@ async function loadRefEntityNames() {
       }
     }
   }
-
   const promises = []
   for (const [groupKey, idSet] of groupMap) {
     if (!idSet.size) continue
@@ -587,7 +551,6 @@ async function loadRefEntityNames() {
     if (refEntityId) {
       params.append('refEntityId', refEntityId)
     }
-
     promises.push(
       fetch(`/api/entity-selector/${entityType}/batch?${params}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -604,10 +567,8 @@ async function loadRefEntityNames() {
         .catch(err => console.error('加载引用实体名称失败:', err))
     )
   }
-
   await Promise.all(promises)
 }
-
 // 实体状态码 -> 状态名称映射
 const entityStatusOptions = ref<any[]>(getEffectiveEntityStatusOptions())
 const entityStatusMap = ref<Record<string, string>>(
@@ -625,7 +586,6 @@ async function loadEntityStatusMap() {
     entityStatusMap.value = buildEntityStatusMap(entityStatusOptions.value)
   }
 }
-
 // 获取状态样式
 const getStatusType = (status: string) => {
   const map: Record<string, string> = {
@@ -639,21 +599,17 @@ const getStatusType = (status: string) => {
   }
   return map[status] || ''
 }
-
 // 获取状态文本（优先读取实体状态配置）
 const getStatusText = (status: string) => {
   return resolveEntityStatusLabel(status, entityStatusMap.value)
 }
-
 // 格式化日期
 const formatDate = (date: string) => {
   return formatDateValue(date)
 }
-
 // 加载实体定义
 const loadEntityDefinition = async () => {
   if (!entityCode.value) return
-  
   loading.value = true
   loadError.value = ''
   dataError.value = ''
@@ -671,7 +627,6 @@ const loadEntityDefinition = async () => {
     const res = await entityApi.getByCode(entityCode.value)
     entityDefinition.value = res || {}
     entityFields.value = res?.fields || []
-    
     await loadListConfig()
     if (!props.embedded
         || toolbarButtons.value.length > 0
@@ -679,11 +634,9 @@ const loadEntityDefinition = async () => {
       await loadDefaultForm()
     }
     await loadEntityStatusMap()
-
     queryFields.value.forEach((field: any) => {
       queryForm[field.fieldCode] = field.defaultValue ?? ''
     })
-    
     await loadDataList()
   } catch (error) {
     console.error('加载实体定义失败:', error)
@@ -692,7 +645,6 @@ const loadEntityDefinition = async () => {
     loading.value = false
   }
 }
-
 // 加载列表配置
 const loadListConfig = async () => {
   if (!entityDefinition.value?.id || !runtimeListKey.value) return
@@ -717,7 +669,6 @@ const loadListConfig = async () => {
     throw new Error(e?.message || '列表不存在、尚未发布，或当前账号没有访问权限。')
   }
 }
-
 // 加载新增数据表单
 const loadDefaultForm = async (notifyOnError = false) => {
   if (!entityCode.value) return false
@@ -734,11 +685,9 @@ const loadDefaultForm = async (notifyOnError = false) => {
     return false
   }
 }
-
 // 加载数据列表
 const loadDataList = async () => {
   if (!entityCode.value) return
-  
   tableLoading.value = true
   dataError.value = ''
   try {
@@ -754,7 +703,6 @@ const loadDataList = async () => {
         context: props.context
       }
     )
-    
     if (Array.isArray(res)) {
       total.value = res.length
       const start = (pageNum.value - 1) * pageSize.value
@@ -774,13 +722,11 @@ const loadDataList = async () => {
     tableLoading.value = false
   }
 }
-
 // 查询
 const handleSearch = () => {
   pageNum.value = 1
   loadDataList()
 }
-
 // 重置
 const handleReset = () => {
   clearQueryForm()
@@ -789,19 +735,16 @@ const handleReset = () => {
   })
   handleSearch()
 }
-
 // 分页
 const handleSizeChange = (val: number) => {
   pageSize.value = val
   pageNum.value = 1
   loadDataList()
 }
-
 const handlePageChange = (val: number) => {
   pageNum.value = val
   loadDataList()
 }
-
 // 删除
 const handleDelete = async (row: any) => {
   try {
@@ -819,7 +762,6 @@ const handleDelete = async (row: any) => {
     }
   }
 }
-
 // 批量删除
 const handleBatchDelete = async () => {
   if (selectedRows.value.length === 0) {
@@ -846,7 +788,6 @@ const handleBatchDelete = async () => {
     }
   }
 }
-
 // 导出数据
 const handleExport = async (exportType: string) => {
   try {
@@ -871,7 +812,6 @@ const handleExport = async (exportType: string) => {
     ElMessage.error(error.message || '导出失败')
   }
 }
-
 const handleEventAction = async ({
   button,
   row,
@@ -915,7 +855,6 @@ const handleEventAction = async ({
     ElMessage.error(error.message || '按钮操作执行失败')
   }
 }
-
 async function applyButtonEffects(effects: any[]) {
   for (const effect of effects) {
     const type = String(effect?.type || '').toUpperCase()
@@ -939,16 +878,13 @@ async function applyButtonEffects(effects: any[]) {
     }
   }
 }
-
 // 判断是否可审批
 const canAction = (row: any, buttonKey: string) => {
   return canExecuteAction(row, buttonKey)
 }
-
 const getActionReason = (row: any, buttonKey: string) => {
   return getActionCapabilityReason(row, buttonKey)
 }
-
 // 打开新增弹窗
 const handleCreate = async (button?: any) => {
   if (createFormLoading.value) return
@@ -981,7 +917,6 @@ const handleCreate = async (button?: any) => {
     createFormLoading.value = false
   }
 }
-
 // 打开编辑弹窗
 const handleEdit = async (row: any, button?: any) => {
   try {
@@ -1015,7 +950,6 @@ const handleApprove = async (row: any, button?: any) => {
 const handleVersions = (row: any) => {
   versionDrawerRef.value?.open(row)
 }
-
 const confirmSelection = () => {
   const rows = effectiveSelectionMode.value === 'SINGLE'
     ? selectedRows.value.slice(0, 1)
@@ -1026,7 +960,6 @@ const confirmSelection = () => {
   emit('confirm', rows.map(row =>
     applySelectionReturnMappings(row, mappings)))
 }
-
 // 监听实体编码变化
 watch(() => [entityCode.value, runtimeListKey.value], () => {
   if (entityCode.value && runtimeListKey.value) {
@@ -1081,7 +1014,6 @@ watch(
   }
 )
 </script>
-
 <style scoped lang="scss">
 .entity-data-list {
   padding: 10px;
@@ -1093,7 +1025,6 @@ watch(
   .loading-container {
     padding: 10px;
   }
-
   .selection-footer {
     display: flex;
     align-items: center;

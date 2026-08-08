@@ -16,7 +16,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/entity-form-resolve")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityFormResolveController {
 
     private final EntityFormResolveService entityFormResolveService;

@@ -28,7 +28,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/process-instance")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ProcessInstanceController {
     
     private final ProcessInstanceService processInstanceService;

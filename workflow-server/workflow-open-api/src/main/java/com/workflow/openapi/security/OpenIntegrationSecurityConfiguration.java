@@ -286,6 +286,11 @@ public class OpenIntegrationSecurityConfiguration {
                                     "SCOPE_process.definition.read")
                             .requestMatchers(
                                     HttpMethod.POST,
+                                    "/api/open/v1/process-instances/*/cancel")
+                            .hasAuthority(
+                                    "SCOPE_process.instance.cancel")
+                            .requestMatchers(
+                                    HttpMethod.POST,
                                     "/api/open/v1/process-instances")
                             .hasAuthority(
                                     "SCOPE_process.instance.start")

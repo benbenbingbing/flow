@@ -20,7 +20,6 @@
         <el-step title="5. 发布结果" description="发布或回滚" @click="goToStage('imports')" />
       </el-steps>
     </el-card>
-
     <el-card shadow="never">
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane label="选择与校验" name="assets">
@@ -61,7 +60,6 @@
               批量下载（{{ selectedAssets.length }}）
             </el-button>
           </div>
-
           <PageState
             v-if="assetError"
             type="error"
@@ -139,7 +137,6 @@
             </el-table-column>
           </el-table>
         </el-tab-pane>
-
         <el-tab-pane label="发布包" name="exports">
           <div class="table-actions">
             <el-button @click="loadExports">刷新</el-button>
@@ -185,7 +182,6 @@
             </el-table-column>
           </el-table>
         </el-tab-pane>
-
         <el-tab-pane label="导入与发布" name="imports">
           <div class="import-panel">
             <el-input v-model="sourceEnvironment" placeholder="来源环境，如 TEST" style="width: 220px" />
@@ -204,7 +200,6 @@
             </el-button>
             <el-button @click="loadImports">刷新</el-button>
           </div>
-
           <PageState
             v-if="importError"
             type="error"
@@ -251,7 +246,6 @@
             </el-table-column>
           </el-table>
         </el-tab-pane>
-
         <el-tab-pane label="影响对比" name="compare">
           <div class="compare-toolbar">
             <el-select
@@ -335,7 +329,6 @@
         </el-tab-pane>
       </el-tabs>
     </el-card>
-
     <el-dialog v-model="markDialogVisible" title="调整待导出标记" width="500px">
       <el-form :model="markForm" label-width="110px">
         <el-form-item label="加入待导出">
@@ -350,7 +343,6 @@
         <el-button type="primary" @click="saveMark">保存</el-button>
       </template>
     </el-dialog>
-
     <el-dialog v-model="exportDialogVisible" title="生成配置发布包" width="620px">
       <el-form :model="exportForm" label-width="110px">
         <el-form-item label="资产">
@@ -383,11 +375,9 @@
         <el-button type="primary" :loading="exporting" @click="confirmExport">生成并下载</el-button>
       </template>
     </el-dialog>
-
     <el-dialog v-model="snapshotVisible" title="发布快照" width="900px">
       <pre class="json-view">{{ prettyJson(currentSnapshot) }}</pre>
     </el-dialog>
-
     <el-dialog v-model="dependencyVisible" title="依赖关系" width="760px">
       <el-table :data="currentDependencies" border>
         <el-table-column prop="type" label="类型" width="170" />
@@ -398,7 +388,6 @@
         <el-table-column prop="source" label="来源" min-width="160" />
       </el-table>
     </el-dialog>
-
     <el-dialog v-model="itemsVisible" title="导入项目" width="1180px">
       <el-table :data="currentImportItems" border stripe>
         <el-table-column prop="assetType" label="类型" width="120">
@@ -417,7 +406,6 @@
         <el-table-column prop="errorMessage" label="原因" min-width="260" show-overflow-tooltip />
       </el-table>
     </el-dialog>
-
     <el-dialog v-model="mappingVisible" title="环境依赖映射" width="900px">
       <el-alert
         title="组件、数据提供者、用户、角色或部门在生产环境编码不一致时，在这里建立映射。"
@@ -444,14 +432,12 @@
     </el-dialog>
   </div>
 </template>
-
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { configMigrationApi } from '@/api/configMigration'
 import { generateMigrationTag } from '@/utils/migrationTag'
 import PageState from '@/components/PageState.vue'
-
 const activeTab = ref('assets')
 const assets = ref([])
 const assetLoading = ref(false)
@@ -463,7 +449,6 @@ const assetFilters = reactive({
   migrationTag: '',
   markForExport: true
 })
-
 const exportPackages = ref([])
 const exportLoading = ref(false)
 const exportError = ref('')
@@ -477,11 +462,9 @@ const sourceEnvironment = ref('TEST')
 const uploadRef = ref()
 const currentImportItems = ref([])
 const itemsVisible = ref(false)
-
 const markDialogVisible = ref(false)
 const currentMarkAsset = ref(null)
 const markForm = reactive({ markForExport: true, migrationTag: '' })
-
 const exportDialogVisible = ref(false)
 const exportTargets = ref([])
 const exportForm = reactive({
@@ -489,21 +472,17 @@ const exportForm = reactive({
   full: true,
   sections: []
 })
-
 const snapshotVisible = ref(false)
 const currentSnapshot = ref({})
 const dependencyVisible = ref(false)
 const currentDependencies = ref([])
-
 const mappingVisible = ref(false)
 const currentMappingImport = ref(null)
 const mappingRows = ref([])
-
 const compareImportId = ref('')
 const compareData = ref(null)
 const compareLoading = ref(false)
 const compareError = ref('')
-
 const assetStats = computed(() => ({
   pending: assets.value.filter(item => item.markForExport && item.exportStatus !== 'EXPORTED').length,
   exported: assets.value.filter(item => item.exportStatus === 'EXPORTED').length
@@ -520,7 +499,6 @@ const migrationStep = computed(() => {
   const selectedImport = imports.value.find(item => String(item.id) === String(compareImportId.value))
   return selectedImport?.status === 'PUBLISHED' || selectedImport?.status === 'ROLLED_BACK' ? 5 : 4
 })
-
 const sectionOptions = computed(() => {
   const asset = exportTargets.value[0]
   if (!asset) return []
@@ -556,7 +534,6 @@ const sectionOptions = computed(() => {
     { label: '菜单权限', value: 'menus' }
   ]
 })
-
 const loadAssets = async () => {
   assetLoading.value = true
   assetError.value = ''
@@ -571,7 +548,6 @@ const loadAssets = async () => {
     assetLoading.value = false
   }
 }
-
 const loadExports = async () => {
   exportLoading.value = true
   exportError.value = ''
@@ -583,7 +559,6 @@ const loadExports = async () => {
     exportLoading.value = false
   }
 }
-
 const loadImports = async () => {
   importLoading.value = true
   importError.value = ''
@@ -595,7 +570,6 @@ const loadImports = async () => {
     importLoading.value = false
   }
 }
-
 const resetAssetFilters = () => {
   Object.assign(assetFilters, {
     assetType: '',
@@ -605,25 +579,21 @@ const resetAssetFilters = () => {
   })
   loadAssets()
 }
-
 const handleTabChange = (name) => {
   if (name === 'assets') loadAssets()
   if (name === 'exports') loadExports()
   if (name === 'imports' || name === 'compare') loadImports()
 }
-
 const goToStage = (tab) => {
   activeTab.value = tab
   handleTabChange(tab)
 }
-
 const openMarkDialog = (row) => {
   currentMarkAsset.value = row
   markForm.markForExport = Boolean(row.markForExport)
   markForm.migrationTag = row.migrationTag || generateMigrationTag()
   markDialogVisible.value = true
 }
-
 const saveMark = async () => {
   if (markForm.markForExport && !markForm.migrationTag.trim()) {
     ElMessage.warning('加入待导出清单时必须填写迁移批次标记')
@@ -634,17 +604,14 @@ const saveMark = async () => {
   markDialogVisible.value = false
   loadAssets()
 }
-
 const showSnapshot = (row) => {
   currentSnapshot.value = parseJson(row.snapshotJson, {})
   snapshotVisible.value = true
 }
-
 const showDependencies = (row) => {
   currentDependencies.value = parseJson(row.dependenciesJson, [])
   dependencyVisible.value = true
 }
-
 const openSingleExport = (row) => {
   exportTargets.value = [row]
   exportForm.migrationTag = row.migrationTag || generateMigrationTag()
@@ -652,7 +619,6 @@ const openSingleExport = (row) => {
   exportForm.sections = []
   exportDialogVisible.value = true
 }
-
 const openBatchExport = () => {
   exportTargets.value = [...selectedAssets.value]
   const tags = new Set(exportTargets.value.map(item => item.migrationTag).filter(Boolean))
@@ -661,7 +627,6 @@ const openBatchExport = () => {
   exportForm.sections = []
   exportDialogVisible.value = true
 }
-
 const confirmExport = async () => {
   if (!exportForm.migrationTag.trim()) {
     ElMessage.warning('请输入迁移标记')
@@ -692,7 +657,6 @@ const confirmExport = async () => {
     exporting.value = false
   }
 }
-
 const downloadPackage = async (row) => {
   const blob = await configMigrationApi.downloadPackage(row.id)
   const link = document.createElement('a')
@@ -703,15 +667,12 @@ const downloadPackage = async (row) => {
   link.remove()
   URL.revokeObjectURL(link.href)
 }
-
 const handleFileChange = (file) => {
   pendingFile.value = file.raw
 }
-
 const handleFileRemove = () => {
   pendingFile.value = null
 }
-
 const uploadPackage = async () => {
   if (!sourceEnvironment.value.trim()) {
     ElMessage.warning('请填写来源环境，便于后续识别配置来源')
@@ -728,12 +689,10 @@ const uploadPackage = async () => {
     uploading.value = false
   }
 }
-
 const showImportItems = async (row) => {
   currentImportItems.value = await configMigrationApi.getImportItems(row.id) || []
   itemsVisible.value = true
 }
-
 const analyzeImport = async (row) => {
   const result = await configMigrationApi.analyzeImport(row.id)
   ElMessage[result.blocked ? 'warning' : 'success'](
@@ -745,13 +704,11 @@ const analyzeImport = async (row) => {
     loadCompare()
   }
 }
-
 const openCompare = async (row) => {
   activeTab.value = 'compare'
   compareImportId.value = row.id
   await loadCompare()
 }
-
 const loadCompare = async () => {
   if (!compareImportId.value) {
     compareData.value = null
@@ -768,7 +725,6 @@ const loadCompare = async () => {
     compareLoading.value = false
   }
 }
-
 const openMapping = async (row) => {
   currentMappingImport.value = row
   const compare = await configMigrationApi.compareImport(row.id)
@@ -785,7 +741,6 @@ const openMapping = async (row) => {
   mappingRows.value = [...unique.values()]
   mappingVisible.value = true
 }
-
 const saveMappings = async () => {
   if (mappingRows.value.some(item => !item.targetKey?.trim())) {
     ElMessage.warning('生产编码不能为空')
@@ -796,7 +751,6 @@ const saveMappings = async () => {
   mappingVisible.value = false
   loadImports()
 }
-
 const publishImport = async (row) => {
   const confirmation = await ElMessageBox.prompt(
     `发布会更新目标环境的实体、系统实体 UI、表单、列表、流程、工作日历和 SLA 策略配置。请输入迁移标记「${row.migrationTag}」确认。`,
@@ -813,7 +767,6 @@ const publishImport = async (row) => {
   ElMessage.success('配置发布成功')
   loadImports()
 }
-
 const rollbackImport = async (row) => {
   const confirmation = await ElMessageBox.prompt(
     `回滚会恢复上一版本配置，但不会修改业务数据或系统表结构。请输入发布包编号「${row.packageNo}」确认。`,
@@ -830,7 +783,6 @@ const rollbackImport = async (row) => {
   ElMessage.success('配置已回滚')
   loadImports()
 }
-
 const statusType = (status) => ({
   UPLOADED: 'info',
   ANALYZED: 'success',
@@ -838,7 +790,6 @@ const statusType = (status) => ({
   PUBLISHED: 'success',
   ROLLED_BACK: 'warning'
 }[status] || 'info')
-
 const statusText = (status) => ({
   UPLOADED: '已上传',
   ANALYZED: '分析通过',
@@ -846,7 +797,6 @@ const statusText = (status) => ({
   PUBLISHED: '已发布',
   ROLLED_BACK: '已回滚'
 }[status] || '未知状态')
-
 const compareStatusType = (status) => ({
   NEW: 'success',
   CONSISTENT: 'success',
@@ -856,7 +806,6 @@ const compareStatusType = (status) => ({
   MISSING: 'danger',
   FAILED: 'danger'
 }[status] || 'info')
-
 const compareStatusText = (status) => ({
   NEW: '生产新增',
   CONSISTENT: '一致',
@@ -866,7 +815,6 @@ const compareStatusText = (status) => ({
   MISSING: '生产缺失',
   FAILED: '失败'
 }[status] || '未知状态')
-
 const publishStatusText = (status) => ({
   PENDING: '待发布',
   PUBLISHING: '发布中',
@@ -874,7 +822,6 @@ const publishStatusText = (status) => ({
   FAILED: '发布失败',
   ROLLED_BACK: '已回滚'
 }[status] || '未知状态')
-
 const assetTypeLabel = (assetType) => ({
   ENTITY: '实体',
   SYSTEM_ENTITY_UI: '系统实体 UI',
@@ -882,7 +829,6 @@ const assetTypeLabel = (assetType) => ({
   WORK_CALENDAR: '工作日历',
   TASK_SLA_POLICY: 'SLA 策略'
 }[assetType] || assetType || '未知')
-
 const assetTypeTagType = (assetType) => ({
   ENTITY: 'primary',
   SYSTEM_ENTITY_UI: 'warning',
@@ -890,7 +836,6 @@ const assetTypeTagType = (assetType) => ({
   WORK_CALENDAR: 'info',
   TASK_SLA_POLICY: 'danger'
 }[assetType] || 'info')
-
 const parseJson = (value, fallback) => {
   if (!value) return fallback
   if (typeof value !== 'string') return value
@@ -900,15 +845,12 @@ const parseJson = (value, fallback) => {
     return fallback
   }
 }
-
 const prettyJson = (value) => JSON.stringify(value || {}, null, 2)
 const formatDate = (value) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-'
-
 onMounted(async () => {
   await Promise.all([loadAssets(), loadImports()])
 })
 </script>
-
 <style scoped lang="scss">
 .config-migration-page {
   padding: 20px;
@@ -916,56 +858,45 @@ onMounted(async () => {
   flex-direction: column;
   gap: 16px;
 }
-
 .overview-card {
   border-top: 3px solid #409eff;
 }
-
 .migration-steps {
   margin-top: 20px;
-
   :deep(.el-step) {
     cursor: pointer;
   }
 }
-
 .overview {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-
   h2 {
     margin: 0 0 8px;
   }
-
   p {
     margin: 0;
     color: #606266;
   }
 }
-
 .overview-stats {
   display: flex;
   gap: 28px;
-
   div {
     min-width: 78px;
     text-align: center;
   }
-
   strong {
     display: block;
     font-size: 26px;
     color: #409eff;
   }
-
   span {
     color: #909399;
     font-size: 13px;
   }
 }
-
 .toolbar,
 .table-actions,
 .import-panel,
@@ -976,17 +907,14 @@ onMounted(async () => {
   gap: 12px;
   margin-bottom: 16px;
 }
-
 .import-panel,
 .compare-toolbar {
   justify-content: flex-start;
 }
-
 .compare-alert,
 .mapping-alert {
   margin-bottom: 16px;
 }
-
 .json-view {
   max-height: 620px;
   overflow: auto;
@@ -998,106 +926,86 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 1.55;
 }
-
 .primary-line,
 .asset-title-line {
   color: #303133;
   font-weight: 600;
 }
-
 .asset-title-line {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 .meta-line {
   margin-top: 4px;
   color: #909399;
   font-size: 12px;
 }
-
 .error-line {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .technical-detail-button {
   margin-top: 2px;
   padding: 0;
   font-size: 12px;
 }
-
 .technical-detail {
   display: grid;
   gap: 10px;
-
   div {
     display: grid;
     gap: 4px;
   }
-
   code {
     overflow-wrap: anywhere;
   }
 }
-
 .migration-tag-line {
   color: #606266;
 }
-
 .error-line {
   margin-top: 4px;
   color: #f56c6c;
 }
-
 :deep(.el-checkbox-group) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 20px;
 }
-
 @media (max-width: 760px) {
   .config-migration-page {
     padding: 12px;
   }
-
   .overview {
     align-items: flex-start;
     flex-direction: column;
   }
-
   .overview-stats {
     width: 100%;
     justify-content: space-between;
     gap: 8px;
   }
-
   .migration-steps {
     overflow-x: auto;
   }
-
   .migration-steps :deep(.el-steps--simple) {
     min-width: 760px;
   }
-
   .toolbar,
   .import-panel,
   .compare-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
-
   .toolbar :deep(.el-form) {
     display: grid;
   }
-
   .import-panel :deep(.el-input),
   .compare-toolbar :deep(.el-select) {
     width: 100% !important;
   }
-
   :deep(.el-checkbox-group) {
     grid-template-columns: 1fr;
   }

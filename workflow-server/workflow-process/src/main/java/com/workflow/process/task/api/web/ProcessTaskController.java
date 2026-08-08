@@ -33,7 +33,6 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/process-task")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ProcessTaskController {
 
     private final ProcessTaskService processTaskService;

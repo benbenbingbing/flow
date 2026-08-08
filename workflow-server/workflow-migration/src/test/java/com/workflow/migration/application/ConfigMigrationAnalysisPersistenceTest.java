@@ -82,6 +82,9 @@ class ConfigMigrationAnalysisPersistenceTest {
     @Spy
     private ObjectMapper objectMapper =
             new ObjectMapper().findAndRegisterModules();
+    @Spy
+    private ConfigMigrationPackageDocumentSupport documents =
+            new ConfigMigrationPackageDocumentSupport(objectMapper);
 
     @InjectMocks
     private ConfigMigrationPackageService service;

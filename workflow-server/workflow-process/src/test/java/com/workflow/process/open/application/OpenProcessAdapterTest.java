@@ -3,6 +3,7 @@ package com.workflow.process.open.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_SELF;
@@ -16,6 +17,9 @@ import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
 import com.workflow.contracts.process.open.OpenProcessNotFoundException;
 import com.workflow.contracts.process.open.OpenProcessStartCommand;
 import com.workflow.contracts.process.open.OpenProcessStateConflictException;
+import com.workflow.contracts.process.open.OpenProcessIdentityNotResolvedException;
+import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
+import com.workflow.contracts.identity.external.ExternalIdentityResolver;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
@@ -152,6 +156,90 @@ class OpenProcessAdapterTest {
                 variables.getValue().get(
                         "integrationExternalInitiatorId"));
         assertEquals("process-instance-01", result.processInstanceId());
+    }
+
+    @Test
+    void resolvesConfiguredExternalIdentityBeforeStartingFlowable() {
+        ExternalIdentityResolver resolver = mock(
+                ExternalIdentityResolver.class);
+        when(resolver.supports("external")).thenReturn(true);
+        when(resolver.resolve(any(ExternalIdentityResolutionRequest.class)))
+                .thenReturn(Optional.of("flow-user"));
+        OpenProcessAdapter resolvingAdapter = new OpenProcessAdapter(
+                definitionMapper,
+                versionMapper,
+                runtimeService,
+                historyService,
+                taskService,
+                multiInstanceListener,
+                autoSkipService,
+                processTaskService,
+                null,
+                List.of(resolver));
+        when(definitionMapper.findByProcessKey("change_process"))
+                .thenReturn(Optional.of(definition()));
+        ProcessInstance started = mock(ProcessInstance.class);
+        when(started.getId()).thenReturn("process-instance-01");
+        when(runtimeService.startProcessInstanceByKey(
+                eq("change_process"),
+                eq("binding-01"),
+                anyMap())).thenReturn(started);
+        ProcessInstanceQuery query = mock(
+                ProcessInstanceQuery.class, RETURNS_SELF);
+        when(runtimeService.createProcessInstanceQuery()).thenReturn(query);
+        when(query.singleResult()).thenReturn(started);
+        when(started.getProcessDefinitionKey()).thenReturn("change_process");
+        when(started.getStartTime()).thenReturn(new Date(1_000));
+
+        ArgumentCaptor<Map<String, Object>> variables =
+                ArgumentCaptor.forClass(Map.class);
+        resolvingAdapter.start(new OpenProcessStartCommand(
+                "change_process",
+                "binding-01",
+                new OpenBusinessReference(
+                        "external", "request", "REQ-1"),
+                "external-user",
+                Map.of("requesterId", "external-user"),
+                actor(),
+                null,
+                "external",
+                "{\"outcomeCode\":\"variables.decision\"}"));
+
+        verify(runtimeService).startProcessInstanceByKey(
+                eq("change_process"), eq("binding-01"), variables.capture());
+        assertEquals("flow-user", variables.getValue().get("startUserId"));
+        assertEquals("flow-user", variables.getValue().get("initiator"));
+        assertEquals(true,
+                variables.getValue().get("integrationEventsDeferred"));
+    }
+
+    @Test
+    void rejectsConfiguredExternalIdentityWithoutAResolver() {
+        when(definitionMapper.findByProcessKey("change_process"))
+                .thenReturn(Optional.of(definition()));
+        assertThrows(
+                OpenProcessIdentityNotResolvedException.class,
+                () -> new OpenProcessAdapter(
+                        definitionMapper,
+                        versionMapper,
+                        runtimeService,
+                        historyService,
+                        taskService,
+                        multiInstanceListener,
+                        autoSkipService,
+                        processTaskService,
+                        null,
+                        List.of()).start(new OpenProcessStartCommand(
+                        "change_process",
+                        "binding-01",
+                        new OpenBusinessReference(
+                                "external", "request", "REQ-1"),
+                        "external-user",
+                        Map.of(),
+                        actor(),
+                        null,
+                        "external",
+                        null)));
     }
 
     @Test

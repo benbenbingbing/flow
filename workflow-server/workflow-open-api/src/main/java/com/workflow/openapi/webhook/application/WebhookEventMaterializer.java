@@ -3,6 +3,7 @@ package com.workflow.openapi.webhook.application;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.workflow.contracts.process.open.OpenProcessEvent;
 import com.workflow.openapi.webhook.infrastructure.persistence.mapper.WebhookDeliveryMapper;
 import com.workflow.openapi.webhook.infrastructure.persistence.mapper.WebhookEventMapper;
 import com.workflow.openapi.webhook.infrastructure.persistence.mapper.WebhookSubscriptionMapper;
@@ -118,11 +119,26 @@ public class WebhookEventMaterializer
                 "processInstanceId",
                 payload.processInstanceId());
         data.put("processKey", payload.processKey());
+        if (payload.scenarioKey() != null) {
+            data.put("scenarioKey", payload.scenarioKey());
+        }
+        if (payload.bindingRevision() != null) {
+            data.put("bindingRevision", payload.bindingRevision());
+        }
+        if (payload.businessVersion() != null) {
+            data.put("subjectVersion", payload.businessVersion());
+        }
+        if (payload.identityNamespace() != null) {
+            data.put("identityNamespace", payload.identityNamespace());
+        }
         ObjectNode business = data.putObject(
                 "businessReference");
         business.put("system", payload.externalSystem());
         business.put("type", payload.businessType());
         business.put("id", payload.businessId());
+        if (payload.businessVersion() != null) {
+            business.put("version", payload.businessVersion());
+        }
         String type = payload.eventType();
         String schemaName = type.substring(
                 "com.flow.".length(),
@@ -135,6 +151,17 @@ public class WebhookEventMaterializer
                     "taskDefinitionKey",
                     payload.taskDefinitionKey());
         }
+        (payload.attributes() == null ? java.util.Map.<String, Object>of()
+                : payload.attributes()).forEach((key, value) -> {
+            if (OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES.equals(key)) {
+                return;
+            }
+            if (value != null && (value instanceof String
+                    || value instanceof Number
+                    || value instanceof Boolean)) {
+                data.set(key, objectMapper.valueToTree(value));
+            }
+        });
         addStateFields(data, type, payload.occurredAt());
         CloudEvent cloudEvent = CloudEventBuilder.v1()
                 .withId(payload.eventId())
@@ -169,7 +196,6 @@ public class WebhookEventMaterializer
             }
             case "com.flow.task.completed.v1" -> {
                 data.put("status", "COMPLETED");
-                data.put("outcome", "completed");
                 data.put("completedAt", time);
             }
             case "com.flow.process.completed.v1" -> {
@@ -178,12 +204,16 @@ public class WebhookEventMaterializer
             }
             case "com.flow.process.terminated.v1" -> {
                 data.put("status", "TERMINATED");
-                data.putNull("reasonCode");
+                if (!data.has("reasonCode")) {
+                    data.putNull("reasonCode");
+                }
                 data.put("terminatedAt", time);
             }
             case "com.flow.process.failed.v1" -> {
                 data.put("status", "FAILED");
-                data.put("failureCode", "PROCESS_ENGINE_FAILURE");
+                if (!data.has("failureCode")) {
+                    data.put("failureCode", "PROCESS_ENGINE_FAILURE");
+                }
                 data.put("failedAt", time);
             }
             default -> throw new IllegalArgumentException(

@@ -35,6 +35,36 @@ export const integrationApplicationApi = {
   }
 }
 
+export const integrationScenarioApi = {
+  list(applicationId) {
+    return request.get(`${applicationPath(applicationId)}/scenarios`)
+  },
+  create(applicationId, data) {
+    return request.post(`${applicationPath(applicationId)}/scenarios`, data)
+  },
+  validate(applicationId, data) {
+    return request.post(`${applicationPath(applicationId)}/scenarios/validate`, data)
+  },
+  update(applicationId, scenarioKey, data) {
+    return request.post(
+      `${applicationPath(applicationId)}/scenarios/${encodeURIComponent(scenarioKey)}`,
+      data
+    )
+  },
+  publish(applicationId, scenarioKey, data) {
+    return request.post(
+      `${applicationPath(applicationId)}/scenarios/${encodeURIComponent(scenarioKey)}/publish`,
+      data
+    )
+  },
+  disable(applicationId, scenarioKey, data) {
+    return request.post(
+      `${applicationPath(applicationId)}/scenarios/${encodeURIComponent(scenarioKey)}/disable`,
+      data
+    )
+  }
+}
+
 export const integrationWebhookApi = {
   list(applicationId) {
     return request.get(`${applicationPath(applicationId)}/webhooks`)

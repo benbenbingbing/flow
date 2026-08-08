@@ -21,7 +21,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/process-rollback")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ProcessRollbackController {
 
     private final ProcessRollbackService rollbackService;

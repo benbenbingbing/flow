@@ -50,6 +50,13 @@ component_resource() {
   esac
 }
 
+is_optional_component() {
+  case "$1" in
+    *skywalking*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 restore_components() {
   if [ ! -s "$state_file" ]; then
     return
@@ -137,6 +144,10 @@ run_component_case() {
   resource=$(component_resource "$component")
   case_name=${resource#*/}
   if ! kubectl -n "$namespace" get "$resource" >/dev/null 2>&1; then
+    if is_optional_component "$resource"; then
+      record_result "$case_name" "component_not_installed" "business_available" "skipped" "optional_component_not_installed"
+      return 0
+    fi
     record_result "$case_name" "component_down" "business_available" "failed" "resource_not_found"
     return 1
   fi

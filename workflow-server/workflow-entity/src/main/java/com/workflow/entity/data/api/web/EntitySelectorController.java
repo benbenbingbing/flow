@@ -30,7 +30,6 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/entity-selector")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntitySelectorController {
 
     private final EntityDataDynamicService entityDataDynamicService;

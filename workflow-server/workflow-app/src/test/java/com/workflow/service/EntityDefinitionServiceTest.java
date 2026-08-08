@@ -11,6 +11,7 @@ import com.workflow.entity.definition.application.EntityFieldValidationRuleServi
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
 import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
@@ -48,7 +49,8 @@ import static org.mockito.Mockito.*;
 /**
  * 实体定义服务单元测试。
  *
- * <p>被测对象：{@link EntityDefinitionService}，覆盖实体定义的增删改查、子表单关系同步、发布、
+ * <p>
+ * 被测对象：{@link EntityDefinitionService}，覆盖实体定义的增删改查、子表单关系同步、发布、
  * 流程绑定、生命周期模式校验等核心场景。
  */
 @ExtendWith(MockitoExtension.class)
@@ -140,7 +142,7 @@ public class EntityDefinitionServiceTest {
         testField.setFieldType(EntityField.FieldType.STRING);
 
         lenient().when(fieldValidationRuleService.validateAndNormalize(
-                        any(), any(), any()))
+                any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
         lenient().when(schemaPublishLock.tryAcquire(anyString()))
                 .thenReturn(true);
@@ -173,7 +175,7 @@ public class EntityDefinitionServiceTest {
         EntityPublishHistory history = new EntityPublishHistory();
         history.setId("history-1");
         lenient().when(publishHistoryService.createVersion(
-                        any(), anyList(), any(), any(), any(), any(), any(), any()))
+                any(), anyList(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(history);
     }
 
@@ -369,8 +371,8 @@ public class EntityDefinitionServiceTest {
         fieldDTO.setFieldType(EntityField.FieldType.STRING);
         fieldDTO.setValidateRules(
                 """
-                {"minLength":2,"maxLength":20}
-                """);
+                        {"minLength":2,"maxLength":20}
+                        """);
 
         EntityDefinitionDTO dto = new EntityDefinitionDTO();
         dto.setEntityName("测试实体");
@@ -454,7 +456,8 @@ public class EntityDefinitionServiceTest {
     void testPublish() {
         when(entityMapper.selectById("1")).thenReturn(testEntity);
         when(fieldMapper.findByEntityId("1")).thenReturn(List.of(testField));
-        when(dynamicTableService.syncEntityTableStructure(any(EntityDefinition.class))).thenReturn(Collections.emptyList());
+        when(dynamicTableService.syncEntityTableStructure(any(EntityDefinition.class)))
+                .thenReturn(Collections.emptyList());
         when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
         EntityDefinitionDTO result = entityService.publish("1", "user1", "测试用户");

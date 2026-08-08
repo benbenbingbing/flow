@@ -307,6 +307,29 @@ class OpenIntegrationSecurityIntegrationTest {
                         is("trace-scope-denied")));
     }
 
+    @Test
+    void cancelResourceRequiresCancelScope()
+            throws Exception {
+        String startToken = issueToken("process.instance.start");
+        mockMvc.perform(post(
+                        "/api/open/v1/process-instances/process-01/cancel")
+                        .header("Authorization", "Bearer " + startToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"operator request\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath(
+                        "$.errorCode",
+                        is("INSUFFICIENT_SCOPE")));
+
+        String cancelToken = issueToken("process.instance.cancel");
+        mockMvc.perform(post(
+                        "/api/open/v1/process-instances/process-01/cancel")
+                        .header("Authorization", "Bearer " + cancelToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"operator request\"}"))
+                .andExpect(status().isNotFound());
+    }
+
     private String issueToken(String scopes) throws Exception {
         MvcResult result = mockMvc.perform(post("/oauth2/token")
                         .with(httpBasic(CLIENT_ID, CLIENT_SECRET))
@@ -361,7 +384,8 @@ class OpenIntegrationSecurityIntegrationTest {
                             AuthorizationGrantType.CLIENT_CREDENTIALS)
                     .scopes(scopes -> scopes.addAll(Set.of(
                             "process.instance.start",
-                            "process.instance.read")))
+                            "process.instance.read",
+                            "process.instance.cancel")))
                     .tokenSettings(TokenSettings.builder()
                             .accessTokenTimeToLive(
                                     java.time.Duration.ofMinutes(10))

@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/entity-lists")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityListRuntimeController {
 
     private final EntityListRuntimeService runtimeService;

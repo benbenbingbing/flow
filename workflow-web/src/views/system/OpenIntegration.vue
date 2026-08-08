@@ -201,7 +201,8 @@ const scopeOptions = [
   'process.instance.start',
   'process.instance.read',
   'process.task.read',
-  'process.message.correlate'
+  'process.message.correlate',
+  'process.instance.cancel'
 ]
 
 const userStore = useUserStore()

@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataActionService;
+import com.workflow.entity.data.application.EntityDataActionEventSupport;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -51,6 +52,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -100,6 +102,9 @@ class EntityDataActionServiceTest {
 
         @Spy
         private ObjectMapper objectMapper = new ObjectMapper();
+
+        @Mock
+        private EntityDataActionEventSupport eventSupport;
 
         @InjectMocks
         private EntityDataActionService service;
@@ -322,8 +327,7 @@ class EntityDataActionServiceTest {
                 when(formMapper.selectById("form-1")).thenReturn(form);
                 when(definitionMapper.selectById("entity-asset"))
                                 .thenReturn(asset);
-                FormSubmissionExecutionContext context =
-                                context("create-form-trace", "ENTITY_CREATE");
+                FormSubmissionExecutionContext context = context("create-form-trace", "ENTITY_CREATE");
                 when(formSubmissionTraceService.current(
                                 eq("ENTITY_CREATE"),
                                 isNull(),
@@ -490,8 +494,7 @@ class EntityDataActionServiceTest {
                 when(formMapper.selectById("form-1")).thenReturn(form);
                 when(definitionMapper.selectById("entity-asset"))
                                 .thenReturn(asset);
-                FormSubmissionExecutionContext context =
-                                context("update-form-trace", "ENTITY_UPDATE");
+                FormSubmissionExecutionContext context = context("update-form-trace", "ENTITY_UPDATE");
                 when(formSubmissionTraceService.current(
                                 eq("ENTITY_UPDATE"),
                                 isNull(),
@@ -567,14 +570,12 @@ class EntityDataActionServiceTest {
         private void stubDefaultEventExecution() {
                 when(eventRuntimeService.execute(any(), any()))
                                 .thenAnswer(invocation -> {
-                                        Function<Map<String, Object>, Object> handler =
-                                                        invocation.getArgument(1);
+                                        Function<Map<String, Object>, Object> handler = invocation.getArgument(1);
                                         Object data = handler.apply(
-                                                        invocation.<com.workflow.entity.ui.api.request.UiEventExecuteRequest>
-                                                                        getArgument(0)
+                                                        invocation.<com.workflow.entity.ui.api.request.UiEventExecuteRequest>getArgument(
+                                                                        0)
                                                                         .getInput());
-                                        UiEventExecutionResult result =
-                                                        new UiEventExecutionResult();
+                                        UiEventExecutionResult result = new UiEventExecutionResult();
                                         result.setData(data);
                                         return result;
                                 });

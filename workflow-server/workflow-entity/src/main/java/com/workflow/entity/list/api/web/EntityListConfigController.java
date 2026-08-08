@@ -30,7 +30,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/entity-list-config")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EntityListConfigController {
 
     private final EntityListConfigService listConfigService;

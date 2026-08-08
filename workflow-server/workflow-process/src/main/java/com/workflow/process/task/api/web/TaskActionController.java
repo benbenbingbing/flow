@@ -22,7 +22,6 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/task-action")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class TaskActionController {
 
     private final TaskActionService taskActionService;

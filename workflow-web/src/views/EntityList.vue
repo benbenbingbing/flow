@@ -9,7 +9,6 @@
           </el-button>
         </div>
       </template>
-
       <!-- 查询条件 -->
       <el-form :model="queryParams" inline class="search-form">
         <el-form-item label="实体名称">
@@ -41,7 +40,6 @@
           <el-button @click="handleReset">重置</el-button>
         </el-form-item>
       </el-form>
-
       <PageState
         v-if="fetchError"
         type="error"
@@ -153,7 +151,6 @@
           </template>
         </el-table-column>
       </el-table>
-
       <!-- 分页 -->
       <el-pagination
         v-model:current-page="queryParams.pageNum"
@@ -166,7 +163,6 @@
         @current-change="handleCurrentChange"
       />
     </el-card>
-
     <!-- 新建/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
@@ -202,7 +198,6 @@
         </el-button>
       </template>
     </el-dialog>
-
     <!-- 绑定流程对话框 -->
     <el-dialog v-model="bindDialogVisible" title="绑定流程" width="500px">
       <el-form label-width="100px">
@@ -222,7 +217,6 @@
         <el-button type="primary" @click="handleConfirmBind" :loading="bindLoading">保存绑定</el-button>
       </template>
     </el-dialog>
-
     <!-- 状态配置对话框 -->
     <el-dialog v-model="statusDialogVisible" title="实体状态配置" width="800px">
       <div class="status-config-header">
@@ -281,7 +275,6 @@
         <el-button type="primary" @click="saveStatusConfig" :loading="statusLoading">保存</el-button>
       </template>
     </el-dialog>
-
     <!-- 版本历史对话框 -->
     <el-dialog v-model="historyDialogVisible" title="版本历史" width="900px">
       <div class="version-header">
@@ -350,7 +343,6 @@
         <el-button @click="historyDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
-
     <!-- 版本间差异对比对话框 -->
     <el-dialog 
       v-model="versionDiffDialogVisible" 
@@ -378,7 +370,6 @@
               <el-alert :title="versionDiffData.changeSummary" type="info" :closable="false" />
             </div>
           </div>
-
           <!-- 新增字段 -->
           <div v-if="versionDiffData.addedFields?.length > 0" class="diff-section">
             <div class="section-title">
@@ -402,7 +393,6 @@
               </el-table-column>
             </el-table>
           </div>
-
           <!-- 修改字段 -->
           <div v-if="versionDiffData.modifiedFields?.length > 0" class="diff-section">
             <div class="section-title">
@@ -415,7 +405,6 @@
               <el-table-column prop="changeDescription" label="变更内容" min-width="200" />
             </el-table>
           </div>
-
           <!-- 删除字段 -->
           <div v-if="versionDiffData.removedFields?.length > 0" class="diff-section">
             <div class="section-title">
@@ -427,7 +416,6 @@
               <el-table-column prop="fieldName" label="字段名称" />
             </el-table>
           </div>
-
           <!-- 无变更字段 -->
           <div v-if="versionDiffData.unchangedFields?.length > 0" class="diff-section">
             <el-collapse>
@@ -445,7 +433,6 @@
         <el-button @click="versionDiffDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
-
     <!-- 发布差异预览对话框 -->
     <el-dialog 
       v-model="publishDiffDialogVisible" 
@@ -473,7 +460,6 @@
               <el-alert :title="publishDiffData.changeSummary" type="info" :closable="false" />
             </div>
           </div>
-
           <!-- 新增字段 -->
           <div v-if="publishDiffData.addedFields?.length > 0" class="diff-section">
             <div class="section-title">
@@ -498,7 +484,6 @@
               </el-table-column>
             </el-table>
           </div>
-
           <!-- 修改字段 -->
           <div v-if="publishDiffData.modifiedFields?.length > 0" class="diff-section">
             <div class="section-title">
@@ -511,7 +496,6 @@
               <el-table-column prop="changeDescription" label="变更内容" min-width="200" />
             </el-table>
           </div>
-
           <!-- 无变更字段 -->
           <div v-if="publishDiffData.unchangedFields?.length > 0" class="diff-section">
             <el-collapse>
@@ -523,7 +507,6 @@
               </el-collapse-item>
             </el-collapse>
           </div>
-
           <!-- DDL预览 -->
           <div v-if="publishDiffData.pendingDdls?.length > 0" class="diff-section">
             <div class="section-title">
@@ -534,7 +517,6 @@
               <pre v-for="(ddl, index) in publishDiffData.pendingDdls" :key="index">{{ ddl }}</pre>
             </div>
           </div>
-
           <el-divider>发布与迁移</el-divider>
           <el-form :model="publishMigrationForm" label-width="110px">
             <el-form-item label="发布说明">
@@ -564,7 +546,6 @@
     </el-dialog>
   </div>
 </template>
-
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
@@ -579,7 +560,6 @@ import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
 import { generateMigrationTag } from '@/utils/migrationTag'
 import Sortable from 'sortablejs'
 import PageState from '@/components/PageState.vue'
-
 const router = useRouter()
 const loading = ref(false)
 const fetchError = ref('')
@@ -603,14 +583,12 @@ const bindLoading = ref(false)
 const selectedProcessId = ref('')
 const currentEntity = ref(null)
 const formRef = ref()
-
 const formData = ref({
   entityName: '',
   entityCode: '',
   description: '',
   lifecycleMode: 'STANDALONE'
 })
-
 const formRules = {
   entityName: [{ required: true, message: '请输入实体名称', trigger: 'blur' }],
   entityCode: [
@@ -619,7 +597,6 @@ const formRules = {
   ],
   lifecycleMode: [{ required: true, message: '请选择实体类型', trigger: 'change' }]
 }
-
 const fetchData = async () => {
   loading.value = true
   fetchError.value = ''
@@ -638,12 +615,10 @@ const fetchData = async () => {
     loading.value = false
   }
 }
-
 const handleSearch = () => {
   queryParams.value.pageNum = 1
   fetchData()
 }
-
 const handleReset = () => {
   queryParams.value = {
     keyword: '',
@@ -655,18 +630,15 @@ const handleReset = () => {
   }
   fetchData()
 }
-
 const handleSizeChange = (val) => {
   queryParams.value.pageSize = val
   queryParams.value.pageNum = 1
   fetchData()
 }
-
 const handleCurrentChange = (val) => {
   queryParams.value.pageNum = val
   fetchData()
 }
-
 const fetchProcessList = async (currentProcessId = null) => {
   try {
     // 获取所有可用于绑定的流程（包括当前已绑定的和未绑定的）
@@ -676,17 +648,14 @@ const fetchProcessList = async (currentProcessId = null) => {
     ElMessage.error('获取流程列表失败')
   }
 }
-
 const getStatusType = (status) => {
   const types = { 'DRAFT': 'info', 'PUBLISHED': 'success', 'DISABLED': 'danger' }
   return types[status] || 'info'
 }
-
 const getStatusText = (status) => {
   const texts = { 'DRAFT': '草稿', 'PUBLISHED': '已发布', 'DISABLED': '已禁用' }
   return texts[status] || status
 }
-
 const getWorkflowBindingText = (status) => {
   const texts = {
     UNBOUND: '未绑定流程',
@@ -697,7 +666,6 @@ const getWorkflowBindingText = (status) => {
   }
   return texts[status] || '-'
 }
-
 const handleCreate = () => {
   isEdit.value = false
   dialogTitle.value = '新建实体'
@@ -709,11 +677,9 @@ const handleCreate = () => {
   }
   dialogVisible.value = true
 }
-
 const handleSubmit = async () => {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
-
   submitting.value = true
   try {
     if (isEdit.value) {
@@ -731,20 +697,16 @@ const handleSubmit = async () => {
     submitting.value = false
   }
 }
-
 const handleDesign = (row) => {
   router.push(`/entity/design/${row.id}`)
 }
-
 const handleListConfig = (row) => {
   router.push(`/entity-list-config/${row.id}`)
 }
-
 const handleForm = (row) => {
   // 跳转到实体表单列表页面
   router.push(`/entity-form/list-by-entity/${row.id}`)
 }
-
 const handleData = async (row) => {
   try {
     const configs = await entityListConfigApi.getByEntityId(row.id)
@@ -772,7 +734,6 @@ const handleData = async (row) => {
     }
   }
 }
-
 const handleBindWorkflow = (row) => {
   currentEntity.value = row
   // 如果已绑定流程，默认显示当前绑定的流程ID
@@ -781,7 +742,6 @@ const handleBindWorkflow = (row) => {
   fetchProcessList(row.processDefinitionId)
   bindDialogVisible.value = true
 }
-
 const handleUpgradeWorkflow = async (row) => {
   try {
     await ElMessageBox.confirm(
@@ -800,7 +760,6 @@ const handleUpgradeWorkflow = async (row) => {
     }
   }
 }
-
 const handleUnbindWorkflow = async (row) => {
   try {
     await ElMessageBox.confirm(
@@ -817,24 +776,20 @@ const handleUnbindWorkflow = async (row) => {
     }
   }
 }
-
 const handleConfirmBind = async () => {
   if (!selectedProcessId.value) {
     ElMessage.warning('请选择流程')
     return
   }
-  
   if (!currentEntity.value) {
     ElMessage.warning('实体信息丢失，请重新打开对话框')
     return
   }
-  
   // 如果没有变化，直接关闭
   if (selectedProcessId.value === currentEntity.value.processDefinitionId) {
     bindDialogVisible.value = false
     return
   }
-  
   bindLoading.value = true
   try {
     await entityApi.bindWorkflow(currentEntity.value.id, selectedProcessId.value)
@@ -853,12 +808,10 @@ const handleConfirmBind = async () => {
     bindLoading.value = false
   }
 }
-
 // ========== 状态配置相关 ==========
 const statusDialogVisible = ref(false)
 const statusLoading = ref(false)
 const statusList = ref([])
-
 // ========== 版本历史相关 ==========
 const historyDialogVisible = ref(false)
 const versionHistoryList = ref([])
@@ -866,7 +819,6 @@ const selectedVersionIndex = ref(null)
 const versionDiffDialogVisible = ref(false)
 const versionDiffLoading = ref(false)
 const versionDiffData = ref(null)
-
 // ========== 发布差异预览相关 ==========
 const publishDiffDialogVisible = ref(false)
 const publishDiffLoading = ref(false)
@@ -877,7 +829,6 @@ const publishMigrationForm = ref({
   markForExport: true,
   migrationTag: generateMigrationTag()
 })
-
 // 格式化日期
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -891,7 +842,6 @@ const formatDate = (dateStr) => {
     second: '2-digit'
   })
 }
-
 // 格式化数据库类型（根据字段类型、长度、精度动态计算）
 const formatDbType = (field) => {
   if (field.dbType) return field.dbType
@@ -929,7 +879,6 @@ const formatDbType = (field) => {
       return 'varchar(255)'
   }
 }
-
 // 发布实体（先显示差异预览）
 const handlePublish = async (row) => {
   publishTargetEntity.value = row
@@ -940,7 +889,6 @@ const handlePublish = async (row) => {
   }
   publishDiffDialogVisible.value = true
   publishDiffLoading.value = true
-  
   try {
     const diff = await entityVersionDiffApi.getPendingPublishDiff(row.id)
     publishDiffData.value = diff
@@ -951,7 +899,6 @@ const handlePublish = async (row) => {
     publishDiffLoading.value = false
   }
 }
-
 // 重新发布实体（已发布的实体修改字段后再次发布）
 const handleRepublish = async (row) => {
   publishTargetEntity.value = row
@@ -962,7 +909,6 @@ const handleRepublish = async (row) => {
   }
   publishDiffDialogVisible.value = true
   publishDiffLoading.value = true
-  
   try {
     const diff = await entityVersionDiffApi.getPendingPublishDiff(row.id)
     publishDiffData.value = diff
@@ -973,7 +919,6 @@ const handleRepublish = async (row) => {
     publishDiffLoading.value = false
   }
 }
-
 // 确认发布
 const confirmPublish = async () => {
   if (!publishTargetEntity.value) return
@@ -981,7 +926,6 @@ const confirmPublish = async () => {
     ElMessage.warning('加入待导出清单时必须填写迁移标记')
     return
   }
-  
   publishDiffLoading.value = true
   try {
     await entityApi.publish(publishTargetEntity.value.id, { ...publishMigrationForm.value })
@@ -995,13 +939,11 @@ const confirmPublish = async () => {
     publishDiffLoading.value = false
   }
 }
-
 // 查看版本历史
 const handleViewHistory = async (row) => {
   currentEntity.value = row
   historyDialogVisible.value = true
   selectedVersionIndex.value = null
-  
   try {
     const res = await entityPublishHistoryApi.getVersionHistory(row.id)
     versionHistoryList.value = res || []
@@ -1011,7 +953,6 @@ const handleViewHistory = async (row) => {
     versionHistoryList.value = []
   }
 }
-
 // 查看版本与上一版本的差异
 const viewVersionDiff = async (item, index) => {
   if (index === versionHistoryList.value.length - 1) {
@@ -1019,10 +960,8 @@ const viewVersionDiff = async (item, index) => {
     ElMessage.info('这是第一个版本，无上一版本可比较')
     return
   }
-  
   versionDiffLoading.value = true
   versionDiffDialogVisible.value = true
-  
   try {
     const diff = await entityVersionDiffApi.compareVersions(
       currentEntity.value.id,
@@ -1037,15 +976,12 @@ const viewVersionDiff = async (item, index) => {
     versionDiffLoading.value = false
   }
 }
-
 const handleStatusConfig = async (row) => {
   currentEntity.value = row
   statusDialogVisible.value = true
-  
   try {
     const res = await getEntityStatusList(row.entityCode)
     statusList.value = res || []
-    
     // 如果没有配置，添加默认状态
     if (statusList.value.length === 0) {
       statusList.value = row.lifecycleMode === 'WORKFLOW'
@@ -1060,7 +996,6 @@ const handleStatusConfig = async (row) => {
             { statusCategory: 'NEW', statusCode: 'DRAFT', statusName: '草稿', description: '初始业务数据' }
           ]
     }
-    
     // 初始化拖拽排序
     nextTick(() => {
       initSortable()
@@ -1070,41 +1005,33 @@ const handleStatusConfig = async (row) => {
     ElMessage.error('加载状态配置失败')
   }
 }
-
 // 拖拽排序实例
 let sortableInstance = null
-
 // 初始化拖拽排序
 const initSortable = () => {
   const tableEl = document.querySelector('.status-drag-table .el-table__body-wrapper tbody')
   if (!tableEl) return
-  
   // 销毁旧实例
   if (sortableInstance) {
     sortableInstance.destroy()
   }
-  
   sortableInstance = new Sortable(tableEl, {
     handle: '.drag-handle',
     animation: 150,
     onEnd: (evt) => {
       const { oldIndex, newIndex } = evt
       if (oldIndex === newIndex) return
-      
       // 重新排序数组
       const item = statusList.value.splice(oldIndex, 1)[0]
       statusList.value.splice(newIndex, 0, item)
-      
       // 更新排序号
       statusList.value.forEach((status, index) => {
         status.sortOrder = index
       })
-      
       console.log('排序更新:', statusList.value)
     }
   })
 }
-
 const addStatus = () => {
   statusList.value.push({
     statusCategory: currentEntity.value?.lifecycleMode === 'WORKFLOW' ? 'PROCESSING' : 'NEW',
@@ -1113,11 +1040,9 @@ const addStatus = () => {
     description: ''
   })
 }
-
 const removeStatus = (index) => {
   statusList.value.splice(index, 1)
 }
-
 const saveStatusConfig = async () => {
   // 验证数据
   for (const status of statusList.value) {
@@ -1126,7 +1051,6 @@ const saveStatusConfig = async () => {
       return
     }
   }
-  
   statusLoading.value = true
   try {
     await saveEntityStatusList(currentEntity.value.entityCode, statusList.value)
@@ -1139,7 +1063,6 @@ const saveStatusConfig = async () => {
     statusLoading.value = false
   }
 }
-
 const handleDelete = async (row) => {
   try {
     const { value } = await ElMessageBox.prompt(
@@ -1163,23 +1086,19 @@ const handleDelete = async (row) => {
     }
   }
 }
-
 onMounted(() => {
   fetchData()
 })
 </script>
-
 <style scoped>
 .entity-list {
   height: 100%;
 }
-
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .status-config-header {
   display: flex;
   justify-content: space-between;
@@ -1189,22 +1108,18 @@ onMounted(() => {
   background-color: #f5f7fa;
   border-radius: 4px;
 }
-
 .drag-handle {
   cursor: move;
   color: #909399;
   font-size: 16px;
 }
-
 .drag-handle:hover {
   color: #409eff;
 }
-
 .status-drag-table .sortable-ghost {
   opacity: 0.5;
   background-color: #f5f7fa;
 }
-
 /* 版本历史样式 */
 .version-header {
   display: flex;
@@ -1216,57 +1131,47 @@ onMounted(() => {
   border-radius: 4px;
   font-weight: bold;
 }
-
 .version-item {
   padding: 10px;
   background-color: #fff;
   border-radius: 4px;
   border: 1px solid #e4e7ed;
 }
-
 .version-item.version-clickable {
   cursor: pointer;
   transition: all 0.3s;
 }
-
 .version-item.version-clickable:hover {
   border-color: #409eff;
   box-shadow: 0 2px 12px 0 rgba(64, 158, 255, 0.1);
 }
-
 .version-tip {
   margin-top: 8px;
   font-size: 12px;
 }
-
 .version-diff-content {
   max-height: 500px;
   overflow-y: auto;
 }
-
 .version-title {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
 }
-
 .version-number {
   font-size: 18px;
   font-weight: bold;
   color: #409EFF;
 }
-
 .version-type {
   font-size: 12px;
 }
-
 .version-desc {
   color: #606266;
   margin-bottom: 8px;
   font-size: 14px;
 }
-
 .version-meta {
   font-size: 12px;
   color: #909399;
@@ -1274,28 +1179,23 @@ onMounted(() => {
   gap: 15px;
   flex-wrap: wrap;
 }
-
 .changes-desc {
   color: #E6A23C;
 }
-
 .version-fields {
   margin-top: 10px;
 }
-
 /* 发布差异预览样式 */
 .publish-diff-content {
   max-height: 500px;
   overflow-y: auto;
 }
-
 .diff-header {
   margin-bottom: 20px;
   padding: 15px;
   background-color: #f5f7fa;
   border-radius: 4px;
 }
-
 .version-compare {
   display: flex;
   align-items: center;
@@ -1303,52 +1203,42 @@ onMounted(() => {
   gap: 20px;
   margin-bottom: 15px;
 }
-
 .version-box {
   text-align: center;
   padding: 15px 30px;
   border-radius: 8px;
   min-width: 100px;
 }
-
 .version-box.old {
   background-color: #f4f4f5;
   border: 2px solid #e4e7ed;
 }
-
 .version-box.new {
   background-color: #ecf5ff;
   border: 2px solid #409eff;
 }
-
 .version-label {
   font-size: 12px;
   color: #909399;
   margin-bottom: 5px;
 }
-
 .version-value {
   font-size: 24px;
   font-weight: bold;
 }
-
 .version-box.old .version-value {
   color: #606266;
 }
-
 .version-box.new .version-value {
   color: #409eff;
 }
-
 .version-arrow {
   font-size: 24px;
   color: #909399;
 }
-
 .diff-section {
   margin-bottom: 20px;
 }
-
 .section-title {
   display: flex;
   align-items: center;
@@ -1356,13 +1246,11 @@ onMounted(() => {
   margin-bottom: 10px;
   font-weight: bold;
 }
-
 .ddl-preview {
   background-color: #f5f7fa;
   border-radius: 4px;
   padding: 10px;
 }
-
 .ddl-preview pre {
   margin: 0;
   padding: 8px;
@@ -1375,33 +1263,27 @@ onMounted(() => {
   white-space: pre-wrap;
   word-break: break-all;
 }
-
 .ddl-preview pre:not(:last-child) {
   margin-bottom: 8px;
 }
-
 .search-form {
   margin-bottom: 18px;
 }
-
 .pagination {
   margin-top: 18px;
   justify-content: flex-end;
 }
-
 .entity-type-options {
   display: grid;
   width: 100%;
   gap: 10px;
 }
-
 .entity-type-options :deep(.el-radio) {
   width: 100%;
   height: auto;
   margin-right: 0;
   padding: 12px;
 }
-
 .entity-type-tip {
   display: block;
   margin-top: 4px;
@@ -1409,7 +1291,6 @@ onMounted(() => {
   font-size: 12px;
   white-space: normal;
 }
-
 .field-help {
   margin-top: 4px;
   color: #909399;

@@ -2,9 +2,14 @@ package com.workflow.process.open.application;
 
 import com.workflow.contracts.process.open.OpenProcessEvent;
 import com.workflow.contracts.process.open.OpenProcessEventPort;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
@@ -14,6 +19,7 @@ import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -38,18 +44,30 @@ public class OpenIntegrationProcessEventListener
                     FlowableEngineEventType.TASK_COMPLETED);
 
     private final OpenProcessEventPort eventPort;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
     @Autowired
     public OpenIntegrationProcessEventListener(
-            OpenProcessEventPort eventPort) {
-        this(eventPort, Clock.systemUTC());
+            OpenProcessEventPort eventPort,
+            ObjectProvider<ObjectMapper> objectMapperProvider) {
+        this(eventPort,
+                objectMapperProvider.getIfAvailable(ObjectMapper::new),
+                Clock.systemUTC());
     }
 
     OpenIntegrationProcessEventListener(
             OpenProcessEventPort eventPort,
             Clock clock) {
+        this(eventPort, new ObjectMapper(), clock);
+    }
+
+    OpenIntegrationProcessEventListener(
+            OpenProcessEventPort eventPort,
+            ObjectMapper objectMapper,
+            Clock clock) {
         this.eventPort = eventPort;
+        this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
@@ -68,6 +86,9 @@ public class OpenIntegrationProcessEventListener
                 && entity.getEntity() instanceof Task value
                 ? value
                 : null;
+        if (isDeferred(rawEvent, task)) {
+            return;
+        }
         String taskId = task == null ? null : task.getId();
         String traceId = traceId(rawEvent, task);
         String eventKey = type.name()
@@ -82,7 +103,8 @@ public class OpenIntegrationProcessEventListener
                 task == null ? null : task.getTaskDefinitionKey(),
                 task == null ? null : task.getName(),
                 traceId,
-                clock.instant()));
+                clock.instant(),
+                attributes(rawEvent, task)));
     }
 
     private String traceId(FlowableEvent event, Task task) {
@@ -102,6 +124,96 @@ public class OpenIntegrationProcessEventListener
         return value instanceof String text && !text.isBlank()
                 ? text
                 : null;
+    }
+
+    private Map<String, Object> attributes(
+            FlowableEvent event,
+            Task task) {
+        Map<String, Object> variables = variables(event, task);
+        Map<String, Object> result = new LinkedHashMap<>();
+        copyVariable(variables, result, "outcomeCode");
+        copyVariable(variables, result, "outcome");
+        copyVariable(variables, result, "approver", "actorId");
+        copyVariable(variables, result, "approvalEvidence", "evidence");
+        copyVariable(variables, result, "decidedAt");
+        copyVariable(variables, result, "opinion");
+        copyVariable(variables, result, "reasonCode");
+        copyVariable(variables, result, "failureCode");
+        copyConfiguredOutcomeVariables(variables, result);
+        return Map.copyOf(result);
+    }
+
+    private boolean isDeferred(FlowableEvent event, Task task) {
+        return Boolean.TRUE.equals(
+                variables(event, task).get("integrationEventsDeferred"));
+    }
+
+    private Map<String, Object> variables(
+            FlowableEvent event,
+            Task task) {
+        Map<String, Object> variables = new LinkedHashMap<>();
+        if (task != null && task.getProcessVariables() != null) {
+            variables.putAll(task.getProcessVariables());
+        } else if (event instanceof FlowableEntityEvent entity
+                && entity.getEntity() instanceof ProcessInstance process
+                && process.getProcessVariables() != null) {
+            variables.putAll(process.getProcessVariables());
+        }
+        return variables;
+    }
+
+    private void copyConfiguredOutcomeVariables(
+            Map<String, Object> variables,
+            Map<String, Object> result) {
+        Object rawMapping = variables.get("integrationOutcomeMapping");
+        if (!(rawMapping instanceof String mapping) || mapping.isBlank()) {
+            return;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(mapping);
+            Map<String, Object> sourceValues = new LinkedHashMap<>();
+            root.fields().forEachRemaining(entry -> {
+                String source = entry.getValue().asText();
+                if (source.startsWith("variables.")) {
+                    source = source.substring("variables.".length());
+                }
+                Object value = variables.get(source);
+                if (isPublicScalar(value)) {
+                    sourceValues.put(source, value);
+                }
+            });
+            if (!sourceValues.isEmpty()) {
+                result.put(
+                        OpenProcessEvent.INTERNAL_OUTCOME_VARIABLES,
+                        Map.copyOf(sourceValues));
+            }
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "运行结果映射快照损坏", exception);
+        }
+    }
+
+    private boolean isPublicScalar(Object value) {
+        return value instanceof String
+                || value instanceof Number
+                || value instanceof Boolean;
+    }
+
+    private void copyVariable(Map<String, Object> source,
+                              Map<String, Object> target,
+                              String sourceKey) {
+        copyVariable(source, target, sourceKey, sourceKey);
+    }
+
+    private void copyVariable(Map<String, Object> source,
+                              Map<String, Object> target,
+                              String sourceKey,
+                              String targetKey) {
+        Object value = source.get(sourceKey);
+        if (value instanceof String || value instanceof Number
+                || value instanceof Boolean) {
+            target.put(targetKey, value);
+        }
     }
 
     private String externalType(FlowableEngineEventType type) {

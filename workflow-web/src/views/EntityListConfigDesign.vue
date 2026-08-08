@@ -62,7 +62,6 @@
         <el-button type="success" plain @click="handlePublish">发布生效</el-button>
       </div>
     </div>
-
     <el-alert
       v-if="isSystemEntity"
       title="平台系统表结构只读。列表仅配置查询条件、显示列、排序、分页、格式化、选择模式和查看操作。"
@@ -71,7 +70,6 @@
       show-icon
       class="system-config-alert"
     />
-
     <el-alert
       v-if="loadError"
       :title="loadError"
@@ -84,7 +82,6 @@
         <el-button size="small" type="danger" plain @click="loadData">重新加载</el-button>
       </template>
     </el-alert>
-
     <div v-loading="pageLoading" class="design-container">
       <div ref="configPanelRef" class="config-panel">
         <el-card shadow="never">
@@ -242,7 +239,6 @@
                     </el-select>
                   </el-form-item>
                 </SettingsSection>
-
                 <SettingsSection
                   title="访问范围"
                   description="配置列表的权限边界、实体数据范围和可用场景"
@@ -286,7 +282,6 @@
                     <el-text type="info" size="small">勾选后仅保存当前场景，发布后运行时生效。</el-text>
                   </el-form-item>
                 </SettingsSection>
-
                 <SettingsSection
                   title="选择行为"
                   description="配置列表是否允许选择，以及选择结果如何返回"
@@ -338,7 +333,6 @@
                     />
                   </el-form-item>
                 </SettingsSection>
-
                 <SettingsSection
                   title="查询实现"
                   description="配置固定条件、可信上下文，以及替代平台查询的接口服务"
@@ -599,7 +593,6 @@
         </el-card>
       </div>
     </div>
-
     <el-dialog
       v-model="previewDialogVisible"
       title="列表预览"
@@ -617,7 +610,6 @@
             <el-radio-button value="tablet">平板</el-radio-button>
           </el-radio-group>
         </div>
-
         <div class="preview-viewport" :class="`is-${previewViewport}`">
           <el-alert
             v-if="previewError"
@@ -633,7 +625,6 @@
               </el-button>
             </template>
           </el-alert>
-
           <EntityDataSearchForm
             v-if="previewQueryFields.length > 0"
             v-model:form="previewQueryForm"
@@ -643,7 +634,6 @@
             @search="handlePreviewSearch"
             @reset="handlePreviewReset"
           />
-
           <el-table
             v-loading="previewLoading"
             :data="previewDataList"
@@ -685,7 +675,6 @@
               </template>
             </el-table-column>
           </el-table>
-
           <div v-if="previewTotal > 0" class="preview-pagination">
             <el-pagination
               v-model:current-page="previewPageNum"
@@ -698,19 +687,16 @@
               @current-change="loadPreviewData"
             />
           </div>
-
           <el-empty
             v-if="!previewLoading && !previewError && previewDataList.length === 0"
             description="当前条件下暂无预览数据"
           />
         </div>
       </div>
-
       <template #footer>
         <el-button @click="previewDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
-
     <el-dialog
       v-model="fieldConfigDialogVisible"
       :title="`字段高级配置：${editingField?.fieldName || ''}`"
@@ -764,7 +750,6 @@
               </el-form-item>
             </el-form>
           </SettingsSection>
-
           <SettingsSection
             title="列展示"
             description="配置列宽和对齐方式等常用展示项"
@@ -793,7 +778,6 @@
               </el-form-item>
             </el-form>
           </SettingsSection>
-
           <SettingsSection
             title="高级列布局"
             description="仅在需要冻结列或精细控制宽度时配置"
@@ -815,7 +799,6 @@
             </el-form>
           </SettingsSection>
         </el-tab-pane>
-
         <el-tab-pane label="数据与显示" name="data-render">
           <SettingsSection
             title="数据与显示"
@@ -876,7 +859,6 @@
                 </el-form-item>
               </el-form>
             </div>
-
             <div class="field-config-subsection">
               <div class="field-config-subsection__title">单元格显示</div>
               <el-form label-width="110px" size="small">
@@ -908,7 +890,6 @@
               />
             </div>
           </SettingsSection>
-
           <SettingsSection
             title="高级模板"
             description="锁定模板版本，升级时保留本地覆盖"
@@ -951,7 +932,6 @@
         <el-button type="primary" @click="saveFieldAdvancedConfig">保存当前列</el-button>
       </template>
     </el-dialog>
-
     <UiConfigPublishDialog
       v-model="publishDialogVisible"
       config-type="LIST"
@@ -959,7 +939,6 @@
       config-label="列表"
       @published="handlePublished"
     />
-
     <EventBindingDialog
       ref="eventBindingDialogRef"
       owner-type="LIST"
@@ -978,7 +957,6 @@
     <RuntimeCodeViewerDialog ref="runtimeCodeDialogRef" />
   </div>
 </template>
-
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -1043,13 +1021,11 @@ import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
 } from '@/utils/selectionReturnMappings'
-
 const route = useRoute()
 const router = useRouter()
 const configId = route.params.id
 const selectionReturnMappingExampleCompactText =
   SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
-
 // 配置信息
 const configInfo = ref({})
 const entityName = ref('')
@@ -1152,7 +1128,6 @@ const availableQueryTypeOptions = computed(() => {
     { label: '为空', value: 'IS_NULL' }
   ]
 })
-
 const createDefaultViewConfig = () => ({
   search: {
     defaultVisibleCount: 4,
@@ -1174,7 +1149,6 @@ const createDefaultViewConfig = () => ({
   customComponentProps: {}
 })
 const viewConfig = ref(createDefaultViewConfig())
-
 // 字段配置列表
 const fieldConfigList = ref([])
 const configPanelRef = ref(null)
@@ -1183,14 +1157,11 @@ let sortableInstance = null
 let configResizeObserver = null
 let fieldLayoutFrame = 0
 let observedConfigWidth = 0
-
 // 配置 Tab
 const activeConfigTab = ref('fields')
-
 const selectedCustomListSchema = computed(() =>
   getCustomListDescriptor(configInfo.value.customComponent)?.configSchema || []
 )
-
 const fieldConfigDialogVisible = ref(false)
 const activeFieldConfigTab = ref('common')
 const editingField = ref(null)
@@ -1198,19 +1169,15 @@ const editingDataSourceConfig = ref({})
 const editingRenderConfig = ref({})
 const editingQueryConfig = ref({})
 const editingColumnConfig = ref({})
-
 const selectedDataSourceOption = computed(() =>
   dataSourceOptions.value.find(option => option.value === editingField.value?.dataSourceType)
 )
-
 const selectedCellDescriptor = computed(() =>
   getCellDescriptor(editingField.value?.renderComponent || 'DefaultText')
 )
-
 const listColumnSources = computed(() =>
   unifiedDataSources.value.filter(source => source.enabled !== false)
 )
-
 const listQuerySources = computed(() =>
   unifiedDataSources.value.filter(source =>
     source.enabled !== false
@@ -1270,7 +1237,6 @@ const queryInterfaceSummary = computed(() => {
 
 // 工具栏按钮配置
 const toolbarButtons = ref([])
-
 // 操作列按钮配置
 const rowActionButtons = ref([])
 const sceneItems = ref([])
@@ -1290,7 +1256,6 @@ const sceneOptions = [
   { value: 'FORM_PICKER', label: '表单选择器' },
   { value: 'SUB_TABLE', label: '子表选择' }
 ]
-
 const previewQueryFields = computed(() =>
   fieldConfigList.value
     .filter(field => field.isQuery)
@@ -1306,11 +1271,9 @@ const previewQueryFields = computed(() =>
       }
     })
 )
-
 const previewListFields = computed(() =>
   fieldConfigList.value.filter(field => field.showInList)
 )
-
 function rememberMetadataBaseline() {
   metadataBaseline.value = listMetadataFingerprint(configInfo.value, viewConfig.value)
   metadataDetailBaselines.value = new Map(
@@ -1329,18 +1292,15 @@ function rememberListQueryBindingBaseline() {
 function fieldFingerprint(field) {
   return JSON.stringify(normalizeFieldForSave(field))
 }
-
 function rememberFieldBaseline(field) {
   fieldBaselines.value.set(field.fieldId, fieldFingerprint(field))
 }
-
 function rememberActionBaseline(button, position) {
   actionBaselines.value.set(
     actionBaselineKey(button, position),
     actionFingerprint(button, position)
   )
 }
-
 function rememberAllBaselines() {
   rememberMetadataBaseline()
   rememberListQueryBindingBaseline()
@@ -1351,7 +1311,6 @@ function rememberAllBaselines() {
   rowActionButtons.value.forEach(button => rememberActionBaseline(button, 'ROW'))
   baselinesReady.value = true
 }
-
 const metadataDirty = computed(() =>
   baselinesReady.value
     && metadataBaseline.value !== listMetadataFingerprint(configInfo.value, viewConfig.value)
@@ -1417,11 +1376,9 @@ const unsavedItems = computed(() => [
 const unsavedSummary = computed(() => {
   return `${unsavedItems.value.length} 项未保存`
 })
-
 useUnsavedChangesGuard(isDirty, {
   message: '列表设置、查询接口、字段或按钮有未保存修改，离开后这些修改将丢失。'
 })
-
 function refreshFieldTableLayout() {
   if (fieldLayoutFrame && typeof cancelAnimationFrame === 'function') {
     cancelAnimationFrame(fieldLayoutFrame)
@@ -1437,13 +1394,11 @@ function refreshFieldTableLayout() {
     runLayout()
   }
 }
-
 function observeConfigPanelWidth() {
   configResizeObserver?.disconnect()
   configResizeObserver = null
   observedConfigWidth = 0
   if (!configPanelRef.value || typeof ResizeObserver === 'undefined') return
-
   configResizeObserver = new ResizeObserver(([entry]) => {
     const nextWidth = Math.round(entry?.contentRect?.width || 0)
     if (!nextWidth || nextWidth === observedConfigWidth) return
@@ -1452,14 +1407,12 @@ function observeConfigPanelWidth() {
   })
   configResizeObserver.observe(configPanelRef.value)
 }
-
 onMounted(async () => {
   await loadData()
   await nextTick()
   observeConfigPanelWidth()
   refreshFieldTableLayout()
 })
-
 onBeforeUnmount(() => {
   configResizeObserver?.disconnect()
   if (fieldLayoutFrame && typeof cancelAnimationFrame === 'function') {
@@ -1467,14 +1420,12 @@ onBeforeUnmount(() => {
   }
   sortableInstance?.destroy()
 })
-
 watch(activeConfigTab, async (tab) => {
   if (tab !== 'fields') return
   await nextTick()
   refreshFieldTableLayout()
   initSortable()
 })
-
 async function loadData() {
   pageLoading.value = true
   loadError.value = ''
@@ -1492,7 +1443,6 @@ async function loadData() {
     if (Array.isArray(extensionOptions) && extensionOptions.length > 0) {
       dataSourceOptions.value = extensionOptions
     }
-
     // 加载列表配置
     const [configRes, scenes] = await Promise.all([
       entityListConfigApi.getById(configId),
@@ -1532,7 +1482,6 @@ async function loadData() {
       viewConfig.value = mergeViewConfig(safeParseConfig(configRes.viewConfig))
       await loadDiff()
     }
-
     // 加载实体信息
     const entityRes = await entityApi.getById(entityId.value)
     if (entityRes) {
@@ -1561,14 +1510,12 @@ async function loadData() {
 
     // 合并字段配置
     mergeFieldConfig(configRes?.fields || [])
-
     // 解析按钮配置
     parseButtonConfig(configRes)
     await nextTick()
     rememberAllBaselines()
     refreshFieldTableLayout()
     initSortable()
-
   } catch (e) {
     console.error('加载数据失败:', e)
     loadError.value = e?.message || '列表配置加载失败，请重试'
@@ -1664,7 +1611,6 @@ function mergeFieldConfig(savedFields) {
       sortOrder: saved?.sortOrder ?? index
     }
   })
-
   savedFields
     .filter(() => !isSystemEntity.value)
     .filter(saved => !entityFields.value.some(entityField => String(entityField.id) === String(saved.fieldId)))
@@ -1693,12 +1639,10 @@ function mergeFieldConfig(savedFields) {
         sortOrder: saved.sortOrder ?? entityFields.value.length + index
       })
     })
-
   // 按 sortOrder 排序
   merged.sort((a, b) => a.sortOrder - b.sortOrder)
   fieldConfigList.value = merged
 }
-
 function mergeViewConfig(saved) {
   const defaults = createDefaultViewConfig()
   return {
@@ -1710,16 +1654,13 @@ function mergeViewConfig(saved) {
     customComponentProps: saved.customComponentProps || {}
   }
 }
-
 function isVirtualField(field) {
   return String(field?.fieldId || '').startsWith('virtual_')
 }
-
 function supportsQuery(field) {
   const option = dataSourceOptions.value.find(item => item.value === field.dataSourceType)
   return option?.supportsQuery !== false
 }
-
 function addVirtualField() {
   const timestamp = Date.now()
   const defaultSource = dataSourceOptions.value.find(option => option.supportsVirtualField !== false)
@@ -1746,7 +1687,6 @@ function addVirtualField() {
     dataSourceId: ''
   })
 }
-
 async function removeVirtualField(field) {
   try {
     await ElMessageBox.confirm(
@@ -1778,7 +1718,6 @@ async function removeVirtualField(field) {
   await refreshConfigRevision()
   await loadDiff()
 }
-
 function handleDataSourceChange(field) {
   const option = dataSourceOptions.value.find(item => item.value === field.dataSourceType)
   if (option?.supportsQuery === false) {
@@ -1790,7 +1729,6 @@ function handleDataSourceChange(field) {
     safeParseConfig(field.dataSourceConfig)
   ))
 }
-
 function openFieldConfig(field) {
   editingField.value = field
   editingDataSourceConfig.value = applySchemaDefaults(
@@ -1816,7 +1754,6 @@ function openFieldConfig(field) {
   activeFieldConfigTab.value = 'common'
   fieldConfigDialogVisible.value = true
 }
-
 async function handleListTemplateChange(templateId) {
   if (!editingField.value || !templateId) {
     if (editingField.value) {
@@ -1836,7 +1773,6 @@ async function handleListTemplateChange(templateId) {
   editingField.value.localOverridesDocument = stringifyConfig({})
   ElMessage.success(`已锁定列模板 v${latest.version}`)
 }
-
 async function upgradeListTemplate() {
   const field = editingField.value
   if (!field?.templateId) return
@@ -1872,7 +1808,6 @@ async function upgradeListTemplate() {
   await saveCurrentField(field)
   ElMessage.success(`已保存列模板升级 v${template.currentVersion}`)
 }
-
 async function saveFieldAdvancedConfig() {
   if (!editingField.value) return
   editingField.value.dataSourceConfig = stringifyConfig(editingDataSourceConfig.value)
@@ -1882,21 +1817,18 @@ async function saveFieldAdvancedConfig() {
   await saveCurrentField(editingField.value)
   fieldConfigDialogVisible.value = false
 }
-
 const DEFAULT_TOOLBAR_BUTTONS = [
   { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
   { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true, perm: '' },
   { key: 'exportAll', type: 'built-in', label: '导出全部', icon: 'Download', buttonType: 'default', sort: 3, enabled: true, perm: '' },
   { key: 'batchDelete', type: 'built-in', label: '批量删除', icon: 'Delete', buttonType: 'danger', sort: 4, enabled: true, perm: '' }
 ]
-
 const DEFAULT_ROW_ACTION_BUTTONS = [
   { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true, perm: '' },
   { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true, perm: '' },
   { key: 'approve', type: 'built-in', label: '审批', buttonType: 'warning', link: true, sort: 3, enabled: true, perm: '' },
   { key: 'delete', type: 'built-in', label: '删除', buttonType: 'danger', link: true, sort: 4, enabled: true, perm: '' }
 ]
-
 function safeJsonParse(text) {
   if (!text) return null
   if (typeof text === 'object') return text
@@ -1906,7 +1838,6 @@ function safeJsonParse(text) {
     return null
   }
 }
-
 function parseButtonConfig(configRes) {
   if (isSystemEntity.value) {
     toolbarButtons.value = []
@@ -1928,17 +1859,14 @@ function parseButtonConfig(configRes) {
   toolbarButtons.value = toolbar && toolbar.length > 0
     ? toolbar.map(withListButtonTypeDefault)
     : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b }))
-
   const rowActions = safeJsonParse(configRes?.rowActionConfig)
   rowActionButtons.value = rowActions && rowActions.length > 0
     ? rowActions.map(withListButtonTypeDefault)
     : DEFAULT_ROW_ACTION_BUTTONS.map(b => ({ ...b }))
 }
-
 function isSceneEnabled(sceneCode) {
   return sceneItems.value.some(scene => scene.sceneCode === sceneCode)
 }
-
 async function toggleScene(sceneCode, enabled) {
   sceneSavingCodes.value = new Set([...sceneSavingCodes.value, sceneCode])
   try {
@@ -1970,7 +1898,6 @@ async function toggleScene(sceneCode, enabled) {
     sceneSavingCodes.value = next
   }
 }
-
 async function upgradeButtonTemplate(button, position) {
   if (!button?.templateId) return
   const template = buttonTemplates.value.find(item => item.id === button.templateId)
@@ -2014,7 +1941,6 @@ async function upgradeButtonTemplate(button, position) {
   await saveListAction(button, position)
   ElMessage.success(`已保存按钮模板升级 v${template.currentVersion}`)
 }
-
 async function refreshListActions() {
   const latest = await entityListConfigApi.getById(configId)
   if (!latest) return
@@ -2025,7 +1951,6 @@ async function refreshListActions() {
   toolbarButtons.value.forEach(button => rememberActionBaseline(button, 'TOOLBAR'))
   rowActionButtons.value.forEach(button => rememberActionBaseline(button, 'ROW'))
 }
-
 function applySavedAction(button, saved) {
   const params = safeJsonParse(saved?.actionParamsDocument) || {}
   const availabilityRule = safeJsonParse(saved?.availabilityRuleDocument)
@@ -2053,7 +1978,6 @@ function applySavedAction(button, saved) {
     localOverridesDocument: saved.localOverridesDocument || null
   })
 }
-
 async function saveListAction(button, position, options = {}) {
   button._saving = true
   try {
@@ -2080,7 +2004,6 @@ async function saveListAction(button, position, options = {}) {
     button._saving = false
   }
 }
-
 async function reorderListAction({ oldIndex, newIndex }, position) {
   const target = position === 'TOOLBAR' ? toolbarButtons : rowActionButtons
   if (
@@ -2091,18 +2014,15 @@ async function reorderListAction({ oldIndex, newIndex }, position) {
   ) {
     return
   }
-
   const reordered = [...target.value]
   const [button] = reordered.splice(oldIndex, 1)
   reordered.splice(newIndex, 0, button)
   target.value = reordered
-
   if (!button.id || button.revision <= 0) {
     button.sort = newIndex + 1
     button.orderKey = localActionOrderKey(reordered, newIndex)
     return
   }
-
   button._saving = true
   try {
     const previousId = reordered
@@ -2134,7 +2054,6 @@ async function reorderListAction({ oldIndex, newIndex }, position) {
     button._saving = false
   }
 }
-
 async function removeListAction(button, position) {
   try {
     await ElMessageBox.confirm(
@@ -2164,22 +2083,18 @@ async function removeListAction(button, position) {
     await refreshListActions().catch(() => {})
   }
 }
-
 function initSortable() {
   const tableEl = fieldTableRef.value?.$el?.querySelector('.el-table__body-wrapper tbody')
   if (!tableEl) return
-
   if (sortableInstance) {
     sortableInstance.destroy()
   }
-
   sortableInstance = new Sortable(tableEl, {
     handle: '.drag-handle',
     animation: 150,
     onEnd: async (evt) => {
       const { oldIndex, newIndex } = evt
       if (oldIndex === newIndex) return
-
       const item = fieldConfigList.value.splice(oldIndex, 1)[0]
       fieldConfigList.value.splice(newIndex, 0, item)
       if (item.id && item.revision > 0) {
@@ -2204,7 +2119,6 @@ function initSortable() {
     }
   })
 }
-
 function normalizeFieldForSave(field, index = fieldConfigList.value.indexOf(field)) {
   return {
     id: field.id,
@@ -2231,7 +2145,6 @@ function normalizeFieldForSave(field, index = fieldConfigList.value.indexOf(fiel
     localOverridesDocument: field.localOverridesDocument || null
   }
 }
-
 function fieldConfigSummary(field) {
   const parts = []
   if (field.isQuery) {
@@ -2267,7 +2180,6 @@ function fieldConfigSummary(field) {
   }
   return parts.join(' · ') || '未启用'
 }
-
 function handleRevisionConflict(error, target) {
   if (error?.status === 409 || error?.errorCode === 'CONFIG_REVISION_CONFLICT') {
     ElMessage.warning('配置已被其他人修改，已切换为服务器当前版本')
@@ -2279,7 +2191,6 @@ function handleRevisionConflict(error, target) {
   ElMessage.error(error?.message || '保存失败')
   return false
 }
-
 async function saveCurrentField(field, options = {}) {
   if (!field) return
   field._saving = true
@@ -2308,7 +2219,6 @@ async function saveCurrentField(field, options = {}) {
     field._saving = false
   }
 }
-
 async function refreshConfigRevision() {
   const latest = await entityListConfigApi.getById(configId)
   if (latest) {
@@ -2428,7 +2338,6 @@ async function saveListMetadata(options = {}) {
     return false
   }
 }
-
 async function saveAll() {
   if (!isDirty.value) {
     ElMessage.info('当前没有未保存修改')
@@ -2456,7 +2365,6 @@ async function saveAll() {
     savingAll.value = false
   }
 }
-
 async function loadDiff() {
   try {
     diffInfo.value = await entityListConfigApi.getDiff(configId)
@@ -2464,7 +2372,6 @@ async function loadDiff() {
     diffInfo.value = { changed: true, changedSections: [] }
   }
 }
-
 async function handlePublish() {
   if (isDirty.value) {
     ElMessage.warning('页面仍有未保存修改，请先保存全部后再发布')
@@ -2477,19 +2384,16 @@ async function handlePublish() {
   }
   publishDialogVisible.value = true
 }
-
 async function handlePublished() {
   await refreshConfigRevision()
   await loadDiff()
 }
-
 async function openPreview() {
   previewPageSize.value = viewConfig.value.pagination.pageSize || 10
   previewDialogVisible.value = true
   await nextTick()
   await loadPreviewData()
 }
-
 async function loadPreviewData() {
   if (!entityCode.value || !configInfo.value?.listKey) return
   previewLoading.value = true
@@ -2523,18 +2427,15 @@ async function loadPreviewData() {
     previewLoading.value = false
   }
 }
-
 function handlePreviewSearch() {
   previewPageNum.value = 1
   loadPreviewData()
 }
-
 function handlePreviewReset() {
   previewQueryForm.value = {}
   previewPageNum.value = 1
   loadPreviewData()
 }
-
 async function showReleaseHistory() {
   await releaseHistoryDialogRef.value?.open()
 }
@@ -2668,12 +2569,10 @@ async function handleReleaseChanged() {
   await refreshConfigRevision()
   await loadDiff()
 }
-
 function goBack() {
   router.back()
 }
 </script>
-
 <style scoped>
 .entity-list-config-design {
   display: flex;
@@ -2696,30 +2595,24 @@ function goBack() {
   border-bottom: 1px solid #e4e7ed;
   background-color: #fff;
 }
-
 .unsaved-status-tag {
   cursor: help;
 }
-
 .unsaved-items-tooltip {
   max-height: 240px;
   overflow-y: auto;
 }
-
 .unsaved-items-tooltip__title {
   margin-bottom: 6px;
   font-weight: 600;
 }
-
 .unsaved-items-tooltip__item {
   line-height: 22px;
   overflow-wrap: anywhere;
 }
-
 .page-error {
   margin: 12px 12px 0;
 }
-
 .page-error :deep(.el-alert__content) {
   display: flex;
   align-items: center;
@@ -2727,7 +2620,6 @@ function goBack() {
   gap: 12px;
   width: 100%;
 }
-
 .view-config-form {
   width: 100%;
 }
@@ -2799,7 +2691,6 @@ function goBack() {
 .field-config-tabs :deep(.settings-section__body > .el-form:last-child .el-form-item:last-child) {
   margin-bottom: 10px;
 }
-
 @media (min-width: 1440px) {
   .view-config-form > :deep(.settings-section > .settings-section__body) {
     display: grid;
@@ -2809,16 +2700,13 @@ function goBack() {
     padding-right: 20px;
     padding-left: 20px;
   }
-
   .view-config-form > :deep(.settings-section > .settings-section__body > .el-form-item) {
     min-width: 0;
   }
-
   .view-config-form > :deep(.settings-section > .settings-section__body > .view-config-item--full) {
     grid-column: 1 / -1;
   }
 }
-
 .template-selector {
   display: flex;
   width: 100%;
@@ -2826,47 +2714,39 @@ function goBack() {
   align-items: flex-start;
   gap: 8px;
 }
-
 .field-config-subsection + .field-config-subsection {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--el-border-color-lighter);
 }
-
 .field-config-subsection__title {
   margin-bottom: 10px;
   color: var(--el-text-color-primary);
   font-size: 13px;
   font-weight: 600;
 }
-
 .field-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
 }
-
 .field-toolbar :deep(.el-alert) {
   flex: 1;
 }
-
 .field-config-table {
   width: 100%;
 }
-
 .field-purpose-controls {
   display: flex;
   align-items: center;
   gap: 12px;
   white-space: nowrap;
 }
-
 .field-purpose-controls :deep(.el-checkbox) {
   height: 22px;
   margin-right: 0;
 }
-
 .field-config-summary {
   display: block;
   overflow: hidden;
@@ -2876,13 +2756,11 @@ function goBack() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .preview-content {
   min-height: 320px;
   max-height: 72vh;
   overflow: auto;
 }
-
 .preview-toolbar {
   display: flex;
   align-items: center;
@@ -2890,31 +2768,25 @@ function goBack() {
   gap: 12px;
   margin-bottom: 12px;
 }
-
 .preview-viewport {
   width: 100%;
   margin: 0 auto;
 }
-
 .preview-viewport.is-tablet {
   max-width: 820px;
 }
-
 .preview-error {
   margin-bottom: 12px;
 }
-
 .preview-pagination {
   display: flex;
   justify-content: flex-end;
   margin-top: 12px;
 }
-
 .config-tabs :deep(.el-tabs__nav-scroll) {
   overflow-x: auto;
   scrollbar-width: thin;
 }
-
 .config-tabs,
 .config-tabs :deep(.el-tabs__content),
 .config-tabs :deep(.el-tab-pane),
@@ -2924,15 +2796,12 @@ function goBack() {
   max-width: 100%;
   min-width: 0;
 }
-
 .config-tabs :deep(.el-tabs__nav) {
   min-width: max-content;
 }
-
 .config-tabs :deep(.el-tabs__item) {
   white-space: nowrap;
 }
-
 .option-description,
 .unit-text {
   color: #909399;
@@ -2944,7 +2813,6 @@ function goBack() {
   gap: 4px 12px;
   width: 100%;
 }
-
 .unit-text {
   margin-left: 6px;
 }
@@ -2961,11 +2829,9 @@ function goBack() {
   align-items: center;
   gap: 8px;
 }
-
 .system-config-alert {
   margin: 12px 12px 0;
 }
-
 .design-container {
   flex: 1;
   width: 100%;
@@ -2979,7 +2845,6 @@ function goBack() {
   max-width: 100%;
   min-width: 0;
 }
-
 .drag-handle {
   cursor: move;
   color: #909399;
@@ -2994,30 +2859,18 @@ function goBack() {
   .field-toolbar {
     flex-wrap: wrap;
   }
-
   .design-container {
     display: block;
     overflow: auto;
     padding: 8px;
   }
-
   .config-panel {
     width: 100%;
     min-width: 0;
     overflow: visible;
   }
-
   .field-toolbar {
     align-items: stretch;
-  }
-
-  .list-query-interface__grid,
-  .list-query-mapping-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .list-query-mapping-grid label {
-    text-align: left;
   }
 }
 
@@ -3026,11 +2879,9 @@ function goBack() {
   .header-actions {
     width: 100%;
   }
-
   .view-config-form :deep(.el-form-item__content) {
     min-width: 0;
   }
-
   .view-config-form :deep(.el-select),
   .view-config-form :deep(.el-input) {
     max-width: 100%;
