@@ -43,8 +43,7 @@ class IntegrationApplicationMigrationTest {
                 Flyway flyway = flyway();
                 flyway.migrate();
 
-                assertEquals("023", currentVersion());
-                assertEquals("023", currentVersion());
+                assertSchemaIsCurrent(flyway);
                 assertEquals(
                                 Set.of(
                                                 "integration_application",
@@ -154,9 +153,10 @@ class IntegrationApplicationMigrationTest {
                                 "upgrade-process-instance");
                 assertFalse(tableExists("webhook_endpoint"));
 
-                flyway().migrate();
+                Flyway currentFlyway = flyway();
+                currentFlyway.migrate();
 
-                assertEquals("023", currentVersion());
+                assertSchemaIsCurrent(currentFlyway);
                 assertEquals(1, countRows(
                                 "SELECT COUNT(*) FROM sys_dict "
                                                 + "WHERE id = 'upgrade-sentinel' "
@@ -472,6 +472,13 @@ class IntegrationApplicationMigrationTest {
                                 .locations("classpath:db/migration")
                                 .cleanDisabled(false)
                                 .load();
+        }
+
+        private void assertSchemaIsCurrent(Flyway flyway) throws Exception {
+                assertEquals(0, flyway.info().pending().length);
+                assertEquals(
+                                flyway.info().current().getVersion().getVersion(),
+                                currentVersion());
         }
 
         private String currentVersion() throws Exception {
