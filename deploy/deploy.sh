@@ -31,10 +31,13 @@ if ! compose up -d mysql --wait --wait-timeout "$WAIT_TIMEOUT"; then
 fi
 
 # Docker entrypoint initialization only runs for an empty data directory.
-# Re-apply the idempotent grants on every deployment so upgrades of existing
-# volumes receive the dedicated schema identity as well.
-compose exec -T mysql sh \
-    /docker-entrypoint-initdb.d/10-database-users.sh
+# Re-apply dedicated schema grants when the selected Compose profile provides
+# the initialization script. The single-node ECS profile reuses DB_USERNAME.
+if compose exec -T mysql \
+    test -f /docker-entrypoint-initdb.d/10-database-users.sh; then
+    compose exec -T mysql sh \
+        /docker-entrypoint-initdb.d/10-database-users.sh
+fi
 
 if ! compose up -d --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT"; then
     compose ps
