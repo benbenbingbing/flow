@@ -109,6 +109,7 @@
               filterable
               style="width: 100%"
               :disabled="Boolean(editor.id)"
+              @change="handleEventChange"
             >
               <el-option
                 v-for="event in availableEvents"
@@ -469,7 +470,7 @@ function normalizeStep(step, index) {
     rowKey: `step_${++rowSequence}`,
     name: step.name || '',
     strategy: String(step.strategy || 'BEFORE').toUpperCase(),
-    serviceId: step.serviceId || step.sourceId || '',
+    serviceId: step.serviceId || '',
     operationCode: step.operationCode || '',
     order: Number(step.order ?? index * 10),
     failurePolicy: String(step.failurePolicy || 'STOP').toUpperCase(),
@@ -513,25 +514,12 @@ async function load() {
   }
   loading.value = true
   try {
-    const [bindingRows, serviceRows, bindingCatalog] = await Promise.all([
+    const [bindingRows, bindingCatalog] = await Promise.all([
       uiEventBindingApi.list(props.ownerType, String(props.ownerId)),
-      uiDataSourceApi.list(),
       uiEventBindingApi.catalog()
     ])
     bindings.value = Array.isArray(bindingRows) ? bindingRows : []
-    services.value = (Array.isArray(serviceRows) ? serviceRows : [])
-      .filter(item => item.enabled !== false)
     catalog.value = bindingCatalog || {}
-    services.value.forEach(service => {
-      operationCache[service.id] = parseJson(service.operationsDocument, [])
-      if (!operationCache[service.id].length) {
-        operationCache[service.id] = [{
-          code: 'default',
-          name: service.sourceName,
-          kind: 'READ'
-        }]
-      }
-    })
   } catch (error) {
     ElMessage.error(error.message || '加载事件绑定失败')
   } finally {
@@ -539,15 +527,16 @@ async function load() {
   }
 }
 
-function openCreate() {
+async function openCreate() {
   resetEditor({
     eventCode: availableEvents.value[0] || '',
     steps: []
   })
+  await loadAvailableOperations(editor.eventCode)
   dialogVisible.value = true
 }
 
-function openEdit(row) {
+async function openEdit(row) {
   const steps = parseJson(row.stepsDocument, row.steps || [])
   resetEditor({
     id: row.id,
@@ -557,6 +546,7 @@ function openEdit(row) {
     enabled: row.enabled !== false,
     steps: steps.map(normalizeStep)
   })
+  await loadAvailableOperations(editor.eventCode)
   dialogVisible.value = true
 }
 
@@ -585,12 +575,56 @@ function normalizeReplace(current) {
 
 async function onServiceChange(step) {
   step.operationCode = ''
-  if (!step.serviceId || operationCache[step.serviceId]?.length) return
-  operationCache[step.serviceId] = await uiDataSourceApi.operations(step.serviceId)
+  if (!step.serviceId) return
+  const operations = operationOptions(step.serviceId)
+  step.operationCode = operations.length === 1
+    ? operations[0].code
+    : ''
 }
 
 function operationOptions(serviceId) {
   return operationCache[serviceId] || []
+}
+
+async function handleEventChange(eventCode) {
+  editor.steps.forEach(step => {
+    step.serviceId = ''
+    step.operationCode = ''
+  })
+  await loadAvailableOperations(eventCode)
+}
+
+async function loadAvailableOperations(eventCode) {
+  services.value = []
+  Object.keys(operationCache).forEach(key => delete operationCache[key])
+  if (!props.ownerId || !eventCode) return
+  const rows = await uiDataSourceApi.availableOperations({
+    ownerType: String(props.ownerType).toUpperCase(),
+    ownerId: String(props.ownerId),
+    bindingCode: String(eventCode).toUpperCase()
+  }).catch(() => [])
+  const grouped = new Map()
+  ;(Array.isArray(rows) ? rows : []).forEach(item => {
+    if (!grouped.has(item.serviceId)) {
+      grouped.set(item.serviceId, {
+        id: item.serviceId,
+        sourceCode: item.serviceCode,
+        sourceName: item.serviceName,
+        sourceType: item.sourceType,
+        operations: []
+      })
+    }
+    grouped.get(item.serviceId).operations.push({
+      code: item.operationCode,
+      name: item.operationName,
+      kind: item.kind,
+      contextType: item.contextType
+    })
+  })
+  services.value = [...grouped.values()]
+  services.value.forEach(service => {
+    operationCache[service.id] = service.operations
+  })
 }
 
 function serializeCondition(step) {
@@ -714,8 +748,8 @@ function chainItems(row) {
   const replace = steps.filter(step => step.strategy === 'REPLACE')
   const after = steps.filter(step => step.strategy === 'AFTER')
   const label = step => {
-    const service = services.value.find(item => item.id === (step.serviceId || step.sourceId))
-    const operation = operationOptions(step.serviceId || step.sourceId)
+    const service = services.value.find(item => item.id === step.serviceId)
+    const operation = operationOptions(step.serviceId)
       .find(item => item.code === step.operationCode)
     return step.name || operation?.name || service?.sourceName || '字段映射'
   }

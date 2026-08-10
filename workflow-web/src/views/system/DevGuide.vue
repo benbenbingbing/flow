@@ -249,7 +249,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <li>配置 Schema、输入映射、输出映射、分页、超时、缓存和失败策略在预览与发布时统一校验。</li>
             <li>所有实体查询、LIST_QUERY 和 LIST_COLUMN 都接收不可绕过的 `DataScopePlan`；缓存键必须包含用户、权限版本和发布版本。</li>
             <li>`AFTER_LOAD` 不得重新拼回未授权字段，`BEFORE_SUBMIT` 的关键校验失败策略必须为 FAIL。</li>
-            <li>运行时组件调用 `POST /api/ui-data-sources/{id}/execute`；管理员调试使用 `/preview`。禁止让普通运行时复用可查看配置的管理接口。嵌套 `SUB_FORM/REPEATER` 必须为每条行记录传入独立 `record`、`recordId`、child `formId` 和 `entityId`，不能复用父记录上下文。</li>
+            <li>运行时组件调用 `POST /api/ui-runtime/interface-operations/execute`，只提交绑定声明和业务输入；管理员调试使用操作 `/preview`。嵌套 `SUB_FORM/REPEATER` 必须为每条行记录传入独立业务数据，表单和实体身份由服务端解析。</li>
           </ul>
         </section>
 
@@ -263,12 +263,12 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
     JsonNode inputSchema();
     JsonNode outputSchema();
 
-    UiDataSourceResult execute(
-        UiDataSourceDefinition definition,
-        UiDataSourceRequest request,
-        UiDataSourceContext context,
-        DataScopePlan dataScopePlan
-    );
+	    Object execute(
+	        UiInvocationContext context,
+	        DataScopePlan dataScopePlan,
+	        Map&lt;String, Object&gt; configuration,
+	        Map&lt;String, Object&gt; input
+	    );
 }</code></pre>
           </CodeCard>
           <CodeCard title="IntegrationConnector.java" language="Java">
@@ -283,7 +283,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
 }</code></pre>
           </CodeCard>
           <ul class="check-list">
-            <li>`UiDataSourceContext` 只暴露当前用户、实体、记录、表单/列表 release、场景和可信来源关系等白名单上下文。</li>
+            <li>`UiInvocationContext` 按 FORM、LIST、ENTITY 分型，只暴露服务端解析的用户、实体、页面、发布版本和绑定位置等可信元数据。</li>
             <li>Connector 配置只保存 `connectorCode + operation + credentialRef`；URL、令牌和密钥由平台连接器中心管理。</li>
             <li>现有 `EntityListDataProvider` 和 `ListFieldDataProvider` 通过适配器接入 `LIST_QUERY`、`LIST_COLUMN`，保持已有扩展兼容。</li>
             <li>Provider 必须支持超时、批量、取消、可观测 traceId 和结构化错误，不得按行发起 N+1 远程请求。</li>
@@ -575,7 +575,6 @@ const nodePropertyRows = [
 ]
 
 const dataSourceTypes = [
-  { type: 'ENTITY_QUERY', capability: '受控实体查询，强制执行 DataScopePlan' },
   { type: 'DICTIONARY', capability: '平台字典，输出稳定 label/value' },
   { type: 'STATIC_OPTIONS', capability: '少量固定选项或对象，不存储敏感信息' },
   { type: 'REGISTERED_PROVIDER', capability: '部署时注册的 Provider，声明 Schema 与支持位置' },

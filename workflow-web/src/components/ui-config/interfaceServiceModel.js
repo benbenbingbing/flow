@@ -1,5 +1,4 @@
 export const sourceTypeOptions = [
-  { label: '平台实体查询', value: 'ENTITY_QUERY' },
   { label: '平台字典', value: 'DICTIONARY' },
   { label: '平台静态数据', value: 'STATIC_OPTIONS' },
   { label: '平台注册能力', value: 'REGISTERED_PROVIDER' },
@@ -37,9 +36,7 @@ export function parseEditorJson(text, label) {
 
 export function serviceOperations(service = {}) {
   const operations = parseJson(service.operationsDocument, [])
-  return Array.isArray(operations) && operations.length
-    ? operations
-    : [{ code: 'default', name: service.sourceName || '默认操作', kind: 'READ' }]
+  return Array.isArray(operations) ? operations : []
 }
 
 export function executionPolicy(service = {}) {

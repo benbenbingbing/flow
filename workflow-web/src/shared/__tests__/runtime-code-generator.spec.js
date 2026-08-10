@@ -26,7 +26,10 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
       validation: { required: true }
     }),
     dataSourceBindingsDocument: JSON.stringify({
-      FIELD_OPTIONS: { sourceId: 'source-1' }
+      FIELD_OPTIONS: {
+        serviceId: 'source-1',
+        operationCode: 'queryOptions'
+      }
     }),
     _saving: true
   }],
@@ -35,7 +38,8 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
     targetType: 'OWNER',
     stepsDocument: JSON.stringify([{
       strategy: 'BEFORE',
-      serviceId: 'service-1'
+      serviceId: 'service-1',
+      operationCode: 'validateForm'
     }])
   }]
 })
@@ -44,7 +48,7 @@ assert.equal(formSnapshot.form.initConfig.loadMode, 'DETAIL')
 assert.equal(formSnapshot.nodes[0].props.label, '项目')
 assert.equal(formSnapshot.nodes[0].rules.validation.required, true)
 assert.equal(
-  formSnapshot.nodes[0].dataSourceBindings.FIELD_OPTIONS.sourceId,
+  formSnapshot.nodes[0].dataSourceBindings.FIELD_OPTIONS.serviceId,
   'source-1'
 )
 assert.equal(formSnapshot.nodes[0]._saving, undefined)

@@ -284,18 +284,28 @@ public class EntityMutationStepExecutor {
                 step.getConfig().get("dataSourceId"),
                 step.getProviderCode());
         String operationCode = firstText(
-                step.getConfig().get("operationCode"),
-                "default");
+                step.getConfig().get("operationCode"));
         if (!StringUtils.hasText(dataSourceId)) {
             throw new IllegalArgumentException(
                     "受管理接口步骤未配置接口服务");
         }
+        if (!StringUtils.hasText(operationCode)) {
+            throw new IllegalArgumentException(
+                    "受管理接口步骤未配置接口操作");
+        }
         UiDataSourceExecuteRequest request =
                 new UiDataSourceExecuteRequest();
         request.setEntityCode(command.entityCode());
+        request.setServerEntityOperation(
+                command.operationType().name());
         request.setServerIdempotencyKey(
                 command.context().idempotencyKey());
         Map<String, Object> input = new LinkedHashMap<>();
+        input.put("recordId", defaultText(
+                command.recordId(), ""));
+        input.put("record", workingPayload);
+        input.put("changedFields", workingPayload);
+        input.put("params", command.context().extraParams());
         input.put("command", objectMapper.convertValue(
                 command,
                 new TypeReference<Map<String, Object>>() {

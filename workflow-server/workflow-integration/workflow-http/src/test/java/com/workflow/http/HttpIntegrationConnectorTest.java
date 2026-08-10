@@ -18,6 +18,9 @@ import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.integration.IntegrationRuntimeContext;
 import com.workflow.contracts.integration.IntegrationSecretResolver;
+import com.workflow.contracts.ui.CommonInvocationContext;
+import com.workflow.contracts.ui.EntityDescriptor;
+import com.workflow.contracts.ui.FormInvocationContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.net.URI;
 import java.util.Map;
@@ -231,20 +234,37 @@ class HttpIntegrationConnectorTest {
                         "dryRun", true,
                         "order", Map.of("id", "order-1")))
                 .runtimeContext(new IntegrationRuntimeContext(
-                        "source-1",
-                        "FORM_INIT",
-                        "FORM",
-                        "form-1",
-                        "release-1",
-                        1,
-                        "entity-1",
-                        "order",
-                        null,
-                        "user-1",
-                        "User",
-                        "tenant-1",
-                        "org-1",
-                        "dept-1"))
+                        new FormInvocationContext(
+                                new CommonInvocationContext(
+                                        "source-1",
+                                        "load-form",
+                                        "FORM_INIT",
+                                        "FORM",
+                                        "form-1",
+                                        "OWNER",
+                                        null,
+                                        "user-1",
+                                        "User",
+                                        "tenant-1",
+                                        "org-1",
+                                        "dept-1",
+                                        "release-1",
+                                        1,
+                                        "request-1"),
+                                new EntityDescriptor(
+                                        "entity-1",
+                                        "order",
+                                        "订单",
+                                        "DYNAMIC",
+                                        1),
+                                "form-1",
+                                "default",
+                                "订单表单",
+                                "view",
+                                null,
+                                null,
+                                null,
+                                null)))
                 .build();
     }
 }

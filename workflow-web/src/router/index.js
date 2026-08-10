@@ -236,6 +236,15 @@ const routes = [
         }
       },
       {
+        path: '/system/list-column-templates',
+        name: 'ListColumnTemplateManagement',
+        component: () => import('@/views/system/ListColumnTemplateManagement.vue'),
+        meta: {
+          title: '列表列模板',
+          requiredPermissions: ['system:list-column-template:view']
+        }
+      },
+      {
         path: '/system/entity-versions',
         name: 'EntityVersionManagement',
         component: () => import('@/views/system/EntityVersionManagement.vue'),

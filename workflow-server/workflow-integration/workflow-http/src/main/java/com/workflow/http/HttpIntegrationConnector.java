@@ -149,10 +149,10 @@ public class HttpIntegrationConnector implements IntegrationConnector {
         headers.put("Idempotency-Key", request.getIdempotencyKey());
         headers.put("X-Flow-Trace-Id", traceId());
         if (request.getRuntimeContext() != null
-                && value(request.getRuntimeContext().sourceId()) != null) {
+                && value(request.getRuntimeContext().serviceId()) != null) {
             headers.put(
-                    "X-Flow-Source-Id",
-                    request.getRuntimeContext().sourceId());
+                    "X-Flow-Service-Id",
+                    request.getRuntimeContext().serviceId());
         }
         String body = operation.bodyMappings().isEmpty()
                 ? null
@@ -377,10 +377,13 @@ public class HttpIntegrationConnector implements IntegrationConnector {
             return null;
         }
         return switch (field) {
-            case "sourceId" -> context.sourceId();
+            case "serviceId" -> context.serviceId();
+            case "operationCode" -> context.operationCode();
             case "usage" -> context.usage();
             case "configType" -> context.configType();
             case "configId" -> context.configId();
+            case "targetType" -> context.targetType();
+            case "targetKey" -> context.targetKey();
             case "releaseId" -> context.releaseId();
             case "releaseVersion" -> context.releaseVersion();
             case "entityId" -> context.entityId();

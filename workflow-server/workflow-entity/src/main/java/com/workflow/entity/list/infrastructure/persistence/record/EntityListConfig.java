@@ -133,6 +133,18 @@ public class EntityListConfig {
     private String queryProviderCode;
 
     /**
+     * 列表查询绑定的接口服务 ID
+     */
+    @TableField("query_data_source_id")
+    private String queryDataSourceId;
+
+    /**
+     * 列表查询绑定的接口操作编码
+     */
+    @TableField("query_operation_code")
+    private String queryOperationCode;
+
+    /**
      * 已发布版本
      */
     @TableField("published_version")
@@ -152,11 +164,6 @@ public class EntityListConfig {
      * 当前草稿内容哈希
      */
     private String draftHash;
-
-    /**
-     * 统一列表查询数据源ID
-     */
-    private String queryDataSourceId;
 
     /**
      * 更新时间

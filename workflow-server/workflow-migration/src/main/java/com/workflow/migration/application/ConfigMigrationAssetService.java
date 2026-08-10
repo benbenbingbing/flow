@@ -710,7 +710,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             listSnapshot.put("dataScopeMode", "INHERIT");
             listSnapshot.remove("customComponent");
             listSnapshot.remove("queryProviderCode");
-            listSnapshot.remove("queryDataSourceId");
             List<Map<String, Object>> listFields = new ArrayList<>();
             for (Map<String, Object> value : castList(listSnapshot.get("fields"))) {
                 String fieldCode = text(value.get("fieldCode"));
@@ -1125,7 +1124,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
 
     static boolean isDataSourceIdKey(String name) {
         return Set.of(
-                "sourceId",
+                "serviceId",
                 "dataSourceId",
                 "queryDataSourceId").contains(name);
     }
@@ -1133,8 +1132,9 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     static String dataSourceCodeKey(String idKey) {
         return switch (idKey) {
             case "dataSourceId" -> "dataSourceCode";
-            case "queryDataSourceId" -> "queryDataSourceCode";
-            default -> "sourceCode";
+            case "queryDataSourceId" ->
+                    "queryDataSourceCode";
+            default -> "serviceCode";
         };
     }
 

@@ -88,6 +88,20 @@ public class UiConfigurationAccessService {
     }
 
     /**
+     * 校验当前用户可维护指定实体的 UI 配置。
+     *
+     * @param entityId 实体定义 ID
+     */
+    public void requireEntityAccess(String entityId) {
+        currentUserRoleService.requireAdministrator(
+                "只有管理员可以维护实体 UI 配置");
+        if (!StringUtils.hasText(entityId)) {
+            throw new IllegalArgumentException("实体ID不能为空");
+        }
+        entityUiConfigurationPolicy.requireConfigurableById(entityId);
+    }
+
+    /**
      * 校验当前用户可创建新的表单配置（尚未落库的表单）。
      *
      * @param form 待创建的表单，须携带实体ID

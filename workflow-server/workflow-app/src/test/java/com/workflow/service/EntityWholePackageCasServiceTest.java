@@ -105,7 +105,8 @@ class EntityWholePackageCasServiceTest {
         incoming.setFormKey("client_key");
         incoming.setFormName("更新后的表单");
         incoming.setDataSourceBindingsDocument(
-                "{\"FORM_INIT\":[{\"sourceId\":\"source-1\"}]}");
+                "{\"FORM_INIT\":[{\"serviceId\":\"source-1\","
+                        + "\"operationCode\":\"initializeForm\"}]}");
         EntityForm refreshed = form("form-1", 4);
         refreshed.setEntityId("entity-server");
         refreshed.setFormKey("server_key");
@@ -132,13 +133,14 @@ class EntityWholePackageCasServiceTest {
         assertTrue(where.contains("revision"));
     }
 
-    /** 测试遗留表单整包保存保留被省略的表单级数据源绑定：验证更新语句包含原数据源绑定文档 */
+    /** 测试表单整包保存保留被省略的表单级数据源绑定：验证更新语句包含原数据源绑定文档 */
     @Test
-    void legacyFormWholeSavePreservesOmittedFormDataSourceBindings() {
+    void formWholeSavePreservesOmittedFormDataSourceBindings() {
         FormContext context = formContext();
         EntityForm current = form("form-1", 3);
         current.setDataSourceBindingsDocument(
-                "{\"FORM_INIT\":[{\"sourceId\":\"source-1\"}]}");
+                "{\"FORM_INIT\":[{\"serviceId\":\"source-1\","
+                        + "\"operationCode\":\"initializeForm\"}]}");
         EntityForm incoming = form("form-1", null);
         EntityForm refreshed = form("form-1", 4);
         refreshed.setDataSourceBindingsDocument(

@@ -1,13 +1,11 @@
 package com.workflow.entity.ui.application;
 
-import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
-import com.workflow.core.result.PageResult;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.dictionary.application.SysDictItemService;
@@ -17,9 +15,10 @@ import com.workflow.contracts.integration.IntegrationConnector;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.integration.IntegrationRuntimeContext;
-import com.workflow.contracts.ui.UiDataSourceContext;
 import com.workflow.contracts.ui.UiDataSourceProvider;
+import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiInterfaceOperationExecuteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -54,8 +53,8 @@ import java.util.concurrent.TimeUnit;
  * UI 数据源定义与执行服务，负责数据源配置的校验、保存、查询与可信执行。
  *
  * <p>
- * 支持实体查询、字典、静态选项、注册提供器、集成连接器、运行时上下文和结构化计算
- * 等数据源类型，配置中禁止 SQL/脚本/URL 等危险字段；执行链路经
+ * 支持字典、静态选项、注册提供器、集成连接器、运行时上下文和结构化计算等
+ * 数据源类型，配置中禁止 SQL/脚本/URL 等危险字段；执行链路经
  * {@link UiDataSourceExecutionAccessService} 授权后按数据源类型分派，
  * 并提供带 TTL 的结果缓存。
  * </p>
@@ -63,10 +62,11 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class UiDataSourceService {
         private static final Set<String> SOURCE_TYPES = Set.of(
-                        "ENTITY_QUERY", "DICTIONARY", "STATIC_OPTIONS",
-                        "REGISTERED_PROVIDER", "INTEGRATION_CONNECTOR",
-                        "RUNTIME_CONTEXT", "STRUCTURED_COMPUTE");
+                        "DICTIONARY", "STATIC_OPTIONS", "REGISTERED_PROVIDER",
+                        "INTEGRATION_CONNECTOR", "RUNTIME_CONTEXT",
+                        "STRUCTURED_COMPUTE");
         private static final Set<String> SCOPE_TYPES = Set.of("GLOBAL", "ENTITY", "FORM", "LIST");
+        private static final Set<String> CONTEXT_TYPES = Set.of("FORM", "LIST", "ENTITY");
         private static final Set<String> USAGES = Set.of(
                         "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
                         "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT",
@@ -76,18 +76,31 @@ public class UiDataSourceService {
                         "FIELD_CHANGE", "ENTITY_SELECTED", "FIELD_BUTTON_CLICK",
                         "SUBFORM_LOAD", "SUBFORM_SAVE",
                         "TOOLBAR_BUTTON_CLICK", "ROW_BUTTON_CLICK", "FORM_BUTTON_CLICK");
+        /** 接口服务定义持久化入口。 */
         private final UiDataSourceDefinitionMapper mapper;
+        /** 表单作用域对象查询入口。 */
         private final EntityFormMapper formMapper;
+        /** 列表作用域对象查询入口。 */
         private final EntityListConfigMapper listMapper;
+        /** 实体作用域配置权限策略。 */
         private final EntityDefinitionAccessPolicy entityAccessPolicy;
+        /** 表单和列表所属实体的 UI 配置权限策略。 */
         private final EntityUiConfigurationPolicy entityUiConfigurationPolicy;
-        private final EntityDataDynamicService dynamicService;
+        /** 字典型接口服务的数据读取入口。 */
         private final SysDictItemService dictItemService;
+        /** 草稿、发布绑定及数据权限执行授权服务。 */
         private final UiDataSourceExecutionAccessService executionAccessService;
+        /** 强类型 FORM/LIST/ENTITY 调用上下文工厂。 */
+        private final UiInvocationContextFactory invocationContextFactory;
+        /** 接口定义、输入输出 Schema 和执行策略校验器。 */
         private final UiDataSourceDefinitionValidator definitionValidator;
+        /** 当前部署注册的接口 Provider。 */
         private final List<UiDataSourceProvider> providers;
+        /** 当前部署注册的集成 Connector。 */
         private final List<IntegrationConnector> connectors;
+        /** JSON 配置、Schema 和操作文档编解码器。 */
         private final JsonDocumentCodec codec;
+        /** Provider 和 Connector 超时执行使用的任务执行器。 */
         private final TaskExecutor taskExecutor;
 
         /** 数据源执行结果缓存，按 key+版本+内容哈希索引。 */
@@ -100,9 +113,10 @@ public class UiDataSourceService {
          * @param formMapper             表单 Mapper
          * @param listMapper             列表配置 Mapper
          * @param entityAccessPolicy     实体访问策略
-         * @param dynamicService         实体数据动态服务
+         * @param entityUiConfigurationPolicy 表单和列表所属实体的配置策略
          * @param dictItemService        字典项服务
          * @param executionAccessService 数据源执行访问控制服务
+         * @param invocationContextFactory 强类型调用上下文工厂
          * @param definitionValidator    接口服务定义与 Schema 校验器
          * @param providers              注册的数据源提供器集合
          * @param connectors             集成连接器集合
@@ -115,9 +129,9 @@ public class UiDataSourceService {
                         EntityListConfigMapper listMapper,
                         EntityDefinitionAccessPolicy entityAccessPolicy,
                         EntityUiConfigurationPolicy entityUiConfigurationPolicy,
-                        EntityDataDynamicService dynamicService,
                         SysDictItemService dictItemService,
                         UiDataSourceExecutionAccessService executionAccessService,
+                        UiInvocationContextFactory invocationContextFactory,
                         UiDataSourceDefinitionValidator definitionValidator,
                         List<UiDataSourceProvider> providers,
                         List<IntegrationConnector> connectors,
@@ -129,9 +143,9 @@ public class UiDataSourceService {
                 this.entityAccessPolicy = entityAccessPolicy;
                 this.entityUiConfigurationPolicy =
                                 entityUiConfigurationPolicy;
-                this.dynamicService = dynamicService;
                 this.dictItemService = dictItemService;
                 this.executionAccessService = executionAccessService;
+                this.invocationContextFactory = invocationContextFactory;
                 this.definitionValidator = definitionValidator;
                 this.providers = providers;
                 this.connectors = connectors;
@@ -181,6 +195,7 @@ public class UiDataSourceService {
                 catalog.put("sourceTypes", SOURCE_TYPES);
                 catalog.put("usages", USAGES);
                 catalog.put("scopeTypes", SCOPE_TYPES);
+                catalog.put("contextTypes", CONTEXT_TYPES);
                 catalog.put("providers", providerOptions);
                 catalog.put("connectors", connectorOptions);
                 catalog.put("failurePolicies", List.of("FAIL", "EMPTY", "NULL"));
@@ -190,12 +205,6 @@ public class UiDataSourceService {
         @Transactional(rollbackFor = Exception.class)
         public UiDataSourceDefinition save(UiDataSourceSaveRequest request) {
                 validateRequest(request);
-                definitionValidator.validateSchemaDefinition(
-                                request.getInputSchema(),
-                                "数据源输入Schema");
-                definitionValidator.validateSchemaDefinition(
-                                request.getOutputSchema(),
-                                "数据源输出Schema");
                 UiDataSourceDefinition current = StringUtils.hasText(request.getId())
                                 ? mapper.selectById(request.getId())
                                 : null;
@@ -213,8 +222,6 @@ public class UiDataSourceService {
                                                 : "GLOBAL"));
                 value.setScopeId(blankToNull(request.getScopeId()));
                 value.setConfigDocument(write(request.getConfig(), "数据源配置"));
-                value.setInputSchemaDocument(write(request.getInputSchema(), "数据源输入Schema"));
-                value.setOutputSchemaDocument(write(request.getOutputSchema(), "数据源输出Schema"));
                 value.setExecutionPolicyDocument(
                                 write(request.getExecutionPolicy(), "数据源执行策略"));
                 value.setOperationsDocument(writeList(
@@ -240,8 +247,6 @@ public class UiDataSourceService {
                                         .set("scope_type", value.getScopeType())
                                         .set("scope_id", value.getScopeId())
                                         .set("config_document", value.getConfigDocument())
-                                        .set("input_schema_document", value.getInputSchemaDocument())
-                                        .set("output_schema_document", value.getOutputSchemaDocument())
                                         .set("execution_policy_document", value.getExecutionPolicyDocument())
                                         .set("operations_document", value.getOperationsDocument())
                                         .set("enabled", value.getEnabled())
@@ -278,31 +283,68 @@ public class UiDataSourceService {
         }
 
         public Object preview(String id, UiDataSourceExecuteRequest request) {
-                UiDataSourceDefinition definition = requireExecutableDefinition(id);
-                requireUsage(request == null ? null : request.getUsage());
-                UiDataSourceExecutionAuthorization authorization = executionAccessService.authorizePreview(
-                                definition,
-                                request);
-                return executeAuthorized(
-                                definition,
-                                request,
-                                authorization);
+                requireOperationRequest(request);
+                UiDataSourceDefinition definition = resolveOperationDefinition(
+                                requireExecutableDefinition(id),
+                                request.getOperationCode());
+                requireUsage(request.getUsage());
+                UiDataSourceExecutionAuthorization authorization =
+                                executionAccessService.authorizePreview(
+                                                definition,
+                                                request);
+                requireOperationContext(definition, authorization.configType());
+                return executeAuthorized(definition, request, authorization);
         }
 
         public Object execute(String id, UiDataSourceExecuteRequest request) {
-                UiDataSourceDefinition definition = requireExecutableDefinition(id);
-                requireUsage(request == null ? null : request.getUsage());
-                UiDataSourceExecutionAuthorization authorization = executionAccessService.authorizePublished(
-                                definition,
-                                request);
-                return executeAuthorized(
-                                definition,
-                                request,
-                                authorization);
+                requireOperationRequest(request);
+                return executeOperation(id, request.getOperationCode(), request);
+        }
+
+        public Object executeBoundOperation(
+                        UiInterfaceOperationExecuteRequest request) {
+                if (request == null
+                                || !StringUtils.hasText(request.getOwnerType())
+                                || !StringUtils.hasText(request.getOwnerId())
+                                || !StringUtils.hasText(request.getBindingCode())
+                                || !StringUtils.hasText(request.getTargetType())
+                                || !StringUtils.hasText(request.getServiceId())
+                                || !StringUtils.hasText(request.getOperationCode())) {
+                        throw new IllegalArgumentException(
+                                        "接口执行缺少 owner、binding、service 或 operation");
+                }
+                String targetType = normalize(request.getTargetType());
+                if (!"OWNER".equals(targetType)
+                                && !StringUtils.hasText(request.getTargetKey())) {
+                        throw new IllegalArgumentException(
+                                        "非 OWNER 绑定必须指定 targetKey");
+                }
+                UiBindingPoint bindingPoint = new UiBindingPoint(
+                                normalize(request.getOwnerType()),
+                                request.getOwnerId().trim(),
+                                targetType,
+                                blankToNull(request.getTargetKey()),
+                                normalize(request.getBindingCode()),
+                                request.getServiceId().trim(),
+                                request.getOperationCode().trim());
+                UiDataSourceExecuteRequest internal = new UiDataSourceExecuteRequest();
+                internal.setUsage(bindingPoint.bindingCode());
+                internal.setOperationCode(bindingPoint.operationCode());
+                internal.setConfigType(bindingPoint.ownerType());
+                internal.setConfigId(bindingPoint.ownerId());
+                internal.setTargetType(bindingPoint.targetType());
+                internal.setTargetKey(bindingPoint.targetKey());
+                internal.setInput(request.getInput() == null
+                                ? Map.of()
+                                : new LinkedHashMap<>(request.getInput()));
+                return executeOperation(
+                                bindingPoint.serviceId(),
+                                bindingPoint.operationCode(),
+                                internal);
         }
 
         /**
-         * 执行接口服务中的指定操作；历史单操作数据源在 operationCode 为空时保持原行为。
+         * 执行接口服务中的指定操作。
          */
         public Object executeOperation(
                         String id,
@@ -317,6 +359,9 @@ public class UiDataSourceService {
                 UiDataSourceExecutionAuthorization authorization = executionAccessService.authorizePublished(
                                 operationDefinition,
                                 request);
+                requireOperationContext(
+                                operationDefinition,
+                                authorization.configType());
                 return executeAuthorized(
                                 operationDefinition,
                                 request,
@@ -351,6 +396,9 @@ public class UiDataSourceService {
                 requireMutationScope(
                                 operationDefinition,
                                 authorization);
+                requireOperationContext(
+                                operationDefinition,
+                                "ENTITY");
                 return executeAuthorized(
                                 operationDefinition,
                                 request,
@@ -373,6 +421,9 @@ public class UiDataSourceService {
                 UiDataSourceExecutionAuthorization authorization = executionAccessService.authorizeManagementPreview(
                                 operationDefinition,
                                 request);
+                requireOperationContext(
+                                operationDefinition,
+                                authorization.configType());
                 return executeAuthorized(
                                 operationDefinition,
                                 request,
@@ -386,13 +437,12 @@ public class UiDataSourceService {
                 UiDataSourceDefinition definition = requireExecutableDefinition(id);
                 List<Map<String, Object>> operations = readList(
                                 definition.getOperationsDocument(), "接口服务操作定义");
-                if (!operations.isEmpty()) {
-                        return operations;
+                if (operations.isEmpty()) {
+                        throw new BusinessConflictException(
+                                        "UI_INTERFACE_OPERATIONS_REQUIRED",
+                                        "接口服务未配置操作");
                 }
-                return List.of(Map.of(
-                                "code", "default",
-                                "name", definition.getSourceName(),
-                                "kind", "READ"));
+                return operations;
         }
 
         private UiDataSourceDefinition requireExecutableDefinition(String id) {
@@ -440,9 +490,11 @@ public class UiDataSourceService {
                                 ? Map.of()
                                 : request.getInput();
                 Map<String, Object> inputSchema = read(
-                                definition.getInputSchemaDocument(), "数据源输入Schema");
+                                definition.getOperationInputSchemaDocument(),
+                                "接口操作输入Schema");
                 Map<String, Object> outputSchema = read(
-                                definition.getOutputSchemaDocument(), "数据源输出Schema");
+                                definition.getOperationOutputSchemaDocument(),
+                                "接口操作输出Schema");
                 definitionValidator.validateSchemaDefinition(
                                 inputSchema,
                                 "数据源输入Schema");
@@ -519,7 +571,7 @@ public class UiDataSourceService {
                 requireUsage(usage);
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("valid", true);
-                result.put("sourceId", id);
+                result.put("serviceId", id);
                 result.put("sourceType", definition.getSourceType());
                 result.put("usage", normalize(usage));
                 result.put("revision", definition.getRevision());
@@ -540,51 +592,16 @@ public class UiDataSourceService {
                         String dictCode = text(config.get("dictCode"));
                         return flattenDictionary(dictItemService.getItemTreeByDictCode(dictCode));
                 }
+                UiInvocationContext context = invocationContextFactory.create(
+                                definition,
+                                authorization,
+                                request);
                 if ("RUNTIME_CONTEXT".equals(sourceType)) {
-                        return authorization.requestContext();
-                }
-                if ("ENTITY_QUERY".equals(sourceType)) {
-                        Map<String, Object> filters = input.get("filters") instanceof Map<?, ?> map
-                                        ? stringMap(map)
-                                        : new LinkedHashMap<>();
-                        Set<String> allowedFilters = config.get("allowedFilters") instanceof List<?> list
-                                        ? list.stream().map(String::valueOf)
-                                                        .collect(java.util.stream.Collectors.toSet())
-                                        : Set.of();
-                        if (!allowedFilters.isEmpty()) {
-                                filters.keySet().removeIf(key -> !allowedFilters.contains(stripSuffix(key)));
-                        }
-                        int pageNum = request.getPageNum() == null ? 1 : Math.max(1, request.getPageNum());
-                        int pageSize = request.getPageSize() == null
-                                        ? 20
-                                        : Math.max(1, Math.min(200, request.getPageSize()));
-                        if (!authorization.dataScopePlan().allowed()) {
-                                return new PageResult<>(List.of(), 0, pageNum, pageSize);
-                        }
-                        return dynamicService.findPageWithDataScopePlan(
-                                        authorization.entityCode(),
-                                        filters,
-                                        pageNum,
-                                        pageSize,
-                                        authorization.dataScopePlan());
+                        return context;
                 }
                 if ("STRUCTURED_COMPUTE".equals(sourceType)) {
                         return compute(config, input);
                 }
-                UiDataSourceContext context = new UiDataSourceContext(
-                                authorization.usage(),
-                                authorization.entityCode(),
-                                authorization.listKey(),
-                                authorization.user().getId(),
-                                authorization.requestContext(),
-                                authorization.user().getUsername(),
-                                authorization.user().getOrgId(),
-                                authorization.user().getOrgId(),
-                                authorization.user().getDeptId(),
-                                authorization.configType(),
-                                authorization.configId(),
-                                authorization.releaseId(),
-                                authorization.releaseVersion());
                 if ("REGISTERED_PROVIDER".equals(sourceType)) {
                         if (!authorization.dataScopePlan().allowed()) {
                                 throw new BusinessForbiddenException(
@@ -627,9 +644,9 @@ public class UiDataSourceService {
                                                                         config.get("connectorConfigId")))
                                                         .parameters(Collections.unmodifiableMap(
                                                                         new LinkedHashMap<>(input)))
-                                                        .runtimeContext(integrationRuntimeContext(
-                                                                        definition,
-                                                                        authorization))
+                                                        .runtimeContext(
+                                                                        new IntegrationRuntimeContext(
+                                                                                        context))
                                                         .dataScopePlan(
                                                                         authorization.dataScopePlan())
                                                         .permissionSummary(permissionSummary(
@@ -691,12 +708,21 @@ public class UiDataSourceService {
                 if (!"GLOBAL".equals(scopeType) && !StringUtils.hasText(request.getScopeId())) {
                         throw new IllegalArgumentException("非全局数据源必须指定 scopeId");
                 }
+                if ("GLOBAL".equals(scopeType)
+                                && Set.of("REGISTERED_PROVIDER", "INTEGRATION_CONNECTOR")
+                                                .contains(sourceType)) {
+                        throw new IllegalArgumentException(
+                                        "Provider 和 Connector 必须绑定实体、表单或列表范围");
+                }
                 definitionValidator.validateNoForbiddenKeys(
                                 request.getConfig(),
                                 "config");
                 definitionValidator.validateExecutionPolicy(
                                 request.getExecutionPolicy());
                 validateOperations(request.getOperations());
+                validateOperationScopes(
+                                request.getOperations(),
+                                scopeType);
                 if (Set.of("REGISTERED_PROVIDER", "INTEGRATION_CONNECTOR").contains(sourceType)
                                 && !StringUtils.hasText(request.getProviderCode())) {
                         throw new IllegalArgumentException("Provider/Connector编码不能为空");
@@ -707,7 +733,7 @@ public class UiDataSourceService {
         private void validateOperations(
                         List<Map<String, Object>> operations) {
                 if (operations == null || operations.isEmpty()) {
-                        return;
+                        throw new IllegalArgumentException("接口服务至少需要一个操作");
                 }
                 Set<String> codes = new java.util.LinkedHashSet<>();
                 for (int index = 0; index < operations.size(); index++) {
@@ -715,6 +741,7 @@ public class UiDataSourceService {
                         String code = text(operation.get("code"));
                         String name = text(operation.get("name"));
                         String kind = normalize(text(operation.getOrDefault("kind", "READ")));
+                        String contextType = normalize(text(operation.get("contextType")));
                         if (!StringUtils.hasText(code) || !StringUtils.hasText(name)) {
                                 throw new IllegalArgumentException(
                                                 "接口服务第 " + (index + 1) + " 个操作缺少编码或名称");
@@ -725,6 +752,11 @@ public class UiDataSourceService {
                         if (!Set.of("READ", "WRITE").contains(kind)) {
                                 throw new IllegalArgumentException(
                                                 "接口服务操作类型仅支持 READ/WRITE: " + code);
+                        }
+                        if (!CONTEXT_TYPES.contains(contextType)) {
+                                throw new IllegalArgumentException(
+                                                "接口服务操作必须声明 FORM/LIST/ENTITY 上下文: "
+                                                                + code);
                         }
                         Map<String, Object> config = operation.get("config") instanceof Map<?, ?> map
                                         ? stringMap(map)
@@ -749,22 +781,44 @@ public class UiDataSourceService {
                 }
         }
 
+        private void validateOperationScopes(
+                        List<Map<String, Object>> operations,
+                        String scopeType) {
+                for (Map<String, Object> operation : operations) {
+                        String contextType = normalize(
+                                        text(operation.get("contextType")));
+                        boolean compatible = switch (scopeType) {
+                                case "ENTITY" -> true;
+                                case "FORM" -> "FORM".equals(contextType);
+                                case "LIST" -> "LIST".equals(contextType);
+                                case "GLOBAL" -> !"ENTITY".equals(contextType);
+                                default -> false;
+                        };
+                        if (!compatible) {
+                                throw new IllegalArgumentException(
+                                                "接口操作 "
+                                                                + text(operation.get("code"))
+                                                                + " 的上下文 "
+                                                                + contextType
+                                                                + " 与作用范围 "
+                                                                + scopeType
+                                                                + " 不兼容");
+                        }
+                }
+        }
+
         private UiDataSourceDefinition resolveOperationDefinition(
                         UiDataSourceDefinition definition,
                         String operationCode) {
                 List<Map<String, Object>> operations = readList(
                                 definition.getOperationsDocument(), "接口服务操作定义");
                 if (operations.isEmpty()) {
-                        if (StringUtils.hasText(operationCode)
-                                        && !"default".equalsIgnoreCase(operationCode)) {
-                                throw new IllegalArgumentException(
-                                                "历史单操作接口服务仅支持 default 操作");
-                        }
-                        return definition;
+                        throw new IllegalArgumentException("接口服务未配置操作");
                 }
-                String expected = StringUtils.hasText(operationCode)
-                                ? operationCode.trim()
-                                : null;
+                if (!StringUtils.hasText(operationCode)) {
+                        throw new IllegalArgumentException("接口执行必须指定 operationCode");
+                }
+                String expected = operationCode.trim();
                 Map<String, Object> operation = operations.stream()
                                 .filter(item -> Objects.equals(
                                                 expected,
@@ -773,21 +827,29 @@ public class UiDataSourceService {
                                 .orElseThrow(() -> new IllegalArgumentException(
                                                 "接口服务操作不存在: " + operationCode));
                 UiDataSourceDefinition resolved = copyDefinition(definition);
+                resolved.setOperationCode(expected);
+                resolved.setOperationContextType(
+                                normalize(text(operation.get("contextType"))));
+                resolved.setOperationKind(normalize(
+                                text(operation.getOrDefault("kind", "READ"))));
                 Map<String, Object> baseConfig = read(
                                 definition.getConfigDocument(), "接口服务基础配置");
                 if (operation.get("config") instanceof Map<?, ?> map) {
                         baseConfig.putAll(stringMap(map));
                 }
-                baseConfig.put("operation", expected);
                 resolved.setConfigDocument(write(baseConfig, "接口操作配置"));
-                if (operation.get("inputSchema") instanceof Map<?, ?> map) {
-                        resolved.setInputSchemaDocument(write(
-                                        stringMap(map), "接口操作输入Schema"));
-                }
-                if (operation.get("outputSchema") instanceof Map<?, ?> map) {
-                        resolved.setOutputSchemaDocument(write(
-                                        stringMap(map), "接口操作输出Schema"));
-                }
+                Map<String, Object> inputSchema =
+                                operation.get("inputSchema") instanceof Map<?, ?> map
+                                                ? stringMap(map)
+                                                : Map.of();
+                Map<String, Object> outputSchema =
+                                operation.get("outputSchema") instanceof Map<?, ?> map
+                                                ? stringMap(map)
+                                                : Map.of();
+                resolved.setOperationInputSchemaDocument(write(
+                                inputSchema, "接口操作输入Schema"));
+                resolved.setOperationOutputSchemaDocument(write(
+                                outputSchema, "接口操作输出Schema"));
                 if (operation.get("executionPolicy") instanceof Map<?, ?> map) {
                         Map<String, Object> policy = read(
                                         definition.getExecutionPolicyDocument(),
@@ -810,10 +872,15 @@ public class UiDataSourceService {
                 target.setScopeType(source.getScopeType());
                 target.setScopeId(source.getScopeId());
                 target.setConfigDocument(source.getConfigDocument());
-                target.setInputSchemaDocument(source.getInputSchemaDocument());
-                target.setOutputSchemaDocument(source.getOutputSchemaDocument());
                 target.setExecutionPolicyDocument(source.getExecutionPolicyDocument());
                 target.setOperationsDocument(source.getOperationsDocument());
+                target.setOperationInputSchemaDocument(
+                                source.getOperationInputSchemaDocument());
+                target.setOperationOutputSchemaDocument(
+                                source.getOperationOutputSchemaDocument());
+                target.setOperationCode(source.getOperationCode());
+                target.setOperationContextType(source.getOperationContextType());
+                target.setOperationKind(source.getOperationKind());
                 target.setRevision(source.getRevision());
                 target.setEnabled(source.getEnabled());
                 target.setCreatedAt(source.getCreatedAt());
@@ -841,7 +908,7 @@ public class UiDataSourceService {
                         Map<String, Object> input,
                         UiDataSourceExecutionAuthorization authorization) {
                 Map<String, Object> key = new LinkedHashMap<>();
-                key.put("sourceId", definition.getId());
+                key.put("serviceId", definition.getId());
                 key.put("revision", definition.getRevision());
                 key.put("usage", authorization.usage());
                 key.put("configType", authorization.configType());
@@ -875,27 +942,6 @@ public class UiDataSourceService {
                 return value;
         }
 
-        private IntegrationRuntimeContext integrationRuntimeContext(
-                        UiDataSourceDefinition definition,
-                        UiDataSourceExecutionAuthorization authorization) {
-                SysUser user = authorization.user();
-                return new IntegrationRuntimeContext(
-                                definition.getId(),
-                                authorization.usage(),
-                                authorization.configType(),
-                                authorization.configId(),
-                                authorization.releaseId(),
-                                authorization.releaseVersion(),
-                                authorization.entityId(),
-                                authorization.entityCode(),
-                                authorization.listKey(),
-                                user.getId(),
-                                user.getUsername(),
-                                user.getOrgId(),
-                                user.getOrgId(),
-                                user.getDeptId());
-        }
-
         private Map<String, Object> permissionSummary(
                         DataScopePlan plan) {
                 Map<String, Object> summary = new LinkedHashMap<>();
@@ -911,7 +957,7 @@ public class UiDataSourceService {
                         UiDataSourceExecutionAuthorization authorization,
                         Map<String, Object> input) {
                 Map<String, Object> material = new LinkedHashMap<>();
-                material.put("sourceId", definition.getId());
+                material.put("serviceId", definition.getId());
                 material.put("sourceRevision", definition.getRevision());
                 material.put("configType", authorization.configType());
                 material.put("configId", authorization.configId());
@@ -1006,6 +1052,30 @@ public class UiDataSourceService {
                 }
         }
 
+        private void requireOperationRequest(
+                        UiDataSourceExecuteRequest request) {
+                if (request == null
+                                || !StringUtils.hasText(request.getOperationCode())) {
+                        throw new IllegalArgumentException(
+                                        "接口执行必须指定 operationCode");
+                }
+        }
+
+        private void requireOperationContext(
+                        UiDataSourceDefinition definition,
+                        String ownerType) {
+                String expected = normalize(definition.getOperationContextType());
+                String actual = normalize(ownerType);
+                if ("ENTITY_MUTATION".equals(actual)) {
+                        actual = "ENTITY";
+                }
+                if (!Objects.equals(expected, actual)) {
+                        throw new BusinessForbiddenException(
+                                        "UI_INTERFACE_CONTEXT_MISMATCH",
+                                        "接口操作上下文与绑定对象类型不一致");
+                }
+        }
+
         private void requireRevision(
                         Integer expected,
                         UiDataSourceDefinition current) {
@@ -1042,15 +1112,6 @@ public class UiDataSourceService {
                         current = map.get(part);
                 }
                 return current;
-        }
-
-        private String stripSuffix(String key) {
-                for (String suffix : List.of("_start", "_end", "_op")) {
-                        if (key.endsWith(suffix)) {
-                                return key.substring(0, key.length() - suffix.length());
-                        }
-                }
-                return key;
         }
 
         private String write(Map<String, Object> value, String label) {

@@ -7,6 +7,9 @@ export const uiDataSourceApi = {
   list(params = {}) {
     return request.get('/ui-data-sources', { params })
   },
+  availableOperations(params) {
+    return request.get('/ui-data-sources/available-operations', { params })
+  },
   create(data) {
     return request.post('/ui-data-sources', data)
   },
@@ -21,8 +24,8 @@ export const uiDataSourceApi = {
   preview(id, data) {
     return request.post(`/ui-data-sources/${id}/preview`, data)
   },
-  execute(id, data) {
-    return request.post(`/ui-data-sources/${id}/execute`, data)
+  executeOperation(data) {
+    return request.post('/ui-runtime/interface-operations/execute', data)
   },
   validateBinding(id, usage) {
     return request.post(`/ui-data-sources/${id}/bindings/${usage}/validate`)
@@ -80,6 +83,9 @@ export const uiComponentTemplateApi = {
   },
   save(data) {
     return request.post('/ui-component-templates', data)
+  },
+  snapshot(id) {
+    return request.get(`/ui-component-templates/${id}/snapshot`)
   },
   versions(id) {
     return request.get(`/ui-component-templates/${id}/versions`)

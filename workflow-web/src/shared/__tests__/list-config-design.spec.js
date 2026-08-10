@@ -10,18 +10,12 @@ import {
   resolveListButtonType,
   withListButtonTypeDefault
 } from '../list-config-design.js'
-import {
-  buildListQueryBindingPayload,
-  createListQueryEditor,
-  findListLoadBinding,
-  isSimpleListQueryBinding,
-  listQueryEditorFingerprint
-} from '../list-query-binding.js'
 
 const config = {
   listName: '项目列表',
   selectionMode: 'SINGLE',
-  queryDataSourceId: 'source-1'
+  queryDataSourceId: 'service-1',
+  queryOperationCode: 'queryPage'
 }
 const viewConfig = {
   search: { defaultVisibleCount: 4, collapsible: true, labelWidth: 100 },
@@ -34,9 +28,15 @@ assert.equal(
   JSON.parse(listMetadataFingerprint(config, viewConfig)).selectionValueField,
   'id'
 )
-assert.ok(
+assert.equal(
+  JSON.parse(listMetadataFingerprint(config, viewConfig))
+    .queryOperationCode,
+  'queryPage'
+)
+assert.equal(
   listMetadataDetailEntries(config, viewConfig)
-    .some(item => item.key === 'queryDataSourceId' && item.value === 'source-1')
+    .find(item => item.key === 'queryDataSourceId')?.value,
+  'service-1'
 )
 
 const action = normalizeListActionForSave({
@@ -118,64 +118,6 @@ assert.equal(
     changedItems: [{ changeType: 'ADDED', label: '字段 A' }]
   }),
   '新增：字段 A'
-)
-
-const simpleListLoadBinding = {
-  id: 'binding-1',
-  revision: 2,
-  eventCode: 'LIST_LOAD',
-  targetType: 'OWNER',
-  inheritanceMode: 'REPLACE',
-  enabled: true,
-  stepsDocument: JSON.stringify([{
-    strategy: 'REPLACE',
-    serviceId: 'service-1',
-    operationCode: 'query',
-    condition: {},
-    inputMapping: {
-      criteria: 'input.filters',
-      current: 'input.pageNum',
-      size: 'input.pageSize'
-    },
-    outputMapping: [
-      { sourcePath: 'data.rows', targetPath: 'records' },
-      { sourcePath: 'data.count', targetPath: 'total' }
-    ],
-    failurePolicy: 'STOP'
-  }])
-}
-assert.equal(
-  findListLoadBinding([simpleListLoadBinding]),
-  simpleListLoadBinding
-)
-assert.equal(isSimpleListQueryBinding(simpleListLoadBinding), true)
-const queryEditor = createListQueryEditor(simpleListLoadBinding)
-assert.equal(queryEditor.serviceId, 'service-1')
-assert.equal(queryEditor.operationCode, 'query')
-assert.equal(queryEditor.inputTargets.filters, 'criteria')
-assert.equal(queryEditor.outputPaths.records, 'data.rows')
-const queryPayload = buildListQueryBindingPayload(
-  queryEditor,
-  'list-1',
-  simpleListLoadBinding
-)
-assert.equal(queryPayload.expectedRevision, 2)
-assert.equal(queryPayload.inheritanceMode, 'REPLACE')
-assert.equal(queryPayload.steps[0].inputMapping.criteria, 'input.filters')
-assert.equal(queryPayload.steps[0].outputMapping[0].targetPath, 'records')
-assert.equal(
-  listQueryEditorFingerprint(queryEditor),
-  listQueryEditorFingerprint(createListQueryEditor(simpleListLoadBinding))
-)
-assert.equal(
-  isSimpleListQueryBinding({
-    ...simpleListLoadBinding,
-    stepsDocument: JSON.stringify([
-      ...JSON.parse(simpleListLoadBinding.stepsDocument),
-      { strategy: 'AFTER', serviceId: 'service-2' }
-    ])
-  }),
-  false
 )
 
 console.log('list config design helper tests passed')

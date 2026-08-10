@@ -54,7 +54,7 @@ public class HttpConnectorConfigurationCodec {
             "\\$input\\.[A-Za-z][A-Za-z0-9_-]{0,63}"
                     + "(?:\\.[A-Za-z][A-Za-z0-9_-]{0,63}){0,7}");
     private static final Set<String> CONTEXT_SOURCES = Set.of(
-            "$context.sourceId",
+            "$context.serviceId",
             "$context.usage",
             "$context.configType",
             "$context.configId",

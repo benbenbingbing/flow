@@ -13,9 +13,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
- * Locates legacy data-source bindings and unified event bindings.
+ * Locates exact interface-operation bindings in draft and release snapshots.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,7 +32,10 @@ public class UiDataSourceBindingMatcher {
             String configId,
             String entityId,
             String usage,
-            String sourceId) {
+            String targetType,
+            String targetKey,
+            String sourceId,
+            String operationCode) {
         List<Map<String, Object>> bindings =
                 objectMapper.convertValue(
                         eventBindingMapper.findForSnapshot(
@@ -41,7 +46,10 @@ public class UiDataSourceBindingMatcher {
         return findEventBinding(
                 bindings,
                 usage,
+                targetType,
+                targetKey,
                 sourceId,
+                operationCode,
                 "$.draft.eventBindings");
     }
 
@@ -49,11 +57,17 @@ public class UiDataSourceBindingMatcher {
             String configType,
             Map<String, Object> snapshot,
             String usage,
-            String sourceId) {
+            String targetType,
+            String targetKey,
+            String sourceId,
+            String operationCode) {
         String eventPath = findEventBinding(
                 mapList(snapshot.get("eventBindings")),
                 usage,
+                targetType,
+                targetKey,
                 sourceId,
+                operationCode,
                 "$.release.eventBindings");
         if (StringUtils.hasText(eventPath)) {
             return eventPath;
@@ -66,7 +80,10 @@ public class UiDataSourceBindingMatcher {
             return findForm(
                     owners,
                     usage,
+                    targetType,
+                    targetKey,
                     sourceId,
+                    operationCode,
                     "$.release.form");
         }
         Map<String, Object> list = stringMap(snapshot.get("list"));
@@ -74,23 +91,36 @@ public class UiDataSourceBindingMatcher {
                 list,
                 mapList(list.get("fields")),
                 usage,
+                targetType,
+                targetKey,
                 sourceId,
+                operationCode,
                 "$.release.list");
     }
 
     public String findForm(
             List<Map<String, Object>> owners,
             String usage,
+            String targetType,
+            String targetKey,
             String sourceId,
+            String operationCode,
             String basePath) {
         for (int index = 0; index < owners.size(); index++) {
             Map<String, Object> owner = owners.get(index);
             String ownerPath = basePath + "[" + index + "]";
+            if (!formOwnerMatches(
+                    owner,
+                    targetType,
+                    targetKey)) {
+                continue;
+            }
             String bindingPath =
                     findOwnerBinding(
                             owner,
                             usage,
                             sourceId,
+                            operationCode,
                             ownerPath);
             if (StringUtils.hasText(bindingPath)) {
                 return bindingPath;
@@ -103,6 +133,7 @@ public class UiDataSourceBindingMatcher {
                         init,
                         usage,
                         sourceId,
+                        operationCode,
                         ownerPath + ".initConfig");
                 if (StringUtils.hasText(bindingPath)) {
                     return bindingPath;
@@ -116,26 +147,42 @@ public class UiDataSourceBindingMatcher {
             Map<String, Object> list,
             List<Map<String, Object>> fields,
             String usage,
+            String targetType,
+            String targetKey,
             String sourceId,
+            String operationCode,
             String basePath) {
-        if ("LIST_QUERY".equals(usage)
-                && sourceId.equals(text(
-                        list.get("queryDataSourceId")))) {
-            return basePath + ".queryDataSourceId";
-        }
-        String ownerBinding = findOwnerBinding(
-                list,
-                usage,
-                sourceId,
-                basePath);
-        if (StringUtils.hasText(ownerBinding)) {
-            return ownerBinding;
+        if ("OWNER".equals(normalize(targetType))) {
+            if ("LIST_QUERY".equals(normalize(usage))
+                    && sourceId.equals(text(
+                            list.get("queryDataSourceId")))
+                    && operationCode.equals(text(
+                            list.get("queryOperationCode")))) {
+                return basePath + ".queryDataSourceId";
+            }
+            String ownerBinding = findOwnerBinding(
+                    list,
+                    usage,
+                    sourceId,
+                    operationCode,
+                    basePath);
+            if (StringUtils.hasText(ownerBinding)) {
+                return ownerBinding;
+            }
         }
         for (int index = 0; index < fields.size(); index++) {
             Map<String, Object> field = fields.get(index);
+            if (!listFieldMatches(
+                    field,
+                    targetType,
+                    targetKey)) {
+                continue;
+            }
             if ("LIST_COLUMN".equals(usage)
                     && sourceId.equals(text(
-                            field.get("dataSourceId")))) {
+                            field.get("dataSourceId")))
+                    && operationCode.equals(text(
+                            field.get("dataSourceOperationCode")))) {
                 return basePath
                         + ".fields[" + index + "].dataSourceId";
             }
@@ -143,6 +190,7 @@ public class UiDataSourceBindingMatcher {
                     field,
                     usage,
                     sourceId,
+                    operationCode,
                     basePath + ".fields[" + index + "]");
             if (StringUtils.hasText(bindingPath)) {
                 return bindingPath;
@@ -155,6 +203,7 @@ public class UiDataSourceBindingMatcher {
             Map<String, Object> owner,
             String usage,
             String sourceId,
+            String operationCode,
             String ownerPath) {
         Map<String, Object> bindings = parseObject(
                 owner.get("dataSourceBindings") != null
@@ -165,6 +214,7 @@ public class UiDataSourceBindingMatcher {
                 bindings,
                 usage,
                 sourceId,
+                operationCode,
                 ownerPath + ".dataSourceBindings");
     }
 
@@ -172,6 +222,7 @@ public class UiDataSourceBindingMatcher {
             Map<String, Object> bindings,
             String usage,
             String sourceId,
+            String operationCode,
             String path) {
         if (bindings == null || bindings.isEmpty()) {
             return null;
@@ -188,10 +239,16 @@ public class UiDataSourceBindingMatcher {
         if (configured == null) {
             return usage.equals(normalize(
                     text(bindings.get("usage"))))
-                    && sourceId.equals(sourceId(bindings))
+                    && matchesBinding(
+                            bindings,
+                            sourceId,
+                            operationCode)
                     ? path : null;
         }
-        return containsSource(configured, sourceId)
+        return containsOperation(
+                configured,
+                sourceId,
+                operationCode)
                 ? path + "." + matchedKey
                 : null;
     }
@@ -199,12 +256,21 @@ public class UiDataSourceBindingMatcher {
     private String findEventBinding(
             List<Map<String, Object>> bindings,
             String usage,
+            String targetType,
+            String targetKey,
             String sourceId,
+            String operationCode,
             String path) {
         for (int index = 0; index < bindings.size(); index++) {
             Map<String, Object> binding = bindings.get(index);
             if (!usage.equals(normalize(
                     text(binding.get("eventCode"))))) {
+                continue;
+            }
+            if (!eventTargetMatches(
+                    binding,
+                    targetType,
+                    targetKey)) {
                 continue;
             }
             Object steps = binding.get("steps");
@@ -213,39 +279,117 @@ public class UiDataSourceBindingMatcher {
                         binding.get("stepsDocument"),
                         "UI事件绑定步骤");
             }
-            if (containsSource(steps, sourceId)) {
+            if (containsOperation(
+                    steps,
+                    sourceId,
+                    operationCode)) {
                 return path + "[" + index + "].steps";
             }
         }
         return null;
     }
 
-    private boolean containsSource(
-            Object configured,
-            String sourceId) {
-        if (configured instanceof String value) {
-            return sourceId.equals(value);
+    private boolean eventTargetMatches(
+            Map<String, Object> binding,
+            String targetType,
+            String targetKey) {
+        return normalize(targetType).equals(normalize(
+                text(binding.getOrDefault("targetType", "OWNER"))))
+                && normalizedTargetKey(targetType, targetKey).equals(
+                        normalizedTargetKey(
+                                text(binding.getOrDefault(
+                                        "targetType",
+                                        "OWNER")),
+                                text(binding.get("targetKey"))));
+    }
+
+    private boolean formOwnerMatches(
+            Map<String, Object> owner,
+            String targetType,
+            String targetKey) {
+        String type = normalize(targetType);
+        if ("OWNER".equals(type)) {
+            return StringUtils.hasText(text(owner.get("formKey")))
+                    && !StringUtils.hasText(text(owner.get("nodeKey")));
         }
+        if (!Set.of("FIELD", "NODE").contains(type)) {
+            return false;
+        }
+        Map<String, Object> properties = parseObject(
+                owner.get("propsDocument"),
+                "表单节点属性");
+        String ownerKey = "NODE".equals(type)
+                ? firstText(
+                        owner.get("nodeKey"),
+                        owner.get("fieldCode"),
+                        properties.get("fieldCode"))
+                : firstText(
+                        owner.get("fieldCode"),
+                        properties.get("fieldCode"),
+                        owner.get("nodeKey"));
+        return Objects.equals(
+                normalizedTargetKey(type, targetKey),
+                normalizedTargetKey(type, ownerKey));
+    }
+
+    private boolean listFieldMatches(
+            Map<String, Object> field,
+            String targetType,
+            String targetKey) {
+        String type = normalize(targetType);
+        return Set.of("COLUMN", "FIELD").contains(type)
+                && Objects.equals(
+                        normalizedTargetKey(type, targetKey),
+                        normalizedTargetKey(
+                                type,
+                                text(field.get("fieldCode"))));
+    }
+
+    private String normalizedTargetKey(
+            String targetType,
+            String targetKey) {
+        return "OWNER".equals(normalize(targetType))
+                ? ""
+                : StringUtils.hasText(targetKey)
+                        ? targetKey.trim()
+                        : "";
+    }
+
+    private boolean containsOperation(
+            Object configured,
+            String sourceId,
+            String operationCode) {
         if (configured instanceof Map<?, ?> map) {
-            return sourceId.equals(sourceId(map))
+            return matchesBinding(map, sourceId, operationCode)
                     || map.values().stream()
                             .anyMatch(item ->
-                                    containsSource(item, sourceId));
+                                    containsOperation(
+                                            item,
+                                            sourceId,
+                                            operationCode));
         }
         return configured instanceof List<?> list
                 && list.stream().anyMatch(item ->
-                        containsSource(item, sourceId));
+                        containsOperation(
+                                item,
+                                sourceId,
+                                operationCode));
     }
 
-    private String sourceId(Map<?, ?> binding) {
-        for (String key : List.of(
-                "serviceId", "sourceId", "id")) {
-            String value = text(binding.get(key));
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return null;
+    private boolean matchesBinding(
+            Map<?, ?> binding,
+            String sourceId,
+            String operationCode) {
+        return sourceId.equals(serviceId(binding))
+                && operationCode.equals(text(
+                        binding.get("operationCode")));
+    }
+
+    private String serviceId(Map<?, ?> binding) {
+        String value = text(binding.get("serviceId"));
+        return StringUtils.hasText(value)
+                ? value.trim()
+                : null;
     }
 
     private Map<String, Object> parseObject(
@@ -310,6 +454,16 @@ public class UiDataSourceBindingMatcher {
 
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String firstText(Object... values) {
+        for (Object value : values) {
+            String candidate = text(value);
+            if (StringUtils.hasText(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private String normalize(String value) {

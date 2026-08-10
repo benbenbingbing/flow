@@ -21,10 +21,7 @@
         </el-select>
       </el-form-item>
       <el-form-item label="业务上下文" required>
-        <el-radio-group v-model="editor.configType">
-          <el-radio-button value="FORM">表单</el-radio-button>
-          <el-radio-button value="LIST">列表</el-radio-button>
-        </el-radio-group>
+        <el-input :model-value="contextTypeLabel" disabled />
       </el-form-item>
       <el-form-item label="配置对象" required>
         <el-select v-model="editor.configId" filterable>
@@ -76,6 +73,7 @@ import {
 const props = defineProps({
   forms: { type: Array, default: () => [] },
   lists: { type: Array, default: () => [] },
+  entityId: { type: String, default: '' },
   entityCode: { type: String, default: '' },
   eventCodes: { type: Array, default: () => [] }
 })
@@ -98,19 +96,38 @@ const originOptions = computed(() =>
         id: item.id,
         label: `${item.formName} (${item.formKey})`
       }))
-    : props.lists.map(item => ({
-        id: item.id,
-        label: `${item.listName} (${item.listKey})`
-      })))
+    : editor.configType === 'LIST'
+      ? props.lists.map(item => ({
+          id: item.id,
+          label: `${item.listName} (${item.listKey})`
+        }))
+      : props.entityId
+        ? [{
+            id: props.entityId,
+            label: props.entityCode || props.entityId
+          }]
+        : [])
+
+const selectedOperation = computed(() =>
+  serviceOperations(service.value || {}).find(operation =>
+    operation.code === editor.operationCode))
+
+const contextTypeLabel = computed(() => ({
+  FORM: '表单上下文',
+  LIST: '列表上下文',
+  ENTITY: '实体上下文'
+}[editor.configType] || '-'))
 
 function open(targetService) {
   service.value = targetService
   const operations = serviceOperations(targetService)
+  const firstOperation = operations[0]
+  const configType = firstOperation?.contextType || ''
   Object.assign(editor, {
-    operationCode: operations[0]?.code || 'default',
-    configType: props.forms.length ? 'FORM' : 'LIST',
-    configId: props.forms[0]?.id || props.lists[0]?.id || '',
-    usage: operations[0]?.kind === 'WRITE' ? 'DATA_UPDATE' : 'DETAIL_LOAD',
+    operationCode: firstOperation?.code || '',
+    configType,
+    configId: firstOriginId(configType),
+    usage: firstOperation?.kind === 'WRITE' ? 'DATA_UPDATE' : 'DETAIL_LOAD',
     inputText: '{}'
   })
   resultText.value = ''
@@ -132,11 +149,7 @@ async function run() {
         usage: editor.usage,
         configType: editor.configType,
         configId: editor.configId,
-        entityCode: props.entityCode,
-        input,
-        context: editor.configType === 'FORM'
-          ? { formId: editor.configId }
-          : { listId: editor.configId }
+        input
       }
     )
     resultText.value = JSON.stringify(result, null, 2)
@@ -149,9 +162,17 @@ async function run() {
   }
 }
 
-watch(() => editor.configType, () => {
-  editor.configId = originOptions.value[0]?.id || ''
+watch(() => editor.operationCode, () => {
+  editor.configType = selectedOperation.value?.contextType || ''
+  editor.configId = firstOriginId(editor.configType)
 })
+
+function firstOriginId(configType) {
+  if (configType === 'FORM') return props.forms[0]?.id || ''
+  if (configType === 'LIST') return props.lists[0]?.id || ''
+  if (configType === 'ENTITY') return props.entityId || ''
+  return ''
+}
 
 defineExpose({ open })
 </script>

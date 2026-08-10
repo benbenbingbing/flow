@@ -430,6 +430,9 @@ function buildDataSourceBindings(field, allowedUsages) {
   const requestedUsage = String(field.dataSourceUsage || '').toUpperCase()
   const usage = allowed.has(requestedUsage) ? requestedUsage : ''
   if (usage && field.dataSourceId) {
+    if (!field.dataSourceOperationCode) {
+      throw new Error('接口服务绑定缺少操作编码')
+    }
     const existingBinding = existingBindings[usage]
     existingBindings[usage] = {
       ...(existingBinding
@@ -437,7 +440,8 @@ function buildDataSourceBindings(field, allowedUsages) {
         && !Array.isArray(existingBinding)
         ? existingBinding
         : {}),
-      sourceId: field.dataSourceId,
+      serviceId: field.dataSourceId,
+      operationCode: field.dataSourceOperationCode,
       inputMapping: parseObject(field.dataSourceInputMappingText),
       outputMapping: parseObject(field.dataSourceOutputMappingText)
     }

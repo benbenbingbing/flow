@@ -69,7 +69,7 @@ assert.deepEqual(
   assert.equal(existsSync(path.join(root, retiredFile)), false, `已下线实现不得恢复: ${retiredFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration', '/system/list-column-templates'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -106,6 +106,117 @@ const interfaceServiceManualMigration = readFileSync(
   assert.ok(
     interfaceServiceManualMigration.includes(marker),
     `接口服务用户手册菜单迁移缺少配置: ${marker}`
+  )
+})
+
+const listColumnTemplateMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V030__list_column_template_management_menu.sql'
+  ),
+  'utf8'
+)
+const listColumnTemplateParentMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V032__move_list_column_template_under_system_management.sql'
+  ),
+  'utf8'
+)
+const listColumnTemplateSemanticsMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V033__clarify_list_column_template_initialization.sql'
+  ),
+  'utf8'
+)
+;[
+  'list_column_template_menu_001',
+  '/system/list-column-templates',
+  'system/ListColumnTemplateManagement',
+  'system:list-column-template:view',
+  'system:list-column-template:manage'
+].forEach((marker) => {
+  assert.ok(
+    listColumnTemplateMigration.includes(marker),
+    `列表列模板菜单迁移缺少配置: ${marker}`
+  )
+})
+;[
+  "parent_id = '400'",
+  "id = 'list_column_template_menu_001'"
+].forEach((marker) => {
+  assert.ok(
+    listColumnTemplateParentMigration.includes(marker),
+    `列表列模板必须归入系统管理菜单: ${marker}`
+  )
+})
+;[
+  '一次性初始化',
+  "id = 'list_column_template_menu_001'"
+].forEach((marker) => {
+  assert.ok(
+    listColumnTemplateSemanticsMigration.includes(marker),
+    `列表列模板菜单说明必须采用初始化语义: ${marker}`
+  )
+})
+
+const listColumnTemplatePage = readFileSync(
+  path.join(root, 'src/views/system/ListColumnTemplateManagement.vue'),
+  'utf8'
+)
+const listColumnTemplateEditor = readFileSync(
+  path.join(root, 'src/components/ui-config/ListColumnTemplateEditorDialog.vue'),
+  'utf8'
+)
+const objectMappingEditor = readFileSync(
+  path.join(root, 'src/components/ui-config/ObjectMappingEditor.vue'),
+  'utf8'
+)
+;[
+  'uiComponentTemplateApi.snapshot(template.id)',
+  '把常用列配置保存为初始化模板',
+  '新建模板',
+  '配置摘要'
+].forEach((marker) => {
+  assert.ok(
+    listColumnTemplatePage.includes(marker),
+    `列表列模板管理页缺少当前快照或可视化管理能力: ${marker}`
+  )
+})
+assert.equal(
+  listColumnTemplatePage.includes('uiComponentTemplateApi.versions(template.id)'),
+  false,
+  '列表列模板管理页不得读取版本历史'
+)
+assert.equal(
+  `${listColumnTemplatePage}\n${listColumnTemplateEditor}`.includes('applicableFieldKind'),
+  false,
+  '实体字段和虚拟列使用同一套列表列模板，不得保留适用列分类'
+)
+;[
+  '模板只用于初始化',
+  'ConfigSchemaEditor',
+  'ObjectMappingEditor',
+  '必须使用英文双引号和英文逗号',
+  '不得写注释',
+  '示例：',
+  '效果预览'
+].forEach((marker) => {
+  assert.ok(
+    listColumnTemplateEditor.includes(marker),
+    `列表列模板编辑器缺少表单化配置或 JSON 说明: ${marker}`
+  )
+})
+;[
+  '原始值',
+  '显示值',
+  '添加映射',
+  '原始值不能重复'
+].forEach((marker) => {
+  assert.ok(
+    objectMappingEditor.includes(marker),
+    `对象映射必须通过可视化表格维护: ${marker}`
   )
 })
 
@@ -1500,10 +1611,30 @@ assert.equal(
   'title="列展示"',
   'title="高级列布局"',
   'title="数据与显示"',
-  'title="高级模板"'
+  'title="模板初始化"'
 ].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设置缺少常用优先或高级折叠分组: ${marker}`)
 })
+;[
+  '后续模板修改不会影响本列',
+  'applyListColumnTemplateSnapshot',
+  'templateId: null',
+  'templateVersion: null'
+].forEach((marker) => {
+  assert.ok(listDesigner.includes(marker), `列表列模板必须保持一次性初始化语义: ${marker}`)
+})
+;['检查模板升级', 'handleListTemplateChange', 'upgradeListTemplate'].forEach((marker) => {
+  assert.equal(listDesigner.includes(marker), false, `列表列模板不得保留版本绑定能力: ${marker}`)
+})
+assert.ok(
+  listDesigner.includes('uiComponentTemplateApi.snapshot(templateId)'),
+  '列表列模板初始化必须直接读取当前快照'
+)
+assert.equal(
+  listDesigner.includes('uiComponentTemplateApi.versions(templateId)'),
+  false,
+  '列表列模板初始化不得读取版本历史'
+)
 const listFieldTableSource = listDesigner.match(
   /<el-table[\s\S]*?class="field-config-table"[\s\S]*?<\/el-table>/
 )?.[0] || ''
@@ -1630,7 +1761,6 @@ const configurationArchitectureExpectations = {
   'src/data/user-manual/interfaceService.js': [
     '什么时候使用',
     '怎么配置',
-    'ENTITY_QUERY',
     'REGISTERED_PROVIDER',
     'INTEGRATION_CONNECTOR',
     'STRUCTURED_COMPUTE',
@@ -1672,7 +1802,6 @@ const configurationArchitectureExpectations = {
     '/publish',
     '/releases',
     '/activate',
-    'ENTITY_QUERY',
     'INTEGRATION_CONNECTOR',
     'FORM_INIT',
     'BEFORE_SUBMIT',

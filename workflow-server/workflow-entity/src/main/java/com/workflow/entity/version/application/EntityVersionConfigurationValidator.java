@@ -70,6 +70,16 @@ public class EntityVersionConfigurationValidator {
                 throw new IllegalArgumentException(
                         "受管理自定义接口只能在 PREPARE 阶段执行");
             }
+            if ("MANAGED_INTERFACE".equals(step.getStepType())
+                    && (!StringUtils.hasText(step.getProviderCode())
+                    || !StringUtils.hasText(
+                            step.getConfig().get("operationCode")
+                                    instanceof String operationCode
+                                            ? operationCode
+                                            : null))) {
+                throw new IllegalArgumentException(
+                        "受管理自定义接口必须选择接口服务和操作");
+            }
             if (StringUtils.hasText(step.getScenarioCode())
                     && !scenarioCodes.contains(step.getScenarioCode())) {
                 throw new IllegalArgumentException(

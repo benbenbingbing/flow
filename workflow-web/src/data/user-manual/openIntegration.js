@@ -884,7 +884,7 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: '$input.xxx', meaning: '引用调用 Connector 时传入的 input，支持最多 8 层点路径。', usage: '业务参数，如 $input.orderNo、$input.customer.id。' },
-                { option: '$context.sourceId', meaning: '当前配置运行来源标识。', usage: '外部接口需要来源追踪时传递。' },
+                { option: '$context.serviceId', meaning: '当前接口服务标识。', usage: '外部接口需要来源追踪时传递。' },
                 { option: '$context.usage / configType / configId', meaning: '当前数据源或配置类型及标识。', usage: '区分列表、表单或动作场景。' },
                 { option: '$context.releaseId / releaseVersion', meaning: '当前发布快照。', usage: '外部系统需要审计平台配置版本。' },
                 { option: '$context.entityId / entityCode / listKey', meaning: '实体与列表上下文。', usage: '实体列表、表单数据源使用 INTEGRATION_CONNECTOR 时传递业务模型标识。' },

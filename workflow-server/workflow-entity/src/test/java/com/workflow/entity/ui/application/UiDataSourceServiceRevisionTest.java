@@ -6,7 +6,6 @@ import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.contracts.integration.IntegrationConnector;
 import com.workflow.contracts.ui.UiDataSourceProvider;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -76,9 +75,9 @@ class UiDataSourceServiceRevisionTest {
                 mock(EntityListConfigMapper.class),
                 mock(EntityDefinitionAccessPolicy.class),
                 mock(EntityUiConfigurationPolicy.class),
-                mock(EntityDataDynamicService.class),
                 mock(SysDictItemService.class),
                 mock(UiDataSourceExecutionAccessService.class),
+                mock(UiInvocationContextFactory.class),
                 mock(UiDataSourceDefinitionValidator.class),
                 List.<UiDataSourceProvider>of(),
                 List.<IntegrationConnector>of(),
@@ -115,8 +114,6 @@ class UiDataSourceServiceRevisionTest {
                 List.of(Map.of(
                         "label", "验收项",
                         "value", "ok"))));
-        request.setInputSchema(Map.of());
-        request.setOutputSchema(Map.of());
         request.setExecutionPolicy(Map.of(
                 "timeoutMs", 3000,
                 "cacheSeconds", 0,
@@ -125,6 +122,7 @@ class UiDataSourceServiceRevisionTest {
                 "code", "query",
                 "name", "查询数据",
                 "kind", "READ",
+                "contextType", "FORM",
                 "config", Map.of(),
                 "inputSchema", Map.of(),
                 "outputSchema", Map.of())));

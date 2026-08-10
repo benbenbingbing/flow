@@ -53,20 +53,20 @@ public record FormSubmissionExecutionContext(
      *
      * @param formId       表单ID
      * @param ownerKey     绑定归属 key
-     * @param sourceId     数据源ID
+     * @param serviceId    接口服务ID
      * @param bindingIndex 绑定序号
      * @return 以 fbs_ 为前缀的幂等键
      */
     public String bindingIdempotencyKey(
             String formId,
             String ownerKey,
-            String sourceId,
+            String serviceId,
             int bindingIndex) {
         return bindingIdempotencyKey(
                 formId,
                 null,
                 ownerKey,
-                sourceId,
+                serviceId,
                 bindingIndex);
     }
 
@@ -76,7 +76,7 @@ public record FormSubmissionExecutionContext(
      * @param formId         表单ID
      * @param formReleaseId  表单发布版本ID，可为 null
      * @param ownerKey       绑定归属 key
-     * @param sourceId       数据源ID
+     * @param serviceId      接口服务ID
      * @param bindingIndex   绑定序号
      * @return 以 fbs_ 为前缀的幂等键
      */
@@ -84,7 +84,7 @@ public record FormSubmissionExecutionContext(
             String formId,
             String formReleaseId,
             String ownerKey,
-            String sourceId,
+            String serviceId,
             int bindingIndex) {
         String material = String.join(
                 "|",
@@ -93,7 +93,7 @@ public record FormSubmissionExecutionContext(
                 value(formId),
                 value(formReleaseId),
                 value(ownerKey),
-                value(sourceId),
+                value(serviceId),
                 String.valueOf(bindingIndex));
         return "fbs_" + sha256(material);
     }

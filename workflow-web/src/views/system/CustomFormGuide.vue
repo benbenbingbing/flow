@@ -257,13 +257,13 @@ defineExpose({ validate })
         <section id="data-source" class="guide-section">
           <h3>11. 表单统一数据源</h3>
           <ul class="check-list">
-            <li>类型包括 `ENTITY_QUERY`、`DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`INTEGRATION_CONNECTOR`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
+            <li>类型包括 `DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`INTEGRATION_CONNECTOR`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
             <li>表单级使用 `FORM_INIT`；FIELD 仅使用 `FIELD_OPTIONS`、`FIELD_DEFAULT`、`FIELD_COMPUTE`、`AFTER_LOAD`、`BEFORE_SUBMIT`。</li>
             <li>SUB_FORM 与 REPEATER 仅使用 `SUBFORM_ROWS`、`AFTER_LOAD`、`BEFORE_SUBMIT`，不能复用 FIELD 的选项、默认值或字段计算 Usage。</li>
             <li>配置统一输入/输出映射、分页、超时、缓存和失败策略；组件只通过 `dataSourceRuntime.execute(bindingId, context)` 调用。</li>
-            <li>实体查询始终执行 `DataScopePlan`；客户端上下文、隐藏字段和组件本地状态不能扩大数据权限。</li>
+            <li>Provider 或 Connector 查询必须执行平台传入的 `DataScopePlan`；客户端上下文、隐藏字段和组件本地状态不能扩大数据权限。</li>
             <li>禁止任意 SQL、脚本和外网 URL。远程调用只能引用受控 Connector 与凭据引用，配置中不得保存令牌。</li>
-            <li>生产运行时调用 `/api/ui-data-sources/{id}/execute`；`/preview` 仅供管理员在设计态调试，不能作为自定义组件运行接口。</li>
+            <li>生产运行时调用 `/api/ui-runtime/interface-operations/execute`，并同时提交已配置的服务 ID 与操作编码；`/preview` 仅供管理员在设计态调试。</li>
           </ul>
         </section>
 

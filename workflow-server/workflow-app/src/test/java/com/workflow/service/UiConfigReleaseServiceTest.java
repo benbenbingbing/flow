@@ -207,7 +207,8 @@ class UiConfigReleaseServiceTest {
         assertEquals("STRING", draftField.get("fieldType"));
         assertEquals("{}", draftField.get("componentProps"));
         assertEquals(
-                "{\"FORM_INIT\":{\"sourceId\":\"source-init\"}}",
+                "{\"FORM_INIT\":{\"serviceId\":\"source-init\","
+                        + "\"operationCode\":\"initializeForm\"}}",
                 draftForm.get("dataSourceBindingsDocument"));
     }
 
@@ -1878,7 +1879,8 @@ class UiConfigReleaseServiceTest {
         form.setRevision(9);
         form.setActiveReleaseId("release-1");
         form.setDataSourceBindingsDocument(
-                "{\"FORM_INIT\":{\"sourceId\":\"source-init\"}}");
+                "{\"FORM_INIT\":{\"serviceId\":\"source-init\","
+                        + "\"operationCode\":\"initializeForm\"}}");
 
         EntityFormField field = new EntityFormField();
         field.setId("node-1");

@@ -40,6 +40,7 @@ export const entityListConfigApi = {
   patchField(id, fieldId, expectedRevision, field) {
     const clearFields = [
       'dataSourceId',
+      'dataSourceOperationCode',
       'templateId',
       'templateVersion',
       'localOverridesDocument'

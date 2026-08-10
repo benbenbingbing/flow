@@ -39,8 +39,10 @@ public class EntityListMetadataPatchRequest {
     private Map<String, Object> viewConfig;
     /** 数据查询提供者编码 */
     private String queryProviderCode;
-    /** 数据查询数据源 ID */
+    /** 列表查询绑定的接口服务 ID */
     private String queryDataSourceId;
+    /** 列表查询绑定的接口操作编码 */
+    private String queryOperationCode;
     /** 需要清空的字段集合（局部更新时置空指定字段） */
     private Set<String> clearFields;
 }

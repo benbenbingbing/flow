@@ -41,7 +41,11 @@
                 help-key="formDataSource.usage"
               />
             </template>
-            <el-select v-model="binding.usage" style="width: 100%">
+            <el-select
+              v-model="binding.usage"
+              style="width: 100%"
+              @change="handleUsageChange(binding)"
+            >
               <el-option
                 v-for="usage in usages"
                 :key="usage.value"
@@ -52,17 +56,37 @@
           </el-form-item>
           <el-form-item label="数据源">
             <el-select
-              v-model="binding.sourceId"
+              v-model="binding.serviceId"
               clearable
               filterable
               placeholder="选择受控数据源"
               style="width: 100%"
+              @change="handleSourceChange(binding)"
             >
               <el-option
-                v-for="source in dataSources"
+                v-for="source in sourcesForUsage(binding.usage)"
                 :key="source.id"
                 :label="`${source.sourceName} (${source.sourceType})`"
                 :value="source.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item
+            v-if="binding.serviceId"
+            label="接口操作"
+            required
+          >
+            <el-select
+              v-model="binding.operationCode"
+              filterable
+              placeholder="选择接口操作"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="operation in operationsFor(binding)"
+                :key="operation.code"
+                :label="`${operation.name} (${operation.code})`"
+                :value="operation.code"
               />
             </el-select>
           </el-form-item>
@@ -132,10 +156,11 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
+import { serviceOperations } from './interfaceServiceModel'
 
 const props = defineProps({
   form: { type: Object, required: true },
-  dataSources: { type: Array, default: () => [] }
+  dataSourcesByUsage: { type: Object, default: () => ({}) }
 })
 
 const emit = defineEmits(['saved', 'error'])
@@ -153,7 +178,8 @@ function newRow(value = {}) {
   return {
     rowKey: `form_source_${++rowSequence}`,
     usage: value.usage || 'FORM_INIT',
-    sourceId: value.sourceId || value.id || '',
+    serviceId: value.serviceId || '',
+    operationCode: value.operationCode || '',
     inputMappingText: stringifyConfig(value.inputMapping || {}),
     outputMappingText: stringifyConfig(value.outputMapping || {}),
     clientPrevalidate: value.clientPrevalidate === true,
@@ -172,10 +198,12 @@ function open() {
   Object.entries(bindings).forEach(([usage, configured]) => {
     const items = Array.isArray(configured) ? configured : [configured]
     items.filter(Boolean).forEach(value => {
-      const normalized = typeof value === 'string' ? { sourceId: value } : { ...value }
+      const normalized = value && typeof value === 'object'
+        ? { ...value }
+        : {}
       const {
-        sourceId,
-        id,
+        serviceId,
+        operationCode,
         inputMapping,
         outputMapping,
         clientPrevalidate,
@@ -185,7 +213,8 @@ function open() {
       } = normalized
       values.push(newRow({
         usage,
-        sourceId: sourceId || id,
+        serviceId,
+        operationCode,
         inputMapping,
         outputMapping,
         clientPrevalidate,
@@ -202,10 +231,37 @@ function add() {
   rows.value.push(newRow())
 }
 
+function sourcesForUsage(usage) {
+  return props.dataSourcesByUsage?.[usage] || []
+}
+
+function operationsFor(binding) {
+  const source = sourcesForUsage(binding.usage).find(item =>
+    String(item.id) === String(binding.serviceId))
+  return source ? serviceOperations(source) : []
+}
+
+function handleUsageChange(binding) {
+  binding.serviceId = ''
+  binding.operationCode = ''
+}
+
+function handleSourceChange(binding) {
+  if (!binding.serviceId) {
+    binding.operationCode = ''
+    return
+  }
+  const operations = operationsFor(binding)
+  binding.operationCode = operations.length === 1
+    ? operations[0].code
+    : ''
+}
+
 function serialize() {
   const bindings = {}
   rows.value.forEach(row => {
-    if (!row.sourceId) throw new Error('表单级数据源不能为空')
+    if (!row.serviceId) throw new Error('表单级数据源不能为空')
+    if (!row.operationCode) throw new Error('表单级数据源必须选择接口操作')
     if (row.usage === 'BEFORE_SUBMIT'
       && row.clientPrevalidate
       && !row.sideEffectFree) {
@@ -213,7 +269,8 @@ function serialize() {
     }
     const binding = {
       ...(row.extra || {}),
-      sourceId: row.sourceId,
+      serviceId: row.serviceId,
+      operationCode: row.operationCode,
       inputMapping: parseJsonConfig(row.inputMappingText, {
         fieldName: '表单数据源输入映射'
       }),
@@ -239,7 +296,7 @@ async function save() {
   try {
     const bindings = serialize()
     await Promise.all(rows.value.map(row =>
-      uiDataSourceApi.validateBinding(row.sourceId, row.usage)))
+      uiDataSourceApi.validateBinding(row.serviceId, row.usage)))
     const updated = await patchFormMetadata(props.form.id, {
       expectedRevision: props.form.revision,
       dataSourceBindings: bindings

@@ -57,6 +57,18 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '前置在平台默认处理前执行；替代平台处理会取代默认逻辑且同一事件最多一个；后置在默认处理成功后执行。',
   'uiEvent.failurePolicy':
     '停止执行会返回错误；记录后继续会跳过失败步骤；按空结果继续会把失败步骤当作空结果再执行后续映射。',
+  'interfaceService.operationConfig':
+    '当前操作的静态配置，不是调用时传入的 input。执行时先加载服务基础配置，再用操作配置覆盖同名键，并自动加入 operation 操作编码。适合不同操作的查询模式、目标字段或固定参数。',
+  'interfaceService.operationInputSchema':
+    '在调用 Provider 或 Connector 前校验当前操作最终收到的 input。支持 type、required、properties、items；填写空对象表示不校验。多操作服务运行时以操作级 Schema 为准。',
+  'interfaceService.operationOutputSchema':
+    '在接口执行后校验最终返回值，缓存命中结果和失败策略产生的回退结果也会校验。事件回填依赖固定结构时应配置；填写空对象表示不校验。',
+  'interfaceService.baseConfig':
+    '所有操作共享的静态配置。适合放 Provider 公共参数、字典编码或 Connector 配置编码；某个操作需要不同值时，在操作配置中使用同名键覆盖。',
+  'interfaceService.baseInputSchema':
+    '服务基础定义的输入契约，主要兼容没有操作目录的历史单操作服务。新建多操作服务应在每个操作中配置输入 Schema，操作级空对象表示该操作不校验。',
+  'interfaceService.baseOutputSchema':
+    '服务基础定义的输出契约，主要兼容没有操作目录的历史单操作服务。新建多操作服务应在每个操作中配置输出 Schema，操作级空对象表示该操作不校验。',
   'entityVersion.sourceTypes':
     '限定版本场景由表单、审批、流程动作、接口、导入、批量或系统任务等哪些入口触发。留空表示不按入口限制。',
   'entityVersion.operationTypes':

@@ -1023,12 +1023,10 @@ public class ConfigMigrationImportApplyService {
                     text(value.get("scopeRef"), null)));
             request.setConfig(documentMap(
                     value.get("configDocument")));
-            request.setInputSchema(documentMap(
-                    value.get("inputSchemaDocument")));
-            request.setOutputSchema(documentMap(
-                    value.get("outputSchemaDocument")));
             request.setExecutionPolicy(documentMap(
                     value.get("executionPolicyDocument")));
+            request.setOperations(documentMapList(
+                    value.get("operationsDocument")));
             request.setEnabled(
                     booleanObject(value.get("enabled")));
             UiDataSourceDefinition saved =
@@ -1112,14 +1110,14 @@ public class ConfigMigrationImportApplyService {
     }
 
     /**
-     * 判断指定名称是否为数据源编码引用键(sourceCode/dataSourceCode/queryDataSourceCode)。
+     * 判断指定名称是否为数据源编码引用键。
      *
      * @param name 字段名
      * @return 是否为数据源编码键
      */
     static boolean isDataSourceCodeKey(String name) {
         return Set.of(
-                "sourceCode",
+                "serviceCode",
                 "dataSourceCode",
                 "queryDataSourceCode").contains(name);
     }
@@ -1133,8 +1131,9 @@ public class ConfigMigrationImportApplyService {
     static String dataSourceIdKey(String codeKey) {
         return switch (codeKey) {
             case "dataSourceCode" -> "dataSourceId";
-            case "queryDataSourceCode" -> "queryDataSourceId";
-            default -> "sourceId";
+            case "queryDataSourceCode" ->
+                    "queryDataSourceId";
+            default -> "serviceId";
         };
     }
 
@@ -1935,6 +1934,31 @@ public class ConfigMigrationImportApplyService {
             throw new IllegalStateException("迁移扩展配置必须为对象");
         }
         return mapValue(decoded);
+    }
+
+    /**
+     * 将迁移资产中的 JSON 数组文档解析为对象列表。
+     *
+     * @param value JSON 字符串或已解析的数组
+     * @return 由字符串键对象组成的列表
+     */
+    private List<Map<String, Object>> documentMapList(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        Object decoded = decodeDocument(value);
+        if (!(decoded instanceof Collection<?> collection)) {
+            throw new IllegalStateException("迁移接口操作定义必须为数组");
+        }
+        return collection.stream()
+                .map(item -> {
+                    if (!(item instanceof Map<?, ?>)) {
+                        throw new IllegalStateException(
+                                "迁移接口操作定义成员必须为对象");
+                    }
+                    return mapValue(item);
+                })
+                .toList();
     }
 
     private Object decodeDocument(Object value) {

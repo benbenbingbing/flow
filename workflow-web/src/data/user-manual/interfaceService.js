@@ -13,10 +13,6 @@ const optionColumns = [
   { key: 'notes', label: '限制 / 注意事项' }
 ]
 
-const serviceConfigExample = `{
-  "allowedFilters": ["name", "status", "create_time"]
-}`
-
 const operationSchemaExample = `{
   "type": "object",
   "required": ["customerId"],
@@ -68,7 +64,7 @@ export default {
   title: '接口服务用户手册',
   subtitle: '详细说明接口服务何时使用、如何创建、每个配置项的含义，以及如何通过事件绑定接入列表、表单、字段和按钮。',
   version: '统一接口服务与事件绑定基线',
-  updatedAt: '2026-08-04',
+  updatedAt: '2026-08-10',
   intro: [
     {
       title: '接口服务定义能力，事件绑定决定使用位置',
@@ -102,7 +98,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '列表改用自定义查询', meaning: '用一个 READ 操作替代平台默认实体分页查询。', when: '列表数据来自外部系统、聚合服务或特殊后端查询。', notes: '优先在“列表设置 → 查询实现 → 列表查询接口”直接选择；复杂链再进入事件绑定。' },
+                { option: '列表改用自定义查询', meaning: '用一个 LIST/READ 操作替代平台默认实体分页查询。', when: '列表数据来自外部系统、聚合服务或特殊后端查询。', notes: '在“列表设置 → 查询实现 → 列表查询接口”直接选择服务和操作。' },
                 { option: '表单加载外部详情', meaning: '打开编辑页时根据记录 ID 查询完整详情。', when: '平台实体只保存索引字段，详情由客户中心、ERP 等系统提供。', notes: '绑定 DETAIL_LOAD；返回结果需要映射为表单字段。' },
                 { option: '保存前校验或转换', meaning: '平台保存前调用接口校验状态、额度或转换提交结构。', when: '业务校验不能仅靠字段必填和本地规则完成。', notes: '使用 BEFORE，失败策略通常选停止执行；保留平台默认保存。' },
                 { option: '完全自定义保存', meaning: '由自定义 WRITE 操作替代平台实体新增或修改。', when: '主数据完全由外部系统维护，平台不能执行默认保存。', notes: '使用 REPLACE；接口需承担权限后的业务保存、幂等和标准结果返回。' },
@@ -130,7 +126,7 @@ export default {
               type: 'callout',
               tone: 'warning',
               title: '平台系统实体限制',
-              text: '平台系统实体继续使用可信只读查询，不能通过 LIST_LOAD 的 REPLACE 步骤替换查询，也不能通过通用接口服务执行新增、修改或删除。'
+              text: '平台系统实体继续使用可信只读查询，不能配置 LIST_QUERY 查询接口、查询 Provider 或自定义列表组件，也不能通过通用接口服务执行新增、修改或删除。'
             }
           ]
         }
@@ -241,17 +237,16 @@ export default {
       id: 'interface-service-types',
       index: '04',
       title: '实现类型详解',
-      summary: '说明七种实现类型什么时候使用、基础配置写什么、会返回什么。',
+      summary: '说明六种实现类型什么时候使用、基础配置写什么、会返回什么。',
       topics: [
         {
           id: 'interface-service-type-reference',
-          title: '七种实现类型',
+          title: '六种实现类型',
           blocks: [
             {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '平台实体查询 ENTITY_QUERY', meaning: '使用平台动态实体查询和 DataScopePlan 执行分页。', when: '需要复用平台权限和动态表查询，但希望作为统一操作绑定。', notes: '输入 filters、pageNum、pageSize；配置 allowedFilters 限制可查询字段；返回标准分页结果。' },
                 { option: '平台字典 DICTIONARY', meaning: '按字典编码返回 label、value、disabled、children。', when: '下拉、单选、多选需要平台字典。', notes: '基础配置填写 dictCode；不需要 Provider。' },
                 { option: '平台静态数据 STATIC_OPTIONS', meaning: '直接返回配置中的固定 options。', when: '少量稳定选项，不值得创建字典。', notes: '基础配置填写 options 数组；变更需要修改服务配置。' },
                 { option: '平台注册能力 REGISTERED_PROVIDER', meaning: '调用后端实现 UiDataSourceProvider 的受控 Java 能力。', when: '需要复杂查询、聚合或内部系统逻辑，且应在同一应用事务边界内受控执行。', notes: '必须选择受控连接；配置结构和输入输出由 Provider 契约决定。' },
@@ -270,7 +265,6 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: 'ENTITY_QUERY.allowedFilters', meaning: '允许客户端 filters 使用的实体字段编码白名单。', when: '列表查询或选择器允许用户提交筛选条件。', how: '填写字段编码数组；日期范围的 _start、_end 和操作符 _op 会按基础字段校验。', effect: '未列入白名单的筛选会被移除；空数组表示不额外限制。' },
                 { field: 'DICTIONARY.dictCode', meaning: '平台字典编码。', when: '返回某一字典的树形选项。', how: '基础配置填写 {"dictCode":"customer_status"}。', effect: '字典项状态会映射为 disabled，层级映射为 children。' },
                 { field: 'STATIC_OPTIONS.options', meaning: '固定选项数组。', when: '选项少且不需要字典管理。', how: '基础配置填写 {"options":[{"label":"启用","value":"1"}]}。', effect: '运行时原样返回 options。' },
                 { field: 'REGISTERED_PROVIDER 配置', meaning: 'Provider 自定义参数。', when: '所选 Provider 需要实体编码、查询模式或其他受控参数。', how: '按 Provider 开发文档填写基础配置和操作配置。', effect: '服务级配置先加载，操作配置覆盖同名键。' },
@@ -280,7 +274,6 @@ export default {
                 { field: 'STRUCTURED_COMPUTE.equals / then / else', meaning: 'IF_EQUALS 的比较值和两个返回分支。', when: '简单二选一映射。', how: '第一个 inputs 值与 equals 严格相等时返回 then，否则返回 else。', effect: '不支持任意表达式。' }
               ]
             },
-            { type: 'code', title: '实体查询基础配置', language: 'json', code: serviceConfigExample },
             { type: 'code', title: 'HTTP Connector 基础配置', language: 'json', code: connectorConfigExample },
             { type: 'code', title: '结构化计算操作配置', language: 'json', code: computeConfigExample }
           ]
@@ -332,6 +325,12 @@ export default {
               tone: 'info',
               title: '当前支持的 Schema 子集',
               text: '支持 type、required、properties、items；type 支持 object、array、string、number、integer、boolean。当前不执行 additionalProperties、长度、正则、minimum、enum 等完整 JSON Schema 关键字，不要依赖这些关键字完成业务校验。'
+            },
+            {
+              type: 'callout',
+              tone: 'success',
+              title: 'Provider 配置键会显示在编辑弹窗',
+              text: '选择“平台注册能力”及具体 Provider 后，编辑弹窗会读取 Provider 的 configurationSchema，列出可写入基础配置或操作配置的参数、含义和默认值。公共参数放基础配置，只有单个操作不同的参数才放操作配置。'
             },
             { type: 'code', title: '输入 Schema 示例', language: 'json', code: operationSchemaExample },
             { type: 'code', title: '列表分页输出 Schema 示例', language: 'json', code: pageResultSchemaExample }
@@ -421,7 +420,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: 'LIST_LOAD / LIST_EXPORT', meaning: '加载列表 / 导出列表。', when: '自定义分页查询、导出前准备或完全替代平台查询。', notes: '列表直接数据源优先使用 LIST_LOAD；导出是否复用查询取决于绑定。' },
+                { option: 'LIST_LOAD / LIST_EXPORT', meaning: '列表加载事件 / 导出事件。', when: '加载或导出前后需要校验、补充参数、记录审计或触发联动。', notes: '自定义分页查询使用列表配置中的 LIST_QUERY 槽位，不通过 LIST_LOAD 保存查询数据源。' },
                 { option: 'DETAIL_LOAD', meaning: '加载单条详情。', when: '编辑或查看前补充完整数据。', notes: 'REPLACE 时接口需返回可映射的完整记录。' },
                 { option: 'DATA_CREATE / DATA_UPDATE', meaning: '新增 / 修改业务记录。', when: '对平台保存增加校验、同步，或完全自定义保存。', notes: 'WRITE 操作应具备幂等；REPLACE 后自定义接口承担主保存。' },
                 { option: 'DATA_DELETE / DATA_BATCH_DELETE', meaning: '单条 / 批量删除。', when: '删除前校验、外部删除或删除后通知。', notes: '危险操作通常使用 STOP，避免部分成功。' },
@@ -506,8 +505,8 @@ export default {
               items: [
                 { title: '创建查询服务', text: '新建接口服务，选择合适实现类型，增加一个 READ 操作并调试返回分页结构。' },
                 { title: '打开列表设计器', text: '进入“列表设置 → 查询实现 → 列表查询接口”。' },
-                { title: '选择服务和操作', text: '选择已启用服务以及 READ 操作；输入参数默认映射 filters、pageNum、pageSize、scene、context。' },
-                { title: '配置结果路径', text: '标准 records、total、pageNum、pageSize 全部留空；外层嵌套或别名时填写数据列表、总数、页码和每页条数路径。' },
+                { title: '选择服务和操作', text: '选择已启用、作用域匹配的 LIST/READ 操作；运行时统一提供 filters、sorts、currentRow、selectedRows、records、pageNum、pageSize 和 scene。' },
+                { title: '确认分页契约', text: '操作输出 Schema 必须声明对象结构和 records 数组；接口结果应返回 records、total、pageNum、pageSize。' },
                 { title: '保存并发布', text: '保存列表设置，再发布生效；未发布修改不影响实际运行列表。' },
                 { title: '验证分页和条件', text: '分别测试第一页、第二页、修改每页条数和至少两个查询条件，确认预览与实际列表一致。' }
               ]
@@ -516,14 +515,14 @@ export default {
             {
               type: 'callout',
               tone: 'info',
-              title: '兼容返回字段',
-              text: '运行时兼容 records、list、rows 作为数据数组，pageNum 或 current 作为页码，pageSize 或 size 作为每页条数。新接口仍推荐返回标准四字段，减少页面映射和后续维护成本。'
+              title: '标准返回字段',
+              text: '列表查询接口统一返回 records、total、pageNum、pageSize。分页结果仍会经过运行时标准化，但新接口应直接遵守标准契约。'
             },
             {
               type: 'callout',
               tone: 'info',
-              title: '复杂 LIST_LOAD 链',
-              text: '如果 LIST_LOAD 已包含多个步骤、条件、BEFORE/AFTER 或继承关系，列表简化配置只显示摘要，不会静默覆盖。应点击“高级事件链”维护完整执行顺序。'
+              title: '查询与事件分离',
+              text: 'LIST_QUERY 只保存在列表查询配置槽位；LIST_LOAD 等事件仍在事件绑定中维护。两者可以调用同一接口服务的不同操作，但不会互相覆盖配置。'
             }
           ]
         },
@@ -597,7 +596,7 @@ export default {
               rows: [
                 { option: '保存接口服务', meaning: '更新服务目录和操作定义。', when: '服务创建或编辑完成。', notes: '不会自动绑定到页面；停用会立即导致后续执行拒绝。' },
                 { option: '保存事件绑定', meaning: '更新实体、表单或列表的绑定草稿。', when: '执行链编辑完成。', notes: '提示“发布页面配置后生效”，实际运行仍读取当前激活发布版本。' },
-                { option: '保存列表查询接口', meaning: '创建或更新列表级 LIST_LOAD REPLACE 草稿。', when: '通过列表设置直接修改数据源。', notes: '新配置会清除对应旧直接数据源字段，避免重复执行。' },
+                { option: '保存列表查询接口', meaning: '更新列表的 queryDataSourceId 和 queryOperationCode。', when: '通过列表设置直接修改查询数据源。', notes: '服务 ID 和操作编码同时保存到列表查询配置槽位。' },
                 { option: '发布表单或列表', meaning: '生成并激活运行快照。', when: '调试、映射、权限和影响预检通过。', notes: '发布后实际页面才使用新链；未发布修改只在设计草稿中存在。' },
                 { option: '删除或停用服务', meaning: '停止服务后续执行。', when: '下线、故障隔离或安全处置。', notes: '不会自动清理绑定；应先检索引用并准备替代服务。' }
               ]
@@ -613,10 +612,9 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: '保存后页面没有变化', meaning: '只保存了服务或绑定，没有发布表单/列表。', when: '设计器能看到配置，运行页仍使用旧逻辑。', notes: '保存对应页面全部草稿并“发布生效”，再刷新运行页。' },
-                { option: '列表仍走平台查询', meaning: '没有 LIST_LOAD REPLACE，或本级配置被继承/禁用规则改变。', when: '自定义服务没有执行日志。', notes: '检查完整执行链是否显示自定义步骤替代平台处理。' },
-                { option: '清空列表查询接口后的行为', meaning: '删除列表本级简化绑定。', when: '特殊列表不再需要独立数据源。', notes: '系统恢复实体级 LIST_LOAD 继承；实体也未配置时恢复平台默认查询。' },
-                { option: '检测到旧查询配置', meaning: '列表仍保存 queryDataSourceId 或 queryProviderCode。', when: '升级前已经配置过统一查询数据源。', notes: '旧配置继续兼容；通过新入口保存后迁移为 LIST_LOAD 并清除对应旧字段，事件绑定优先于冲突的旧配置。' },
-                { option: '列表有数据但分页不对', meaning: '返回字段路径或 total/pageNum/pageSize 不正确。', when: '只有第一页、总数为 0 或翻页重复。', notes: '优先返回标准四字段；非标准结构在列表设置配置结果路径。' },
+                { option: '列表仍走平台查询', meaning: '列表没有保存 queryDataSourceId 和 queryOperationCode，或发布版本仍是旧配置。', when: '自定义服务没有执行日志。', notes: '检查列表查询配置和当前激活发布版本。' },
+                { option: '清空列表查询接口后的行为', meaning: '清空列表查询服务和操作。', when: '特殊列表不再需要独立数据源。', notes: '系统恢复平台默认实体分页查询；事件绑定不受影响。' },
+                { option: '列表有数据但分页不对', meaning: '接口返回的 total/pageNum/pageSize 不正确。', when: '只有第一页、总数为 0 或翻页重复。', notes: '检查操作输出 Schema 和标准分页四字段。' },
                 { option: '操作下拉没有目标操作', meaning: '服务停用、操作不是 READ、操作未保存或服务范围不匹配。', when: '配置列表查询接口或事件步骤。', notes: '刷新接口服务页面，确认操作编码、数据影响和启用状态。' },
                 { option: '输入 Schema 校验失败', meaning: '映射后的 input 缺字段或类型不符。', when: '接口尚未真正执行即报错。', notes: '用调试窗口查看输入，注意 integer 与字符串、数组与单值区别。' },
                 { option: '输出 Schema 校验失败', meaning: 'Provider/Connector 返回结构与声明不符。', when: '下游成功但平台报告输出错误。', notes: '修正接口返回或 Schema；不要用空 Schema 长期掩盖不稳定契约。' },

@@ -463,6 +463,7 @@ CREATE TABLE `entity_list_config` (
   `active_release_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '当前激活发布快照ID',
   `draft_hash` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '当前草稿内容哈希',
   `query_data_source_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '统一列表查询数据源ID',
+  `query_operation_code` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '统一列表查询操作编码',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_entity_list_key` (`entity_id`,`list_key`,`deleted`),
   KEY `idx_entity_id` (`entity_id`)

@@ -178,7 +178,7 @@ function remove(row) {
           <h3>7. LIST_QUERY 与 LIST_COLUMN 数据源</h3>
           <ul class="check-list">
             <li>整表查询绑定 `LIST_QUERY`，单列补充绑定 `LIST_COLUMN`；现有 `EntityListDataProvider` 和 `ListFieldDataProvider` 通过适配器继续使用。</li>
-            <li>可选类型包括 `ENTITY_QUERY`、`DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`INTEGRATION_CONNECTOR`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
+            <li>可选类型包括 `DICTIONARY`、`STATIC_OPTIONS`、`REGISTERED_PROVIDER`、`INTEGRATION_CONNECTOR`、`RUNTIME_CONTEXT`、`STRUCTURED_COMPUTE`。</li>
             <li>数据源统一配置输入/输出映射、分页、超时、缓存和失败策略，并在发布前按 Schema 校验。</li>
             <li>所有查询都必须执行平台传入的 `DataScopePlan`；Provider 或 Connector 不得返回授权范围外记录。</li>
             <li>禁止任意 SQL、脚本和外网 URL。外部系统只能通过已注册 Connector 与凭据引用访问。</li>

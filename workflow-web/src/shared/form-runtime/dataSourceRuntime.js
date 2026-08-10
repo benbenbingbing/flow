@@ -6,13 +6,12 @@ function parseBindings(value) {
 }
 
 function normalizeBinding(binding, usage) {
-  if (!binding) return null
-  if (typeof binding === 'string') {
-    return { sourceId: binding, usage }
+  if (!binding || typeof binding !== 'object' || Array.isArray(binding)) {
+    return null
   }
   return {
     ...binding,
-    sourceId: binding.sourceId || binding.id,
+    serviceId: binding.serviceId,
     usage: binding.usage || usage
   }
 }
@@ -25,7 +24,9 @@ function bindingsFor(owner, usage) {
   if (!configured) return []
   return (Array.isArray(configured) ? configured : [configured])
     .map(binding => normalizeBinding(binding, usage))
-    .filter(binding => binding?.sourceId)
+    .filter(binding =>
+      binding?.serviceId
+      && binding?.operationCode)
 }
 
 export function isClientPrevalidationBinding(binding) {
@@ -118,8 +119,11 @@ export function createFormDataSourceRuntime(options) {
 
   async function execute(binding, runtimeContext = {}) {
     const normalized = normalizeBinding(binding, runtimeContext.usage)
-    if (!normalized?.sourceId) {
-      throw new Error('数据源绑定缺少 sourceId')
+    if (!normalized?.serviceId) {
+      throw new Error('数据源绑定缺少 serviceId')
+    }
+    if (!normalized.operationCode) {
+      throw new Error('数据源绑定缺少 operationCode')
     }
     const usage = runtimeContext.usage || normalized.usage
     if (usage === 'BEFORE_SUBMIT' && !isClientPrevalidationBinding(normalized)) {
@@ -135,8 +139,15 @@ export function createFormDataSourceRuntime(options) {
     }
     const rawInput = {
       recordId: runtimeContext.recordId ?? options.getRecordId?.(),
-      data: record,
+      mode: context.mode,
+      fieldCode: runtimeContext.fieldCode
+        || runtimeContext.input?.fieldCode
+        || normalized.targetKey,
+      formData: record,
+      changedField: runtimeContext.changedField || {},
       params: runtimeContext.params || runtimeContext.context?.params || {},
+      parent: runtimeContext.parent || context.parent || {},
+      row: runtimeContext.row || context.row || {},
       ...normalized.input,
       ...runtimeContext.input
     }
@@ -154,13 +165,17 @@ export function createFormDataSourceRuntime(options) {
       mappingSource,
       rawInput
     )
-    const executeDataSource = options.executeDataSource || uiDataSourceApi.execute
-    const response = await executeDataSource(normalized.sourceId, {
-      usage,
-      entityCode: options.entityCode,
-      listKey: options.getListKey?.(),
-      input,
-      context
+    const executeDataSource = options.executeDataSource
+      || uiDataSourceApi.executeOperation
+    const response = await executeDataSource({
+      ownerType: 'FORM',
+      ownerId: context.formId,
+      bindingCode: usage,
+      targetType: runtimeContext.targetType || normalized.targetType || 'OWNER',
+      targetKey: runtimeContext.targetKey || normalized.targetKey || '',
+      serviceId: normalized.serviceId,
+      operationCode: normalized.operationCode,
+      input
     })
     return applyMapping(
       normalized.outputMapping,
@@ -171,10 +186,15 @@ export function createFormDataSourceRuntime(options) {
 
   async function executeOwnerUsage(owner, usage, runtimeContext = {}) {
     const results = []
+    const fieldCode = owner?.fieldCode || owner?.fieldKey || owner?.nodeKey || ''
+    const targetType = fieldCode ? 'FIELD' : 'OWNER'
     for (const binding of bindingsFor(owner, usage)) {
       results.push(await execute(binding, {
         ...runtimeContext,
-        usage
+        usage,
+        fieldCode,
+        targetType,
+        targetKey: fieldCode
       }))
     }
     return results

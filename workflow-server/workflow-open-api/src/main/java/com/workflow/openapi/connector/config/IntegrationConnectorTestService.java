@@ -69,21 +69,6 @@ public class IntegrationConnectorTestService {
                 .idempotencyKey(
                         "connection-test-" + UUID.randomUUID())
                 .parameters(input)
-                .runtimeContext(new IntegrationRuntimeContext(
-                        "connector-test",
-                        "CONNECTION_TEST",
-                        "INTEGRATION_CONNECTOR",
-                        configId,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        actor.userId(),
-                        actor.username(),
-                        null,
-                        null,
-                        null))
                 .build());
     }
 

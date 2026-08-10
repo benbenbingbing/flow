@@ -72,8 +72,8 @@ public class EntityListRuntimeService {
     private final EntityListRelationalConfigService relationalConfigService;
     private final EntityListPublishedRuntimeService publishedRuntimeService;
     private final EntityListPageResultNormalizer pageResultNormalizer;
-    private final UiDataSourceService uiDataSourceService;
     private final UiEventRuntimeService uiEventRuntimeService;
+    private final UiDataSourceService uiDataSourceService;
     private final CurrentUserRoleService currentUserRoleService;
     private final List<EntityListContextResolver> contextResolvers;
     private final List<EntityListDataProvider> dataProviders;
@@ -262,9 +262,10 @@ public class EntityListRuntimeService {
                                         "实体不存在: " + entityCode));
         if (definition.getStorageMode()
                 == EntityDefinition.StorageMode.SYSTEM) {
-            if (StringUtils.hasText(config.getQueryDataSourceId())
+            if (StringUtils.hasText(
+                    config.getQueryProviderCode())
                     || StringUtils.hasText(
-                            config.getQueryProviderCode())) {
+                            config.getQueryDataSourceId())) {
                 throw new IllegalStateException(
                         "平台系统表列表不能覆盖可信只读查询");
             }
@@ -285,28 +286,43 @@ public class EntityListRuntimeService {
                     text(tableConfig.get("defaultSortField")),
                     text(tableConfig.get("defaultSortDirection")));
         }
-        if (StringUtils.hasText(config.getQueryDataSourceId())) {
-            UiDataSourceExecuteRequest dataSourceRequest =
+        if (StringUtils.hasText(
+                config.getQueryDataSourceId())) {
+            if (!StringUtils.hasText(
+                    config.getQueryOperationCode())) {
+                throw new IllegalStateException(
+                        "列表查询接口缺少操作编码");
+            }
+            UiDataSourceExecuteRequest request =
                     new UiDataSourceExecuteRequest();
-            dataSourceRequest.setUsage("LIST_QUERY");
-            dataSourceRequest.setConfigType("LIST");
-            dataSourceRequest.setConfigId(config.getId());
-            dataSourceRequest.setReleaseId(config.getActiveReleaseId());
-            dataSourceRequest.setEntityCode(entityCode);
-            dataSourceRequest.setListKey(listKey);
-            dataSourceRequest.setPageNum(pageNum);
-            dataSourceRequest.setPageSize(pageSize);
-            dataSourceRequest.setContext(safeRequest.getContext() == null
-                    ? Map.of()
-                    : objectMapper.convertValue(
-                            safeRequest.getContext(),
-                            new TypeReference<Map<String, Object>>() {}));
-            dataSourceRequest.setInput(Map.of("filters", filters));
-            return uiDataSourceService.execute(
+            request.setUsage("LIST_QUERY");
+            request.setOperationCode(
+                    config.getQueryOperationCode());
+            request.setConfigType("LIST");
+            request.setConfigId(config.getId());
+            request.setReleaseId(
+                    config.getActiveReleaseId());
+            request.setEntityCode(entityCode);
+            request.setListKey(listKey);
+            request.setTargetType("OWNER");
+            request.setPageNum(pageNum);
+            request.setPageSize(pageSize);
+            Map<String, Object> input =
+                    new LinkedHashMap<>();
+            input.put("filters", filters);
+            input.put("sorts", List.of());
+            input.put("currentRow", Map.of());
+            input.put("selectedRows", List.of());
+            input.put("records", List.of());
+            input.put("pageNum", pageNum);
+            input.put("pageSize", pageSize);
+            input.put("scene", scene);
+            request.setInput(input);
+            return uiDataSourceService.executeOperation(
                     config.getQueryDataSourceId(),
-                    dataSourceRequest);
+                    config.getQueryOperationCode(),
+                    request);
         }
-
         if (StringUtils.hasText(config.getQueryProviderCode())) {
             EntityListDataProvider provider = dataProviders.stream()
                     .filter(item -> item.getCode().equalsIgnoreCase(config.getQueryProviderCode()))

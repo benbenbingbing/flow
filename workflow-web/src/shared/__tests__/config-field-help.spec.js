@@ -14,6 +14,7 @@ const files = [
   'src/components/NodeConfigPanel.vue',
   'src/components/FlowActionConfigPanel.vue',
   'src/components/ui-config/EventBindingEditor.vue',
+  'src/components/ui-config/InterfaceServiceEditorDialog.vue',
   'src/views/system/components/EntityVersionConfigDialogs.vue',
   'src/views/system/WorkCalendarManagement.vue',
   'src/components/form-designer/FormNodeDataSettings.vue',

@@ -73,6 +73,7 @@ public class EntityListConfigurationValidator {
         }
         validateExtensionName(dto.getCustomComponent(), "自定义列表组件");
         validateExtensionName(dto.getQueryProviderCode(), "自定义查询提供者");
+        validateQuerySource(dto);
         String dataScopeMode = StringUtils.hasText(dto.getDataScopeMode())
                 ? dto.getDataScopeMode().trim().toUpperCase(Locale.ROOT)
                 : "INHERIT";
@@ -107,6 +108,28 @@ public class EntityListConfigurationValidator {
         Set<String> fieldCodes = new HashSet<>();
         for (EntityListField field : fields) {
             validateField(field, entityFieldIds, fieldCodes);
+        }
+    }
+
+    /**
+     * 校验列表查询接口绑定：服务与操作必须成对出现，且不能和内部查询 Provider 同时配置。
+     *
+     * @param dto 列表配置 DTO
+     */
+    private void validateQuerySource(EntityListConfigDTO dto) {
+        boolean hasService =
+                StringUtils.hasText(dto.getQueryDataSourceId());
+        boolean hasOperation =
+                StringUtils.hasText(dto.getQueryOperationCode());
+        if (hasService != hasOperation) {
+            throw new IllegalArgumentException(
+                    "列表查询接口服务和操作编码必须同时配置");
+        }
+        if (hasService
+                && StringUtils.hasText(
+                        dto.getQueryProviderCode())) {
+            throw new IllegalArgumentException(
+                    "列表查询接口服务和自定义查询提供者不能同时配置");
         }
     }
 

@@ -1272,7 +1272,6 @@ async function configureEntityList(entity) {
           relationCode: 'ZDWREQ_reqItemForm'
         },
     queryProviderCode: null,
-    queryDataSourceId: null,
     expectedRevision: list.revision,
     fields
   }

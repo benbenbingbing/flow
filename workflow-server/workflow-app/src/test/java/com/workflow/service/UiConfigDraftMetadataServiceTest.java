@@ -4,6 +4,7 @@ import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
+import com.workflow.entity.ui.application.UiAvailableOperationService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -53,7 +54,8 @@ class UiConfigDraftMetadataServiceTest {
                         mock(EntityListConfigurationValidator.class),
                         mock(EntityListRelationalConfigService.class),
                         new JsonDocumentCodec(
-                                new ObjectMapper()));
+                                new ObjectMapper()),
+                        mock(UiAvailableOperationService.class));
 
         EntityForm current = new EntityForm();
         current.setId("form-1");
@@ -71,7 +73,9 @@ class UiConfigDraftMetadataServiceTest {
         request.setExpectedRevision(4);
         request.setDataSourceBindings(Map.of(
                 "FORM_INIT",
-                Map.of("sourceId", "source-init")));
+                Map.of(
+                        "serviceId", "source-init",
+                        "operationCode", "initializeForm")));
 
         service.patchForm("form-1", request);
 
@@ -80,7 +84,7 @@ class UiConfigDraftMetadataServiceTest {
         verify(formValidator).validateForm(
                 captor.capture());
         assertEquals(
-                "{\"FORM_INIT\":{\"sourceId\":\"source-init\"}}",
+                "{\"FORM_INIT\":{\"operationCode\":\"initializeForm\",\"serviceId\":\"source-init\"}}",
                 captor.getValue()
                         .getDataSourceBindingsDocument());
         assertEquals(5, captor.getValue().getRevision());

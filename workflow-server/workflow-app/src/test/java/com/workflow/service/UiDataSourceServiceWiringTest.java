@@ -6,6 +6,7 @@ import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInvocationContextFactory;
 
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,6 +51,8 @@ class UiDataSourceServiceWiringTest {
                     () -> mock(SysDictItemService.class));
             context.registerBean(UiDataSourceExecutionAccessService.class,
                     () -> mock(UiDataSourceExecutionAccessService.class));
+            context.registerBean(UiInvocationContextFactory.class,
+                    () -> mock(UiInvocationContextFactory.class));
             context.registerBean(JsonDocumentCodec.class,
                     () -> new JsonDocumentCodec(new ObjectMapper()));
             context.registerBean(UiDataSourceDefinitionValidator.class);

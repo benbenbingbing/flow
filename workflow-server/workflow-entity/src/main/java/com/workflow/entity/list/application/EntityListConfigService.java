@@ -541,6 +541,7 @@ public class EntityListConfigService {
         candidate.setContextBindingConfig(source.getContextBindingConfig());
         candidate.setQueryProviderCode(source.getQueryProviderCode());
         candidate.setQueryDataSourceId(source.getQueryDataSourceId());
+        candidate.setQueryOperationCode(source.getQueryOperationCode());
         candidate.setFields(source.getFields());
         return candidate;
     }
@@ -594,6 +595,7 @@ public class EntityListConfigService {
                 "上下文绑定配置"));
         config.setQueryProviderCode(candidate.getQueryProviderCode());
         config.setQueryDataSourceId(candidate.getQueryDataSourceId());
+        config.setQueryOperationCode(candidate.getQueryOperationCode());
         applyConfigDefaults(config);
         return config;
     }
@@ -647,7 +649,10 @@ public class EntityListConfigService {
                 .set("context_binding_config",
                         config.getContextBindingConfig())
                 .set("query_provider_code", config.getQueryProviderCode())
-                .set("query_data_source_id", config.getQueryDataSourceId());
+                .set("query_data_source_id",
+                        config.getQueryDataSourceId())
+                .set("query_operation_code",
+                        config.getQueryOperationCode());
     }
     private UpdateWrapper<EntityListConfig> configRevisionCondition(
             EntityListConfig current) {
@@ -708,6 +713,8 @@ public class EntityListConfigService {
         target.setDataSourceType(source.getDataSourceType());
         target.setDataSourceConfig(source.getDataSourceConfig());
         target.setDataSourceId(source.getDataSourceId());
+        target.setDataSourceOperationCode(
+                source.getDataSourceOperationCode());
         target.setRenderComponent(source.getRenderComponent());
         target.setFormatter(source.getFormatter());
         target.setColumnConfig(source.getColumnConfig());

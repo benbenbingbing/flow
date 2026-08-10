@@ -613,12 +613,14 @@ public class UiEventBindingService {
                 replaceCount++;
             }
             String serviceId = firstText(
-                    step.get("serviceId"),
-                    step.get("sourceId"));
+                    step.get("serviceId"));
             if (StringUtils.hasText(serviceId)) {
                 String operationCode = firstText(
-                        step.get("operationCode"),
-                        "default");
+                        step.get("operationCode"));
+                if (!StringUtils.hasText(operationCode)) {
+                    throw new IllegalArgumentException(
+                            "事件接口步骤缺少 operationCode");
+                }
                 boolean found = dataSourceService.operations(serviceId).stream()
                         .anyMatch(operation -> Objects.equals(
                                 operationCode,
@@ -699,14 +701,16 @@ public class UiEventBindingService {
                         "平台系统表列表不能替换可信只读查询");
             }
             String serviceId = firstText(
-                    step.get("serviceId"),
-                    step.get("sourceId"));
+                    step.get("serviceId"));
             if (!StringUtils.hasText(serviceId)) {
                 continue;
             }
             String operationCode = firstText(
-                    step.get("operationCode"),
-                    "default");
+                    step.get("operationCode"));
+            if (!StringUtils.hasText(operationCode)) {
+                throw new IllegalArgumentException(
+                        "事件接口步骤缺少 operationCode");
+            }
             Map<String, Object> operation =
                     dataSourceService.operations(serviceId)
                             .stream()

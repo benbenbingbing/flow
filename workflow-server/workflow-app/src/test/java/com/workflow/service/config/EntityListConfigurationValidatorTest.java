@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -60,5 +61,35 @@ class EntityListConfigurationValidatorTest {
         assertNull(field.getColumnConfig());
         assertNull(field.getQueryConfig());
         assertNull(field.getRenderConfig());
+    }
+
+    /** 列表查询接口服务与操作编码必须成对保存。 */
+    @Test
+    void rejectsIncompleteListQueryOperationBinding() {
+        EntityListConfigurationValidator validator =
+                validator(mock(EntityFieldMapper.class));
+        EntityListConfigDTO dto = new EntityListConfigDTO();
+        dto.setEntityId("entity-1");
+        dto.setEntityCode("demo_project");
+        dto.setListKey("default");
+        dto.setQueryDataSourceId("service-1");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> validator.validate(dto));
+    }
+
+    /** 创建列表配置校验器测试实例。 */
+    private EntityListConfigurationValidator validator(
+            EntityFieldMapper entityFieldMapper) {
+        return new EntityListConfigurationValidator(
+                new StructuredConfigValidator(
+                        new ObjectMapper()),
+                new JsonDocumentCodec(
+                        new ObjectMapper()),
+                new ListFieldDataProviderRegistry(
+                        List.of(),
+                        new ObjectMapper()),
+                entityFieldMapper);
     }
 }

@@ -22,7 +22,10 @@ public interface UiComponentTemplateVersionMapper extends BaseMapper<UiComponent
      * @param templateId 模板 ID
      * @return 版本列表
      */
-    @Select("SELECT * FROM ui_component_template_version "
+    @Select("SELECT id, template_id, version, snapshot_document, "
+            + "content_hash, description, created_by, "
+            + "create_time AS created_at "
+            + "FROM ui_component_template_version "
             + "WHERE template_id = #{templateId} ORDER BY version DESC")
     List<UiComponentTemplateVersion> findByTemplateId(
             @Param("templateId") String templateId);

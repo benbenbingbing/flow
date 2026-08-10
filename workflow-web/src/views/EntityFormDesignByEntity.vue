@@ -783,7 +783,7 @@
     <FormDataSourceCompatDialog
       ref="formDataSourceDialogRef"
       :form="form"
-      :data-sources="dataSources"
+      :data-sources-by-usage="dataSourcesByUsage"
       @saved="handleFormDataSourceSaved"
       @error="handleRevisionConflict"
     />
@@ -940,6 +940,7 @@ import {
   uiExtensionApi,
   uiEventBindingApi
 } from '@/api/uiConfig'
+import { serviceOperations } from '@/components/ui-config/interfaceServiceModel'
 
 const route = useRoute()
 const router = useRouter()
@@ -974,6 +975,7 @@ const activeNodeInteractionTab = ref('state')
 const publishDialogVisible = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
 const dataSources = ref([])
+const dataSourcesByUsage = ref({})
 const extensionDefinitions = ref([])
 const selectableCustomFormCatalogOptions = ref([])
 const formNodes = ref([])
@@ -1478,7 +1480,8 @@ const selectedNodeDataSourceBindingCount = computed(() => {
     if (field.dataSourceId) {
       bindings[usage] = {
         ...(typeof bindings[usage] === 'object' ? bindings[usage] : {}),
-        sourceId: field.dataSourceId
+        serviceId: field.dataSourceId,
+        operationCode: field.dataSourceOperationCode
       }
     } else {
       delete bindings[usage]
@@ -1491,6 +1494,14 @@ const selectedNodeDataSourceUsageLabel = computed(() =>
     item => item.value === selectedField.value?.dataSourceUsage
   )?.label || '当前用途'
 )
+const selectedNodeDataSources = computed(() =>
+  dataSourcesByUsage.value[selectedField.value?.dataSourceUsage] || []
+)
+const selectedNodeOperationOptions = computed(() => {
+  const source = selectedNodeDataSources.value.find(item =>
+    String(item.id) === String(selectedField.value?.dataSourceId))
+  return source ? serviceOperations(source) : []
+})
 
 watch(
   [() => selectedField.value?.id, availableNodeSettingsTabs],
@@ -1554,7 +1565,8 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   canConfigureSelectedNodeDataSource,
   selectedNodeDataSourceBindingCount, availableNodeDataSourceUsages,
   isNodeDataSourceUsageConfigured, selectNodeDataSourceUsage,
-  selectedNodeDataSourceUsageLabel, dataSources,
+  selectedNodeDataSourceUsageLabel, selectedNodeDataSources,
+  selectedNodeOperationOptions, handleNodeDataSourceChange,
   clearSelectedNodeDataSourceBinding, canConfigureSelectedNodeRelations,
   isSubFormField, isSubListField, getEntityNameById, formListByEntity,
   handleChildFormChange, childFormReleases, childFormReleaseLoading,
@@ -2247,13 +2259,15 @@ function isNodeDataSourceUsageConfigured(usage) {
   const field = selectedField.value
   if (!field) return false
   if (field.dataSourceUsage === usage) {
-    return Boolean(field.dataSourceId)
+    return Boolean(
+      field.dataSourceId
+      && field.dataSourceOperationCode
+    )
   }
   const binding = parseDocument(field.dataSourceBindings)[usage]
   return Boolean(
-    typeof binding === 'string'
-      ? binding
-      : binding?.sourceId || binding?.id
+    binding?.serviceId
+    && binding?.operationCode
   )
 }
 
@@ -2266,6 +2280,9 @@ function syncNodeDataSourceBinding(field, { throwOnError = false } = {}) {
     if (!field.dataSourceId) {
       delete bindings[usage]
     } else {
+      if (!field.dataSourceOperationCode) {
+        throw new Error('已选择接口服务时必须选择接口操作')
+      }
       const existing = bindings[usage]
       bindings[usage] = {
         ...(existing
@@ -2273,7 +2290,8 @@ function syncNodeDataSourceBinding(field, { throwOnError = false } = {}) {
           && !Array.isArray(existing)
           ? existing
           : {}),
-        sourceId: field.dataSourceId,
+        serviceId: field.dataSourceId,
+        operationCode: field.dataSourceOperationCode,
         inputMapping: parseJsonConfig(field.dataSourceInputMappingText, {
           fieldName: `${field.fieldLabel || field.fieldCode || '当前节点'}数据源输入映射`
         }),
@@ -2294,11 +2312,12 @@ function syncNodeDataSourceBinding(field, { throwOnError = false } = {}) {
 function loadNodeDataSourceUsage(field, usage) {
   if (!field) return
   const binding = parseDocument(field.dataSourceBindings)[usage]
-  const normalized = typeof binding === 'string'
-    ? { sourceId: binding }
-    : (binding || {})
+  const normalized = binding && typeof binding === 'object'
+    ? binding
+    : {}
   field.dataSourceUsage = usage
-  field.dataSourceId = normalized.sourceId || normalized.id || ''
+  field.dataSourceId = normalized.serviceId || ''
+  field.dataSourceOperationCode = normalized.operationCode || ''
   field.dataSourceInputMappingText = stringifyConfig(
     normalized.inputMapping || {}
   )
@@ -2321,8 +2340,22 @@ function clearSelectedNodeDataSourceBinding() {
   delete bindings[field.dataSourceUsage]
   field.dataSourceBindings = bindings
   field.dataSourceId = ''
+  field.dataSourceOperationCode = ''
   field.dataSourceInputMappingText = '{}'
   field.dataSourceOutputMappingText = '{}'
+}
+
+function handleNodeDataSourceChange(serviceId) {
+  const field = selectedField.value
+  if (!field) return
+  if (!serviceId) {
+    field.dataSourceOperationCode = ''
+    return
+  }
+  const operations = selectedNodeOperationOptions.value
+  field.dataSourceOperationCode = operations.length === 1
+    ? operations[0].code
+    : ''
 }
 
 function openFormDataSourceConfig() {
@@ -2551,7 +2584,8 @@ function nodeToField(node, legacyField) {
       ? stringifyConfig(rules.extension || {})
       : '',
     dataSourceUsage: firstBinding[0] || allowedDataSourceUsages[0] || '',
-    dataSourceId: firstBinding[1]?.sourceId || firstBinding[1] || '',
+    dataSourceId: firstBinding[1]?.serviceId || '',
+    dataSourceOperationCode: firstBinding[1]?.operationCode || '',
     dataSourceInputMappingText: stringifyConfig(
       firstBinding[1]?.inputMapping || {}
     ),
@@ -3512,25 +3546,85 @@ async function loadReferenceLists(targetEntityId, reset = true) {
 }
 
 async function loadDataSources() {
+  if (!form.value.id) {
+    dataSources.value = []
+    dataSourcesByUsage.value = {}
+    return
+  }
   try {
-    const [globalSources, formSources, entitySources] = await Promise.all([
-      uiDataSourceApi.list({ scopeType: 'GLOBAL' }).catch(() => []),
-      form.value.id
-        ? uiDataSourceApi.list({ scopeType: 'FORM', scopeId: form.value.id }).catch(() => [])
-        : Promise.resolve([]),
-      form.value.entityId
-        ? uiDataSourceApi.list({ scopeType: 'ENTITY', scopeId: form.value.entityId }).catch(() => [])
-        : Promise.resolve([])
-    ])
-    const unique = new Map()
-    ;[...globalSources, ...formSources, ...entitySources].forEach(source => {
-      if (source?.enabled !== false) unique.set(source.id, source)
-    })
-    dataSources.value = [...unique.values()]
+    const usages = [...new Set([
+      'FORM_INIT',
+      ...formDataSourceUsages.map(item => item.value)
+    ])]
+    const rows = await Promise.all(usages.map(async usage => [
+      usage,
+      await uiDataSourceApi.availableOperations({
+        ownerType: 'FORM',
+        ownerId: form.value.id,
+        bindingCode: usage
+      }).catch(() => [])
+    ]))
+    dataSourcesByUsage.value = Object.fromEntries(
+      rows.map(([usage, operations]) => [
+        usage,
+        groupAvailableOperations(operations)
+      ])
+    )
+    dataSources.value = mergeAvailableServices(
+      Object.values(dataSourcesByUsage.value).flat()
+    )
   } catch (error) {
     console.error('加载统一数据源失败:', error)
     dataSources.value = []
+    dataSourcesByUsage.value = {}
   }
+}
+
+function groupAvailableOperations(rows = []) {
+  const services = new Map()
+  rows.forEach(item => {
+    if (!item?.serviceId || !item?.operationCode) return
+    if (!services.has(item.serviceId)) {
+      services.set(item.serviceId, {
+        id: item.serviceId,
+        sourceCode: item.serviceCode,
+        sourceName: item.serviceName,
+        sourceType: item.sourceType,
+        scopeType: item.scopeType,
+        scopeId: item.scopeId,
+        enabled: true,
+        operations: []
+      })
+    }
+    services.get(item.serviceId).operations.push({
+      code: item.operationCode,
+      name: item.operationName,
+      kind: item.kind,
+      contextType: item.contextType
+    })
+  })
+  return [...services.values()].map(service => ({
+    ...service,
+    operationsDocument: JSON.stringify(service.operations)
+  }))
+}
+
+function mergeAvailableServices(rows = []) {
+  const services = new Map()
+  rows.forEach(service => {
+    const existing = services.get(service.id)
+    const operations = [
+      ...serviceOperations(existing || {}),
+      ...serviceOperations(service)
+    ]
+    const unique = new Map(operations.map(item => [item.code, item]))
+    services.set(service.id, {
+      ...(existing || {}),
+      ...service,
+      operationsDocument: JSON.stringify([...unique.values()])
+    })
+  })
+  return [...services.values()]
 }
 
 async function loadComponentTemplates() {
@@ -3715,7 +3809,12 @@ function validateNodeDataSourceMappings(field) {
   const label = field.fieldLabel || field.fieldName || field.fieldCode || '当前节点'
   Object.entries(parseDocument(field.dataSourceBindings)).forEach(
     ([usage, binding]) => {
-      if (!binding || typeof binding === 'string') return
+      if (!binding || typeof binding !== 'object') {
+        throw new Error(`${label}${usage}绑定格式无效`)
+      }
+      if (!binding.serviceId || !binding.operationCode) {
+        throw new Error(`${label}${usage}必须同时配置接口服务和操作`)
+      }
       parseJsonConfig(binding.inputMapping || {}, {
         fieldName: `${label}${usage}输入映射`
       })

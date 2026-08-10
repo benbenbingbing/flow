@@ -327,13 +327,18 @@ assert.equal(
   undefined
 )
 
-const normalBeforeSubmitBinding = { sourceId: 'normal-source' }
+const normalBeforeSubmitBinding = {
+  serviceId: 'normal-source',
+  operationCode: 'validate-normal'
+}
 const incompleteClientBinding = {
-  sourceId: 'incomplete-source',
+  serviceId: 'incomplete-source',
+  operationCode: 'validate-incomplete',
   clientPrevalidate: true
 }
 const safeClientBinding = {
-  sourceId: 'safe-source',
+  serviceId: 'safe-source',
+  operationCode: 'validate-safe',
   clientPrevalidate: true,
   sideEffectFree: true
 }
@@ -362,8 +367,8 @@ const browserRuntime = createFormDataSourceRuntime({
   entityCode: 'expense',
   getRecord: () => browserRecord,
   getMode: () => 'create',
-  executeDataSource: async (sourceId, request) => {
-    browserExecutions.push({ sourceId, request })
+  executeDataSource: async request => {
+    browserExecutions.push(request)
     return { data: { browserMutated: true } }
   }
 })
@@ -380,8 +385,10 @@ await browserRuntime.prevalidateBeforeSubmit({
   }]
 })
 assert.equal(browserExecutions.length, 1)
-assert.equal(browserExecutions[0].sourceId, 'safe-source')
-assert.equal(browserExecutions[0].request.context.clientPrevalidate, true)
+assert.equal(browserExecutions[0].serviceId, 'safe-source')
+assert.equal(browserExecutions[0].operationCode, 'validate-safe')
+assert.equal(browserExecutions[0].bindingCode, 'BEFORE_SUBMIT')
+assert.deepEqual(browserExecutions[0].input.formData, { amount: 88 })
 assert.deepEqual(browserRecord, { amount: 88 })
 await assert.rejects(
   browserRuntime.execute(normalBeforeSubmitBinding, {
@@ -397,10 +404,12 @@ const initializationForm = {
   id: 'form-1',
   dataSourceBindingsDocument: JSON.stringify({
     FORM_INIT: {
-      sourceId: 'form-init-source'
+      serviceId: 'form-init-source',
+      operationCode: 'initialize-form'
     },
     AFTER_LOAD: {
-      sourceId: 'form-after-load-source'
+      serviceId: 'form-after-load-source',
+      operationCode: 'load-form'
     }
   })
 }
@@ -409,9 +418,9 @@ const initializationRuntime = createFormDataSourceRuntime({
   getForm: () => initializationForm,
   getRecord: () => initializedRecord,
   getMode: () => 'create',
-  executeDataSource: async (sourceId) => {
-    initializationExecutions.push(sourceId)
-    return sourceId === 'form-init-source'
+  executeDataSource: async request => {
+    initializationExecutions.push(request.serviceId)
+    return request.serviceId === 'form-init-source'
       ? { data: { initialized: true } }
       : { data: { afterLoaded: true } }
   }
@@ -438,10 +447,12 @@ const nestedForm = {
   entityId: 'child-entity-1',
   dataSourceBindings: {
     FORM_INIT: {
-      sourceId: 'child-form-init-source'
+      serviceId: 'child-form-init-source',
+      operationCode: 'initialize-child'
     },
     AFTER_LOAD: {
-      sourceId: 'child-form-after-load-source'
+      serviceId: 'child-form-after-load-source',
+      operationCode: 'load-child'
     }
   }
 }
@@ -450,11 +461,11 @@ const nestedRuntime = createFormDataSourceRuntime({
   getForm: () => ({ id: 'parent-form-1', entityId: 'parent-entity-1' }),
   getRecord: () => parentRecord,
   getMode: () => 'edit',
-  executeDataSource: async (sourceId, request) => {
-    nestedInitializationExecutions.push({ sourceId, request })
-    return sourceId === 'child-form-init-source'
-      ? { data: { initializedForChild: request.input.data.rowKey } }
-      : { data: { afterLoadedForChild: request.input.data.rowKey } }
+  executeDataSource: async request => {
+    nestedInitializationExecutions.push(request)
+    return request.serviceId === 'child-form-init-source'
+      ? { data: { initializedForChild: request.input.formData.rowKey } }
+      : { data: { afterLoadedForChild: request.input.formData.rowKey } }
   }
 })
 const childRowOne = { rowKey: 'one' }
@@ -483,9 +494,9 @@ assert.deepEqual(childRowTwo, {
 })
 assert.deepEqual(parentRecord, { parentOnly: true })
 assert.equal(nestedInitializationExecutions.length, 4)
-assert.equal(nestedInitializationExecutions[0].request.context.formId, 'child-form-1')
-assert.equal(nestedInitializationExecutions[0].request.context.entityId, 'child-entity-1')
-assert.equal(nestedInitializationExecutions[0].request.input.recordId, 'parent-1:lines:0')
+assert.equal(nestedInitializationExecutions[0].ownerId, 'child-form-1')
+assert.equal(nestedInitializationExecutions[0].ownerType, 'FORM')
+assert.equal(nestedInitializationExecutions[0].input.recordId, 'parent-1:lines:0')
 
 assert.equal(formatDateValue('not-a-date'), '-')
 assert.notEqual(formatDateValue('2026-07-14T08:00:00Z'), '-')

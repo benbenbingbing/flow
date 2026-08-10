@@ -74,15 +74,35 @@
           filterable
           placeholder="不绑定"
           style="width: 100%"
+          @change="handleNodeDataSourceChange"
         >
           <el-option
-            v-for="source in dataSources"
+            v-for="source in selectedNodeDataSources"
             :key="source.id"
             :label="`${source.sourceName} (${source.sourceType})`"
             :value="source.id"
           />
         </el-select>
         <div class="form-tip">仅可选择受控实体、字典、Provider 或 Connector。</div>
+      </el-form-item>
+      <el-form-item
+        v-if="selectedField.dataSourceId"
+        label="接口操作"
+        required
+      >
+        <el-select
+          v-model="selectedField.dataSourceOperationCode"
+          filterable
+          placeholder="选择当前用途使用的操作"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="operation in selectedNodeOperationOptions"
+            :key="operation.code"
+            :label="`${operation.name} (${operation.code})`"
+            :value="operation.code"
+          />
+        </el-select>
       </el-form-item>
       <details class="property-advanced">
         <summary>输入与输出映射</summary>
@@ -413,7 +433,9 @@ const {
   isNodeDataSourceUsageConfigured,
   selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel,
-  dataSources,
+  selectedNodeDataSources,
+  selectedNodeOperationOptions,
+  handleNodeDataSourceChange,
   clearSelectedNodeDataSourceBinding,
   canConfigureSelectedNodeRelations,
   isSubFormField,

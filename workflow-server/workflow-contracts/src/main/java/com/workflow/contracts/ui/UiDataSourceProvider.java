@@ -43,7 +43,7 @@ public interface UiDataSourceProvider {
      * @return 查询结果
      */
     Object execute(
-            UiDataSourceContext context,
+            UiInvocationContext context,
             DataScopePlan dataScopePlan,
             Map<String, Object> configuration,
             Map<String, Object> input);

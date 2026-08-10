@@ -151,6 +151,17 @@
           </el-button>
         </div>
       </el-form-item>
+      <el-form-item
+        v-if="step.stepType === 'MANAGED_INTERFACE'"
+        label="接口操作"
+        required
+      >
+        <el-input
+          v-model="step.operationCode"
+          readonly
+          placeholder="请通过上方选择接口操作"
+        />
+      </el-form-item>
       <el-form-item label="参数">
         <el-input v-model="step.configText" type="textarea" :rows="7" />
       </el-form-item>
@@ -422,6 +433,7 @@ const simulationModel = computed(() => props.simulation)
 
 function handleStepTypeChange(value) {
   step.value.providerCode = ''
+  step.value.operationCode = ''
   if (value === 'MANAGED_INTERFACE') {
     step.value.phase = 'PREPARE'
   }

@@ -17,14 +17,15 @@ class ConfigMigrationDataSourceReferenceTest {
     /** 导出侧：应识别全部数据源ID键并正确映射为对应的编码键。 */
     @Test
     void exportsAllSupportedDataSourceIdKeys() {
-        assertTrue(ConfigMigrationAssetService.isDataSourceIdKey("sourceId"));
+        assertTrue(ConfigMigrationAssetService.isDataSourceIdKey("serviceId"));
         assertTrue(ConfigMigrationAssetService.isDataSourceIdKey("dataSourceId"));
         assertTrue(ConfigMigrationAssetService.isDataSourceIdKey("queryDataSourceId"));
+        assertFalse(ConfigMigrationAssetService.isDataSourceIdKey("sourceId"));
         assertFalse(ConfigMigrationAssetService.isDataSourceIdKey("providerId"));
 
         assertEquals(
-                "sourceCode",
-                ConfigMigrationAssetService.dataSourceCodeKey("sourceId"));
+                "serviceCode",
+                ConfigMigrationAssetService.dataSourceCodeKey("serviceId"));
         assertEquals(
                 "dataSourceCode",
                 ConfigMigrationAssetService.dataSourceCodeKey("dataSourceId"));
@@ -38,7 +39,7 @@ class ConfigMigrationDataSourceReferenceTest {
     @Test
     void importsPortableCodesBackToMatchingIdFields() {
         assertTrue(ConfigMigrationImportApplyService.isDataSourceCodeKey(
-                "sourceCode"));
+                "serviceCode"));
         assertTrue(ConfigMigrationImportApplyService.isDataSourceCodeKey(
                 "dataSourceCode"));
         assertTrue(ConfigMigrationImportApplyService.isDataSourceCodeKey(
@@ -47,9 +48,9 @@ class ConfigMigrationDataSourceReferenceTest {
                 "providerCode"));
 
         assertEquals(
-                "sourceId",
+                "serviceId",
                 ConfigMigrationImportApplyService.dataSourceIdKey(
-                        "sourceCode"));
+                        "serviceCode"));
         assertEquals(
                 "dataSourceId",
                 ConfigMigrationImportApplyService.dataSourceIdKey(

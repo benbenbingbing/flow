@@ -17,7 +17,6 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -41,12 +40,12 @@ import static org.mockito.Mockito.when;
  * 已发布表单提交服务测试。
  *
  * <p>被测对象：{@link PublishedFormSubmissionService}，覆盖节点级 beforeSubmit 执行与响应合并、
- * 缺失发布节点时回退到遗留字段、同一业务提交复用绑定幂等键、数据源失败保持 fail-closed、
+ * 发布节点缺失时执行字段级绑定、同一业务提交复用绑定幂等键、数据源失败保持 fail-closed、
  * 钉版发布精确执行、表单级 beforeSubmit 绑定等场景。
  */
 class PublishedFormSubmissionServiceTest {
 
-    /** 测试节点 beforeSubmit 恰好执行一次并合并响应：验证输入映射、输出映射、幂等键与绑定 owner 符合预期 */
+    /** 测试节点 beforeSubmit 恰好执行一次并合并响应：验证操作、目标、输入映射、输出映射与幂等键符合预期 */
     @Test
     void executesNodeBeforeSubmitOnceAndMergesResponse() {
         UiConfigReleaseService releaseService =
@@ -62,13 +61,17 @@ class PublishedFormSubmissionServiceTest {
         EntityFormField derivedField = new EntityFormField();
         derivedField.setDataSourceBindings(Map.of(
                 "BEFORE_SUBMIT",
-                Map.of("sourceId", "source-1")));
+                Map.of(
+                        "serviceId", "source-1",
+                        "operationCode", "beforeSubmit")));
         EntityFormNode node = new EntityFormNode();
         node.setId("node-1");
+        node.setNodeKey("amount-node");
         node.setDataSourceBindingsDocument(
                 """
                 {"BEFORE_SUBMIT":{
-                  "sourceId":"source-1",
+                  "serviceId":"source-1",
+                  "operationCode":"beforeSubmit",
                   "inputMapping":{
                     "payload.amount":"data.amount",
                     "payload.mode":"context.mode"
@@ -111,6 +114,13 @@ class PublishedFormSubmissionServiceTest {
         verify(dataSourceService, times(1))
                 .execute(eq("source-1"), captor.capture());
         assertEquals("BEFORE_SUBMIT", captor.getValue().getUsage());
+        assertEquals(
+                "beforeSubmit",
+                captor.getValue().getOperationCode());
+        assertEquals("NODE", captor.getValue().getTargetType());
+        assertEquals(
+                "amount-node",
+                captor.getValue().getTargetKey());
         assertEquals("expense", captor.getValue().getEntityCode());
         assertEquals(
                 "release-1",
@@ -134,17 +144,12 @@ class PublishedFormSubmissionServiceTest {
         assertEquals(
                 captor.getValue().getInput().get(
                         "idempotencyKey"),
-                captor.getValue().getContext().get(
-                        "idempotencyKey"));
-        assertEquals(
-                "node:node-1",
-                captor.getValue().getContext().get(
-                        "bindingOwner"));
+                captor.getValue().getServerIdempotencyKey());
     }
 
-    /** 测试发布节点缺失时回退到遗留字段绑定：验证按字段级 sourceId 执行并合并结果 */
+    /** 测试发布节点缺失时执行字段级绑定：验证按字段级接口操作执行并合并结果 */
     @Test
-    void fallsBackToLegacyFieldsWhenPublishedNodesAreAbsent() {
+    void executesFieldBindingsWhenPublishedNodesAreAbsent() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
         UiDataSourceService dataSourceService =
@@ -157,7 +162,10 @@ class PublishedFormSubmissionServiceTest {
         form.setEntityId("entity-1");
         EntityFormField field = new EntityFormField();
         field.setDataSourceBindings(Map.of(
-                "BEFORE_SUBMIT", "source-1"));
+                "BEFORE_SUBMIT",
+                Map.of(
+                        "serviceId", "source-1",
+                        "operationCode", "beforeSubmit")));
         form.setFields(List.of(field));
         form.setNodes(List.of());
         when(releaseService.resolveRuntimeFormRelease(
@@ -472,7 +480,7 @@ class PublishedFormSubmissionServiceTest {
         assertTrue(captor.getValue().isServerPinnedRelease());
     }
 
-    /** 测试执行表单级 beforeSubmit 绑定：验证表单级数据源被触发且绑定 owner 为 form:form-1 */
+    /** 测试执行表单级 beforeSubmit 绑定：验证表单级数据源被触发且绑定目标为表单所有者 */
     @Test
     void executesFormLevelBeforeSubmitBinding() {
         UiConfigReleaseService releaseService =
@@ -487,7 +495,10 @@ class PublishedFormSubmissionServiceTest {
         form.setEntityId("entity-1");
         form.setDataSourceBindingsDocument(
                 """
-                {"BEFORE_SUBMIT":{"sourceId":"form-source"}}
+                {"BEFORE_SUBMIT":{
+                  "serviceId":"form-source",
+                  "operationCode":"beforeSubmit"
+                }}
                 """);
         form.setNodes(List.of());
         form.setFields(List.of());
@@ -524,9 +535,10 @@ class PublishedFormSubmissionServiceTest {
                 eq("form-source"),
                 captor.capture());
         assertEquals(
-                "form:form-1",
-                captor.getValue().getContext().get(
-                        "bindingOwner"));
+                "beforeSubmit",
+                captor.getValue().getOperationCode());
+        assertEquals("OWNER", captor.getValue().getTargetType());
+        assertEquals(null, captor.getValue().getTargetKey());
     }
 
     /**
@@ -578,7 +590,8 @@ class PublishedFormSubmissionServiceTest {
                 """
                 {
                   "BEFORE_SUBMIT": {
-                    "sourceId": "child-source",
+                    "serviceId": "child-source",
+                    "operationCode": "beforeSubmit",
                     "inputMapping": {
                       "projectId": "params.projectId",
                       "sourceDeptId": "data.source_dept_id",
@@ -719,21 +732,24 @@ class PublishedFormSubmissionServiceTest {
         assertNotEquals(
                 idempotencyKey(requests.get(0)),
                 idempotencyKey(requests.get(1)));
-        assertTrue(String.valueOf(
-                requests.get(0).getContext().get(
-                        "bindingOwner"))
-                .contains("members-node/row:0"));
+        assertEquals(
+                "beforeSubmit",
+                requests.get(0).getOperationCode());
+        assertEquals(
+                requests.get(0).getInput().get("idempotencyKey"),
+                requests.get(0).getServerIdempotencyKey());
     }
 
     /** 构造带 beforeSubmit 数据源绑定的节点 */
     private EntityFormNode node(
             String id,
-            String sourceId) {
+            String serviceId) {
         EntityFormNode node = new EntityFormNode();
         node.setId(id);
         node.setDataSourceBindingsDocument(
-                "{\"BEFORE_SUBMIT\":{\"sourceId\":\""
-                        + sourceId + "\"}}");
+                "{\"BEFORE_SUBMIT\":{\"serviceId\":\""
+                        + serviceId
+                        + "\",\"operationCode\":\"beforeSubmit\"}}");
         return node;
     }
 

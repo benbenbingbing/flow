@@ -365,8 +365,7 @@ public class UiEventRuntimeService {
         try {
             Object raw;
             String serviceId = firstText(
-                    step.get("serviceId"),
-                    step.get("sourceId"));
+                    step.get("serviceId"));
             if (StringUtils.hasText(serviceId)) {
                 Object mappedInput = valueMapper.apply(
                         step.get("inputMapping"),
@@ -380,9 +379,17 @@ public class UiEventRuntimeService {
                         new UiDataSourceExecuteRequest();
                 execute.setUsage(normalize(request.getEventCode()));
                 execute.setOperationCode(firstText(
-                        step.get("operationCode"), "default"));
+                        step.get("operationCode")));
+                if (!StringUtils.hasText(
+                        execute.getOperationCode())) {
+                    throw new IllegalArgumentException(
+                            "事件接口步骤缺少 operationCode");
+                }
                 execute.setConfigType(normalize(request.getConfigType()));
                 execute.setConfigId(request.getConfigId());
+                execute.setTargetType(normalize(
+                        request.getTargetType()));
+                execute.setTargetKey(request.getTargetKey());
                 execute.setReleaseId(chain.releaseId());
                 execute.setReleaseVersion(chain.releaseVersion());
                 execute.setEntityCode(chain.entityCode());

@@ -110,6 +110,11 @@ public class EntityListField {
     private String dataSourceId;
 
     /**
+     * 统一数据源操作编码
+     */
+    private String dataSourceOperationCode;
+
+    /**
      * 前端渲染组件名
      */
     @TableField("render_component")

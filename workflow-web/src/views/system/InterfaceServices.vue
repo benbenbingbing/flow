@@ -60,7 +60,9 @@
           <el-table-column label="作用范围" width="150">
             <template #default="{ row }">
               {{ scopeLabel(row.scopeType) }}
-              <div v-if="row.scopeId" class="secondary-text">{{ row.scopeId }}</div>
+              <div v-if="row.scopeId" class="secondary-text">
+                {{ scopeObjectName(row) }}
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="操作" min-width="260">
@@ -72,7 +74,7 @@
                   :type="operation.kind === 'WRITE' ? 'warning' : 'info'"
                   effect="plain"
                 >
-                  {{ operation.name }}
+                  {{ operation.name }} · {{ contextTypeLabel(operation.contextType) }}
                 </el-tag>
               </div>
             </template>
@@ -203,6 +205,7 @@
       ref="serviceTestRef"
       :forms="forms"
       :lists="lists"
+      :entity-id="selectedEntityId"
       :entity-code="selectedEntity?.entityCode || ''"
       :event-codes="eventCodes"
     />
@@ -225,7 +228,11 @@ import {
   sourceTypeOptions
 } from '@/components/ui-config/interfaceServiceModel'
 import { entityApi } from '@/api/entity'
-import { getEntityFields, getFormsByEntity } from '@/api/entityForm'
+import {
+  getEntityFields,
+  getFormById,
+  getFormsByEntity
+} from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { uiDataSourceApi } from '@/api/uiConfig'
 
@@ -240,6 +247,7 @@ const loading = ref(false)
 const keyword = ref('')
 const sourceTypeFilter = ref('')
 const services = ref([])
+const scopeObjectNames = ref({})
 const catalog = ref({})
 const forms = ref([])
 const lists = ref([])
@@ -338,6 +346,7 @@ async function loadAll() {
       })
     ])
     services.value = Array.isArray(serviceRows) ? serviceRows : []
+    await resolveScopeObjectNames(services.value)
     catalog.value = serviceCatalog || {}
     if (!selectedEntityId.value && entityPage?.records?.length) {
       selectedEntity.value = entityPage.records[0]
@@ -349,6 +358,47 @@ async function loadAll() {
   } finally {
     loading.value = false
   }
+}
+
+async function resolveScopeObjectNames(rows) {
+  const entries = await Promise.all(rows
+    .filter(row => row.scopeId)
+    .map(async row => {
+      const key = `${row.scopeType}:${row.scopeId}`
+      try {
+        if (row.scopeType === 'ENTITY') {
+          const [entity] = await entityApi.resolveOptions({
+            ids: [String(row.scopeId)]
+          })
+          return [key, entity?.entityName || entity?.entityCode || row.scopeId]
+        }
+        if (row.scopeType === 'FORM') {
+          const form = await getFormById(row.scopeId)
+          return [key, `${form.formName} (${form.formKey})`]
+        }
+        if (row.scopeType === 'LIST') {
+          const list = await entityListConfigApi.getById(row.scopeId)
+          return [key, `${list.listName} (${list.listKey})`]
+        }
+      } catch {
+        return [key, row.scopeId]
+      }
+      return [key, row.scopeId]
+    }))
+  scopeObjectNames.value = Object.fromEntries(entries)
+}
+
+function scopeObjectName(row) {
+  return scopeObjectNames.value[`${row.scopeType}:${row.scopeId}`]
+    || row.scopeId
+}
+
+function contextTypeLabel(value) {
+  return {
+    FORM: '表单',
+    LIST: '列表',
+    ENTITY: '实体'
+  }[String(value || '').toUpperCase()] || value || '-'
 }
 
 function rememberBindingEntity(entity) {

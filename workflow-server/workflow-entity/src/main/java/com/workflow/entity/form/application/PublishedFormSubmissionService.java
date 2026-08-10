@@ -259,6 +259,8 @@ public class PublishedFormSubmissionService {
                 formBindings,
                 form,
                 "form:" + form.getId(),
+                "OWNER",
+                null,
                 entityCode,
                 recordId,
                 mode,
@@ -282,6 +284,8 @@ public class PublishedFormSubmissionService {
                         bindings,
                         form,
                         nodeOwnerKey(node),
+                        nodeTargetType(node),
+                        nodeTargetKey(node),
                         entityCode,
                         recordId,
                         mode,
@@ -311,6 +315,8 @@ public class PublishedFormSubmissionService {
                         field.getDataSourceBindings(),
                         form,
                         fieldOwnerKey(field),
+                        "FIELD",
+                        field.getFieldCode(),
                         entityCode,
                         recordId,
                         mode,
@@ -417,6 +423,8 @@ public class PublishedFormSubmissionService {
             Map<String, Object> bindings,
             EntityForm form,
             String ownerKey,
+            String targetType,
+            String targetKey,
             String entityCode,
             String recordId,
             String mode,
@@ -435,10 +443,15 @@ public class PublishedFormSubmissionService {
                 ? list : List.of(configured);
         int bindingIndex = 0;
         for (Object value : values) {
-            String sourceId = sourceId(value);
-            if (!StringUtils.hasText(sourceId)) {
+            String serviceId = serviceId(value);
+            String operationCode = operationCode(value);
+            if (!StringUtils.hasText(serviceId)) {
                 throw new IllegalArgumentException(
-                        "BEFORE_SUBMIT 数据源绑定缺少 sourceId");
+                        "BEFORE_SUBMIT 数据源绑定缺少 serviceId");
+            }
+            if (!StringUtils.hasText(operationCode)) {
+                throw new IllegalArgumentException(
+                        "BEFORE_SUBMIT 数据源绑定缺少 operationCode");
             }
             FormSubmissionExecutionContext safeExecutionContext =
                     safeExecutionContext(
@@ -451,13 +464,16 @@ public class PublishedFormSubmissionService {
                             form.getId(),
                             resolved.releaseId(),
                             effectiveOwnerKey,
-                            sourceId,
+                            serviceId,
                             bindingIndex);
             UiDataSourceExecuteRequest request =
                     new UiDataSourceExecuteRequest();
             request.setUsage(BEFORE_SUBMIT);
+            request.setOperationCode(operationCode);
             request.setConfigType("FORM");
             request.setConfigId(form.getId());
+            request.setTargetType(targetType);
+            request.setTargetKey(targetKey);
             request.setReleaseId(resolved.releaseId());
             request.setReleaseVersion(
                     resolved.releaseVersion());
@@ -471,11 +487,21 @@ public class PublishedFormSubmissionService {
                     "recordId",
                     recordId == null ? "" : recordId);
             rawInput.put(
-                    "data",
+                    "formData",
                     new LinkedHashMap<>(record));
+            rawInput.put("changedField", Map.of());
             rawInput.put(
                     "params",
                     nestedContext.params());
+            rawInput.put(
+                    "parent",
+                    nestedContext.parent());
+            rawInput.put(
+                    "row",
+                    nestedContext.row());
+            rawInput.put(
+                    "mode",
+                    mode == null ? "edit" : mode);
             rawInput.put(
                     "businessTraceKey",
                     safeExecutionContext.businessTraceKey());
@@ -493,7 +519,7 @@ public class PublishedFormSubmissionService {
                     "bindingOwner",
                     effectiveOwnerKey);
             context.put("bindingIndex", bindingIndex);
-            context.put("sourceId", sourceId);
+            context.put("serviceId", serviceId);
             context.put("idempotencyKey", idempotencyKey);
             context.putAll(
                     nestedContext.runtimeValues());
@@ -531,9 +557,8 @@ public class PublishedFormSubmissionService {
                     "idempotencyKey",
                     idempotencyKey);
             request.setInput(trustedInput);
-            request.setContext(context);
             Object response = dataSourceService.execute(
-                    sourceId, request);
+                    serviceId, request);
             response = applyMapping(
                     mapping(value, "outputMapping"),
                     Map.of(
@@ -573,6 +598,21 @@ public class PublishedFormSubmissionService {
         return "field:" + String.valueOf(field.getFieldCode());
     }
 
+    private String nodeTargetType(EntityFormNode node) {
+        return StringUtils.hasText(text(
+                nodeProperties(node).get("fieldCode")))
+                ? "FIELD"
+                : "NODE";
+    }
+
+    private String nodeTargetKey(EntityFormNode node) {
+        String fieldCode = text(
+                nodeProperties(node).get("fieldCode"));
+        return StringUtils.hasText(fieldCode)
+                ? fieldCode
+                : node.getNodeKey();
+    }
+
     private static String normalizeOperation(String mode) {
         return StringUtils.hasText(mode)
                 ? mode.trim().toUpperCase()
@@ -588,19 +628,26 @@ public class PublishedFormSubmissionService {
                 codec);
     }
 
-    private String sourceId(Object value) {
-        if (value instanceof String text) {
-            return text;
-        }
+    private String serviceId(Object value) {
         if (value instanceof Map<?, ?> map) {
-            Object sourceId = map.get("sourceId");
-            if (sourceId == null) {
-                sourceId = map.get("id");
-            }
-            return sourceId == null
-                    ? null : String.valueOf(sourceId);
+            Object serviceId = map.get("serviceId");
+            return serviceId == null
+                    ? null : String.valueOf(serviceId);
         }
         return null;
+    }
+
+    private String operationCode(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object operationCode = map.get("operationCode");
+        return operationCode == null
+                ? null : String.valueOf(operationCode);
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private Map<String, Object> mapping(

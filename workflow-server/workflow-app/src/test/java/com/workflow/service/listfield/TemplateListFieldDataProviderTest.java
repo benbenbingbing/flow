@@ -21,13 +21,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class TemplateListFieldDataProviderTest {
 
+    /** 数据源只配置组合逻辑，空值文本统一归单元格显示配置。 */
+    @Test
+    void exposesOnlyTemplateDataSourceConfig() {
+        TemplateListFieldDataProvider provider =
+                new TemplateListFieldDataProvider(new ObjectMapper());
+
+        assertEquals(1, provider.getConfigSchema().size());
+        assertEquals(
+                "template",
+                provider.getConfigSchema().get(0).get("key"));
+    }
+
     /** 测试纯模板字段组合不执行脚本：验证按模板渲染出 summary 扩展字段值 */
     @Test
     void composesFieldsWithoutExecutingScripts() {
         TemplateListFieldDataProvider provider = new TemplateListFieldDataProvider(new ObjectMapper());
         EntityListField field = new EntityListField();
         field.setFieldCode("summary");
-        field.setDataSourceConfig("{\"template\":\"${dataNo} / ${owner}\",\"emptyText\":\"-\"}");
+        field.setDataSourceConfig("{\"template\":\"${dataNo} / ${owner}\"}");
+        field.setRenderConfig("{\"emptyText\":\"-\"}");
 
         EntityDataDTO row = new EntityDataDTO();
         row.setDataNo("PO-001");
@@ -36,5 +49,30 @@ class TemplateListFieldDataProviderTest {
         provider.enrich(new ArrayList<>(List.of(row)), List.of(field), Map.of());
 
         assertEquals("PO-001 / 张三", row.getExtData().get("summary"));
+    }
+
+    /** 空字段统一使用单元格渲染配置中的空值文本。 */
+    @Test
+    void usesCellRenderEmptyTextForMissingTemplateValues() {
+        TemplateListFieldDataProvider provider =
+                new TemplateListFieldDataProvider(new ObjectMapper());
+        EntityListField field = new EntityListField();
+        field.setFieldCode("summary");
+        field.setDataSourceConfig(
+                "{\"template\":\"${dataNo} / ${owner}\"}");
+        field.setRenderConfig("{\"emptyText\":\"未填写\"}");
+
+        EntityDataDTO row = new EntityDataDTO();
+        row.setDataNo("PO-001");
+        row.setData(new HashMap<>());
+
+        provider.enrich(
+                new ArrayList<>(List.of(row)),
+                List.of(field),
+                Map.of());
+
+        assertEquals(
+                "PO-001 / 未填写",
+                row.getExtData().get("summary"));
     }
 }

@@ -17,7 +17,8 @@ import java.util.regex.Pattern;
  * 模板字段组合数据提供者
  * 
  * 数据源类型 FIELD_TEMPLATE：使用 ${fieldCode} 占位符组合当前行字段值生成展示文本，
- * 不执行任何脚本逻辑。空值以 emptyText 替代，结果写入 record.extData。
+ * 不执行任何脚本逻辑。空值显示沿用列渲染配置中的 emptyText，
+ * 结果写入 record.extData。
  */
 @Component
 @RequiredArgsConstructor
@@ -51,8 +52,7 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
     @Override
     public List<Map<String, Object>> getConfigSchema() {
         return List.of(
-                schema("template", "组合模板", "textarea", true, "${dataNo} - ${name}"),
-                schema("emptyText", "空值替代", "text", false, "-"));
+                schema("template", "组合模板", "textarea", true, "${dataNo} - ${name}"));
     }
 
     /**
@@ -70,7 +70,7 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
         for (EntityListField field : fields) {
             Map<String, Object> config = parse(field.getDataSourceConfig());
             String template = String.valueOf(config.getOrDefault("template", ""));
-            String emptyText = String.valueOf(config.getOrDefault("emptyText", "-"));
+            String emptyText = resolveEmptyText(field);
             for (EntityDataDTO record : records) {
                 String value = render(template, emptyText, record);
                 if (record.getExtData() == null) {
@@ -79,6 +79,17 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
                 record.getExtData().put(field.getFieldCode(), value);
             }
         }
+    }
+
+    /**
+     * 空值文本统一由单元格渲染配置维护，避免数据源和显示组件重复配置。
+     */
+    private String resolveEmptyText(EntityListField field) {
+        Map<String, Object> renderConfig = parse(field.getRenderConfig());
+        Object configured = renderConfig.get("emptyText");
+        return configured == null || String.valueOf(configured).isBlank()
+                ? "-"
+                : String.valueOf(configured);
     }
 
     /**

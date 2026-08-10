@@ -230,18 +230,47 @@ public class EntityDataListConfigService {
             request.setUsage("LIST_COLUMN");
             request.setConfigType("LIST");
             request.setConfigId(field.getListConfigId());
+            request.setOperationCode(field.getDataSourceOperationCode());
+            request.setTargetType("COLUMN");
+            request.setTargetKey(field.getFieldCode());
             request.setEntityCode(entityCode);
             request.setListKey(listKey);
-            request.setContext(Map.of(
-                    "fieldCode", field.getFieldCode(),
-                    "listConfigId", field.getListConfigId()));
             request.setInput(Map.of(
                     "field", field,
                     "records", records));
-            Object result = uiDataSourceService.execute(
-                    field.getDataSourceId(),
-                    request);
-            applyUnifiedColumnResult(field, records, result);
+            log.info(
+                    "开始执行列表列统一数据源: entityCode={}, listKey={}, listConfigId={}, fieldCode={}, dataSourceId={}, recordCount={}",
+                    LogValue.safe(entityCode),
+                    LogValue.safe(listKey),
+                    LogValue.safe(field.getListConfigId()),
+                    LogValue.safe(field.getFieldCode()),
+                    LogValue.safe(field.getDataSourceId()),
+                    records.size());
+            try {
+                Object result = uiDataSourceService.execute(
+                        field.getDataSourceId(),
+                        request);
+                applyUnifiedColumnResult(field, records, result);
+                log.info(
+                        "列表列统一数据源执行完成: entityCode={}, listKey={}, fieldCode={}, dataSourceId={}, resultType={}, recordCount={}",
+                        LogValue.safe(entityCode),
+                        LogValue.safe(listKey),
+                        LogValue.safe(field.getFieldCode()),
+                        LogValue.safe(field.getDataSourceId()),
+                        result == null
+                                ? null
+                                : result.getClass().getSimpleName(),
+                        records.size());
+            } catch (RuntimeException exception) {
+                log.error(
+                        "列表列统一数据源执行失败: entityCode={}, listKey={}, fieldCode={}, dataSourceId={}, failureType={}",
+                        LogValue.safe(entityCode),
+                        LogValue.safe(listKey),
+                        LogValue.safe(field.getFieldCode()),
+                        LogValue.safe(field.getDataSourceId()),
+                        LogValue.failureType(exception));
+                throw exception;
+            }
         }
     }
 

@@ -302,6 +302,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { DocumentChecked, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityVersionApi } from '@/api/entityVersion'
+import { uiDataSourceApi } from '@/api/uiConfig'
 import { useEntityDefinitionLabels } from '@/composables/useEntityDefinitionLabels'
 import EntityVersionConfigDialogs from './components/EntityVersionConfigDialogs.vue'
 
@@ -366,6 +367,7 @@ const {
 } = useEntityDefinitionLabels()
 
 const emptyDraft = () => ({
+  entityId: '',
   entityCode: '',
   entityName: '',
   enabled: false,
@@ -540,6 +542,7 @@ function editStep(row, index = -1) {
     stepType: row?.stepType || 'BUILT_IN_RULE',
     scenarioCode: row?.scenarioCode || '',
     providerCode: row?.providerCode || '',
+    operationCode: row?.config?.operationCode || '',
     configText: pretty(row?.config || {}),
     sortOrder: row?.sortOrder ?? draft.steps.length * 10,
     enabled: row?.enabled !== false
@@ -556,7 +559,12 @@ function saveStep() {
   if (!config) return
   if (stepEditor.stepType === 'MANAGED_INTERFACE') {
     stepEditor.phase = 'PREPARE'
+    if (!stepEditor.providerCode || !stepEditor.operationCode) {
+      ElMessage.warning('请选择接口服务及操作')
+      return
+    }
     config.dataSourceId = stepEditor.providerCode
+    config.operationCode = stepEditor.operationCode
   }
   const item = {
     ...(stepIndex.value >= 0 ? draft.steps[stepIndex.value] : {}),
@@ -648,6 +656,13 @@ function selectPickerItem(item) {
     targetEditor.resolverCode = item.value
   } else {
     stepEditor.providerCode = item.value
+    if (pickerType.value === 'MANAGED_INTERFACE') {
+      stepEditor.operationCode = item.operationCode
+      const config = parseJson(stepEditor.configText, '操作参数') || {}
+      config.dataSourceId = item.value
+      config.operationCode = item.operationCode
+      stepEditor.configText = pretty(config)
+    }
   }
   pickerVisible.value = false
 }
@@ -665,6 +680,31 @@ async function loadPickerOptions() {
   const sequence = ++pickerRequestSequence
   pickerLoading.value = true
   try {
+    if (pickerType.value === 'MANAGED_INTERFACE') {
+      const operations = await uiDataSourceApi.availableOperations({
+        ownerType: 'ENTITY',
+        ownerId: draft.entityId,
+        bindingCode: 'ENTITY_MUTATION_PREPARE'
+      })
+      if (sequence !== pickerRequestSequence) return
+      const keyword = String(pickerKeyword.value || '').trim().toLowerCase()
+      const filtered = (operations || [])
+        .map(item => ({
+          value: item.serviceId,
+          operationCode: item.operationCode,
+          code: `${item.serviceCode}.${item.operationCode}`,
+          name: `${item.serviceName} / ${item.operationName}`,
+          category: `${item.contextType} · ${item.kind}`
+        }))
+        .filter(item => !keyword
+          || item.code.toLowerCase().includes(keyword)
+          || item.name.toLowerCase().includes(keyword))
+      const pageSize = 8
+      const start = (pickerPage.value - 1) * pageSize
+      pagedPickerItems.value = filtered.slice(start, start + pageSize)
+      pickerTotal.value = filtered.length
+      return
+    }
     const page = await entityVersionApi.mutationCatalogOptions(
       pickerType.value,
       {

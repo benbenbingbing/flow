@@ -54,7 +54,7 @@ import static org.mockito.Mockito.when;
  * UI 数据源执行访问控制服务测试。
  *
  * <p>被测对象：{@link UiDataSourceExecutionAccessService}，覆盖发布执行需可验证来源、绑定校验、
- * 缺失激活发布拒绝、客户端过期发布声明拒绝、连接器上下文防伪造、服务端幂等种子校验、
+ * 缺失激活发布拒绝、客户端过期发布声明拒绝、可信上下文防伪造、服务端幂等种子校验、
  * 历史钉版发布可信执行、草稿预览权限、列表直接访问权限、权限计划构建与运行时上下文净化、
  * 数据源作用域不匹配拒绝等场景。
  */
@@ -97,7 +97,10 @@ class UiDataSourceExecutionAccessServiceTest {
         allowPublishedForm(
                 "release-1",
                 """
-                {"FIELD_OPTIONS":{"sourceId":"different-source"}}
+                {"FIELD_OPTIONS":{
+                  "serviceId":"different-source",
+                  "operationCode":"query"
+                }}
                 """);
 
         BusinessForbiddenException exception = assertThrows(
@@ -135,7 +138,10 @@ class UiDataSourceExecutionAccessServiceTest {
         allowPublishedForm(
                 "release-2",
                 """
-                {"FIELD_OPTIONS":{"sourceId":"source-1"}}
+                {"FIELD_OPTIONS":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
                 """);
         UiDataSourceExecuteRequest request =
                 request("FIELD_OPTIONS", "form-1", "release-1");
@@ -204,7 +210,10 @@ class UiDataSourceExecutionAccessServiceTest {
         allowPublishedForm(
                 "release-1",
                 """
-                {"BEFORE_SUBMIT":{"sourceId":"source-1"}}
+                {"BEFORE_SUBMIT":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
                 """);
         UiDataSourceExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", "release-1");
@@ -268,7 +277,10 @@ class UiDataSourceExecutionAccessServiceTest {
                 "release-3",
                 3,
                 """
-                {"BEFORE_SUBMIT":{"sourceId":"source-1"}}
+                {"BEFORE_SUBMIT":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
                 """);
         when(context.releaseMapper().selectById("release-3"))
                 .thenReturn(historical);
@@ -308,7 +320,10 @@ class UiDataSourceExecutionAccessServiceTest {
                 "release-3",
                 3,
                 """
-                {"BEFORE_SUBMIT":{"sourceId":"source-1"}}
+                {"BEFORE_SUBMIT":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
                 """);
         when(context.releaseMapper().selectById("release-3"))
                 .thenReturn(historical);
@@ -361,9 +376,13 @@ class UiDataSourceExecutionAccessServiceTest {
         allowFormTarget();
         EntityFormNode node = new EntityFormNode();
         node.setId("node-1");
+        node.setNodeKey("field-1");
         node.setDataSourceBindingsDocument(
                 """
-                {"FIELD_OPTIONS":{"sourceId":"source-1"}}
+                {"FIELD_OPTIONS":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
                 """);
         when(context.formNodeMapper().findByFormId("form-1"))
                 .thenReturn(List.of(node));
@@ -407,22 +426,23 @@ class UiDataSourceExecutionAccessServiceTest {
         verifyNoInteractions(context.releaseMapper());
     }
 
-    /** 测试构建权限计划并净化不可信运行时上下文：验证用户与计划来自服务端，客户端伪造的 userId 被剔除 */
+    /** 测试构建权限计划：验证用户与数据权限计划来自服务端，普通业务上下文可以继续传递 */
     @Test
-    void buildsPermissionPlanAndSanitizesUntrustedRuntimeContext() {
+    void buildsPermissionPlanFromTrustedServerState() {
         allowPublishedForm(
                 "release-1",
                 """
-                {"FIELD_OPTIONS":{"sourceId":"source-1"}}
+                {"FIELD_OPTIONS":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
                 """);
         allowPermissionPlan();
         UiDataSourceExecuteRequest request =
                 request("FIELD_OPTIONS", "form-1", "release-1");
         request.setEntityCode("expense");
         request.setContext(Map.of(
-                "formId", "form-1",
-                "mode", "edit",
-                "userId", "forged-user"));
+                "mode", "edit"));
 
         UiDataSourceExecutionAuthorization authorization =
                 context.service().authorizePublished(
@@ -437,7 +457,29 @@ class UiDataSourceExecutionAccessServiceTest {
                 "owner_id = 'user-1'",
                 authorization.dataScopePlan().sqlFragment());
         assertEquals("edit", authorization.requestContext().get("mode"));
-        assertFalse(authorization.requestContext().containsKey("userId"));
+    }
+
+    /** 测试所有接口类型都拒绝客户端伪造用户身份：验证静态数据源也不能提交 userId */
+    @Test
+    void rejectsTrustedIdentityMetadataForEverySourceType() {
+        UiDataSourceExecuteRequest request =
+                request("FIELD_OPTIONS", "form-1", null);
+        request.setContext(Map.of(
+                "userId", "forged-user"));
+
+        BusinessForbiddenException exception = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service().authorizePublished(
+                        definition(
+                                "STATIC_OPTIONS",
+                                "GLOBAL",
+                                null),
+                        request));
+
+        assertEquals(
+                "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                exception.getErrorCode());
+        verifyNoInteractions(context.releaseMapper());
     }
 
     /** 测试即使绑定存在也拒绝数据源作用域不匹配：验证抛出 UI_DATA_SOURCE_SCOPE_MISMATCH */
@@ -446,7 +488,10 @@ class UiDataSourceExecutionAccessServiceTest {
         allowPublishedForm(
                 "release-1",
                 """
-                {"FIELD_OPTIONS":{"sourceId":"source-1"}}
+                {"FIELD_OPTIONS":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
                 """);
 
         BusinessForbiddenException exception = assertThrows(
@@ -495,6 +540,7 @@ class UiDataSourceExecutionAccessServiceTest {
                                 "entityId", "entity-1"),
                         "nodes", List.of(Map.of(
                                 "id", "node-1",
+                                "nodeKey", "field-1",
                                 "dataSourceBindingsDocument",
                                 bindingsDocument)),
                         "legacyFields", List.of()),
@@ -545,12 +591,13 @@ class UiDataSourceExecutionAccessServiceTest {
         UiDataSourceExecuteRequest request =
                 new UiDataSourceExecuteRequest();
         request.setUsage(usage);
+        request.setOperationCode("query");
         request.setConfigType("FORM");
         request.setConfigId(formId);
+        request.setTargetType("NODE");
+        request.setTargetKey("field-1");
         request.setReleaseId(releaseId);
-        request.setContext(formId == null
-                ? Map.of()
-                : Map.of("formId", formId));
+        request.setContext(Map.of());
         request.setInput(Map.of());
         return request;
     }
@@ -560,11 +607,13 @@ class UiDataSourceExecutionAccessServiceTest {
         UiDataSourceExecuteRequest request =
                 new UiDataSourceExecuteRequest();
         request.setUsage("LIST_QUERY");
+        request.setOperationCode("query");
         request.setConfigType("LIST");
         request.setConfigId("list-1");
+        request.setTargetType("OWNER");
         request.setEntityCode("expense");
         request.setListKey("default");
-        request.setContext(Map.of("listConfigId", "list-1"));
+        request.setContext(Map.of());
         request.setInput(Map.of());
         return request;
     }
@@ -580,6 +629,7 @@ class UiDataSourceExecutionAccessServiceTest {
         definition.setSourceType(sourceType);
         definition.setScopeType(scopeType);
         definition.setScopeId(scopeId);
+        definition.setOperationCode("query");
         definition.setEnabled(true);
         definition.setRevision(2);
         return definition;

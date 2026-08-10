@@ -6,6 +6,8 @@ import com.workflow.core.security.RequiresPermission;
 import com.workflow.entity.ui.api.request.UiDataSourceDeleteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
+import com.workflow.entity.ui.api.response.UiAvailableOperation;
+import com.workflow.entity.ui.application.UiAvailableOperationService;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiDataSourceService;
@@ -33,6 +35,7 @@ import java.util.Map;
 public class UiDataSourceController {
 
     private final UiDataSourceService service;
+    private final UiAvailableOperationService availableOperationService;
     private final UiConfigurationAccessService accessService;
 
     /**
@@ -62,6 +65,17 @@ public class UiDataSourceController {
             @RequestParam(required = false) String sourceType) {
         accessService.requireGlobalConfigurationAccess();
         return Result.success(service.list(scopeType, scopeId, sourceType));
+    }
+
+    @GetMapping("/available-operations")
+    public Result<List<UiAvailableOperation>> availableOperations(
+            @RequestParam String ownerType,
+            @RequestParam String ownerId,
+            @RequestParam String bindingCode) {
+        return Result.success(availableOperationService.available(
+                ownerType,
+                ownerId,
+                bindingCode));
     }
 
     /**
@@ -148,20 +162,6 @@ public class UiDataSourceController {
                 id,
                 operationCode,
                 request));
-    }
-
-    /**
-     * 运行态执行数据源。POST /api/ui-data-sources/{id}/execute
-     *
-     * @param id      数据源ID
-     * @param request 执行参数
-     * @return 执行结果
-     */
-    @PostMapping("/{id}/execute")
-    public Result<Object> execute(
-            @PathVariable String id,
-            @RequestBody UiDataSourceExecuteRequest request) {
-        return Result.success(service.execute(id, request));
     }
 
     /**

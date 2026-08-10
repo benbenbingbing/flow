@@ -77,6 +77,12 @@ public class EntityListConfigDTO {
     /** 数据查询提供者编码 */
     private String queryProviderCode;
 
+    /** 列表查询绑定的接口服务 ID */
+    private String queryDataSourceId;
+
+    /** 列表查询绑定的接口操作编码 */
+    private String queryOperationCode;
+
     /** 已发布版本号 */
     private Integer publishedVersion;
 
@@ -93,9 +99,6 @@ public class EntityListConfigDTO {
 
     /** 草稿内容哈希 */
     private String draftHash;
-
-    /** 数据查询数据源 ID */
-    private String queryDataSourceId;
 
     /**
      * 列表字段配置

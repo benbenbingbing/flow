@@ -10,53 +10,65 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * UI 数据源定义实体，对应 ui_data_source_definition 表。
- * 声明一个可供表单/列表挂载的数据源（如实体查询、字典、自定义提供者），
- * 包含作用范围、输入输出 Schema、执行策略等元数据。
+ * 接口服务定义实体，对应 ui_data_source_definition 表。
+ *
+ * <p>声明服务实现、可见作用域、操作集合和执行策略；每个操作独立声明
+ * 上下文类型、读写类型及输入输出 Schema。</p>
  */
 @Data
 @TableName("ui_data_source_definition")
 public class UiDataSourceDefinition {
 
-    /** 主键ID */
+    /** 接口服务主键 ID。 */
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
-    /** 数据源唯一编码 */
+    /** 接口服务唯一编码。 */
     private String sourceCode;
-    /** 数据源名称 */
+    /** 接口服务显示名称。 */
     private String sourceName;
-    /** 数据源类型（如 entity/dict/custom 等） */
+    /** 服务实现类型，例如 STATIC_OPTIONS、PROVIDER、INTEGRATION_CONNECTOR。 */
     private String sourceType;
-    /** 提供者编码（自定义数据源的处理逻辑标识） */
+    /** Provider 实现编码；非 Provider 类型可为空。 */
     private String providerCode;
-    /** 作用范围类型（如 global/entity/list 等） */
+    /** 可见作用域类型：GLOBAL、ENTITY、FORM 或 LIST。 */
     private String scopeType;
-    /** 作用范围目标ID（如实体编码、列表key） */
+    /** 非 GLOBAL 作用域对应的实体、表单或列表主键 ID。 */
     private String scopeId;
-    /** 数据源配置（JSON） */
+    /** 服务实现配置 JSON。 */
     private String configDocument;
-    /** 输入参数 Schema（JSON） */
-    private String inputSchemaDocument;
-    /** 输出结果 Schema（JSON） */
-    private String outputSchemaDocument;
-    /** 执行策略配置（JSON，如缓存、分页等） */
+    /** 执行策略配置 JSON，例如缓存、超时和幂等策略。 */
     private String executionPolicyDocument;
-    /** 接口服务操作定义 JSON 数组；为空时按历史单操作数据源执行 */
+    /** 接口服务操作定义 JSON 数组。 */
     private String operationsDocument;
-    /** 草稿元数据修订号 */
+    /** 当前解析出的操作输入 Schema（仅运行时） */
+    @TableField(exist = false)
+    private String operationInputSchemaDocument;
+    /** 当前解析出的操作输出 Schema（仅运行时） */
+    @TableField(exist = false)
+    private String operationOutputSchemaDocument;
+    /** 当前解析出的操作编码（仅运行时） */
+    @TableField(exist = false)
+    private String operationCode;
+    /** 当前解析出的操作上下文类型（仅运行时） */
+    @TableField(exist = false)
+    private String operationContextType;
+    /** 当前解析出的操作读写类型（仅运行时） */
+    @TableField(exist = false)
+    private String operationKind;
+    /** 草稿元数据修订号，用于乐观并发控制。 */
     private Integer revision;
-    /** 是否启用 */
+    /** 接口服务是否启用。 */
     private Boolean enabled;
 
-    /** 创建时间 */
+    /** 创建时间。 */
     @TableField("create_time")
     private LocalDateTime createdAt;
 
-    /** 更新时间 */
+    /** 更新时间。 */
     @TableField("update_time")
     private LocalDateTime updatedAt;
 
-    /** 逻辑删除标志（0-未删除 1-已删除） */
+    /** 逻辑删除标志：0 未删除，1 已删除。 */
     @TableLogic
     private Integer deleted;
 }

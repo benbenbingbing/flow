@@ -796,7 +796,7 @@ export default {
                 { field: '初始化子字段', meaning: '把父字段、父记录ID、运行上下文或固定值初始化到可写子实体字段。', defaultLimit: '固定采用仅空值写入；ID、关系外键和系统维护字段不可选择。', effect: '新增子行自动带入业务字段；已有非空值不会被覆盖。', publish: '只有该映射会进入子记录持久化，普通运行参数不会落库。' },
                 { field: '递归提交', meaning: '服务端按父表单钉定的子表单发布版本重新计算可信参数，并逐行执行子表单提交前处理。', defaultLimit: '支持一对一、一对多和最多 8 层嵌套；不信任浏览器提交的 params。', effect: '每条子行使用独立幂等上下文，完成校验、空值初始化和 BEFORE_SUBMIT。', publish: '只有 parameterContract.version=1 启用新契约，旧表单行为保持不变。' },
                 { field: '引用类型 / 关联实体', meaning: '来源于实体字段，已有 fieldId 时禁改。', defaultLimit: 'CUSTOM、USER、DEPT、ROLE、GROUP。', effect: '决定候选数据源。', publish: '需要改来源时返回实体设计。' },
-                { field: '候选数据源', meaning: '引用受控数据源目录中的实体查询、Provider 或 Connector。', defaultLimit: '不允许直接填写任意 URL。', effect: '统一执行输入映射、分页、缓存、超时、失败策略和数据权限。', publish: '数据源必须启用、Schema 合法且目标环境存在。' }
+                { field: '候选数据源', meaning: '引用受控数据源目录中的 Provider 或 Connector。', defaultLimit: '不允许直接填写任意 URL。', effect: '统一执行输入映射、分页、缓存、超时、失败策略和数据权限。', publish: '数据源必须启用、Schema 合法且目标环境存在。' }
               ]
             }]
         }
@@ -816,7 +816,6 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '实体查询 ENTITY_QUERY', meaning: '按受控实体、字段、排序和结构化过滤加载数据。', notes: '始终注入统一 DataScopePlan，不能通过配置关闭数据权限。' },
                 { option: '字典 DICTIONARY', meaning: '读取平台字典项。', notes: '字典编码与选项 value 必须稳定。' },
                 { option: '静态选项 STATIC_OPTIONS', meaning: '保存固定 label/value 或固定对象。', notes: '适合少量稳定选项，不适合敏感或频繁变化数据。' },
                 { option: '注册 Provider REGISTERED_PROVIDER', meaning: '调用部署时注册的受控数据提供者。', notes: 'Provider 必须声明配置 Schema、输入输出结构和支持的绑定位置。' },
@@ -871,7 +870,7 @@ export default {
                 { field: '输出映射', meaning: '把返回结构映射到字段、选项、列表列或子表行。', defaultLimit: '按目标绑定 Schema 校验。', effect: '隔离外部结构变化。', publish: '必填目标缺失时按失败策略处理。' },
                 { field: '分页 / 超时 / 缓存', meaning: '控制请求规模与生产稳定性。', defaultLimit: '超时和最大页大小必须有平台上限。', effect: '避免慢源拖垮表单和列表。', publish: '涉及用户权限的缓存键必须包含权限版本和用户上下文。' },
                 { field: '失败策略', meaning: 'FAIL、EMPTY 或 NULL。需要默认值时使用 FIELD_DEFAULT 数据源或输入映射显式配置。', defaultLimit: '提交前关键校验默认 FAIL。', effect: '决定错误提示以及是否返回空集合或空值。', publish: '不得用 EMPTY/NULL 掩盖权限、Schema 或 Provider 未部署问题。' },
-                { field: '执行接口', meaning: '线上表单调用 /api/ui-data-sources/{id}/execute；设计态管理员使用 /preview。', defaultLimit: '普通用户不能访问数据源配置与调试预览。', effect: '运行能力与管理能力分离。', publish: '自定义组件不得直接调用 /preview。' }
+                { field: '执行接口', meaning: '线上表单调用 /api/ui-runtime/interface-operations/execute；设计态管理员使用操作 /preview。', defaultLimit: '运行请求只提交绑定声明和业务输入。', effect: '运行能力与管理能力分离。', publish: '自定义组件不得直接调用 /preview。' }
               ]
             }
           ]
@@ -1049,7 +1048,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: 'ENTITY_QUERY / ENTITY_FIELD', meaning: '读取授权实体记录或当前行实体字段。', notes: '查询条件先经过字段白名单和 DataScopePlan。' },
+                { option: 'ENTITY_FIELD', meaning: '读取当前行实体字段。', notes: '字段编码来自当前列表实体定义。' },
                 { option: 'DICTIONARY / STATIC_OPTIONS', meaning: '字典映射或固定选项展示。', notes: '适合状态文案、枚举和少量稳定标签。' },
                 { option: 'REGISTERED_PROVIDER', meaning: '适配 EntityListDataProvider、ListFieldDataProvider 或统一 UiDataSourceProvider。', notes: '必须声明 Schema、批量能力、超时和支持的 LIST_QUERY/LIST_COLUMN 位置。' },
                 { option: 'INTEGRATION_CONNECTOR', meaning: '通过已注册 Connector 访问外部系统。', notes: '凭据由平台管理，配置不得包含自由 URL 和密钥。' },

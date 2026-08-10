@@ -42,9 +42,9 @@ import java.util.Set;
  * UI 数据源执行访问控制服务，负责数据源预览与发布执行链路的来源校验、
  * 权限计算和可信上下文清洗。
  *
- * <p>预览链路校验当前管理员可维护的 FORM/LIST 草稿绑定；
+ * <p>预览链路校验当前管理员可维护的 FORM/LIST/ENTITY 草稿绑定；
  * 发布链路校验 ACTIVE 发布快照绑定并叠加数据范围权限计划，
- * 同时拦截 Connector 请求中伪造的服务端保留字段。</p>
+ * 同时拦截客户端伪造的服务端可信身份与发布字段。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -52,6 +52,7 @@ public class UiDataSourceExecutionAccessService {
 
     private static final String FORM = "FORM";
     private static final String LIST = "LIST";
+    private static final String ENTITY = "ENTITY";
     private static final Set<String> RESERVED_REQUEST_KEYS = Set.of(
             "idempotencykey",
             "datascopeplan",
@@ -65,6 +66,20 @@ public class UiDataSourceExecutionAccessService {
             "organizationid",
             "deptid",
             "departmentid",
+            "entityid",
+            "entitycode",
+            "formid",
+            "formkey",
+            "listid",
+            "listkey",
+            "ownertype",
+            "ownerid",
+            "configtype",
+            "configid",
+            "serviceid",
+            "operationcode",
+            "bindingcode",
+            "requestid",
             "releaseid",
             "releaseversion",
             "publishedreleaseid");
@@ -85,7 +100,7 @@ public class UiDataSourceExecutionAccessService {
     private final ObjectMapper objectMapper;
 
     /**
-     * 授权草稿预览执行，要求来源为当前管理员可维护的 FORM/LIST 草稿绑定。
+     * 授权草稿预览执行，要求来源为当前管理员可维护的 FORM/LIST/ENTITY 草稿绑定。
      *
      * @param definition 数据源定义
      * @param request    执行请求
@@ -98,17 +113,20 @@ public class UiDataSourceExecutionAccessService {
             UiDataSourceExecuteRequest request) {
         Origin origin = resolveOrigin(request);
         requirePreviewAccess(origin);
-        rejectTrustedMetadata(definition, request);
+        rejectTrustedMetadata(request);
         ConfigTarget target = requireTarget(origin);
         String bindingPath = findDraftBinding(
                 origin,
                 target,
                 normalize(request.getUsage()),
-                definition.getId());
+                request.getTargetType(),
+                request.getTargetKey(),
+                definition.getId(),
+                definition.getOperationCode());
         if (!StringUtils.hasText(bindingPath)) {
             throw forbidden(
                     "UI_DATA_SOURCE_DRAFT_BINDING_REQUIRED",
-                    "数据源预览必须来自当前管理员可维护的 FORM/LIST 草稿绑定");
+                    "数据源预览必须来自当前管理员可维护的 FORM/LIST/ENTITY 草稿绑定");
         }
         requireScopeCompatibility(definition, origin, target);
         return authorization(
@@ -122,7 +140,7 @@ public class UiDataSourceExecutionAccessService {
     }
 
     /**
-     * 接口服务中心调试入口。管理员必须明确选择一个 FORM/LIST 业务上下文，
+     * 接口服务中心调试入口。管理员必须明确选择一个 FORM/LIST/ENTITY 业务上下文，
      * 但不要求先把待调试操作绑定到该草稿。
      */
     public UiDataSourceExecutionAuthorization authorizeManagementPreview(
@@ -131,7 +149,7 @@ public class UiDataSourceExecutionAccessService {
         configurationAccessService.requireGlobalConfigurationAccess();
         Origin origin = resolveOrigin(request);
         requirePreviewAccess(origin);
-        rejectTrustedMetadata(definition, request);
+        rejectTrustedMetadata(request);
         ConfigTarget target = requireTarget(origin);
         requireScopeCompatibility(definition, origin, target);
         return authorization(
@@ -157,7 +175,7 @@ public class UiDataSourceExecutionAccessService {
             UiDataSourceDefinition definition,
             UiDataSourceExecuteRequest request) {
         Origin origin = resolveOrigin(request);
-        rejectTrustedMetadata(definition, request);
+        rejectTrustedMetadata(request);
         ConfigTarget target = requireTarget(origin);
         requireListRuntimeAccess(origin, target);
         UiConfigRelease release = resolvePublishedRelease(
@@ -170,7 +188,10 @@ public class UiDataSourceExecutionAccessService {
                 origin,
                 snapshot,
                 normalize(request.getUsage()),
-                definition.getId());
+                request.getTargetType(),
+                request.getTargetKey(),
+                definition.getId(),
+                definition.getOperationCode());
         if (!StringUtils.hasText(bindingPath)) {
             throw forbidden(
                     "UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED",
@@ -203,7 +224,7 @@ public class UiDataSourceExecutionAccessService {
                     "ENTITY_MUTATION_SOURCE_REQUIRED",
                     "实体变更接口执行必须声明目标实体");
         }
-        rejectTrustedMetadata(definition, request);
+        rejectTrustedMetadata(request);
         EntityDefinition entity = definitionMapper
                 .findByEntityCode(request.getEntityCode())
                 .orElseThrow(() -> conflict(
@@ -359,11 +380,14 @@ public class UiDataSourceExecutionAccessService {
         }
         String configType = StringUtils.hasText(explicitType)
                 ? explicitType : inferredType;
-        if (!Set.of(FORM, LIST).contains(configType)) {
+        if (!Set.of(FORM, LIST, ENTITY).contains(configType)) {
             throw originRequired();
         }
         String contextId = FORM.equals(configType)
-                ? contextFormId : contextListId;
+                ? contextFormId
+                : LIST.equals(configType)
+                        ? contextListId
+                        : null;
         if (StringUtils.hasText(request.getConfigId())
                 && StringUtils.hasText(contextId)
                 && !Objects.equals(request.getConfigId(), contextId)) {
@@ -377,6 +401,23 @@ public class UiDataSourceExecutionAccessService {
     }
 
     private ConfigTarget requireTarget(Origin origin) {
+        if (ENTITY.equals(origin.configType())) {
+            EntityDefinition entity = definitionMapper.selectById(
+                    origin.configId());
+            if (entity == null) {
+                throw conflict(
+                        "UI_DATA_SOURCE_ENTITY_NOT_FOUND",
+                        "数据源来源实体不存在或已删除");
+            }
+            return new ConfigTarget(
+                    entity.getId(),
+                    entity.getEntityCode(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
         if (FORM.equals(origin.configType())) {
             EntityForm form = formMapper.selectById(origin.configId());
             if (form == null) {
@@ -430,13 +471,19 @@ public class UiDataSourceExecutionAccessService {
             Origin origin,
             ConfigTarget target,
             String usage,
-            String sourceId) {
+            String targetType,
+            String targetKey,
+            String sourceId,
+            String operationCode) {
         String eventBinding = bindingMatcher.findDraftEvent(
                 origin.configType(),
                 origin.configId(),
                 target.entityId(),
                 usage,
-                sourceId);
+                targetType,
+                targetKey,
+                sourceId,
+                operationCode);
         if (StringUtils.hasText(eventBinding)) {
             return eventBinding;
         }
@@ -459,8 +506,14 @@ public class UiDataSourceExecutionAccessService {
             return bindingMatcher.findForm(
                     owners,
                     usage,
+                    targetType,
+                    targetKey,
                     sourceId,
+                    operationCode,
                     "$.draft.form");
+        }
+        if (ENTITY.equals(origin.configType())) {
+            return null;
         }
         EntityListConfig list = listMapper.selectById(origin.configId());
         List<EntityListField> fields =
@@ -473,7 +526,10 @@ public class UiDataSourceExecutionAccessService {
                         fields,
                         new TypeReference<List<Map<String, Object>>>() {}),
                 usage,
+                targetType,
+                targetKey,
                 sourceId,
+                operationCode,
                 "$.draft.list");
     }
 
@@ -481,7 +537,10 @@ public class UiDataSourceExecutionAccessService {
             Origin origin,
             Map<String, Object> snapshot,
             String usage,
-            String sourceId) {
+            String targetType,
+            String targetKey,
+            String sourceId,
+            String operationCode) {
         String snapshotType = normalize(text(snapshot.get("configType")));
         if (!origin.configType().equals(snapshotType)) {
             throw conflict(
@@ -492,11 +551,17 @@ public class UiDataSourceExecutionAccessService {
                 origin.configType(),
                 snapshot,
                 usage,
-                sourceId);
+                targetType,
+                targetKey,
+                sourceId,
+                operationCode);
     }
 
     private void requirePreviewAccess(Origin origin) {
-        if (FORM.equals(origin.configType())) {
+        if (ENTITY.equals(origin.configType())) {
+            configurationAccessService.requireEntityAccess(
+                    origin.configId());
+        } else if (FORM.equals(origin.configType())) {
             configurationAccessService.requireFormAccess(origin.configId());
         } else {
             configurationAccessService.requireListAccess(origin.configId());
@@ -626,11 +691,8 @@ public class UiDataSourceExecutionAccessService {
     }
 
     private void rejectTrustedMetadata(
-            UiDataSourceDefinition definition,
             UiDataSourceExecuteRequest request) {
-        if (!"INTEGRATION_CONNECTOR".equals(normalize(
-                definition.getSourceType()))
-                || request == null) {
+        if (request == null) {
             return;
         }
         String rejected = reservedKey(
@@ -643,7 +705,7 @@ public class UiDataSourceExecutionAccessService {
         }
         if (StringUtils.hasText(rejected)) {
             throw spoofed(
-                    "Connector 请求不能提交服务端保留的可信字段: "
+                    "接口操作请求不能提交服务端保留的可信字段: "
                             + rejected);
         }
     }
@@ -715,7 +777,7 @@ public class UiDataSourceExecutionAccessService {
     private BusinessForbiddenException originRequired() {
         return forbidden(
                 "UI_DATA_SOURCE_EXECUTION_ORIGIN_REQUIRED",
-                "数据源执行必须声明可验证的 FORM/LIST 配置来源");
+                "数据源执行必须声明可验证的 FORM/LIST/ENTITY 配置来源");
     }
 
     private BusinessForbiddenException spoofed(String message) {

@@ -2,8 +2,8 @@ package com.workflow.entity.ui.api.request;
 
 import lombok.Data;
 
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 
 /**
  * UI 数据源保存请求。
@@ -23,19 +23,15 @@ public class UiDataSourceSaveRequest {
     private String sourceType;
     /** 数据提供者编码 */
     private String providerCode;
-    /** 作用域类型（如 ENTITY_LIST） */
+    /** 作用域类型：GLOBAL、ENTITY、FORM 或 LIST。 */
     private String scopeType;
-    /** 作用域 ID */
+    /** 非 GLOBAL 作用域对应的实体、表单或列表 ID。 */
     private String scopeId;
     /** 数据源配置 */
     private Map<String, Object> config;
-    /** 输入参数 Schema */
-    private Map<String, Object> inputSchema;
-    /** 输出结果 Schema */
-    private Map<String, Object> outputSchema;
     /** 执行策略（缓存/超时等） */
     private Map<String, Object> executionPolicy;
-    /** 接口服务包含的操作定义；为空时兼容历史单操作数据源 */
+    /** 接口服务包含的操作定义，至少配置一个且每个操作必须声明 contextType。 */
     private List<Map<String, Object>> operations;
     /** 是否启用 */
     private Boolean enabled;

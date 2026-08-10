@@ -1,26 +1,26 @@
 package com.workflow.service;
 
-import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAuthorization;
 import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInvocationContextFactory;
 
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
-import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.DataScopePlan;
 import com.workflow.contracts.integration.IntegrationConnector;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
+import com.workflow.contracts.ui.CommonInvocationContext;
+import com.workflow.contracts.ui.EntityDescriptor;
+import com.workflow.contracts.ui.ListInvocationContext;
 import com.workflow.contracts.ui.UiDataSourceProvider;
-import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -39,7 +39,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,14 +47,13 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
  * UI 数据源服务测试。
  *
  * <p>被测对象：{@link UiDataSourceService}，覆盖数据源保存的 URL/schema 校验、执行前的必填输入与类型校验、
- * provider 输出类型校验、权限计划不可构建/拒绝时不触达数据层、实体查询分页 JSON 校验、
+ * provider 输出类型校验、权限拒绝时不执行 Provider、
  * 缓存按权限计划/发布版本/表单发布/列表发布隔离、集成连接器仅接收服务端可信安全上下文、
  * 预览走草稿授权而非发布授权等场景。
  */
@@ -90,11 +88,17 @@ class UiDataSourceServiceTest {
     @Test
     void rejectsMalformedSchemaWhenSaving() {
         UiDataSourceSaveRequest request = saveRequest();
-        request.setInputSchema(Map.of(
-                "type",
-                "object",
-                "required",
-                "customerId"));
+        request.setOperations(List.of(Map.of(
+                "code", "query",
+                "name", "查询",
+                "kind", "READ",
+                "contextType", "LIST",
+                "inputSchema", Map.of(
+                        "type",
+                        "object",
+                        "required",
+                        "customerId"),
+                "outputSchema", Map.of())));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
@@ -108,6 +112,7 @@ class UiDataSourceServiceTest {
     @Test
     void rejectsMissingRequiredMappedInputBeforeExecution() {
         TestContext context = context(List.of());
+        authorize(context, plan("1=1", 1));
         UiDataSourceDefinition definition = definition(
                 context.codec(),
                 "STATIC_OPTIONS",
@@ -137,6 +142,7 @@ class UiDataSourceServiceTest {
     @Test
     void rejectsNestedInputTypeMismatch() {
         TestContext context = context(List.of());
+        authorize(context, plan("1=1", 1));
         UiDataSourceDefinition definition = definition(
                 context.codec(),
                 "STATIC_OPTIONS",
@@ -204,115 +210,6 @@ class UiDataSourceServiceTest {
 
         assertTrue(exception.getMessage().contains(
                 "$.total 类型应为 number"));
-    }
-
-    /** 测试权限计划无法构建时拒绝执行：验证抛出业务冲突异常且不触达动态数据服务 */
-    @Test
-    void rejectsExecutionWhenPermissionPlanCannotBeBuilt() {
-        TestContext context = context(List.of());
-        when(context.executionAccessService().authorizePublished(
-                any(),
-                any()))
-                .thenThrow(new BusinessConflictException(
-                        "UI_DATA_SOURCE_PERMISSION_PLAN_UNAVAILABLE",
-                        "数据权限引擎未返回可验证的权限计划"));
-        UiDataSourceDefinition definition = definition(
-                context.codec(),
-                "ENTITY_QUERY",
-                null,
-                Map.of(),
-                Map.of(),
-                Map.of(
-                        "entityCode", "expense",
-                        "listKey", "default"));
-        when(context.mapper().selectById("source-1"))
-                .thenReturn(definition);
-
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
-                () -> context.service().execute(
-                        "source-1",
-                        request(Map.of("filters", Map.of()), null)));
-
-        assertEquals(
-                "UI_DATA_SOURCE_PERMISSION_PLAN_UNAVAILABLE",
-                exception.getErrorCode());
-        verifyNoInteractions(context.dynamicService());
-    }
-
-    /** 测试拒绝的实体查询不触达数据库：验证权限拒绝时返回空分页且不与动态数据服务交互 */
-    @Test
-    void deniedEntityQueryDoesNotReachDatabase() {
-        TestContext context = context(List.of());
-        authorize(context, denyPlan());
-        UiDataSourceDefinition definition = definition(
-                context.codec(),
-                "ENTITY_QUERY",
-                null,
-                Map.of(),
-                Map.of(),
-                Map.of(
-                        "entityCode", "expense",
-                        "listKey", "default"));
-        when(context.mapper().selectById("source-1"))
-                .thenReturn(definition);
-
-        Object result = context.service().execute(
-                "source-1",
-                request(Map.of("filters", Map.of()), null));
-
-        PageResult<?> page = assertInstanceOf(
-                PageResult.class,
-                result);
-        assertEquals(0, page.getTotal());
-        verifyNoInteractions(context.dynamicService());
-    }
-
-    /** 测试校验实体查询分页为 JSON 对象：验证按权限计划查询并返回分页结果 */
-    @Test
-    void validatesEntityQueryPageAsJsonObject() {
-        TestContext context = context(List.of());
-        DataScopePlan plan = plan("owner_id = 'user-1'", 7);
-        authorize(context, plan);
-        UiDataSourceDefinition definition = definition(
-                context.codec(),
-                "ENTITY_QUERY",
-                null,
-                Map.of(),
-                Map.of(
-                        "type", "object",
-                        "required", List.of(
-                                "records",
-                                "total",
-                                "pageNum",
-                                "pageSize"),
-                        "properties", Map.of(
-                                "records", Map.of(
-                                        "type", "array",
-                                        "items", Map.of("type", "object")),
-                                "total", Map.of("type", "integer"),
-                                "pageNum", Map.of("type", "integer"),
-                                "pageSize", Map.of("type", "integer"))),
-                Map.of(
-                        "entityCode", "expense",
-                        "listKey", "default"));
-        when(context.mapper().selectById("source-1"))
-                .thenReturn(definition);
-        PageResult<EntityDataDTO> page =
-                new PageResult<>(List.of(), 0, 1, 20);
-        when(context.dynamicService().findPageWithDataScopePlan(
-                eq("expense"),
-                anyMap(),
-                eq(1L),
-                eq(20L),
-                eq(plan)))
-                .thenReturn(page);
-
-        Object result = context.service().execute(
-                "source-1",
-                request(Map.of("filters", Map.of()), null));
-
-        assertEquals(page, result);
     }
 
     /** 测试拒绝的 provider 不执行：验证权限拒绝时抛出业务禁止异常且 provider 未被调用 */
@@ -527,8 +424,11 @@ class UiDataSourceServiceTest {
                 "user-1",
                 integrationRequest.getRuntimeContext().userId());
         assertEquals(
-                "org-1",
+                null,
                 integrationRequest.getRuntimeContext().tenantId());
+        assertEquals(
+                "org-1",
+                integrationRequest.getRuntimeContext().organizationId());
         assertEquals(
                 "release-1",
                 integrationRequest.getRuntimeContext().releaseId());
@@ -577,6 +477,11 @@ class UiDataSourceServiceTest {
         UiDataSourceExecuteRequest request =
                 request(Map.of(), Map.of("formId", "form-1"));
         request.setUsage("FIELD_OPTIONS");
+        definition.setOperationsDocument(operationDocument(
+                context.codec(),
+                "FORM",
+                Map.of(),
+                Map.of()));
 
         Object result = context.service().preview(
                 "source-1",
@@ -584,7 +489,7 @@ class UiDataSourceServiceTest {
 
         assertEquals(List.of("A"), result);
         verify(context.executionAccessService())
-                .authorizePreview(eq(definition), eq(request));
+                .authorizePreview(any(), eq(request));
         verify(context.executionAccessService(), never())
                 .authorizePublished(any(), any());
     }
@@ -596,6 +501,13 @@ class UiDataSourceServiceTest {
         request.setSourceName("安全数据源");
         request.setSourceType("STATIC_OPTIONS");
         request.setScopeType("GLOBAL");
+        request.setOperations(List.of(Map.of(
+                "code", "query",
+                "name", "查询",
+                "kind", "READ",
+                "contextType", "LIST",
+                "inputSchema", Map.of(),
+                "outputSchema", Map.of())));
         return request;
     }
 
@@ -606,6 +518,7 @@ class UiDataSourceServiceTest {
         UiDataSourceExecuteRequest request =
                 new UiDataSourceExecuteRequest();
         request.setUsage("LIST_QUERY");
+        request.setOperationCode("query");
         request.setEntityCode("expense");
         request.setListKey("default");
         request.setInput(input);
@@ -670,19 +583,35 @@ class UiDataSourceServiceTest {
                 codec,
                 config,
                 "测试数据源配置"));
-        definition.setInputSchemaDocument(document(
-                codec,
-                inputSchema,
-                "测试输入Schema"));
-        definition.setOutputSchemaDocument(document(
-                codec,
-                outputSchema,
-                "测试输出Schema"));
         definition.setExecutionPolicyDocument(document(
                 codec,
                 executionPolicy,
                 "测试执行策略"));
+        definition.setOperationsDocument(operationDocument(
+                codec,
+                "LIST",
+                inputSchema,
+                outputSchema));
         return definition;
+    }
+
+    /** 构造单个显式操作的 JSON 文档。 */
+    private String operationDocument(
+            JsonDocumentCodec codec,
+            String contextType,
+            Map<String, Object> inputSchema,
+            Map<String, Object> outputSchema) {
+        return codec.write(
+                List.of(Map.of(
+                        "code", "query",
+                        "name", "查询",
+                        "kind", "READ",
+                        "contextType", contextType,
+                        "inputSchema", inputSchema == null
+                                ? Map.of() : inputSchema,
+                        "outputSchema", outputSchema == null
+                                ? Map.of() : outputSchema)),
+                "测试接口操作");
     }
 
     /** 将 Map 序列化为 JSON 文档，空值返回 null */
@@ -763,7 +692,7 @@ class UiDataSourceServiceTest {
                 "list-1",
                 releaseId,
                 3,
-                "$.release.list.queryDataSourceId",
+                "$.release.eventBindings[0].steps",
                 "LIST_QUERY",
                 "entity-1",
                 "expense",
@@ -790,10 +719,10 @@ class UiDataSourceServiceTest {
                 mock(EntityFormMapper.class);
         EntityListConfigMapper listMapper =
                 mock(EntityListConfigMapper.class);
-        EntityDataDynamicService dynamicService =
-                mock(EntityDataDynamicService.class);
         UiDataSourceExecutionAccessService executionAccessService =
                 mock(UiDataSourceExecutionAccessService.class);
+        UiInvocationContextFactory invocationContextFactory =
+                mock(UiInvocationContextFactory.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(
                         new ObjectMapper().findAndRegisterModules());
@@ -801,15 +730,55 @@ class UiDataSourceServiceTest {
         user.setId("user-1");
         user.setUsername("tester");
         user.setStatus(SysUser.Status.ENABLED.getValue());
+        when(invocationContextFactory.create(
+                any(),
+                any(),
+                any()))
+                .thenAnswer(invocation -> {
+                    UiDataSourceDefinition definition =
+                            invocation.getArgument(0);
+                    UiDataSourceExecutionAuthorization authorization =
+                            invocation.getArgument(1);
+                    return new ListInvocationContext(
+                            new CommonInvocationContext(
+                                    definition.getId(),
+                                    definition.getOperationCode(),
+                                    authorization.usage(),
+                                    authorization.configType(),
+                                    authorization.configId(),
+                                    "OWNER",
+                                    null,
+                                    authorization.user().getId(),
+                                    authorization.user().getUsername(),
+                                    null,
+                                    authorization.user().getOrgId(),
+                                    authorization.user().getDeptId(),
+                                    authorization.releaseId(),
+                                    authorization.releaseVersion(),
+                                    "request-1"),
+                            new EntityDescriptor(
+                                    authorization.entityId(),
+                                    authorization.entityCode(),
+                                    "费用",
+                                    "DYNAMIC",
+                                    authorization.releaseVersion()),
+                            authorization.configId(),
+                            authorization.listKey(),
+                            "默认列表",
+                            1,
+                            20,
+                            null,
+                            "PAGE");
+                });
         UiDataSourceService service = new UiDataSourceService(
                 mapper,
                 formMapper,
                 listMapper,
                 mock(EntityDefinitionAccessPolicy.class),
                 mock(EntityUiConfigurationPolicy.class),
-                dynamicService,
                 mock(SysDictItemService.class),
                 executionAccessService,
+                invocationContextFactory,
                 new UiDataSourceDefinitionValidator(codec),
                 providers,
                 connectors,
@@ -819,7 +788,6 @@ class UiDataSourceServiceTest {
         return new TestContext(
                 service,
                 mapper,
-                dynamicService,
                 executionAccessService,
                 codec,
                 user);
@@ -829,7 +797,6 @@ class UiDataSourceServiceTest {
     private record TestContext(
             UiDataSourceService service,
             UiDataSourceDefinitionMapper mapper,
-            EntityDataDynamicService dynamicService,
             UiDataSourceExecutionAccessService executionAccessService,
             JsonDocumentCodec codec,
             SysUser user) {

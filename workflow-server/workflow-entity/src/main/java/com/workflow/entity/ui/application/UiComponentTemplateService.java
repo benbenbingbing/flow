@@ -30,10 +30,12 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * UI 组件模板服务，负责模板的创建、版本管理、完整性校验和三向合并升级。
+ * UI 组件模板服务，负责模板的创建、修订存储、完整性校验和三向合并升级。
  *
  * <p>模板以 key 唯一标识，每次保存生成不可变快照版本并计算内容哈希，
- * 升级时对基线、本地与目标版本执行三向合并，输出冲突列表供人工确认。</p>
+ * 升级时对基线、本地与目标版本执行三向合并，输出冲突列表供人工确认。
+ * 列表列模板是一次性初始化模板，只允许读取当前快照，不暴露版本历史，
+ * 也不允许执行升级。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -43,6 +45,19 @@ public class UiComponentTemplateService {
     private static final Set<String> TEMPLATE_TYPES = Set.of(
             "FIELD_GROUP", "FORM_SECTION", "SUB_FORM",
             "LIST_COLUMN_GROUP", "BUTTON_GROUP");
+
+    /** 列模板不得携带具体列表字段身份与排序信息。 */
+    private static final Set<String> LIST_COLUMN_IDENTITY_KEYS = Set.of(
+            "id",
+            "fieldId",
+            "fieldCode",
+            "fieldName",
+            "sortOrder",
+            "orderKey",
+            "revision",
+            "templateId",
+            "templateVersion",
+            "localOverridesDocument");
 
     private final UiComponentTemplateMapper templateMapper;
     private final UiComponentTemplateVersionMapper versionMapper;
@@ -72,11 +87,30 @@ public class UiComponentTemplateService {
      * @return 版本列表
      */
     public List<UiComponentTemplateVersion> versions(String templateId) {
-        requireTemplate(templateId);
+        UiComponentTemplate template = requireTemplate(templateId);
+        if (isInitializationOnlyTemplate(template)) {
+            throw new IllegalArgumentException(
+                    "列表列模板仅用于一次性初始化，不提供版本历史");
+        }
         List<UiComponentTemplateVersion> versions =
                 versionMapper.findByTemplateId(templateId);
         versions.forEach(this::verifyVersionIntegrity);
         return versions;
+    }
+
+    /**
+     * 读取模板当前快照，不向调用方暴露内部修订号。
+     *
+     * @param templateId 模板ID
+     * @return 当前模板快照
+     */
+    public Map<String, Object> currentSnapshot(String templateId) {
+        UiComponentTemplate template = requireTemplate(templateId);
+        Integer currentRevision = template.getCurrentVersion();
+        if (currentRevision == null || currentRevision < 1) {
+            throw new IllegalArgumentException("模板当前快照不存在");
+        }
+        return snapshot(templateId, currentRevision);
     }
 
     /**
@@ -125,10 +159,9 @@ public class UiComponentTemplateService {
             String templateId,
             Map<String, Object> snapshot,
             String description) {
-        return createVersion(
-                requireTemplateForUpdate(templateId),
-                snapshot,
-                description);
+        UiComponentTemplate template = requireTemplateForUpdate(templateId);
+        requireVersionedTemplate(template);
+        return createVersion(template, snapshot, description);
     }
 
     /**
@@ -142,6 +175,7 @@ public class UiComponentTemplateService {
             String templateId,
             UiComponentTemplateUpgradeRequest request) {
         UiComponentTemplate template = requireTemplate(templateId);
+        requireVersionedTemplate(template);
         int fromVersion = request.getFromVersion() == null
                 ? template.getCurrentVersion() : request.getFromVersion();
         int toVersion = request.getToVersion() == null
@@ -172,6 +206,7 @@ public class UiComponentTemplateService {
         if (snapshot == null || snapshot.isEmpty()) {
             throw new IllegalArgumentException("模板快照不能为空");
         }
+        validateSnapshot(template.getTemplateType(), snapshot);
         String document = codec.canonicalize(
                 codec.write(snapshot, "组件模板快照"), "组件模板快照");
         String contentHash = hash(document);
@@ -329,6 +364,20 @@ public class UiComponentTemplateService {
         return template;
     }
 
+    private void requireVersionedTemplate(UiComponentTemplate template) {
+        if (isInitializationOnlyTemplate(template)) {
+            throw new IllegalArgumentException(
+                    "列表列模板仅用于一次性初始化，不能创建业务版本或升级已配置列");
+        }
+    }
+
+    private boolean isInitializationOnlyTemplate(
+            UiComponentTemplate template) {
+        return template != null
+                && "LIST_COLUMN_GROUP".equalsIgnoreCase(
+                        template.getTemplateType());
+    }
+
     private void validate(UiComponentTemplateSaveRequest request) {
         if (request == null
                 || !StringUtils.hasText(request.getTemplateKey())
@@ -339,6 +388,51 @@ public class UiComponentTemplateService {
         String type = request.getTemplateType().trim().toUpperCase();
         if (!TEMPLATE_TYPES.contains(type)) {
             throw new IllegalArgumentException("不支持的模板类型: " + type);
+        }
+        validateSnapshot(type, request.getSnapshot());
+    }
+
+    private void validateSnapshot(
+            String templateType,
+            Map<String, Object> snapshot) {
+        if (snapshot == null || snapshot.isEmpty()) {
+            throw new IllegalArgumentException("模板快照不能为空");
+        }
+        if (!"LIST_COLUMN_GROUP".equalsIgnoreCase(templateType)) {
+            return;
+        }
+        Object fieldValue = snapshot.getOrDefault("field", snapshot);
+        if (!(fieldValue instanceof Map<?, ?> field)) {
+            throw new IllegalArgumentException("列表列模板快照必须包含 field 对象");
+        }
+        for (String key : LIST_COLUMN_IDENTITY_KEYS) {
+            if (field.containsKey(key)) {
+                throw new IllegalArgumentException(
+                        "列表列模板不得包含具体字段身份或排序属性: " + key);
+            }
+        }
+        validateObjectDocument(field.get("dataSourceConfig"), "数据源配置");
+        validateObjectDocument(field.get("queryConfig"), "查询配置");
+        validateObjectDocument(field.get("columnConfig"), "列展示配置");
+        validateObjectDocument(field.get("renderConfig"), "渲染配置");
+    }
+
+    private void validateObjectDocument(Object value, String label) {
+        if (value == null || (value instanceof String text && text.isBlank())) {
+            return;
+        }
+        if (value instanceof Map<?, ?>) {
+            return;
+        }
+        if (!(value instanceof String text)) {
+            throw new IllegalArgumentException(label + "必须是 JSON 对象");
+        }
+        Object parsed = codec.read(
+                text,
+                new TypeReference<Object>() {},
+                label);
+        if (!(parsed instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException(label + "必须是 JSON 对象");
         }
     }
 
