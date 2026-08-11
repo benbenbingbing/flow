@@ -42,6 +42,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^editingRenderConfig$',
     '^listQueryEditor\\.',
     '^row\\.(enabled|fieldCode|fieldName|isQuery|showInList)$',
+    '^selectedListTemplateId$',
     '^(toolbarButtons|rowActionButtons)$',
     '^viewConfig\\.'
   ]),
@@ -77,7 +78,8 @@ export const CONFIGURATION_SOURCES = Object.freeze([
   ]),
   source('src/components/form-designer/FormNodeDataSettings.vue', '实体配置', '表单节点数据绑定', [
     '^selectedField\\.',
-    '^selectedParameterContract$'
+    '^selectedParameterContract$',
+    '^selectedSubListParameterContract$'
   ]),
   source('src/components/ui-config/FormDataSourceCompatDialog.vue', '实体配置', '表单级数据源', [
     '^binding\\.'
@@ -1786,6 +1788,32 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: '当前业务所属项目的主键ID',
     expectedEffect: '父表单配置参数映射时展示该说明，帮助配置人员选择正确来源。'
   },
+  'selectedField.subListShowSearch': {
+    meaning: '控制子列表顶部是否显示查询条件区域。',
+    expectedEffect: '开启后用户可按已发布列表的查询字段筛选嵌入记录；关闭后直接展示当前查询结果。'
+  },
+  'selectedField.subListShowPagination': {
+    meaning: '控制子列表底部是否显示分页控件。',
+    expectedEffect: '开启后用户可切换页码并按配置的分页大小加载记录；关闭后不展示分页操作。'
+  },
+  'selectedField.subListShowToolbar': {
+    meaning: '控制子列表是否显示已发布列表的顶部工具栏动作。',
+    expectedEffect: '开启后按权限和适用条件展示列表工具栏按钮；关闭后不渲染这些顶部动作。'
+  },
+  'selectedField.subListShowRowActions': {
+    meaning: '控制子列表是否显示每条记录对应的行操作。',
+    expectedEffect: '开启后逐行解析并展示有权限的操作按钮；关闭后不渲染行操作列。'
+  },
+  'selectedField.subListPageSize': {
+    meaning: '设置子列表每页默认加载的记录数量。',
+    example: 10,
+    expectedEffect: '启用分页时按该数量请求和展示记录，并据此计算总页数。'
+  },
+  'selectedField.subListMaxHeight': {
+    meaning: '设置子列表内容区域允许使用的最大高度，单位为像素。',
+    example: 420,
+    expectedEffect: '记录内容超过该高度时列表区域内部滚动，避免撑开父表单布局。'
+  },
   'src/components/form-designer/FormNodeDataSettings.vue:selectedParameterContract': {
     label: '子表单参数传递',
     meaning: '把父记录字段、父记录ID、可信运行上下文或固定值映射为子表单运行参数和子字段初始值。',
@@ -1801,6 +1829,19 @@ const CONTROL_OVERRIDES = Object.freeze({
       }
     },
     expectedEffect: '运行参数通过 params 使用且不落库；子字段只在空值时初始化，已有非空内容不会被父字段变化覆盖。'
+  },
+  'src/components/form-designer/FormNodeDataSettings.vue:selectedSubListParameterContract': {
+    label: '子列表参数传递',
+    meaning: '把父记录字段、父记录ID、可信运行上下文或固定值映射为嵌入列表的查询参数。',
+    configureWhen: '嵌入列表需要按当前父记录或表单上下文限定查询范围时配置。',
+    skipWhen: '嵌入列表查询不依赖父表单数据，或已发布列表自身条件足以确定数据范围时无需配置。',
+    example: {
+      version: 1,
+      parameterMapping: {
+        projectId: 'parent.data.project_id'
+      }
+    },
+    expectedEffect: '运行时先解析父表单映射，再把可信参数传给已发布列表查询；映射缺失或类型不符时阻止错误查询。'
   },
   'src/components/FormButtonConfigPanel.vue:row.label': {
     label: '表单按钮名称',
@@ -1819,6 +1860,18 @@ const CONTROL_OVERRIDES = Object.freeze({
     meaning: '选择当前表单中已存在的 ACTION_SLOT 节点稳定键，仅在按钮位置为动作插槽时使用。',
     example: 'record_actions',
     expectedEffect: '按钮渲染在 record_actions 插槽；插槽不存在时发布校验会拒绝该引用。'
+  },
+  'src/components/ListButtonConfigPanel.vue:advancedButton.targetFormMode': {
+    meaning: '选择行按钮打开目标表单时使用查看模式还是编辑模式。',
+    example: 'VIEW',
+    expectedEffect: '选择 VIEW 时以只读详情打开当前记录；选择 EDIT 时进入可提交修改的编辑表单。'
+  },
+  'src/views/EntityListConfigDesign.vue:selectedListTemplateId': {
+    meaning: '选择一个已发布的列表列模板，用它初始化当前列的高级配置。',
+    configureWhen: '新建列表列或希望复用既有列的数据源、查询和渲染配置时选择。',
+    skipWhen: '当前列需要独立配置，或不希望复制任何模板内容时无需选择。',
+    example: 'LIST_COLUMN_TEMPLATE_001',
+    expectedEffect: '选择后把模板快照复制到当前列；保存后当前列独立维护，模板后续修改不会反向覆盖。'
   },
   'src/components/FormButtonConfigPanel.vue:advancedButton.confirm.message': {
     label: '按钮确认提示',
