@@ -48,7 +48,7 @@
         <jsoup.version>1.22.2</jsoup.version>
         <json-schema-validator.version>2.0.1</json-schema-validator.version>
         <openapi-diff.version>2.1.7</openapi-diff.version>
-        <swagger-parser.version>2.1.45</swagger-parser.version>
+        <swagger-parser.version>2.1.46</swagger-parser.version>
         <cloudevents.version>5.0.0</cloudevents.version>
     </properties>
 
