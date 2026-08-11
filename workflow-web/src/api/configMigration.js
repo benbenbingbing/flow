@@ -56,10 +56,8 @@ export const configMigrationApi = {
     return request.get(`/config-migration/imports/${id}/compare`)
   },
 
-  publishImport(id, itemIds) {
-    return request.post(`/config-migration/imports/${id}/publish`, {
-      itemIds: itemIds?.length ? itemIds : undefined
-    })
+  publishImport(id) {
+    return request.post(`/config-migration/imports/${id}/publish`)
   },
 
   rollbackImport(id) {

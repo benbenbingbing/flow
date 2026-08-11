@@ -44,7 +44,114 @@ class ConfigMigrationPackageCodecTest {
         assertTrue(snapshot.containsKey("definition"));
         assertTrue(snapshot.containsKey("forms"));
         assertFalse(snapshot.containsKey("fields"));
+        assertEquals(
+                Map.of("full", false, "sections", List.of("forms")),
+                snapshot.get(ConfigMigrationPackageCodec.SELECTION_METADATA));
         assertEquals(encoded.checksum(), decoded.checksum());
+    }
+
+    @Test
+    void selectingOneFormKeepsOnlyThatFormAndItsActualDependencies() {
+        ConfigMigrationPackageCodec codec = codec("test-signing-key");
+        ConfigMigrationAsset asset = entityAsset();
+
+        Map<String, Object> snapshot = codec.selectSnapshot(
+                asset.getSnapshotJson(),
+                Map.of(
+                        "full", false,
+                        "sections", List.of("forms"),
+                        "formKeys", List.of("default")));
+
+        List<Map<String, Object>> forms = (List<Map<String, Object>>) snapshot.get("forms");
+        List<Map<String, Object>> dependencies =
+                (List<Map<String, Object>>) snapshot.get("dependencies");
+        Map<String, Object> definition =
+                (Map<String, Object>) snapshot.get("definition");
+
+        assertEquals(List.of("default"), forms.stream()
+                .map(value -> String.valueOf(value.get("formKey")))
+                .toList());
+        assertFalse(definition.containsKey("processKey"));
+        assertTrue(dependencies.stream().anyMatch(value ->
+                ConfigMigrationAssetService.ENTITY.equals(value.get("type"))
+                        && "expense".equals(value.get("key"))
+                        && Boolean.TRUE.equals(value.get(
+                                ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY))));
+        assertTrue(dependencies.stream().anyMatch(value ->
+                "CUSTOM_COMPONENT".equals(value.get("type"))
+                        && "expense-default-form".equals(value.get("key"))));
+        assertFalse(dependencies.stream().anyMatch(value ->
+                ConfigMigrationAssetService.PROCESS.equals(value.get("type"))));
+        assertFalse(dependencies.stream().anyMatch(value ->
+                "expense-review-form".equals(value.get("key"))));
+    }
+
+    @Test
+    void mergingFormDependenciesUnionsExactFormKeysWithoutExpandingToFullEntity() {
+        ConfigMigrationPackageCodec codec = codec("test-signing-key");
+
+        Map<String, Object> merged = codec.mergeSelections(
+                Map.of(
+                        "full", false,
+                        "sections", List.of("forms"),
+                        "formKeys", List.of("default")),
+                Map.of(
+                        "full", false,
+                        "sections", List.of("forms"),
+                        "formKeys", List.of("review")));
+
+        assertEquals(false, merged.get("full"));
+        assertEquals(List.of("forms"), merged.get("sections"));
+        assertEquals(List.of("default", "review"), merged.get("formKeys"));
+    }
+
+    @Test
+    void individualFormsUseIndependentMigrationBaselineScopes() {
+        ConfigMigrationPackageCodec codec = codec("test-signing-key");
+        ConfigMigrationAsset asset = entityAsset();
+
+        Map<String, Object> defaultForm = codec.selectSnapshot(
+                asset.getSnapshotJson(),
+                Map.of(
+                        "full", false,
+                        "sections", List.of("forms"),
+                        "formKeys", List.of("default")));
+        Map<String, Object> reviewForm = codec.selectSnapshot(
+                asset.getSnapshotJson(),
+                Map.of(
+                        "full", false,
+                        "sections", List.of("forms"),
+                        "formKeys", List.of("review")));
+        Map<String, Object> fullEntity = codec.selectSnapshot(
+                asset.getSnapshotJson(),
+                Map.of("full", true));
+
+        String defaultScope = codec.selectionScopeKey(defaultForm);
+        String reviewScope = codec.selectionScopeKey(reviewForm);
+        assertTrue(defaultScope.startsWith("PARTIAL:"));
+        assertTrue(reviewScope.startsWith("PARTIAL:"));
+        assertFalse(defaultScope.equals(reviewScope));
+        assertEquals("FULL", codec.selectionScopeKey(fullEntity));
+    }
+
+    @Test
+    void targetComparisonAllowsASelectedFormThatDoesNotExistYet() {
+        ConfigMigrationPackageCodec codec = codec("test-signing-key");
+        ConfigMigrationAsset asset = entityAsset();
+        Map<String, Object> selection = Map.of(
+                "full", false,
+                "sections", List.of("forms"),
+                "formKeys", List.of("new-form"));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                codec.selectSnapshot(asset.getSnapshotJson(), selection));
+
+        Map<String, Object> targetSnapshot =
+                codec.selectSnapshotAllowingMissingKeys(
+                        asset.getSnapshotJson(), selection);
+        assertTrue(((List<?>) targetSnapshot.get("forms")).isEmpty());
+        assertFalse(codec.hashSelectedSnapshot(
+                asset.getSnapshotJson(), selection).isBlank());
     }
 
     /** 测试不同环境签名的迁移包被拒绝：验证目标环境用不同密钥解码时抛出 IllegalArgumentException */
@@ -163,13 +270,57 @@ class ConfigMigrationPackageCodecTest {
                   "schemaVersion": 1,
                   "assetType": "ENTITY",
                   "businessKey": "expense",
-                  "definition": {"entityCode": "expense", "entityName": "费用申请"},
+                  "definition": {
+                    "entityCode": "expense",
+                    "entityName": "费用申请",
+                    "storageMode": "DYNAMIC",
+                    "processKey": "expense_approval"
+                  },
                   "fields": [{"fieldCode": "amount", "fieldType": "DECIMAL"}],
-                  "forms": [{"formKey": "default", "formName": "默认表单"}],
-                  "dependencies": []
+                  "forms": [
+                    {
+                      "formKey": "default",
+                      "formName": "默认表单",
+                      "customComponent": "expense-default-form"
+                    },
+                    {
+                      "formKey": "review",
+                      "formName": "审批表单",
+                      "customComponent": "expense-review-form"
+                    }
+                  ],
+                  "dependencies": [
+                    {
+                      "type": "PROCESS",
+                      "key": "expense_approval",
+                      "required": true,
+                      "source": "实体绑定流程"
+                    },
+                    {
+                      "type": "CUSTOM_COMPONENT",
+                      "key": "expense-default-form",
+                      "required": true,
+                      "source": "customComponent"
+                    },
+                    {
+                      "type": "CUSTOM_COMPONENT",
+                      "key": "expense-review-form",
+                      "required": true,
+                      "source": "customComponent"
+                    }
+                  ]
                 }
                 """);
-        asset.setDependenciesJson("[]");
+        asset.setDependenciesJson("""
+                [
+                  {
+                    "type": "PROCESS",
+                    "key": "expense_approval",
+                    "required": true,
+                    "source": "实体绑定流程"
+                  }
+                ]
+                """);
         return asset;
     }
 

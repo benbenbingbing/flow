@@ -37,6 +37,7 @@ import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportItem
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigImportPackageMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -65,6 +66,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ConfigMigrationPackageService {
     private static final DateTimeFormatter PACKAGE_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final ConfigMigrationAssetService assetService;
@@ -112,12 +114,15 @@ public class ConfigMigrationPackageService {
         if (request == null || request.getAssetIds() == null || request.getAssetIds().isEmpty()) {
             throw new IllegalArgumentException("请选择至少一个迁移资产");
         }
-        List<ConfigMigrationAsset> assets = expandDependencies(request);
+        ExpandedExport expanded = expandDependencies(request);
+        List<ConfigMigrationAsset> assets = expanded.assets();
         String migrationTag = resolvePackageTag(request.getMigrationTag(), assets);
         String packageNo = "WFP-" + migrationTag + "-" + LocalDateTime.now().format(PACKAGE_TIME)
                 + "-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase(Locale.ROOT);
         ConfigMigrationPackageCodec.EncodedPackage encoded = packageCodec.encode(
-                packageNo, migrationTag, assets, request.getSelections());
+                packageNo, migrationTag, assets, expanded.selections());
+        log.info("生成配置迁移包，packageNo={}，assetCount={}，selections={}",
+                packageNo, assets.size(), expanded.selections());
         ConfigExportPackage exportPackage = new ConfigExportPackage();
         exportPackage.setPackageNo(packageNo);
         exportPackage.setMigrationTag(migrationTag);
@@ -140,7 +145,7 @@ public class ConfigMigrationPackageService {
             item.setBusinessKey(asset.getBusinessKey());
             item.setSourceVersion(asset.getSourceVersion());
             item.setContentHash(asset.getContentHash());
-            item.setSelectionJson(documents.writeJson(request.getSelections().get(asset.getId())));
+            item.setSelectionJson(documents.writeJson(expanded.selections().get(asset.getId())));
             item.setCreatedAt(LocalDateTime.now());
             exportItemMapper.insert(item);
             asset.setExportStatus("EXPORTED");
@@ -234,9 +239,15 @@ public class ConfigMigrationPackageService {
             importPackage.setImportedAt(LocalDateTime.now());
             importPackage.setDeleted(0);
             importPackageMapper.insert(importPackage);
-            Set<String> packageAssets = decoded.assets().stream()
-                    .map(asset -> asset.assetType() + ":" + asset.businessKey())
-                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+            Map<String, PackageAsset> packageAssets = decoded.assets().stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            asset -> asset.assetType() + ":" + asset.businessKey(),
+                            asset -> new PackageAsset(
+                                    asset.assetType(),
+                                    asset.businessKey(),
+                                    asset.snapshot()),
+                            (left, right) -> left,
+                            LinkedHashMap::new));
             for (ConfigMigrationPackageCodec.DecodedAsset asset : decoded.assets()) {
                 ConfigImportItem item = new ConfigImportItem();
                 item.setImportPackageId(importPackage.getId());
@@ -255,6 +266,8 @@ public class ConfigMigrationPackageService {
                 item.setUpdatedAt(LocalDateTime.now());
                 importItemMapper.insert(item);
             }
+            log.info("导入配置迁移包，importId={}，packageNo={}，assetCount={}",
+                    importPackage.getId(), importPackage.getPackageNo(), decoded.assets().size());
             return importSummary(importPackage);
         } catch (IllegalArgumentException e) {
             throw e;
@@ -308,9 +321,15 @@ public class ConfigMigrationPackageService {
     public Map<String, Object> analyze(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
         List<ConfigImportItem> items = listImportItems(importId);
-        Set<String> packageAssets = items.stream()
-                .map(item -> item.getAssetType() + ":" + item.getBusinessKey())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Map<String, PackageAsset> packageAssets = items.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        item -> item.getAssetType() + ":" + item.getBusinessKey(),
+                        item -> new PackageAsset(
+                                item.getAssetType(),
+                                item.getBusinessKey(),
+                                documents.readMap(item.getSnapshotJson())),
+                        (left, right) -> left,
+                        LinkedHashMap::new));
         List<Map<String, Object>> reports = new ArrayList<>();
         boolean blocked = false;
         for (ConfigImportItem item : items) {
@@ -351,6 +370,8 @@ public class ConfigMigrationPackageService {
                 importPackage.getStatus(),
                 importPackage.getValidationReportJson(),
                 importPackage.getErrorMessage());
+        log.info("分析配置迁移包完成，importId={}，itemCount={}，blocked={}",
+                importId, items.size(), blocked);
         return validationReport;
     }
     /**
@@ -424,43 +445,85 @@ public class ConfigMigrationPackageService {
      *
      * <p>硬依赖缺失会抛异常；validateOnlyDependencies 中的依赖仅校验存在性而不打包。</p>
      */
-    private List<ConfigMigrationAsset> expandDependencies(ConfigExportRequest request) {
+    private ExpandedExport expandDependencies(ConfigExportRequest request) {
         Map<String, ConfigMigrationAsset> selected = new LinkedHashMap<>();
-        Deque<ConfigMigrationAsset> queue = new ArrayDeque<>();
+        Map<String, Object> selections = new LinkedHashMap<>();
+        Deque<String> queue = new ArrayDeque<>();
+        Map<String, Object> requestedSelections = request.getSelections() == null
+                ? Map.of() : request.getSelections();
         for (String id : request.getAssetIds()) {
             ConfigMigrationAsset asset = assetService.getRequired(id);
             validateExportable(asset);
-            if (selected.put(asset.getAssetType() + ":" + asset.getBusinessKey(), asset) == null) {
-                queue.add(asset);
-            }
+            addOrMergeExportAsset(
+                    selected,
+                    selections,
+                    queue,
+                    asset,
+                    requestedSelections.get(asset.getId()));
         }
         while (!queue.isEmpty()) {
-            ConfigMigrationAsset asset = queue.removeFirst();
-            for (Map<String, Object> dependency : documents.readMapList(asset.getDependenciesJson())) {
+            String queuedKey = queue.removeFirst();
+            ConfigMigrationAsset asset = selected.get(queuedKey);
+            Map<String, Object> selectedSnapshot = packageCodec.selectSnapshot(
+                    asset.getSnapshotJson(), selections.get(asset.getId()));
+            for (Map<String, Object> dependency :
+                    documents.readMapList(selectedSnapshot.get("dependencies"))) {
                 if (!Boolean.parseBoolean(String.valueOf(dependency.getOrDefault("required", false)))) {
+                    continue;
+                }
+                if (Boolean.parseBoolean(String.valueOf(dependency.getOrDefault(
+                        ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY, false)))) {
                     continue;
                 }
                 String type = String.valueOf(dependency.get("type"));
                 String key = String.valueOf(dependency.get("key"));
-                if (request.getValidateOnlyDependencies().contains(type + ":" + key)) {
+                Set<String> validateOnly = request.getValidateOnlyDependencies() == null
+                        ? Set.of() : request.getValidateOnlyDependencies();
+                if (validateOnly.contains(type + ":" + key)) {
                     ensureDependencyExists(type, key);
                     continue;
                 }
-                ConfigMigrationAsset dependencyAsset = findDependencyAsset(type, key);
+                DependencyAsset dependencyAsset = findDependencyAsset(type, key);
                 if (dependencyAsset == null) {
                     throw new IllegalArgumentException("缺少可导出的硬依赖: " + type + ":" + key);
                 }
-                validateExportable(dependencyAsset);
-                String assetKey = dependencyAsset.getAssetType() + ":" + dependencyAsset.getBusinessKey();
-                if (selected.putIfAbsent(assetKey, dependencyAsset) == null) {
-                    queue.add(dependencyAsset);
-                }
+                validateExportable(dependencyAsset.asset());
+                addOrMergeExportAsset(
+                        selected,
+                        selections,
+                        queue,
+                        dependencyAsset.asset(),
+                        dependencyAsset.selection());
             }
         }
-        return selected.values().stream()
+        List<ConfigMigrationAsset> assets = selected.values().stream()
                 .sorted(Comparator.comparing(ConfigMigrationAsset::getAssetType)
                         .thenComparing(ConfigMigrationAsset::getBusinessKey))
                 .toList();
+        return new ExpandedExport(assets, selections);
+    }
+
+    private void addOrMergeExportAsset(
+            Map<String, ConfigMigrationAsset> selected,
+            Map<String, Object> selections,
+            Deque<String> queue,
+            ConfigMigrationAsset asset,
+            Object selection) {
+        String assetKey = asset.getAssetType() + ":" + asset.getBusinessKey();
+        ConfigMigrationAsset existing = selected.putIfAbsent(assetKey, asset);
+        Map<String, Object> normalized = packageCodec.normalizeSelection(selection);
+        if (existing == null) {
+            selections.put(asset.getId(), normalized);
+            queue.add(assetKey);
+            return;
+        }
+        Map<String, Object> current = packageCodec.normalizeSelection(
+                selections.get(existing.getId()));
+        Map<String, Object> merged = packageCodec.mergeSelections(current, normalized);
+        if (!merged.equals(current)) {
+            selections.put(existing.getId(), merged);
+            queue.add(assetKey);
+        }
     }
     /**
      * 根据依赖类型与编码查找对应的迁移资产(实体/流程/表单引用)。
@@ -469,17 +532,30 @@ public class ConfigMigrationPackageService {
      * @param key  依赖编码
      * @return 匹配的迁移资产，不存在返回 null
      */
-    private ConfigMigrationAsset findDependencyAsset(String type, String key) {
+    private DependencyAsset findDependencyAsset(String type, String key) {
         if (ConfigMigrationAssetService.ENTITY.equals(type)) {
-            return assetService.findLatest(ConfigMigrationAssetService.ENTITY, key);
+            ConfigMigrationAsset asset =
+                    assetService.findLatest(ConfigMigrationAssetService.ENTITY, key);
+            return asset == null ? null : new DependencyAsset(asset, Map.of("full", true));
         }
         if (ConfigMigrationAssetService.PROCESS.equals(type)) {
-            return assetService.findLatest(ConfigMigrationAssetService.PROCESS, key);
+            ConfigMigrationAsset asset =
+                    assetService.findLatest(ConfigMigrationAssetService.PROCESS, key);
+            return asset == null ? null : new DependencyAsset(asset, Map.of("full", true));
         }
         if ("FORM".equals(type) && key.startsWith("wf-form://")) {
             String[] segments = key.substring("wf-form://".length()).split("/", 2);
-            return segments.length > 0
-                    ? assetService.findLatest(ConfigMigrationAssetService.ENTITY, segments[0]) : null;
+            if (segments.length != 2) {
+                return null;
+            }
+            ConfigMigrationAsset asset =
+                    assetService.findLatest(ConfigMigrationAssetService.ENTITY, segments[0]);
+            return asset == null ? null : new DependencyAsset(
+                    asset,
+                    Map.of(
+                            "full", false,
+                            "sections", List.of("forms"),
+                            "formKeys", List.of(segments[1])));
         }
         return null;
     }
@@ -489,7 +565,11 @@ public class ConfigMigrationPackageService {
         }
     }
     private void ensureDependencyExists(String type, String key) {
-        if (!isDependencyResolved(type, key, Set.of())) {
+        if (!isDependencyResolved(
+                Map.of("type", type, "key", key, "required", true),
+                type,
+                key,
+                Map.of())) {
             throw new IllegalArgumentException("依赖仅校验失败: " + type + ":" + key);
         }
     }
@@ -517,22 +597,41 @@ public class ConfigMigrationPackageService {
         ConfigMigrationAsset target = assetService.findLatest(item.getAssetType(), item.getBusinessKey());
         item.setTargetBeforeVersion(target == null ? null : target.getSourceVersion());
         item.setTargetBeforeHash(target == null ? null : target.getContentHash());
+        Map<String, Object> incomingSnapshot = documents.readMap(item.getSnapshotJson());
         if (target == null) {
+            if (isFineGrainedSnapshot(incomingSnapshot)
+                    && liveAssetExists(item.getAssetType(), item.getBusinessKey())) {
+                log.info("细粒度迁移缺少目标回滚快照，assetType={}，businessKey={}",
+                        item.getAssetType(), item.getBusinessKey());
+                return "LOCAL_CHANGED";
+            }
             return "NEW";
         }
-        if (Objects.equals(item.getSourceHash(), target.getContentHash())) {
+        Map<String, Object> selection = packageCodec.selectionOf(incomingSnapshot);
+        String targetScopeHash = packageCodec.hashSelectedSnapshot(
+                target.getSnapshotJson(), selection);
+        if (Objects.equals(item.getSourceHash(), targetScopeHash)) {
             return "CONSISTENT";
         }
+        String scopeKey = packageCodec.selectionScopeKey(incomingSnapshot);
         ConfigAssetBaseline baseline = baselineMapper.selectOne(new LambdaQueryWrapper<ConfigAssetBaseline>()
                 .eq(ConfigAssetBaseline::getAssetType, item.getAssetType())
                 .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey())
+                .eq(ConfigAssetBaseline::getScopeKey, scopeKey)
                 .last("LIMIT 1"));
-        if (baseline == null) {
+        BaselineHashes hashes = baseline == null
+                ? deriveBaselineHashes(item, selection, scopeKey)
+                : new BaselineHashes(
+                        baseline.getSourceHash(),
+                        baseline.getTargetHash());
+        if (hashes == null) {
             return item.getSourceVersion() != null && target.getSourceVersion() != null
                     && item.getSourceVersion() > target.getSourceVersion() ? "SOURCE_NEWER" : "CONFLICT";
         }
-        boolean localChanged = !Objects.equals(target.getContentHash(), baseline.getTargetHash());
-        boolean sourceChanged = !Objects.equals(item.getSourceHash(), baseline.getSourceHash());
+        boolean localChanged = !Objects.equals(
+                targetScopeHash, hashes.targetHash());
+        boolean sourceChanged = !Objects.equals(
+                item.getSourceHash(), hashes.sourceHash());
         if (localChanged && sourceChanged) {
             return "CONFLICT";
         }
@@ -541,6 +640,99 @@ public class ConfigMigrationPackageService {
         }
         return sourceChanged ? "SOURCE_NEWER" : "CONSISTENT";
     }
+
+    private boolean isFineGrainedSnapshot(Map<String, Object> snapshot) {
+        if (!(snapshot.get(ConfigMigrationPackageCodec.SELECTION_METADATA)
+                instanceof Map<?, ?> selection)) {
+            return false;
+        }
+        return !Boolean.parseBoolean(String.valueOf(selection.get("full")));
+    }
+
+    private boolean liveAssetExists(String assetType, String businessKey) {
+        if (ConfigMigrationAssetService.ENTITY.equals(assetType)) {
+            return entityMapper.findByEntityCode(businessKey).isPresent();
+        }
+        if (ConfigMigrationAssetService.PROCESS.equals(assetType)) {
+            return processMapper.findByProcessKey(businessKey).isPresent();
+        }
+        return false;
+    }
+
+    private BaselineHashes deriveBaselineHashes(
+            ConfigImportItem item,
+            Map<String, Object> selection,
+            String scopeKey) {
+        if ("FULL".equals(scopeKey)) {
+            return null;
+        }
+        ConfigAssetBaseline fullBaseline = baselineMapper.selectOne(
+                new LambdaQueryWrapper<ConfigAssetBaseline>()
+                        .eq(ConfigAssetBaseline::getAssetType, item.getAssetType())
+                        .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey())
+                        .eq(ConfigAssetBaseline::getScopeKey, "FULL")
+                        .last("LIMIT 1"));
+        if (fullBaseline == null) {
+            return null;
+        }
+        ConfigImportItem baselineSource = importItemMapper.selectList(
+                        new LambdaQueryWrapper<ConfigImportItem>()
+                                .eq(ConfigImportItem::getImportPackageId,
+                                        fullBaseline.getImportPackageId())
+                                .eq(ConfigImportItem::getAssetType,
+                                        item.getAssetType())
+                                .eq(ConfigImportItem::getBusinessKey,
+                                        item.getBusinessKey()))
+                .stream()
+                .filter(value -> "FULL".equals(packageCodec.selectionScopeKey(
+                        documents.readMap(value.getSnapshotJson()))))
+                .findFirst()
+                .orElse(null);
+        ConfigMigrationAsset baselineTarget = findBaselineTarget(
+                item.getAssetType(),
+                item.getBusinessKey(),
+                fullBaseline);
+        if (baselineSource == null || baselineTarget == null) {
+            return null;
+        }
+        return new BaselineHashes(
+                packageCodec.hashSelectedSnapshot(
+                        baselineSource.getSnapshotJson(), selection),
+                packageCodec.hashSelectedSnapshot(
+                        baselineTarget.getSnapshotJson(), selection));
+    }
+
+    private ConfigMigrationAsset findBaselineTarget(
+            String assetType,
+            String businessKey,
+            ConfigAssetBaseline baseline) {
+        ConfigMigrationAsset target = null;
+        if (baseline.getTargetVersion() != null) {
+            target = assetMapper.selectOne(
+                    baselineTargetQuery(assetType, businessKey)
+                            .eq(ConfigMigrationAsset::getSourceVersion,
+                                    baseline.getTargetVersion())
+                            .last("LIMIT 1"));
+        }
+        if (target != null || !StringUtils.hasText(baseline.getTargetHash())) {
+            return target;
+        }
+        return assetMapper.selectOne(
+                baselineTargetQuery(assetType, businessKey)
+                        .eq(ConfigMigrationAsset::getContentHash,
+                                baseline.getTargetHash())
+                        .last("LIMIT 1"));
+    }
+
+    private LambdaQueryWrapper<ConfigMigrationAsset> baselineTargetQuery(
+            String assetType,
+            String businessKey) {
+        return new LambdaQueryWrapper<ConfigMigrationAsset>()
+                .eq(ConfigMigrationAsset::getAssetType, assetType)
+                .eq(ConfigMigrationAsset::getBusinessKey, businessKey)
+                .orderByDesc(ConfigMigrationAsset::getSourceVersion);
+    }
+
     /**
      * 解析硬依赖，返回是否全部满足及缺失依赖列表。
      *
@@ -548,8 +740,9 @@ public class ConfigMigrationPackageService {
      * @param packageAssets 包内已含资产集合(type:key)
      * @return 依赖解析结果
      */
-    private DependencyResolution resolveDependencies(List<Map<String, Object>> dependencies,
-                                                     Set<String> packageAssets) {
+    private DependencyResolution resolveDependencies(
+            List<Map<String, Object>> dependencies,
+            Map<String, PackageAsset> packageAssets) {
         List<Map<String, Object>> missing = new ArrayList<>();
         for (Map<String, Object> dependency : dependencies) {
             if (!Boolean.parseBoolean(String.valueOf(dependency.getOrDefault("required", false)))) {
@@ -558,7 +751,7 @@ public class ConfigMigrationPackageService {
             String type = String.valueOf(dependency.get("type"));
             String sourceKey = String.valueOf(dependency.get("key"));
             String targetKey = mappedKey(type, sourceKey);
-            if (!isDependencyResolved(type, targetKey, packageAssets)) {
+            if (!isDependencyResolved(dependency, type, targetKey, packageAssets)) {
                 Map<String, Object> value = new LinkedHashMap<>(dependency);
                 value.put("targetKey", targetKey);
                 missing.add(value);
@@ -577,19 +770,36 @@ public class ConfigMigrationPackageService {
      * @param packageAssets 包内已含资产集合
      * @return 是否已满足
      */
-    private boolean isDependencyResolved(String type, String key, Set<String> packageAssets) {
+    private boolean isDependencyResolved(
+            Map<String, Object> dependency,
+            String type,
+            String key,
+            Map<String, PackageAsset> packageAssets) {
+        boolean targetOnly = Boolean.parseBoolean(String.valueOf(
+                dependency.getOrDefault(
+                        ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY,
+                        false)));
         if (ConfigMigrationAssetService.ENTITY.equals(type)) {
-            return packageAssets.contains(type + ":" + key) || entityMapper.findByEntityCode(key).isPresent();
+            PackageAsset packageAsset = packageAssets.get(type + ":" + key);
+            return (!targetOnly && packageAsset != null
+                    && packageProvidesEntity(packageAsset.snapshot()))
+                    || entityMapper.findByEntityCode(key).isPresent();
         }
         if (ConfigMigrationAssetService.PROCESS.equals(type)) {
-            return packageAssets.contains(type + ":" + key) || processMapper.findByProcessKey(key).isPresent();
+            PackageAsset packageAsset = packageAssets.get(type + ":" + key);
+            return (!targetOnly && packageAsset != null
+                    && packageProvidesProcess(packageAsset.snapshot()))
+                    || processMapper.findByProcessKey(key).isPresent();
         }
         if ("FORM".equals(type) && key.startsWith("wf-form://")) {
             String[] segments = key.substring("wf-form://".length()).split("/", 2);
             if (segments.length != 2) {
                 return false;
             }
-            if (packageAssets.contains(ConfigMigrationAssetService.ENTITY + ":" + segments[0])) {
+            PackageAsset packageAsset = packageAssets.get(
+                    ConfigMigrationAssetService.ENTITY + ":" + segments[0]);
+            if (!targetOnly && packageAsset != null
+                    && packageContainsForm(packageAsset.snapshot(), segments[1])) {
                 return true;
             }
             EntityDefinition entity = entityMapper.findByEntityCode(segments[0]).orElse(null);
@@ -617,6 +827,26 @@ public class ConfigMigrationPackageService {
             return hasMapping(type, key);
         }
         return true;
+    }
+
+    private boolean packageProvidesEntity(Map<String, Object> snapshot) {
+        Map<String, Object> selection = packageCodec.selectionOf(snapshot);
+        Set<String> sections = stringSet(selection.get("sections"));
+        return Boolean.TRUE.equals(selection.get("full"))
+                || (sections.contains("definition") && sections.contains("fields"));
+    }
+
+    private boolean packageProvidesProcess(Map<String, Object> snapshot) {
+        Map<String, Object> selection = packageCodec.selectionOf(snapshot);
+        Set<String> sections = stringSet(selection.get("sections"));
+        return Boolean.TRUE.equals(selection.get("full"))
+                || (sections.contains("definition") && sections.contains("bpmnXml"));
+    }
+
+    private boolean packageContainsForm(Map<String, Object> snapshot, String formKey) {
+        return documents.readMapList(snapshot.get("forms")).stream()
+                .anyMatch(form -> Objects.equals(
+                        formKey, String.valueOf(form.get("formKey"))));
     }
     private String mappedKey(String type, String sourceKey) {
         ConfigEnvironmentMapping mapping = environmentMappingMapper.selectOne(
@@ -879,6 +1109,31 @@ public class ConfigMigrationPackageService {
         result.put("publishedAt", value.getPublishedAt());
         result.put("errorMessage", value.getErrorMessage());
         return result;
+    }
+    private Set<String> stringSet(Object value) {
+        if (!(value instanceof Collection<?> collection)) {
+            return Set.of();
+        }
+        return collection.stream()
+                .map(String::valueOf)
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toCollection(
+                        LinkedHashSet::new));
+    }
+    private record ExpandedExport(
+            List<ConfigMigrationAsset> assets,
+            Map<String, Object> selections) {
+    }
+    private record DependencyAsset(
+            ConfigMigrationAsset asset,
+            Map<String, Object> selection) {
+    }
+    private record PackageAsset(
+            String assetType,
+            String businessKey,
+            Map<String, Object> snapshot) {
+    }
+    private record BaselineHashes(String sourceHash, String targetHash) {
     }
     private record DependencyResolution(boolean resolved, List<Map<String, Object>> missing) {
     }

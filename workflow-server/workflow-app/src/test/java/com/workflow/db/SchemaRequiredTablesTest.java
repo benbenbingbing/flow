@@ -41,7 +41,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(34, files.size());
+        assertEquals(36, files.size());
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -170,6 +170,20 @@ class SchemaRequiredTablesTest {
         assertTrue(sql.contains("`visibility_scope`"));
         assertTrue(sql.contains("`entity_codes_document`"));
         assertTrue(sql.contains("DEFAULT 'GLOBAL'"));
+    }
+
+    @Test
+    void configMigrationBaselinesSupportFineGrainedScopes()
+            throws Exception {
+        String sql = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V036__config_migration_scoped_baseline.sql"));
+
+        assertTrue(sql.contains("ADD COLUMN `scope_key`"));
+        assertTrue(sql.contains("DEFAULT 'FULL'"));
+        assertTrue(sql.contains("DROP INDEX `uk_asset_baseline`"));
+        assertTrue(sql.contains(
+                "UNIQUE KEY `uk_asset_baseline_scope` "
+                        + "(`asset_type`, `business_key`, `scope_key`)"));
     }
 
     @Test

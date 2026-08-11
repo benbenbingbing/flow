@@ -7,7 +7,6 @@ import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
 import com.workflow.migration.api.request.ConfigExportRequest;
-import com.workflow.migration.api.request.ConfigImportPublishRequest;
 import com.workflow.migration.api.request.ConfigMigrationAssetQuery;
 import com.workflow.migration.api.request.ConfigMigrationMarkRequest;
 import com.workflow.migration.infrastructure.persistence.record.ConfigImportItem;
@@ -213,16 +212,13 @@ public class ConfigMigrationController {
     /**
      * 发布导入批次(应用资产配置到目标环境)。
      *
-     * @param id      导入批次ID
-     * @param request 发布请求(可选指定条目)
+     * @param id 导入批次ID
      * @return 发布结果
      */
     @PostMapping("/imports/{id}/publish")
-    public ApiResponse<Map<String, Object>> publish(
-            @PathVariable String id,
-            @RequestBody(required = false) ConfigImportPublishRequest request) {
+    public ApiResponse<Map<String, Object>> publish(@PathVariable String id) {
         require("config-migration:publish");
-        return ApiResponse.success(importApplyService.publish(id, request));
+        return ApiResponse.success(importApplyService.publish(id));
     }
 
     /**

@@ -313,54 +313,21 @@ async function uploadAndAnalyzePackage() {
   }
   return {
     importId,
+    items,
     entityItem,
     memberEntityItem,
     processItem
   }
 }
 
-async function publishPackageItem(packageImport, item, step) {
+async function publishF07Package(packageImport) {
   const published = await api(
     'POST',
-    `/config-migration/imports/${packageImport.importId}/publish`,
-    { itemIds: [item.id] }
+    `/config-migration/imports/${packageImport.importId}/publish`
   )
   evidence.package.publishSteps.push({
-    step,
-    businessKey: item.businessKey,
-    status:
-      published?.status
-      || published?.publishStatus
-      || 'PUBLISHED'
-  })
-}
-
-async function publishF07PackageItems(packageImport) {
-  const items = [
-    packageImport.entityItem,
-    packageImport.memberEntityItem,
-    packageImport.processItem
-  ]
-  if (items.every(
-    item =>
-      item.publishStatus === 'SUCCESS'
-      && item.comparisonStatus === 'CONSISTENT'
-  )) {
-    evidence.package.publishSteps.push({
-      step: 'F07_ENTITY_AND_PROCESS',
-      businessKeys: items.map(item => item.businessKey),
-      status: 'ALREADY_CURRENT'
-    })
-    return
-  }
-  const published = await api(
-    'POST',
-    `/config-migration/imports/${packageImport.importId}/publish`,
-    { itemIds: items.map(item => item.id) }
-  )
-  evidence.package.publishSteps.push({
-    step: 'F07_ENTITY_AND_PROCESS',
-    businessKeys: items.map(item => item.businessKey),
+    step: 'ATOMIC_PACKAGE',
+    businessKeys: packageImport.items.map(item => item.businessKey),
     status:
       published?.status
       || published?.publishStatus
@@ -895,7 +862,7 @@ async function main() {
 
   await prepareActionHandlers(true)
   const packageImport = await uploadAndAnalyzePackage()
-  await publishF07PackageItems(packageImport)
+  await publishF07Package(packageImport)
   await waitForMemberChangeEntity()
   await prepareActionHandlers(false)
   const prerequisites = await createPrerequisites()

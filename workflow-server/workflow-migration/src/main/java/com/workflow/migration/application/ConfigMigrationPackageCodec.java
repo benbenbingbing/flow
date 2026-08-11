@@ -40,10 +40,13 @@ import java.util.zip.ZipOutputStream;
 @RequiredArgsConstructor
 public class ConfigMigrationPackageCodec {
 
-    private static final int FORMAT_VERSION = 1;              // 发布包格式版本
+    private static final int FORMAT_VERSION = 2;              // 当前发布包格式版本
+    private static final int MIN_SUPPORTED_FORMAT_VERSION = 1;
     private static final int MAX_ENTRY_COUNT = 500;           // 单包最大条目数
     private static final int MAX_ENTRY_SIZE = 20 * 1024 * 1024;   // 单个条目最大字节数(20MB)
     private static final int MAX_TOTAL_SIZE = 100 * 1024 * 1024;  // 解压后最大总字节数(100MB)
+    static final String SELECTION_METADATA = "_selection";
+    static final String TARGET_ONLY_DEPENDENCY = "targetOnly";
 
     private final ObjectMapper objectMapper;
 
@@ -91,8 +94,9 @@ public class ConfigMigrationPackageCodec {
 
         for (ConfigMigrationAsset asset : assets) {
             Map<String, Object> snapshot = readMap(asset.getSnapshotJson());
-            Map<String, Object> selectedSnapshot = selectSnapshot(snapshot,
+            Map<String, Object> selection = normalizeSelection(
                     selections == null ? null : selections.get(asset.getId()));
+            Map<String, Object> selectedSnapshot = selectSnapshot(snapshot, selection);
             String path = assetPath(asset);
             byte[] selectedSnapshotBytes = writeBytes(selectedSnapshot);
             entries.put(path, selectedSnapshotBytes);
@@ -112,14 +116,14 @@ public class ConfigMigrationPackageCodec {
             manifestAsset.put("businessKey", asset.getBusinessKey());
             manifestAsset.put("assetName", asset.getAssetName());
             manifestAsset.put("sourceVersion", asset.getSourceVersion());
-            manifestAsset.put("sourceHash", sha256(selectedSnapshotBytes));
+            manifestAsset.put("sourceHash", hashSnapshot(selectedSnapshot));
             manifestAsset.put("fullSourceHash", asset.getContentHash());
             manifestAsset.put("snapshotSchemaVersion", asset.getSnapshotSchemaVersion());
             manifestAsset.put("path", path);
-            manifestAsset.put("selection", selections == null ? null : selections.get(asset.getId()));
+            manifestAsset.put("selection", selection);
             manifestAssets.add(manifestAsset);
 
-            packageDependencies.addAll(readList(asset.getDependenciesJson()));
+            packageDependencies.addAll(castMapList(selectedSnapshot.get("dependencies")));
         }
 
         entries.put("dependencies.json", writeBytes(deduplicateDependencies(packageDependencies)));
@@ -184,7 +188,8 @@ public class ConfigMigrationPackageCodec {
 
         Map<String, Object> manifest = readMap(manifestBytes, new TypeReference<>() {});
         int formatVersion = Integer.parseInt(String.valueOf(manifest.getOrDefault("formatVersion", 0)));
-        if (formatVersion != FORMAT_VERSION) {
+        if (formatVersion < MIN_SUPPORTED_FORMAT_VERSION
+                || formatVersion > FORMAT_VERSION) {
             throw new IllegalArgumentException("不支持的发布包格式版本: " + formatVersion);
         }
 
@@ -192,13 +197,26 @@ public class ConfigMigrationPackageCodec {
         List<DecodedAsset> assets = new ArrayList<>();
         for (Map<String, Object> asset : manifestAssets) {
             String path = String.valueOf(asset.get("path"));
-            Map<String, Object> snapshot = readMap(requiredEntry(entries, path), new TypeReference<>() {});
+            byte[] snapshotBytes = requiredEntry(entries, path);
+            Map<String, Object> snapshot = readMap(snapshotBytes, new TypeReference<>() {});
+            Map<String, Object> selection = normalizeSelection(asset.get("selection"));
+            String packagedSourceHash = String.valueOf(asset.get("sourceHash"));
+            String verifiedHash = formatVersion == 1
+                    ? sha256(snapshotBytes)
+                    : hashSnapshot(snapshot);
+            if (!MessageDigest.isEqual(
+                    packagedSourceHash.getBytes(StandardCharsets.UTF_8),
+                    verifiedHash.getBytes(StandardCharsets.UTF_8))) {
+                throw new IllegalArgumentException("发布包资产哈希校验失败: " + path);
+            }
+            snapshot = selectSnapshot(snapshot, selection);
+            String normalizedSourceHash = hashSnapshot(snapshot);
             assets.add(new DecodedAsset(
                     String.valueOf(asset.get("assetType")),
                     String.valueOf(asset.get("businessKey")),
                     String.valueOf(asset.get("assetName")),
                     Integer.parseInt(String.valueOf(asset.get("sourceVersion"))),
-                    String.valueOf(asset.get("sourceHash")),
+                    normalizedSourceHash,
                     snapshot,
                     castMapList(snapshot.get("dependencies"))));
         }
@@ -212,30 +230,361 @@ public class ConfigMigrationPackageCodec {
                 assets);
     }
 
-    private Map<String, Object> selectSnapshot(Map<String, Object> snapshot, Object rawSelection) {
-        if (!(rawSelection instanceof Map<?, ?> selectionMap)) {
-            return snapshot;
-        }
-        Object full = selectionMap.get("full");
-        if (Boolean.TRUE.equals(full) || "true".equalsIgnoreCase(String.valueOf(full))) {
-            return snapshot;
-        }
-        Set<String> sections = stringSet(selectionMap.get("sections"));
-        if (sections.isEmpty()) {
-            return snapshot;
+    Map<String, Object> selectSnapshot(Map<String, Object> snapshot, Object rawSelection) {
+        return selectSnapshot(snapshot, rawSelection, true);
+    }
+
+    private Map<String, Object> selectSnapshot(Map<String, Object> snapshot,
+                                               Object rawSelection,
+                                               boolean requireSelectedKeys) {
+        Map<String, Object> selection = normalizeSelection(rawSelection);
+        if (Boolean.TRUE.equals(selection.get("full"))) {
+            Map<String, Object> selected = new LinkedHashMap<>(snapshot);
+            selected.put(SELECTION_METADATA, selection);
+            return selected;
         }
 
+        Set<String> sections = stringSet(selection.get("sections"));
         Map<String, Object> selected = new LinkedHashMap<>();
-        copyIfPresent(snapshot, selected, "schemaVersion", "assetType", "businessKey", "assetName",
-                "definition", "dependencies");
-        for (String section : sections) {
+        copyIfPresent(snapshot, selected,
+                "schemaVersion", "assetType", "businessKey", "assetName");
+        selected.put("definition", selectedDefinition(snapshot, sections));
+
+        for (String section : expandedSections(
+                String.valueOf(snapshot.get("assetType")), sections)) {
             if (snapshot.containsKey(section)) {
                 selected.put(section, snapshot.get(section));
             }
         }
-        filterByKey(selected, "forms", "formKey", stringSet(selectionMap.get("formKeys")));
-        filterByKey(selected, "lists", "listKey", stringSet(selectionMap.get("listKeys")));
+
+        Set<String> formKeys = stringSet(selection.get("formKeys"));
+        Set<String> listKeys = stringSet(selection.get("listKeys"));
+        filterByKey(selected, "forms", "formKey", formKeys);
+        filterByKey(selected, "lists", "listKey", listKeys);
+        if (requireSelectedKeys) {
+            validateSelectedKeys(snapshot, selected, sections, formKeys, listKeys);
+        }
+        addSelectedSupportSections(snapshot, selected, sections);
+        selected.put("dependencies", selectDependencies(snapshot, selected, sections));
+        selected.put(SELECTION_METADATA, selection);
         return selected;
+    }
+
+    Map<String, Object> selectSnapshot(String snapshotJson, Object rawSelection) {
+        return selectSnapshot(readMap(snapshotJson), rawSelection);
+    }
+
+    Map<String, Object> selectSnapshotAllowingMissingKeys(
+            String snapshotJson,
+            Object rawSelection) {
+        return selectSnapshot(readMap(snapshotJson), rawSelection, false);
+    }
+
+    Map<String, Object> normalizeSelection(Object rawSelection) {
+        if (!(rawSelection instanceof Map<?, ?> rawMap)) {
+            return Map.of("full", true);
+        }
+        Map<String, Object> selection = new LinkedHashMap<>();
+        Object full = rawMap.get("full");
+        if (Boolean.TRUE.equals(full)
+                || "true".equalsIgnoreCase(String.valueOf(full))) {
+            selection.put("full", true);
+            return selection;
+        }
+        Set<String> sections = stringSet(rawMap.get("sections"));
+        if (sections.isEmpty()) {
+            throw new IllegalArgumentException("细粒度导出至少需要选择一个配置部分");
+        }
+        selection.put("full", false);
+        selection.put("sections", sections.stream().sorted().toList());
+        Set<String> formKeys = stringSet(rawMap.get("formKeys"));
+        if (!formKeys.isEmpty()) {
+            if (!sections.contains("forms")) {
+                throw new IllegalArgumentException("指定 formKeys 时必须选择 forms 配置部分");
+            }
+            selection.put("formKeys", formKeys.stream().sorted().toList());
+        }
+        Set<String> listKeys = stringSet(rawMap.get("listKeys"));
+        if (!listKeys.isEmpty()) {
+            if (!sections.contains("lists")) {
+                throw new IllegalArgumentException("指定 listKeys 时必须选择 lists 配置部分");
+            }
+            selection.put("listKeys", listKeys.stream().sorted().toList());
+        }
+        return selection;
+    }
+
+    Map<String, Object> mergeSelections(Object leftValue, Object rightValue) {
+        Map<String, Object> left = normalizeSelection(leftValue);
+        Map<String, Object> right = normalizeSelection(rightValue);
+        if (Boolean.TRUE.equals(left.get("full"))
+                || Boolean.TRUE.equals(right.get("full"))) {
+            return Map.of("full", true);
+        }
+        Set<String> sections = new LinkedHashSet<>(stringSet(left.get("sections")));
+        sections.addAll(stringSet(right.get("sections")));
+        Map<String, Object> merged = new LinkedHashMap<>();
+        merged.put("full", false);
+        merged.put("sections", sections.stream().sorted().toList());
+        mergeSelectedKeys(merged, "formKeys", "forms", left, right);
+        mergeSelectedKeys(merged, "listKeys", "lists", left, right);
+        return merged;
+    }
+
+    Map<String, Object> selectionOf(Map<String, Object> snapshot) {
+        return normalizeSelection(snapshot.get(SELECTION_METADATA));
+    }
+
+    String selectionScopeKey(Map<String, Object> snapshot) {
+        Map<String, Object> selection = selectionOf(snapshot);
+        if (Boolean.TRUE.equals(selection.get("full"))) {
+            return "FULL";
+        }
+        return "PARTIAL:" + sha256(writeBytes(selection)).substring(0, 32);
+    }
+
+    String hashSelectedSnapshot(String snapshotJson, Object selection) {
+        return hashSnapshot(selectSnapshotAllowingMissingKeys(
+                snapshotJson, selection));
+    }
+
+    String hashSnapshot(Map<String, Object> snapshot) {
+        Map<String, Object> content = new LinkedHashMap<>(snapshot);
+        content.remove(SELECTION_METADATA);
+        return sha256(writeBytes(content));
+    }
+
+    private void mergeSelectedKeys(Map<String, Object> merged,
+                                   String keyName,
+                                   String section,
+                                   Map<String, Object> left,
+                                   Map<String, Object> right) {
+        if (!stringSet(merged.get("sections")).contains(section)) {
+            return;
+        }
+        Set<String> leftSections = stringSet(left.get("sections"));
+        Set<String> rightSections = stringSet(right.get("sections"));
+        Set<String> leftKeys = stringSet(left.get(keyName));
+        Set<String> rightKeys = stringSet(right.get(keyName));
+        boolean leftSelectsAll = leftSections.contains(section) && leftKeys.isEmpty();
+        boolean rightSelectsAll = rightSections.contains(section) && rightKeys.isEmpty();
+        if (leftSelectsAll || rightSelectsAll) {
+            return;
+        }
+        Set<String> mergedKeys = new LinkedHashSet<>(leftKeys);
+        mergedKeys.addAll(rightKeys);
+        if (!mergedKeys.isEmpty()) {
+            merged.put(keyName, mergedKeys.stream().sorted().toList());
+        }
+    }
+
+    private Map<String, Object> selectedDefinition(Map<String, Object> snapshot,
+                                                   Set<String> sections) {
+        Map<String, Object> definition = mapValue(snapshot.get("definition"));
+        if (sections.contains("definition")) {
+            return definition;
+        }
+        Map<String, Object> identity = new LinkedHashMap<>();
+        String assetType = String.valueOf(snapshot.get("assetType"));
+        if (ConfigMigrationAssetService.PROCESS.equals(assetType)) {
+            copyIfPresent(definition, identity, "processKey", "processName");
+        } else {
+            copyIfPresent(definition, identity, "entityCode", "entityName", "storageMode");
+        }
+        return identity;
+    }
+
+    private Set<String> expandedSections(String assetType, Set<String> sections) {
+        Set<String> expanded = new LinkedHashSet<>();
+        for (String section : sections) {
+            switch (section) {
+                case "fields" -> {
+                    expanded.add("fields");
+                    expanded.add("relations");
+                }
+                case "statuses" -> {
+                    expanded.add("statuses");
+                    expanded.add("codeRule");
+                }
+                case "dataPermissions" -> {
+                    expanded.add("scopePolicies");
+                    expanded.add("scopeBindings");
+                }
+                case "bpmnXml" -> {
+                    expanded.add("bpmnXml");
+                    expanded.add("nodes");
+                    expanded.add("nodeForms");
+                }
+                case "definition" -> {
+                    // Definition is handled separately so identity metadata is always available.
+                }
+                default -> expanded.add(section);
+            }
+        }
+        if ((ConfigMigrationAssetService.ENTITY.equals(assetType)
+                || ConfigMigrationAssetService.SYSTEM_ENTITY_UI.equals(assetType))
+                && (sections.contains("forms") || sections.contains("lists"))) {
+            expanded.add("referencedFields");
+        }
+        return expanded;
+    }
+
+    private void addSelectedSupportSections(Map<String, Object> source,
+                                            Map<String, Object> selected,
+                                            Set<String> sections) {
+        boolean uiSectionSelected = selected.containsKey("forms")
+                || selected.containsKey("lists");
+        if (!uiSectionSelected
+                && !sections.contains("dataSources")
+                && !sections.contains("extensions")) {
+            return;
+        }
+        Set<String> dataSourceCodes = new LinkedHashSet<>();
+        collectValuesForKeys(selected, Set.of(
+                "serviceCode", "dataSourceCode", "queryDataSourceCode"), dataSourceCodes);
+        if (sections.contains("dataSources")) {
+            copyIfPresent(source, selected, "dataSources");
+        } else if (!dataSourceCodes.isEmpty()) {
+            selected.put("dataSources", castMapList(source.get("dataSources")).stream()
+                    .filter(value -> dataSourceCodes.contains(String.valueOf(value.get("sourceCode"))))
+                    .toList());
+        }
+
+        Set<String> extensionKeys = new LinkedHashSet<>();
+        collectValuesForKeys(selected, Set.of(
+                "customComponent", "renderComponent", "componentName"), extensionKeys);
+        if (sections.contains("extensions")) {
+            copyIfPresent(source, selected, "extensions");
+        } else if (!extensionKeys.isEmpty()) {
+            selected.put("extensions", castMapList(source.get("extensions")).stream()
+                    .filter(value -> extensionKeys.contains(String.valueOf(value.get("extensionKey"))))
+                    .toList());
+        }
+
+        if (selected.containsKey("referencedFields")) {
+            Set<String> referencedFieldCodes = new LinkedHashSet<>();
+            collectValuesForKeys(selected, Set.of("fieldCode"), referencedFieldCodes);
+            selected.put("referencedFields", castStringList(source.get("referencedFields")).stream()
+                    .filter(referencedFieldCodes::contains)
+                    .toList());
+        }
+    }
+
+    private void collectValuesForKeys(Object value,
+                                      Set<String> names,
+                                      Set<String> result) {
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, child) -> {
+                if (names.contains(String.valueOf(key))
+                        && child instanceof String text
+                        && StringUtils.hasText(text)) {
+                    result.add(text);
+                }
+                collectValuesForKeys(child, names, result);
+            });
+        } else if (value instanceof Collection<?> collection) {
+            collection.forEach(child -> collectValuesForKeys(child, names, result));
+        } else if (value instanceof String text
+                && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            try {
+                collectValuesForKeys(objectMapper.readValue(text, Object.class), names, result);
+            } catch (Exception ignored) {
+                // Plain text configuration is not a structured reference document.
+            }
+        }
+    }
+
+    private List<Map<String, Object>> selectDependencies(Map<String, Object> source,
+                                                          Map<String, Object> selected,
+                                                          Set<String> sections) {
+        Map<String, Object> searchable = new LinkedHashMap<>(selected);
+        searchable.remove("dependencies");
+        searchable.remove(SELECTION_METADATA);
+        List<Map<String, Object>> dependencies = castMapList(source.get("dependencies")).stream()
+                .filter(dependency -> containsReference(
+                        searchable, String.valueOf(dependency.get("key"))))
+                .map(dependency -> (Map<String, Object>)
+                        new LinkedHashMap<String, Object>(dependency))
+                .toList();
+        List<Map<String, Object>> result = new ArrayList<>(dependencies);
+        String assetType = String.valueOf(source.get("assetType"));
+        String businessKey = String.valueOf(source.get("businessKey"));
+        if (ConfigMigrationAssetService.ENTITY.equals(assetType)
+                && !(sections.contains("definition") && sections.contains("fields"))) {
+            result.add(targetOnlyDependency(
+                    ConfigMigrationAssetService.ENTITY,
+                    businessKey,
+                    "细粒度配置所属实体"));
+        } else if (ConfigMigrationAssetService.PROCESS.equals(assetType)
+                && !(sections.contains("definition") && sections.contains("bpmnXml"))) {
+            result.add(targetOnlyDependency(
+                    ConfigMigrationAssetService.PROCESS,
+                    businessKey,
+                    "细粒度配置所属流程"));
+        } else if (ConfigMigrationAssetService.SYSTEM_ENTITY_UI.equals(assetType)) {
+            result.add(targetOnlyDependency(
+                    ConfigMigrationAssetService.ENTITY,
+                    businessKey,
+                    "系统UI配置所属实体"));
+        }
+        return deduplicateDependencies(result);
+    }
+
+    private Map<String, Object> targetOnlyDependency(String type,
+                                                     String key,
+                                                     String source) {
+        Map<String, Object> dependency = new LinkedHashMap<>();
+        dependency.put("type", type);
+        dependency.put("key", key);
+        dependency.put("required", true);
+        dependency.put("source", source);
+        dependency.put(TARGET_ONLY_DEPENDENCY, true);
+        return dependency;
+    }
+
+    private boolean containsReference(Object value, String key) {
+        if (!StringUtils.hasText(key)) {
+            return false;
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.values().stream().anyMatch(child -> containsReference(child, key));
+        }
+        if (value instanceof Collection<?> collection) {
+            return collection.stream().anyMatch(child -> containsReference(child, key));
+        }
+        return value instanceof String text && text.contains(key);
+    }
+
+    private void validateSelectedKeys(Map<String, Object> source,
+                                      Map<String, Object> selected,
+                                      Set<String> sections,
+                                      Set<String> formKeys,
+                                      Set<String> listKeys) {
+        validateSelectedKeys(source, selected, sections, "forms", "formKey", formKeys);
+        validateSelectedKeys(source, selected, sections, "lists", "listKey", listKeys);
+    }
+
+    private void validateSelectedKeys(Map<String, Object> source,
+                                      Map<String, Object> selected,
+                                      Set<String> sections,
+                                      String section,
+                                      String keyName,
+                                      Set<String> requestedKeys) {
+        if (!sections.contains(section) || requestedKeys.isEmpty()) {
+            return;
+        }
+        Set<String> available = castMapList(source.get(section)).stream()
+                .map(value -> String.valueOf(value.get(keyName)))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> missing = new LinkedHashSet<>(requestedKeys);
+        missing.removeAll(available);
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "细粒度导出包含不存在的 " + keyName + ": " + String.join(", ", missing));
+        }
+        if (castMapList(selected.get(section)).isEmpty()) {
+            throw new IllegalArgumentException("细粒度导出没有匹配到 " + section);
+        }
     }
 
     private void addEntityDetailEntries(ConfigMigrationAsset asset,
@@ -261,6 +610,22 @@ public class ConfigMigrationPackageCodec {
                 .filter(value -> keys.contains(String.valueOf(value.get(keyName))))
                 .toList();
         snapshot.put(section, filtered);
+    }
+
+    private Map<String, Object> mapValue(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Object> converted = new LinkedHashMap<>();
+        map.forEach((key, child) -> converted.put(String.valueOf(key), child));
+        return converted;
+    }
+
+    private List<String> castStringList(Object value) {
+        if (!(value instanceof Collection<?> collection)) {
+            return List.of();
+        }
+        return collection.stream().map(String::valueOf).toList();
     }
 
     private void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String... keys) {
@@ -407,17 +772,6 @@ public class ConfigMigrationPackageCodec {
             return objectMapper.readValue(value, new TypeReference<>() {});
         } catch (Exception e) {
             throw new IllegalArgumentException("迁移资产快照格式错误", e);
-        }
-    }
-
-    private List<Map<String, Object>> readList(String value) {
-        if (!StringUtils.hasText(value)) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(value, new TypeReference<>() {});
-        } catch (Exception e) {
-            throw new IllegalArgumentException("迁移资产依赖格式错误", e);
         }
     }
 

@@ -19,7 +19,6 @@ import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
-import com.workflow.migration.api.request.ConfigImportPublishRequest;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
@@ -92,6 +91,7 @@ import com.workflow.process.sla.policy.infrastructure.persistence.record.TaskSla
 import com.workflow.entity.permission.application.EntityPermissionCatalogService;
 import com.workflow.entity.permission.application.EntityListScopeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -118,6 +118,7 @@ import java.util.Set;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ConfigMigrationImportApplyService {
 
     private final ConfigImportPackageMapper importPackageMapper;
@@ -160,17 +161,17 @@ public class ConfigMigrationImportApplyService {
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ConfigMigrationAssetService assetService;
     private final ConfigMigrationMenuImporter menuImporter;
+    private final ConfigMigrationPackageCodec packageCodec;
     private final ObjectMapper objectMapper;
 
     /**
-     * 发布导入批次，将所选资产配置应用到目标环境。
+     * 发布完整导入批次，将包内全部资产配置原子应用到目标环境。
      *
      * <p>流程：校验状态为 ANALYZED 且无阻断项 → 标记条目 PUBLISHING → 准备并应用实体配置 →
      * 绑定实体与流程 → 准备并应用流程配置 → 发布实体 → 标记条目 SUCCESS 并更新基线 → 批次置 PUBLISHED。
      * 幂等：已发布批次直接返回结果。</p>
      *
      * @param importId 导入批次ID
-     * @param request 发布请求(可选指定条目)
      * @return 发布结果
      * @throws IllegalStateException 批次未分析、存在阻断项或发布后未生成迁移资产
      * @throws IllegalArgumentException 没有可发布条目
@@ -186,19 +187,21 @@ public class ConfigMigrationImportApplyService {
             targetIdArg = 0,
             captureArguments = true,
             captureResult = true)
-    public Map<String, Object> publish(String importId, ConfigImportPublishRequest request) {
+    public Map<String, Object> publish(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
         if ("PUBLISHED".equals(importPackage.getStatus())) {
-            return publishResult(importPackage, selectedItems(importId, request));
+            return publishResult(importPackage, allItems(importId));
         }
         if (!"ANALYZED".equals(importPackage.getStatus())) {
             throw new IllegalStateException("导入批次必须先分析且无阻断项，当前状态: " + importPackage.getStatus());
         }
 
-        List<ConfigImportItem> items = selectedItems(importId, request);
+        List<ConfigImportItem> items = allItems(importId);
         if (items.isEmpty()) {
             throw new IllegalArgumentException("没有可发布的导入项目");
         }
+        log.info("开始原子发布配置迁移包，importId={}，packageNo={}，itemCount={}",
+                importId, importPackage.getPackageNo(), items.size());
         for (ConfigImportItem item : items) {
             if (!"RESOLVED".equals(item.getMappingStatus())
                     || "CONFLICT".equals(item.getComparisonStatus())
@@ -209,10 +212,24 @@ public class ConfigMigrationImportApplyService {
             item.setPublishStatus("PUBLISHING");
             item.setUpdatedAt(LocalDateTime.now());
             importItemMapper.updateById(item);
+            log.info("配置迁移条目进入发布，importId={}，itemId={}，assetType={}，businessKey={}，scope={}",
+                    importId,
+                    item.getId(),
+                    item.getAssetType(),
+                    item.getBusinessKey(),
+                    packageCodec.selectionScopeKey(readMap(item.getSnapshotJson())));
         }
+        List<ConfigImportItem> actionableItems = items.stream()
+                .filter(item -> !"CONSISTENT".equals(item.getComparisonStatus()))
+                .toList();
+        log.info("配置迁移包执行计划，importId={}，applyCount={}，reuseCount={}",
+                importId,
+                actionableItems.size(),
+                items.size() - actionableItems.size());
 
         List<EntityContext> entities = new ArrayList<>();
-        for (ConfigImportItem item : itemsOfType(items, ConfigMigrationAssetService.ENTITY)) {
+        for (ConfigImportItem item : itemsOfType(
+                actionableItems, ConfigMigrationAssetService.ENTITY)) {
             entities.add(prepareEntity(item, false));
         }
         for (EntityContext context : entities) {
@@ -222,7 +239,7 @@ public class ConfigMigrationImportApplyService {
         List<SystemEntityUiContext> systemEntityUis =
                 new ArrayList<>();
         for (ConfigImportItem item : itemsOfType(
-                items,
+                actionableItems,
                 ConfigMigrationAssetService.SYSTEM_ENTITY_UI)) {
             systemEntityUis.add(prepareSystemEntityUi(item));
         }
@@ -232,20 +249,21 @@ public class ConfigMigrationImportApplyService {
         }
 
         for (ConfigImportItem item : itemsOfType(
-                items,
+                actionableItems,
                 ConfigMigrationAssetService.WORK_CALENDAR)) {
             applyWorkCalendar(item, importPackage.getMigrationTag());
             markPublished(item);
         }
         for (ConfigImportItem item : itemsOfType(
-                items,
+                actionableItems,
                 ConfigMigrationAssetService.TASK_SLA_POLICY)) {
             applyTaskSlaPolicy(item, importPackage.getMigrationTag());
             markPublished(item);
         }
 
         List<ProcessContext> processes = new ArrayList<>();
-        for (ConfigImportItem item : itemsOfType(items, ConfigMigrationAssetService.PROCESS)) {
+        for (ConfigImportItem item : itemsOfType(
+                actionableItems, ConfigMigrationAssetService.PROCESS)) {
             processes.add(prepareProcess(item));
         }
         bindEntities(entities, processes);
@@ -258,12 +276,24 @@ public class ConfigMigrationImportApplyService {
             publishEntity(context, importPackage);
             markPublished(context.item());
         }
+        for (ConfigImportItem item : items.stream()
+                .filter(value -> "CONSISTENT".equals(
+                        value.getComparisonStatus()))
+                .toList()) {
+            markPublished(item);
+            log.info("复用目标环境一致配置，itemId={}，assetType={}，businessKey={}",
+                    item.getId(),
+                    item.getAssetType(),
+                    item.getBusinessKey());
+        }
 
         importPackage.setStatus("PUBLISHED");
         importPackage.setPublishedBy(UserContext.getUsername());
         importPackage.setPublishedAt(LocalDateTime.now());
         importPackage.setErrorMessage(null);
         importPackageMapper.updateById(importPackage);
+        log.info("配置迁移包原子发布完成，importId={}，packageNo={}，itemCount={}",
+                importId, importPackage.getPackageNo(), items.size());
         return publishResult(importPackage, items);
     }
 
@@ -486,14 +516,14 @@ public class ConfigMigrationImportApplyService {
     public Map<String, Object> rollback(String importId) {
         ConfigImportPackage importPackage = requiredImport(importId);
         if ("ROLLED_BACK".equals(importPackage.getStatus())) {
-            return publishResult(importPackage, selectedItems(importId, null));
+            return publishResult(importPackage, allItems(importId));
         }
         if (!"PUBLISHED".equals(importPackage.getStatus())) {
             throw new IllegalStateException("只有已发布的导入批次可以回滚");
         }
 
-        List<ConfigImportItem> items = selectedItems(importId, null);
-        List<EntityContext> entityContexts = new ArrayList<>();
+        List<ConfigImportItem> items = allItems(importId);
+        List<EntityRollbackContext> entityRollbacks = new ArrayList<>();
         List<SystemEntityUiRollbackContext> systemUiContexts =
                 new ArrayList<>();
         List<ConfigImportItem> workCalendarRollbacks =
@@ -514,9 +544,15 @@ public class ConfigMigrationImportApplyService {
             rollbackItem.setAssetType(item.getAssetType());
             rollbackItem.setBusinessKey(item.getBusinessKey());
             rollbackItem.setAssetName(item.getAssetName());
-            rollbackItem.setSnapshotJson(previous.getSnapshotJson());
+            Map<String, Object> importedSnapshot = readMap(item.getSnapshotJson());
+            rollbackItem.setSnapshotJson(writeJson(
+                    packageCodec.selectSnapshotAllowingMissingKeys(
+                            previous.getSnapshotJson(),
+                            packageCodec.selectionOf(importedSnapshot))));
             if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
-                entityContexts.add(prepareEntity(rollbackItem, true));
+                entityRollbacks.add(new EntityRollbackContext(
+                        prepareEntity(rollbackItem, true),
+                        item));
             } else if (ConfigMigrationAssetService.SYSTEM_ENTITY_UI
                     .equals(item.getAssetType())) {
                 systemUiContexts.add(
@@ -538,8 +574,8 @@ public class ConfigMigrationImportApplyService {
                                 + item.getAssetType());
             }
         }
-        for (EntityContext context : entityContexts) {
-            applyEntityConfiguration(context, true);
+        for (EntityRollbackContext rollback : entityRollbacks) {
+            applyEntityConfiguration(rollback.context(), true);
         }
         for (SystemEntityUiRollbackContext rollback :
                 systemUiContexts) {
@@ -548,7 +584,9 @@ public class ConfigMigrationImportApplyService {
                     rollback.originalItem(),
                     rollback.context().snapshot());
         }
-        bindEntities(entityContexts, processContexts);
+        bindEntities(entityRollbacks.stream()
+                .map(EntityRollbackContext::context)
+                .toList(), processContexts);
 
         ConfigImportPackage rollbackPackage = new ConfigImportPackage();
         rollbackPackage.setMigrationTag("ROLLBACK-" + importPackage.getMigrationTag());
@@ -561,8 +599,11 @@ public class ConfigMigrationImportApplyService {
         for (ProcessContext context : processContexts) {
             applyProcessConfiguration(context, rollbackPackage);
         }
-        for (EntityContext context : entityContexts) {
-            publishEntity(context, rollbackPackage);
+        for (EntityRollbackContext rollback : entityRollbacks) {
+            removeEntityConfigurationsAbsentFrom(
+                    rollback.originalItem(),
+                    rollback.context().snapshot());
+            publishEntity(rollback.context(), rollbackPackage);
         }
 
         for (ConfigImportItem item : items) {
@@ -571,7 +612,25 @@ public class ConfigMigrationImportApplyService {
             importItemMapper.updateById(item);
             baselineMapper.delete(new LambdaQueryWrapper<ConfigAssetBaseline>()
                     .eq(ConfigAssetBaseline::getAssetType, item.getAssetType())
-                    .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey()));
+                    .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey())
+                    .eq(ConfigAssetBaseline::getScopeKey,
+                            packageCodec.selectionScopeKey(
+                                    readMap(item.getSnapshotJson()))));
+            if (StringUtils.hasText(item.getTargetBeforeHash())
+                    && (ConfigMigrationAssetService.ENTITY.equals(
+                            item.getAssetType())
+                    || ConfigMigrationAssetService.PROCESS.equals(
+                            item.getAssetType()))) {
+                ConfigMigrationAsset restored = assetService.findLatest(
+                        item.getAssetType(), item.getBusinessKey());
+                if (restored != null) {
+                    refreshBaselineTargetHashes(
+                            item.getAssetType(),
+                            item.getBusinessKey(),
+                            restored,
+                            null);
+                }
+            }
         }
         importPackage.setStatus("ROLLED_BACK");
         importPackage.setPublishedBy(UserContext.getUsername());
@@ -709,6 +768,12 @@ public class ConfigMigrationImportApplyService {
     private EntityContext prepareEntity(ConfigImportItem item, boolean rollbackMode) {
         Map<String, Object> snapshot = readMap(item.getSnapshotJson());
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
+        Map<String, Object> selection = packageCodec.selectionOf(snapshot);
+        Set<String> sections = stringSet(selection.get("sections"));
+        boolean full = Boolean.TRUE.equals(selection.get("full"));
+        boolean applyDefinition = full || sections.contains("definition");
+        boolean canCreate = full
+                || (sections.contains("definition") && sections.contains("fields"));
         String entityCode = text(definition.get("entityCode"), item.getBusinessKey());
         if (EntityDefinition.StorageMode.SYSTEM.name().equalsIgnoreCase(
                 text(definition.get("storageMode"), EntityDefinition.StorageMode.DYNAMIC.name()))) {
@@ -716,6 +781,10 @@ public class ConfigMigrationImportApplyService {
         }
         EntityDefinition entity = entityMapper.findByEntityCode(entityCode).orElse(null);
         if (entity == null) {
+            if (!canCreate) {
+                throw new IllegalStateException(
+                        "细粒度迁移要求目标实体已存在: " + entityCode);
+            }
             EntityDefinitionDTO dto = new EntityDefinitionDTO();
             dto.setEntityCode(entityCode);
             dto.setEntityName(text(definition.get("entityName"), item.getAssetName()));
@@ -726,7 +795,7 @@ public class ConfigMigrationImportApplyService {
             entityService.save(dto);
             entity = entityMapper.findByEntityCode(entityCode)
                     .orElseThrow(() -> new IllegalStateException("实体创建失败: " + entityCode));
-        } else {
+        } else if (applyDefinition) {
             entity.setEntityName(text(definition.get("entityName"), entity.getEntityName()));
             entity.setDescription(text(definition.get("description"), entity.getDescription()));
             if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
@@ -736,9 +805,13 @@ public class ConfigMigrationImportApplyService {
             entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
             entityMapper.updateById(entity);
             permissionCatalogService.synchronizeEntity(entity);
+        } else if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            throw new IllegalStateException("配置迁移不能覆盖平台系统实体: " + entityCode);
         }
         return new EntityContext(item, snapshot, definition, entity,
-                text(definition.get("processKey"), null), rollbackMode);
+                applyDefinition ? text(definition.get("processKey"), null) : null,
+                applyDefinition,
+                rollbackMode);
     }
 
     /**
@@ -777,6 +850,10 @@ public class ConfigMigrationImportApplyService {
             applyExtensions(mapList(snapshot.get("extensions")));
         }
         if (snapshot.containsKey("dataSources")) {
+            ensureDataSourceScopeForms(
+                    entity,
+                    mapList(snapshot.get("dataSources")),
+                    mapList(snapshot.get("forms")));
             Map<String, String> dataSourceIds =
                     applyDataSources(
                             entity,
@@ -810,6 +887,52 @@ public class ConfigMigrationImportApplyService {
                     mapList(snapshot.get("menus")));
         }
         permissionCatalogService.synchronizeEntity(entityMapper.selectById(entity.getId()));
+    }
+
+    private void ensureDataSourceScopeForms(
+            EntityDefinition entity,
+            List<Map<String, Object>> dataSources,
+            List<Map<String, Object>> forms) {
+        Map<String, Map<String, Object>> formsByKey = forms.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        value -> text(value.get("formKey"), ""),
+                        value -> value,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        for (Map<String, Object> dataSource : dataSources) {
+            if (!"FORM".equalsIgnoreCase(
+                    text(dataSource.get("scopeType"), "GLOBAL"))) {
+                continue;
+            }
+            String scopeRef = text(dataSource.get("scopeRef"), null);
+            if (!StringUtils.hasText(scopeRef)) {
+                continue;
+            }
+            String[] parts = scopeRef.split("/", 2);
+            String formKey = parts.length == 2 ? parts[1] : parts[0];
+            if (formMapper.selectByEntityIdAndFormKey(
+                    entity.getId(), formKey) != null) {
+                continue;
+            }
+            Map<String, Object> incoming = formsByKey.get(formKey);
+            if (incoming == null) {
+                throw new IllegalStateException(
+                        "表单作用域数据源缺少同包表单配置: " + scopeRef);
+            }
+            EntityForm shell = new EntityForm();
+            shell.setEntityId(entity.getId());
+            shell.setFormKey(formKey);
+            shell.setFormName(text(incoming.get("formName"), formKey));
+            shell.setDescription(text(incoming.get("description"), null));
+            shell.setLayoutType(text(incoming.get("layoutType"), "vertical"));
+            shell.setIsDefault(false);
+            shell.setStatus(1);
+            entityFormService.saveForm(shell);
+            log.info("为表单作用域数据源预创建表单，entityCode={}，formKey={}，sourceCode={}",
+                    entity.getEntityCode(),
+                    formKey,
+                    text(dataSource.get("sourceCode"), null));
+        }
     }
 
     private List<EntityFieldDTO> toEntityFieldDtos(EntityDefinition entity,
@@ -1391,16 +1514,38 @@ public class ConfigMigrationImportApplyService {
     private ProcessContext prepareProcess(ConfigImportItem item) {
         Map<String, Object> snapshot = readMap(item.getSnapshotJson());
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
+        Map<String, Object> selection = packageCodec.selectionOf(snapshot);
+        Set<String> sections = stringSet(selection.get("sections"));
+        boolean full = Boolean.TRUE.equals(selection.get("full"));
+        boolean applyDefinition = full || sections.contains("definition");
+        boolean applyBpmn = snapshot.containsKey("bpmnXml");
+        boolean canCreate = full
+                || (sections.contains("definition") && sections.contains("bpmnXml"));
         String processKey = text(definition.get("processKey"), item.getBusinessKey());
-        String bpmnXml = resolvePortableBpmn(text(snapshot.get("bpmnXml"), ""), snapshot);
+        ProcessDefinitionConfig existing = processMapper.findByProcessKey(processKey).orElse(null);
+        if (existing == null && !canCreate) {
+            throw new IllegalStateException(
+                    "细粒度迁移要求目标流程已存在: " + processKey);
+        }
+        if (existing != null && !applyDefinition && !applyBpmn) {
+            return new ProcessContext(item, snapshot, definition, existing);
+        }
+        String bpmnXml = applyBpmn
+                ? resolvePortableBpmn(text(snapshot.get("bpmnXml"), ""), snapshot)
+                : existing == null ? "" : existing.getBpmnXml();
         ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
         dto.setProcessKey(processKey);
-        dto.setProcessName(text(definition.get("processName"), item.getAssetName()));
-        dto.setDescription(text(definition.get("description"), null));
-        dto.setCategory(text(definition.get("category"), null));
+        dto.setProcessName(applyDefinition
+                ? text(definition.get("processName"), item.getAssetName())
+                : existing.getProcessName());
+        dto.setDescription(applyDefinition
+                ? text(definition.get("description"), null)
+                : existing.getDescription());
+        dto.setCategory(applyDefinition
+                ? text(definition.get("category"), null)
+                : existing.getCategory());
         dto.setBpmnXml(bpmnXml);
 
-        ProcessDefinitionConfig existing = processMapper.findByProcessKey(processKey).orElse(null);
         ProcessDefinitionDTO saved;
         if (existing == null) {
             saved = processService.save(dto);
@@ -1419,6 +1564,9 @@ public class ConfigMigrationImportApplyService {
                         (left, right) -> left,
                         LinkedHashMap::new));
         for (EntityContext context : entities) {
+            if (!context.applyBinding()) {
+                continue;
+            }
             if (!StringUtils.hasText(context.processKey())) {
                 context.entity().setProcessDefinitionId(null);
                 entityMapper.updateById(context.entity());
@@ -1524,19 +1672,26 @@ public class ConfigMigrationImportApplyService {
         item.setUpdatedAt(LocalDateTime.now());
         importItemMapper.updateById(item);
 
+        Map<String, Object> importedSnapshot = readMap(item.getSnapshotJson());
+        String scopeKey = packageCodec.selectionScopeKey(importedSnapshot);
+        String targetScopeHash = packageCodec.hashSelectedSnapshot(
+                target.getSnapshotJson(),
+                packageCodec.selectionOf(importedSnapshot));
         ConfigAssetBaseline baseline = baselineMapper.selectOne(new LambdaQueryWrapper<ConfigAssetBaseline>()
                 .eq(ConfigAssetBaseline::getAssetType, item.getAssetType())
                 .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey())
+                .eq(ConfigAssetBaseline::getScopeKey, scopeKey)
                 .last("LIMIT 1"));
         if (baseline == null) {
             baseline = new ConfigAssetBaseline();
             baseline.setAssetType(item.getAssetType());
             baseline.setBusinessKey(item.getBusinessKey());
+            baseline.setScopeKey(scopeKey);
         }
         baseline.setSourceVersion(item.getSourceVersion());
         baseline.setSourceHash(item.getSourceHash());
         baseline.setTargetVersion(target.getSourceVersion());
-        baseline.setTargetHash(target.getContentHash());
+        baseline.setTargetHash(targetScopeHash);
         baseline.setImportPackageId(item.getImportPackageId());
         baseline.setUpdatedAt(LocalDateTime.now());
         if (baseline.getId() == null) {
@@ -1544,6 +1699,83 @@ public class ConfigMigrationImportApplyService {
         } else {
             baselineMapper.updateById(baseline);
         }
+        refreshBaselineTargetHashes(
+                item.getAssetType(),
+                item.getBusinessKey(),
+                target,
+                scopeKey);
+        log.info("配置迁移条目发布完成，itemId={}，assetType={}，businessKey={}，scope={}，targetVersion={}",
+                item.getId(),
+                item.getAssetType(),
+                item.getBusinessKey(),
+                scopeKey,
+                target.getSourceVersion());
+    }
+
+    private void refreshBaselineTargetHashes(
+            String assetType,
+            String businessKey,
+            ConfigMigrationAsset target,
+            String excludedScopeKey) {
+        int refreshed = 0;
+        List<ConfigAssetBaseline> baselines = baselineMapper.selectList(
+                new LambdaQueryWrapper<ConfigAssetBaseline>()
+                        .eq(ConfigAssetBaseline::getAssetType, assetType)
+                        .eq(ConfigAssetBaseline::getBusinessKey, businessKey));
+        for (ConfigAssetBaseline baseline : baselines) {
+            if (Objects.equals(excludedScopeKey, baseline.getScopeKey())) {
+                continue;
+            }
+            Map<String, Object> selection = baselineSelection(baseline);
+            if (selection == null) {
+                log.warn("无法刷新迁移基线目标哈希，assetType={}，businessKey={}，scope={}，importId={}",
+                        assetType,
+                        businessKey,
+                        baseline.getScopeKey(),
+                        baseline.getImportPackageId());
+                continue;
+            }
+            baseline.setTargetVersion(target.getSourceVersion());
+            baseline.setTargetHash(packageCodec.hashSelectedSnapshot(
+                    target.getSnapshotJson(), selection));
+            baseline.setUpdatedAt(LocalDateTime.now());
+            baselineMapper.updateById(baseline);
+            refreshed++;
+        }
+        if (refreshed > 0) {
+            log.info("刷新同资产迁移基线目标状态，assetType={}，businessKey={}，targetVersion={}，count={}",
+                    assetType,
+                    businessKey,
+                    target.getSourceVersion(),
+                    refreshed);
+        }
+    }
+
+    private Map<String, Object> baselineSelection(
+            ConfigAssetBaseline baseline) {
+        if ("FULL".equals(baseline.getScopeKey())) {
+            return Map.of("full", true);
+        }
+        if (!StringUtils.hasText(baseline.getImportPackageId())) {
+            return null;
+        }
+        return importItemMapper.selectList(
+                        new LambdaQueryWrapper<ConfigImportItem>()
+                                .eq(ConfigImportItem::getImportPackageId,
+                                        baseline.getImportPackageId())
+                                .eq(ConfigImportItem::getAssetType,
+                                        baseline.getAssetType())
+                                .eq(ConfigImportItem::getBusinessKey,
+                                        baseline.getBusinessKey()))
+                .stream()
+                .map(ConfigImportItem::getSnapshotJson)
+                .map(this::readMap)
+                .filter(snapshot -> Objects.equals(
+                        baseline.getScopeKey(),
+                        packageCodec.selectionScopeKey(snapshot)))
+                .map(packageCodec::selectionOf)
+                .findFirst()
+                .orElse(null);
     }
 
     private ConfigMigrationAsset previousAsset(ConfigImportItem item) {
@@ -1625,6 +1857,50 @@ public class ConfigMigrationImportApplyService {
                 importedItem,
                 removedForms,
                 removedLists);
+    }
+
+    private void removeEntityConfigurationsAbsentFrom(
+            ConfigImportItem importedItem,
+            Map<String, Object> restoredSnapshot) {
+        Map<String, Object> importedSnapshot =
+                readMap(importedItem.getSnapshotJson());
+        Map<String, Object> definition =
+                mapValue(importedSnapshot.get("definition"));
+        String entityCode = text(
+                definition.get("entityCode"),
+                importedItem.getBusinessKey());
+        EntityDefinition entity = entityMapper.findByEntityCode(entityCode)
+                .orElse(null);
+        if (entity == null) {
+            return;
+        }
+        if (importedSnapshot.containsKey("forms")) {
+            Set<String> removedForms = formKeys(importedSnapshot);
+            removedForms.removeAll(formKeys(restoredSnapshot));
+            for (String formKey : removedForms) {
+                EntityForm form = formMapper.selectByEntityIdAndFormKey(
+                        entity.getId(), formKey);
+                if (form != null) {
+                    entityFormService.deleteForm(form.getId());
+                    log.info("回滚细粒度迁移新增表单，entityCode={}，formKey={}",
+                            entityCode, formKey);
+                }
+            }
+        }
+        if (importedSnapshot.containsKey("lists")) {
+            Set<String> removedLists = listKeys(importedSnapshot);
+            removedLists.removeAll(listKeys(restoredSnapshot));
+            for (String listKey : removedLists) {
+                EntityListConfig list =
+                        listConfigMapper.findByEntityIdAndListKey(
+                                entity.getId(), listKey);
+                if (list != null) {
+                    entityListConfigService.deleteConfig(list.getId());
+                    log.info("回滚细粒度迁移新增列表，entityCode={}，listKey={}",
+                            entityCode, listKey);
+                }
+            }
+        }
     }
 
     private void disableSystemUiConfigurations(
@@ -1820,14 +2096,9 @@ public class ConfigMigrationImportApplyService {
                         LinkedHashMap::new));
     }
 
-    private List<ConfigImportItem> selectedItems(String importId, ConfigImportPublishRequest request) {
-        List<ConfigImportItem> items = importItemMapper.selectList(new LambdaQueryWrapper<ConfigImportItem>()
+    private List<ConfigImportItem> allItems(String importId) {
+        return importItemMapper.selectList(new LambdaQueryWrapper<ConfigImportItem>()
                 .eq(ConfigImportItem::getImportPackageId, importId));
-        if (request == null || request.getItemIds() == null || request.getItemIds().isEmpty()) {
-            return items;
-        }
-        Set<String> selected = new LinkedHashSet<>(request.getItemIds());
-        return items.stream().filter(item -> selected.contains(item.getId())).toList();
     }
 
     private List<ConfigImportItem> itemsOfType(List<ConfigImportItem> items, String type) {
@@ -1884,6 +2155,17 @@ public class ConfigMigrationImportApplyService {
             }
         }
         return result;
+    }
+
+    private Set<String> stringSet(Object value) {
+        if (!(value instanceof Collection<?> collection)) {
+            return Set.of();
+        }
+        return collection.stream()
+                .map(String::valueOf)
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toCollection(
+                        LinkedHashSet::new));
     }
 
     private <T> T convert(Map<String, Object> value, Class<T> type) {
@@ -2001,7 +2283,14 @@ public class ConfigMigrationImportApplyService {
                                  Map<String, Object> definition,
                                  EntityDefinition entity,
                                  String processKey,
+                                 boolean applyBinding,
                                  boolean rollbackMode) {
+    }
+
+    /** 实体回滚上下文：恢复快照之外保留原导入条目，用于移除本次新增的表单和列表。 */
+    private record EntityRollbackContext(
+            EntityContext context,
+            ConfigImportItem originalItem) {
     }
 
     /** 系统实体UI应用上下文，只允许写入表单、列表及其只读依赖配置。 */

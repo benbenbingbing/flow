@@ -22,6 +22,7 @@ public class ConfigAssetBaseline {
     private String id;                              // 主键
     private String assetType;                       // 资产类型(ENTITY/PROCESS)
     private String businessKey;                     // 资产业务编码(实体编码或流程Key)
+    private String scopeKey;                        // 迁移范围键(FULL或细粒度范围哈希)
     private Integer sourceVersion;                 // 基线对应的源环境资产版本
     private String sourceHash;                      // 基线对应的源环境资产内容哈希
     private Integer targetVersion;                 // 基线对应的目标环境资产版本

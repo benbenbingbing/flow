@@ -364,8 +364,48 @@
             </el-checkbox>
           </el-checkbox-group>
         </el-form-item>
+        <el-form-item
+          v-if="exportTargets.length === 1 && !exportForm.full && exportForm.sections.includes('forms') && formOptions.length"
+          label="具体表单"
+        >
+          <el-select
+            v-model="exportForm.formKeys"
+            multiple
+            clearable
+            collapse-tags
+            placeholder="不选择表示全部表单"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="option in formOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item
+          v-if="exportTargets.length === 1 && !exportForm.full && exportForm.sections.includes('lists') && listOptions.length"
+          label="具体列表"
+        >
+          <el-select
+            v-model="exportForm.listKeys"
+            multiple
+            clearable
+            collapse-tags
+            placeholder="不选择表示全部列表"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="option in listOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
         <el-alert
-          title="批量导出会自动补齐硬依赖并去重；历史不完整快照不能导出。"
+          title="发布时以当前迁移包为原子单位；细粒度导出只更新选中范围，并自动补齐该范围的硬依赖。"
           type="info"
           :closable="false"
         />
@@ -470,7 +510,9 @@ const exportTargets = ref([])
 const exportForm = reactive({
   migrationTag: generateMigrationTag(),
   full: true,
-  sections: []
+  sections: [],
+  formKeys: [],
+  listKeys: []
 })
 const snapshotVisible = ref(false)
 const currentSnapshot = ref({})
@@ -504,7 +546,8 @@ const sectionOptions = computed(() => {
   if (!asset) return []
   if (asset.assetType === 'PROCESS') {
     return [
-      { label: 'BPMN 与节点配置', value: 'bpmnXml' },
+      { label: '流程基本信息', value: 'definition' },
+      { label: 'BPMN、节点与表单引用', value: 'bpmnXml' },
       { label: '节点表单', value: 'nodeForms' },
       { label: '节点审批', value: 'nodeApprovals' },
       { label: '流程动作', value: 'flowActions' },
@@ -526,6 +569,7 @@ const sectionOptions = computed(() => {
     return [{ label: '时限与升级步骤', value: 'configuration' }]
   }
   return [
+    { label: '实体基本信息与流程绑定', value: 'definition' },
     { label: '实体字段与关系', value: 'fields' },
     { label: '状态与编码规则', value: 'statuses' },
     { label: '表单', value: 'forms' },
@@ -534,6 +578,18 @@ const sectionOptions = computed(() => {
     { label: '菜单权限', value: 'menus' }
   ]
 })
+const exportSnapshot = computed(() => parseJson(
+  exportTargets.value[0]?.snapshotJson,
+  {}
+))
+const formOptions = computed(() => (exportSnapshot.value.forms || []).map(item => ({
+  label: item.formName ? `${item.formName} (${item.formKey})` : item.formKey,
+  value: item.formKey
+})).filter(item => item.value))
+const listOptions = computed(() => (exportSnapshot.value.lists || []).map(item => ({
+  label: item.listName ? `${item.listName} (${item.listKey})` : item.listKey,
+  value: item.listKey
+})).filter(item => item.value))
 const loadAssets = async () => {
   assetLoading.value = true
   assetError.value = ''
@@ -617,6 +673,8 @@ const openSingleExport = (row) => {
   exportForm.migrationTag = row.migrationTag || generateMigrationTag()
   exportForm.full = true
   exportForm.sections = []
+  exportForm.formKeys = []
+  exportForm.listKeys = []
   exportDialogVisible.value = true
 }
 const openBatchExport = () => {
@@ -625,6 +683,8 @@ const openBatchExport = () => {
   exportForm.migrationTag = tags.size === 1 ? [...tags][0] : generateMigrationTag()
   exportForm.full = true
   exportForm.sections = []
+  exportForm.formKeys = []
+  exportForm.listKeys = []
   exportDialogVisible.value = true
 }
 const confirmExport = async () => {
@@ -640,9 +700,16 @@ const confirmExport = async () => {
   try {
     const selections = {}
     if (exportTargets.value.length === 1) {
-      selections[exportTargets.value[0].id] = exportForm.full
+      const selection = exportForm.full
         ? { full: true }
-        : { full: false, sections: exportForm.sections }
+        : { full: false, sections: [...exportForm.sections] }
+      if (!exportForm.full && exportForm.sections.includes('forms') && exportForm.formKeys.length) {
+        selection.formKeys = [...exportForm.formKeys]
+      }
+      if (!exportForm.full && exportForm.sections.includes('lists') && exportForm.listKeys.length) {
+        selection.listKeys = [...exportForm.listKeys]
+      }
+      selections[exportTargets.value[0].id] = selection
     }
     const result = await configMigrationApi.exportPackage({
       assetIds: exportTargets.value.map(item => item.id),
