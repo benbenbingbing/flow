@@ -1692,7 +1692,7 @@ public class UiConfigReleaseService {
                     Integer componentVersion = nullableInteger(
                             node.get("componentVersion"));
                     boolean compatible = extensionSupportsHotfix(
-                            "NODE",
+                            nodeExtensionType(node),
                             componentName,
                             componentVersion);
                     if (!compatible) {
@@ -2911,7 +2911,7 @@ public class UiConfigReleaseService {
                 continue;
             }
             var definition = extensionDefinitionService.requireActive(
-                    "NODE",
+                    nodeExtensionType(node),
                     node.getComponentName(),
                     node.getComponentVersion());
             extensionDefinitionService.validateCompatibility(
@@ -2921,6 +2921,36 @@ public class UiConfigReleaseService {
                     node.getBindingType(),
                     node.getSnapshotVersion());
         }
+    }
+
+    private String nodeExtensionType(EntityFormNode node) {
+        Map<String, Object> props =
+                node != null
+                        && StringUtils.hasText(node.getPropsDocument())
+                        ? codec.readObject(
+                                node.getPropsDocument(),
+                                "表单节点扩展属性")
+                        : Map.of();
+        return UiExtensionReferencePolicy.resolveNodeExtensionType(
+                node == null ? null : node.getNodeType(),
+                props);
+    }
+
+    private String nodeExtensionType(Map<String, Object> node) {
+        if (node == null) {
+            return UiExtensionReferencePolicy.NODE;
+        }
+        Map<String, Object> props = mapValue(node.get("props"));
+        if (props.isEmpty()
+                && StringUtils.hasText(
+                        text(node.get("propsDocument")))) {
+            props = codec.readObject(
+                    text(node.get("propsDocument")),
+                    "表单节点扩展属性");
+        }
+        return UiExtensionReferencePolicy.resolveNodeExtensionType(
+                text(node.get("nodeType")),
+                props);
     }
 
     /**

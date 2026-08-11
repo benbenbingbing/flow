@@ -936,6 +936,31 @@ const richTextPayload = buildFormNodePayload({
 assert.equal(richTextPayload.props.fieldType, 'TEXT')
 assert.equal(richTextPayload.props.componentType, 'rich_text')
 
+const customFieldPayload = buildFormNodePayload({
+  id: 'custom-field',
+  nodeType: 'FIELD',
+  nodeKey: 'acceptance_score',
+  fieldId: '306',
+  fieldCode: 'acceptance_score',
+  fieldName: '验收评分',
+  fieldLabel: '验收评分',
+  fieldType: 'INTEGER',
+  componentType: 'number',
+  componentExtensionType: 'FIELD',
+  componentName: 'project_acceptance_score',
+  componentVersion: 1,
+  snapshotVersion: 1
+})
+assert.equal(customFieldPayload.props.componentType, 'number')
+assert.equal(
+  customFieldPayload.props.componentExtensionType,
+  'FIELD'
+)
+assert.equal(
+  customFieldPayload.componentName,
+  'project_acceptance_score'
+)
+
 const immutableField = {
   id: 'immutable-field',
   nodeType: 'FIELD',

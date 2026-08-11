@@ -76,7 +76,7 @@ public class OutboxProcessor {
             handler.handle(toEvent(record));
             heartbeatActive.set(false);
             markProcessed(record, ownerId, leaseToken);
-        } catch (Exception exception) {
+        } catch (Exception | LinkageError exception) {
             heartbeatActive.set(false);
             markFailed(record, ownerId, leaseToken, exception);
         } finally {
@@ -157,7 +157,7 @@ public class OutboxProcessor {
             OutboxRecord record,
             String ownerId,
             long leaseToken,
-            Exception exception) {
+            Throwable exception) {
         int retries = record.getRetryCount() == null
                 ? 1
                 : record.getRetryCount() + 1;
@@ -204,7 +204,7 @@ public class OutboxProcessor {
         return Math.min(maximum, initial * multiplier);
     }
 
-    private String errorMessage(Exception exception) {
+    private String errorMessage(Throwable exception) {
         String value = exception.getMessage();
         if (value == null || value.isBlank()) {
             value = exception.getClass().getName();

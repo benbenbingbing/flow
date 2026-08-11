@@ -33,6 +33,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
+import com.workflow.entity.ui.application.UiExtensionReferencePolicy;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
@@ -676,7 +677,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 if (StringUtils.hasText(componentName)
                         && componentVersion != null) {
                     extensionReferences.add(extensionReference(
-                            "NODE",
+                            nodeExtensionType(node),
                             componentName,
                             componentVersion));
                 }
@@ -881,7 +882,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 if (StringUtils.hasText(node.getComponentName())
                         && node.getComponentVersion() != null) {
                     extensionReferences.add(extensionReference(
-                            "NODE",
+                            nodeExtensionType(node),
                             node.getComponentName(),
                             node.getComponentVersion()));
                 }
@@ -1016,6 +1017,24 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
 
     private String extensionReference(String type, String key, Integer version) {
         return type + "|" + key + "|" + version;
+    }
+
+    private String nodeExtensionType(Map<String, Object> node) {
+        Map<String, Object> props = mapValue(parseJson(
+                text(node.get("propsDocument")),
+                Map.of()));
+        return UiExtensionReferencePolicy.resolveNodeExtensionType(
+                text(node.get("nodeType")),
+                props);
+    }
+
+    private String nodeExtensionType(EntityFormNode node) {
+        Map<String, Object> props = mapValue(parseJson(
+                node == null ? null : node.getPropsDocument(),
+                Map.of()));
+        return UiExtensionReferencePolicy.resolveNodeExtensionType(
+                node == null ? null : node.getNodeType(),
+                props);
     }
 
     private Map<String, String> dataSourceCodesById(Set<String> ids) {

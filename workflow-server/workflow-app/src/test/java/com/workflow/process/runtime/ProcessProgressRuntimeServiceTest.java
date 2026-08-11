@@ -133,6 +133,11 @@ class ProcessProgressRuntimeServiceTest {
                 "resolution-token",
                 progress.getFormConfig().getReleaseResolutionToken());
         assertEquals(
+                "{\"AFTER_LOAD\":{\"serviceId\":\"service-1\","
+                        + "\"operationCode\":\"query\"}}",
+                progress.getFormConfig()
+                        .getDataSourceBindingsDocument());
+        assertEquals(
                 "热修复标题",
                 progress.getFormConfig().getFields().get(0)
                         .get("fieldLabel"));
@@ -381,6 +386,9 @@ class ProcessProgressRuntimeServiceTest {
             form.setEffectiveReleaseId("hotfix-3");
             form.setHotfixApplied(true);
             form.setReleaseResolutionToken("resolution-token");
+            form.setDataSourceBindingsDocument(
+                    "{\"AFTER_LOAD\":{\"serviceId\":\"service-1\","
+                            + "\"operationCode\":\"query\"}}");
             EntityFormField field = new EntityFormField();
             field.setId("field-1");
             field.setFieldCode("name");

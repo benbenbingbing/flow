@@ -2,7 +2,6 @@ package com.workflow.process.engine.infrastructure.flowable;
 
 import com.workflow.contracts.entity.mutation.EntityChangeTargetApplyCommand;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
-import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;
@@ -24,8 +23,9 @@ import java.util.Map;
  * 流程结束监听器。
  *
  * <p>
- * 监听流程完成、取消与终止事件，在 Flowable 事务中同步实体状态并写入状态同步 Outbox。
- * 监听器与异步消费端使用相同的流程实例幂等键，补偿重放不会重复产生实体变更。
+ * 监听流程完成、取消与终止事件，在 Flowable 事务中写入状态同步 Outbox。
+ * 实体结束状态由提交后的异步处理器更新，避免与节点完成动作在同一实体行上
+ * 发生跨事务锁等待；对账任务与消费端使用相同幂等键，可安全补偿重放。
  * </p>
  */
 @Slf4j
@@ -34,7 +34,6 @@ import java.util.Map;
 public class ProcessEndListener implements FlowableEventListener {
 
         private final HistoryService historyService;
-        private final EntityRecordPort entityRecordPort;
         private final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider;
         private final ProcessStatusSyncPublisher statusSyncPublisher;
 
@@ -98,12 +97,6 @@ public class ProcessEndListener implements FlowableEventListener {
                                         "process-end",
                                         processInstanceId,
                                         statusCategory);
-                        entityRecordPort.markProcessEnded(
-                                        processInstanceId,
-                                        entityCode,
-                                        entityDataId,
-                                        statusCategory,
-                                        defaultEndStatus(statusCategory));
                         if ("COMPLETED".equals(statusCategory)
                                         && processInstance != null) {
                                 applyChangeTargets(
@@ -120,12 +113,13 @@ public class ProcessEndListener implements FlowableEventListener {
                                         statusCategory,
                                         defaultEndStatus(statusCategory));
                         log.info(
-                                        "流程结束状态同步事件已入队: entityCode={}, entityDataId={}, "
-                                                        + "processInstanceId={}, statusCategory={}",
+                                        "流程结束状态同步事件已入队，等待提交后消费: entityCode={}, entityDataId={}, "
+                                                        + "processInstanceId={}, statusCategory={}, idempotencyKey={}",
                                         entityCode,
                                         entityDataId,
                                         processInstanceId,
-                                        statusCategory);
+                                        statusCategory,
+                                        idempotencyKey);
                 } catch (Exception exception) {
                         throw new IllegalStateException(
                                         "流程结束状态同步事件入队失败: processInstanceId="

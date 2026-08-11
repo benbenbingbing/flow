@@ -92,7 +92,8 @@ final class EntityFormNodePropertyPolicy {
             Set.of("label");
     private static final Set<String> FIELD_PROPS = Set.of(
             "fieldId", "fieldCode", "fieldName", "label", "fieldType",
-            "componentType", "placeholder", "defaultValue", "gridSpan",
+            "componentType", "componentExtensionType",
+            "placeholder", "defaultValue", "gridSpan",
             "required", "readonly", "hidden", "componentProps");
     private static final Set<String> SUB_FORM_PROPS = Set.of(
             "fieldId", "fieldCode", "fieldName", "label", "fieldType",
@@ -610,6 +611,10 @@ final class EntityFormNodePropertyPolicy {
         requireText(props, "fieldName", 500);
         requireText(props, "fieldType", 50);
         requireText(props, "componentType", 100);
+        requireEnum(
+                props,
+                "componentExtensionType",
+                Set.of("FIELD"));
         requireIntegerRange(props, "gridSpan", 1, 24);
         requireBoolean(props, "required");
         requireBoolean(props, "readonly");

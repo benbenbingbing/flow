@@ -1,0 +1,343 @@
+{
+  "apiBase": "http://127.0.0.1:8082/api",
+  "entity": {
+    "id": "2087011532046143489",
+    "entityCode": "project_extension_acceptance",
+    "entityName": "项目扩展验收单",
+    "status": "PUBLISHED",
+    "fieldCount": 31
+  },
+  "extensions": [
+    {
+      "id": "8e99f72bdbc9613d383dc3f2414a9d25",
+      "type": "FORM",
+      "key": "ProjectExtensionAcceptanceForm",
+      "version": 1,
+      "status": "ACTIVE"
+    },
+    {
+      "id": "1ea63e1682d26f1e640231a0c67ba455",
+      "type": "LIST",
+      "key": "ProjectAcceptanceBoardList",
+      "version": 1,
+      "status": "ACTIVE"
+    },
+    {
+      "id": "fc0d32481accd557f7caf74419d300d6",
+      "type": "LIST",
+      "key": "PROJECT_CUSTOM_LIST_SCHEMA",
+      "version": 1,
+      "status": "ACTIVE"
+    },
+    {
+      "id": "2f812a318c5e3b316f616d212999c21e",
+      "type": "FIELD",
+      "key": "project_acceptance_score",
+      "version": 1,
+      "status": "ACTIVE"
+    },
+    {
+      "id": "03689db8dc6978cfee751229ad9d3535",
+      "type": "FIELD",
+      "key": "project_acceptance_level",
+      "version": 1,
+      "status": "ACTIVE"
+    },
+    {
+      "id": "7193da3dbfc47bba969d564eca01aa89",
+      "type": "NODE",
+      "key": "ProjectAcceptanceSummaryNode",
+      "version": 1,
+      "status": "ACTIVE"
+    }
+  ],
+  "dataSources": [
+    {
+      "id": "0905bd5328d84c66211d262c93726492",
+      "code": "PROJECT_ACCEPTANCE_FULL_FORM_SOURCE",
+      "type": "REGISTERED_PROVIDER",
+      "providerCode": "PROJECT_CUSTOM_UI_FORM",
+      "scopeType": "FORM",
+      "scopeId": "2087011534764052481",
+      "revision": 11
+    },
+    {
+      "id": "f75dec31bddccdac93df4bd8cdfe43c2",
+      "code": "PROJECT_ACCEPTANCE_ENTITY_SOURCE",
+      "type": "REGISTERED_PROVIDER",
+      "providerCode": "PROJECT_CUSTOM_UI_ENTITY",
+      "scopeType": "ENTITY",
+      "scopeId": "2087011532046143489",
+      "revision": 11
+    },
+    {
+      "id": "5c915becaab0d9b8b9e17e16401a834a",
+      "code": "PROJECT_ACCEPTANCE_MATRIX_FORM_SOURCE",
+      "type": "REGISTERED_PROVIDER",
+      "providerCode": "PROJECT_CUSTOM_UI_FORM",
+      "scopeType": "FORM",
+      "scopeId": "2087011535372226561",
+      "revision": 11
+    },
+    {
+      "id": "b0e7462e0779a5da0878fbe37bfe685d",
+      "code": "PROJECT_ACCEPTANCE_LOG_CONNECTOR",
+      "type": "INTEGRATION_CONNECTOR",
+      "providerCode": "PROJECT_CUSTOM_LOG_CONNECTOR",
+      "scopeType": "ENTITY",
+      "scopeId": "2087011532046143489",
+      "revision": 11
+    },
+    {
+      "id": "075448e84b21c1ea635df0d6e08fb8c0",
+      "code": "PROJECT_ACCEPTANCE_MATRIX_LIST_SOURCE",
+      "type": "REGISTERED_PROVIDER",
+      "providerCode": "PROJECT_CUSTOM_UI_LIST",
+      "scopeType": "LIST",
+      "scopeId": "37c2848855d68f9521b017e611734d24",
+      "revision": 8
+    },
+    {
+      "id": "045420a6531ebe51dfb3f2d917195b71",
+      "code": "PROJECT_ACCEPTANCE_UNIFIED_LIST_SOURCE",
+      "type": "REGISTERED_PROVIDER",
+      "providerCode": "PROJECT_CUSTOM_UI_LIST",
+      "scopeType": "LIST",
+      "scopeId": "03004a949e4cc5ed9140b74838cdcf9b",
+      "revision": 8
+    }
+  ],
+  "forms": [
+    {
+      "id": "2087011534764052481",
+      "formKey": "project_extension_acceptance_full",
+      "formName": "扩展验收整表单",
+      "customComponent": "ProjectExtensionAcceptanceForm",
+      "releaseId": "1f4900ffbce01bb5cd2c6f673a9467b7",
+      "releaseVersion": 1,
+      "route": "/entity-form-design/2087011534764052481"
+    },
+    {
+      "id": "2087011535372226561",
+      "formKey": "project_extension_acceptance_matrix",
+      "formName": "扩展验收节点矩阵表单",
+      "customComponent": null,
+      "releaseId": "46dda730bdf08a8ca485034d0d70fbec",
+      "releaseVersion": 1,
+      "route": "/entity-form-design/2087011535372226561"
+    },
+    {
+      "id": "2087013107309285378",
+      "formKey": "project_extension_acceptance_readonly",
+      "formName": "扩展验收最终只读表单",
+      "customComponent": null,
+      "releaseId": "9483cb85da38cfbf5e799e8d03224b93",
+      "releaseVersion": 2,
+      "route": "/entity-form-design/2087013107309285378"
+    }
+  ],
+  "lists": [
+    {
+      "id": "fb622bbc4dbe057a8bed6421aed93ec5",
+      "listKey": "project_extension_acceptance_board",
+      "listName": "扩展验收看板列表",
+      "customComponent": "ProjectAcceptanceBoardList",
+      "queryProviderCode": "",
+      "queryDataSourceId": "",
+      "releaseId": "519e643a9fa32afe6c328f9a70e1adeb",
+      "releaseVersion": 2,
+      "route": "/entity-list/project_extension_acceptance/project_extension_acceptance_board"
+    },
+    {
+      "id": "0b46466e9ec06dd62673df2b3e624a5a",
+      "listKey": "project_extension_acceptance_schema",
+      "listName": "扩展验收后端 Schema 列表",
+      "customComponent": "PROJECT_CUSTOM_LIST_SCHEMA",
+      "queryProviderCode": "",
+      "queryDataSourceId": "",
+      "releaseId": "509962979322038e3746af7b6efb4dbb",
+      "releaseVersion": 2,
+      "route": "/entity-list/project_extension_acceptance/project_extension_acceptance_schema"
+    },
+    {
+      "id": "37c2848855d68f9521b017e611734d24",
+      "listKey": "project_extension_acceptance_matrix",
+      "listName": "扩展验收标准列表矩阵",
+      "customComponent": "",
+      "queryProviderCode": "",
+      "queryDataSourceId": "",
+      "releaseId": "dbb417fb897ed1c4e5f59a8ba3e0ff0a",
+      "releaseVersion": 2,
+      "route": "/entity-list/project_extension_acceptance/project_extension_acceptance_matrix"
+    },
+    {
+      "id": "829393ffc3347965c744d60a81ab5076",
+      "listKey": "project_extension_acceptance_provider",
+      "listName": "扩展验收查询 Provider 列表",
+      "customComponent": "",
+      "queryProviderCode": "PROJECT_CUSTOM_LIST_QUERY",
+      "queryDataSourceId": "",
+      "releaseId": "6815466b7036710007680a066f26b04f",
+      "releaseVersion": 1,
+      "route": "/entity-list/project_extension_acceptance/project_extension_acceptance_provider"
+    },
+    {
+      "id": "03004a949e4cc5ed9140b74838cdcf9b",
+      "listKey": "project_extension_acceptance_unified",
+      "listName": "扩展验收 LIST 统一数据源列表",
+      "customComponent": "",
+      "queryProviderCode": "",
+      "queryDataSourceId": "045420a6531ebe51dfb3f2d917195b71",
+      "releaseId": "ade29d6058889ee3d568b7d96af2767a",
+      "releaseVersion": 1,
+      "route": "/entity-list/project_extension_acceptance/project_extension_acceptance_unified"
+    }
+  ],
+  "eventBindings": [
+    {
+      "id": "b8fa821068d59d9bc340370bc78f8794",
+      "ownerType": "ENTITY",
+      "ownerId": "2087011532046143489",
+      "targetType": "OWNER",
+      "targetKey": "",
+      "eventCode": "FORM_OPEN",
+      "revision": 9
+    },
+    {
+      "id": "e6e4c57ddb8f92f09a532302cd3efe4a",
+      "ownerType": "FORM",
+      "ownerId": "2087011534764052481",
+      "targetType": "OWNER",
+      "targetKey": "",
+      "eventCode": "FORM_SAVE",
+      "revision": 9
+    },
+    {
+      "id": "467e15f00e1a8959bcb34994905843c2",
+      "ownerType": "FORM",
+      "ownerId": "2087011535372226561",
+      "targetType": "FIELD",
+      "targetKey": "acceptance_score",
+      "eventCode": "FIELD_CHANGE",
+      "revision": 9
+    },
+    {
+      "id": "5982b3847c0a7befe4390751fca2317c",
+      "ownerType": "FORM",
+      "ownerId": "2087011535372226561",
+      "targetType": "FIELD",
+      "targetKey": "acceptance_score",
+      "eventCode": "FIELD_BUTTON_CLICK",
+      "revision": 9
+    },
+    {
+      "id": "15a6d7841e71e46cdc751c3a20f3ae31",
+      "ownerType": "FORM",
+      "ownerId": "2087011535372226561",
+      "targetType": "BUTTON",
+      "targetKey": "acceptance_form_log",
+      "eventCode": "FORM_BUTTON_CLICK",
+      "revision": 9
+    },
+    {
+      "id": "abca245203fce93e475cddbaada4f25f",
+      "ownerType": "FORM",
+      "ownerId": "2087011535372226561",
+      "targetType": "BUTTON",
+      "targetKey": "acceptance_inline_log",
+      "eventCode": "FORM_BUTTON_CLICK",
+      "revision": 9
+    },
+    {
+      "id": "58fdb5ce5cf01afa20164d0acc617c37",
+      "ownerType": "LIST",
+      "ownerId": "37c2848855d68f9521b017e611734d24",
+      "targetType": "OWNER",
+      "targetKey": "",
+      "eventCode": "LIST_LOAD",
+      "revision": 8
+    },
+    {
+      "id": "d574160b4a8c2eeb83e8e9166d0c7412",
+      "ownerType": "LIST",
+      "ownerId": "37c2848855d68f9521b017e611734d24",
+      "targetType": "BUTTON",
+      "targetKey": "project_toolbar_event",
+      "eventCode": "TOOLBAR_BUTTON_CLICK",
+      "revision": 8
+    },
+    {
+      "id": "530e60942078e216d59182dfde37d62b",
+      "ownerType": "LIST",
+      "ownerId": "37c2848855d68f9521b017e611734d24",
+      "targetType": "BUTTON",
+      "targetKey": "project_row_event",
+      "eventCode": "ROW_BUTTON_CLICK",
+      "revision": 8
+    }
+  ],
+  "actionHandlers": [
+    {
+      "beanName": "projectExtensionAcceptanceFlowActionHandler",
+      "definitionId": "2087011534483034114",
+      "enabled": true,
+      "available": true,
+      "visibilityScope": "ENTITY"
+    },
+    {
+      "beanName": "projectCustomFlowActionHandler",
+      "definitionId": "2087011534558531585",
+      "enabled": true,
+      "available": true,
+      "visibilityScope": "ENTITY"
+    },
+    {
+      "beanName": "projectCustomTypedFlowActionHandler",
+      "definitionId": "2087011534608863234",
+      "enabled": true,
+      "available": true,
+      "visibilityScope": "ENTITY"
+    }
+  ],
+  "personResolver": {
+    "code": "projectCustomPersonResolver",
+    "enabled": true,
+    "available": true
+  },
+  "versionConfiguration": {
+    "id": "15558abf570542ef8f158ee1b3f45626",
+    "enabled": true,
+    "status": "PUBLISHED",
+    "activeReleaseId": "9fecd048599c47b5aed5ac324aefdb39",
+    "activeReleaseVersion": 7,
+    "scenarioCount": 1,
+    "stepCount": 2
+  },
+  "process": {
+    "id": "2087017613975617537",
+    "processKey": "project_extension_acceptance_process",
+    "processName": "项目扩展能力验收流程",
+    "status": "PUBLISHED",
+    "actionCount": 7,
+    "nodeFormIds": {
+      "Task_Technical_Review": "2087011534764052481",
+      "Task_Business_Review": "2087011535372226561",
+      "Task_Final_Acceptance": "2087013107309285378"
+    }
+  },
+  "fixtures": [],
+  "fixtureCleanup": [],
+  "result": "FAIL",
+  "conclusion": "FAIL: 项目扩展验收初始化失败",
+  "error": {
+    "name": "Error",
+    "message": "POST /entity-data/entity/project_extension_acceptance/detail/e2e862f3fa704b138e82d46abfabc5f6/delete?listKey=project_extension_acceptance_matrix failed: HTTP 403, 仅本人未流转草稿或已撤回数据可以删除"
+  },
+  "acceptanceRoutes": {
+    "defaultList": "/entity-list/project_extension_acceptance/project_extension_acceptance_matrix",
+    "customBoard": "/entity-list/project_extension_acceptance/project_extension_acceptance_board",
+    "schemaProviderList": "/entity-list/project_extension_acceptance/project_extension_acceptance_schema",
+    "providerList": "/entity-list/project_extension_acceptance/project_extension_acceptance_provider",
+    "unifiedList": "/entity-list/project_extension_acceptance/project_extension_acceptance_unified"
+  }
+}

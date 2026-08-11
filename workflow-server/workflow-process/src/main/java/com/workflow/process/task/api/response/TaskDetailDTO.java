@@ -118,6 +118,8 @@ public class TaskDetailDTO {
         private String layoutType;
         /** 是否只读 */
         private Boolean isReadonly;
+        /** 表单级统一数据源绑定文档 */
+        private String dataSourceBindingsDocument;
         /** 表单字段列表 */
         private List<Map<String, Object>> fields;
         /** 表单节点列表（递归结构） */
@@ -203,6 +205,15 @@ public class TaskDetailDTO {
         
         public void setIsReadonly(Boolean isReadonly) {
             this.isReadonly = isReadonly;
+        }
+
+        public String getDataSourceBindingsDocument() {
+            return dataSourceBindingsDocument;
+        }
+
+        public void setDataSourceBindingsDocument(
+                String dataSourceBindingsDocument) {
+            this.dataSourceBindingsDocument = dataSourceBindingsDocument;
         }
         
         public List<Map<String, Object>> getFields() {

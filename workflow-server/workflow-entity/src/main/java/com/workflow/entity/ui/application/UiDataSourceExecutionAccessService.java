@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -742,16 +743,18 @@ public class UiDataSourceExecutionAccessService {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         context.forEach((key, value) -> {
-            String normalizedKey = key == null
-                    ? ""
-                    : key.replace("_", "")
-                            .replace("-", "")
-                            .toLowerCase(Locale.ROOT);
+            if (key == null) {
+                return;
+            }
+            String normalizedKey = key.replace("_", "")
+                    .replace("-", "")
+                    .toLowerCase(Locale.ROOT);
             if (!RESERVED_REQUEST_KEYS.contains(normalizedKey)) {
                 result.put(key, value);
             }
         });
-        return Map.copyOf(result);
+        return Collections.unmodifiableMap(
+                new LinkedHashMap<>(result));
     }
 
     private String firstText(Object... values) {

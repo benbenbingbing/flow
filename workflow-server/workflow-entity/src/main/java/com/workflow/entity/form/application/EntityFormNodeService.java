@@ -16,6 +16,7 @@ import com.workflow.entity.form.api.request.EntityFormNodeReorderRequest;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
+import com.workflow.entity.ui.application.UiExtensionReferencePolicy;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
@@ -1326,6 +1327,20 @@ public class EntityFormNodeService {
                                                 || node.getSnapshotVersion() != null)) {
                         throw new IllegalArgumentException(
                                         "未配置节点扩展组件时不能单独保存组件版本");
+                }
+                String componentExtensionType =
+                                UiExtensionReferencePolicy
+                                                .resolveNodeExtensionType(
+                                                                node.getNodeType(),
+                                                                read(
+                                                                                node.getPropsDocument(),
+                                                                                "表单节点扩展属性"));
+                if (UiExtensionReferencePolicy.FIELD.equals(
+                                componentExtensionType)
+                                && !StringUtils.hasText(
+                                                node.getComponentName())) {
+                        throw new IllegalArgumentException(
+                                        "FIELD 字段组件扩展必须配置 componentName");
                 }
                 LambdaQueryWrapper<EntityFormNode> duplicateQuery = new LambdaQueryWrapper<EntityFormNode>()
                                 .eq(EntityFormNode::getFormId, node.getFormId())

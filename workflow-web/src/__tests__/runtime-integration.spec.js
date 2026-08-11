@@ -401,7 +401,7 @@ assert.equal(browserExecutions.length, 1)
 const initializationExecutions = []
 const initializedRecord = {}
 const initializationForm = {
-  id: 'form-1',
+  formId: 'form-1',
   dataSourceBindingsDocument: JSON.stringify({
     FORM_INIT: {
       serviceId: 'form-init-source',
@@ -419,7 +419,7 @@ const initializationRuntime = createFormDataSourceRuntime({
   getRecord: () => initializedRecord,
   getMode: () => 'create',
   executeDataSource: async request => {
-    initializationExecutions.push(request.serviceId)
+    initializationExecutions.push(request)
     return request.serviceId === 'form-init-source'
       ? { data: { initialized: true } }
       : { data: { afterLoaded: true } }
@@ -429,8 +429,18 @@ await initializationRuntime.initialize({
   form: initializationForm
 })
 assert.deepEqual(
-  initializationExecutions,
+  initializationExecutions.map(request => request.serviceId),
   ['form-init-source', 'form-after-load-source']
+)
+assert.deepEqual(
+  initializationExecutions.map(request => ({
+    ownerType: request.ownerType,
+    ownerId: request.ownerId
+  })),
+  [
+    { ownerType: 'FORM', ownerId: 'form-1' },
+    { ownerType: 'FORM', ownerId: 'form-1' }
+  ]
 )
 assert.deepEqual(
   initializedRecord,

@@ -8,9 +8,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.delegate.event.FlowableActivityEvent;
+import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Component;
@@ -40,6 +42,7 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
     private final TaskService taskService;
     private final RuntimeService runtimeService;
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
+    private final RepositoryService repositoryService;
 
     /** 跳过节点总数硬上限，防止异常流程（如环路）导致死循环 */
     private static final int MAX_SKIP_TOTAL = 500;
@@ -151,8 +154,19 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
         }
 
         String processDefinitionId = pi.getProcessDefinitionId();
-        int colonIdx = processDefinitionId.indexOf(':');
-        String processKey = colonIdx > 0 ? processDefinitionId.substring(0, colonIdx) : processDefinitionId;
+        ProcessDefinition definition = repositoryService
+                .createProcessDefinitionQuery()
+                .processDefinitionId(processDefinitionId)
+                .singleResult();
+        if (definition == null || definition.getKey() == null
+                || definition.getKey().isBlank()) {
+            log.warn(
+                    "实时自动跳过忽略未知流程定义: processInstanceId={}, processDefinitionId={}",
+                    processInstanceId,
+                    processDefinitionId);
+            return;
+        }
+        String processKey = definition.getKey();
         ProcessDefinitionConfig config = processDefinitionConfigMapper.findByProcessKey(processKey).orElse(null);
         if (config == null) {
             return;

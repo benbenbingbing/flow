@@ -149,6 +149,11 @@ import {
   resolveRuntimeNodeFieldRules,
   safeParseConfig
 } from '@/shared/config-runtime'
+import { hasFormFieldComponent } from '@/components/form-fields'
+import {
+  isFormFieldExtensionNode,
+  resolveRuntimeFormFieldComponentType
+} from '@/shared/form-field-extension'
 import {
   migrateFormNodeConfig,
   resolveFormNodeDescriptor
@@ -173,7 +178,11 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 const children = computed(() => props.childrenFor(props.node.id))
 const childGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
-const customDescriptor = computed(() => resolveFormNodeDescriptor(props.node))
+const customDescriptor = computed(() =>
+  isFormFieldExtensionNode(props.node)
+    ? null
+    : resolveFormNodeDescriptor(props.node)
+)
 const customConfig = computed(() =>
   migrateFormNodeConfig(props.node, customDescriptor.value)
 )
@@ -253,6 +262,10 @@ const runtimeField = computed(() => {
         fieldType: props.node.nodeType,
         componentType: 'sub_form'
       }
+  const fallbackComponentType =
+    nodeProps.componentType
+    || linked?.componentType
+    || fallback.componentType
   return {
     ...(linked || {}),
     ...fallback,
@@ -262,7 +275,11 @@ const runtimeField = computed(() => {
     fieldName: nodeProps.fieldName || linked?.fieldName || nodeProps.label || props.node.nodeKey,
     fieldLabel: nodeProps.label || linked?.fieldLabel || linked?.fieldName || props.node.nodeKey,
     fieldType: nodeProps.fieldType || linked?.fieldType || fallback.fieldType,
-    componentType: nodeProps.componentType || linked?.componentType || fallback.componentType,
+    componentType: resolveRuntimeFormFieldComponentType(
+      props.node,
+      fallbackComponentType,
+      hasFormFieldComponent
+    ),
     placeholder: nodeProps.placeholder ?? linked?.placeholder,
     defaultValue: nodeProps.defaultValue ?? linked?.defaultValue,
     isRequired: nodeProps.required === true ? 1 : (linked?.isRequired || 0),

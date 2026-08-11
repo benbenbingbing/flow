@@ -1,5 +1,6 @@
 package com.workflow.project.custom;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionHandler;
@@ -52,12 +53,14 @@ import com.workflow.entity.permission.application.EntityActionRuleConditionProvi
 import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
 import com.workflow.entity.permission.application.EntityDataPermissionMatchProvider;
 import com.workflow.entity.permission.application.EntityPermissionOptionProvider;
+import com.workflow.http.HttpConnectorConfigurationProvider;
 import com.workflow.outbox.api.OutboxEvent;
 import com.workflow.outbox.api.OutboxEventHandler;
 import com.workflow.process.cc.application.CcNotificationChannel;
 import com.workflow.process.cc.application.CcRecipientResolver;
 import com.workflow.process.cc.application.CcRuntimeContext;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
+import com.workflow.project.service.ProjectEntityMutationExecutor;
 import com.workflow.storage.application.FileStorageStrategy;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -96,10 +99,13 @@ class ProjectCustomBackendExtensionsTest {
         try (AnnotationConfigApplicationContext context =
                      customExtensionContext()) {
             assertEquals(
-                    2,
+                    Set.of(
+                            "projectCustomFlowActionHandler",
+                            "projectCustomTypedFlowActionHandler",
+                            "projectExtensionAcceptanceFlowActionHandler"),
                     context.getBeansOfType(
-                            FlowActionHandler.class)
-                            .size());
+                                    FlowActionHandler.class)
+                            .keySet());
             assertSingleBean(
                     context,
                     FlowActionTriggerProvider.class);
@@ -218,6 +224,8 @@ class ProjectCustomBackendExtensionsTest {
                 ProjectCustomBootstrapJobCoordinator.class));
         assertFalse(component(
                 ProjectCustomUiExtensionCatalogPort.class));
+        assertFalse(component(
+                ProjectCustomHttpConnectorConfigurationProvider.class));
 
         try (AnnotationConfigApplicationContext context =
                      customExtensionContext()) {
@@ -232,6 +240,9 @@ class ProjectCustomBackendExtensionsTest {
                     .isEmpty());
             assertTrue(context.getBeansOfType(
                             UiExtensionCatalogPort.class)
+                    .isEmpty());
+            assertTrue(context.getBeansOfType(
+                            HttpConnectorConfigurationProvider.class)
                     .isEmpty());
         }
     }
@@ -371,8 +382,9 @@ class ProjectCustomBackendExtensionsTest {
                 assertInstanceOf(
                         PageResult.class,
                         listQueryResult);
-        assertEquals(0, unifiedListPage.getTotal());
+        assertEquals(1, unifiedListPage.getTotal());
         assertEquals(2, unifiedListPage.getPageNum());
+        assertTrue(unifiedListPage.getRecords().isEmpty());
 
         Object formButtonResult =
                 new ProjectCustomFormUiDataSourceProvider()
@@ -422,15 +434,26 @@ class ProjectCustomBackendExtensionsTest {
                                 "pageSize", 5));
         PageResult<?> pageResult =
                 assertInstanceOf(PageResult.class, page);
-        assertEquals(0, pageResult.getTotal());
+        assertEquals(1, pageResult.getTotal());
         assertEquals(2, pageResult.getPageNum());
+        assertTrue(pageResult.getRecords().isEmpty());
 
         Map<String, Object> schema =
                 new ProjectCustomEntityListSchemaProvider()
                         .enhance(
                                 listContext,
-                                Map.of("columns", List.of()));
-        assertTrue(schema.containsKey(
+                                Map.of(
+                                        "columns", List.of(),
+                                        "viewConfig",
+                                        Map.of("stripe", true)));
+        Map<?, ?> schemaViewConfig =
+                assertInstanceOf(
+                        Map.class,
+                        schema.get("viewConfig"));
+        assertEquals(
+                true,
+                schemaViewConfig.get("stripe"));
+        assertTrue(schemaViewConfig.containsKey(
                 "projectCustomSchema"));
         assertTrue(
                 new ProjectCustomEntityListContextResolver()
@@ -462,13 +485,19 @@ class ProjectCustomBackendExtensionsTest {
         EntityListField field =
                 new EntityListField();
         field.setFieldCode("customSummary");
-        new ProjectCustomListFieldDataProvider()
+        field.setDataSourceConfig(
+                "{\"labelPrefix\":\"验收前缀\"}");
+        ProjectCustomListFieldDataProvider fieldProvider =
+                new ProjectCustomListFieldDataProvider(
+                        new ObjectMapper());
+        assertTrue(fieldProvider.supportsVirtualField());
+        fieldProvider
                 .enrich(
                         List.of(record),
                         List.of(field),
                         Map.of("entityCode", "project"));
         assertEquals(
-                "项目扩展:PRJ-001",
+                "验收前缀:PRJ-001",
                 record.getExtData()
                         .get("customSummary"));
     }
@@ -797,6 +826,10 @@ class ProjectCustomBackendExtensionsTest {
                         .resolve("project/demo"));
         assertThrows(
                 UnsupportedOperationException.class,
+                () -> new ProjectCustomHttpConnectorConfigurationProvider()
+                        .findActive("project-demo-http"));
+        assertThrows(
+                UnsupportedOperationException.class,
                 () -> new ProjectCustomBootstrapJobCoordinator()
                         .executeOnce(
                                 "project-demo",
@@ -854,6 +887,13 @@ class ProjectCustomBackendExtensionsTest {
         context.registerBean(
                 IdentityDirectoryPort.class,
                 () -> directory);
+        context.registerBean(
+                ProjectEntityMutationExecutor.class,
+                () -> mock(
+                        ProjectEntityMutationExecutor.class));
+        context.registerBean(
+                ObjectMapper.class,
+                () -> new ObjectMapper());
         context.scan("com.workflow.project.custom");
         context.refresh();
         return context;

@@ -1,6 +1,5 @@
 package com.workflow.listener;
 
-import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
 import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
 import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
@@ -54,7 +53,6 @@ class ProcessEndListenerTest {
     @Test
     void processCompletionPublishesDurableEndEvent() {
         HistoryService historyService = mock(HistoryService.class);
-        EntityRecordPort entityRecordPort = mock(EntityRecordPort.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
                 mock(ObjectProvider.class);
@@ -86,18 +84,11 @@ class ProcessEndListenerTest {
         ProcessEndListener listener =
                 new ProcessEndListener(
                         historyService,
-                        entityRecordPort,
                         changeTargetPortProvider,
                         publisher);
 
         listener.onEvent(event);
 
-        verify(entityRecordPort).markProcessEnded(
-                "process-1",
-                "expense",
-                "record-1",
-                "COMPLETED",
-                "APPROVED");
         verify(publisher).publishProcessEnd(
                 "process-1",
                 "expense",
@@ -110,7 +101,6 @@ class ProcessEndListenerTest {
     @Test
     void processCancellationPublishesWithdrawnEndEvent() {
         HistoryService historyService = mock(HistoryService.class);
-        EntityRecordPort entityRecordPort = mock(EntityRecordPort.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
                 mock(ObjectProvider.class);
@@ -141,18 +131,11 @@ class ProcessEndListenerTest {
         ProcessEndListener listener =
                 new ProcessEndListener(
                         historyService,
-                        entityRecordPort,
                         changeTargetPortProvider,
                         publisher);
 
         listener.onEvent(event);
 
-        verify(entityRecordPort).markProcessEnded(
-                "process-1",
-                "expense",
-                "record-1",
-                "WITHDRAWN",
-                "WITHDRAWN");
         verify(publisher).publishProcessEnd(
                 "process-1",
                 "expense",

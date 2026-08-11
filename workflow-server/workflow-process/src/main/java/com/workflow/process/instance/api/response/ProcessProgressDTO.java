@@ -204,6 +204,12 @@ public class ProcessProgressDTO {
         private String customComponent;
 
         private String viewConfig;
+
+        /**
+         * 表单级统一数据源绑定文档。
+         * 审批页需要使用该配置执行 FORM_INIT、AFTER_LOAD 和 BEFORE_SUBMIT 等绑定。
+         */
+        private String dataSourceBindingsDocument;
         
         /**
          * 表单字段列表

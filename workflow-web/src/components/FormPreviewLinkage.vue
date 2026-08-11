@@ -52,10 +52,10 @@
     >
       <template
         v-for="slotKey in actionSlotKeys"
+        :key="slotKey"
         #[`action-${slotKey}`]
       >
         <FormActionBar
-          :key="slotKey"
           :actions="slotFormActions(currentFormActions, slotKey)"
           :loading-key="actionLoadingKey"
           inline

@@ -149,6 +149,7 @@ const FIELD_PROP_KEYS = Object.freeze([
   'label',
   'fieldType',
   'componentType',
+  'componentExtensionType',
   'placeholder',
   'defaultValue',
   'gridSpan',
@@ -335,6 +336,7 @@ function buildFieldProps(field, componentProps) {
       field.componentType
     ),
     componentType: field.componentType,
+    componentExtensionType: field.componentExtensionType,
     placeholder: field.placeholder,
     defaultValue: field.defaultValue,
     gridSpan: field.gridSpan,

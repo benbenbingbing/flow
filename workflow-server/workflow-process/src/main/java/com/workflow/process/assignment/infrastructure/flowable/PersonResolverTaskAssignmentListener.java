@@ -12,9 +12,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
+import org.flowable.common.engine.api.delegate.event.FlowableEntityEvent;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
-import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
+import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -33,6 +35,7 @@ public class PersonResolverTaskAssignmentListener
 
     private final ProcessDefinitionConfigMapper processMapper;
     private final NodeConfigMapper nodeMapper;
+    private final RepositoryService repositoryService;
     private final RuntimeService runtimeService;
     private final TaskService taskService;
     private final PersonResolverRuntimeService resolverRuntimeService;
@@ -42,7 +45,7 @@ public class PersonResolverTaskAssignmentListener
     public void onEvent(FlowableEvent event) {
         if (event.getType() == null
                 || !"TASK_CREATED".equals(event.getType().name())
-                || !(event instanceof FlowableEntityEventImpl entityEvent)
+                || !(event instanceof FlowableEntityEvent entityEvent)
                 || !(entityEvent.getEntity() instanceof Task task)) {
             return;
         }
@@ -60,7 +63,20 @@ public class PersonResolverTaskAssignmentListener
 
     @SuppressWarnings("unchecked")
     private void assign(Task task) throws Exception {
-        String processKey = processKey(task.getProcessDefinitionId());
+        String processDefinitionId = task.getProcessDefinitionId();
+        ProcessDefinition definition = repositoryService
+                .createProcessDefinitionQuery()
+                .processDefinitionId(processDefinitionId)
+                .singleResult();
+        if (definition == null
+                || !StringUtils.hasText(definition.getKey())) {
+            log.warn(
+                    "人员解析器跳过未知流程定义: taskId={}, processDefinitionId={}",
+                    task.getId(),
+                    processDefinitionId);
+            return;
+        }
+        String processKey = definition.getKey();
         ProcessDefinitionConfig process =
                 processMapper.findByProcessKey(processKey).orElse(null);
         if (process == null) {
@@ -136,15 +152,15 @@ public class PersonResolverTaskAssignmentListener
                 .skip(1)
                 .forEach(user ->
                         taskService.addCandidateUser(task.getId(), user));
-    }
-
-    private String processKey(String processDefinitionId) {
-        int delimiter = processDefinitionId == null
-                ? -1
-                : processDefinitionId.indexOf(':');
-        return delimiter > 0
-                ? processDefinitionId.substring(0, delimiter)
-                : processDefinitionId;
+        log.info(
+                "人员解析器分配任务完成: resolverCode={}, processKey={}, processInstanceId={}, taskId={}, nodeId={}, assignee={}, candidateCount={}",
+                resolverCode,
+                processKey,
+                task.getProcessInstanceId(),
+                task.getId(),
+                task.getTaskDefinitionKey(),
+                users.get(0),
+                Math.max(0, users.size() - 1));
     }
 
     @SuppressWarnings("unchecked")

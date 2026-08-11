@@ -930,6 +930,8 @@ public class ProcessProgressRuntimeService {
         formConfig.setIsReadonly(Boolean.TRUE.equals(readonlyOverride));
         formConfig.setCustomComponent(entityForm.getCustomComponent());
         formConfig.setViewConfig(entityForm.getViewConfig());
+        formConfig.setDataSourceBindingsDocument(
+                entityForm.getDataSourceBindingsDocument());
         formConfig.setEffectiveFormReleaseId(
                 entityForm.getEffectiveReleaseId());
         formConfig.setHotfixApplied(

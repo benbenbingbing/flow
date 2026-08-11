@@ -18,6 +18,7 @@ import {
   getFormNodeComponentOptions,
   getFormNodeDescriptor,
   hasFormNodeComponent,
+  migrateFormNodeConfig,
   registerFormNodeComponent,
   resolveFormNodeDescriptor
 } from '@/utils/formNodeRegistry.js'
@@ -238,6 +239,57 @@ assert.deepEqual(
     .filter(item => item.name === 'versionedNode')
     .map(item => item.version),
   [2]
+)
+
+registerFormNodeComponent('migratedNode', DemoNodeV2, {
+  version: 1,
+  snapshotVersion: 2,
+  nodeTypes: ['FIELD'],
+  supportedBindings: ['ENTITY_FIELD'],
+  migrateConfig({ fromVersion, toVersion, config }) {
+    return {
+      ...config,
+      migratedFrom: fromVersion,
+      migratedTo: toVersion
+    }
+  }
+})
+const migratedNodeDescriptor = getFormNodeDescriptor('migratedNode', 1)
+assert.deepEqual(
+  migrateFormNodeConfig(
+    {
+      snapshotVersion: 1,
+      props: {
+        fieldCode: 'risk_level',
+        componentProps: {
+          title: '风险摘要'
+        }
+      }
+    },
+    migratedNodeDescriptor
+  ),
+  {
+    title: '风险摘要',
+    migratedFrom: 1,
+    migratedTo: 2
+  }
+)
+assert.deepEqual(
+  migrateFormNodeConfig(
+    {
+      snapshotVersion: 2,
+      props: {
+        fieldCode: 'risk_level',
+        componentProps: {
+          title: '风险摘要'
+        }
+      }
+    },
+    migratedNodeDescriptor
+  ),
+  {
+    title: '风险摘要'
+  }
 )
 
 let toolbarCalled = false

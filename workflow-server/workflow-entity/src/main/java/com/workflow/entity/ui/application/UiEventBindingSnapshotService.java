@@ -1,37 +1,136 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds the published snapshot representation of UI event bindings.
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class UiEventBindingSnapshotService {
 
     private final UiEventBindingMapper bindingMapper;
+    private final UiDataSourceDefinitionMapper dataSourceMapper;
     private final JsonDocumentCodec codec;
 
     public List<Map<String, Object>> snapshot(
             String configType,
             String configId,
             String entityId) {
+        String normalizedConfigType = normalize(configType);
+        Map<String, UiDataSourceDefinition> sourceCache =
+                new LinkedHashMap<>();
         return bindingMapper.findForSnapshot(
                         configType,
                         configId,
                         entityId)
                 .stream()
+                .filter(binding -> appliesToSnapshot(
+                        binding,
+                        normalizedConfigType,
+                        sourceCache))
                 .map(this::snapshotValue)
                 .toList();
+    }
+
+    /**
+     * 实体级事件会被表单和列表共同查询，因此按步骤引用的接口操作上下文筛选。
+     * FORM 操作只进入表单快照，LIST 操作只进入列表快照；配置自身的绑定不在这里
+     * 静默过滤，继续交给发布引用校验器严格报错。
+     */
+    private boolean appliesToSnapshot(
+            UiEventBinding binding,
+            String configType,
+            Map<String, UiDataSourceDefinition> sourceCache) {
+        if (!"ENTITY".equals(normalize(binding.getOwnerType()))) {
+            return true;
+        }
+        Set<String> contexts = referencedOperationContexts(
+                binding,
+                sourceCache);
+        if (contexts.isEmpty() || contexts.contains(configType)) {
+            return true;
+        }
+        log.info(
+                "实体级UI事件绑定不适用于当前发布类型，跳过快照继承: bindingId={}, eventCode={}, publishType={}, operationContexts={}",
+                LogValue.safe(binding.getId()),
+                LogValue.safe(binding.getEventCode()),
+                LogValue.safe(configType),
+                contexts);
+        return false;
+    }
+
+    private Set<String> referencedOperationContexts(
+            UiEventBinding binding,
+            Map<String, UiDataSourceDefinition> sourceCache) {
+        if (!StringUtils.hasText(binding.getStepsDocument())) {
+            return Set.of();
+        }
+        Set<String> result = new LinkedHashSet<>();
+        for (Object item : codec.readArray(
+                binding.getStepsDocument(),
+                "UI事件绑定步骤")) {
+            if (!(item instanceof Map<?, ?> step)) {
+                continue;
+            }
+            String serviceId = text(step.get("serviceId"));
+            String operationCode = text(step.get("operationCode"));
+            if (!StringUtils.hasText(serviceId)
+                    || !StringUtils.hasText(operationCode)) {
+                continue;
+            }
+            UiDataSourceDefinition definition =
+                    sourceCache.computeIfAbsent(
+                            serviceId,
+                            dataSourceMapper::selectById);
+            String context = operationContext(
+                    definition,
+                    operationCode);
+            if (StringUtils.hasText(context)) {
+                result.add(context);
+            }
+        }
+        return result;
+    }
+
+    private String operationContext(
+            UiDataSourceDefinition definition,
+            String operationCode) {
+        if (definition == null
+                || !StringUtils.hasText(
+                        definition.getOperationsDocument())) {
+            return null;
+        }
+        return codec.readArray(
+                        definition.getOperationsDocument(),
+                        "接口服务操作定义")
+                .stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .filter(operation -> operationCode.equals(
+                        text(operation.get("code"))))
+                .map(operation -> normalize(
+                        text(operation.get("contextType"))))
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse(null);
     }
 
     private Map<String, Object> snapshotValue(UiEventBinding binding) {
@@ -52,5 +151,15 @@ public class UiEventBindingSnapshotService {
                         : List.of());
         value.put("revision", binding.getRevision());
         return value;
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String normalize(String value) {
+        return StringUtils.hasText(value)
+                ? value.trim().toUpperCase(Locale.ROOT)
+                : "";
     }
 }

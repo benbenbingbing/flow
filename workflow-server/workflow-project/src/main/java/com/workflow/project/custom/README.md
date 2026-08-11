@@ -10,9 +10,10 @@
 | --- | --- | --- | --- |
 | `ProjectCustomFlowActionHandler` | `FlowActionHandler` | 系统管理 -> 扩展管理 -> 流程动作 | Bean `projectCustomFlowActionHandler` |
 | `ProjectCustomTypedFlowActionHandler` | `TypedFlowActionHandler` | 系统管理 -> 扩展管理 -> 流程动作 | Bean `projectCustomTypedFlowActionHandler` |
+| `ProjectExtensionAcceptanceFlowActionHandler` | `FlowActionHandler` | 项目扩展验收流程的流程/节点/连线动作 | Bean `projectExtensionAcceptanceFlowActionHandler` |
 | `ProjectCustomFlowActionTriggerProvider` | `FlowActionTriggerProvider` | 流程动作触发时机 | `PROJECT_CUSTOM_MANUAL_EVENT` |
 | `ProjectCustomPersonResolver` | `PersonResolver` | 系统管理 -> 扩展管理 -> 人员接口 | `projectCustomPersonResolver` |
-| `ProjectCustomUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，GLOBAL 作用范围 | `PROJECT_CUSTOM_UI_DATA_SOURCE` |
+| `ProjectCustomUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，ENTITY 作用范围/复合上下文 | `PROJECT_CUSTOM_UI_DATA_SOURCE` |
 | `ProjectCustomEntityUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，ENTITY 作用范围/字段数据 | `PROJECT_CUSTOM_UI_ENTITY` |
 | `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，FORM 作用范围 | `PROJECT_CUSTOM_UI_FORM` |
 | `ProjectCustomListUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，LIST 作用范围 | `PROJECT_CUSTOM_UI_LIST` |
@@ -26,8 +27,8 @@
 
 | 类 | 接口 | 稳定标识 | 当前行为 |
 | --- | --- | --- | --- |
-| `ProjectCustomEntityListDataProvider` | `EntityListDataProvider` | `PROJECT_CUSTOM_LIST_QUERY` | 遵守数据范围计划，返回空分页 |
-| `ProjectCustomEntityListSchemaProvider` | `EntityListSchemaProvider` | `PROJECT_CUSTOM_LIST_SCHEMA` | 增加 `projectCustomSchema` 标记 |
+| `ProjectCustomEntityListDataProvider` | `EntityListDataProvider` | `PROJECT_CUSTOM_LIST_QUERY` | 遵守数据范围计划，第 1 页返回一条不落库的验收记录 |
+| `ProjectCustomEntityListSchemaProvider` | `EntityListSchemaProvider` | `PROJECT_CUSTOM_LIST_SCHEMA` | 在 `viewConfig` 增加 `projectCustomSchema` 标记 |
 | `ProjectCustomEntityListContextResolver` | `EntityListContextResolver` | `projectCustomRelation` | 不信任客户端参数，返回空可信条件 |
 | `ProjectCustomActionRuleConditionProvider` | `EntityActionRuleConditionProvider` | `PROJECT:CUSTOM_CONDITION` | 支持 EQ、NE、IN 的行条件 |
 | `ProjectCustomDataPermissionMatchProvider` | `EntityDataPermissionMatchProvider` | `PROJECT:CUSTOM_MATCH` | 按用户 ID 或用户名匹配 |
@@ -62,7 +63,7 @@ Provider 接口只收到已经过平台授权的 `UiInvocationContext`、`DataSc
 | `PROJECT_CUSTOM_UI_DATA_SOURCE` | `ENTITY` | 列表、表单、字段、按钮通用联调 | 列值映射、字段补丁、选项或诊断对象 |
 | `PROJECT_CUSTOM_UI_ENTITY` | `ENTITY` | `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / FIELD_CHANGE / ENTITY_SELECTED / FIELD_BUTTON_CLICK` | 字段选项、`value` 对象、字段事件消息与映射 |
 | `PROJECT_CUSTOM_UI_FORM` | `FORM` | `FORM_INIT / AFTER_LOAD / BEFORE_SUBMIT / FIELD_* / SUBFORM_ROWS / FORM_BUTTON_CLICK` | 表单字段补丁、空子表集合或事件消息 |
-| `PROJECT_CUSTOM_UI_LIST` | `LIST` | `LIST_QUERY / LIST_COLUMN / LIST_LOAD / LIST_EXPORT / TOOLBAR_BUTTON_CLICK / ROW_BUTTON_CLICK` | 空分页、记录 ID 到列值映射或事件消息 |
+| `PROJECT_CUSTOM_UI_LIST` | `LIST` | `LIST_QUERY / LIST_COLUMN / LIST_LOAD / LIST_EXPORT / TOOLBAR_BUTTON_CLICK / ROW_BUTTON_CLICK` | 一条不落库的验收记录、记录 ID 到列值映射或事件消息 |
 
 配置时在“系统管理 -> 接口服务”新增服务，类型选择
 `REGISTERED_PROVIDER`，再选择上表中的 Provider。FORM 和 LIST 范围的
@@ -93,6 +94,7 @@ Spring Bean，方便后续补入口时直接验证：
 | 类 | 接口 | 用途 |
 | --- | --- | --- |
 | `ProjectCustomIntegrationSecretResolver` | `IntegrationSecretResolver` | 对接 KMS/密钥中心；示例不返回伪密钥 |
+| `ProjectCustomHttpConnectorConfigurationProvider` | `HttpConnectorConfigurationProvider` | 从配置中心读取 HTTP Connector 配置；示例不返回伪配置 |
 | `ProjectCustomMigrationAssetHandler` | `MigrationAssetHandler` | 发布时登记配置迁移资产 |
 | `ProjectCustomMigrationAssetRecorder` | `MigrationAssetRecorder` | 旧版迁移资产端口兼容 |
 | `ProjectCustomBootstrapJobCoordinator` | `BootstrapJobCoordinator` | 多实例启动任务互斥 |

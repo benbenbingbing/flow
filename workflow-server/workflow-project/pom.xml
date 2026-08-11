@@ -37,6 +37,10 @@
             <artifactId>workflow-outbox</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.workflow</groupId>
+            <artifactId>workflow-http</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-context</artifactId>
         </dependency>

@@ -148,6 +148,7 @@ class UiConfigReleaseServiceTest {
                         codec),
                 new UiEventBindingSnapshotService(
                         mock(UiEventBindingMapper.class),
+                        mock(UiDataSourceDefinitionMapper.class),
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
@@ -643,6 +644,7 @@ class UiConfigReleaseServiceTest {
                         codec),
                 new UiEventBindingSnapshotService(
                         mock(UiEventBindingMapper.class),
+                        mock(UiDataSourceDefinitionMapper.class),
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
@@ -1640,6 +1642,7 @@ class UiConfigReleaseServiceTest {
                         codec),
                 new UiEventBindingSnapshotService(
                         eventBindingMapper,
+                        mock(UiDataSourceDefinitionMapper.class),
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 templateMapper,

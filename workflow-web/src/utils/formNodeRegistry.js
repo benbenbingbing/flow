@@ -86,14 +86,23 @@ export function resolveFormNodeDescriptor(node) {
 }
 
 export function migrateFormNodeConfig(node, descriptor) {
-  if (!descriptor) return node?.props || {}
+  const props = node?.props && typeof node.props === 'object'
+    ? node.props
+    : {}
+  const componentProps = props.componentProps
+    && typeof props.componentProps === 'object'
+    && !Array.isArray(props.componentProps)
+    ? props.componentProps
+    : null
+  const config = componentProps || props
+  if (!descriptor) return config
   const sourceVersion = Number(node?.snapshotVersion || node?.props?.snapshotVersion || 1)
   if (sourceVersion >= descriptor.snapshotVersion || !descriptor.migrateConfig) {
-    return node?.props || {}
+    return config
   }
-  return descriptor.migrateConfig(
-    node?.props || {},
-    sourceVersion,
-    descriptor.snapshotVersion
-  )
+  return descriptor.migrateConfig({
+    fromVersion: sourceVersion,
+    toVersion: descriptor.snapshotVersion,
+    config
+  })
 }

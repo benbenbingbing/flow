@@ -112,7 +112,16 @@ export const formFieldComponentMap = {
 
 // ========== 扩展注册机制 ==========
 
-const extensionRegistry = new Map()
+// Vite 热更新可能只重载字段组件库，而不会重新执行项目扩展入口。
+// 使用全局 Symbol 保存注册表，避免已注册的项目字段在开发期退回内置组件。
+const extensionRegistryKey = Symbol.for(
+  'workflow.formFieldExtensionRegistry'
+)
+const extensionRegistry =
+  globalThis[extensionRegistryKey] instanceof Map
+    ? globalThis[extensionRegistryKey]
+    : new Map()
+globalThis[extensionRegistryKey] = extensionRegistry
 const supportedTypes = getBuiltInFormFieldSupportedTypes
 
 const builtInDescriptors = [

@@ -53,6 +53,16 @@ export function resolveApprovalFormConfig(runtimeForm, defaultForm) {
   return runtimeForm || defaultForm || null
 }
 
+export function resolveApprovalEntityCode(configuredCode, entityData, task) {
+  return [
+    configuredCode,
+    entityData?.entityCode,
+    task?.entityCode
+  ]
+    .map(value => String(value || '').trim())
+    .find(Boolean) || ''
+}
+
 export function resolveApprovalFieldLabel(fieldCode, entityFields = []) {
   const field = entityFields.find(item =>
     String(item?.fieldCode || item?.fieldKey || '') === String(fieldCode)

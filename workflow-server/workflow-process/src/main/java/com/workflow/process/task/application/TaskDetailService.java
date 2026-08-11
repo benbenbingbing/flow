@@ -330,6 +330,8 @@ public class TaskDetailService {
         formConfig.setLayoutType(form.getLayoutType());
         formConfig.setIsReadonly(nodeForm == null
                 || Integer.valueOf(1).equals(nodeForm.getIsReadonly()));
+        formConfig.setDataSourceBindingsDocument(
+                form.getDataSourceBindingsDocument());
         formConfig.setEffectiveFormReleaseId(
                 form.getEffectiveReleaseId());
         formConfig.setHotfixApplied(form.getHotfixApplied());

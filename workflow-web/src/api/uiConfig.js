@@ -1,4 +1,7 @@
 import request from '@/utils/request'
+import {
+  buildUiEventExecutionPayload
+} from '@/shared/ui-event-request'
 
 export const uiDataSourceApi = {
   catalog() {
@@ -67,7 +70,10 @@ export const uiEventBindingApi = {
     })
   },
   execute(eventCode, data) {
-    return request.post(`/ui-runtime/events/${eventCode}/execute`, data)
+    return request.post(
+      `/ui-runtime/events/${eventCode}/execute`,
+      buildUiEventExecutionPayload(data)
+    )
   }
 }
 

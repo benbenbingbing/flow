@@ -387,8 +387,10 @@ public class UiEventRuntimeService {
                 }
                 execute.setConfigType(normalize(request.getConfigType()));
                 execute.setConfigId(request.getConfigId());
-                execute.setTargetType(normalize(
-                        request.getTargetType()));
+                execute.setTargetType(
+                        StringUtils.hasText(request.getTargetType())
+                                ? normalize(request.getTargetType())
+                                : "OWNER");
                 execute.setTargetKey(request.getTargetKey());
                 execute.setReleaseId(chain.releaseId());
                 execute.setReleaseVersion(chain.releaseVersion());

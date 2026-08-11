@@ -96,6 +96,10 @@ function mergeRuntimeContexts(base = {}, override = {}) {
   }
 }
 
+function getRuntimeFormId(form) {
+  return form?.id || form?.formId || form?.entityFormId || ''
+}
+
 export function createFormDataSourceRuntime(options) {
   const initialized = new Set()
 
@@ -110,7 +114,7 @@ export function createFormDataSourceRuntime(options) {
         || runtimeContext.context?.mode
         || options.getMode?.()
         || 'view',
-      formId: runtimeContext.formId || form?.id,
+      formId: runtimeContext.formId || getRuntimeFormId(form),
       entityId: runtimeContext.entityId
         || form?.entityId
         || options.getEntityDefinition?.()?.id
@@ -208,9 +212,9 @@ export function createFormDataSourceRuntime(options) {
     recordId,
     initializationKey: explicitInitializationKey,
     runtimeContext: initialRuntimeContext = {}
-  }) {
+    }) {
     const initializationKey = explicitInitializationKey || [
-      form?.id || 'form',
+      getRuntimeFormId(form) || 'form',
       recordId ?? options.getRecordId?.() ?? 'new',
       options.getMode?.() || 'view'
     ].join(':')

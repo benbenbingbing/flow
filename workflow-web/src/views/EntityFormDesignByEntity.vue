@@ -619,14 +619,14 @@
                 v-show="activeNodeSettingsTab === 'extension'"
                 title="复用与扩展"
                 description="节点扩展、组件模板和组件参数"
-                :default-expanded="!!selectedField.componentName || !!selectedField.templateId"
+                :default-expanded="!!selectedField.componentName || !!selectedField.fieldComponentName || !!selectedField.templateId"
               >
                 <template #summary>
                   <el-tag
                     size="small"
-                    :type="selectedField.componentName || selectedField.templateId ? 'success' : 'info'"
+                    :type="selectedField.componentName || selectedField.fieldComponentName || selectedField.templateId ? 'success' : 'info'"
                   >
-                    {{ selectedField.componentName || selectedField.templateId ? '已配置' : '未配置' }}
+                    {{ selectedField.componentName || selectedField.fieldComponentName || selectedField.templateId ? '已配置' : '未配置' }}
                   </el-tag>
                 </template>
 
@@ -847,7 +847,8 @@ import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
   getFormFieldComponentDescriptor,
-  getFormFieldComponentOptions
+  getFormFieldComponentOptions,
+  hasFormFieldComponent
 } from '@/components/form-fields'
 import {
   getCustomFormComponentOptions,
@@ -885,6 +886,10 @@ import {
 import {
   getDefaultFormFieldComponentType as getDefaultComponentType
 } from '@/shared/form-field-component-policy'
+import {
+  FORM_FIELD_EXTENSION_TYPE,
+  resolveFormFieldExtensionName
+} from '@/shared/form-field-extension'
 import {
   getRuntimeRegexPatternError,
   safeParseConfig,
@@ -1175,6 +1180,14 @@ watch(
 )
 
 function handleNodeExtensionChange(componentName) {
+  if (componentName && selectedField.value?.fieldComponentName) {
+    selectedField.value.componentType = getDefaultComponentType(
+      selectedField.value.fieldType
+    )
+    selectedField.value.fieldComponentName = ''
+    selectedField.value.fieldComponentVersion = null
+    selectedField.value.fieldComponentSnapshotVersion = null
+  }
   const descriptor = nodeExtensionOptions.value.find(
     option => option.value === componentName
   )
@@ -2515,6 +2528,10 @@ function nodeToField(node, legacyField) {
   const componentConfig = extractFormNodeComponentConfig(nodeType, props)
   const rulesSupported = formNodeSupports(nodeType, 'rules')
   const isChildFormNode = ['SUB_FORM', 'REPEATER'].includes(nodeType)
+  const fieldComponentName = resolveFormFieldExtensionName({
+    ...node,
+    props
+  })
   const field = {
     ...sourceField,
     id: node.id,
@@ -2529,9 +2546,25 @@ function nodeToField(node, legacyField) {
     orderKey: node.orderKey,
     templateId: node.templateId,
     templateVersion: node.templateVersion,
-    componentName: node.componentName || '',
-    componentVersion: node.componentVersion,
-    snapshotVersion: node.snapshotVersion,
+    componentName: fieldComponentName
+      ? ''
+      : (node.componentName || ''),
+    componentVersion: fieldComponentName
+      ? null
+      : node.componentVersion,
+    snapshotVersion: fieldComponentName
+      ? null
+      : node.snapshotVersion,
+    fieldComponentName,
+    fieldComponentVersion: fieldComponentName
+      ? node.componentVersion
+      : null,
+    fieldComponentSnapshotVersion: fieldComponentName
+      ? node.snapshotVersion
+      : null,
+    componentExtensionType: fieldComponentName
+      ? FORM_FIELD_EXTENSION_TYPE
+      : '',
     localOverrides: parseDocument(node.localOverridesDocument),
     legacyProps: parseDocument(node.legacyPropsDocument),
     dataSourceBindings: bindings,
@@ -2544,7 +2577,12 @@ function nodeToField(node, legacyField) {
       : (props.fieldType || sourceField.fieldType || node.nodeType),
     componentType: isChildFormNode
       ? 'sub_form'
-      : (props.componentType || sourceField.componentType || node.nodeType.toLowerCase()),
+      : (
+          fieldComponentName
+          || props.componentType
+          || sourceField.componentType
+          || node.nodeType.toLowerCase()
+        ),
     placeholder: props.placeholder ?? sourceField.placeholder,
     defaultValue: props.defaultValue ?? sourceField.defaultValue,
     gridSpan: props.gridSpan ?? sourceField.gridSpan ?? 24,
@@ -2601,9 +2639,45 @@ function nodeToField(node, legacyField) {
 }
 
 function fieldToNodePayload(field, options = {}) {
+  const selectedFieldComponent =
+    field.fieldComponentName
+    || (
+      hasFormFieldComponent(field.componentType)
+        ? field.componentType
+        : ''
+    )
+  const fieldComponentDescriptor = selectedFieldComponent
+    ? getFormFieldComponentDescriptor(selectedFieldComponent)
+    : null
+  const fieldComponentDefinition = selectedFieldComponent
+    ? activeExtensionMap.value.get(
+        `FIELD:${selectedFieldComponent}`
+      )
+    : null
+  const persistedField = selectedFieldComponent
+    ? {
+        ...field,
+        componentType: getDefaultComponentType(field.fieldType),
+        componentExtensionType: FORM_FIELD_EXTENSION_TYPE,
+        componentName: selectedFieldComponent,
+        componentVersion:
+          field.fieldComponentVersion
+          || fieldComponentDefinition?.version
+          || fieldComponentDescriptor?.version
+          || 1,
+        snapshotVersion:
+          field.fieldComponentSnapshotVersion
+          || fieldComponentDefinition?.snapshotVersion
+          || fieldComponentDescriptor?.snapshotVersion
+          || 1
+      }
+    : {
+        ...field,
+        componentExtensionType: undefined
+      }
   return buildFormNodePayload(
     {
-      ...field,
+      ...persistedField,
       nodeType: field.nodeType || legacyNodeType(field)
     },
     {
@@ -3468,13 +3542,36 @@ function updateSelectedNodeConfig(key, value) {
 
 function handleCompatibleComponentChange() {
   if (!selectedField.value) return
-  const descriptor = getFormFieldComponentDescriptor(selectedField.value.componentType)
+  let descriptor = getFormFieldComponentDescriptor(
+    selectedField.value.componentType
+  )
   const fieldType = String(selectedField.value.fieldType || '').toUpperCase()
   const supported = descriptor?.supportedFieldTypes || []
   if (supported.length
       && !supported.map(type => String(type).toUpperCase()).includes(fieldType)) {
     ElMessage.warning('该组件与当前字段类型不兼容，已恢复默认组件')
     selectedField.value.componentType = getDefaultComponentType(fieldType)
+    descriptor = getFormFieldComponentDescriptor(
+      selectedField.value.componentType
+    )
+  }
+  if (hasFormFieldComponent(selectedField.value.componentType)) {
+    const extensionName = selectedField.value.componentType
+    const definition = activeExtensionMap.value.get(
+      `FIELD:${extensionName}`
+    )
+    selectedField.value.fieldComponentName = extensionName
+    selectedField.value.fieldComponentVersion =
+      definition?.version || descriptor?.version || 1
+    selectedField.value.fieldComponentSnapshotVersion =
+      definition?.snapshotVersion || descriptor?.snapshotVersion || 1
+    selectedField.value.componentName = ''
+    selectedField.value.componentVersion = null
+    selectedField.value.snapshotVersion = null
+  } else {
+    selectedField.value.fieldComponentName = ''
+    selectedField.value.fieldComponentVersion = null
+    selectedField.value.fieldComponentSnapshotVersion = null
   }
   selectedField.value.componentProps = '{}'
   selectedField.value.validationRules = '{}'

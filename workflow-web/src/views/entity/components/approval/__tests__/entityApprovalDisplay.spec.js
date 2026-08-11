@@ -5,6 +5,7 @@ import {
   hasRenderableApprovalForm,
   isFileUrl,
   isGroupedFileValue,
+  resolveApprovalEntityCode,
   resolveApprovalFieldLabel,
   resolveApprovalFormConfig
 } from '../entityApprovalDisplay.js'
@@ -50,6 +51,22 @@ const nodeForm = {
   fields: [{ fieldCode: 'change_reason' }]
 }
 assert.equal(resolveApprovalFormConfig(nodeForm, defaultForm), nodeForm)
+assert.equal(
+  resolveApprovalEntityCode('', {
+    entityCode: 'runtime_entity'
+  }, {
+    entityCode: 'task_entity'
+  }),
+  'runtime_entity'
+)
+assert.equal(
+  resolveApprovalEntityCode(
+    'configured_entity',
+    { entityCode: 'runtime_entity' },
+    { entityCode: 'task_entity' }
+  ),
+  'configured_entity'
+)
 assert.equal(
   resolveApprovalFieldLabel('target_user_id', [{
     fieldCode: 'target_user_id',

@@ -26,6 +26,7 @@ import { computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { resolveFieldComponent, TextField } from '@/components/form-fields'
 import { uiEventBindingApi } from '@/api/uiConfig'
+import { getFormId } from '@/shared/form-action-runtime'
 
 const props = defineProps({
   field: {
@@ -82,11 +83,12 @@ async function handleRuntimeChange(value) {
 
 async function executeRuntimeEvent(eventCode, value, selection) {
   const form = props.context?.form
-  if (!form?.id) return
+  const formId = getFormId(form)
+  if (!formId) return
   try {
     const result = await uiEventBindingApi.execute(eventCode, {
       configType: 'FORM',
-      configId: String(form.id),
+      configId: String(formId),
       releaseId: form.runtimeReleaseId || form.activeReleaseId || undefined,
       releaseVersion: form.runtimeReleaseVersion || undefined,
       releaseResolutionToken:
@@ -108,7 +110,7 @@ async function executeRuntimeEvent(eventCode, value, selection) {
         selection: value
       },
       context: {
-        formId: String(form.id),
+        formId: String(formId),
         mode: props.context?.mode || ''
       }
     })

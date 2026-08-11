@@ -97,7 +97,7 @@ class UiEventRuntimeServiceTest {
         UiEventExecuteRequest request = request(
                 "LIST_LOAD",
                 null);
-        request.setTargetType("OWNER");
+        request.setTargetType(null);
         request.setInput(Map.of(
                 "filters", Map.of("status", "ACTIVE"),
                 "pageNum", 3,
@@ -133,6 +133,7 @@ class UiEventRuntimeServiceTest {
                 org.mockito.ArgumentMatchers.eq("service-1"),
                 org.mockito.ArgumentMatchers.eq("query"),
                 captor.capture());
+        assertEquals("OWNER", captor.getValue().getTargetType());
         assertEquals(3, captor.getValue().getPageNum());
         assertEquals(50, captor.getValue().getPageSize());
     }

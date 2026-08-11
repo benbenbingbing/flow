@@ -35,6 +35,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -457,6 +458,45 @@ class UiDataSourceExecutionAccessServiceTest {
                 "owner_id = 'user-1'",
                 authorization.dataScopePlan().sqlFragment());
         assertEquals("edit", authorization.requestContext().get("mode"));
+    }
+
+    /** 测试保留事件运行时的可选空值：验证列表加载等场景不会在上下文净化时抛出空指针 */
+    @Test
+    void preservesNullableOptionalRuntimeContextAsReadOnly() {
+        allowPublishedForm(
+                "release-1",
+                """
+                {"FIELD_OPTIONS":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
+                """);
+        UiDataSourceExecuteRequest request =
+                request("FIELD_OPTIONS", "form-1", "release-1");
+        Map<String, Object> runtimeContext = new LinkedHashMap<>();
+        runtimeContext.put("mode", "edit");
+        runtimeContext.put("targetKey", null);
+        runtimeContext.put("recordId", null);
+        runtimeContext.put(null, "ignored");
+        request.setContext(runtimeContext);
+
+        UiDataSourceExecutionAuthorization authorization =
+                context.service().authorizePublished(
+                        definition("STATIC_OPTIONS", "GLOBAL", null),
+                        request);
+
+        assertEquals("edit", authorization.requestContext().get("mode"));
+        assertTrue(authorization.requestContext()
+                .containsKey("targetKey"));
+        assertNull(authorization.requestContext().get("targetKey"));
+        assertTrue(authorization.requestContext()
+                .containsKey("recordId"));
+        assertNull(authorization.requestContext().get("recordId"));
+        assertFalse(authorization.requestContext().containsKey(null));
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> authorization.requestContext()
+                        .put("unexpected", "value"));
     }
 
     /** 测试所有接口类型都拒绝客户端伪造用户身份：验证静态数据源也不能提交 userId */

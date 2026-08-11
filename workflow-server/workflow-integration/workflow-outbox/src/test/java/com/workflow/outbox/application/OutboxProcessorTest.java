@@ -86,6 +86,47 @@ class OutboxProcessorTest {
     }
 
     @Test
+    void releasesLeaseWhenHandlerHasLinkageError() throws Exception {
+        OutboxRecordMapper mapper =
+                mock(OutboxRecordMapper.class);
+        OutboxEventHandler handler =
+                handler("TEST");
+        when(handler.retryable()).thenReturn(true);
+        doThrow(new NoClassDefFoundError(
+                "com/workflow/contracts/MissingType"))
+                .when(handler)
+                .handle(any(OutboxEvent.class));
+        OutboxRecord record = processingRecord();
+        when(mapper.selectClaimed(record.getId(), "worker-1"))
+                .thenReturn(record);
+        when(mapper.markFailed(
+                eq(record.getId()),
+                eq("worker-1"),
+                eq(7L),
+                eq("FAILED"),
+                eq(1),
+                eq(30L),
+                eq("com/workflow/contracts/MissingType")))
+                .thenReturn(1);
+        OutboxProcessor processor =
+                new OutboxProcessor(
+                        mapper,
+                        List.of(handler),
+                        scheduler());
+
+        processor.process(record.getId(), "worker-1", 7L, 120);
+
+        verify(mapper).markFailed(
+                record.getId(),
+                "worker-1",
+                7L,
+                "FAILED",
+                1,
+                30L,
+                "com/workflow/contracts/MissingType");
+    }
+
+    @Test
     void sendsNonIdempotentFailureDirectlyToDeadLetter() throws Exception {
         OutboxRecordMapper mapper = mock(OutboxRecordMapper.class);
         OutboxEventHandler handler = handler("NOTIFICATION");

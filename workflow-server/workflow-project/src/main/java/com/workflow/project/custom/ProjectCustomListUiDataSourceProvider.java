@@ -4,9 +4,12 @@ import com.workflow.contracts.ui.ListInvocationContext;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
+import com.workflow.entity.data.api.response.EntityDataDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -68,7 +71,7 @@ public class ProjectCustomListUiDataSourceProvider
                                 "default", 1),
                         "pageSize", Map.of(
                                 "type", "integer",
-                                "title", "空分页大小",
+                                "title", "演示分页大小",
                                 "default", 20)));
     }
 
@@ -123,15 +126,23 @@ public class ProjectCustomListUiDataSourceProvider
                     integer(
                             configuration.get("pageSize"),
                             20));
+            EntityDataDTO sample =
+                    querySample(context);
+            List<EntityDataDTO> records =
+                    pageNum == 1
+                            ? List.of(sample)
+                            : List.of();
             log.info(
-                    "LIST 统一数据源查询分支无真实业务查询，返回空分页: code={}, listKey={}, pageNum={}, pageSize={}",
+                    "LIST 统一数据源查询分支返回验收记录: code={}, listKey={}, pageNum={}, pageSize={}, recordId={}, recordCount={}, total=1",
                     CODE,
                     LogValue.safe(context.listKey()),
                     pageNum,
-                    pageSize);
+                    pageSize,
+                    LogValue.safe(sample.getId()),
+                    records.size());
             return new PageResult<>(
-                    List.of(),
-                    0,
+                    records,
+                    1,
                     pageNum,
                     pageSize);
         }
@@ -156,5 +167,37 @@ public class ProjectCustomListUiDataSourceProvider
                 context,
                 configuration,
                 input);
+    }
+
+    private EntityDataDTO querySample(
+            UiInvocationContext context) {
+        EntityDataDTO result = new EntityDataDTO();
+        result.setId("PROJECT-UI-LIST-SAMPLE");
+        result.setEntityCode(context == null
+                ? "project_extension_acceptance"
+                : context.entityCode());
+        result.setEntityName("项目扩展验收单");
+        result.setDataNo("EXT-UI-LIST-001");
+        result.setCode("EXT-UI-LIST-001");
+        result.setName("LIST 统一数据源演示记录");
+        result.setTitle("LIST 统一数据源演示记录");
+        result.setStatus("DRAFT");
+        result.setCreatedAt(LocalDateTime.now());
+        Map<String, Object> data =
+                new LinkedHashMap<>();
+        data.put("name", result.getName());
+        data.put("acceptance_scene",
+                "LIST_UNIFIED_DATA_SOURCE");
+        data.put("acceptance_score", 92);
+        data.put("owner_name", "project 模块");
+        data.put("provider_trace",
+                "PROJECT_CUSTOM_UI_LIST/LIST_QUERY 已执行");
+        data.put("extension_result",
+                "该记录由 LIST 作用范围统一数据源返回。");
+        result.setData(data);
+        result.setExtData(Map.of(
+                "provider_column",
+                "LIST 统一数据源"));
+        return result;
     }
 }

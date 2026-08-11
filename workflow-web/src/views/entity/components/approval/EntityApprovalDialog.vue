@@ -9,7 +9,7 @@
             :approvalNormalForm="approvalNormalForm"
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
-            :entityCode="entityCode"
+            :entityCode="effectiveEntityCode"
             :entityDefinition="entityDefinition"
             :entityFields="entityFields"
             :context="approvalRuntimeContext"
@@ -34,7 +34,7 @@
             :approvalNormalForm="approvalNormalForm"
             :formReadonly="approvalFormReadonly"
             :mode="approvalRuntimeMode"
-            :entityCode="entityCode"
+            :entityCode="effectiveEntityCode"
             :entityDefinition="entityDefinition"
             :entityFields="entityFields"
             :context="approvalRuntimeContext"
@@ -137,7 +137,10 @@ import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
 import EntityApprovalHistory from './EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
-import { resolveApprovalFormConfig } from './entityApprovalDisplay.js'
+import {
+  resolveApprovalEntityCode,
+  resolveApprovalFormConfig
+} from './entityApprovalDisplay.js'
 import {
   executeCustomFormAction,
   resolveRuntimeFormActions
@@ -234,8 +237,15 @@ const statusAwareFormConfig = computed(() =>
   )
 )
 const approvalRuntimeMode = computed(() => isViewMode.value ? 'view' : 'approve')
+const effectiveEntityCode = computed(() =>
+  resolveApprovalEntityCode(
+    props.entityCode,
+    entityData.value,
+    currentTask.value
+  )
+)
 const approvalRuntimeContext = computed(() => ({
-  entityCode: props.entityCode,
+  entityCode: effectiveEntityCode.value,
   mode: approvalRuntimeMode.value,
   record: entityData.value,
   task: currentTask.value,
@@ -245,7 +255,6 @@ const approvalRuntimeContext = computed(() => ({
   releaseResolutionToken: effectiveFormConfig.value?.releaseResolutionToken
 }))
 const dataSourceRuntime = createFormDataSourceRuntime({
-  entityCode: props.entityCode,
   getRecord: () => entityData.value || {},
   getRecordId: () => entityData.value?.id,
   getListKey: () => props.listKey,
@@ -311,7 +320,7 @@ function setNodeTabRef(tabName: string, instance: any) {
 
 async function loadFormActions() {
   formActions.value = await resolveRuntimeFormActions(runtimeForms.value, {
-    entityCode: props.entityCode,
+    entityCode: effectiveEntityCode.value,
     listKey: props.listKey,
     mode: approvalRuntimeMode.value,
     recordId: entityData.value?.id || undefined,
@@ -373,7 +382,8 @@ const openApprove = async (
     processInstanceId: row.processInstanceId,
     name: row.currentTaskName || row.name || '任务审批',
     startUserName: row.startUserName,
-    processName: row.processName
+    processName: row.processName,
+    entityCode: row.entityCode
   }
   approveForm.action = 'approve'
   approveForm.comment = ''
@@ -421,7 +431,8 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
     processInstanceId: row.processInstanceId,
     name: row.name || row.currentTaskName || '数据详情',
     startUserName: startUserName || row.startUserName,
-    processName: row.processName
+    processName: row.processName,
+    entityCode: row.entityCode
   }
   activeDialogTab.value = defaultTab || 'basic'
   if (row.processInstanceId) {
@@ -447,7 +458,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
   } else {
     try {
       const detail = await entityDataApi.getDetail(
-        props.entityCode,
+        effectiveEntityCode.value,
         row.id,
         props.listKey,
         overrideForm.value?.id
@@ -476,7 +487,7 @@ async function reloadExplicitFormDetail(row: any) {
   if (!overrideForm.value?.id || !row?.id) return
   try {
     const detail = await entityDataApi.getDetail(
-      props.entityCode,
+      effectiveEntityCode.value,
       row.id,
       props.listKey,
       overrideForm.value.id
@@ -542,7 +553,7 @@ async function handleFormAction(action: any) {
       action,
       runtimeForms.value,
       {
-        entityCode: props.entityCode,
+        entityCode: effectiveEntityCode.value,
         listKey: props.listKey,
         mode: approvalRuntimeMode.value,
         recordId: entityData.value?.id || undefined,
