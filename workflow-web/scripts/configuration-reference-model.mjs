@@ -1404,6 +1404,14 @@ const KEY_GUIDANCE = Object.freeze({
 })
 
 const CONTROL_OVERRIDES = Object.freeze({
+  'src/views/EntityDesign.vue:item.required': {
+    label: '附件项是否必填',
+    meaning: '控制当前附件项是否必须上传文件。',
+    configureWhen: '该附件属于业务办理、审批或归档的必要材料时开启。',
+    skipWhen: '附件允许选传、后补或仅作为补充材料时关闭。',
+    example: true,
+    expectedEffect: '开启后，该附件项没有已上传文件时表单校验失败并阻止提交；关闭后允许该附件项为空。'
+  },
   'src/views/EntityListConfigDesign.vue:listQueryEditor.serviceId': {
     label: '列表查询接口服务',
     meaning: '选择列表运行时使用的已发布只读接口服务。',
