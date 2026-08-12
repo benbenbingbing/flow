@@ -42,7 +42,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(39, files.size());
+        assertEquals(40, files.size());
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -203,6 +203,20 @@ class SchemaRequiredTablesTest {
                 Files.readString(BASELINE).contains(
                         "CREATE TABLE `auth_refresh_session`"),
                 "V001 must remain immutable; auth_refresh_session belongs to V037");
+    }
+
+    @Test
+    void refreshSessionUserCollationMatchesSystemUser()
+            throws Exception {
+        String sql = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V040__align_refresh_session_user_collation.sql"));
+
+        assertTrue(sql.contains(
+                "MODIFY COLUMN `user_id` varchar(64)"));
+        assertTrue(sql.contains(
+                "COLLATE utf8mb4_0900_ai_ci"));
+        assertFalse(sql.contains(
+                "MODIFY COLUMN `refresh_token_hash`"));
     }
 
     @Test

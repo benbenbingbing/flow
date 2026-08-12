@@ -103,6 +103,18 @@ class IntegrationApplicationMigrationTest {
                 assertTrue(indexExists(
                                 "auth_refresh_session",
                                 "uk_auth_refresh_session_token_hash"));
+                assertEquals(
+                                columnCollation("sys_user", "id"),
+                                columnCollation(
+                                                "auth_refresh_session",
+                                                "user_id"));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM auth_refresh_session s
+                                  LEFT JOIN sys_user u
+                                    ON u.id = s.user_id
+                                 WHERE s.id = 'missing-session'
+                                """));
                 assertTrue(indexExists(
                                 "storage_file_object",
                                 "uk_storage_file_owner_idempotency"));
@@ -552,6 +564,26 @@ class IntegrationApplicationMigrationTest {
                                                 table,
                                                 column)) {
                         return result.next();
+                }
+        }
+
+        private String columnCollation(String table, String column)
+                        throws Exception {
+                try (Connection connection = MYSQL.createConnection("");
+                                var statement = connection.prepareStatement("""
+                                                SELECT collation_name
+                                                  FROM information_schema.columns
+                                                 WHERE table_schema = ?
+                                                   AND table_name = ?
+                                                   AND column_name = ?
+                                                """)) {
+                        statement.setString(1, MYSQL.getDatabaseName());
+                        statement.setString(2, table);
+                        statement.setString(3, column);
+                        try (ResultSet result = statement.executeQuery()) {
+                                assertTrue(result.next());
+                                return result.getString(1);
+                        }
                 }
         }
 
