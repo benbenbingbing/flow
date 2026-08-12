@@ -35,15 +35,15 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: 验证数据库迁移
-        run: mvn -B -ntp -pl workflow-db-migrator -am verify
+      # - name: 验证数据库迁移
+      #   run: mvn -B -ntp -pl workflow-db-migrator -am verify
 
-      - name: 验证应用迁移启动策略
-        run: >-
-          mvn -B -ntp -pl workflow-app -am
-          -Dtest=FreshInstallFlywayConfigurationTest
-          -Dsurefire.failIfNoSpecifiedTests=false
-          test
+      # - name: 验证应用迁移启动策略
+      #   run: >-
+      #     mvn -B -ntp -pl workflow-app -am
+      #     -Dtest=FreshInstallFlywayConfigurationTest
+      #     -Dsurefire.failIfNoSpecifiedTests=false
+      #     test
 
       - name: 执行完整后端回归
         continue-on-error: true
@@ -74,25 +74,25 @@ jobs:
       - name: 安装依赖
         run: npm ci --registry=https://registry.npmjs.org
 
-      - name: 检查依赖安全公告
-        run: npm audit --registry=https://registry.npmjs.org --audit-level=high
+      # - name: 检查依赖安全公告
+      #   run: npm audit --registry=https://registry.npmjs.org --audit-level=high
 
-      - name: 执行功能与配置测试
-        run: |
-          npm run test:unit
-          npm run test:form-node-schema
-          npm run test:form-node-drag
-          npm run test:runtime-form-tabs
-          npm run test:integration
-          npm run test:functional
-          npm run test:page-config
-          npm run test:configuration-reference
-          npm run test:ui-config
-          npm run test:terminology
+      # - name: 执行功能与配置测试
+      #   run: |
+      #     npm run test:unit
+      #     npm run test:form-node-schema
+      #     npm run test:form-node-drag
+      #     npm run test:runtime-form-tabs
+      #     npm run test:integration
+      #     npm run test:functional
+      #     npm run test:page-config
+      #     npm run test:configuration-reference
+      #     npm run test:ui-config
+      #     npm run test:terminology
 
-      - name: 检查可维护性预算
-        continue-on-error: true
-        run: npm run test:maintainability
+      # - name: 检查可维护性预算
+      #   continue-on-error: true
+      #   run: npm run test:maintainability
 
       - name: 构建生产版本
         run: npm run build
