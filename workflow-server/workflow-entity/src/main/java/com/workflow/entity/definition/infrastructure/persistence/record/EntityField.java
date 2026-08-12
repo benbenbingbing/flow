@@ -1,9 +1,11 @@
 package com.workflow.entity.definition.infrastructure.persistence.record;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 实体字段定义
@@ -183,6 +185,12 @@ public class EntityField {
      */
     @TableField("file_max_count")
     private Integer fileMaxCount;
+
+    /**
+     * 发布快照中的多组附件项规则，不映射 entity_field 表。
+     */
+    @TableField(exist = false)
+    private List<EntityFieldFileItem> fileItems;
     
 
     

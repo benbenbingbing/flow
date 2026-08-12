@@ -48,9 +48,7 @@ public class SysUser {
      */
     private Boolean passwordResetRequired;
 
-    /**
-     * Incremented whenever all existing access tokens must be revoked.
-     */
+    /** 撤销该用户全部登录会话时递增的全局令牌版本。 */
     private Long tokenVersion;
     
     /**

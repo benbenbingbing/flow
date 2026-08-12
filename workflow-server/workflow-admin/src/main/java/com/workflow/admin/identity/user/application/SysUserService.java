@@ -16,6 +16,7 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
+import com.workflow.admin.auth.infrastructure.AuthRefreshSessionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -44,6 +45,8 @@ public class SysUserService {
     private final SysRoleMapper roleMapper;
     /** 用户角色关联 Mapper */
     private final SysUserRoleMapper userRoleMapper;
+    /** 浏览器刷新会话 Mapper，用于全设备撤销。 */
+    private final AuthRefreshSessionMapper refreshSessionMapper;
     /** 组织部门 Mapper，用于回填用户的组织/部门名称 */
     private final SysOrganizationMapper orgMapper;
     /** BCrypt 密码编码器，用于密码加密与校验 */
@@ -261,10 +264,21 @@ public class SysUserService {
             userMapper.insert(user);
             log.info("新增用户：{}", LogValue.safe(user.getUsername()));
         } else {
+            SysUser existing =
+                    userMapper.selectById(user.getId());
+            if (existing == null) {
+                throw new IllegalArgumentException("用户不存在");
+            }
             // 更新 - 不更新密码
             user.setPassword(null);
             user.setPasswordResetRequired(null);
             userMapper.updateById(user);
+            if (SysUser.Status.DISABLED.getValue()
+                    .equals(user.getStatus())
+                    && !SysUser.Status.DISABLED.getValue()
+                    .equals(existing.getStatus())) {
+                revokeSessions(user.getId());
+            }
             log.info("更新用户：{}", LogValue.safe(user.getUsername()));
         }
         
@@ -302,6 +316,9 @@ public class SysUserService {
             throw new RuntimeException("不能删除超级管理员");
         }
         
+        // 删除用户前先递增全局令牌版本并撤销所有浏览器会话。
+        revokeSessions(id);
+
         // 删除角色关联
         userRoleMapper.deleteByUserId(id);
         
@@ -341,6 +358,9 @@ public class SysUserService {
         user.setStatus(status);
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
+        if (SysUser.Status.DISABLED.getValue().equals(status)) {
+            revokeSessions(id);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -477,6 +497,10 @@ public class SysUserService {
         if (userMapper.incrementTokenVersion(id) != 1) {
             throw new IllegalArgumentException("用户不存在");
         }
+        refreshSessionMapper.revokeByUserId(
+                id,
+                LocalDateTime.now(),
+                "TOKEN_VERSION_CHANGED");
     }
 
     public boolean passwordMatches(String rawPassword, String storedPassword) {

@@ -3,8 +3,11 @@ package com.workflow.admin.auth.api.web;
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.PublicApi;
 
-import com.workflow.admin.auth.infrastructure.JwtUtil;
 import com.workflow.admin.auth.infrastructure.ClientAddressResolver;
+import com.workflow.admin.auth.application.AuthSessionException;
+import com.workflow.admin.auth.application.AuthSessionProperties;
+import com.workflow.admin.auth.application.AuthSessionService;
+import com.workflow.admin.auth.application.AuthTokenBundle;
 import com.workflow.admin.auth.application.LoginThrottleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.Result;
@@ -21,18 +24,21 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.auth.api.response.LoginUserVO;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 
 /**
  * 认证控制器。
@@ -45,14 +51,23 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AuthController {
 
+    /** 用户不存在时参与恒定耗时密码校验的虚拟 BCrypt 摘要。 */
     private static final String DUMMY_PASSWORD_HASH =
             "$2y$10$KVN3n7mW3JkwqTki/svFdOxdOdcp8M3vicjVv."
                     + "yd6jGqw.zyTV9OK";
 
+    /** 用户查询、密码更新和会话全量撤销服务。 */
     private final SysUserService userService;
+    /** 认证操作审计端口。 */
     private final SystemAuditPort auditPort;
+    /** 登录失败频率限制服务。 */
     private final LoginThrottleService loginThrottleService;
+    /** 登录来源地址解析器。 */
     private final ClientAddressResolver clientAddressResolver;
+    /** 浏览器刷新会话和 Access Token 服务。 */
+    private final AuthSessionService authSessionService;
+    /** Refresh Token Cookie 配置。 */
+    private final AuthSessionProperties sessionProperties;
 
     /**
      * 用户登录。
@@ -61,7 +76,8 @@ public class AuthController {
     @PostMapping("/login")
     public Result<LoginUserVO> login(
             @Validated @RequestBody LoginDTO loginDTO,
-            HttpServletRequest request) {
+            HttpServletRequest request,
+            HttpServletResponse response) {
         String clientAddress =
                 clientAddressResolver.resolve(request);
         loginThrottleService.assertAllowed(
@@ -116,12 +132,10 @@ public class AuthController {
         loginThrottleService.recordSuccess(
                 loginDTO.getUsername());
 
-        String token = JwtUtil.generateToken(
-                user.getId(),
-                user.getUsername(),
-                user.getTokenVersion() == null ? 0L : user.getTokenVersion());
-        LoginUserVO loginUser = toLoginUser(user);
-        loginUser.setToken(token);
+        AuthTokenBundle tokens =
+                authSessionService.createSession(user);
+        LoginUserVO loginUser = toLoginUser(tokens);
+        writeRefreshCookie(response, tokens);
 
         recordLogin(
                 loginDTO.getUsername(),
@@ -151,52 +165,74 @@ public class AuthController {
      * 修改当前登录用户密码。
      */
     @PostMapping("/change-password")
-    public Result<Void> changePassword(
-            @Validated @RequestBody ChangePasswordDTO request) {
+    public Result<LoginUserVO> changePassword(
+            @Validated @RequestBody ChangePasswordDTO request,
+            HttpServletResponse response) {
         String userId = UserContext.getUserId();
         if (userId == null) {
             return Result.error("未登录");
         }
-        userService.changePassword(
-                userId,
-                request.getCurrentPassword(),
-                request.getNewPassword());
-        return Result.success();
+        AuthTokenBundle tokens =
+                authSessionService.changePasswordAndCreateSession(
+                        userId,
+                        request.getCurrentPassword(),
+                        request.getNewPassword());
+        writeRefreshCookie(response, tokens);
+        return Result.success(toLoginUser(tokens));
     }
 
     /**
      * 退出登录。
      */
+    @PublicApi
     @PostMapping("/logout")
-    public Result<Void> logout(HttpServletRequest request) {
-        String token = request.getHeader("Authorization");
-        if (token != null && token.startsWith("Bearer ")) {
-            token = token.substring(7);
-        }
-        boolean validToken = token != null && JwtUtil.validateToken(token);
-        String userId = validToken
-                ? JwtUtil.getUserIdFromToken(token)
-                : null;
-        String username = validToken
-                ? JwtUtil.getUsernameFromToken(token)
-                : null;
-        if (validToken && userId != null) {
-            userService.revokeSessions(userId);
-        }
+    public Result<Void> logout(
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        String refreshToken = readRefreshToken(request);
+        authSessionService.revokeCurrent(
+                refreshToken,
+                "USER_LOGOUT");
+        clearRefreshCookie(response);
         auditPort.record(SystemAuditEvent.builder()
                 .module(AuditModule.SECURITY)
                 .action(AuditAction.LOGOUT)
                 .operationName("用户退出登录")
                 .riskLevel(AuditRiskLevel.LOW)
                 .result(AuditResult.SUCCESS)
-                .operatorId(userId)
-                .operatorName(username)
+                .operatorId(UserContext.getUserId())
+                .operatorName(UserContext.getUsername())
                 .targetType("AUTH_SESSION")
-                .targetId(userId)
+                .targetId(UserContext.getSessionId())
                 .summary("用户退出登录")
                 .createdAt(LocalDateTime.now())
                 .build());
         return Result.success();
+    }
+
+    /**
+     * 使用 HttpOnly Refresh Token 恢复或延续当前浏览器会话。
+     */
+    @PublicApi
+    @PostMapping("/refresh")
+    public Result<LoginUserVO> refresh(
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        try {
+            AuthTokenBundle tokens =
+                    authSessionService.refresh(
+                            readRefreshToken(request));
+            writeRefreshCookie(response, tokens);
+            return Result.success(toLoginUser(tokens));
+        } catch (AuthSessionException exception) {
+            clearRefreshCookie(response);
+            response.setStatus(
+                    HttpServletResponse.SC_UNAUTHORIZED);
+            return Result.error(
+                    401,
+                    exception.getErrorCode(),
+                    exception.getMessage());
+        }
     }
 
     /**
@@ -228,6 +264,74 @@ public class AuthController {
                     .collect(Collectors.toList()));
         }
         return loginUser;
+    }
+
+    private LoginUserVO toLoginUser(
+            AuthTokenBundle tokens) {
+        LoginUserVO loginUser =
+                toLoginUser(tokens.user());
+        loginUser.setToken(tokens.accessToken());
+        loginUser.setTokenExpiresAt(
+                tokens.accessTokenExpiresAt().toString());
+        return loginUser;
+    }
+
+    private void writeRefreshCookie(
+            HttpServletResponse response,
+            AuthTokenBundle tokens) {
+        long maxAgeSeconds = Math.max(
+                1L,
+                Duration.between(
+                        java.time.Instant.now(),
+                        tokens.sessionAbsoluteExpiresAt())
+                        .toSeconds());
+        ResponseCookie cookie = ResponseCookie
+                .from(
+                        sessionProperties.getCookieName(),
+                        tokens.refreshToken())
+                .httpOnly(true)
+                .secure(sessionProperties.isCookieSecure())
+                .sameSite(
+                        sessionProperties.getCookieSameSite())
+                .path(sessionProperties.getCookiePath())
+                .maxAge(Duration.ofSeconds(maxAgeSeconds))
+                .build();
+        response.addHeader(
+                HttpHeaders.SET_COOKIE,
+                cookie.toString());
+    }
+
+    private void clearRefreshCookie(
+            HttpServletResponse response) {
+        ResponseCookie cookie = ResponseCookie
+                .from(
+                        sessionProperties.getCookieName(),
+                        "")
+                .httpOnly(true)
+                .secure(sessionProperties.isCookieSecure())
+                .sameSite(
+                        sessionProperties.getCookieSameSite())
+                .path(sessionProperties.getCookiePath())
+                .maxAge(Duration.ZERO)
+                .build();
+        response.addHeader(
+                HttpHeaders.SET_COOKIE,
+                cookie.toString());
+    }
+
+    private String readRefreshToken(
+            HttpServletRequest request) {
+        if (request.getCookies() == null) {
+            return null;
+        }
+        return java.util.Arrays.stream(
+                        request.getCookies())
+                .filter(cookie ->
+                        sessionProperties.getCookieName()
+                                .equals(cookie.getName()))
+                .map(jakarta.servlet.http.Cookie::getValue)
+                .findFirst()
+                .orElse(null);
     }
 
     private void recordLogin(

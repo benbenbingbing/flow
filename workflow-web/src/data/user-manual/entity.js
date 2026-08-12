@@ -320,14 +320,15 @@ export default {
         {
           id: 'entity-attachments',
           title: '文件与图片附件项',
-          lead: 'FILE 和 IMAGE 字段可以拆成多个附件项，每项独立限制类型、大小和数量。',
+          lead: 'FILE 和 IMAGE 字段可以拆成多个附件项，每项独立配置必填、类型、大小和数量。',
           blocks: [
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
                 { field: '项名称', meaning: '附件分类名称，例如“项目章程”。', defaultLimit: '新字段首次选中时默认使用字段名称或“附件”。', effect: '运行时按附件项分组展示。', publish: '名称可改，但应保留历史语义。' },
-                { field: '文件类型', meaning: '允许的扩展名组合。', defaultLimit: '可多选图片、文档、表格、文本、压缩包；不选表示允许所有类型。', effect: '上传时限制文件扩展名。', publish: '扩展名校验不能替代 MIME、内容安全和病毒扫描。' },
+                { field: '是否必填', meaning: '要求该附件项至少上传一个文件。', defaultLimit: '默认关闭；每个附件项独立设置。', effect: '提交表单时校验对应附件分组。', publish: '修改后需重新发布实体，运行时才使用新规则。' },
+                { field: '文件类型', meaning: '允许的扩展名组合。', defaultLimit: '可多选预置类型，也可输入自定义扩展名并回车；不选表示允许所有类型。', effect: '上传时限制文件扩展名。', publish: '扩展名校验不能替代 MIME、内容安全和病毒扫描。' },
                 { field: '单文件大小', meaning: '单个文件最大体积。', defaultLimit: '1–100 MB；默认 10 MB。', effect: '超过限制时拒绝上传。', publish: '不得超过网关、应用和存储服务的全局限制。' },
                 { field: '数量限制', meaning: '该附件项最多文件数。', defaultLimit: '1–20；默认 5。', effect: '达到上限后不能继续上传。', publish: '缩小数量不会自动删除已有文件。' },
                 { field: '添加 / 删除附件项', meaning: '维护多个独立附件分类。', defaultLimit: '至少保留业务所需项；可全部删除。', effect: '改变运行时附件区域结构。', publish: '删除附件项前确认历史附件仍可访问与迁移。' }

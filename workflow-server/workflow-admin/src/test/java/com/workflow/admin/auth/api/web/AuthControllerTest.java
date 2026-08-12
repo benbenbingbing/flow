@@ -8,12 +8,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.admin.auth.api.request.LoginDTO;
+import com.workflow.admin.auth.application.AuthSessionProperties;
+import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.auth.application.LoginThrottleService;
 import com.workflow.admin.auth.infrastructure.ClientAddressResolver;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.contracts.audit.SystemAuditPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 class AuthControllerTest {
 
@@ -36,9 +39,14 @@ class AuthControllerTest {
                 userService,
                 mock(SystemAuditPort.class),
                 throttle,
-                resolver);
+                resolver,
+                mock(AuthSessionService.class),
+                new AuthSessionProperties());
 
-        var result = controller.login(login, request);
+        var result = controller.login(
+                login,
+                request,
+                new MockHttpServletResponse());
 
         assertEquals("用户名或密码错误", result.getMessage());
         verify(userService).passwordMatches(

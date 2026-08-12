@@ -158,6 +158,7 @@ import { uiEventBindingApi } from '@/api/uiConfig'
 import { applySelectionReturnMappings } from '@/utils/selectionReturnMappings'
 import { getFormForNewData } from '@/api/entityFormResolve'
 import { useUserStore } from '@/stores/user'
+import request from '@/utils/request'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getItemTreeByDictCode } from '@/api/system/dict'
 import { getCustomListComponent, hasCustomListComponent } from '@/utils/customComponentRegistry.js'
@@ -552,16 +553,13 @@ async function loadRefEntityNames() {
       params.append('refEntityId', refEntityId)
     }
     promises.push(
-      fetch(`/api/entity-selector/${entityType}/batch?${params}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
-        .then(r => r.json())
-        .then((res: any) => {
-          if (res.code === 200 && res.data) {
-            for (const item of res.data) {
-              const cacheKey = `${groupKey}:${item.id}`
-              refEntityNameMap.value[cacheKey] = item.name || item.code || item.id
-            }
+      request
+        .get(`/entity-selector/${entityType}/batch?${params}`)
+        .then((records: any[]) => {
+          for (const item of records || []) {
+            const cacheKey = `${groupKey}:${item.id}`
+            refEntityNameMap.value[cacheKey] =
+              item.name || item.code || item.id
           }
         })
         .catch(err => console.error('加载引用实体名称失败:', err))

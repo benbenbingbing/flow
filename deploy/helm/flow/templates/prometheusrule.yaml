@@ -42,6 +42,33 @@ spec:
           annotations:
             summary: Flow HTTP 5xx ratio is above the configured threshold
             runbook_url: deploy/runbooks/incident-response.md#http-errors
+    - name: {{ include "flow.fullname" . }}.authentication
+      rules:
+        - alert: FlowAuthenticationFailuresHigh
+          expr: |
+            sum(increase(flow_auth_session_events_total{
+              application="workflow-server",
+              result=~"AUTH_.*"}[5m]))
+              > {{ .Values.monitoring.prometheusRule.authFailureCount }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Browser authentication failures increased sharply
+            runbook_url: deploy/runbooks/incident-response.md#authentication
+        - alert: FlowJwtInvalidHigh
+          expr: |
+            sum(increase(flow_auth_session_events_total{
+              application="workflow-server",
+              action="access",
+              result="AUTH_ACCESS_INVALID"}[5m]))
+              > {{ .Values.monitoring.prometheusRule.jwtInvalidCount }}
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Invalid JWT signatures or malformed access tokens increased sharply
+            runbook_url: deploy/runbooks/incident-response.md#authentication
     - name: {{ include "flow.fullname" . }}.workers
       rules:
         - alert: FlowDurableQueueDeadItems

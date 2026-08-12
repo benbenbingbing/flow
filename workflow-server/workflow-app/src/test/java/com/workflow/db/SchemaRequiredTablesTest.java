@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.zip.CRC32;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -41,7 +42,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(36, files.size());
+        assertEquals(39, files.size());
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -187,6 +188,50 @@ class SchemaRequiredTablesTest {
     }
 
     @Test
+    void refreshSessionMigrationStoresOnlyTokenHashes()
+            throws Exception {
+        String sql = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V037__refresh_session.sql"));
+
+        assertTrue(sql.contains(
+                "CREATE TABLE IF NOT EXISTS `auth_refresh_session`"));
+        assertTrue(sql.contains("`refresh_token_hash` char(64)"));
+        assertFalse(sql.contains("`refresh_token` varchar"));
+        assertTrue(sql.contains(
+                "UNIQUE KEY `uk_auth_refresh_session_token_hash`"));
+        assertFalse(
+                Files.readString(BASELINE).contains(
+                        "CREATE TABLE `auth_refresh_session`"),
+                "V001 must remain immutable; auth_refresh_session belongs to V037");
+    }
+
+    @Test
+    void publishedInterfaceOperationMigrationKeepsAppliedChecksum()
+            throws Exception {
+        Path migration = MIGRATION_DIRECTORY.resolve(
+                "V034__interface_operation_context.sql");
+
+        assertEquals(
+                403469585,
+                flywayChecksum(migration),
+                "V034 已发布，后续变更必须新增更高版本迁移");
+    }
+
+    @Test
+    void listQueryBindingResetLivesInForwardMigration()
+            throws Exception {
+        String sql = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V039__reset_list_query_interface_binding.sql"));
+
+        assertTrue(sql.contains(
+                "UPDATE `entity_list_config`"));
+        assertTrue(sql.contains(
+                "`query_data_source_id` = NULL"));
+        assertTrue(sql.contains(
+                "`query_operation_code` = NULL"));
+    }
+
+    @Test
     void baselineExcludesUpgradeOnlyAndRetiredTables() throws Exception {
         String sql = Files.readString(BASELINE);
         for (String table : List.of(
@@ -199,6 +244,16 @@ class SchemaRequiredTablesTest {
             assertFalse(sql.contains("CREATE TABLE `" + table + "`"),
                     "retired table must not exist: " + table);
         }
+    }
+
+    private int flywayChecksum(Path migration)
+            throws Exception {
+        CRC32 crc32 = new CRC32();
+        for (String line : Files.readAllLines(migration)) {
+            crc32.update(line.getBytes(
+                    java.nio.charset.StandardCharsets.UTF_8));
+        }
+        return (int) crc32.getValue();
     }
 
     @Test

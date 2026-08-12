@@ -64,7 +64,11 @@ import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock } from '@element-plus/icons-vue'
-import { changePassword, logout } from '@/api/auth'
+import {
+  changePassword,
+  getPermissions,
+  logout
+} from '@/api/auth'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -106,14 +110,13 @@ const submit = async () => {
   await formRef.value.validate()
   submitting.value = true
   try {
-    await changePassword({
+    const session = await changePassword({
       currentPassword: form.currentPassword,
       newPassword: form.newPassword
     })
-    userStore.setUserInfo({
-      ...(userStore.userInfo || {}),
-      passwordResetRequired: false
-    })
+    userStore.applySession(session)
+    const permissions = await getPermissions()
+    userStore.setPermissions(permissions || [])
     ElMessage.success('密码已更新')
     await router.replace('/home')
   } finally {

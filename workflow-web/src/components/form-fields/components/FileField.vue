@@ -106,7 +106,10 @@ const fileItemsLoading = ref(false)
 
 watch(
   () => props.field?.fieldId,
-  async (fieldId) => {
+  async (fieldId, previousFieldId) => {
+    if (fieldId !== previousFieldId) {
+      apiFileItems.value = []
+    }
     if (!fieldId) return
     // 如果字段本身已有 fileItems，不需要请求
     if (props.field?.fileItems?.length > 0) return
@@ -146,13 +149,15 @@ const enrichedField = computed(() => {
   })
 
   // 深度搜索 fileItems（支持多组附件配置）
-  const fileItems =
-    merged.fileItems ||
-    (merged.config && merged.config.fileItems) ||
-    (merged.extraConfig && merged.extraConfig.fileItems) ||
-    (merged.attachmentConfig && merged.attachmentConfig.fileItems) ||
-    apiFileItems.value ||
-    []
+  const fileItems = [
+    merged.fileItems,
+    field.fileItems,
+    cp.fileItems,
+    merged.config?.fileItems,
+    merged.extraConfig?.fileItems,
+    merged.attachmentConfig?.fileItems,
+    apiFileItems.value
+  ].find(items => Array.isArray(items) && items.length > 0) || []
 
   merged.fileItems = fileItems
 

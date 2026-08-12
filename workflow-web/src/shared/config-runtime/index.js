@@ -1,3 +1,8 @@
+import {
+  getMissingRequiredAttachmentItems,
+  hasAttachmentValue
+} from '../file-attachment.js'
+
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 const RUNTIME_REGEX_MAX_LENGTH = 500
 
@@ -162,8 +167,34 @@ export function isFieldReadonlyForMode(field, mode = 'view', forceReadonly = fal
 export function buildRuntimeFieldRules(field, required, label) {
   const rules = []
   const displayLabel = label || field?.fieldLabel || field?.fieldName || '该字段'
-  if (required) {
+  const fieldType = String(
+    field?.fieldType || field?.componentType || ''
+  ).toUpperCase()
+  const isAttachment = fieldType === 'FILE' || fieldType === 'IMAGE'
+  if (required && !isAttachment) {
     rules.push({ required: true, message: `请输入${displayLabel}`, trigger: ['blur', 'change'] })
+  }
+  if (isAttachment && (required || field?.fileItems?.some(item => item?.required))) {
+    rules.push({
+      validator: (_rule, value, callback) => {
+        if (required && !hasAttachmentValue(value)) {
+          return callback(new Error(`请上传${displayLabel}`))
+        }
+        const missingItems = getMissingRequiredAttachmentItems(
+          field?.fileItems || [],
+          value
+        )
+        if (missingItems.length > 0) {
+          return callback(new Error(
+            `${displayLabel}缺少必填附件项：${missingItems
+              .map((item, index) => item.itemName || `附件项${index + 1}`)
+              .join('、')}`
+          ))
+        }
+        callback()
+      },
+      trigger: 'change'
+    })
   }
 
   const config = safeParseConfig(

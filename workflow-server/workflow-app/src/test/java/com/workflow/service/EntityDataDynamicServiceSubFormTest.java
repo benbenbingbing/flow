@@ -23,6 +23,7 @@ import com.workflow.entity.data.application.EntityRelationRuntimeService;
 import com.workflow.entity.data.application.EntityMultiValueRuntimeService;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
@@ -216,6 +217,48 @@ class EntityDataDynamicServiceSubFormTest {
                         () -> service.save(dto));
 
         assertEquals("完成比例不能小于 0.01", exception.getMessage());
+        verify(fixture.dynamicMapper, never()).insert(
+                eq("wf_parent"),
+                org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
+    void saveValidatesRequiredAttachmentItemsFromPublishedSnapshot() {
+        Fixture fixture = new Fixture();
+        EntityDataMutationService service = fixture.mutationService();
+        EntityField attachment = new EntityField();
+        attachment.setFieldCode("documents");
+        attachment.setFieldName("项目附件");
+        attachment.setFieldType(EntityField.FieldType.FILE);
+        EntityFieldFileItem charter = new EntityFieldFileItem();
+        charter.setItemName("项目章程");
+        charter.setRequired(true);
+        EntityFieldFileItem specification = new EntityFieldFileItem();
+        specification.setItemName("需求文档");
+        specification.setRequired(false);
+        attachment.setFileItems(List.of(charter, specification));
+
+        EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
+        snapshot.setEntityCode("parent");
+        snapshot.setFields(List.of(attachment));
+        when(fixture.snapshotService.getLatestByEntityCode("parent"))
+                .thenReturn(snapshot);
+
+        EntityDataDTO dto = new EntityDataDTO();
+        dto.setEntityCode("parent");
+        dto.setData(new HashMap<>(Map.of(
+                "name", "主数据",
+                "documents", Map.of("需求文档", List.of(
+                        Map.of("url", "/uploads/spec.pdf"))))));
+
+        RuntimeException exception =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        RuntimeException.class,
+                        () -> service.save(dto));
+
+        assertEquals(
+                "项目附件缺少必填附件项: 项目章程",
+                exception.getMessage());
         verify(fixture.dynamicMapper, never()).insert(
                 eq("wf_parent"),
                 org.mockito.ArgumentMatchers.anyMap());
@@ -496,7 +539,8 @@ class EntityDataDynamicServiceSubFormTest {
                             dynamicTableService,
                             snapshotService,
                             recordMapper,
-                            fieldValidationRuleService);
+                            fieldValidationRuleService,
+                            objectMapper);
             EntityDataMutationPayloadMapper payloadMapper =
                     new EntityDataMutationPayloadMapper(
                             recordMapper,

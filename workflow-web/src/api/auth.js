@@ -19,7 +19,10 @@ export function getCurrentUser() {
  * 退出登录
  */
 export function logout() {
-  return request.post('/auth/logout')
+  return request.post('/auth/logout', null, {
+    skipAuthRefresh: true,
+    silentError: true
+  })
 }
 
 /**

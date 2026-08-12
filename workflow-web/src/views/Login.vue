@@ -92,8 +92,7 @@ async function handleLogin() {
     const res = await login(loginForm)
     
     // 保存登录信息
-    userStore.setToken(res.token)
-    userStore.setUserInfo(res)
+    userStore.applySession(res)
     
     if (res.passwordResetRequired) {
       userStore.setPermissions([])

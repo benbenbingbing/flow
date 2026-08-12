@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getPermissions } from '@/api/auth'
+import { restoreAuthSession } from '@/shared/request'
 import Layout from '@/views/Layout.vue'
 
 /**
@@ -306,6 +307,8 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
+
+  await restoreAuthSession()
   
   // 恢复用户信息（刷新页面后）
   if (!userStore.userInfo) {

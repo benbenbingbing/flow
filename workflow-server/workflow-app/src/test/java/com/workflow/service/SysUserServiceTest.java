@@ -9,6 +9,7 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
+import com.workflow.admin.auth.infrastructure.AuthRefreshSessionMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -23,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +40,9 @@ class SysUserServiceTest {
 
     @Mock
     private SysUserRoleMapper userRoleMapper;
+
+    @Mock
+    private AuthRefreshSessionMapper refreshSessionMapper;
 
     @Mock
     private SysOrganizationMapper orgMapper;
@@ -139,6 +144,31 @@ class SysUserServiceTest {
                 Boolean.FALSE.equals(user.getPasswordResetRequired())
                         && userService.passwordMatches("NextPassword2", user.getPassword())));
         assertFalse(userService.passwordMatches("NextPassword2", existing.getPassword()));
+    }
+
+    @Test
+    void editingUserToDisabledRevokesAllSessions() {
+        SysUser existing = new SysUser();
+        existing.setId("user-1");
+        existing.setUsername("alice");
+        existing.setStatus(SysUser.Status.ENABLED.getValue());
+        when(userMapper.selectById("user-1"))
+                .thenReturn(existing);
+        when(userMapper.incrementTokenVersion("user-1"))
+                .thenReturn(1);
+
+        SysUser update = new SysUser();
+        update.setId("user-1");
+        update.setUsername("alice");
+        update.setStatus(SysUser.Status.DISABLED.getValue());
+
+        userService.saveUser(update);
+
+        verify(userMapper).incrementTokenVersion("user-1");
+        verify(refreshSessionMapper).revokeByUserId(
+                eq("user-1"),
+                any(),
+                eq("TOKEN_VERSION_CHANGED"));
     }
 
 }

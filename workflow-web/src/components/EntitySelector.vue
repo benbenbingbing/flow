@@ -234,6 +234,7 @@ import {
   recordSelectionValues,
   removeRecordSelection
 } from '@/shared/entity-record-selection'
+import request from '@/utils/request'
 
 const props = defineProps({
   // 实体类型：CUSTOM(用户实体)/USER/DEPT/ROLE/GROUP
@@ -419,16 +420,14 @@ async function loadSelectedData() {
       }
     }
 
-    const res = await fetch(`/api/entity-selector/${props.entityType}/batch?${params}`, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    }).then(r => r.json())
+    const records = await request.get(
+      `/entity-selector/${props.entityType}/batch?${params}`
+    )
 
-    if (res.code === 200) {
-      if (props.multiple) {
-        selectedList.value = res.data || []
-      } else {
-        selectedData.value = res.data?.[0] || null
-      }
+    if (props.multiple) {
+      selectedList.value = records || []
+    } else {
+      selectedData.value = records?.[0] || null
     }
   } catch (e) {
     console.error('加载已选数据失败:', e)
@@ -499,17 +498,13 @@ async function loadData() {
       url = `${props.apiUrl}?${params}`
     }
     
-    const res = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-    }).then(r => r.json())
-    
-    if (res.code === 200) {
-      tableData.value = res.data.records || []
-      total.value = res.data.total || 0
-      await restoreCurrentPageSelection()
-    } else {
-      ElMessage.error(res.message || '加载数据失败')
-    }
+    const requestUrl = /^https?:\/\//i.test(url)
+      ? url
+      : url.replace(/^\/api(?=\/)/, '')
+    const result = await request.get(requestUrl)
+    tableData.value = result.records || result.list || []
+    total.value = result.total || 0
+    await restoreCurrentPageSelection()
   } catch (e) {
     ElMessage.error('加载数据失败')
   } finally {

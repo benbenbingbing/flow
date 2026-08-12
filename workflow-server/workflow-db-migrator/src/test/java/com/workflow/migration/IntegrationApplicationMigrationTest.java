@@ -90,6 +90,19 @@ class IntegrationApplicationMigrationTest {
                 assertTrue(columnExists(
                                 "ui_extension_definition",
                                 "entity_codes_document"));
+                assertTrue(columnExists(
+                                "entity_field_file_item",
+                                "is_required"));
+                assertTrue(tableExists("auth_refresh_session"));
+                assertTrue(columnExists(
+                                "auth_refresh_session",
+                                "refresh_token_hash"));
+                assertFalse(columnExists(
+                                "auth_refresh_session",
+                                "refresh_token"));
+                assertTrue(indexExists(
+                                "auth_refresh_session",
+                                "uk_auth_refresh_session_token_hash"));
                 assertTrue(indexExists(
                                 "storage_file_object",
                                 "uk_storage_file_owner_idempotency"));

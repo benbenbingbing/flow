@@ -85,6 +85,16 @@ spec:
               value: {{ .Values.storage.pathStyleAccess | quote }}
             - name: CORS_ALLOWED_ORIGINS
               value: {{ .Values.application.corsAllowedOrigins | quote }}
+            - name: CORS_ALLOW_CREDENTIALS
+              value: {{ .Values.application.corsAllowCredentials | quote }}
+            - name: AUTH_SESSION_IDLE_TIMEOUT
+              value: {{ .Values.application.authSessionIdleTimeout | quote }}
+            - name: AUTH_SESSION_ABSOLUTE_TIMEOUT
+              value: {{ .Values.application.authSessionAbsoluteTimeout | quote }}
+            - name: AUTH_SESSION_RETENTION
+              value: {{ .Values.application.authSessionRetention | quote }}
+            - name: AUTH_SESSION_COOKIE_SECURE
+              value: {{ .Values.application.authSessionCookieSecure | quote }}
             - name: TRUST_FORWARDED_HEADERS
               value: {{ .Values.application.trustForwardedHeaders | quote }}
             - name: WORKFLOW_HTTP_ALLOWED_HOSTS

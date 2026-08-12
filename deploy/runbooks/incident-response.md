@@ -16,6 +16,17 @@ Split 5xx by URI, exception type, and dependency latency. Correlate the response
 Check recent releases before increasing resources. Redact tokens, passwords,
 file bodies, and business payloads from tickets and chat.
 
+## Authentication
+
+Split `flow_auth_session_events_total` by `action` and `result`. A rise in
+`AUTH_ACCESS_INVALID` can indicate mismatched JWT secrets across replicas,
+malformed clients, or token abuse. Compare failures by Pod and deployment
+revision, then confirm every server replica reads the same Kubernetes Secret.
+
+For refresh failures, distinguish missing, idle-expired, absolute-expired, and
+revoked sessions before changing timeouts. Never log or query raw Access or
+Refresh Tokens; use session IDs, user IDs, request IDs, and token hashes only.
+
 ## Database
 
 Inspect Hikari pending/active connections, MySQL connection count, slow queries,

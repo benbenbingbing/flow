@@ -125,6 +125,7 @@ public class EntityDefinitionService {
         }
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(id);
+        attachFileItems(fields);
         entity.setFields(fields);
         // 查询流程名称
         ProcessCatalogItem process = getProcessItem(entity.getProcessDefinitionId());
@@ -143,6 +144,7 @@ public class EntityDefinitionService {
                 .orElseThrow(() -> new RuntimeException("实体不存在: " + code));
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(entity.getId());
+        attachFileItems(fields);
         entity.setFields(fields);
         // 查询流程名称
         ProcessCatalogItem process = getProcessItem(entity.getProcessDefinitionId());
@@ -603,6 +605,7 @@ public class EntityDefinitionService {
 
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(id);
+        attachFileItems(fields);
         entity.setFields(fields);
 
         // 判断是首次发布还是字段变更
@@ -966,7 +969,9 @@ public class EntityDefinitionService {
         // 加载文件字段的多组附件配置
         if (field.getFieldType() == EntityField.FieldType.FILE || field.getFieldType() == EntityField.FieldType.IMAGE) {
             try {
-                dto.setFileItems(fileItemService.findByFieldId(field.getId()));
+                dto.setFileItems(field.getFileItems() != null
+                        ? field.getFileItems()
+                        : fileItemService.findByFieldId(field.getId()));
             } catch (Exception e) {
                 // 表可能不存在，忽略异常
                 dto.setFileItems(null);
@@ -1121,5 +1126,17 @@ public class EntityDefinitionService {
         }
         latestHistory.setProcessDefinitionId(processId);
         publishHistoryMapper.updateById(latestHistory);
+    }
+
+    private void attachFileItems(List<EntityField> fields) {
+        if (fields == null || fields.isEmpty()) {
+            return;
+        }
+        fields.stream()
+                .filter(field ->
+                        field.getFieldType() == EntityField.FieldType.FILE
+                                || field.getFieldType() == EntityField.FieldType.IMAGE)
+                .forEach(field -> field.setFileItems(
+                        fileItemService.findByFieldId(field.getId())));
     }
 }

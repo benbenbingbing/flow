@@ -114,4 +114,33 @@ regexRules[0].validator({}, 'BAD-2026', error => {
 })
 assert.equal(regexValidationError?.message, '需求编码格式不符合正则要求')
 
+const attachmentRules = buildRuntimeFieldRules(
+  {
+    fieldType: 'FILE',
+    fileItems: [
+      { itemName: '项目章程', required: true },
+      { itemName: '参考资料', required: false }
+    ]
+  },
+  false,
+  '项目附件'
+)
+assert.equal(attachmentRules.length, 1)
+let attachmentValidationError
+attachmentRules[0].validator({}, {
+  参考资料: [{ url: '/uploads/reference.pdf' }]
+}, error => {
+  attachmentValidationError = error
+})
+assert.equal(
+  attachmentValidationError?.message,
+  '项目附件缺少必填附件项：项目章程'
+)
+attachmentRules[0].validator({}, {
+  项目章程: [{ url: '/uploads/charter.pdf' }]
+}, error => {
+  attachmentValidationError = error
+})
+assert.equal(attachmentValidationError, undefined)
+
 console.log('runtime node field rules tests passed')

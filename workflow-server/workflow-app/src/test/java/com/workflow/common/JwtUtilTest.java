@@ -1,6 +1,10 @@
 package com.workflow.common;
 
 import com.workflow.admin.auth.infrastructure.JwtUtil;
+import com.workflow.admin.auth.infrastructure.JwtAccessToken;
+import com.workflow.admin.auth.infrastructure.JwtTokenInspection;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -31,12 +35,51 @@ class JwtUtilTest {
         ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
         jwtUtil.init();
 
-        String token = JwtUtil.generateToken("u1", "admin", 7L);
+        String token = JwtUtil.issueAccessToken(
+                "u1",
+                "admin",
+                7L,
+                "session-1",
+                Instant.now().plus(Duration.ofHours(1)))
+                .value();
 
         assertTrue(JwtUtil.validateToken(token));
         assertEquals("u1", JwtUtil.getUserIdFromToken(token));
         assertEquals("admin", JwtUtil.getUsernameFromToken(token));
         assertEquals(7L, JwtUtil.getTokenVersionFromToken(token));
+        assertEquals(
+                "session-1",
+                JwtUtil.getSessionIdFromToken(token));
+    }
+
+    @Test
+    void accessTokenCannotOutliveSessionAbsoluteExpiry() {
+        JwtUtil jwtUtil = new JwtUtil();
+        ReflectionTestUtils.setField(
+                jwtUtil,
+                "secret",
+                "unit-test-only-jwt-secret-with-adequate-entropy");
+        ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
+        jwtUtil.init();
+        Instant issuedAt =
+                Instant.parse("2026-08-12T04:00:00Z");
+        Instant sessionExpiry =
+                issuedAt.plus(Duration.ofMinutes(5));
+
+        JwtAccessToken token = JwtUtil.issueAccessToken(
+                "u1",
+                "admin",
+                7L,
+                "session-1",
+                issuedAt,
+                sessionExpiry);
+
+        assertEquals(sessionExpiry, token.expiresAt());
+        JwtTokenInspection inspection =
+                JwtUtil.inspectToken(token.value());
+        assertEquals(
+                "session-1",
+                inspection.sessionId());
     }
 
     @Test

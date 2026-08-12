@@ -1,6 +1,10 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { entityApi } from '@/api/entity'
+import {
+  attachmentFileTypesToString,
+  normalizeAttachmentFileTypes
+} from '@/shared/file-attachment'
 
 const isTemporaryField = (field) =>
   !field?.id || String(field.id).startsWith('temp_')
@@ -24,9 +28,8 @@ export function normalizeEntityFieldForEditing(rawField = {}) {
   if (field.fileItems?.length) {
     field.fileItems = field.fileItems.map(item => ({
       ...item,
-      fileTypes: item.fileTypes
-        ? (typeof item.fileTypes === 'string' ? item.fileTypes.split(',') : item.fileTypes)
-        : []
+      required: item.required === true || item.required === 1 || item.required === '1',
+      fileTypes: normalizeAttachmentFileTypes(item.fileTypes)
     }))
   }
   return field
@@ -56,9 +59,8 @@ export function normalizeEntityFieldForSave(source = {}) {
       : field.fileTypes,
     fileItems: field.fileItems?.map(item => ({
       ...item,
-      fileTypes: Array.isArray(item.fileTypes)
-        ? item.fileTypes.join(',')
-        : item.fileTypes
+      required: Boolean(item.required),
+      fileTypes: attachmentFileTypesToString(item.fileTypes)
     })) || []
   }
 }

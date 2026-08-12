@@ -216,6 +216,10 @@ public class EntityPublishHistoryService {
         dto.setIsSystem(field.getIsSystem());
         dto.setEditable(field.getEditable());
         dto.setSortOrder(field.getSortOrder());
+        dto.setFileTypes(field.getFileTypes());
+        dto.setFileMaxSize(field.getFileMaxSize());
+        dto.setFileMaxCount(field.getFileMaxCount());
+        dto.setFileItems(field.getFileItems());
         return dto;
     }
 }

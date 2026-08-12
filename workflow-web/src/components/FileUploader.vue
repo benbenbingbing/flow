@@ -17,6 +17,7 @@
               @click="activeGroupIndex = index"
             >
               {{ item.itemName || `附件项 ${index + 1}` }}
+              <span v-if="item.required" class="required-mark">*</span>
             </div>
           </el-tooltip>
         </div>
@@ -161,6 +162,10 @@ import { ref, computed, watch } from 'vue'
 import { Plus, Upload, Document, View, Download, RefreshRight, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
+import {
+  attachmentFileTypesToString,
+  isAttachmentFileTypeAllowed
+} from '@/shared/file-attachment'
 
 const props = defineProps({
   modelValue: {
@@ -218,10 +223,7 @@ const activeItem = computed(() => {
 
 const activeAcceptTypes = computed(() => {
   if (!activeItem.value) return ''
-  const ft = activeItem.value.fileTypes
-  if (typeof ft === 'string') return ft
-  if (Array.isArray(ft)) return ft.join(',')
-  return ''
+  return attachmentFileTypesToString(activeItem.value.fileTypes)
 })
 
 // 多组模式下，v-model 是对象 { itemName: [urls] }
@@ -268,13 +270,9 @@ const beforeUploadActive = (file) => {
   if (!item) return false
 
   const acceptTypes = activeAcceptTypes.value
-  if (acceptTypes) {
-    const fileExt = '.' + file.name.split('.').pop().toLowerCase()
-    const allowedTypes = acceptTypes.split(',').map(t => t.trim().toLowerCase())
-    if (!allowedTypes.includes(fileExt)) {
-      ElMessage.error(`不支持该文件类型，请上传 ${acceptTypes} 格式的文件`)
-      return false
-    }
+  if (acceptTypes && !isAttachmentFileTypeAllowed(file, acceptTypes)) {
+    ElMessage.error(`不支持该文件类型，请上传 ${acceptTypes} 格式的文件`)
+    return false
   }
   const maxSize = item.maxSize || 10
   const maxBytes = maxSize * 1024 * 1024
@@ -350,8 +348,11 @@ const getGroupTagType = (index) => {
 
 const getGroupTooltip = (item) => {
   const parts = []
+  if (item.required) {
+    parts.push('必填')
+  }
   if (item.fileTypes) {
-    const ft = typeof item.fileTypes === 'string' ? item.fileTypes : item.fileTypes.join(',')
+    const ft = attachmentFileTypesToString(item.fileTypes)
     parts.push(`类型: ${ft}`)
   }
   if (item.maxSize) {
@@ -382,12 +383,7 @@ const truncateFileName = (name, maxLen = 24) => {
 // ==================== 单组模式（原有逻辑） ====================
 const acceptTypes = computed(() => {
   if (props.field.fileTypes) {
-    if (typeof props.field.fileTypes === 'string') {
-      return props.field.fileTypes
-    }
-    if (Array.isArray(props.field.fileTypes)) {
-      return props.field.fileTypes.join(',')
-    }
+    return attachmentFileTypesToString(props.field.fileTypes)
   }
   if (props.isImage) {
     return '.jpg,.jpeg,.png,.gif,.bmp,.webp'
@@ -441,13 +437,10 @@ const getFileNameFromUrl = (url) => {
 }
 
 const beforeUpload = (file) => {
-  if (acceptTypes.value) {
-    const fileExt = '.' + file.name.split('.').pop().toLowerCase()
-    const allowedTypes = acceptTypes.value.split(',').map(t => t.trim().toLowerCase())
-    if (!allowedTypes.includes(fileExt)) {
-      ElMessage.error(`不支持该文件类型，请上传 ${acceptTypes.value} 格式的文件`)
-      return false
-    }
+  if (acceptTypes.value
+      && !isAttachmentFileTypeAllowed(file, acceptTypes.value)) {
+    ElMessage.error(`不支持该文件类型，请上传 ${acceptTypes.value} 格式的文件`)
+    return false
   }
   const maxBytes = maxSize.value * 1024 * 1024
   if (file.size > maxBytes) {
@@ -543,6 +536,11 @@ watch(() => props.modelValue, () => {
   color: #606266;
   transition: all 0.2s;
   white-space: nowrap;
+}
+
+.required-mark {
+  margin-left: 2px;
+  color: var(--el-color-danger);
 }
 
 .group-tag:hover {

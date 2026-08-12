@@ -85,6 +85,11 @@ storage:
 
 application:
   corsAllowedOrigins: ""
+  corsAllowCredentials: true
+  authSessionIdleTimeout: 2h
+  authSessionAbsoluteTimeout: 12h
+  authSessionRetention: 7d
+  authSessionCookieSecure: true
   trustForwardedHeaders: true
   httpAllowedHosts: ""
   httpAllowPrivateAddresses: false
@@ -147,6 +152,8 @@ monitoring:
     webhookMinimumAttempts: 10
     connectorSuccessRatio: 0.95
     connectorMinimumAttempts: 10
+    authFailureCount: 20
+    jwtInvalidCount: 5
 
 ingress:
   enabled: false

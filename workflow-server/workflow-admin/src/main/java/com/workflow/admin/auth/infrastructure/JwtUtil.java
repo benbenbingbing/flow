@@ -1,6 +1,7 @@
 package com.workflow.admin.auth.infrastructure;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Date;
+import java.time.Instant;
 
 /**
  * JWT工具类
@@ -25,7 +27,8 @@ import java.util.Date;
 @Slf4j
 @Component
 public class JwtUtil {
-    
+
+    /** JWT 外部签名密钥允许的最小字节数。 */
     private static final int MINIMUM_SECRET_BYTES = 32;
 
     /** JWT 签名密钥，必须由外部 Secret 提供。 */
@@ -52,33 +55,69 @@ public class JwtUtil {
     }
     
     /**
-     * 生成JWT Token
+     * 为指定刷新会话签发短期 Access Token。
      *
-     * @param userId   用户ID（作为 subject）
-     * @param username 用户名（作为 username claim）
-     * @return 签名后的 JWT Token 字符串
+     * @param userId 用户 ID
+     * @param username 用户名
+     * @param tokenVersion 用户全局令牌版本
+     * @param sessionId 刷新会话 ID
+     * @param sessionAbsoluteExpiry 刷新会话绝对过期时间
+     * @return Access Token 及其过期时间
      */
-    public static String generateToken(
+    public static JwtAccessToken issueAccessToken(
             String userId,
             String username,
-            long tokenVersion) {
-        Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + STATIC_EXPIRATION);
-        
-        return Jwts.builder()
+            long tokenVersion,
+            String sessionId,
+            Instant sessionAbsoluteExpiry) {
+        return issueAccessToken(
+                userId,
+                username,
+                tokenVersion,
+                sessionId,
+                Instant.now(),
+                sessionAbsoluteExpiry);
+    }
+
+    /**
+     * 使用指定签发时间生成 Access Token，供会话服务和边界测试使用。
+     *
+     * @param userId 用户 ID
+     * @param username 用户名
+     * @param tokenVersion 用户全局令牌版本
+     * @param sessionId 刷新会话 ID
+     * @param issuedAt Access Token 签发时间
+     * @param sessionAbsoluteExpiry 刷新会话绝对过期时间
+     * @return Access Token 及其过期时间
+     */
+    public static JwtAccessToken issueAccessToken(
+            String userId,
+            String username,
+            long tokenVersion,
+            String sessionId,
+            Instant issuedAt,
+            Instant sessionAbsoluteExpiry) {
+        Instant configuredExpiry =
+                issuedAt.plusMillis(STATIC_EXPIRATION);
+        Instant expiry = configuredExpiry.isBefore(sessionAbsoluteExpiry)
+                ? configuredExpiry
+                : sessionAbsoluteExpiry;
+        if (!expiry.isAfter(issuedAt)) {
+            throw new IllegalArgumentException("登录会话已过期");
+        }
+
+        String token = Jwts.builder()
                 .subject(userId)
                 .claim("username", username)
                 .claim("tokenVersion", tokenVersion)
-                .issuedAt(now)
-                .expiration(expiryDate)
+                .claim("sid", sessionId)
+                .issuedAt(Date.from(issuedAt))
+                .expiration(Date.from(expiry))
                 .signWith(STATIC_KEY, Jwts.SIG.HS512)
                 .compact();
+        return new JwtAccessToken(token, expiry);
     }
 
-    public static String generateToken(String userId, String username) {
-        return generateToken(userId, username, 0L);
-    }
-    
     /**
      * 从Token中获取用户ID
      *
@@ -105,6 +144,48 @@ public class JwtUtil {
         Claims claims = parseToken(token);
         Object value = claims == null ? null : claims.get("tokenVersion");
         return value instanceof Number number ? number.longValue() : null;
+    }
+
+    /**
+     * 从 Token 中获取刷新会话 ID。
+     *
+     * @param token JWT Token
+     * @return 刷新会话 ID，Token 无效时返回 null
+     */
+    public static String getSessionIdFromToken(String token) {
+        Claims claims = parseToken(token);
+        return claims != null ? claims.get("sid", String.class) : null;
+    }
+
+    /**
+     * 区分有效、过期和非法 JWT，并提取认证需要的声明。
+     *
+     * @param token JWT Token
+     * @return JWT 检查结果
+     */
+    public static JwtTokenInspection inspectToken(String token) {
+        if (token == null || token.isBlank()) {
+            return JwtTokenInspection.invalid();
+        }
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(STATIC_KEY)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            return inspection(
+                    JwtTokenInspection.Status.VALID,
+                    claims);
+        } catch (ExpiredJwtException exception) {
+            return inspection(
+                    JwtTokenInspection.Status.EXPIRED,
+                    exception.getClaims());
+        } catch (Exception exception) {
+            log.debug(
+                    "JWT validation failed: {}",
+                    exception.getClass().getSimpleName());
+            return JwtTokenInspection.invalid();
+        }
     }
     
     /**
@@ -133,11 +214,41 @@ public class JwtUtil {
      * @return Token 合法且未过期返回 true，否则 false
      */
     public static boolean validateToken(String token) {
-        Claims claims = parseToken(token);
+        return inspectToken(token).status()
+                == JwtTokenInspection.Status.VALID;
+    }
+
+    private static JwtTokenInspection inspection(
+            JwtTokenInspection.Status status,
+            Claims claims) {
         if (claims == null) {
-            return false;
+            return JwtTokenInspection.invalid();
         }
-        return !claims.getExpiration().before(new Date());
+        String userId = claims.getSubject();
+        String username = claims.get("username", String.class);
+        Object versionValue = claims.get("tokenVersion");
+        Long tokenVersion = versionValue instanceof Number number
+                ? number.longValue()
+                : null;
+        String sessionId = claims.get("sid", String.class);
+        Date expiration = claims.getExpiration();
+        if (userId == null
+                || userId.isBlank()
+                || username == null
+                || username.isBlank()
+                || tokenVersion == null
+                || sessionId == null
+                || sessionId.isBlank()
+                || expiration == null) {
+            return JwtTokenInspection.invalid();
+        }
+        return new JwtTokenInspection(
+                status,
+                userId,
+                username,
+                tokenVersion,
+                sessionId,
+                expiration.toInstant());
     }
 
     /**

@@ -44,6 +44,8 @@ public class CorsConfig {
                         .allowedHeaders(
                                 corsProperties.getAllowedHeaders()
                                         .toArray(String[]::new))
+                        .allowCredentials(
+                                corsProperties.isAllowCredentials())
                         .maxAge(corsProperties.getMaxAge().toSeconds());
             }
             
@@ -54,6 +56,8 @@ public class CorsConfig {
                         .addPathPatterns("/api/**")
                         .excludePathPatterns(
                                 "/api/auth/login",
+                                "/api/auth/refresh",
+                                "/api/auth/logout",
                                 "/api/open/**");
                 // Every mapped API must then declare an explicit access policy.
                 registry.addInterceptor(endpointAuthorizationInterceptor)

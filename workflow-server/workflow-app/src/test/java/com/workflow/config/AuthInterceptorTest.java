@@ -3,29 +3,21 @@ package com.workflow.config;
 import com.workflow.admin.auth.infrastructure.AuthInterceptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.auth.infrastructure.JwtUtil;
+import com.workflow.admin.auth.application.AuthErrorCode;
+import com.workflow.admin.auth.application.AuthSessionException;
+import com.workflow.admin.auth.application.AuthSessionService;
+import com.workflow.admin.auth.application.AuthenticatedAccess;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.nimbusds.jose.JOSEObjectType;
-import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.crypto.RSASSASigner;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
-import java.security.KeyPairGenerator;
-import java.security.interfaces.RSAPrivateKey;
-import java.time.Instant;
-import java.util.Date;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -39,7 +31,8 @@ class AuthInterceptorTest {
 
     /** JSON 序列化器，用于解析响应体 */
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final SysUserService userService = mock(SysUserService.class);
+    private final AuthSessionService authSessionService =
+            mock(AuthSessionService.class);
 
     /** 每个测试后清理用户上下文 */
     @AfterEach
@@ -48,11 +41,16 @@ class AuthInterceptorTest {
     }
 
     /**
-     * 缺少 Token 的请求应返回 401 且响应体含"未登录或登录已过期"。
+     * 缺少 Token 的请求应返回稳定的非法 Access Token 错误。
      */
     @Test
     void missingTokenReturnsHttp401AndUnauthorizedBody() throws Exception {
-        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        when(authSessionService.authenticateAccess(null))
+                .thenThrow(new AuthSessionException(
+                        AuthErrorCode.ACCESS_INVALID,
+                        "登录凭证无效"));
+        AuthInterceptor interceptor =
+                new AuthInterceptor(authSessionService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/entity/data/test");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -62,13 +60,17 @@ class AuthInterceptorTest {
         assertEquals(401, response.getStatus());
         JsonNode body = objectMapper.readTree(response.getContentAsString());
         assertEquals(401, body.get("code").asInt());
-        assertEquals("未登录或登录已过期", body.get("message").asText());
+        assertEquals(
+                AuthErrorCode.ACCESS_INVALID,
+                body.get("errorCode").asText());
+        assertEquals("登录凭证无效", body.get("message").asText());
     }
 
     /** 登录端点应放行，不需要 Token */
     @Test
     void loginEndpointDoesNotRequireToken() throws Exception {
-        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        AuthInterceptor interceptor =
+                new AuthInterceptor(authSessionService);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/login");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -81,7 +83,12 @@ class AuthInterceptorTest {
     /** current 端点应需要 Token，缺少时返回 401 */
     @Test
     void currentEndpointRequiresToken() throws Exception {
-        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        when(authSessionService.authenticateAccess(null))
+                .thenThrow(new AuthSessionException(
+                        AuthErrorCode.ACCESS_INVALID,
+                        "登录凭证无效"));
+        AuthInterceptor interceptor =
+                new AuthInterceptor(authSessionService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/current");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -98,10 +105,15 @@ class AuthInterceptorTest {
      */
     @Test
     void validTokenSetsCurrentUserForProtectedEndpoint() throws Exception {
-        initJwtUtil();
-        String token = JwtUtil.generateToken("1", "admin");
-        when(userService.getById("1")).thenReturn(activeUser("admin", 0L, false));
-        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        String token = "valid-access-token";
+        when(authSessionService.authenticateAccess(token))
+                .thenReturn(new AuthenticatedAccess(
+                        "1",
+                        "admin",
+                        "session-1",
+                        false));
+        AuthInterceptor interceptor =
+                new AuthInterceptor(authSessionService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/current");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -111,16 +123,23 @@ class AuthInterceptorTest {
         assertTrue(allowed);
         assertEquals("1", UserContext.getUserId());
         assertEquals("admin", UserContext.getUsername());
+        assertEquals("session-1", UserContext.getSessionId());
         assertEquals("1", request.getAttribute("userId"));
         assertEquals("admin", request.getAttribute("userName"));
+        assertEquals("session-1", request.getAttribute("sessionId"));
     }
 
     @Test
     void temporaryPasswordOnlyAllowsPasswordRecoveryEndpoints() throws Exception {
-        initJwtUtil();
-        String token = JwtUtil.generateToken("1", "alice");
-        when(userService.getById("1")).thenReturn(activeUser("alice", 0L, true));
-        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        String token = "temporary-password-token";
+        when(authSessionService.authenticateAccess(token))
+                .thenReturn(new AuthenticatedAccess(
+                        "1",
+                        "alice",
+                        "session-1",
+                        true));
+        AuthInterceptor interceptor =
+                new AuthInterceptor(authSessionService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/process/task/todo");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -132,14 +151,20 @@ class AuthInterceptorTest {
         assertEquals(
                 "首次登录或密码重置后，请先修改密码",
                 objectMapper.readTree(response.getContentAsString()).get("message").asText());
+        assertNull(UserContext.getUserId());
+        assertNull(UserContext.getUsername());
+        assertNull(UserContext.getSessionId());
     }
 
     @Test
     void revokedTokenVersionReturnsUnauthorized() throws Exception {
-        initJwtUtil();
-        String token = JwtUtil.generateToken("1", "alice", 3L);
-        when(userService.getById("1")).thenReturn(activeUser("alice", 4L, false));
-        AuthInterceptor interceptor = new AuthInterceptor(userService);
+        String token = "revoked-token";
+        when(authSessionService.authenticateAccess(token))
+                .thenThrow(new AuthSessionException(
+                        AuthErrorCode.SESSION_REVOKED,
+                        "登录会话已失效"));
+        AuthInterceptor interceptor =
+                new AuthInterceptor(authSessionService);
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/api/auth/current");
         request.addHeader("Authorization", "Bearer " + token);
@@ -147,45 +172,30 @@ class AuthInterceptorTest {
 
         assertFalse(interceptor.preHandle(request, response, new Object()));
         assertEquals(401, response.getStatus());
+        assertEquals(
+                AuthErrorCode.SESSION_REVOKED,
+                objectMapper.readTree(response.getContentAsString())
+                        .get("errorCode")
+                        .asText());
     }
 
     @Test
     void machineRsaTokenCannotEnterInternalUserApi()
             throws Exception {
-        initJwtUtil();
-        KeyPairGenerator generator =
-                KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048);
-        RSAPrivateKey privateKey = (RSAPrivateKey)
-                generator.generateKeyPair().getPrivate();
-        Instant now = Instant.now();
-        SignedJWT machineToken = new SignedJWT(
-                new JWSHeader.Builder(JWSAlgorithm.RS256)
-                        .type(new JOSEObjectType("at+jwt"))
-                        .keyID("machine-test-key")
-                        .build(),
-                new JWTClaimsSet.Builder()
-                        .issuer("https://flow.test")
-                        .subject("flow_machine")
-                        .audience("flow-open-api")
-                        .issueTime(Date.from(now))
-                        .expirationTime(Date.from(
-                                now.plusSeconds(300)))
-                        .claim(
-                                "scope",
-                                java.util.Set.of(
-                                        "process.instance.read"))
-                        .build());
-        machineToken.sign(new RSASSASigner(privateKey));
+        String machineToken = "machine-rsa-token";
+        when(authSessionService.authenticateAccess(machineToken))
+                .thenThrow(new AuthSessionException(
+                        AuthErrorCode.ACCESS_INVALID,
+                        "登录凭证无效"));
         AuthInterceptor interceptor =
-                new AuthInterceptor(userService);
+                new AuthInterceptor(authSessionService);
         MockHttpServletRequest request =
                 new MockHttpServletRequest(
                         "GET",
                         "/api/process/task/todo");
         request.addHeader(
                 "Authorization",
-                "Bearer " + machineToken.serialize());
+                "Bearer " + machineToken);
         MockHttpServletResponse response =
                 new MockHttpServletResponse();
 
@@ -198,9 +208,9 @@ class AuthInterceptorTest {
 
     @Test
     void missingPasswordPolicyServiceFailsClosed() throws Exception {
-        initJwtUtil();
-        String token = JwtUtil.generateToken("1", "alice");
-        AuthInterceptor interceptor = new AuthInterceptor((SysUserService) null);
+        String token = "any-token";
+        AuthInterceptor interceptor =
+                new AuthInterceptor((AuthSessionService) null);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/process/task/todo");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -214,28 +224,4 @@ class AuthInterceptorTest {
                 objectMapper.readTree(response.getContentAsString()).get("message").asText());
     }
 
-    /** 初始化 JwtUtil 实例，通过反射注入密钥与过期时间后调用 init */
-    private void initJwtUtil() {
-        JwtUtil jwtUtil = new JwtUtil();
-        ReflectionTestUtils.setField(
-                jwtUtil,
-                "secret",
-                "auth-interceptor-test-secret-with-adequate-entropy");
-        ReflectionTestUtils.setField(jwtUtil, "expiration", 900000L);
-        jwtUtil.init();
-    }
-
-    private SysUser activeUser(
-            String username,
-            long tokenVersion,
-            boolean passwordResetRequired) {
-        SysUser user = new SysUser();
-        user.setId("1");
-        user.setUsername(username);
-        user.setStatus(SysUser.Status.ENABLED.getValue());
-        user.setDeleted(0);
-        user.setTokenVersion(tokenVersion);
-        user.setPasswordResetRequired(passwordResetRequired);
-        return user;
-    }
 }

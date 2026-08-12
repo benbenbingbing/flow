@@ -449,20 +449,35 @@
                 <el-form-item label="项名称">
                   <el-input v-model="item.itemName" placeholder="如：项目章程、需求文档" />
                 </el-form-item>
+                <el-form-item label="是否必填">
+                  <el-switch v-model="item.required" />
+                  <div class="form-tip">开启后，该附件项至少需要上传一个文件。</div>
+                </el-form-item>
                 <el-form-item label="文件类型">
                   <el-select
                     v-model="item.fileTypes"
                     multiple
-                    placeholder="选择允许的文件类型"
+                    filterable
+                    allow-create
+                    default-first-option
+                    placeholder="选择或输入扩展名，如 .pdf、dwg"
                     style="width: 100%"
+                    @change="normalizeFileItemTypes(item)"
                   >
-                    <el-option label="图片 (.jpg, .jpeg, .png, .gif)" value=".jpg,.jpeg,.png,.gif" />
-                    <el-option label="文档 (.pdf, .doc, .docx)" value=".pdf,.doc,.docx" />
-                    <el-option label="表格 (.xls, .xlsx)" value=".xls,.xlsx" />
-                    <el-option label="文本 (.txt)" value=".txt" />
-                    <el-option label="压缩包 (.zip, .rar)" value=".zip,.rar" />
+                    <el-option-group
+                      v-for="group in attachmentFileTypeGroups"
+                      :key="group.label"
+                      :label="group.label"
+                    >
+                      <el-option
+                        v-for="type in group.options"
+                        :key="type"
+                        :label="type"
+                        :value="type"
+                      />
+                    </el-option-group>
                   </el-select>
-                  <div class="form-tip">不选则表示允许所有类型</div>
+                  <div class="form-tip">可直接输入自定义扩展名并回车；不选表示允许所有类型。</div>
                 </el-form-item>
                 <el-form-item label="单文件大小">
                   <el-input-number
@@ -1037,6 +1052,7 @@ import PageState from '@/components/PageState.vue'
 import { useEntityFieldDraftSave } from '@/composables/useEntityFieldDraftSave'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useEntityValidationRules } from '@/composables/useEntityValidationRules'
+import { normalizeAttachmentFileTypes } from '@/shared/file-attachment'
 import {
   ENTITY_FIELD_TYPES,
   WORKFLOW_SYSTEM_FIELD_CODES,
@@ -1439,6 +1455,7 @@ const selectField = (field) => {
   if ((field.fieldType === 'FILE' || field.fieldType === 'IMAGE') && (!field.fileItems || field.fileItems.length === 0)) {
     field.fileItems = [{
       itemName: field.fieldName || '附件',
+      required: false,
       fileTypes: field.fileTypes || [],
       maxSize: field.fileMaxSize || 10,
       maxCount: field.fileMaxCount || 5
@@ -1993,6 +2010,18 @@ const savePermission = async () => {
 
 const cloneValue = (value) => JSON.parse(JSON.stringify(value))
 
+const attachmentFileTypeGroups = [
+  { label: '图片', options: ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'] },
+  { label: '文档', options: ['.pdf', '.doc', '.docx', '.ppt', '.pptx'] },
+  { label: '表格', options: ['.xls', '.xlsx', '.csv'] },
+  { label: '文本', options: ['.txt', '.md'] },
+  { label: '压缩包', options: ['.zip', '.rar', '.7z', '.tar.gz'] }
+]
+
+const normalizeFileItemTypes = (item) => {
+  item.fileTypes = normalizeAttachmentFileTypes(item.fileTypes)
+}
+
 // 添加附件项
 const addFileItem = () => {
   if (!selectedField.value.fileItems) {
@@ -2000,6 +2029,7 @@ const addFileItem = () => {
   }
   selectedField.value.fileItems.push({
     itemName: '',
+    required: false,
     fileTypes: [],
     maxSize: 10,
     maxCount: 5

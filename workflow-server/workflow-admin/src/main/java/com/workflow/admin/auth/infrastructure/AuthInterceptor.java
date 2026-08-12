@@ -1,12 +1,11 @@
 package com.workflow.admin.auth.infrastructure;
 
-import com.workflow.admin.auth.infrastructure.JwtUtil;
+import com.workflow.admin.auth.application.AuthSessionException;
+import com.workflow.admin.auth.application.AuthSessionService;
+import com.workflow.admin.auth.application.AuthenticatedAccess;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -15,7 +14,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Objects;
 
 /**
  * JWT认证拦截器
@@ -24,25 +22,29 @@ import java.util.Objects;
  * 登录、退出接口直接放行。请求结束后清理 ThreadLocal，避免内存泄漏。
  * </p>
  */
-@Slf4j
 @Component
 public class AuthInterceptor implements HandlerInterceptor {
     
     /** JSON 序列化器，用于写出错误响应 */
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final SysUserService userService;
+    /** Access Token 与服务端刷新会话的联合认证服务。 */
+    private final AuthSessionService authSessionService;
 
     /**
      * MVC 切片测试不会加载系统服务，使用 Provider 可让认证拦截器正常创建；
-     * 完整应用中仍必须存在 SysUserService，否则受保护请求按不可用处理。
+     * 完整应用中仍必须存在 AuthSessionService，否则受保护请求按不可用处理。
      */
     @Autowired
-    public AuthInterceptor(ObjectProvider<SysUserService> userServiceProvider) {
-        this.userService = userServiceProvider.getIfAvailable();
+    public AuthInterceptor(
+            ObjectProvider<AuthSessionService>
+                    authSessionServiceProvider) {
+        this.authSessionService =
+                authSessionServiceProvider.getIfAvailable();
     }
 
-    public AuthInterceptor(SysUserService userService) {
-        this.userService = userService;
+    public AuthInterceptor(
+            AuthSessionService authSessionService) {
+        this.authSessionService = authSessionService;
     }
     
     /**
@@ -56,9 +58,11 @@ public class AuthInterceptor implements HandlerInterceptor {
      */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // Login is the only anonymous authentication endpoint.
+        // 登录、刷新和退出端点可在 Access Token 缺失或过期时处理。
         String uri = request.getRequestURI();
-        if (uri.equals("/api/auth/login")) {
+        if (uri.equals("/api/auth/login")
+                || uri.equals("/api/auth/refresh")
+                || uri.equals("/api/auth/logout")) {
             return true;
         }
         
@@ -68,43 +72,45 @@ public class AuthInterceptor implements HandlerInterceptor {
             token = token.substring(7);
         }
         
-        // 验证Token
-        if (token == null || !JwtUtil.validateToken(token)) {
-            writeErrorResponse(response, 401, "未登录或登录已过期");
-            return false;
-        }
-        
-        // 设置当前用户上下文
-        String userId = JwtUtil.getUserIdFromToken(token);
-        String username = JwtUtil.getUsernameFromToken(token);
-
-        if (userService == null) {
+        if (authSessionService == null) {
             writeErrorResponse(response, 503, "认证服务暂不可用");
             return false;
         }
-        SysUser user = userService.getById(userId);
-        Long tokenVersion = JwtUtil.getTokenVersionFromToken(token);
-        if (user == null
-                || !SysUser.Status.ENABLED.getValue().equals(user.getStatus())
-                || !Objects.equals(username, user.getUsername())
-                || tokenVersion == null
-                || !tokenVersion.equals(
-                        user.getTokenVersion() == null ? 0L : user.getTokenVersion())) {
-            writeErrorResponse(response, 401, "登录状态已失效");
+        AuthenticatedAccess authenticated;
+        try {
+            authenticated =
+                    authSessionService.authenticateAccess(token);
+        } catch (AuthSessionException exception) {
+            writeErrorResponse(
+                    response,
+                    401,
+                    exception.getErrorCode(),
+                    exception.getMessage());
             return false;
         }
-        UserContext.setCurrentUser(userId, username);
-        if (Boolean.TRUE.equals(user.getPasswordResetRequired())
+        UserContext.setCurrentUser(
+                authenticated.userId(),
+                authenticated.username(),
+                authenticated.sessionId());
+        if (authenticated.passwordResetRequired()
                 && !uri.equals("/api/auth/current")
                 && !uri.equals("/api/auth/change-password")
                 && !uri.equals("/api/auth/logout")) {
             writeErrorResponse(response, 428, "首次登录或密码重置后，请先修改密码");
+            UserContext.clear();
             return false;
         }
         
         // 设置 request attribute，供控制器使用
-        request.setAttribute("userId", userId);
-        request.setAttribute("userName", username);
+        request.setAttribute(
+                "userId",
+                authenticated.userId());
+        request.setAttribute(
+                "userName",
+                authenticated.username());
+        request.setAttribute(
+                "sessionId",
+                authenticated.sessionId());
         
         return true;
     }
@@ -133,8 +139,23 @@ public class AuthInterceptor implements HandlerInterceptor {
      * @throws IOException 写出响应发生 IO 异常时抛出
      */
     private void writeErrorResponse(HttpServletResponse response, int code, String message) throws IOException {
+        writeErrorResponse(response, code, null, message);
+    }
+
+    private void writeErrorResponse(
+            HttpServletResponse response,
+            int code,
+            String errorCode,
+            String message) throws IOException {
         response.setContentType("application/json;charset=UTF-8");
         response.setStatus(code);
-        response.getWriter().write(objectMapper.writeValueAsString(Result.error(code, message)));
+        Result<Void> result = errorCode == null
+                ? Result.error(code, message)
+                : Result.error(
+                        code,
+                        errorCode,
+                        message);
+        response.getWriter().write(
+                objectMapper.writeValueAsString(result));
     }
 }

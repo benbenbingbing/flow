@@ -1,9 +1,23 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import {
+  createSingleFlight,
+  isAccessTokenExpired,
+  isTerminalAuthError,
+  shouldRefreshAccessToken
+} from '@/shared/auth-session'
 
 export const API_SUCCESS_CODES = new Set([0, 200, '0', '200'])
 export const BUSINESS_TRACE_HEADER = 'X-Business-Trace-Key'
+
+const API_BASE_URL =
+  import.meta.env?.VITE_API_BASE_URL || '/api'
+const ACCESS_EXPIRED_ERROR_CODE = 'AUTH_ACCESS_EXPIRED'
+const NO_AUTH_RETRY = Symbol('NO_AUTH_RETRY')
+
+let authTerminationHandled = false
+let bootstrapPromise = null
 
 export function createBusinessTraceKey() {
   if (globalThis.crypto?.randomUUID) {
@@ -74,92 +88,342 @@ export function getApiErrorMessage(payload, fallback = '请求失败') {
   return payload?.message || payload?.msg || fallback
 }
 
-function redirectToLogin(message) {
-  ElMessage.error(message || '登录已过期，请重新登录')
-  const userStore = useUserStore()
-  userStore.logout()
-  window.location.href = '/login'
-}
-
-function rejectWithMessage(message, source) {
+function createApiError(
+  message,
+  source,
+  status
+) {
   const error = new Error(message || '请求失败')
   error.source = source
   error.errorCode = source?.errorCode
-  return Promise.reject(error)
+  error.currentData = source?.data
+  error.status = status ?? (Number(source?.code) || undefined)
+  return error
 }
 
-function handleApiPayload(payload, config = {}) {
-  if (!payload || typeof payload.code === 'undefined') {
-    return payload
+function isAuthLifecycleRequest(config = {}) {
+  const url = String(config.url || '')
+  return [
+    '/auth/login',
+    '/auth/refresh',
+    '/auth/logout'
+  ].some(path => url.endsWith(path))
+}
+
+function isTrustedApiRequest(config = {}) {
+  const url = String(config.url || '')
+  if (!/^https?:\/\//i.test(url)) {
+    return true
+  }
+  if (typeof window === 'undefined') {
+    return false
+  }
+  const apiOrigin = new URL(
+    API_BASE_URL,
+    window.location.origin
+  ).origin
+  return new URL(url).origin === apiOrigin
+}
+
+function setAuthorizationHeader(config, token) {
+  config.headers ||= {}
+  if (typeof config.headers.set === 'function') {
+    if (token) {
+      config.headers.set('Authorization', `Bearer ${token}`)
+    } else {
+      config.headers.delete?.('Authorization')
+    }
+    return
+  }
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  } else {
+    delete config.headers.Authorization
+  }
+}
+
+function terminateAuthSession(
+  message,
+  {
+    notify = true,
+    broadcast = true
+  } = {}
+) {
+  const userStore = useUserStore()
+  userStore.clearAuth({
+    broadcast,
+    reason: 'invalidated'
+  })
+  if (authTerminationHandled) return
+
+  authTerminationHandled = true
+  if (notify) {
+    ElMessage.error(message || '登录已过期，请重新登录')
+  }
+  if (
+    typeof window !== 'undefined'
+    && window.location.pathname !== '/login'
+  ) {
+    window.location.href = '/login'
+  }
+}
+
+const refreshClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json;charset=UTF-8'
+  }
+})
+
+async function executeRefresh() {
+  let response
+  try {
+    response = await refreshClient.post('/auth/refresh')
+  } catch (error) {
+    if (error.response) {
+      throw createApiError(
+        getApiErrorMessage(
+          error.response.data,
+          '登录会话刷新失败'
+        ),
+        error.response.data,
+        error.response.status
+      )
+    }
+    throw error
+  }
+  const payload = response.data
+  if (
+    !payload
+    || typeof payload.code === 'undefined'
+    || !API_SUCCESS_CODES.has(payload.code)
+  ) {
+    throw createApiError(
+      getApiErrorMessage(payload, '登录会话刷新失败'),
+      payload,
+      response.status
+    )
   }
 
-  const { code } = payload
-  if (API_SUCCESS_CODES.has(code)) {
-    return normalizeApiResponse(payload)
-  }
+  const session = normalizeApiResponse(payload)
+  const userStore = useUserStore()
+  userStore.applySession(session)
+  authTerminationHandled = false
+  return session
+}
 
-  const message = getApiErrorMessage(payload)
-  if (Number(code) === 401) {
-    redirectToLogin(message)
-    return rejectWithMessage(message, payload)
-  }
+/**
+ * 同一标签页内所有请求共用一次 Refresh 调用。
+ */
+export const refreshAuthSession =
+  createSingleFlight(executeRefresh)
 
-  if (!config.silentError) {
-    ElMessage.error(message)
+/**
+ * 路由首次初始化时尝试通过 HttpOnly Cookie 恢复会话。
+ */
+export function restoreAuthSession() {
+  if (!bootstrapPromise) {
+    bootstrapPromise = refreshAuthSession()
+      .then(() => true)
+      .catch((error) => {
+        if (isTerminalAuthError(error.errorCode)) {
+          terminateAuthSession(error.message, {
+            notify: false,
+            broadcast: false
+          })
+          return false
+        }
+        return Boolean(useUserStore().token)
+      })
   }
-  return rejectWithMessage(message, payload)
+  return bootstrapPromise
 }
 
 const request = axios.create({
-  baseURL: import.meta.env?.VITE_API_BASE_URL || '/api',
+  baseURL: API_BASE_URL,
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json;charset=UTF-8'
   }
 })
 
 request.interceptors.request.use(
-  (config) => {
+  async (config) => {
     ensureBusinessTraceHeader(config)
     const userStore = useUserStore()
-    const token = userStore.token
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    if (userStore.token && authTerminationHandled) {
+      authTerminationHandled = false
     }
+
+    const trustedApiRequest = isTrustedApiRequest(config)
+    if (!trustedApiRequest) {
+      config.skipAuthRefresh = true
+      config.withCredentials = false
+      setAuthorizationHeader(config, '')
+      return config
+    }
+
+    const mayRefresh = !config.skipAuthRefresh
+      && !isAuthLifecycleRequest(config)
+    if (
+      mayRefresh
+      && shouldRefreshAccessToken(
+        userStore.token,
+        userStore.tokenExpiresAt
+      )
+    ) {
+      try {
+        await refreshAuthSession()
+      } catch (error) {
+        if (isTerminalAuthError(error.errorCode)) {
+          terminateAuthSession(error.message)
+          throw error
+        }
+        if (isAccessTokenExpired(userStore.tokenExpiresAt)) {
+          throw error
+        }
+      }
+    }
+
+    setAuthorizationHeader(config, userStore.token)
     return config
   },
   (error) => Promise.reject(error)
 )
 
+async function retryAfterRefresh(config, payload) {
+  if (
+    config?.skipAuthRefresh
+    || config?._authRetried
+    || payload?.errorCode !== ACCESS_EXPIRED_ERROR_CODE
+  ) {
+    return NO_AUTH_RETRY
+  }
+
+  try {
+    await refreshAuthSession()
+    return request({
+      ...config,
+      _authRetried: true
+    })
+  } catch (error) {
+    if (isTerminalAuthError(error.errorCode)) {
+      terminateAuthSession(error.message)
+    }
+    throw error
+  }
+}
+
+async function handleApiPayload(
+  payload,
+  config = {},
+  status
+) {
+  if (!payload || typeof payload.code === 'undefined') {
+    return payload
+  }
+
+  if (API_SUCCESS_CODES.has(payload.code)) {
+    return normalizeApiResponse(payload)
+  }
+
+  if (Number(payload.code) === 401) {
+    const retried = await retryAfterRefresh(config, payload)
+    if (retried !== NO_AUTH_RETRY) return retried
+    if (
+      !config.skipAuthRefresh
+      && isTerminalAuthError(payload.errorCode)
+    ) {
+      const message = getApiErrorMessage(
+        payload,
+        '登录已过期，请重新登录'
+      )
+      terminateAuthSession(message)
+      throw createApiError(message, payload, status)
+    }
+  }
+
+  const message = getApiErrorMessage(payload)
+  if (!config.silentError) {
+    ElMessage.error(message)
+  }
+  throw createApiError(message, payload, status)
+}
+
 request.interceptors.response.use(
-  (response) => {
+  async (response) => {
     const payload = response.data
 
-    // Blob 响应：如果后端返回的是 JSON 错误，先解析再按统一逻辑处理
-    if (response.config && response.config.responseType === 'blob') {
-      const contentType = (response.headers && response.headers['content-type']) || ''
+    if (response.config?.responseType === 'blob') {
+      const contentType =
+        response.headers?.['content-type'] || ''
       if (contentType.includes('application/json')) {
-        return payload.text().then((text) => {
-          try {
-            const json = JSON.parse(text)
-            return handleApiPayload(json)
-          } catch (e) {
+        const text = await payload.text()
+        try {
+          return await handleApiPayload(
+            JSON.parse(text),
+            response.config,
+            response.status
+          )
+        } catch (error) {
+          if (error instanceof SyntaxError) {
             return payload
           }
-        })
+          throw error
+        }
       }
       return payload
     }
 
-    return handleApiPayload(payload, response.config || {})
+    return handleApiPayload(
+      payload,
+      response.config || {},
+      response.status
+    )
   },
-  (error) => {
-    const { response } = error
+  async (error) => {
+    const { response, config = {} } = error
     if (response?.status === 401) {
-      redirectToLogin(getApiErrorMessage(response.data, '登录已过期，请重新登录'))
-      return Promise.reject(error)
+      let payload = response.data
+      if (
+        config.responseType === 'blob'
+        && payload
+        && typeof payload.text === 'function'
+      ) {
+        try {
+          payload = JSON.parse(await payload.text())
+        } catch {
+          payload = response.data
+        }
+      }
+      const retried = await retryAfterRefresh(
+        config,
+        payload
+      )
+      if (retried !== NO_AUTH_RETRY) return retried
+      if (
+        !config.skipAuthRefresh
+        && isTerminalAuthError(payload?.errorCode)
+      ) {
+        const message = getApiErrorMessage(
+          payload,
+          '登录已过期，请重新登录'
+        )
+        terminateAuthSession(message)
+        error.message = message
+        error.errorCode = payload.errorCode
+        error.currentData = payload.data
+        error.status = response.status
+        return Promise.reject(error)
+      }
     }
-    if (response?.status === 428 && window.location.pathname !== '/change-password') {
+    if (
+      response?.status === 428
+      && window.location.pathname !== '/change-password'
+    ) {
       window.location.href = '/change-password'
     }
 
@@ -170,7 +434,7 @@ request.interceptors.response.use(
     error.errorCode = response?.data?.errorCode
     error.currentData = response?.data?.data
     error.status = response?.status
-    if (!error.config?.silentError) {
+    if (!config.silentError) {
       ElMessage.error(message)
     }
     return Promise.reject(error)

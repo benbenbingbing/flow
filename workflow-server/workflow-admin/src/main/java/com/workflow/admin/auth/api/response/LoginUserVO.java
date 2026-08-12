@@ -51,6 +51,11 @@ public class LoginUserVO {
     private String token;
 
     /**
+     * Access Token 的绝对过期时间，ISO-8601 格式。
+     */
+    private String tokenExpiresAt;
+
+    /**
      * 是否必须先修改临时密码
      */
     private Boolean passwordResetRequired;

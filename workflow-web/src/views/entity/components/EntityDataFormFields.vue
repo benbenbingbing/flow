@@ -447,9 +447,16 @@ const runtimeFormFields = computed(() =>
         item.fieldCode === field.fieldCode || item.id === field.fieldId)
       const dictType = field.dictType || entityField?.dictType
       const options = dictType ? dictOptionMap.value[dictType] : null
-      const runtimeField = options
-        ? { ...field, dictType, optionsJson: JSON.stringify(options) }
-        : field
+      const runtimeField = {
+        ...(entityField || {}),
+        ...field,
+        fileItems: field.fileItems?.length
+          ? field.fileItems
+          : (entityField?.fileItems || []),
+        ...(options
+          ? { dictType, optionsJson: JSON.stringify(options) }
+          : {})
+      }
       return withEntityStatusFieldOptions(
         runtimeField,
         entityStatusOptions.value

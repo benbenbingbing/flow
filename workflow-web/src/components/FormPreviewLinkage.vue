@@ -261,6 +261,19 @@ watch(formData, (val) => {
 const processedFields = computed(() => {
   const fields = props.form?.fields || []
   return [...fields]
+    .map(field => {
+      const entityField = props.entityFields.find(item =>
+        String(item?.id || '') === String(field?.fieldId || field?.id || '')
+          || item?.fieldCode === field?.fieldCode
+      )
+      return {
+        ...(entityField || {}),
+        ...field,
+        fileItems: field?.fileItems?.length
+          ? field.fileItems
+          : (entityField?.fileItems || [])
+      }
+    })
     .filter(field => isFieldVisibleForMode(field, props.mode))
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 })

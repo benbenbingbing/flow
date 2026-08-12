@@ -1,5 +1,6 @@
 package com.workflow.core.result;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -22,6 +23,12 @@ public class Result<T> implements Serializable {
      * 响应消息
      */
     private String message;
+
+    /**
+     * 稳定的业务错误编码，成功响应时为空。
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String errorCode;
     
     /**
      * 响应数据
@@ -44,6 +51,25 @@ public class Result<T> implements Serializable {
     public Result(int code, String message, T data) {
         this.code = code;
         this.message = message;
+        this.data = data;
+    }
+
+    /**
+     * 全参构造方法。
+     *
+     * @param code 响应码
+     * @param message 响应消息
+     * @param errorCode 稳定业务错误编码
+     * @param data 响应数据
+     */
+    public Result(
+            int code,
+            String message,
+            String errorCode,
+            T data) {
+        this.code = code;
+        this.message = message;
+        this.errorCode = errorCode;
         this.data = data;
     }
     
@@ -96,6 +122,25 @@ public class Result<T> implements Serializable {
      */
     public static <T> Result<T> error(int code, String message) {
         return new Result<>(code, message, null);
+    }
+
+    /**
+     * 失败响应（带状态码和稳定错误编码）。
+     *
+     * @param code 失败状态码
+     * @param errorCode 稳定业务错误编码
+     * @param message 失败消息
+     * @return 携带指定状态码和错误编码的失败结果
+     */
+    public static <T> Result<T> error(
+            int code,
+            String errorCode,
+            String message) {
+        return new Result<>(
+                code,
+                message,
+                errorCode,
+                null);
     }
 
     /**

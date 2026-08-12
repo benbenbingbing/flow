@@ -30,6 +30,12 @@ public class EntityFieldFileItem {
     private String itemName;
 
     /**
+     * 是否至少需要上传一个文件
+     */
+    @TableField("is_required")
+    private Boolean required;
+
+    /**
      * 允许的文件类型（逗号分隔，如：.pdf,.doc,.docx）
      */
     private String fileTypes;

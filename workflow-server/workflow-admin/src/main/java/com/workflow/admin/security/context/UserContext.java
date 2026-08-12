@@ -16,6 +16,9 @@ public class UserContext {
     private static final ThreadLocal<String> USER_ID = new ThreadLocal<>();
     /** 当前登录用户名（线程隔离） */
     private static final ThreadLocal<String> USERNAME = new ThreadLocal<>();
+    /** 当前浏览器刷新会话 ID（线程隔离） */
+    private static final ThreadLocal<String> SESSION_ID =
+            new ThreadLocal<>();
     
     /**
      * 设置当前用户
@@ -24,8 +27,23 @@ public class UserContext {
      * @param username 用户名
      */
     public static void setCurrentUser(String userId, String username) {
+        setCurrentUser(userId, username, null);
+    }
+
+    /**
+     * 设置当前用户和浏览器刷新会话。
+     *
+     * @param userId 用户 ID
+     * @param username 用户名
+     * @param sessionId 刷新会话 ID
+     */
+    public static void setCurrentUser(
+            String userId,
+            String username,
+            String sessionId) {
         USER_ID.set(userId);
         USERNAME.set(username);
+        SESSION_ID.set(sessionId);
     }
     
     /**
@@ -46,6 +64,15 @@ public class UserContext {
         return USERNAME.get();
     }
 
+    /**
+     * 获取当前浏览器刷新会话 ID。
+     *
+     * @return 当前刷新会话 ID，非浏览器上下文可为空
+     */
+    public static String getSessionId() {
+        return SESSION_ID.get();
+    }
+
     public static String requireUsernameOrId() {
         if (StringUtils.hasText(getUsername())) {
             return getUsername();
@@ -62,5 +89,6 @@ public class UserContext {
     public static void clear() {
         USER_ID.remove();
         USERNAME.remove();
+        SESSION_ID.remove();
     }
 }

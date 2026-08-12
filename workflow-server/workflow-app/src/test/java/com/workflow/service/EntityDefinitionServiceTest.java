@@ -21,6 +21,7 @@ import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -465,6 +466,47 @@ public class EntityDefinitionServiceTest {
         assertNotNull(result);
         assertEquals(EntityDefinition.Status.PUBLISHED, result.getStatus());
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
+    }
+
+    /** 测试发布附件字段：验证附件项规则会进入发布快照 */
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void testPublishSnapshotsAttachmentItems() {
+        EntityField attachmentField = new EntityField();
+        attachmentField.setId("file-1");
+        attachmentField.setEntityId("1");
+        attachmentField.setFieldCode("documents");
+        attachmentField.setFieldName("项目附件");
+        attachmentField.setFieldType(EntityField.FieldType.FILE);
+        EntityFieldFileItem requiredItem = new EntityFieldFileItem();
+        requiredItem.setItemName("项目章程");
+        requiredItem.setRequired(true);
+
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1")).thenReturn(List.of(attachmentField));
+        when(fileItemService.findByFieldId("file-1"))
+                .thenReturn(List.of(requiredItem));
+        when(dynamicTableService.syncEntityTableStructure(any(EntityDefinition.class)))
+                .thenReturn(Collections.emptyList());
+        when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
+
+        entityService.publish("1", "user1", "测试用户");
+
+        ArgumentCaptor<List<EntityField>> fieldsCaptor =
+                ArgumentCaptor.forClass((Class) List.class);
+        verify(publishHistoryService).createVersion(
+                any(EntityDefinition.class),
+                fieldsCaptor.capture(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any());
+        List<EntityField> snapshotFields = fieldsCaptor.getValue();
+        assertEquals(1, snapshotFields.size());
+        assertEquals(1, snapshotFields.get(0).getFileItems().size());
+        assertTrue(snapshotFields.get(0).getFileItems().get(0).getRequired());
     }
 
     /** 测试发布不存在的实体：验证抛出 RuntimeException 且消息包含对应 ID */
