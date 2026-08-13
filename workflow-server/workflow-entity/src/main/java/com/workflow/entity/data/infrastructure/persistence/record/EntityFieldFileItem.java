@@ -1,12 +1,12 @@
 package com.workflow.entity.data.infrastructure.persistence.record;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.annotation.TableField;import lombok.Data;
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
 import java.time.LocalDateTime;
-import com.baomidou.mybatisplus.annotation.TableField;
 /**
  * 实体字段附件项配置
  * 用于文件类型字段配置多个独立的附件要求
@@ -25,9 +25,19 @@ public class EntityFieldFileItem {
     private String fieldId;
 
     /**
+     * 附件项不可变业务标识，用于表单规则和跨环境配置引用。
+     */
+    private String itemKey;
+
+    /**
      * 附件项名称（如：项目章程、需求文档）
      */
     private String itemName;
+
+    /**
+     * 历史附件项名称 JSON 数组，用于兼容读取改名前的数据。
+     */
+    private String nameAliases;
 
     /**
      * 是否至少需要上传一个文件
@@ -58,12 +68,12 @@ public class EntityFieldFileItem {
     /**
      * 创建时间
      */
-        @TableField("create_time")
+    @TableField("create_time")
     private LocalDateTime createdAt;
 
     /**
      * 更新时间
      */
-        @TableField("update_time")
+    @TableField("update_time")
     private LocalDateTime updatedAt;
 }

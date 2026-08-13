@@ -2329,7 +2329,11 @@ async function handleEventBindingsChanged() {
   await loadDiff()
 }
 
-async function handleReleaseChanged() {
+async function handleReleaseChanged(event) {
+  if (event?.action === 'RESTORE_DRAFT') {
+    await loadData()
+    return
+  }
   await refreshConfigRevision()
   await loadDiff()
 }

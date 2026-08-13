@@ -85,7 +85,29 @@ public class EntityListRuntimeService {
             String entityCode,
             String listKey,
             String requestedScene) {
-        EntityListConfig config = requireList(entityCode, listKey);
+        return schema(
+                entityCode,
+                listKey,
+                requestedScene,
+                null,
+                null,
+                null);
+    }
+
+    @Transactional(readOnly = true)
+    public EntityListSchemaDTO schema(
+            String entityCode,
+            String listKey,
+            String requestedScene,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken) {
+        EntityListConfig config = requireList(
+                entityCode,
+                listKey,
+                releaseId,
+                releaseVersion,
+                releaseResolutionToken);
         String scene = validateScene(config, requestedScene);
         requireListAccess(config);
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
@@ -107,6 +129,7 @@ public class EntityListRuntimeService {
         schema.setAccessPermissionCode(resolveAccessPermission(config));
         schema.setDataScopeMode(normalized(config.getDataScopeMode(), "INHERIT"));
         schema.setPublishedVersion(config.getPublishedVersion());
+        schema.setReleaseId(config.getActiveReleaseId());
         schema.setSelectionConfig(readObject(
                 config.getSelectionConfig(), "选择模式配置"));
         schema.setViewConfig(readObject(config.getViewConfig(), "列表视图配置"));
@@ -184,11 +207,18 @@ public class EntityListRuntimeService {
             String entityCode,
             String listKey,
             EntityListQueryRequest request) {
-        EntityListConfig config = requireList(entityCode, listKey);
-        String scene = validateScene(config, request == null ? null : request.getScene());
-        requireListAccess(config);
         EntityListQueryRequest safeRequest = request == null
                 ? new EntityListQueryRequest() : request;
+        EntityListConfig config = requireList(
+                entityCode,
+                listKey,
+                safeRequest.getReleaseId(),
+                safeRequest.getReleaseVersion(),
+                safeRequest.getReleaseResolutionToken());
+        String scene = validateScene(
+                config,
+                safeRequest.getScene());
+        requireListAccess(config);
         Map<String, Object> filters = validateUserFilters(
                 config,
                 safeRequest.getFilters());
@@ -201,6 +231,9 @@ public class EntityListRuntimeService {
         event.setConfigType("LIST");
         event.setConfigId(config.getId());
         event.setReleaseId(config.getActiveReleaseId());
+        event.setReleaseVersion(config.getPublishedVersion());
+        event.setReleaseResolutionToken(
+                config.getReleaseResolutionToken());
         event.setEntityCode(entityCode);
         event.setListKey(listKey);
         event.setContext(safeRequest.getContext() == null
@@ -303,6 +336,10 @@ public class EntityListRuntimeService {
             request.setConfigId(config.getId());
             request.setReleaseId(
                     config.getActiveReleaseId());
+            request.setReleaseVersion(
+                    config.getPublishedVersion());
+            request.setServerPinnedRelease(
+                    Boolean.TRUE.equals(config.getPinnedRelease()));
             request.setEntityCode(entityCode);
             request.setListKey(listKey);
             request.setTargetType("OWNER");
@@ -358,9 +395,10 @@ public class EntityListRuntimeService {
                     query);
         }
 
-        return dataListService.findPageWithConfig(
+        return dataListService.findPageWithResolvedConfig(
                 entityCode,
                 listKey,
+                config,
                 filters,
                 pageNum,
                 pageSize);
@@ -426,14 +464,38 @@ public class EntityListRuntimeService {
     }
 
     private EntityListConfig requireList(String entityCode, String listKey) {
+        return requireList(
+                entityCode,
+                listKey,
+                null,
+                null,
+                null);
+    }
+
+    private EntityListConfig requireList(
+            String entityCode,
+            String listKey,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken) {
         if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) {
             throw new IllegalArgumentException("entityCode 和 listKey 不能为空");
         }
-        EntityListConfig config = dataListService.findListConfig(entityCode, listKey);
-        if (config == null || !listKey.equals(config.getListKey())) {
+        EntityListConfig config = dataListService.findListConfig(
+                entityCode,
+                listKey,
+                releaseId,
+                releaseVersion,
+                releaseResolutionToken);
+        if (config == null
+                || !listKey.equals(config.getListKey())
+                || !entityCode.equals(config.getEntityCode())) {
             throw new IllegalArgumentException("列表不存在或未发布: " + listKey);
         }
-        if (config.getPublishedVersion() == null || config.getPublishedVersion() < 1) {
+        if (!Boolean.TRUE.equals(config.getPublishedSnapshot())
+                || !StringUtils.hasText(config.getActiveReleaseId())
+                || config.getPublishedVersion() == null
+                || config.getPublishedVersion() < 1) {
             throw new IllegalStateException("列表尚未发布: " + listKey);
         }
         return config;

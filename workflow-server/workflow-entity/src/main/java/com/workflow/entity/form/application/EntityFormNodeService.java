@@ -726,12 +726,10 @@ public class EntityFormNodeService {
                         }
                         release = releaseVersion == null
                                         ? releaseMapper.findActive("FORM", formId)
-                                        : releaseMapper.findReleases("FORM", formId).stream()
-                                                        .filter(candidate -> Objects.equals(
-                                                                        candidate.getVersion(),
-                                                                        releaseVersion))
-                                                        .findFirst()
-                                                        .orElse(null);
+                                        : releaseMapper.findByVersion(
+                                                        "FORM",
+                                                        formId,
+                                                        releaseVersion);
                 }
                 if (release == null) {
                         throw new IllegalArgumentException(

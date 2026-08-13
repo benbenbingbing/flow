@@ -68,7 +68,7 @@ public class NodeFormSubmissionService {
      * @param submittedFormData 提交的表单数据（可为空，空则直接返回）
      */
     public void applyEditableData(Task task, Map<String, Object> submittedFormData) {
-        if (task == null || submittedFormData == null || submittedFormData.isEmpty()) {
+        if (task == null) {
             return;
         }
 
@@ -84,15 +84,14 @@ public class NodeFormSubmissionService {
                 getPublishedNodeForms(task);
         List<ProcessNodeForm> nodeForms = published.nodeForms();
         Map<String, Object> submittedValues =
-                flattenSubmittedValues(submittedFormData);
+                flattenSubmittedValues(
+                        submittedFormData == null
+                                ? Map.of() : submittedFormData);
         Set<String> editableFieldCodes =
                 resolveEditableFieldCodes(
                         nodeForms,
                         published.history().getId(),
                         entityCode);
-        if (editableFieldCodes.isEmpty()) {
-            return;
-        }
         FormSubmissionExecutionContext executionContext =
                 formSubmissionTraceService.current(
                         "PROCESS_APPROVAL_SUBMIT",

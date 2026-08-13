@@ -5,8 +5,10 @@ import com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSq
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -93,5 +95,41 @@ class EntityDataSqlProviderTest {
 
         assertTrue(sql.contains("AND (create_by = 'u1')"));
         assertTrue(sql.contains("status = #{condition.status}"));
+    }
+
+    /** IN 查询应把集合值展开为独立的预编译参数。 */
+    @Test
+    void inQueryExpandsCollectionValues() {
+        Map<String, Object> condition = new HashMap<>();
+        condition.put("status", List.of("DRAFT", "PENDING"));
+        condition.put("status_op", "IN");
+        Map<String, Object> params = new HashMap<>();
+        params.put("tableName", "biz_order");
+        params.put("condition", condition);
+
+        String sql = provider.selectPageByCondition(params);
+
+        assertTrue(sql.contains(
+                "status IN (#{__condition_status_0}, #{__condition_status_1})"));
+        assertEquals("DRAFT", params.get("__condition_status_0"));
+        assertEquals("PENDING", params.get("__condition_status_1"));
+    }
+
+    /** NOT_IN 查询应使用与 IN 相同的安全参数展开。 */
+    @Test
+    void notInQueryExpandsCollectionValues() {
+        Map<String, Object> condition = new HashMap<>();
+        condition.put("status", List.of("TERMINATED", "WITHDRAWN"));
+        condition.put("status_op", "NOT_IN");
+        Map<String, Object> params = new HashMap<>();
+        params.put("tableName", "biz_order");
+        params.put("condition", condition);
+
+        String sql = provider.countByCondition(params);
+
+        assertTrue(sql.contains(
+                "status NOT IN (#{__condition_status_0}, #{__condition_status_1})"));
+        assertEquals("TERMINATED", params.get("__condition_status_0"));
+        assertEquals("WITHDRAWN", params.get("__condition_status_1"));
     }
 }

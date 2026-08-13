@@ -31,7 +31,7 @@
       <el-table-column prop="publishedBy" label="发布人" width="120" />
       <el-table-column prop="publishedAt" label="发布时间" width="180" />
       <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column label="操作" width="150">
+      <el-table-column label="操作" width="230">
         <template #default="{ row }">
           <el-button
             v-if="row.releaseMode !== 'HOTFIX'"
@@ -51,9 +51,26 @@
           >
             撤回热修复
           </el-button>
+          <el-button
+            v-if="configType === 'LIST'"
+            link
+            type="warning"
+            @click="restoreDraft(row)"
+          >
+            恢复为草稿
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
+    <el-pagination
+      v-if="total > pageSize"
+      v-model:current-page="pageNum"
+      :page-size="pageSize"
+      :total="total"
+      layout="prev, pager, next, total"
+      class="history-pagination"
+      @current-change="load"
+    />
   </el-dialog>
 </template>
 
@@ -62,7 +79,8 @@ import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   activateFormRelease,
-  getFormReleases,
+  getFormReleaseSummaries,
+  previewFormActivation,
   rollbackFormHotfix
 } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
@@ -77,11 +95,22 @@ const emit = defineEmits(['changed'])
 const visible = ref(false)
 const loading = ref(false)
 const releases = ref([])
+const pageNum = ref(1)
+const pageSize = 20
+const total = ref(0)
 
 async function load() {
-  releases.value = props.configType === 'FORM'
-    ? await getFormReleases(String(props.configId))
-    : await entityListConfigApi.getReleases(props.configId)
+  const page = props.configType === 'FORM'
+    ? await getFormReleaseSummaries(String(props.configId), {
+        pageNum: pageNum.value,
+        pageSize
+      })
+    : await entityListConfigApi.getReleaseSummaries(
+        props.configId,
+        { pageNum: pageNum.value, pageSize }
+      )
+  releases.value = page?.records || []
+  total.value = Number(page?.total || 0)
 }
 
 async function open() {
@@ -90,6 +119,7 @@ async function open() {
     return
   }
   visible.value = true
+  pageNum.value = 1
   loading.value = true
   try {
     await load()
@@ -99,19 +129,73 @@ async function open() {
 }
 
 async function activate(release) {
-  await ElMessageBox.confirm(
-    `确认激活历史版本 v${release.version}？`,
+  const preview = props.configType === 'FORM'
+    ? await previewFormActivation(String(props.configId), release.id)
+    : await entityListConfigApi.previewActivation(
+        props.configId,
+        release.id
+      )
+  const { value } = await ElMessageBox.prompt(
+    activationDescription(release, preview),
     '回滚发布版本',
-    { type: 'warning' }
+    {
+      type: 'warning',
+      inputPlaceholder: '请输入激活原因',
+      inputValidator: text => Boolean(String(text || '').trim())
+        || '激活原因不能为空'
+    }
   )
   if (props.configType === 'FORM') {
-    await activateFormRelease(String(props.configId), release.id)
+    await activateFormRelease(
+      String(props.configId),
+      release.id,
+      value,
+      preview?.currentReleaseId
+    )
   } else {
-    await entityListConfigApi.activateRelease(props.configId, release.id)
+    await entityListConfigApi.activateRelease(
+      props.configId,
+      release.id,
+      value,
+      preview?.currentReleaseId
+    )
   }
   await load()
   emit('changed', { action: 'ACTIVATE', release })
   ElMessage.success('历史版本已激活')
+}
+
+async function restoreDraft(release) {
+  const { value } = await ElMessageBox.prompt(
+    `将 v${release.version} 的配置复制到当前草稿，不会切换线上生效版本。`,
+    '恢复列表草稿',
+    {
+      type: 'warning',
+      inputPlaceholder: '请输入恢复原因',
+      inputValidator: text => Boolean(String(text || '').trim())
+        || '恢复原因不能为空'
+    }
+  )
+  await entityListConfigApi.restoreDraft(
+    props.configId,
+    release.id,
+    value
+  )
+  await load()
+  emit('changed', { action: 'RESTORE_DRAFT', release })
+  ElMessage.success('历史版本已恢复为当前草稿，线上版本未改变')
+}
+
+function activationDescription(release, preview) {
+  const count = preview?.changedItems?.length || 0
+  const sections = (preview?.changedSections || [])
+    .filter(section => !['schemaVersion', 'configType'].includes(section))
+    .join('、')
+  return `确认将运行时切换到 v${release.version}？`
+    + `预计变更 ${count} 项`
+    + (preview?.riskLevel ? `，风险 ${preview.riskLevel}` : '')
+    + (sections ? `，涉及 ${sections}` : '')
+    + '。当前草稿不会被覆盖。'
 }
 
 async function rollback(release) {
@@ -141,5 +225,10 @@ defineExpose({ open })
 <style scoped>
 .technical-details {
   margin: 8px 16px;
+}
+
+.history-pagination {
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

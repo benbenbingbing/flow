@@ -14,6 +14,7 @@
       :options="options"
       :context="context"
       :data-source-runtime="dataSourceRuntime"
+      :attachment-item-required-state="attachmentItemRequiredState"
       @change="handleRuntimeChange"
       @blur="$emit('blur', $event)"
       @focus="$emit('focus', $event)"
@@ -52,6 +53,10 @@ const props = defineProps({
   dataSourceRuntime: {
     type: Object,
     default: null
+  },
+  attachmentItemRequiredState: {
+    type: Object,
+    default: () => ({})
   }
 })
 

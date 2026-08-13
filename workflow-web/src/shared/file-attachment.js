@@ -48,14 +48,154 @@ export function hasAttachmentValue(value) {
     }
     return Object.values(value).some(hasAttachmentValue)
   }
-  return true
+  return false
 }
 
-export function getMissingRequiredAttachmentItems(fileItems = [], value) {
+function hasAttachmentFileValue(value) {
+  if (value === null || value === undefined) return false
+  if (Array.isArray(value)) return value.some(hasAttachmentFileValue)
+  if (typeof value === 'string') return value.trim() !== ''
+  if (typeof value !== 'object') return false
+  return ['url', 'path', 'fileUrl']
+    .filter(key => Object.prototype.hasOwnProperty.call(value, key))
+    .some(key => hasAttachmentFileValue(value[key]))
+}
+
+export function normalizeAttachmentItemAliases(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(item => String(item || '').trim()).filter(Boolean))]
+  }
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return normalizeAttachmentItemAliases(parsed)
+  } catch {
+    return []
+  }
+}
+
+export function resolveAttachmentItems(field) {
+  let componentProps = {}
+  try {
+    componentProps = typeof field?.componentProps === 'string'
+      ? JSON.parse(field.componentProps)
+      : (field?.componentProps || {})
+  } catch {
+    componentProps = {}
+  }
+  const items = Array.isArray(componentProps?.fileItems)
+    && componentProps.fileItems.length
+    ? componentProps.fileItems
+    : (Array.isArray(field?.fileItems) ? field.fileItems : [])
+  const entityItems = Array.isArray(field?.entityFileItems)
+    ? field.entityFileItems
+    : []
+  return items.map(item => {
+    const normalized = {
+      ...item,
+      nameAliases: normalizeAttachmentItemAliases(item?.nameAliases)
+    }
+    const entityItem = findMatchingAttachmentItem(
+      normalized,
+      entityItems
+    )
+    const storageItemName = entityItem?.itemName || normalized.itemName
+    const compatibleNames = [
+      normalized.itemName,
+      ...normalized.nameAliases,
+      entityItem?.itemName,
+      ...normalizeAttachmentItemAliases(entityItem?.nameAliases)
+    ].filter(name => name && name !== storageItemName)
+    return {
+      ...normalized,
+      storageItemName,
+      nameAliases: [...new Set(compatibleNames)],
+      ...(isAttachmentItemRequired(entityItem) ? { required: true } : {})
+    }
+  })
+}
+
+function findMatchingAttachmentItem(item, candidates) {
+  if (item?.itemKey) {
+    const byKey = candidates.find(candidate =>
+      candidate?.itemKey === item.itemKey)
+    if (byKey) return byKey
+  }
+  const names = new Set([
+    item?.itemName,
+    ...normalizeAttachmentItemAliases(item?.nameAliases)
+  ].filter(Boolean))
+  return candidates.find(candidate => [
+    candidate?.itemName,
+    ...normalizeAttachmentItemAliases(candidate?.nameAliases)
+  ].some(name => name && names.has(name)))
+}
+
+export function getAttachmentItemValue(item, index, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const keys = [
+    item?.storageItemName,
+    item?.itemName,
+    ...normalizeAttachmentItemAliases(item?.nameAliases),
+    item?.itemKey,
+    `附件项${index + 1}`
+  ].filter(Boolean)
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      return value[key]
+    }
+  }
+  return undefined
+}
+
+export function setAttachmentItemValue(value, item, index, itemValue) {
+  const result = value && typeof value === 'object' && !Array.isArray(value)
+    ? { ...value }
+    : {}
+  const currentKey = item?.storageItemName
+    || item?.itemName
+    || `附件项${index + 1}`
+  const compatibleKeys = [
+    item?.itemName,
+    ...normalizeAttachmentItemAliases(item?.nameAliases),
+    item?.itemKey,
+    `附件项${index + 1}`
+  ].filter(key => key && key !== currentKey)
+  compatibleKeys.forEach(key => delete result[key])
+  result[currentKey] = itemValue
+  return result
+}
+
+export function isAttachmentItemRequired(item) {
+  return item?.required === true
+    || item?.required === 1
+    || item?.required === '1'
+}
+
+export function getAttachmentItemRequiredState(fileItems = [], rules, formData = {}, evaluateCondition) {
+  const configuredItems = Array.isArray(rules?.items) ? rules.items : []
+  const rulesByKey = new Map(configuredItems
+    .filter(item => item?.itemKey)
+    .map(item => [item.itemKey, item]))
+  return Object.fromEntries(fileItems
+    .filter(item => item?.itemKey)
+    .map(item => {
+      const configured = rulesByKey.get(item.itemKey)
+      const conditional = configured?.requiredConditionConfig && evaluateCondition
+        ? Boolean(evaluateCondition(configured.requiredConditionConfig, formData))
+        : false
+      return [item.itemKey, isAttachmentItemRequired(item) || conditional]
+    }))
+}
+
+export function getMissingRequiredAttachmentItems(fileItems = [], value, requiredState = {}) {
   const requiredEntries = fileItems
     .map((item, index) => ({ item, index }))
     .filter(({ item }) =>
-      item?.required === true || item?.required === 1 || item?.required === '1'
+      isAttachmentItemRequired(item)
+        || Boolean(item?.itemKey && requiredState[item.itemKey])
     )
   if (requiredEntries.length === 0) return []
 
@@ -68,8 +208,9 @@ export function getMissingRequiredAttachmentItems(fileItems = [], value) {
 
   return requiredEntries
     .filter(({ item, index }) => {
-      const key = item.itemName || `附件项${index + 1}`
-      return !hasAttachmentValue(groupedValue?.[key])
+      return !hasAttachmentFileValue(
+        getAttachmentItemValue(item, index, groupedValue)
+      )
     })
     .map(({ item }) => item)
 }

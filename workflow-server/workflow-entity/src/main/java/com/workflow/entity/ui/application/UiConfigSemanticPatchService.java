@@ -145,6 +145,12 @@ public class UiConfigSemanticPatchService {
                         "列表适用场景变化会改变运行入口，发布前需要复核"));
             }
         }
+        diffCollection(
+                "eventBindings",
+                mapList(source.get("eventBindings")),
+                mapList(target.get("eventBindings")),
+                List.of("id"),
+                operations);
         normalizeHotfixRisk(operations);
         operations.sort(Comparator
                 .comparing(UiConfigSemanticPatchOperation::getSection)
@@ -263,6 +269,12 @@ public class UiConfigSemanticPatchService {
     private CollectionLocation locateCollection(
             Map<String, Object> snapshot,
             UiConfigSemanticPatchOperation operation) {
+        if ("eventBindings".equals(operation.getSection())) {
+            List<Map<String, Object>> items =
+                    mapList(snapshot.get("eventBindings"));
+            snapshot.put("eventBindings", items);
+            return new CollectionLocation(items, List.of("id"));
+        }
         if ("nodes".equals(operation.getSection())
                 || "legacyFields".equals(operation.getSection())) {
             String collection = operation.getSection();
@@ -465,7 +477,15 @@ public class UiConfigSemanticPatchService {
             Map<String, Object> snapshot,
             UiConfigSemanticPatchOperation operation) {
         Map<String, Object> item;
-        if ("form".equals(operation.getSection())) {
+        if ("eventBindings".equals(operation.getSection())) {
+            List<Map<String, Object>> values =
+                    mapList(snapshot.get("eventBindings"));
+            snapshot.put("eventBindings", values);
+            item = findItem(
+                    values,
+                    operation.getItemId(),
+                    List.of("id"));
+        } else if ("form".equals(operation.getSection())) {
             item = mapValue(snapshot.get("form"));
             snapshot.put("form", item);
         } else if ("list".equals(operation.getSection())) {

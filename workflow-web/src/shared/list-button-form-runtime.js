@@ -48,21 +48,26 @@ export async function loadExplicitListButtonForm(button) {
   if (!releaseResolutionToken) {
     throw new Error('列表按钮的表单发布授权已失效，请刷新列表后重试')
   }
-  const cacheKey = `${formId}:${releaseId}:${releaseVersion}`
+  const cacheKey = `${formId}:${releaseId}:${releaseVersion}:${releaseResolutionToken}`
   if (!formReleaseCache.has(cacheKey)) {
     formReleaseCache.set(
       cacheKey,
-      getFormRuntimeRelease(formId, releaseId, releaseVersion)
-        .then(release => normalizeRuntimeFormRelease(release, formId))
+      getFormRuntimeRelease(
+        formId,
+        releaseId,
+        releaseVersion,
+        releaseResolutionToken
+      )
+        .then(release => normalizeRuntimeFormRelease(
+          release,
+          formId,
+          release.releaseResolutionToken || releaseResolutionToken
+        ))
         .catch(error => {
           formReleaseCache.delete(cacheKey)
           throw error
         })
     )
   }
-  const form = await formReleaseCache.get(cacheKey)
-  return {
-    ...form,
-    releaseResolutionToken
-  }
+  return formReleaseCache.get(cacheKey)
 }

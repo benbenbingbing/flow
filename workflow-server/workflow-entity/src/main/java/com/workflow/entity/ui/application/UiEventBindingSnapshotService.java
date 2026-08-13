@@ -1,5 +1,6 @@
 package com.workflow.entity.ui.application;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.time.LocalDateTime;
 
 /**
  * Builds the published snapshot representation of UI event bindings.
@@ -48,6 +50,109 @@ public class UiEventBindingSnapshotService {
                         sourceCache))
                 .map(this::snapshotValue)
                 .toList();
+    }
+
+    /**
+     * 用不可变发布快照恢复配置自身的事件绑定草稿；实体级继承绑定不受影响。
+     */
+    public void restoreLocalBindings(
+            String configType,
+            String configId,
+            List<Map<String, Object>> snapshotBindings) {
+        String normalizedType = normalize(configType);
+        Map<String, UiEventBinding> current =
+                new LinkedHashMap<>();
+        for (UiEventBinding binding : bindingMapper.findByOwner(
+                normalizedType,
+                configId)) {
+            current.put(bindingKey(
+                    binding.getTargetType(),
+                    binding.getTargetKey(),
+                    binding.getEventCode()), binding);
+        }
+
+        for (Map<String, Object> value : snapshotBindings == null
+                ? List.<Map<String, Object>>of()
+                : snapshotBindings) {
+            if (!normalizedType.equals(normalize(text(
+                    value.get("ownerType"))))
+                    || !configId.equals(text(
+                    value.get("ownerId")))) {
+                continue;
+            }
+            String targetType = normalize(text(
+                    value.get("targetType")));
+            String targetKey = normalizedTargetKey(
+                    text(value.get("targetKey")));
+            String eventCode = normalize(text(
+                    value.get("eventCode")));
+            String key = bindingKey(
+                    targetType,
+                    targetKey,
+                    eventCode);
+            UiEventBinding existing = current.remove(key);
+            String stepsDocument = codec.write(
+                    value.get("steps") instanceof List<?> steps
+                            ? steps : List.of(),
+                    "恢复UI事件绑定步骤");
+            String inheritanceMode = normalize(text(
+                    value.get("inheritanceMode")));
+            if (existing == null) {
+                UiEventBinding created = new UiEventBinding();
+                created.setOwnerType(normalizedType);
+                created.setOwnerId(configId);
+                created.setTargetType(targetType);
+                created.setTargetKey(targetKey);
+                created.setEventCode(eventCode);
+                created.setInheritanceMode(
+                        StringUtils.hasText(inheritanceMode)
+                                ? inheritanceMode : "INHERIT");
+                created.setStepsDocument(stepsDocument);
+                created.setRevision(1);
+                created.setEnabled(true);
+                created.setDeleted(0);
+                created.setCreatedAt(LocalDateTime.now());
+                created.setUpdatedAt(LocalDateTime.now());
+                bindingMapper.insert(created);
+                continue;
+            }
+            UpdateWrapper<UiEventBinding> update = new UpdateWrapper<>();
+            update.eq("id", existing.getId())
+                    .eq("deleted", 0)
+                    .set("inheritance_mode",
+                            StringUtils.hasText(inheritanceMode)
+                                    ? inheritanceMode : "INHERIT")
+                    .set("steps_document", stepsDocument)
+                    .set("enabled", 1)
+                    .setSql("revision = revision + 1")
+                    .set("update_time", LocalDateTime.now());
+            bindingMapper.update(null, update);
+        }
+
+        for (UiEventBinding stale : current.values()) {
+            UpdateWrapper<UiEventBinding> update = new UpdateWrapper<>();
+            update.eq("id", stale.getId())
+                    .eq("deleted", 0)
+                    .set("enabled", 0)
+                    .setSql("revision = revision + 1")
+                    .set("update_time", LocalDateTime.now());
+            bindingMapper.update(null, update);
+        }
+    }
+
+    private String bindingKey(
+            String targetType,
+            String targetKey,
+            String eventCode) {
+        return normalize(targetType)
+                + "\u0000"
+                + normalizedTargetKey(targetKey)
+                + "\u0000"
+                + normalize(eventCode);
+    }
+
+    private String normalizedTargetKey(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "";
     }
 
     /**

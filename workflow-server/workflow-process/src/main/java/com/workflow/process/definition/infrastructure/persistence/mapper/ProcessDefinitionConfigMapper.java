@@ -21,20 +21,20 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
      */
     @Select("SELECT * FROM process_definition_config "
             + "WHERE id = #{id} "
-            + "AND (deleted = 0 OR deleted IS NULL) FOR UPDATE")
+            + "AND deleted = 0 FOR UPDATE")
     ProcessDefinitionConfig selectByIdForUpdate(
             @Param("id") String id);
 
     /**
      * 根据流程标识查询（排除已删除）
      */
-    @Select("SELECT * FROM process_definition_config WHERE process_key = #{processKey} AND (deleted = 0 OR deleted IS NULL)")
+    @Select("SELECT * FROM process_definition_config WHERE process_key = #{processKey} AND deleted = 0")
     Optional<ProcessDefinitionConfig> findByProcessKey(@Param("processKey") String processKey);
 
     /**
      * 根据状态查询（排除已删除）
      */
-    @Select("SELECT * FROM process_definition_config WHERE status = #{status} AND (deleted = 0 OR deleted IS NULL)")
+    @Select("SELECT * FROM process_definition_config WHERE status = #{status} AND deleted = 0")
     List<ProcessDefinitionConfig> findByStatus(@Param("status") String status);
 
     @Select("""
@@ -42,7 +42,7 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
             SELECT *
               FROM process_definition_config
              WHERE status = 'PUBLISHED'
-               AND (deleted = 0 OR deleted IS NULL)
+               AND deleted = 0
                AND process_key IN
                <foreach collection="processKeys" item="processKey"
                         open="(" separator="," close=")">
@@ -57,13 +57,13 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
     /**
      * 检查流程标识是否存在（排除已删除）
      */
-    @Select("SELECT COUNT(*) > 0 FROM process_definition_config WHERE process_key = #{processKey} AND (deleted = 0 OR deleted IS NULL)")
+    @Select("SELECT COUNT(*) > 0 FROM process_definition_config WHERE process_key = #{processKey} AND deleted = 0")
     boolean existsByProcessKey(@Param("processKey") String processKey);
 
     /**
      * 查询所有流程（排除已删除）
      */
-    @Select("SELECT * FROM process_definition_config WHERE deleted = 0 OR deleted IS NULL ORDER BY update_time DESC")
+    @Select("SELECT * FROM process_definition_config WHERE deleted = 0 ORDER BY update_time DESC")
     List<ProcessDefinitionConfig> findAllActive();
 
     /**
@@ -71,7 +71,7 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
      * 用于实体绑定流程时选择
      */
     @Select("SELECT p.* FROM process_definition_config p " +
-            "WHERE (p.deleted = 0 OR p.deleted IS NULL) " +
+            "WHERE p.deleted = 0 " +
             "AND p.id NOT IN (SELECT e.process_definition_id FROM entity_definition e WHERE e.process_definition_id IS NOT NULL) " +
             "ORDER BY p.update_time DESC")
     List<ProcessDefinitionConfig> findAllUnbound();

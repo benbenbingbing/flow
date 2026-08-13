@@ -2,6 +2,7 @@ package com.workflow.entity.data.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.list.application.EntityDataListConfigService;
+import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
 
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.contracts.audit.AuditAction;
@@ -10,11 +11,8 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.api.request.EntityDataExportRequest;
-import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
-import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
@@ -45,9 +43,8 @@ import java.util.stream.Collectors;
 public class EntityDataExportService {
 
     private final EntityDataListConfigService listConfigService;
-    private final EntityListConfigMapper listConfigMapper;
+    private final EntityListPublishedRuntimeService publishedRuntimeService;
     private final EntityListFieldMapper fieldMapper;
-    private final EntityDefinitionMapper definitionMapper;
     private final EntityActionCapabilityService actionCapabilityService;
 
     /**
@@ -69,25 +66,41 @@ public class EntityDataExportService {
             targetType = "ENTITY_RECORD",
             targetIdArg = 0)
     public void export(String entityCode, EntityDataExportRequest request, HttpServletResponse response) {
+        EntityListConfig config = listConfigService.findListConfig(
+                entityCode,
+                request.getListKey(),
+                request.getReleaseId(),
+                request.getReleaseVersion(),
+                request.getReleaseResolutionToken());
+        if (config == null
+                && (StringUtils.hasText(request.getListKey())
+                || StringUtils.hasText(request.getReleaseId())
+                || request.getReleaseVersion() != null
+                || StringUtils.hasText(
+                        request.getReleaseResolutionToken()))) {
+            throw new IllegalArgumentException(
+                    "列表不存在或尚未发布: "
+                            + request.getListKey());
+        }
         // 1. 服务端根据导出类型决定权限，禁止信任客户端传入的权限码
         boolean exportSelected = "SELECTED".equalsIgnoreCase(request.getExportType());
         actionCapabilityService.requireStandardPermission(
                 entityCode,
                 exportSelected ? EntityPermissionAction.EXPORT : EntityPermissionAction.EXPORT_ALL);
         if (!exportSelected) {
-            actionCapabilityService.requireToolbarAction(entityCode, request.getListKey(), "exportAll");
+            actionCapabilityService.requireToolbarActionForConfig(
+                    entityCode,
+                    config,
+                    "exportAll");
         }
 
         // 2. 加载列表配置和字段
-        EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
-        if (definition == null) {
-            throw new RuntimeException("实体不存在：" + entityCode);
-        }
-
-        EntityListConfig config = findListConfig(definition.getId(), request.getListKey());
         List<EntityListField> listFields;
         if (config != null) {
-            listFields = fieldMapper.findByListConfigId(config.getId()).stream()
+            listFields = publishedRuntimeService.resolveFields(
+                            config,
+                            fieldMapper.findByListConfigId(config.getId()))
+                    .stream()
                     .filter(f -> f.getShowInList() != null && f.getShowInList())
                     .sorted(Comparator.comparingInt(f -> f.getSortOrder() == null ? 0 : f.getSortOrder()))
                     .collect(Collectors.toList());
@@ -96,12 +109,18 @@ public class EntityDataExportService {
         }
 
         // 3. 查询数据
-        List<EntityDataDTO> records = queryData(entityCode, request);
+        List<EntityDataDTO> records = queryData(
+                entityCode,
+                request,
+                config);
         if (exportSelected) {
             List<String> denied = records.stream()
                     .filter(record -> {
-                        var capability = actionCapabilityService.evaluateRowAction(
-                                entityCode, request.getListKey(), "exportSelected", record);
+                        var capability = actionCapabilityService.evaluateRowActionForConfig(
+                                entityCode,
+                                config,
+                                "exportSelected",
+                                record);
                         return !capability.isVisible() || !capability.isEnabled();
                     })
                     .map(record -> StringUtils.hasText(record.getDataNo()) ? record.getDataNo() : record.getId())
@@ -150,25 +169,22 @@ public class EntityDataExportService {
         }
     }
 
-    private List<EntityDataDTO> queryData(String entityCode, EntityDataExportRequest request) {
-        List<EntityDataDTO> allRecords = listConfigService.findListWithConfig(entityCode, request.getListKey(), request.getCondition());
+    private List<EntityDataDTO> queryData(
+            String entityCode,
+            EntityDataExportRequest request,
+            EntityListConfig config) {
+        List<EntityDataDTO> allRecords =
+                listConfigService.findListWithResolvedConfig(
+                        entityCode,
+                        request.getListKey(),
+                        config,
+                        request.getCondition());
         if ("SELECTED".equalsIgnoreCase(request.getExportType()) && request.getIds() != null && !request.getIds().isEmpty()) {
             return allRecords.stream()
                     .filter(r -> request.getIds().contains(r.getId()))
                     .collect(Collectors.toList());
         }
         return allRecords;
-    }
-
-    private EntityListConfig findListConfig(String entityId, String listKey) {
-        if (StringUtils.hasText(listKey)) {
-            return listConfigMapper.findByEntityIdAndListKey(entityId, listKey);
-        }
-        List<EntityListConfig> configs = listConfigMapper.findByEntityId(entityId);
-        return configs.stream()
-                .filter(c -> Boolean.TRUE.equals(c.getIsDefault()))
-                .findFirst()
-                .orElse(configs.isEmpty() ? null : configs.get(0));
     }
 
     private Object getFieldValue(EntityDataDTO record, String fieldCode) {

@@ -71,15 +71,26 @@ export function isEntityStatusField(field) {
   return String(fieldCode).trim().toLowerCase() === 'status'
 }
 
-export function withEntityStatusFieldOptions(field, statuses = []) {
+export function withEntityStatusFieldOptions(
+  field,
+  statuses = [],
+  runtimeOptions = {}
+) {
   if (!isEntityStatusField(field)) return field
-  const options = getEffectiveEntityStatusOptions(statuses)
+  const statusOptions = getEffectiveEntityStatusOptions(statuses)
+  const configuredComponent = String(field?.componentType || '')
+    .trim()
+    .toLowerCase()
+  const componentType = runtimeOptions.allowMultiple === true
+    && ['select_multiple', 'multi_select'].includes(configuredComponent)
+    ? 'select_multiple'
+    : 'select'
   return {
     ...field,
     fieldType: 'SELECT',
-    componentType: 'select',
-    options,
-    optionsJson: JSON.stringify(options)
+    componentType,
+    options: statusOptions,
+    optionsJson: JSON.stringify(statusOptions)
   }
 }
 
@@ -144,4 +155,3 @@ export function withEntityStatusRuntimeForm(form, entityFields = [], statuses = 
     )
   }
 }
-

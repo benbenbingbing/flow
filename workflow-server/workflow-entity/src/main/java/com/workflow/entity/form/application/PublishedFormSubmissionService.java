@@ -43,6 +43,7 @@ public class PublishedFormSubmissionService {
     private final UiDataSourceService dataSourceService;
     private final JsonDocumentCodec codec;
     private final UiDataSourceDefinitionValidator schemaValidator;
+    private final PublishedFormRequiredValidator requiredValidator;
 
     /**
      * 应用实体默认表单的默认值与前置数据源（使用独立执行上下文）。
@@ -195,6 +196,37 @@ public class PublishedFormSubmissionService {
     }
 
     /**
+     * 按客户端运行时授权上下文应用精确表单发布版本。
+     */
+    public Map<String, Object> applyAuthorizedForm(
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext) {
+        ResolvedEntityFormRelease resolved =
+                releaseService.resolveAuthorizedRuntimeFormRelease(
+                        formId,
+                        releaseId,
+                        releaseVersion,
+                        releaseResolutionToken);
+        return applyResolvedForm(
+                resolved,
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext,
+                null,
+                PublishedSubFormSubmissionProcessor.Context.root(),
+                0);
+    }
+
+    /**
      * 按服务端可信流程上下文应用指定发布版本表单的提交处理。
      */
     public Map<String, Object> applyForm(
@@ -326,6 +358,12 @@ public class PublishedFormSubmissionService {
                         nestedContext);
             }
         }
+        requiredValidator.validate(
+                form,
+                entityCode,
+                recordId,
+                mode,
+                result);
         return result;
     }
 

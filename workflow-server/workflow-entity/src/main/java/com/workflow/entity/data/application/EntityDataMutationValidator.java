@@ -91,7 +91,7 @@ public class EntityDataMutationValidator {
                     && (isAttachmentField(field)
                             ? !hasAttachmentValue(normalizedValue)
                             : isBlank(normalizedValue))) {
-                throw new RuntimeException(
+                throw requiredFailure(
                         "字段必填: "
                                 + field.getFieldName());
             }
@@ -121,7 +121,7 @@ public class EntityDataMutationValidator {
         }
         if (!(value instanceof Map<?, ?>)) {
             if (requiredIndexes.size() == 1
-                    && hasAttachmentValue(value)) {
+                    && hasAttachmentFileValue(value)) {
                 return;
             }
             throwMissingAttachmentItem(
@@ -131,13 +131,48 @@ public class EntityDataMutationValidator {
         Map<?, ?> groupedValue = (Map<?, ?>) value;
         for (Integer index : requiredIndexes) {
             EntityFieldFileItem item = fileItems.get(index);
-            String key = StringUtils.hasText(item.getItemName())
-                    ? item.getItemName()
-                    : "附件项" + (index + 1);
-            if (!hasAttachmentValue(groupedValue.get(key))) {
+            if (!hasAttachmentFileValue(
+                    attachmentItemValue(
+                            groupedValue,
+                            item,
+                            index))) {
                 throwMissingAttachmentItem(field, item);
             }
         }
+    }
+
+    private Object attachmentItemValue(
+            Map<?, ?> groupedValue,
+            EntityFieldFileItem item,
+            int index) {
+        List<String> keys = new ArrayList<>();
+        if (StringUtils.hasText(item.getItemName())) {
+            keys.add(item.getItemName());
+        }
+        if (StringUtils.hasText(item.getNameAliases())) {
+            try {
+                List<String> aliases = objectMapper.readValue(
+                        item.getNameAliases(),
+                        objectMapper.getTypeFactory()
+                                .constructCollectionType(
+                                        List.class,
+                                        String.class));
+                keys.addAll(aliases);
+            } catch (Exception ignored) {
+                // 历史别名损坏时继续尝试当前名称和稳定标识。
+            }
+        }
+        if (StringUtils.hasText(item.getItemKey())) {
+            keys.add(item.getItemKey());
+        }
+        keys.add("附件项" + (index + 1));
+        for (String key : keys) {
+            if (StringUtils.hasText(key)
+                    && groupedValue.containsKey(key)) {
+                return groupedValue.get(key);
+            }
+        }
+        return null;
     }
 
     private Object parseAttachmentValue(Object value) {
@@ -198,7 +233,32 @@ public class EntityDataMutationValidator {
             return map.values().stream()
                     .anyMatch(this::hasAttachmentValue);
         }
-        return true;
+        return false;
+    }
+
+    private boolean hasAttachmentFileValue(Object value) {
+        Object parsed = parseAttachmentValue(value);
+        if (parsed == null) {
+            return false;
+        }
+        if (parsed instanceof String text) {
+            return StringUtils.hasText(text);
+        }
+        if (parsed instanceof Iterable<?> values) {
+            for (Object item : values) {
+                if (hasAttachmentFileValue(item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (parsed instanceof Map<?, ?> map) {
+            return List.of("url", "path", "fileUrl").stream()
+                    .filter(map::containsKey)
+                    .map(map::get)
+                    .anyMatch(this::hasAttachmentFileValue);
+        }
+        return false;
     }
 
     private void throwMissingAttachmentItem(
@@ -207,10 +267,17 @@ public class EntityDataMutationValidator {
         String itemName = StringUtils.hasText(item.getItemName())
                 ? item.getItemName()
                 : "附件项";
-        throw new RuntimeException(
+        throw requiredFailure(
                 field.getFieldName()
                         + "缺少必填附件项: "
                         + itemName);
+    }
+
+    private BusinessConflictException requiredFailure(
+            String message) {
+        return new BusinessConflictException(
+                "FORM_REQUIRED_VALIDATION_FAILED",
+                message);
     }
 
     private void validateUnique(

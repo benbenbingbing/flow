@@ -7,7 +7,7 @@
         <div class="group-tags">
           <el-tooltip
             v-for="(item, index) in fileItems"
-            :key="index"
+            :key="item.itemKey || item.itemName || index"
             :content="getGroupTooltip(item)"
             placement="top"
           >
@@ -17,7 +17,7 @@
               @click="activeGroupIndex = index"
             >
               {{ item.itemName || `附件项 ${index + 1}` }}
-              <span v-if="item.required" class="required-mark">*</span>
+              <span v-if="isItemRequired(item)" class="required-mark">*</span>
             </div>
           </el-tooltip>
         </div>
@@ -164,7 +164,11 @@ import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
 import {
   attachmentFileTypesToString,
-  isAttachmentFileTypeAllowed
+  getAttachmentItemValue,
+  isAttachmentItemRequired,
+  isAttachmentFileTypeAllowed,
+  resolveAttachmentItems,
+  setAttachmentItemValue
 } from '@/shared/file-attachment'
 
 const props = defineProps({
@@ -183,6 +187,10 @@ const props = defineProps({
   isImage: {
     type: Boolean,
     default: false
+  },
+  attachmentItemRequiredState: {
+    type: Object,
+    default: () => ({})
   }
 })
 
@@ -209,17 +217,20 @@ const uploadRequest = async ({ file, onProgress, onSuccess, onError }) => {
 }
 
 // ==================== 多组模式 ====================
-const isMultiGroup = computed(() => {
-  return props.field.fileItems && props.field.fileItems.length > 0
+const fileItems = computed(() => {
+  return resolveAttachmentItems(props.field)
 })
 
-const fileItems = computed(() => {
-  return props.field.fileItems || []
-})
+const isMultiGroup = computed(() => fileItems.value.length > 0)
 
 const activeItem = computed(() => {
   return fileItems.value[activeGroupIndex.value]
 })
+
+const isItemRequired = item => Boolean(
+  isAttachmentItemRequired(item)
+  || (item?.itemKey && props.attachmentItemRequiredState?.[item.itemKey])
+)
 
 const activeAcceptTypes = computed(() => {
   if (!activeItem.value) return ''
@@ -239,8 +250,7 @@ const allFiles = computed(() => {
   const result = []
   const model = groupModelValue.value
   fileItems.value.forEach((item, gIndex) => {
-    const key = item.itemName || `附件项${gIndex + 1}`
-    const urls = model[key] || []
+    const urls = getAttachmentItemValue(item, gIndex, model) || []
     const arr = Array.isArray(urls) ? urls : (urls ? [urls] : [])
     arr.forEach((itemOrUrl, fIndex) => {
       const isObj = itemOrUrl && typeof itemOrUrl === 'object'
@@ -282,8 +292,7 @@ const beforeUploadActive = (file) => {
   }
 
   // 检查数量限制
-  const key = item.itemName || `附件项${activeGroupIndex.value + 1}`
-  const currentUrls = groupModelValue.value[key] || []
+  const currentUrls = getAttachmentItemValue(item, activeGroupIndex.value, groupModelValue.value) || []
   const currentCount = Array.isArray(currentUrls) ? currentUrls.length : (currentUrls ? 1 : 0)
   const maxCount = item.maxCount || 5
   if (currentCount >= maxCount) {
@@ -299,13 +308,17 @@ const handleSuccessActive = (response, file) => {
     const gIndex = pendingGroupIndex.value
     const item = fileItems.value[gIndex]
     if (!item) return
-    const key = item.itemName || `附件项${gIndex + 1}`
     const url = response.data?.url || response.data
     const originalName = response.data?.originalName || file.name || getFileNameFromUrl(url)
-    const current = groupModelValue.value[key] || []
+    const current = getAttachmentItemValue(item, gIndex, groupModelValue.value) || []
     const arr = Array.isArray(current) ? [...current] : (current ? [current] : [])
     arr.push({ url, name: originalName })
-    const newValue = { ...groupModelValue.value, [key]: arr }
+    const newValue = setAttachmentItemValue(
+      groupModelValue.value,
+      item,
+      gIndex,
+      arr
+    )
     emit('update:modelValue', newValue)
     ElMessage.success('上传成功')
   } else {
@@ -316,11 +329,15 @@ const handleSuccessActive = (response, file) => {
 const removeFileByIndex = (groupIndex, fileIndex) => {
   const item = fileItems.value[groupIndex]
   if (!item) return
-  const key = item.itemName || `附件项${groupIndex + 1}`
-  const current = groupModelValue.value[key] || []
+  const current = getAttachmentItemValue(item, groupIndex, groupModelValue.value) || []
   const arr = Array.isArray(current) ? [...current] : (current ? [current] : [])
   arr.splice(fileIndex, 1)
-  const newValue = { ...groupModelValue.value, [key]: arr }
+  const newValue = setAttachmentItemValue(
+    groupModelValue.value,
+    item,
+    groupIndex,
+    arr
+  )
   emit('update:modelValue', newValue)
 }
 
@@ -348,7 +365,7 @@ const getGroupTagType = (index) => {
 
 const getGroupTooltip = (item) => {
   const parts = []
-  if (item.required) {
+  if (isItemRequired(item)) {
     parts.push('必填')
   }
   if (item.fileTypes) {

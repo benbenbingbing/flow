@@ -42,7 +42,8 @@ export function supportsSubListEmbedding(list) {
 export function isPublishedSubListOption(list) {
   return Boolean(
     list?.listKey
-    && (list.activeReleaseId || Number(list.publishedVersion) > 0)
+    && list.activeReleaseId
+    && Number(list.publishedVersion) > 0
     && supportsSubListEmbedding(list)
   )
 }

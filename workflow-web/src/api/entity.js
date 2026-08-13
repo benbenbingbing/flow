@@ -145,8 +145,21 @@ export const entityDataApi = {
   /**
    * 获取实体数据详情
    */
-  getDetail(entityCode, id, listKey, formId) {
-    const params = {}
+  getDetail(
+    entityCode,
+    id,
+    listKey,
+    formId,
+    releaseContext = {},
+    formReleaseContext = {}
+  ) {
+    const params = {
+      ...releaseContext,
+      formReleaseId: formReleaseContext.releaseId,
+      formReleaseVersion: formReleaseContext.releaseVersion,
+      formReleaseResolutionToken:
+        formReleaseContext.releaseResolutionToken
+    }
     if (listKey) params.listKey = listKey
     if (formId) params.formId = formId
     return request.post(`/entity-data/entity/${entityCode}/detail/${id}/load`, {}, {
@@ -159,33 +172,57 @@ export const entityDataApi = {
    * @param data 数据对象
    * @param startProcess 是否同时发起流程
    */
-  save(data, startProcess = false) {
-    return request.post('/entity-data', { ...data, startProcess })
+  save(data, startProcess = false, releaseContext = {}) {
+    return request.post('/entity-data', {
+      ...data,
+      startProcess,
+      listReleaseId: releaseContext.releaseId,
+      listReleaseVersion: releaseContext.releaseVersion,
+      listReleaseResolutionToken:
+        releaseContext.releaseResolutionToken,
+      formReleaseId: data.formReleaseId,
+      formReleaseVersion: data.formReleaseVersion,
+      formReleaseResolutionToken:
+        data.formReleaseResolutionToken
+    })
   },
 
   /**
    * 更新数据
    */
-  update(entityCode, id, data, startProcess = false, listKey) {
+  update(entityCode, id, data, startProcess = false, listKey, releaseContext = {}) {
     return request.post(`/entity-data/entity/${entityCode}/detail/${id}/update`,
       { ...data, startProcess },
-      { params: listKey ? { listKey } : {} }
+      {
+        params: {
+          ...(listKey ? { listKey } : {}),
+          ...releaseContext
+        }
+      }
     )
   },
 
   /**
    * 删除数据
    */
-  delete(entityCode, id, listKey) {
-    return request.post(`/entity-data/entity/${entityCode}/detail/${id}/delete`, {
-      params: listKey ? { listKey } : {}
-    })
+  delete(entityCode, id, listKey, releaseContext = {}) {
+    return request.post(
+      `/entity-data/entity/${entityCode}/detail/${id}/delete`,
+      {},
+      {
+        params: {
+          ...(listKey ? { listKey } : {}),
+          ...releaseContext
+        }
+      }
+    )
   },
 
-  batchDelete(entityCode, ids, listKey) {
+  batchDelete(entityCode, ids, listKey, releaseContext = {}) {
     return request.post(`/entity-data/entity/${entityCode}/batch-delete`, {
       ids,
-      listKey
+      listKey,
+      ...releaseContext
     })
   },
 

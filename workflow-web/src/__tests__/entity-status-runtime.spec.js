@@ -39,6 +39,22 @@ assert.deepEqual(runtimeField.options, [
   { value: 'PENDING', label: '处理中' }
 ])
 
+const multipleQueryField = withEntityStatusFieldOptions(
+  {
+    fieldCode: 'status',
+    fieldType: 'STRING',
+    componentType: 'select_multiple'
+  },
+  statuses,
+  { allowMultiple: true }
+)
+assert.equal(multipleQueryField.fieldType, 'SELECT')
+assert.equal(multipleQueryField.componentType, 'select_multiple')
+assert.deepEqual(multipleQueryField.options, [
+  { value: 'DRAFT', label: '待填写' },
+  { value: 'PENDING', label: '处理中' }
+])
+
 const runtimeForm = withEntityStatusRuntimeForm(
   {
     fields: [

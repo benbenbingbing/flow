@@ -123,6 +123,28 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="copyDialogVisible" title="复制表单" width="500px">
+      <el-form ref="copyFormRef" :model="copyFormData" :rules="copyRules" label-width="100px">
+        <el-form-item label="表单名称" prop="formName">
+          <el-input v-model="copyFormData.formName" placeholder="请输入新表单名称" />
+        </el-form-item>
+        <el-form-item label="表单标识" prop="formKey">
+          <el-input
+            v-model="copyFormData.formKey"
+            maxlength="100"
+            placeholder="请输入新表单标识"
+          />
+          <div class="field-help">复制后将作为流程和发布引用的稳定标识，请在创建前确认。</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="copyDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="copyLoading" @click="submitCopy">
+          复制表单
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 预览弹窗 -->
     <el-dialog v-model="previewVisible" :title="previewForm ? `表单预览 | ${previewForm.formName}` : '表单预览'" width="800px">
       <FormPreviewLinkage v-if="previewForm" :form="previewForm" :showHeader="false" />
@@ -314,12 +336,16 @@ const loading = ref(false)
 const loadError = ref('')
 const submitLoading = ref(false)
 const dialogVisible = ref(false)
+const copyDialogVisible = ref(false)
+const copyLoading = ref(false)
 const previewVisible = ref(false)
 const initConfigVisible = ref(false)
 const initConfigLoading = ref(false)
 const isEdit = ref(false)
 const formRef = ref(null)
+const copyFormRef = ref(null)
 const currentInitFormId = ref('')
+const copySourceFormId = ref('')
 
 const entityInfo = ref({})
 const formList = ref([])
@@ -343,11 +369,28 @@ const form = reactive({
   description: ''
 })
 
+const copyFormData = reactive({
+  formName: '',
+  formKey: ''
+})
+
 const rules = {
   formName: [{ required: true, message: '请输入表单名称', trigger: 'blur' }],
   formKey: [
     { required: true, message: '请输入表单标识', trigger: 'blur' },
     { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '必须以字母开头，只能包含字母、数字、下划线', trigger: 'blur' }
+  ]
+}
+
+const copyRules = {
+  formName: [{ required: true, message: '请输入新表单名称', trigger: 'blur' }],
+  formKey: [
+    { required: true, message: '请输入新表单标识', trigger: 'blur' },
+    {
+      pattern: /^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/,
+      message: '必须以字母开头，只能包含字母、数字、下划线和短横线，最长 100 个字符',
+      trigger: 'blur'
+    }
   ]
 }
 
@@ -444,14 +487,44 @@ async function handleSetDefault(row) {
   }
 }
 
-async function handleCopy(row) {
+function handleCopy(row) {
+  copySourceFormId.value = row.id
+  copyFormData.formName = `${row.formName} copy`
+  copyFormData.formKey = nextCopyFormKey(row.formKey)
+  copyDialogVisible.value = true
+}
+
+function nextCopyFormKey(sourceKey) {
+  const maxLength = 100
+  const existingKeys = new Set(formList.value.map(item => item.formKey))
+  const appendSuffix = (key, suffix) =>
+    `${key.slice(0, maxLength - suffix.length)}${suffix}`
+  const baseKey = appendSuffix(sourceKey || 'form', '_copy')
+  if (!existingKeys.has(baseKey)) return baseKey
+  for (let sequence = 2; ; sequence += 1) {
+    const candidate = appendSuffix(sourceKey || 'form', `_copy_${sequence}`)
+    if (!existingKeys.has(candidate)) return candidate
+  }
+}
+
+async function submitCopy() {
+  const valid = await copyFormRef.value?.validate().catch(() => false)
+  if (!valid || !copySourceFormId.value) return
+
+  copyLoading.value = true
   try {
-    await copyForm(row.id)
-    ElMessage.success(`表单 "${row.formName}" 复制成功`)
-    loadForms()
+    await copyForm(copySourceFormId.value, {
+      formName: copyFormData.formName.trim(),
+      formKey: copyFormData.formKey.trim()
+    })
+    ElMessage.success(`表单 "${copyFormData.formName}" 复制成功`)
+    copyDialogVisible.value = false
+    await loadForms()
   } catch (e) {
     console.error('复制失败:', e)
     ElMessage.error(e.message || '复制失败')
+  } finally {
+    copyLoading.value = false
   }
 }
 

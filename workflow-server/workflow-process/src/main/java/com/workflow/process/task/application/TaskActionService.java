@@ -15,8 +15,8 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.entity.EntityRecordPort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
-import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -59,7 +59,6 @@ public class TaskActionService {
     private final com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper operationLogMapper;
     private final SysUserService sysUserService;
     private final NodeFormSubmissionService nodeFormSubmissionService;
-    private final EntityDataDynamicService entityDataDynamicService;
     private final EntityActionCapabilityService entityActionCapabilityService;
     private final EntityRecordPort entityRecordPort;
     /** 抄送/知会服务：用于统计未读抄送数等 */
@@ -287,8 +286,9 @@ public class TaskActionService {
         String entityCode = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityCode"));
         String entityDataId = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId"));
         if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
-            var entityData = entityDataDynamicService.findById(entityCode, entityDataId);
-            entityActionCapabilityService.requireRowAction(entityCode, null, "approve", entityData);
+            entityActionCapabilityService.requireStandardPermission(
+                    entityCode,
+                    EntityPermissionAction.APPROVE);
         }
     }
 

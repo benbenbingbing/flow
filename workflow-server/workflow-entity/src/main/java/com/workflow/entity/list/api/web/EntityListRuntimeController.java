@@ -35,8 +35,18 @@ public class EntityListRuntimeController {
     public Result<EntityListSchemaDTO> schema(
             @PathVariable String entityCode,
             @PathVariable String listKey,
-            @RequestParam(required = false) String scene) {
-        return Result.success(runtimeService.schema(entityCode, listKey, scene));
+            @RequestParam(required = false) String scene,
+            @RequestParam(required = false) String releaseId,
+            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false)
+            String releaseResolutionToken) {
+        return Result.success(runtimeService.schema(
+                entityCode,
+                listKey,
+                scene,
+                releaseId,
+                releaseVersion,
+                releaseResolutionToken));
     }
 
     /**

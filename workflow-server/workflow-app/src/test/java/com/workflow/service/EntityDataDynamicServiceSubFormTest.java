@@ -262,6 +262,21 @@ class EntityDataDynamicServiceSubFormTest {
         verify(fixture.dynamicMapper, never()).insert(
                 eq("wf_parent"),
                 org.mockito.ArgumentMatchers.anyMap());
+
+        dto.setData(new HashMap<>(Map.of(
+                "name", "主数据",
+                "documents", Map.of(
+                        "项目章程",
+                        Map.of(
+                                "name", "fake.pdf",
+                                "status", "success")))));
+        RuntimeException forgedValueException =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        RuntimeException.class,
+                        () -> service.save(dto));
+        assertEquals(
+                "项目附件缺少必填附件项: 项目章程",
+                forgedValueException.getMessage());
     }
 
     /**

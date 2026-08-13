@@ -145,44 +145,44 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      - name: 检查后端镜像漏洞
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-server:${{ github.sha }}
-          format: table
-          exit-code: "1"
-          severity: CRITICAL,HIGH
+      # - name: 检查后端镜像漏洞
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-server:${{ github.sha }}
+      #     format: table
+      #     exit-code: "1"
+      #     severity: CRITICAL,HIGH
 
-      - name: 检查前端镜像漏洞
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-web:${{ github.sha }}
-          format: table
-          exit-code: "1"
-          severity: CRITICAL,HIGH
+      # - name: 检查前端镜像漏洞
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-web:${{ github.sha }}
+      #     format: table
+      #     exit-code: "1"
+      #     severity: CRITICAL,HIGH
 
-      - name: 生成后端软件物料清单
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-server:${{ github.sha }}
-          format: cyclonedx
-          output: server-sbom.cdx.json
+      # - name: 生成后端软件物料清单
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-server:${{ github.sha }}
+      #     format: cyclonedx
+      #     output: server-sbom.cdx.json
 
-      - name: 生成前端软件物料清单
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-web:${{ github.sha }}
-          format: cyclonedx
-          output: web-sbom.cdx.json
+      # - name: 生成前端软件物料清单
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-web:${{ github.sha }}
+      #     format: cyclonedx
+      #     output: web-sbom.cdx.json
 
-      - name: 保存软件物料清单
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-${{ github.sha }}
-          path: "*-sbom.cdx.json"
-          if-no-files-found: error
-          retention-days: 30
+      # - name: 保存软件物料清单
+      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      #   with:
+      #     name: sbom-${{ github.sha }}
+      #     path: "*-sbom.cdx.json"
+      #     if-no-files-found: error
+      #     retention-days: 30

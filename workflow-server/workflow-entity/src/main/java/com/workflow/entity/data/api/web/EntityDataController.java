@@ -9,7 +9,9 @@ import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.api.request.EntityDataExportRequest;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityDataExportService;
+import com.workflow.entity.form.application.EntityFormReleaseContext;
 import com.workflow.entity.list.application.EntityDataListConfigService;
+import com.workflow.entity.list.application.EntityListReleaseContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -140,11 +142,19 @@ public class EntityDataController {
     public ApiResponse<EntityDataDTO> getById(
             @PathVariable String entityCode,
             @PathVariable String id,
-            @RequestParam(required = false) String listKey) {
+            @RequestParam(required = false) String listKey,
+            @RequestParam(required = false) String releaseId,
+            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false)
+            String releaseResolutionToken) {
         return ApiResponse.success(entityDataActionService.getDetailReadOnly(
                 entityCode,
                 id,
-                listKey));
+                listKey,
+                releaseContext(
+                        releaseId,
+                        releaseVersion,
+                        releaseResolutionToken)));
     }
 
     /**
@@ -155,12 +165,28 @@ public class EntityDataController {
             @PathVariable String entityCode,
             @PathVariable String id,
             @RequestParam(required = false) String listKey,
-            @RequestParam(required = false) String formId) {
+            @RequestParam(required = false) String formId,
+            @RequestParam(required = false) String releaseId,
+            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false)
+            String releaseResolutionToken,
+            @RequestParam(required = false) String formReleaseId,
+            @RequestParam(required = false) Integer formReleaseVersion,
+            @RequestParam(required = false)
+            String formReleaseResolutionToken) {
         return ApiResponse.success(entityDataActionService.getDetail(
                 entityCode,
                 id,
                 listKey,
-                formId));
+                formId,
+                releaseContext(
+                        releaseId,
+                        releaseVersion,
+                        releaseResolutionToken),
+                new EntityFormReleaseContext(
+                        formReleaseId,
+                        formReleaseVersion,
+                        formReleaseResolutionToken)));
     }
     
     /**
@@ -170,7 +196,11 @@ public class EntityDataController {
     public ApiResponse<EntityDataDTO> getByProcessInstance(
             @PathVariable String entityCode, 
             @PathVariable String processInstanceId,
-            @RequestParam(required = false) String listKey) {
+            @RequestParam(required = false) String listKey,
+            @RequestParam(required = false) String releaseId,
+            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false)
+            String releaseResolutionToken) {
         actionCapabilityService.requireAnyStandardPermission(
                 entityCode,
                 com.workflow.entity.permission.application.EntityPermissionAction.VIEW,
@@ -178,7 +208,11 @@ public class EntityDataController {
         return ApiResponse.success(entityDataActionService.getDetailByProcessInstance(
                 entityCode,
                 processInstanceId,
-                listKey));
+                listKey,
+                releaseContext(
+                        releaseId,
+                        releaseVersion,
+                        releaseResolutionToken)));
     }
     
     /**
@@ -187,7 +221,12 @@ public class EntityDataController {
      */
     @PostMapping
     public ApiResponse<EntityDataDTO> save(@RequestBody EntityDataDTO dto) {
-        return ApiResponse.success(entityDataActionService.create(dto));
+        return ApiResponse.success(entityDataActionService.create(
+                dto,
+                releaseContext(
+                        dto.getListReleaseId(),
+                        dto.getListReleaseVersion(),
+                        dto.getListReleaseResolutionToken())));
     }
     
     /**
@@ -198,8 +237,20 @@ public class EntityDataController {
             @PathVariable String entityCode, 
             @PathVariable String id, 
             @RequestParam(required = false) String listKey,
+            @RequestParam(required = false) String releaseId,
+            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false)
+            String releaseResolutionToken,
             @RequestBody Map<String, Object> formData) {
-        return ApiResponse.success(entityDataActionService.update(entityCode, id, listKey, formData));
+        return ApiResponse.success(entityDataActionService.update(
+                entityCode,
+                id,
+                listKey,
+                formData,
+                releaseContext(
+                        releaseId,
+                        releaseVersion,
+                        releaseResolutionToken)));
     }
     
     /**
@@ -209,8 +260,19 @@ public class EntityDataController {
     public ApiResponse<Void> delete(
             @PathVariable String entityCode,
             @PathVariable String id,
-            @RequestParam(required = false) String listKey) {
-        entityDataActionService.delete(entityCode, id, listKey);
+            @RequestParam(required = false) String listKey,
+            @RequestParam(required = false) String releaseId,
+            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false)
+            String releaseResolutionToken) {
+        entityDataActionService.delete(
+                entityCode,
+                id,
+                listKey,
+                releaseContext(
+                        releaseId,
+                        releaseVersion,
+                        releaseResolutionToken));
         return ApiResponse.success();
     }
 
@@ -225,7 +287,14 @@ public class EntityDataController {
     public ApiResponse<Void> batchDelete(
             @PathVariable String entityCode,
             @RequestBody EntityBatchDeleteRequest request) {
-        entityDataActionService.batchDelete(entityCode, request.getIds(), request.getListKey());
+        entityDataActionService.batchDelete(
+                entityCode,
+                request.getIds(),
+                request.getListKey(),
+                releaseContext(
+                        request.getReleaseId(),
+                        request.getReleaseVersion(),
+                        request.getReleaseResolutionToken()));
         return ApiResponse.success();
     }
     
@@ -271,6 +340,16 @@ public class EntityDataController {
                         || params.containsKey("page")
                         || params.containsKey("pageSize")
                         || params.containsKey("size"));
+    }
+
+    private EntityListReleaseContext releaseContext(
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken) {
+        return new EntityListReleaseContext(
+                releaseId,
+                releaseVersion,
+                releaseResolutionToken);
     }
 
     /**

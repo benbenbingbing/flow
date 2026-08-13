@@ -907,6 +907,22 @@ public class EntityFormService {
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityForm copyForm(String sourceFormId) {
+        return copyForm(sourceFormId, null, null);
+    }
+
+    /**
+     * 复制表单，并允许调用方在创建副本前确定名称和稳定标识。
+     *
+     * @param sourceFormId 源表单ID
+     * @param targetFormName 新表单名称，为空时生成默认名称
+     * @param targetFormKey 新表单标识，为空时生成不冲突的默认标识
+     * @return 新表单
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityForm copyForm(
+            String sourceFormId,
+            String targetFormName,
+            String targetFormKey) {
         // 查询源表单
         EntityForm sourceForm = formMapper.selectById(sourceFormId);
         if (sourceForm == null) {
@@ -917,8 +933,12 @@ public class EntityFormService {
         // 创建新表单
         EntityForm newForm = new EntityForm();
         newForm.setEntityId(sourceForm.getEntityId());
-        newForm.setFormName(sourceForm.getFormName() + " copy");
-        newForm.setFormKey(sourceForm.getFormKey() + "_copy_" + System.currentTimeMillis());
+        newForm.setFormName(StringUtils.hasText(targetFormName)
+                ? targetFormName.trim()
+                : sourceForm.getFormName() + " copy");
+        newForm.setFormKey(StringUtils.hasText(targetFormKey)
+                ? targetFormKey.trim()
+                : nextCopyFormKey(sourceForm));
         newForm.setDescription(sourceForm.getDescription());
         newForm.setLayoutType(sourceForm.getLayoutType());
         newForm.setCustomComponent(sourceForm.getCustomComponent());
@@ -932,6 +952,8 @@ public class EntityFormService {
         newForm.setRevision(1);
         newForm.setCreateTime(LocalDateTime.now());
         newForm.setUpdateTime(LocalDateTime.now());
+        configurationValidator.validateFormIdentity(newForm);
+        validateFormKey(newForm);
         // 保存新表单
         formMapper.insert(newForm);
         // 复制字段
@@ -986,5 +1008,32 @@ public class EntityFormService {
         newForm.setFields(getFormFields(newForm.getId()));
         newForm.setNodes(formNodeMapper.findByFormId(newForm.getId()));
         return newForm;
+    }
+
+    private String nextCopyFormKey(EntityForm sourceForm) {
+        String sourceKey = StringUtils.hasText(sourceForm.getFormKey())
+                ? sourceForm.getFormKey().trim()
+                : "form";
+        String baseKey = appendCopyKeySuffix(sourceKey, "_copy");
+        if (!formMapper.existsFormKey(
+                sourceForm.getEntityId(), baseKey, "")) {
+            return baseKey;
+        }
+        for (int sequence = 2; ; sequence++) {
+            String candidate = appendCopyKeySuffix(
+                    sourceKey, "_copy_" + sequence);
+            if (!formMapper.existsFormKey(
+                    sourceForm.getEntityId(), candidate, "")) {
+                return candidate;
+            }
+        }
+    }
+
+    private String appendCopyKeySuffix(String key, String suffix) {
+        int prefixLength = Math.min(
+                key.length(),
+                EntityFormConfigurationValidator.FORM_KEY_MAX_LENGTH
+                        - suffix.length());
+        return key.substring(0, prefixLength) + suffix;
     }
 }

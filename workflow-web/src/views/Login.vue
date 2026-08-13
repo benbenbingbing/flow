@@ -14,7 +14,6 @@
         :model="loginForm"
         :rules="loginRules"
         class="login-form"
-        @keyup.enter="handleLogin"
       >
         <el-form-item prop="username">
           <el-input
@@ -23,11 +22,13 @@
             size="large"
             :prefix-icon="User"
             clearable
+            @keyup.enter="focusPassword"
           />
         </el-form-item>
         
         <el-form-item prop="password">
           <el-input
+            ref="passwordInputRef"
             v-model="loginForm.password"
             type="password"
             placeholder="密码"
@@ -35,6 +36,7 @@
             :prefix-icon="Lock"
             show-password
             clearable
+            @keyup.enter="handleLogin"
           />
         </el-form-item>
         
@@ -44,6 +46,7 @@
             size="large"
             class="login-btn"
             :loading="loading"
+            :disabled="!hasCredentials"
             @click="handleLogin"
           >
             登 录
@@ -56,7 +59,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Connection } from '@element-plus/icons-vue'
@@ -67,11 +70,16 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const loginFormRef = ref(null)
+const passwordInputRef = ref(null)
 const loading = ref(false)
 const loginForm = reactive({
   username: '',
   password: ''
 })
+const hasCredentials = computed(() => (
+  loginForm.username.trim().length > 0
+  && loginForm.password.length > 0
+))
 
 const loginRules = {
   username: [
@@ -82,8 +90,18 @@ const loginRules = {
   ]
 }
 
+function focusPassword() {
+  passwordInputRef.value?.focus()
+}
+
 async function handleLogin() {
-  if (!loginFormRef.value) return
+  if (
+    !loginFormRef.value
+    || !hasCredentials.value
+    || loading.value
+  ) {
+    return
+  }
   
   try {
     await loginFormRef.value.validate()

@@ -80,6 +80,7 @@
           :field="field"
           :disabled="isFieldDisabled(field)"
           :options="getFieldOptions(field)"
+          :attachment-item-required-state="linkageState.attachmentItemRequired?.[field.fieldCode] || {}"
           :context="{
             ...runtimeContext,
             entityCode,
@@ -172,6 +173,7 @@ const linkageState = ref({
   visibility: {} as Record<string, boolean>,
   disabled: {} as Record<string, boolean>,
   required: {} as Record<string, boolean>,
+  attachmentItemRequired: {} as Record<string, Record<string, boolean>>,
   options: {} as Record<string, any[]>,
   values: {} as Record<string, any>
 })
@@ -197,7 +199,7 @@ function isLinkageStateEqual(a: any, b: any) {
 
 // 更新联动状态
 function updateLinkageState() {
-  const fields = formFields.value || []
+  const fields = runtimeFormFields.value || []
   const newState = LinkageEngine.processAllLinkages(fields, formData.value.data || {})
 
   if (!isLinkageStateEqual(linkageState.value, newState)) {
@@ -262,7 +264,12 @@ function getFieldRules(field: any) {
   const isRequired = linkageState.value.required[field.fieldCode] !== undefined
     ? linkageState.value.required[field.fieldCode]
     : field.isRequired
-  const rules: any[] = buildRuntimeFieldRules(field, isRequired, field.fieldName)
+  const rules: any[] = buildRuntimeFieldRules(
+    field,
+    isRequired,
+    field.fieldName,
+    linkageState.value.attachmentItemRequired?.[field.fieldCode] || {}
+  )
   if (field.isUnique) {
     rules.push({
       validator: (rule: any, value: any, callback: any) => {
@@ -411,7 +418,7 @@ watch(
 
 // 监听表单数据变化，触发联动（只在无表单配置时处理，有表单配置时由 FormPreviewLinkage 自己管理）
 watch(() => formData.value.data, () => {
-  if (!props.defaultForm?.fields?.length) {
+  if (showCustomForm.value || !props.defaultForm?.fields?.length) {
     updateLinkageState()
   }
 }, { deep: true })
@@ -450,9 +457,16 @@ const runtimeFormFields = computed(() =>
       const runtimeField = {
         ...(entityField || {}),
         ...field,
+        isRequired: entityField?.isRequired === true
+          || entityField?.isRequired === 1
+          || field?.isRequired === true
+          || field?.isRequired === 1
+          ? 1
+          : 0,
         fileItems: field.fileItems?.length
           ? field.fileItems
           : (entityField?.fileItems || []),
+        entityFileItems: entityField?.fileItems || [],
         ...(options
           ? { dictType, optionsJson: JSON.stringify(options) }
           : {})
@@ -463,6 +477,10 @@ const runtimeFormFields = computed(() =>
       )
     })
 )
+
+watch(runtimeFormFields, () => {
+  updateLinkageState()
+}, { immediate: true })
 
 const runtimeForm = computed(() =>
   withEntityStatusRuntimeForm(

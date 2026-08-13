@@ -152,7 +152,24 @@ public class EntityActionCapabilityService {
             String listKey,
             String buttonKey,
             EntityDataDTO row) {
-        Map<String, Object> button = actionConfigService.resolveButton(entityCode, listKey, buttonKey);
+        return evaluateRowActionForConfig(
+                entityCode,
+                actionConfigService.resolveListConfig(
+                        entityCode,
+                        listKey),
+                buttonKey,
+                row);
+    }
+
+    public EntityActionCapabilityDTO evaluateRowActionForConfig(
+            String entityCode,
+            EntityListConfig config,
+            String buttonKey,
+            EntityDataDTO row) {
+        Map<String, Object> button = actionConfigService.resolveButton(
+                config,
+                entityCode,
+                buttonKey);
         if (button == null || Boolean.FALSE.equals(button.get("enabled"))) {
             return EntityActionCapabilityDTO.hidden("操作未启用");
         }
@@ -176,7 +193,22 @@ public class EntityActionCapabilityService {
      * @throws ForbiddenException 按钮未启用或不可见时抛出
      */
     public void requireToolbarAction(String entityCode, String listKey, String buttonKey) {
-        Map<String, Object> button = actionConfigService.resolveButton(entityCode, listKey, buttonKey);
+        requireToolbarActionForConfig(
+                entityCode,
+                actionConfigService.resolveListConfig(
+                        entityCode,
+                        listKey),
+                buttonKey);
+    }
+
+    public void requireToolbarActionForConfig(
+            String entityCode,
+            EntityListConfig config,
+            String buttonKey) {
+        Map<String, Object> button = actionConfigService.resolveButton(
+                config,
+                entityCode,
+                buttonKey);
         if (button == null || Boolean.FALSE.equals(button.get("enabled"))) {
             deny(entityCode, buttonKey, null, "操作未启用");
         }
@@ -205,7 +237,25 @@ public class EntityActionCapabilityService {
             String listKey,
             String buttonKey,
             EntityDataDTO row) {
-        EntityActionCapabilityDTO capability = evaluateRowAction(entityCode, listKey, buttonKey, row);
+        requireRowActionForConfig(
+                entityCode,
+                actionConfigService.resolveListConfig(
+                        entityCode,
+                        listKey),
+                buttonKey,
+                row);
+    }
+
+    public void requireRowActionForConfig(
+            String entityCode,
+            EntityListConfig config,
+            String buttonKey,
+            EntityDataDTO row) {
+        EntityActionCapabilityDTO capability = evaluateRowActionForConfig(
+                entityCode,
+                config,
+                buttonKey,
+                row);
         if (!capability.isVisible() || !capability.isEnabled()) {
             deny(entityCode, buttonKey, row == null ? null : row.getId(), capability.getReason());
         }

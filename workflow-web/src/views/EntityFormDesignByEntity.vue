@@ -18,7 +18,10 @@
         >
           <el-icon><Document /></el-icon>查看最终代码
         </el-button>
-        <el-button @click="showPreview = true">
+        <el-button
+          :disabled="isCustomRendererMode && !form.customComponent"
+          @click="showPreview = true"
+        >
           <el-icon><View /></el-icon>预览
         </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
@@ -40,7 +43,20 @@
       class="system-config-alert"
     />
 
-    <div class="design-body">
+    <div class="renderer-mode-toolbar">
+      <span class="renderer-mode-label">渲染方式</span>
+      <el-segmented
+        :model-value="formRendererMode"
+        :options="rendererModeOptions"
+        :disabled="isSystemEntity"
+        @change="handleFormRendererModeChange"
+      />
+      <el-tag v-if="isCustomRendererMode" type="info" effect="plain">
+        默认布局已保留
+      </el-tag>
+    </div>
+
+    <div v-if="!isCustomRendererMode" class="design-body">
       <div class="field-panel">
         <div class="panel-title">实体字段</div>
         <div class="field-search">
@@ -355,6 +371,7 @@
                       v-model="selectedField.isRequired"
                       :true-label="1"
                       :false-label="0"
+                      :disabled="selectedEntityFieldRequired"
                     >
                       必填
                     </el-checkbox>
@@ -377,7 +394,7 @@
                 <el-alert
                   type="info"
                   :closable="false"
-                  title="显示：默认隐藏 → 模式显示权限 → 条件显示；编辑：整表只读 → 查看模式 → 默认只读 → 模式编辑权限 → 条件禁用；必填：配置条件必填时使用条件结果，否则使用默认必填。"
+                  title="显示：默认隐藏 → 模式显示权限 → 条件显示；编辑：整表只读 → 查看模式 → 默认只读 → 模式编辑权限 → 条件禁用；必填：默认必填与条件必填任一成立即生效。"
                 />
                 <div class="rule-bridge">
                   <div>
@@ -715,6 +732,35 @@
       </el-drawer>
     </div>
 
+    <FormCustomRendererWorkspace
+      v-else
+      :custom-component="form.customComponent"
+      :custom-component-version="form.customComponentVersion"
+      :custom-component-snapshot-version="form.customComponentSnapshotVersion"
+      :custom-form-options="customFormOptions"
+      :selected-custom-form-catalog-option="selectedCustomFormCatalogOption"
+      :selected-custom-form-schema="selectedCustomFormSchema"
+      :custom-form-available="customFormAvailable"
+      :inactive-node-count="formFields.length"
+      :custom-form-button-count="customFormButtonCount"
+      :form-data-source-binding-count="formDataSourceBindingCount"
+      :preview-form="previewForm"
+      :preview-mode="previewMode"
+      :preview-mode-options="previewModeOptions"
+      :preview-actions="previewActions"
+      :preview-footer-actions="previewFooterActions"
+      :entity-info="entityInfo"
+      :entity-fields="entityFields"
+      :system-entity="isSystemEntity"
+      @update:custom-component="handleCustomFormComponentChange"
+      @update:preview-mode="previewMode = $event"
+      @open-form-settings="openFormSettings"
+      @open-form-extension-config="showFormExtensionConfig = true"
+      @open-extension-management="openExtensionManagement"
+      @refresh-extension-catalog="refreshExtensionCatalog"
+      @preview-action="handlePreviewAction"
+    />
+
     <FormDesignerSettingsDrawer
       v-model="showFormSettings"
       v-model:active-tab="activeFormSettingsTab"
@@ -759,6 +805,7 @@
         v-if="selectedField"
         :field="selectedField"
         :all-fields="entityFields.filter(f => f.uiConfigurable !== false)"
+        :attachment-items="selectedAttachmentItems"
         :initial-tab="linkageInitialTab"
         @save="handleSaveLinkage"
       />
@@ -841,6 +888,7 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerSettingsDrawer.vue'
+import FormCustomRendererWorkspace from '@/components/form-designer/FormCustomRendererWorkspace.vue'
 import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
@@ -852,8 +900,17 @@ import {
 } from '@/components/form-fields'
 import {
   getCustomFormComponentOptions,
-  getCustomFormDescriptor
+  getCustomFormDescriptor,
+  hasCustomFormComponent
 } from '@/utils/customComponentRegistry'
+import {
+  FORM_RENDERER_MODE_CUSTOM,
+  FORM_RENDERER_MODE_DEFAULT,
+  FORM_RENDERER_MODE_OPTIONS,
+  changeFormRendererMode,
+  resolveFormRendererMode,
+  shouldPersistFormNodes
+} from '@/shared/form-renderer-mode'
 import {
   getFormNodeComponentOptions
 } from '@/utils/formNodeRegistry'
@@ -962,6 +1019,7 @@ const formBaseline = ref('')
 const showPreview = ref(false)
 const showFormSettings = ref(false)
 const activeFormSettingsTab = ref('basic')
+const formRendererMode = ref(FORM_RENDERER_MODE_DEFAULT)
 const previewMode = ref('create')
 const propertyDrawerVisible = ref(false)
 const showLinkageConfig = ref(false)
@@ -982,9 +1040,12 @@ const diffInfo = ref({ changed: true, changedSections: [] })
 const dataSources = ref([])
 const dataSourcesByUsage = ref({})
 const extensionDefinitions = ref([])
-const selectableCustomFormCatalogOptions = ref([])
 const formNodes = ref([])
 const lastCustomFormComponent = ref('')
+const rendererModeOptions = FORM_RENDERER_MODE_OPTIONS
+const isCustomRendererMode = computed(() =>
+  formRendererMode.value === FORM_RENDERER_MODE_CUSTOM
+)
 const designChildrenMap = computed(() => {
   const result = new Map()
   formFields.value.forEach(node => {
@@ -1086,6 +1147,7 @@ const entityInfo = ref({})
 const isSystemEntity = computed(() => entityInfo.value?.storageMode === 'SYSTEM')
 watch(isSystemEntity, value => {
   if (!value) return
+  formRendererMode.value = FORM_RENDERER_MODE_DEFAULT
   previewMode.value = 'view'
   const actionBar = normalizeFormActionBar(viewConfig.value.actionBar)
   viewConfig.value.actionBar = {
@@ -1134,6 +1196,16 @@ const form = ref({
 const selectedCustomFormSchema = computed(() =>
   getCustomFormDescriptor(form.value.customComponent)?.configSchema || []
 )
+const selectedAttachmentItems = computed(() =>
+  attachmentItemsForField(selectedField.value)
+)
+const selectedEntityFieldRequired = computed(() =>
+  isEntityFieldFixedRequired(selectedField.value)
+)
+const customFormAvailable = computed(() =>
+  Boolean(form.value.customComponent)
+  && hasCustomFormComponent(form.value.customComponent)
+)
 
 const formDataSourceBindingCount = computed(() =>
   Object.values(parseDocument(form.value.dataSourceBindingsDocument))
@@ -1169,6 +1241,7 @@ watch(
       form.value.customComponentSnapshotVersion = null
       return
     }
+    formRendererMode.value = FORM_RENDERER_MODE_CUSTOM
     lastCustomFormComponent.value = componentName
     const descriptor = customFormOptions.value.find(
       option => option.value === componentName
@@ -1205,28 +1278,79 @@ function openFormSettings(tab = 'basic') {
 }
 
 function handleFormRendererModeChange(mode) {
-  if (mode === 'DEFAULT') {
-    if (form.value.customComponent) {
-      lastCustomFormComponent.value = form.value.customComponent
-    }
-    form.value.customComponent = ''
-    return
+  if (isSystemEntity.value) return
+  const next = changeFormRendererMode({
+    mode,
+    customComponent: form.value.customComponent,
+    lastCustomComponent: lastCustomFormComponent.value
+  })
+  formRendererMode.value = next.mode
+  form.value.customComponent = next.customComponent
+  lastCustomFormComponent.value = next.lastCustomComponent
+  if (next.mode === FORM_RENDERER_MODE_CUSTOM) {
+    propertyDrawerVisible.value = false
+    selectedField.value = null
+    activeFormSettingsTab.value = 'rendering'
   }
-  const selectableKeys = new Set(
-    selectableCustomFormCatalogOptions.value.map(option => option.key)
-  )
-  const fallback = selectableKeys.has(lastCustomFormComponent.value)
-    ? lastCustomFormComponent.value
-    : (selectableCustomFormCatalogOptions.value[0]?.key || '')
-  if (!fallback) {
-    ElMessage.info('当前实体暂无可用的自定义表单组件')
-    return
-  }
-  form.value.customComponent = fallback
 }
 
-function handleCustomFormCatalogLoaded(options = []) {
-  selectableCustomFormCatalogOptions.value = options
+function handleCustomFormComponentChange(componentName) {
+  form.value.customComponent = componentName || ''
+  if (componentName) {
+    formRendererMode.value = FORM_RENDERER_MODE_CUSTOM
+    lastCustomFormComponent.value = componentName
+  }
+}
+
+function validateCustomRendererSelection() {
+  if (!isCustomRendererMode.value) return true
+  if (!form.value.customComponent) {
+    ElMessage.warning('请选择自定义表单组件')
+    return false
+  }
+  if (!customFormAvailable.value) {
+    ElMessage.warning('当前前端未注册该自定义表单组件')
+    return false
+  }
+  return true
+}
+
+function shouldSaveCurrentFormNodes() {
+  return shouldPersistFormNodes(formRendererMode.value)
+}
+
+function resetRendererModeFromForm() {
+  formRendererMode.value = isSystemEntity.value
+    ? FORM_RENDERER_MODE_DEFAULT
+    : resolveFormRendererMode(form.value.customComponent)
+  if (form.value.customComponent) {
+    lastCustomFormComponent.value = form.value.customComponent
+  }
+}
+
+function requireDefaultFormNodes() {
+  if (!shouldSaveCurrentFormNodes()) {
+    return true
+  }
+  if (formFields.value.length === 0) {
+    ElMessage.warning('请至少添加一个字段')
+    return false
+  }
+  return true
+}
+
+function validateRendererForSave() {
+  if (!validateCustomRendererSelection()) {
+    return false
+  }
+  return requireDefaultFormNodes()
+}
+
+function validateRendererForPublish() {
+  if (isCustomRendererMode.value && !validateCustomRendererSelection()) {
+    return false
+  }
+  return true
 }
 
 function openExtensionManagement() {
@@ -1566,13 +1690,13 @@ const hasEventConfig = computed(() => {
 })
 
 provide(FORM_DESIGNER_CONTEXT_KEY, {
-  form, viewConfig, isEdit, isSystemEntity,
+  form, formRendererMode, rendererModeOptions,
+  viewConfig, isEdit, isSystemEntity,
   customFormButtonCount, entityInfo, entityFields, formFields,
   formDataSourceBindingCount, eventFieldOptions,
   selectedCustomFormSchema, customFormOptions,
   selectedCustomFormCatalogOption, showFormExtensionConfig,
   openFormDataSourceConfig, handleFormRendererModeChange,
-  handleCustomFormCatalogLoaded,
   openExtensionManagement, refreshExtensionCatalog,
   selectedField, activeNodeSettingsTab, isFieldNode,
   canConfigureSelectedNodeDataSource,
@@ -2197,6 +2321,9 @@ function hasOptionsInComponentProps(field) {
 function enrichFieldCodes() {
   if (entityFields.value.length === 0 || formFields.value.length === 0) return
   formFields.value.forEach(field => {
+    if (isEntityFieldFixedRequired(field)) {
+      field.isRequired = 1
+    }
     if (!field.fieldCode && field.fieldId) {
       // 使用字符串比较，避免数字/字符串类型不匹配
       const fieldIdStr = String(field.fieldId)
@@ -2254,6 +2381,7 @@ async function loadFormInfo() {
       ...parsedViewConfig,
       actionBar: normalizeFormActionBar(parsedViewConfig.actionBar)
     }
+    resetRendererModeFromForm()
     if (data.entityId && !entityId) {
       form.value.entityId = data.entityId
     }
@@ -2639,6 +2767,9 @@ function nodeToField(node, legacyField) {
 }
 
 function fieldToNodePayload(field, options = {}) {
+  const effectiveRequired = isEntityFieldFixedRequired(field)
+    ? 1
+    : field.isRequired
   const selectedFieldComponent =
     field.fieldComponentName
     || (
@@ -2655,8 +2786,9 @@ function fieldToNodePayload(field, options = {}) {
       )
     : null
   const persistedField = selectedFieldComponent
-    ? {
+      ? {
         ...field,
+        isRequired: effectiveRequired,
         componentType: getDefaultComponentType(field.fieldType),
         componentExtensionType: FORM_FIELD_EXTENSION_TYPE,
         componentName: selectedFieldComponent,
@@ -2673,6 +2805,7 @@ function fieldToNodePayload(field, options = {}) {
       }
     : {
         ...field,
+        isRequired: effectiveRequired,
         componentExtensionType: undefined
       }
   return buildFormNodePayload(
@@ -2704,6 +2837,7 @@ function rememberNodeBaseline(field) {
 
 function formFingerprint() {
   return JSON.stringify({
+    rendererMode: formRendererMode.value,
     formName: form.value.formName || '',
     description: form.value.description || '',
     layoutType: form.value.layoutType || 'vertical',
@@ -2726,6 +2860,10 @@ function hasUnsavedLocalChanges() {
   if (formBaseline.value && formBaseline.value !== formFingerprint()) {
     return true
   }
+  return hasUnsavedNodeChanges()
+}
+
+function hasUnsavedNodeChanges() {
   return formFields.value.some(field =>
     !field.revision
       || nodeBaselines.value.get(field.id) !== nodeFingerprint(field)
@@ -2768,6 +2906,11 @@ function restoreFieldConfig(field) {
     const compProps = typeof field.componentProps === 'string'
       ? JSON.parse(field.componentProps)
       : field.componentProps
+
+    if ((!Array.isArray(field.fileItems) || field.fileItems.length === 0)
+        && Array.isArray(compProps.fileItems)) {
+      field.fileItems = cloneAttachmentItems(compProps.fileItems)
+    }
 
     // 恢复子表单配置
     if (compProps.subFormConfig) {
@@ -2853,6 +2996,14 @@ function buildSerializedFieldComponentProps(field) {
         ? JSON.parse(field.componentProps)
         : JSON.parse(JSON.stringify(field.componentProps)))
       : {}
+
+    const attachmentItems = attachmentItemsForField(field)
+    if (isAttachmentField(field) && attachmentItems.length > 0) {
+      compProps.fileItems = cloneAttachmentItems(attachmentItems)
+    } else {
+      delete compProps.fileItems
+      delete compProps.attachmentItemRequiredRules
+    }
 
     // 序列化子表单配置
     if (isSubFormField(field)) {
@@ -3103,6 +3254,9 @@ function addField(entityField) {
   }
   if (entityField.options) {
     newField.options = entityField.options
+  }
+  if (Array.isArray(entityField.fileItems)) {
+    newField.fileItems = cloneAttachmentItems(entityField.fileItems)
   }
 
   formFields.value.push(newField)
@@ -3480,7 +3634,7 @@ function handleSaveLinkage(linkageRules) {
   if (selectedField.value) {
     // 先清除旧的联动规则根属性，避免切换类型后残留
     const allRuleKeys = ['visibilityConditionConfig', 'visibilityRule', 'disabledConditionConfig', 'disabledRule',
-      'requiredConditionConfig', 'requiredRule', 'calculationFormula', 'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula', 'valueMapping', 'valueApi']
+      'requiredConditionConfig', 'requiredRule', 'calculationFormula', 'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula', 'valueMapping', 'valueApi', 'attachmentItemRequiredRules']
     allRuleKeys.forEach(key => {
       delete selectedField.value[key]
     })
@@ -3491,10 +3645,17 @@ function handleSaveLinkage(linkageRules) {
       selectedField.value[key] = linkageRules[key]
     })
     // 将联动规则保存到扩展属性中（持久化到数据库）
-    selectedField.value.componentProps = JSON.stringify({
+    const componentProps = {
       ...parseComponentProps(selectedField.value.componentProps),
       linkageRules
-    })
+    }
+    if (linkageRules.attachmentItemRequiredRules) {
+      componentProps.attachmentItemRequiredRules =
+        linkageRules.attachmentItemRequiredRules
+    } else {
+      delete componentProps.attachmentItemRequiredRules
+    }
+    selectedField.value.componentProps = JSON.stringify(componentProps)
     ElMessage.success('联动配置已保存到字段')
     showLinkageConfig.value = false
   }
@@ -3508,6 +3669,53 @@ function parseComponentProps(propsStr) {
   } catch (e) {
     return {}
   }
+}
+
+function isAttachmentField(field) {
+  return ['FILE', 'IMAGE'].includes(String(
+    field?.fieldType || field?.componentType || ''
+  ).toUpperCase())
+}
+
+function entityFieldForFormField(field) {
+  if (!field) return null
+  return entityFields.value.find(item =>
+    (field.fieldId != null && String(item.id) === String(field.fieldId))
+      || (field.fieldCode && item.fieldCode === field.fieldCode)
+      || (field.bindingRef && item.fieldCode === field.bindingRef)
+  ) || null
+}
+
+function isEntityFieldFixedRequired(field) {
+  const entityField = entityFieldForFormField(field)
+  return entityField?.isRequired === true || entityField?.isRequired === 1
+}
+
+function attachmentItemsForField(field) {
+  if (!field || !isAttachmentField(field)) return []
+  const entityField = entityFieldForFormField(field)
+  const componentItems = parseComponentProps(field.componentProps).fileItems
+  return [entityField?.fileItems, field.fileItems, componentItems]
+    .find(items => Array.isArray(items) && items.length > 0) || []
+}
+
+function cloneAttachmentItems(items) {
+  return (Array.isArray(items) ? items : []).map((item, index) => ({
+    itemKey: item.itemKey,
+    itemName: item.itemName || `附件项${index + 1}`,
+    nameAliases: Array.isArray(item.nameAliases)
+      ? [...item.nameAliases]
+      : safeParseConfig(item.nameAliases, []),
+    required: item.required === true
+      || item.required === 1
+      || item.required === '1',
+    fileTypes: Array.isArray(item.fileTypes)
+      ? [...item.fileTypes]
+      : item.fileTypes,
+    maxSize: item.maxSize,
+    maxCount: item.maxCount,
+    sortOrder: item.sortOrder ?? index
+  }))
 }
 
 function updateValidationConfig(key, value) {
@@ -3814,11 +4022,13 @@ function handleRevisionConflict(error, field) {
   return false
 }
 
-async function refreshDraftStateAfterSaveFailure() {
+async function refreshDraftStateAfterSaveFailure({ preserveNodes = false } = {}) {
   if (!form.value.id) return
   try {
     await loadFormInfo()
-    await loadFormFields()
+    if (!preserveNodes) {
+      await loadFormFields()
+    }
     await loadDiff()
   } catch (error) {
     console.error('保存失败后刷新草稿状态失败:', error)
@@ -3927,8 +4137,12 @@ async function handlePublish() {
     ElMessage.warning('请先保存草稿')
     return
   }
-  if (hasUnsavedLocalChanges()) {
-    ElMessage.warning('画布或属性仍有未保存修改，请先保存草稿后再发布')
+  if (!validateRendererForPublish()) return
+  const hasRelevantUnsavedChanges =
+    (formBaseline.value && formBaseline.value !== formFingerprint())
+    || (!isCustomRendererMode.value && hasUnsavedNodeChanges())
+  if (hasRelevantUnsavedChanges) {
+    ElMessage.warning('当前渲染配置仍有未保存修改，请先保存草稿后再发布')
     return
   }
   const diff = await getFormDiff(form.value.id)
@@ -4069,32 +4283,32 @@ async function handleSave() {
   if (!form.value.entityId && eid) {
     form.value.entityId = eid
   }
-  
-  if (formFields.value.length === 0) {
-    ElMessage.warning('请至少添加一个字段')
-    return
-  }
 
-  let orderedFields
-  try {
-    for (const field of formFields.value) {
-      const label =
-        field.fieldLabel || field.fieldName || field.fieldCode || field.id
-      validateNodeValidationRules(field)
-      if (field.parentId) {
-        const parent = nodeById(field.parentId)
-        if (!isValidParentCandidate(parent, field)) {
-          throw new Error(`“${label}”的父容器不兼容`)
+  if (!validateRendererForSave()) return
+
+  const persistNodes = shouldSaveCurrentFormNodes()
+  let orderedFields = []
+  if (persistNodes) {
+    try {
+      for (const field of formFields.value) {
+        const label =
+          field.fieldLabel || field.fieldName || field.fieldCode || field.id
+        validateNodeValidationRules(field)
+        if (field.parentId) {
+          const parent = nodeById(field.parentId)
+          if (!isValidParentCandidate(parent, field)) {
+            throw new Error(`“${label}”的父容器不兼容`)
+          }
+        } else if (!canPlaceFormNodeAtRoot(nodeTypeOf(field))
+            || getSubtreeHeight(field.id) > FORM_NODE_MAX_DEPTH) {
+          throw new Error(`“${label}”不能放在表单根节点`)
         }
-      } else if (!canPlaceFormNodeAtRoot(nodeTypeOf(field))
-          || getSubtreeHeight(field.id) > FORM_NODE_MAX_DEPTH) {
-        throw new Error(`“${label}”不能放在表单根节点`)
       }
+      orderedFields = orderFormNodesParentFirst(formFields.value)
+    } catch (error) {
+      ElMessage.warning(error.message || '表单节点父子关系无效')
+      return
     }
-    orderedFields = orderFormNodesParentFirst(formFields.value)
-  } catch (error) {
-    ElMessage.warning(error.message || '表单节点父子关系无效')
-    return
   }
   
   saving.value = true
@@ -4130,22 +4344,26 @@ async function handleSave() {
       draftChanged = true
     }
 
-    for (const field of orderedFields) {
-      if (isSystemEntity.value && field.fieldId) {
-        field.isReadonly = 1
+    if (persistNodes) {
+      for (const field of orderedFields) {
+        if (isSystemEntity.value && field.fieldId) {
+          field.isReadonly = 1
+        }
+        await ensureChildFormReleaseBinding(field)
+        await ensureSubListBinding(field)
+        validateNodeDataSourceMappings(field)
       }
-      await ensureChildFormReleaseBinding(field)
-      await ensureSubListBinding(field)
-      validateNodeDataSourceMappings(field)
+      await replaceFormNodes(
+        currentFormId,
+        form.value.revision,
+        orderedFields.map(fieldToNodeEntity)
+      )
+      draftChanged = true
     }
-    await replaceFormNodes(
-      currentFormId,
-      form.value.revision,
-      orderedFields.map(fieldToNodeEntity)
-    )
-    draftChanged = true
     await loadFormInfo()
-    await loadFormFields()
+    if (persistNodes) {
+      await loadFormFields()
+    }
     await loadDiff()
     ElMessage.success('草稿保存成功，发布后运行时生效')
   } catch (e) {
@@ -4156,7 +4374,7 @@ async function handleSave() {
       source: e?.source
     })
     if (draftChanged) {
-      await refreshDraftStateAfterSaveFailure()
+      await refreshDraftStateAfterSaveFailure({ preserveNodes: !persistNodes })
     }
     handleRevisionConflict(e)
   } finally {
@@ -4194,6 +4412,23 @@ onMounted(async () => {
 .system-config-alert {
   flex: 0 0 auto;
   margin: 12px 16px 0;
+}
+
+.renderer-mode-toolbar {
+  flex: 0 0 auto;
+  min-height: 52px;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #dcdfe6;
+  background: #fff;
+}
+
+.renderer-mode-label {
+  color: #606266;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .design-header {
@@ -4645,6 +4880,12 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
+  .renderer-mode-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+
   .design-body {
     flex-direction: column;
   }

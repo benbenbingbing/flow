@@ -1454,6 +1454,7 @@ const selectField = (field) => {
   // FILE/IMAGE 字段自动初始化 fileItems
   if ((field.fieldType === 'FILE' || field.fieldType === 'IMAGE') && (!field.fileItems || field.fileItems.length === 0)) {
     field.fileItems = [{
+      itemKey: createAttachmentItemKey(),
       itemName: field.fieldName || '附件',
       required: false,
       fileTypes: field.fileTypes || [],
@@ -2028,6 +2029,7 @@ const addFileItem = () => {
     selectedField.value.fileItems = []
   }
   selectedField.value.fileItems.push({
+    itemKey: createAttachmentItemKey(),
     itemName: '',
     required: false,
     fileTypes: [],
@@ -2053,6 +2055,13 @@ watch(permissionVisible, (val) => {
     loadPermissions()
   }
 })
+
+const createAttachmentItemKey = () => {
+  const randomPart = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID().replaceAll('-', '')
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+  return `afi_${randomPart}`
+}
 
 watch(showSystemFields, (visible) => {
   if (!visible && selectedField.value?.isSystem && !isSystemEntity.value) {

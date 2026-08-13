@@ -63,10 +63,28 @@ public class EntityDataDTO {
      */
     private String listKey;
 
+    /** 当前操作使用的列表发布 ID，不持久化。 */
+    private String listReleaseId;
+
+    /** 当前操作使用的列表发布版本，不持久化。 */
+    private Integer listReleaseVersion;
+
+    /** 历史列表版本解析令牌，不持久化。 */
+    private String listReleaseResolutionToken;
+
     /**
      * 当前操作来源表单 ID，不持久化。
      */
     private String formId;
+
+    /** 当前操作使用的表单发布 ID，不持久化。 */
+    private String formReleaseId;
+
+    /** 当前操作使用的表单发布版本，不持久化。 */
+    private Integer formReleaseVersion;
+
+    /** 固定表单版本解析令牌，不持久化。 */
+    private String formReleaseResolutionToken;
 
     /**
      * 当前用户针对本行数据的按钮能力。

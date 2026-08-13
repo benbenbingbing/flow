@@ -68,6 +68,7 @@ assert.equal(
   isPublishedSubListOption({
     listKey: 'default',
     activeReleaseId: 'release-1',
+    publishedVersion: 1,
     allowedScenes: ['EMBEDDED']
   }),
   true
@@ -76,7 +77,17 @@ assert.equal(
   isPublishedSubListOption({
     listKey: 'default',
     activeReleaseId: 'release-1',
+    publishedVersion: 1,
     allowedScenes: ['PAGE']
+  }),
+  false
+)
+assert.equal(
+  isPublishedSubListOption({
+    listKey: 'default',
+    activeReleaseId: 'release-1',
+    publishedVersion: 0,
+    allowedScenes: ['EMBEDDED']
   }),
   false
 )

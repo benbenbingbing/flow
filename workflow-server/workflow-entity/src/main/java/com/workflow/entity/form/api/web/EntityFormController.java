@@ -6,6 +6,7 @@ import com.workflow.core.result.Result;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.api.request.EntityFormCopyRequest;
 import com.workflow.entity.form.api.request.EntityFormMetadataPatchRequest;
 import com.workflow.entity.form.api.request.EntityFormSaveRequest;
 import com.workflow.entity.form.application.EntityFormService;
@@ -158,9 +159,14 @@ public class EntityFormController {
      * 复制表单
      */
     @PostMapping("/{id}/copy")
-    public Result<EntityForm> copyForm(@PathVariable String id) {
+    public Result<EntityForm> copyForm(
+            @PathVariable String id,
+            @RequestBody(required = false) EntityFormCopyRequest request) {
         accessService.requireFormAccess(id);
-        return Result.success(formService.copyForm(id));
+        return Result.success(formService.copyForm(
+                id,
+                request == null ? null : request.getFormName(),
+                request == null ? null : request.getFormKey()));
     }
     
     /**

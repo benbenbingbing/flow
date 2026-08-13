@@ -38,6 +38,9 @@ export function toListFilterFieldCode(filterKey = '') {
 }
 
 function hasFilterValue(value) {
+  if (Array.isArray(value)) {
+    return value.some(item => hasFilterValue(item))
+  }
   return value !== '' && value !== null && value !== undefined
 }
 

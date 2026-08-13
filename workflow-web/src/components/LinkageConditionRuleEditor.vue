@@ -7,11 +7,12 @@
       </div>
       <el-switch
         :model-value="enabled"
+        :disabled="disabled"
         @update:model-value="$emit('update:enabled', $event)"
       />
     </div>
 
-    <template v-if="enabled">
+    <template v-if="enabled && !disabled">
       <el-alert
         v-if="parseWarning"
         type="warning"
@@ -53,6 +54,7 @@ defineProps({
   title: { type: String, required: true },
   description: { type: String, default: '' },
   enabled: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
   root: { type: Object, required: true },
   fields: { type: Array, default: () => [] },
   parseWarning: { type: String, default: '' }

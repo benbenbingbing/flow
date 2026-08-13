@@ -31,6 +31,8 @@ public class EntityListSchemaDTO {
     private String dataScopeMode;
     /** 已发布版本号 */
     private Integer publishedVersion;
+    /** 当前运行时发布ID */
+    private String releaseId;
     /** 选择配置 */
     private Map<String, Object> selectionConfig;
     /** 视图配置 */

@@ -20,13 +20,13 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     /**
      * 查询流程配置下所有草稿状态的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND status = 'DRAFT' AND (deleted = 0 OR deleted IS NULL) ORDER BY sequence_flow_id, sort_order")
+    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND status = 'DRAFT' AND deleted = 0 ORDER BY sequence_flow_id, sort_order")
     List<FlowAction> findDraftActionsByProcessConfigId(@Param("processConfigId") String processConfigId);
     
     /**
      * 查询顺序流下所有草稿状态的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'DRAFT' AND (deleted = 0 OR deleted IS NULL) ORDER BY sort_order")
+    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'DRAFT' AND deleted = 0 ORDER BY sort_order")
     List<FlowAction> findDraftActionsBySequenceFlowId(@Param("processConfigId") String processConfigId, @Param("sequenceFlowId") String sequenceFlowId);
 
     /**
@@ -42,7 +42,7 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
             "  AND scope_type = #{scopeType} " +
             "  AND ((#{elementId} IS NULL AND element_id IS NULL) OR element_id = #{elementId}) " +
             "  AND status = 'DRAFT' " +
-            "  AND (deleted = 0 OR deleted IS NULL) " +
+            "  AND deleted = 0 " +
             "ORDER BY trigger_timing, sort_order")
     List<FlowAction> findDraftActionsByBinding(
             @Param("processConfigId") String processConfigId,
@@ -52,13 +52,13 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     /**
      * 查询版本下所有已发布的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND status = 'PUBLISHED' AND (deleted = 0 OR deleted IS NULL) ORDER BY sequence_flow_id, sort_order")
+    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND status = 'PUBLISHED' AND deleted = 0 ORDER BY sequence_flow_id, sort_order")
     List<FlowAction> findPublishedActionsByVersionId(@Param("versionId") String versionId);
     
     /**
      * 查询版本下特定顺序流的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'PUBLISHED' AND (deleted = 0 OR deleted IS NULL) ORDER BY sort_order")
+    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'PUBLISHED' AND deleted = 0 ORDER BY sort_order")
     List<FlowAction> findPublishedActionsBySequenceFlowId(@Param("versionId") String versionId, @Param("sequenceFlowId") String sequenceFlowId);
 
     /**
@@ -76,7 +76,7 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
             "  AND ((#{elementId} IS NULL AND element_id IS NULL) OR element_id = #{elementId}) " +
             "  AND trigger_timing = #{triggerTiming} " +
             "  AND status = 'PUBLISHED' " +
-            "  AND (deleted = 0 OR deleted IS NULL) " +
+            "  AND deleted = 0 " +
             "ORDER BY sort_order")
     List<FlowAction> findPublishedActionsByBinding(
             @Param("versionId") String versionId,

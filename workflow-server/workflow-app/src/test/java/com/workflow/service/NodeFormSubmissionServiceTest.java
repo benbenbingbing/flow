@@ -126,9 +126,9 @@ class NodeFormSubmissionServiceTest {
                                 UiRuntimeResolutionContext.class));
     }
 
-    /** 测试全局只读节点拒绝所有提交变更：验证不触发数据更新、变量设置与表单提交 */
+    /** 测试全局只读节点即使空提交也不写回，但仍执行发布表单校验。 */
     @Test
-    void globallyReadonlyNodeRejectsAllSubmittedChanges() {
+    void globallyReadonlyNodeStillValidatesEmptySubmission() {
         RuntimeService runtimeService = mock(RuntimeService.class);
         ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
         EntityFormService formService = mock(EntityFormService.class);
@@ -139,6 +139,13 @@ class NodeFormSubmissionServiceTest {
                 mock(PublishedFormSubmissionService.class);
         FormSubmissionTraceService traceService =
                 mock(FormSubmissionTraceService.class);
+        FormSubmissionExecutionContext executionContext =
+                executionContext();
+        when(traceService.current(
+                eq("PROCESS_APPROVAL_SUBMIT"),
+                eq("task:task-1"),
+                org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(executionContext);
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
                 runtimeFormService, mutationPort, submissionService,
@@ -150,26 +157,32 @@ class NodeFormSubmissionServiceTest {
 
         ProcessNodeForm nodeForm = new ProcessNodeForm();
         nodeForm.setFormId("form-1");
+        nodeForm.setFormReleaseId("release-3");
+        nodeForm.setFormReleaseVersion(3);
         nodeForm.setIsReadonly(1);
         when(snapshotService.getNodeFormsContextByProcessDefinitionId(
                 "definition-1", "Task_Review"))
                 .thenReturn(published(nodeForm));
+        when(submissionService.applyForm(
+                eq("form-1"), eq("release-3"), eq(3),
+                eq("expense"), eq("data-1"), eq("approve"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                eq(executionContext),
+                org.mockito.ArgumentMatchers.any(
+                        UiRuntimeResolutionContext.class)))
+                .thenAnswer(invocation -> invocation.getArgument(6));
 
-        service.applyEditableData(task, Map.of("amount", 99));
+        service.applyEditableData(task, Map.of());
 
         verify(mutationPort, never()).execute(
                 org.mockito.ArgumentMatchers.any(
                         EntityMutationCommand.class));
         verify(runtimeService, never()).setVariables(eq("instance-1"), org.mockito.ArgumentMatchers.anyMap());
-        verify(submissionService, never()).applyForm(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String.class),
-                org.mockito.ArgumentMatchers.nullable(Integer.class),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
+        verify(submissionService).applyForm(
+                eq("form-1"), eq("release-3"), eq(3),
+                eq("expense"), eq("data-1"), eq("approve"),
                 org.mockito.ArgumentMatchers.anyMap(),
-                org.mockito.ArgumentMatchers.any(),
+                eq(executionContext),
                 org.mockito.ArgumentMatchers.any(
                         UiRuntimeResolutionContext.class));
     }

@@ -131,6 +131,9 @@ const props = defineProps<{
   entityFields: any[]
   defaultForm: any
   listKey?: string
+  listReleaseId?: string
+  listReleaseVersion?: number | null
+  listReleaseResolutionToken?: string
   entityStatusOptions?: any[]
 }>()
 
@@ -159,6 +162,24 @@ const launchRuntimeContext = ref<Record<string, any>>({})
 const activeForm = ref<any>(null)
 let launchSequence = 0
 const runtimeForm = computed(() => activeForm.value || props.defaultForm)
+const listReleaseContext = computed(() => ({
+  releaseId: props.listReleaseId || undefined,
+  releaseVersion: props.listReleaseVersion ?? undefined,
+  releaseResolutionToken:
+    props.listReleaseResolutionToken || undefined
+}))
+const formReleaseContext = computed(() => ({
+  releaseId:
+    runtimeForm.value?.runtimeReleaseId
+    || runtimeForm.value?.formReleaseId
+    || undefined,
+  releaseVersion:
+    runtimeForm.value?.runtimeReleaseVersion
+    ?? runtimeForm.value?.formReleaseVersion
+    ?? undefined,
+  releaseResolutionToken:
+    runtimeForm.value?.releaseResolutionToken || undefined
+}))
 
 const formData = reactive({
   id: '',
@@ -583,7 +604,9 @@ const openEdit = async (row: any, options: any = {}) => {
     props.entityCode,
     row.id,
     props.listKey,
-    runtimeForm.value?.id
+    runtimeForm.value?.id,
+    listReleaseContext.value,
+    formReleaseContext.value
   ).catch(() => row)
   formData.id = detail.id
   formData.name = detail.name
@@ -660,6 +683,10 @@ const handleSubmit = async (startProcess = false) => {
       entityCode: props.entityCode,
       listKey: props.listKey,
       formId: runtimeForm.value?.id,
+      formReleaseId: formReleaseContext.value.releaseId,
+      formReleaseVersion: formReleaseContext.value.releaseVersion,
+      formReleaseResolutionToken:
+        formReleaseContext.value.releaseResolutionToken,
       id: formData.id,
       name: submittedData?.name || formData.name,
       data: submittedData,
@@ -673,14 +700,23 @@ const handleSubmit = async (startProcess = false) => {
         {
           data: submittedData,
           formId: runtimeForm.value?.id,
+          formReleaseId: formReleaseContext.value.releaseId,
+          formReleaseVersion: formReleaseContext.value.releaseVersion,
+          formReleaseResolutionToken:
+            formReleaseContext.value.releaseResolutionToken,
           startProcess: formData.startProcess
         },
         formData.startProcess,
-        props.listKey
+        props.listKey,
+        listReleaseContext.value
       )
       ElMessage.success('更新成功')
     } else {
-      await entityDataApi.save(data, data.startProcess)
+      await entityDataApi.save(
+        data,
+        data.startProcess,
+        listReleaseContext.value
+      )
       ElMessage.success('创建成功')
     }
 

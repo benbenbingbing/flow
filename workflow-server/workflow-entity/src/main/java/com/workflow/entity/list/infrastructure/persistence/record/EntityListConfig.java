@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 实体列表配置
@@ -174,4 +175,16 @@ public class EntityListConfig {
     /** 是否已存在发布快照（非数据库字段，运行时标记） */
     @TableField(exist = false)
     private Boolean publishedSnapshot;
+
+    /** 当前运行时发布快照中的字段配置 */
+    @TableField(exist = false)
+    private List<EntityListField> runtimeFields;
+
+    /** 是否由父表单签名上下文固定到历史发布版本 */
+    @TableField(exist = false)
+    private Boolean pinnedRelease;
+
+    /** 父表单签发的发布解析令牌 */
+    @TableField(exist = false)
+    private String releaseResolutionToken;
 }

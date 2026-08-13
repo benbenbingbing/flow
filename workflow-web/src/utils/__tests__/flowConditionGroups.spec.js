@@ -103,6 +103,14 @@ assert.equal(
   evaluateFlowConditionExpression(emptyExpression, { remark: '', owner: '' }),
   true
 )
+assert.equal(
+  evaluateFlowConditionExpression('${empty(remark)}', { remark: '   ' }),
+  true
+)
+assert.equal(
+  evaluateFlowConditionExpression('${empty(metadata)}', { metadata: {} }),
+  true
+)
 
 const legacyEmpty = parseFlowConditionExpression(
   "!${remark} || ${remark} == ''"

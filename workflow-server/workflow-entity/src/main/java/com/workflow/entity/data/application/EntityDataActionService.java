@@ -1,6 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
+import com.workflow.entity.form.application.EntityFormReleaseContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
@@ -24,6 +25,8 @@ import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
+import com.workflow.entity.list.application.EntityListReleaseContext;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -61,11 +64,25 @@ public class EntityDataActionService {
             "startProcess",
             "processVariables",
             "extData",
-            "actionCapabilities");
+            "actionCapabilities",
+            "listReleaseId",
+            "listReleaseVersion",
+            "listReleaseResolutionToken",
+            "formReleaseId",
+            "formReleaseVersion",
+            "formReleaseResolutionToken");
+    private static final Set<String> LIST_RELEASE_CONTEXT_FIELDS = Set.of(
+            "listReleaseId",
+            "listReleaseVersion",
+            "listReleaseResolutionToken",
+            "formReleaseId",
+            "formReleaseVersion",
+            "formReleaseResolutionToken");
 
     private final EntityDataDynamicService dynamicService;
     private final EntityMutationPort mutationPort;
     private final EntityListActionConfigService actionConfigService;
+    private final EntityListPublishedRuntimeService publishedListRuntimeService;
     private final EntityActionCapabilityService capabilityService;
     private final EntityListScopeAuditService scopeAuditService;
     private final PublishedFormSubmissionService formSubmissionService;
@@ -87,7 +104,7 @@ public class EntityDataActionService {
      */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetail(String entityCode, String id, String listKey) {
-        return getDetail(entityCode, id, listKey, null);
+        return getDetail(entityCode, id, listKey, null, null);
     }
 
     /**
@@ -98,10 +115,23 @@ public class EntityDataActionService {
             String entityCode,
             String id,
             String listKey) {
+        return getDetailReadOnly(entityCode, id, listKey, null);
+    }
+
+    @Transactional(readOnly = true)
+    public EntityDataDTO getDetailReadOnly(
+            String entityCode,
+            String id,
+            String listKey,
+            EntityListReleaseContext releaseContext) {
+        EntityListConfig config = resolveListConfig(
+                entityCode,
+                listKey,
+                releaseContext);
         capabilityService.requireStandardPermission(
                 entityCode,
                 EntityPermissionAction.VIEW);
-        return findAuthorizedDetail(entityCode, id, listKey);
+        return findAuthorizedDetail(entityCode, id, config);
     }
 
     /**
@@ -113,13 +143,46 @@ public class EntityDataActionService {
             String id,
             String listKey,
             String formId) {
+        return getDetail(
+                entityCode,
+                id,
+                listKey,
+                formId,
+                null);
+    }
+
+    @Transactional(readOnly = true)
+    public EntityDataDTO getDetail(
+            String entityCode,
+            String id,
+            String listKey,
+            String formId,
+            EntityListReleaseContext releaseContext) {
+        return getDetail(
+                entityCode,
+                id,
+                listKey,
+                formId,
+                releaseContext,
+                null);
+    }
+
+    @Transactional(readOnly = true)
+    public EntityDataDTO getDetail(
+            String entityCode,
+            String id,
+            String listKey,
+            String formId,
+            EntityListReleaseContext releaseContext,
+            EntityFormReleaseContext formReleaseContext) {
         EntityDefinition definition = requireEntity(entityCode);
+        EntityListConfig config = resolveListConfig(
+                entityCode,
+                listKey,
+                releaseContext);
         if (definition.getStorageMode()
                 == EntityDefinition.StorageMode.SYSTEM) {
             systemEntityReadService.requirePermissions(entityCode);
-            EntityListConfig config =
-                    actionConfigService.resolveListConfig(
-                            entityCode, listKey);
             requireConfiguredListPermission(config);
             return systemEntityReadService.findById(
                     entityCode, id);
@@ -128,9 +191,12 @@ public class EntityDataActionService {
                 entityCode,
                 EntityPermissionAction.VIEW);
         EventOrigin origin = eventOrigin(
-                entityCode, listKey, formId);
+                entityCode,
+                config,
+                formId,
+                formReleaseContext);
         if (origin == null) {
-            return findAuthorizedDetail(entityCode, id, listKey);
+            return findAuthorizedDetail(entityCode, id, config);
         }
         UiEventExecuteRequest event = event(
                 UiDataSourceUsages.DETAIL_LOAD,
@@ -143,9 +209,9 @@ public class EntityDataActionService {
                 event,
                 ignored -> {
                     EntityDataDTO row =
-                            findAccessible(entityCode, id, listKey);
-                    capabilityService.requireRowAction(
-                            entityCode, listKey, "view", row);
+                            findAccessible(entityCode, id, config);
+                    capabilityService.requireRowActionForConfig(
+                            entityCode, config, "view", row);
                     return row;
                 }).getData();
         return entityData(value, entityCode, id);
@@ -154,10 +220,10 @@ public class EntityDataActionService {
     private EntityDataDTO findAuthorizedDetail(
             String entityCode,
             String id,
-            String listKey) {
-        EntityDataDTO row = findAccessible(entityCode, id, listKey);
-        capabilityService.requireRowAction(
-                entityCode, listKey, "view", row);
+            EntityListConfig config) {
+        EntityDataDTO row = findAccessible(entityCode, id, config);
+        capabilityService.requireRowActionForConfig(
+                entityCode, config, "view", row);
         return row;
     }
 
@@ -174,8 +240,24 @@ public class EntityDataActionService {
             String entityCode,
             String processInstanceId,
             String listKey) {
+        return getDetailByProcessInstance(
+                entityCode,
+                processInstanceId,
+                listKey,
+                null);
+    }
+
+    @Transactional(readOnly = true)
+    public EntityDataDTO getDetailByProcessInstance(
+            String entityCode,
+            String processInstanceId,
+            String listKey,
+            EntityListReleaseContext releaseContext) {
         requireDynamicRuntime(entityCode);
-        EntityListConfig config = actionConfigService.resolveListConfig(entityCode, listKey);
+        EntityListConfig config = resolveListConfig(
+                entityCode,
+                listKey,
+                releaseContext);
         return dynamicService.findAccessibleByProcessInstanceId(
                 entityCode,
                 processInstanceId,
@@ -199,11 +281,32 @@ public class EntityDataActionService {
             targetType = "ENTITY_RECORD",
             captureResult = true)
     public EntityDataDTO create(EntityDataDTO dto) {
+        return create(dto, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.CREATE,
+            operation = "新增实体数据",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "ENTITY_RECORD",
+            captureResult = true)
+    public EntityDataDTO create(
+            EntityDataDTO dto,
+            EntityListReleaseContext releaseContext) {
         if (dto == null || !StringUtils.hasText(dto.getEntityCode())) {
             throw new IllegalArgumentException("实体编码不能为空");
         }
         requireDynamicRuntime(dto.getEntityCode());
-        capabilityService.requireToolbarAction(dto.getEntityCode(), dto.getListKey(), "create");
+        EntityListConfig config = resolveListConfig(
+                dto.getEntityCode(),
+                dto.getListKey(),
+                releaseContext);
+        capabilityService.requireToolbarActionForConfig(
+                dto.getEntityCode(),
+                config,
+                "create");
         FormSubmissionExecutionContext executionContext =
                 formSubmissionTraceService.current(
                         "ENTITY_CREATE",
@@ -215,8 +318,12 @@ public class EntityDataActionService {
                                 "create"));
         EventOrigin origin = eventOrigin(
                 dto.getEntityCode(),
-                dto.getListKey(),
-                dto.getFormId());
+                config,
+                dto.getFormId(),
+                new EntityFormReleaseContext(
+                        dto.getFormReleaseId(),
+                        dto.getFormReleaseVersion(),
+                        dto.getFormReleaseResolutionToken()));
         if (origin == null) {
             dto.setData(applySubmissionForm(
                     null,
@@ -285,7 +392,33 @@ public class EntityDataActionService {
             String id,
             String listKey,
             Map<String, Object> formData) {
+        return update(
+                entityCode,
+                id,
+                listKey,
+                formData,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPDATE,
+            operation = "更新实体数据",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "ENTITY_RECORD",
+            targetIdArg = 1)
+    public EntityDataDTO update(
+            String entityCode,
+            String id,
+            String listKey,
+            Map<String, Object> formData,
+            EntityListReleaseContext releaseContext) {
         requireDynamicRuntime(entityCode);
+        EntityListConfig config = resolveListConfig(
+                entityCode,
+                listKey,
+                releaseContext);
         capabilityService.requireStandardPermission(
                 entityCode,
                 EntityPermissionAction.UPDATE);
@@ -302,13 +435,14 @@ public class EntityDataActionService {
                                 "edit"));
         EventOrigin origin = eventOrigin(
                 entityCode,
-                listKey,
-                text(formData == null ? null : formData.get("formId")));
+                config,
+                text(formData == null ? null : formData.get("formId")),
+                formReleaseContext(formData));
         if (origin == null) {
             return updateDefault(
                     entityCode,
                     id,
-                    listKey,
+                    config,
                     formData,
                     executionContext);
         }
@@ -325,9 +459,9 @@ public class EntityDataActionService {
                 event,
                 input -> {
                     EntityDataDTO row =
-                            findAccessible(entityCode, id, listKey);
-                    capabilityService.requireRowAction(
-                            entityCode, listKey, "edit", row);
+                            findAccessible(entityCode, id, config);
+                    capabilityService.requireRowActionForConfig(
+                            entityCode, config, "edit", row);
                     Map<String, Object> safeData =
                             applySubmissionForm(
                                     origin,
@@ -357,12 +491,12 @@ public class EntityDataActionService {
     private EntityDataDTO updateDefault(
             String entityCode,
             String id,
-            String listKey,
+            EntityListConfig config,
             Map<String, Object> formData,
             FormSubmissionExecutionContext executionContext) {
-        EntityDataDTO row = findAccessible(entityCode, id, listKey);
-        capabilityService.requireRowAction(
-                entityCode, listKey, "edit", row);
+        EntityDataDTO row = findAccessible(entityCode, id, config);
+        capabilityService.requireRowActionForConfig(
+                entityCode, config, "edit", row);
         Map<String, Object> safeData =
                 applySubmissionForm(
                         null,
@@ -382,7 +516,7 @@ public class EntityDataActionService {
                 entityCode,
                 id,
                 updateRequest,
-                listEventOrigin(entityCode, listKey),
+                listEventOrigin(config),
                 executionContext.businessTraceKey());
     }
 
@@ -401,8 +535,11 @@ public class EntityDataActionService {
             FormSubmissionExecutionContext executionContext) {
         if (origin != null
                 && "FORM".equals(origin.configType())) {
-            return formSubmissionService.applyForm(
+            return formSubmissionService.applyAuthorizedForm(
                     origin.configId(),
+                    origin.releaseId(),
+                    origin.releaseVersion(),
+                    origin.releaseResolutionToken(),
                     entityCode,
                     recordId,
                     mode,
@@ -434,10 +571,34 @@ public class EntityDataActionService {
             targetType = "ENTITY_RECORD",
             targetIdArg = 1)
     public void delete(String entityCode, String id, String listKey) {
+        delete(entityCode, id, listKey, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.DELETE,
+            operation = "删除实体数据",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_RECORD",
+            targetIdArg = 1)
+    public void delete(
+            String entityCode,
+            String id,
+            String listKey,
+            EntityListReleaseContext releaseContext) {
         requireDynamicRuntime(entityCode);
-        EntityDataDTO row = findAccessible(entityCode, id, listKey);
-        capabilityService.requireRowAction(entityCode, listKey, "delete", row);
-        EventOrigin origin = listEventOrigin(entityCode, listKey);
+        EntityListConfig config = resolveListConfig(
+                entityCode,
+                listKey,
+                releaseContext);
+        EntityDataDTO row = findAccessible(entityCode, id, config);
+        capabilityService.requireRowActionForConfig(
+                entityCode,
+                config,
+                "delete",
+                row);
+        EventOrigin origin = listEventOrigin(config);
         if (origin == null) {
             mutateDelete(
                     entityCode,
@@ -484,16 +645,39 @@ public class EntityDataActionService {
             risk = AuditRiskLevel.HIGH,
             targetType = "ENTITY_RECORD_BATCH")
     public void batchDelete(String entityCode, List<String> ids, String listKey) {
+        batchDelete(entityCode, ids, listKey, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.BATCH_DELETE,
+            operation = "批量删除实体数据",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "ENTITY_RECORD_BATCH")
+    public void batchDelete(
+            String entityCode,
+            List<String> ids,
+            String listKey,
+            EntityListReleaseContext releaseContext) {
         requireDynamicRuntime(entityCode);
+        EntityListConfig config = resolveListConfig(
+                entityCode,
+                listKey,
+                releaseContext);
         if (ids == null || ids.isEmpty()) {
             throw new IllegalArgumentException("请选择需要删除的数据");
         }
         List<EntityDataDTO> rows = new ArrayList<>();
         List<String> denied = new ArrayList<>();
         for (String id : ids.stream().filter(StringUtils::hasText).distinct().toList()) {
-            EntityDataDTO row = findAccessible(entityCode, id, listKey);
+            EntityDataDTO row = findAccessible(entityCode, id, config);
             rows.add(row);
-            var capability = capabilityService.evaluateRowAction(entityCode, listKey, "batchDelete", row);
+            var capability = capabilityService.evaluateRowActionForConfig(
+                    entityCode,
+                    config,
+                    "batchDelete",
+                    row);
             if (!capability.isVisible() || !capability.isEnabled()) {
                 denied.add((StringUtils.hasText(row.getDataNo()) ? row.getDataNo() : row.getId())
                         + "：" + capability.getReason());
@@ -502,7 +686,7 @@ public class EntityDataActionService {
         if (!denied.isEmpty()) {
             throw new ForbiddenException("批量删除被阻止：" + String.join("；", denied));
         }
-        EventOrigin origin = listEventOrigin(entityCode, listKey);
+        EventOrigin origin = listEventOrigin(config);
         if (origin == null) {
             mutateBatchDelete(
                     entityCode,
@@ -557,12 +741,14 @@ public class EntityDataActionService {
                 traceKey,
                 dto.getEntityCode(),
                 null);
+        Map<String, Object> createRequest = objectMapper.convertValue(
+                dto,
+                Map.class);
+        LIST_RELEASE_CONTEXT_FIELDS.forEach(createRequest::remove);
         EntityMutationResult result = mutationPort.execute(
                 EntityMutationCommand.create(
                         dto.getEntityCode(),
-                        objectMapper.convertValue(
-                                dto,
-                                Map.class),
+                        createRequest,
                         context));
         return entityData(
                 result.record(),
@@ -672,8 +858,10 @@ public class EntityDataActionService {
         return builder.build();
     }
 
-    private EntityDataDTO findAccessible(String entityCode, String id, String listKey) {
-        EntityListConfig config = actionConfigService.resolveListConfig(entityCode, listKey);
+    private EntityDataDTO findAccessible(
+            String entityCode,
+            String id,
+            EntityListConfig config) {
         try {
             return dynamicService.findAccessibleById(
                     entityCode,
@@ -682,7 +870,7 @@ public class EntityDataActionService {
         } catch (ForbiddenException exception) {
             scopeAuditService.record(
                     entityCode,
-                    config == null ? listKey : config.getListKey(),
+                    config == null ? null : config.getListKey(),
                     UserContext.getUserId(),
                     "DENY",
                     "DENIED",
@@ -691,6 +879,36 @@ public class EntityDataActionService {
                             "reason", exception.getMessage()));
             throw exception;
         }
+    }
+
+    private EntityListConfig resolveListConfig(
+            String entityCode,
+            String listKey,
+            EntityListReleaseContext releaseContext) {
+        EntityListReleaseContext effectiveContext =
+                releaseContext == null
+                        ? EntityListReleaseContext.current()
+                        : releaseContext;
+        EntityListConfig draft = actionConfigService.resolveListConfig(
+                entityCode,
+                listKey);
+        if (draft == null) {
+            if (StringUtils.hasText(listKey)
+                    || StringUtils.hasText(
+                            effectiveContext.releaseId())
+                    || effectiveContext.releaseVersion() != null
+                    || StringUtils.hasText(
+                            effectiveContext.releaseResolutionToken())) {
+                throw new IllegalArgumentException(
+                        "列表不存在或尚未发布: " + listKey);
+            }
+            return null;
+        }
+        return publishedListRuntimeService.resolveConfig(
+                draft,
+                effectiveContext.releaseId(),
+                effectiveContext.releaseVersion(),
+                effectiveContext.releaseResolutionToken());
     }
 
     private EntityDefinition requireEntity(String entityCode) {
@@ -747,8 +965,9 @@ public class EntityDataActionService {
 
     private EventOrigin eventOrigin(
             String entityCode,
-            String listKey,
-            String requestedFormId) {
+            EntityListConfig list,
+            String requestedFormId,
+            EntityFormReleaseContext releaseContext) {
         if (StringUtils.hasText(requestedFormId)) {
             EntityForm form = formMapper.selectById(requestedFormId);
             if (form == null) {
@@ -764,7 +983,16 @@ public class EntityDataActionService {
                 throw new IllegalArgumentException(
                         "表单与实体不匹配");
             }
-            return new EventOrigin("FORM", form.getId());
+            return new EventOrigin(
+                    "FORM",
+                    form.getId(),
+                    releaseContext == null
+                            ? null : releaseContext.releaseId(),
+                    releaseContext == null
+                            ? null : releaseContext.releaseVersion(),
+                    releaseContext == null
+                            ? null
+                            : releaseContext.releaseResolutionToken());
         }
         EntityDefinition entity = definitionMapper
                 .findByEntityCode(entityCode)
@@ -773,25 +1001,29 @@ public class EntityDataActionService {
             EntityForm form =
                     formMapper.selectDefaultByEntityId(entity.getId());
             if (form != null) {
-                return new EventOrigin("FORM", form.getId());
+                return new EventOrigin(
+                        "FORM",
+                        form.getId(),
+                        releaseContext == null
+                                ? null : releaseContext.releaseId(),
+                        releaseContext == null
+                                ? null : releaseContext.releaseVersion(),
+                        releaseContext == null
+                                ? null
+                                : releaseContext.releaseResolutionToken());
             }
         }
-        EntityListConfig list =
-                actionConfigService.resolveListConfig(
-                        entityCode, listKey);
-        return list == null
-                ? null : new EventOrigin("LIST", list.getId());
+        return listEventOrigin(list);
     }
 
-    private EventOrigin listEventOrigin(
-            String entityCode,
-            String listKey) {
-        EntityListConfig list =
-                actionConfigService.resolveListConfig(
-                        entityCode,
-                        listKey);
+    private EventOrigin listEventOrigin(EntityListConfig list) {
         return list == null
-                ? null : new EventOrigin("LIST", list.getId());
+                ? null : new EventOrigin(
+                        "LIST",
+                        list.getId(),
+                        list.getActiveReleaseId(),
+                        list.getPublishedVersion(),
+                        list.getReleaseResolutionToken());
     }
 
     private UiEventExecuteRequest event(
@@ -806,6 +1038,10 @@ public class EntityDataActionService {
         event.setEventCode(eventCode);
         event.setConfigType(origin.configType());
         event.setConfigId(origin.configId());
+        event.setReleaseId(origin.releaseId());
+        event.setReleaseVersion(origin.releaseVersion());
+        event.setReleaseResolutionToken(
+                origin.releaseResolutionToken());
         event.setEntityCode(entityCode);
         event.setListKey(listKey);
         event.setRecordId(recordId);
@@ -884,8 +1120,35 @@ public class EntityDataActionService {
         return value == null ? null : String.valueOf(value);
     }
 
+    private EntityFormReleaseContext formReleaseContext(
+            Map<String, Object> formData) {
+        return new EntityFormReleaseContext(
+                text(formData == null
+                        ? null : formData.get("formReleaseId")),
+                nullableInteger(formData == null
+                        ? null : formData.get("formReleaseVersion")),
+                text(formData == null
+                        ? null
+                        : formData.get(
+                                "formReleaseResolutionToken")));
+    }
+
+    private Integer nullableInteger(Object value) {
+        if (value == null || !StringUtils.hasText(String.valueOf(value))) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("表单发布版本必须是整数");
+        }
+    }
+
     private record EventOrigin(
             String configType,
-            String configId) {
+            String configId,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken) {
     }
 }

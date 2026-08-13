@@ -1,7 +1,5 @@
 package com.workflow.service;
 
-import com.workflow.entity.data.application.EntityDataDynamicService;
-
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.task.application.ProcessTaskService;
@@ -11,10 +9,10 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.EntityRecordPort;
-import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -79,9 +77,6 @@ class TaskActionServiceTest {
     private NodeFormSubmissionService nodeFormSubmissionService;
 
     @Mock
-    private EntityDataDynamicService entityDataDynamicService;
-
-    @Mock
     private EntityActionCapabilityService entityActionCapabilityService;
 
     @Mock
@@ -119,7 +114,6 @@ class TaskActionServiceTest {
                 operationLogMapper,
                 sysUserService,
                 nodeFormSubmissionService,
-                entityDataDynamicService,
                 entityActionCapabilityService,
                 entityRecordPort,
                 processCcService
@@ -177,17 +171,15 @@ class TaskActionServiceTest {
         when(taskService.getVariable("task-1", "nrOfCompletedInstances")).thenReturn(null);
         when(runtimeService.getVariable("proc-1", "entityCode")).thenReturn("expense");
         when(runtimeService.getVariable("proc-1", "entityDataId")).thenReturn("record-1");
-        EntityDataDTO entityData = new EntityDataDTO();
-        entityData.setId("record-1");
-        when(entityDataDynamicService.findById("expense", "record-1")).thenReturn(entityData);
-
         service.completeTask("task-1", "admin", "approve", "同意", null, null);
 
         var ordered = inOrder(taskService, processTaskService, entityActionCapabilityService);
         ordered.verify(taskService).claim("task-1", "admin");
         ordered.verify(processTaskService).synchronizeClaimedTask("task-1", "proc-1", "admin");
-        ordered.verify(entityActionCapabilityService).requireRowAction(
-                "expense", null, "approve", entityData);
+        ordered.verify(entityActionCapabilityService)
+                .requireStandardPermission(
+                        "expense",
+                        EntityPermissionAction.APPROVE);
         ordered.verify(taskService).complete(eq("task-1"), anyMap());
         verify(operationLogMapper).insert(any(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog.class));
         verify(entityRecordPort).recordActivity(

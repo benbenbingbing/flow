@@ -50,7 +50,7 @@ export default {
     {
       title: '保存不等于发布',
       type: 'warning',
-      text: '表单节点、列表列、按钮和场景的“保存”只更新当前草稿项目；生产运行时继续读取当前激活发布版本。发布时默认选择 STANDARD 普通发布；只有展示兼容修改才考虑 HOTFIX。两种模式都必须先做影响预检，按稳定 ID 核对差异、风险、数据源、权限、嵌套关系和迁移兼容结果。'
+      text: '表单节点、列表列、按钮和场景的“保存”只更新当前草稿项目；生产运行时继续读取当前激活发布版本。列表只允许 STANDARD 普通发布；只有流程表单需要立即作用于当前流程时才考虑 HOTFIX。发布前必须按稳定 ID 核对差异、风险、数据源、权限、嵌套关系和迁移兼容结果。'
     }
   ],
   sections: [
@@ -1247,11 +1247,11 @@ export default {
               rows: [
                 { option: '/draft', meaning: '读取当前可编辑草稿、节点树或列表项目及 revision。', notes: '设计器使用；生产运行时不得读取。' },
                 { option: '/diff', meaning: '比较草稿与当前激活 release，按稳定 ID 展示新增、修改、移动和删除。', notes: '同时展示数据源、模板版本、权限和嵌套校验结果。' },
-                { option: '/publish-preview', meaning: '按 STANDARD 或 HOTFIX 预检差异、风险和影响范围。', notes: '返回 draftHash、activeReleaseId、impactToken、风险项、目标流程版本、运行中实例数、跳过历史实例数和阻断原因。' },
-                { option: '/publish', meaning: '校验通过后生成不可变快照、内容哈希、发布人和发布时间，并原子激活。', notes: 'HOTFIX 必须回传预检得到的 expectedDraftHash、expectedActiveReleaseId 和 impactToken；失败时原激活版本继续服务。' },
+                { option: '/publish-preview', meaning: '按 STANDARD 预检差异和风险；流程表单还可按 HOTFIX 预检影响范围。', notes: '返回 draftHash、activeReleaseId 和风险项；表单 HOTFIX 另返回 impactToken、目标流程版本、运行中实例数、跳过历史实例数和阻断原因。' },
+                { option: '/publish', meaning: '校验通过后生成不可变快照、内容哈希、发布人和发布时间，并原子激活。', notes: '列表仅接受 STANDARD；表单 HOTFIX 必须回传预检得到的 expectedDraftHash、expectedActiveReleaseId 和 impactToken；失败时原激活版本继续服务。' },
                 { option: '/releases', meaning: '查看历史发布版本、快照摘要和 rolloutStatus。', notes: 'HOTFIX 状态为 ACTIVE、SUPERSEDED 或 ROLLED_BACK；发布记录本身不可修改或覆盖。' },
                 { option: '/activate', meaning: '激活指定 STANDARD 历史 release。', notes: 'HOTFIX 不允许通过 activate 跳转，避免绕过 rollout 顺序。' },
-                { option: '/rollback-hotfix', meaning: '撤回指定 HOTFIX rollout。', notes: '只有 rolloutStatus=ACTIVE 的热修复可撤回；必须从最新热修复开始按发布时间逆序撤回，所有目标原子恢复到上一有效快照。' }
+                { option: '/rollback-hotfix', meaning: '撤回指定 HOTFIX rollout。', notes: '新热修复仅用于表单；列表端点只兼容撤回升级前已存在的记录。只有 rolloutStatus=ACTIVE 的热修复可按发布时间逆序撤回。' }
               ]
             },
             {
@@ -1277,7 +1277,7 @@ export default {
               rows: [
                 { mode: 'STANDARD 普通发布', useCase: '业务结构、字段绑定、数据权限、数据源、提交映射和写操作等常规变更。', effect: '独立表单使用新 ACTIVE；流程表单需要重新发布流程后供新实例使用，运行中实例仍使用流程原快照。', limits: '默认选项；旧客户端只传 description 时也按 STANDARD 处理。' },
                 { mode: 'HOTFIX 流程表单热修复', useCase: '需要把任意通过发布校验的表单修改立即推送到当前流程。', effect: '表单作用于当前可发起流程版本及仍有运行实例的历史版本；已完成、已终止实例跳过。', limits: '展示修改为 SAFE；结构、绑定、权限、数据源、提交映射和自定义组件等高风险修改统一为 REVIEW，确认后可热修复。' },
-                { mode: '列表发布', useCase: '列表标题、列宽、格式化或其他列表配置。', effect: '列表始终全局读取当前 ACTIVE，STANDARD 和 HOTFIX 发布后都会立即影响所有列表页面。', limits: '列表 HOTFIX 的价值是增加风险预检、审计和逆序快速回滚，不提供流程实例隔离。' }
+                { mode: '列表 STANDARD 发布', useCase: '列表标题、列宽、格式化、按钮、事件或其他列表配置。', effect: '普通页面读取当前 ACTIVE；已发布父表单按签名上下文读取其固定的列表 release。', limits: '不提供语义重复的列表 HOTFIX；历史版本可带原因激活，也可只恢复为草稿而不影响线上。' }
               ]
             },
             {
@@ -1300,18 +1300,18 @@ export default {
                 { key: 'result', label: '处理方式' }
               ],
               rows: [
-                { risk: 'SAFE', examples: '文字、帮助说明、占位符、列标题、宽度、对齐、顺序、分页大小和空状态。', result: '具备热修复权限且影响预检通过后可直接发布。' },
-                { risk: 'REVIEW', examples: '除 SAFE 外的列表和表单修改，包括显隐、默认值、校验、节点/字段增删、绑定或类型、权限与数据范围、数据源、提交映射、关系/子表、写操作及自定义组件。', result: '仅提示风险，不要求额外权限、确认勾选或原因，不阻止热修复发布。' }
+                { risk: 'SAFE', examples: '表单文字、帮助说明和占位符等纯展示修改。', result: '具备热修复权限且影响预检通过后可直接发布。列表 STANDARD 预检也会展示风险等级。' },
+                { risk: 'REVIEW', examples: '除 SAFE 外的表单修改，包括显隐、默认值、校验、节点/字段增删、绑定或类型、权限、数据源、提交映射、关系/子表、写操作及自定义组件。', result: '仅提示风险，不要求额外权限、确认勾选或原因，不阻止表单热修复发布；列表仍只允许 STANDARD。' }
               ]
             },
             {
               type: 'bullets',
               items: [
-                'HOTFIX 发布与撤回都只需要 entity:ui-config:hotfix；REVIEW 不再要求额外覆盖权限或确认原因。',
-                '风险等级由后端根据语义补丁判定。列表和表单都只使用 SAFE/REVIEW，除 SAFE 外统一提升为 REVIEW，REVIEW 仅提示风险，不阻止发布。',
+                '表单 HOTFIX 发布与撤回都只需要 entity:ui-config:hotfix；REVIEW 不再要求额外覆盖权限或确认原因。',
+                '风险等级由后端根据语义补丁判定。列表 STANDARD 与表单发布都使用 SAFE/REVIEW；除 SAFE 外统一提升为 REVIEW。',
                 '流程表单自定义组件无论是否声明热修复兼容能力都允许进入 REVIEW；声明能力用于完善风险说明，不再形成硬阻断。',
                 '影响预检必须核对 processVersionCount、activeInstanceCount、skippedHistoricalInstanceCount、targets[].compatible 和 blockers。',
-                '发布历史中的 rolloutStatus=ACTIVE 表示当前正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已经撤回；只有 ACTIVE 显示撤回入口。',
+                '表单发布历史中的 rolloutStatus=ACTIVE 表示当前正在生效且可撤回，SUPERSEDED 表示已被更新热修复替代，ROLLED_BACK 表示已经撤回；列表只为升级前的存量 HOTFIX 保留兼容撤回。',
                 '预检后草稿、当前 ACTIVE release、目标流程版本或运行实例集合发生变化时，发布返回 409 HOTFIX_IMPACT_CHANGED，必须重新预检，不能复用旧 impactToken。'
               ]
             }
@@ -1418,8 +1418,8 @@ export default {
                 '数据权限由普通角色验证，所有 LIST_QUERY、LIST_COLUMN 和表单实体查询均执行 DataScopePlan。',
                 '按钮权限已授予角色，适用条件与后端操作校验一致。',
                 '流程绑定、节点表单和实体状态连线配置完整。',
-                'STANDARD/HOTFIX 预检、列表和表单 SAFE/REVIEW、REVIEW 不阻断发布、权限拒绝、影响数量和 409 重新预检均已验证。',
-                'STANDARD activate、HOTFIX 逆序 rollback、列表全局 ACTIVE 立即生效和发布失败保持旧版本均已验证。',
+                '列表 STANDARD 与表单 STANDARD/HOTFIX 预检、SAFE/REVIEW、权限拒绝、影响数量和 409 重新预检均已验证。',
+                '带原因的 STANDARD activate、恢复列表历史快照到草稿、表单 HOTFIX 逆序 rollback、列表 ACTIVE/父表单钉定语义和发布失败保持旧版本均已验证。',
                 '运行中流程应用有效 HOTFIX；已完成、已终止实例和历史审批回放仍使用原始钉定快照。',
                 '迁移重复执行结果幂等，legacyProps、初始 release、内容哈希和临时旧配置回退均已复核。'
               ]

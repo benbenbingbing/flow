@@ -338,51 +338,13 @@ public class UiEventBindingService {
             logResolvedChain(request, chain, "FORM_RELEASE");
             return chain;
         }
-        UiConfigRelease release = releaseMapper.findActive(
-                configType, request.getConfigId());
-        if (release == null) {
-            ResolvedEventChain chain =
-                    emptyChain(configType, request);
-            logResolvedChain(
-                    request,
-                    chain,
-                    "NO_ACTIVE_RELEASE");
-            return chain;
-        }
-        if (StringUtils.hasText(request.getReleaseId())
-                && !Objects.equals(request.getReleaseId(), release.getId())) {
-            log.info(
-                    "UI事件链版本冲突: configType={}, configId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, eventCode={}, reason=RELEASE_ID_MISMATCH",
-                    LogValue.safe(configType),
-                    LogValue.safe(request.getConfigId()),
-                    LogValue.safe(request.getReleaseId()),
-                    LogValue.safe(release.getId()),
-                    request.getReleaseVersion(),
-                    release.getVersion(),
-                    LogValue.safe(request.getEventCode()));
-            throw new BusinessConflictException(
-                    "UI_EVENT_RELEASE_CONFLICT",
-                    "页面配置版本已过期，请刷新后重试");
-        }
-        if (request.getReleaseVersion() != null
-                && !Objects.equals(
+        UiConfigReleaseService.ResolvedEntityListRelease resolved =
+                releaseService.resolveRuntimeListRelease(
+                        request.getConfigId(),
+                        request.getReleaseId(),
                         request.getReleaseVersion(),
-                        release.getVersion())) {
-            log.info(
-                    "UI事件链版本冲突: configType={}, configId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, eventCode={}, reason=RELEASE_VERSION_MISMATCH",
-                    LogValue.safe(configType),
-                    LogValue.safe(request.getConfigId()),
-                    LogValue.safe(request.getReleaseId()),
-                    LogValue.safe(release.getId()),
-                    request.getReleaseVersion(),
-                    release.getVersion(),
-                    LogValue.safe(request.getEventCode()));
-            throw new BusinessConflictException(
-                    "UI_EVENT_RELEASE_CONFLICT",
-                    "页面配置版本已过期，请刷新后重试");
-        }
-        Map<String, Object> snapshot =
-                releaseService.verifiedReleaseSnapshot(release);
+                        request.getReleaseResolutionToken());
+        Map<String, Object> snapshot = resolved.snapshot();
         List<Map<String, Object>> bindings =
                 mapList(snapshot.get("eventBindings"));
         ConfigIdentity identity = identity(
@@ -392,10 +354,15 @@ public class UiEventBindingService {
                 bindings,
                 identity,
                 request,
-                release.getId(),
-                release.getVersion(),
+                resolved.releaseId(),
+                resolved.releaseVersion(),
                 snapshot);
-        logResolvedChain(request, chain, "ACTIVE_RELEASE");
+        logResolvedChain(
+                request,
+                chain,
+                resolved.pinned()
+                        ? "SIGNED_LIST_CONTEXT"
+                        : "ACTIVE_RELEASE");
         return chain;
     }
 

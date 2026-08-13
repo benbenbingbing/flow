@@ -938,11 +938,23 @@ assert.ok(
 })
 ;[
   'hasUnsavedLocalChanges',
-  '画布或属性仍有未保存修改，请先保存草稿后再发布',
+  '当前渲染配置仍有未保存修改，请先保存草稿后再发布',
   '重新发布流程后再新增流程数据',
   '历史实例继续使用原版本'
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `表单发布缺少版本生效提示或本地草稿保护: ${marker}`)
+})
+;[
+  'v-if="!isCustomRendererMode" class="design-body"',
+  '<FormCustomRendererWorkspace',
+  '默认布局已保留',
+  'if (persistNodes)',
+  'shouldPersistFormNodes'
+].forEach((marker) => {
+  assert.ok(
+    formDesigner.includes(marker),
+    `自定义表单模式缺少独立工作区或节点保留策略: ${marker}`
+  )
 })
 ;[
   'title="基础属性"',
@@ -2004,12 +2016,17 @@ const uiConfigPublishDialog = readFileSync(
 )
 assert.ok(
   uiConfigPublishDialog.includes('所有通过发布校验的表单变更都可热修复')
-    && uiConfigPublishDialog.includes('所有通过发布校验的列表变更都可热修复')
     && uiConfigPublishDialog.includes('REVIEW 仅提示风险，不阻止发布')
     && uiConfigPublishDialog.includes('强制发布热修复')
     && uiConfigPublishDialog.includes('FULL_SNAPSHOT')
-    && uiConfigPublishDialog.includes('完整快照强制覆盖'),
-  '列表和表单热修复界面应明确 REVIEW 仅提示且支持完整快照强制覆盖'
+    && uiConfigPublishDialog.includes('完整快照强制覆盖')
+    && uiConfigPublishDialog.includes('v-if="configType === \'FORM\'"')
+    && uiConfigPublishDialog.includes('列表发布后立即切换当前全局生效版本'),
+  '表单热修复应明确风险策略，列表应固定使用普通发布'
+)
+assert.ok(
+  !uiConfigPublishDialog.includes('所有通过发布校验的列表变更都可热修复'),
+  '列表发布界面不得继续提供语义重复的热修复模式'
 )
 assert.doesNotMatch(
   uiConfigPublishDialog,
@@ -2057,9 +2074,9 @@ const processManualSource = readFileSync(
   'utf8'
 )
 assert.ok(
-  processManualSource.includes('列表和表单都只使用 SAFE/REVIEW')
+  processManualSource.includes('列表配置只允许 STANDARD 发布')
     && processManualSource.includes('REVIEW 仅提示风险，不阻止发布'),
-  '流程手册应说明列表和表单统一使用 SAFE/REVIEW'
+  '流程手册应说明表单热修复风险和列表普通发布边界'
 )
 assert.doesNotMatch(
   processManualSource,

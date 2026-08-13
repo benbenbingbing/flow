@@ -102,10 +102,10 @@ function evaluateNode(node, formData) {
   switch (node.operator) {
     case '==': return actual === expected
     case '!=': return actual !== expected
-    case '>': return actual > expected
-    case '<': return actual < expected
-    case '>=': return actual >= expected
-    case '<=': return actual <= expected
+    case '>': return actual != null && expected != null && actual > expected
+    case '<': return actual != null && expected != null && actual < expected
+    case '>=': return actual != null && expected != null && actual >= expected
+    case '<=': return actual != null && expected != null && actual <= expected
     case 'contains': return String(actual ?? '').includes(String(expected ?? ''))
     default: return false
   }
@@ -421,6 +421,9 @@ function collectProperties(node, target) {
 function isEmptyValue(value) {
   return value === null
     || value === undefined
-    || value === ''
+    || (typeof value === 'string' && value.trim() === '')
     || (Array.isArray(value) && value.length === 0)
+    || (value && typeof value === 'object'
+      && !Array.isArray(value)
+      && Object.keys(value).length === 0)
 }

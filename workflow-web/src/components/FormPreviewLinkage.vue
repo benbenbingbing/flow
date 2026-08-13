@@ -96,6 +96,7 @@
             :options="linkageState.options[getFieldKey(field)] || field.options"
             :context="{ ...runtimeContext, field }"
             :data-source-runtime="dataSourceRuntime"
+            :attachment-item-required-state="attachmentItemRequiredState(field)"
           />
         </el-form-item>
       </div>
@@ -204,6 +205,7 @@ const linkageState = ref({
   visibility: {},
   disabled: {},
   required: {},
+  attachmentItemRequired: {},
   options: {}
 })
 const hasNodeTree = computed(() => Array.isArray(props.form?.nodes) && props.form.nodes.length > 0)
@@ -269,9 +271,16 @@ const processedFields = computed(() => {
       return {
         ...(entityField || {}),
         ...field,
+        isRequired: entityField?.isRequired === true
+          || entityField?.isRequired === 1
+          || field?.isRequired === true
+          || field?.isRequired === 1
+          ? 1
+          : 0,
         fileItems: field?.fileItems?.length
           ? field.fileItems
-          : (entityField?.fileItems || [])
+          : (entityField?.fileItems || []),
+        entityFileItems: entityField?.fileItems || []
       }
     })
     .filter(field => isFieldVisibleForMode(field, props.mode))
@@ -347,11 +356,17 @@ function isFieldRequired(field) {
 
 // 获取字段验证规则
 function getFieldRules(field) {
+  const fieldKey = getFieldKey(field)
   return buildRuntimeFieldRules(
     field,
     isFieldRequired(field),
-    field.fieldLabel || field.fieldName
+    field.fieldLabel || field.fieldName,
+    linkageState.value.attachmentItemRequired?.[fieldKey] || {}
   )
+}
+
+function attachmentItemRequiredState(field) {
+  return linkageState.value.attachmentItemRequired?.[getFieldKey(field)] || {}
 }
 
 function isLinkageStateEqual(a, b) {
@@ -375,7 +390,7 @@ function isLinkageStateEqual(a, b) {
 
 // 更新联动状态（只更新 linkageState，不直接修改 formData，避免 watcher 递归）
 function updateLinkageState() {
-  const fields = props.form?.fields || []
+  const fields = processedFields.value
   const newState = LinkageEngine.processAllLinkages(fields, formData.value)
   if (!isLinkageStateEqual(linkageState.value, newState)) {
     linkageState.value = newState
@@ -398,7 +413,7 @@ function applyLinkageValues() {
 
 // 应用计算字段值
 function applyCalculatedValues() {
-  const fields = props.form?.fields || []
+  const fields = processedFields.value
   nextTick(() => {
     fields.forEach(field => {
       const rules = LinkageEngine.getFieldLinkageRules(field)

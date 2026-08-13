@@ -19,6 +19,9 @@
       embedded
       :entity-code="targetEntityCode"
       :list-key="targetListKey"
+      :release-id="config.listReleaseId"
+      :release-version="config.listReleaseVersion"
+      :release-resolution-token="context.releaseResolutionToken"
       :scene="SUB_LIST_RUNTIME_SCENE"
       :context="runtimeContext"
       :fixed-filters="parameterResolution.queryFilters"

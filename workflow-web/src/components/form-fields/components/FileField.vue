@@ -66,6 +66,7 @@
       :field="enrichedField"
       :disabled="isDisabled"
       :is-image="isImage"
+      :attachment-item-required-state="attachmentItemRequiredState"
       @update:modelValue="handleFileValueChange"
     />
   </div>
@@ -82,7 +83,8 @@ const props = defineProps({
   field: { type: Object, required: true },
   modelValue: { type: [String, Array, Object], default: '' },
   disabled: { type: Boolean, default: false },
-  options: { type: Array, default: null }
+  options: { type: Array, default: null },
+  attachmentItemRequiredState: { type: Object, default: () => ({}) }
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])

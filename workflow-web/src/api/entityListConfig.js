@@ -88,8 +88,30 @@ export const entityListConfigApi = {
     return request.get(`/entity-list-config/${id}/releases`)
   },
 
-  activateRelease(id, releaseId) {
-    return request.post(`/entity-list-config/${id}/releases/${releaseId}/activate`)
+  getReleaseSummaries(id, params = {}) {
+    return request.get(`/entity-list-config/${id}/release-summaries`, {
+      params
+    })
+  },
+
+  previewActivation(id, releaseId) {
+    return request.get(
+      `/entity-list-config/${id}/releases/${releaseId}/activation-preview`
+    )
+  },
+
+  activateRelease(id, releaseId, reason, expectedActiveReleaseId) {
+    return request.post(
+      `/entity-list-config/${id}/releases/${releaseId}/activate`,
+      { reason, expectedActiveReleaseId: expectedActiveReleaseId || undefined }
+    )
+  },
+
+  restoreDraft(id, releaseId, reason) {
+    return request.post(
+      `/entity-list-config/${id}/releases/${releaseId}/restore-draft`,
+      { reason }
+    )
   },
 
   createAction(id, data) {

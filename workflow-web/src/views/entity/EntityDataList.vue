@@ -129,6 +129,9 @@
       :entityFields="entityFields"
       :defaultForm="defaultForm"
       :listKey="listConfig?.listKey"
+      :list-release-id="listConfig?.releaseId"
+      :list-release-version="listConfig?.publishedVersion"
+      :list-release-resolution-token="releaseResolutionToken"
       :entity-status-options="entityStatusOptions"
       @success="loadDataList"
     />
@@ -139,6 +142,9 @@
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
       :listKey="listConfig?.listKey"
+      :list-release-id="listConfig?.releaseId"
+      :list-release-version="listConfig?.publishedVersion"
+      :list-release-resolution-token="releaseResolutionToken"
       :entity-status-options="entityStatusOptions"
       @success="loadDataList"
     />
@@ -195,6 +201,9 @@ const userStore = useUserStore()
 const props = withDefaults(defineProps<{
   entityCode?: string
   listKey?: string
+  releaseId?: string
+  releaseVersion?: number | null
+  releaseResolutionToken?: string
   scene?: string
   context?: Record<string, any>
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
@@ -212,6 +221,9 @@ const props = withDefaults(defineProps<{
 }>(), {
   entityCode: '',
   listKey: '',
+  releaseId: '',
+  releaseVersion: null,
+  releaseResolutionToken: '',
   context: () => ({}),
   selectionMode: 'NONE',
   initialSelectedRows: () => [],
@@ -315,7 +327,7 @@ const queryFields = computed(() => {
           refEntityType: originField?.refEntityType,
           refEntityId: originField?.refEntityId,
           queryType: f.queryType || 'LIKE'
-        }, entityStatusOptions.value)
+        }, entityStatusOptions.value, { allowMultiple: true })
       })
       .filter((f: any) => !['SUB_FORM', 'SUB_LIST'].includes((f.componentType || f.fieldType || '').toUpperCase()))
   }
@@ -405,6 +417,11 @@ const customListRuntime = computed(() => ({
   entityStatusMap: entityStatusMap.value,
   entityStatusOptions: entityStatusOptions.value,
   getStatusText
+}))
+const listReleaseContext = computed(() => ({
+  releaseId: listConfig.value?.releaseId,
+  releaseVersion: listConfig.value?.publishedVersion,
+  releaseResolutionToken: props.releaseResolutionToken || undefined
 }))
 function buttonOrder(button: any) {
   const orderKey = Number(button?.orderKey)
@@ -650,7 +667,12 @@ const loadListConfig = async () => {
     const schema = await entityListRuntimeApi.getSchema(
       entityCode.value,
       runtimeListKey.value,
-      runtimeScene.value
+      runtimeScene.value,
+      {
+        releaseId: props.releaseId,
+        releaseVersion: props.releaseVersion,
+        releaseResolutionToken: props.releaseResolutionToken
+      }
     )
     listConfig.value = schema || null
     listConfigFields.value = schema?.fields || []
@@ -697,6 +719,9 @@ const loadDataList = async () => {
         pageNum: pageNum.value,
         pageSize: pageSize.value,
         scene: runtimeScene.value,
+        releaseId: listConfig.value?.releaseId,
+        releaseVersion: listConfig.value?.publishedVersion,
+        releaseResolutionToken: props.releaseResolutionToken,
         filters: params,
         context: props.context
       }
@@ -751,7 +776,12 @@ const handleDelete = async (row: any) => {
       '删除业务数据',
       { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
     )
-    await entityDataApi.delete(entityCode.value, row.id, listConfig.value?.listKey)
+    await entityDataApi.delete(
+      entityCode.value,
+      row.id,
+      listConfig.value?.listKey,
+      listReleaseContext.value
+    )
     ElMessage.success('删除成功')
     loadDataList()
   } catch (error: any) {
@@ -775,7 +805,8 @@ const handleBatchDelete = async () => {
     await entityDataApi.batchDelete(
       entityCode.value,
       selectedRows.value.map(row => row.id),
-      listConfig.value?.listKey
+      listConfig.value?.listKey,
+      listReleaseContext.value
     )
     ElMessage.success('批量删除成功')
     selectedRows.value = []
@@ -795,6 +826,7 @@ const handleExport = async (exportType: string) => {
       exportType,
       ids,
       listKey: listConfig.value?.listKey,
+      ...listReleaseContext.value,
       condition
     })
     const blob = new Blob([res], { type: 'text/csv;charset=utf-8' })
@@ -828,6 +860,9 @@ const handleEventAction = async ({
     const result = await uiEventBindingApi.execute(eventCode, {
       configType: 'LIST',
       configId: String(listConfig.value.id),
+      releaseId: listConfig.value.releaseId,
+      releaseVersion: listConfig.value.publishedVersion,
+      releaseResolutionToken: props.releaseResolutionToken,
       entityCode: entityCode.value,
       listKey: listConfig.value.listKey,
       targetType: 'BUTTON',
@@ -988,7 +1023,13 @@ const confirmSelection = () => {
     applySelectionReturnMappings(row, mappings)))
 }
 // 监听实体编码变化
-watch(() => [entityCode.value, runtimeListKey.value], () => {
+watch(() => [
+  entityCode.value,
+  runtimeListKey.value,
+  props.releaseId,
+  props.releaseVersion,
+  props.releaseResolutionToken
+], () => {
   if (entityCode.value && runtimeListKey.value) {
     loadEntityDefinition()
   }

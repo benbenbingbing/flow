@@ -3,9 +3,14 @@ package com.workflow.entity.ui.api.web;
 import com.workflow.core.security.AuthenticatedApi;
 
 import com.workflow.core.result.Result;
+import com.workflow.core.result.PageResult;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
+import com.workflow.entity.ui.api.response.UiConfigActivationPreviewDTO;
 import com.workflow.entity.ui.api.request.UiConfigHotfixRollbackRequest;
+import com.workflow.entity.ui.api.request.UiConfigReleaseOperationRequest;
+import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
+import com.workflow.entity.ui.api.response.UiConfigReleaseSummaryDTO;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
@@ -128,6 +133,19 @@ public class UiConfigReleaseController {
                 releaseService.releases(UiConfigReleaseService.FORM, id));
     }
 
+    @GetMapping("/entity-forms/{id}/release-summaries")
+    public Result<PageResult<UiConfigReleaseSummaryDTO>> formReleaseSummaries(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "1") long pageNum,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        accessService.requireFormAccess(id);
+        return Result.success(releaseService.releaseSummaries(
+                UiConfigReleaseService.FORM,
+                id,
+                pageNum,
+                pageSize));
+    }
+
     /**
      * 激活表单的指定历史发布版本。POST /api/entity-forms/{id}/releases/{releaseId}/activate
      *
@@ -138,10 +156,29 @@ public class UiConfigReleaseController {
     @PostMapping("/entity-forms/{id}/releases/{releaseId}/activate")
     public Result<UiConfigRelease> activateForm(
             @PathVariable String id,
-            @PathVariable String releaseId) {
+            @PathVariable String releaseId,
+            @RequestBody(required = false)
+            UiConfigReleaseOperationRequest request) {
         accessService.requireFormAccess(id);
         return Result.success(releaseService.activate(
-                UiConfigReleaseService.FORM, id, releaseId));
+                UiConfigReleaseService.FORM,
+                id,
+                releaseId,
+                request == null ? null : request.getReason(),
+                request == null
+                        ? null
+                        : request.getExpectedActiveReleaseId()));
+    }
+
+    @GetMapping("/entity-forms/{id}/releases/{releaseId}/activation-preview")
+    public Result<UiConfigActivationPreviewDTO> previewFormActivation(
+            @PathVariable String id,
+            @PathVariable String releaseId) {
+        accessService.requireFormAccess(id);
+        return Result.success(releaseService.activationPreview(
+                UiConfigReleaseService.FORM,
+                id,
+                releaseId));
     }
 
     /**
@@ -205,7 +242,7 @@ public class UiConfigReleaseController {
     }
 
     /**
-     * 预检列表普通发布或兼容热修复影响范围。
+     * 预检列表普通发布的差异与风险。列表不支持新建热修复。
      */
     @PostMapping("/entity-list-config/{id}/publish-preview")
     public Result<UiConfigPublishPreviewDTO> previewListPublish(
@@ -231,6 +268,19 @@ public class UiConfigReleaseController {
                 releaseService.releases(UiConfigReleaseService.LIST, id));
     }
 
+    @GetMapping("/entity-list-config/{id}/release-summaries")
+    public Result<PageResult<UiConfigReleaseSummaryDTO>> listReleaseSummaries(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "1") long pageNum,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        accessService.requireListAccess(id);
+        return Result.success(releaseService.releaseSummaries(
+                UiConfigReleaseService.LIST,
+                id,
+                pageNum,
+                pageSize));
+    }
+
     /**
      * 激活列表的指定历史发布版本。POST /api/entity-list-config/{id}/releases/{releaseId}/activate
      *
@@ -241,14 +291,48 @@ public class UiConfigReleaseController {
     @PostMapping("/entity-list-config/{id}/releases/{releaseId}/activate")
     public Result<UiConfigRelease> activateList(
             @PathVariable String id,
-            @PathVariable String releaseId) {
+            @PathVariable String releaseId,
+            @RequestBody(required = false)
+            UiConfigReleaseOperationRequest request) {
         accessService.requireListAccess(id);
         return Result.success(releaseService.activate(
-                UiConfigReleaseService.LIST, id, releaseId));
+                UiConfigReleaseService.LIST,
+                id,
+                releaseId,
+                request == null ? null : request.getReason(),
+                request == null
+                        ? null
+                        : request.getExpectedActiveReleaseId()));
+    }
+
+    @GetMapping(
+            "/entity-list-config/{id}/releases/{releaseId}/activation-preview")
+    public Result<UiConfigActivationPreviewDTO> previewListActivation(
+            @PathVariable String id,
+            @PathVariable String releaseId) {
+        accessService.requireListAccess(id);
+        return Result.success(releaseService.activationPreview(
+                UiConfigReleaseService.LIST,
+                id,
+                releaseId));
+    }
+
+    @PostMapping(
+            "/entity-list-config/{id}/releases/{releaseId}/restore-draft")
+    public Result<EntityListConfigDTO> restoreListDraft(
+            @PathVariable String id,
+            @PathVariable String releaseId,
+            @RequestBody(required = false)
+            UiConfigReleaseOperationRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(releaseService.restoreListDraft(
+                id,
+                releaseId,
+                request == null ? null : request.getReason()));
     }
 
     /**
-     * 按发布顺序撤回列表热修复。
+     * 兼容撤回升级前已经存在的列表热修复。
      */
     @PostMapping(
             "/entity-list-config/{id}/releases/{releaseId}/rollback-hotfix")

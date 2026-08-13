@@ -29,6 +29,7 @@ export function normalizeEntityFieldForEditing(rawField = {}) {
     field.fileItems = field.fileItems.map(item => ({
       ...item,
       required: item.required === true || item.required === 1 || item.required === '1',
+      nameAliases: normalizeFileItemAliases(item.nameAliases),
       fileTypes: normalizeAttachmentFileTypes(item.fileTypes)
     }))
   }
@@ -60,8 +61,24 @@ export function normalizeEntityFieldForSave(source = {}) {
     fileItems: field.fileItems?.map(item => ({
       ...item,
       required: Boolean(item.required),
+      nameAliases: JSON.stringify(normalizeFileItemAliases(item.nameAliases)),
       fileTypes: attachmentFileTypesToString(item.fileTypes)
     })) || []
+  }
+}
+
+function normalizeFileItemAliases(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(item => String(item || '').trim()).filter(Boolean))]
+  }
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.map(item => String(item || '').trim()).filter(Boolean))]
+      : []
+  } catch {
+    return []
   }
 }
 

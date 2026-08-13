@@ -48,6 +48,7 @@ import com.workflow.migration.infrastructure.persistence.record.ConfigImportPack
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -128,6 +129,7 @@ public class ConfigMigrationImportApplyService {
     private final ConfigEnvironmentMappingMapper environmentMappingMapper;
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;
+    private final EntityFieldFileItemMapper fileItemMapper;
     private final EntityFormMapper formMapper;
     private final EntityListConfigMapper listConfigMapper;
     private final EntityListScopePolicyMapper listScopePolicyMapper;
@@ -672,6 +674,7 @@ public class ConfigMigrationImportApplyService {
             SystemEntityUiContext context) {
         Map<String, Object> snapshot = context.snapshot();
         EntityDefinition entity = context.entity();
+        rewriteAttachmentItemReferences(entity, snapshot);
         if (snapshot.containsKey("extensions")) {
             applyExtensions(mapList(snapshot.get("extensions")));
         }
@@ -834,6 +837,8 @@ public class ConfigMigrationImportApplyService {
             dto.setFields(fields);
             entityService.update(entity.getId(), dto);
         }
+
+        rewriteAttachmentItemReferences(entity, snapshot);
 
         if (snapshot.containsKey("statuses")) {
             List<EntityStatus> statuses = mapList(snapshot.get("statuses")).stream()
@@ -1042,6 +1047,62 @@ public class ConfigMigrationImportApplyService {
                 UiConfigReleaseService.FORM,
                 formIds,
                 "配置迁移导入表单初始发布");
+    }
+
+    private void rewriteAttachmentItemReferences(
+            EntityDefinition entity,
+            Map<String, Object> snapshot) {
+        if (!snapshot.containsKey("forms")) {
+            return;
+        }
+        Map<String, EntityField> fields = fieldsByCode(entity.getId());
+        List<Map<String, Object>> rewrittenForms = new ArrayList<>();
+        for (Map<String, Object> sourceForm :
+                mapList(snapshot.get("forms"))) {
+            Map<String, Object> form = new LinkedHashMap<>(sourceForm);
+            if (sourceForm.containsKey("fields")) {
+                form.put(
+                        "fields",
+                        rewriteAttachmentItemReferencesByField(
+                                mapList(sourceForm.get("fields")),
+                                fields,
+                                false));
+            }
+            if (sourceForm.containsKey("nodes")) {
+                form.put(
+                        "nodes",
+                        rewriteAttachmentItemReferencesByField(
+                                mapList(sourceForm.get("nodes")),
+                                fields,
+                                true));
+            }
+            rewrittenForms.add(form);
+        }
+        snapshot.put("forms", rewrittenForms);
+    }
+
+    private List<Map<String, Object>> rewriteAttachmentItemReferencesByField(
+            List<Map<String, Object>> values,
+            Map<String, EntityField> fields,
+            boolean node) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> value : values) {
+            String fieldCode = node
+                    ? systemNodeFieldCode(value)
+                    : text(value.get("fieldCode"), null);
+            EntityField field = fields.get(fieldCode);
+            if (field == null) {
+                result.add(value);
+                continue;
+            }
+            Object rewritten = AttachmentItemMigrationSupport
+                    .rewriteScopedConfiguration(
+                            value,
+                            fileItemMapper.findByFieldId(field.getId()),
+                            objectMapper);
+            result.add(mapValue(rewritten));
+        }
+        return result;
     }
 
     /**

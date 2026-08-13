@@ -164,18 +164,21 @@
             type="info"
             :closable="false"
             show-icon
-            title="默认动态表单和自定义渲染使用同一份表单节点、数据源、按钮与事件配置。"
+            title="按钮、数据源和事件配置由两种渲染方式共用；默认布局节点只在动态表单模式参与渲染。"
           />
           <el-form label-width="120px" class="form-settings-form">
             <el-form-item label="渲染方式">
               <el-segmented
-                :model-value="form.customComponent ? 'CUSTOM' : 'DEFAULT'"
-                :options="formRendererOptions"
+                :model-value="formRendererMode"
+                :options="rendererModeOptions"
                 :disabled="isSystemEntity"
                 @change="handleFormRendererModeChange"
               />
             </el-form-item>
-            <el-form-item v-if="!isSystemEntity" label="自定义组件">
+            <el-form-item
+              v-if="!isSystemEntity && formRendererMode === 'CUSTOM'"
+              label="自定义组件"
+            >
               <ExtensionCapabilityPicker
                 v-model="form.customComponent"
                 placeholder="请选择自定义表单组件"
@@ -184,11 +187,10 @@
                 :local-options="customFormOptions"
                 :current-option="selectedCustomFormCatalogOption"
                 style="width: 100%"
-                @loaded="handleCustomFormCatalogLoaded"
               />
             </el-form-item>
             <el-form-item
-              v-if="!isSystemEntity && form.customComponent"
+              v-if="!isSystemEntity && formRendererMode === 'CUSTOM' && form.customComponent"
               label="组件版本"
             >
               <el-tag>实现 v{{ form.customComponentVersion || 1 }}</el-tag>
@@ -196,7 +198,10 @@
                 快照 v{{ form.customComponentSnapshotVersion || 1 }}
               </el-tag>
             </el-form-item>
-            <el-form-item v-if="selectedCustomFormSchema.length" label="组件参数">
+            <el-form-item
+              v-if="formRendererMode === 'CUSTOM' && selectedCustomFormSchema.length"
+              label="组件参数"
+            >
               <el-button @click="showFormExtensionConfig = true">
                 配置参数
               </el-button>
@@ -236,6 +241,8 @@ if (!context) {
 
 const {
   form,
+  formRendererMode,
+  rendererModeOptions,
   viewConfig,
   isEdit,
   isSystemEntity,
@@ -251,7 +258,6 @@ const {
   showFormExtensionConfig,
   openFormDataSourceConfig,
   handleFormRendererModeChange,
-  handleCustomFormCatalogLoaded,
   openExtensionManagement,
   refreshExtensionCatalog
 } = context
@@ -266,10 +272,6 @@ const formLayoutOptions = [
   { value: 'vertical', label: '垂直' },
   { value: 'horizontal', label: '水平' },
   { value: 'grid', label: '网格' }
-]
-const formRendererOptions = [
-  { value: 'DEFAULT', label: '默认动态表单' },
-  { value: 'CUSTOM', label: '自定义渲染' }
 ]
 const formExtensionContext = computed(() => ({
   entityCode: entityInfo.value?.entityCode || ''

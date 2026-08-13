@@ -1,6 +1,8 @@
 import {
   getMissingRequiredAttachmentItems,
-  hasAttachmentValue
+  hasAttachmentValue,
+  isAttachmentItemRequired,
+  resolveAttachmentItems
 } from '../file-attachment.js'
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
@@ -164,25 +166,31 @@ export function isFieldReadonlyForMode(field, mode = 'view', forceReadonly = fal
     || field?.isReadonly === true
 }
 
-export function buildRuntimeFieldRules(field, required, label) {
+export function buildRuntimeFieldRules(field, required, label, attachmentItemRequiredState = {}) {
   const rules = []
   const displayLabel = label || field?.fieldLabel || field?.fieldName || '该字段'
   const fieldType = String(
     field?.fieldType || field?.componentType || ''
   ).toUpperCase()
   const isAttachment = fieldType === 'FILE' || fieldType === 'IMAGE'
+  const attachmentItems = isAttachment ? resolveAttachmentItems(field) : []
   if (required && !isAttachment) {
     rules.push({ required: true, message: `请输入${displayLabel}`, trigger: ['blur', 'change'] })
   }
-  if (isAttachment && (required || field?.fileItems?.some(item => item?.required))) {
+  if (isAttachment && (
+    required
+    || attachmentItems.some(isAttachmentItemRequired)
+    || Object.values(attachmentItemRequiredState).some(Boolean)
+  )) {
     rules.push({
       validator: (_rule, value, callback) => {
         if (required && !hasAttachmentValue(value)) {
           return callback(new Error(`请上传${displayLabel}`))
         }
         const missingItems = getMissingRequiredAttachmentItems(
-          field?.fileItems || [],
-          value
+          attachmentItems,
+          value,
+          attachmentItemRequiredState
         )
         if (missingItems.length > 0) {
           return callback(new Error(

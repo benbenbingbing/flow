@@ -56,6 +56,29 @@
               />
             </div>
           </SettingsSection>
+
+          <SettingsSection
+            v-if="attachmentRuleItems.length"
+            title="附件项逻辑必填"
+            description="条件满足时，指定附件项至少上传一份文件"
+            :collapsible="false"
+          >
+            <div class="condition-rule-list">
+              <LinkageConditionRuleEditor
+                v-for="item in attachmentRuleItems"
+                :key="item.itemKey"
+                :title="item.itemName || item.itemKey"
+                :description="item.staticRequired
+                  ? '实体层已设为必填，所有表单始终要求至少上传一份。'
+                  : '满足条件时，该附件项至少上传一份文件。'"
+                :enabled="item.staticRequired || item.enabled"
+                :disabled="item.staticRequired"
+                :root="item.root"
+                :fields="availableFields"
+                @update:enabled="item.enabled = $event"
+              />
+            </div>
+          </SettingsSection>
         </div>
       </el-tab-pane>
 
@@ -332,7 +355,8 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
-  initialTab: { type: String, default: 'display-state' }
+  initialTab: { type: String, default: 'display-state' },
+  attachmentItems: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['save'])
@@ -388,6 +412,7 @@ const legacyConditionConfigs = reactive({
   disabled: null,
   required: null
 })
+const attachmentRuleItems = ref([])
 
 const currentFieldKey = computed(() => props.field?.fieldKey || props.field?.fieldCode)
 
@@ -438,7 +463,8 @@ const hasLinkage = computed(() => {
          config.value.optionsLinkageEnabled ||
          config.value.calculationEnabled ||
          config.value.disabledEnabled ||
-         config.value.requiredEnabled
+         config.value.requiredEnabled ||
+         attachmentRuleItems.value.some(item => item.enabled)
 })
 // 值映射规则
 const valueMappingRules = ref([])
@@ -493,6 +519,14 @@ function saveConfig() {
         config.value[definition.rootKey]))
   if (invalidRule) {
     ElMessage.warning(`${invalidRule.label}至少需要一个完整条件`)
+    return
+  }
+  const invalidAttachmentRule = attachmentRuleItems.value.find(item =>
+    !item.staticRequired
+      && item.enabled
+      && !isFlowConditionGroupComplete(item.root))
+  if (invalidAttachmentRule) {
+    ElMessage.warning(`附件项“${invalidAttachmentRule.itemName}”至少需要一个完整条件`)
     return
   }
   // 构建联动规则 JSON
@@ -571,6 +605,19 @@ function buildLinkageRules() {
     rules.calculationPrecision = config.value.calculationPrecision
     rules.calculationEditable = config.value.calculationEditable
   }
+
+  const attachmentItems = attachmentRuleItems.value
+    .filter(item => !item.staticRequired && item.enabled)
+    .map(item => ({
+      itemKey: item.itemKey,
+      requiredConditionConfig: createFlowConditionConfig(item.root)
+    }))
+  if (attachmentItems.length) {
+    rules.attachmentItemRequiredRules = {
+      version: 1,
+      items: attachmentItems
+    }
+  }
   
   return rules
 }
@@ -606,6 +653,7 @@ function getConditionFieldType(fieldCode) {
 function resetConfig() {
   config.value = createDefaultConfig()
   valueMappingRules.value = []
+  attachmentRuleItems.value = createAttachmentRuleItems()
   conditionRuleDefinitions.forEach(definition => {
     conditionParseWarnings[definition.name] = ''
     legacyConditionRules[definition.name] = ''
@@ -619,13 +667,13 @@ watch(() => props.initialTab, initialTab => {
   }
 }, { immediate: true })
 
-watch(() => props.field, newField => {
+watch(() => [props.field, props.attachmentItems], ([newField]) => {
   resetConfig()
   const rules = LinkageEngine.getFieldLinkageRules(newField)
   if (Object.keys(rules).length > 0) {
     parseLinkageRules(rules)
   }
-}, { immediate: true })
+}, { immediate: true, deep: true })
 
 // 解析已有联动规则
 function parseLinkageRules(rules) {
@@ -633,6 +681,21 @@ function parseLinkageRules(rules) {
 
   conditionRuleDefinitions.forEach(definition => {
     parseConditionRule(rules, definition)
+  })
+  const attachmentRules = Array.isArray(
+    rules.attachmentItemRequiredRules?.items)
+    ? rules.attachmentItemRequiredRules.items
+    : []
+  const attachmentRulesByKey = new Map(
+    attachmentRules.map(item => [item.itemKey, item])
+  )
+  attachmentRuleItems.value.forEach(item => {
+    const saved = attachmentRulesByKey.get(item.itemKey)
+    const root = parseFlowConditionConfig(saved?.requiredConditionConfig)
+    if (root && isFlowConditionGroupComplete(root)) {
+      item.enabled = true
+      item.root = root
+    }
   })
 
   // 值联动
@@ -665,6 +728,20 @@ function parseLinkageRules(rules) {
     config.value.calculationEditable = rules.calculationEditable || false
   }
 
+}
+
+function createAttachmentRuleItems() {
+  return (props.attachmentItems || [])
+    .filter(item => item?.itemKey)
+    .map(item => ({
+      itemKey: item.itemKey,
+      itemName: item.itemName || item.itemKey,
+      staticRequired: item.required === true
+        || item.required === 1
+        || item.required === '1',
+      enabled: false,
+      root: createFlowConditionGroup()
+    }))
 }
 
 function parseConditionRule(rules, definition) {

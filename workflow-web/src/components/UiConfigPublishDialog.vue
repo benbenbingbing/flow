@@ -15,12 +15,17 @@
             help-key="uiConfig.releaseMode"
           />
         </template>
-        <el-radio-group v-model="form.releaseMode" @change="loadPreview">
+        <el-radio-group
+          v-if="configType === 'FORM'"
+          v-model="form.releaseMode"
+          @change="loadPreview"
+        >
           <el-radio-button value="STANDARD">普通发布</el-radio-button>
           <el-radio-button value="HOTFIX" :disabled="!canHotfix">
             兼容热修复
           </el-radio-button>
         </el-radio-group>
+        <el-tag v-else type="primary">普通发布</el-tag>
         <div class="publish-mode-help">
           <template v-if="form.releaseMode === 'STANDARD'">
             <span v-if="configType === 'FORM'">
@@ -31,12 +36,7 @@
             </span>
           </template>
           <template v-else>
-            <span v-if="configType === 'FORM'">
-              所有通过发布校验的表单变更都可热修复；REVIEW 仅提示风险，不阻止发布，并原子作用于当前可发起版本和运行中实例。
-            </span>
-            <span v-else>
-              所有通过发布校验的列表变更都可热修复；REVIEW 仅提示风险，不阻止发布，发布后全局立即生效。
-            </span>
+            所有通过发布校验的表单变更都可热修复；REVIEW 仅提示风险，不阻止发布，并原子作用于当前可发起版本和运行中实例。
           </template>
         </div>
       </el-form-item>
@@ -199,8 +199,9 @@ const form = reactive({
 })
 
 const canHotfix = computed(() =>
-  userStore.isSuperAdmin
-  || userStore.permissions.includes('entity:ui-config:hotfix')
+  props.configType === 'FORM'
+  && (userStore.isSuperAdmin
+    || userStore.permissions.includes('entity:ui-config:hotfix'))
 )
 const canSubmit = computed(() =>
   Boolean(preview.value?.changed && preview.value?.canPublish)

@@ -185,9 +185,12 @@ class UiConfigReleaseServiceTest {
         ((Map<String, Object>) ((List<?>) legacySnapshot.get("legacyFields")).get(0))
                 .put("updateTime", "2026-01-01T00:00:00");
 
+        String releaseDocument = codec.canonicalize(
+                codec.write(legacySnapshot, "测试历史发布快照"),
+                "测试历史发布快照");
         UiConfigRelease release = new UiConfigRelease();
-        release.setSnapshotDocument(codec.write(legacySnapshot, "测试历史发布快照"));
-        release.setContentHash("legacy-integrity-hash");
+        release.setSnapshotDocument(releaseDocument);
+        release.setContentHash(sha256(releaseDocument));
         when(releaseMapper.findActive(UiConfigReleaseService.FORM, "form-1"))
                 .thenReturn(release);
 
@@ -243,10 +246,14 @@ class UiConfigReleaseServiceTest {
                         "legacyFields")).get(0);
         activeField.put("componentProps", "{}");
 
+        String releaseDocument = context.codec().canonicalize(
+                context.codec().write(
+                        activeSnapshot,
+                        "测试历史发布快照"),
+                "测试历史发布快照");
         UiConfigRelease release = new UiConfigRelease();
-        release.setSnapshotDocument(context.codec().write(
-                activeSnapshot,
-                "测试历史发布快照"));
+        release.setSnapshotDocument(releaseDocument);
+        release.setContentHash(sha256(releaseDocument));
         when(context.releaseMapper().findActive(
                 UiConfigReleaseService.FORM,
                 "form-1")).thenReturn(release);
@@ -281,9 +288,14 @@ class UiConfigReleaseServiceTest {
         activeNodes.set(0, movedNode);
         activeSnapshot.put("nodes", activeNodes);
 
+        String releaseDocument = context.codec().canonicalize(
+                context.codec().write(
+                        activeSnapshot,
+                        "测试移动节点发布快照"),
+                "测试移动节点发布快照");
         UiConfigRelease active = new UiConfigRelease();
-        active.setSnapshotDocument(context.codec().write(
-                activeSnapshot, "测试移动节点发布快照"));
+        active.setSnapshotDocument(releaseDocument);
+        active.setContentHash(sha256(releaseDocument));
         when(context.releaseMapper().findActive(
                 UiConfigReleaseService.FORM, "form-1"))
                 .thenReturn(active);
@@ -348,8 +360,7 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void listHighRiskHotfixIsReviewAndPublishableWithoutOverride() {
+    void rejectsListHotfixPreview() {
         TestContext context = context();
         EntityListConfigDTO list = listConfig(5);
         when(context.listConfigService().findById("list-1"))
@@ -384,23 +395,16 @@ class UiConfigReleaseServiceTest {
         UiConfigPublishRequest request = new UiConfigPublishRequest();
         request.setReleaseMode(UiConfigReleaseService.HOTFIX);
 
-        UiConfigPublishPreviewDTO preview =
-                context.service().publishPreview(
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> context.service().publishPreview(
                         UiConfigReleaseService.LIST,
                         "list-1",
-                        request);
+                        request));
 
         assertEquals(
-                UiConfigSemanticPatchService.REVIEW,
-                preview.getRiskLevel());
-        assertFalse(preview.isRequiresOverride());
-        assertTrue(preview.isCanPublish());
-        assertTrue(preview.getBlockers().isEmpty());
-        assertTrue(preview.getRiskItems().stream().anyMatch(item ->
-                "/viewConfig/search/defaultVisibleCount".equals(
-                        item.getPath())
-                        && UiConfigSemanticPatchService.REVIEW.equals(
-                                item.getRiskLevel())));
+                "LIST_HOTFIX_NOT_SUPPORTED",
+                exception.getErrorCode());
     }
 
     @Test
@@ -753,6 +757,28 @@ class UiConfigReleaseServiceTest {
                         8));
 
         assertTrue(exception.getMessage().contains("版本号与流程快照不一致"));
+    }
+
+    @Test
+    void unsignedRuntimeRequestCannotReadHistoricalFormRelease() {
+        TestContext context = context();
+        UiConfigRelease active = release(
+                context.codec(),
+                "release-active",
+                formSnapshot(List.of()));
+        active.setVersion(2);
+        active.setStatus("ACTIVE");
+        when(context.releaseMapper().findActive("FORM", "form-1"))
+                .thenReturn(active);
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> context.service().runtimeFormRelease(
+                        "form-1",
+                        "release-history",
+                        1));
+
+        assertEquals("FORM_RELEASE_CONFLICT", exception.getErrorCode());
     }
 
     @Test
@@ -1308,7 +1334,7 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    void rejectsActivationWhenSubListTargetIsNotPublished() {
+    void rejectsActivationWhenLegacySubListSnapshotHasNoPinnedRelease() {
         TestContext context = context();
         Map<String, Object> fieldNode =
                 node("embedded-list", null, "FIELD");
@@ -1354,7 +1380,7 @@ class UiConfigReleaseServiceTest {
                         "form-1",
                         "release-sub-list"));
 
-        assertTrue(exception.getMessage().contains("不存在或尚未发布"));
+        assertTrue(exception.getMessage().contains("缺少固定列表版本"));
     }
 
     @Test
@@ -1374,7 +1400,10 @@ class UiConfigReleaseServiceTest {
                                         "subListConfig", Map.of(
                                                 "targetEntityId", "target-1",
                                                 "targetEntityCode", "target_entity",
-                                                "listKey", "default"))),
+                                                "listKey", "default",
+                                                "listId", "target-list-1",
+                                                "listReleaseId", "target-list-release-1",
+                                                "listReleaseVersion", 1))),
                         "测试子列表节点属性"));
         UiConfigRelease formRelease = release(
                 context.codec(),
@@ -1395,7 +1424,12 @@ class UiConfigReleaseServiceTest {
                 "target-list-release-1",
                 Map.of(
                         "list",
-                        Map.of("allowedScenes", List.of("PAGE"))));
+                        Map.of(
+                                "id", "target-list-1",
+                                "entityId", "target-1",
+                                "entityCode", "target_entity",
+                                "listKey", "default",
+                                "allowedScenes", List.of("PAGE"))));
         listRelease.setConfigType("LIST");
         listRelease.setConfigId("target-list-1");
         when(context.releaseMapper().selectById(
@@ -1419,6 +1453,79 @@ class UiConfigReleaseServiceTest {
                         "release-sub-list-scene"));
 
         assertTrue(exception.getMessage().contains("EMBEDDED"));
+    }
+
+    @Test
+    void activatesFormWithHistoricalPinnedSubListRelease() {
+        TestContext context = context();
+        Map<String, Object> fieldNode =
+                node("embedded-list-history", null, "FIELD");
+        fieldNode.put(
+                "propsDocument",
+                context.codec().write(
+                        Map.of(
+                                "fieldCode", "embeddedList",
+                                "fieldName", "子列表",
+                                "fieldType", "SUB_LIST",
+                                "componentType", "sub_list",
+                                "componentProps", Map.of(
+                                        "subListConfig", Map.of(
+                                                "targetEntityId", "target-1",
+                                                "targetEntityCode", "target_entity",
+                                                "listKey", "default",
+                                                "listId", "target-list-1",
+                                                "listReleaseId", "target-list-release-1",
+                                                "listReleaseVersion", 1))),
+                        "测试历史子列表节点属性"));
+        UiConfigRelease formRelease = release(
+                context.codec(),
+                "release-sub-list-history",
+                formSnapshot(List.of(fieldNode)));
+        EntityDefinition target = new EntityDefinition();
+        target.setId("target-1");
+        target.setEntityCode("target_entity");
+        EntityListConfig targetList = new EntityListConfig();
+        targetList.setId("target-list-1");
+        targetList.setEntityId("target-1");
+        targetList.setEntityCode("target_entity");
+        targetList.setListKey("default");
+        targetList.setPublishedVersion(2);
+        targetList.setActiveReleaseId("target-list-release-2");
+        UiConfigRelease historicalListRelease = release(
+                context.codec(),
+                "target-list-release-1",
+                Map.of(
+                        "list",
+                        Map.of(
+                                "id", "target-list-1",
+                                "entityId", "target-1",
+                                "entityCode", "target_entity",
+                                "listKey", "default",
+                                "allowedScenes", List.of("EMBEDDED"))));
+        historicalListRelease.setConfigType("LIST");
+        historicalListRelease.setConfigId("target-list-1");
+        when(context.releaseMapper().selectById(
+                "release-sub-list-history"))
+                .thenReturn(formRelease);
+        when(context.releaseMapper().selectById(
+                "target-list-release-1"))
+                .thenReturn(historicalListRelease);
+        when(context.releaseMapper().update(any(), any()))
+                .thenReturn(1);
+        when(context.entityDefinitionMapper().selectById("target-1"))
+                .thenReturn(target);
+        when(context.listConfigMapper().findByEntityIdAndListKey(
+                "target-1",
+                "default"))
+                .thenReturn(targetList);
+
+        UiConfigRelease activated = context.service().activate(
+                "FORM",
+                "form-1",
+                "release-sub-list-history");
+
+        assertEquals("release-sub-list-history", activated.getId());
+        assertEquals("ACTIVE", activated.getStatus());
     }
 
     @Test
@@ -1633,6 +1740,8 @@ class UiConfigReleaseServiceTest {
                 mock(UiReleaseResolutionTokenService.class);
         when(formMapper.selectByIdForUpdate("form-1"))
                 .thenReturn(form());
+        when(formMapper.update(any(), any())).thenReturn(1);
+        when(listConfigMapper.update(any(), any())).thenReturn(1);
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
                 hotfixTargetMapper,

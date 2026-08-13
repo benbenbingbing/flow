@@ -83,8 +83,11 @@ export const updateFormInitConfig = (id: string, initConfig: Record<string, any>
 }
 
 // 复制表单
-export const copyForm = (id: string) => {
-  return request.post(`/entity-form/${id}/copy`)
+export const copyForm = (
+  id: string,
+  data?: { formName: string; formKey: string }
+) => {
+  return request.post(`/entity-form/${id}/copy`, data)
 }
 
 export const patchFormMetadata = (id: string, data: any) => {
@@ -157,6 +160,13 @@ export const getFormReleases = (id: string) => {
   return request.get(`/entity-forms/${id}/releases`)
 }
 
+export const getFormReleaseSummaries = (
+  id: string,
+  params: { pageNum?: number; pageSize?: number } = {}
+) => {
+  return request.get(`/entity-forms/${id}/release-summaries`, { params })
+}
+
 export const getFormRuntimeRelease = (
   id: string,
   releaseId?: string | null,
@@ -172,6 +182,20 @@ export const getFormRuntimeRelease = (
   })
 }
 
-export const activateFormRelease = (id: string, releaseId: string) => {
-  return request.post(`/entity-forms/${id}/releases/${releaseId}/activate`)
+export const previewFormActivation = (id: string, releaseId: string) => {
+  return request.get(
+    `/entity-forms/${id}/releases/${releaseId}/activation-preview`
+  )
+}
+
+export const activateFormRelease = (
+  id: string,
+  releaseId: string,
+  reason: string,
+  expectedActiveReleaseId?: string | null
+) => {
+  return request.post(
+    `/entity-forms/${id}/releases/${releaseId}/activate`,
+    { reason, expectedActiveReleaseId: expectedActiveReleaseId || undefined }
+  )
 }

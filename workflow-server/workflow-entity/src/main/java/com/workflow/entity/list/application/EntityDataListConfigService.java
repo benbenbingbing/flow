@@ -57,8 +57,21 @@ public class EntityDataListConfigService {
      */
     @Transactional(readOnly = true)
     public List<EntityDataDTO> findListWithConfig(String entityCode, String listKey, Map<String, Object> condition) {
-        // 1. 先加载列表配置，使用稳定 listKey 计算数据范围
         EntityListConfig config = findListConfig(entityCode, listKey);
+        requireRequestedList(listKey, config);
+        return findListWithResolvedConfig(
+                entityCode,
+                listKey,
+                config,
+                condition);
+    }
+
+    public List<EntityDataDTO> findListWithResolvedConfig(
+            String entityCode,
+            String listKey,
+            EntityListConfig config,
+            Map<String, Object> condition) {
+        // 1. 使用同一已解析发布版本，避免查询过程中重新落到当前 ACTIVE。
         String resolvedListKey = config != null ? config.getListKey() : null;
         List<EntityListField> allFields = config == null
                 ? List.of()
@@ -99,6 +112,23 @@ public class EntityDataListConfigService {
             long pageNum,
             long pageSize) {
         EntityListConfig config = findListConfig(entityCode, listKey);
+        requireRequestedList(listKey, config);
+        return findPageWithResolvedConfig(
+                entityCode,
+                listKey,
+                config,
+                condition,
+                pageNum,
+                pageSize);
+    }
+
+    public PageResult<EntityDataDTO> findPageWithResolvedConfig(
+            String entityCode,
+            String listKey,
+            EntityListConfig config,
+            Map<String, Object> condition,
+            long pageNum,
+            long pageSize) {
         String resolvedListKey = config != null ? config.getListKey() : null;
         List<EntityListField> allFields = config == null
                 ? List.of()
@@ -109,7 +139,11 @@ public class EntityDataListConfigService {
 
         if (!conditionPartition.extensionCondition().isEmpty()) {
             List<EntityDataDTO> allRecords =
-                    findListWithConfig(entityCode, listKey, condition);
+                    findListWithResolvedConfig(
+                            entityCode,
+                            listKey,
+                            config,
+                            condition);
             long safePageNum = Math.max(1, pageNum);
             long safePageSize = Math.max(1, Math.min(200, pageSize));
             int fromIndex = (int) Math.min(
@@ -159,6 +193,7 @@ public class EntityDataListConfigService {
             enrichUnifiedDataSources(
                     entityCode,
                     listKey,
+                    config,
                     allFields,
                     records);
             // 3. 筛选出非 ENTITY_FIELD 的字段。查询字段即使不展示，也必须补充值后再过滤。
@@ -219,6 +254,7 @@ public class EntityDataListConfigService {
     private void enrichUnifiedDataSources(
             String entityCode,
             String listKey,
+            EntityListConfig config,
             List<EntityListField> fields,
             List<EntityDataDTO> records) {
         for (EntityListField field : fields) {
@@ -231,6 +267,10 @@ public class EntityDataListConfigService {
             request.setUsage(UiDataSourceUsages.LIST_COLUMN);
             request.setConfigType("LIST");
             request.setConfigId(field.getListConfigId());
+            request.setReleaseId(config.getActiveReleaseId());
+            request.setReleaseVersion(config.getPublishedVersion());
+            request.setServerPinnedRelease(
+                    Boolean.TRUE.equals(config.getPinnedRelease()));
             request.setOperationCode(field.getDataSourceOperationCode());
             request.setTargetType("COLUMN");
             request.setTargetKey(field.getFieldCode());
@@ -371,6 +411,15 @@ public class EntityDataListConfigService {
                 .anyMatch(fieldCode::equals);
     }
 
+    private void requireRequestedList(
+            String listKey,
+            EntityListConfig config) {
+        if (StringUtils.hasText(listKey) && config == null) {
+            throw new IllegalArgumentException(
+                    "列表不存在或尚未发布: " + listKey);
+        }
+    }
+
     private record ConditionPartition(
             Map<String, Object> baseCondition,
             Map<String, Object> extensionCondition) {
@@ -380,6 +429,20 @@ public class EntityDataListConfigService {
      * 查找列表配置
      */
     public EntityListConfig findListConfig(String entityCode, String listKey) {
+        return findListConfig(
+                entityCode,
+                listKey,
+                null,
+                null,
+                null);
+    }
+
+    public EntityListConfig findListConfig(
+            String entityCode,
+            String listKey,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
         if (definition == null) {
             return null;
@@ -396,6 +459,10 @@ public class EntityDataListConfigService {
                     .findFirst()
                     .orElse(configs.isEmpty() ? null : configs.get(0));
         }
-        return publishedRuntimeService.resolveConfig(config);
+        return publishedRuntimeService.resolveConfig(
+                config,
+                releaseId,
+                releaseVersion,
+                releaseResolutionToken);
     }
 }

@@ -420,6 +420,9 @@ public class UiEventRuntimeService {
                         ? null : Math.min(200, pageSize));
                 execute.setServerIdempotencyKey(
                         request.getServerIdempotencyKey());
+                execute.setServerPinnedRelease(
+                        StringUtils.hasText(
+                                request.getReleaseResolutionToken()));
                 raw = dataSourceService.executeOperation(
                         serviceId,
                         execute.getOperationCode(),

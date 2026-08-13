@@ -260,12 +260,6 @@ public class UiDataSourceExecutionAccessService {
             ConfigTarget target,
             UiDataSourceExecuteRequest request) {
         if (request.isServerPinnedRelease()) {
-            if (!StringUtils.hasText(
-                    request.getServerIdempotencyKey())) {
-                throw forbidden(
-                        "UI_DATA_SOURCE_TRUSTED_EXECUTION_REQUIRED",
-                        "历史发布版本只能由服务端可信提交链路执行");
-            }
             if (!StringUtils.hasText(request.getReleaseId())
                     || request.getReleaseVersion() == null) {
                 throw conflict(

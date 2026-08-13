@@ -125,6 +125,16 @@ public class EntityListActionConfigService {
      */
     public Map<String, Object> resolveButton(String entityCode, String listKey, String buttonKey) {
         EntityListConfig config = resolveListConfig(entityCode, listKey);
+        return resolveButton(config, entityCode, buttonKey);
+    }
+
+    /**
+     * 从已经解析的列表发布快照读取按钮，避免动作执行时重新落到草稿配置。
+     */
+    public Map<String, Object> resolveButton(
+            EntityListConfig config,
+            String entityCode,
+            String buttonKey) {
         List<Map<String, Object>> buttons = isToolbarKey(buttonKey)
                 ? resolveToolbarButtons(config, entityCode)
                 : resolveRowButtons(config, entityCode);

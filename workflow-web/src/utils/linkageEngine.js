@@ -10,6 +10,10 @@ import {
   isFlowConditionGroupComplete,
   parseFlowConditionConfig
 } from './flowConditionGroups.js'
+import {
+  getAttachmentItemRequiredState,
+  resolveAttachmentItems
+} from '../shared/file-attachment.js'
 
 const CONDITION_RULE_DEFINITIONS = [
   {
@@ -58,7 +62,7 @@ export const LinkageEngine = {
       'disabledConditionConfig', 'disabledRule',
       'requiredConditionConfig', 'requiredRule',
       'calculationFormula', 'calculationPrecision', 'calculationEditable',
-      'optionsLinkage', 'valueFormula'
+      'optionsLinkage', 'valueFormula', 'attachmentItemRequiredRules'
     ]
 
     // 1. 优先读取直接挂在字段根属性上的规则
@@ -81,12 +85,29 @@ export const LinkageEngine = {
         if (compProps && compProps.linkageRules && typeof compProps.linkageRules === 'object') {
           Object.assign(rules, compProps.linkageRules)
         }
+        if (compProps?.attachmentItemRequiredRules) {
+          rules.attachmentItemRequiredRules =
+            compProps.attachmentItemRequiredRules
+        }
       } catch (e) {
         // 忽略解析错误
       }
     }
 
     return rules
+  },
+
+  getFieldAttachmentItems(field) {
+    return resolveAttachmentItems(field)
+  },
+
+  evaluateStructuredCondition(config, formData) {
+    const conditionRoot = parseFlowConditionConfig(config)
+    return Boolean(
+      conditionRoot
+      && isFlowConditionGroupComplete(conditionRoot)
+      && evaluateFlowConditionGroup(conditionRoot, formData)
+    )
   },
 
   /**
@@ -257,12 +278,14 @@ export const LinkageEngine = {
    */
   shouldRequireField(field, formData) {
     const rules = this.getFieldLinkageRules(field)
-    return this.evaluateLinkageRule(
+    const staticRequired = field.isRequired === 1
+      || field.isRequired === true
+    return staticRequired || this.evaluateLinkageRule(
       rules,
       'requiredConditionConfig',
       'requiredRule',
       formData,
-      field.isRequired === 1 || field.isRequired === true
+      false
     )
   },
 
@@ -277,6 +300,7 @@ export const LinkageEngine = {
       visibility: {},  // 显隐状态
       disabled: {},    // 禁用状态
       required: {},    // 必填状态
+      attachmentItemRequired: {}, // 附件项必填状态
       values: {},      // 联动值
       options: {}      // 联动选项
     }
@@ -309,13 +333,26 @@ export const LinkageEngine = {
       )
 
       // 处理必填
-      result.required[fieldKey] = this.evaluateLinkageRule(
+      const staticRequired = field.isRequired === 1
+        || field.isRequired === true
+      const conditionalRequired = this.evaluateLinkageRule(
         rules,
         'requiredConditionConfig',
         'requiredRule',
         formData,
-        field.isRequired === 1 || field.isRequired === true
+        false
       )
+      result.required[fieldKey] = staticRequired || conditionalRequired
+
+      const fileItems = this.getFieldAttachmentItems(field)
+      result.attachmentItemRequired[fieldKey] =
+        getAttachmentItemRequiredState(
+          fileItems,
+          rules.attachmentItemRequiredRules,
+          formData,
+          (config, data) => result.visibility[fieldKey] !== false
+            && this.evaluateStructuredCondition(config, data)
+        )
 
       // 处理值联动（字段映射）
       if (rules.valueMapping) {
@@ -400,6 +437,20 @@ export const LinkageEngine = {
         return true
       }
       if (rules.optionsLinkage && rules.optionsLinkage.dependsOn === changedField) {
+        return true
+      }
+      const attachmentRules = Array.isArray(
+        rules.attachmentItemRequiredRules?.items)
+        ? rules.attachmentItemRequiredRules.items
+        : []
+      if (attachmentRules.some(rule => {
+        const root = parseFlowConditionConfig(
+          rule?.requiredConditionConfig
+        )
+        return root
+          && isFlowConditionGroupComplete(root)
+          && collectFlowConditionProperties(root).includes(changedField)
+      })) {
         return true
       }
       return false

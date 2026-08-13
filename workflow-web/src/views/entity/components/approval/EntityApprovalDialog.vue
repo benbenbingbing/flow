@@ -158,6 +158,9 @@ const props = withDefaults(defineProps<{
   entityDefinition?: any
   entityFields?: any[]
   listKey?: string
+  listReleaseId?: string
+  listReleaseVersion?: number | null
+  listReleaseResolutionToken?: string
   entityStatusOptions?: any[]
 }>(), {
   entityCode: '',
@@ -165,6 +168,9 @@ const props = withDefaults(defineProps<{
   entityDefinition: () => ({}),
   entityFields: () => [],
   listKey: '',
+  listReleaseId: '',
+  listReleaseVersion: null,
+  listReleaseResolutionToken: '',
   entityStatusOptions: () => []
 })
 
@@ -173,6 +179,12 @@ const emit = defineEmits<{
 }>()
 const userStore = useUserStore()
 const router = useRouter()
+const listReleaseContext = computed(() => ({
+  releaseId: props.listReleaseId || undefined,
+  releaseVersion: props.listReleaseVersion ?? undefined,
+  releaseResolutionToken:
+    props.listReleaseResolutionToken || undefined
+}))
 
 const processDialogVisible = ref(false)
 const activeDialogTab = ref('basic')
@@ -182,6 +194,18 @@ const actionLoadingKey = ref('')
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
 const overrideForm = ref<any>(null)
+const formReleaseContext = computed(() => ({
+  releaseId:
+    overrideForm.value?.runtimeReleaseId
+    || overrideForm.value?.formReleaseId
+    || undefined,
+  releaseVersion:
+    overrideForm.value?.runtimeReleaseVersion
+    ?? overrideForm.value?.formReleaseVersion
+    ?? undefined,
+  releaseResolutionToken:
+    overrideForm.value?.releaseResolutionToken || undefined
+}))
 const basicInfoRef = ref<any>()
 const nodeTabRefs = ref<Record<string, any>>({})
 
@@ -461,7 +485,9 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
         effectiveEntityCode.value,
         row.id,
         props.listKey,
-        overrideForm.value?.id
+        overrideForm.value?.id,
+        listReleaseContext.value,
+        formReleaseContext.value
       )
       entityData.value = normalizeEntityRecordForForm(detail)
       const standaloneForm = overrideForm.value || props.defaultForm
@@ -490,7 +516,9 @@ async function reloadExplicitFormDetail(row: any) {
       effectiveEntityCode.value,
       row.id,
       props.listKey,
-      overrideForm.value.id
+      overrideForm.value.id,
+      listReleaseContext.value,
+      formReleaseContext.value
     )
     entityData.value = {
       ...(entityData.value || {}),

@@ -1,7 +1,6 @@
 package com.workflow.service;
 
 import com.workflow.entity.data.application.EntityDataActionService;
-import com.workflow.entity.data.application.EntityDataActionEventSupport;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -11,6 +10,7 @@ import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 
@@ -52,7 +52,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -80,6 +79,9 @@ class EntityDataActionServiceTest {
         private EntityListActionConfigService actionConfigService;
 
         @Mock
+        private EntityListPublishedRuntimeService publishedListRuntimeService;
+
+        @Mock
         private EntityActionCapabilityService capabilityService;
 
         @Mock
@@ -103,9 +105,6 @@ class EntityDataActionServiceTest {
         @Spy
         private ObjectMapper objectMapper = new ObjectMapper();
 
-        @Mock
-        private EntityDataActionEventSupport eventSupport;
-
         @InjectMocks
         private EntityDataActionService service;
 
@@ -117,6 +116,13 @@ class EntityDataActionServiceTest {
                 asset.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
                 lenient().when(definitionMapper.findByEntityCode("asset"))
                                 .thenReturn(Optional.of(asset));
+                lenient().when(publishedListRuntimeService.resolveConfig(
+                                any(EntityListConfig.class),
+                                isNull(),
+                                isNull(),
+                                isNull()))
+                                .thenAnswer(invocation ->
+                                        invocation.getArgument(0));
         }
 
         @Test
@@ -135,8 +141,10 @@ class EntityDataActionServiceTest {
                 assertEquals(row, result);
                 verify(capabilityService).requireStandardPermission(
                                 "asset", EntityPermissionAction.VIEW);
-                verify(capabilityService).requireRowAction(
-                                "asset", "default", "view", row);
+                verify(capabilityService).requireRowActionForConfig(
+                                "asset", config, "view", row);
+                verify(publishedListRuntimeService).resolveConfig(
+                                config, null, null, null);
                 verify(eventRuntimeService, never()).execute(any(), any());
         }
 
@@ -198,9 +206,11 @@ class EntityDataActionServiceTest {
                 EntityDataDTO denied = row("2", "A-2");
                 when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(allowed);
                 when(dynamicService.findAccessibleById("asset", "2", null)).thenReturn(denied);
-                when(capabilityService.evaluateRowAction("asset", null, "batchDelete", allowed))
+                when(capabilityService.evaluateRowActionForConfig(
+                                "asset", null, "batchDelete", allowed))
                                 .thenReturn(EntityActionCapabilityDTO.allowed());
-                when(capabilityService.evaluateRowAction("asset", null, "batchDelete", denied))
+                when(capabilityService.evaluateRowActionForConfig(
+                                "asset", null, "batchDelete", denied))
                                 .thenReturn(EntityActionCapabilityDTO.hidden("仅本人草稿可以删除"));
 
                 assertThrows(
@@ -220,9 +230,11 @@ class EntityDataActionServiceTest {
                 EntityDataDTO second = row("2", "A-2");
                 when(dynamicService.findAccessibleById("asset", "1", null)).thenReturn(first);
                 when(dynamicService.findAccessibleById("asset", "2", null)).thenReturn(second);
-                when(capabilityService.evaluateRowAction("asset", null, "batchDelete", first))
+                when(capabilityService.evaluateRowActionForConfig(
+                                "asset", null, "batchDelete", first))
                                 .thenReturn(EntityActionCapabilityDTO.allowed());
-                when(capabilityService.evaluateRowAction("asset", null, "batchDelete", second))
+                when(capabilityService.evaluateRowActionForConfig(
+                                "asset", null, "batchDelete", second))
                                 .thenReturn(EntityActionCapabilityDTO.allowed());
 
                 service.batchDelete("asset", List.of("1", "2"), null);
@@ -332,8 +344,11 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_CREATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyForm(
+                when(formSubmissionService.applyAuthorizedForm(
                                 "form-1",
+                                null,
+                                null,
+                                null,
                                 "asset",
                                 null,
                                 "create",
@@ -358,8 +373,11 @@ class EntityDataActionServiceTest {
 
                 service.create(dto);
 
-                verify(formSubmissionService).applyForm(
+                verify(formSubmissionService).applyAuthorizedForm(
                                 "form-1",
+                                null,
+                                null,
+                                null,
                                 "asset",
                                 null,
                                 "create",
@@ -380,11 +398,17 @@ class EntityDataActionServiceTest {
          */
         @Test
         void updateExecutesServerBeforeSubmitExactlyOnce() {
+                EntityListConfig config = new EntityListConfig();
+                config.setId("list-1");
+                config.setListKey("default");
+                when(actionConfigService.resolveListConfig(
+                                "asset",
+                                "default")).thenReturn(config);
                 EntityDataDTO existing = row("1", "A-1");
                 when(dynamicService.findAccessibleById(
                                 "asset",
                                 "1",
-                                null)).thenReturn(existing);
+                                "default")).thenReturn(existing);
                 FormSubmissionExecutionContext context = context("update-trace", "ENTITY_UPDATE");
                 when(formSubmissionTraceService.current(
                                 eq("ENTITY_UPDATE"),
@@ -415,6 +439,7 @@ class EntityDataActionServiceTest {
                                                                 "Laptop",
                                                                 "normalized",
                                                                 true)));
+                stubDefaultEventExecution();
 
                 service.update(
                                 "asset",
@@ -499,8 +524,11 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_UPDATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyForm(
+                when(formSubmissionService.applyAuthorizedForm(
                                 "form-1",
+                                null,
+                                null,
+                                null,
                                 "asset",
                                 "1",
                                 "edit",
@@ -535,8 +563,11 @@ class EntityDataActionServiceTest {
                                                                 "name",
                                                                 "Laptop")));
 
-                verify(formSubmissionService).applyForm(
+                verify(formSubmissionService).applyAuthorizedForm(
                                 "form-1",
+                                null,
+                                null,
+                                null,
                                 "asset",
                                 "1",
                                 "edit",

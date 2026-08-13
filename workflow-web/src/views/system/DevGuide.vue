@@ -295,11 +295,12 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">返回可编辑草稿、稳定项目 ID、revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">按稳定 ID 比较草稿与激活快照，并返回树、数据源、权限、模板和兼容校验；`changedItems[]` 使用 section、id、label、changeType、changedFields 标识新增、修改、移动、删除，`changedSections` 仅保留兼容用途。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">POST 表单或列表发布预检；返回 draftHash、activeReleaseId、targetHash、impactToken、风险项、目标流程版本、影响实例数和待处理事项。列表和表单都只返回 SAFE/REVIEW，REVIEW 不阻止发布。</el-descriptions-item>
-            <el-descriptions-item label="/publish">`releaseMode` 缺省为 `STANDARD`；`HOTFIX` 必须回传预检状态并通过后端语义风险判定，发布和目标 rollout 在同一事务中原子生效。</el-descriptions-item>
-            <el-descriptions-item label="/releases">列出历史版本、哈希、激活状态和 HOTFIX rolloutStatus：ACTIVE、SUPERSEDED、ROLLED_BACK。</el-descriptions-item>
-            <el-descriptions-item label="/activate">只用于 STANDARD 历史版本；HOTFIX 返回 `409 HOTFIX_ACTIVATE_NOT_ALLOWED`。</el-descriptions-item>
-            <el-descriptions-item label="/rollback-hotfix">POST `/releases/{releaseId}/rollback-hotfix`；只有 rolloutStatus=`ACTIVE` 可按发布时间逆序撤回，不修改不可变 release。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">POST 表单或列表发布预检；两者返回 draftHash、activeReleaseId 和 SAFE/REVIEW 风险项，只有表单 HOTFIX 返回 impactToken、流程版本和影响实例。</el-descriptions-item>
+            <el-descriptions-item label="/publish">`releaseMode` 缺省为 `STANDARD`；只有表单接受 `HOTFIX` 并要求回传预检状态，列表传 HOTFIX 返回冲突。</el-descriptions-item>
+            <el-descriptions-item label="/release-summaries">分页列出不含快照文档的历史摘要；完整 `/releases` 保留给需要版本内容的设计能力。</el-descriptions-item>
+            <el-descriptions-item label="/activate">先预览与当前 ACTIVE 的差异，再填写原因激活 STANDARD 历史版本；当前草稿不变。</el-descriptions-item>
+            <el-descriptions-item label="/restore-draft">列表可把指定历史快照及本地事件绑定恢复到草稿，不切换线上 ACTIVE。</el-descriptions-item>
+            <el-descriptions-item label="/rollback-hotfix">表单 HOTFIX 按 rollout 顺序撤回；列表仅保留升级前存量记录的兼容撤回。</el-descriptions-item>
           </el-descriptions>
           <el-table :data="hotfixRiskRows" border size="small" style="margin-top: 16px">
             <el-table-column prop="risk" label="风险级别" width="110" />
@@ -418,8 +419,8 @@ Content-Type: application/json
           <ul class="check-list">
             <li>`STANDARD` 是默认模式。流程表单发布后仍由流程 release 钉定；未重新发布流程时新增入口可返回 `409 PROCESS_FORM_RELEASE_STALE`，运行中和历史实例继续使用原快照。</li>
             <li>`HOTFIX` 表单只影响当前可发起流程版本和仍有运行实例的历史版本；已完成、已终止实例明确使用 `HISTORICAL`，始终读取原始钉定快照。</li>
-            <li>列表没有流程版本隔离，运行时始终全局读取 `ACTIVE` release；STANDARD 与 HOTFIX 发布都会立即影响所有列表页面，HOTFIX 主要增加预检、审计和快速回滚。</li>
-            <li>HOTFIX 发布和撤回都只需要 `entity:ui-config:hotfix`；列表和表单的高风险修改统一为 REVIEW，仅提示风险，不要求额外权限或确认原因。</li>
+            <li>普通列表页面读取 `ACTIVE` release；发布表单中的子列表由服务端签名上下文固定到父表单引用的列表 release，历史流程不再被列表后续发布静默改写。</li>
+            <li>列表只允许 STANDARD；表单 HOTFIX 发布和撤回需要 `entity:ui-config:hotfix`，高风险修改统一为 REVIEW，仅提示风险。</li>
             <li>发布历史聚合 `rolloutStatus`：`ACTIVE` 正在生效且可撤回，`SUPERSEDED` 已被更新热修复替代，`ROLLED_BACK` 已撤回；只有 ACTIVE 显示或接受撤回操作。</li>
             <li>`impactToken` 绑定 configType/configId、releaseMode、draftHash、activeReleaseId、targetHash 和 riskLevel；任一输入变化必须重新预检。</li>
             <li>`releaseResolutionToken` 是服务端 HMAC 签发的 5 分钟短期令牌，绑定用户、运行目的、流程历史版本、节点、父表单 release 和深度；嵌套最大 8 层，前端不得自行拼接流程版本上下文。</li>
@@ -593,8 +594,8 @@ const dataSourceBindings = [
 ]
 
 const hotfixRiskRows = [
-  { risk: 'SAFE', changes: '文案、帮助、占位、列标题、宽度、对齐、顺序、分页大小、空状态。', policy: '具备 HOTFIX 权限且预检无阻断时可直接发布。' },
-  { risk: 'REVIEW', changes: '除 SAFE 外的全部有效列表和表单变更，包括增删、绑定和类型、权限/数据范围、数据源、提交映射、关系/子表、写操作和自定义组件。', policy: '仅提示风险，不要求额外权限或确认原因，不阻止热修复发布。' }
+  { risk: 'SAFE', changes: '表单文案、帮助说明和占位符等纯展示修改。', policy: '具备 HOTFIX 权限且预检无阻断时可直接发布。' },
+  { risk: 'REVIEW', changes: '除 SAFE 外的全部有效表单变更，包括增删、绑定和类型、权限、数据源、提交映射、关系/子表、写操作和自定义组件。', policy: '仅提示风险，不要求额外权限或确认原因，不阻止热修复发布；列表仅使用 STANDARD。' }
 ]
 
 const providerContext = [

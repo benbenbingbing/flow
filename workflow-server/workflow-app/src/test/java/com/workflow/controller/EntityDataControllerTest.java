@@ -8,7 +8,9 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.application.EntityDataExportService;
+import com.workflow.entity.form.application.EntityFormReleaseContext;
 import com.workflow.entity.list.application.EntityDataListConfigService;
+import com.workflow.entity.list.application.EntityListReleaseContext;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -135,7 +137,11 @@ public class EntityDataControllerTest {
     @Test
     void testGetById() throws Exception {
         when(entityDataActionService.getDetailReadOnly(
-                "test_entity", "1", null)).thenReturn(testData);
+                eq("test_entity"),
+                eq("1"),
+                isNull(),
+                any(EntityListReleaseContext.class)))
+                .thenReturn(testData);
 
         mockMvc.perform(get("/api/entity-data/entity/test_entity/detail/1"))
                 .andExpect(status().isOk())
@@ -144,7 +150,10 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
 
         verify(entityDataActionService, times(1)).getDetailReadOnly(
-                "test_entity", "1", null);
+                eq("test_entity"),
+                eq("1"),
+                isNull(),
+                any(EntityListReleaseContext.class));
         verify(entityDataActionService, never()).getDetail(
                 anyString(), anyString(), any(), any());
     }
@@ -153,28 +162,49 @@ public class EntityDataControllerTest {
     @Test
     void testLoadByIdExecutesDetailLoadEvent() throws Exception {
         when(entityDataActionService.getDetail(
-                "test_entity", "1", "default", "form-1"))
+                eq("test_entity"),
+                eq("1"),
+                eq("default"),
+                eq("form-1"),
+                any(EntityListReleaseContext.class),
+                any(EntityFormReleaseContext.class)))
                 .thenReturn(testData);
 
         mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/load")
                         .param("listKey", "default")
                         .param("formId", "form-1")
+                        .param("releaseId", "list-release-2")
+                        .param("releaseVersion", "2")
+                        .param("formReleaseId", "form-release-3")
+                        .param("formReleaseVersion", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value("1"));
 
         verify(entityDataActionService).getDetail(
-                "test_entity", "1", "default", "form-1");
+                eq("test_entity"),
+                eq("1"),
+                eq("default"),
+                eq("form-1"),
+                argThat(context ->
+                        "list-release-2".equals(context.releaseId())
+                                && Integer.valueOf(2).equals(
+                                context.releaseVersion())),
+                argThat(context ->
+                        "form-release-3".equals(context.releaseId())
+                                && Integer.valueOf(3).equals(
+                                context.releaseVersion())));
     }
 
     /** 测试按流程实例查询实体数据详情接口，断言返回 200 且 ID 正确 */
     @Test
     void testGetByProcessInstance() throws Exception {
         when(entityDataActionService.getDetailByProcessInstance(
-                "test_entity",
-                "proc-1",
-                null)).thenReturn(testData);
+                eq("test_entity"),
+                eq("proc-1"),
+                isNull(),
+                any(EntityListReleaseContext.class))).thenReturn(testData);
 
         mockMvc.perform(get("/api/entity-data/entity/test_entity/process/proc-1"))
                 .andExpect(status().isOk())
@@ -182,15 +212,18 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.data.id").value("1"));
 
         verify(entityDataActionService, times(1)).getDetailByProcessInstance(
-                "test_entity",
-                "proc-1",
-                null);
+                eq("test_entity"),
+                eq("proc-1"),
+                isNull(),
+                any(EntityListReleaseContext.class));
     }
 
     /** 测试新增实体数据接口，断言返回 200 且数据编号正确 */
     @Test
     void testSave() throws Exception {
-        when(entityDataActionService.create(any(EntityDataDTO.class))).thenReturn(testData);
+        when(entityDataActionService.create(
+                any(EntityDataDTO.class),
+                any(EntityListReleaseContext.class))).thenReturn(testData);
 
         mockMvc.perform(post("/api/entity-data")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -199,13 +232,20 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
 
-        verify(entityDataActionService, times(1)).create(any(EntityDataDTO.class));
+        verify(entityDataActionService, times(1)).create(
+                any(EntityDataDTO.class),
+                any(EntityListReleaseContext.class));
     }
 
     /** 测试更新实体数据接口，断言返回 200 且 update 方法被正确调用 */
     @Test
     void testUpdate() throws Exception {
-        when(entityDataActionService.update(eq("test_entity"), eq("1"), isNull(), anyMap())).thenReturn(testData);
+        when(entityDataActionService.update(
+                eq("test_entity"),
+                eq("1"),
+                isNull(),
+                anyMap(),
+                any(EntityListReleaseContext.class))).thenReturn(testData);
 
         mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/update")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -214,18 +254,31 @@ public class EntityDataControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"));
 
-        verify(entityDataActionService, times(1)).update(eq("test_entity"), eq("1"), isNull(), anyMap());
+        verify(entityDataActionService, times(1)).update(
+                eq("test_entity"),
+                eq("1"),
+                isNull(),
+                anyMap(),
+                any(EntityListReleaseContext.class));
     }
 
     /** 测试删除实体数据接口，断言返回 200 且 delete 方法被正确调用 */
     @Test
     void testDelete() throws Exception {
-        doNothing().when(entityDataActionService).delete("test_entity", "1", null);
+        doNothing().when(entityDataActionService).delete(
+                eq("test_entity"),
+                eq("1"),
+                isNull(),
+                any(EntityListReleaseContext.class));
 
         mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/delete"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(entityDataActionService, times(1)).delete("test_entity", "1", null);
+        verify(entityDataActionService, times(1)).delete(
+                eq("test_entity"),
+                eq("1"),
+                isNull(),
+                any(EntityListReleaseContext.class));
     }
 }

@@ -52,4 +52,35 @@ assert.deepEqual(
   '当前列表的范围查询和受信固定条件应继续提交'
 )
 
+assert.deepEqual(
+  buildListRequestFilters(
+    {
+      status: ['DRAFT', 'PENDING']
+    },
+    [{
+      fieldCode: 'status',
+      queryType: 'IN'
+    }]
+  ),
+  {
+    status: ['DRAFT', 'PENDING'],
+    status_op: 'IN'
+  },
+  '多选查询应保留数组值并提交 IN 操作符'
+)
+
+assert.deepEqual(
+  buildListRequestFilters(
+    {
+      status: []
+    },
+    [{
+      fieldCode: 'status',
+      queryType: 'IN'
+    }]
+  ),
+  {},
+  '清空多选查询后不应提交空集合条件'
+)
+
 console.log('list-runtime tests passed')

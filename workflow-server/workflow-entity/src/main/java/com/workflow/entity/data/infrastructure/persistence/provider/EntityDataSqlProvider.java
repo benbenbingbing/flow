@@ -2,6 +2,10 @@ package com.workflow.entity.data.infrastructure.persistence.provider;
 
 import org.apache.ibatis.jdbc.SQL;
 
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -94,7 +98,7 @@ public class EntityDataSqlProvider {
         sql.append("SELECT * FROM ").append(tableName);
         sql.append(" WHERE deleted = 0");
 
-        appendConditionSql(sql, condition);
+        appendConditionSql(sql, params, condition);
 
         sql.append(" ORDER BY create_time DESC");
         return sql.toString();
@@ -263,7 +267,7 @@ public class EntityDataSqlProvider {
         }
 
         // 添加查询条件
-        appendConditionSql(sql, condition);
+        appendConditionSql(sql, params, condition);
 
         sql.append(" ORDER BY create_time DESC");
         return sql.toString();
@@ -282,7 +286,7 @@ public class EntityDataSqlProvider {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT * FROM ").append(tableName)
                 .append(" WHERE deleted = 0");
-        appendConditionSql(sql, condition);
+        appendConditionSql(sql, params, condition);
         sql.append(" ORDER BY create_time DESC")
                 .append(" LIMIT #{offset}, #{limit}");
         return sql.toString();
@@ -305,7 +309,7 @@ public class EntityDataSqlProvider {
         if (permissionSql != null && !permissionSql.isBlank()) {
             sql.append(" AND (").append(permissionSql).append(")");
         }
-        appendConditionSql(sql, condition);
+        appendConditionSql(sql, params, condition);
         sql.append(" ORDER BY create_time DESC")
                 .append(" LIMIT #{offset}, #{limit}");
         return sql.toString();
@@ -336,7 +340,7 @@ public class EntityDataSqlProvider {
         sql.append("SELECT COUNT(*) FROM ").append(tableName);
         sql.append(" WHERE deleted = 0");
 
-        appendConditionSql(sql, condition);
+        appendConditionSql(sql, params, condition);
 
         return sql.toString();
     }
@@ -374,7 +378,7 @@ public class EntityDataSqlProvider {
         if (permissionSql != null && !permissionSql.isBlank()) {
             sql.append(" AND (").append(permissionSql).append(")");
         }
-        appendConditionSql(sql, condition);
+        appendConditionSql(sql, params, condition);
         return sql.toString();
     }
 
@@ -396,10 +400,14 @@ public class EntityDataSqlProvider {
 
     /**
      * 追加查询条件到 SQL
-     * 支持查询方式：EQ(等于)、NE(不等于)、LIKE(包含)、GT(大于)、LT(小于)、BETWEEN(范围)
+     * 支持查询方式：EQ(等于)、NE(不等于)、LIKE(包含)、GT(大于)、LT(小于)、
+     * BETWEEN(范围)、IN(包含于)、NOT_IN(不包含于)
      * 通过 _op 后缀参数指定查询方式，例如：name=xxx&name_op=EQ
      */
-    private void appendConditionSql(StringBuilder sql, Map<String, Object> condition) {
+    private void appendConditionSql(
+            StringBuilder sql,
+            Map<String, Object> params,
+            Map<String, Object> condition) {
         if (condition == null) {
             return;
         }
@@ -470,12 +478,81 @@ public class EntityDataSqlProvider {
                 sql.append(" AND ").append(columnName).append(" > #{condition.").append(fieldKey).append("}");
             } else if ("LT".equals(op)) {
                 sql.append(" AND ").append(columnName).append(" < #{condition.").append(fieldKey).append("}");
+            } else if ("IN".equals(op) || "NOT_IN".equals(op)) {
+                appendInCondition(
+                        sql,
+                        params,
+                        columnName,
+                        fieldKey,
+                        value,
+                        "NOT_IN".equals(op));
             } else if ("LIKE".equals(op) || (op.isEmpty() && value instanceof String)) {
                 sql.append(" AND ").append(columnName).append(" LIKE CONCAT('%', #{condition.").append(fieldKey).append("}, '%')");
             } else {
                 sql.append(" AND ").append(columnName).append(" = #{condition.").append(fieldKey).append("}");
             }
         }
+    }
+
+    private void appendInCondition(
+            StringBuilder sql,
+            Map<String, Object> params,
+            String columnName,
+            String fieldKey,
+            Object rawValue,
+            boolean negated) {
+        List<Object> values = normalizeInValues(rawValue);
+        if (values.isEmpty()) {
+            sql.append(negated ? " AND 1 = 1" : " AND 1 = 0");
+            return;
+        }
+
+        List<String> placeholders = new ArrayList<>();
+        for (int index = 0; index < values.size(); index++) {
+            String parameterKey =
+                    "__condition_" + fieldKey + "_" + index;
+            params.put(parameterKey, values.get(index));
+            placeholders.add("#{" + parameterKey + "}");
+        }
+        sql.append(" AND ")
+                .append(columnName)
+                .append(negated ? " NOT IN (" : " IN (")
+                .append(String.join(", ", placeholders))
+                .append(")");
+    }
+
+    private List<Object> normalizeInValues(Object value) {
+        List<Object> values = new ArrayList<>();
+        if (value instanceof Collection<?> collection) {
+            collection.stream()
+                    .filter(item -> item != null
+                            && !String.valueOf(item).trim().isEmpty())
+                    .forEach(values::add);
+            return values;
+        }
+        if (value != null && value.getClass().isArray()) {
+            for (int index = 0; index < Array.getLength(value); index++) {
+                Object item = Array.get(value, index);
+                if (item != null
+                        && !String.valueOf(item).trim().isEmpty()) {
+                    values.add(item);
+                }
+            }
+            return values;
+        }
+        if (value instanceof String text) {
+            for (String item : text.split(",")) {
+                String normalized = item.trim();
+                if (!normalized.isEmpty()) {
+                    values.add(normalized);
+                }
+            }
+            return values;
+        }
+        if (value != null) {
+            values.add(value);
+        }
+        return values;
     }
 
     /** 从参数中取出并校验表名 */

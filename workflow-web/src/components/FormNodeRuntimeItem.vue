@@ -119,6 +119,7 @@
       :options="options"
       :context="{ ...context, node, field: runtimeField }"
       :data-source-runtime="dataSourceRuntime"
+      :attachment-item-required-state="attachmentItemRequiredState"
       @update:model-value="updateField"
     />
   </el-form-item>
@@ -354,13 +355,17 @@ const options = computed(() =>
     || runtimeField.value?.options
     || []
 )
+const attachmentItemRequiredState = computed(() =>
+  props.linkageState?.attachmentItemRequired?.[fieldKey.value] || {}
+)
 const fieldRules = computed(() => {
   const field = runtimeField.value
   if (!field) return []
   return buildRuntimeFieldRules(
     field,
     required.value,
-    props.node.props.label || field.fieldLabel || field.fieldName
+    props.node.props.label || field.fieldLabel || field.fieldName,
+    attachmentItemRequiredState.value
   )
 })
 

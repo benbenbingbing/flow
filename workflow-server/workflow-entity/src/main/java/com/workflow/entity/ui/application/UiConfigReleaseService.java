@@ -16,6 +16,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
+import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
@@ -32,9 +33,11 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigDiffItemDTO;
+import com.workflow.entity.ui.api.response.UiConfigActivationPreviewDTO;
 import com.workflow.entity.ui.api.response.UiConfigHotfixRiskItemDTO;
 import com.workflow.entity.ui.api.response.UiConfigHotfixTargetPreviewDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
+import com.workflow.entity.ui.api.response.UiConfigReleaseSummaryDTO;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
 import com.workflow.entity.ui.api.model.UiConfigSemanticPatchOperation;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -167,10 +170,42 @@ public class UiConfigReleaseService {
         return releases;
     }
 
+    /**
+     * 分页查询发布历史摘要，避免历史页一次传输全部快照文档。
+     */
+    public PageResult<UiConfigReleaseSummaryDTO> releaseSummaries(
+            String configType,
+            String configId,
+            long pageNum,
+            int pageSize) {
+        requireType(configType);
+        long safePageNum = Math.max(1, pageNum);
+        int safePageSize = Math.max(1, Math.min(100, pageSize));
+        List<UiConfigReleaseSummaryDTO> records =
+                releaseMapper.findReleaseSummaries(
+                        configType,
+                        configId,
+                        (safePageNum - 1) * safePageSize,
+                        safePageSize);
+        return new PageResult<>(
+                records,
+                releaseMapper.countReleases(configType, configId),
+                safePageNum,
+                safePageSize);
+    }
+
     private String resolveRolloutStatus(UiConfigRelease release) {
+        return resolveRolloutStatus(
+                release.getId(),
+                release.getStatus());
+    }
+
+    private String resolveRolloutStatus(
+            String releaseId,
+            String status) {
         List<UiConfigHotfixTarget> targets =
                 hotfixTargetMapper.findByHotfixReleaseId(
-                        release.getId());
+                        releaseId);
         if (targets.stream().anyMatch(target ->
                 "ACTIVE".equals(target.getStatus()))) {
             return "ACTIVE";
@@ -181,10 +216,10 @@ public class UiConfigReleaseService {
         }
         if (targets.stream().anyMatch(target ->
                 "ROLLED_BACK".equals(target.getStatus()))
-                || hasRollbackAudit(release.getId())) {
+                || hasRollbackAudit(releaseId)) {
             return "ROLLED_BACK";
         }
-        return "ACTIVE".equals(release.getStatus())
+        return "ACTIVE".equals(status)
                 ? "ACTIVE" : "SUPERSEDED";
     }
 
@@ -223,7 +258,7 @@ public class UiConfigReleaseService {
         UiConfigRelease release = active(configType, configId);
         return release == null
                 ? null
-                : codec.readObject(release.getSnapshotDocument(), "UI发布快照");
+                : verifiedSnapshot(release);
     }
 
     /**
@@ -264,6 +299,30 @@ public class UiConfigReleaseService {
             UiReleaseResolutionTokenService.Claims claims =
                     resolutionTokenService.verify(
                             releaseResolutionToken);
+            if (matchesAuthorizedFormRelease(
+                    claims,
+                    formId,
+                    releaseId,
+                    expectedVersion)) {
+                ResolvedEntityFormRelease authorized =
+                        resolveRuntimeFormRelease(
+                                claims.parentFormId(),
+                                claims.parentReleaseId(),
+                                claims.parentReleaseVersion(),
+                                claims.context());
+                Map<String, Object> result = runtimeReleaseResult(
+                        authorized,
+                        runtimeSnapshot(authorized.form()));
+                result.put(
+                        "releaseResolutionToken",
+                        resolutionTokenService.issue(
+                                claims.context(),
+                                formId,
+                                authorized.releaseId(),
+                                authorized.releaseVersion(),
+                                claims.depth() + 1));
+                return result;
+            }
             log.info(
                     "使用签名上下文解析子表单: parentFormId={}, parentReleaseId={}, parentVersion={}, childFormId={}, childReleaseId={}, childVersion={}, purpose={}, historyId={}, nodeId={}, depth={}",
                     LogValue.safe(claims.parentFormId()),
@@ -328,9 +387,7 @@ public class UiConfigReleaseService {
                     claims.depth() + 1);
             return result;
         }
-        UiConfigRelease release = StringUtils.hasText(releaseId)
-                ? releaseMapper.selectById(releaseId)
-                : releaseMapper.findActive(FORM, formId);
+        UiConfigRelease release = releaseMapper.findActive(FORM, formId);
         if (release == null
                 || !FORM.equals(release.getConfigType())
                 || !Objects.equals(formId, release.getConfigId())) {
@@ -347,20 +404,25 @@ public class UiConfigReleaseService {
                                     ? null : release.getConfigId()));
             throw new IllegalArgumentException("表单运行时发布版本不存在");
         }
-        if (expectedVersion != null
-                && !Objects.equals(expectedVersion, release.getVersion())) {
+        if ((StringUtils.hasText(releaseId)
+                && !Objects.equals(releaseId, release.getId()))
+                || (expectedVersion != null
+                && !Objects.equals(expectedVersion, release.getVersion()))) {
             log.info(
-                    "表单运行时快照解析失败: formId={}, releaseId={}, expectedVersion={}, actualVersion={}, reason=VERSION_MISMATCH",
+                    "表单运行时快照解析失败: formId={}, requestedReleaseId={}, actualReleaseId={}, expectedVersion={}, actualVersion={}, reason=ACTIVE_RELEASE_MISMATCH",
                     LogValue.safe(formId),
+                    LogValue.safe(releaseId),
                     LogValue.safe(release.getId()),
                     expectedVersion,
                     release.getVersion());
-            throw new IllegalArgumentException("表单运行时发布版本号不一致");
+            throw new BusinessConflictException(
+                    "FORM_RELEASE_CONFLICT",
+                    "页面表单版本已过期，请刷新后重试");
         }
         ResolvedEntityFormRelease resolved =
                 resolvedRuntimeForm(
                         release,
-                        StringUtils.hasText(releaseId));
+                        false);
         Map<String, Object> result = runtimeReleaseResult(
                 resolved,
                 verifiedSnapshot(release));
@@ -371,9 +433,68 @@ public class UiConfigReleaseService {
                 resolved.releaseVersion(),
                 LogValue.safe(resolved.effectiveReleaseId()),
                 resolved.hotfixApplied(),
-                StringUtils.hasText(releaseId)
-                        ? "PINNED" : "ACTIVE");
+                "ACTIVE");
         return result;
+    }
+
+    /**
+     * 解析客户端运行时表单提交使用的版本。签名令牌可读取精确固定版本，
+     * 无令牌时只能使用当前 ACTIVE 版本。
+     */
+    public ResolvedEntityFormRelease resolveAuthorizedRuntimeFormRelease(
+            String formId,
+            String releaseId,
+            Integer expectedVersion,
+            String releaseResolutionToken) {
+        if (StringUtils.hasText(releaseResolutionToken)) {
+            UiReleaseResolutionTokenService.Claims claims =
+                    resolutionTokenService.verify(
+                            releaseResolutionToken);
+            if (!matchesAuthorizedFormRelease(
+                    claims,
+                    formId,
+                    releaseId,
+                    expectedVersion)) {
+                throw new BusinessForbiddenException(
+                        "FORM_RELEASE_CONTEXT_MISMATCH",
+                        "提交的表单发布版本与运行时授权不一致");
+            }
+            return resolveRuntimeFormRelease(
+                    claims.parentFormId(),
+                    claims.parentReleaseId(),
+                    claims.parentReleaseVersion(),
+                    claims.context());
+        }
+        ResolvedEntityFormRelease active =
+                resolveRuntimeFormRelease(formId);
+        if ((StringUtils.hasText(releaseId)
+                && !Objects.equals(releaseId, active.releaseId()))
+                || (expectedVersion != null
+                && !Objects.equals(
+                        expectedVersion,
+                        active.releaseVersion()))) {
+            throw new BusinessConflictException(
+                    "FORM_RELEASE_CONFLICT",
+                    "页面表单版本已过期，请刷新后重试");
+        }
+        return active;
+    }
+
+    private boolean matchesAuthorizedFormRelease(
+            UiReleaseResolutionTokenService.Claims claims,
+            String formId,
+            String releaseId,
+            Integer expectedVersion) {
+        return claims != null
+                && Objects.equals(formId, claims.parentFormId())
+                && (!StringUtils.hasText(releaseId)
+                || Objects.equals(
+                        releaseId,
+                        claims.parentReleaseId()))
+                && (expectedVersion == null
+                || Objects.equals(
+                        expectedVersion,
+                        claims.parentReleaseVersion()));
     }
 
     /**
@@ -752,7 +873,7 @@ public class UiConfigReleaseService {
      * @throws IllegalArgumentException 配置不存在时抛出
      */
     public Map<String, Object> draftSnapshot(String configType, String configId) {
-        return buildDraftSnapshot(configType, configId);
+        return buildDraftSnapshot(configType, configId, false);
     }
 
     /**
@@ -769,12 +890,11 @@ public class UiConfigReleaseService {
         UiConfigRelease active = active(configType, configId);
         Map<String, Object> activeSnapshot = active == null
                 ? Map.of()
-                : snapshotSupport.stableMap(codec.readObject(
-                        active.getSnapshotDocument(), "UI发布快照"));
+                : snapshotSupport.stableMap(
+                        verifiedSnapshot(active));
         String activeHash = active == null
                 ? null
-                : snapshotSupport.hash(
-                        snapshotSupport.canonical(activeSnapshot));
+                : active.getContentHash();
         boolean changed = active == null
                 || !semanticPatchService.build(
                         configType,
@@ -807,6 +927,72 @@ public class UiConfigReleaseService {
                 .build();
     }
 
+    /**
+     * 预览当前 ACTIVE 与待激活历史版本之间的差异。
+     */
+    public UiConfigActivationPreviewDTO activationPreview(
+            String configType,
+            String configId,
+            String releaseId) {
+        requireType(configType);
+        UiConfigRelease target = releaseMapper.selectById(releaseId);
+        if (target == null
+                || !configType.equals(target.getConfigType())
+                || !configId.equals(target.getConfigId())) {
+            throw new IllegalArgumentException("发布版本不存在");
+        }
+        if (HOTFIX.equals(target.getReleaseMode())) {
+            throw new BusinessConflictException(
+                    "HOTFIX_ACTIVATE_NOT_ALLOWED",
+                    "热修复必须通过撤回入口按发布时间逆序回滚");
+        }
+        Map<String, Object> targetSnapshot =
+                verifiedSnapshot(target);
+        UiConfigRelease current = releaseMapper.findActive(
+                configType,
+                configId);
+        Map<String, Object> currentSnapshot = current == null
+                ? Map.of() : verifiedSnapshot(current);
+        UiConfigSemanticPatchService.PatchAnalysis patch =
+                semanticPatchService.build(
+                        configType,
+                        currentSnapshot,
+                        targetSnapshot);
+        boolean changed = !patch.operations().isEmpty();
+        List<String> changedSections = new ArrayList<>();
+        Set<String> sections = new LinkedHashSet<>();
+        sections.addAll(currentSnapshot.keySet());
+        sections.addAll(targetSnapshot.keySet());
+        for (String section : sections) {
+            if (!snapshotSupport.equivalent(
+                    targetSnapshot.get(section),
+                    currentSnapshot.get(section))) {
+                changedSections.add(section);
+            }
+        }
+        return UiConfigActivationPreviewDTO.builder()
+                .configType(configType)
+                .configId(configId)
+                .currentReleaseId(current == null
+                        ? null : current.getId())
+                .currentVersion(current == null
+                        ? null : current.getVersion())
+                .targetReleaseId(target.getId())
+                .targetVersion(target.getVersion())
+                .riskLevel(patch.riskLevel())
+                .riskItems(patch.riskItems())
+                .changed(changed)
+                .changedSections(changedSections)
+                .changedItems(changed
+                        ? detailedChanges(
+                                configType,
+                                targetSnapshot,
+                                currentSnapshot,
+                                changedSections)
+                        : List.of())
+                .build();
+    }
+
     private List<UiConfigDiffItemDTO> detailedChanges(
             String configType,
             Map<String, Object> draft,
@@ -830,6 +1016,15 @@ public class UiConfigReleaseService {
                     List.of("id", "nodeKey"),
                     List.of("label", "fieldLabel", "fieldName", "nodeKey"),
                     true);
+            appendEventBindingChanges(
+                    changes,
+                    draft,
+                    active);
+            appendFallbackChange(
+                    changes,
+                    changedSections,
+                    "form",
+                    "表单发布快照");
             return changes;
         }
 
@@ -877,16 +1072,47 @@ public class UiConfigReleaseService {
                 "列表场景",
                 draftList.get("allowedScenes"),
                 activeList.get("allowedScenes"));
+        appendEventBindingChanges(
+                changes,
+                draft,
+                active);
+        appendFallbackChange(
+                changes,
+                changedSections,
+                "list",
+                "列表发布快照");
+        return changes;
+    }
+
+    private void appendEventBindingChanges(
+            List<UiConfigDiffItemDTO> changes,
+            Map<String, Object> draft,
+            Map<String, Object> active) {
+        appendCollectionChanges(
+                changes,
+                "eventBindings",
+                "事件绑定",
+                mapList(draft.get("eventBindings")),
+                mapList(active.get("eventBindings")),
+                List.of("id"),
+                List.of("eventCode", "targetKey"),
+                false);
+    }
+
+    private void appendFallbackChange(
+            List<UiConfigDiffItemDTO> changes,
+            List<String> changedSections,
+            String section,
+            String label) {
         if (changes.isEmpty() && !changedSections.isEmpty()) {
             changes.add(UiConfigDiffItemDTO.builder()
-                    .section("list")
-                    .id("list")
-                    .label("列表草稿")
+                    .section(section)
+                    .id(section)
+                    .label(label)
                     .changeType("UPDATED")
                     .changedFields(changedSections)
                     .build());
         }
-        return changes;
     }
 
     private void appendObjectChange(
@@ -1083,6 +1309,7 @@ public class UiConfigReleaseService {
             UiConfigPublishRequest request) {
         String releaseMode = releaseMode(request);
         if (HOTFIX.equals(releaseMode)) {
+            requireHotfixSupported(configType);
             configurationAccessService.requireHotfixAccess(false);
             return prepareHotfix(configType, configId, request).preview();
         }
@@ -1091,6 +1318,13 @@ public class UiConfigReleaseService {
         String draftHash = snapshotSupport.hash(
                 snapshotSupport.canonical(draft));
         UiConfigRelease current = releaseMapper.findActive(configType, configId);
+        Map<String, Object> activeSnapshot = current == null
+                ? Map.of() : verifiedSnapshot(current);
+        UiConfigSemanticPatchService.PatchAnalysis patch =
+                semanticPatchService.build(
+                        configType,
+                        activeSnapshot,
+                        draft);
         UiConfigDiffDTO diff = diff(configType, configId);
         String targetHash = "STANDARD:"
                 + (current == null ? "NONE" : current.getId());
@@ -1110,8 +1344,8 @@ public class UiConfigReleaseService {
                         draftHash,
                         current == null ? null : current.getId(),
                         targetHash,
-                        UiConfigSemanticPatchService.SAFE))
-                .riskLevel(UiConfigSemanticPatchService.SAFE)
+                        patch.riskLevel()))
+                .riskLevel(patch.riskLevel())
                 .changed(diff.isChanged())
                 .requiresOverride(false)
                 .canPublish(diff.isChanged())
@@ -1119,7 +1353,7 @@ public class UiConfigReleaseService {
                 .activeInstanceCount(0L)
                 .skippedHistoricalInstanceCount(0L)
                 .changedItems(diff.getChangedItems())
-                .riskItems(List.of())
+                .riskItems(patch.riskItems())
                 .targets(List.of())
                 .blockers(diff.isChanged()
                         ? List.of() : List.of("当前草稿与已发布版本一致"))
@@ -1141,7 +1375,7 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 按发布请求执行普通发布或兼容热修复。
+     * 按发布请求执行普通发布；仅表单支持兼容热修复。
      */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease publish(
@@ -1166,6 +1400,7 @@ public class UiConfigReleaseService {
                                 request.getImpactToken()),
                 LogValue.safe(UserContext.getUserId()));
         if (HOTFIX.equals(releaseMode)) {
+            requireHotfixSupported(configType);
             return publishHotfix(configType, configId, request);
         }
         return publishStandard(configType, configId, request);
@@ -1183,6 +1418,13 @@ public class UiConfigReleaseService {
         UiConfigRelease active = releaseMapper.findActive(
                 configType,
                 configId);
+        Map<String, Object> activeSnapshot = active == null
+                ? Map.of() : verifiedSnapshot(active);
+        UiConfigSemanticPatchService.PatchAnalysis patch =
+                semanticPatchService.build(
+                        configType,
+                        activeSnapshot,
+                        snapshot);
         verifyExpectedState(
                 request,
                 contentHash,
@@ -1206,8 +1448,12 @@ public class UiConfigReleaseService {
                     active.getVersion());
             return active;
         }
-        List<UiConfigRelease> releases = releaseMapper.findReleases(configType, configId);
-        int nextVersion = releases.isEmpty() ? 1 : releases.get(0).getVersion() + 1;
+        int nextVersion = Math.max(
+                releaseMapper.findMaxVersion(
+                        configType,
+                        configId),
+                active == null || active.getVersion() == null
+                        ? 0 : active.getVersion()) + 1;
         deactivate(configType, configId);
 
         UiConfigRelease release = new UiConfigRelease();
@@ -1220,7 +1466,7 @@ public class UiConfigReleaseService {
         release.setDescription(blankToNull(
                 request == null ? null : request.getDescription()));
         release.setReleaseMode(STANDARD);
-        release.setRiskLevel(UiConfigSemanticPatchService.SAFE);
+        release.setRiskLevel(patch.riskLevel());
         release.setOverrideRisk(0);
         release.setPublishedBy(UserContext.getUserId());
         release.setPublishedAt(LocalDateTime.now());
@@ -1231,11 +1477,12 @@ public class UiConfigReleaseService {
                 configId,
                 release.getId(),
                 "PUBLISH_STANDARD",
-                UiConfigSemanticPatchService.SAFE,
+                patch.riskLevel(),
                 request == null ? null : request.getDescription(),
                 Map.of(
                         "version", release.getVersion(),
-                        "contentHash", contentHash));
+                        "contentHash", contentHash,
+                        "riskItems", patch.riskItems()));
         recordSystemEntityUiAsset(
                 configType, configId, release, request);
         log.info(
@@ -1286,10 +1533,12 @@ public class UiConfigReleaseService {
         }
 
         UiConfigRelease active = preparation.active();
-        List<UiConfigRelease> releases =
-                releaseMapper.findReleases(configType, configId);
-        int nextVersion =
-                releases.isEmpty() ? 1 : releases.get(0).getVersion() + 1;
+        int nextVersion = Math.max(
+                releaseMapper.findMaxVersion(
+                        configType,
+                        configId),
+                active.getVersion() == null
+                        ? 0 : active.getVersion()) + 1;
         deactivate(configType, configId);
 
         UiConfigRelease release = new UiConfigRelease();
@@ -1867,6 +2116,14 @@ public class UiConfigReleaseService {
         return value;
     }
 
+    private void requireHotfixSupported(String configType) {
+        if (LIST.equals(configType)) {
+            throw new BusinessConflictException(
+                    "LIST_HOTFIX_NOT_SUPPORTED",
+                    "列表运行时统一使用当前激活版本，请使用普通发布和历史版本激活");
+        }
+    }
+
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
     }
@@ -1979,11 +2236,10 @@ public class UiConfigReleaseService {
                     .set("status", "ACTIVE");
             releaseMapper.update(null, activateBase);
             base.setStatus("ACTIVE");
-            activateOnOwner(
+            switchActiveReleaseOnOwner(
                     configType,
                     configId,
-                    base,
-                    base.getContentHash());
+                    base);
             release.setStatus("INACTIVE");
         }
         recordAudit(
@@ -2020,6 +2276,50 @@ public class UiConfigReleaseService {
             String configType,
             String configId,
             String releaseId) {
+        return activateInternal(
+                configType,
+                configId,
+                releaseId,
+                null,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public UiConfigRelease activate(
+            String configType,
+            String configId,
+            String releaseId,
+            String reason) {
+        return activate(
+                configType,
+                configId,
+                releaseId,
+                reason,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public UiConfigRelease activate(
+            String configType,
+            String configId,
+            String releaseId,
+            String reason,
+            String expectedActiveReleaseId) {
+        requireOperationReason(reason, "激活原因不能为空");
+        return activateInternal(
+                configType,
+                configId,
+                releaseId,
+                reason,
+                expectedActiveReleaseId);
+    }
+
+    private UiConfigRelease activateInternal(
+            String configType,
+            String configId,
+            String releaseId,
+            String reason,
+            String expectedActiveReleaseId) {
         log.info(
                 "开始激活UI配置历史版本: configType={}, configId={}, releaseId={}, operatorId={}",
                 LogValue.safe(configType),
@@ -2027,6 +2327,17 @@ public class UiConfigReleaseService {
                 LogValue.safe(releaseId),
                 LogValue.safe(UserContext.getUserId()));
         lockOwner(configType, configId);
+        UiConfigRelease previous = releaseMapper.findActive(
+                configType,
+                configId);
+        if (StringUtils.hasText(expectedActiveReleaseId)
+                && !Objects.equals(
+                        expectedActiveReleaseId,
+                        previous == null ? null : previous.getId())) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_ACTIVE_RELEASE_CHANGED",
+                    "当前激活版本已变化，请重新预览后再激活");
+        }
         UiConfigRelease release = releaseMapper.selectById(releaseId);
         if (release == null
                 || !configType.equals(release.getConfigType())
@@ -2038,21 +2349,47 @@ public class UiConfigReleaseService {
                     "HOTFIX_ACTIVATE_NOT_ALLOWED",
                     "热修复必须通过撤回入口按发布时间逆序回滚");
         }
-        Map<String, Object> snapshot = codec.readObject(
-                release.getSnapshotDocument(), "待激活UI发布快照");
-        String actualHash = snapshotSupport.hash(
-                snapshotSupport.canonical(snapshot));
-        if (!StringUtils.hasText(release.getContentHash())
-                || !Objects.equals(release.getContentHash(), actualHash)) {
-            throw new IllegalArgumentException("发布快照完整性校验失败，内容可能已被篡改");
-        }
+        Map<String, Object> snapshot = verifiedSnapshot(release);
         validateSnapshotForActivation(configType, configId, snapshot);
+        Map<String, Object> previousSnapshot = previous == null
+                ? Map.of() : verifiedSnapshot(previous);
+        UiConfigSemanticPatchService.PatchAnalysis activationPatch =
+                semanticPatchService.build(
+                        configType,
+                        previousSnapshot,
+                        snapshot);
         deactivate(configType, configId);
         UpdateWrapper<UiConfigRelease> releaseUpdate = new UpdateWrapper<>();
-        releaseUpdate.eq("id", releaseId).set("status", "ACTIVE");
-        releaseMapper.update(null, releaseUpdate);
+        releaseUpdate.eq("id", releaseId)
+                .eq("config_type", configType)
+                .eq("config_id", configId)
+                .set("status", "ACTIVE");
+        if (releaseMapper.update(null, releaseUpdate) != 1) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_RELEASE_ACTIVATE_CONFLICT",
+                    "历史版本状态已变化，请刷新后重试");
+        }
         release.setStatus("ACTIVE");
-        activateOnOwner(configType, configId, release, release.getContentHash());
+        switchActiveReleaseOnOwner(
+                configType,
+                configId,
+                release);
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("previousReleaseId", previous == null
+                ? null : previous.getId());
+        audit.put("previousVersion", previous == null
+                ? null : previous.getVersion());
+        audit.put("activatedReleaseId", release.getId());
+        audit.put("activatedVersion", release.getVersion());
+        audit.put("riskItems", activationPatch.riskItems());
+        recordAudit(
+                configType,
+                configId,
+                release.getId(),
+                "ACTIVATE_RELEASE",
+                activationPatch.riskLevel(),
+                reason,
+                audit);
         recordSystemEntityUiAsset(
                 configType, configId, release, null);
         log.info(
@@ -2064,6 +2401,95 @@ public class UiConfigReleaseService {
                 LogValue.safe(release.getContentHash()),
                 LogValue.safe(UserContext.getUserId()));
         return release;
+    }
+
+    /**
+     * 将列表历史发布快照恢复为可编辑草稿，不改变当前 ACTIVE 版本。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityListConfigDTO restoreListDraft(
+            String configId,
+            String releaseId,
+            String reason) {
+        requireOperationReason(reason, "恢复原因不能为空");
+        lockOwner(LIST, configId);
+        UiConfigRelease release = requireListRelease(
+                configId,
+                releaseId,
+                null);
+        Map<String, Object> snapshot = verifiedSnapshot(release);
+        Map<String, Object> currentDraft =
+                buildDraftSnapshot(LIST, configId);
+        Map<String, Object> restoredDraft =
+                restoredListDraftSnapshot(
+                        configId,
+                        currentDraft,
+                        snapshot);
+        UiConfigSemanticPatchService.PatchAnalysis restorePatch =
+                semanticPatchService.build(
+                        LIST,
+                        currentDraft,
+                        restoredDraft);
+        EntityListConfigDTO list = runtimeList(snapshot, configId);
+        list.setId(configId);
+        EntityListConfigDTO restored =
+                listConfigService.saveConfigForImport(list);
+        eventBindingSnapshotService.restoreLocalBindings(
+                LIST,
+                configId,
+                mapList(snapshot.get("eventBindings")));
+        recordAudit(
+                LIST,
+                configId,
+                releaseId,
+                "RESTORE_DRAFT",
+                restorePatch.riskLevel(),
+                reason,
+                Map.of(
+                        "sourceReleaseId", releaseId,
+                        "sourceVersion", release.getVersion(),
+                        "riskItems", restorePatch.riskItems()));
+        return restored;
+    }
+
+    private Map<String, Object> restoredListDraftSnapshot(
+            String configId,
+            Map<String, Object> currentDraft,
+            Map<String, Object> sourceRelease) {
+        Map<String, Object> restored =
+                new LinkedHashMap<>(currentDraft);
+        restored.put("list", sourceRelease.get("list"));
+        List<Map<String, Object>> bindings = new ArrayList<>();
+        mapList(currentDraft.get("eventBindings")).stream()
+                .filter(binding -> !isLocalListBinding(
+                        binding,
+                        configId))
+                .forEach(bindings::add);
+        mapList(sourceRelease.get("eventBindings")).stream()
+                .filter(binding -> isLocalListBinding(
+                        binding,
+                        configId))
+                .forEach(bindings::add);
+        restored.put("eventBindings", bindings);
+        return restored;
+    }
+
+    private boolean isLocalListBinding(
+            Map<String, Object> binding,
+            String configId) {
+        return LIST.equals(normalize(text(
+                binding.get("ownerType"))))
+                && Objects.equals(
+                        configId,
+                        text(binding.get("ownerId")));
+    }
+
+    private void requireOperationReason(
+            String reason,
+            String message) {
+        if (!StringUtils.hasText(reason)) {
+            throw new IllegalArgumentException(message);
+        }
     }
 
     private void recordSystemEntityUiAsset(
@@ -2480,28 +2906,286 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 解析列表运行时配置，优先取激活发布快照，回退到数据库草稿配置。
+     * 解析列表当前激活的运行时配置。
      *
      * @param listConfigId 列表配置ID
-     * @return 运行时列表配置 DTO
+     * @return 运行时列表配置 DTO，无激活版本时返回 null
      */
     public EntityListConfigDTO resolveRuntimeList(String listConfigId) {
-        Map<String, Object> snapshot = activeSnapshot(LIST, listConfigId);
-        return snapshot == null
-                ? listConfigService.findById(listConfigId)
-                : objectMapper.convertValue(
-                        snapshot.get("list"), EntityListConfigDTO.class);
+        return resolveRuntimeListRelease(
+                listConfigId,
+                null,
+                null,
+                null).list();
+    }
+
+    /**
+     * 解析列表运行时发布版本。无签名上下文时只能读取当前 ACTIVE；
+     * 携带父表单签名上下文时，允许读取父表单快照中精确固定的列表版本。
+     */
+    public ResolvedEntityListRelease resolveRuntimeListRelease(
+            String listConfigId,
+            String releaseId,
+            Integer expectedVersion,
+            String releaseResolutionToken) {
+        if (!StringUtils.hasText(listConfigId)) {
+            throw new IllegalArgumentException("列表配置ID不能为空");
+        }
+        boolean pinned = StringUtils.hasText(releaseResolutionToken);
+        UiConfigRelease release;
+        if (pinned) {
+            if (!StringUtils.hasText(releaseId)
+                    || expectedVersion == null) {
+                throw new BusinessForbiddenException(
+                        "LIST_RELEASE_CONTEXT_REQUIRED",
+                        "父表单固定列表版本时必须提供完整的发布标识");
+            }
+            release = requireListRelease(
+                    listConfigId,
+                    releaseId,
+                    expectedVersion);
+            Map<String, Object> snapshot =
+                    verifiedSnapshot(release);
+            EntityListConfigDTO list = runtimeList(
+                    snapshot,
+                    listConfigId);
+            UiReleaseResolutionTokenService.Claims claims =
+                    resolutionTokenService.verify(
+                            releaseResolutionToken);
+            ResolvedEntityFormRelease parent =
+                    resolveRuntimeFormRelease(
+                            claims.parentFormId(),
+                            claims.parentReleaseId(),
+                            claims.parentReleaseVersion(),
+                            claims.context());
+            if (!referencesListRelease(
+                    parent.form(),
+                    listConfigId,
+                    releaseId,
+                    expectedVersion)) {
+                throw new BusinessForbiddenException(
+                        "CHILD_LIST_RELEASE_NOT_REFERENCED",
+                        "请求的列表发布版本不属于父表单有效快照");
+            }
+            log.info(
+                    "列表钉定发布快照解析完成: parentFormId={}, parentReleaseId={}, listId={}, listKey={}, releaseId={}, releaseVersion={}, source=SIGNED_CONTEXT",
+                    LogValue.safe(claims.parentFormId()),
+                    LogValue.safe(parent.releaseId()),
+                    LogValue.safe(listConfigId),
+                    LogValue.safe(list.getListKey()),
+                    LogValue.safe(release.getId()),
+                    release.getVersion());
+            return new ResolvedEntityListRelease(
+                    list,
+                    release.getId(),
+                    release.getVersion(),
+                    true,
+                    snapshot);
+        }
+
+        release = releaseMapper.findActive(LIST, listConfigId);
+        if (release == null) {
+            throw new BusinessConflictException(
+                    "LIST_RELEASE_REQUIRED",
+                    "列表尚未发布或没有激活版本");
+        }
+        EntityListConfig owner = listConfigMapper.selectById(
+                listConfigId);
+        if (owner == null
+                || !Objects.equals(
+                        owner.getActiveReleaseId(),
+                        release.getId())
+                || !Objects.equals(
+                        owner.getPublishedVersion(),
+                        release.getVersion())) {
+            throw new BusinessConflictException(
+                    "LIST_RELEASE_STATE_CONFLICT",
+                    "列表发布状态不一致，请重新发布或激活版本");
+        }
+        if (StringUtils.hasText(releaseId)
+                && !Objects.equals(releaseId, release.getId())) {
+            throw new BusinessConflictException(
+                    "LIST_RELEASE_CONFLICT",
+                    "页面列表版本已过期，请刷新后重试");
+        }
+        if (expectedVersion != null
+                && !Objects.equals(
+                        expectedVersion,
+                        release.getVersion())) {
+            throw new BusinessConflictException(
+                    "LIST_RELEASE_CONFLICT",
+                    "页面列表版本已过期，请刷新后重试");
+        }
+        Map<String, Object> snapshot = verifiedSnapshot(release);
+        EntityListConfigDTO list = runtimeList(
+                snapshot,
+                listConfigId);
+        log.info(
+                "列表激活发布快照解析完成: listId={}, listKey={}, releaseId={}, releaseVersion={}, source=ACTIVE",
+                LogValue.safe(listConfigId),
+                LogValue.safe(list.getListKey()),
+                LogValue.safe(release.getId()),
+                release.getVersion());
+        return new ResolvedEntityListRelease(
+                list,
+                release.getId(),
+                release.getVersion(),
+                false,
+                snapshot);
+    }
+
+    private UiConfigRelease requireListRelease(
+            String listConfigId,
+            String releaseId,
+            Integer expectedVersion) {
+        UiConfigRelease release = releaseMapper.selectById(releaseId);
+        if (release == null
+                || !LIST.equals(release.getConfigType())
+                || !Objects.equals(
+                        listConfigId,
+                        release.getConfigId())
+                || (expectedVersion != null
+                && !Objects.equals(
+                        expectedVersion,
+                        release.getVersion()))) {
+            throw new BusinessConflictException(
+                    "LIST_PINNED_RELEASE_CONFLICT",
+                    "父表单固定的列表发布版本不存在或不一致");
+        }
+        return release;
+    }
+
+    private EntityListConfigDTO runtimeList(
+            Map<String, Object> snapshot,
+            String expectedListId) {
+        Object listDocument = snapshot.get("list");
+        if (listDocument == null) {
+            throw new IllegalArgumentException(
+                    "列表发布快照缺少 list 文档");
+        }
+        EntityListConfigDTO list = objectMapper.convertValue(
+                listDocument,
+                EntityListConfigDTO.class);
+        if (!StringUtils.hasText(list.getId())) {
+            throw new IllegalArgumentException(
+                    "列表发布快照缺少列表ID");
+        }
+        if (!Objects.equals(expectedListId, list.getId())) {
+            throw new IllegalArgumentException(
+                    "列表发布快照与发布记录归属不一致");
+        }
+        return list;
+    }
+
+    private boolean referencesListRelease(
+            EntityForm parent,
+            String listConfigId,
+            String listReleaseId,
+            Integer listReleaseVersion) {
+        if (parent == null) {
+            return false;
+        }
+        for (EntityFormNode node : parent.getNodes() == null
+                ? List.<EntityFormNode>of()
+                : parent.getNodes()) {
+            if (matchesListReference(
+                    documentValue(node.getPropsDocument()),
+                    listConfigId,
+                    listReleaseId,
+                    listReleaseVersion)) {
+                return true;
+            }
+        }
+        for (EntityFormField field : parent.getFields() == null
+                ? List.<EntityFormField>of()
+                : parent.getFields()) {
+            if (matchesListReference(
+                    documentValue(field.getComponentProps()),
+                    listConfigId,
+                    listReleaseId,
+                    listReleaseVersion)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean matchesListReference(
+            Object value,
+            String listConfigId,
+            String listReleaseId,
+            Integer listReleaseVersion) {
+        if (value instanceof Map<?, ?> source) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            source.forEach((key, child) ->
+                    map.put(String.valueOf(key), child));
+            String referencedListId = firstOptionalText(
+                    map.get("listId"),
+                    map.get("refListId"),
+                    map.get("publishedListId"));
+            String referencedReleaseId = firstOptionalText(
+                    map.get("listReleaseId"),
+                    map.get("refListReleaseId"),
+                    map.get("publishedListReleaseId"));
+            Integer referencedVersion = firstOptionalInteger(
+                    map.get("listReleaseVersion"),
+                    map.get("refListReleaseVersion"),
+                    map.get("publishedListReleaseVersion"));
+            if (Objects.equals(listConfigId, referencedListId)
+                    && Objects.equals(
+                            listReleaseId,
+                            referencedReleaseId)
+                    && Objects.equals(
+                            listReleaseVersion,
+                            referencedVersion)) {
+                return true;
+            }
+            return map.values().stream().anyMatch(child ->
+                    matchesListReference(
+                            child,
+                            listConfigId,
+                            listReleaseId,
+                            listReleaseVersion));
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().anyMatch(child ->
+                    matchesListReference(
+                            child,
+                            listConfigId,
+                            listReleaseId,
+                            listReleaseVersion));
+        }
+        return false;
+    }
+
+    public record ResolvedEntityListRelease(
+            EntityListConfigDTO list,
+            String releaseId,
+            Integer releaseVersion,
+            boolean pinned,
+            Map<String, Object> snapshot) {
     }
 
     private Map<String, Object> buildDraftSnapshot(
             String configType,
             String configId) {
+        return buildDraftSnapshot(configType, configId, true);
+    }
+
+    private Map<String, Object> buildDraftSnapshot(
+            String configType,
+            String configId,
+            boolean pinRuntimeReferences) {
         requireType(configType);
         if (FORM.equals(configType)) {
             EntityForm form = formService.getById(configId);
             if (form == null) {
                 throw new IllegalArgumentException("表单不存在");
             }
+            List<EntityFormNode> publishedNodes = pinRuntimeReferences
+                    ? pinSubListReleases(form.getNodes())
+                    : (form.getNodes() == null
+                    ? List.of() : form.getNodes());
             Map<String, Object> snapshot = new LinkedHashMap<>();
             snapshot.put("schemaVersion", 1);
             snapshot.put("configType", FORM);
@@ -2509,11 +3193,11 @@ public class UiConfigReleaseService {
                     "form",
                     snapshotSupport.stableValue(formMetadata(form)));
             snapshot.put("nodes", snapshotSupport.stableValue(
-                    form.getNodes() == null ? List.of() : form.getNodes()));
+                    publishedNodes));
             snapshot.put(
                     "legacyFields",
                     snapshotSupport.stableValue(
-                            deriveRuntimeFields(form)));
+                            deriveRuntimeFields(form, publishedNodes)));
             snapshot.put(
                     "eventBindings",
                     snapshotSupport.stableValue(
@@ -2567,7 +3251,9 @@ public class UiConfigReleaseService {
         return metadata;
     }
 
-    private List<EntityFormField> deriveRuntimeFields(EntityForm form) {
+    private List<EntityFormField> deriveRuntimeFields(
+            EntityForm form,
+            List<EntityFormNode> publishedNodes) {
         List<EntityFormField> existing =
                 form.getFields() == null ? List.of() : form.getFields();
         Map<String, EntityFormField> byId = new HashMap<>();
@@ -2580,9 +3266,9 @@ public class UiConfigReleaseService {
         });
         List<EntityFormField> runtimeFields = new ArrayList<>();
         int sortOrder = 0;
-        for (EntityFormNode node : form.getNodes() == null
+        for (EntityFormNode node : publishedNodes == null
                 ? List.<EntityFormNode>of()
-                : form.getNodes()) {
+                : publishedNodes) {
             if (!Set.of("FIELD", "SUB_FORM", "REPEATER")
                     .contains(node.getNodeType())) {
                 continue;
@@ -2679,6 +3365,61 @@ public class UiConfigReleaseService {
             runtimeFields.add(field);
         }
         return runtimeFields.isEmpty() ? existing : runtimeFields;
+    }
+
+    private List<EntityFormNode> pinSubListReleases(
+            List<EntityFormNode> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return List.of();
+        }
+        List<EntityFormNode> result = new ArrayList<>(nodes.size());
+        for (EntityFormNode source : nodes) {
+            EntityFormNode node = new EntityFormNode();
+            BeanUtils.copyProperties(source, node);
+            if (!"FIELD".equals(normalize(node.getNodeType()))
+                    || !StringUtils.hasText(node.getPropsDocument())) {
+                result.add(node);
+                continue;
+            }
+            Map<String, Object> props = new LinkedHashMap<>(
+                    codec.readObject(
+                            node.getPropsDocument(),
+                            "子列表发布节点属性"));
+            if (!isSubListNode(props)) {
+                result.add(node);
+                continue;
+            }
+            Map<String, Object> componentProps = new LinkedHashMap<>(
+                    mapValue(props.get("componentProps")));
+            Map<String, Object> config = new LinkedHashMap<>(
+                    mapValue(componentProps.get("subListConfig")));
+            String targetEntityId = text(config.get("targetEntityId"));
+            String targetEntityCode = text(config.get("targetEntityCode"));
+            String listKey = text(config.get("listKey"));
+            EntityListConfig list = requireSubListOwner(
+                    targetEntityId,
+                    targetEntityCode,
+                    listKey,
+                    nodeLabel(node));
+            ResolvedEntityListRelease resolved =
+                    resolveRuntimeListRelease(
+                            list.getId(),
+                            null,
+                            null,
+                            null);
+            config.put("listId", list.getId());
+            config.put("listReleaseId", resolved.releaseId());
+            config.put(
+                    "listReleaseVersion",
+                    resolved.releaseVersion());
+            componentProps.put("subListConfig", config);
+            props.put("componentProps", componentProps);
+            node.setPropsDocument(codec.write(
+                    props,
+                    "固定子列表发布版本"));
+            result.add(node);
+        }
+        return List.copyOf(result);
     }
 
     private void validateForPublish(
@@ -2971,10 +3712,7 @@ public class UiConfigReleaseService {
                                     node.getPropsDocument(),
                                     "子列表节点属性")
                             : Map.of();
-            String fieldType = normalize(text(props.get("fieldType")));
-            String componentType = text(props.get("componentType"));
-            if (!"SUB_LIST".equals(fieldType)
-                    && !"sub_list".equalsIgnoreCase(componentType)) {
+            if (!isSubListNode(props)) {
                 continue;
             }
             Map<String, Object> componentProps =
@@ -2984,76 +3722,99 @@ public class UiConfigReleaseService {
             String targetEntityId = text(config.get("targetEntityId"));
             String targetEntityCode = text(config.get("targetEntityCode"));
             String listKey = text(config.get("listKey"));
+            String listId = text(config.get("listId"));
+            String listReleaseId = text(config.get("listReleaseId"));
+            Integer listReleaseVersion = nullableInteger(
+                    config.get("listReleaseVersion"));
             String label = nodeLabel(node);
-            if (!StringUtils.hasText(targetEntityId)
-                    || !StringUtils.hasText(targetEntityCode)
-                    || !StringUtils.hasText(listKey)) {
+            EntityListConfig list = requireSubListOwner(
+                    targetEntityId,
+                    targetEntityCode,
+                    listKey,
+                    label);
+            if (!StringUtils.hasText(listId)
+                    || !StringUtils.hasText(listReleaseId)
+                    || listReleaseVersion == null
+                    || listReleaseVersion <= 0) {
                 throw new IllegalArgumentException(
-                        "子列表必须配置目标实体和已发布列表: " + label);
+                        "子列表发布快照缺少固定列表版本，请恢复为草稿后重新发布: "
+                                + label);
             }
-            EntityDefinition target =
-                    entityDefinitionMapper.selectById(targetEntityId);
-            if (target == null) {
+            if (!Objects.equals(list.getId(), listId)) {
                 throw new IllegalArgumentException(
-                        "子列表目标实体不存在: " + label);
+                        "子列表固定的列表 ID 与目标列表不一致: " + label);
             }
-            if (!targetEntityCode.equals(target.getEntityCode())) {
+            UiConfigRelease listRelease = requireListRelease(
+                    listId,
+                    listReleaseId,
+                    listReleaseVersion);
+            EntityListConfigDTO publishedList = runtimeList(
+                    verifiedSnapshot(listRelease),
+                    listId);
+            if (!Objects.equals(targetEntityId, publishedList.getEntityId())
+                    || !Objects.equals(
+                            targetEntityCode,
+                            publishedList.getEntityCode())
+                    || !Objects.equals(listKey, publishedList.getListKey())) {
                 throw new IllegalArgumentException(
-                        "子列表目标实体编码与实体 ID 不一致: " + label);
+                        "子列表固定版本与目标实体或列表编码不一致: " + label);
             }
-            EntityListConfig list =
-                    listConfigMapper.findByEntityIdAndListKey(
-                            targetEntityId,
-                            listKey);
-            if (list == null
-                    || !StringUtils.hasText(list.getActiveReleaseId())
-                    || list.getPublishedVersion() == null
-                    || list.getPublishedVersion() <= 0) {
+            if (!supportsEmbeddedScene(publishedList)) {
                 throw new IllegalArgumentException(
-                        "子列表引用的列表不存在或尚未发布: "
-                                + targetEntityCode + "/" + listKey);
-            }
-            if (!supportsEmbeddedScene(list)) {
-                throw new IllegalArgumentException(
-                        "子列表引用的列表未开放 EMBEDDED 场景: "
+                        "子列表固定版本未开放 EMBEDDED 场景: "
                                 + targetEntityCode + "/" + listKey);
             }
         }
     }
 
-    private boolean supportsEmbeddedScene(EntityListConfig list) {
-        UiConfigRelease active =
-                releaseMapper.selectById(list.getActiveReleaseId());
-        if (active == null
-                || !LIST.equals(active.getConfigType())
-                || !Objects.equals(list.getId(), active.getConfigId())) {
-            return false;
+    private boolean isSubListNode(Map<String, Object> props) {
+        String fieldType = normalize(text(props.get("fieldType")));
+        String componentType = text(props.get("componentType"));
+        return "SUB_LIST".equals(fieldType)
+                || "sub_list".equalsIgnoreCase(componentType);
+    }
+
+    private EntityListConfig requireSubListOwner(
+            String targetEntityId,
+            String targetEntityCode,
+            String listKey,
+            String label) {
+        if (!StringUtils.hasText(targetEntityId)
+                || !StringUtils.hasText(targetEntityCode)
+                || !StringUtils.hasText(listKey)) {
+            throw new IllegalArgumentException(
+                    "子列表必须配置目标实体和已发布列表: " + label);
         }
-        Map<String, Object> snapshot = codec.readObject(
-                active.getSnapshotDocument(),
-                "子列表发布快照");
-        Object configured =
-                mapValue(snapshot.get("list")).get("allowedScenes");
-        List<String> scenes = sceneValues(configured);
-        if (scenes.isEmpty() && StringUtils.hasText(list.getAllowedScenes())) {
-            scenes = sceneValues(codec.read(
-                    list.getAllowedScenes(),
-                    "子列表允许场景"));
+        EntityDefinition target =
+                entityDefinitionMapper.selectById(targetEntityId);
+        if (target == null) {
+            throw new IllegalArgumentException(
+                    "子列表目标实体不存在: " + label);
         }
+        if (!targetEntityCode.equals(target.getEntityCode())) {
+            throw new IllegalArgumentException(
+                    "子列表目标实体编码与实体 ID 不一致: " + label);
+        }
+        EntityListConfig list =
+                listConfigMapper.findByEntityIdAndListKey(
+                        targetEntityId,
+                        listKey);
+        if (list == null) {
+            throw new IllegalArgumentException(
+                    "子列表引用的列表不存在: "
+                            + targetEntityCode + "/" + listKey);
+        }
+        return list;
+    }
+
+    private boolean supportsEmbeddedScene(
+            EntityListConfigDTO list) {
+        List<String> scenes = list.getAllowedScenes() == null
+                ? List.of()
+                : list.getAllowedScenes();
         return scenes.isEmpty()
                 || scenes.stream().anyMatch(
                         "EMBEDDED"::equalsIgnoreCase);
-    }
-
-    private List<String> sceneValues(Object source) {
-        if (!(source instanceof List<?> values)) {
-            return List.of();
-        }
-        return values.stream()
-                .map(this::text)
-                .filter(StringUtils::hasText)
-                .map(value -> value.toUpperCase(Locale.ROOT))
-                .toList();
     }
 
     private void validateFormActions(Map<String, Object> snapshot) {
@@ -3488,22 +4249,57 @@ public class UiConfigReleaseService {
             String configId,
             UiConfigRelease release,
             String contentHash) {
+        switchActiveReleaseOnOwner(
+                configType,
+                configId,
+                release,
+                contentHash);
+    }
+
+    private void switchActiveReleaseOnOwner(
+            String configType,
+            String configId,
+            UiConfigRelease release) {
+        switchActiveReleaseOnOwner(
+                configType,
+                configId,
+                release,
+                null);
+    }
+
+    private void switchActiveReleaseOnOwner(
+            String configType,
+            String configId,
+            UiConfigRelease release,
+            String draftHash) {
         if (FORM.equals(configType)) {
             UpdateWrapper<EntityForm> update = new UpdateWrapper<>();
             update.eq("id", configId)
                     .set("active_release_id", release.getId())
-                    .set("draft_hash", contentHash)
                     .set("update_time", LocalDateTime.now());
-            formMapper.update(null, update);
+            if (draftHash != null) {
+                update.set("draft_hash", draftHash);
+            }
+            if (formMapper.update(null, update) != 1) {
+                throw new BusinessConflictException(
+                        "UI_CONFIG_OWNER_UPDATE_CONFLICT",
+                        "表单发布状态已变化，请刷新后重试");
+            }
             return;
         }
         UpdateWrapper<EntityListConfig> update = new UpdateWrapper<>();
         update.eq("id", configId)
                 .set("active_release_id", release.getId())
                 .set("published_version", release.getVersion())
-                .set("draft_hash", contentHash)
                 .set("update_time", LocalDateTime.now());
-        listConfigMapper.update(null, update);
+        if (draftHash != null) {
+            update.set("draft_hash", draftHash);
+        }
+        if (listConfigMapper.update(null, update) != 1) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_OWNER_UPDATE_CONFLICT",
+                    "列表发布状态已变化，请刷新后重试");
+        }
     }
 
     private void requireType(String configType) {

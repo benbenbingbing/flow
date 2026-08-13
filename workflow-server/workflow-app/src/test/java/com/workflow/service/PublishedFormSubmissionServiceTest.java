@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.form.application.PublishedFormRequiredValidator;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
@@ -20,6 +21,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -32,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,6 +47,61 @@ import static org.mockito.Mockito.when;
  * 钉版发布精确执行、表单级 beforeSubmit 绑定等场景。
  */
 class PublishedFormSubmissionServiceTest {
+
+    @Test
+    void validatesRequiredRulesAfterBeforeSubmitBindings() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
+        PublishedFormRequiredValidator requiredValidator =
+                mock(PublishedFormRequiredValidator.class);
+        PublishedFormSubmissionService service = service(
+                mock(EntityDefinitionMapper.class),
+                mock(EntityRelationMapper.class),
+                releaseService,
+                dataSourceService,
+                requiredValidator);
+
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        EntityFormField field = new EntityFormField();
+        field.setFieldCode("status");
+        field.setDataSourceBindings(Map.of(
+                "BEFORE_SUBMIT",
+                Map.of(
+                        "serviceId", "source-1",
+                        "operationCode", "normalize")));
+        form.setFields(List.of(field));
+        form.setNodes(List.of());
+        when(releaseService.resolveRuntimeFormRelease(
+                "form-1", null, null))
+                .thenReturn(resolution(form, "release-1", 1));
+        when(dataSourceService.execute(
+                eq("source-1"),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Map.of("status", "REVIEW"));
+
+        service.applyForm(
+                "form-1",
+                "expense",
+                "record-1",
+                "edit",
+                Map.of("status", "DRAFT"));
+
+        InOrder order = inOrder(dataSourceService, requiredValidator);
+        order.verify(dataSourceService).execute(
+                eq("source-1"),
+                org.mockito.ArgumentMatchers.any());
+        order.verify(requiredValidator).validate(
+                eq(form),
+                eq("expense"),
+                eq("record-1"),
+                eq("edit"),
+                org.mockito.ArgumentMatchers.argThat(data ->
+                        "REVIEW".equals(data.get("status"))));
+    }
 
     /** 测试节点 beforeSubmit 恰好执行一次并合并响应：验证操作、目标、输入映射、输出映射与幂等键符合预期 */
     @Test
@@ -778,6 +836,20 @@ class PublishedFormSubmissionServiceTest {
             EntityRelationMapper relationMapper,
             UiConfigReleaseService releaseService,
             UiDataSourceService dataSourceService) {
+        return service(
+                definitionMapper,
+                relationMapper,
+                releaseService,
+                dataSourceService,
+                mock(PublishedFormRequiredValidator.class));
+    }
+
+    private PublishedFormSubmissionService service(
+            EntityDefinitionMapper definitionMapper,
+            EntityRelationMapper relationMapper,
+            UiConfigReleaseService releaseService,
+            UiDataSourceService dataSourceService,
+            PublishedFormRequiredValidator requiredValidator) {
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
         return new PublishedFormSubmissionService(
@@ -787,7 +859,8 @@ class PublishedFormSubmissionServiceTest {
                 releaseService,
                 dataSourceService,
                 codec,
-                new UiDataSourceDefinitionValidator(codec));
+                new UiDataSourceDefinitionValidator(codec),
+                requiredValidator);
     }
 
     /** 构造携带 traceKey 的表单提交执行上下文 */

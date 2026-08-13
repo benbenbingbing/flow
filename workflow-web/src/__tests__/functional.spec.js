@@ -419,6 +419,87 @@ assert.equal(
   1
 )
 
+const attachmentRequiredCondition = createFlowConditionConfig(
+  createFlowConditionGroup('AND', [
+    { type: 'CONDITION', property: 'stage', operator: '==', value: 'REVIEW' },
+    createFlowConditionGroup('OR', [
+      { type: 'CONDITION', property: 'urgent', operator: '==', value: 'true' },
+      { type: 'CONDITION', property: 'amount', operator: '>=', value: '100' }
+    ])
+  ])
+)
+const attachmentLinkageField = {
+  fieldCode: 'documents',
+  fieldType: 'FILE',
+  isRequired: 1,
+  componentProps: {
+    fileItems: [
+      { itemKey: 'afi_contract', itemName: '合同', required: '0' },
+      { itemKey: 'afi_license', itemName: '许可证', required: '1' }
+    ],
+    attachmentItemRequiredRules: {
+      version: 1,
+      items: [{
+        itemKey: 'afi_contract',
+        requiredConditionConfig: attachmentRequiredCondition
+      }]
+    },
+    linkageRules: {
+      requiredConditionConfig: createFlowConditionConfig(
+        createFlowConditionGroup('AND', [
+          { type: 'CONDITION', property: 'never', operator: '==', value: 'yes' }
+        ])
+      )
+    }
+  }
+}
+const attachmentLinkageResult = LinkageEngine.processAllLinkages(
+  [attachmentLinkageField],
+  { stage: 'REVIEW', urgent: false, amount: 120, never: 'no' }
+)
+assert.equal(attachmentLinkageResult.required.documents, true)
+assert.deepEqual(
+  attachmentLinkageResult.attachmentItemRequired.documents,
+  { afi_contract: true, afi_license: true }
+)
+assert.equal(
+  LinkageEngine.getTriggeredLinkages(
+    'amount',
+    [attachmentLinkageField]
+  ).length,
+  1
+)
+
+const hiddenAttachmentField = {
+  ...attachmentLinkageField,
+  isRequired: 0,
+  componentProps: {
+    ...attachmentLinkageField.componentProps,
+    linkageRules: {
+      visibilityConditionConfig: createFlowConditionConfig(
+        createFlowConditionGroup('AND', [
+          { type: 'CONDITION', property: 'showDocuments', operator: '==', value: 'true' }
+        ])
+      ),
+      attachmentItemRequiredRules:
+        attachmentLinkageField.componentProps.attachmentItemRequiredRules
+    }
+  }
+}
+const hiddenAttachmentResult = LinkageEngine.processAllLinkages(
+  [hiddenAttachmentField],
+  {
+    showDocuments: false,
+    stage: 'REVIEW',
+    urgent: true,
+    amount: 120
+  }
+)
+assert.deepEqual(
+  hiddenAttachmentResult.attachmentItemRequired.documents,
+  { afi_contract: false, afi_license: true }
+)
+
 assert.equal(getNodeTypeText('bpmn:UserTask'), '用户任务')
 assert.equal(getNodeTypeDescription('bpmn:ServiceTask').title, '服务任务')
 assert.equal(getNodeTypeText('bpmn:EventBasedGateway'), '事件网关')
@@ -441,6 +522,24 @@ assert.equal(getEntityFieldTypeLabel('STRING'), '文本')
 assert.equal(getEntityFieldTypeLabel('UNKNOWN_TYPE'), 'UNKNOWN_TYPE')
 assert.equal(getEntityFieldTypeTag('STRING'), 'info')
 assert.equal(getEntityFieldTypeTag('REFERENCE'), 'primary')
+
+const loginSource = readFileSync('src/views/Login.vue', 'utf8')
+assert.ok(
+  loginSource.includes('@keyup.enter="focusPassword"')
+    && loginSource.includes('@keyup.enter="handleLogin"')
+    && loginSource.includes(':disabled="!hasCredentials"'),
+  '登录页应在用户名输入后聚焦密码，并仅在完整凭据下允许提交'
+)
+assert.ok(
+  loginSource.includes('|| !hasCredentials.value')
+    && loginSource.includes('|| loading.value'),
+  '登录处理函数必须拦截凭据不完整和重复提交'
+)
+assert.doesNotMatch(
+  loginSource,
+  /class="login-form"\s+@keyup\.enter="handleLogin"/,
+  '登录表单不得在用户名输入框回车时提前提交'
+)
 
 const apiExpectations = {
   'src/api/auth.js': ['login', 'getCurrentUser', 'logout', 'getPermissions'],

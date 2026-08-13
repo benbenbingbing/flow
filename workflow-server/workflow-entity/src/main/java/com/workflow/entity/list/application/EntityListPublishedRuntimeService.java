@@ -3,13 +3,13 @@ package com.workflow.entity.list.application;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -21,10 +21,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 实体列表发布运行时解析服务，优先使用 ACTIVE 发布快照覆盖草稿配置。
+ * 实体列表发布运行时解析服务，只允许使用已发布快照。
  *
- * <p>当列表存在已发布快照时，工具栏、行按钮、字段、场景等配置均从发布版本读取，
- * 保证运行时与发布版本一致；无发布版本时回退到传入的草稿配置。</p>
+ * <p>工具栏、行按钮、字段、场景等配置均从发布版本读取，保证草稿修改不会进入运行时。</p>
  */
 @Service
 @Slf4j
@@ -39,32 +38,30 @@ public class EntityListPublishedRuntimeService {
      * 解析列表运行时配置，存在发布版本时用发布快照覆盖草稿。
      *
      * @param draft 草稿列表配置，为空返回 null
-     * @return 运行时列表配置，无发布版本时返回草稿
+     * @return 运行时列表配置
      */
     public EntityListConfig resolveConfig(EntityListConfig draft) {
+        return resolveConfig(draft, null, null, null);
+    }
+
+    /**
+     * 按当前 ACTIVE 或父表单签名上下文中的固定版本解析列表。
+     */
+    public EntityListConfig resolveConfig(
+            EntityListConfig draft,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken) {
         if (draft == null) {
             return null;
         }
-        UiConfigRelease active =
-                releaseService.active(UiConfigReleaseService.LIST, draft.getId());
-        if (active == null) {
-            log.info(
-                    "列表运行时使用草稿配置: listId={}, listKey={}, reason=NO_ACTIVE_RELEASE",
-                    LogValue.safe(draft.getId()),
-                    LogValue.safe(draft.getListKey()));
-            return draft;
-        }
-        EntityListConfigDTO snapshot =
-                releaseService.resolveRuntimeList(draft.getId());
-        if (snapshot == null) {
-            log.info(
-                    "列表运行时回退草稿配置: listId={}, listKey={}, activeReleaseId={}, activeVersion={}, reason=EMPTY_RELEASE_SNAPSHOT",
-                    LogValue.safe(draft.getId()),
-                    LogValue.safe(draft.getListKey()),
-                    LogValue.safe(active.getId()),
-                    active.getVersion());
-            return draft;
-        }
+        UiConfigReleaseService.ResolvedEntityListRelease resolved =
+                releaseService.resolveRuntimeListRelease(
+                        draft.getId(),
+                        releaseId,
+                        releaseVersion,
+                        releaseResolutionToken);
+        EntityListConfigDTO snapshot = resolved.list();
         EntityListConfig config = new EntityListConfig();
         BeanUtils.copyProperties(snapshot, config);
         config.setToolbarConfig(write(snapshot.getToolbarConfig(), "发布工具栏配置"));
@@ -75,15 +72,21 @@ public class EntityListPublishedRuntimeService {
         config.setFixedFilterConfig(write(snapshot.getFixedFilterConfig(), "发布固定条件"));
         config.setContextBindingConfig(
                 write(snapshot.getContextBindingConfig(), "发布上下文绑定"));
-        config.setActiveReleaseId(active.getId());
-        config.setPublishedVersion(active.getVersion());
+        config.setActiveReleaseId(resolved.releaseId());
+        config.setPublishedVersion(resolved.releaseVersion());
         config.setPublishedSnapshot(true);
+        config.setRuntimeFields(snapshot.getFields() == null
+                ? List.of() : List.copyOf(snapshot.getFields()));
+        config.setPinnedRelease(resolved.pinned());
+        config.setReleaseResolutionToken(
+                releaseResolutionToken);
         log.info(
-                "列表运行时解析完成: listId={}, listKey={}, releaseId={}, releaseVersion={}, source=PUBLISHED",
+                "列表运行时解析完成: listId={}, listKey={}, releaseId={}, releaseVersion={}, source={}",
                 LogValue.safe(config.getId()),
                 LogValue.safe(config.getListKey()),
-                LogValue.safe(active.getId()),
-                active.getVersion());
+                LogValue.safe(resolved.releaseId()),
+                resolved.releaseVersion(),
+                resolved.pinned() ? "PINNED" : "ACTIVE");
         return config;
     }
 
@@ -100,10 +103,8 @@ public class EntityListPublishedRuntimeService {
         if (config == null || !Boolean.TRUE.equals(config.getPublishedSnapshot())) {
             return fallback;
         }
-        EntityListConfigDTO snapshot =
-                releaseService.resolveRuntimeList(config.getId());
-        return snapshot == null || snapshot.getFields() == null
-                ? fallback : snapshot.getFields();
+        return config.getRuntimeFields() == null
+                ? List.of() : config.getRuntimeFields();
     }
 
     /**
@@ -119,11 +120,9 @@ public class EntityListPublishedRuntimeService {
         if (config == null || !Boolean.TRUE.equals(config.getPublishedSnapshot())) {
             return fallback;
         }
-        EntityListConfigDTO snapshot =
-                releaseService.resolveRuntimeList(config.getId());
-        List<Map<String, Object>> buttons =
-                snapshot == null || snapshot.getToolbarConfig() == null
-                        ? fallback : snapshot.getToolbarConfig();
+        List<Map<String, Object>> buttons = readMapList(
+                config.getToolbarConfig(),
+                "发布工具栏配置");
         return authorizePinnedTargetForms(
                 config.getId(),
                 "TOOLBAR",
@@ -143,11 +142,9 @@ public class EntityListPublishedRuntimeService {
         if (config == null || !Boolean.TRUE.equals(config.getPublishedSnapshot())) {
             return fallback;
         }
-        EntityListConfigDTO snapshot =
-                releaseService.resolveRuntimeList(config.getId());
-        List<Map<String, Object>> buttons =
-                snapshot == null || snapshot.getRowActionConfig() == null
-                        ? fallback : snapshot.getRowActionConfig();
+        List<Map<String, Object>> buttons = readMapList(
+                config.getRowActionConfig(),
+                "发布行按钮配置");
         return authorizePinnedTargetForms(
                 config.getId(),
                 "ROW_ACTION",
@@ -167,14 +164,32 @@ public class EntityListPublishedRuntimeService {
         if (config == null || !Boolean.TRUE.equals(config.getPublishedSnapshot())) {
             return fallback;
         }
-        EntityListConfigDTO snapshot =
-                releaseService.resolveRuntimeList(config.getId());
-        return snapshot == null || snapshot.getAllowedScenes() == null
-                ? fallback : snapshot.getAllowedScenes();
+        if (!StringUtils.hasText(config.getAllowedScenes())) {
+            return List.of();
+        }
+        return codec.readArray(
+                        config.getAllowedScenes(),
+                        "发布允许场景")
+                .stream()
+                .map(String::valueOf)
+                .toList();
     }
 
     private String write(Object value, String label) {
         return value == null ? null : codec.write(value, label);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> readMapList(
+            String document,
+            String label) {
+        if (!StringUtils.hasText(document)) {
+            return List.of();
+        }
+        return codec.readArray(document, label).stream()
+                .filter(Map.class::isInstance)
+                .map(value -> (Map<String, Object>) value)
+                .toList();
     }
 
     private List<Map<String, Object>> authorizePinnedTargetForms(

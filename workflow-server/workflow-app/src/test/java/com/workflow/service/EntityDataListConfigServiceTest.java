@@ -25,7 +25,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,7 +70,8 @@ class EntityDataListConfigServiceTest {
         config.setId("list-1");
         config.setListKey("default");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
-        when(publishedRuntimeService.resolveConfig(config)).thenReturn(config);
+        when(publishedRuntimeService.resolveConfig(config, null, null, null))
+                .thenReturn(config);
 
         EntityListField virtualField = new EntityListField();
         virtualField.setFieldCode("summary");
@@ -143,7 +146,8 @@ class EntityDataListConfigServiceTest {
         config.setId("list-1");
         config.setListKey("default");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
-        when(publishedRuntimeService.resolveConfig(config)).thenReturn(config);
+        when(publishedRuntimeService.resolveConfig(config, null, null, null))
+                .thenReturn(config);
         when(fieldMapper.findByListConfigId("list-1")).thenReturn(List.of());
         when(publishedRuntimeService.resolveFields(config, List.of())).thenReturn(List.of());
 
@@ -173,6 +177,71 @@ class EntityDataListConfigServiceTest {
                 2,
                 10);
         verify(capabilityService).enrichRows("expense", config, List.of(row));
+    }
+
+    /** 显式列表不存在时必须失败关闭，不能退回不带列表约束的通用查询。 */
+    @Test
+    void explicitMissingListDoesNotFallBackToGenericListQuery() {
+        ServiceFixture fixture = fixtureWithoutList();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> fixture.service().findListWithConfig(
+                        "expense",
+                        "missing",
+                        Map.of()));
+
+        assertEquals("列表不存在或尚未发布: missing", exception.getMessage());
+        verifyNoInteractions(fixture.dynamicService());
+    }
+
+    /** 显式列表分页查询不存在时同样必须失败关闭。 */
+    @Test
+    void explicitMissingListDoesNotFallBackToGenericPageQuery() {
+        ServiceFixture fixture = fixtureWithoutList();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> fixture.service().findPageWithConfig(
+                        "expense",
+                        "missing",
+                        Map.of(),
+                        1,
+                        10));
+
+        assertEquals("列表不存在或尚未发布: missing", exception.getMessage());
+        verifyNoInteractions(fixture.dynamicService());
+    }
+
+    private ServiceFixture fixtureWithoutList() {
+        EntityDataDynamicService dynamicService = mock(EntityDataDynamicService.class);
+        EntityListConfigMapper configMapper = mock(EntityListConfigMapper.class);
+        EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
+        EntityListPublishedRuntimeService publishedRuntimeService =
+                mock(EntityListPublishedRuntimeService.class);
+        EntityDefinition definition = new EntityDefinition();
+        definition.setId("entity-1");
+        when(definitionMapper.findByEntityCode("expense"))
+                .thenReturn(Optional.of(definition));
+        when(configMapper.findByEntityIdAndListKey("entity-1", "missing"))
+                .thenReturn(null);
+
+        EntityDataListConfigService service = new EntityDataListConfigService(
+                dynamicService,
+                configMapper,
+                mock(EntityListFieldMapper.class),
+                definitionMapper,
+                mock(ListFieldDataProviderRegistry.class),
+                new ListFieldConditionEvaluator(),
+                mock(EntityActionCapabilityService.class),
+                publishedRuntimeService,
+                mock(UiDataSourceService.class));
+        return new ServiceFixture(service, dynamicService);
+    }
+
+    private record ServiceFixture(
+            EntityDataListConfigService service,
+            EntityDataDynamicService dynamicService) {
     }
 
     /** 构造带 id 与提交人名的实体数据 DTO */
