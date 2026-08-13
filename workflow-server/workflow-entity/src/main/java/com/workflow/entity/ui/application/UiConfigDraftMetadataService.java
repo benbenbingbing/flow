@@ -3,6 +3,7 @@ package com.workflow.entity.ui.application;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
@@ -271,7 +272,7 @@ public class UiConfigDraftMetadataService {
                 .available(
                         "LIST",
                         listId,
-                        "LIST_QUERY")
+                        UiDataSourceUsages.LIST_QUERY)
                 .stream()
                 .anyMatch(operation ->
                         Objects.equals(

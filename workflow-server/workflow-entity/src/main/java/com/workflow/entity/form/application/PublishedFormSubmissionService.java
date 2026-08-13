@@ -5,6 +5,7 @@ import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceService;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -35,7 +36,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class PublishedFormSubmissionService {
 
-    private static final String BEFORE_SUBMIT = "BEFORE_SUBMIT";
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final EntityFormMapper formMapper;
     private final EntityRelationMapper entityRelationMapper;
@@ -435,7 +435,8 @@ public class PublishedFormSubmissionService {
         if (bindings == null) {
             return;
         }
-        Object configured = bindings.get(BEFORE_SUBMIT);
+        Object configured = bindings.get(
+                UiDataSourceUsages.BEFORE_SUBMIT);
         if (configured == null) {
             return;
         }
@@ -468,7 +469,8 @@ public class PublishedFormSubmissionService {
                             bindingIndex);
             UiDataSourceExecuteRequest request =
                     new UiDataSourceExecuteRequest();
-            request.setUsage(BEFORE_SUBMIT);
+            request.setUsage(
+                    UiDataSourceUsages.BEFORE_SUBMIT);
             request.setOperationCode(operationCode);
             request.setConfigType("FORM");
             request.setConfigId(form.getId());

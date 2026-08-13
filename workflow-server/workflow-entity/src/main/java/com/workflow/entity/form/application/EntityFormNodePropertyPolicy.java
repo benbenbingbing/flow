@@ -1,5 +1,6 @@
 package com.workflow.entity.form.application;
 
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -23,10 +24,15 @@ import java.util.regex.PatternSyntaxException;
 final class EntityFormNodePropertyPolicy {
 
     private static final Set<String> FIELD_DATA_SOURCE_USAGES = Set.of(
-            "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
-            "AFTER_LOAD", "BEFORE_SUBMIT");
+            UiDataSourceUsages.FIELD_OPTIONS,
+            UiDataSourceUsages.FIELD_DEFAULT,
+            UiDataSourceUsages.FIELD_COMPUTE,
+            UiDataSourceUsages.AFTER_LOAD,
+            UiDataSourceUsages.BEFORE_SUBMIT);
     private static final Set<String> SUB_FORM_DATA_SOURCE_USAGES = Set.of(
-            "SUBFORM_ROWS", "AFTER_LOAD", "BEFORE_SUBMIT");
+            UiDataSourceUsages.SUBFORM_ROWS,
+            UiDataSourceUsages.AFTER_LOAD,
+            UiDataSourceUsages.BEFORE_SUBMIT);
     private static final Set<String> FIELD_BINDING_TYPES = Set.of(
             "ENTITY_FIELD", "RELATION", "COMPUTED", "CONTEXT", "NONE");
     private static final Set<String> SUB_FORM_BINDING_TYPES = Set.of(

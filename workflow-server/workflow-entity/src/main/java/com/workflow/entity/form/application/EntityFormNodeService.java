@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.form.api.request.EntityFormNodeCreateRequest;
 import com.workflow.entity.form.api.request.EntityFormNodePatchRequest;
 import com.workflow.entity.form.api.request.EntityFormNodeReorderRequest;
@@ -97,10 +98,20 @@ public class EntityFormNodeService {
                         "SECTION", "TAB", "COLLAPSE",
                         "FIELD", "SUB_FORM", "REPEATER");
         private static final Set<String> DATA_SOURCE_USAGES = Set.of(
-                        "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
-                        "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT");
-        private static final Set<String> SYSTEM_READ_ONLY_DATA_SOURCE_USAGES = Set.of("FORM_INIT", "FIELD_OPTIONS",
-                        "AFTER_LOAD");
+                        UiDataSourceUsages.FORM_INIT,
+                        UiDataSourceUsages.FIELD_OPTIONS,
+                        UiDataSourceUsages.FIELD_DEFAULT,
+                        UiDataSourceUsages.FIELD_COMPUTE,
+                        UiDataSourceUsages.SUBFORM_ROWS,
+                        UiDataSourceUsages.LIST_QUERY,
+                        UiDataSourceUsages.LIST_COLUMN,
+                        UiDataSourceUsages.AFTER_LOAD,
+                        UiDataSourceUsages.BEFORE_SUBMIT);
+        private static final Set<String> SYSTEM_READ_ONLY_DATA_SOURCE_USAGES =
+                        Set.of(
+                                        UiDataSourceUsages.FORM_INIT,
+                                        UiDataSourceUsages.FIELD_OPTIONS,
+                                        UiDataSourceUsages.AFTER_LOAD);
 
         private final EntityFormMapper formMapper;
         private final EntityFormNodeMapper nodeMapper;

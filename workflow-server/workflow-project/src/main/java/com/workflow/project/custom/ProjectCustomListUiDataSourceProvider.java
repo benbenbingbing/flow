@@ -1,6 +1,7 @@
 package com.workflow.project.custom;
 
 import com.workflow.contracts.ui.ListInvocationContext;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
@@ -30,17 +31,39 @@ public class ProjectCustomListUiDataSourceProvider
             "PROJECT_CUSTOM_UI_LIST";
     public static final String RECOMMENDED_SCOPE =
             "LIST";
+
+    /** {@code LIST_COLUMN} 为每条记录生成虚拟列值时使用的文本前缀。 */
+    private static final String COLUMN_PREFIX =
+            "columnPrefix";
+
+    /** 列表事件执行成功后返回给页面的提示文本前缀。 */
+    private static final String MESSAGE_PREFIX =
+            "messagePrefix";
+
+    /**
+     * 示例 {@code LIST_QUERY} 返回结果使用的页码配置。
+     *
+     * <p>这是 Provider 自身的演示配置，不是平台查询 Map 中的同名输入字段。</p>
+     */
+    private static final String PAGE_NUM =
+            "pageNum";
+
+    /** 示例 {@code LIST_QUERY} 返回结果使用的每页条数配置。 */
+    private static final String PAGE_SIZE =
+            "pageSize";
+
+    /** 由该示例统一转换为页面提示消息的列表标准事件。 */
     private static final Set<String> LIST_EVENTS =
             Set.of(
-                    "LIST_LOAD",
-                    "LIST_EXPORT",
-                    "DETAIL_LOAD",
-                    "DATA_CREATE",
-                    "DATA_UPDATE",
-                    "DATA_DELETE",
-                    "DATA_BATCH_DELETE",
-                    "TOOLBAR_BUTTON_CLICK",
-                    "ROW_BUTTON_CLICK");
+                    UiDataSourceUsages.LIST_LOAD,
+                    UiDataSourceUsages.LIST_EXPORT,
+                    UiDataSourceUsages.DETAIL_LOAD,
+                    UiDataSourceUsages.DATA_CREATE,
+                    UiDataSourceUsages.DATA_UPDATE,
+                    UiDataSourceUsages.DATA_DELETE,
+                    UiDataSourceUsages.DATA_BATCH_DELETE,
+                    UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
+                    UiDataSourceUsages.ROW_BUTTON_CLICK);
 
     @Override
     public String getCode() {
@@ -57,19 +80,19 @@ public class ProjectCustomListUiDataSourceProvider
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "columnPrefix", Map.of(
+                        COLUMN_PREFIX, Map.of(
                                 "type", "string",
                                 "title", "虚拟列前缀",
                                 "default", "列表统一列"),
-                        "messagePrefix", Map.of(
+                        MESSAGE_PREFIX, Map.of(
                                 "type", "string",
                                 "title", "列表事件前缀",
                                 "default", "列表统一数据源"),
-                        "pageNum", Map.of(
+                        PAGE_NUM, Map.of(
                                 "type", "integer",
                                 "title", "空分页页码",
                                 "default", 1),
-                        "pageSize", Map.of(
+                        PAGE_SIZE, Map.of(
                                 "type", "integer",
                                 "title", "演示分页大小",
                                 "default", 20)));
@@ -115,16 +138,16 @@ public class ProjectCustomListUiDataSourceProvider
                         instanceof Map<?, ?> filters
                         ? filters.keySet() : List.of());
 
-        if ("LIST_QUERY".equals(usage)) {
+        if (UiDataSourceUsages.LIST_QUERY.equals(usage)) {
             int pageNum = Math.max(
                     1,
                     integer(
-                            configuration.get("pageNum"),
+                            configuration.get(PAGE_NUM),
                             1));
             int pageSize = Math.max(
                     1,
                     integer(
-                            configuration.get("pageSize"),
+                            configuration.get(PAGE_SIZE),
                             20));
             EntityDataDTO sample =
                     querySample(context);
@@ -146,19 +169,19 @@ public class ProjectCustomListUiDataSourceProvider
                     pageNum,
                     pageSize);
         }
-        if ("LIST_COLUMN".equals(usage)) {
+        if (UiDataSourceUsages.LIST_COLUMN.equals(usage)) {
             return columnValues(
                     input,
                     text(
                             configuration.get(
-                                    "columnPrefix"),
+                                    COLUMN_PREFIX),
                             "列表统一列"));
         }
         if (LIST_EVENTS.contains(usage)) {
             return eventMessage(
                     text(
                             configuration.get(
-                                    "messagePrefix"),
+                                    MESSAGE_PREFIX),
                             "列表统一数据源")
                             + "已执行事件: " + usage,
                     context);

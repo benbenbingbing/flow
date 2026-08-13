@@ -1,6 +1,7 @@
 package com.workflow.project.custom;
 
 import com.workflow.contracts.ui.UiInvocationContext;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -26,11 +27,29 @@ public class ProjectCustomEntityUiDataSourceProvider
             "PROJECT_CUSTOM_UI_ENTITY";
     public static final String RECOMMENDED_SCOPE =
             "ENTITY";
+
+    /** {@code FIELD_OPTIONS} 返回选项的显示文本前缀。 */
+    private static final String OPTION_LABEL_PREFIX =
+            "optionLabelPrefix";
+
+    /** {@code FIELD_DEFAULT} 分支返回的字段初始值。 */
+    private static final String DEFAULT_VALUE =
+            "defaultValue";
+
+    /** {@code FIELD_COMPUTE} 拼接当前输入值时使用的结果前缀。 */
+    private static final String COMPUTED_PREFIX =
+            "computedPrefix";
+
+    /** 加载后或字段事件需要产生字段映射时写入的目标字段编码。 */
+    private static final String TARGET_FIELD =
+            "targetField";
+
+    /** 这些字段交互事件返回提示，并在配置目标字段后附带字段回填 effect。 */
     private static final Set<String> FIELD_EVENTS =
             Set.of(
-                    "FIELD_CHANGE",
-                    "ENTITY_SELECTED",
-                    "FIELD_BUTTON_CLICK");
+                    UiDataSourceUsages.FIELD_CHANGE,
+                    UiDataSourceUsages.ENTITY_SELECTED,
+                    UiDataSourceUsages.FIELD_BUTTON_CLICK);
 
     @Override
     public String getCode() {
@@ -47,19 +66,19 @@ public class ProjectCustomEntityUiDataSourceProvider
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "optionLabelPrefix", Map.of(
+                        OPTION_LABEL_PREFIX, Map.of(
                                 "type", "string",
                                 "title", "字段选项前缀",
                                 "default", "实体选项"),
-                        "defaultValue", Map.of(
+                        DEFAULT_VALUE, Map.of(
                                 "type", "string",
                                 "title", "字段默认值",
                                 "default", "ENTITY_DEFAULT"),
-                        "computedPrefix", Map.of(
+                        COMPUTED_PREFIX, Map.of(
                                 "type", "string",
                                 "title", "字段计算前缀",
                                 "default", "实体计算"),
-                        "targetField", Map.of(
+                        TARGET_FIELD, Map.of(
                                 "type", "string",
                                 "title", "事件回填字段（可选）",
                                 "default", "")));
@@ -102,20 +121,20 @@ public class ProjectCustomEntityUiDataSourceProvider
                 LogValue.safe(fieldCode),
                 input.containsKey("value"));
 
-        if ("FIELD_OPTIONS".equals(usage)) {
+        if (UiDataSourceUsages.FIELD_OPTIONS.equals(usage)) {
             return options(text(
                     configuration.get(
-                            "optionLabelPrefix"),
+                            OPTION_LABEL_PREFIX),
                     "实体选项"));
         }
-        if ("FIELD_DEFAULT".equals(usage)) {
+        if (UiDataSourceUsages.FIELD_DEFAULT.equals(usage)) {
             return fieldValue(text(
-                    configuration.get("defaultValue"),
+                    configuration.get(DEFAULT_VALUE),
                     "ENTITY_DEFAULT"));
         }
-        if ("FIELD_COMPUTE".equals(usage)) {
+        if (UiDataSourceUsages.FIELD_COMPUTE.equals(usage)) {
             String prefix = text(
-                    configuration.get("computedPrefix"),
+                    configuration.get(COMPUTED_PREFIX),
                     "实体计算");
             return fieldValue(
                     prefix + ":"
@@ -123,10 +142,10 @@ public class ProjectCustomEntityUiDataSourceProvider
                             input.get("value"),
                             context.entityCode()));
         }
-        if ("AFTER_LOAD".equals(usage)) {
+        if (UiDataSourceUsages.AFTER_LOAD.equals(usage)) {
             return fieldPatch(
                     text(
-                            configuration.get("targetField"),
+                            configuration.get(TARGET_FIELD),
                             ""),
                     "ENTITY_AFTER_LOAD:"
                             + context.entityCode());
@@ -155,7 +174,7 @@ public class ProjectCustomEntityUiDataSourceProvider
             Map<String, Object> configuration,
             String usage) {
         String targetField = text(
-                configuration.get("targetField"),
+                configuration.get(TARGET_FIELD),
                 "");
         String value =
                 "ENTITY_EVENT:" + usage;

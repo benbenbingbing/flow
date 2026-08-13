@@ -2,6 +2,7 @@ package com.workflow.project.custom;
 
 import com.workflow.contracts.entity.list.DataScopePlan;
 import com.workflow.contracts.ui.UiDataSourceProvider;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
@@ -32,6 +33,9 @@ import java.util.Map;
  */
 abstract class ProjectCustomUiDataSourceProviderSupport
         implements UiDataSourceProvider {
+
+    /** 接口服务操作标识，只参与执行日志和诊断结果，不改变 usage 路由。 */
+    private static final String OPERATION = "operation";
 
     /**
      * 返回该 Provider 推荐配置的接口服务作用范围。
@@ -91,7 +95,7 @@ abstract class ProjectCustomUiDataSourceProviderSupport
                 LogValue.safe(recommendedScope()),
                 LogValue.safe(usage),
                 LogValue.safe(text(
-                        safeConfiguration.get("operation"),
+                        safeConfiguration.get(OPERATION),
                         "default")),
                 LogValue.safe(context == null
                         ? null : context.configType()),
@@ -184,9 +188,10 @@ abstract class ProjectCustomUiDataSourceProviderSupport
     protected Object emptyResult(
             String usage) {
         return switch (normalize(usage)) {
-            case "LIST_QUERY" ->
+            case UiDataSourceUsages.LIST_QUERY ->
                     new PageResult<>(List.of(), 0, 1, 20);
-            case "FIELD_OPTIONS", "SUBFORM_ROWS" ->
+            case UiDataSourceUsages.FIELD_OPTIONS,
+                    UiDataSourceUsages.SUBFORM_ROWS ->
                     List.of();
             default -> Map.of();
         };
@@ -283,7 +288,7 @@ abstract class ProjectCustomUiDataSourceProviderSupport
                 recommendedScope());
         result.put("usage", usage(context));
         result.put("operation", text(
-                configuration.get("operation"),
+                configuration.get(OPERATION),
                 "default"));
         result.put("configType", context == null
                 ? null : context.configType());

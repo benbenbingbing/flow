@@ -13,6 +13,7 @@ import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.core.logging.LogValue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,10 +40,16 @@ import java.util.function.Function;
 public class UiEventRuntimeService {
 
     private static final Set<String> WRITE_EVENTS = Set.of(
-            "DATA_CREATE", "DATA_UPDATE", "DATA_DELETE",
-            "DATA_BATCH_DELETE", "FORM_SAVE", "SUBFORM_SAVE",
-            "TOOLBAR_BUTTON_CLICK", "ROW_BUTTON_CLICK",
-            "FORM_BUTTON_CLICK", "FIELD_BUTTON_CLICK");
+            UiDataSourceUsages.DATA_CREATE,
+            UiDataSourceUsages.DATA_UPDATE,
+            UiDataSourceUsages.DATA_DELETE,
+            UiDataSourceUsages.DATA_BATCH_DELETE,
+            UiDataSourceUsages.FORM_SAVE,
+            UiDataSourceUsages.SUBFORM_SAVE,
+            UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
+            UiDataSourceUsages.ROW_BUTTON_CLICK,
+            UiDataSourceUsages.FORM_BUTTON_CLICK,
+            UiDataSourceUsages.FIELD_BUTTON_CLICK);
 
     private final UiEventBindingService bindingService;
     private final UiDataSourceService dataSourceService;
@@ -207,17 +214,23 @@ public class UiEventRuntimeService {
         }
         String eventCode = normalize(request.getEventCode());
         EntityPermissionAction action = switch (eventCode) {
-            case "DATA_CREATE" -> EntityPermissionAction.CREATE;
-            case "DATA_UPDATE", "FORM_SAVE", "SUBFORM_SAVE",
-                    "FIELD_BUTTON_CLICK" ->
+            case UiDataSourceUsages.DATA_CREATE ->
+                    EntityPermissionAction.CREATE;
+            case UiDataSourceUsages.DATA_UPDATE,
+                    UiDataSourceUsages.FORM_SAVE,
+                    UiDataSourceUsages.SUBFORM_SAVE,
+                    UiDataSourceUsages.FIELD_BUTTON_CLICK ->
                     EntityPermissionAction.UPDATE;
-            case "FORM_BUTTON_CLICK" -> {
+            case UiDataSourceUsages.FORM_BUTTON_CLICK -> {
                 formActionService.requireCustomButton(request);
                 yield null;
             }
-            case "DATA_DELETE" -> EntityPermissionAction.DELETE;
-            case "DATA_BATCH_DELETE" -> EntityPermissionAction.BATCH_DELETE;
-            case "ROW_BUTTON_CLICK", "TOOLBAR_BUTTON_CLICK" -> {
+            case UiDataSourceUsages.DATA_DELETE ->
+                    EntityPermissionAction.DELETE;
+            case UiDataSourceUsages.DATA_BATCH_DELETE ->
+                    EntityPermissionAction.BATCH_DELETE;
+            case UiDataSourceUsages.ROW_BUTTON_CLICK,
+                    UiDataSourceUsages.TOOLBAR_BUTTON_CLICK -> {
                 EntityPermissionAction buttonAction =
                         EntityPermissionAction.fromButtonKey(
                                 request.getTargetKey());

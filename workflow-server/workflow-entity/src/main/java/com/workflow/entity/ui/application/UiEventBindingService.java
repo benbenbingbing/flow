@@ -21,6 +21,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseM
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -51,12 +52,24 @@ public class UiEventBindingService {
     public static final Set<String> TARGET_TYPES =
             Set.of("OWNER", "FIELD", "BUTTON");
     public static final Set<String> EVENTS = Set.of(
-            "LIST_LOAD", "LIST_EXPORT", "DETAIL_LOAD",
-            "DATA_CREATE", "DATA_UPDATE", "DATA_DELETE", "DATA_BATCH_DELETE",
-            "FORM_OPEN", "FORM_SAVE", "FORM_RESET",
-            "FIELD_CHANGE", "ENTITY_SELECTED", "FIELD_BUTTON_CLICK",
-            "SUBFORM_LOAD", "SUBFORM_SAVE",
-            "TOOLBAR_BUTTON_CLICK", "ROW_BUTTON_CLICK", "FORM_BUTTON_CLICK");
+            UiDataSourceUsages.LIST_LOAD,
+            UiDataSourceUsages.LIST_EXPORT,
+            UiDataSourceUsages.DETAIL_LOAD,
+            UiDataSourceUsages.DATA_CREATE,
+            UiDataSourceUsages.DATA_UPDATE,
+            UiDataSourceUsages.DATA_DELETE,
+            UiDataSourceUsages.DATA_BATCH_DELETE,
+            UiDataSourceUsages.FORM_OPEN,
+            UiDataSourceUsages.FORM_SAVE,
+            UiDataSourceUsages.FORM_RESET,
+            UiDataSourceUsages.FIELD_CHANGE,
+            UiDataSourceUsages.ENTITY_SELECTED,
+            UiDataSourceUsages.FIELD_BUTTON_CLICK,
+            UiDataSourceUsages.SUBFORM_LOAD,
+            UiDataSourceUsages.SUBFORM_SAVE,
+            UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
+            UiDataSourceUsages.ROW_BUTTON_CLICK,
+            UiDataSourceUsages.FORM_BUTTON_CLICK);
     private static final Set<String> INHERITANCE_MODES =
             Set.of("INHERIT", "REPLACE", "DISABLE");
     private static final Set<String> STRATEGIES =
@@ -65,12 +78,12 @@ public class UiEventBindingService {
             Set.of("STOP", "CONTINUE", "EMPTY");
     private static final Set<String> SYSTEM_READ_ONLY_EVENTS =
             Set.of(
-                    "LIST_LOAD",
-                    "DETAIL_LOAD",
-                    "FORM_OPEN",
-                    "FIELD_CHANGE",
-                    "ENTITY_SELECTED",
-                    "SUBFORM_LOAD");
+                    UiDataSourceUsages.LIST_LOAD,
+                    UiDataSourceUsages.DETAIL_LOAD,
+                    UiDataSourceUsages.FORM_OPEN,
+                    UiDataSourceUsages.FIELD_CHANGE,
+                    UiDataSourceUsages.ENTITY_SELECTED,
+                    UiDataSourceUsages.SUBFORM_LOAD);
 
     private final UiEventBindingMapper mapper;
     private final UiConfigReleaseMapper releaseMapper;
@@ -694,7 +707,7 @@ public class UiEventBindingService {
                 steps == null
                         ? List.<Map<String, Object>>of()
                         : steps) {
-            if ("LIST_LOAD".equals(eventCode)
+            if (UiDataSourceUsages.LIST_LOAD.equals(eventCode)
                     && "REPLACE".equals(normalize(text(
                             step.get("strategy"))))) {
                 throw new IllegalArgumentException(

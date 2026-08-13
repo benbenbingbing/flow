@@ -12,6 +12,7 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.ui.api.response.UiAvailableOperation;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -32,15 +33,30 @@ public class UiAvailableOperationService {
 
     /** 只允许选择 READ 操作的绑定位置编码。 */
     private static final Set<String> READ_BINDINGS = Set.of(
-            "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
-            "SUBFORM_ROWS", "AFTER_LOAD", "LIST_QUERY", "LIST_COLUMN",
-            "LIST_LOAD", "LIST_EXPORT", "DETAIL_LOAD", "FORM_OPEN",
-            "SUBFORM_LOAD", "ENTITY_SELECTED");
+            UiDataSourceUsages.FORM_INIT,
+            UiDataSourceUsages.FIELD_OPTIONS,
+            UiDataSourceUsages.FIELD_DEFAULT,
+            UiDataSourceUsages.FIELD_COMPUTE,
+            UiDataSourceUsages.SUBFORM_ROWS,
+            UiDataSourceUsages.AFTER_LOAD,
+            UiDataSourceUsages.LIST_QUERY,
+            UiDataSourceUsages.LIST_COLUMN,
+            UiDataSourceUsages.LIST_LOAD,
+            UiDataSourceUsages.LIST_EXPORT,
+            UiDataSourceUsages.DETAIL_LOAD,
+            UiDataSourceUsages.FORM_OPEN,
+            UiDataSourceUsages.SUBFORM_LOAD,
+            UiDataSourceUsages.ENTITY_SELECTED);
     /** 只允许选择 WRITE 操作的绑定位置编码。 */
     private static final Set<String> WRITE_BINDINGS = Set.of(
-            "BEFORE_SUBMIT", "DATA_CREATE", "DATA_UPDATE", "DATA_DELETE",
-            "DATA_BATCH_DELETE", "FORM_SAVE", "SUBFORM_SAVE",
-            "ENTITY_MUTATION_PREPARE");
+            UiDataSourceUsages.BEFORE_SUBMIT,
+            UiDataSourceUsages.DATA_CREATE,
+            UiDataSourceUsages.DATA_UPDATE,
+            UiDataSourceUsages.DATA_DELETE,
+            UiDataSourceUsages.DATA_BATCH_DELETE,
+            UiDataSourceUsages.FORM_SAVE,
+            UiDataSourceUsages.SUBFORM_SAVE,
+            UiDataSourceUsages.ENTITY_MUTATION_PREPARE);
 
     /** 接口服务定义查询入口。 */
     private final UiDataSourceDefinitionMapper sourceMapper;
@@ -122,11 +138,12 @@ public class UiAvailableOperationService {
                         ? stringMap(map)
                         : Map.of();
         return switch (bindingCode) {
-            case "FIELD_OPTIONS", "SUBFORM_ROWS" ->
+            case UiDataSourceUsages.FIELD_OPTIONS,
+                    UiDataSourceUsages.SUBFORM_ROWS ->
                     "ARRAY".equals(schemaType(outputSchema));
-            case "LIST_COLUMN" ->
+            case UiDataSourceUsages.LIST_COLUMN ->
                     "OBJECT".equals(schemaType(outputSchema));
-            case "LIST_QUERY" ->
+            case UiDataSourceUsages.LIST_QUERY ->
                     pageSchema(outputSchema);
             default -> true;
         };

@@ -22,6 +22,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -132,7 +133,7 @@ public class EntityDataActionService {
             return findAuthorizedDetail(entityCode, id, listKey);
         }
         UiEventExecuteRequest event = event(
-                "DETAIL_LOAD",
+                UiDataSourceUsages.DETAIL_LOAD,
                 origin,
                 entityCode,
                 listKey,
@@ -230,7 +231,7 @@ public class EntityDataActionService {
                     executionContext.businessTraceKey());
         }
         UiEventExecuteRequest event = event(
-                "DATA_CREATE",
+                UiDataSourceUsages.DATA_CREATE,
                 origin,
                 dto.getEntityCode(),
                 dto.getListKey(),
@@ -312,7 +313,7 @@ public class EntityDataActionService {
                     executionContext);
         }
         UiEventExecuteRequest event = event(
-                "DATA_UPDATE",
+                UiDataSourceUsages.DATA_UPDATE,
                 origin,
                 entityCode,
                 listKey,
@@ -445,7 +446,7 @@ public class EntityDataActionService {
             return;
         }
         UiEventExecuteRequest event = event(
-                "DATA_DELETE",
+                UiDataSourceUsages.DATA_DELETE,
                 origin,
                 entityCode,
                 listKey,
@@ -510,7 +511,7 @@ public class EntityDataActionService {
             return;
         }
         UiEventExecuteRequest event = event(
-                "DATA_BATCH_DELETE",
+                UiDataSourceUsages.DATA_BATCH_DELETE,
                 origin,
                 entityCode,
                 listKey,

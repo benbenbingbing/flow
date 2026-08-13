@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.application;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -55,14 +56,14 @@ public class UiConfigDataSourceReferenceValidator {
                     map,
                     "dataSourceId",
                     "dataSourceOperationCode",
-                    "LIST_COLUMN",
+                    UiDataSourceUsages.LIST_COLUMN,
                     path,
                     owner);
             validateReference(
                     map,
                     "queryDataSourceId",
                     "queryOperationCode",
-                    "LIST_QUERY",
+                    UiDataSourceUsages.LIST_QUERY,
                     path,
                     owner);
             for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -160,7 +161,8 @@ public class UiConfigDataSourceReferenceValidator {
             Map<String, Object> operation,
             String serviceId,
             String operationCode) {
-        if (!"LIST_QUERY".equals(bindingCode)) {
+        if (!UiDataSourceUsages.LIST_QUERY.equals(
+                bindingCode)) {
             return;
         }
         if (!"READ".equals(normalize(text(

@@ -7,6 +7,7 @@ import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -243,8 +244,8 @@ public class UiDataSourceExecutionAccessService {
                 entity.getId(),
                 null,
                 null,
-                "ENTITY_MUTATION_PREPARE",
-                "ENTITY_MUTATION_PREPARE",
+                UiDataSourceUsages.ENTITY_MUTATION_PREPARE,
+                UiDataSourceUsages.ENTITY_MUTATION_PREPARE,
                 entity.getId(),
                 entity.getEntityCode(),
                 null,

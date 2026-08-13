@@ -1,7 +1,10 @@
 package com.workflow.project.action;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.action.FlowActionExecutionMode;
+import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.contracts.action.TypedFlowActionHandler;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -18,21 +21,30 @@ import java.util.Set;
  */
 @Component("projectLifecycleAuditHandler")
 public class ProjectLifecycleAuditHandler
-        implements FlowActionHandler {
+        implements TypedFlowActionHandler<
+        ProjectLifecycleAuditHandler.Parameters> {
+
+    @Override
+    public Class<Parameters> getParamType() {
+        return Parameters.class;
+    }
 
     @Override
     public Set<String> supportedTriggerTimings() {
-        return Set.of("PROCESS_COMPLETED");
+        return Set.of(
+                FlowActionTriggerTiming.PROCESS_COMPLETED
+                        .name());
     }
 
     @Override
     public Set<String> supportedExecutionModes() {
-        return Set.of("AFTER_COMMIT");
+        return Set.of(
+                FlowActionExecutionMode.AFTER_COMMIT.name());
     }
 
     @Override
     public String recommendedExecutionMode() {
-        return "AFTER_COMMIT";
+        return FlowActionExecutionMode.AFTER_COMMIT.name();
     }
 
     @Override
@@ -57,23 +69,21 @@ public class ProjectLifecycleAuditHandler
     }
 
     @Override
-    public void execute(FlowActionContext context) {
-        Map<String, Object> params =
-                context.getExtraParams() == null
-                        ? Map.of()
-                        : context.getExtraParams();
+    public void execute(
+            FlowActionContext context,
+            Parameters parameters) {
+        String auditCode = parameters == null
+                || parameters.auditCode() == null
+                ? "PROJECT_LIFECYCLE"
+                : parameters.auditCode();
+        String businessStage = parameters == null
+                || parameters.businessStage() == null
+                ? "UNKNOWN"
+                : parameters.businessStage();
         Map<String, Object> result =
                 new LinkedHashMap<>();
-        result.put(
-                "auditCode",
-                params.getOrDefault(
-                        "auditCode",
-                        "PROJECT_LIFECYCLE"));
-        result.put(
-                "businessStage",
-                params.getOrDefault(
-                        "businessStage",
-                        "UNKNOWN"));
+        result.put("auditCode", auditCode);
+        result.put("businessStage", businessStage);
         result.put(
                 "entityCode",
                 context.getEntityCode());
@@ -97,5 +107,19 @@ public class ProjectLifecycleAuditHandler
                 "PROJECT_LIFECYCLE_AUDITED",
                 "Recorded a reusable project lifecycle audit summary.",
                 result);
+    }
+
+    /**
+     * 项目生命周期审计动作参数。
+     *
+     * @param auditCode 审计场景标识，写入执行结果，未提供时使用
+     *                  {@code PROJECT_LIFECYCLE}
+     * @param businessStage 当前业务阶段，写入执行结果，未提供时使用
+     *                      {@code UNKNOWN}
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Parameters(
+            String auditCode,
+            String businessStage) {
     }
 }

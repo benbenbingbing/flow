@@ -26,6 +26,14 @@ public class ProjectCustomChangeTargetResolver
     public static final String CODE =
             "PROJECT_CUSTOM_CHANGE_TARGET";
 
+    /** 从动态来源记录中读取目标记录 ID 的点分路径，例如 {@code data.targetRecordId}。 */
+    private static final String RECORD_ID_PATH =
+            "recordIdPath";
+
+    /** 是否直接将来源记录 ID 作为变更目标；开启后不再读取 {@link #RECORD_ID_PATH}。 */
+    private static final String USE_SOURCE_RECORD_ID =
+            "useSourceRecordId";
+
     @Override
     public String getCode() {
         return CODE;
@@ -41,12 +49,12 @@ public class ProjectCustomChangeTargetResolver
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "recordIdPath", Map.of(
+                        RECORD_ID_PATH, Map.of(
                                 "type", "string",
                                 "title", "目标记录 ID 路径",
                                 "description",
                                 "例如 data.targetRecordId"),
-                        "useSourceRecordId", Map.of(
+                        USE_SOURCE_RECORD_ID, Map.of(
                                 "type", "boolean",
                                 "title", "使用来源记录 ID")));
     }
@@ -62,7 +70,7 @@ public class ProjectCustomChangeTargetResolver
         boolean useSourceRecordId =
                 Boolean.parseBoolean(String.valueOf(
                         configuration.getOrDefault(
-                                "useSourceRecordId",
+                                USE_SOURCE_RECORD_ID,
                                 false)));
         String recordId = useSourceRecordId
                 ? context == null
@@ -73,7 +81,7 @@ public class ProjectCustomChangeTargetResolver
                                 ? Map.of()
                                 : context.sourceRecord(),
                         text(configuration.get(
-                                "recordIdPath"))));
+                                RECORD_ID_PATH))));
         log.info(
                 "项目实体变更目标解析: code={}, sourceEntityCode={}, sourceRecordId={}, processInstanceId={}, useSourceRecordId={}, recordIdPath={}, resolved={}",
                 CODE,
@@ -85,7 +93,7 @@ public class ProjectCustomChangeTargetResolver
                         ? null : context.processInstanceId()),
                 useSourceRecordId,
                 LogValue.safe(configuration.get(
-                        "recordIdPath")),
+                        RECORD_ID_PATH)),
                 StringUtils.hasText(recordId));
         if (!StringUtils.hasText(recordId)) {
             return List.of();

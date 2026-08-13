@@ -3,6 +3,7 @@ package com.workflow.entity.ui.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -153,7 +154,8 @@ public class UiDataSourceBindingMatcher {
             String operationCode,
             String basePath) {
         if ("OWNER".equals(normalize(targetType))) {
-            if ("LIST_QUERY".equals(normalize(usage))
+            if (UiDataSourceUsages.LIST_QUERY.equals(
+                    normalize(usage))
                     && sourceId.equals(text(
                             list.get("queryDataSourceId")))
                     && operationCode.equals(text(
@@ -178,7 +180,7 @@ public class UiDataSourceBindingMatcher {
                     targetKey)) {
                 continue;
             }
-            if ("LIST_COLUMN".equals(usage)
+            if (UiDataSourceUsages.LIST_COLUMN.equals(usage)
                     && sourceId.equals(text(
                             field.get("dataSourceId")))
                     && operationCode.equals(text(

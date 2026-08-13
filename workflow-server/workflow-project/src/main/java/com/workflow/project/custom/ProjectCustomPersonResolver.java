@@ -31,6 +31,14 @@ public class ProjectCustomPersonResolver
     public static final String CODE =
             "projectCustomPersonResolver";
 
+    /** 显式配置的用户 ID 或用户名集合，解析结果会去空、去重并保持配置顺序。 */
+    private static final String USER_KEYS =
+            "userKeys";
+
+    /** 当 {@link #USER_KEYS} 未解析出人员时，是否补入流程发起人；默认开启。 */
+    private static final String FALLBACK_TO_INITIATOR =
+            "fallbackToInitiator";
+
     private static final PersonResolverDescriptor DESCRIPTOR =
             new PersonResolverDescriptor(
                     CODE,
@@ -42,12 +50,12 @@ public class ProjectCustomPersonResolver
                     Map.of(
                             "type", "object",
                             "properties", Map.of(
-                                    "userKeys", Map.of(
+                                    USER_KEYS, Map.of(
                                             "type", "array",
                                             "title", "用户ID或用户名",
                                             "items", Map.of(
                                                     "type", "string")),
-                                    "fallbackToInitiator", Map.of(
+                                    FALLBACK_TO_INITIATOR, Map.of(
                                             "type", "boolean",
                                             "title", "无配置时回退发起人"))),
                     false);
@@ -63,7 +71,7 @@ public class ProjectCustomPersonResolver
         LinkedHashSet<String> userKeys =
                 new LinkedHashSet<>();
         Object configured =
-                request.extraParams().get("userKeys");
+                request.extraParams().get(USER_KEYS);
         if (configured instanceof Collection<?> values) {
             values.stream()
                     .map(String::valueOf)
@@ -74,7 +82,7 @@ public class ProjectCustomPersonResolver
         boolean fallback = Boolean.parseBoolean(
                 String.valueOf(request.extraParams()
                         .getOrDefault(
-                                "fallbackToInitiator",
+                                FALLBACK_TO_INITIATOR,
                                 true)));
         if (userKeys.isEmpty() && fallback
                 && StringUtils.hasText(

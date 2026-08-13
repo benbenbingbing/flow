@@ -30,6 +30,7 @@ import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.*;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
@@ -196,7 +197,7 @@ public class EntityListRuntimeService {
                 entityCode, listKey, scene, safeRequest.getContext()));
 
         UiEventExecuteRequest event = new UiEventExecuteRequest();
-        event.setEventCode("LIST_LOAD");
+        event.setEventCode(UiDataSourceUsages.LIST_LOAD);
         event.setConfigType("LIST");
         event.setConfigId(config.getId());
         event.setReleaseId(config.getActiveReleaseId());
@@ -295,7 +296,7 @@ public class EntityListRuntimeService {
             }
             UiDataSourceExecuteRequest request =
                     new UiDataSourceExecuteRequest();
-            request.setUsage("LIST_QUERY");
+            request.setUsage(UiDataSourceUsages.LIST_QUERY);
             request.setOperationCode(
                     config.getQueryOperationCode());
             request.setConfigType("LIST");
@@ -342,9 +343,15 @@ public class EntityListRuntimeService {
                     permission.getExplanation(),
                     permission.getReleaseVersion());
             Map<String, Object> query = new LinkedHashMap<>();
-            query.put("pageNum", pageNum);
-            query.put("pageSize", pageSize);
-            query.put("filters", filters);
+            query.put(
+                    EntityListQueryFields.PAGE_NUM,
+                    pageNum);
+            query.put(
+                    EntityListQueryFields.PAGE_SIZE,
+                    pageSize);
+            query.put(
+                    EntityListQueryFields.FILTERS,
+                    filters);
             return provider.query(
                     runtimeContext(entityCode, listKey, scene, safeRequest.getContext()),
                     plan,

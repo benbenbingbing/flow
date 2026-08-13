@@ -27,6 +27,14 @@ public class ProjectCustomCcRecipientResolver
     public static final String CODE =
             "projectCustomCcRecipient";
 
+    /** 显式配置的知会接收人 ID 或用户名集合，解析结果会去空并去重。 */
+    private static final String USER_KEYS =
+            "userKeys";
+
+    /** 当 {@link #USER_KEYS} 为空时，是否把当前操作人作为知会接收人；默认开启。 */
+    private static final String FALLBACK_TO_OPERATOR =
+            "fallbackToOperator";
+
     @Override
     public String code() {
         return CODE;
@@ -42,7 +50,7 @@ public class ProjectCustomCcRecipientResolver
         LinkedHashSet<String> recipients =
                 new LinkedHashSet<>();
         Object configured =
-                safeParameters.get("userKeys");
+                safeParameters.get(USER_KEYS);
         if (configured instanceof Collection<?> values) {
             values.stream()
                     .map(String::valueOf)
@@ -53,7 +61,7 @@ public class ProjectCustomCcRecipientResolver
         boolean fallback = Boolean.parseBoolean(
                 String.valueOf(safeParameters
                         .getOrDefault(
-                                "fallbackToOperator",
+                                FALLBACK_TO_OPERATOR,
                                 true)));
         if (recipients.isEmpty() && fallback
                 && context != null

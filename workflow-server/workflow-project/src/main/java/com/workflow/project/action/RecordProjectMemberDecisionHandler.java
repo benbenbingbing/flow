@@ -1,7 +1,10 @@
 package com.workflow.project.action;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.action.FlowActionExecutionMode;
+import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.contracts.action.TypedFlowActionHandler;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.project.service.ProjectMemberChangeService;
 import org.springframework.stereotype.Component;
@@ -15,7 +18,8 @@ import java.util.Set;
  */
 @Component("recordProjectMemberDecisionHandler")
 public class RecordProjectMemberDecisionHandler
-        implements FlowActionHandler {
+        implements TypedFlowActionHandler<
+        RecordProjectMemberDecisionHandler.Parameters> {
 
     private final ProjectMemberChangeService service;
 
@@ -25,18 +29,27 @@ public class RecordProjectMemberDecisionHandler
     }
 
     @Override
+    public Class<Parameters> getParamType() {
+        return Parameters.class;
+    }
+
+    @Override
     public Set<String> supportedTriggerTimings() {
-        return Set.of("TRANSITION_TAKEN");
+        return Set.of(
+                FlowActionTriggerTiming.TRANSITION_TAKEN
+                        .name());
     }
 
     @Override
     public Set<String> supportedExecutionModes() {
-        return Set.of("IN_TRANSACTION");
+        return Set.of(
+                FlowActionExecutionMode.IN_TRANSACTION
+                        .name());
     }
 
     @Override
     public String recommendedExecutionMode() {
-        return "IN_TRANSACTION";
+        return FlowActionExecutionMode.IN_TRANSACTION.name();
     }
 
     @Override
@@ -51,29 +64,36 @@ public class RecordProjectMemberDecisionHandler
     }
 
     @Override
-    public void execute(FlowActionContext context) {
+    public void execute(
+            FlowActionContext context,
+            Parameters parameters) {
         Object entityData = context.getEntityData();
         if (!(entityData instanceof EntityDataDTO request)) {
             throw new IllegalStateException(
                     "Project member change data is unavailable.");
         }
-        Object configuredDecision =
-                context.getExtraParams() == null
-                        ? null
-                        : context.getExtraParams().get(
-                        "decision");
         Map<String, Object> result =
                 service.recordDecision(
                         request,
                         context,
-                        configuredDecision == null
+                        parameters == null
                                 ? null
-                                : String.valueOf(
-                                configuredDecision));
+                                : parameters.decision());
         context.setExecutionResult(result);
         context.addExecutionTrace(
                 "FINAL_DECISION_RECORDED",
                 "Recorded the selected final approval transition.",
                 result);
+    }
+
+    /**
+     * 项目成员变更决策动作参数。
+     *
+     * @param decision 被选中审批连线代表的业务决策编码；该值会连同连线、节点和
+     *                 操作人信息写入成员变更申请的 {@code decision_trace}，
+     *                 未提供时由业务服务记录为 {@code UNKNOWN}
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Parameters(String decision) {
     }
 }

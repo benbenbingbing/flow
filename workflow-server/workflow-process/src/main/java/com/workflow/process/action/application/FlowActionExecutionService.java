@@ -9,6 +9,7 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.action.FlowActionCatalogPort;
+import com.workflow.contracts.action.FlowActionTraceFields;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
@@ -176,9 +177,14 @@ public class FlowActionExecutionService {
             for (Map<String, Object> item : context.getExecutionTrace()) {
                 appendTrace(
                         execution,
-                        String.valueOf(item.getOrDefault("stage", "HANDLER_STEP")),
-                        String.valueOf(item.getOrDefault("message", "处理器执行步骤")),
-                        sanitize(item.get("details")));
+                        String.valueOf(item.getOrDefault(
+                                FlowActionTraceFields.STAGE,
+                                "HANDLER_STEP")),
+                        String.valueOf(item.getOrDefault(
+                                FlowActionTraceFields.MESSAGE,
+                                "处理器执行步骤")),
+                        sanitize(item.get(
+                                FlowActionTraceFields.DETAILS)));
             }
         }
         execution.setUpdatedAt(LocalDateTime.now());
@@ -469,10 +475,10 @@ public class FlowActionExecutionService {
         List<Map<String, Object>> trace = readTrace(execution.getExecutionTraceJson());
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("time", LocalDateTime.now().toString());
-        item.put("stage", stage);
-        item.put("message", message);
+        item.put(FlowActionTraceFields.STAGE, stage);
+        item.put(FlowActionTraceFields.MESSAGE, message);
         if (details != null) {
-            item.put("details", details);
+            item.put(FlowActionTraceFields.DETAILS, details);
         }
         trace.add(item);
         execution.setExecutionTraceJson(writeJson(trace));

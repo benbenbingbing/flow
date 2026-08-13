@@ -8,6 +8,7 @@ import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
@@ -227,7 +228,7 @@ public class EntityDataListConfigService {
                 continue;
             }
             UiDataSourceExecuteRequest request = new UiDataSourceExecuteRequest();
-            request.setUsage("LIST_COLUMN");
+            request.setUsage(UiDataSourceUsages.LIST_COLUMN);
             request.setConfigType("LIST");
             request.setConfigId(field.getListConfigId());
             request.setOperationCode(field.getDataSourceOperationCode());

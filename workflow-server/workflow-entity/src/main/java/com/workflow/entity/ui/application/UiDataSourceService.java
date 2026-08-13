@@ -16,6 +16,7 @@ import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.integration.IntegrationRuntimeContext;
 import com.workflow.contracts.ui.UiDataSourceProvider;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiInterfaceOperationExecuteRequest;
@@ -68,14 +69,33 @@ public class UiDataSourceService {
         private static final Set<String> SCOPE_TYPES = Set.of("GLOBAL", "ENTITY", "FORM", "LIST");
         private static final Set<String> CONTEXT_TYPES = Set.of("FORM", "LIST", "ENTITY");
         private static final Set<String> USAGES = Set.of(
-                        "FORM_INIT", "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
-                        "SUBFORM_ROWS", "LIST_QUERY", "LIST_COLUMN", "AFTER_LOAD", "BEFORE_SUBMIT",
-                        "LIST_LOAD", "LIST_EXPORT", "DETAIL_LOAD",
-                        "DATA_CREATE", "DATA_UPDATE", "DATA_DELETE", "DATA_BATCH_DELETE",
-                        "FORM_OPEN", "FORM_SAVE", "FORM_RESET",
-                        "FIELD_CHANGE", "ENTITY_SELECTED", "FIELD_BUTTON_CLICK",
-                        "SUBFORM_LOAD", "SUBFORM_SAVE",
-                        "TOOLBAR_BUTTON_CLICK", "ROW_BUTTON_CLICK", "FORM_BUTTON_CLICK");
+                        UiDataSourceUsages.FORM_INIT,
+                        UiDataSourceUsages.FIELD_OPTIONS,
+                        UiDataSourceUsages.FIELD_DEFAULT,
+                        UiDataSourceUsages.FIELD_COMPUTE,
+                        UiDataSourceUsages.SUBFORM_ROWS,
+                        UiDataSourceUsages.LIST_QUERY,
+                        UiDataSourceUsages.LIST_COLUMN,
+                        UiDataSourceUsages.AFTER_LOAD,
+                        UiDataSourceUsages.BEFORE_SUBMIT,
+                        UiDataSourceUsages.LIST_LOAD,
+                        UiDataSourceUsages.LIST_EXPORT,
+                        UiDataSourceUsages.DETAIL_LOAD,
+                        UiDataSourceUsages.DATA_CREATE,
+                        UiDataSourceUsages.DATA_UPDATE,
+                        UiDataSourceUsages.DATA_DELETE,
+                        UiDataSourceUsages.DATA_BATCH_DELETE,
+                        UiDataSourceUsages.FORM_OPEN,
+                        UiDataSourceUsages.FORM_SAVE,
+                        UiDataSourceUsages.FORM_RESET,
+                        UiDataSourceUsages.FIELD_CHANGE,
+                        UiDataSourceUsages.ENTITY_SELECTED,
+                        UiDataSourceUsages.FIELD_BUTTON_CLICK,
+                        UiDataSourceUsages.SUBFORM_LOAD,
+                        UiDataSourceUsages.SUBFORM_SAVE,
+                        UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
+                        UiDataSourceUsages.ROW_BUTTON_CLICK,
+                        UiDataSourceUsages.FORM_BUTTON_CLICK);
         /** 接口服务定义持久化入口。 */
         private final UiDataSourceDefinitionMapper mapper;
         /** 表单作用域对象查询入口。 */
@@ -386,7 +406,9 @@ public class UiDataSourceService {
                 if (request == null) {
                         request = new UiDataSourceExecuteRequest();
                 }
-                request.setUsage("ENTITY_MUTATION_PREPARE");
+                request.setUsage(
+                                UiDataSourceUsages
+                                                .ENTITY_MUTATION_PREPARE);
                 request.setOperationCode(
                                 blankToNull(operationCode));
                 UiDataSourceExecutionAuthorization authorization = executionAccessService

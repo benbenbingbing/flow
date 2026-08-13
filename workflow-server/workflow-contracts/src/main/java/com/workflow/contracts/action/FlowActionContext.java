@@ -265,10 +265,10 @@ public class FlowActionContext {
      */
     public void addExecutionTrace(String stage, String message, Object details) {
         Map<String, Object> item = new LinkedHashMap<>();
-        item.put("stage", stage);
-        item.put("message", message);
+        item.put(FlowActionTraceFields.STAGE, stage);
+        item.put(FlowActionTraceFields.MESSAGE, message);
         if (details != null) {
-            item.put("details", details);
+            item.put(FlowActionTraceFields.DETAILS, details);
         }
         executionTrace.add(item);
     }

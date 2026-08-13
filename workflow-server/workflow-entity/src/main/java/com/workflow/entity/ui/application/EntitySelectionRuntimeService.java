@@ -8,6 +8,7 @@ import com.workflow.entity.definition.application.SystemEntityService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -37,7 +38,7 @@ public class EntitySelectionRuntimeService {
             UiEventExecuteRequest request,
             UiEventBindingService.ResolvedEventChain chain) {
         if (request == null
-                || !"ENTITY_SELECTED".equals(normalize(
+                || !UiDataSourceUsages.ENTITY_SELECTED.equals(normalize(
                         request.getEventCode()))
                 || !"FORM".equals(normalize(request.getConfigType()))
                 || !"FIELD".equals(normalize(request.getTargetType()))

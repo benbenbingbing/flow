@@ -2,6 +2,7 @@ package com.workflow.project.custom;
 
 import com.workflow.contracts.entity.list.DataScopePlan;
 import com.workflow.contracts.entity.list.EntityListDataProvider;
+import com.workflow.contracts.entity.list.EntityListQueryFields;
 import com.workflow.contracts.entity.list.EntityListRuntimeContext;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
@@ -47,10 +48,14 @@ public class ProjectCustomEntityListDataProvider
         Map<String, Object> safeQuery =
                 query == null ? Map.of() : query;
         long pageNum = positiveLong(
-                safeQuery.get("pageNum"), 1);
+                safeQuery.get(
+                        EntityListQueryFields.PAGE_NUM),
+                1);
         long pageSize = Math.min(
                 positiveLong(
-                        safeQuery.get("pageSize"), 20),
+                        safeQuery.get(
+                                EntityListQueryFields.PAGE_SIZE),
+                        20),
                 200);
         boolean allowed =
                 dataScopePlan != null && dataScopePlan.allowed();

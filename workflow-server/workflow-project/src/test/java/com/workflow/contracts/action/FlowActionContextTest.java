@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -53,5 +54,29 @@ class FlowActionContextTest {
         assertEquals(
                 "value",
                 context.getVariable("existing"));
+    }
+
+    @Test
+    void keepsExecutionTraceMapShapeStable() {
+        FlowActionContext context =
+                new FlowActionContext();
+
+        context.addExecutionTrace(
+                "VALIDATED",
+                "校验完成",
+                Map.of("count", 2));
+
+        Map<String, Object> trace =
+                context.getExecutionTrace().get(0);
+        assertEquals(
+                "VALIDATED",
+                trace.get(FlowActionTraceFields.STAGE));
+        assertEquals(
+                "校验完成",
+                trace.get(FlowActionTraceFields.MESSAGE));
+        assertEquals(
+                Map.of("count", 2),
+                trace.get(FlowActionTraceFields.DETAILS));
+        assertFalse(trace.containsKey("time"));
     }
 }

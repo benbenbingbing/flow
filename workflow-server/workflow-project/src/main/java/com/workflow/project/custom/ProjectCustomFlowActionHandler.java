@@ -23,6 +23,12 @@ import java.util.Set;
 public class ProjectCustomFlowActionHandler
         implements FlowActionHandler {
 
+    /** 验收场景标识，写入动作执行结果并用于日志定位。 */
+    private static final String SCENARIO = "scenario";
+
+    /** 可选的日志说明；示例处理器只记录是否配置，不改变动作结果。 */
+    private static final String MESSAGE = "message";
+
     @Override
     public Set<String> supportedExecutionModes() {
         return Set.of(
@@ -40,13 +46,13 @@ public class ProjectCustomFlowActionHandler
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "scenario", Map.of(
+                        SCENARIO, Map.of(
                                 "type", "string",
                                 "title", "验证场景"),
-                        "message", Map.of(
+                        MESSAGE, Map.of(
                                 "type", "string",
                                 "title", "日志说明")),
-                "required", List.of("scenario"));
+                "required", List.of(SCENARIO));
     }
 
     @Override
@@ -65,11 +71,13 @@ public class ProjectCustomFlowActionHandler
                 LogValue.safe(context.getSequenceFlowId()),
                 LogValue.safe(context.getEntityCode()),
                 LogValue.safe(context.getEntityDataId()),
-                LogValue.safe(params.get("scenario")),
-                params.containsKey("message"));
+                LogValue.safe(params.get(SCENARIO)),
+                params.containsKey(MESSAGE));
         context.setExecutionResult(Map.of(
                 "handledBy", getClass().getSimpleName(),
                 "scenario", String.valueOf(
-                        params.getOrDefault("scenario", "UNSPECIFIED"))));
+                        params.getOrDefault(
+                                SCENARIO,
+                                "UNSPECIFIED"))));
     }
 }

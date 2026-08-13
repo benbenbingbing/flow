@@ -23,6 +23,7 @@ import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpactPort;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.contracts.ui.runtime.UiPublishedFormReference;
@@ -3071,7 +3072,8 @@ public class UiConfigReleaseService {
                 snapshot.get("eventBindings")).stream()
                 .filter(binding -> "BUTTON".equals(
                         normalize(text(binding.get("targetType")))))
-                .filter(binding -> "FORM_BUTTON_CLICK".equals(
+                .filter(binding -> UiDataSourceUsages
+                        .FORM_BUTTON_CLICK.equals(
                         normalize(text(binding.get("eventCode")))))
                 .filter(binding -> !Boolean.FALSE.equals(
                         binding.get("enabled")))

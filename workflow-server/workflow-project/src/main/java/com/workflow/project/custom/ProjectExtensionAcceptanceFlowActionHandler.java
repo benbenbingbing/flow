@@ -1,8 +1,10 @@
 package com.workflow.project.custom;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.contracts.action.TypedFlowActionHandler;
 import com.workflow.core.logging.LogValue;
 import com.workflow.project.service.ProjectEntityMutationExecutor;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +31,8 @@ import java.util.Set;
 @Component("projectExtensionAcceptanceFlowActionHandler")
 @RequiredArgsConstructor
 public class ProjectExtensionAcceptanceFlowActionHandler
-        implements FlowActionHandler {
+        implements TypedFlowActionHandler<
+        ProjectExtensionAcceptanceFlowActionHandler.Parameters> {
 
     public static final String ENTITY_CODE =
             "project_extension_acceptance";
@@ -37,16 +40,21 @@ public class ProjectExtensionAcceptanceFlowActionHandler
     private final ProjectEntityMutationExecutor mutationExecutor;
 
     @Override
+    public Class<Parameters> getParamType() {
+        return Parameters.class;
+    }
+
+    @Override
     public Set<String> supportedTriggerTimings() {
         return Set.of(
-                "PROCESS_STARTED",
-                "PROCESS_COMPLETED",
-                "NODE_ENTERED",
-                "NODE_COMPLETED",
-                "TASK_CREATED",
-                "TASK_ASSIGNED",
-                "TASK_COMPLETING",
-                "TRANSITION_TAKEN",
+                FlowActionTriggerTiming.PROCESS_STARTED.name(),
+                FlowActionTriggerTiming.PROCESS_COMPLETED.name(),
+                FlowActionTriggerTiming.NODE_ENTERED.name(),
+                FlowActionTriggerTiming.NODE_COMPLETED.name(),
+                FlowActionTriggerTiming.TASK_CREATED.name(),
+                FlowActionTriggerTiming.TASK_ASSIGNED.name(),
+                FlowActionTriggerTiming.TASK_COMPLETING.name(),
+                FlowActionTriggerTiming.TRANSITION_TAKEN.name(),
                 ProjectCustomFlowActionTriggerProvider.TIMING);
     }
 
@@ -87,21 +95,23 @@ public class ProjectExtensionAcceptanceFlowActionHandler
 
     @Override
     public void execute(
-            FlowActionContext context) {
-        Map<String, Object> params =
-                context.getExtraParams() == null
-                        ? Map.of()
-                        : context.getExtraParams();
+            FlowActionContext context,
+            Parameters parameters) {
         String stage = text(
-                params.get("stage"),
+                parameters == null
+                        ? null
+                        : parameters.stage(),
                 text(context.getTriggerTiming(),
                         "UNSPECIFIED"));
         String visibleMessage = text(
-                params.get("visibleMessage"),
+                parameters == null
+                        ? null
+                        : parameters.visibleMessage(),
                 "后端流程扩展已执行: " + stage);
         boolean writeBack =
-                !Boolean.FALSE.equals(
-                        params.get("writeBack"));
+                parameters == null
+                        || !Boolean.FALSE.equals(
+                        parameters.writeBack());
         LocalDateTime executedAt =
                 LocalDateTime.now();
 
@@ -237,5 +247,22 @@ public class ProjectExtensionAcceptanceFlowActionHandler
                 || String.valueOf(value).isBlank()
                 ? fallback
                 : String.valueOf(value);
+    }
+
+    /**
+     * 项目扩展验收流程动作参数。
+     *
+     * @param stage 动作所属业务阶段；参与轨迹阶段名及写回摘要，空值时回退到
+     *              当前触发时机
+     * @param visibleMessage 展示给页面并写入 {@code extension_result} 的说明；
+     *                       空值时根据 {@code stage} 生成默认说明
+     * @param writeBack 是否把执行摘要写回验收实体；只有值严格为
+     *                  {@link Boolean#FALSE} 时关闭，空值和其他值保持兼容并视为开启
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Parameters(
+            String stage,
+            String visibleMessage,
+            Object writeBack) {
     }
 }

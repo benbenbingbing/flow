@@ -1,6 +1,7 @@
 package com.workflow.project.custom;
 
 import com.workflow.contracts.ui.FormInvocationContext;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
@@ -26,20 +27,45 @@ public class ProjectCustomFormUiDataSourceProvider
             "PROJECT_CUSTOM_UI_FORM";
     public static final String RECOMMENDED_SCOPE =
             "FORM";
+
+    /** 表单回填值、字段计算值和事件提示消息共用的文本前缀。 */
+    private static final String MESSAGE_PREFIX =
+            "messagePrefix";
+
+    /** 表单初始化、加载后和提交前分支需要回填的字段编码；空值表示不回填。 */
+    private static final String TARGET_FIELD =
+            "targetField";
+
+    /** {@code FIELD_DEFAULT} 分支返回的字段初始值。 */
+    private static final String DEFAULT_VALUE =
+            "defaultValue";
+
+    /** {@code FIELD_OPTIONS} 返回选项的显示文本前缀。 */
+    private static final String OPTION_LABEL_PREFIX =
+            "optionLabelPrefix";
+
+    /** 返回字段 patch 的表单生命周期阶段。 */
+    private static final Set<String> PATCH_USAGES =
+            Set.of(
+                    UiDataSourceUsages.FORM_INIT,
+                    UiDataSourceUsages.AFTER_LOAD,
+                    UiDataSourceUsages.BEFORE_SUBMIT);
+
+    /** 由该示例统一转换为页面提示消息的表单内标准事件。 */
     private static final Set<String> FORM_EVENTS =
             Set.of(
-                    "DETAIL_LOAD",
-                    "DATA_CREATE",
-                    "DATA_UPDATE",
-                    "FORM_OPEN",
-                    "FORM_SAVE",
-                    "FORM_RESET",
-                    "FIELD_CHANGE",
-                    "ENTITY_SELECTED",
-                    "FIELD_BUTTON_CLICK",
-                    "SUBFORM_LOAD",
-                    "SUBFORM_SAVE",
-                    "FORM_BUTTON_CLICK");
+                    UiDataSourceUsages.DETAIL_LOAD,
+                    UiDataSourceUsages.DATA_CREATE,
+                    UiDataSourceUsages.DATA_UPDATE,
+                    UiDataSourceUsages.FORM_OPEN,
+                    UiDataSourceUsages.FORM_SAVE,
+                    UiDataSourceUsages.FORM_RESET,
+                    UiDataSourceUsages.FIELD_CHANGE,
+                    UiDataSourceUsages.ENTITY_SELECTED,
+                    UiDataSourceUsages.FIELD_BUTTON_CLICK,
+                    UiDataSourceUsages.SUBFORM_LOAD,
+                    UiDataSourceUsages.SUBFORM_SAVE,
+                    UiDataSourceUsages.FORM_BUTTON_CLICK);
 
     @Override
     public String getCode() {
@@ -56,19 +82,19 @@ public class ProjectCustomFormUiDataSourceProvider
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "messagePrefix", Map.of(
+                        MESSAGE_PREFIX, Map.of(
                                 "type", "string",
                                 "title", "表单演示前缀",
                                 "default", "表单统一数据源"),
-                        "targetField", Map.of(
+                        TARGET_FIELD, Map.of(
                                 "type", "string",
                                 "title", "表单回填字段（可选）",
                                 "default", ""),
-                        "defaultValue", Map.of(
+                        DEFAULT_VALUE, Map.of(
                                 "type", "string",
                                 "title", "字段默认值",
                                 "default", "FORM_DEFAULT"),
-                        "optionLabelPrefix", Map.of(
+                        OPTION_LABEL_PREFIX, Map.of(
                                 "type", "string",
                                 "title", "字段选项前缀",
                                 "default", "表单选项")));
@@ -98,10 +124,10 @@ public class ProjectCustomFormUiDataSourceProvider
             Map<String, Object> input) {
         String usage = usage(context);
         String prefix = text(
-                configuration.get("messagePrefix"),
+                configuration.get(MESSAGE_PREFIX),
                 "表单统一数据源");
         String targetField = text(
-                configuration.get("targetField"),
+                configuration.get(TARGET_FIELD),
                 "");
         String mode = context instanceof FormInvocationContext formContext
                 ? text(formContext.mode(), "unknown")
@@ -117,11 +143,7 @@ public class ProjectCustomFormUiDataSourceProvider
                 LogValue.safe(mode),
                 LogValue.safe(targetField),
                 input.keySet());
-        if (Set.of(
-                "FORM_INIT",
-                "AFTER_LOAD",
-                "BEFORE_SUBMIT")
-                .contains(usage)
+        if (PATCH_USAGES.contains(usage)
                 && !hasText(targetField)) {
             log.info(
                     "FORM 统一数据源未配置 targetField，仅记录执行日志: code={}, usage={}, formId={}",
@@ -131,29 +153,30 @@ public class ProjectCustomFormUiDataSourceProvider
         }
 
         return switch (usage) {
-            case "FORM_INIT", "AFTER_LOAD",
-                    "BEFORE_SUBMIT" ->
+            case UiDataSourceUsages.FORM_INIT,
+                    UiDataSourceUsages.AFTER_LOAD,
+                    UiDataSourceUsages.BEFORE_SUBMIT ->
                     fieldPatch(
                             targetField,
                             prefix + ":" + usage
                                     + ":" + mode);
-            case "FIELD_OPTIONS" ->
+            case UiDataSourceUsages.FIELD_OPTIONS ->
                     options(text(
                             configuration.get(
-                                    "optionLabelPrefix"),
+                                    OPTION_LABEL_PREFIX),
                             "表单选项"));
-            case "FIELD_DEFAULT" ->
+            case UiDataSourceUsages.FIELD_DEFAULT ->
                     fieldValue(text(
                             configuration.get(
-                                    "defaultValue"),
+                                    DEFAULT_VALUE),
                             "FORM_DEFAULT"));
-            case "FIELD_COMPUTE" ->
+            case UiDataSourceUsages.FIELD_COMPUTE ->
                     fieldValue(
                             prefix + ":COMPUTED:"
                                     + text(
                                     input.get("value"),
                                     "EMPTY"));
-            case "SUBFORM_ROWS" -> {
+            case UiDataSourceUsages.SUBFORM_ROWS -> {
                 log.info(
                         "FORM 统一数据源子表分支无业务场景，返回空行集合: code={}, formId={}, fieldCode={}",
                         CODE,
