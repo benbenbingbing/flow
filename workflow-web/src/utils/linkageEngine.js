@@ -3,7 +3,28 @@
  * 支持显隐控制、值联动、选项联动、计算字段
  */
 import { evaluateExpression } from './calcEngine.js'
-import { evaluateFlowConditionExpression } from './flowConditionGroups.js'
+import {
+  collectFlowConditionProperties,
+  evaluateFlowConditionExpression,
+  evaluateFlowConditionGroup,
+  isFlowConditionGroupComplete,
+  parseFlowConditionConfig
+} from './flowConditionGroups.js'
+
+const CONDITION_RULE_DEFINITIONS = [
+  {
+    configKey: 'visibilityConditionConfig',
+    expressionKey: 'visibilityRule'
+  },
+  {
+    configKey: 'disabledConditionConfig',
+    expressionKey: 'disabledRule'
+  },
+  {
+    configKey: 'requiredConditionConfig',
+    expressionKey: 'requiredRule'
+  }
+]
 
 export function formatLinkageConditionLiteral(field, value) {
   const fieldType = String(field?.fieldType || '').toUpperCase()
@@ -32,8 +53,13 @@ export const LinkageEngine = {
   getFieldLinkageRules(field) {
     if (!field || typeof field !== 'object') return {}
     const rules = {}
-    const ruleKeys = ['visibilityRule', 'disabledRule', 'requiredRule', 'calculationFormula',
-      'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula']
+    const ruleKeys = [
+      'visibilityConditionConfig', 'visibilityRule',
+      'disabledConditionConfig', 'disabledRule',
+      'requiredConditionConfig', 'requiredRule',
+      'calculationFormula', 'calculationPrecision', 'calculationEditable',
+      'optionsLinkage', 'valueFormula'
+    ]
 
     // 1. 优先读取直接挂在字段根属性上的规则
     for (let i = 0; i < ruleKeys.length; i++) {
@@ -95,6 +121,20 @@ export const LinkageEngine = {
       console.error('评估条件失败:', condition, e)
       return false
     }
+  },
+
+  /**
+   * 优先评估结构化条件组，配置不可用时回退到旧表达式。
+   */
+  evaluateLinkageRule(rules, configKey, expressionKey, formData, defaultValue) {
+    const conditionRoot = parseFlowConditionConfig(rules?.[configKey])
+    if (conditionRoot && isFlowConditionGroupComplete(conditionRoot)) {
+      return evaluateFlowConditionGroup(conditionRoot, formData)
+    }
+    if (rules?.[expressionKey]) {
+      return this.evaluateCondition(rules[expressionKey], formData)
+    }
+    return defaultValue
   },
 
   /**
@@ -182,8 +222,14 @@ export const LinkageEngine = {
    * @returns {boolean} 是否显示
    */
   shouldShowField(field, formData) {
-    if (!field.visibilityRule) return true
-    return this.evaluateCondition(field.visibilityRule, formData)
+    const rules = this.getFieldLinkageRules(field)
+    return this.evaluateLinkageRule(
+      rules,
+      'visibilityConditionConfig',
+      'visibilityRule',
+      formData,
+      true
+    )
   },
 
   /**
@@ -193,8 +239,14 @@ export const LinkageEngine = {
    * @returns {boolean} 是否禁用
    */
   shouldDisableField(field, formData) {
-    if (!field.disabledRule) return false
-    return this.evaluateCondition(field.disabledRule, formData)
+    const rules = this.getFieldLinkageRules(field)
+    return this.evaluateLinkageRule(
+      rules,
+      'disabledConditionConfig',
+      'disabledRule',
+      formData,
+      false
+    )
   },
 
   /**
@@ -204,8 +256,14 @@ export const LinkageEngine = {
    * @returns {boolean} 是否必填
    */
   shouldRequireField(field, formData) {
-    if (!field.requiredRule) return field.isRequired === 1
-    return this.evaluateCondition(field.requiredRule, formData)
+    const rules = this.getFieldLinkageRules(field)
+    return this.evaluateLinkageRule(
+      rules,
+      'requiredConditionConfig',
+      'requiredRule',
+      formData,
+      field.isRequired === 1 || field.isRequired === true
+    )
   },
 
   /**
@@ -233,21 +291,31 @@ export const LinkageEngine = {
       const rules = this.getFieldLinkageRules(field)
 
       // 处理显隐
-      result.visibility[fieldKey] = rules.visibilityRule
-        ? this.evaluateCondition(rules.visibilityRule, formData)
-        : true
+      result.visibility[fieldKey] = this.evaluateLinkageRule(
+        rules,
+        'visibilityConditionConfig',
+        'visibilityRule',
+        formData,
+        true
+      )
 
       // 处理禁用
-      result.disabled[fieldKey] = rules.disabledRule
-        ? this.evaluateCondition(rules.disabledRule, formData)
-        : false
+      result.disabled[fieldKey] = this.evaluateLinkageRule(
+        rules,
+        'disabledConditionConfig',
+        'disabledRule',
+        formData,
+        false
+      )
 
       // 处理必填
-      if (rules.requiredRule) {
-        result.required[fieldKey] = this.evaluateCondition(rules.requiredRule, formData)
-      } else {
-        result.required[fieldKey] = field.isRequired === 1
-      }
+      result.required[fieldKey] = this.evaluateLinkageRule(
+        rules,
+        'requiredConditionConfig',
+        'requiredRule',
+        formData,
+        field.isRequired === 1 || field.isRequired === true
+      )
 
       // 处理值联动（字段映射）
       if (rules.valueMapping) {
@@ -309,14 +377,21 @@ export const LinkageEngine = {
     return fields.filter(field => {
       const rules = this.getFieldLinkageRules(field)
       // 检查是否有依赖此字段的联动
-      if (rules.visibilityRule && rules.visibilityRule.includes(changedField)) {
-        return true
-      }
-      if (rules.disabledRule && rules.disabledRule.includes(changedField)) {
-        return true
-      }
-      if (rules.requiredRule && rules.requiredRule.includes(changedField)) {
-        return true
+      for (const definition of CONDITION_RULE_DEFINITIONS) {
+        const conditionRoot = parseFlowConditionConfig(
+          rules[definition.configKey]
+        )
+        if (conditionRoot && isFlowConditionGroupComplete(conditionRoot)) {
+          if (collectFlowConditionProperties(conditionRoot)
+            .includes(changedField)) {
+            return true
+          }
+          continue
+        }
+        if (rules[definition.expressionKey]
+          && rules[definition.expressionKey].includes(changedField)) {
+          return true
+        }
       }
       if (rules.calculationFormula && rules.calculationFormula.includes(changedField)) {
         return true

@@ -34,6 +34,8 @@
           :max-depth="maxDepth"
           :entity-fields="entityFields"
           :approval-options="approvalOptions"
+          :include-approval-property="includeApprovalProperty"
+          :operator-options="operatorOptions"
           removable
           @change="emitChange"
           @remove="removeChild(index)"
@@ -48,7 +50,11 @@
             class="condition-property"
             @change="onPropertyChange(child)"
           >
-            <el-option label="审批结果 (approved)" value="approved" />
+            <el-option
+              v-if="includeApprovalProperty"
+              label="审批结果 (approved)"
+              value="approved"
+            />
             <el-option
               v-for="field in entityFields"
               :key="getProcessConditionFieldCode(field)"
@@ -62,19 +68,18 @@
             placeholder="操作符"
             size="small"
             class="condition-operator"
-            @change="emitChange"
+            @change="onOperatorChange(child)"
           >
-            <el-option label="等于 (==)" value="==" />
-            <el-option label="不等于 (!=)" value="!=" />
-            <el-option label="大于 (>)" value=">" />
-            <el-option label="小于 (<)" value="<" />
-            <el-option label="大于等于 (>=)" value=">=" />
-            <el-option label="小于等于 (<=)" value="<=" />
-            <el-option label="包含" value="contains" />
+            <el-option
+              v-for="option in operatorOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
           </el-select>
 
           <el-select
-            v-if="getFieldType(child.property) === 'select'"
+            v-if="!isValuelessOperator(child.operator) && getFieldType(child.property) === 'select'"
             v-model="child.value"
             placeholder="选择值"
             size="small"
@@ -89,7 +94,7 @@
             />
           </el-select>
           <el-select
-            v-else-if="getFieldType(child.property) === 'boolean'"
+            v-else-if="!isValuelessOperator(child.operator) && getFieldType(child.property) === 'boolean'"
             v-model="child.value"
             placeholder="选择值"
             size="small"
@@ -100,7 +105,7 @@
             <el-option label="否 (false)" value="false" />
           </el-select>
           <el-input
-            v-else
+            v-else-if="!isValuelessOperator(child.operator)"
             v-model="child.value"
             placeholder="输入值"
             size="small"
@@ -147,6 +152,19 @@ const props = defineProps({
   maxDepth: { type: Number, default: 4 },
   entityFields: { type: Array, default: () => [] },
   approvalOptions: { type: Array, default: () => [] },
+  includeApprovalProperty: { type: Boolean, default: true },
+  operatorOptions: {
+    type: Array,
+    default: () => [
+      { label: '等于 (==)', value: '==' },
+      { label: '不等于 (!=)', value: '!=' },
+      { label: '大于 (>)', value: '>' },
+      { label: '小于 (<)', value: '<' },
+      { label: '大于等于 (>=)', value: '>=' },
+      { label: '小于等于 (<=)', value: '<=' },
+      { label: '包含', value: 'contains' }
+    ]
+  },
   removable: { type: Boolean, default: false }
 })
 
@@ -171,11 +189,19 @@ function removeChild(index) {
 
 function onPropertyChange(condition) {
   condition.value = ''
-  const fieldType = getFieldType(condition.property)
-  if (fieldType === 'select' || fieldType === 'boolean') {
-    condition.operator = '=='
+  condition.operator = '=='
+  emitChange()
+}
+
+function onOperatorChange(condition) {
+  if (isValuelessOperator(condition.operator)) {
+    condition.value = ''
   }
   emitChange()
+}
+
+function isValuelessOperator(operator) {
+  return ['empty', 'notEmpty'].includes(operator)
 }
 
 function getFieldType(fieldName) {
@@ -191,13 +217,49 @@ function getFieldOptions(fieldName) {
   const field = props.entityFields.find(item =>
     getProcessConditionFieldCode(item) === fieldName
     || item.fieldName === fieldName)
-  if (!field?.optionsJson) return []
-  try {
-    const options = JSON.parse(field.optionsJson)
-    return Array.isArray(options) ? options : []
-  } catch {
-    return []
+  const sources = [
+    field?.options,
+    field?.optionsJson,
+    readComponentOptions(field?.componentProps)
+  ]
+  for (const source of sources) {
+    if (Array.isArray(source)) return normalizeOptions(source)
+    if (typeof source !== 'string' || !source.trim()) continue
+    try {
+      const options = JSON.parse(source)
+      if (Array.isArray(options)) return normalizeOptions(options)
+    } catch {
+      // 继续尝试其他选项来源。
+    }
   }
+  return []
+}
+
+function readComponentOptions(componentProps) {
+  if (!componentProps) return null
+  if (typeof componentProps === 'object') return componentProps.options
+  try {
+    return JSON.parse(componentProps)?.options
+  } catch {
+    return null
+  }
+}
+
+function normalizeOptions(options) {
+  return options.map((option, index) => {
+    if (option && typeof option === 'object') {
+      const value = option.value ?? option.code ?? option.key ?? option.label
+      return {
+        ...option,
+        label: String(option.label ?? option.name ?? value ?? `选项 ${index + 1}`),
+        value
+      }
+    }
+    return {
+      label: String(option ?? ''),
+      value: option
+    }
+  })
 }
 
 function emitChange() {
@@ -312,8 +374,54 @@ function emitChange() {
     flex-direction: column;
   }
 
+  .group-header,
+  .group-body,
+  .condition-row {
+    padding: 8px;
+  }
+
+  .group-title {
+    flex-wrap: wrap;
+  }
+
   .group-actions {
-    justify-content: flex-start;
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    justify-content: stretch;
+  }
+
+  .group-actions :deep(.el-radio-group) {
+    display: grid;
+    width: 100%;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .group-actions :deep(.el-radio-button),
+  .group-actions :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
+
+  .group-actions :deep(.el-radio-button__inner) {
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+
+  .group-actions :deep(.el-button) {
+    margin-left: 0;
+  }
+
+  .condition-property,
+  .condition-operator,
+  .condition-value {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .condition-row > :deep(.el-button) {
+    align-self: flex-end;
   }
 }
 </style>

@@ -892,9 +892,9 @@ ProcessNodeForm（流程节点表单绑定）
 
 | 联动类型 | 配置字段 | 含义 | 典型场景 |
 |---|---|---|---|
-| 显隐控制 | `visibilityRule` / `visibilityConditions` | 满足条件时显示字段，否则隐藏 | 根据类型显示不同字段 |
-| 禁用控制 | `disabledRule` / `disabledCondition` | 满足条件时禁用字段 | 状态锁定后不可修改 |
-| 必填控制 | `requiredRule` / `requiredCondition` | 满足条件时字段必填 | 紧急类型必须填备注 |
+| 显示控制 | `visibilityConditionConfig` / `visibilityRule` | 结构化条件组满足时显示字段，否则隐藏；旧表达式作为兼容兜底 | 根据类型显示不同字段 |
+| 禁用控制 | `disabledConditionConfig` / `disabledRule` | 结构化条件组满足时禁用字段；旧表达式作为兼容兜底 | 状态锁定后不可修改 |
+| 必填控制 | `requiredConditionConfig` / `requiredRule` | 结构化条件组满足时字段必填；旧表达式作为兼容兜底 | 紧急类型必须填备注 |
 | 值联动 | `valueMapping` / `valueFormula` | 根据其他字段值自动填充 | 选择省份后自动填充城市 |
 | 计算字段 | `calculationFormula` / `calculationPrecision` | 按公式自动计算 | 数量 × 单价 = 总价 |
 | 选项联动 | `optionsLinkage` / `optionsDependField` | 根据依赖字段过滤选项 | 选择省份后过滤城市选项 |
@@ -904,7 +904,7 @@ ProcessNodeForm（流程节点表单绑定）
 
 联动规则可存储在以下位置，运行时按优先级合并：
 
-1. 字段根属性：`visibilityRule`、`disabledRule`、`requiredRule` 等
+1. 字段根属性：`visibilityConditionConfig`、`disabledConditionConfig`、`requiredConditionConfig` 及对应的兼容表达式等
 2. `linkageRules` 对象：内存中临时保存的完整联动配置
 3. `componentProps.linkageRules`：设计器保存的 JSON 格式联动规则
 

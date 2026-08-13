@@ -1890,6 +1890,12 @@ const CONTROL_OVERRIDES = Object.freeze({
   'src/components/LinkageConfigPanel.vue:config.visibilityEnabled': {
     label: '启用显示条件'
   },
+  'src/components/LinkageConfigPanel.vue:config.disabledEnabled': {
+    label: '启用禁用条件'
+  },
+  'src/components/LinkageConfigPanel.vue:config.requiredEnabled': {
+    label: '启用必填条件'
+  },
   'src/components/LinkageConfigPanel.vue:config.visibilityLogic': {
     label: '显示条件逻辑',
     meaning: '设置多条显示条件按全部满足还是任一满足计算。',

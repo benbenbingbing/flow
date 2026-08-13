@@ -48,6 +48,10 @@ import {
   normalizeLegacyBooleanComparisons
 } from '@/utils/linkageEngine.js'
 import {
+  createFlowConditionConfig,
+  createFlowConditionGroup
+} from '@/utils/flowConditionGroups.js'
+import {
   getNodeTypeDescription,
   getNodeTypeTag,
   getNodeTypeText,
@@ -358,6 +362,62 @@ assert.equal(linkageResult.visibility.discount, true)
 assert.equal(linkageResult.disabled.discount, true)
 assert.equal(linkageResult.required.discount, true)
 assert.equal(linkageResult.values.total, 125)
+
+const visibilityConditionConfig = createFlowConditionConfig(
+  createFlowConditionGroup('AND', [
+    { type: 'CONDITION', property: 'status', operator: '==', value: 'OPEN' },
+    createFlowConditionGroup('OR', [
+      { type: 'CONDITION', property: 'amount', operator: '>=', value: '100' },
+      { type: 'CONDITION', property: 'vip', operator: '==', value: 'true' }
+    ])
+  ])
+)
+const disabledConditionConfig = createFlowConditionConfig(
+  createFlowConditionGroup('AND', [
+    { type: 'CONDITION', property: 'owner', operator: 'empty', value: '' }
+  ])
+)
+const requiredConditionConfig = createFlowConditionConfig(
+  createFlowConditionGroup('OR', [
+    { type: 'CONDITION', property: 'urgent', operator: '==', value: 'true' },
+    { type: 'CONDITION', property: 'category', operator: '==', value: 'SPECIAL' }
+  ])
+)
+const structuredLinkageField = {
+  fieldCode: 'approvalNote',
+  visibilityConditionConfig,
+  visibilityRule: "${status} == 'CLOSED'",
+  disabledConditionConfig,
+  requiredConditionConfig
+}
+const structuredLinkageResult = LinkageEngine.processAllLinkages(
+  [structuredLinkageField],
+  {
+    status: 'OPEN',
+    amount: 120,
+    vip: false,
+    owner: '',
+    urgent: false,
+    category: 'SPECIAL'
+  }
+)
+assert.equal(structuredLinkageResult.visibility.approvalNote, true)
+assert.equal(structuredLinkageResult.disabled.approvalNote, true)
+assert.equal(structuredLinkageResult.required.approvalNote, true)
+assert.equal(
+  LinkageEngine.shouldShowField(
+    structuredLinkageField,
+    { status: 'OPEN', amount: 120, vip: false }
+  ),
+  true
+)
+assert.equal(
+  LinkageEngine.getTriggeredLinkages(
+    'amount',
+    [structuredLinkageField]
+  ).length,
+  1
+)
 
 assert.equal(getNodeTypeText('bpmn:UserTask'), '用户任务')
 assert.equal(getNodeTypeDescription('bpmn:ServiceTask').title, '服务任务')

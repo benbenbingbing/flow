@@ -15,6 +15,7 @@
         <!-- 普通查询 -->
         <FormFieldRenderer
           v-else
+          class="query-field-control"
           v-model="form[field.fieldCode]"
           :field="field"
         />
@@ -79,5 +80,28 @@ const onReset = () => {
 <style scoped lang="scss">
 .search-card {
   margin-bottom: 10px;
+}
+
+.query-field-control {
+  width: 200px;
+  min-width: 200px;
+}
+
+@media (max-width: 768px) {
+  .search-card :deep(.el-form--inline .el-form-item) {
+    display: flex;
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .search-card :deep(.el-form--inline .el-form-item__content) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .query-field-control {
+    width: 100%;
+    min-width: 0;
+  }
 }
 </style>

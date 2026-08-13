@@ -23,11 +23,15 @@ export function normalizeFlowConditionRoot(value) {
     : createFlowConditionGroup('AND', [normalized])
 }
 
-export function serializeFlowConditionConfig(root) {
-  return JSON.stringify({
+export function createFlowConditionConfig(root) {
+  return {
     version: 1,
     root: normalizeFlowConditionRoot(root)
-  })
+  }
+}
+
+export function serializeFlowConditionConfig(root) {
+  return JSON.stringify(createFlowConditionConfig(root))
 }
 
 export function parseFlowConditionConfig(value) {
@@ -49,9 +53,11 @@ export function buildFlowConditionExpression(root, getFieldType = () => 'string'
 export function parseFlowConditionExpression(expression) {
   if (!expression) return null
   let body = String(expression).trim()
-  if (body.startsWith('${') && body.endsWith('}')) {
+  if (isWrappedByTemplateExpression(body)) {
     body = body.slice(2, -1).trim()
   }
+  body = body.replace(/\$\{([A-Za-z_][\w.]*)\}/g, '$1')
+  body = normalizeLegacyEmptyConditions(body)
   if (!body) return null
   const parsed = parseNode(body)
   return parsed ? normalizeFlowConditionRoot(parsed) : null
@@ -64,12 +70,34 @@ export function evaluateFlowConditionExpression(expression, formData = {}) {
   return root ? evaluateNode(root, formData) : false
 }
 
+export function evaluateFlowConditionGroup(root, formData = {}) {
+  const normalized = normalizeNode(root)
+  return normalized && isNodeComplete(normalized)
+    ? evaluateNode(normalized, formData)
+    : false
+}
+
+export function isFlowConditionGroupComplete(root) {
+  const normalized = normalizeNode(root)
+  return normalized ? isNodeComplete(normalized) : false
+}
+
+export function collectFlowConditionProperties(root) {
+  const normalized = normalizeNode(root)
+  if (!normalized) return []
+  const properties = new Set()
+  collectProperties(normalized, properties)
+  return Array.from(properties)
+}
+
 function evaluateNode(node, formData) {
   if (node.type === 'GROUP') {
     const values = (node.children || []).map(child => evaluateNode(child, formData))
     return node.logic === 'OR' ? values.some(Boolean) : values.every(Boolean)
   }
   const actual = readProperty(formData, node.property)
+  if (node.operator === 'empty') return isEmptyValue(actual)
+  if (node.operator === 'notEmpty') return !isEmptyValue(actual)
   const expected = coerceExpected(node.value, actual)
   switch (node.operator) {
     case '==': return actual === expected
@@ -119,7 +147,22 @@ function normalizeNode(value) {
 }
 
 function normalizeOperator(value) {
-  return ['==', '!=', '>', '<', '>=', '<=', 'contains'].includes(value) ? value : '=='
+  const normalized = value === '==='
+    ? '=='
+    : value === '!=='
+      ? '!='
+      : value
+  return [
+    '==',
+    '!=',
+    '>',
+    '<',
+    '>=',
+    '<=',
+    'contains',
+    'empty',
+    'notEmpty'
+  ].includes(normalized) ? normalized : '=='
 }
 
 function buildNode(node, getFieldType, root = false) {
@@ -137,6 +180,12 @@ function buildNode(node, getFieldType, root = false) {
 
 function buildCondition(condition, getFieldType) {
   if (!condition.property || !condition.operator) return ''
+  if (condition.operator === 'empty') {
+    return `empty(${condition.property})`
+  }
+  if (condition.operator === 'notEmpty') {
+    return `notEmpty(${condition.property})`
+  }
   if (condition.value == null || condition.value === '') return ''
 
   const fieldType = getFieldType(condition.property)
@@ -178,15 +227,26 @@ function parseNode(expression) {
 }
 
 function createParsedGroup(logic, parts) {
-  const children = parts.map(parseNode).filter(Boolean)
-  if (!children.length) return null
+  const children = parts.map(parseNode)
+  if (!children.length || children.some(child => !child)) return null
   if (children.length === 1) return children[0]
   return createFlowConditionGroup(logic, children)
 }
 
 function parseCondition(expression) {
   const source = expression.trim()
-  const containsMatch = source.match(/^([A-Za-z_][\w.]*)\.contains\((.*)\)$/s)
+  const emptyMatch = source.match(/^(empty|notEmpty)\(([A-Za-z_][\w.]*)\)$/)
+  if (emptyMatch) {
+    return {
+      type: 'CONDITION',
+      property: emptyMatch[2],
+      operator: emptyMatch[1],
+      value: ''
+    }
+  }
+  const containsMatch = source.match(
+    /^([A-Za-z_][\w.]*)\.(?:contains|includes)\((.*)\)$/s
+  )
   if (containsMatch) {
     return {
       type: 'CONDITION',
@@ -196,12 +256,14 @@ function parseCondition(expression) {
     }
   }
 
-  const comparisonMatch = source.match(/^([A-Za-z_][\w.]*)\s*(>=|<=|==|!=|>|<)\s*(.+)$/s)
+  const comparisonMatch = source.match(
+    /^([A-Za-z_][\w.]*)\s*(===|!==|>=|<=|==|!=|>|<)\s*(.+)$/s
+  )
   if (!comparisonMatch) return null
   return {
     type: 'CONDITION',
     property: comparisonMatch[1],
-    operator: comparisonMatch[2],
+    operator: normalizeOperator(comparisonMatch[2]),
     value: normalizeParsedValue(comparisonMatch[1], decodeValue(comparisonMatch[3]))
   }
 }
@@ -295,4 +357,70 @@ function splitTopLevel(expression, operator) {
   if (!parts.length) return [expression.trim()]
   parts.push(expression.slice(start).trim())
   return parts.filter(Boolean)
+}
+
+function isWrappedByTemplateExpression(expression) {
+  if (!expression.startsWith('${') || !expression.endsWith('}')) return false
+  let depth = 1
+  let quote = ''
+  for (let index = 2; index < expression.length; index += 1) {
+    const character = expression[index]
+    if (quote) {
+      if (character === '\\') {
+        index += 1
+      } else if (character === quote) {
+        quote = ''
+      }
+      continue
+    }
+    if (character === "'" || character === '"') {
+      quote = character
+      continue
+    }
+    if (character === '{') depth += 1
+    if (character === '}') depth -= 1
+    if (depth === 0) return index === expression.length - 1
+  }
+  return false
+}
+
+function normalizeLegacyEmptyConditions(expression) {
+  return expression
+    .replace(
+      /!([A-Za-z_][\w.]*)\s*\|\|\s*\1\s*==\s*(?:''|"")/g,
+      'empty($1)'
+    )
+    .replace(
+      /([A-Za-z_][\w.]*)\s*&&\s*\1\s*!=\s*(?:''|"")/g,
+      'notEmpty($1)'
+    )
+}
+
+function isNodeComplete(node) {
+  if (node.type === 'GROUP') {
+    return Array.isArray(node.children)
+      && node.children.length > 0
+      && node.children.every(isNodeComplete)
+  }
+  if (!node.property || !node.operator) return false
+  if (['empty', 'notEmpty'].includes(node.operator)) return true
+  return node.value !== null
+    && node.value !== undefined
+    && String(node.value).trim() !== ''
+}
+
+function collectProperties(node, target) {
+  if (node.type === 'GROUP') {
+    const children = node.children || []
+    children.forEach(child => collectProperties(child, target))
+    return
+  }
+  if (node.property) target.add(node.property)
+}
+
+function isEmptyValue(value) {
+  return value === null
+    || value === undefined
+    || value === ''
+    || (Array.isArray(value) && value.length === 0)
 }

@@ -484,7 +484,10 @@ assert.ok(
   'searchConfig.value.defaultVisibleCount',
   'searchConfig.value.collapsible === false',
   'props.fields.slice(0, visibleCount.value)',
-  'searchExpanded.value'
+  'searchExpanded.value',
+  'class="query-field-control"',
+  'width: 200px',
+  'min-width: 200px'
 ].forEach((marker) => {
   assert.ok(
     entityDataSearchForm.includes(marker),
@@ -1675,8 +1678,32 @@ const configSchemaEditor = readFileSync(path.join(root, 'src/components/ConfigSc
   assert.ok(configSchemaEditor.includes(marker), `扩展配置 Schema 缺少分组、排序或条件显示能力: ${marker}`)
 })
 const linkageConfigPanel = readFileSync(path.join(root, 'src/components/LinkageConfigPanel.vue'), 'utf8')
-;['label="显示与状态"', 'label="值与计算"', 'label="选项"', '受控 Provider / Connector'].forEach((marker) => {
+;[
+  'label="显示与状态"',
+  'label="值与计算"',
+  'label="选项"',
+  '受控 Provider / Connector',
+  'LinkageConditionRuleEditor',
+  'visibilityConditionConfig',
+  'disabledConditionConfig',
+  'requiredConditionConfig'
+].forEach((marker) => {
   assert.ok(linkageConfigPanel.includes(marker), `字段联动缺少合并页签或受控数据源提示: ${marker}`)
+})
+const linkageConditionRuleEditor = readFileSync(
+  path.join(root, 'src/components/LinkageConditionRuleEditor.vue'),
+  'utf8'
+)
+;[
+  'FlowConditionGroupEditor',
+  ':include-approval-property="false"',
+  "{ label: '为空', value: 'empty' }",
+  "{ label: '不为空', value: 'notEmpty' }"
+].forEach((marker) => {
+  assert.ok(
+    linkageConditionRuleEditor.includes(marker),
+    `字段联动条件组缺少复用编辑器或字段操作符: ${marker}`
+  )
 })
 
 ;['title="基本规则"', 'title="适用对象"', 'title="可见数据范围"', 'isSelectedFieldStructureLocked'].forEach((marker) => {

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import {
   buildFlowConditionExpression,
+  collectFlowConditionProperties,
+  createFlowConditionConfig,
   createFlowConditionGroup,
+  evaluateFlowConditionExpression,
+  evaluateFlowConditionGroup,
+  isFlowConditionGroupComplete,
   parseFlowConditionConfig,
   parseFlowConditionExpression,
   serializeFlowConditionConfig
@@ -47,5 +52,77 @@ assert.equal(legacyApproved.children[1].value, 'reject')
 
 const serialized = serializeFlowConditionConfig(grouped)
 assert.deepEqual(parseFlowConditionConfig(serialized), grouped)
+assert.deepEqual(parseFlowConditionConfig(createFlowConditionConfig(grouped)), grouped)
+assert.equal(isFlowConditionGroupComplete(grouped), true)
+assert.equal(
+  isFlowConditionGroupComplete(createFlowConditionGroup('AND', [])),
+  false
+)
+assert.deepEqual(
+  collectFlowConditionProperties(grouped).sort(),
+  ['amount', 'approved']
+)
+
+const linkageGroup = createFlowConditionGroup('AND', [
+  { type: 'CONDITION', property: 'status', operator: '==', value: 'OPEN' },
+  createFlowConditionGroup('OR', [
+    { type: 'CONDITION', property: 'priority', operator: '==', value: 'HIGH' },
+    { type: 'CONDITION', property: 'owner', operator: 'notEmpty', value: '' }
+  ])
+])
+assert.equal(
+  evaluateFlowConditionGroup(
+    linkageGroup,
+    { status: 'OPEN', priority: 'LOW', owner: 'u1' }
+  ),
+  true
+)
+assert.equal(
+  evaluateFlowConditionGroup(
+    linkageGroup,
+    { status: 'OPEN', priority: 'LOW', owner: '' }
+  ),
+  false
+)
+assert.equal(
+  evaluateFlowConditionGroup(
+    createFlowConditionGroup('AND', []),
+    {}
+  ),
+  false
+)
+
+const emptyExpression = buildFlowConditionExpression(
+  createFlowConditionGroup('OR', [
+    { type: 'CONDITION', property: 'remark', operator: 'empty', value: '' },
+    { type: 'CONDITION', property: 'owner', operator: 'notEmpty', value: '' }
+  ])
+)
+assert.equal(emptyExpression, '${empty(remark) || notEmpty(owner)}')
+assert.equal(
+  evaluateFlowConditionExpression(emptyExpression, { remark: '', owner: '' }),
+  true
+)
+
+const legacyEmpty = parseFlowConditionExpression(
+  "!${remark} || ${remark} == ''"
+)
+assert.equal(legacyEmpty.children[0].operator, 'empty')
+assert.equal(
+  evaluateFlowConditionExpression(
+    "${owner} && ${owner} != ''",
+    { owner: 'u1' }
+  ),
+  true
+)
+
+const strictComparison = parseFlowConditionExpression(
+  "${status} === 'OPEN'"
+)
+assert.equal(strictComparison.children[0].operator, '==')
+assert.equal(
+  parseFlowConditionExpression("${status} == 'OPEN' && custom(status)"),
+  null
+)
 
 console.log('flow condition group tests passed')

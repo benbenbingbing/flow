@@ -751,7 +751,7 @@
     <el-dialog
       v-model="showLinkageConfig"
       title="字段联动配置"
-      width="700px"
+      width="min(1080px, 94vw)"
       destroy-on-close
       :close-on-click-modal="false"
     >
@@ -3479,8 +3479,8 @@ function handleSaveEvent(events) {
 function handleSaveLinkage(linkageRules) {
   if (selectedField.value) {
     // 先清除旧的联动规则根属性，避免切换类型后残留
-    const allRuleKeys = ['visibilityRule', 'disabledRule', 'requiredRule', 'calculationFormula',
-      'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula', 'valueMapping', 'valueApi']
+    const allRuleKeys = ['visibilityConditionConfig', 'visibilityRule', 'disabledConditionConfig', 'disabledRule',
+      'requiredConditionConfig', 'requiredRule', 'calculationFormula', 'calculationPrecision', 'calculationEditable', 'optionsLinkage', 'valueFormula', 'valueMapping', 'valueApi']
     allRuleKeys.forEach(key => {
       delete selectedField.value[key]
     })

@@ -14,107 +14,47 @@
       <el-tab-pane label="显示与状态" name="display-state">
         <div class="tab-content">
           <SettingsSection
-            title="显示条件"
-            description="根据其他字段动态控制当前字段是否显示"
+            title="显示与状态条件"
+            description="分别配置字段显示、禁用和必填条件"
             :collapsible="false"
             primary
           >
             <el-alert type="info" :closable="false" class="tab-tip">
-              根据条件动态显示或隐藏此字段
+              三类规则独立生效，每类规则都支持嵌套条件组及 AND / OR 组合。
             </el-alert>
 
-            <div class="condition-builder">
-              <div class="condition-header">
-                <span>当满足以下条件时显示：</span>
-                <el-switch v-model="config.visibilityEnabled" />
-              </div>
-
-              <template v-if="config.visibilityEnabled">
-                <div class="condition-list">
-                  <div
-                    v-for="(condition, index) in visibilityConditions"
-                    :key="index"
-                    class="condition-item"
-                  >
-                    <el-select v-model="condition.field" placeholder="选择字段" size="small" class="condition-field">
-                      <el-option
-                        v-for="f in availableFields"
-                        :key="f.fieldCode || f.fieldKey"
-                        :label="f.fieldName"
-                        :value="f.fieldCode || f.fieldKey"
-                        :disabled="(f.fieldCode || f.fieldKey) === currentFieldKey"
-                      />
-                    </el-select>
-
-                    <el-select v-model="condition.operator" placeholder="操作符" size="small" class="condition-operator">
-                      <el-option label="等于" value="==" />
-                      <el-option label="不等于" value="!=" />
-                      <el-option label="大于" value=">" />
-                      <el-option label="小于" value="<" />
-                      <el-option label="大于等于" value=">=" />
-                      <el-option label="小于等于" value="<=" />
-                      <el-option label="包含" value="contains" />
-                      <el-option label="为空" value="empty" />
-                      <el-option label="不为空" value="notEmpty" />
-                    </el-select>
-
-                    <el-input
-                      v-if="!['empty', 'notEmpty'].includes(condition.operator)"
-                      v-model="condition.value"
-                      placeholder="值"
-                      size="small"
-                      class="condition-value"
-                    />
-
-                    <el-button type="danger" size="small" text aria-label="删除显示条件" title="删除显示条件" @click="removeVisibilityCondition(index)">
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </div>
-                </div>
-
-                <el-button type="primary" size="small" text @click="addVisibilityCondition">
-                  <el-icon><Plus /></el-icon> 添加条件
-                </el-button>
-
-                <div class="logic-selector">
-                  <span>条件组合方式：</span>
-                  <el-radio-group v-model="config.visibilityLogic" size="small">
-                    <el-radio-button value="and">全部满足</el-radio-button>
-                    <el-radio-button value="or">任一满足</el-radio-button>
-                  </el-radio-group>
-                </div>
-              </template>
+            <div class="condition-rule-list">
+              <LinkageConditionRuleEditor
+                title="显示条件"
+                description="满足条件时显示当前字段；未启用时始终显示。"
+                v-model:enabled="config.visibilityEnabled"
+                :root="config.visibilityConditionRoot"
+                :fields="availableFields"
+                :parse-warning="conditionParseWarnings.visibility"
+                @change="clearConditionWarning('visibility')"
+                @reset-group="resetConditionGroup('visibility')"
+              />
+              <LinkageConditionRuleEditor
+                title="禁用条件"
+                description="满足条件时禁用当前字段，使字段可见但不可编辑。"
+                v-model:enabled="config.disabledEnabled"
+                :root="config.disabledConditionRoot"
+                :fields="availableFields"
+                :parse-warning="conditionParseWarnings.disabled"
+                @change="clearConditionWarning('disabled')"
+                @reset-group="resetConditionGroup('disabled')"
+              />
+              <LinkageConditionRuleEditor
+                title="必填条件"
+                description="满足条件时把当前字段设为必填，并参与表单提交校验。"
+                v-model:enabled="config.requiredEnabled"
+                :root="config.requiredConditionRoot"
+                :fields="availableFields"
+                :parse-warning="conditionParseWarnings.required"
+                @change="clearConditionWarning('required')"
+                @reset-group="resetConditionGroup('required')"
+              />
             </div>
-          </SettingsSection>
-
-          <SettingsSection
-            title="禁用与必填"
-            description="根据条件切换可编辑状态和必填要求"
-            :default-expanded="hasStateLinkage"
-          >
-            <el-form label-width="100px" size="small">
-              <el-form-item label="禁用条件">
-                <el-switch v-model="config.disabledEnabled" />
-              </el-form-item>
-
-              <el-form-item v-if="config.disabledEnabled" label="条件表达式">
-                <el-input
-                  v-model="config.disabledCondition"
-                  placeholder="如：${status} == 'locked'"
-                />
-              </el-form-item>
-
-              <el-form-item label="必填条件">
-                <el-switch v-model="config.requiredEnabled" />
-              </el-form-item>
-
-              <el-form-item v-if="config.requiredEnabled" label="条件表达式">
-                <el-input
-                  v-model="config.requiredCondition"
-                  placeholder="如：${type} == 'urgent'"
-                />
-              </el-form-item>
-            </el-form>
           </SettingsSection>
         </div>
       </el-tab-pane>
@@ -367,14 +307,21 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 import { Connection, Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import SettingsSection from '@/components/SettingsSection.vue'
+import LinkageConditionRuleEditor from '@/components/LinkageConditionRuleEditor.vue'
+import { getProcessConditionFieldType } from '@/shared/process-config'
+import { LinkageEngine } from '../utils/linkageEngine'
 import {
-  formatLinkageConditionLiteral,
-  LinkageEngine
-} from '../utils/linkageEngine'
+  buildFlowConditionExpression,
+  createFlowConditionConfig,
+  createFlowConditionGroup,
+  isFlowConditionGroupComplete,
+  parseFlowConditionConfig,
+  parseFlowConditionExpression
+} from '@/utils/flowConditionGroups'
 
 const props = defineProps({
   field: {
@@ -391,37 +338,55 @@ const props = defineProps({
 const emit = defineEmits(['save'])
 const activeTab = ref('display-state')
 
-const config = ref({
-  // 显隐控制
-  visibilityEnabled: false,
-  visibilityLogic: 'and',
-  visibilityConditions: [],
-  
-  // 值联动
-  valueLinkageEnabled: false,
-  valueSourceType: 'field',
-  sourceField: '',
-  valueFormula: '',
-  apiUrl: '',
-  apiParams: '',
-  apiResultField: '',
-  
-  // 选项联动
-  optionsLinkageEnabled: false,
-  optionsDependField: '',
-  optionsFilterRules: [],
-  
-  // 计算字段
-  calculationEnabled: false,
-  calculationFormula: '',
-  calculationPrecision: 2,
-  calculationEditable: false,
-  
-  // 禁用/必填
-  disabledEnabled: false,
-  disabledCondition: '',
-  requiredEnabled: false,
-  requiredCondition: ''
+function createDefaultConfig() {
+  return {
+    // 显隐控制
+    visibilityEnabled: false,
+    visibilityConditionRoot: createFlowConditionGroup(),
+
+    // 值联动
+    valueLinkageEnabled: false,
+    valueSourceType: 'field',
+    sourceField: '',
+    valueFormula: '',
+    apiUrl: '',
+    apiParams: '',
+    apiResultField: '',
+
+    // 选项联动
+    optionsLinkageEnabled: false,
+    optionsDependField: '',
+    optionsFilterRules: [],
+
+    // 计算字段
+    calculationEnabled: false,
+    calculationFormula: '',
+    calculationPrecision: 2,
+    calculationEditable: false,
+
+    // 禁用/必填
+    disabledEnabled: false,
+    disabledConditionRoot: createFlowConditionGroup(),
+    requiredEnabled: false,
+    requiredConditionRoot: createFlowConditionGroup()
+  }
+}
+
+const config = ref(createDefaultConfig())
+const conditionParseWarnings = reactive({
+  visibility: '',
+  disabled: '',
+  required: ''
+})
+const legacyConditionRules = reactive({
+  visibility: '',
+  disabled: '',
+  required: ''
+})
+const legacyConditionConfigs = reactive({
+  visibility: null,
+  disabled: null,
+  required: null
 })
 
 const currentFieldKey = computed(() => props.field?.fieldKey || props.field?.fieldCode)
@@ -475,20 +440,6 @@ const hasLinkage = computed(() => {
          config.value.disabledEnabled ||
          config.value.requiredEnabled
 })
-const hasStateLinkage = computed(() => (
-  config.value.disabledEnabled || config.value.requiredEnabled
-))
-
-// 显隐条件
-const visibilityConditions = computed({
-  get() {
-    return config.value.visibilityConditions || []
-  },
-  set(val) {
-    config.value.visibilityConditions = val
-  }
-})
-
 // 值映射规则
 const valueMappingRules = ref([])
 
@@ -501,20 +452,6 @@ const optionsFilterRules = computed({
     config.value.optionsFilterRules = val
   }
 })
-
-// 添加显隐条件
-function addVisibilityCondition() {
-  visibilityConditions.value.push({
-    field: '',
-    operator: '==',
-    value: ''
-  })
-}
-
-// 删除显隐条件
-function removeVisibilityCondition(index) {
-  visibilityConditions.value.splice(index, 1)
-}
 
 // 添加值映射
 function addValueMapping() {
@@ -549,11 +486,47 @@ function formatFormula(formula) {
 
 // 保存配置
 function saveConfig() {
+  const invalidRule = conditionRuleDefinitions.find(definition =>
+    config.value[definition.enabledKey]
+      && !conditionParseWarnings[definition.name]
+      && !isFlowConditionGroupComplete(
+        config.value[definition.rootKey]))
+  if (invalidRule) {
+    ElMessage.warning(`${invalidRule.label}至少需要一个完整条件`)
+    return
+  }
   // 构建联动规则 JSON
   const linkageRules = buildLinkageRules()
   emit('save', linkageRules)
   ElMessage.success('联动配置已保存')
 }
+
+const conditionRuleDefinitions = [
+  {
+    name: 'visibility',
+    label: '显示条件',
+    enabledKey: 'visibilityEnabled',
+    rootKey: 'visibilityConditionRoot',
+    configKey: 'visibilityConditionConfig',
+    expressionKey: 'visibilityRule'
+  },
+  {
+    name: 'disabled',
+    label: '禁用条件',
+    enabledKey: 'disabledEnabled',
+    rootKey: 'disabledConditionRoot',
+    configKey: 'disabledConditionConfig',
+    expressionKey: 'disabledRule'
+  },
+  {
+    name: 'required',
+    label: '必填条件',
+    enabledKey: 'requiredEnabled',
+    rootKey: 'requiredConditionRoot',
+    configKey: 'requiredConditionConfig',
+    expressionKey: 'requiredRule'
+  }
+]
 
 // 将裸字段名转为 ${field} 格式
 function wrapFieldRefs(expr) {
@@ -565,21 +538,9 @@ function wrapFieldRefs(expr) {
 function buildLinkageRules() {
   const rules = {}
   
-  // 显隐规则
-  if (config.value.visibilityEnabled && visibilityConditions.value.length > 0) {
-    const conditions = visibilityConditions.value.map(c => {
-      if (c.operator === 'empty') return `!\${${c.field}} || \${${c.field}} == ''`
-      if (c.operator === 'notEmpty') return `\${${c.field}} && \${${c.field}} != ''`
-      if (c.operator === 'contains') return `\${${c.field}}.includes('${c.value}')`
-      const sourceField = availableFields.value.find(field =>
-        (field.fieldCode || field.fieldKey) === c.field
-      )
-      return `\${${c.field}} ${c.operator} ${formatLinkageConditionLiteral(sourceField, c.value)}`
-    })
-    rules.visibilityRule = config.value.visibilityLogic === 'and'
-      ? conditions.join(' && ')
-      : conditions.join(' || ')
-  }
+  conditionRuleDefinitions.forEach(definition => {
+    appendConditionRule(rules, definition)
+  })
   
   // 值联动规则
   if (config.value.valueLinkageEnabled) {
@@ -611,125 +572,68 @@ function buildLinkageRules() {
     rules.calculationEditable = config.value.calculationEditable
   }
   
-  // 禁用规则
-  if (config.value.disabledEnabled && config.value.disabledCondition) {
-    rules.disabledRule = wrapFieldRefs(config.value.disabledCondition)
-  }
-
-  // 必填规则
-  if (config.value.requiredEnabled && config.value.requiredCondition) {
-    rules.requiredRule = wrapFieldRefs(config.value.requiredCondition)
-  }
-  
   return rules
+}
+
+function appendConditionRule(rules, definition) {
+  if (!config.value[definition.enabledKey]) return
+  if (conditionParseWarnings[definition.name]) {
+    if (legacyConditionConfigs[definition.name]) {
+      rules[definition.configKey] =
+        legacyConditionConfigs[definition.name]
+    }
+    if (legacyConditionRules[definition.name]) {
+      rules[definition.expressionKey] =
+        legacyConditionRules[definition.name]
+    }
+    return
+  }
+  const root = config.value[definition.rootKey]
+  if (!isFlowConditionGroupComplete(root)) return
+  rules[definition.configKey] = createFlowConditionConfig(root)
+  rules[definition.expressionKey] = buildFlowConditionExpression(
+    root,
+    getConditionFieldType)
+}
+
+function getConditionFieldType(fieldCode) {
+  const field = availableFields.value.find(item =>
+    (item.fieldCode || item.fieldKey) === fieldCode)
+  return getProcessConditionFieldType(field)
 }
 
 // 重置配置
 function resetConfig() {
-  config.value = {
-    visibilityEnabled: false,
-    visibilityLogic: 'and',
-    visibilityConditions: [],
-    valueLinkageEnabled: false,
-    valueSourceType: 'field',
-    sourceField: '',
-    valueFormula: '',
-    apiUrl: '',
-    apiParams: '',
-    apiResultField: '',
-    optionsLinkageEnabled: false,
-    optionsDependField: '',
-    optionsFilterRules: [],
-    calculationEnabled: false,
-    calculationFormula: '',
-    calculationPrecision: 2,
-    calculationEditable: false,
-    disabledEnabled: false,
-    disabledCondition: '',
-    requiredEnabled: false,
-    requiredCondition: ''
-  }
+  config.value = createDefaultConfig()
   valueMappingRules.value = []
+  conditionRuleDefinitions.forEach(definition => {
+    conditionParseWarnings[definition.name] = ''
+    legacyConditionRules[definition.name] = ''
+    legacyConditionConfigs[definition.name] = null
+  })
 }
 
-watch([() => props.field, () => props.initialTab], ([newField, initialTab]) => {
+watch(() => props.initialTab, initialTab => {
   if (['display-state', 'value-calculation', 'options'].includes(initialTab)) {
     activeTab.value = initialTab
   }
+}, { immediate: true })
+
+watch(() => props.field, newField => {
+  resetConfig()
   const rules = LinkageEngine.getFieldLinkageRules(newField)
   if (Object.keys(rules).length > 0) {
     parseLinkageRules(rules)
-  } else {
-    resetConfig()
   }
 }, { immediate: true })
-
-// 反向解析显隐规则字符串为条件数组（兼容 ${field} 和裸字段名两种格式）
-function parseVisibilityRuleString(ruleStr) {
-  if (!ruleStr) return []
-  const conditions = []
-  // 先判断逻辑关系
-  const isOr = ruleStr.includes(' || ')
-  config.value.visibilityLogic = isOr ? 'or' : 'and'
-  // 按 && 或 || 分割
-  const parts = ruleStr.split(/\s*\|\|\s*|\s*&&\s*/)
-  parts.forEach(part => {
-    part = part.trim()
-    if (!part) return
-    // 字段名匹配：支持 ${field} 或裸字段名
-    const fieldPattern = '(?:\\$\\{(\\w+)\\}|(\\w+))'
-    // 解析 empty: !${field} || ${field} == ''
-    const emptyMatch = part.match(new RegExp(`^!${fieldPattern}\\s*\\|\\|\\s*(?:\\$\\{\\1\\}|\\2)\\s*==\\s*''$`))
-    if (emptyMatch) {
-      conditions.push({ field: emptyMatch[1] || emptyMatch[2], operator: 'empty', value: '' })
-      return
-    }
-    // 解析 notEmpty: ${field} && ${field} != ''
-    const notEmptyMatch = part.match(new RegExp(`^${fieldPattern}\\s*&&\\s*(?:\\$\\{\\1\\}|\\2)\\s*!=\\s*''$`))
-    if (notEmptyMatch) {
-      conditions.push({ field: notEmptyMatch[1] || notEmptyMatch[2], operator: 'notEmpty', value: '' })
-      return
-    }
-    // 解析 contains: ${field}.includes('value') 或 field.contains('value')
-    const containsMatch = part.match(new RegExp(`^${fieldPattern}\\.includes\\('([^']*)'\\)$`))
-    if (containsMatch) {
-      conditions.push({ field: containsMatch[1] || containsMatch[2], operator: 'contains', value: containsMatch[3] })
-      return
-    }
-    // 解析标准比较: ${field} == 'value' 或 field == 'value'
-    const stdMatch = part.match(new RegExp(`^${fieldPattern}\\s*(==|!=|>|>=|<|<=)\\s*'([^']*)'$`))
-    if (stdMatch) {
-      conditions.push({ field: stdMatch[1] || stdMatch[2], operator: stdMatch[3], value: stdMatch[4] })
-      return
-    }
-    // 解析无引号的数字比较
-    const numMatch = part.match(new RegExp(`^${fieldPattern}\\s*(==|!=|>|>=|<|<=)\\s*([\\d.]+)$`))
-    if (numMatch) {
-      conditions.push({ field: numMatch[1] || numMatch[2], operator: numMatch[3], value: numMatch[4] })
-      return
-    }
-    // 解析简单字段引用（如 ${field} == variable）
-    const varMatch = part.match(new RegExp(`^${fieldPattern}\\s*(==|!=|>|>=|<|<=)\\s*(\\w+)$`))
-    if (varMatch) {
-      conditions.push({ field: varMatch[1] || varMatch[2], operator: varMatch[3], value: varMatch[4] })
-      return
-    }
-  })
-  return conditions
-}
 
 // 解析已有联动规则
 function parseLinkageRules(rules) {
   if (!rules) return
 
-  // 显隐规则
-  if (rules.visibilityRule) {
-    config.value.visibilityEnabled = true
-    const parsed = parseVisibilityRuleString(rules.visibilityRule)
-    if (parsed.length > 0) {
-      config.value.visibilityConditions = parsed
-    }
-  }
+  conditionRuleDefinitions.forEach(definition => {
+    parseConditionRule(rules, definition)
+  })
 
   // 值联动
   if (rules.valueMapping) {
@@ -761,15 +665,40 @@ function parseLinkageRules(rules) {
     config.value.calculationEditable = rules.calculationEditable || false
   }
 
-  // 禁用/必填
-  if (rules.disabledRule) {
-    config.value.disabledEnabled = true
-    config.value.disabledCondition = rules.disabledRule
+}
+
+function parseConditionRule(rules, definition) {
+  const expression = rules[definition.expressionKey]
+  const savedRoot = parseFlowConditionConfig(rules[definition.configKey])
+  const completeSavedRoot = savedRoot && isFlowConditionGroupComplete(savedRoot)
+    ? savedRoot
+    : null
+  const parsedRoot = completeSavedRoot || parseFlowConditionExpression(expression)
+  if (!rules[definition.configKey] && !expression) return
+  config.value[definition.enabledKey] = true
+  if (parsedRoot) {
+    config.value[definition.rootKey] = parsedRoot
+    return
   }
-  if (rules.requiredRule) {
-    config.value.requiredEnabled = true
-    config.value.requiredCondition = rules.requiredRule
-  }
+  legacyConditionConfigs[definition.name] =
+    rules[definition.configKey] || null
+  legacyConditionRules[definition.name] = expression || ''
+  conditionParseWarnings[definition.name] =
+    '原配置会继续保留且不会被自动覆盖。若要使用条件组，请先确认并清空原配置。'
+}
+
+function clearConditionWarning(name) {
+  conditionParseWarnings[name] = ''
+  legacyConditionRules[name] = ''
+  legacyConditionConfigs[name] = null
+}
+
+function resetConditionGroup(name) {
+  const definition = conditionRuleDefinitions.find(
+    item => item.name === name)
+  if (!definition) return
+  config.value[definition.rootKey] = createFlowConditionGroup()
+  clearConditionWarning(name)
 }
 </script>
 
@@ -812,52 +741,18 @@ function parseLinkageRules(rules) {
   margin-bottom: 15px;
 }
 
-.condition-builder,
+.condition-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .value-linkage-builder,
 .options-linkage-builder,
 .calculation-builder {
   background: #fff;
   padding: 15px;
   border-radius: 4px;
-}
-
-.condition-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
-.condition-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 15px;
-}
-
-.condition-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.condition-field {
-  width: 120px;
-}
-
-.condition-operator {
-  width: 100px;
-}
-
-.condition-value {
-  width: 100px;
-}
-
-.logic-selector {
-  margin-top: 15px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .mapping-rules,
@@ -976,17 +871,51 @@ function parseLinkageRules(rules) {
 }
 
 @media (max-width: 720px) {
-  .condition-item,
+  .linkage-config-panel {
+    padding: 8px;
+  }
+
+  .panel-header {
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .linkage-tabs :deep(.el-tabs__content) {
+    padding: 8px;
+  }
+
+  .tab-content {
+    padding: 4px 0;
+  }
+
+  .tab-content :deep(.settings-section__header) {
+    padding: 8px;
+  }
+
+  .tab-content :deep(.settings-section__heading small) {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .tab-content :deep(.settings-section__body) {
+    padding: 8px 6px 2px;
+  }
+
+  .condition-rule-list {
+    gap: 10px;
+  }
+
+  .tab-tip {
+    margin-bottom: 10px;
+  }
+
   .mapping-item,
-  .filter-header,
-  .logic-selector {
+  .filter-header {
     align-items: stretch;
     flex-wrap: wrap;
   }
 
-  .condition-field,
-  .condition-operator,
-  .condition-value,
   .filter-depend-value {
     width: 100%;
   }

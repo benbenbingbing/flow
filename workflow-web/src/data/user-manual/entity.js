@@ -890,7 +890,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '显隐控制', meaning: '满足条件时显示当前字段。', defaultLimit: '默认关闭；条件可选字段、==、!=、>、<、>=、<=、contains、empty、notEmpty；组合默认 AND，可选 OR。', effect: '表单值变化时动态显示/隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
+                { field: '显示条件', meaning: '条件组满足时显示当前字段。', defaultLimit: '默认关闭；可添加条件和嵌套条件组，每组可选全部满足 AND 或任一满足 OR；支持 ==、!=、>、<、>=、<=、contains、empty、notEmpty。', effect: '表单值变化时动态显示或隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
                 { field: '历史接口兼容', meaning: '保留旧 apiUrl、apiParams、apiResultField 的查看与迁移入口。', defaultLimit: '位于“值与计算 / 受控数据源 / 高级兼容”，默认折叠；不建议新增任意地址。', effect: '旧配置可继续识别；新生产场景应改用统一数据源目录中的 Provider 或 Connector。', publish: 'Provider/Connector 必须统一处理凭据、数据权限、超时和审计，禁止通过自由 URL 绕过。' },
                 { field: '值联动：公式', meaning: '根据其他字段计算。', defaultLimit: '支持 + - * / ( )，使用 ${fieldCode}。', effect: '字段变化时重新计算。', publish: '空值、除零和字符串转数字必须测试。' }
@@ -908,8 +908,8 @@ export default {
               rows: [
                 { field: '选项联动', meaning: '依赖字段不同值时，只显示指定选项。', defaultLimit: '默认关闭；配置依赖字段和多条 dependValue → allowedOptions。', effect: '动态过滤下拉、单选或复选选项。', publish: 'allowedOptions 使用选项 value；删除 value 前维护规则。' },
                 { field: '计算字段', meaning: '按公式自动计算当前字段。', defaultLimit: '默认关闭；精度默认 2，范围 0–10；可编辑默认关闭。', effect: '自动写入计算结果；可编辑关闭时用户不能覆盖。', publish: '公式字段应与实体类型、精度和后端计算保持一致。' },
-                { field: '禁用条件', meaning: '表达式为真时禁用当前字段。', defaultLimit: '默认关闭；示例 ${status} == \'locked\'。', effect: '字段可见但不可编辑。', publish: '不能把安全控制只放前端，后端仍需校验。' },
-                { field: '必填条件', meaning: '表达式为真时动态必填。', defaultLimit: '默认关闭。', effect: '提交时要求填写。', publish: '条件字段隐藏或为空时要验证逻辑。' },
+                { field: '禁用条件', meaning: '条件组满足时禁用当前字段。', defaultLimit: '默认关闭；可独立添加条件和嵌套条件组，每组可选 AND 或 OR。', effect: '字段可见但不可编辑。', publish: '不能把安全控制只放前端，后端仍需校验。' },
+                { field: '必填条件', meaning: '条件组满足时动态必填。', defaultLimit: '默认关闭；可独立添加条件和嵌套条件组，每组可选 AND 或 OR。', effect: '提交时要求填写。', publish: '条件字段隐藏或为空时要验证逻辑。' },
                 { field: '保存 / 重置', meaning: '保存只 PATCH 当前节点的结构化规则；重置只清空当前节点草稿。', defaultLimit: '请求携带 expectedRevision。', effect: '表单预览即时读取该节点新草稿，其他节点不变。', publish: '409 时先合并服务器当前节点；保存后仍需发布才影响线上。' }
               ]
             }
