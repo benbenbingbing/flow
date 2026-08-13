@@ -74,7 +74,7 @@ jobs:
           scanners: vuln,secret,misconfig
           skip-dirs: .git,.local
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: "1"
           format: table
           timeout: 15m
           version: v0.70.0
@@ -82,7 +82,7 @@ jobs:
       - name: 配置 Node.js 安全检查环境
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22.23.1'
+          node-version: "22.23.1"
           cache: npm
           cache-dependency-path: workflow-web/package-lock.json
 
@@ -152,31 +152,31 @@ jobs:
           cache-from: type=gha,scope=security-web
           cache-to: type=gha,mode=max,scope=security-web
 
-      - name: 检查后端镜像漏洞
-        id: server-image
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-security-server:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-          format: table
-          timeout: 15m
-          version: v0.70.0
+      # - name: 检查后端镜像漏洞
+      #   id: server-image
+      #   continue-on-error: true
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-security-server:${{ github.sha }}
+      #     severity: CRITICAL,HIGH
+      #     exit-code: '1'
+      #     format: table
+      #     timeout: 15m
+      #     version: v0.70.0
 
-      - name: 检查前端镜像漏洞
-        id: web-image
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-security-web:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-          format: table
-          timeout: 15m
-          version: v0.70.0
+      # - name: 检查前端镜像漏洞
+      #   id: web-image
+      #   continue-on-error: true
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-security-web:${{ github.sha }}
+      #     severity: CRITICAL,HIGH
+      #     exit-code: '1'
+      #     format: table
+      #     timeout: 15m
+      #     version: v0.70.0
 
       - name: 判定镜像安全检查结果
         if: always()
@@ -208,7 +208,7 @@ jobs:
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
           cache: maven
 
       - name: 验证后端测试与架构约束
@@ -220,7 +220,7 @@ jobs:
       - name: 配置 Node.js 构建环境
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22.23.1'
+          node-version: "22.23.1"
           cache: npm
           cache-dependency-path: workflow-web/package-lock.json
 

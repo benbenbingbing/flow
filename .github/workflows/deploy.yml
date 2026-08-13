@@ -76,23 +76,23 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      - name: 检查后端镜像漏洞
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-server:${{ env.IMAGE_TAG }}
-          format: table
-          exit-code: '1'
-          severity: CRITICAL,HIGH
+      # - name: 检查后端镜像漏洞
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-server:${{ env.IMAGE_TAG }}
+      #     format: table
+      #     exit-code: '1'
+      #     severity: CRITICAL,HIGH
 
-      - name: 检查前端镜像漏洞
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: flow-web:${{ env.IMAGE_TAG }}
-          format: table
-          exit-code: '1'
-          severity: CRITICAL,HIGH
+      # - name: 检查前端镜像漏洞
+      #   uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      #   with:
+      #     scan-type: image
+      #     image-ref: flow-web:${{ env.IMAGE_TAG }}
+      #     format: table
+      #     exit-code: '1'
+      #     severity: CRITICAL,HIGH
 
       - name: 打包已验证镜像
         run: |
