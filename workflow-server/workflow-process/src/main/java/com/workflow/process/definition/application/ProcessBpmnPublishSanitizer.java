@@ -7,9 +7,12 @@ import com.workflow.process.sla.calendar.application.WorkCalendarService;
 import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
 import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
 import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
+import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -27,6 +30,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,6 +53,9 @@ public class ProcessBpmnPublishSanitizer {
     private final ObjectMapper objectMapper;
     private final TaskSlaPolicyService taskSlaPolicyService;
     private final WorkCalendarService workCalendarService;
+
+    @Autowired
+    private PersonResolverRuntimeService personResolverRuntimeService;
 
     @Autowired
     public ProcessBpmnPublishSanitizer(
@@ -104,10 +111,264 @@ public class ProcessBpmnPublishSanitizer {
         result = fixConfiguredCallActivities(result);
         result = fixConfiguredReceiveTasks(result);
         result = fixConfiguredUserTaskSlas(result);
+        result = validateNextApproverSelections(result);
         result = fixScriptTasks(result);
         BpmnExecutableContentValidator.validate(result);
 
         return result;
+    }
+
+    /**
+     * 发布时校验下一节点审批人展示/修改配置，防止无效策略进入不可变部署。
+     */
+    private String validateNextApproverSelections(String bpmnXml) {
+        String validated = rewriteConfiguredElements(
+                bpmnXml,
+                "userTask",
+                "assigneeConfig",
+                (element, assigneeConfig) -> {
+                    var selection = assigneeConfig.path(
+                            "nextApproverSelection");
+                    if (selection.isMissingNode() || selection.isNull()) {
+                        return element;
+                    }
+                    if (!selection.isObject()) {
+                        throw nextApproverConfigError(
+                                element.id(),
+                                "nextApproverSelection 必须是对象");
+                    }
+                    if (selection.has("version")
+                            && !selection.path("version")
+                            .isIntegralNumber()) {
+                        throw nextApproverConfigError(
+                                element.id(),
+                                "version 必须是整数");
+                    }
+                    int version = selection.path("version").asInt(1);
+                    if (version != 1) {
+                        throw nextApproverConfigError(
+                                element.id(),
+                                "不支持的配置版本: " + version);
+                    }
+                    boolean visible = selection.path("visible")
+                            .asBoolean(false);
+                    boolean editable = selection.path("editable")
+                            .asBoolean(false);
+                    if (editable && !visible) {
+                        throw nextApproverConfigError(
+                                element.id(),
+                                "editable=true 时 visible 必须为 true");
+                    }
+                    var source = selection.path("source");
+                    if (!source.isMissingNode()
+                            && !source.isNull()
+                            && !source.isObject()) {
+                        throw nextApproverConfigError(
+                                element.id(),
+                                "source 必须是对象");
+                    }
+                    if (!source.isObject()) {
+                        if (visible || editable) {
+                            throw nextApproverConfigError(
+                                    element.id(),
+                                    "展示或修改下一审批人时必须配置 source");
+                        }
+                        return element;
+                    }
+                    String type = source.path("type")
+                            .asText("")
+                            .trim()
+                            .toUpperCase(Locale.ROOT);
+                    if ("SCOPE".equals(type)) {
+                        var rules = source.path("rules");
+                        if (!rules.isArray()) {
+                            throw nextApproverConfigError(
+                                    element.id(),
+                                    "SCOPE source.rules 必须是数组");
+                        }
+                        if ((visible || editable) && rules.isEmpty()) {
+                            throw nextApproverConfigError(
+                                    element.id(),
+                                    "SCOPE source.rules 不能为空");
+                        }
+                        Set<String> supported = Set.of(
+                                "ALL_USERS",
+                                "USER",
+                                "ROLE",
+                                "GROUP",
+                                "ORGANIZATION");
+                        for (var rule : rules) {
+                            if (!rule.isObject()) {
+                                throw nextApproverConfigError(
+                                        element.id(),
+                                        "SCOPE rule 必须是对象");
+                            }
+                            String ruleType = rule.path("type")
+                                    .asText("")
+                                    .trim()
+                                    .toUpperCase(Locale.ROOT);
+                            if (!supported.contains(ruleType)) {
+                                throw nextApproverConfigError(
+                                        element.id(),
+                                        "不支持的 SCOPE rule.type: "
+                                                + ruleType);
+                            }
+                            if (!"ALL_USERS".equals(ruleType)
+                                    && (!rule.path("values").isArray()
+                                    || rule.path("values").isEmpty())) {
+                                throw nextApproverConfigError(
+                                        element.id(),
+                                        ruleType + " rule.values 不能为空");
+                            }
+                            if (rule.has("includeChildren")
+                                    && !rule.path("includeChildren")
+                                    .isBoolean()) {
+                                throw nextApproverConfigError(
+                                        element.id(),
+                                        "includeChildren 必须是布尔值");
+                            }
+                        }
+                    } else if ("RESOLVER".equals(type)) {
+                        String resolverCode = source.path("resolverCode")
+                                .asText("").trim();
+                        if (resolverCode.isBlank()) {
+                            throw nextApproverConfigError(
+                                    element.id(),
+                                    "RESOLVER resolverCode 不能为空");
+                        }
+                        if (source.has("extraParams")
+                                && !source.path("extraParams").isObject()) {
+                            throw nextApproverConfigError(
+                                    element.id(),
+                                    "RESOLVER extraParams 必须是对象");
+                        }
+                        if (personResolverRuntimeService == null) {
+                            throw nextApproverConfigError(
+                                    element.id(),
+                                    "RESOLVER 校验服务不可用");
+                        }
+                        try {
+                            personResolverRuntimeService.requireConfigured(
+                                    resolverCode,
+                                    PersonResolveUsage.CANDIDATE);
+                        } catch (RuntimeException exception) {
+                            throw nextApproverConfigError(
+                                    element.id(),
+                                    "RESOLVER 不可用: "
+                                            + exception.getMessage());
+                        }
+                    } else {
+                        throw nextApproverConfigError(
+                                element.id(),
+                                "source.type 仅支持 SCOPE 或 RESOLVER");
+                    }
+                    return element;
+                });
+        validateEditableMultiInstanceCollections(validated);
+        return validated;
+    }
+
+    private void validateEditableMultiInstanceCollections(
+            String bpmnXml) {
+        Pattern tasks = Pattern.compile(
+                "(?is)<(?:[A-Za-z0-9_]+:)?userTask\\b([^>]*)>(.*?)</(?:[A-Za-z0-9_]+:)?userTask>");
+        Matcher matcher = tasks.matcher(bpmnXml);
+        Map<String, String> owners = new LinkedHashMap<>();
+        Set<String> editableCollections = new java.util.LinkedHashSet<>();
+        while (matcher.find()) {
+            String start = matcher.group(1);
+            String content = matcher.group(2);
+            String nodeId = attributeValue("<userTask " + start + ">", "id");
+            String assigneeDocument = readPropertyValue(
+                    content, "assigneeConfig");
+            boolean editable = false;
+            if (assigneeDocument != null) {
+                try {
+                    var selection = objectMapper.readTree(assigneeDocument)
+                            .path("nextApproverSelection");
+                    editable = selection.path("editable")
+                            .asBoolean(false);
+                } catch (Exception exception) {
+                    throw nextApproverConfigError(
+                            nodeId, "assigneeConfig 不是合法 JSON");
+                }
+            }
+            Matcher loop = Pattern.compile(
+                    "(?is)<(?:[A-Za-z0-9_]+:)?multiInstanceLoopCharacteristics\\b([^>]*)>")
+                    .matcher(content);
+            if (!loop.find()) {
+                loop = Pattern.compile(
+                        "(?is)<(?:[A-Za-z0-9_]+:)?multiInstanceLoopCharacteristics\\b([^>]*)/>")
+                        .matcher(content);
+                if (!loop.find()) {
+                    continue;
+                }
+            }
+            String collection = attributeValue(
+                    "<multiInstanceLoopCharacteristics "
+                            + loop.group(1)
+                            + ">",
+                    "collection");
+            if (!StringUtils.hasText(collection)) {
+                collection = attributeValue(
+                        "<multiInstanceLoopCharacteristics "
+                                + loop.group(1)
+                                + ">",
+                        "flowable:collection");
+            }
+            if (!StringUtils.hasText(collection)) {
+                if (editable) {
+                    throw nextApproverConfigError(
+                            nodeId,
+                            "可改选的多实例节点必须配置 collection 流程变量");
+                }
+                continue;
+            }
+            String collectionVariable = collection.trim();
+            if ((collectionVariable.startsWith("${")
+                    || collectionVariable.startsWith("#{"))
+                    && collectionVariable.endsWith("}")) {
+                collectionVariable = collectionVariable.substring(
+                        2, collectionVariable.length() - 1).trim();
+            }
+            if (!collectionVariable.matches(
+                    "[A-Za-z_][A-Za-z0-9_]*")) {
+                if (editable) {
+                    throw nextApproverConfigError(
+                            nodeId,
+                            "多实例 collection 必须是简单流程变量: "
+                                    + collection);
+                }
+                continue;
+            }
+            String previous = owners.putIfAbsent(
+                    collectionVariable, nodeId);
+            if (previous != null
+                    && !previous.equals(nodeId)
+                    && (editable
+                    || editableCollections.contains(collectionVariable))) {
+                throw nextApproverConfigError(
+                        nodeId,
+                        "可改选的多实例节点不能共用 collection "
+                                + collectionVariable
+                                + "，已被节点 "
+                                + previous
+                                + " 使用");
+            }
+            if (editable) {
+                editableCollections.add(collectionVariable);
+            }
+        }
+    }
+
+    private IllegalArgumentException nextApproverConfigError(
+            String nodeId,
+            String detail) {
+        return new IllegalArgumentException(
+                "下一审批人配置无效: nodeId="
+                        + nodeId
+                        + ", "
+                        + detail);
     }
 
     private String fixConfiguredUserTaskSlas(String bpmnXml) {

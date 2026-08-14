@@ -89,6 +89,19 @@ public class ProcessPublishedSnapshotService {
     public PublishedNodeForms getNodeFormsContextByProcessDefinitionId(
             String processDefinitionId,
             String nodeId) {
+        ProcessVersionHistory history = getVersionByProcessDefinitionId(
+                processDefinitionId);
+        return new PublishedNodeForms(
+                history,
+                nodeForms(history, nodeId));
+    }
+
+    /**
+     * 根据 Flowable 流程定义 ID 获取其部署 ID 对应的不可变发布版本。
+     */
+    @Transactional(readOnly = true)
+    public ProcessVersionHistory getVersionByProcessDefinitionId(
+            String processDefinitionId) {
         if (processDefinitionId == null || processDefinitionId.isBlank()) {
             throw new IllegalArgumentException("流程定义ID不能为空");
         }
@@ -104,9 +117,7 @@ public class ProcessPublishedSnapshotService {
                         .orElseThrow(() -> new RuntimeException(
                                 "流程发布快照不存在: deploymentId="
                                         + processDefinition.getDeploymentId()));
-        return new PublishedNodeForms(
-                history,
-                nodeForms(history, nodeId));
+        return history;
     }
 
     private List<ProcessNodeForm> nodeForms(

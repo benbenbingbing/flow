@@ -25,14 +25,16 @@ public class EntityRelation {
     private String parentEntityId;
     /** 父实体编码 */
     private String parentEntityCode;
-    /** 父字段ID（承载该关系的字段） */
+    /** 父字段ID（旧版展示字段绑定，仅用于兼容） */
     private String parentFieldId;
-    /** 父字段编码 */
+    /** 父字段编码（旧版展示字段绑定，仅用于兼容） */
     private String parentFieldCode;
     /** 关系编码 */
     private String relationCode;
     /** 关系名称 */
     private String relationName;
+    /** 聚合数据中的稳定属性名，不依赖实体字段 */
+    private String dataKey;
     /** 子实体ID */
     private String childEntityId;
     /** 子实体编码 */
@@ -41,6 +43,8 @@ public class EntityRelation {
     private String childRefFieldCode;
     /** 关系类型（一对一/一对多） */
     private RelationType relationType;
+    /** 关系所有权：组成关系或普通关联 */
+    private OwnershipType ownershipType;
     /** 是否级联删除（删除父记录时联动删除子记录） */
     private Boolean cascadeDelete;
     /** 关系是否必填 */
@@ -64,5 +68,12 @@ public class EntityRelation {
         ONE_TO_ONE,
         /** 一对多：一条父记录对应多条子记录 */
         ONE_TO_MANY
+    }
+
+    public enum OwnershipType {
+        /** 子记录属于父聚合，可配置级联删除 */
+        COMPOSITION,
+        /** 子记录独立存在，不允许由父记录级联删除 */
+        ASSOCIATION
     }
 }

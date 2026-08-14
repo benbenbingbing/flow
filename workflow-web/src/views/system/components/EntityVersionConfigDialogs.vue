@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="scenarioVisible"
-    :title="scenarioIndex < 0 ? '新增版本场景' : '编辑版本场景'"
+    :title="scenarioIndex < 0 ? '新增变更规则' : '编辑变更规则'"
     width="720px"
     @update:model-value="emit('update:scenarioVisible', $event)"
   >
@@ -68,13 +68,13 @@
     </el-form>
     <template #footer>
       <el-button @click="emit('update:scenarioVisible', false)">取消</el-button>
-      <el-button type="primary" @click="emit('saveScenario')">保存场景</el-button>
+      <el-button type="primary" @click="emit('saveScenario')">保存规则</el-button>
     </template>
   </el-dialog>
 
   <el-dialog
     :model-value="stepVisible"
-    :title="stepIndex < 0 ? '新增前置操作' : '编辑前置操作'"
+    :title="stepIndex < 0 ? '新增变更处理步骤' : '编辑变更处理步骤'"
     width="720px"
     @update:model-value="emit('update:stepVisible', $event)"
   >
@@ -89,14 +89,23 @@
             help-key="entityVersion.phase"
           />
         </template>
-        <el-select v-model="step.phase" :disabled="step.stepType === 'MANAGED_INTERFACE'">
+        <el-select v-model="step.phase" :disabled="availablePhaseOptions.length === 1">
           <el-option
-            v-for="item in phaseOptions"
+            v-for="item in availablePhaseOptions"
             :key="item.value"
             :label="item.label"
             :value="item.value"
           />
         </el-select>
+        <div v-if="step.stepType === 'FIELD_MAPPING'" class="form-tip">
+          字段映射仅能在准备或写入前阶段执行。
+        </div>
+        <div v-else-if="step.stepType === 'MANAGED_INTERFACE'" class="form-tip">
+          受管理接口固定在准备阶段执行。
+        </div>
+        <div v-else-if="step.stepType === 'JAVA_PROVIDER' && step.supportedPhases?.length" class="form-tip">
+          所选 Provider 支持：{{ availablePhaseOptions.map(item => item.label).join('、') }}。
+        </div>
       </el-form-item>
       <el-form-item label="操作类型" required>
         <template #label>
@@ -174,7 +183,7 @@
     </el-form>
     <template #footer>
       <el-button @click="emit('update:stepVisible', false)">取消</el-button>
-      <el-button type="primary" @click="emit('saveStep')">保存操作</el-button>
+      <el-button type="primary" @click="emit('saveStep')">保存步骤</el-button>
     </template>
   </el-dialog>
 
@@ -304,72 +313,6 @@
     />
   </el-dialog>
 
-  <el-dialog
-    :model-value="simulationVisible"
-    title="模拟匹配"
-    width="760px"
-    @update:model-value="emit('update:simulationVisible', $event)"
-  >
-    <el-form label-width="110px">
-      <el-form-item label="变更入口">
-        <template #label>
-          <ConfigHelpLabel
-            label="变更入口"
-            help-key="entityVersion.sourceTypes"
-          />
-        </template>
-        <el-select v-model="simulationModel.sourceType">
-          <el-option
-            v-for="item in sourceTypeOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="操作类型">
-        <template #label>
-          <ConfigHelpLabel
-            label="操作类型"
-            help-key="entityVersion.operationTypes"
-          />
-        </template>
-        <el-select v-model="simulationModel.operationType">
-          <el-option
-            v-for="item in operationTypeOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="业务意图">
-        <el-input v-model="simulationModel.businessIntentCode" />
-      </el-form-item>
-      <el-form-item label="写入前数据">
-        <el-input v-model="simulationModel.beforeText" type="textarea" :rows="4" />
-      </el-form-item>
-      <el-form-item label="写入后数据">
-        <el-input v-model="simulationModel.afterText" type="textarea" :rows="4" />
-      </el-form-item>
-      <el-form-item label="扩展参数">
-        <el-input v-model="simulationModel.extraText" type="textarea" :rows="3" />
-      </el-form-item>
-      <el-alert
-        v-if="simulationResult"
-        :title="simulationResult.matched ? `命中：${simulationResult.scenario?.name}` : '未命中版本场景'"
-        :type="simulationResult.matched ? 'success' : 'info'"
-        show-icon
-        :closable="false"
-      />
-    </el-form>
-    <template #footer>
-      <el-button @click="emit('update:simulationVisible', false)">关闭</el-button>
-      <el-button type="primary" :loading="simulationLoading" @click="emit('runSimulation')">
-        执行模拟
-      </el-button>
-    </template>
-  </el-dialog>
 </template>
 
 <script setup>
@@ -377,6 +320,10 @@ import { computed } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import {
+  alignMutationStepPhase,
+  allowedMutationStepPhases
+} from '@/shared/entity-mutation-policy'
 
 const props = defineProps({
   scenarioVisible: Boolean,
@@ -402,11 +349,7 @@ const props = defineProps({
   pickerPage: { type: Number, default: 1 },
   pickerItems: { type: Array, default: () => [] },
   pickerTotal: { type: Number, default: 0 },
-  pickerLoading: Boolean,
-  simulationVisible: Boolean,
-  simulation: { type: Object, required: true },
-  simulationResult: { type: Object, default: null },
-  simulationLoading: Boolean
+  pickerLoading: Boolean
 })
 
 const emit = defineEmits([
@@ -416,27 +359,27 @@ const emit = defineEmits([
   'update:pickerVisible',
   'update:pickerKeyword',
   'update:pickerPage',
-  'update:simulationVisible',
   'saveScenario',
   'saveStep',
   'saveTarget',
   'openPicker',
   'selectPickerItem',
-  'sourceEntityResolved',
-  'runSimulation'
+  'sourceEntityResolved'
 ])
 
 const scenario = computed(() => props.scenarioEditor)
 const step = computed(() => props.stepEditor)
 const target = computed(() => props.targetEditor)
-const simulationModel = computed(() => props.simulation)
+const availablePhaseOptions = computed(() => {
+  const allowed = new Set(allowedMutationStepPhases(step.value))
+  return props.phaseOptions.filter(item => allowed.has(item.value))
+})
 
 function handleStepTypeChange(value) {
   step.value.providerCode = ''
   step.value.operationCode = ''
-  if (value === 'MANAGED_INTERFACE') {
-    step.value.phase = 'PREPARE'
-  }
+  step.value.supportedPhases = []
+  alignMutationStepPhase(step.value)
 }
 </script>
 
@@ -478,5 +421,12 @@ function handleStepTypeChange(value) {
 .secondary-text {
   color: #909399;
   font-size: 13px;
+}
+
+.form-tip {
+  width: 100%;
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 </style>

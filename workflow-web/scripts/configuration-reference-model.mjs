@@ -101,15 +101,19 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^row\\.(sourcePath|targetPath|overwrite|clearOnEmpty)$'
   ]),
   source('src/views/system/EntityVersionManagement.vue', '实体配置', '实体数据版本', [
+    '^draft\\.(enabled|snapshotScope\\.|diffPolicy\\.)',
+    '^triggerEditor\\.',
+    '^scopeEditor\\.',
+    '^condition\\.(fieldCode|operator|value)$',
+    '^maxSizeMb$'
+  ]),
+  source('src/views/system/EntityMutationPolicyManagement.vue', '实体配置', '实体变更策略', [
     '^draft\\.enabled$'
   ]),
-  source('src/views/system/components/EntityVersionConfigDialogs.vue', '实体配置', '实体数据版本', [
+  source('src/views/system/components/EntityVersionConfigDialogs.vue', '实体配置', '实体变更策略', [
     '^scenario\\.',
     '^step\\.',
     '^target\\.'
-  ]),
-  source('src/views/system/components/EntityVersionConfigDialogs.vue', '实体配置', '数据版本模拟（验证输入，不发布）', [
-    '^simulationModel\\.'
   ]),
   source('src/components/UiConfigPublishDialog.vue', '实体配置', '表单与列表发布', [
     '^form\\.(releaseMode|description)$'
@@ -209,7 +213,14 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^dialogVisible$', '^activeTab$', '^showAddEvent$'
   ],
   'src/views/system/EntityVersionManagement.vue': [
-    '^keyword$', '^drawerVisible$', '^activeTab$', '^scenarioDialogVisible$'
+    '^keyword$', '^drawerVisible$', '^activeTab$', '^releasePage$',
+    '^triggerDialogVisible$', '^scopeDialogVisible$', '^previewVisible$',
+    '^previewRecordId$'
+  ],
+  'src/views/system/EntityMutationPolicyManagement.vue': [
+    '^keyword$', '^drawerVisible$', '^activeTab$', '^scenarioDialogVisible$',
+    '^stepDialogVisible$', '^targetDialogVisible$', '^pickerVisible$',
+    '^pickerKeyword$', '^pickerPage$'
   ],
   'src/components/UiConfigPublishDialog.vue': [],
   'src/views/ProcessList.vue': [
@@ -557,7 +568,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   {
     domain: '实体配置',
     area: '数据版本执行阶段',
-    source: 'src/views/system/EntityVersionManagement.vue',
+    source: 'src/views/system/EntityMutationPolicyManagement.vue',
     values: [
       ['PREPARE', '准备', '写库前准备上下文或默认数据。'],
       ['BEFORE_WRITE', '写入前', '正式写库前执行校验、表达式或映射。'],
@@ -568,19 +579,19 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   {
     domain: '实体配置',
     area: '数据版本步骤类型',
-    source: 'src/views/system/EntityVersionManagement.vue',
+    source: 'src/views/system/EntityMutationPolicyManagement.vue',
     values: [
-      ['BUILT_IN_RULE', '内置规则', '执行平台登记的内置版本规则。'],
+      ['BUILT_IN_RULE', '内置规则', '执行平台登记的内置规则，保存前必须选择有效的规则实现。'],
       ['EXPRESSION', '条件表达式', '执行受控表达式计算或判断。'],
-      ['FIELD_MAPPING', '字段映射', '按结构化映射转换当前记录或上下文。'],
-      ['MANAGED_INTERFACE', '受管理接口', '调用平台登记的接口服务；固定在准备阶段。'],
-      ['JAVA_PROVIDER', 'Java Provider', '调用已注册的 Java 扩展实现。']
+      ['FIELD_MAPPING', '字段映射', '按结构化映射转换当前记录或上下文；仅允许 PREPARE 或 BEFORE_WRITE。'],
+      ['MANAGED_INTERFACE', '受管理接口', '调用平台登记的接口服务；仅允许 PREPARE。'],
+      ['JAVA_PROVIDER', 'Java Provider', '调用已注册的 Java 扩展实现；执行阶段必须属于 Provider 的 supportedPhases。']
     ]
   },
   {
     domain: '实体配置',
     area: '数据版本目标解析方式',
-    source: 'src/views/system/EntityVersionManagement.vue',
+    source: 'src/views/system/EntityMutationPolicyManagement.vue',
     values: [
       ['FIELD', '引用字段', '从来源记录的引用字段取得目标记录 ID。'],
       ['RELATION', '实体关系', '通过已定义实体关系查找目标记录。'],
@@ -722,7 +733,7 @@ const DEFAULT_LOCATION_BY_AREA = Object.freeze({
   '旧字段脚本事件（受限）': '实体配置-表单-编辑-字段属性-事件',
   '实体选择后回填': '实体配置-表单-编辑-单选实体属性-选择后回填',
   '实体数据版本': '实体配置-数据版本',
-  '数据版本模拟（验证输入，不发布）': '实体配置-数据版本-模拟',
+  '实体变更策略': '实体配置-实体变更策略',
   '表单与列表发布': '实体配置-表单或列表-编辑-发布',
   '流程定义与发布': '流程配置-流程',
   '流程节点': '流程配置-流程-设计-节点属性',
@@ -798,11 +809,14 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/LinkageConfigPanel.vue', '^(config\\.options|rule\\.(dependValue|allowedOptions))', '实体配置-表单-编辑-字段属性-交互与规则-选项联动'),
   locationRule('src/components/LinkageConfigPanel.vue', '^config\\.calculation', '实体配置-表单-编辑-字段属性-交互与规则-自动计算'),
 
-  locationRule('src/views/system/EntityVersionManagement.vue', '^draft\\.enabled$', '实体配置-数据版本-实体版本设置'),
-  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^scenario\\.', '实体配置-数据版本-场景配置'),
-  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^step\\.', '实体配置-数据版本-操作步骤'),
-  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^target\\.', '实体配置-数据版本-变更目标'),
-  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^simulationModel\\.', '实体配置-数据版本-模拟验证'),
+  locationRule('src/views/system/EntityVersionManagement.vue', '^draft\\.enabled$', '实体配置-数据版本-策略设置'),
+  locationRule('src/views/system/EntityVersionManagement.vue', '^triggerEditor\\.', '实体配置-数据版本-生成时机'),
+  locationRule('src/views/system/EntityVersionManagement.vue', '^(draft\\.snapshotScope\\.|scopeEditor\\.|condition\\.|maxSizeMb$)', '实体配置-数据版本-固化范围'),
+  locationRule('src/views/system/EntityVersionManagement.vue', '^draft\\.diffPolicy\\.', '实体配置-数据版本-比对规则'),
+  locationRule('src/views/system/EntityMutationPolicyManagement.vue', '^draft\\.enabled$', '实体配置-实体变更策略-策略设置'),
+  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^scenario\\.', '实体配置-实体变更策略-变更规则'),
+  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^step\\.', '实体配置-实体变更策略-处理步骤'),
+  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^target\\.', '实体配置-实体变更策略-变更目标'),
 
   locationRule('src/views/ProcessList.vue', '^formData\\.', '流程配置-流程-新建/编辑'),
   locationRule('src/views/ProcessList.vue', '^publishForm\\.', '流程配置-流程-发布'),
@@ -871,10 +885,10 @@ const ENUM_LOCATION_BY_AREA = Object.freeze({
   '流程动作失败策略': '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作',
   '数据版本变更入口': '实体配置-数据版本-场景配置',
   '数据版本操作类型': '实体配置-数据版本-场景配置',
-  '数据版本执行阶段': '实体配置-数据版本-操作步骤',
-  '数据版本步骤类型': '实体配置-数据版本-操作步骤',
-  '数据版本目标解析方式': '实体配置-数据版本-变更目标',
-  '数据版本目标应用策略': '实体配置-数据版本-变更目标',
+  '数据版本执行阶段': '实体配置-实体变更策略-处理步骤',
+  '数据版本步骤类型': '实体配置-实体变更策略-处理步骤',
+  '数据版本目标解析方式': '实体配置-实体变更策略-变更目标',
+  '数据版本目标应用策略': '实体配置-实体变更策略-变更目标',
   'SLA 时间口径': '流程配置-任务 SLA-策略管理-新建/编辑策略',
   'SLA 指标': '流程配置-任务 SLA-策略管理-升级动作',
   'SLA 升级触发点': '流程配置-任务 SLA-策略管理-升级动作',
@@ -1395,6 +1409,18 @@ const KEY_GUIDANCE = Object.freeze({
   apiResultField: ['设置历史联动接口响应中要取值的路径。', 'data.managerId', '接口成功后从该路径读取结果并写入当前字段。'],
   optionsDependField: ['选择选项联动依赖的来源字段。', 'request_type', '该字段变化时重新匹配允许选项规则。'],
   selectedProcessId: ['选择流程型实体绑定的流程定义。', '2082642342048706562', '实体记录可按该流程的已发布版本发起和同步状态。'],
+  fieldMode: ['选择版本节点固化全部已发布字段，还是只固化明确选择的字段。', 'ALL_PUBLISHED', '生成版本时按发布快照冻结对应字段集合，之后字段配置变化不会改写历史版本。'],
+  fieldCodes: ['选择需要进入版本快照的稳定字段编码。', ['name', 'status'], '指定字段模式下只固化这些字段，并冻结生成版本时的中文名称和显示值。'],
+  maxRowsPerRelation: ['限制单个直接关系默认允许固化的最大行数。', 500, '关系数据超过该行数时版本整体生成失败，不保存截断快照。'],
+  maxRowsPerVersion: ['限制一个版本中所有关联数据允许固化的总行数。', 2000, '关联数据总行数超过上限时版本整体生成失败并返回明确原因。'],
+  maxSizeMb: ['限制单个完整版本允许占用的估算存储大小。', 5, '预计快照超过该 MiB 上限时拒绝固化，避免生成不完整或超大版本。'],
+  changedOnlyDefault: ['设置打开版本比较时是否默认隐藏未变化字段。', true, '开启后比较首先聚焦变化项，用户仍可切换为查看全部字段。'],
+  trackOrder: ['设置关联集合的行顺序变化是否作为独立差异。', false, '开启后同一关联记录位置变化显示为“移动”，关闭时只比较行内容。'],
+  ignoredFieldCodes: ['选择不参与业务数据差异统计的稳定字段编码。', ['update_time'], '比较时跳过这些字段，但历史快照仍可保留其冻结值。'],
+  triggerName: ['设置版本生成时机的中文名称。', '审批通过固化', '版本时间线和发布历史使用该名称说明版本为何生成。'],
+  maxRows: ['限制当前关联范围单次允许固化的最大行数。', 500, '该关系查询结果超过上限时版本整体生成失败，不会静默截断。'],
+  logic: ['选择固定过滤条件要求全部满足还是任一满足。', 'ALL', '固化关联数据时按该组合逻辑筛选记录，只有筛选结果进入版本。'],
+  operator: ['选择固定过滤字段和值之间的参数化比较操作。', 'EQ', '固化范围查询使用该受控操作符生成过滤条件，不执行任意 SQL。'],
   childEntityId: ['选择子表单字段对应的子实体定义。', '2082642338789732355', '子表单按该实体的字段结构保存和查询明细。'],
   simulationUserId: ['选择数据权限模拟时假设的当前用户。', '1', '模拟器以该用户的角色、组织和关系计算可见范围，不修改正式权限。'],
   conditionValue: ['设置统一事件步骤条件要比较的目标值。', 'APPROVED', '来源路径值与该值比较为真时执行步骤。'],

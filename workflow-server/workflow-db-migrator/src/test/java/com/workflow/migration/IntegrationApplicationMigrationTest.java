@@ -1,5 +1,6 @@
 package com.workflow.migration;
 
+import com.workflow.migration.runner.BusinessMigrationPreflight;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -195,6 +196,95 @@ class IntegrationApplicationMigrationTest {
                                  WHERE application_id = 'upgrade-app'
                                    AND process_instance_id =
                                      'upgrade-process-instance'
+                                """));
+        }
+
+        @Test
+        void relationDuplicatePreflightStopsBeforeFlywayHistoryIsChanged()
+                        throws Exception {
+                Flyway throughV42 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("42"))
+                                .load();
+                throughV42.migrate();
+                execute("""
+                                INSERT INTO entity_relation (
+                                  id, parent_entity_id, parent_entity_code,
+                                  parent_field_code, relation_code,
+                                  child_entity_id, child_entity_code,
+                                  child_ref_field_code
+                                ) VALUES
+                                  ('rel-1', 'parent-1', 'asset', 'lines_a',
+                                   'asset_lines', 'child-1', 'asset_line', 'asset_id'),
+                                  ('rel-2', 'parent-1', 'asset', 'lines_b',
+                                   'asset_lines', 'child-1', 'asset_line', 'asset_id')
+                                """);
+
+                IllegalStateException failure = assertThrows(
+                                IllegalStateException.class,
+                                () -> {
+                                        try (Connection connection =
+                                                             MYSQL.createConnection("")) {
+                                                BusinessMigrationPreflight.verify(connection);
+                                        }
+                                });
+
+                assertTrue(failure.getMessage().contains("asset_lines"));
+                assertEquals("42", currentVersion());
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*) FROM flyway_schema_history
+                                WHERE success = 0
+                                """));
+        }
+
+        @Test
+        void versionIdempotencyPreflightStopsBeforeV46HistoryIsWritten()
+                        throws Exception {
+                Flyway throughV45 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("45"))
+                                .load();
+                throughV45.migrate();
+                execute("""
+                                INSERT INTO entity_record_version (
+                                  id, entity_code, record_id, version_no,
+                                  scenario_code, scenario_name,
+                                  operation_type, source_type,
+                                  business_intent_code, business_intent_name,
+                                  idempotency_key, snapshot_hash, snapshot_document
+                                ) VALUES
+                                  ('version-1', 'asset', 'asset-1', 1,
+                                   'ROOT_CHANGE', '根变化', 'UPDATE', 'FORM',
+                                   'EDIT', '编辑', 'same-key', 'hash-1', '{}'),
+                                  ('version-2', 'asset', 'asset-1', 2,
+                                   'MANUAL', '手工', 'UPDATE', 'SYSTEM_TASK',
+                                   'MANUAL', '手工固化', 'same-key', 'hash-2', '{}')
+                                """);
+
+                IllegalStateException failure = assertThrows(
+                                IllegalStateException.class,
+                                () -> {
+                                        try (Connection connection =
+                                                             MYSQL.createConnection("")) {
+                                                BusinessMigrationPreflight.verify(connection);
+                                        }
+                                });
+
+                assertTrue(failure.getMessage().contains("same-key"));
+                assertEquals("45", currentVersion());
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*) FROM flyway_schema_history
+                                WHERE success = 0
                                 """));
         }
 

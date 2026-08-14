@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
 import lombok.RequiredArgsConstructor;
@@ -96,7 +97,30 @@ public class EntityPublishedSnapshotService {
                 : history.getTeamVisibilityLevel());
         snapshot.setVersion(history.getVersion());
         snapshot.setFields(parseFields(history));
+        snapshot.setRelationsSnapshotAvailable(
+                history.getRelationsSnapshot() != null);
+        snapshot.setRelations(parseRelations(history));
         return snapshot;
+    }
+
+    private List<EntityRelation> parseRelations(
+            EntityPublishHistory history) {
+        String relationsSnapshot = history.getRelationsSnapshot();
+        if (relationsSnapshot == null || relationsSnapshot.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    relationsSnapshot,
+                    objectMapper.getTypeFactory()
+                            .constructCollectionType(
+                                    List.class,
+                                    EntityRelation.class));
+        } catch (JsonProcessingException | IllegalArgumentException e) {
+            throw new RuntimeException(
+                    "实体发布关系快照解析失败: " + history.getEntityId(),
+                    e);
+        }
     }
 
     private List<EntityField> parseFields(EntityPublishHistory history) {

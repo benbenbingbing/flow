@@ -91,7 +91,8 @@ public class EntityFormNodeService {
                         "fieldId", "fieldCode", "fieldType");
         private static final Set<String> IMMUTABLE_SUB_FORM_CONFIG_KEYS = Set.of(
                         "refEntityId", "childEntityId", "relationType",
-                        "childRefFieldCode", "refFieldCode", "relationCode");
+                        "childRefFieldCode", "refFieldCode", "relationCode",
+                        "dataKey");
         private static final Set<String> IMMUTABLE_REFERENCE_CONFIG_KEYS = Set.of(
                         "refEntityType", "refEntityId", "entityCode");
         private static final Set<String> EDITABLE_LABEL_NODE_TYPES = Set.of(
@@ -847,12 +848,25 @@ public class EntityFormNodeService {
                 }
 
                 Map<String, Object> props = mutableMap(read(node.getPropsDocument(), "表单节点属性"));
+                String relationDataKey = effectiveDataKey(relation);
+                if (StringUtils.hasText(relationDataKey)) {
+                        putCanonicalRelationValue(
+                                        props,
+                                        "fieldCode",
+                                        relationDataKey);
+                }
                 Map<String, Object> componentProps = objectMap(props.get("componentProps"), "子表单组件属性");
                 Map<String, Object> subFormConfig = objectMap(componentProps.get("subFormConfig"), "子表单配置");
                 putCanonicalRelationValue(
                                 subFormConfig,
                                 "relationCode",
                                 relation.getRelationCode());
+                if (StringUtils.hasText(relationDataKey)) {
+                        putCanonicalRelationValue(
+                                        subFormConfig,
+                                        "dataKey",
+                                        relationDataKey);
+                }
                 putCanonicalRelationValue(
                                 subFormConfig,
                                 "childEntityId",
@@ -1774,22 +1788,26 @@ public class EntityFormNodeService {
                 Map<String, Object> props = request.getProps() == null
                                 ? read(current.getPropsDocument(), "表单节点属性")
                                 : request.getProps();
-                String fieldId = blankToNull(
-                                Objects.toString(props.get("fieldId"), null));
                 String fieldCode = blankToNull(
                                 Objects.toString(props.get("fieldCode"), null));
-                if (StringUtils.hasText(relation.getParentFieldId())
+                if (StringUtils.hasText(effectiveDataKey(relation))
                                 && !Objects.equals(
-                                                relation.getParentFieldId(), fieldId)) {
-                        throw new IllegalArgumentException(
-                                        "子表单节点字段与实体关系不匹配: fieldId");
-                }
-                if (StringUtils.hasText(relation.getParentFieldCode())
-                                && !Objects.equals(
-                                                relation.getParentFieldCode(), fieldCode)) {
+                                                effectiveDataKey(relation), fieldCode)) {
                         throw new IllegalArgumentException(
                                         "子表单节点字段与实体关系不匹配: fieldCode");
                 }
+        }
+
+        private String effectiveDataKey(EntityRelation relation) {
+                if (StringUtils.hasText(relation.getDataKey())) {
+                        return relation.getDataKey();
+                }
+                if (StringUtils.hasText(relation.getParentFieldCode())) {
+                        return relation.getParentFieldCode();
+                }
+                // 旧测试桩或历史导入数据可能只保留 relationCode；此时不能
+                // 把关系标识误当成表单数据属性，沿用节点自身 fieldCode。
+                return null;
         }
 
         private void validateInvalidBindingRepair(

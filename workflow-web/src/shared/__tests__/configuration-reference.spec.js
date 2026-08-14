@@ -141,6 +141,25 @@ for (const group of AUTHORITATIVE_ENUMS) {
   }
 }
 
+const mutationStepTypes = AUTHORITATIVE_ENUMS.find(group =>
+  group.area === '数据版本步骤类型'
+)
+assert.match(
+  mutationStepTypes?.values.find(([value]) => value === 'FIELD_MAPPING')?.[2] || '',
+  /PREPARE.+BEFORE_WRITE/,
+  '字段映射的配置参考必须说明后端允许阶段'
+)
+assert.match(
+  mutationStepTypes?.values.find(([value]) => value === 'MANAGED_INTERFACE')?.[2] || '',
+  /仅允许 PREPARE/,
+  '受管理接口的配置参考必须说明固定阶段'
+)
+assert.match(
+  mutationStepTypes?.values.find(([value]) => value === 'JAVA_PROVIDER')?.[2] || '',
+  /supportedPhases/,
+  'Java Provider 的配置参考必须说明能力约束'
+)
+
 assert.ok(
   KNOWN_LIMITATIONS.some(item => item.id === 'process.script-task.disabled'),
   '必须明确记录脚本任务当前不可配置'

@@ -86,6 +86,36 @@ public record FormSubmissionExecutionContext(
             String ownerKey,
             String serviceId,
             int bindingIndex) {
+        return bindingIdempotencyKey(
+                formId,
+                formReleaseId,
+                ownerKey,
+                serviceId,
+                bindingIndex,
+                null);
+    }
+
+    /**
+     * 生成包含绑定输入指纹的幂等键。
+     *
+     * <p>同一业务追踪键可能被客户端复用于多次预览。把规范化输入指纹纳入
+     * 幂等材料，避免表单值变化后受控 Provider 仍按旧键返回上一次映射。</p>
+     *
+     * @param formId          表单ID
+     * @param formReleaseId   表单发布版本ID，可为 null
+     * @param ownerKey        绑定归属 key
+     * @param serviceId       接口服务ID
+     * @param bindingIndex    绑定序号
+     * @param inputFingerprint 规范化绑定输入指纹，可为 null
+     * @return 以 fbs_ 为前缀的幂等键
+     */
+    public String bindingIdempotencyKey(
+            String formId,
+            String formReleaseId,
+            String ownerKey,
+            String serviceId,
+            int bindingIndex,
+            String inputFingerprint) {
         String material = String.join(
                 "|",
                 businessTraceKey,
@@ -94,7 +124,8 @@ public record FormSubmissionExecutionContext(
                 value(formReleaseId),
                 value(ownerKey),
                 value(serviceId),
-                String.valueOf(bindingIndex));
+                String.valueOf(bindingIndex),
+                value(inputFingerprint));
         return "fbs_" + sha256(material);
     }
 

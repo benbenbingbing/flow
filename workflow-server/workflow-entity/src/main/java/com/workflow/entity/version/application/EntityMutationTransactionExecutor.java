@@ -13,13 +13,20 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+
+import com.workflow.entity.version.application.EntityRelatedVersionCaptureService.RootKey;
 
 /**
  * 统一实体变更管道的事务内执行器。
@@ -33,44 +40,99 @@ public class EntityMutationTransactionExecutor {
     private final EntityMutationStepExecutor stepExecutor;
     private final EntityVersionPolicyMatcher policyMatcher;
     private final EntityRecordVersionService versionService;
+    private final EntityRelatedVersionCaptureService relatedVersionCaptureService;
     private final EntityMutationReceiptService receiptService;
     private final ObjectMapper objectMapper;
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(
+            rollbackFor = Exception.class,
+            isolation = Isolation.READ_COMMITTED)
     public EntityMutationResult execute(
             EntityMutationCommand command) {
-        return executeInternal(command);
+        return executeInternal(command, null, false);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(
+            rollbackFor = Exception.class,
+            isolation = Isolation.READ_COMMITTED)
     public List<EntityMutationResult> executeBatch(
             List<EntityMutationCommand> commands) {
-        List<EntityMutationResult> results =
-                new ArrayList<>();
-        for (EntityMutationCommand command : commands) {
-            results.add(executeInternal(command));
+        if (commands == null || commands.isEmpty()) {
+            return List.of();
         }
+        List<EntityMutationResult> results = new ArrayList<>(
+                Collections.nCopies(commands.size(), null));
+        List<IndexedCommand> indexed = new ArrayList<>();
+        for (int index = 0; index < commands.size(); index++) {
+            indexed.add(new IndexedCommand(index, commands.get(index)));
+        }
+        List<IndexedCommand> pending = new ArrayList<>();
+        indexed.stream()
+                .sorted(Comparator
+                        .comparing((IndexedCommand item) ->
+                                        item.command().operationId(),
+                                Comparator.nullsFirst(String::compareTo))
+                        .thenComparingInt(IndexedCommand::index))
+                .forEach(item -> {
+                    EntityMutationResult replayed =
+                            receiptService.acquire(item.command());
+                    if (replayed == null) {
+                        pending.add(item);
+                    } else {
+                        results.set(item.index(), replayed);
+                    }
+                });
+        Set<RootKey> lockedRoots = lockBatch(pending);
+        pending.stream()
+                .sorted(Comparator.comparingInt(IndexedCommand::index))
+                .forEach(item -> results.set(
+                        item.index(),
+                        executeInternal(item.command(), lockedRoots, true)));
         return results;
     }
 
     private EntityMutationResult executeInternal(
-            EntityMutationCommand original) {
-        EntityMutationResult replayed =
-                receiptService.acquire(original);
-        if (replayed != null) {
-            return replayed;
+            EntityMutationCommand original,
+            Set<RootKey> batchLockedRoots,
+            boolean receiptAcquired) {
+        if (!receiptAcquired) {
+            EntityMutationResult replayed =
+                    receiptService.acquire(original);
+            if (replayed != null) {
+                return replayed;
+            }
         }
         Map<String, Object> beforeRecord =
                 new LinkedHashMap<>();
+        Set<RootKey> lockedRelatedRoots;
         if (original.operationType()
                 != EntityMutationOperationType.CREATE) {
-            writer.lock(
-                    original.entityCode(),
-                    original.recordId());
             beforeRecord = load(
                     original.entityCode(),
                     original.recordId());
+            if (batchLockedRoots == null) {
+                lockedRelatedRoots =
+                        relatedVersionCaptureService.lockRelatedRoots(
+                                original, beforeRecord);
+                writer.lock(
+                        original.entityCode(),
+                        original.recordId());
+                beforeRecord = load(
+                        original.entityCode(),
+                        original.recordId());
+            } else {
+                lockedRelatedRoots = batchLockedRoots;
+            }
+            relatedVersionCaptureService.requireRootsLocked(
+                    original, lockedRelatedRoots, beforeRecord);
             validateBaseline(original);
+        } else {
+            lockedRelatedRoots = batchLockedRoots == null
+                    ? relatedVersionCaptureService.lockRelatedRoots(
+                            original, Map.of())
+                    : batchLockedRoots;
+            relatedVersionCaptureService.requireRootsLocked(
+                    original, lockedRelatedRoots, Map.of());
         }
         EntityMutationStepExecutor.ExecutionOutcome before =
                 stepExecutor.execute(
@@ -83,6 +145,8 @@ public class EntityMutationTransactionExecutor {
                     "事务内 BEFORE_WRITE 步骤不能创建额外变更计划");
         }
         EntityMutationCommand command = before.command();
+        relatedVersionCaptureService.requireRootsLocked(
+                command, lockedRelatedRoots, beforeRecord);
         EntityAggregateWriter.WriteResult writeResult =
                 writer.apply(command);
         String recordId = writeResult.recordId();
@@ -103,6 +167,11 @@ public class EntityMutationTransactionExecutor {
                         : load(
                                 command.entityCode(),
                                 recordId);
+        relatedVersionCaptureService.requireRootsLocked(
+                effectiveCommand,
+                lockedRelatedRoots,
+                beforeRecord,
+                afterRecord);
         EntityMutationStepExecutor.ExecutionOutcome after =
                 stepExecutor.execute(
                         effectiveCommand,
@@ -130,6 +199,10 @@ public class EntityMutationTransactionExecutor {
                                 command.operationType()
                                         == EntityMutationOperationType.DELETE))
                 .orElse(null);
+        relatedVersionCaptureService.captureRelated(
+                effectiveCommand,
+                beforeRecord,
+                afterRecord);
         EntityMutationResult result =
                 new EntityMutationResult(
                 effectiveCommand.operationId(),
@@ -148,6 +221,41 @@ public class EntityMutationTransactionExecutor {
                 effectiveCommand,
                 result);
         return result;
+    }
+
+    private Set<RootKey> lockBatch(List<IndexedCommand> pending) {
+        Set<RootKey> roots = new LinkedHashSet<>();
+        Set<RootKey> records = new LinkedHashSet<>();
+        for (IndexedCommand item : pending) {
+            EntityMutationCommand command = item.command();
+            Map<String, Object> before = command.operationType()
+                    == EntityMutationOperationType.CREATE
+                    ? Map.of()
+                    : load(command.entityCode(), command.recordId());
+            roots.addAll(relatedVersionCaptureService.requiredRootKeys(
+                    command, before));
+            if (command.operationType()
+                    != EntityMutationOperationType.CREATE) {
+                records.add(new RootKey(
+                        command.entityCode(), command.recordId()));
+            }
+        }
+        Comparator<RootKey> order = Comparator
+                .comparing(RootKey::entityCode)
+                .thenComparing(RootKey::recordId);
+        roots.stream().sorted(order).forEach(key ->
+                writer.lock(key.entityCode(), key.recordId()));
+        records.stream()
+                .filter(key -> !roots.contains(key))
+                .sorted(order)
+                .forEach(key -> writer.lock(
+                        key.entityCode(), key.recordId()));
+        return Set.copyOf(roots);
+    }
+
+    private record IndexedCommand(
+            int index,
+            EntityMutationCommand command) {
     }
 
     private void validateBaseline(

@@ -7,6 +7,7 @@ import com.workflow.entity.definition.api.response.EntityPublishHistoryDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,7 +51,16 @@ public class EntityPublishHistoryService {
             String changesDesc,
             String userId,
             String userName) {
-        return createVersion(entity, fields, tableDdl, publishType, changesDesc, userId, userName, null);
+        return createVersion(
+                entity,
+                fields,
+                tableDdl,
+                publishType,
+                changesDesc,
+                userId,
+                userName,
+                null,
+                null);
     }
 
     /**
@@ -76,6 +86,35 @@ public class EntityPublishHistoryService {
             String userId,
             String userName,
             String versionDescription) {
+        return createVersion(
+                entity,
+                fields,
+                tableDdl,
+                publishType,
+                changesDesc,
+                userId,
+                userName,
+                versionDescription,
+                null);
+    }
+
+    /**
+     * 创建发布版本记录，同时冻结与字段定义解耦的实体关系。
+     *
+     * @param relations 当前实体已启用的关系草稿；空列表表示明确发布空关系，
+     *                  null 仅供旧调用兼容使用
+     */
+    @Transactional
+    public EntityPublishHistory createVersion(
+            EntityDefinition entity,
+            List<EntityField> fields,
+            String tableDdl,
+            EntityPublishHistory.PublishType publishType,
+            String changesDesc,
+            String userId,
+            String userName,
+            String versionDescription,
+            List<EntityRelation> relations) {
 
         // 获取下一个版本号
         Integer latestVersion = historyMapper.getLatestVersion(entity.getId());
@@ -88,6 +127,17 @@ public class EntityPublishHistoryService {
         } catch (JsonProcessingException e) {
             log.error("字段快照序列化失败", e);
             fieldsSnapshot = "[]";
+        }
+
+        String relationsSnapshot = null;
+        if (relations != null) {
+            try {
+                relationsSnapshot = objectMapper.writeValueAsString(relations);
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException(
+                        "实体关系快照序列化失败: " + entity.getEntityCode(),
+                        e);
+            }
         }
 
         EntityPublishHistory history = new EntityPublishHistory();
@@ -106,6 +156,7 @@ public class EntityPublishHistoryService {
                 : (publishType == EntityPublishHistory.PublishType.CREATE
                     ? "首次发布" : (changesDesc != null ? changesDesc : "字段变更")));
         history.setFieldsSnapshot(fieldsSnapshot);
+        history.setRelationsSnapshot(relationsSnapshot);
         history.setTableDdl(tableDdl);
         history.setPublishType(publishType);
         history.setChangesDescription(changesDesc);
@@ -178,6 +229,7 @@ public class EntityPublishHistoryService {
         dto.setVersion(history.getVersion());
         dto.setVersionDescription(history.getVersionDescription());
         dto.setFieldsSnapshot(history.getFieldsSnapshot());
+        dto.setRelationsSnapshot(history.getRelationsSnapshot());
         dto.setTableDdl(history.getTableDdl());
         dto.setPublishType(history.getPublishType());
         dto.setChangesDescription(history.getChangesDescription());
@@ -195,6 +247,19 @@ public class EntityPublishHistoryService {
                 dto.setFields(fields.stream().map(this::convertFieldToDTO).collect(Collectors.toList()));
             } catch (JsonProcessingException e) {
                 log.error("字段快照反序列化失败", e);
+            }
+        }
+
+        if (history.getRelationsSnapshot() != null) {
+            try {
+                dto.setRelations(objectMapper.readValue(
+                        history.getRelationsSnapshot(),
+                        objectMapper.getTypeFactory()
+                                .constructCollectionType(
+                                        List.class,
+                                        EntityRelation.class)));
+            } catch (JsonProcessingException e) {
+                log.error("关系快照反序列化失败", e);
             }
         }
 

@@ -88,7 +88,7 @@
           :refEntityNameMap="refEntityNameMap"
           :refresh="loadDataList"
           :viewConfig="viewConfig"
-          :showVersionAction="!selectionScene && !isSystemEntity && !embedded"
+          :showVersionAction="!selectionScene && !isSystemEntity && !embedded && canViewVersions"
           :show-pagination="!embedded || showPagination"
           :max-height="embedded ? maxHeight : undefined"
           :selection-mode="effectiveSelectionMode"
@@ -304,6 +304,12 @@ const versionDrawerRef = ref<InstanceType<typeof EntityRecordVersionDrawer>>()
 // 计算属性
 const entityName = computed(() => entityDefinition.value?.entityName)
 const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')
+const entityViewPermission = computed(() =>
+  `entity:${String(entityCode.value || '').trim().toLowerCase()}:view`)
+const canViewVersions = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || (userStore.permissions.includes('entity:version:record:view')
+    && userStore.permissions.includes(entityViewPermission.value)))
 // 查询字段（使用列表配置）
 const queryFields = computed(() => {
   if (listConfigFields.value.length > 0) {
@@ -410,7 +416,8 @@ const customListRuntime = computed(() => ({
   edit: handleEdit,
   delete: handleDelete,
   approve: handleApprove,
-  versions: handleVersions,
+  versions: canViewVersions.value ? handleVersions : undefined,
+  canViewVersions: canViewVersions.value,
   exportData: handleExport,
   canAction,
   getActionReason,
@@ -1010,6 +1017,7 @@ async function loadRuntimeButtonForm(
 }
 
 const handleVersions = (row: any) => {
+  if (!canViewVersions.value) return
   versionDrawerRef.value?.open(row)
 }
 const confirmSelection = () => {

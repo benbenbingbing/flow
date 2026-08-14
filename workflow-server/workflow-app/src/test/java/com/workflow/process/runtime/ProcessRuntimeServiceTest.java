@@ -15,7 +15,10 @@ import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
 import org.flowable.engine.IdentityService;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
+import org.flowable.engine.repository.ProcessDefinition;
+import org.flowable.engine.repository.ProcessDefinitionQuery;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
@@ -56,8 +59,8 @@ class ProcessRuntimeServiceTest {
                 verify(fixture.processDefinitionConfigMapper).selectById("process-config-1");
                 @SuppressWarnings("unchecked")
                 ArgumentCaptor<Map<String, Object>> variableCaptor = ArgumentCaptor.forClass(Map.class);
-                verify(fixture.runtimeService).startProcessInstanceByKey(
-                                eq("expense_flow"),
+                verify(fixture.runtimeService).startProcessInstanceById(
+                                eq("definition-v3"),
                                 eq("data-1"),
                                 variableCaptor.capture());
                 assertEquals("expense", variableCaptor.getValue().get("entityCode"));
@@ -65,7 +68,9 @@ class ProcessRuntimeServiceTest {
                 assertEquals(100, variableCaptor.getValue().get("amount"));
                 verify(fixture.identityService).setAuthenticatedUserId("admin");
                 verify(fixture.multiInstanceCollectionListener)
-                                .prepareVariables(eq("process-config-1"), anyMap());
+                                .prepareVariables(eq("definition-v3"), anyMap());
+                verify(fixture.workflowAutoSkipService)
+                                .autoSkipNodes("pi-1", "definition-v3");
                 verify(fixture.processTaskService).syncTasksFromFlowable("pi-1");
                 assertEquals("pi-1", result.processInstanceId());
                 assertEquals("PENDING", result.entityStatus());
@@ -75,6 +80,7 @@ class ProcessRuntimeServiceTest {
         private static class Fixture {
                 final ProcessDefinitionConfigMapper processDefinitionConfigMapper = mock(
                                 ProcessDefinitionConfigMapper.class);
+                final RepositoryService repositoryService = mock(RepositoryService.class);
                 final RuntimeService runtimeService = mock(RuntimeService.class);
                 final IdentityService identityService = mock(IdentityService.class);
                 final org.flowable.engine.TaskService taskService = mock(org.flowable.engine.TaskService.class);
@@ -94,9 +100,18 @@ class ProcessRuntimeServiceTest {
                         config.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
                         when(processDefinitionConfigMapper.selectById("process-config-1")).thenReturn(config);
 
+                        ProcessDefinitionQuery definitionQuery = mock(
+                                        ProcessDefinitionQuery.class,
+                                        org.mockito.Mockito.RETURNS_SELF);
+                        ProcessDefinition deployed = mock(ProcessDefinition.class);
+                        when(repositoryService.createProcessDefinitionQuery())
+                                        .thenReturn(definitionQuery);
+                        when(definitionQuery.singleResult()).thenReturn(deployed);
+                        when(deployed.getId()).thenReturn("definition-v3");
+
                         ProcessInstance processInstance = mock(ProcessInstance.class);
                         when(processInstance.getId()).thenReturn("pi-1");
-                        when(runtimeService.startProcessInstanceByKey(eq("expense_flow"), eq("data-1"), anyMap()))
+                        when(runtimeService.startProcessInstanceById(eq("definition-v3"), eq("data-1"), anyMap()))
                                         .thenReturn(processInstance);
 
                         EntityProcessLink processLink = new EntityProcessLink();
@@ -125,6 +140,7 @@ class ProcessRuntimeServiceTest {
                 ProcessRuntimeService service() {
                         return new ProcessRuntimeService(
                                         processDefinitionConfigMapper,
+                                        repositoryService,
                                         runtimeService,
                                         identityService,
                                         taskService,

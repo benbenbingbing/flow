@@ -204,38 +204,43 @@ public class OpenProcessAdapter
             variables.put("startUserId", resolvedInitiator);
             variables.put("initiator", resolvedInitiator);
         }
+        ProcessDefinition deployed = resolveDeployedDefinition(
+                definition.getProcessKey(),
+                command.processDefinitionVersion());
         multiInstanceListener.prepareVariables(
-                definition.getId(),
+                deployed.getId(),
                 variables);
 
-        ProcessInstance instance;
-        if (command.processDefinitionVersion() == null) {
-            instance = runtimeService.startProcessInstanceByKey(
-                    definition.getProcessKey(),
-                    command.businessKey(),
-                    variables);
-        } else {
-            if (repositoryService == null) {
-                throw new OpenProcessStateConflictException(
-                        "Pinned process versions are unavailable");
-            }
-            ProcessDefinition deployed = repositoryService
-                    .createProcessDefinitionQuery()
-                    .processDefinitionKey(definition.getProcessKey())
-                    .processDefinitionVersion(command.processDefinitionVersion())
-                    .singleResult();
-            if (deployed == null) {
-                throw new OpenProcessStateConflictException(
-                        "Pinned process definition version is not published");
-            }
-            instance = runtimeService.startProcessInstanceById(
-                    deployed.getId(), command.businessKey(), variables);
-        }
+        ProcessInstance instance = runtimeService.startProcessInstanceById(
+                deployed.getId(), command.businessKey(), variables);
         autoSkipService.autoSkipNodes(
                 instance.getId(),
-                definition.getId());
+                deployed.getId());
         processTaskService.syncTasksFromFlowable(instance.getId());
         return get(instance.getId(), command.actor());
+    }
+
+    private ProcessDefinition resolveDeployedDefinition(
+            String processKey,
+            Integer requestedVersion) {
+        if (repositoryService == null) {
+            throw new OpenProcessStateConflictException(
+                    "Published process deployments are unavailable");
+        }
+        var query = repositoryService
+                .createProcessDefinitionQuery()
+                .processDefinitionKey(processKey);
+        ProcessDefinition deployed = requestedVersion == null
+                ? query.latestVersion().singleResult()
+                : query.processDefinitionVersion(requestedVersion)
+                        .singleResult();
+        if (deployed == null) {
+            throw new OpenProcessStateConflictException(
+                    requestedVersion == null
+                            ? "Published process deployment is unavailable"
+                            : "Pinned process definition version is not published");
+        }
+        return deployed;
     }
 
     @Override

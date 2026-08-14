@@ -4,6 +4,8 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
 import com.workflow.process.form.application.NodeFormSubmissionService;
+import com.workflow.process.task.api.request.NextApproverSelectionRequest;
+import com.workflow.process.task.application.nextapproval.NextApproverOverrideService;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
@@ -63,6 +65,8 @@ public class TaskActionService {
     private final EntityRecordPort entityRecordPort;
     /** 抄送/知会服务：用于统计未读抄送数等 */
     private final ProcessCcService processCcService;
+    /** 下一审批人预览与覆盖必须存在，避免生产配置异常时静默跳过权威重验。 */
+    private final NextApproverOverrideService nextApproverOverrideService;
 
     /**
      * 完成任务
@@ -96,17 +100,102 @@ public class TaskActionService {
             targetIdArg = 0)
     public void completeTask(String taskId, String userId, String action, String comment, String transferTo,
                              String actionLabel, Map<String, Object> formData) {
-        completeTaskInternal(taskId, userId, action, comment, transferTo, actionLabel, formData, true);
+        completeTaskInternal(
+                taskId,
+                userId,
+                action,
+                comment,
+                transferTo,
+                actionLabel,
+                formData,
+                null,
+                List.of(),
+                true,
+                true);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.APPROVE,
+            operation = "办理流程任务",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "PROCESS_TASK",
+            targetIdArg = 0)
+    public void completeTask(
+            String taskId,
+            String userId,
+            String action,
+            String comment,
+            String transferTo,
+            String actionLabel,
+            Map<String, Object> formData,
+            String nextApprovalScopeKey,
+            List<NextApproverSelectionRequest> nextApproverSelections) {
+        completeTaskInternal(
+                taskId,
+                userId,
+                action,
+                comment,
+                transferTo,
+                actionLabel,
+                formData,
+                nextApprovalScopeKey,
+                nextApproverSelections,
+                true,
+                true);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void completeDeferredTask(String taskId, String userId, String action, String comment, String transferTo,
                                      String actionLabel, Map<String, Object> formData) {
-        completeTaskInternal(taskId, userId, action, comment, transferTo, actionLabel, formData, false);
+        completeTaskInternal(
+                taskId,
+                userId,
+                action,
+                comment,
+                transferTo,
+                actionLabel,
+                formData,
+                null,
+                List.of(),
+                false,
+                false);
+    }
+
+    /**
+     * 加签等后台收口在完成原任务前调用。返回 true 时必须恢复源待办，让原办理人
+     * 在正常审批面板中选择下一审批人，不能静默创建无人任务。
+     */
+    public boolean requiresManualNextApproverForDeferredCompletion(
+            String taskId,
+            String action,
+            String comment,
+            String actionLabel,
+            Map<String, Object> formData) {
+        Task task = taskService.createTaskQuery()
+                .taskId(taskId)
+                .singleResult();
+        if (task == null) {
+            throw new IllegalArgumentException(
+                    "任务不存在或已处理: " + taskId);
+        }
+        return nextApproverOverrideService
+                .requiresManualSelectionForDeferredCompletion(
+                        task,
+                        normalizeAction(action),
+                        actionLabel,
+                        comment == null ? "" : comment,
+                        formData);
     }
 
     private void completeTaskInternal(String taskId, String userId, String action, String comment, String transferTo,
-                                      String actionLabel, Map<String, Object> formData, boolean checkAccess) {
+                                      String actionLabel, Map<String, Object> formData,
+                                      String nextApprovalScopeKey,
+                                      List<NextApproverSelectionRequest> nextApproverSelections,
+                                      boolean checkAccess,
+                                      boolean validateNextApprover) {
+        comment = comment == null ? "" : comment;
         // 验证任务是否存在
         Task task = taskService.createTaskQuery()
                 .taskId(taskId)
@@ -136,12 +225,40 @@ public class TaskActionService {
             taskService.setAssignee(taskId, userId);
         }
 
+        String normalizedAction = normalizeAction(action);
+        boolean nextApprovalPreviewDeferred = false;
+        if (validateNextApprover
+                && !"transfer".equals(normalizedAction)) {
+            nextApprovalPreviewDeferred = nextApproverOverrideService
+                    .previewIsDeferred(
+                            task,
+                            normalizedAction,
+                            actionLabel,
+                            comment,
+                            formData);
+        }
+
         nodeFormSubmissionService.applyEditableData(task, formData);
 
         // 检查是否是多实例任务（会签/或签）
         boolean isMultiInstance = isMultiInstanceTask(task);
-        
-        String normalizedAction = normalizeAction(action);
+
+        if ("transfer".equals(normalizedAction)) {
+            if (nextApproverSelections != null
+                    && !nextApproverSelections.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "转办操作不能同时指定下一节点审批人");
+            }
+        } else if (validateNextApprover) {
+            nextApproverOverrideService.validateAndStage(
+                    task,
+                    normalizedAction,
+                    actionLabel,
+                    comment,
+                    nextApprovalScopeKey,
+                    nextApproverSelections,
+                    nextApprovalPreviewDeferred);
+        }
 
         // 根据不同操作类型处理
         switch (normalizedAction) {

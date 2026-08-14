@@ -65,15 +65,24 @@ const entityDesignSource = readFileSync(
   fileURLToPath(new URL('../../views/EntityDesign.vue', import.meta.url)),
   'utf8'
 )
+const entityRelationSource = readFileSync(
+  fileURLToPath(new URL('../../views/entity/components/EntityRelationManagement.vue', import.meta.url)),
+  'utf8'
+)
 assert.match(
   entityDesignSource,
   /title="选择目标实体"\s+:query="\{ status: 'PUBLISHED' \}"/,
   '实体记录引用应允许选择全部已发布实体'
 )
 assert.match(
-  entityDesignSource,
-  /title="选择子实体"[\s\S]{0,160}:query="\{ storageMode: 'DYNAMIC' \}"/,
-  '子表单目标仍应限制为动态实体'
+  entityRelationSource,
+  /title="选择关系子实体"[\s\S]{0,200}:query="\{ storageMode: 'DYNAMIC', status: 'PUBLISHED' \}"/,
+  '独立实体关系的子实体应限制为已发布动态实体'
+)
+assert.equal(
+  entityDesignSource.includes('v-model="selectedField.childEntityId"'),
+  false,
+  '子实体选择不得继续依附 SUB_FORM 字段'
 )
 
 console.log('entity definition selection tests passed')

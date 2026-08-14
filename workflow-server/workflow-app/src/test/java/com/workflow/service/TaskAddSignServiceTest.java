@@ -161,6 +161,55 @@ class TaskAddSignServiceTest {
                 "source-task", "admin", "approve", "原任务已提交", null, "通过", null);
     }
 
+    @Test
+    void lastChildRestoresSourceWhenNextApproverNeedsConfirmation() {
+        ProcessTaskAddSign open = addSign("PARALLEL", true);
+        ProcessTaskAddSignUser child = new ProcessTaskAddSignUser();
+        child.setAddSignId("add-sign-1");
+        child.setUserId("admin");
+        child.setGeneratedTaskId("child-task");
+        child.setStatus("TODO");
+        ProcessTask childMirror = sourceMirror();
+        childMirror.setTaskId("child-task");
+        childMirror.setStatus(ProcessTask.STATUS_TODO);
+        ProcessTask waitingSource = sourceMirror();
+        waitingSource.setStatus(ProcessTask.STATUS_WAITING);
+        when(addSignUserMapper.findByGeneratedTaskId("child-task"))
+                .thenReturn(child);
+        when(addSignUserMapper.findByGeneratedTaskIdForUpdate("child-task"))
+                .thenReturn(child);
+        when(processTaskMapper.selectByTaskId("child-task"))
+                .thenReturn(childMirror);
+        when(processTaskMapper.selectByTaskId("source-task"))
+                .thenReturn(waitingSource);
+        when(addSignMapper.selectByIdForUpdate("add-sign-1"))
+                .thenReturn(open);
+        when(addSignUserMapper.countPending("add-sign-1"))
+                .thenReturn(0L);
+        when(taskActionService
+                .requiresManualNextApproverForDeferredCompletion(
+                        "source-task",
+                        "approve",
+                        "原任务已提交",
+                        "通过",
+                        null))
+                .thenReturn(true);
+
+        service.completeAddSignTask(
+                "child-task", "approve", "同意");
+
+        verify(taskActionService, never()).completeDeferredTask(
+                any(), any(), any(), any(), any(), any(), any());
+        assertEquals(ProcessTask.STATUS_TODO,
+                waitingSource.getStatus());
+        assertEquals("COMPLETED", open.getStatus());
+        assertFalse(Boolean.TRUE.equals(open.getSourceCompleted()));
+        verify(operationLogMapper).insert(
+                argThat((ProcessOperationLog log) ->
+                        "ADD_SIGN_NEXT_APPROVER_CONFIRMATION_REQUIRED"
+                        .equals(log.getOperationType())));
+    }
+
     /** 测试加签前先锁定源任务镜像再创建子任务：验证锁定与查询顺序，并写入操作日志 */
     @Test
     void addSignLocksSourceMirrorBeforeCreatingChildren() {

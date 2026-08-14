@@ -4,18 +4,15 @@ import com.workflow.entity.form.api.response.FormConfigDTO;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
-import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.entity.data.application.EntityDataDynamicService;
-import com.workflow.process.configuration.application.ProcessNodeApprovalOptionService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
 import com.workflow.entity.form.application.EntityFormFieldRuntimeMapper;
@@ -58,7 +55,6 @@ public class ProcessProgressRuntimeService {
     private final HistoryService historyService;
     private final RepositoryService repositoryService;
     private final TaskService taskService;
-    private final ProcessDefinitionConfigMapper processConfigMapper;
     private final SysUserService sysUserService;
     private final EntityDataDynamicService entityDataDynamicService;
     private final EntityFormRuntimeService entityFormRuntimeService;
@@ -68,8 +64,6 @@ public class ProcessProgressRuntimeService {
     private final SysUserGroupMapper sysUserGroupMapper;
     private final SysUserMapper sysUserMapper;
     private final ProcessOperationLogMapper operationLogMapper;
-    private final ProcessNodeApprovalMapper nodeApprovalMapper;
-    private final ProcessNodeApprovalOptionService approvalOptionService;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
     /** 日期时间格式化器（用于操作日志时间格式化） */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -98,6 +92,12 @@ public class ProcessProgressRuntimeService {
      * @return 流程进度视图对象
      */
     public ProcessProgressDTO getProcessProgress(String processInstanceId) {
+        return getProcessProgress(processInstanceId, null);
+    }
+
+    public ProcessProgressDTO getProcessProgress(
+            String processInstanceId,
+            String requestedTaskId) {
         ProcessProgressDTO progress = new ProcessProgressDTO();
         progress.setProcessInstanceId(processInstanceId);
         // 1. 获取流程实例信息
@@ -178,18 +178,31 @@ public class ProcessProgressRuntimeService {
                         log.warn("从 Flowable 获取 BPMN XML 失败", e);
                     }
                 }
-                // 获取流程名称
-                ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processDefinition.getKey())
-                        .orElse(null);
-                if (config != null) {
-                    progress.setProcessName(config.getProcessName());
-                    // 如果从 Flowable 获取 XML 失败，使用数据库中的 XML
-                    if (progress.getBpmnXml() == null && config.getBpmnXml() != null) {
-                        progress.setBpmnXml(config.getBpmnXml());
+                // 部署资源缺失时只能回退到该部署 ID 对应的发布历史快照，
+                // 绝不能读取当前流程草稿的 BPMN。
+                if (!StringUtils.hasText(progress.getBpmnXml())) {
+                    try {
+                        ProcessVersionHistory publishedVersion =
+                                processPublishedSnapshotService
+                                        .getVersionByProcessDefinitionId(
+                                                processDefinitionId);
+                        if (publishedVersion != null
+                                && StringUtils.hasText(
+                                        publishedVersion.getBpmnXml())) {
+                            progress.setBpmnXml(
+                                    publishedVersion.getBpmnXml());
+                        }
+                    } catch (RuntimeException exception) {
+                        log.warn(
+                                "无法读取流程部署对应的发布 BPMN 快照: processDefinitionId={}",
+                                processDefinitionId,
+                                exception);
                     }
-                } else {
-                    progress.setProcessName(processDefinition.getName());
                 }
+                progress.setProcessName(
+                        StringUtils.hasText(processDefinition.getName())
+                                ? processDefinition.getName()
+                                : processDefinition.getKey());
             }
         }
         // 3. 获取历史活动记录
@@ -461,11 +474,26 @@ public class ProcessProgressRuntimeService {
                     })
                     .collect(Collectors.toList());
             progress.setTasks(taskInfos);
+            if (StringUtils.hasText(requestedTaskId)
+                    && taskInfos.stream().noneMatch(item ->
+                            requestedTaskId.equals(item.getTaskId()))) {
+                throw new IllegalArgumentException(
+                        "任务不存在、已处理或不属于该流程实例: "
+                                + requestedTaskId);
+            }
+        } else if (StringUtils.hasText(requestedTaskId)) {
+            throw new IllegalArgumentException(
+                    "任务不存在、已处理或不属于该流程实例: "
+                            + requestedTaskId);
         }
         // 9. 构建节点处理人映射（用于前端悬停显示）
         buildNodeAssigneeMap(progress, processInstanceId);
         // 10. 获取实体数据和表单配置
-        loadEntityDataAndFormConfig(progress, processInstanceId, progress.getProcessKey());
+        loadEntityDataAndFormConfig(
+                progress,
+                processInstanceId,
+                progress.getProcessKey(),
+                requestedTaskId);
         return progress;
     }
 
@@ -592,7 +620,11 @@ public class ProcessProgressRuntimeService {
     /**
      * 加载实体数据和表单配置
      */
-    private void loadEntityDataAndFormConfig(ProcessProgressDTO progress, String processInstanceId, String processKey) {
+    private void loadEntityDataAndFormConfig(
+            ProcessProgressDTO progress,
+            String processInstanceId,
+            String processKey,
+            String requestedTaskId) {
         try {
             // 1. 获取流程变量中的实体信息
             String entityCode = null;
@@ -600,7 +632,22 @@ public class ProcessProgressRuntimeService {
             String formKey = null;
             String currentNodeId = null;
             // 优先从已加载的任务信息中获取当前节点ID（比execution查询更准确）
-            if (progress.getTasks() != null && !progress.getTasks().isEmpty()) {
+            if (StringUtils.hasText(requestedTaskId)
+                    && progress.getTasks() != null) {
+                currentNodeId = progress.getTasks().stream()
+                        .filter(item -> requestedTaskId.equals(
+                                item.getTaskId()))
+                        .map(ProcessProgressDTO.TaskInfoDTO::getNodeId)
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "任务不存在、已处理或不属于该流程实例: "
+                                        + requestedTaskId));
+                log.debug(
+                        "按任务ID选择当前节点: taskId={}, nodeId={}",
+                        requestedTaskId,
+                        currentNodeId);
+            } else if (progress.getTasks() != null
+                    && !progress.getTasks().isEmpty()) {
                 currentNodeId = progress.getTasks().get(0).getNodeId();
                 log.debug("从任务信息获取当前节点: nodeId={}", currentNodeId);
             }
@@ -658,29 +705,22 @@ public class ProcessProgressRuntimeService {
             }
             // 3. 加载表单配置
             if (entityCode != null && entityDataId != null) {
-                // 优先使用已部署的BPMN XML解析，如果解析不到，尝试从数据库获取最新的BPMN XML作为fallback
+                // 只使用部署资源或同一部署的发布历史快照。当前草稿不得作为 fallback。
                 String bpmnXml = progress.getBpmnXml();
-                String fallbackBpmnXml = null;
-                if (bpmnXml == null || bpmnXml.isEmpty()) {
-                    if (processKey != null && !processKey.isEmpty()) {
-                        ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
-                        if (config != null && config.getBpmnXml() != null) {
-                            bpmnXml = config.getBpmnXml();
-                        }
-                    }
-                } else if (processKey != null && !processKey.isEmpty()) {
-                    // 即使已部署的BPMN XML有内容，也准备fallback（可能包含最新的节点表单配置）
-                    ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
-                    if (config != null && config.getBpmnXml() != null) {
-                        fallbackBpmnXml = config.getBpmnXml();
-                    }
-                }
-                loadFormConfig(progress, entityCode, entityDataId, currentNodeId, formKey, bpmnXml, fallbackBpmnXml,
+                loadFormConfig(
+                        progress,
+                        entityCode,
+                        entityDataId,
+                        currentNodeId,
+                        formKey,
+                        bpmnXml,
+                        null,
                         processKey);
             }
             // 4. 加载审批配置
             if (currentNodeId != null) {
-                loadApprovalConfig(progress, currentNodeId, progress.getBpmnXml(), processKey);
+                loadApprovalConfig(
+                        progress, currentNodeId, progress.getBpmnXml());
             }
         } catch (FormConfigResolutionException exception) {
             throw exception;
@@ -1014,59 +1054,32 @@ public class ProcessProgressRuntimeService {
     }
 
     /**
-     * 加载审批配置（只从 process_node_approval 映射表读取）
+     * 加载审批配置。运行实例只使用其部署 BPMN 或对应发布历史快照；
+     * 快照缺失时保持旧版默认，不得回退到当前映射表。
      */
-    private void loadApprovalConfig(ProcessProgressDTO progress, String currentNodeId, String bpmnXml,
-            String processKey) {
+    private void loadApprovalConfig(
+            ProcessProgressDTO progress,
+            String currentNodeId,
+            String bpmnXml) {
         if (currentNodeId == null || currentNodeId.isEmpty()) {
             return;
         }
         try {
-            // 只从 process_node_approval 映射表查询
-            if (processKey != null && !processKey.isEmpty()) {
-                ProcessDefinitionConfig config = processConfigMapper.findByProcessKey(processKey).orElse(null);
-                if (config != null) {
-                    com.workflow.process.configuration.infrastructure.persistence.record.ProcessNodeApproval nodeApproval = nodeApprovalMapper
-                            .selectByNodeId(config.getId(), currentNodeId);
-                    if (nodeApproval != null) {
-                        ProcessProgressDTO.ApprovalConfigDTO approvalConfig = new ProcessProgressDTO.ApprovalConfigDTO();
-                        approvalConfig.setEnabled(nodeApproval.getEnabled() != null && nodeApproval.getEnabled() == 1);
-                        approvalConfig.setCommentLabel(
-                                nodeApproval.getCommentLabel() != null ? nodeApproval.getCommentLabel() : "审批意见");
-                        List<Map<String, Object>> optionConfigs = approvalOptionService
-                                .findOptions(nodeApproval.getId());
-                        if (!optionConfigs.isEmpty()) {
-                            List<ProcessProgressDTO.ApprovalOptionDTO> options = new ArrayList<>();
-                            for (Map<String, Object> optionConfig : optionConfigs) {
-                                ProcessProgressDTO.ApprovalOptionDTO option = new ProcessProgressDTO.ApprovalOptionDTO();
-                                option.setValue(String.valueOf(
-                                        optionConfig.getOrDefault("value", "")));
-                                option.setLabel(String.valueOf(
-                                        optionConfig.getOrDefault("label", "")));
-                                option.setType(String.valueOf(
-                                        optionConfig.getOrDefault("type", "primary")));
-                                option.setShowComment(!Boolean.FALSE.equals(
-                                        optionConfig.get("showComment")));
-                                options.add(option);
-                            }
-                            approvalConfig.setOptions(options);
-                        }
-                        progress.setApprovalConfig(approvalConfig);
-                        log.debug("从映射表加载审批配置成功: nodeId={}, optionsCount={}",
-                                currentNodeId,
-                                approvalConfig.getOptions() != null ? approvalConfig.getOptions().size() : 0);
-                        return;
-                    }
-                }
+            if (StringUtils.hasText(bpmnXml)) {
+                loadApprovalConfigFromBpmn(
+                        progress, currentNodeId, bpmnXml);
+                return;
             }
-            log.debug("映射表中未找到审批配置: nodeId={}", currentNodeId);
+            log.debug(
+                    "部署 BPMN 与发布快照均无审批配置，保持旧版默认: nodeId={}",
+                    currentNodeId);
         } catch (Exception e) {
             log.warn("加载审批配置失败: {}", e.getMessage());
         }
     }
 
     /**
-     * 从 BPMN XML 解析审批配置（fallback）
+     * 从该实例绑定的部署/发布 BPMN XML 解析审批配置。
      */
     private void loadApprovalConfigFromBpmn(ProcessProgressDTO progress, String currentNodeId, String bpmnXml) {
         if (bpmnXml == null || currentNodeId == null || currentNodeId.isEmpty()) {
@@ -1090,13 +1103,15 @@ public class ProcessProgressRuntimeService {
                     java.util.regex.Pattern.CASE_INSENSITIVE);
             java.util.regex.Matcher propMatcher = propPattern.matcher(content);
             // 如果失败，尝试 value 在前、name 在后的顺序
-            if (!propMatcher.find()) {
+            boolean found = propMatcher.find();
+            if (!found) {
                 propPattern = java.util.regex.Pattern.compile(
                         "<(?:flowable:|camunda:)?property[^>]*value=\"([^\"]*)\"[^>]*name=\"approvalConfig\"",
                         java.util.regex.Pattern.CASE_INSENSITIVE);
                 propMatcher = propPattern.matcher(content);
+                found = propMatcher.find();
             }
-            if (!propMatcher.find()) {
+            if (!found) {
                 log.debug("BPMN中未找到审批配置: nodeId={}", currentNodeId);
                 return;
             }

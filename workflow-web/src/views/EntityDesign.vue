@@ -20,7 +20,11 @@
         <el-button v-if="!isSystemEntity" @click="permissionVisible = true">
           <el-icon><Lock /></el-icon>数据权限
         </el-button>
-        <el-button v-if="!isSystemEntity" type="primary" @click="handleSave">
+        <el-button
+          v-if="!isSystemEntity && activeDesignTab === 'fields'"
+          type="primary"
+          @click="handleSave"
+        >
           <el-icon><Check /></el-icon>保存
         </el-button>
       </div>
@@ -45,7 +49,19 @@
       @retry="initializeEntityDesign"
     />
 
-    <div v-else class="design-body">
+    <el-tabs
+      v-if="!loadError"
+      v-model="activeDesignTab"
+      class="design-tabs"
+    >
+      <el-tab-pane label="字段设计" name="fields" />
+      <el-tab-pane
+        :label="relationCount ? `实体关系 ${relationCount}` : '实体关系'"
+        name="relations"
+      />
+    </el-tabs>
+
+    <div v-show="!loadError && activeDesignTab === 'fields'" class="design-body">
       <!-- 字段类型面板 -->
       <div v-if="!isSystemEntity" class="field-types-panel">
         <div class="panel-title">字段类型</div>
@@ -349,7 +365,7 @@
             :key="`type-${selectedField.id ?? selectedField.sortOrder ?? 'new'}-${selectedField.fieldType}`"
             title="类型专属配置"
             :description="isSubForm
-              ? '配置子实体关系与级联行为'
+              ? '关系已独立管理，此字段仅保留旧版展示兼容信息'
               : isSubList
                 ? '配置要嵌入的目标实体与已发布列表'
               : isAttachment
@@ -358,7 +374,7 @@
             :default-expanded="true"
           >
             <template #summary>
-              <span v-if="isSubForm">子表单关系</span>
+              <span v-if="isSubForm">旧版子表单字段</span>
               <span v-else-if="isSubList">子列表引用</span>
               <span v-else-if="isAttachment">附件规则</span>
               <span v-else>实体记录引用</span>
@@ -366,41 +382,23 @@
 
             <!-- 子表单配置 -->
             <template v-if="isSubForm">
-              <el-form-item label="类型" required>
-                <el-radio-group v-model="selectedField.relationType">
-                  <el-radio-button value="ONE_TO_ONE">一对一</el-radio-button>
-                  <el-radio-button value="ONE_TO_MANY">一对多</el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item label="子实体" required>
-                <EntityDefinitionPicker
-                  v-model="selectedField.childEntityId"
-                  placeholder="选择实体"
-                  value-key="id"
-                  title="选择子实体"
-                  :query="{ storageMode: 'DYNAMIC' }"
-                  :exclude-values="[String(entityId)]"
-                  @change="onChildEntityChange"
+              <el-alert
+                title="实体关系已从 SUB_FORM 字段中拆分"
+                description="请在“实体关系”页签独立维护子实体、回溯字段、基数和级联规则。表单设计时再绑定关系，不要通过字段创建关系。"
+                type="info"
+                :closable="false"
+                show-icon
+              />
+              <el-form-item v-if="selectedField.relationCode" label="旧关系绑定">
+                <el-input
+                  :model-value="`${selectedField.relationName || selectedField.relationCode} (${selectedField.relationCode})`"
+                  disabled
                 />
+                <div class="form-tip">仅用于兼容历史 SUB_FORM 承载字段，关系配置以独立关系定义为准。</div>
               </el-form-item>
-              <el-form-item v-if="selectedField.childEntityId" label="子表外键">
-                <el-select
-                  v-model="selectedField.childRefFieldCode"
-                  placeholder="选择字段"
-                  style="width: 100%"
-                  @change="syncRelationRefs"
-                >
-                  <el-option
-                    v-for="field in refEntityFields"
-                    :key="field.fieldCode"
-                    :label="`${field.fieldName || field.fieldCode} / ${field.fieldCode}`"
-                    :value="field.fieldCode"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="级联删除">
-                <el-switch v-model="selectedField.cascadeDelete" />
-              </el-form-item>
+              <el-button type="primary" text @click="activeDesignTab = 'relations'">
+                前往实体关系管理
+              </el-button>
             </template>
 
             <!-- 子列表配置 -->
@@ -549,6 +547,15 @@
         </div>
       </div>
     </div>
+
+    <EntityRelationManagement
+      v-if="!loadError && entityData.id"
+      v-show="activeDesignTab === 'relations'"
+      :entity-id="entityId"
+      :can-manage="canManageEntityDefinition"
+      :readonly-entity="isSystemEntity"
+      @count-change="relationCount = $event"
+    />
 
     <!-- 编码规则配置对话框 -->
     <el-dialog v-model="codeRuleVisible" title="数据编码规则配置" width="550px">
@@ -1042,9 +1049,11 @@ import { getEnabledRoles } from '@/api/system/role'
 import { getEnabledOrgList } from '@/api/system/org'
 import { getEnabledGroups } from '@/api/system/group'
 import { getDictList, createDictWithItems } from '@/api/system/dict'
+import { useUserStore } from '@/stores/user'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import EntityRelationManagement from '@/views/entity/components/EntityRelationManagement.vue'
 import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
@@ -1068,7 +1077,13 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const entityId = route.params.id
+const activeDesignTab = ref('fields')
+const relationCount = ref(0)
+const canManageEntityDefinition = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || userStore.permissions.includes('entity:definition:manage'))
 
 // 字段类型定义
 const fieldTypes = ENTITY_FIELD_TYPES
@@ -1427,13 +1442,7 @@ const handleAddField = (type) => {
     optionSource: ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(type?.value) ? 'DICT' : undefined,
     dictType: ''
   }
-  if (newField.fieldType === 'SUB_FORM') {
-    newField.relationType = 'ONE_TO_ONE'
-    newField.cascadeDelete = true
-    newField.refEntityType = 'CUSTOM'
-    newField.childEntityId = ''
-    newField.childRefFieldCode = ''
-  } else if (newField.fieldType === 'SUB_LIST') {
+  if (newField.fieldType === 'SUB_LIST') {
     newField.refEntityType = 'CUSTOM'
     newField.refEntityId = ''
     newField.refListKey = ''
@@ -1474,17 +1483,7 @@ const selectField = (field) => {
     optionsText.value = ''
   }
   
-  // 如果是子表单字段，加载关联实体的字段
-  if (isSubForm.value) {
-    field.childEntityId = field.childEntityId || field.refEntityId || ''
-    field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
-    field.relationType = field.relationType || (field.fieldType === 'SUB_FORM' ? 'ONE_TO_ONE' : 'ONE_TO_MANY')
-    field.cascadeDelete = field.cascadeDelete !== false
-    syncRelationRefs()
-    if (field.childEntityId) {
-      onRefEntityChange(field.childEntityId)
-    }
-  } else if (isSubList.value) {
+  if (isSubList.value) {
     field.refEntityType = 'CUSTOM'
     field.refListKey = field.refListKey || ''
     if (field.refEntityId) {
@@ -1543,15 +1542,6 @@ const createAndBindDict = async () => {
   }
 }
 
-const onChildEntityChange = async (value) => {
-  if (!selectedField.value) return
-  selectedField.value.refEntityId = value
-  selectedField.value.refEntityType = 'CUSTOM'
-  selectedField.value.childRefFieldCode = ''
-  selectedField.value.refFieldCode = ''
-  await onRefEntityChange(value)
-}
-
 const applySubListEntitySelection = async (entity, resetListKey) => {
   if (!selectedField.value) return
   const selection = resolveSubListTargetSelection(
@@ -1584,13 +1574,6 @@ const loadSubListOptions = async (targetEntityId) => {
     console.error('加载子列表配置失败:', error)
     subListOptions.value = []
   }
-}
-
-const syncRelationRefs = () => {
-  if (!selectedField.value) return
-  selectedField.value.refEntityId = selectedField.value.childEntityId || selectedField.value.refEntityId || ''
-  selectedField.value.refFieldCode = selectedField.value.childRefFieldCode || selectedField.value.refFieldCode || ''
-  selectedField.value.refEntityType = 'CUSTOM'
 }
 
 // 删除字段
@@ -2144,6 +2127,20 @@ onMounted(async () => {
 }
 
 /* ===== 主体布局 ===== */
+.design-tabs {
+  flex: 0 0 auto;
+  padding: 0 20px;
+  background: #fff;
+}
+
+.design-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.design-tabs :deep(.el-tabs__content) {
+  display: none;
+}
+
 .design-body {
   flex: 1;
   display: flex;
@@ -2632,6 +2629,10 @@ onMounted(async () => {
     overflow: auto;
     flex-direction: column;
     padding: 12px;
+  }
+
+  .design-tabs {
+    padding: 0 12px;
   }
 
   .field-types-panel,

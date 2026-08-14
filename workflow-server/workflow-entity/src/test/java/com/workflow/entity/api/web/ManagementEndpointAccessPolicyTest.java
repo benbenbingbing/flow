@@ -88,7 +88,7 @@ class ManagementEndpointAccessPolicyTest {
                 "entity:version:config:list");
         assertClassPermission(
                 EntityRecordVersionController.class,
-                "entity:version:config:list");
+                "entity:version:record:view");
     }
 
     private void assertClassPermission(

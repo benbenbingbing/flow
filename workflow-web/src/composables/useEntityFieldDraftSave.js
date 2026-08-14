@@ -134,16 +134,8 @@ export function useEntityFieldDraftSave({
         return false
       }
     }
-    if (field.fieldType === 'SUB_FORM') {
-      if (!field.childEntityId && !field.refEntityId) {
-        ElMessage.warning(`请选择子实体：${field.fieldName}`)
-        return false
-      }
-      if (!field.childRefFieldCode && !field.refFieldCode) {
-        ElMessage.warning(`请选择子表外键：${field.fieldName}`)
-        return false
-      }
-    }
+    // SUB_FORM 仅保留为旧版展示字段；实体关系由独立关系资源校验和维护，
+    // 新字段不再被迫携带子实体、外键或级联配置。
     if (field.fieldType === 'SUB_LIST') {
       if (!field.refEntityId) {
         ElMessage.warning(`请选择目标实体：${field.fieldName}`)

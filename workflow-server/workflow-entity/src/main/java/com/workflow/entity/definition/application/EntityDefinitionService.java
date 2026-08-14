@@ -29,6 +29,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.version.application.EntityVersionConfigurationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -60,6 +61,8 @@ public class EntityDefinitionService {
     private final EntityFieldOptionService fieldOptionService;
     private final EntityFieldValidationRuleService fieldValidationRuleService;
     private final EntityFieldDefinitionService fieldDefinitionService;
+    private final EntityRelationDefinitionService relationDefinitionService;
+    private final EntityVersionConfigurationService versionConfigurationService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
@@ -218,10 +221,6 @@ public class EntityDefinitionService {
                 field.setEntityId(entity.getId());
                 fieldMapper.insert(field);
             }
-            fieldDefinitionService.syncRelations(
-                    entity,
-                    dto.getFields(),
-                    fieldMapper.findByEntityId(entity.getId()));
         }
 
         entityPermissionCatalogService.synchronizeEntity(entity);
@@ -529,11 +528,6 @@ public class EntityDefinitionService {
                 }
             }
 
-            fieldDefinitionService.syncRelations(
-                    existing,
-                    dto.getFields(),
-                    fieldMapper.findByEntityId(id));
-
             // Physical schema changes are applied only by the explicitly locked publish
             // flow.
         }
@@ -603,6 +597,12 @@ public class EntityDefinitionService {
                     "平台系统实体不执行动态建表和发布");
         }
 
+        relationDefinitionService.validateForPublish(id);
+        List<EntityRelation> publishingRelations = safeRelations(
+                relationMapper.selectByParentEntityId(id));
+        versionConfigurationService.requireRelationScopeDefinitionsCompatible(
+                entity.getEntityCode(), publishingRelations);
+
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(id);
         attachFileItems(fields);
@@ -642,7 +642,8 @@ public class EntityDefinitionService {
                 : request;
         EntityPublishHistory history = publishHistoryService.createVersion(
                 entity, fields, ddlString, publishType, changesDesc, userId, userName,
-                publishRequest.getVersionDescription());
+                publishRequest.getVersionDescription(),
+                publishingRelations);
 
         entity.setStatus(EntityDefinition.Status.PUBLISHED);
         entityMapper.updateById(entity);
@@ -1138,5 +1139,10 @@ public class EntityDefinitionService {
                                 || field.getFieldType() == EntityField.FieldType.IMAGE)
                 .forEach(field -> field.setFileItems(
                         fileItemService.findByFieldId(field.getId())));
+    }
+
+    private List<EntityRelation> safeRelations(
+            List<EntityRelation> relations) {
+        return relations == null ? List.of() : relations;
     }
 }

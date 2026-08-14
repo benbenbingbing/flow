@@ -12,6 +12,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationStepResult;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.mutationpolicy.application.EntityMutationPolicyService;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class EntityMutationStepExecutor {
 
-    private final EntityVersionConfigurationService configurationService;
+    private final EntityMutationPolicyService mutationPolicyService;
     private final EntityVersionPolicyMatcher policyMatcher;
     private final EntityMutationBuiltInRuleExecutor builtInRuleExecutor;
     private final UiDataSourceService dataSourceService;
@@ -61,7 +62,7 @@ public class EntityMutationStepExecutor {
             Map<String, Object> currentRecord,
             String forcedScenarioCode) {
         EntityVersionConfiguration configuration =
-                configurationService
+                mutationPolicyService
                         .getPublished(command.entityCode())
                         .orElse(null);
         if (configuration == null

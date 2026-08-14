@@ -38,6 +38,17 @@ public class EntityRecordVersion {
     private String idempotencyKey;
     private String entityReleaseId;
     private Integer entityReleaseVersion;
+    private Integer schemaVersion;
+    private String configReleaseId;
+    private Integer configReleaseVersion;
+    private String dataHash;
+    private String presentationHash;
+    private String scopeHash;
+    private String requestHash;
+    private Integer datasetCount;
+    private Integer snapshotRowCount;
+    private Long snapshotSizeBytes;
+    private String completeness;
     private String snapshotHash;
     private String snapshotDocument;
     private LocalDateTime createTime;

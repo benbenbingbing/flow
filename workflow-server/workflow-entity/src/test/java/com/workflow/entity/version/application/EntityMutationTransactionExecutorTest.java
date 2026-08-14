@@ -11,18 +11,25 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.version.application.EntityMutationStepExecutor.ExecutionOutcome;
+import com.workflow.entity.version.application.EntityRelatedVersionCaptureService.RootKey;
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher.MatchedScenario;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.apache.ibatis.annotations.Options;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,6 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -49,6 +57,8 @@ class EntityMutationTransactionExecutorTest {
     @Mock
     private EntityRecordVersionService versionService;
     @Mock
+    private EntityRelatedVersionCaptureService relatedVersionCaptureService;
+    @Mock
     private EntityMutationReceiptService receiptService;
 
     private EntityMutationTransactionExecutor executor;
@@ -61,8 +71,35 @@ class EntityMutationTransactionExecutorTest {
                 stepExecutor,
                 policyMatcher,
                 versionService,
+                relatedVersionCaptureService,
                 receiptService,
                 new ObjectMapper());
+    }
+
+    @Test
+    void mutationEntryPointsUseReadCommittedForLockThenReload() throws Exception {
+        Transactional execute = EntityMutationTransactionExecutor.class
+                .getMethod("execute", EntityMutationCommand.class)
+                .getAnnotation(Transactional.class);
+        Transactional batch = EntityMutationTransactionExecutor.class
+                .getMethod("executeBatch", List.class)
+                .getAnnotation(Transactional.class);
+
+        assertEquals(Isolation.READ_COMMITTED, execute.isolation());
+        assertEquals(Isolation.READ_COMMITTED, batch.isolation());
+    }
+
+    @Test
+    void lockingReadFlushesTheMyBatisSessionCache() throws Exception {
+        Options options = EntityDataDynamicMapper.class
+                .getMethod(
+                        "selectByIdForUpdate",
+                        String.class,
+                        String.class)
+                .getAnnotation(Options.class);
+
+        assertFalse(options.useCache());
+        assertEquals(Options.FlushCachePolicy.TRUE, options.flushCache());
     }
 
     @Test
@@ -91,7 +128,8 @@ class EntityMutationTransactionExecutorTest {
                 queryService,
                 stepExecutor,
                 policyMatcher,
-                versionService);
+                versionService,
+                relatedVersionCaptureService);
         verify(receiptService, never())
                 .complete(any(), any());
     }
@@ -199,6 +237,46 @@ class EntityMutationTransactionExecutorTest {
                 eq(result));
     }
 
+    @Test
+    void batchLocksAllParentRootsThenAllRecordsInStableOrder() {
+        EntityMutationCommand secondChild = command(
+                "operation-2", "line-2");
+        EntityMutationCommand firstChild = command(
+                "operation-1", "line-1");
+        EntityDataDTO line1 = record("asset_line", "line-1", "硬盘");
+        EntityDataDTO line2 = record("asset_line", "line-2", "内存");
+        when(queryService.findById("asset_line", "line-1"))
+                .thenReturn(line1);
+        when(queryService.findById("asset_line", "line-2"))
+                .thenReturn(line2);
+        when(relatedVersionCaptureService.requiredRootKeys(
+                eq(firstChild), anyMap())).thenReturn(
+                        Set.of(new RootKey("asset", "parent-a")));
+        when(relatedVersionCaptureService.requiredRootKeys(
+                eq(secondChild), anyMap())).thenReturn(
+                        Set.of(new RootKey("asset", "parent-z")));
+        when(stepExecutor.execute(
+                any(), any(), anyMap(), anyMap())).thenAnswer(invocation ->
+                        new ExecutionOutcome(
+                                invocation.getArgument(0), List.of()));
+        when(writer.apply(any())).thenAnswer(invocation -> {
+            EntityMutationCommand command = invocation.getArgument(0);
+            return new EntityAggregateWriter.WriteResult(
+                    command.recordId(),
+                    "line-1".equals(command.recordId()) ? line1 : line2);
+        });
+
+        executor.executeBatch(List.of(secondChild, firstChild));
+
+        InOrder order = inOrder(writer);
+        order.verify(writer).lock("asset", "parent-a");
+        order.verify(writer).lock("asset", "parent-z");
+        order.verify(writer).lock("asset_line", "line-1");
+        order.verify(writer).lock("asset_line", "line-2");
+        order.verify(writer).apply(secondChild);
+        order.verify(writer).apply(firstChild);
+    }
+
     private EntityMutationCommand command(
             Map<String, Object> payload,
             Map<String, Object> extraParams) {
@@ -223,9 +301,35 @@ class EntityMutationTransactionExecutorTest {
     }
 
     private EntityDataDTO record(String name) {
+        return record("asset", "record-1", name);
+    }
+
+    private EntityMutationCommand command(
+            String operationId,
+            String recordId) {
+        return new EntityMutationCommand(
+                operationId,
+                "asset_line",
+                recordId,
+                EntityMutationOperationType.UPDATE,
+                Map.of("data", Map.of("name", "更新")),
+                EntityMutationContext.builder(
+                                EntityMutationSourceType.APPROVAL_TASK,
+                                "CHANGE_EFFECTIVE",
+                                "变更审批生效")
+                        .operator("user-1", "张三")
+                        .trace("trace-" + operationId,
+                                "mutation-" + operationId)
+                        .build());
+    }
+
+    private EntityDataDTO record(
+            String entityCode,
+            String recordId,
+            String name) {
         EntityDataDTO value = new EntityDataDTO();
-        value.setId("record-1");
-        value.setEntityCode("asset");
+        value.setId(recordId);
+        value.setEntityCode(entityCode);
         value.setStatus("ACTIVE");
         value.setData(Map.of("name", name));
         return value;

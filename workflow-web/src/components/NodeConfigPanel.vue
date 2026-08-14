@@ -493,7 +493,7 @@
                 <el-form-item v-if="assigneeForm.collectionSource === 'variable'" label="集合变量">
                   <el-input
                     v-model="assigneeForm.collection"
-                    placeholder="系统默认：${_wfMultiInstanceUsers_}"
+                    placeholder="系统自动生成当前节点唯一集合变量"
                     disabled
                   />
                   <div class="form-tip">系统生成的用户ID集合变量，只读展示</div>
@@ -509,6 +509,13 @@
               </SettingsSection>
             </template>
           </SettingsSection>
+          <NextApproverConfigEditor
+            ref="nextApproverConfigEditorRef"
+            v-model="assigneeForm.nextApproverSelection"
+            :role-options="roleOptions"
+            :group-options="groupOptions"
+            :organization-options="organizationOptions"
+          />
           </el-form>
         </SettingsSection>
       </section>
@@ -1543,6 +1550,7 @@ import { processApi } from '@/api/process'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  buildNodeScopedMultiInstanceCollection,
   buildAssigneeConfig,
   getProcessConditionFieldCode,
   getProcessConditionFieldType
@@ -1554,6 +1562,11 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
+import NextApproverConfigEditor from '@/components/NextApproverConfigEditor.vue'
+import {
+  createNextApproverSelectionConfig,
+  validateNextApproverSelectionConfig
+} from '@/shared/next-approver'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   buildFlowConditionExpression,
@@ -1653,6 +1666,7 @@ const SERVICE_EXAMPLES = {
 const basicForm = ref({ id: '', name: '', documentation: '' })
 const assigneeResolverContext = { usage: 'ASSIGNEE' }
 const multiInstanceResolverContext = { usage: 'MULTI_INSTANCE' }
+const nextApproverConfigEditorRef = ref()
 const assigneeForm = ref({
   assignee: '',
   candidateUsers: '',
@@ -1690,7 +1704,8 @@ const assigneeForm = ref({
   collectionResolverCode: '',
   collectionResolverDisplayName: '',
   collectionExtraParams: {},
-  collectionExtraParamsText: '{}'
+  collectionExtraParamsText: '{}',
+  nextApproverSelection: createNextApproverSelectionConfig()
 })
 const assigneeResolverCurrentOption = computed(() => {
   if (!assigneeForm.value.resolverCode) return null
@@ -2313,6 +2328,9 @@ watch(() => props.element, async (newElement) => {
             || {},
           null,
           2
+        ),
+        nextApproverSelection: createNextApproverSelectionConfig(
+          assigneeConfig.nextApproverSelection
         )
       }
       
@@ -2651,9 +2669,10 @@ function updateDocumentation() {
 
 function onMultiInstanceChange(enabled) {
   if (enabled) {
-    if (!assigneeForm.value.collection) {
-      assigneeForm.value.collection = '${_wfMultiInstanceUsers_}'
-    }
+    assigneeForm.value.collection = buildNodeScopedMultiInstanceCollection(
+      basicForm.value.id || props.element?.businessObject?.id,
+      assigneeForm.value.collection
+    )
   }
 }
 
@@ -2662,7 +2681,10 @@ function updateMultiInstance() {
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
   // 使用内部系统变量，由后端监听器自动根据审批人配置计算
-  const collection = assigneeForm.value.collection || '${_wfMultiInstanceUsers_}'
+  const collection = buildNodeScopedMultiInstanceCollection(
+    basicForm.value.id || props.element?.businessObject?.id,
+    assigneeForm.value.collection
+  )
   assigneeForm.value.collection = collection
   const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', {
     isSequential: assigneeForm.value.multiInstanceType === 'sequential',
@@ -3182,6 +3204,15 @@ function applyConfigurationSection(section) {
         if (!modeling) {
           ElMessage.warning('模型未初始化')
           return
+        }
+        const nextApproverValidation =
+          nextApproverConfigEditorRef.value?.validate?.()
+          || validateNextApproverSelectionConfig(
+            assigneeForm.value.nextApproverSelection
+          )
+        if (!nextApproverValidation.valid) {
+          ElMessage.warning(nextApproverValidation.message)
+          return false
         }
         const updates = {}
         if (assigneeForm.value.isMultiInstance) {

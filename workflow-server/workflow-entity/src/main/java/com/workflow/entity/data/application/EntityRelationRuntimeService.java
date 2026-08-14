@@ -4,6 +4,7 @@ import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -14,8 +15,9 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
-import lombok.RequiredArgsConstructor;
+import com.workflow.entity.definition.application.EntityPublishedRelationService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -34,7 +36,6 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EntityRelationRuntimeService {
 
     private static final int MAX_RELATION_DEPTH = 8;
@@ -47,6 +48,53 @@ public class EntityRelationRuntimeService {
     private final ObjectMapper objectMapper;
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityCodeGeneratorService codeGeneratorService;
+    private final EntityPublishedRelationService publishedRelationService;
+
+    @Autowired
+    public EntityRelationRuntimeService(
+            EntityDataDynamicMapper dynamicMapper,
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityRelationMapper relationMapper,
+            DynamicTableService dynamicTableService,
+            ObjectMapper objectMapper,
+            EntityRuntimeRecordMapper recordMapper,
+            EntityCodeGeneratorService codeGeneratorService,
+            EntityPublishedRelationService publishedRelationService) {
+        this.dynamicMapper = dynamicMapper;
+        this.definitionMapper = definitionMapper;
+        this.fieldMapper = fieldMapper;
+        this.relationMapper = relationMapper;
+        this.dynamicTableService = dynamicTableService;
+        this.objectMapper = objectMapper;
+        this.recordMapper = recordMapper;
+        this.codeGeneratorService = codeGeneratorService;
+        this.publishedRelationService = publishedRelationService;
+    }
+
+    /**
+     * 旧单元测试和嵌入式集成的兼容构造器；生产 Spring 容器使用带发布关系解析器的构造器。
+     */
+    public EntityRelationRuntimeService(
+            EntityDataDynamicMapper dynamicMapper,
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityRelationMapper relationMapper,
+            DynamicTableService dynamicTableService,
+            ObjectMapper objectMapper,
+            EntityRuntimeRecordMapper recordMapper,
+            EntityCodeGeneratorService codeGeneratorService) {
+        this(
+                dynamicMapper,
+                definitionMapper,
+                fieldMapper,
+                relationMapper,
+                dynamicTableService,
+                objectMapper,
+                recordMapper,
+                codeGeneratorService,
+                null);
+    }
 
     /**
      * 加载实体配置的所有关系定义。
@@ -58,7 +106,9 @@ public class EntityRelationRuntimeService {
         if (definition == null || definition.getId() == null) {
             return List.of();
         }
-        List<EntityRelation> relations = relationMapper.selectByParentEntityId(definition.getId());
+        List<EntityRelation> relations = publishedRelationService == null
+                ? relationMapper.selectByParentEntityId(definition.getId())
+                : publishedRelationService.list(definition);
         return relations != null ? relations : List.of();
     }
 
@@ -75,8 +125,9 @@ public class EntityRelationRuntimeService {
         }
         Map<String, Object> parentData = new HashMap<>(data);
         for (EntityRelation relation : relations) {
-            if (StringUtils.hasText(relation.getParentFieldCode())) {
-                parentData.remove(relation.getParentFieldCode());
+            String dataKey = effectiveDataKey(relation);
+            if (StringUtils.hasText(dataKey)) {
+                parentData.remove(dataKey);
             }
         }
         return parentData;
@@ -118,9 +169,9 @@ public class EntityRelationRuntimeService {
             return result;
         }
         for (EntityRelation relation : relations) {
-            String fieldCode = relation.getParentFieldCode();
-            if (StringUtils.hasText(fieldCode) && data.containsKey(fieldCode)) {
-                result.put(fieldCode, data.get(fieldCode));
+            String dataKey = effectiveDataKey(relation);
+            if (StringUtils.hasText(dataKey) && data.containsKey(dataKey)) {
+                result.put(dataKey, data.get(dataKey));
             }
         }
         return result;
@@ -195,17 +246,26 @@ public class EntityRelationRuntimeService {
             return;
         }
         for (EntityRelation relation : relations) {
-            String fieldCode = relation.getParentFieldCode();
-            if (!StringUtils.hasText(fieldCode) || !relationData.containsKey(fieldCode)) {
+            String dataKey = effectiveDataKey(relation);
+            if (!StringUtils.hasText(dataKey) || !relationData.containsKey(dataKey)) {
                 continue;
             }
-            Object relationValue = relationData.get(fieldCode);
+            Object relationValue = relationData.get(dataKey);
             if (relationValue == null) {
                 // 前端未提供该关系字段数据时，跳过处理，避免误删已有子表数据
                 continue;
             }
+            if (relation.getOwnershipType()
+                    == EntityRelation.OwnershipType.ASSOCIATION) {
+                throw new BusinessConflictException(
+                        "ENTITY_RELATION_ASSOCIATION_NESTED_WRITE_UNSUPPORTED",
+                        "普通关联 " + relation.getRelationName()
+                                + " 不能通过父聚合新增、修改或删除子记录");
+            }
+            List<Map<String, Object>> incomingRows =
+                    toRelationRows(relationValue, relation.getRelationType());
 
-            String pathKey = relation.getParentEntityCode() + ":" + fieldCode;
+            String pathKey = relation.getParentEntityCode() + ":" + dataKey;
             if (!path.add(pathKey)) {
                 log.warn("关系存在循环，跳过: {}", pathKey);
                 continue;
@@ -221,7 +281,6 @@ public class EntityRelationRuntimeService {
             ensureEntityTable(childDefinition);
             String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
             List<Map<String, Object>> existingRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
-            List<Map<String, Object>> incomingRows = toRelationRows(relationValue, relation.getRelationType());
             Set<String> activeIds = new HashSet<>();
 
             List<EntityRelation> childRelations = loadRelations(childDefinition);
@@ -272,12 +331,12 @@ public class EntityRelationRuntimeService {
         }
         List<EntityRelation> relations = loadRelations(parentDefinition);
         for (EntityRelation relation : relations) {
-            String fieldCode = relation.getParentFieldCode();
-            if (!StringUtils.hasText(fieldCode)) {
+            String dataKey = effectiveDataKey(relation);
+            if (!StringUtils.hasText(dataKey)) {
                 continue;
             }
 
-            String pathKey = relation.getParentEntityCode() + ":" + fieldCode;
+            String pathKey = relation.getParentEntityCode() + ":" + dataKey;
             if (!path.add(pathKey)) {
                 continue;
             }
@@ -290,12 +349,19 @@ public class EntityRelationRuntimeService {
             }
 
             if (!dynamicTableService.tableExists(childDefinition.getEntityCode())) {
-                target.put(fieldCode, emptyRelationValue(relation));
+                target.put(dataKey, emptyRelationValue(relation));
                 path.remove(pathKey);
                 continue;
             }
             String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
             List<Map<String, Object>> rows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
+            if (relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE
+                    && rows != null && rows.size() > 1) {
+                throw new BusinessConflictException(
+                        "ENTITY_VERSION_RELATION_CARDINALITY_VIOLATION",
+                        "一对一关系 " + relation.getRelationName()
+                                + " 存在 " + rows.size() + " 条子记录");
+            }
             List<Map<String, Object>> childRows = rows == null ? List.of() : rows.stream()
                     .map(row -> {
                         Map<String, Object> childRow = toChildFormRow(row, childDefinition.getEntityCode());
@@ -305,9 +371,9 @@ public class EntityRelationRuntimeService {
                     })
                     .collect(Collectors.toList());
             if (relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE) {
-                target.put(fieldCode, childRows.isEmpty() ? null : childRows.get(0));
+                target.put(dataKey, childRows.isEmpty() ? null : childRows.get(0));
             } else {
-                target.put(fieldCode, childRows);
+                target.put(dataKey, childRows);
             }
             path.remove(pathKey);
         }
@@ -319,10 +385,14 @@ public class EntityRelationRuntimeService {
             return;
         }
         for (EntityRelation relation : loadRelations(parentDefinition)) {
-            if (!Boolean.TRUE.equals(relation.getCascadeDelete()) || !StringUtils.hasText(relation.getParentFieldCode())) {
+            String dataKey = effectiveDataKey(relation);
+            if (!Boolean.TRUE.equals(relation.getCascadeDelete())
+                    || relation.getOwnershipType()
+                    == EntityRelation.OwnershipType.ASSOCIATION
+                    || !StringUtils.hasText(dataKey)) {
                 continue;
             }
-            String pathKey = relation.getParentEntityCode() + ":" + relation.getParentFieldCode();
+            String pathKey = relation.getParentEntityCode() + ":" + dataKey;
             if (!path.add(pathKey)) {
                 continue;
             }
@@ -400,7 +470,9 @@ public class EntityRelationRuntimeService {
             }
         }
         if (relationType == EntityRelation.RelationType.ONE_TO_ONE && rows.size() > 1) {
-            return List.of(rows.get(0));
+            throw new BusinessConflictException(
+                    "ENTITY_VERSION_RELATION_CARDINALITY_VIOLATION",
+                    "一对一关系提交数据不能包含多条子记录");
         }
         return rows;
     }
@@ -427,6 +499,20 @@ public class EntityRelationRuntimeService {
 
     private Object emptyRelationValue(EntityRelation relation) {
         return relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE ? null : List.of();
+    }
+
+    /** 聚合数据键：V2 dataKey 优先，旧关系回退承载字段，最后回退关系编码。 */
+    public String effectiveDataKey(EntityRelation relation) {
+        if (relation == null) {
+            return null;
+        }
+        if (StringUtils.hasText(relation.getDataKey())) {
+            return relation.getDataKey();
+        }
+        if (StringUtils.hasText(relation.getParentFieldCode())) {
+            return relation.getParentFieldCode();
+        }
+        return relation.getRelationCode();
     }
 
     private Map<String, Object> toChildFormRow(Map<String, Object> row, String entityCode) {

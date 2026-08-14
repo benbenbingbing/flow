@@ -117,9 +117,12 @@ class ProcessPublishedSnapshotServiceTest {
                 service.getNodeFormsByProcessDefinitionId(
                         "pd-v2",
                         "task-1");
+        ProcessVersionHistory resolved =
+                service.getVersionByProcessDefinitionId("pd-v2");
 
         assertEquals(1, nodeForms.size());
         assertEquals("release-7", nodeForms.get(0).getFormReleaseId());
         assertEquals(7, nodeForms.get(0).getFormReleaseVersion());
+        assertEquals(history, resolved);
     }
 }

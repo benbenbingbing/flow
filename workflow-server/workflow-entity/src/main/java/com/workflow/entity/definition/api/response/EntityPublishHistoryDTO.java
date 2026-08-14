@@ -1,6 +1,7 @@
 package com.workflow.entity.definition.api.response;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -34,6 +35,8 @@ public class EntityPublishHistoryDTO {
     private String versionDescription;
     /** 字段结构快照（JSON） */
     private String fieldsSnapshot;
+    /** 关系定义快照（JSON）；旧发布可能为 null */
+    private String relationsSnapshot;
     /** 建表 DDL */
     private String tableDdl;
     /** 发布类型（首次发布/字段变更/配置变更等） */
@@ -53,4 +56,6 @@ public class EntityPublishHistoryDTO {
      * 解析后的字段列表（用于前端展示）
      */
     private List<EntityFieldDTO> fields;
+    /** 解析后的关系定义 */
+    private List<EntityRelation> relations;
 }

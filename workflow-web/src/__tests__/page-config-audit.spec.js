@@ -304,8 +304,11 @@ assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/,
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
 assert.match(entityDataList, /selectionScene[\s\S]*toolbarButtons[\s\S]*return \[\]/s, '选择型列表应隐藏业务工具栏动作')
 assert.ok(
-  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity && !embedded"'),
-  '平台系统表只读列表不得显示数据版本入口'
+  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity && !embedded && canViewVersions"')
+    && entityDataList.includes("userStore.permissions.includes('entity:version:record:view')")
+    && entityDataList.includes("userStore.permissions.includes(entityViewPermission.value)")
+    && entityDataList.includes('if (!canViewVersions.value) return'),
+  '平台系统表及缺少版本查看或实体查看权限的列表不得显示数据版本入口'
 )
 assert.ok(
   entityDataList.includes('props.embedded && !props.showToolbar')

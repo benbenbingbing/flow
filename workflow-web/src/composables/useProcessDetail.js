@@ -38,10 +38,11 @@ export function useProcessDetail() {
    * @param {string} instanceId 流程实例 ID
    * @param {object} options 选项
    * @param {string} options.startUserName 发起人名称回退值
+   * @param {string} options.taskId 当前任务 ID，并行实例下用于读取对应节点配置
    * @param {function} options.onLoad 加载成功回调，参数为后端返回的 progressRes
    */
   async function loadProcessDetail(instanceId, options = {}) {
-    const { startUserName = 'admin', onLoad } = options
+    const { startUserName = 'admin', taskId = '', onLoad } = options
     bpmnXml.value = ''
     progressData.value = {
       completedNodes: [],
@@ -56,7 +57,10 @@ export function useProcessDetail() {
     formConfigs.value = []
     approvalConfig.value = null
     try {
-      const progressRes = await request.get(`/process-instance/${instanceId}/progress`)
+      const progressRes = await request.get(
+        `/process-instance/${instanceId}/progress`,
+        { params: taskId ? { taskId } : undefined }
+      )
       if (progressRes) {
         bpmnXml.value = progressRes.bpmnXml || ''
         progressData.value = {

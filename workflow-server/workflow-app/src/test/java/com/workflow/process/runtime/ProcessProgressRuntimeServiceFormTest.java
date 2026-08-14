@@ -110,7 +110,8 @@ public class ProcessProgressRuntimeServiceFormTest {
 
     /** 构造被测服务实例(依赖全传 null，仅测试 BPMN 解析逻辑) */
     private ProcessProgressRuntimeService service() {
-        return new ProcessProgressRuntimeService(null, null, null, null, null, null, null, null, null, null,
+        return new ProcessProgressRuntimeService(
+                null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null);
     }
 }

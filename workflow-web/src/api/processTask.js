@@ -35,8 +35,30 @@ export function getTaskDetail(taskId) {
  * 完成任务（审批）
  * @param {Object} data - 审批参数 {taskId, action, comment, transferTo}
  */
-export function completeTask(data) {
-  return request.post('/process-task/complete', data)
+export function completeTask(data, config = {}) {
+  return request.post('/process-task/complete', data, config)
+}
+
+/**
+ * 按当前审批动作和尚未提交的表单数据预览实际命中的下一审批节点。
+ */
+export function previewNextApproval(taskId, data = {}, config = {}) {
+  return request.post(
+    `/process-task/${encodeURIComponent(taskId)}/next-approval-preview`,
+    data,
+    { silentError: true, ...config }
+  )
+}
+
+/**
+ * 查询预览返回的受控人员范围。scopeKey 只能来自 preview 响应。
+ */
+export function getNextApproverOptions(taskId, data = {}) {
+  return request.post(
+    `/process-task/${encodeURIComponent(taskId)}/next-approver-options`,
+    data,
+    { silentError: true }
+  )
 }
 
 /**
@@ -157,6 +179,8 @@ export const processTaskApi = {
   getStatistics,
   getTaskDetail,
   completeTask,
+  previewNextApproval,
+  getNextApproverOptions,
   claimTask,
   getTaskSla,
   acknowledgeTask,

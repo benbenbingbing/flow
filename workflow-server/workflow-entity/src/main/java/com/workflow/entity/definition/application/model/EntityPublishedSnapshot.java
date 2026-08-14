@@ -1,6 +1,7 @@
 package com.workflow.entity.definition.application.model;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import lombok.Data;
 
 import java.util.List;
@@ -31,4 +32,8 @@ public class EntityPublishedSnapshot {
     private Integer version;
     /** 该版本的字段定义列表 */
     private List<EntityField> fields;
+    /** 该版本冻结的实体关系；旧发布未冻结时为空列表 */
+    private List<EntityRelation> relations;
+    /** 是否存在关系快照，用于区分旧发布与明确发布空关系 */
+    private boolean relationsSnapshotAvailable;
 }

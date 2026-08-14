@@ -36,6 +36,28 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
     List<EntityRelation> selectByParentEntityCode(@Param("parentEntityCode") String parentEntityCode);
 
     /**
+     * 根据父实体 ID 查询全部未删除关系（包含禁用草稿）。
+     */
+    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
+    List<EntityRelation> selectAllByParentEntityId(@Param("parentEntityId") String parentEntityId);
+
+    /**
+     * 根据父实体 ID 和稳定关系编码查询关系（包含逻辑删除记录，防止稳定编码复用）。
+     */
+    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND relation_code = #{relationCode} LIMIT 1")
+    EntityRelation selectByRelationCode(
+            @Param("parentEntityId") String parentEntityId,
+            @Param("relationCode") String relationCode);
+
+    /**
+     * 根据父实体 ID 和聚合数据键查询关系（包含逻辑删除记录，防止稳定数据键复用）。
+     */
+    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND data_key = #{dataKey} LIMIT 1")
+    EntityRelation selectByDataKey(
+            @Param("parentEntityId") String parentEntityId,
+            @Param("dataKey") String dataKey);
+
+    /**
      * 根据父实体 ID 与父字段编码查询关系（含已禁用），取一条。
      *
      * @param parentEntityId   父实体 ID
@@ -69,7 +91,7 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
             @Param("bindingRef") String bindingRef);
 
     /**
-     * 根据父实体 ID 物理删除所有关系（用于批量保存前清理旧数据）。
+     * 根据父实体 ID 物理删除所有关系（仅用于删除整个实体）。
      *
      * @param parentEntityId 父实体 ID
      */
@@ -79,8 +101,7 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
     /**
      * 根据父实体 ID 与父字段编码物理删除关系。
      *
-     * <p>用于实体设计器单字段保存，只重建当前字段对应的关系，
-     * 不影响同一实体的其他子表单关系。</p>
+     * <p>仅保留给旧数据维护工具使用。实体字段保存不得再调用此方法。</p>
      *
      * @param parentEntityId  父实体 ID
      * @param parentFieldCode 父字段编码

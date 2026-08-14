@@ -19,11 +19,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * 实体字段定义的增量保存与关系同步服务。
@@ -57,7 +55,6 @@ public class EntityFieldDefinitionService {
         EntityDefinition entity = requireDynamicEntity(entityId);
         validateSingleField(entityId, null, dto);
         EntityField saved = createDefinition(entityId, dto);
-        syncSingleRelation(entity, null, dto, saved);
         entityMapper.updateById(entity);
         return convertToDTOWithRelation(entity, saved);
     }
@@ -83,9 +80,7 @@ public class EntityFieldDefinitionService {
             throw new RuntimeException("实体字段不存在: " + fieldId);
         }
         validateSingleField(entityId, current, dto);
-        String previousFieldCode = current.getFieldCode();
         updateDefinition(current, dto);
-        syncSingleRelation(entity, previousFieldCode, dto, current);
         entityMapper.updateById(entity);
         return convertToDTOWithRelation(entity, current);
     }
@@ -155,33 +150,17 @@ public class EntityFieldDefinitionService {
                 fieldDTO.getFileItems());
     }
 
+    /**
+     * @deprecated 实体关系已独立管理。字段批量保存不再创建、更新或删除关系。
+     */
+    @Deprecated(forRemoval = false)
     public void syncRelations(
             EntityDefinition parent,
             List<EntityFieldDTO> fieldDtos,
             List<EntityField> savedFields) {
-        if (parent == null || parent.getId() == null) {
-            return;
-        }
-        relationMapper.deleteByParentEntityId(parent.getId());
-        if (fieldDtos == null || fieldDtos.isEmpty()) {
-            return;
-        }
-        Map<String, EntityField> fieldMap = savedFields == null
-                ? new HashMap<>()
-                : savedFields.stream()
-                        .filter(field -> field.getFieldCode() != null)
-                        .collect(Collectors.toMap(
-                                EntityField::getFieldCode,
-                                field -> field,
-                                (left, right) -> left));
-        for (EntityFieldDTO fieldDTO : fieldDtos) {
-            if (isRelationField(fieldDTO)) {
-                relationMapper.insert(buildRelation(
-                        parent,
-                        fieldDTO,
-                        fieldMap.get(fieldDTO.getFieldCode())));
-            }
-        }
+        // Intentionally empty. Kept temporarily for source compatibility with
+        // older integrations that still submit entity fields and relations in
+        // one request.
     }
 
     private EntityDefinition requireDynamicEntity(String entityId) {
@@ -258,81 +237,6 @@ public class EntityFieldDefinitionService {
                     "ENTITY_FIELD_TYPE_LOCKED",
                     "系统字段或已发布字段不能修改字段类型");
         }
-    }
-
-    private void syncSingleRelation(
-            EntityDefinition parent,
-            String previousFieldCode,
-            EntityFieldDTO fieldDTO,
-            EntityField savedField) {
-        if (StringUtils.isNotBlank(previousFieldCode)) {
-            relationMapper.deleteByParentField(
-                    parent.getId(),
-                    previousFieldCode);
-        }
-        if (!Objects.equals(previousFieldCode, fieldDTO.getFieldCode())) {
-            relationMapper.deleteByParentField(
-                    parent.getId(),
-                    fieldDTO.getFieldCode());
-        }
-        if (isRelationField(fieldDTO)) {
-            relationMapper.insert(buildRelation(
-                    parent,
-                    fieldDTO,
-                    savedField));
-        }
-    }
-
-    private EntityRelation buildRelation(
-            EntityDefinition parent,
-            EntityFieldDTO fieldDTO,
-            EntityField savedField) {
-        String childEntityId = firstText(
-                fieldDTO.getChildEntityId(),
-                fieldDTO.getRefEntityId());
-        String childRefFieldCode = firstText(
-                fieldDTO.getChildRefFieldCode(),
-                fieldDTO.getRefFieldCode());
-        if (childEntityId == null) {
-            throw new RuntimeException(
-                    "请选择子实体: " + fieldDTO.getFieldCode());
-        }
-        if (childRefFieldCode == null) {
-            throw new RuntimeException(
-                    "请选择子表外键: " + fieldDTO.getFieldCode());
-        }
-        EntityDefinition child = entityMapper.selectById(childEntityId);
-        if (child == null) {
-            throw new RuntimeException("子实体不存在: " + childEntityId);
-        }
-
-        EntityRelation relation = new EntityRelation();
-        relation.setParentEntityId(parent.getId());
-        relation.setParentEntityCode(parent.getEntityCode());
-        relation.setParentFieldId(
-                savedField != null ? savedField.getId() : fieldDTO.getId());
-        relation.setParentFieldCode(fieldDTO.getFieldCode());
-        relation.setRelationCode(firstText(
-                fieldDTO.getRelationCode(),
-                parent.getEntityCode() + "_" + fieldDTO.getFieldCode()));
-        relation.setRelationName(firstText(
-                fieldDTO.getRelationName(),
-                fieldDTO.getFieldName()));
-        relation.setChildEntityId(child.getId());
-        relation.setChildEntityCode(child.getEntityCode());
-        relation.setChildRefFieldCode(childRefFieldCode);
-        relation.setRelationType(resolveRelationType(fieldDTO));
-        relation.setCascadeDelete(
-                fieldDTO.getCascadeDelete() == null
-                        || fieldDTO.getCascadeDelete());
-        relation.setRequired(
-                fieldDTO.getRelationRequired() != null
-                        ? fieldDTO.getRelationRequired()
-                        : fieldDTO.getIsRequired());
-        relation.setEnabled(true);
-        relation.setDeleted(0);
-        relation.setSortOrder(fieldDTO.getSortOrder());
-        return relation;
     }
 
     private EntityFieldDTO convertToDTOWithRelation(
@@ -473,17 +377,6 @@ public class EntityFieldDefinitionService {
     private boolean isRelationField(EntityFieldDTO dto) {
         return dto != null
                 && dto.getFieldType() == EntityField.FieldType.SUB_FORM;
-    }
-
-    private EntityRelation.RelationType resolveRelationType(
-            EntityFieldDTO dto) {
-        String relationType = firstText(dto.getRelationType(), null);
-        if (relationType != null) {
-            return EntityRelation.RelationType.valueOf(relationType);
-        }
-        return dto.getFieldType() == EntityField.FieldType.SUB_FORM
-                ? EntityRelation.RelationType.ONE_TO_ONE
-                : EntityRelation.RelationType.ONE_TO_MANY;
     }
 
     private String resolveValueStorage(EntityFieldDTO field) {

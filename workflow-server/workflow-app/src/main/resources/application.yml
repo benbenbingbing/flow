@@ -25,6 +25,7 @@ spring:
     password: ${DB_PASSWORD}
     hikari:
       connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
+      transaction-isolation: ${DB_TRANSACTION_ISOLATION:TRANSACTION_READ_COMMITTED}
       maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
       minimum-idle: ${DB_POOL_MIN_IDLE:5}
       connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:3000}

@@ -24,6 +24,23 @@ public interface EntityVersionConfigReleaseMapper
             @Param("configId") String configId);
 
     @Select("""
+            SELECT COUNT(*) FROM entity_version_config_release
+            WHERE config_id = #{configId}
+            """)
+    long countByConfigId(@Param("configId") String configId);
+
+    @Select("""
+            SELECT * FROM entity_version_config_release
+            WHERE config_id = #{configId}
+            ORDER BY version DESC
+            LIMIT #{pageSize} OFFSET #{offset}
+            """)
+    List<EntityVersionConfigRelease> findPageByConfigId(
+            @Param("configId") String configId,
+            @Param("offset") long offset,
+            @Param("pageSize") long pageSize);
+
+    @Select("""
             SELECT COALESCE(MAX(version), 0)
             FROM entity_version_config_release
             WHERE config_id = #{configId}

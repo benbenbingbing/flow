@@ -19,6 +19,9 @@ public class EntityVersionConfig {
     private String entityId;
     private String entityCode;
     private Boolean enabled;
+    private Integer contractVersion;
+    private String draftDocument;
+    private String migrationState;
     private String activeReleaseId;
     private Integer revision;
     private String status;

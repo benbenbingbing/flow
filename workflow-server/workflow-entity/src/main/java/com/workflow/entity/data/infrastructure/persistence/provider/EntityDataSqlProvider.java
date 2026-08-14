@@ -54,6 +54,25 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
+    /** 历史审计读取：包含逻辑删除行，但仍由调用方附加数据权限。 */
+    public String selectByIdIncludingDeleted(Map<String, Object> params) {
+        return "SELECT * FROM " + tableName(params)
+                + " WHERE id = #{id} LIMIT 1";
+    }
+
+    /** 历史审计读取：只移除 deleted 条件，不移除行级权限条件。 */
+    public String selectByIdIncludingDeletedWithPermission(
+            Map<String, Object> params) {
+        String permissionSql = (String) params.get("permissionSql");
+        StringBuilder sql = new StringBuilder("SELECT * FROM ")
+                .append(tableName(params))
+                .append(" WHERE id = #{id}");
+        if (permissionSql != null && !permissionSql.isBlank()) {
+            sql.append(" AND (").append(permissionSql).append(")");
+        }
+        return sql.append(" LIMIT 1").toString();
+    }
+
     /**
      * 根据流程实例ID查询
      */

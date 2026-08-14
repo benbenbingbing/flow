@@ -14,6 +14,7 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.mutationpolicy.application.EntityMutationPolicyService;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityChangeTargetInstanceMapper;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityChangeTargetInstance;
@@ -39,7 +40,7 @@ import static org.mockito.Mockito.when;
 class EntityChangeTargetServiceTest {
 
     @Mock
-    private EntityVersionConfigurationService configurationService;
+    private EntityMutationPolicyService configurationService;
     @Mock
     private EntityDataDynamicService queryService;
     @Mock

@@ -72,6 +72,13 @@ public class EntityPublishHistory {
     private String fieldsSnapshot;
 
     /**
+     * 关系定义快照（JSON）。NULL 表示 V043 之前的旧发布，需要兼容回退当前关系表；
+     * 空数组表示该发布版本明确没有关系。
+     */
+    @TableField("relations_snapshot")
+    private String relationsSnapshot;
+
+    /**
      * 表结构DDL（创建表的SQL语句）
      */
     @TableField("table_ddl")

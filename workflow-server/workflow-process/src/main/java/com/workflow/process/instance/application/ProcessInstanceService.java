@@ -69,8 +69,15 @@ public class ProcessInstanceService {
      * @return 流程进度信息
      */
     public ProcessProgressDTO getProcessProgress(String processInstanceId) {
+        return getProcessProgress(processInstanceId, null);
+    }
+
+    public ProcessProgressDTO getProcessProgress(
+            String processInstanceId,
+            String taskId) {
         processInstanceAccessService.requireReadAccess(processInstanceId);
-        return processProgressRuntimeService.getProcessProgress(processInstanceId);
+        return processProgressRuntimeService.getProcessProgress(
+                processInstanceId, taskId);
     }
     
     /**

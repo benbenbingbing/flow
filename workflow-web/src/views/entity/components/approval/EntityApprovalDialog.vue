@@ -73,36 +73,18 @@
         </el-tab-pane>
       </el-tabs>
 
-      <div
-        v-if="!isViewMode && effectiveApprovalConfig.enabled !== false && isApprovalFormTab"
-        class="approval-opinion-section"
-      >
-        <div class="section-title">审批意见</div>
-        <el-form :model="approveForm" label-width="80px">
-          <el-form-item label="审批操作" required>
-            <el-radio-group v-model="approveForm.action">
-              <el-radio-button
-                v-for="option in effectiveApprovalConfig.options"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item
-            v-if="effectiveApprovalConfig.options.find(o => o.value === approveForm.action)?.showComment !== false"
-            :label="effectiveApprovalConfig.commentLabel || '审批备注'"
-          >
-            <el-input
-              v-model="approveForm.comment"
-              type="textarea"
-              :rows="3"
-              :placeholder="`请输入${effectiveApprovalConfig.commentLabel || '审批备注'}`"
-            />
-          </el-form-item>
-        </el-form>
-      </div>
+      <ApprovalDecisionPanel
+        v-if="showApprovalDecisionSection"
+        ref="approvalDecisionRef"
+        v-model:action="approveForm.action"
+        v-model:comment="approveForm.comment"
+        :approval-config="effectiveApprovalConfig"
+        :preview="nextApproverPreview"
+        :loading="nextApproverPreviewLoading"
+        :task-id="currentTask?.taskId || ''"
+        :action-label="selectedApprovalOption?.label || ''"
+        :form-data="entityData || {}"
+      />
     </div>
 
     <template #footer>
@@ -132,10 +114,12 @@ import {
   resolveRuntimeFormTabLayout
 } from '@/shared/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
+import { useNextApproverPreview } from '@/composables/useNextApproverPreview'
 import { useUserStore } from '@/stores/user'
 import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
 import EntityApprovalHistory from './EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
+import ApprovalDecisionPanel from './ApprovalDecisionPanel.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import {
   resolveApprovalEntityCode,
@@ -151,6 +135,11 @@ import {
   buildEntityStatusMap,
   withEntityStatusRuntimeForm
 } from '@/shared/entity-status-runtime'
+import {
+  hasNextApproverPresentation,
+  normalizeNextApproverPreview
+} from '@/shared/next-approver'
+import { BUSINESS_TRACE_HEADER } from '@/shared/request'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -208,6 +197,7 @@ const formReleaseContext = computed(() => ({
 }))
 const basicInfoRef = ref<any>()
 const nodeTabRefs = ref<Record<string, any>>({})
+const approvalDecisionRef = ref<any>()
 
 const approveForm = reactive({
   action: 'approve',
@@ -317,6 +307,38 @@ const firstApprovalFormTabName = computed(() =>
 const isApprovalFormTab = computed(() =>
   approvalFormTabNames.value.includes(activeDialogTab.value)
 )
+const selectedApprovalOption = computed(() =>
+  effectiveApprovalConfig.value.options?.find(
+    (option: any) => option.value === approveForm.action
+  )
+)
+const {
+  preview: nextApproverPreview,
+  loading: nextApproverPreviewLoading,
+  reset: resetNextApproverPreview,
+  refresh: refreshNextApproverPreview,
+  schedule: scheduleNextApproverPreview,
+  ensureCurrent: ensureNextApproverPreviewCurrent,
+  getCurrentTraceKey: getNextApproverPreviewTraceKey
+} = useNextApproverPreview({
+  getTaskId: () => currentTask.value?.taskId,
+  getAction: () => approveForm.action,
+  getActionLabel: () => selectedApprovalOption.value?.label,
+  getComment: () => approveForm.comment,
+  getFormData: () => entityData.value,
+  isEnabled: () => !isViewMode.value && processDialogVisible.value
+})
+const showApprovalDecisionSection = computed(() =>
+  !isViewMode.value
+  && isApprovalFormTab.value
+  && (
+    effectiveApprovalConfig.value.enabled !== false
+    || hasNextApproverPresentation(
+      nextApproverPreview.value,
+      nextApproverPreviewLoading.value
+    )
+  )
+)
 const footerActions = computed(() =>
   footerFormActions(formActions.value).filter(action =>
     action.key !== 'submitApproval' || isApprovalFormTab.value
@@ -355,6 +377,15 @@ async function loadFormActions() {
     systemEntity: props.entityDefinition?.storageMode === 'SYSTEM'
   })
 }
+
+watch(
+  () => [approveForm.action, approveForm.comment],
+  scheduleNextApproverPreview
+)
+watch(entityData, scheduleNextApproverPreview, { deep: true })
+watch(processDialogVisible, visible => {
+  if (!visible) resetNextApproverPreview()
+})
 
 watch(
   () => [
@@ -399,6 +430,7 @@ const openApprove = async (
   row: any,
   options: OpenApproveOptions = {}
 ) => {
+  resetNextApproverPreview()
   overrideForm.value = options.form || null
   isViewMode.value = false
   currentTask.value = {
@@ -414,6 +446,7 @@ const openApprove = async (
   activeDialogTab.value = 'basic'
   const loaded = await loadProcessDetail(row.processInstanceId, {
     startUserName: currentTask.value?.startUserName,
+    taskId: currentTask.value?.taskId,
     onLoad: (progressRes: any) => {
       if (currentTask.value) {
         currentTask.value.processStatus = progressRes.status
@@ -438,6 +471,8 @@ const openApprove = async (
   await reloadExplicitFormDetail(row)
   await loadFormActions()
   processDialogVisible.value = true
+  await nextTick()
+  await refreshNextApproverPreview()
 }
 
 interface OpenViewOptions {
@@ -448,6 +483,7 @@ interface OpenViewOptions {
 
 // 打开查看弹窗（只读模式）
 const openView = async (row: any, options: OpenViewOptions = {}) => {
+  resetNextApproverPreview()
   const { defaultTab, startUserName, form } = options
   overrideForm.value = form || null
   isViewMode.value = true
@@ -698,6 +734,30 @@ function fieldName(path: string) {
   return field?.fieldName || field?.fieldLabel || code
 }
 
+function isNextApprovalScopeChanged(error: any) {
+  const codes = [
+    error?.errorCode,
+    error?.source?.errorCode,
+    error?.source?.code,
+    error?.response?.data?.errorCode,
+    error?.response?.data?.code,
+    error?.code
+  ].map(value => String(value || '').toUpperCase())
+  return codes.includes('NEXT_APPROVAL_SCOPE_CHANGED')
+}
+
+function isDeferredDefaultRequired(error: any) {
+  const codes = [
+    error?.errorCode,
+    error?.source?.errorCode,
+    error?.source?.code,
+    error?.response?.data?.errorCode,
+    error?.response?.data?.code,
+    error?.code
+  ].map(value => String(value || '').toUpperCase())
+  return codes.includes('NEXT_APPROVER_DEFERRED_DEFAULT_REQUIRED')
+}
+
 // 提交审批
 const submitApprove = async () => {
   if (!currentTask.value?.taskId || approveSubmitLoading.value) return
@@ -713,22 +773,54 @@ const submitApprove = async () => {
       fields: approvalNormalForm.value?.fields || [],
       nodes: approvalNormalForm.value?.nodes || []
     })
-    const selectedOption = effectiveApprovalConfig.value.options?.find(
-      (o: any) => o.value === approveForm.action
-    )
-    await completeTask({
+    await ensureNextApproverPreviewCurrent()
+    const nextApproverValidation = approvalDecisionRef.value?.validate?.()
+      || { valid: true, message: '' }
+    if (!nextApproverValidation.valid) {
+      ElMessage.warning(nextApproverValidation.message)
+      return
+    }
+    const changedSelections =
+      approvalDecisionRef.value?.getChangedSelections?.() || []
+    const completePayload: Record<string, any> = {
       taskId: currentTask.value.taskId,
       action: approveForm.action,
-      actionLabel: selectedOption?.label,
+      actionLabel: selectedApprovalOption.value?.label,
       comment: approveForm.comment,
       formData: entityData.value
+    }
+    if (changedSelections.length > 0) {
+      completePayload.nextApprovalScopeKey = nextApproverPreview.value.scopeKey
+      completePayload.nextApproverSelections = changedSelections
+    }
+    const previewTraceKey = getNextApproverPreviewTraceKey()
+    await completeTask(completePayload, {
+      silentError: true,
+      ...(previewTraceKey
+        ? { headers: { [BUSINESS_TRACE_HEADER]: previewTraceKey } }
+        : {})
     })
     ElMessage.success('审批成功')
     processDialogVisible.value = false
     emit('success')
-  } catch (e) {
+  } catch (e: any) {
     console.error('审批失败:', e)
-    ElMessage.error('审批失败')
+    if (isDeferredDefaultRequired(e)) {
+      const message = e?.message
+        || '延迟解析的下一审批节点必须配置可用默认审批人，请联系流程管理员'
+      nextApproverPreview.value = normalizeNextApproverPreview({
+        status: 'BLOCKED',
+        message
+      })
+      ElMessage.error(message)
+      return
+    }
+    if (isNextApprovalScopeChanged(e)) {
+      ElMessage.warning('下一审批人范围已变化，请确认刷新后的人员后再次提交')
+      await refreshNextApproverPreview()
+      return
+    }
+    ElMessage.error(e?.message || '审批失败')
   } finally {
     approveSubmitLoading.value = false
   }
@@ -801,32 +893,6 @@ defineExpose({
   height: 100%;
 }
 
-.section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 16px;
-  padding-left: 8px;
-  border-left: 4px solid #409eff;
-}
-
-.approval-opinion-section {
-  flex: 0 0 auto;
-  max-height: min(280px, 34dvh);
-  overflow-y: auto;
-  background: #ffffff;
-  padding: 12px 0 4px;
-  border-top: 1px solid #e4e7ed;
-}
-
-.approval-opinion-section :deep(.el-form-item) {
-  margin-bottom: 12px;
-}
-
-.approval-opinion-section :deep(.el-form-item:last-child) {
-  margin-bottom: 0;
-}
-
 .approval-dialog-footer {
   min-height: 32px;
 }
@@ -838,9 +904,4 @@ defineExpose({
   }
 }
 
-@media (max-height: 760px) {
-  .approval-opinion-section {
-    max-height: 30dvh;
-  }
-}
 </style>

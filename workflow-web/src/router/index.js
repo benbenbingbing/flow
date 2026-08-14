@@ -77,7 +77,11 @@ const routes = [
         path: '/entity/design/:id',
         name: 'EntityDesign',
         component: () => import('@/views/EntityDesign.vue'),
-        meta: { title: '实体设计', activeMenu: '/entity' }
+        meta: {
+          title: '实体设计',
+          activeMenu: '/entity',
+          requiredPermissions: ['entity:definition:view']
+        }
       },
       {
         path: '/entity/data/:code',
@@ -252,6 +256,15 @@ const routes = [
         meta: {
           title: '数据版本',
           requiredPermissions: ['entity:version:config:list']
+        }
+      },
+      {
+        path: '/system/entity-mutation-policies',
+        name: 'EntityMutationPolicyManagement',
+        component: () => import('@/views/system/EntityMutationPolicyManagement.vue'),
+        meta: {
+          title: '实体变更策略',
+          requiredPermissions: ['entity:mutation:config:list']
         }
       },
       {

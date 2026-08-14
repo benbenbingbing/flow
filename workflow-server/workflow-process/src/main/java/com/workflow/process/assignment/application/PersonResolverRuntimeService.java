@@ -15,7 +15,10 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.S
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
+import com.workflow.admin.extension.person.infrastructure.persistence.mapper.PersonResolverDefinitionMapper;
+import com.workflow.admin.extension.person.infrastructure.persistence.record.PersonResolverDefinition;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -38,11 +41,48 @@ public class PersonResolverRuntimeService {
     private final SysUserGroupMapper userGroupMapper;
     private final SysOrganizationMapper organizationMapper;
 
+    @Autowired(required = false)
+    private PersonResolverDefinitionMapper resolverDefinitionMapper;
+
     public boolean supports(String resolverCode, PersonResolveUsage usage) {
         PersonResolver resolver = find(resolverCode);
         return resolver != null
                 && (resolver.descriptor().supportedUsages().isEmpty()
                 || resolver.descriptor().supportedUsages().contains(usage));
+    }
+
+    /**
+     * 校验解析器实现、用途以及受控目录启用状态。
+     */
+    public boolean supportsConfigured(
+            String resolverCode,
+            PersonResolveUsage usage) {
+        if (!supports(resolverCode, usage)) {
+            return false;
+        }
+        if (resolverDefinitionMapper == null) {
+            // 兼容不启动 Spring 的轻量单测；应用上下文中该 Mapper 必然注入。
+            return true;
+        }
+        PersonResolverDefinition definition = resolverDefinitionMapper.selectOne(
+                new LambdaQueryWrapper<PersonResolverDefinition>()
+                        .eq(PersonResolverDefinition::getResolverCode, resolverCode)
+                        .eq(PersonResolverDefinition::getDeleted, 0)
+                        .last("LIMIT 1"));
+        return definition != null
+                && Boolean.TRUE.equals(definition.getEnabled());
+    }
+
+    public void requireConfigured(
+            String resolverCode,
+            PersonResolveUsage usage) {
+        if (!supportsConfigured(resolverCode, usage)) {
+            throw new IllegalArgumentException(
+                    "人员接口未配置、未启用、不可用或不支持用途 "
+                            + usage.name()
+                            + ": "
+                            + resolverCode);
+        }
     }
 
     public List<String> resolveUsernames(
@@ -116,8 +156,16 @@ public class PersonResolverRuntimeService {
                                     .eq(SysRole::getId, value)
                                     .or()
                                     .eq(SysRole::getRoleCode, value))
+                            .eq(SysRole::getStatus,
+                                    SysRole.Status.ENABLED.getValue())
                             .eq(SysRole::getDeleted, 0));
             for (SysRole role : roles) {
+                if (role == null
+                        || !SysRole.Status.ENABLED.getValue()
+                        .equals(role.getStatus())
+                        || Integer.valueOf(1).equals(role.getDeleted())) {
+                    continue;
+                }
                 resolveDirectUsers(
                         userRoleMapper.selectUserIdsByRoleId(role.getId()))
                         .forEach(user ->
@@ -137,8 +185,16 @@ public class PersonResolverRuntimeService {
                                     .eq(SysGroup::getId, value)
                                     .or()
                                     .eq(SysGroup::getGroupCode, value))
+                            .eq(SysGroup::getStatus,
+                                    SysGroup.Status.ENABLED.getValue())
                             .eq(SysGroup::getDeleted, 0));
             for (SysGroup group : groups) {
+                if (group == null
+                        || !SysGroup.Status.ENABLED.getValue()
+                        .equals(group.getStatus())
+                        || Integer.valueOf(1).equals(group.getDeleted())) {
+                    continue;
+                }
                 resolveDirectUsers(
                         userGroupMapper.selectUserIdsByGroupId(group.getId()))
                         .forEach(user ->

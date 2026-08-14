@@ -206,6 +206,28 @@ public class TaskAddSignService {
     }
 
     /**
+     * 若为加签子任务则校验当前办理人并返回 true；非加签子任务返回 false。
+     */
+    @Transactional(readOnly = true)
+    public boolean requireAddSignTaskAccess(String taskId) {
+        ProcessTaskAddSignUser task =
+                addSignUserMapper.findByGeneratedTaskId(taskId);
+        if (task == null) {
+            return false;
+        }
+        if (!task.getUserId().equals(currentUsername())) {
+            throw new ForbiddenException("当前用户不是该加签任务办理人");
+        }
+        return true;
+    }
+
+    /** 判断指定 Flowable 原任务是否正处于加签编排中。 */
+    @Transactional(readOnly = true)
+    public boolean isAddSignSourceTask(String taskId) {
+        return findOpenBySourceTask(taskId) != null;
+    }
+
+    /**
      * 处理原任务的提交（在加签场景下拦截原任务办理）。
      *
      * <p>暂存原任务提交动作：驳回则直接结束加签并提交；后加签则激活挂起的子任务；
@@ -388,6 +410,18 @@ public class TaskAddSignService {
             addSignMapper.updateById(addSign);
             return;
         }
+        Map<String, Object> formData = readFormData(
+                addSign.getSourceFormData());
+        if (taskActionService
+                .requiresManualNextApproverForDeferredCompletion(
+                        addSign.getSourceTaskId(),
+                        addSign.getSourceAction(),
+                        addSign.getSourceComment(),
+                        addSign.getSourceActionLabel(),
+                        formData)) {
+            restoreSourceForNextApproverConfirmation(addSign);
+            return;
+        }
         addSign.setStatus("COMPLETED");
         addSign.setCompleteTime(LocalDateTime.now());
         addSignMapper.updateById(addSign);
@@ -398,7 +432,48 @@ public class TaskAddSignService {
                 addSign.getSourceComment(),
                 null,
                 addSign.getSourceActionLabel(),
-                readFormData(addSign.getSourceFormData()));
+                formData);
+    }
+
+    /**
+     * 加签已全部结束，但下一节点需要人工选择且没有默认审批人时，关闭加签编排并
+     * 恢复原 Flowable 任务镜像，交回原办理人从正常审批面板重新确认。
+     */
+    private void restoreSourceForNextApproverConfirmation(
+            ProcessTaskAddSign addSign) {
+        String action = addSign.getSourceAction();
+        ProcessTask source = processTaskMapper.selectByTaskId(
+                addSign.getSourceTaskId());
+        if (source == null) {
+            throw new IllegalStateException(
+                    "无法恢复原审批任务，请刷新后重试");
+        }
+        source.setStatus(ProcessTask.STATUS_TODO);
+        source.setAction(null);
+        source.setActionLabel(null);
+        source.setComment(null);
+        source.setEndTime(null);
+        source.setDuration(null);
+        source.setUpdateTime(LocalDateTime.now());
+        processTaskMapper.updateById(source);
+
+        addSign.setStatus("COMPLETED");
+        addSign.setSourceCompleted(false);
+        addSign.setSourceAction(null);
+        addSign.setSourceActionLabel(null);
+        addSign.setSourceComment(null);
+        addSign.setSourceFormData(null);
+        addSign.setCompleteTime(LocalDateTime.now());
+        addSignMapper.updateById(addSign);
+        writeOperationLog(
+                addSign,
+                addSign.getSourceTaskId(),
+                "ADD_SIGN_NEXT_APPROVER_CONFIRMATION_REQUIRED",
+                addSign.getOperatorId(),
+                "下一节点审批人需要人工确认，已恢复原待办",
+                Map.of(
+                        "sourceAction", action == null ? "" : action,
+                        "sourceTaskRestored", true));
     }
 
     /** 记录原任务被驳回的提交动作（加签人驳回后用于回填原任务提交） */

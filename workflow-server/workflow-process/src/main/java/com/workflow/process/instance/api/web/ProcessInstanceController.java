@@ -14,6 +14,7 @@ import com.workflow.process.workbench.api.response.MyStartedProcessVO;
 import com.workflow.process.instance.api.response.ProcessDetailVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -39,8 +40,21 @@ public class ProcessInstanceController {
      * @return 流程进度信息，包含已完成节点、当前活动节点、BPMN XML等
      */
     @GetMapping("/{processInstanceId}/progress")
-    public ApiResponse<ProcessProgressDTO> getProcessProgress(@PathVariable String processInstanceId) {
-        return ApiResponse.success(processInstanceService.getProcessProgress(processInstanceId));
+    public ApiResponse<ProcessProgressDTO> getProcessProgress(
+            @PathVariable String processInstanceId,
+            @RequestParam(required = false) String taskId) {
+        return ApiResponse.success(StringUtils.hasText(taskId)
+                ? processInstanceService.getProcessProgress(
+                processInstanceId, taskId)
+                : processInstanceService.getProcessProgress(
+                processInstanceId));
+    }
+
+    /** 兼容不经过 Spring MVC 的既有调用与轻量测试。 */
+    public ApiResponse<ProcessProgressDTO> getProcessProgress(
+            String processInstanceId) {
+        return ApiResponse.success(
+                processInstanceService.getProcessProgress(processInstanceId));
     }
     
     /**

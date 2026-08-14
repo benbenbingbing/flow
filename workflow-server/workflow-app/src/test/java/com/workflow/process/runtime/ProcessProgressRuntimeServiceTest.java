@@ -4,8 +4,6 @@ import com.workflow.process.instance.application.ProcessProgressRuntimeService;
 
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
-import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
@@ -193,13 +191,53 @@ class ProcessProgressRuntimeServiceTest {
                 .getDefaultForm("entity-1");
     }
 
+    @Test
+    void oldInstanceUsesItsPublishedBpmnForApprovalConfiguration() {
+        Fixture fixture = new Fixture();
+        ProcessProgressRuntimeService service = fixture.service();
+        fixture.runningInstance();
+        fixture.processDefinition();
+        fixture.history();
+        fixture.activeExecution();
+        fixture.activeTask();
+        fixture.noOperationLogs();
+        ProcessVersionHistory oldVersion = new ProcessVersionHistory();
+        oldVersion.setBpmnXml("""
+                <definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                             xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn:process id="expense_flow">
+                    <bpmn:userTask id="task-1">
+                      <bpmn:extensionElements>
+                        <flowable:properties>
+                          <flowable:property name="approvalConfig"
+                            value="{&quot;enabled&quot;:true,&quot;commentLabel&quot;:&quot;旧版审批意见&quot;,&quot;options&quot;:[{&quot;value&quot;:&quot;legacyApprove&quot;,&quot;label&quot;:&quot;旧版通过&quot;}]}" />
+                        </flowable:properties>
+                      </bpmn:extensionElements>
+                    </bpmn:userTask>
+                  </bpmn:process>
+                </definitions>
+                """);
+        when(fixture.snapshotService
+                .getVersionByProcessDefinitionId("pd-1"))
+                .thenReturn(oldVersion);
+
+        ProcessProgressDTO progress = service.getProcessProgress("pi-1");
+
+        assertEquals(
+                "旧版审批意见",
+                progress.getApprovalConfig().getCommentLabel());
+        assertEquals(
+                "legacyApprove",
+                progress.getApprovalConfig().getOptions().get(0).getValue());
+        assertEquals(oldVersion.getBpmnXml(), progress.getBpmnXml());
+    }
+
     /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
     private static class Fixture {
         final RuntimeService runtimeService = mock(RuntimeService.class);
         final HistoryService historyService = mock(HistoryService.class);
         final RepositoryService repositoryService = mock(RepositoryService.class);
         final TaskService taskService = mock(TaskService.class);
-        final ProcessDefinitionConfigMapper processConfigMapper = mock(ProcessDefinitionConfigMapper.class);
         final SysUserService sysUserService = mock(SysUserService.class);
         final EntityDataDynamicService entityDataDynamicService = mock(EntityDataDynamicService.class);
         final EntityFormRuntimeService entityFormRuntimeService =
@@ -210,7 +248,6 @@ class ProcessProgressRuntimeServiceTest {
         final SysUserGroupMapper sysUserGroupMapper = mock(SysUserGroupMapper.class);
         final SysUserMapper sysUserMapper = mock(SysUserMapper.class);
         final ProcessOperationLogMapper operationLogMapper = mock(ProcessOperationLogMapper.class);
-        final ProcessNodeApprovalMapper nodeApprovalMapper = mock(ProcessNodeApprovalMapper.class);
         final ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
 
         final ProcessInstanceQuery processInstanceQuery = mock(ProcessInstanceQuery.class);
@@ -248,7 +285,6 @@ class ProcessProgressRuntimeServiceTest {
             when(variableQuery.singleResult()).thenReturn(null);
             when(taskService.getTaskComments("hist-task-1")).thenReturn(List.of());
             when(processTaskMapper.selectByTaskId("hist-task-1")).thenReturn(null);
-            when(processConfigMapper.findByProcessKey("expense_flow")).thenReturn(Optional.empty());
         }
 
         /** 设置运行中流程实例桩数据 */
@@ -416,9 +452,9 @@ class ProcessProgressRuntimeServiceTest {
         ProcessProgressRuntimeService service() {
             return new ProcessProgressRuntimeService(
                     runtimeService, historyService, repositoryService, taskService,
-                    processConfigMapper, sysUserService, entityDataDynamicService, entityFormRuntimeService,
+                    sysUserService, entityDataDynamicService, entityFormRuntimeService,
                     entityDefinitionMapper, processTaskMapper, sysGroupMapper, sysUserGroupMapper,
-                    sysUserMapper, operationLogMapper, nodeApprovalMapper, null, snapshotService);
+                    sysUserMapper, operationLogMapper, snapshotService);
         }
     }
 }

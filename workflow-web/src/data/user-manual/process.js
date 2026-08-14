@@ -366,6 +366,35 @@ export default {
           ]
         },
         {
+          id: 'process-next-approver-selection',
+          title: '前序指定本节点审批人',
+          blocks: [
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '配置在目标审批节点',
+              text: '在需要被展示或改选的用户任务上开启“下一节点审批人”。前序审批时，系统按当前审批操作和本次可编辑表单值计算实际命中的下一人工节点，并以目标节点名称作为标签；排他、包容和并行分支可能同时展示多行。未配置的旧流程默认不展示。'
+            },
+            {
+              type: 'table',
+              columns: fieldColumns,
+              rows: [
+                { field: '审批时展示', meaning: '允许前序审批面板展示本节点及系统解析的默认审批人。', defaultLimit: '默认关闭。', effect: '只影响真正命中的下一人工节点。', publish: '只读展示时若无法解析到有效办理人，审批会被阻断。' },
+                { field: '允许修改', meaning: '允许前序办理人在受控范围内改选本节点审批人。', defaultLimit: '仅在“审批时展示”开启后可用。', effect: '直接办理为单选；候选池和多实例为多选，多实例保留选择顺序。', publish: '可编辑节点没有默认人员时，前序办理人必须至少选择一人。' },
+                { field: '人员范围', meaning: '按指定用户、组织部门（可含下级）、角色、用户组或全部启用用户取并集。', defaultLimit: '必须至少配置一条规则；全员范围必须显式选择。', effect: '候选查询只返回启用且未删除的本地用户。', publish: '提交时服务端会重新校验范围，前端结果不能扩大权限。' },
+                { field: '人员接口', meaning: '从扩展管理中选择已注册的 PERSON_RESOLVER。', defaultLimit: '必须启用并支持 CANDIDATE 用途；extraParams 必须是 JSON 对象。', effect: '平台传入流程、节点、实体和操作人上下文后解析候选用户。', publish: '不支持在节点中填写任意 HTTP 地址；接口异常会阻止改选或只读展示。' },
+                { field: '条件变化', meaning: '审批操作、备注或表单值变化后重新计算下一节点和人员范围。', defaultLimit: '自动防抖刷新。', effect: '旧请求不会覆盖最新结果；切换分支会清理旧节点选择。', publish: '若提交时范围已变化，界面保留当前表单并要求重新确认。' }
+              ]
+            },
+            {
+              type: 'callout',
+              tone: 'warning',
+              title: '暂不可预览的路径',
+              text: '后续经过服务任务、调用活动、等待/事件节点、自动跳过节点或汇聚网关时，面板会提示需等待引擎运行后确定。此时不能改选下一审批人，但仍可正常提交当前审批。'
+            }
+          ]
+        },
+        {
           id: 'process-multi-instance',
           title: '多实例（会签 / 串行）',
           blocks: [
@@ -383,8 +412,8 @@ export default {
                 { field: '执行方式', meaning: 'parallel 并行或 sequential 串行。', defaultLimit: '默认 parallel。', effect: '并行同时生成任务；串行按集合顺序逐个生成。UI 将串行标注为“或签”，但是否任一人通过取决于完成条件。', publish: '不要把“串行”误当成自动一票通过。' },
                 { field: '集合来源', meaning: 'variable 流程变量或 interface 接口动态。', defaultLimit: '默认 variable。', effect: '决定人员集合如何生成。', publish: '接口方式必须返回可解析用户列表。' },
                 { field: '会签人员 / 用户组 / 角色', meaning: '流程变量来源时直接选择用户、组、角色。', defaultLimit: '可多选。', effect: '平台汇总用户名、组成员和角色成员，写入系统集合变量。', publish: '去重、停用用户和组织变化需验证。' },
-                { field: '集合变量', meaning: '多实例集合表达式。', defaultLimit: '系统固定 ${_wfMultiInstanceUsers_}，界面只读。', effect: '发布时作为 loop collection。', publish: '不要在 XML 外部覆盖同名变量为错误类型。' },
-                { field: '接口配置', meaning: '接口来源时填写人员集合解析器。', defaultLimit: '示例 approverSelector.getApprovers。', effect: '运行时返回用户 ID 列表。', publish: '目标环境必须注册并具备超时/异常处理。' },
+                { field: '集合变量', meaning: '多实例集合表达式。', defaultLimit: '系统按节点生成唯一的 ${_wfMultiInstanceUsers_<节点ID>}，界面只读。', effect: '发布时作为 loop collection，前序改选会覆盖对应目标节点的集合。', publish: '不同多实例节点不得共用集合变量；不要在 XML 外部覆盖为错误类型。' },
+                { field: '接口配置', meaning: '接口来源时填写人员集合解析器。', defaultLimit: '从扩展管理选择支持 MULTI_INSTANCE 用途的 PERSON_RESOLVER。', effect: '运行时返回本地用户标识，平台统一过滤并转换为启用用户名列表。', publish: '目标环境必须注册并具备超时/异常处理。' },
                 { field: '元素变量', meaning: '当前实例成员变量名。', defaultLimit: '默认 assignee。', effect: '每个子任务 assignee 写为 ${元素变量}。', publish: '与流程中其他变量避免重名。' },
                 { field: '完成条件', meaning: '满足后提前结束多实例。', defaultLimit: '默认空，表示全部实例完成；示例 ${nrOfCompletedInstances >= nrOfInstances * 0.5}。', effect: '可实现半数、任一、全票等策略。', publish: '使用 Flowable 多实例变量；提前结束会终止剩余实例，业务需确认。' }
               ]

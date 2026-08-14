@@ -44,6 +44,108 @@ import static org.mockito.Mockito.when;
  */
 class NodeFormSubmissionServiceTest {
 
+    @Test
+    void previewUsesTrustedEditableProjectionAndSafeBeforeSubmit() {
+        RuntimeService runtimeService = mock(RuntimeService.class);
+        ProcessPublishedSnapshotService snapshotService =
+                mock(ProcessPublishedSnapshotService.class);
+        EntityFormRuntimeService runtimeFormService =
+                mock(EntityFormRuntimeService.class);
+        PublishedFormSubmissionService submissionService =
+                mock(PublishedFormSubmissionService.class);
+        FormSubmissionTraceService traceService =
+                mock(FormSubmissionTraceService.class);
+        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        NodeFormSubmissionService service = new NodeFormSubmissionService(
+                runtimeService,
+                snapshotService,
+                mock(EntityFormService.class),
+                runtimeFormService,
+                mutationPort,
+                submissionService,
+                traceService,
+                new ObjectMapper());
+        Task task = task();
+        FormSubmissionExecutionContext executionContext =
+                executionContext();
+        when(traceService.current(
+                eq("PROCESS_APPROVAL_SUBMIT"),
+                eq("task:task-1"),
+                org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(executionContext);
+        when(runtimeService.getVariable(
+                "instance-1", "entityCode"))
+                .thenReturn("expense");
+        when(runtimeService.getVariable(
+                "instance-1", "entityDataId"))
+                .thenReturn("data-1");
+        when(runtimeService.getVariable(
+                "instance-1", "entityData"))
+                .thenReturn(Map.of(
+                        "amount", 10,
+                        "routeBucket", "LOW",
+                        "lockedNote", "trusted"));
+
+        ProcessNodeForm nodeForm = new ProcessNodeForm();
+        nodeForm.setFormId("form-1");
+        nodeForm.setFormReleaseId("release-3");
+        nodeForm.setFormReleaseVersion(3);
+        nodeForm.setIsReadonly(0);
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId(
+                "definition-1", "Task_Review"))
+                .thenReturn(published(nodeForm));
+        EntityForm form = new EntityForm();
+        form.setFields(List.of(
+                field("amount", 0),
+                field("routeBucket", 0),
+                field("lockedNote", 1)));
+        when(runtimeFormService.getByBinding(
+                nodeForm,
+                "history-1",
+                UiRuntimePurpose.ACTIVE_TASK))
+                .thenReturn(form);
+        when(submissionService.previewSideEffectFreeForm(
+                eq("form-1"),
+                eq("release-3"),
+                eq(3),
+                eq("expense"),
+                eq("data-1"),
+                eq("approve"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                eq(executionContext),
+                org.mockito.ArgumentMatchers.any(
+                        UiRuntimeResolutionContext.class)))
+                .thenAnswer(invocation -> {
+                    Map<String, Object> input = new java.util.LinkedHashMap<>(
+                            invocation.getArgument(6));
+                    assertEquals("trusted", input.get("lockedNote"));
+                    input.put("routeBucket", "HIGH");
+                    input.put("lockedNote", "must-not-be-projected");
+                    return input;
+                });
+
+        Map<String, Object> preview = service.projectEditableData(
+                task,
+                Map.of(
+                        "amount", 2000,
+                        "lockedNote", "tampered"));
+
+        assertEquals(
+                Map.of(
+                        "amount", 2000,
+                        "routeBucket", "HIGH"),
+                preview);
+        verify(mutationPort, never()).execute(
+                org.mockito.ArgumentMatchers.any());
+        verify(runtimeService, never()).setVariables(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyMap());
+        verify(runtimeService, never()).setVariable(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
     /** 测试仅保存发布节点表单中可编辑的字段：验证只读字段被剔除，更新仅含可编辑字段并触发表单提交 */
     @Test
     void savesOnlyFieldsEditableInPublishedNodeForm() {
@@ -76,11 +178,18 @@ class NodeFormSubmissionServiceTest {
                 eq(executionContext),
                 org.mockito.ArgumentMatchers.any(
                         UiRuntimeResolutionContext.class)))
-                .thenAnswer(invocation -> invocation.getArgument(6));
+                .thenAnswer(invocation -> {
+                    Map<String, Object> input = invocation.getArgument(6);
+                    assertEquals(88, input.get("amount"));
+                    assertEquals("kept", input.get("lockedNote"));
+                    return input;
+                });
 
         Task task = task();
         when(runtimeService.getVariable("instance-1", "entityCode")).thenReturn("expense");
         when(runtimeService.getVariable("instance-1", "entityDataId")).thenReturn("data-1");
+        when(runtimeService.getVariable("instance-1", "entityData"))
+                .thenReturn(Map.of("amount", 10, "lockedNote", "kept"));
 
         ProcessNodeForm nodeForm = new ProcessNodeForm();
         nodeForm.setFormId("form-1");
@@ -112,6 +221,10 @@ class NodeFormSubmissionServiceTest {
                 Map.of("data", Map.of("amount", 88)),
                 updateCaptor.getValue().payload());
         verify(runtimeService).setVariables("instance-1", Map.of("amount", 88));
+        verify(runtimeService).setVariable(
+                "instance-1",
+                "entityData",
+                Map.of("amount", 88, "lockedNote", "kept"));
         verify(submissionService, times(1))
                 .applyForm(
                         eq("form-1"),

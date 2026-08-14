@@ -32,7 +32,10 @@ public interface EntityDataDynamicMapper {
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
             method = "selectByIdForUpdate")
-    @Options(statementType = StatementType.PREPARED)
+    @Options(
+            statementType = StatementType.PREPARED,
+            useCache = false,
+            flushCache = Options.FlushCachePolicy.TRUE)
     Map<String, Object> selectByIdForUpdate(
             @Param("tableName") String tableName,
             @Param("id") String id);
@@ -48,6 +51,24 @@ public interface EntityDataDynamicMapper {
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByIdWithPermission")
     @Options(statementType = StatementType.PREPARED)
     Map<String, Object> selectByIdWithPermission(
+            @Param("tableName") String tableName,
+            @Param("id") String id,
+            @Param("permissionSql") String permissionSql,
+            @Param("permissionParameters") Map<String, Object> permissionParameters);
+
+    @SelectProvider(
+            type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectByIdIncludingDeleted")
+    @Options(statementType = StatementType.PREPARED)
+    Map<String, Object> selectByIdIncludingDeleted(
+            @Param("tableName") String tableName,
+            @Param("id") String id);
+
+    @SelectProvider(
+            type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectByIdIncludingDeletedWithPermission")
+    @Options(statementType = StatementType.PREPARED)
+    Map<String, Object> selectByIdIncludingDeletedWithPermission(
             @Param("tableName") String tableName,
             @Param("id") String id,
             @Param("permissionSql") String permissionSql,

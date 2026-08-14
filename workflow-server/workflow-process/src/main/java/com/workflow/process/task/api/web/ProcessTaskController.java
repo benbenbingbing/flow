@@ -3,18 +3,27 @@ package com.workflow.process.task.api.web;
 import com.workflow.core.security.AuthenticatedApi;
 
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
 import com.workflow.process.task.api.response.TaskDetailDTO;
+import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
+import com.workflow.process.task.api.request.NextApproverOptionsRequest;
+import com.workflow.process.task.api.request.TaskCompleteRequest;
+import com.workflow.process.task.api.response.NextApprovalPreviewResponse;
+import com.workflow.process.task.api.response.NextApproverCandidateDTO;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskListFilter;
 import com.workflow.process.task.application.TaskDetailService;
 import com.workflow.process.task.application.TaskActionService;
+import com.workflow.process.task.application.nextapproval.NextApprovalPreviewService;
+import com.workflow.process.task.application.nextapproval.NextApproverCandidateService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,6 +52,12 @@ public class ProcessTaskController {
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
     private final org.flowable.engine.HistoryService historyService;
     private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
+
+    @Autowired
+    private NextApprovalPreviewService nextApprovalPreviewService;
+
+    @Autowired
+    private NextApproverCandidateService nextApproverCandidateService;
 
     /**
      * 获取用户待办列表（分页，兼容前端TaskVO格式）
@@ -160,16 +175,13 @@ public class ProcessTaskController {
      * 完成任务
      */
     @PostMapping("/complete")
-    public Result<Void> completeTask(@RequestBody Map<String, Object> params) {
-        String taskId = (String) params.get("taskId");
-        String action = (String) params.get("action");
-        String comment = (String) params.get("comment");
-        String transferTo = (String) params.get("transferTo");
-        String actionLabel = (String) params.get("actionLabel");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> formData = params.get("formData") instanceof Map<?, ?>
-                ? (Map<String, Object>) params.get("formData")
-                : null;
+    public Result<Void> completeTask(@RequestBody TaskCompleteRequest params) {
+        String taskId = params.getTaskId();
+        String action = params.getAction();
+        String comment = params.getComment();
+        String transferTo = params.getTransferTo();
+        String actionLabel = params.getActionLabel();
+        Map<String, Object> formData = params.getFormData();
 
         if (taskId == null || taskId.isEmpty()) {
             return Result.error("任务ID不能为空");
@@ -180,22 +192,93 @@ public class ProcessTaskController {
             if (currentUser == null || currentUser.isBlank()) {
                 throw new ForbiddenException("用户未登录");
             }
-            if (taskAddSignService.isAddSignTask(taskId)) {
+            boolean hasNextSelections = params.getNextApproverSelections() != null
+                    && !params.getNextApproverSelections().isEmpty();
+            if (taskAddSignService.requireAddSignTaskAccess(taskId)) {
+                if (hasNextSelections) {
+                    throw new IllegalArgumentException(
+                            "加签子任务不能指定下一节点审批人");
+                }
                 taskAddSignService.completeAddSignTask(taskId, action, comment);
                 return Result.success();
+            }
+            if (hasNextSelections
+                    && taskAddSignService.isAddSignSourceTask(taskId)) {
+                throw new IllegalArgumentException(
+                        "加签编排中的原任务不能指定下一节点审批人");
             }
             if (taskAddSignService.handleSourceCompletion(
                     taskId, currentUser, action, comment, actionLabel, formData)) {
                 return Result.success();
             }
             taskActionService.completeTask(
-                    taskId, currentUser, action, comment, transferTo, actionLabel, formData);
+                    taskId,
+                    currentUser,
+                    action,
+                    comment,
+                    transferTo,
+                    actionLabel,
+                    formData,
+                    params.getNextApprovalScopeKey(),
+                    params.getNextApproverSelections());
             return Result.success();
-        } catch (ForbiddenException e) {
+        } catch (ForbiddenException | BusinessConflictException e) {
             throw e;
         } catch (Exception e) {
             return Result.error("审批失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 按当前审批动作和可编辑表单值预览下一人工审批节点。
+     */
+    @PostMapping("/{taskId}/next-approval-preview")
+    public Result<NextApprovalPreviewResponse> previewNextApproval(
+            @PathVariable String taskId,
+            @RequestBody(required = false) NextApprovalPreviewRequest request) {
+        RuntimeException taskAccessFailure = null;
+        try {
+            taskActionService.requireTaskAccess(taskId);
+        } catch (RuntimeException exception) {
+            taskAccessFailure = exception;
+        }
+        if (taskAccessFailure != null
+                && taskAddSignService.requireAddSignTaskAccess(taskId)) {
+            NextApprovalPreviewResponse response =
+                    new NextApprovalPreviewResponse();
+            response.setTaskId(taskId);
+            response.setStatus(
+                    com.workflow.process.task.api.response.NextApprovalPreviewStatus.DEFERRED);
+            response.setMessage("加签子任务需等待加签编排完成");
+            return Result.success(response);
+        }
+        if (taskAccessFailure != null) {
+            throw taskAccessFailure;
+        }
+        if (taskAddSignService.isAddSignSourceTask(taskId)) {
+            NextApprovalPreviewResponse response =
+                    new NextApprovalPreviewResponse();
+            response.setTaskId(taskId);
+            response.setStatus(
+                    com.workflow.process.task.api.response.NextApprovalPreviewStatus.DEFERRED);
+            response.setMessage("加签编排中的下一节点需等待加签完成");
+            return Result.success(response);
+        }
+        return Result.success(nextApprovalPreviewService.preview(
+                taskId,
+                request == null ? new NextApprovalPreviewRequest() : request));
+    }
+
+    /**
+     * 分页查询某个已命中的下一节点允许选择的审批人。
+     */
+    @PostMapping("/{taskId}/next-approver-options")
+    public Result<PageResult<NextApproverCandidateDTO>> nextApproverOptions(
+            @PathVariable String taskId,
+            @RequestBody NextApproverOptionsRequest request) {
+        taskActionService.requireTaskAccess(taskId);
+        return Result.success(nextApproverCandidateService.options(
+                taskId, request));
     }
 
     /**

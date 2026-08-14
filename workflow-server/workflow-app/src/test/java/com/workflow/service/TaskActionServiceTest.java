@@ -4,6 +4,7 @@ import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskActionService;
+import com.workflow.process.task.application.nextapproval.NextApproverOverrideService;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.identity.user.application.SysUserService;
@@ -99,6 +100,9 @@ class TaskActionServiceTest {
     @Mock
     private ProcessCcService processCcService;
 
+    @Mock
+    private NextApproverOverrideService nextApproverOverrideService;
+
     /** 被测任务动作服务 */
     private TaskActionService service;
 
@@ -116,7 +120,8 @@ class TaskActionServiceTest {
                 nodeFormSubmissionService,
                 entityActionCapabilityService,
                 entityRecordPort,
-                processCcService
+                processCcService,
+                nextApproverOverrideService
         );
         UserContext.setCurrentUser("admin-id", "admin");
     }
@@ -149,6 +154,28 @@ class TaskActionServiceTest {
         verify(taskService).complete(eq("task-1"), anyMap());
         verify(processTaskService).completeTask("task-1", "reject", "资料不全", null);
         verify(processTaskService).syncTasksFromFlowable("proc-1");
+    }
+
+    @Test
+    void deferredSystemCompletionDoesNotRequireInteractiveNextApproverSelection() {
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task);
+        when(task.getId()).thenReturn("task-1");
+        when(task.getAssignee()).thenReturn("admin");
+        when(task.getProcessInstanceId()).thenReturn("proc-1");
+
+        service.completeDeferredTask(
+                "task-1",
+                "admin",
+                "approve",
+                "",
+                null,
+                null,
+                null);
+
+        verifyNoInteractions(nextApproverOverrideService);
+        verify(taskService).complete(eq("task-1"), anyMap());
     }
 
     /** 测试候选人在无实体审批权限时仍可查看任务：验证不触发实体权限校验与 claim */

@@ -113,6 +113,22 @@ public class ProcessInstanceControllerTest {
     }
 
     @Test
+    void taskSpecificProgressUsesRequestedActiveTask() throws Exception {
+        when(processInstanceService.getProcessProgress(
+                "proc-inst-1", "task-2"))
+                .thenReturn(testProgress);
+
+        mockMvc.perform(get("/api/process-instance/proc-inst-1/progress")
+                        .param("taskId", "task-2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.processInstanceId")
+                        .value("proc-inst-1"));
+
+        verify(processInstanceService).getProcessProgress(
+                "proc-inst-1", "task-2");
+    }
+
+    @Test
     void myStartedPassesInclusiveDateFiltersToService() throws Exception {
         UserContext.setCurrentUser("user-1", "alice");
         when(processInstanceService.getMyStartedList(

@@ -1,6 +1,7 @@
 package com.workflow.service;
 
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
+import com.workflow.entity.form.application.FormSubmissionPreviewDeferredException;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.application.PublishedFormRequiredValidator;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
@@ -37,6 +38,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -47,6 +49,127 @@ import static org.mockito.Mockito.when;
  * 钉版发布精确执行、表单级 beforeSubmit 绑定等场景。
  */
 class PublishedFormSubmissionServiceTest {
+
+    @Test
+    void sideEffectFreePreviewUsesAuthoritativeMappingWithoutWriting() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
+        PublishedFormSubmissionService service = service(
+                releaseService, dataSourceService);
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        EntityFormField field = new EntityFormField();
+        field.setFieldCode("routeBucket");
+        field.setDataSourceBindings(Map.of(
+                "BEFORE_SUBMIT",
+                Map.of(
+                        "serviceId", "source-1",
+                        "operationCode", "deriveRoute",
+                        "sideEffectFree", true,
+                        "outputMapping", Map.of(
+                                "routeBucket", "data.bucket"))));
+        form.setFields(List.of(field));
+        form.setNodes(List.of());
+        when(releaseService.resolveRuntimeFormRelease(
+                "form-1", null, null))
+                .thenReturn(resolution(form, "release-1", 1));
+        when(dataSourceService.execute(
+                eq("source-1"),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Map.of("bucket", "HIGH"));
+
+        FormSubmissionExecutionContext context =
+                executionContext("task:task-1");
+        Map<String, Object> result =
+                service.previewSideEffectFreeForm(
+                        "form-1",
+                        null,
+                        null,
+                        "expense",
+                        "record-1",
+                        "approve",
+                        Map.of("amount", 2000),
+                        context,
+                        null);
+        service.previewSideEffectFreeForm(
+                "form-1",
+                null,
+                null,
+                "expense",
+                "record-1",
+                "approve",
+                Map.of("amount", 100),
+                context,
+                null);
+        service.applyForm(
+                "form-1",
+                "expense",
+                "record-1",
+                "approve",
+                Map.of("amount", 2000),
+                context);
+
+        assertEquals(
+                Map.of("amount", 2000, "routeBucket", "HIGH"),
+                result);
+        ArgumentCaptor<UiDataSourceExecuteRequest> requests =
+                ArgumentCaptor.forClass(
+                        UiDataSourceExecuteRequest.class);
+        verify(dataSourceService, times(3)).execute(
+                eq("source-1"), requests.capture());
+        assertNotEquals(
+                idempotencyKey(requests.getAllValues().get(0)),
+                idempotencyKey(requests.getAllValues().get(1)),
+                "同一 trace 下预览输入变化必须生成新的绑定幂等键");
+        assertEquals(
+                idempotencyKey(requests.getAllValues().get(0)),
+                idempotencyKey(requests.getAllValues().get(2)),
+                "同一输入的预览与正式提交必须复用绑定幂等键");
+    }
+
+    @Test
+    void ordinaryBeforeSubmitDefersPreviewBeforeExecutingDataSource() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
+        PublishedFormSubmissionService service = service(
+                releaseService, dataSourceService);
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        EntityFormField field = new EntityFormField();
+        field.setFieldCode("routeBucket");
+        field.setDataSourceBindings(Map.of(
+                "BEFORE_SUBMIT",
+                Map.of(
+                        "serviceId", "source-1",
+                        "operationCode", "mutatingValidation")));
+        form.setFields(List.of(field));
+        form.setNodes(List.of());
+        when(releaseService.resolveRuntimeFormRelease(
+                "form-1", null, null))
+                .thenReturn(resolution(form, "release-1", 1));
+
+        FormSubmissionPreviewDeferredException exception = assertThrows(
+                FormSubmissionPreviewDeferredException.class,
+                () -> service.previewSideEffectFreeForm(
+                        "form-1",
+                        null,
+                        null,
+                        "expense",
+                        "record-1",
+                        "approve",
+                        Map.of("amount", 2000),
+                        executionContext("task:task-1"),
+                        null));
+
+        assertTrue(exception.getMessage().contains("未声明无副作用"));
+        verifyNoInteractions(dataSourceService);
+    }
 
     @Test
     void validatesRequiredRulesAfterBeforeSubmitBindings() {

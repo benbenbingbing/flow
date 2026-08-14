@@ -4,21 +4,45 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.result.PageResult;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.version.application.EntityRecordSnapshotService.SnapshotCapture;
+import com.workflow.entity.version.application.EntityRecordSnapshotService.SnapshotCaptureV2;
+import com.workflow.entity.version.application.EntityRecordSnapshotService.DatasetCapture;
+import com.workflow.entity.version.application.EntityRecordSnapshotService.DatasetRowCapture;
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher.MatchedScenario;
+import com.workflow.entity.version.api.request.ManualVersionCaptureRequest;
 import com.workflow.entity.version.application.model.EntityRecordVersionSummary;
+import com.workflow.entity.version.application.model.EntityVersionConfiguration;
+import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionCounterMapper;
+import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionDatasetMapper;
+import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionDatasetRowMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionMapper;
+import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionCounter;
+import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDataset;
+import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDatasetRow;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.api.OutboxPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +63,13 @@ public class EntityRecordVersionService {
     private final EntityRecordSnapshotService snapshotService;
     private final OutboxPublisher outboxPublisher;
     private final ObjectMapper objectMapper;
+    private final EntityVersionConfigurationService configurationService;
+    private final EntityVersionPolicyMatcher policyMatcher;
+    private final EntityRecordVersionCounterMapper counterMapper;
+    private final EntityRecordVersionDatasetMapper datasetMapper;
+    private final EntityRecordVersionDatasetRowMapper datasetRowMapper;
+    private final EntityDataDynamicService dataService;
+    private final EntityAggregateWriter aggregateWriter;
 
     @Transactional(rollbackFor = Exception.class)
     public EntityRecordVersion createIfMatched(
@@ -46,24 +77,46 @@ public class EntityRecordVersionService {
             MatchedScenario scenario,
             Map<String, Object> aggregateRecord,
             boolean deletedSnapshot) {
-        EntityRecordVersion existing =
-                versionMapper.findIdempotent(
-                        command.entityCode(),
-                        command.recordId(),
-                        command.context().idempotencyKey(),
-                        scenario.scenarioCode());
+        String requestHash = requestHash(
+                command, scenario, deletedSnapshot);
+        EntityRecordVersion existing = requireIdempotentMatch(
+                command, scenario, requestHash);
         if (existing != null) {
             return existing;
         }
-        SnapshotCapture capture = snapshotService.capture(
-                command.entityCode(),
-                command.recordId(),
-                aggregateRecord,
-                deletedSnapshot);
-        int versionNo = value(
-                versionMapper.findMaxVersionNo(
-                        command.entityCode(),
-                        command.recordId())) + 1;
+        EntityVersionConfiguration published = null;
+        if (StringUtils.hasText(scenario.releaseId())) {
+            published = configurationService.getPublishedRelease(
+                            command.entityCode(), scenario.releaseId())
+                    .orElseThrow(() -> new BusinessConflictException(
+                            "ENTITY_VERSION_RELEASE_NOT_FOUND",
+                            "命中的数据版本发布快照不存在或不属于当前实体: "
+                                    + scenario.releaseId()));
+        }
+        SnapshotCapture legacyCapture = null;
+        SnapshotCaptureV2 captureV2 = null;
+        if (published != null
+                && value(published.getSchemaVersion()) >= 2) {
+            captureV2 = snapshotService.captureV2(
+                    published,
+                    command.recordId(),
+                    aggregateRecord,
+                    deletedSnapshot);
+        } else {
+            legacyCapture = snapshotService.capture(
+                    command.entityCode(),
+                    command.recordId(),
+                    aggregateRecord,
+                    deletedSnapshot);
+        }
+        lockCounter(command.entityCode(), command.recordId());
+        existing = requireIdempotentMatch(
+                command, scenario, requestHash, true);
+        if (existing != null) {
+            return existing;
+        }
+        int versionNo = incrementCounter(
+                command.entityCode(), command.recordId());
         EntityRecordVersion version = new EntityRecordVersion();
         version.setId(id());
         version.setEntityCode(command.entityCode());
@@ -101,27 +154,46 @@ public class EntityRecordVersionService {
                 command.context().businessTraceKey());
         version.setIdempotencyKey(
                 command.context().idempotencyKey());
-        version.setEntityReleaseId(
-                capture.entityReleaseId());
-        version.setEntityReleaseVersion(
-                capture.entityReleaseVersion());
-        version.setSnapshotHash(capture.hash());
-        version.setSnapshotDocument(
-                write(capture.document()));
+        version.setRequestHash(requestHash);
+        version.setConfigReleaseId(scenario.releaseId());
+        version.setConfigReleaseVersion(scenario.releaseVersion());
+        if (captureV2 != null) {
+            populateV2(version, captureV2);
+        } else {
+            populateV1(version, legacyCapture);
+        }
         version.setCreateTime(LocalDateTime.now());
-        try {
-            versionMapper.insert(version);
-        } catch (DuplicateKeyException exception) {
-            EntityRecordVersion raced =
-                    versionMapper.findIdempotent(
-                            command.entityCode(),
-                            command.recordId(),
-                            command.context().idempotencyKey(),
-                            scenario.scenarioCode());
-            if (raced != null) {
-                return raced;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                versionMapper.insert(version);
+                break;
+            } catch (DuplicateKeyException exception) {
+                EntityRecordVersion raced = findIdempotent(command, true);
+                if (raced != null) {
+                    if (StringUtils.hasText(raced.getRequestHash())
+                            && !Objects.equals(
+                                    raced.getRequestHash(), requestHash)) {
+                        throw new BusinessConflictException(
+                                "ENTITY_VERSION_IDEMPOTENCY_CONFLICT",
+                                "相同 Idempotency-Key 已用于不同的版本固化请求");
+                    }
+                    return raced;
+                }
+                if (attempt >= 3) {
+                    throw exception;
+                }
+                // 滚动升级期间旧 Pod 仍可能用 MAX+1 分配同一版本号。
+                // 重新按真实表最大值追平计数器后有限重试，不覆盖任何历史版本。
+                lockCounter(command.entityCode(), command.recordId());
+                int retriedVersionNo = incrementCounter(
+                        command.entityCode(), command.recordId());
+                version.setVersionNo(retriedVersionNo);
+                version.setVersionTitle(title(
+                        scenario, retriedVersionNo, command));
             }
-            throw exception;
+        }
+        if (captureV2 != null) {
+            persistDatasets(version, captureV2);
         }
         outboxPublisher.publish(OutboxPublishRequest.of(
                 VERSION_CREATED_TOPIC,
@@ -138,6 +210,63 @@ public class EntityRecordVersionService {
         return version;
     }
 
+    @Transactional(
+            rollbackFor = Exception.class,
+            isolation = Isolation.READ_COMMITTED)
+    public EntityRecordVersion captureManual(
+            String entityCode,
+            String recordId,
+            ManualVersionCaptureRequest request,
+            String idempotencyKey) {
+        if (!StringUtils.hasText(idempotencyKey)) {
+            throw new IllegalArgumentException("手工固化必须提供 Idempotency-Key");
+        }
+        EntityVersionConfiguration configuration = configurationService
+                .getPublished(entityCode)
+                .filter(item -> Boolean.TRUE.equals(item.getEnabled()))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "实体没有启用的已发布数据版本策略: " + entityCode));
+        if (value(configuration.getSchemaVersion()) < 2) {
+            throw new IllegalArgumentException("手工固化只支持已发布的V2版本策略");
+        }
+        ManualVersionCaptureRequest effective = request == null
+                ? new ManualVersionCaptureRequest() : request;
+        MatchedScenario scenario = policyMatcher.matchManual(
+                        configuration, effective.getTriggerCode())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "没有可用的手工固化触发器"));
+        dataService.findAccessibleById(
+                entityCode, recordId, null);
+        aggregateWriter.lock(entityCode, recordId);
+        EntityDataDTO record = dataService.findAccessibleById(
+                entityCode, recordId, null);
+        Map<String, Object> aggregate = objectMapper.convertValue(
+                record, new TypeReference<>() { });
+        Map<String, Object> extras = new LinkedHashMap<>();
+        extras.put("manualReason", effective.getReason());
+        EntityMutationContext context = EntityMutationContext.builder(
+                        EntityMutationSourceType.SYSTEM_TASK,
+                        defaultText(effective.getBusinessIntentCode(),
+                                "MANUAL_CHECKPOINT"),
+                        defaultText(effective.getBusinessIntentName(),
+                                "手工固化"))
+                .sourceId("manual-capture")
+                .operator(UserContext.getUserId(), UserContext.getUsername())
+                .trace("manual:" + entityCode + ":" + recordId,
+                        idempotencyKey.trim())
+                .extraParams(extras)
+                .build();
+        EntityMutationCommand command = new EntityMutationCommand(
+                idempotencyKey,
+                entityCode,
+                recordId,
+                EntityMutationOperationType.UPDATE,
+                Map.of(),
+                context);
+        return createIfMatched(
+                command, scenario, aggregate, false);
+    }
+
     @Transactional(readOnly = true)
     public Integer currentVersionNo(
             String entityCode,
@@ -150,18 +279,35 @@ public class EntityRecordVersionService {
     public List<EntityRecordVersionSummary> list(
             String entityCode,
             String recordId) {
-        List<EntityRecordVersion> values =
-                versionMapper.findByRecord(
-                        entityCode, recordId);
-        Map<Integer, EntityRecordVersion> byNo =
-                new LinkedHashMap<>();
-        for (EntityRecordVersion value : values) {
-            byNo.put(value.getVersionNo(), value);
-        }
-        return values.stream().map(item -> {
-            EntityRecordVersion previous =
-                    byNo.get(item.getVersionNo() - 1);
-            return new EntityRecordVersionSummary(
+        return listPage(entityCode, recordId, 1, 200).getRecords();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<EntityRecordVersionSummary> listPage(
+            String entityCode,
+            String recordId,
+            long requestedPageNum,
+            long requestedPageSize) {
+        long pageNum = Math.max(1, requestedPageNum);
+        long pageSize = Math.max(1, Math.min(100, requestedPageSize));
+        long total = versionMapper.countByRecord(entityCode, recordId);
+        List<EntityRecordVersion> values = versionMapper.findSummaryPage(
+                entityCode, recordId, (pageNum - 1) * pageSize, pageSize);
+        List<EntityRecordVersionSummary> records = values.stream()
+                .map(item -> toSummary(
+                        item,
+                        versionMapper.findDataHash(
+                                entityCode,
+                                recordId,
+                                item.getVersionNo() - 1)))
+                .toList();
+        return new PageResult<>(records, total, pageNum, pageSize);
+    }
+
+    private EntityRecordVersionSummary toSummary(
+            EntityRecordVersion item,
+            String previousHash) {
+        return new EntityRecordVersionSummary(
                     item.getId(),
                     item.getVersionNo(),
                     item.getVersionTitle(),
@@ -176,12 +322,11 @@ public class EntityRecordVersionService {
                     item.getProcessInstanceId(),
                     item.getSourceEntityCode(),
                     item.getSourceRecordId(),
-                    previous == null
-                            || !Objects.equals(
-                                    previous.getSnapshotHash(),
-                                    item.getSnapshotHash()),
+                    previousHash == null
+                            || !Objects.equals(previousHash,
+                                    firstText(item.getDataHash(),
+                                            item.getSnapshotHash())),
                     item.getCreateTime());
-        }).toList();
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +343,14 @@ public class EntityRecordVersionService {
                         });
         result.put("snapshot",
                 read(version.getSnapshotDocument()));
+        if (value(version.getSchemaVersion()) >= 2) {
+            result.put("datasets", datasetMapper.findByVersionId(
+                            version.getId()).stream()
+                    .map(this::datasetSummary)
+                    .toList());
+        } else {
+            result.put("datasets", List.of());
+        }
         result.remove("snapshotDocument");
         return result;
     }
@@ -335,6 +488,191 @@ public class EntityRecordVersionService {
                 ? "UNCHANGED" : "MODIFIED";
     }
 
+    private EntityRecordVersion requireIdempotentMatch(
+            EntityMutationCommand command,
+            MatchedScenario scenario,
+            String requestHash) {
+        return requireIdempotentMatch(
+                command, scenario, requestHash, false);
+    }
+
+    private EntityRecordVersion requireIdempotentMatch(
+            EntityMutationCommand command,
+            MatchedScenario scenario,
+            String requestHash,
+            boolean lock) {
+        EntityRecordVersion existing = findIdempotent(command, lock);
+        if (existing != null
+                && StringUtils.hasText(existing.getRequestHash())
+                && !Objects.equals(existing.getRequestHash(), requestHash)) {
+            throw new BusinessConflictException(
+                    "ENTITY_VERSION_IDEMPOTENCY_CONFLICT",
+                    "相同 Idempotency-Key 已用于不同的版本固化请求");
+        }
+        return existing;
+    }
+
+    private EntityRecordVersion findIdempotent(
+            EntityMutationCommand command,
+            boolean lock) {
+        if (lock) {
+            return versionMapper.findIdempotentForUpdate(
+                    command.entityCode(),
+                    command.recordId(),
+                    command.context().idempotencyKey());
+        }
+        return versionMapper.findIdempotent(
+                command.entityCode(),
+                command.recordId(),
+                command.context().idempotencyKey());
+    }
+
+    private void lockCounter(String entityCode, String recordId) {
+        int initial = value(versionMapper.findMaxVersionNo(
+                entityCode, recordId));
+        counterMapper.initialize(entityCode, recordId, initial);
+        EntityRecordVersionCounter counter = counterMapper.lock(
+                entityCode, recordId);
+        if (counter == null) {
+            throw new IllegalStateException("实体记录版本号计数器初始化失败");
+        }
+    }
+
+    private int incrementCounter(String entityCode, String recordId) {
+        EntityRecordVersionCounter counter = counterMapper.lock(
+                entityCode, recordId);
+        if (counter == null) {
+            throw new IllegalStateException("实体记录版本号计数器不存在");
+        }
+        int next = value(counter.getLastVersionNo()) + 1;
+        if (counterMapper.update(entityCode, recordId, next) != 1) {
+            throw new IllegalStateException("实体记录版本号计数器更新失败");
+        }
+        return next;
+    }
+
+    private void populateV1(
+            EntityRecordVersion version,
+            SnapshotCapture capture) {
+        version.setSchemaVersion(1);
+        version.setEntityReleaseId(capture.entityReleaseId());
+        version.setEntityReleaseVersion(capture.entityReleaseVersion());
+        version.setSnapshotHash(capture.hash());
+        version.setDataHash(capture.hash());
+        version.setDatasetCount(0);
+        version.setSnapshotRowCount(1);
+        version.setSnapshotDocument(write(capture.document()));
+        version.setSnapshotSizeBytes((long) version.getSnapshotDocument()
+                .getBytes(StandardCharsets.UTF_8).length);
+        version.setCompleteness("COMPLETE");
+    }
+
+    private void populateV2(
+            EntityRecordVersion version,
+            SnapshotCaptureV2 capture) {
+        version.setSchemaVersion(2);
+        version.setEntityReleaseId(capture.entityReleaseId());
+        version.setEntityReleaseVersion(capture.entityReleaseVersion());
+        version.setSnapshotHash(capture.dataHash());
+        version.setDataHash(capture.dataHash());
+        version.setPresentationHash(capture.presentationHash());
+        version.setScopeHash(capture.scopeHash());
+        version.setDatasetCount(capture.datasets().size());
+        version.setSnapshotRowCount(capture.relationRowCount() + 1);
+        version.setSnapshotSizeBytes(capture.sizeBytes());
+        version.setCompleteness("COMPLETE");
+        version.setSnapshotDocument(write(capture.rootDocument()));
+    }
+
+    private void persistDatasets(
+            EntityRecordVersion version,
+            SnapshotCaptureV2 capture) {
+        LocalDateTime now = LocalDateTime.now();
+        for (DatasetCapture item : capture.datasets()) {
+            EntityRecordVersionDataset dataset =
+                    new EntityRecordVersionDataset();
+            dataset.setId(id());
+            dataset.setVersionId(version.getId());
+            dataset.setNodeCode(item.nodeCode());
+            dataset.setNodeKind("RELATION");
+            dataset.setRelationCode(item.relationCode());
+            dataset.setRelationName(item.relationName());
+            dataset.setEntityCode(item.entityCode());
+            dataset.setEntityName(item.entityName());
+            dataset.setEntityReleaseId(item.entityReleaseId());
+            dataset.setEntityReleaseVersion(item.entityReleaseVersion());
+            dataset.setSelectorDocument(write(item.selector()));
+            dataset.setPresentationDocument(write(item.presentation()));
+            dataset.setDataHash(item.dataHash());
+            dataset.setPresentationHash(item.presentationHash());
+            dataset.setScopeHash(item.scopeHash());
+            dataset.setRowCount(item.rows().size());
+            dataset.setComplete(true);
+            dataset.setCreateTime(now);
+            datasetMapper.insert(dataset);
+            for (DatasetRowCapture row : item.rows()) {
+                EntityRecordVersionDatasetRow value =
+                        new EntityRecordVersionDatasetRow();
+                value.setId(id());
+                value.setDatasetId(dataset.getId());
+                value.setRecordId(row.recordId());
+                value.setRecordTitle(row.recordTitle());
+                value.setRowOrder(row.rowOrder());
+                value.setRowHash(row.rowHash());
+                value.setValuesDocument(write(row.values()));
+                value.setCreateTime(now);
+                datasetRowMapper.insert(value);
+            }
+        }
+    }
+
+    private Map<String, Object> datasetSummary(
+            EntityRecordVersionDataset dataset) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("nodeCode", dataset.getNodeCode());
+        result.put("nodeKind", dataset.getNodeKind());
+        result.put("relationCode", dataset.getRelationCode());
+        result.put("relationName", dataset.getRelationName());
+        result.put("entityCode", dataset.getEntityCode());
+        result.put("entityName", dataset.getEntityName());
+        result.put("rowCount", dataset.getRowCount());
+        result.put("complete", dataset.getComplete());
+        result.put("presentation", read(dataset.getPresentationDocument()));
+        return result;
+    }
+
+    private String requestHash(
+            EntityMutationCommand command,
+            MatchedScenario scenario,
+            boolean deletedSnapshot) {
+        Map<String, Object> material = new LinkedHashMap<>();
+        material.put("entityCode", command.entityCode());
+        material.put("recordId", command.recordId());
+        material.put("operationType", command.operationType().name());
+        material.put("payload", command.payload());
+        material.put("deletedSnapshot", deletedSnapshot);
+        material.put("triggerCode", scenario.scenarioCode());
+        material.put("releaseId", scenario.releaseId());
+        material.put("businessIntentCode",
+                command.context().businessIntentCode());
+        material.put("sourceEntityCode",
+                command.context().sourceEntityCode());
+        material.put("sourceRecordId",
+                command.context().sourceRecordId());
+        material.put("extraParams", command.context().extraParams());
+        return digest(material);
+    }
+
+    private String digest(Object value) {
+        try {
+            byte[] bytes = objectMapper.writeValueAsBytes(value);
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (Exception exception) {
+            throw new IllegalStateException("版本请求摘要计算失败", exception);
+        }
+    }
+
     private EntityRecordVersion requireVersion(
             String entityCode,
             String recordId,
@@ -360,18 +698,22 @@ public class EntityRecordVersionService {
             EntityMutationCommand command) {
         String template =
                 scenario.versionTitleTemplate();
+        String triggerName = defaultText(
+                scenario.scenarioName(), scenario.scenarioCode());
         if (!StringUtils.hasText(template)) {
             return "V" + versionNo + " "
-                    + scenario.scenarioName();
+                    + triggerName;
         }
         return template
                 .replace("${versionNo}",
                         String.valueOf(versionNo))
                 .replace("${scenarioName}",
-                        scenario.scenarioName())
+                        triggerName)
+                .replace("${triggerName}",
+                        triggerName)
                 .replace("${businessIntentName}",
-                        command.context()
-                                .businessIntentName());
+                        defaultText(command.context()
+                                .businessIntentName(), ""));
     }
 
     private Map<String, Object> read(String document) {
@@ -404,6 +746,19 @@ public class EntityRecordVersionService {
     private String text(Object value) {
         return value == null
                 ? null : String.valueOf(value);
+    }
+
+    private String firstText(String... values) {
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String defaultText(String value, String fallback) {
+        return StringUtils.hasText(value) ? value.trim() : fallback;
     }
 
     private String id() {

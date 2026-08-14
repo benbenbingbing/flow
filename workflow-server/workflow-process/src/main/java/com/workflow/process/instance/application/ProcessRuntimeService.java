@@ -23,7 +23,9 @@ import com.workflow.process.instance.infrastructure.persistence.record.EntityPro
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.IdentityService;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
+import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
@@ -48,6 +50,7 @@ import java.util.UUID;
 public class ProcessRuntimeService implements ProcessRuntimePort {
 
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
+    private final RepositoryService repositoryService;
     private final RuntimeService runtimeService;
     private final IdentityService identityService;
     private final org.flowable.engine.TaskService taskService;
@@ -80,16 +83,29 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
             return existingResult(link);
         }
 
+        ProcessDefinition deployedDefinition = repositoryService
+                .createProcessDefinitionQuery()
+                .processDefinitionKey(processConfig.getProcessKey())
+                .latestVersion()
+                .singleResult();
+        if (deployedDefinition == null) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_NOT_READY",
+                    "流程已发布但部署版本不存在: "
+                            + processConfig.getProcessName());
+        }
+
         Map<String, Object> variables = buildVariables(request);
-        multiInstanceCollectionListener.prepareVariables(processConfig.getId(), variables);
+        multiInstanceCollectionListener.prepareVariables(
+                deployedDefinition.getId(), variables);
         if (StringUtils.hasText(request.submitterId())) {
             identityService.setAuthenticatedUserId(request.submitterId());
         }
 
         ProcessInstance processInstance;
         try {
-            processInstance = runtimeService.startProcessInstanceByKey(
-                    processConfig.getProcessKey(),
+            processInstance = runtimeService.startProcessInstanceById(
+                    deployedDefinition.getId(),
                     request.entityRecordId(),
                     variables);
         } finally {
@@ -112,7 +128,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                             request.submitterId(),
                             request.variables()));
         }
-        workflowAutoSkipService.autoSkipNodes(processInstance.getId(), processConfig.getId());
+        workflowAutoSkipService.autoSkipNodes(
+                processInstance.getId(), deployedDefinition.getId());
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())
                 .active()

@@ -1,9 +1,6 @@
 package com.workflow.process.task.application;
 
-import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
-import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
-import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
-import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
@@ -12,10 +9,14 @@ import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.delegate.event.FlowableActivityEvent;
-import org.flowable.engine.repository.ProcessDefinition;
+import org.flowable.bpmn.model.BpmnModel;
+import org.flowable.bpmn.model.FlowElement;
+import org.flowable.bpmn.model.SubProcess;
+import org.flowable.bpmn.model.UserTask;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.HashSet;
 import java.util.List;
@@ -38,10 +39,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class WorkflowAutoSkipService implements FlowableEventListener {
 
-    private final NodeConfigMapper nodeConfigMapper;
     private final TaskService taskService;
     private final RuntimeService runtimeService;
-    private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final RepositoryService repositoryService;
 
     /** 跳过节点总数硬上限，防止异常流程（如环路）导致死循环 */
@@ -53,20 +52,18 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
      * 自动完成指定流程实例中配置为跳过的节点任务（启动时一次性兜底）。
      *
      * @param processInstanceId 流程实例ID
-     * @param processConfigId   流程配置ID（node_config 表）
+     * @param processDefinitionId Flowable 已部署流程定义 ID
      */
-    public void autoSkipNodes(String processInstanceId, String processConfigId) {
+    public void autoSkipNodes(
+            String processInstanceId,
+            String processDefinitionId) {
         if (processInstanceId == null || processInstanceId.isEmpty()
-                || processConfigId == null || processConfigId.isEmpty()) {
+                || processDefinitionId == null
+                || processDefinitionId.isEmpty()) {
             return;
         }
-
-        List<NodeConfig> nodes = nodeConfigMapper.findByProcessConfigId(processConfigId);
-        Set<String> skipNodeIds = nodes.stream()
-                .filter(n -> n.getNodeId() != null)
-                .filter(n -> Boolean.TRUE.equals(n.getSkipNode()))
-                .map(NodeConfig::getNodeId)
-                .collect(Collectors.toSet());
+        Set<String> skipNodeIds = deployedSkipNodeIds(
+                processDefinitionId);
 
         if (skipNodeIds.isEmpty()) {
             return;
@@ -154,26 +151,12 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
         }
 
         String processDefinitionId = pi.getProcessDefinitionId();
-        ProcessDefinition definition = repositoryService
-                .createProcessDefinitionQuery()
-                .processDefinitionId(processDefinitionId)
-                .singleResult();
-        if (definition == null || definition.getKey() == null
-                || definition.getKey().isBlank()) {
-            log.warn(
-                    "实时自动跳过忽略未知流程定义: processInstanceId={}, processDefinitionId={}",
-                    processInstanceId,
-                    processDefinitionId);
+        Boolean deployedDecision = deployedSkipDecision(
+                processDefinitionId, activityId);
+        if (Boolean.FALSE.equals(deployedDecision)) {
             return;
         }
-        String processKey = definition.getKey();
-        ProcessDefinitionConfig config = processDefinitionConfigMapper.findByProcessKey(processKey).orElse(null);
-        if (config == null) {
-            return;
-        }
-
-        NodeConfig nodeConfig = nodeConfigMapper.selectByNodeIdAndProcessId(activityId, config.getId());
-        if (nodeConfig == null || !Boolean.TRUE.equals(nodeConfig.getSkipNode())) {
+        if (deployedDecision == null) {
             return;
         }
 
@@ -197,6 +180,95 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
                 log.error("实时自动跳过节点失败: processInstanceId={}, taskId={}", processInstanceId, task.getId(), e);
             }
         }
+    }
+
+    /** null 表示该部署版本没有跳过配置，不得回查当前草稿。 */
+    private Boolean deployedSkipDecision(
+            String processDefinitionId,
+            String activityId) {
+        BpmnModel model = repositoryService.getBpmnModel(
+                processDefinitionId);
+        FlowElement element = model == null
+                || model.getMainProcess() == null
+                ? null
+                : model.getMainProcess().getFlowElement(activityId, true);
+        if (!(element instanceof UserTask userTask)) {
+            return null;
+        }
+        String skipNode = ConfiguredTaskPropertyReader.read(
+                userTask, "skipNode");
+        String skipExpression = firstText(
+                userTask.getSkipExpression(),
+                userTask.getAttributeValue(
+                        "http://flowable.org/bpmn", "skipExpression"),
+                userTask.getAttributeValue("", "skipExpression"),
+                ConfiguredTaskPropertyReader.read(
+                        userTask, "skipExpression"));
+        if (skipNode != null) {
+            return Boolean.parseBoolean(skipNode);
+        }
+        // 条件 skipExpression 由 Flowable 自己求值。它仍证明部署快照
+        // 明确包含跳过语义，因此禁止回落到当前草稿节点表。
+        return StringUtils.hasText(skipExpression) ? Boolean.FALSE : null;
+    }
+
+    private Set<String> deployedSkipNodeIds(
+            String processDefinitionId) {
+        BpmnModel model = repositoryService.getBpmnModel(
+                processDefinitionId);
+        if (model == null || model.getMainProcess() == null) {
+            log.warn(
+                    "自动跳过忽略未知部署模型: processDefinitionId={}",
+                    processDefinitionId);
+            return Set.of();
+        }
+        Set<String> result = new HashSet<>();
+        collectDeployedSkipNodes(
+                model.getMainProcess().getFlowElements(), result);
+        return result;
+    }
+
+    private void collectDeployedSkipNodes(
+            java.util.Collection<FlowElement> elements,
+            Set<String> target) {
+        if (elements == null) {
+            return;
+        }
+        for (FlowElement element : elements) {
+            if (element instanceof UserTask userTask
+                    && Boolean.TRUE.equals(deployedSkipDecision(userTask))) {
+                target.add(userTask.getId());
+            }
+            if (element instanceof SubProcess subProcess) {
+                collectDeployedSkipNodes(
+                        subProcess.getFlowElements(), target);
+            }
+        }
+    }
+
+    private Boolean deployedSkipDecision(UserTask userTask) {
+        String skipNode = ConfiguredTaskPropertyReader.read(
+                userTask, "skipNode");
+        String skipExpression = firstText(
+                userTask.getSkipExpression(),
+                userTask.getAttributeValue(
+                        "http://flowable.org/bpmn", "skipExpression"),
+                userTask.getAttributeValue("", "skipExpression"),
+                ConfiguredTaskPropertyReader.read(
+                        userTask, "skipExpression"));
+        if (skipNode != null) {
+            return Boolean.parseBoolean(skipNode);
+        }
+        return StringUtils.hasText(skipExpression) ? Boolean.FALSE : null;
+    }
+
+    private String firstText(String... values) {
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     @Override

@@ -330,6 +330,33 @@ public class EntityDataDynamicService {
         return assembleAggregate(data, entityCode);
     }
 
+    /**
+     * 历史版本访问校验专用：逻辑删除记录仍按原行级权限判断。
+     * 禁止写入、固化或普通详情接口复用此方法。
+     */
+    @Transactional(readOnly = true)
+    public EntityDataDTO findAccessibleIncludingDeletedById(
+            String entityCode,
+            String id,
+            String listKey) {
+        String tableName = dynamicTableService.getTableName(entityCode);
+        DataPermissionResult permission = getDataPermission(entityCode, listKey);
+        if (!permission.isHasPermission()) {
+            throw new ForbiddenException("数据不存在或无权访问");
+        }
+        Map<String, Object> data = permission.isNeedFilter()
+                ? dynamicMapper.selectByIdIncludingDeletedWithPermission(
+                        tableName,
+                        id,
+                        permission.getSqlCondition(),
+                        permission.getSqlParameters())
+                : dynamicMapper.selectByIdIncludingDeleted(tableName, id);
+        if (data == null) {
+            throw new ForbiddenException("数据不存在或不在当前数据权限范围内");
+        }
+        return assembleAggregate(data, entityCode);
+    }
+
     @Transactional(readOnly = true)
     public EntityDataDTO findByProcessInstanceId(
             String entityCode,

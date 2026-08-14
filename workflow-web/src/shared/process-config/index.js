@@ -1,3 +1,23 @@
+import { createNextApproverSelectionConfig } from '../next-approver.js'
+
+export const LEGACY_MULTI_INSTANCE_COLLECTION = '${_wfMultiInstanceUsers_}'
+
+export function buildNodeScopedMultiInstanceCollection(
+  nodeId,
+  currentCollection = ''
+) {
+  const current = String(currentCollection || '').trim()
+  if (current && current !== LEGACY_MULTI_INSTANCE_COLLECTION) {
+    return current
+  }
+  const sanitizedNodeId = String(nodeId || 'node')
+    .trim()
+    .replace(/[^A-Za-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'node'
+  return '${_wfMultiInstanceUsers_' + sanitizedNodeId + '}'
+}
+
 export const NODE_TYPE_DESCRIPTIONS = {
   'bpmn:UserTask': {
     title: '用户任务',
@@ -192,7 +212,10 @@ export function buildAssigneeConfig(form) {
     collectionResolverDisplayName: form.collectionResolverDisplayName || '',
     collectionExtraParams: normalizeJsonObject(
       form.collectionExtraParams,
-      form.collectionExtraParamsText)
+      form.collectionExtraParamsText),
+    nextApproverSelection: createNextApproverSelectionConfig(
+      form.nextApproverSelection
+    )
   }
 }
 

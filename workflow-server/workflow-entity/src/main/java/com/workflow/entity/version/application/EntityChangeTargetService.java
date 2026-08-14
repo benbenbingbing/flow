@@ -23,6 +23,7 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelation
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.mutationpolicy.application.EntityMutationPolicyService;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityChangeTargetInstanceMapper;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityChangeTargetInstance;
@@ -64,7 +65,7 @@ public class EntityChangeTargetService
                     "submitterName", "deptId", "deptName",
                     "submitTime");
 
-    private final EntityVersionConfigurationService configurationService;
+    private final EntityMutationPolicyService mutationPolicyService;
     private final EntityDataDynamicService queryService;
     private final EntityRecordVersionService versionService;
     private final EntityChangeTargetInstanceMapper instanceMapper;
@@ -85,7 +86,7 @@ public class EntityChangeTargetService
         List<FrozenEntityChangeTarget> result =
                 new ArrayList<>();
         for (EntityVersionConfiguration configuration
-                : configurationService
+                : mutationPolicyService
                         .findPublishedTargetConfigurations(
                                 command.sourceEntityCode())) {
             for (EntityVersionConfiguration.TargetBinding binding

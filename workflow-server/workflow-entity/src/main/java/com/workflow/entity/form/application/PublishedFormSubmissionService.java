@@ -9,6 +9,7 @@ import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.definition.application.EntityPublishedRelationService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -17,6 +18,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -44,6 +46,13 @@ public class PublishedFormSubmissionService {
     private final JsonDocumentCodec codec;
     private final UiDataSourceDefinitionValidator schemaValidator;
     private final PublishedFormRequiredValidator requiredValidator;
+    private EntityPublishedRelationService publishedRelationService;
+
+    @Autowired(required = false)
+    void setPublishedRelationService(
+            EntityPublishedRelationService publishedRelationService) {
+        this.publishedRelationService = publishedRelationService;
+    }
 
     /**
      * 应用实体默认表单的默认值与前置数据源（使用独立执行上下文）。
@@ -223,7 +232,8 @@ public class PublishedFormSubmissionService {
                 executionContext,
                 null,
                 PublishedSubFormSubmissionProcessor.Context.root(),
-                0);
+                0,
+                BindingExecutionMode.AUTHORITATIVE);
     }
 
     /**
@@ -258,7 +268,49 @@ public class PublishedFormSubmissionService {
                 executionContext,
                 resolutionContext,
                 PublishedSubFormSubmissionProcessor.Context.root(),
-                0);
+                0,
+                BindingExecutionMode.AUTHORITATIVE);
+    }
+
+    /**
+     * 使用与正式提交相同的表单发布版本、映射和校验语义进行无副作用预处理。
+     *
+     * <p>只有明确声明 {@code sideEffectFree=true} 的 BEFORE_SUBMIT 绑定会被
+     * 执行。遇到普通绑定时，在调用数据源之前抛出
+     * {@link FormSubmissionPreviewDeferredException}，由流程预览转换为 DEFERRED。
+     * 本方法本身不写实体或流程变量。</p>
+     */
+    public Map<String, Object> previewSideEffectFreeForm(
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext,
+            UiRuntimeResolutionContext resolutionContext) {
+        ResolvedEntityFormRelease resolved = resolutionContext == null
+                ? releaseService.resolveRuntimeFormRelease(
+                        formId,
+                        releaseId,
+                        releaseVersion)
+                : releaseService.resolveRuntimeFormRelease(
+                        formId,
+                        releaseId,
+                        releaseVersion,
+                        resolutionContext);
+        return applyResolvedForm(
+                resolved,
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext,
+                resolutionContext,
+                PublishedSubFormSubmissionProcessor.Context.root(),
+                0,
+                BindingExecutionMode.SIDE_EFFECT_FREE_PREVIEW);
     }
 
     private Map<String, Object> applyResolvedForm(
@@ -270,7 +322,8 @@ public class PublishedFormSubmissionService {
             FormSubmissionExecutionContext executionContext,
             UiRuntimeResolutionContext resolutionContext,
             PublishedSubFormSubmissionProcessor.Context nestedContext,
-            int depth) {
+            int depth,
+            BindingExecutionMode executionMode) {
         EntityForm form = resolved.form();
         if (form == null) {
             throw new IllegalArgumentException(
@@ -299,7 +352,8 @@ public class PublishedFormSubmissionService {
                 result,
                 executionContext,
                 resolved,
-                nestedContext);
+                nestedContext,
+                executionMode);
         List<EntityFormNode> nodes =
                 form.getNodes() == null
                         ? List.of() : form.getNodes();
@@ -324,7 +378,8 @@ public class PublishedFormSubmissionService {
                         result,
                         executionContext,
                         resolved,
-                        nestedContext);
+                        nestedContext,
+                        executionMode);
                 subFormSubmissionProcessor().apply(
                         node,
                         form,
@@ -336,7 +391,25 @@ public class PublishedFormSubmissionService {
                         resolutionContext,
                         nestedContext,
                         depth,
-                        this::applyResolvedForm);
+                        (childResolved,
+                                childEntityCode,
+                                childRecordId,
+                                childMode,
+                                childData,
+                                childExecutionContext,
+                                childResolutionContext,
+                                childContext,
+                                childDepth) -> applyResolvedForm(
+                                childResolved,
+                                childEntityCode,
+                                childRecordId,
+                                childMode,
+                                childData,
+                                childExecutionContext,
+                                childResolutionContext,
+                                childContext,
+                                childDepth,
+                                executionMode));
             }
         } else {
             for (EntityFormField field :
@@ -355,7 +428,8 @@ public class PublishedFormSubmissionService {
                         result,
                         executionContext,
                         resolved,
-                        nestedContext);
+                        nestedContext,
+                        executionMode);
             }
         }
         requiredValidator.validate(
@@ -375,9 +449,11 @@ public class PublishedFormSubmissionService {
                 || !StringUtils.hasText(form.getEntityId())) {
             return result;
         }
-        List<EntityRelation> relations =
-                entityRelationMapper.selectByParentEntityId(
-                        form.getEntityId());
+        List<EntityRelation> relations = publishedRelationService == null
+                ? entityRelationMapper.selectByParentEntityId(
+                form.getEntityId())
+                : publishedRelationService.listByParentEntityId(
+                form.getEntityId());
         if (relations == null || relations.isEmpty()) {
             return result;
         }
@@ -386,12 +462,11 @@ public class PublishedFormSubmissionService {
                         form,
                         relations);
         for (EntityRelation relation : relations) {
-            String fieldCode =
-                    relation.getParentFieldCode();
-            if (StringUtils.hasText(fieldCode)
+            String dataKey = effectiveDataKey(relation);
+            if (StringUtils.hasText(dataKey)
                     && !declaredRelationFields.contains(
-                            fieldCode)) {
-                result.remove(fieldCode);
+                            dataKey)) {
+                result.remove(dataKey);
             }
         }
         return result;
@@ -432,9 +507,10 @@ public class PublishedFormSubmissionService {
                 if (bindingRef.equals(
                                 relation.getRelationCode())
                         || bindingRef.equals(
-                                relation.getParentFieldCode())) {
-                    declared.add(
-                            relation.getParentFieldCode());
+                                relation.getParentFieldCode())
+                        || bindingRef.equals(
+                                effectiveDataKey(relation))) {
+                    declared.add(effectiveDataKey(relation));
                 }
             }
         }
@@ -457,6 +533,19 @@ public class PublishedFormSubmissionService {
                 : Map.of();
     }
 
+    private String effectiveDataKey(EntityRelation relation) {
+        if (publishedRelationService != null) {
+            return publishedRelationService.effectiveDataKey(relation);
+        }
+        if (StringUtils.hasText(relation.getDataKey())) {
+            return relation.getDataKey();
+        }
+        if (StringUtils.hasText(relation.getParentFieldCode())) {
+            return relation.getParentFieldCode();
+        }
+        return relation.getRelationCode();
+    }
+
     private void executeBindings(
             Map<String, Object> bindings,
             EntityForm form,
@@ -469,7 +558,8 @@ public class PublishedFormSubmissionService {
             Map<String, Object> record,
             FormSubmissionExecutionContext executionContext,
             ResolvedEntityFormRelease resolved,
-            PublishedSubFormSubmissionProcessor.Context nestedContext) {
+            PublishedSubFormSubmissionProcessor.Context nestedContext,
+            BindingExecutionMode executionMode) {
         if (bindings == null) {
             return;
         }
@@ -492,6 +582,15 @@ public class PublishedFormSubmissionService {
                 throw new IllegalArgumentException(
                         "BEFORE_SUBMIT 数据源绑定缺少 operationCode");
             }
+            if (executionMode
+                    == BindingExecutionMode.SIDE_EFFECT_FREE_PREVIEW
+                    && !sideEffectFree(value)) {
+                throw new FormSubmissionPreviewDeferredException(
+                        "表单提交前处理包含未声明无副作用的绑定，"
+                                + "需在正式提交后确定下一审批节点: "
+                                + effectiveOwnerKey(
+                                nestedContext, ownerKey));
+            }
             FormSubmissionExecutionContext safeExecutionContext =
                     safeExecutionContext(
                             executionContext,
@@ -504,7 +603,13 @@ public class PublishedFormSubmissionService {
                             resolved.releaseId(),
                             effectiveOwnerKey,
                             serviceId,
-                            bindingIndex);
+                            bindingIndex,
+                            bindingInputFingerprint(
+                                    recordId,
+                                    mode,
+                                    record,
+                                    safeExecutionContext,
+                                    nestedContext));
             UiDataSourceExecuteRequest request =
                     new UiDataSourceExecuteRequest();
             request.setUsage(
@@ -613,6 +718,43 @@ public class PublishedFormSubmissionService {
             }
             bindingIndex++;
         }
+    }
+
+    private boolean sideEffectFree(Object binding) {
+        return binding instanceof Map<?, ?> map
+                && Boolean.TRUE.equals(map.get("sideEffectFree"));
+    }
+
+    private String bindingInputFingerprint(
+            String recordId,
+            String mode,
+            Map<String, Object> record,
+            FormSubmissionExecutionContext executionContext,
+            PublishedSubFormSubmissionProcessor.Context nestedContext) {
+        Map<String, Object> material = new LinkedHashMap<>();
+        material.put("recordId", recordId == null ? "" : recordId);
+        material.put("mode", mode == null ? "edit" : mode);
+        material.put("formData", new LinkedHashMap<>(record));
+        material.put("context", executionContext.runtimeContext());
+        if (nestedContext != null) {
+            material.put("params", nestedContext.params());
+            material.put("parent", nestedContext.parent());
+            material.put("row", nestedContext.row());
+            material.put("relation", nestedContext.relation());
+        }
+        String document = codec.write(
+                material,
+                "BEFORE_SUBMIT 幂等输入");
+        return codec.canonicalize(
+                document,
+                "BEFORE_SUBMIT 幂等输入");
+    }
+
+    private String effectiveOwnerKey(
+            PublishedSubFormSubmissionProcessor.Context nestedContext,
+            String ownerKey) {
+        return nestedContext == null
+                ? ownerKey : nestedContext.ownerKey(ownerKey);
     }
 
     private FormSubmissionExecutionContext safeExecutionContext(
@@ -793,6 +935,11 @@ public class PublishedFormSubmissionService {
             return result;
         }
         return new LinkedHashMap<>(source);
+    }
+
+    private enum BindingExecutionMode {
+        AUTHORITATIVE,
+        SIDE_EFFECT_FREE_PREVIEW
     }
 
 }

@@ -30,6 +30,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -59,65 +60,74 @@ public class NodeFormSubmissionService {
     private final ObjectMapper objectMapper;
 
     /**
+     * 只读投影审批表单中允许当前节点编辑的提交值。
+     *
+     * <p>客户端数据先投影为当前节点可编辑字段，再叠加到运行时可信记录上，
+     * 随后按正式提交的顺序执行明确声明无副作用的 BEFORE_SUBMIT。普通绑定
+     * 会抛出预览延迟异常，由下一节点服务返回 DEFERRED。本方法不写实体或
+     * 流程变量。</p>
+     */
+    public Map<String, Object> projectEditableData(
+            Task task,
+            Map<String, Object> submittedFormData) {
+        SubmissionProjection projection = projectSubmission(
+                task, submittedFormData);
+        if (projection == null) {
+            return Map.of();
+        }
+        FormSubmissionExecutionContext executionContext =
+                submissionExecutionContext(task, projection);
+        Map<String, Object> processedValues = applyBeforeSubmit(
+                projection.published().nodeForms(),
+                projection.published().history().getId(),
+                task,
+                projection.entityCode(),
+                projection.entityDataId(),
+                projection.trustedValues(),
+                executionContext,
+                true);
+        return changedEditableValues(projection, processedValues);
+    }
+
+    /**
      * 将任务提交的可编辑字段数据保存到实体与流程变量。
      *
      * <p>流程步骤：解析发布节点表单 -> 收集可编辑字段编码 -> 执行发布表单的提交前处理 ->
      * 过滤出可编辑值 -> 写入实体动态表与流程变量。</p>
      *
      * @param task              当前任务
-     * @param submittedFormData 提交的表单数据（可为空，空则直接返回）
+     * @param submittedFormData 提交的表单数据（可为空；仍会执行发布表单的权威前置处理）
      */
     public void applyEditableData(Task task, Map<String, Object> submittedFormData) {
-        if (task == null) {
+        SubmissionProjection projection = projectSubmission(
+                task, submittedFormData);
+        if (projection == null) {
+            if (task != null) {
+                log.warn(
+                        "审批表单数据未保存：流程缺少实体标识, processInstanceId={}",
+                        task.getProcessInstanceId());
+            }
             return;
         }
 
-        String processInstanceId = task.getProcessInstanceId();
-        String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
-        String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
-        if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(entityDataId)) {
-            log.warn("审批表单数据未保存：流程缺少实体标识, processInstanceId={}", processInstanceId);
-            return;
-        }
-
-        ProcessPublishedSnapshotService.PublishedNodeForms published =
-                getPublishedNodeForms(task);
-        List<ProcessNodeForm> nodeForms = published.nodeForms();
-        Map<String, Object> submittedValues =
-                flattenSubmittedValues(
-                        submittedFormData == null
-                                ? Map.of() : submittedFormData);
-        Set<String> editableFieldCodes =
-                resolveEditableFieldCodes(
-                        nodeForms,
-                        published.history().getId(),
-                        entityCode);
+        String processInstanceId = projection.processInstanceId();
+        String entityCode = projection.entityCode();
+        String entityDataId = projection.entityDataId();
         FormSubmissionExecutionContext executionContext =
-                formSubmissionTraceService.current(
-                        "PROCESS_APPROVAL_SUBMIT",
-                        "task:" + task.getId(),
-                        submissionAttributes(
-                                task,
-                                entityCode,
-                                entityDataId));
+                submissionExecutionContext(task, projection);
         Map<String, Object> processedValues =
                 applyBeforeSubmit(
-                        nodeForms,
-                        published.history().getId(),
+                        projection.published().nodeForms(),
+                        projection.published().history().getId(),
                         task,
                         entityCode,
                         entityDataId,
-                        submittedValues,
-                        executionContext);
+                        projection.trustedValues(),
+                        executionContext,
+                        false);
 
-        Map<String, Object> editableValues = new HashMap<>();
-        for (String fieldCode : editableFieldCodes) {
-            if (processedValues.containsKey(fieldCode)) {
-                editableValues.put(
-                        fieldCode,
-                        processedValues.get(fieldCode));
-            }
-        }
+        Map<String, Object> editableValues =
+                changedEditableValues(projection, processedValues);
         if (editableValues.isEmpty()) {
             return;
         }
@@ -147,6 +157,11 @@ public class NodeFormSubmissionService {
                         Map.of("data", editableValues),
                         mutationContext));
         runtimeService.setVariables(processInstanceId, editableValues);
+        Map<String, Object> mergedEntityData = new LinkedHashMap<>(
+                projection.trustedValues());
+        mergedEntityData.putAll(editableValues);
+        runtimeService.setVariable(
+                processInstanceId, "entityData", mergedEntityData);
         log.info("审批节点保存可编辑字段: processInstanceId={}, nodeId={}, fields={}",
                 processInstanceId, task.getTaskDefinitionKey(), editableValues.keySet());
     }
@@ -211,7 +226,8 @@ public class NodeFormSubmissionService {
             String entityCode,
             String entityDataId,
             Map<String, Object> submittedValues,
-            FormSubmissionExecutionContext executionContext) {
+            FormSubmissionExecutionContext executionContext,
+            boolean sideEffectFreePreview) {
         Map<String, Object> result =
                 new HashMap<>(submittedValues);
         if (!nodeForms.isEmpty()) {
@@ -223,19 +239,32 @@ public class NodeFormSubmissionService {
                                 releaseKey(nodeForm))) {
                     continue;
                 }
-                result = formSubmissionService.applyForm(
-                        nodeForm.getFormId(),
-                        nodeForm.getFormReleaseId(),
-                        nodeForm.getFormReleaseVersion(),
-                        entityCode,
-                        entityDataId,
-                        "approve",
-                        result,
-                        executionContext,
+                UiRuntimeResolutionContext resolutionContext =
                         new UiRuntimeResolutionContext(
                                 UiRuntimePurpose.ACTIVE_TASK,
                                 processVersionHistoryId,
-                                task.getTaskDefinitionKey()));
+                                task.getTaskDefinitionKey());
+                result = sideEffectFreePreview
+                        ? formSubmissionService.previewSideEffectFreeForm(
+                                nodeForm.getFormId(),
+                                nodeForm.getFormReleaseId(),
+                                nodeForm.getFormReleaseVersion(),
+                                entityCode,
+                                entityDataId,
+                                "approve",
+                                result,
+                                executionContext,
+                                resolutionContext)
+                        : formSubmissionService.applyForm(
+                                nodeForm.getFormId(),
+                                nodeForm.getFormReleaseId(),
+                                nodeForm.getFormReleaseVersion(),
+                                entityCode,
+                                entityDataId,
+                                "approve",
+                                result,
+                                executionContext,
+                                resolutionContext);
             }
             return result;
         }
@@ -247,15 +276,213 @@ public class NodeFormSubmissionService {
         EntityForm form =
                 entityFormService.getDefaultForm(
                         definition.getId());
-        return form == null
-                ? result
-                : formSubmissionService.applyForm(
+        if (form == null) {
+            return result;
+        }
+        return sideEffectFreePreview
+                ? formSubmissionService.previewSideEffectFreeForm(
                         form.getId(),
+                        null,
+                        null,
                         entityCode,
                         entityDataId,
                         "approve",
                         result,
-                        executionContext);
+                        executionContext,
+                        null)
+                : formSubmissionService.applyForm(
+                        form.getId(),
+                        null,
+                        null,
+                        entityCode,
+                        entityDataId,
+                        "approve",
+                        result,
+                        executionContext,
+                        null);
+    }
+
+    private SubmissionProjection projectSubmission(
+            Task task,
+            Map<String, Object> submittedFormData) {
+        if (task == null) {
+            return null;
+        }
+        String processInstanceId = task.getProcessInstanceId();
+        String entityCode = asString(runtimeService.getVariable(
+                processInstanceId, "entityCode"));
+        String entityDataId = asString(runtimeService.getVariable(
+                processInstanceId, "entityDataId"));
+        if (!StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(entityDataId)) {
+            return null;
+        }
+        ProcessPublishedSnapshotService.PublishedNodeForms published =
+                getPublishedNodeForms(task);
+        Set<String> editableFieldCodes = resolveEditableFieldCodes(
+                published.nodeForms(),
+                published.history().getId(),
+                entityCode);
+        Set<String> declaredFieldCodes = resolveDeclaredFieldCodes(
+                published.nodeForms(),
+                published.history().getId(),
+                entityCode);
+        Map<String, Object> submittedValues = flattenSubmittedValues(
+                submittedFormData == null ? Map.of() : submittedFormData);
+        Map<String, Object> submittedEditableValues =
+                new LinkedHashMap<>();
+        for (String fieldCode : editableFieldCodes) {
+            if (submittedValues.containsKey(fieldCode)) {
+                submittedEditableValues.put(
+                        fieldCode, submittedValues.get(fieldCode));
+            }
+        }
+        Map<String, Object> trustedValues = currentEntityData(
+                processInstanceId,
+                declaredFieldCodes);
+        trustedValues.putAll(submittedEditableValues);
+        return new SubmissionProjection(
+                processInstanceId,
+                entityCode,
+                entityDataId,
+                published,
+                Set.copyOf(editableFieldCodes),
+                new LinkedHashMap<>(submittedEditableValues),
+                new LinkedHashMap<>(trustedValues));
+    }
+
+    private Set<String> resolveDeclaredFieldCodes(
+            List<ProcessNodeForm> nodeForms,
+            String processVersionHistoryId,
+            String entityCode) {
+        Set<String> result = new HashSet<>();
+        if (!nodeForms.isEmpty()) {
+            for (ProcessNodeForm nodeForm : nodeForms) {
+                collectDeclaredFields(
+                        entityFormRuntimeService.getByBinding(
+                                nodeForm,
+                                processVersionHistoryId,
+                                UiRuntimePurpose.ACTIVE_TASK),
+                        result);
+            }
+            return result;
+        }
+        var entityDefinition = entityFormService.getEntityByCode(
+                entityCode);
+        if (entityDefinition != null) {
+            collectDeclaredFields(
+                    entityFormRuntimeService.getDefaultForm(
+                            entityDefinition.getId()),
+                    result);
+        }
+        return result;
+    }
+
+    private void collectDeclaredFields(
+            EntityForm form,
+            Set<String> fieldCodes) {
+        if (form == null) {
+            return;
+        }
+        if (form.getFields() != null) {
+            form.getFields().stream()
+                    .map(EntityFormField::getFieldCode)
+                    .filter(StringUtils::hasText)
+                    .forEach(fieldCodes::add);
+        }
+        if (form.getNodes() == null) {
+            return;
+        }
+        for (EntityFormNode node : form.getNodes()) {
+            if (!"FIELD".equalsIgnoreCase(value(node.getNodeType()))) {
+                continue;
+            }
+            Map<String, Object> props = jsonObject(
+                    node.getPropsDocument());
+            String fieldCode = firstText(
+                    props.get("fieldCode"),
+                    node.getBindingRef(),
+                    node.getNodeKey());
+            if (StringUtils.hasText(fieldCode)) {
+                fieldCodes.add(fieldCode);
+            }
+        }
+    }
+
+    private Map<String, Object> currentEntityData(
+            String processInstanceId,
+            Set<String> declaredFieldCodes) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        Object current = runtimeService.getVariable(
+                processInstanceId, "entityData");
+        if (current instanceof Map<?, ?> values) {
+            putDeclaredValues(result, values, declaredFieldCodes);
+            if (values.get("data") instanceof Map<?, ?> nested) {
+                putDeclaredValues(result, nested, declaredFieldCodes);
+            }
+        }
+        Map<String, Object> processVariables = runtimeService.getVariables(
+                processInstanceId);
+        if (processVariables != null) {
+            putDeclaredValues(
+                    result,
+                    processVariables,
+                    declaredFieldCodes);
+        }
+        return result;
+    }
+
+    private void putDeclaredValues(
+            Map<String, Object> target,
+            Map<?, ?> source,
+            Set<String> declaredFieldCodes) {
+        for (String fieldCode : declaredFieldCodes) {
+            if (source.containsKey(fieldCode)) {
+                target.put(fieldCode, source.get(fieldCode));
+            }
+        }
+    }
+
+    private Map<String, Object> changedEditableValues(
+            SubmissionProjection projection,
+            Map<String, Object> processedValues) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (String fieldCode : projection.editableFieldCodes()) {
+            if (!processedValues.containsKey(fieldCode)) {
+                continue;
+            }
+            boolean submitted = projection.submittedEditableValues()
+                    .containsKey(fieldCode);
+            boolean derived = !Objects.equals(
+                    projection.trustedValues().get(fieldCode),
+                    processedValues.get(fieldCode));
+            if (submitted || derived) {
+                result.put(fieldCode, processedValues.get(fieldCode));
+            }
+        }
+        return result;
+    }
+
+    private FormSubmissionExecutionContext submissionExecutionContext(
+            Task task,
+            SubmissionProjection projection) {
+        return formSubmissionTraceService.current(
+                "PROCESS_APPROVAL_SUBMIT",
+                "task:" + task.getId(),
+                submissionAttributes(
+                        task,
+                        projection.entityCode(),
+                        projection.entityDataId()));
+    }
+
+    private record SubmissionProjection(
+            String processInstanceId,
+            String entityCode,
+            String entityDataId,
+            ProcessPublishedSnapshotService.PublishedNodeForms published,
+            Set<String> editableFieldCodes,
+            Map<String, Object> submittedEditableValues,
+            Map<String, Object> trustedValues) {
     }
 
     private Map<String, Object> submissionAttributes(

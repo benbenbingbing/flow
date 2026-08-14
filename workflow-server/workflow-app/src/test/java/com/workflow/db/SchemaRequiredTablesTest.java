@@ -42,7 +42,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(40, files.size());
+        assertEquals(46, files.size());
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -55,6 +55,9 @@ class SchemaRequiredTablesTest {
         assertTrue(applicationYaml.contains("baseline-on-migrate: false"));
         assertTrue(applicationYaml.contains("validate-on-migrate: true"));
         assertTrue(applicationYaml.contains("clean-disabled: true"));
+        assertTrue(applicationYaml.contains(
+                "transaction-isolation: "
+                        + "${DB_TRANSACTION_ISOLATION:TRANSACTION_READ_COMMITTED}"));
         assertFalse(applicationYaml.contains("baseline-version:"));
     }
 
@@ -144,6 +147,48 @@ class SchemaRequiredTablesTest {
         assertFalse(nativeJsonColumn.matcher(sql).find());
         assertTrue(sql.contains("snapshot_document` longtext"));
         assertTrue(sql.contains("payload_document` longtext"));
+    }
+
+    @Test
+    void entityVersionV2LivesInForwardOnlyMigrations() throws Exception {
+        String baseline = Files.readString(BASELINE);
+        String relations = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V043__decouple_entity_relations.sql"));
+        String mutationPolicy = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V044__split_entity_mutation_policy.sql"));
+        String versionV2 = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V045__entity_version_scope_snapshot_v2.sql"));
+        String globalIdempotency = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V046__record_version_global_idempotency.sql"));
+
+        assertTrue(relations.contains("`relations_snapshot`"));
+        assertTrue(relations.contains("`data_key`"));
+        assertTrue(mutationPolicy.contains(
+                "CREATE TABLE `entity_mutation_policy_config`"));
+        assertTrue(mutationPolicy.contains(
+                "CREATE TABLE `entity_mutation_policy_release`"));
+        assertTrue(versionV2.contains(
+                "CREATE TABLE `entity_record_version_dataset`"));
+        assertTrue(versionV2.contains(
+                "CREATE TABLE `entity_record_version_dataset_row`"));
+        assertTrue(versionV2.contains(
+                "CREATE TABLE `entity_record_version_counter`"));
+        assertTrue(versionV2.contains(
+                "fk_entity_record_version_dataset_version"));
+        assertTrue(versionV2.contains(
+                "fk_entity_record_version_dataset_row_dataset"));
+        assertTrue(versionV2.contains(
+                "fk_entity_record_version_config_release"));
+        assertTrue(globalIdempotency.contains(
+                "(`entity_code`, `record_id`, `idempotency_key`)"));
+        assertTrue(relations.contains(
+                "data_key 本阶段故意保持可空"));
+
+        assertFalse(baseline.contains("`relations_snapshot`"));
+        assertFalse(baseline.contains(
+                "CREATE TABLE `entity_mutation_policy_config`"));
+        assertFalse(baseline.contains(
+                "CREATE TABLE `entity_record_version_dataset`"));
     }
 
     @Test

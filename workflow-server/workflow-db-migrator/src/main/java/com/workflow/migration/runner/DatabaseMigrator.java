@@ -11,6 +11,10 @@ import org.flowable.engine.ProcessEngine;
 import org.flowable.engine.ProcessEngineConfiguration;
 import org.flywaydb.core.Flyway;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
 /**
  * Runs business and Flowable schema migrations outside application Pods.
  */
@@ -37,6 +41,8 @@ public final class DatabaseMigrator {
 
         System.out.println(
                 "Applying validated business schema migrations");
+        verifyBusinessMigrationPreconditions(
+                jdbcUrl, username, password);
         Flyway.configure()
                 .dataSource(jdbcUrl, username, password)
                 .locations("classpath:db/migration")
@@ -79,6 +85,20 @@ public final class DatabaseMigrator {
         AppEngine appEngine = appConfiguration.buildAppEngine();
         appEngine.close();
         System.out.println("Database migrations completed");
+    }
+
+    private static void verifyBusinessMigrationPreconditions(
+            String jdbcUrl,
+            String username,
+            String password) {
+        try (Connection connection = DriverManager.getConnection(
+                jdbcUrl, username, password)) {
+            BusinessMigrationPreflight.verify(connection);
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "业务数据库迁移预检失败",
+                    exception);
+        }
     }
 
     private static void configure(

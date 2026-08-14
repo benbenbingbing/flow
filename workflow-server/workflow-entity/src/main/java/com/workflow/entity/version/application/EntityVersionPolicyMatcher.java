@@ -56,6 +56,17 @@ public class EntityVersionPolicyMatcher {
                         configuration.getEnabled())) {
             return Optional.empty();
         }
+        if (value(configuration.getSchemaVersion()) >= 2
+                && configuration.getTriggers() != null
+                && !configuration.getTriggers().isEmpty()) {
+            return matchTriggers(
+                    configuration,
+                    "ROOT_MUTATION",
+                    null,
+                    command,
+                    beforeRecord,
+                    afterRecord);
+        }
         return configuration.getScenarios().stream()
                 .filter(item ->
                         !Boolean.FALSE.equals(item.getEnabled()))
@@ -86,6 +97,88 @@ public class EntityVersionPolicyMatcher {
                         value(item.getPriority()),
                         configuration.getActiveReleaseId(),
                         configuration.getActiveReleaseVersion()));
+    }
+
+    public Optional<MatchedScenario> matchManual(
+            EntityVersionConfiguration configuration,
+            String requestedTriggerCode) {
+        if (configuration == null
+                || !Boolean.TRUE.equals(configuration.getEnabled())) {
+            return Optional.empty();
+        }
+        return configuration.getTriggers().stream()
+                .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
+                .filter(item -> "MANUAL".equals(item.getTriggerType()))
+                .filter(item -> !StringUtils.hasText(requestedTriggerCode)
+                        || item.getTriggerCode().equalsIgnoreCase(
+                                requestedTriggerCode.trim()))
+                .sorted((left, right) -> Integer.compare(
+                        value(right.getPriority()), value(left.getPriority())))
+                .findFirst()
+                .map(item -> matched(configuration, item));
+    }
+
+    public Optional<MatchedScenario> matchRelated(
+            EntityVersionConfiguration configuration,
+            String relationCode,
+            EntityMutationCommand command,
+            Map<String, Object> beforeRecord,
+            Map<String, Object> afterRecord) {
+        return matchTriggers(
+                configuration,
+                "RELATED_MUTATION",
+                relationCode,
+                command,
+                beforeRecord,
+                afterRecord);
+    }
+
+    private Optional<MatchedScenario> matchTriggers(
+            EntityVersionConfiguration configuration,
+            String triggerType,
+            String relationCode,
+            EntityMutationCommand command,
+            Map<String, Object> beforeRecord,
+            Map<String, Object> afterRecord) {
+        if (configuration == null
+                || !Boolean.TRUE.equals(configuration.getEnabled())) {
+            return Optional.empty();
+        }
+        return configuration.getTriggers().stream()
+                .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
+                .filter(item -> triggerType.equals(item.getTriggerType()))
+                .filter(item -> relationCode == null
+                        || relationCode.equals(item.getRelationCode()))
+                .sorted((left, right) -> Integer.compare(
+                        value(right.getPriority()), value(left.getPriority())))
+                .filter(item -> matchesDimension(
+                        item.getSourceTypes(),
+                        command.context().sourceType().name()))
+                .filter(item -> matchesDimension(
+                        item.getOperationTypes(),
+                        command.operationType().name()))
+                .filter(item -> matchesDimension(
+                        item.getBusinessIntents(),
+                        command.context().businessIntentCode()))
+                .filter(item -> evaluate(
+                        item.getCondition(),
+                        command,
+                        beforeRecord,
+                        afterRecord))
+                .findFirst()
+                .map(item -> matched(configuration, item));
+    }
+
+    private MatchedScenario matched(
+            EntityVersionConfiguration configuration,
+            EntityVersionConfiguration.CaptureTrigger trigger) {
+        return new MatchedScenario(
+                trigger.getTriggerCode(),
+                trigger.getTriggerName(),
+                trigger.getVersionTitleTemplate(),
+                value(trigger.getPriority()),
+                configuration.getActiveReleaseId(),
+                configuration.getActiveReleaseVersion());
     }
 
     public Map<String, Object> simulate(

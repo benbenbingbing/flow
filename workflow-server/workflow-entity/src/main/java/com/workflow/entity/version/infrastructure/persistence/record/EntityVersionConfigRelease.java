@@ -18,7 +18,9 @@ public class EntityVersionConfigRelease {
     private String id;
     private String configId;
     private Integer version;
+    private Integer contractVersion;
     private String configDocument;
+    private String scopeHash;
     private String publishedBy;
     private String publishedByName;
     private LocalDateTime publishTime;

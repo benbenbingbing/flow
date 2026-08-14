@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,8 +35,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.flowable.engine.HistoryService;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.history.HistoricProcessInstanceQuery;
+import org.flowable.engine.repository.ProcessDefinition;
+import org.flowable.engine.repository.ProcessDefinitionQuery;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.flowable.eventsubscription.api.EventSubscription;
@@ -62,6 +66,8 @@ class OpenProcessAdapterTest {
             mock(WorkflowAutoSkipService.class);
     private final ProcessTaskService processTaskService =
             mock(ProcessTaskService.class);
+    private final RepositoryService repositoryService =
+            mock(RepositoryService.class);
 
     private OpenProcessAdapter adapter;
 
@@ -75,7 +81,8 @@ class OpenProcessAdapterTest {
                 taskService,
                 multiInstanceListener,
                 autoSkipService,
-                processTaskService);
+                processTaskService,
+                repositoryService);
     }
 
     @Test
@@ -110,10 +117,12 @@ class OpenProcessAdapterTest {
     void startStripsInternalVariablesAndAddsTrustedMetadata() {
         when(definitionMapper.findByProcessKey("change_process"))
                 .thenReturn(Optional.of(definition()));
+        ProcessDefinition deployed = deployedDefinition(
+                "definition-v3", 3);
         ProcessInstance started = mock(ProcessInstance.class);
         when(started.getId()).thenReturn("process-instance-01");
-        when(runtimeService.startProcessInstanceByKey(
-                eq("change_process"),
+        when(runtimeService.startProcessInstanceById(
+                eq("definition-v3"),
                 eq("binding-01"),
                 anyMap())).thenReturn(started);
         ProcessInstanceQuery query =
@@ -141,10 +150,14 @@ class OpenProcessAdapterTest {
 
         ArgumentCaptor<Map<String, Object>> variables =
                 ArgumentCaptor.forClass(Map.class);
-        verify(runtimeService).startProcessInstanceByKey(
-                eq("change_process"),
+        verify(runtimeService).startProcessInstanceById(
+                eq("definition-v3"),
                 eq("binding-01"),
                 variables.capture());
+        verify(multiInstanceListener).prepareVariables(
+                eq(deployed.getId()), anyMap());
+        verify(autoSkipService).autoSkipNodes(
+                "process-instance-01", deployed.getId());
         assertEquals("Release", variables.getValue().get("title"));
         assertFalse(variables.getValue().containsKey("initiator"));
         assertFalse(variables.getValue().containsKey("entityDataId"));
@@ -174,14 +187,15 @@ class OpenProcessAdapterTest {
                 multiInstanceListener,
                 autoSkipService,
                 processTaskService,
-                null,
+                repositoryService,
                 List.of(resolver));
         when(definitionMapper.findByProcessKey("change_process"))
                 .thenReturn(Optional.of(definition()));
+        deployedDefinition("definition-v3", 3);
         ProcessInstance started = mock(ProcessInstance.class);
         when(started.getId()).thenReturn("process-instance-01");
-        when(runtimeService.startProcessInstanceByKey(
-                eq("change_process"),
+        when(runtimeService.startProcessInstanceById(
+                eq("definition-v3"),
                 eq("binding-01"),
                 anyMap())).thenReturn(started);
         ProcessInstanceQuery query = mock(
@@ -205,12 +219,56 @@ class OpenProcessAdapterTest {
                 "external",
                 "{\"outcomeCode\":\"variables.decision\"}"));
 
-        verify(runtimeService).startProcessInstanceByKey(
-                eq("change_process"), eq("binding-01"), variables.capture());
+        verify(runtimeService).startProcessInstanceById(
+                eq("definition-v3"), eq("binding-01"), variables.capture());
         assertEquals("flow-user", variables.getValue().get("startUserId"));
         assertEquals("flow-user", variables.getValue().get("initiator"));
         assertEquals(true,
                 variables.getValue().get("integrationEventsDeferred"));
+    }
+
+    @Test
+    void pinnedStartUsesOnlyTheSelectedDeployedDefinition() {
+        ProcessDefinitionConfig currentDraft = definition();
+        currentDraft.setId("current-process-config");
+        when(definitionMapper.findByProcessKey("change_process"))
+                .thenReturn(Optional.of(currentDraft));
+        ProcessDefinition deployed = deployedDefinition(
+                "definition-v1", 1);
+        ProcessInstance started = mock(ProcessInstance.class);
+        when(started.getId()).thenReturn("process-instance-v1");
+        when(runtimeService.startProcessInstanceById(
+                eq("definition-v1"), eq("binding-v1"), anyMap()))
+                .thenReturn(started);
+        ProcessInstanceQuery query = mock(
+                ProcessInstanceQuery.class, RETURNS_SELF);
+        when(runtimeService.createProcessInstanceQuery())
+                .thenReturn(query);
+        when(query.singleResult()).thenReturn(started);
+        when(started.getProcessDefinitionKey())
+                .thenReturn("change_process");
+        when(started.getStartTime()).thenReturn(new Date(1_000));
+
+        adapter.start(new OpenProcessStartCommand(
+                "change_process",
+                "binding-v1",
+                new OpenBusinessReference(
+                        "project-system", "change-request", "business-v1"),
+                null,
+                Map.of(),
+                actor(),
+                1));
+
+        verify(multiInstanceListener).prepareVariables(
+                eq(deployed.getId()), anyMap());
+        verify(runtimeService).startProcessInstanceById(
+                eq(deployed.getId()), eq("binding-v1"), anyMap());
+        verify(autoSkipService).autoSkipNodes(
+                "process-instance-v1", deployed.getId());
+        verify(multiInstanceListener, never()).prepareVariables(
+                eq("current-process-config"), anyMap());
+        verify(autoSkipService, never()).autoSkipNodes(
+                "process-instance-v1", "current-process-config");
     }
 
     @Test
@@ -298,6 +356,20 @@ class OpenProcessAdapterTest {
         definition.setVersion(2);
         definition.setStatus(
                 ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
+        return definition;
+    }
+
+    private ProcessDefinition deployedDefinition(
+            String id,
+            int version) {
+        ProcessDefinitionQuery query = mock(
+                ProcessDefinitionQuery.class, RETURNS_SELF);
+        ProcessDefinition definition = mock(ProcessDefinition.class);
+        when(repositoryService.createProcessDefinitionQuery())
+                .thenReturn(query);
+        when(query.singleResult()).thenReturn(definition);
+        when(definition.getId()).thenReturn(id);
+        when(definition.getVersion()).thenReturn(version);
         return definition;
     }
 
