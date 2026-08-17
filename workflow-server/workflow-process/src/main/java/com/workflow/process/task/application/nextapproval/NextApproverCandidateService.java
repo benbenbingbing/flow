@@ -135,7 +135,45 @@ public class NextApproverCandidateService {
                 && defaults.size() > 1) {
             return List.of(defaults.get(0));
         }
-        return defaults;
+        // 启动快照可能包含已停用或配置变更后不再允许的人员；默认值只展示
+        // 当前仍在允许范围内的人员，避免用户误选后提交被后端拒绝。
+        return filterAllowedDefaults(resolution, target, defaults);
+    }
+
+    /**
+     * 使用当前允许范围过滤默认人员，仅移除已不在范围内的项；保留原顺序。
+     *
+     * <p>仅对 NODE_ASSIGNMENT 来源生效。SCOPE/RESOLVER 的默认值由外部
+     * 范围或解析器自身决定，不应再用允许范围二次过滤。</p>
+     *
+     * <p>对 RESOLVER 来源使用与 options/重验一致的用途，避免解析器用途
+     * 漂移导致默认显示与提交校验范围不一致。</p>
+     */
+    private List<NextApproverCandidateDTO> filterAllowedDefaults(
+            NextApprovalResolution resolution,
+            NextApprovalTarget target,
+            List<NextApproverCandidateDTO> defaults) {
+        if (defaults.isEmpty()
+                || target.selectionPolicy().sourceType()
+                != NextApproverSelectionPolicy.SourceType.NODE_ASSIGNMENT) {
+            return defaults;
+        }
+        PersonResolveUsage usage = "MULTI_INSTANCE".equals(
+                target.selectionPolicy().assignmentMode())
+                ? PersonResolveUsage.MULTI_INSTANCE
+                : PersonResolveUsage.ASSIGNEE;
+        Set<String> allowed;
+        try {
+            allowed = resolveAllowed(resolution, target, usage).stream()
+                    .map(SysUser::getUsername)
+                    .collect(java.util.stream.Collectors.toSet());
+        } catch (RuntimeException exception) {
+            // 默认展示不应因允许范围解析失败而完全失效；失败后回退到原默认值。
+            return defaults;
+        }
+        return defaults.stream()
+                .filter(dto -> allowed.contains(dto.getUsername()))
+                .toList();
     }
 
     /**

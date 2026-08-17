@@ -46,6 +46,53 @@ import static org.mockito.Mockito.when;
 class NextApproverNodeAssignmentCandidateTest {
 
     @Test
+    void multiInstanceStaticUsersDefaultAndAllowedBothUseFullConfiguredList() {
+        Fixture fixture = fixture(
+                "codex-user", "verify-user", "lisi", "test-user");
+        UserTask userTask = new UserTask();
+        userTask.setId("manager-review");
+        userTask.setName("经理审批");
+        MultiInstanceLoopCharacteristics loop =
+                new MultiInstanceLoopCharacteristics();
+        loop.setInputDataItem("${_wfMultiInstanceUsers_manager_review}");
+        userTask.setLoopCharacteristics(loop);
+        NextApprovalTarget target = target(
+                userTask,
+                "MULTI_INSTANCE",
+                Map.of(
+                        "assignmentConfigVersion", 2,
+                        "assigneeType", "user",
+                        "assigneeValue", "codex-user",
+                        "candidateUsers", "codex-user,verify-user,lisi,test-user"));
+        NextApprovalResolution resolution = resolution(
+                target,
+                Map.of("_wfMultiInstanceUsers_manager_review",
+                        List.of("codex-user", "verify-user", "lisi", "test-user")));
+        when(fixture.routeService().resolve(eq("task-1"), any()))
+                .thenReturn(resolution);
+
+        List<NextApproverCandidateDTO> defaults =
+                fixture.service().defaultAssignees(resolution, target);
+        PageResult<NextApproverCandidateDTO> options =
+                fixture.service().options("task-1", optionsRequest(target));
+        List<SysUser> completionAllowed = fixture.service().resolveAllowed(
+                resolution,
+                target,
+                PersonResolveUsage.CANDIDATE);
+
+        List<String> expected = List.of(
+                "codex-user", "verify-user", "lisi", "test-user");
+        assertEquals(expected, usernames(defaults),
+                "多实例默认值应从启动快照读取完整人员");
+        assertEquals(expected.stream().sorted().toList(),
+                usernames(options.getRecords()).stream().sorted().toList(),
+                "options 必须包含完整配置人员");
+        assertEquals(expected,
+                completionAllowed.stream().map(SysUser::getUsername).toList(),
+                "完成重验的允许范围必须与 options 一致，都包含完整配置人员");
+    }
+
+    @Test
     void directResolverUsesAssigneeUsageForPreviewOptionsAndCompleteValidation() {
         Fixture fixture = fixture("alice", "bob");
         UserTask userTask = new UserTask();
@@ -135,7 +182,7 @@ class NextApproverNodeAssignmentCandidateTest {
                 fixture.resolverRuntimeService(),
                 "jointResolver",
                 PersonResolveUsage.MULTI_INSTANCE,
-                3);
+                4);
         verify(fixture.resolverRuntimeService(), never()).requireConfigured(
                 "jointResolver", PersonResolveUsage.CANDIDATE);
         verify(fixture.resolverRuntimeService(), never()).requireConfigured(
@@ -175,7 +222,8 @@ class NextApproverNodeAssignmentCandidateTest {
                 target,
                 PersonResolveUsage.CANDIDATE);
 
-        assertEquals(List.of("alice"), usernames(defaults));
+        assertEquals(List.of(), usernames(defaults),
+                "启动快照中的旧默认人员若已不在当前配置范围，默认展示应为空");
         assertEquals(List.of("bob"), usernames(options.getRecords()));
         assertEquals(
                 List.of("bob"),
@@ -184,7 +232,7 @@ class NextApproverNodeAssignmentCandidateTest {
                 fixture.resolverRuntimeService(),
                 "jointResolver",
                 PersonResolveUsage.MULTI_INSTANCE,
-                2);
+                3);
     }
 
     @Test
@@ -407,6 +455,8 @@ class NextApproverNodeAssignmentCandidateTest {
         SysRole auditor = role("audit-role", "AUDITOR");
         when(fixture.roleMapper().selectList(any()))
                 .thenReturn(
+                        List.of(manager),
+                        List.of(auditor),
                         List.of(manager),
                         List.of(auditor),
                         List.of(manager),
