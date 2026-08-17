@@ -4,6 +4,8 @@ import com.workflow.core.logging.LogValue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.configuration.api.model.NodeConfigDTO;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
@@ -31,6 +33,7 @@ import org.w3c.dom.NodeList;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -427,40 +430,64 @@ public class ProcessDefinitionNodeSyncService {
 
             // 优先读取扩展属性 assigneeConfig（多实例节点 BPMN 属性会被替换为元素变量表达式，
             // 实际执行人配置保存在扩展属性中）
-            String assigneeConfigJson = readExtensionPropertyValue(content, "assigneeConfig");
-            if (assigneeConfigJson != null && !assigneeConfigJson.isEmpty()) {
-                JsonNode config = objectMapper.readTree(
-                        assigneeConfigJson);
+            String assigneeConfigJson = readExtensionPropertyValue(
+                    content, "assigneeConfig");
+            Map<String, Object> assigneeConfig =
+                    assigneeConfigJson == null
+                            || assigneeConfigJson.isEmpty()
+                            ? Map.of()
+                            : objectMapper.readValue(
+                            assigneeConfigJson, Map.class);
+            String multiInstanceConfigJson = readExtensionPropertyValue(
+                    content, "multiInstanceConfig");
+            Map<String, Object> multiInstanceConfig =
+                    multiInstanceConfigJson == null
+                            || multiInstanceConfigJson.isEmpty()
+                            ? Map.of()
+                            : objectMapper.readValue(
+                            multiInstanceConfigJson, Map.class);
+            if (!assigneeConfig.isEmpty()) {
                 mergeConfigJson(
                         nodeConfigId,
                         Map.of(
                                 "assigneeConfig",
-                                objectMapper.convertValue(
-                                        config,
-                                        Map.class)));
+                                assigneeConfig));
+            }
 
-                // 处理多实例会签人员配置（新增独立字段）
-                String miUsernames = config.has("multiInstanceUsernames") ? config.get("multiInstanceUsernames").asText() : "";
-                String miGroupCodes = config.has("multiInstanceGroupCodes") ? config.get("multiInstanceGroupCodes").asText() : "";
-                String miRoleCodes = config.has("multiInstanceRoleCodes") ? config.get("multiInstanceRoleCodes").asText() : "";
-                boolean hasMultiInstanceUsers = !miUsernames.isEmpty() || !miGroupCodes.isEmpty() || !miRoleCodes.isEmpty();
-                if (hasMultiInstanceUsers) {
-                    for (String user : miUsernames.split(",")) {
-                        String v = user.trim();
-                        if (!v.isEmpty()) {
-                            priority = saveUserAssignee(nodeConfigId, v, priority);
+            // 历史设计器可能把人员分散在两份扩展属性中。与运行时一致，
+            // 先做保序并集再生成管理快照；显式 v2 会忽略所有旧字段。
+            Map<String, Object> effectiveConfig =
+                    LegacyMultiInstanceAssignmentParser.mergeConfigs(
+                            assigneeConfig, multiInstanceConfig);
+            if (!effectiveConfig.isEmpty()) {
+                JsonNode config = objectMapper.valueToTree(effectiveConfig);
+
+                if (config.path("assignmentConfigVersion").asInt(0) == 2) {
+                    // v2 多实例与普通任务共用基础办理人字段。多实例 BPMN
+                    // 会清空 candidate 属性，因此必须从快照 JSON 完整恢复。
+                    saveVersionTwoAssignees(
+                            nodeConfigId, config, priority);
+                    return;
+                }
+
+                LegacyAssignment legacy =
+                        LegacyMultiInstanceAssignmentParser.parse(
+                                effectiveConfig);
+                if (legacy.effective()) {
+                    if (!legacy.resolver()) {
+                        for (String user : legacy.userKeys()) {
+                            priority = saveUserAssignee(
+                                    nodeConfigId, user, priority);
                         }
-                    }
-                    for (String group : miGroupCodes.split(",")) {
-                        String v = group.trim();
-                        if (!v.isEmpty()) {
-                            priority = saveRoleAssignee(nodeConfigId, v, priority);
+                        for (String group : legacy.groupKeys()) {
+                            priority = saveRoleAssignee(
+                                    nodeConfigId, group, priority);
                         }
-                    }
-                    for (String role : miRoleCodes.split(",")) {
-                        String v = role.trim();
-                        if (!v.isEmpty()) {
-                            priority = saveRoleAssignee(nodeConfigId, "ROLE_" + v, priority);
+                        for (String role : legacy.roleKeys()) {
+                            priority = saveRoleAssignee(
+                                    nodeConfigId,
+                                    "ROLE_" + role,
+                                    priority);
                         }
                     }
                     return;
@@ -520,6 +547,75 @@ public class ProcessDefinitionNodeSyncService {
                     "解析执行人配置失败: nodeConfigId="
                             + nodeConfigId,
                     e);
+        }
+    }
+
+    /**
+     * 将 v2 基础办理人配置同步到节点人员快照。
+     *
+     * <p>固定人员模式按 assigneeValue、candidateUsers 顺序去重；解析器
+     * 只保存在 config_json 中，不能在同步期调用外部人员源固化动态结果。</p>
+     */
+    private void saveVersionTwoAssignees(
+            String nodeConfigId,
+            JsonNode config,
+            int initialPriority) {
+        String type = config.path("assigneeType")
+                .asText("")
+                .trim()
+                .toLowerCase(java.util.Locale.ROOT);
+        int priority = initialPriority;
+        if ("node_reference".equals(type)
+                || "nodereference".equals(type)) {
+            // 引用关系已完整保存在 config_json；同步期不得复制源节点人员
+            // 快照，否则组/角色/解析器变化后管理视图会展示陈旧人员。
+            return;
+        }
+        if ("user".equals(type) || "candidate".equals(type)) {
+            LinkedHashSet<String> users = new LinkedHashSet<>();
+            addCsv(users, config.path("assigneeValue").asText(""));
+            addCsv(users, config.path("candidateUsers").asText(""));
+            for (String user : users) {
+                priority = saveUserAssignee(
+                        nodeConfigId, user, priority);
+            }
+            LinkedHashSet<String> groups = new LinkedHashSet<>();
+            addCsv(groups, config.path("candidateGroups").asText(""));
+            for (String group : groups) {
+                priority = saveRoleAssignee(
+                        nodeConfigId, group, priority);
+            }
+            return;
+        }
+        if ("group".equals(type) || "role".equals(type)) {
+            LinkedHashSet<String> values = new LinkedHashSet<>();
+            addCsv(values, config.path("assigneeValue").asText(""));
+            for (String value : values) {
+                priority = saveRoleAssignee(
+                        nodeConfigId, value, priority);
+            }
+            return;
+        }
+        if ("expression".equals(type)) {
+            String expression = config.path("assigneeValue")
+                    .asText("")
+                    .trim();
+            if (!expression.isEmpty()) {
+                saveAssignee(nodeConfigId, expression, priority);
+            }
+        }
+    }
+
+    private void addCsv(
+            java.util.Set<String> target,
+            String raw) {
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        for (String item : raw.split(",")) {
+            if (!item.isBlank()) {
+                target.add(item.trim());
+            }
         }
     }
 

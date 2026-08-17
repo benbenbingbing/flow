@@ -8,7 +8,12 @@ import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
 import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
 import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
+import com.workflow.process.task.application.nextapproval.NextApproverSelectionNormalizer;
+import com.workflow.process.task.application.nextapproval.NextApproverSelectionNormalizer.NormalizedSelection;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -127,9 +132,22 @@ public class ProcessBpmnPublishSanitizer {
                 "userTask",
                 "assigneeConfig",
                 (element, assigneeConfig) -> {
+                    assigneeConfig = mergeDeployedAssignmentConfig(
+                            element, assigneeConfig);
+                    validateAssignmentConfigVersion(
+                            element.id(), assigneeConfig);
+                    boolean unifiedMultiInstance =
+                            isUnifiedMultiInstance(
+                                    element, assigneeConfig);
                     var selection = assigneeConfig.path(
                             "nextApproverSelection");
                     if (selection.isMissingNode() || selection.isNull()) {
+                        // 隐藏的 v2 多实例没有前序人工覆盖入口，基础配置必须
+                        // 能直接生成参与人，防止空 collection 跳过审批。
+                        if (unifiedMultiInstance) {
+                            validateEnumerableNodeAssignment(
+                                    element, assigneeConfig);
+                        }
                         return element;
                     }
                     if (!selection.isObject()) {
@@ -137,50 +155,68 @@ public class ProcessBpmnPublishSanitizer {
                                 element.id(),
                                 "nextApproverSelection 必须是对象");
                     }
-                    if (selection.has("version")
-                            && !selection.path("version")
-                            .isIntegralNumber()) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> selectionMap =
+                            objectMapper.convertValue(
+                                    selection, Map.class);
+                    NormalizedSelection normalized;
+                    try {
+                        normalized = NextApproverSelectionNormalizer
+                                .normalize(selectionMap);
+                    } catch (IllegalArgumentException exception) {
                         throw nextApproverConfigError(
-                                element.id(),
-                                "version 必须是整数");
+                                element.id(), exception.getMessage());
                     }
-                    int version = selection.path("version").asInt(1);
+                    int version = normalized.version();
                     if (version != 1) {
                         throw nextApproverConfigError(
                                 element.id(),
                                 "不支持的配置版本: " + version);
                     }
-                    boolean visible = selection.path("visible")
-                            .asBoolean(false);
-                    boolean editable = selection.path("editable")
-                            .asBoolean(false);
+                    boolean visible = normalized.visible();
+                    boolean editable = normalized.editable();
                     if (editable && !visible) {
                         throw nextApproverConfigError(
                                 element.id(),
                                 "editable=true 时 visible 必须为 true");
                     }
-                    var source = selection.path("source");
-                    if (!source.isMissingNode()
-                            && !source.isNull()
-                            && !source.isObject()) {
+                    if (normalized.invalidSourceShape()) {
                         throw nextApproverConfigError(
                                 element.id(),
-                                "source 必须是对象");
+                                "source 必须是对象、字符串或范围数组");
                     }
-                    if (!source.isObject()) {
+                    String type = normalized.sourceType() == null
+                            ? ""
+                            : normalized.sourceType()
+                            .trim()
+                            .toUpperCase(Locale.ROOT);
+                    if (type.isBlank()) {
                         if (visible || editable) {
                             throw nextApproverConfigError(
                                     element.id(),
                                     "展示或修改下一审批人时必须配置 source");
                         }
+                        if (unifiedMultiInstance) {
+                            validateEnumerableNodeAssignment(
+                                    element, assigneeConfig);
+                        }
                         return element;
                     }
-                    String type = source.path("type")
-                            .asText("")
-                            .trim()
-                            .toUpperCase(Locale.ROOT);
+                    // 可编辑节点若有独立的受控范围/解析器，可以没有默认
+                    // 人员，等待前序人工覆盖；NODE_ASSIGNMENT、只读或隐藏
+                    // 节点仍必须能从基础配置直接得到参与人。
+                    boolean independentEditableSource = visible
+                            && editable
+                            && ("SCOPE".equals(type)
+                            || "RESOLVER".equals(type));
+                    if (unifiedMultiInstance
+                            && !independentEditableSource) {
+                        validateEnumerableNodeAssignment(
+                                element, assigneeConfig);
+                    }
                     if ("SCOPE".equals(type)) {
-                        var rules = source.path("rules");
+                        var rules = objectMapper.valueToTree(
+                                normalized.rawScopes());
                         if (!rules.isArray()) {
                             throw nextApproverConfigError(
                                     element.id(),
@@ -229,15 +265,16 @@ public class ProcessBpmnPublishSanitizer {
                             }
                         }
                     } else if ("RESOLVER".equals(type)) {
-                        String resolverCode = source.path("resolverCode")
-                                .asText("").trim();
+                        String resolverCode = normalized.resolverCode() == null
+                                ? "" : normalized.resolverCode().trim();
                         if (resolverCode.isBlank()) {
                             throw nextApproverConfigError(
                                     element.id(),
                                     "RESOLVER resolverCode 不能为空");
                         }
-                        if (source.has("extraParams")
-                                && !source.path("extraParams").isObject()) {
+                        if (normalized.extraParams() != null
+                                && !(normalized.extraParams()
+                                instanceof Map<?, ?>)) {
                             throw nextApproverConfigError(
                                     element.id(),
                                     "RESOLVER extraParams 必须是对象");
@@ -257,15 +294,415 @@ public class ProcessBpmnPublishSanitizer {
                                     "RESOLVER 不可用: "
                                             + exception.getMessage());
                         }
+                    } else if ("NODE_ASSIGNMENT".equals(type)) {
+                        // 隐藏配置是设计器默认占位，不得反向要求旧节点已经配置
+                        // 可枚举办理人；真正启用展示/改选时才执行安全校验。
+                        if ((visible || editable)
+                                && !isUnifiedMultiInstance(
+                                element, assigneeConfig)) {
+                            validateEnumerableNodeAssignment(
+                                    element, assigneeConfig);
+                        }
                     } else {
                         throw nextApproverConfigError(
                                 element.id(),
-                                "source.type 仅支持 SCOPE 或 RESOLVER");
+                                "source.type 仅支持 SCOPE 或 RESOLVER，或使用 NODE_ASSIGNMENT");
                     }
                     return element;
                 });
         validateEditableMultiInstanceCollections(validated);
+        validateNodeAssignmentReferences(validated);
         return validated;
+    }
+
+    /**
+     * 历史流程可能把会签人员写在 multiInstanceConfig。发布校验与运行时
+     * 使用同一保序并集视图，避免只校验 assigneeConfig 而遗漏实际参与人。
+     */
+    @SuppressWarnings("unchecked")
+    private com.fasterxml.jackson.databind.JsonNode
+            mergeDeployedAssignmentConfig(
+            ConfiguredElement element,
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig) {
+        try {
+            Map<String, Object> primary = objectMapper.convertValue(
+                    assigneeConfig, Map.class);
+            Map<String, Object> fallback = Map.of();
+            String multiInstanceDocument = readPropertyValue(
+                    element.content(), "multiInstanceConfig");
+            if (StringUtils.hasText(multiInstanceDocument)) {
+                fallback = objectMapper.readValue(
+                        multiInstanceDocument, Map.class);
+            }
+            return objectMapper.valueToTree(
+                    LegacyMultiInstanceAssignmentParser.mergeConfigs(
+                            primary, fallback));
+        } catch (Exception exception) {
+            throw nextApproverConfigError(
+                    element.id(),
+                    "multiInstanceConfig 不是合法 JSON: "
+                            + exception.getMessage());
+        }
+    }
+
+    /**
+     * 校验统一办理人配置版本。未声明版本的部署按历史格式读取；版本 2 表示
+     * 多实例与普通任务都使用 assigneeType 等基础字段，禁止静默猜测未来版本。
+     */
+    private void validateAssignmentConfigVersion(
+            String nodeId,
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig) {
+        var rawVersion = assigneeConfig.path("assignmentConfigVersion");
+        if (rawVersion.isMissingNode() || rawVersion.isNull()) {
+            return;
+        }
+        if (!rawVersion.isIntegralNumber()) {
+            throw nextApproverConfigError(
+                    nodeId,
+                    "assignmentConfigVersion 必须是整数");
+        }
+        if (rawVersion.asInt() != 2) {
+            throw nextApproverConfigError(
+                    nodeId,
+                    "不支持的 assignmentConfigVersion: "
+                            + rawVersion.asInt());
+        }
+    }
+
+    /**
+     * NODE_ASSIGNMENT 必须能从目标节点的基础配置枚举出人员。
+     * 表达式可能调用 Bean 或依赖未信任上下文，预览无法与 Flowable
+     * 任务创建保持一致，因此在发布边界明确拒绝。
+     */
+    private void validateEnumerableNodeAssignment(
+            ConfiguredElement element,
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig) {
+        boolean multiInstance = element.content()
+                .toLowerCase(Locale.ROOT)
+                .contains("multiinstanceloopcharacteristics");
+        validateEnumerableNodeAssignment(
+                element,
+                assigneeConfig,
+                multiInstance,
+                !multiInstance,
+                !multiInstance);
+    }
+
+    /**
+     * @param outputMultiInstance 输出模式来自引用者
+     * @param allowBpmnFallback 是否允许使用规则源的 BPMN 字面量属性
+     * @param inspectBpmnExpressions 是否检查规则源的 BPMN 动态表达式
+     */
+    private void validateEnumerableNodeAssignment(
+            ConfiguredElement element,
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig,
+            boolean outputMultiInstance,
+            boolean allowBpmnFallback,
+            boolean inspectBpmnExpressions) {
+        if (outputMultiInstance
+                && assigneeConfig.path("assignmentConfigVersion")
+                .asInt(0) != 2
+                && validateLegacyMultiInstanceAssignment(
+                element, assigneeConfig)) {
+            return;
+        }
+        String rawType = assigneeConfig.path("assigneeType")
+                .asText("")
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        String type = "interface".equals(rawType)
+                ? "resolver" : rawType;
+        switch (type) {
+            case "user" -> {
+                rejectAssignmentExpressions(
+                        element,
+                        outputMultiInstance,
+                        inspectBpmnExpressions,
+                        assigneeConfig.path("assigneeValue"),
+                        assigneeConfig.path("candidateUsers"));
+                if (!hasConfiguredValues(
+                        assigneeConfig.path("assigneeValue"))
+                        && !hasConfiguredValues(
+                        assigneeConfig.path("candidateUsers"))
+                        && !hasLiteralBpmnAssignment(
+                        element,
+                        allowBpmnFallback,
+                        "assignee",
+                        "candidateUsers")) {
+                    throw nextApproverConfigError(
+                            element.id(),
+                            "基础固定人员配置不能为空");
+                }
+            }
+            case "group", "role" -> {
+                rejectAssignmentExpressions(
+                        element,
+                        outputMultiInstance,
+                        inspectBpmnExpressions,
+                        assigneeConfig.path("assigneeValue"));
+                if (!hasConfiguredValues(
+                        assigneeConfig.path("assigneeValue"))
+                        && !hasLiteralBpmnAssignment(
+                        element,
+                        allowBpmnFallback,
+                        "candidateGroups")) {
+                    throw nextApproverConfigError(
+                            element.id(),
+                            "基础组或角色配置不能为空");
+                }
+            }
+            case "candidate" -> {
+                rejectAssignmentExpressions(
+                        element,
+                        outputMultiInstance,
+                        inspectBpmnExpressions,
+                        assigneeConfig.path("assigneeValue"),
+                        assigneeConfig.path("candidateUsers"));
+                if (!hasConfiguredValues(
+                        assigneeConfig.path("candidateUsers"))
+                        && !hasConfiguredValues(
+                        assigneeConfig.path("assigneeValue"))
+                        && !hasLiteralBpmnAssignment(
+                        element,
+                        allowBpmnFallback,
+                        "candidateUsers",
+                        "candidateGroups")) {
+                    throw nextApproverConfigError(
+                            element.id(),
+                            "基础候选人配置不能为空");
+                }
+            }
+            case "resolver" -> validateNodeAssignmentResolver(
+                    element.id(), assigneeConfig, outputMultiInstance);
+            case "node_reference", "nodereference" -> {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> values = objectMapper.convertValue(
+                        assigneeConfig, Map.class);
+                String referencedNodeId =
+                        NodeAssignmentReferenceResolver.referencedNodeId(
+                                values);
+                if (!StringUtils.hasText(referencedNodeId)) {
+                    throw nextApproverConfigError(
+                            element.id(),
+                            "node_reference 缺少 referencedNodeId");
+                }
+                if (containsExpression(referencedNodeId)) {
+                    throw nextApproverConfigError(
+                            element.id(),
+                            "referencedNodeId 必须是字面量节点 ID");
+                }
+                // 目标存在性、类型、环和终端规则由整张部署图统一校验。
+            }
+            case "expression" -> throw nextApproverConfigError(
+                    element.id(),
+                    (outputMultiInstance ? "多实例" : "NODE_ASSIGNMENT")
+                            + "不支持无法安全枚举的表达式办理人");
+            case "" -> {
+                rejectAssignmentExpressions(
+                        element,
+                        outputMultiInstance,
+                        inspectBpmnExpressions);
+                if (!hasLiteralBpmnAssignment(
+                        element,
+                        allowBpmnFallback,
+                        "assignee",
+                        "candidateUsers",
+                        "candidateGroups")) {
+                    throw nextApproverConfigError(
+                            element.id(),
+                            "缺少可用的基础办理人配置");
+                }
+            }
+            default -> throw nextApproverConfigError(
+                    element.id(),
+                    "不支持的基础办理人类型: " + rawType);
+        }
+    }
+
+    /**
+     * 校验无 v2 标记的历史多实例来源，并返回是否命中了历史格式。
+     * 发布校验与运行时都采用 legacy-first，避免校验基础 resolver、运行却调用
+     * collection resolver 的用途漂移。
+     */
+    @SuppressWarnings("unchecked")
+    private boolean validateLegacyMultiInstanceAssignment(
+            ConfiguredElement element,
+            com.fasterxml.jackson.databind.JsonNode config) {
+        Map<String, Object> values = objectMapper.convertValue(
+                config, Map.class);
+        LegacyAssignment legacy =
+                LegacyMultiInstanceAssignmentParser.parse(values);
+        if (!legacy.effective()) {
+            // 旧设计器可能透传全空字段；它们不构成真实历史来源，继续校验
+            // 基础办理人配置，避免仅打开并发布节点就改变运行语义。
+            return false;
+        }
+        if (legacy.resolver()) {
+            var extraParams = config.path("collectionExtraParams");
+            if (config.has("collectionExtraParams")
+                    && !extraParams.isObject()) {
+                throw nextApproverConfigError(
+                        element.id(),
+                        "历史多实例 collectionExtraParams 必须是对象");
+            }
+            validateConfiguredResolver(
+                    element.id(),
+                    legacy.resolverCode(),
+                    PersonResolveUsage.MULTI_INSTANCE,
+                    "历史多实例人员解析器");
+            return true;
+        }
+        if (legacy.containsExpression()) {
+            throw nextApproverConfigError(
+                    element.id(),
+                    "历史多实例人员配置包含无法安全枚举的表达式");
+        }
+        return true;
+    }
+
+    private boolean hasLiteralBpmnAssignment(
+            ConfiguredElement element,
+            boolean allowBpmnFallback,
+            String... attributeNames) {
+        if (!allowBpmnFallback) {
+            return false;
+        }
+        for (String attributeName : attributeNames) {
+            String value = attributeValue(
+                    element.startTag(), attributeName);
+            if (StringUtils.hasText(value)
+                    && !containsExpression(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void rejectAssignmentExpressions(
+            ConfiguredElement element,
+            boolean outputMultiInstance,
+            boolean inspectBpmnExpressions,
+            com.fasterxml.jackson.databind.JsonNode... configuredValues) {
+        for (var value : configuredValues) {
+            if (containsExpression(value)) {
+                throw nextApproverConfigError(
+                        element.id(),
+                        (outputMultiInstance ? "多实例" : "NODE_ASSIGNMENT")
+                                + "基础办理人包含无法安全枚举的表达式");
+            }
+        }
+        // 多实例的 assignee=${elementVariable} 是 Flowable 必需的技术属性，
+        // 不属于基础人员来源；普通任务的动态属性则无法用于预览候选边界。
+        if (inspectBpmnExpressions
+                && (containsExpression(attributeValue(
+                element.startTag(), "assignee"))
+                || containsExpression(attributeValue(
+                element.startTag(), "candidateUsers"))
+                || containsExpression(attributeValue(
+                element.startTag(), "candidateGroups")))) {
+            throw nextApproverConfigError(
+                    element.id(),
+                    "BPMN 办理人属性包含无法安全枚举的表达式");
+        }
+    }
+
+    private boolean containsExpression(
+            com.fasterxml.jackson.databind.JsonNode value) {
+        if (value == null || value.isMissingNode() || value.isNull()) {
+            return false;
+        }
+        if (value.isArray()) {
+            for (var item : value) {
+                if (containsExpression(item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return containsExpression(value.asText(""));
+    }
+
+    private boolean containsExpression(String value) {
+        return StringUtils.hasText(value)
+                && (value.contains("${") || value.contains("#{"));
+    }
+
+    private boolean isUnifiedMultiInstance(
+            ConfiguredElement element,
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig) {
+        return assigneeConfig.path("assignmentConfigVersion").asInt(0) == 2
+                && element.content()
+                .toLowerCase(Locale.ROOT)
+                .contains("multiinstanceloopcharacteristics");
+    }
+
+    private void validateNodeAssignmentResolver(
+            String nodeId,
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig,
+            boolean multiInstance) {
+        String resolverCode = assigneeConfig.path("resolverCode")
+                .asText(assigneeConfig.path("interfaceName").asText(""))
+                .trim();
+        if (assigneeConfig.has("extraParams")
+                && !assigneeConfig.path("extraParams").isObject()) {
+            throw nextApproverConfigError(
+                    nodeId,
+                    "基础办理人 extraParams 必须是对象");
+        }
+        PersonResolveUsage usage = multiInstance
+                ? PersonResolveUsage.MULTI_INSTANCE
+                : PersonResolveUsage.ASSIGNEE;
+        validateConfiguredResolver(
+                nodeId,
+                resolverCode,
+                usage,
+                "NODE_ASSIGNMENT 人员解析器");
+    }
+
+    private void validateConfiguredResolver(
+            String nodeId,
+            String resolverCode,
+            PersonResolveUsage usage,
+            String label) {
+        if (!StringUtils.hasText(resolverCode)) {
+            throw nextApproverConfigError(
+                    nodeId,
+                    label + "不能为空");
+        }
+        if (personResolverRuntimeService == null) {
+            throw nextApproverConfigError(
+                    nodeId,
+                    label + "校验服务不可用");
+        }
+        try {
+            personResolverRuntimeService.requireConfigured(
+                    resolverCode, usage);
+        } catch (RuntimeException exception) {
+            throw nextApproverConfigError(
+                    nodeId,
+                    label + "不支持 "
+                            + usage
+                            + ": "
+                            + exception.getMessage());
+        }
+    }
+
+    private boolean hasConfiguredValues(
+            com.fasterxml.jackson.databind.JsonNode value) {
+        if (value == null || value.isMissingNode() || value.isNull()) {
+            return false;
+        }
+        if (value.isArray()) {
+            for (var item : value) {
+                if (hasConfiguredValues(item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return value.isTextual()
+                ? StringUtils.hasText(value.asText())
+                : !value.asText("").isBlank();
     }
 
     private void validateEditableMultiInstanceCollections(
@@ -286,8 +723,15 @@ public class ProcessBpmnPublishSanitizer {
                 try {
                     var selection = objectMapper.readTree(assigneeDocument)
                             .path("nextApproverSelection");
-                    editable = selection.path("editable")
-                            .asBoolean(false);
+                    if (selection.isObject()) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> selectionMap =
+                                objectMapper.convertValue(
+                                        selection, Map.class);
+                        editable = NextApproverSelectionNormalizer
+                                .normalize(selectionMap)
+                                .editable();
+                    }
                 } catch (Exception exception) {
                     throw nextApproverConfigError(
                             nodeId, "assigneeConfig 不是合法 JSON");
@@ -359,6 +803,226 @@ public class ProcessBpmnPublishSanitizer {
                 editableCollections.add(collectionVariable);
             }
         }
+    }
+
+    /**
+     * 对整张发布模型执行 node_reference 图校验，并按引用者的输出模式校验
+     * 终端人员规则。引用目标的多实例属性不得改变当前节点的 resolver usage。
+     */
+    private void validateNodeAssignmentReferences(String bpmnXml) {
+        final Document document;
+        try {
+            document = parseXml(bpmnXml);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "审批人节点引用校验无法解析 BPMN XML", exception);
+        }
+        Map<String, Element> allElements = new LinkedHashMap<>();
+        NodeList everyElement = document.getElementsByTagNameNS("*", "*");
+        for (int index = 0; index < everyElement.getLength(); index++) {
+            Element element = (Element) everyElement.item(index);
+            String id = element.getAttribute("id");
+            if (StringUtils.hasText(id)) {
+                allElements.putIfAbsent(id, element);
+            }
+        }
+
+        Map<String, PublishedAssignmentNode> userTasks =
+                new LinkedHashMap<>();
+        for (Element element : elementsByLocalName(document, "userTask")) {
+            String id = element.getAttribute("id");
+            if (!StringUtils.hasText(id)) {
+                continue;
+            }
+            userTasks.put(id, new PublishedAssignmentNode(
+                    id,
+                    element,
+                    readMergedAssignmentConfig(element),
+                    hasMultiInstanceLoop(element)));
+        }
+
+        for (PublishedAssignmentNode current : userTasks.values()) {
+            if (!NodeAssignmentReferenceResolver.isNodeReference(
+                    current.assigneeConfig())) {
+                continue;
+            }
+            PublishedAssignmentNode terminal = resolvePublishedReference(
+                    current, userTasks, allElements);
+            validateAssignmentConfigVersion(
+                    terminal.id(),
+                    objectMapper.valueToTree(
+                            terminal.assigneeConfig()));
+            ConfiguredElement validationElement =
+                    referenceValidationElement(current, terminal);
+            validateEnumerableNodeAssignment(
+                    validationElement,
+                    objectMapper.valueToTree(
+                            terminal.assigneeConfig()),
+                    current.multiInstance(),
+                    true,
+                    true);
+        }
+    }
+
+    private PublishedAssignmentNode resolvePublishedReference(
+            PublishedAssignmentNode current,
+            Map<String, PublishedAssignmentNode> userTasks,
+            Map<String, Element> allElements) {
+        PublishedAssignmentNode node = current;
+        Set<String> visited = new java.util.LinkedHashSet<>();
+        List<String> chain = new ArrayList<>();
+        for (int depth = 0;
+                depth <= NodeAssignmentReferenceResolver.MAX_REFERENCE_DEPTH;
+                depth++) {
+            if (!visited.add(node.id())) {
+                chain.add(node.id());
+                throw nextApproverConfigError(
+                        current.id(),
+                        "审批人节点引用形成环: "
+                                + String.join(" -> ", chain));
+            }
+            chain.add(node.id());
+            if (!NodeAssignmentReferenceResolver.isNodeReference(
+                    node.assigneeConfig())) {
+                return node;
+            }
+            if (depth
+                    == NodeAssignmentReferenceResolver.MAX_REFERENCE_DEPTH) {
+                throw nextApproverConfigError(
+                        current.id(),
+                        "审批人节点引用超过最大深度 "
+                                + NodeAssignmentReferenceResolver
+                                .MAX_REFERENCE_DEPTH);
+            }
+            String referencedNodeId =
+                    NodeAssignmentReferenceResolver.referencedNodeId(
+                            node.assigneeConfig());
+            if (!StringUtils.hasText(referencedNodeId)) {
+                throw nextApproverConfigError(
+                        node.id(),
+                        "node_reference 缺少 referencedNodeId");
+            }
+            if (containsExpression(referencedNodeId)) {
+                throw nextApproverConfigError(
+                        node.id(),
+                        "referencedNodeId 必须是字面量节点 ID");
+            }
+            PublishedAssignmentNode referenced =
+                    userTasks.get(referencedNodeId);
+            if (referenced == null) {
+                String detail = allElements.containsKey(referencedNodeId)
+                        ? "引用目标不是 UserTask: " + referencedNodeId
+                        : "引用目标不存在: " + referencedNodeId;
+                throw nextApproverConfigError(node.id(), detail);
+            }
+            node = referenced;
+        }
+        throw nextApproverConfigError(
+                current.id(), "审批人节点引用深度校验失败");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readMergedAssignmentConfig(
+            Element userTask) {
+        String nodeId = userTask.getAttribute("id");
+        try {
+            Map<String, Object> assigneeConfig = Map.of();
+            String assigneeDocument = readPropertyValue(
+                    userTask, "assigneeConfig");
+            if (StringUtils.hasText(assigneeDocument)) {
+                assigneeConfig = objectMapper.readValue(
+                        assigneeDocument, Map.class);
+            }
+            Map<String, Object> multiInstanceConfig = Map.of();
+            String multiInstanceDocument = readPropertyValue(
+                    userTask, "multiInstanceConfig");
+            if (StringUtils.hasText(multiInstanceDocument)) {
+                multiInstanceConfig = objectMapper.readValue(
+                        multiInstanceDocument, Map.class);
+            }
+            return LegacyMultiInstanceAssignmentParser.mergeConfigs(
+                    assigneeConfig, multiInstanceConfig);
+        } catch (Exception exception) {
+            throw nextApproverConfigError(
+                    nodeId, "人员配置不是合法 JSON: "
+                            + exception.getMessage());
+        }
+    }
+
+    private boolean hasMultiInstanceLoop(Element userTask) {
+        return userTask.getElementsByTagNameNS(
+                "*", "multiInstanceLoopCharacteristics")
+                .getLength() > 0;
+    }
+
+    /**
+     * 构造校验视图：循环模式来自引用者，字面量 BPMN 分配属性来自终端源。
+     */
+    private ConfiguredElement referenceValidationElement(
+            PublishedAssignmentNode current,
+            PublishedAssignmentNode terminal) {
+        StringBuilder startTag = new StringBuilder("<userTask");
+        for (String attribute : List.of(
+                "assignee", "candidateUsers", "candidateGroups")) {
+            String value = flowableAttribute(
+                    terminal.element(), attribute);
+            if ("assignee".equals(attribute)
+                    && isTechnicalMultiInstanceAssignee(
+                    terminal, value)) {
+                continue;
+            }
+            if (StringUtils.hasText(value)) {
+                startTag.append(' ')
+                        .append(attribute)
+                        .append("=\"")
+                        .append(escapeXml(value))
+                        .append("\"");
+            }
+        }
+        startTag.append('>');
+        String content = current.multiInstance()
+                ? "<multiInstanceLoopCharacteristics/>" : "";
+        return new ConfiguredElement(
+                "", "userTask", startTag.toString(), content, current.id());
+    }
+
+    /** 仅忽略源 MI 节点绑定 elementVariable 的 Flowable 技术 assignee。 */
+    private boolean isTechnicalMultiInstanceAssignee(
+            PublishedAssignmentNode source,
+            String assignee) {
+        if (!source.multiInstance() || !StringUtils.hasText(assignee)) {
+            return false;
+        }
+        NodeList loops = source.element().getElementsByTagNameNS(
+                "*", "multiInstanceLoopCharacteristics");
+        if (loops.getLength() == 0) {
+            return false;
+        }
+        Element loop = (Element) loops.item(0);
+        String variable = flowableAttribute(loop, "elementVariable");
+        if (!StringUtils.hasText(variable)) {
+            variable = loop.getAttribute("elementVariable");
+        }
+        if (!StringUtils.hasText(variable)) {
+            return false;
+        }
+        String normalized = assignee.trim();
+        return normalized.equals("${" + variable.trim() + "}")
+                || normalized.equals("#{" + variable.trim() + "}");
+    }
+
+    private String flowableAttribute(
+            Element element,
+            String localName) {
+        String value = element.getAttributeNS(
+                FLOWABLE_NAMESPACE, localName);
+        if (!StringUtils.hasText(value)) {
+            value = element.getAttribute("flowable:" + localName);
+        }
+        if (!StringUtils.hasText(value)) {
+            value = element.getAttribute(localName);
+        }
+        return value;
     }
 
     private IllegalArgumentException nextApproverConfigError(
@@ -1329,6 +1993,13 @@ public class ProcessBpmnPublishSanitizer {
         private String xml() {
             return startTag + content + "</" + prefix + tagName + ">";
         }
+    }
+
+    private record PublishedAssignmentNode(
+            String id,
+            Element element,
+            Map<String, Object> assigneeConfig,
+            boolean multiInstance) {
     }
 
     private String removeDuplicateCamundaAssignments(String bpmnXml) {

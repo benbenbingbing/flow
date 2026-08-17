@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   buildChangedNextApproverSelections,
+  canDeferMultiInstanceAssignmentToNextApprover,
   createNextApproverDraftMap,
   createNextApproverOptionsRequestSignature,
   createNextApproverSelectionConfig,
@@ -16,7 +17,8 @@ import {
 } from '../next-approver.js'
 import {
   buildAssigneeConfig,
-  buildNodeScopedMultiInstanceCollection
+  buildNodeScopedMultiInstanceCollection,
+  normalizeDesignerAssigneeConfig
 } from '../process-config/index.js'
 
 const approvalDecisionPanelSource = readFileSync(new URL(
@@ -302,6 +304,267 @@ assert.equal(
   1,
   '所有新建或兼容归一化配置必须显式输出 version: 1'
 )
+assert.deepEqual(
+  createNextApproverSelectionConfig({ visible: true, editable: true }),
+  {
+    version: 1,
+    visible: true,
+    editable: true,
+    source: { type: 'NODE_ASSIGNMENT' }
+  },
+  '新启用下一审批人时应默认复用目标节点自身的审批人配置'
+)
+const legacyAliasSelection = createNextApproverSelectionConfig({
+  display: true,
+  allowEdit: true,
+  scopes: [{ type: 'USER', values: ['legacy-reviewer'] }]
+})
+assert.deepEqual(
+  legacyAliasSelection,
+  {
+    version: 1,
+    visible: true,
+    editable: true,
+    source: {
+      type: 'SCOPE',
+      rules: [{
+        type: 'USER',
+        values: ['legacy-reviewer'],
+        includeChildren: false
+      }]
+    }
+  },
+  '历史 display/allowEdit 别名必须归一化为可展示、可编辑配置'
+)
+assert.deepEqual(
+  buildAssigneeConfig({
+    assigneeType: 'user',
+    legacyAssigneeConfig: {
+      assigneeType: 'user',
+      nextApproverSelection: {
+        display: true,
+        allowEdit: true,
+        scopes: [{ type: 'USER', values: ['legacy-reviewer'] }]
+      }
+    },
+    assignmentConfigDirty: false,
+    nextApproverSelection: legacyAliasSelection
+  }).nextApproverSelection,
+  legacyAliasSelection,
+  '旧审批人配置 passthrough 保存时不得把 display/allowEdit 覆盖为隐藏或只读'
+)
+for (const [label, legacyResolverSelection, expectedResolverCode] of [
+  [
+    '嵌套 interfaceName',
+    {
+      visible: true,
+      editable: true,
+      resolverCode: 'topCanonicalResolver',
+      source: { type: 'RESOLVER', interfaceName: 'nestedLegacyResolver' }
+    },
+    'nestedLegacyResolver'
+  ],
+  [
+    '顶层 resolverCode',
+    {
+      visible: true,
+      editable: true,
+      sourceType: 'RESOLVER',
+      resolverCode: 'topCanonicalResolver',
+      interfaceName: 'topLegacyResolver'
+    },
+    'topCanonicalResolver'
+  ],
+  [
+    '顶层 interfaceName',
+    {
+      visible: true,
+      editable: true,
+      sourceType: 'RESOLVER',
+      interfaceName: 'topLegacyResolver'
+    },
+    'topLegacyResolver'
+  ],
+  [
+    'canonical 字段优先',
+    {
+      visible: true,
+      editable: true,
+      resolverCode: 'topCanonicalResolver',
+      interfaceName: 'topLegacyResolver',
+      source: {
+        type: 'RESOLVER',
+        resolverCode: 'nestedCanonicalResolver',
+        interfaceName: 'nestedLegacyResolver'
+      }
+    },
+    'nestedCanonicalResolver'
+  ]
+]) {
+  const normalizedResolverSelection = createNextApproverSelectionConfig(
+    legacyResolverSelection
+  )
+  assert.equal(
+    normalizedResolverSelection.source.resolverCode,
+    expectedResolverCode,
+    `${label} 必须按后端兼容优先级归一为 resolverCode`
+  )
+  assert.equal(
+    Object.hasOwn(normalizedResolverSelection.source, 'interfaceName'),
+    false,
+    `${label} 保存时不得继续输出旧 interfaceName 字段`
+  )
+  assert.deepEqual(
+    createNextApproverSelectionConfig(normalizedResolverSelection),
+    normalizedResolverSelection,
+    `${label} 归一化后必须可无损 roundtrip`
+  )
+  assert.deepEqual(
+    buildAssigneeConfig({
+      assigneeType: 'user',
+      legacyAssigneeConfig: {
+        assigneeType: 'user',
+        nextApproverSelection: legacyResolverSelection
+      },
+      assignmentConfigDirty: false,
+      nextApproverSelection: normalizedResolverSelection
+    }).nextApproverSelection,
+    normalizedResolverSelection,
+    `${label} 经旧 assigneeConfig passthrough 保存后不得丢失解析器`
+  )
+}
+assert.equal(
+  validateNextApproverSelectionConfig({
+    visible: true,
+    editable: true,
+    source: { type: 'NODE_ASSIGNMENT' }
+  }).valid,
+  true,
+  '复用节点审批人配置时不得重复要求人员范围或人员接口'
+)
+
+for (const [label, config, expected] of [
+  [
+    '有效独立人员范围',
+    {
+      visible: true,
+      editable: true,
+      source: {
+        type: 'SCOPE',
+        rules: [{ type: 'USER', values: ['reviewer'] }]
+      }
+    },
+    true
+  ],
+  [
+    '有效独立人员接口',
+    {
+      visible: true,
+      editable: true,
+      source: { type: 'RESOLVER', resolverCode: 'nextReviewerResolver' }
+    },
+    true
+  ],
+  [
+    '复用本节点审批人',
+    {
+      visible: true,
+      editable: true,
+      source: { type: 'NODE_ASSIGNMENT' }
+    },
+    false
+  ],
+  [
+    '只读独立范围',
+    {
+      visible: true,
+      editable: false,
+      source: {
+        type: 'SCOPE',
+        rules: [{ type: 'USER', values: ['reviewer'] }]
+      }
+    },
+    false
+  ],
+  [
+    '隐藏独立范围',
+    {
+      visible: false,
+      editable: true,
+      source: {
+        type: 'SCOPE',
+        rules: [{ type: 'USER', values: ['reviewer'] }]
+      }
+    },
+    false
+  ],
+  [
+    '空人员范围',
+    {
+      visible: true,
+      editable: true,
+      source: { type: 'SCOPE', rules: [] }
+    },
+    false
+  ],
+  [
+    '未配置人员接口',
+    {
+      visible: true,
+      editable: true,
+      source: { type: 'RESOLVER', resolverCode: '' }
+    },
+    false
+  ]
+]) {
+  assert.equal(
+    canDeferMultiInstanceAssignmentToNextApprover(config),
+    expected,
+    `${label} 的多人基础人员留空判断不正确`
+  )
+}
+
+for (const [label, legacyConfig, expectedRule] of [
+  [
+    '顶层 scopes',
+    { visible: true, editable: true, scopes: [{ type: 'USER', values: ['alice'] }] },
+    { type: 'USER', values: ['alice'], includeChildren: false }
+  ],
+  [
+    '顶层 scopeRules',
+    { visible: true, editable: true, scopeRules: [{ type: 'ROLE', values: ['manager'] }] },
+    { type: 'ROLE', values: ['manager'], includeChildren: false }
+  ],
+  [
+    'source.scopes',
+    { visible: true, editable: true, source: { scopes: [{ type: 'GROUP', values: ['finance'] }] } },
+    { type: 'GROUP', values: ['finance'], includeChildren: false }
+  ],
+  [
+    '扁平 scopeType/scopeValues',
+    {
+      visible: true,
+      editable: true,
+      scopeType: 'ORGANIZATION',
+      scopeValues: ['org-a'],
+      includeChildren: true
+    },
+    { type: 'ORGANIZATION', values: ['org-a'], includeChildren: true }
+  ]
+]) {
+  const normalizedLegacyScope = createNextApproverSelectionConfig(legacyConfig)
+  assert.equal(
+    normalizedLegacyScope.source.type,
+    'SCOPE',
+    `${label} 存在时必须推断为 SCOPE，不能默认 NODE_ASSIGNMENT`
+  )
+  assert.deepEqual(normalizedLegacyScope.source.rules, [expectedRule])
+  assert.equal(
+    validateNextApproverSelectionConfig(normalizedLegacyScope).valid,
+    true,
+    `${label} 归一化后必须可无损 roundtrip`
+  )
+}
 
 const persistedAssigneeConfig = buildAssigneeConfig({
   assigneeType: 'user',
@@ -333,6 +596,29 @@ assert.deepEqual(
   'assigneeConfig 必须原样持久化版本化的嵌套人员来源契约'
 )
 assert.equal(
+  persistedAssigneeConfig.assignmentConfigVersion,
+  2,
+  '新保存审批人配置必须标记统一人员语义版本 2'
+)
+for (const legacyField of [
+  'multiInstanceUsers',
+  'multiInstanceUserIds',
+  'multiInstanceUsernames',
+  'multiInstanceGroupIds',
+  'multiInstanceGroupCodes',
+  'multiInstanceRoleIds',
+  'multiInstanceRoleCodes',
+  'collectionSource',
+  'collectionResolverCode',
+  'collectionExtraParams'
+]) {
+  assert.equal(
+    Object.hasOwn(persistedAssigneeConfig, legacyField),
+    false,
+    `v2 不应继续持久化重复人员字段 ${legacyField}`
+  )
+}
+assert.equal(
   Object.hasOwn(
     persistedAssigneeConfig.nextApproverSelection,
     'multiple'
@@ -357,6 +643,69 @@ assert.equal(
   }).valid,
   false,
   '隐藏配置中的未知数据源也不得静默进入 BPMN'
+)
+
+const legacyMixedAssigneeConfig = {
+  assigneeType: 'user',
+  assigneeValue: 'stale-owner',
+  multiInstanceUsernames: 'alice,bob',
+  multiInstanceGroupCodes: 'finance',
+  multiInstanceRoleCodes: 'manager',
+  nextApproverSelection: {
+    visible: true,
+    editable: false,
+    source: { type: 'SCOPE', rules: [{ type: 'ALL_USERS' }] }
+  }
+}
+const normalizedLegacyMixed = normalizeDesignerAssigneeConfig(
+  legacyMixedAssigneeConfig,
+  { collection: '${legacyUsers}', collectionSource: 'variable' },
+  true
+)
+assert.equal(
+  normalizedLegacyMixed.legacyMultiInstanceMixed,
+  true,
+  '旧会签用户、组和角色混合来源必须被显式识别'
+)
+const persistedLegacyMixed = buildAssigneeConfig({
+  ...normalizedLegacyMixed,
+  assignee: normalizedLegacyMixed.assigneeValue,
+  nextApproverSelection: normalizedLegacyMixed.nextApproverSelection
+})
+for (const field of [
+  'multiInstanceUsernames',
+  'multiInstanceGroupCodes',
+  'multiInstanceRoleCodes'
+]) {
+  assert.equal(
+    persistedLegacyMixed[field],
+    legacyMixedAssigneeConfig[field],
+    `旧 mixed 配置未被修改时必须原样保留 ${field}`
+  )
+}
+assert.equal(
+  Object.hasOwn(persistedLegacyMixed, 'assignmentConfigVersion'),
+  false,
+  '旧 mixed 配置未修改时不能伪装成已迁移的 v2'
+)
+
+const assignmentSourcePreview = normalizeNextApproverPreview({
+  status: 'READY',
+  scopeKey: 'assignment-source',
+  nodes: [{
+    nodeId: 'review',
+    nodeName: '复核',
+    visible: true,
+    editable: true,
+    assignmentMode: 'CANDIDATE',
+    sourceType: 'NODE_ASSIGNMENT',
+    assignees: [{ username: 'alice' }]
+  }]
+})
+assert.equal(
+  assignmentSourcePreview.status,
+  'READY',
+  'NODE_ASSIGNMENT 预览响应必须被前端协议识别，不能误判为 BLOCKED'
 )
 
 const multiNodePreview = normalizeNextApproverPreview({

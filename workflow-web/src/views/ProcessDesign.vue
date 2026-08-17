@@ -529,8 +529,9 @@ onUnmounted(() => {
 }
 
 .node-config-panel {
-  width: min(440px, 42vw);
-  min-width: 360px;
+  width: 33.333vw;
+  min-width: 440px;
+  flex-shrink: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;

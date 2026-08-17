@@ -72,7 +72,8 @@ class NextApprovalRouteServiceTest {
         when(nodeFormSubmissionService.projectEditableData(
                 any(Task.class), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
-        when(policyReader.read(anyString(), any(UserTask.class)))
+        when(policyReader.read(
+                anyString(), any(UserTask.class), any(BpmnModel.class)))
                 .thenAnswer(invocation -> target(invocation.getArgument(1)));
     }
 
@@ -495,7 +496,8 @@ class NextApprovalRouteServiceTest {
                 "${legacySpringBean.callExternalService()}");
         when(repositoryService.getBpmnModel("definition-7"))
                 .thenReturn(model(process));
-        when(policyReader.read(anyString(), any(UserTask.class)))
+        when(policyReader.read(
+                anyString(), any(UserTask.class), any(BpmnModel.class)))
                 .thenAnswer(invocation -> {
                     UserTask userTask = invocation.getArgument(1);
                     return new NextApprovalTarget(
@@ -522,7 +524,8 @@ class NextApprovalRouteServiceTest {
         connect(process, current, end, "to-end", null);
         when(repositoryService.getBpmnModel("definition-7"))
                 .thenReturn(model(process));
-        when(policyReader.read(anyString(), any(UserTask.class)))
+        when(policyReader.read(
+                anyString(), any(UserTask.class), any(BpmnModel.class)))
                 .thenAnswer(invocation ->
                         target(invocation.getArgument(1)));
 
@@ -653,7 +656,8 @@ class NextApprovalRouteServiceTest {
         connect(process, current, next, "to-next", null);
         when(repositoryService.getBpmnModel("definition-7"))
                 .thenReturn(model(process));
-        when(policyReader.read(anyString(), any(UserTask.class)))
+        when(policyReader.read(
+                anyString(), any(UserTask.class), any(BpmnModel.class)))
                 .thenAnswer(invocation -> new NextApprovalTarget(
                         invocation.getArgument(1),
                         Map.of(),

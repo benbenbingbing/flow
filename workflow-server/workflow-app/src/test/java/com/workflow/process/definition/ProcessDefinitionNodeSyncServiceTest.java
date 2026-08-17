@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -263,6 +264,202 @@ class ProcessDefinitionNodeSyncServiceTest {
         assertEquals(
                 "解析执行人配置失败: nodeConfigId=node-0",
                 error.getMessage());
+    }
+
+    @Test
+    void versionTwoMultiInstanceSnapshotUsesBaseUsersAndCandidates() {
+        NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
+        AssigneeConfigMapper assigneeMapper =
+                mock(AssigneeConfigMapper.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForObject(
+                "SELECT config_json FROM process_node_config WHERE id = ?",
+                String.class,
+                "node-0"))
+                .thenReturn("{}");
+        when(jdbcTemplate.update(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("node-0")))
+                .thenReturn(1);
+        ProcessDefinitionNodeSyncService service = service(
+                nodeMapper,
+                assigneeMapper,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                jdbcTemplate);
+        String assigneeConfig = """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"user",
+                 "assigneeValue":"alice",
+                 "candidateUsers":"bob,alice"}
+                """.replaceAll("\\s+", "");
+        String extension = "<bpmn:extensionElements>"
+                + "<flowable:properties>"
+                + "<flowable:property name=\"assigneeConfig\" value=\""
+                + escapeXmlAttribute(assigneeConfig)
+                + "\" />"
+                + "</flowable:properties>"
+                + "</bpmn:extensionElements>"
+                + "<bpmn:multiInstanceLoopCharacteristics "
+                + "flowable:collection=\"${reviewers}\" "
+                + "flowable:elementVariable=\"reviewer\" />";
+
+        service.parseAndSaveNodeConfigs(
+                "process-1",
+                bpmnUserTask(
+                        " flowable:assignee=\"${reviewer}\"",
+                        extension));
+
+        ArgumentCaptor<AssigneeConfig> captor =
+                ArgumentCaptor.forClass(AssigneeConfig.class);
+        verify(assigneeMapper, times(2)).insert(captor.capture());
+        assertEquals(
+                List.of("alice", "bob"),
+                captor.getAllValues().stream()
+                        .map(AssigneeConfig::getAssigneeValue)
+                        .toList());
+        assertEquals(
+                List.of(0, 1),
+                captor.getAllValues().stream()
+                        .map(AssigneeConfig::getPriority)
+                        .toList());
+    }
+
+    @Test
+    void nodeReferenceIsKeptForManagementDisplayWithoutStaleSnapshotRows()
+            throws Exception {
+        NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
+        AssigneeConfigMapper assigneeMapper =
+                mock(AssigneeConfigMapper.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForObject(
+                "SELECT config_json FROM process_node_config WHERE id = ?",
+                String.class,
+                "node-0"))
+                .thenReturn("{}");
+        when(jdbcTemplate.update(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("node-0")))
+                .thenReturn(1);
+        ProcessDefinitionNodeSyncService service = service(
+                nodeMapper,
+                assigneeMapper,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                jdbcTemplate);
+        String assigneeConfig = """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"node_reference",
+                 "referencedNodeId":"finance-review",
+                 "referencedNodeName":"财务审批"}
+                """.replaceAll("\\s+", "");
+        String extension = "<bpmn:extensionElements>"
+                + "<flowable:properties>"
+                + "<flowable:property name=\"assigneeConfig\" value=\""
+                + escapeXmlAttribute(assigneeConfig)
+                + "\" />"
+                + "</flowable:properties>"
+                + "</bpmn:extensionElements>";
+
+        service.parseAndSaveNodeConfigs(
+                "process-1", bpmnUserTask("", extension));
+
+        ArgumentCaptor<Object> json = ArgumentCaptor.forClass(Object.class);
+        verify(jdbcTemplate).update(
+                org.mockito.ArgumentMatchers.anyString(),
+                json.capture(),
+                org.mockito.ArgumentMatchers.eq("node-0"));
+        var stored = new ObjectMapper().readTree(String.valueOf(
+                json.getValue())).path("assigneeConfig");
+        assertEquals("node_reference",
+                stored.path("assigneeType").asText());
+        assertEquals("finance-review",
+                stored.path("referencedNodeId").asText());
+        assertEquals("财务审批",
+                stored.path("referencedNodeName").asText());
+        verify(assigneeMapper, never()).insert(any(AssigneeConfig.class));
+    }
+
+    @Test
+    void legacyMultiInstanceSnapshotUnionsBothConfigurationDocuments() {
+        NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
+        AssigneeConfigMapper assigneeMapper =
+                mock(AssigneeConfigMapper.class);
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForObject(
+                "SELECT config_json FROM process_node_config WHERE id = ?",
+                String.class,
+                "node-0"))
+                .thenReturn("{}");
+        when(jdbcTemplate.update(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("node-0")))
+                .thenReturn(1);
+        ProcessDefinitionNodeSyncService service = service(
+                nodeMapper,
+                assigneeMapper,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                jdbcTemplate);
+        String assigneeConfig = """
+                {"collectionSource":"variable",
+                 "multiInstanceUserIds":["alice-id"],
+                 "multiInstanceUsers":["carol","ROLE_AUDITOR"]}
+                """.replaceAll("\\s+", "");
+        String multiInstanceConfig = """
+                {"multiInstanceUsernames":["bob"],
+                 "multiInstanceGroupIds":["finance-id"],
+                 "multiInstanceRoleIds":["manager-id"]}
+                """.replaceAll("\\s+", "");
+        String extension = "<bpmn:extensionElements>"
+                + "<flowable:properties>"
+                + "<flowable:property name=\"assigneeConfig\" value=\""
+                + escapeXmlAttribute(assigneeConfig)
+                + "\" />"
+                + "<flowable:property name=\"multiInstanceConfig\" value=\""
+                + escapeXmlAttribute(multiInstanceConfig)
+                + "\" />"
+                + "</flowable:properties>"
+                + "</bpmn:extensionElements>"
+                + "<bpmn:multiInstanceLoopCharacteristics "
+                + "flowable:collection=\"${reviewers}\" "
+                + "flowable:elementVariable=\"reviewer\" />";
+
+        service.parseAndSaveNodeConfigs(
+                "process-1",
+                bpmnUserTask(
+                        " flowable:assignee=\"${reviewer}\"",
+                        extension));
+
+        ArgumentCaptor<AssigneeConfig> captor =
+                ArgumentCaptor.forClass(AssigneeConfig.class);
+        verify(assigneeMapper, times(6)).insert(captor.capture());
+        assertEquals(
+                List.of(
+                        "alice-id",
+                        "bob",
+                        "carol",
+                        "finance-id",
+                        "ROLE_manager-id",
+                        "ROLE_AUDITOR"),
+                captor.getAllValues().stream()
+                        .map(AssigneeConfig::getAssigneeValue)
+                        .toList());
     }
 
     @Test
@@ -535,6 +732,14 @@ class ProcessDefinitionNodeSyncServiceTest {
                 + "</bpmn:userTask>"
                 + "</bpmn:process>"
                 + "</bpmn:definitions>";
+    }
+
+    private static String escapeXmlAttribute(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("\"", "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     /** 构造包含全部受支持节点类型的 BPMN XML */

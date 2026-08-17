@@ -1,5 +1,5 @@
 const PREVIEW_STATUSES = new Set(['READY', 'DEFERRED', 'BLOCKED'])
-const SOURCE_TYPES = new Set(['SCOPE', 'RESOLVER'])
+const SOURCE_TYPES = new Set(['NODE_ASSIGNMENT', 'SCOPE', 'RESOLVER'])
 const ASSIGNMENT_MODES = new Set([
   'DIRECT',
   'CANDIDATE',
@@ -155,32 +155,61 @@ export function normalizeNextApproverScope(scope = {}) {
 export function createNextApproverSelectionConfig(value = {}) {
   const source = objectValue(value)
   const nestedSource = objectValue(source.source)
-  const visible = bool(source.visible ?? source.show, false)
-  const requestedSourceType = text(
-    nestedSource.type
-    ?? source.sourceType
-    ?? (typeof source.source === 'string' ? source.source : null)
-    ?? (source.resolverCode ? 'RESOLVER' : 'SCOPE')
-  ).toUpperCase()
-  const sourceType = requestedSourceType || 'SCOPE'
+  const visible = bool(source.visible ?? source.show ?? source.display, false)
   const rawScopes = nestedSource.rules
     ?? nestedSource.scopes
+    ?? (Array.isArray(source.source) ? source.source : null)
     ?? source.scopes
     ?? source.scopeRules
     ?? []
-  const scopes = (Array.isArray(rawScopes) ? rawScopes : [])
+  const legacyScopeType = text(
+    nestedSource.scopeType ?? source.scopeType
+  ).toUpperCase()
+  const configuredResolverCode = text(
+    nestedSource.resolverCode
+    ?? nestedSource.interfaceName
+    ?? source.resolverCode
+    ?? source.interfaceName
+  )
+  const hasLegacyScope = (Array.isArray(rawScopes) && rawScopes.length > 0)
+    || Boolean(legacyScopeType)
+  const declaredSourceType = text(
+    nestedSource.type
+    ?? source.sourceType
+    ?? (typeof source.source === 'string' ? source.source : null)
+  ).toUpperCase()
+  const sourceType = declaredSourceType || (configuredResolverCode
+    ? 'RESOLVER'
+    : hasLegacyScope ? 'SCOPE' : 'NODE_ASSIGNMENT')
+  const legacyFlatScope = legacyScopeType
+    ? [{
+        type: legacyScopeType,
+        values: nestedSource.scopeValues
+          ?? nestedSource.values
+          ?? source.scopeValues
+          ?? source.values,
+        includeChildren: nestedSource.includeChildren
+          ?? source.includeChildren
+      }]
+    : []
+  const scopes = (Array.isArray(rawScopes) && rawScopes.length
+    ? rawScopes
+    : legacyFlatScope)
     .map(normalizeNextApproverScope)
 
   return {
     version: 1,
     visible,
-    editable: visible && bool(source.editable ?? source.allowModify, false),
-    source: sourceType === 'RESOLVER'
+    editable: visible && bool(
+      source.editable ?? source.allowModify ?? source.allowEdit,
+      false
+    ),
+    source: sourceType === 'NODE_ASSIGNMENT'
+      ? { type: 'NODE_ASSIGNMENT' }
+      : sourceType === 'RESOLVER'
       ? {
           type: 'RESOLVER',
-          resolverCode: text(
-            nestedSource.resolverCode ?? source.resolverCode
-          ),
+          resolverCode: configuredResolverCode,
           extraParams: objectValue(
             nestedSource.extraParams ?? source.extraParams
           )
@@ -208,6 +237,9 @@ export function validateNextApproverSelectionConfig(value) {
     }
   }
   if (!config.visible) return { valid: true, message: '' }
+  if (config.source.type === 'NODE_ASSIGNMENT') {
+    return { valid: true, message: '' }
+  }
   if (config.source.type === 'RESOLVER') {
     return config.source.resolverCode
       ? { valid: true, message: '' }
@@ -225,6 +257,19 @@ export function validateNextApproverSelectionConfig(value) {
     }
   }
   return { valid: true, message: '' }
+}
+
+/**
+ * 判断多人办理是否可由前序改选补齐参与人，而不要求目标节点预置静态名单。
+ *
+ * 仅独立且有效的 SCOPE/RESOLVER 来源具备兜底能力；复用本节点审批人、
+ * 隐藏或只读配置仍必须依赖目标节点自身的默认人员，避免产生无人任务。
+ */
+export function canDeferMultiInstanceAssignmentToNextApprover(value) {
+  const config = createNextApproverSelectionConfig(value)
+  if (!config.visible || !config.editable) return false
+  if (!['SCOPE', 'RESOLVER'].includes(config.source.type)) return false
+  return validateNextApproverSelectionConfig(config).valid
 }
 
 export function normalizeNextApproverPreview(value = {}) {

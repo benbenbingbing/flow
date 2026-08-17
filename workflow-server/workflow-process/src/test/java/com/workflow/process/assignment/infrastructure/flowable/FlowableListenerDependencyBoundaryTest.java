@@ -79,6 +79,7 @@ class FlowableListenerDependencyBoundaryTest {
                     ObjectMapper.class,
                     () -> new ObjectMapper());
             context.registerBean(NextApproverOverrideStore.class);
+            context.registerBean(MultiInstanceAssignmentResolver.class);
             context.registerBean(MultiInstanceCollectionListener.class);
             context.registerBean(PersonResolverTaskAssignmentListener.class);
 
@@ -86,6 +87,8 @@ class FlowableListenerDependencyBoundaryTest {
 
             assertNotNull(context.getBean(
                     NextApproverOverrideStore.class));
+            assertNotNull(context.getBean(
+                    MultiInstanceAssignmentResolver.class));
             assertNotNull(context.getBean(
                     MultiInstanceCollectionListener.class));
             assertNotNull(context.getBean(

@@ -10,5 +10,14 @@ import java.util.Map;
 public record NextApprovalTarget(
         UserTask userTask,
         Map<String, Object> assigneeConfig,
-        NextApproverSelectionPolicy selectionPolicy) {
+        NextApproverSelectionPolicy selectionPolicy,
+        UserTask assignmentSourceTask) {
+
+    /** 普通节点沿用自身办理人规则，保持现有调用方源码兼容。 */
+    public NextApprovalTarget(
+            UserTask userTask,
+            Map<String, Object> assigneeConfig,
+            NextApproverSelectionPolicy selectionPolicy) {
+        this(userTask, assigneeConfig, selectionPolicy, userTask);
+    }
 }

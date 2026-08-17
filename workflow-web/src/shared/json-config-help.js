@@ -200,18 +200,6 @@ const HELP_ENTRIES = {
     result: '人员解析器可从 extraParams.level 等路径读取参数。',
     notes: ['只填写当前人员接口声明并支持的参数。']
   },
-  'process.multiInstanceExtraParams': {
-    title: '会签人员接口 extraParams',
-    shape: 'object',
-    summary:
-      '该对象原样传给多人办理的人员解析器，用于决定会签或或签参与人集合。',
-    example: {
-      departmentLevel: 2,
-      includeChildren: true
-    },
-    result: '人员解析器根据参数返回用户 ID 集合。',
-    notes: ['参数名称和类型以所选人员接口的声明为准。']
-  },
   'process.restHeaders': {
     title: 'REST 请求头怎么用',
     shape: 'object',

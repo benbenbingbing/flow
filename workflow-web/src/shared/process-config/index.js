@@ -1,6 +1,145 @@
 import { createNextApproverSelectionConfig } from '../next-approver.js'
 
 export const LEGACY_MULTI_INSTANCE_COLLECTION = '${_wfMultiInstanceUsers_}'
+export const ASSIGNMENT_CONFIG_VERSION = 2
+export const NODE_REFERENCE_ASSIGNEE_TYPE = 'node_reference'
+export const MAX_NODE_REFERENCE_DEPTH = 16
+
+function firstNonBlankString(...values) {
+  for (const value of values) {
+    const normalized = String(value ?? '').trim()
+    if (normalized) return normalized
+  }
+  return ''
+}
+
+/**
+ * 将历史节点引用字段归一为 v2 canonical 契约。
+ * referencedNodeId 是运行时可信主键，名称只用于设计器回显；旧 sourceNode*
+ * 和不同大小写的 nodeReference 类型仅在读取时兼容，新保存统一写 canonical 字段。
+ */
+export function normalizeNodeReferenceAssigneeConfig(value = {}) {
+  const source = configObject(value)
+  const rawType = String(source.assigneeType || '').trim()
+  const normalizedTypeKey = rawType.replace(/[_\-\s]/g, '').toLowerCase()
+  if (normalizedTypeKey !== 'nodereference') return { ...source }
+
+  const normalized = {
+    ...source,
+    assigneeType: NODE_REFERENCE_ASSIGNEE_TYPE,
+    referencedNodeId: firstNonBlankString(
+      source.referencedNodeId,
+      source.sourceNodeId
+    ),
+    referencedNodeName: firstNonBlankString(
+      source.referencedNodeName,
+      source.sourceNodeName
+    )
+  }
+  delete normalized.sourceNodeId
+  delete normalized.sourceNodeName
+  return normalized
+}
+
+/** 从 elementRegistry 结果中提取同一流程可引用的其他 UserTask。 */
+export function buildUserTaskReferenceOptions(elements, currentNodeId) {
+  const currentId = String(currentNodeId || '').trim()
+  const candidates = Array.isArray(elements) ? elements : []
+  const owningProcessId = element => {
+    let cursor = element?.businessObject || element
+    const visited = new Set()
+    while (cursor && !visited.has(cursor)) {
+      visited.add(cursor)
+      if (cursor.$type === 'bpmn:Process') {
+        return String(cursor.id || '').trim()
+      }
+      cursor = cursor.$parent
+    }
+    return ''
+  }
+  const currentElement = candidates.find(element =>
+    element?.type !== 'label'
+    && String(element?.id || element?.businessObject?.id || '').trim()
+      === currentId)
+  const currentProcessId = owningProcessId(currentElement)
+  const seen = new Set()
+  const options = []
+  for (const element of candidates) {
+    if (element?.type === 'label') continue
+    const businessObject = element?.businessObject || element
+    const type = element?.type || businessObject?.$type
+    const id = String(element?.id || businessObject?.id || '').trim()
+    if (type !== 'bpmn:UserTask' || !id || id === currentId || seen.has(id)) {
+      continue
+    }
+    const candidateProcessId = owningProcessId(element)
+    if (currentProcessId && candidateProcessId
+        && candidateProcessId !== currentProcessId) {
+      continue
+    }
+    seen.add(id)
+    const nodeName = String(businessObject?.name || element?.name || '').trim()
+    options.push({
+      value: id,
+      label: nodeName || `未命名节点（${id}）`,
+      nodeId: id,
+      nodeName
+    })
+  }
+  return options
+}
+
+/**
+ * 判断新增“当前节点 -> 被引用节点”关系是否形成直接或间接环。
+ * referencesByNodeId 可传 Map 或普通对象；遇到被引用链自身已有环也拒绝接入。
+ */
+export function wouldCreateNodeReferenceCycle(
+  currentNodeId,
+  referencedNodeId,
+  referencesByNodeId = {}
+) {
+  return !validateNodeReferenceChain(
+    currentNodeId,
+    referencedNodeId,
+    referencesByNodeId,
+    Number.POSITIVE_INFINITY
+  ).valid
+}
+
+/** 校验引用链的环与最大深度，深度口径与后端解析器保持一致。 */
+export function validateNodeReferenceChain(
+  currentNodeId,
+  referencedNodeId,
+  referencesByNodeId = {},
+  maxDepth = MAX_NODE_REFERENCE_DEPTH,
+  validNodeIds = null
+) {
+  const currentId = String(currentNodeId || '').trim()
+  let cursor = String(referencedNodeId || '').trim()
+  if (!currentId || !cursor) return { valid: true, reason: '' }
+
+  const visited = new Set([currentId])
+  const nextReference = nodeId => referencesByNodeId instanceof Map
+    ? referencesByNodeId.get(nodeId)
+    : referencesByNodeId?.[nodeId]
+  const allowedNodeIds = validNodeIds == null
+    ? null
+    : validNodeIds instanceof Set
+      ? validNodeIds
+      : new Set(validNodeIds)
+  let depth = 0
+  while (cursor) {
+    if (allowedNodeIds && !allowedNodeIds.has(cursor)) {
+      return { valid: false, reason: 'invalid_target' }
+    }
+    if (visited.has(cursor)) return { valid: false, reason: 'cycle' }
+    visited.add(cursor)
+    depth += 1
+    if (depth > maxDepth) return { valid: false, reason: 'depth' }
+    cursor = String(nextReference(cursor) || '').trim()
+  }
+  return { valid: true, reason: '', depth }
+}
 
 export function buildNodeScopedMultiInstanceCollection(
   nodeId,
@@ -171,32 +310,213 @@ export function getProcessConditionFieldType(field) {
   return typeMap[String(field?.fieldType || '').toLowerCase()] || 'string'
 }
 
+function configObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value
+    : {}
+}
+
+function configValues(value) {
+  const seen = new Set()
+  const result = []
+  const collect = raw => {
+    if (Array.isArray(raw)) {
+      raw.forEach(collect)
+      return
+    }
+    for (const item of String(raw || '').split(',')) {
+      const normalized = item.trim()
+      if (!normalized || seen.has(normalized)) continue
+      seen.add(normalized)
+      result.push(normalized)
+    }
+  }
+  collect(value)
+  return result
+}
+
+function hasLegacyMultiInstanceAssignment(config, multiInstanceConfig) {
+  const values = [
+    config.multiInstanceUsers,
+    config.multiInstanceUserIds,
+    config.multiInstanceUsernames,
+    config.multiInstanceGroupIds,
+    config.multiInstanceGroupCodes,
+    config.multiInstanceRoleIds,
+    config.multiInstanceRoleCodes,
+    config.collectionResolverCode,
+    config.collectionInterface,
+    multiInstanceConfig.multiInstanceUsers,
+    multiInstanceConfig.multiInstanceUserIds,
+    multiInstanceConfig.multiInstanceUsernames,
+    multiInstanceConfig.multiInstanceGroupIds,
+    multiInstanceConfig.multiInstanceGroupCodes,
+    multiInstanceConfig.multiInstanceRoleIds,
+    multiInstanceConfig.multiInstanceRoleCodes,
+    multiInstanceConfig.collectionResolverCode,
+    multiInstanceConfig.collectionInterface
+  ]
+  return values.some(value => configValues(value).length > 0)
+    || ['interface', 'resolver'].includes(String(
+      config.collectionSource || multiInstanceConfig.collectionSource || ''
+    ).trim().toLowerCase())
+}
+
+/**
+ * 将历史多实例独立人员配置投影到统一审批人表单。
+ *
+ * 历史配置允许用户、组、角色混合，当前基础表单一次只表达一种指定方式；
+ * 因此原始配置同时作为 passthrough 保存，只有用户实际修改审批人后才升级为 v2，
+ * 避免仅打开并保存节点就缩小原有参与人集合。
+ */
+export function normalizeDesignerAssigneeConfig(
+  assigneeConfig,
+  multiInstanceConfig,
+  isMultiInstance
+) {
+  const config = normalizeNodeReferenceAssigneeConfig(assigneeConfig)
+  const loopConfig = configObject(multiInstanceConfig)
+  const version = Number(config.assignmentConfigVersion || 0)
+  const hasLegacyAssignment = Boolean(isMultiInstance)
+    && version < ASSIGNMENT_CONFIG_VERSION
+    && hasLegacyMultiInstanceAssignment(config, loopConfig)
+
+  if (!hasLegacyAssignment) {
+    return {
+      ...config,
+      legacyAssigneeConfig: null,
+      legacyMultiInstanceConfig: null,
+      legacyMultiInstanceMixed: false,
+      assignmentConfigDirty: false
+    }
+  }
+
+  const collectionSource = String(
+    config.collectionSource || loopConfig.collectionSource || ''
+  ).trim().toLowerCase()
+  const resolverCode = String(
+    config.collectionResolverCode
+      || loopConfig.collectionResolverCode
+      || config.collectionInterface
+      || loopConfig.collectionInterface
+      || ''
+  ).trim()
+  const resolverAssignment = ['interface', 'resolver'].includes(collectionSource)
+    || (!collectionSource && Boolean(resolverCode))
+
+  const mixedValues = configValues([
+    config.multiInstanceUsers,
+    loopConfig.multiInstanceUsers
+  ])
+  const mixedUsers = mixedValues.filter(value => !value.startsWith('ROLE_'))
+  const mixedRoles = mixedValues
+    .filter(value => value.startsWith('ROLE_'))
+    .map(value => value.slice(5))
+
+  // 各历史版本曾分别保存 username/code、ID 和 mixed CSV。这里与后端
+  // LegacyMultiInstanceAssignmentParser 一致：按字段顺序取并集并保留首序。
+  const users = configValues([
+    config.multiInstanceUsernames,
+    config.multiInstanceUserIds,
+    loopConfig.multiInstanceUsernames,
+    loopConfig.multiInstanceUserIds,
+    mixedUsers
+  ])
+  const groups = configValues([
+    config.multiInstanceGroupCodes,
+    config.multiInstanceGroupIds,
+    loopConfig.multiInstanceGroupCodes,
+    loopConfig.multiInstanceGroupIds
+  ])
+  const roles = configValues([
+    config.multiInstanceRoleCodes,
+    config.multiInstanceRoleIds,
+    loopConfig.multiInstanceRoleCodes,
+    loopConfig.multiInstanceRoleIds,
+    mixedRoles
+  ].map(values => configValues(values).map(value =>
+    value.startsWith('ROLE_') ? value.slice(5) : value)))
+
+  const configuredKinds = [
+    resolverAssignment,
+    users.length > 0,
+    groups.length > 0,
+    roles.length > 0
+  ].filter(Boolean).length
+  const normalized = { ...config }
+  if (resolverAssignment) {
+    normalized.assigneeType = 'interface'
+    normalized.resolverCode = resolverCode
+    normalized.resolverDisplayName =
+      config.collectionResolverDisplayName || resolverCode
+    normalized.extraParams = configObject(
+      config.collectionExtraParams || loopConfig.collectionExtraParams
+    )
+  } else if (users.length) {
+    normalized.assigneeType = 'user'
+    normalized.assigneeValue = users[0] || ''
+    normalized.candidateUsers = users.join(',')
+  } else if (groups.length) {
+    normalized.assigneeType = 'group'
+    normalized.assigneeValue = groups.join(',')
+  } else if (roles.length) {
+    normalized.assigneeType = 'role'
+    normalized.assigneeValue = roles.map(value => `ROLE_${value}`).join(',')
+  }
+
+  return {
+    ...normalized,
+    legacyAssigneeConfig: JSON.parse(JSON.stringify(config)),
+    legacyMultiInstanceConfig: JSON.parse(JSON.stringify(loopConfig)),
+    legacyMultiInstanceMixed: configuredKinds > 1,
+    assignmentConfigDirty: false
+  }
+}
+
 export function buildAssigneeConfig(form) {
-  const type = form.assigneeType
+  const normalizedReference = normalizeNodeReferenceAssigneeConfig(form)
+  const type = normalizedReference.assigneeType || form.assigneeType
   let assigneeValue = ''
   let candidateUsers = ''
   if (type === 'user') {
-    assigneeValue = form.assignee || ''
-    // 多实例模式下 BPMN 的 candidateUsers 会被清空，额外保存以便回显
-    candidateUsers = form.candidateUsers || ''
+    const selectedUsers = configValues(
+      form.candidateUserIds?.length
+        ? form.candidateUserIds
+        : form.candidateUsers
+    )
+    if (form.isMultiInstance) {
+      // 多实例固定人员是一个有序集合。兼容调用方只传 assignee 的情况，
+      // 并确保 assigneeValue 永远与集合首人一致。
+      const participants = configValues(
+        selectedUsers.length ? selectedUsers : [form.assignee]
+      )
+      assigneeValue = participants[0] || ''
+      candidateUsers = participants.join(',')
+    } else {
+      assigneeValue = form.assignee || ''
+      candidateUsers = form.candidateUsers || selectedUsers.join(',')
+    }
   } else if (type === 'group' || type === 'role') {
     assigneeValue = form.candidateGroups || ''
   } else if (type === 'expression') {
     assigneeValue = form.candidateUsers || form.candidateGroups || ''
   }
 
+  const nextApproverSelection = createNextApproverSelectionConfig(
+    form.nextApproverSelection
+  )
+  if (form.legacyAssigneeConfig && !form.assignmentConfigDirty) {
+    return {
+      ...form.legacyAssigneeConfig,
+      nextApproverSelection
+    }
+  }
+
   return {
-    assigneeType: form.assigneeType,
+    assignmentConfigVersion: ASSIGNMENT_CONFIG_VERSION,
+    assigneeType: type,
     assigneeValue,
     candidateUsers,
-    // 会签人员集合（多实例节点使用）
-    multiInstanceUsers: form.multiInstanceUsers || '',
-    multiInstanceUserIds: form.multiInstanceUserIds || [],
-    multiInstanceUsernames: form.multiInstanceUsernames || '',
-    multiInstanceGroupIds: form.multiInstanceGroupIds || [],
-    multiInstanceGroupCodes: form.multiInstanceGroupCodes || '',
-    multiInstanceRoleIds: form.multiInstanceRoleIds || [],
-    multiInstanceRoleCodes: form.multiInstanceRoleCodes || '',
     resolverCode: form.resolverCode || form.interfaceName || '',
     resolverDisplayName: form.resolverDisplayName || '',
     extraParams: normalizeJsonObject(form.extraParams, form.extraParamsText),
@@ -206,16 +526,13 @@ export function buildAssigneeConfig(form) {
     interfaceParams: form.interfaceParams,
     restMethod: form.restMethod,
     resultMapping: form.resultMapping,
-    collectionSource: form.collectionSource,
-    collectionInterface: form.collectionResolverCode || form.collectionInterface || '',
-    collectionResolverCode: form.collectionResolverCode || form.collectionInterface || '',
-    collectionResolverDisplayName: form.collectionResolverDisplayName || '',
-    collectionExtraParams: normalizeJsonObject(
-      form.collectionExtraParams,
-      form.collectionExtraParamsText),
-    nextApproverSelection: createNextApproverSelectionConfig(
-      form.nextApproverSelection
-    )
+    ...(type === NODE_REFERENCE_ASSIGNEE_TYPE
+      ? {
+          referencedNodeId: normalizedReference.referencedNodeId,
+          referencedNodeName: normalizedReference.referencedNodeName
+        }
+      : {}),
+    nextApproverSelection
   }
 }
 

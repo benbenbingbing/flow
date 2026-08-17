@@ -29,10 +29,18 @@
           :model-value="localConfig.source.type"
           @update:model-value="changeSourceType"
         >
+          <el-radio-button value="NODE_ASSIGNMENT">使用本节点审批人</el-radio-button>
           <el-radio-button value="SCOPE">人员范围</el-radio-button>
           <el-radio-button value="RESOLVER">人员接口</el-radio-button>
         </el-radio-group>
       </el-form-item>
+
+      <div
+        v-if="localConfig.source.type === 'NODE_ASSIGNMENT'"
+        class="form-tip next-approver-config__assignment-tip"
+      >
+        直接引用本节点已配置的审批人规则；规则修改后同步生效，不复制人员名单
+      </div>
 
       <template v-if="localConfig.source.type === 'SCOPE'">
         <PersonScopeRuleEditor
@@ -164,9 +172,17 @@ function onVisibleChange(visible) {
 
 function changeSourceType(type) {
   if (type === localConfig.value.source.type) return
-  localConfig.value.source = type === 'RESOLVER'
-    ? { type: 'RESOLVER', resolverCode: '', extraParams: {} }
-    : { type: 'SCOPE', rules: [] }
+  if (type === 'NODE_ASSIGNMENT') {
+    localConfig.value.source = { type: 'NODE_ASSIGNMENT' }
+  } else if (type === 'RESOLVER') {
+    localConfig.value.source = {
+      type: 'RESOLVER',
+      resolverCode: '',
+      extraParams: {}
+    }
+  } else {
+    localConfig.value.source = { type: 'SCOPE', rules: [] }
+  }
   extraParamsText.value = '{}'
   extraParamsError.value = ''
 }
@@ -207,5 +223,9 @@ defineExpose({ validate })
   color: var(--el-color-danger);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.next-approver-config__assignment-tip {
+  margin: -4px 0 12px 100px;
 }
 </style>

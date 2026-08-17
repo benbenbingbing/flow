@@ -35,8 +35,12 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '条件不满足时可完全隐藏按钮，或保留为禁用状态并展示原因。需要让用户知道功能存在但当前不可用时选择“禁用并说明”。',
   'process.multiInstanceType':
     '并行会同时创建多人任务；串行会按人员集合顺序逐个创建任务。完成条件可决定是否等待所有实例。',
-  'process.multiInstanceSource':
-    '直接选择会把当前选中的用户、组和角色固化进节点配置；人员接口会在运行时按上下文动态计算参与人。',
+  'process.multiInstanceCompletionCondition':
+    '满足表达式时会提前结束多实例任务；留空表示等待全部实例完成。仅在需要特殊会签通过规则时配置。',
+  'process.multiInstanceCollection':
+    '系统为当前节点生成的用户 ID 集合变量，用于创建多实例任务。该变量只读，无需手工配置。',
+  'process.multiInstanceElementVariable':
+    '集合中的单个用户 ID 在每个任务实例内使用的变量名，通常保持默认值 assignee。',
   'process.serviceImplementationType':
     '决定服务任务由 Java 类、表达式、Spring Bean 还是平台代理的 REST 调用执行。外部 HTTP 调用应使用 REST 配置并设置超时与失败策略。',
   'process.sequenceConditionType':

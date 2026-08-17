@@ -76,7 +76,6 @@ const usages = [
   ['src/components/ui-config/FormDataSourceCompatDialog.vue', 'binding.inputMappingText', 'entityForm.dataSourceInputMapping'],
   ['src/components/ui-config/FormDataSourceCompatDialog.vue', 'binding.outputMappingText', 'entityForm.dataSourceOutputMapping'],
   ['src/components/NodeConfigPanel.vue', 'assigneeForm.extraParamsText', 'process.assigneeExtraParams'],
-  ['src/components/NodeConfigPanel.vue', 'assigneeForm.collectionExtraParamsText', 'process.multiInstanceExtraParams'],
   ['src/components/NodeConfigPanel.vue', 'restForm.headers', 'process.restHeaders'],
   ['src/components/NodeConfigPanel.vue', 'restForm.body', 'process.restBody'],
   ['src/components/NodeConfigPanel.vue', 'restForm.queryParams', 'process.restQueryParams'],

@@ -1,17 +1,14 @@
 package com.workflow.process.assignment.infrastructure.flowable;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
-import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
+import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
+import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;
@@ -36,7 +33,6 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -91,6 +87,14 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     @Autowired
     private PersonResolverRuntimeService personResolverRuntimeService;
 
+    /** 已部署人员配置解析器；required=false 仅兼容直接 new 的旧测试。 */
+    @Autowired(required = false)
+    private MultiInstanceAssignmentResolver multiInstanceAssignmentResolver;
+
+    /** 部署内节点引用解析器；required=false 仅兼容直接 new 的旧测试。 */
+    @Autowired(required = false)
+    private NodeAssignmentReferenceResolver nodeReferenceResolver;
+
     /** 人工指定的下一多实例审批人一次性覆盖。 */
     @Autowired
     private NextApproverOverrideStore nextApproverOverrideStore;
@@ -125,31 +129,56 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             }
             String assigneeDocument = ConfiguredTaskPropertyReader.read(
                     activity, "assigneeConfig");
-            boolean selectionDeclared =
-                    NextApproverAssignmentRequirement.declaresSelection(
+            boolean safetyCriticalDocument =
+                    NextApproverAssignmentRequirement.requiresFailClosed(
                             assigneeDocument);
             boolean configParsed = false;
             boolean required = false;
+            boolean visible = false;
+            boolean editable = false;
             try {
                 String varName = collectionVariable(
                         activity.getLoopCharacteristics());
-                if (!StringUtils.hasText(varName)
-                        || variables.containsKey(varName)) {
+                if (!StringUtils.hasText(varName)) {
                     continue;
                 }
                 Map<String, Object> assigneeConfig =
                         deployedAssigneeConfig(activity);
                 configParsed = true;
-                required = NextApproverAssignmentRequirement.isRequired(
+                visible = NextApproverAssignmentRequirement.isRequired(
                         assigneeConfig);
+                editable = NextApproverAssignmentRequirement.isEditable(
+                        assigneeConfig);
+                if (editable && !visible) {
+                    throw required(
+                            "下一审批人可修改时必须同时允许展示",
+                            null);
+                }
                 if (assigneeConfig.isEmpty()) {
                     continue;
                 }
+                boolean unifiedAssignment =
+                        requireSupportedAssignmentConfigVersion(
+                                assigneeConfig) == 2;
+                // v2 多实例没有可回退的旧独立人员来源，即使下一审批人隐藏
+                // 也必须失败关闭，不能用空 collection 静默跳过审批。
+                required = visible || editable || unifiedAssignment;
+                if (variables.containsKey(varName)
+                        && !unifiedAssignment) {
+                    continue;
+                }
+                if (unifiedAssignment) {
+                    // v2 明确要求参与人来自基础办理人配置，不能让启动请求中
+                    // 同名流程变量绕过已发布的人员边界。
+                    variables.remove(varName);
+                }
+                EffectiveAssignment effective = effectiveAssignment(
+                        model, activity, assigneeConfig);
                 List<String> userIds = resolvePublishedUsers(
                         processConfigId,
                         activity.getId(),
                         activity.getName(),
-                        assigneeConfig,
+                        effective.assigneeConfig(),
                         variables,
                         null,
                         processDefinitionId);
@@ -161,17 +190,25 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                             activity.getId(),
                             varName,
                             userIds);
-                } else if (required) {
+                } else if (required && !(visible && editable)) {
                     throw required(
                             "已开启下一审批人展示的多实例节点没有可用审批人",
                             null);
+                } else if (required) {
+                    // 可编辑节点允许启动时没有默认人员，前序任务稍后必须通过
+                    // 一次性覆盖补齐；真正进入节点时仍会严格拒绝空集合。
+                    log.debug(
+                            "可编辑下一审批人多实例节点启动时暂无默认人员: processDefinitionId={}, nodeId={}",
+                            processDefinitionId,
+                            activity.getId());
                 }
             } catch (RequiredMultiInstanceAssignmentException exception) {
                 throw exception;
             } catch (Exception e) {
-                if (required || (!configParsed && selectionDeclared)) {
+                if (required
+                        || (!configParsed && safetyCriticalDocument)) {
                     throw required(
-                            "已声明下一审批人展示的多实例人员配置无法解析或执行",
+                            "安全关键多实例人员配置无法解析或执行",
                             e);
                 }
                 log.error(
@@ -274,8 +311,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         }
         String assigneeDocument = ConfiguredTaskPropertyReader.read(
                 deployedActivity, "assigneeConfig");
-        boolean selectionDeclared =
-                NextApproverAssignmentRequirement.declaresSelection(
+        boolean safetyCriticalDocument =
+                NextApproverAssignmentRequirement.requiresFailClosed(
                         assigneeDocument);
         boolean configParsed = false;
         boolean required = false;
@@ -283,8 +320,22 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             Map<String, Object> deployedAssigneeConfig =
                     deployedAssigneeConfig(deployedActivity);
             configParsed = true;
-            required = NextApproverAssignmentRequirement.isRequired(
+            int assignmentVersion =
+                    requireSupportedAssignmentConfigVersion(
+                            deployedAssigneeConfig);
+            required = assignmentVersion == 2
+                    || NextApproverAssignmentRequirement.isRequired(
+                    deployedAssigneeConfig)
+                    || NextApproverAssignmentRequirement.isEditable(
                     deployedAssigneeConfig);
+            if (NextApproverAssignmentRequirement.isEditable(
+                    deployedAssigneeConfig)
+                    && !NextApproverAssignmentRequirement.isRequired(
+                    deployedAssigneeConfig)) {
+                throw required(
+                        "下一审批人可修改时必须同时允许展示",
+                        null);
+            }
             String varName = collectionVariable(
                     deployedActivity.getLoopCharacteristics());
             if (varName == null) {
@@ -359,11 +410,15 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             }
             Map<String, Object> variables =
                     runtimeService.getVariables(processInstanceId);
+            EffectiveAssignment effective = effectiveAssignment(
+                    bpmnModel,
+                    deployedActivity,
+                    deployedAssigneeConfig);
             List<String> userIds = resolvePublishedUsers(
                     publishedProcessConfigId(processDefinition),
                     activityId,
                     deployedActivity.getName(),
-                    deployedAssigneeConfig,
+                    effective.assigneeConfig(),
                     variables,
                     processInstanceId,
                     processDefinitionId);
@@ -382,9 +437,9 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         } catch (RequiredMultiInstanceAssignmentException exception) {
             throw exception;
         } catch (Exception exception) {
-            if (required || (!configParsed && selectionDeclared)) {
+            if (required || (!configParsed && safetyCriticalDocument)) {
                 throw required(
-                        "已声明下一审批人展示的多实例节点人员配置无法解析或准备",
+                        "安全关键多实例节点人员配置无法解析或准备",
                         exception);
             }
             throw exception;
@@ -444,20 +499,28 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     @SuppressWarnings("unchecked")
     private Map<String, Object> deployedAssigneeConfig(
             Activity activity) throws Exception {
-        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> multiInstanceConfig = Map.of();
         String multiInstanceDocument = ConfiguredTaskPropertyReader.read(
                 activity, "multiInstanceConfig");
         if (StringUtils.hasText(multiInstanceDocument)) {
-            result.putAll(objectMapper.readValue(
-                    multiInstanceDocument, Map.class));
+            multiInstanceConfig = objectMapper.readValue(
+                    multiInstanceDocument, Map.class);
         }
+        Map<String, Object> assigneeConfig = Map.of();
         String assigneeDocument = ConfiguredTaskPropertyReader.read(
                 activity, "assigneeConfig");
         if (StringUtils.hasText(assigneeDocument)) {
-            result.putAll(objectMapper.readValue(
-                    assigneeDocument, Map.class));
+            assigneeConfig = objectMapper.readValue(
+                    assigneeDocument, Map.class);
         }
+        Map<String, Object> result =
+                LegacyMultiInstanceAssignmentParser.mergeConfigs(
+                        assigneeConfig, multiInstanceConfig);
         if (!(activity instanceof UserTask userTask)) {
+            return result;
+        }
+        if ("2".equals(String.valueOf(
+                result.get("assignmentConfigVersion")))) {
             return result;
         }
         LinkedHashSet<String> users = new LinkedHashSet<>();
@@ -498,6 +561,28 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             result.put("multiInstanceRoleCodes", List.copyOf(roles));
         }
         return result;
+    }
+
+    /**
+     * 解析同一部署中的节点引用，并用终端 UserTask 的历史 BPMN 字面量补齐
+     * 兼容配置。引用者是否为多实例只影响后续输出，不受源节点循环属性影响。
+     */
+    private EffectiveAssignment effectiveAssignment(
+            BpmnModel model,
+            Activity currentActivity,
+            Map<String, Object> currentConfig) throws Exception {
+        if (!(currentActivity instanceof UserTask currentTask)
+                || !NodeAssignmentReferenceResolver.isNodeReference(
+                currentConfig)) {
+            return new EffectiveAssignment(
+                    currentActivity, currentConfig);
+        }
+        ResolvedAssignment resolved = nodeReferenceResolver().resolve(
+                model, currentTask, currentConfig);
+        Map<String, Object> sourceConfig = deployedAssigneeConfig(
+                resolved.sourceTask());
+        return new EffectiveAssignment(
+                resolved.sourceTask(), sourceConfig);
     }
 
     private boolean literal(String value) {
@@ -579,6 +664,7 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 ? value : null;
     }
 
+    /** 将人员展开委托给独立组件，监听器只保留版本门禁和变量编排。 */
     private List<String> resolvePublishedUsers(
             String processConfigId,
             String nodeId,
@@ -587,144 +673,79 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             Map<String, Object> variables,
             String processInstanceId,
             String processDefinitionId) {
-        String collectionSource = text(
-                assigneeConfig.get("collectionSource"));
-        if ("interface".equalsIgnoreCase(collectionSource)
-                || "resolver".equalsIgnoreCase(collectionSource)) {
-            String resolverCode = firstText(
-                    assigneeConfig.get("collectionResolverCode"),
-                    assigneeConfig.get("collectionInterface"));
-            personResolverRuntimeService.requireConfigured(
-                    resolverCode,
-                    PersonResolveUsage.MULTI_INSTANCE);
-            return resolveEnabledUsernames(
-                    personResolverRuntimeService.resolveUsernames(
-                            resolverCode,
-                            new PersonResolveRequest(
-                            1,
-                            text(variables.get("traceId")),
-                            String.join(
-                                    ":",
-                                    "MULTI_INSTANCE",
-                                    nullSafe(processInstanceId),
-                                    nullSafe(nodeId)),
-                            PersonResolveUsage.MULTI_INSTANCE,
-                            processConfigId,
-                            processDefinitionId,
-                            processInstanceId,
-                            firstText(
-                                    variables.get("businessKey"),
-                                    variables.get("entityDataId")),
-                            nodeId,
-                            nodeName,
-                            null,
-                            text(variables.get("entityCode")),
-                            text(variables.get("entityDataId")),
-                            firstText(
-                                    variables.get("startUserId"),
-                                    variables.get("submitterId"),
-                                    variables.get("initiator")),
-                            null,
-                            variables,
-                            mapValue(variables.get("entityData")),
-                            mapValue(assigneeConfig.get(
-                                    "collectionExtraParams")))));
-        }
-
-        LinkedHashSet<String> users = new LinkedHashSet<>();
-        addCsv(users, assigneeConfig.get("multiInstanceUsernames"));
-        LinkedHashSet<String> groups = new LinkedHashSet<>();
-        addCsv(groups, assigneeConfig.get("multiInstanceGroupCodes"));
-        for (String groupCode : groups) {
-            SysGroup group = groupMapper.selectByGroupCode(groupCode);
-            if (group == null) {
-                group = groupMapper.selectById(groupCode);
-            }
-            if (enabled(group)) {
-                List<String> ids = userGroupMapper.selectUserIdsByGroupId(
-                        group.getId());
-                if (ids != null) {
-                    users.addAll(ids);
-                }
-            }
-        }
-        LinkedHashSet<String> roles = new LinkedHashSet<>();
-        addCsv(roles, assigneeConfig.get("multiInstanceRoleCodes"));
-        for (String rawRoleCode : roles) {
-            String roleCode = rawRoleCode.startsWith("ROLE_")
-                    ? rawRoleCode.substring(5) : rawRoleCode;
-            List<SysRole> matches = roleMapper.selectList(
-                    new QueryWrapper<SysRole>()
-                            .and(wrapper -> wrapper
-                                    .eq("id", roleCode)
-                                    .or()
-                                    .eq("role_code", roleCode))
-                            .eq("status", SysRole.Status.ENABLED.getValue())
-                            .eq("deleted", 0));
-            SysRole role = matches == null
-                    ? null
-                    : matches.stream()
-                    .filter(this::enabled)
-                    .findFirst()
-                    .orElse(null);
-            if (role != null) {
-                List<String> ids = userRoleMapper.selectUserIdsByRoleId(
-                        role.getId());
-                if (ids != null) {
-                    users.addAll(ids);
-                }
-            }
-        }
-        if (users.isEmpty()
-                && "user".equalsIgnoreCase(
-                text(assigneeConfig.get("assigneeType")))) {
-            addCsv(users, assigneeConfig.get("assigneeValue"));
-        }
-        return resolveEnabledUsernames(users);
+        int assignmentVersion = requireSupportedAssignmentConfigVersion(
+                assigneeConfig);
+        return assignmentResolver().resolve(
+                processConfigId,
+                nodeId,
+                nodeName,
+                assigneeConfig,
+                variables,
+                processInstanceId,
+                processDefinitionId,
+                assignmentVersion);
     }
 
-    /** 将用户名或用户ID统一映射为启用且未删除的本地用户名，保持首次出现顺序。 */
-    private List<String> resolveEnabledUsernames(
-            Collection<String> keys) {
-        LinkedHashSet<String> usernames = new LinkedHashSet<>();
-        if (keys == null) {
-            return List.of();
+    /**
+     * 兼容直接构造监听器的轻量测试；生产环境使用 Spring 注入的共享解析器。
+     */
+    private MultiInstanceAssignmentResolver assignmentResolver() {
+        if (multiInstanceAssignmentResolver != null) {
+            return multiInstanceAssignmentResolver;
         }
-        for (String key : keys) {
-            if (key == null || key.isBlank()) {
-                continue;
-            }
-            String normalized = key.trim();
-            SysUser user = userMapper.selectByUsername(normalized);
-            if (user == null) {
-                user = userMapper.selectById(normalized);
-            }
-            if (enabled(user)) {
-                usernames.add(user.getUsername());
-            }
+        return new MultiInstanceAssignmentResolver(
+                groupMapper,
+                userGroupMapper,
+                roleMapper,
+                userRoleMapper,
+                userMapper,
+                personResolverRuntimeService);
+    }
+
+    private NodeAssignmentReferenceResolver nodeReferenceResolver() {
+        if (nodeReferenceResolver != null) {
+            return nodeReferenceResolver;
         }
-        return new ArrayList<>(usernames);
+        return new NodeAssignmentReferenceResolver(objectMapper);
     }
 
-    private boolean enabled(SysUser user) {
-        return user != null
-                && SysUser.Status.ENABLED.getValue().equals(user.getStatus())
-                && !Integer.valueOf(1).equals(user.getDeleted())
-                && user.getUsername() != null
-                && !user.getUsername().isBlank();
+    private int assignmentConfigVersion(
+            Map<String, Object> config) {
+        Object raw = config.get("assignmentConfigVersion");
+        if (raw == null) {
+            return 1;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(raw));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "assignmentConfigVersion 必须是整数", exception);
+        }
     }
 
-    private boolean enabled(SysGroup group) {
-        return group != null
-                && SysGroup.Status.ENABLED.getValue().equals(group.getStatus())
-                && !Integer.valueOf(1).equals(group.getDeleted());
+    /**
+     * 运行时仅接受当前已实现的显式 v2；无版本才按历史 v1 读取。
+     * 即使集合变量已由客户端提供也必须先校验，防止未知版本绕过部署语义。
+     */
+    private int requireSupportedAssignmentConfigVersion(
+            Map<String, Object> config) {
+        int version;
+        try {
+            version = assignmentConfigVersion(config);
+        } catch (IllegalArgumentException exception) {
+            throw required(
+                    "assignmentConfigVersion 必须是整数",
+                    exception);
+        }
+        if (config.containsKey("assignmentConfigVersion")
+                && version != 2) {
+            throw required(
+                    "不支持的 assignmentConfigVersion: " + version,
+                    null);
+        }
+        return version;
     }
 
-    private boolean enabled(SysRole role) {
-        return role != null
-                && SysRole.Status.ENABLED.getValue().equals(role.getStatus())
-                && !Integer.valueOf(1).equals(role.getDeleted());
-    }
 
     private void addCsv(
             java.util.Set<String> target,
@@ -756,5 +777,10 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 Throwable cause) {
             super(message, cause);
         }
+    }
+
+    private record EffectiveAssignment(
+            Activity sourceActivity,
+            Map<String, Object> assigneeConfig) {
     }
 }

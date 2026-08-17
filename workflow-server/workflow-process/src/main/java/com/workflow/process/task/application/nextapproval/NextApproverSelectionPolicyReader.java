@@ -2,9 +2,13 @@ package com.workflow.process.task.application.nextapproval;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
+import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
+import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
-import lombok.RequiredArgsConstructor;
+import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.UserTask;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -22,68 +26,90 @@ import java.util.Map;
  * 从已部署 BPMN 的 assigneeConfig 扩展属性读取并校验下一审批人策略。
  */
 @Component
-@RequiredArgsConstructor
 public class NextApproverSelectionPolicyReader {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE =
             new TypeReference<>() { };
 
     private final ObjectMapper objectMapper;
+    private final NodeAssignmentReferenceResolver referenceResolver;
+
+    @Autowired
+    public NextApproverSelectionPolicyReader(
+            ObjectMapper objectMapper,
+            NodeAssignmentReferenceResolver referenceResolver) {
+        this.objectMapper = objectMapper;
+        this.referenceResolver = referenceResolver;
+    }
+
+    /** 兼容不涉及节点引用的轻量单元测试。 */
+    public NextApproverSelectionPolicyReader(ObjectMapper objectMapper) {
+        this(objectMapper,
+                new NodeAssignmentReferenceResolver(objectMapper));
+    }
 
     public NextApprovalTarget read(
             String processDefinitionId,
             UserTask userTask) {
-        Map<String, Object> assigneeConfig = readAssigneeConfig(userTask);
-        Object rawSelection = assigneeConfig.get("nextApproverSelection");
+        return read(processDefinitionId, userTask, null);
+    }
+
+    /**
+     * 读取策略并在同一已部署模型中解析基础办理人的节点引用。
+     */
+    public NextApprovalTarget read(
+            String processDefinitionId,
+            UserTask userTask,
+            BpmnModel bpmnModel) {
+        Map<String, Object> currentConfig = readAssigneeConfig(userTask);
+        ResolvedAssignment resolved = resolveAssignment(
+                bpmnModel, userTask, currentConfig);
+        Map<String, Object> assigneeConfig = resolved.assigneeConfig();
+        UserTask assignmentSourceTask = resolved.sourceTask();
+        Object rawSelection = currentConfig.get("nextApproverSelection");
         if (!(rawSelection instanceof Map<?, ?> rawMap)) {
             return new NextApprovalTarget(
                     userTask,
                     assigneeConfig,
-                    NextApproverSelectionPolicy.absent());
+                    NextApproverSelectionPolicy.absent(),
+                    assignmentSourceTask);
         }
         Map<String, Object> selection = stringObjectMap(rawMap);
-        int version = integerValue(selection.get("version"), 1);
+        NextApproverSelectionNormalizer.NormalizedSelection normalized;
+        try {
+            normalized = NextApproverSelectionNormalizer.normalize(
+                    selection);
+        } catch (IllegalArgumentException exception) {
+            throw invalid(userTask, exception.getMessage(), exception);
+        }
+        int version = normalized.version();
         if (version != 1) {
             throw invalid(userTask,
                     "不支持的 nextApproverSelection 版本: " + version);
         }
-        boolean visible = booleanValue(
-                first(selection, "visible", "show", "display"), false);
-        boolean editable = booleanValue(
-                first(selection, "editable", "allowModify", "allowEdit"),
-                false);
-        String assignmentMode = assignmentMode(assigneeConfig, userTask);
+        boolean visible = normalized.visible();
+        boolean editable = normalized.editable();
+        String assignmentMode = assignmentMode(
+                assigneeConfig, userTask, assignmentSourceTask);
         boolean multiple = !"DIRECT".equals(assignmentMode);
         if (editable && !visible) {
             throw invalid(userTask, "可修改时必须同时允许展示");
         }
 
-        Map<String, Object> source = selection.get("source") instanceof Map<?, ?> rawSource
-                ? stringObjectMap(rawSource)
-                : Map.of();
         NextApproverSelectionPolicy.SourceType sourceType = sourceType(
-                firstText(
-                        source.get("type"),
-                        selection.get("sourceType"),
-                        selection.get("source") instanceof String
-                                ? selection.get("source")
-                                : null),
-                userTask,
-                editable);
+                normalized.sourceType(),
+                userTask);
         List<NextApproverSelectionPolicy.Scope> scopes = readScopes(
-                selection, source, userTask);
-        String resolverCode = firstText(
-                source.get("resolverCode"),
-                selection.get("resolverCode"),
-                selection.get("interfaceName"));
+                normalized.rawScopes(), userTask);
+        String resolverCode = normalized.resolverCode();
         Map<String, Object> extraParams = readExtraParams(
-                source.containsKey("extraParams")
-                        ? source.get("extraParams")
-                        : selection.get("extraParams"),
+                normalized.extraParams(),
                 userTask);
 
         if (editable && sourceType == null) {
-            throw invalid(userTask, "可修改时必须配置 SCOPE 或 RESOLVER 数据源");
+            throw invalid(
+                    userTask,
+                    "可修改时必须配置 SCOPE、RESOLVER 或 NODE_ASSIGNMENT 数据源");
         }
         if ((visible || editable)
                 && sourceType == NextApproverSelectionPolicy.SourceType.SCOPE
@@ -114,6 +140,19 @@ public class NextApproverSelectionPolicyReader {
         }).toList());
         canonical.put("resolverCode", resolverCode);
         canonical.put("extraParams", objectMapper.valueToTree(extraParams));
+        if (sourceType
+                == NextApproverSelectionPolicy.SourceType.NODE_ASSIGNMENT) {
+            // NODE_ASSIGNMENT 的允许范围来自目标节点自身。将真正影响人员
+            // 展开的基础/历史字段及 BPMN 分配属性纳入签名，配置变化后旧
+            // scopeKey 不能继续提交覆盖。
+            canonical.put(
+                    "nodeAssignment",
+                    canonicalNodeAssignment(
+                            assigneeConfig, assignmentSourceTask));
+            canonical.put(
+                    "assignmentReferenceChain",
+                    resolved.chainNodeIds());
+        }
 
         return new NextApprovalTarget(
                 userTask,
@@ -130,30 +169,100 @@ public class NextApproverSelectionPolicyReader {
                         resolverCode,
                         Collections.unmodifiableMap(
                                 new LinkedHashMap<>(extraParams)),
-                        hash(canonical)));
+                        hash(canonical)),
+                assignmentSourceTask);
+    }
+
+    private ResolvedAssignment resolveAssignment(
+            BpmnModel bpmnModel,
+            UserTask userTask,
+            Map<String, Object> currentConfig) {
+        if (bpmnModel == null) {
+            if (NodeAssignmentReferenceResolver.isNodeReference(
+                    currentConfig)) {
+                throw invalid(userTask,
+                        "解析 node_reference 必须提供已部署 BpmnModel");
+            }
+            return new ResolvedAssignment(
+                    userTask, currentConfig, List.of(userTask.getId()));
+        }
+        return referenceResolver.resolve(
+                bpmnModel, userTask, currentConfig);
+    }
+
+    private Map<String, Object> canonicalNodeAssignment(
+            Map<String, Object> config,
+            UserTask userTask) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        List<String> keys = List.of(
+                "assignmentConfigVersion",
+                "assigneeType",
+                "assigneeValue",
+                "candidateUsers",
+                "candidateGroups",
+                "resolverCode",
+                "interfaceName",
+                "extraParams",
+                // 未声明 v2 的多实例部署仍按这些历史字段解析。
+                "multiInstanceUsers",
+                "multiInstanceUserIds",
+                "multiInstanceUsernames",
+                "multiInstanceGroupIds",
+                "multiInstanceGroupCodes",
+                "multiInstanceRoleIds",
+                "multiInstanceRoleCodes",
+                "collectionSource",
+                "collectionResolverCode",
+                "collectionInterface",
+                "collectionExtraParams");
+        for (String key : keys) {
+            if (config.containsKey(key)) {
+                result.put(key, config.get(key));
+            }
+        }
+        result.put("bpmnAssignee", userTask.getAssignee());
+        result.put(
+                "bpmnCandidateUsers",
+                userTask.getCandidateUsers() == null
+                        ? List.of() : userTask.getCandidateUsers());
+        result.put(
+                "bpmnCandidateGroups",
+                userTask.getCandidateGroups() == null
+                        ? List.of() : userTask.getCandidateGroups());
+        return result;
     }
 
     private Map<String, Object> readAssigneeConfig(UserTask userTask) {
-        String json = ConfiguredTaskPropertyReader.read(
+        Map<String, Object> assigneeConfig = readConfigProperty(
                 userTask, "assigneeConfig");
+        Map<String, Object> multiInstanceConfig = readConfigProperty(
+                userTask, "multiInstanceConfig");
+        return LegacyMultiInstanceAssignmentParser.mergeConfigs(
+                assigneeConfig, multiInstanceConfig);
+    }
+
+    private Map<String, Object> readConfigProperty(
+            UserTask userTask,
+            String propertyName) {
+        String json = ConfiguredTaskPropertyReader.read(
+                userTask, propertyName);
         if (!StringUtils.hasText(json)) {
             return Map.of();
         }
         try {
             return objectMapper.readValue(json, MAP_TYPE);
         } catch (Exception exception) {
-            throw invalid(userTask, "assigneeConfig 不是合法 JSON", exception);
+            throw invalid(
+                    userTask,
+                    propertyName + " 不是合法 JSON",
+                    exception);
         }
     }
 
     private List<NextApproverSelectionPolicy.Scope> readScopes(
-            Map<String, Object> selection,
-            Map<String, Object> source,
+            Object rawScopes,
             UserTask userTask) {
         List<NextApproverSelectionPolicy.Scope> result = new ArrayList<>();
-        Object rawScopes = source.containsKey("rules")
-                ? source.get("rules")
-                : selection.get("scopes");
         if (rawScopes instanceof List<?> items) {
             for (Object item : items) {
                 if (!(item instanceof Map<?, ?> rawScope)) {
@@ -163,63 +272,15 @@ public class NextApproverSelectionPolicyReader {
                 result.add(readScope(scope, userTask));
             }
         }
-        if (result.isEmpty()
-                && StringUtils.hasText(text(selection.get("scopeType")))) {
-            Map<String, Object> legacy = new LinkedHashMap<>();
-            legacy.put("type", selection.get("scopeType"));
-            legacy.put("values", first(
-                    selection, "scopeValues", "values"));
-            legacy.put("includeChildren", selection.get("includeChildren"));
-            result.add(readScope(legacy, userTask));
-        }
         return result;
     }
 
     private String assignmentMode(
             Map<String, Object> assigneeConfig,
-            UserTask userTask) {
-        String value = firstText(
-                assigneeConfig.get("assignmentMode"),
-                assigneeConfig.get("mode"));
-        String normalized = null;
-        if (StringUtils.hasText(value)) {
-            normalized = switch (value.trim().toUpperCase(Locale.ROOT)) {
-                case "DIRECT" -> "DIRECT";
-                case "CANDIDATE" -> "CANDIDATE";
-                case "MULTI_INSTANCE" -> "MULTI_INSTANCE";
-                default -> throw new IllegalArgumentException(
-                        "不支持的审批分配模式: " + value);
-            };
-        }
-
-        // Flowable 先按多实例循环创建实例任务；循环体中的 assignee
-        // 不能把整个节点误判成普通直接任务。
-        if (userTask.hasMultiInstanceLoopCharacteristics()) {
-            return "MULTI_INSTANCE";
-        }
-        // 对普通 UserTask，明确 assignee 表示任务已直接分配。即使 BPMN
-        // 同时保留 candidateUsers/candidateGroups，候选身份也只是候补，
-        // 不能把人工覆盖降级为未认领的纯候选任务。
-        if (StringUtils.hasText(userTask.getAssignee())) {
-            return "DIRECT";
-        }
-        if (normalized != null) {
-            return normalized;
-        }
-        if (booleanValue(assigneeConfig.get("multiInstance"), false)) {
-            return "MULTI_INSTANCE";
-        }
-        String assigneeType = text(assigneeConfig.get("assigneeType"));
-        if ((userTask.getCandidateUsers() != null
-                && !userTask.getCandidateUsers().isEmpty())
-                || (userTask.getCandidateGroups() != null
-                && !userTask.getCandidateGroups().isEmpty())
-                || "candidate".equalsIgnoreCase(assigneeType)
-                || "role".equalsIgnoreCase(assigneeType)
-                || "group".equalsIgnoreCase(assigneeType)) {
-            return "CANDIDATE";
-        }
-        return "DIRECT";
+            UserTask userTask,
+            UserTask assignmentSourceTask) {
+        return NodeAssignmentReferenceResolver.assignmentMode(
+                userTask, assignmentSourceTask, assigneeConfig);
     }
 
     private NextApproverSelectionPolicy.Scope readScope(
@@ -260,8 +321,7 @@ public class NextApproverSelectionPolicyReader {
 
     private NextApproverSelectionPolicy.SourceType sourceType(
             Object value,
-            UserTask userTask,
-            boolean required) {
+            UserTask userTask) {
         String raw = text(value);
         if (!StringUtils.hasText(raw)) {
             return null;
@@ -308,15 +368,6 @@ public class NextApproverSelectionPolicyReader {
         return result;
     }
 
-    private Object first(Map<String, Object> values, String... names) {
-        for (String name : names) {
-            if (values.containsKey(name) && values.get(name) != null) {
-                return values.get(name);
-            }
-        }
-        return null;
-    }
-
     private String firstText(Object... values) {
         for (Object value : values) {
             String result = text(value);
@@ -333,18 +384,6 @@ public class NextApproverSelectionPolicyReader {
 
     private boolean booleanValue(Object value, boolean defaultValue) {
         return value == null ? defaultValue : Boolean.parseBoolean(String.valueOf(value));
-    }
-
-    private int integerValue(Object value, int defaultValue) {
-        if (value == null) {
-            return defaultValue;
-        }
-        try {
-            return Integer.parseInt(String.valueOf(value));
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException(
-                    "nextApproverSelection.version 必须是整数");
-        }
     }
 
     private IllegalArgumentException invalid(UserTask task, String detail) {

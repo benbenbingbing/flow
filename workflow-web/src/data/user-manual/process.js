@@ -307,7 +307,7 @@ export default {
       id: 'process-assignee',
       index: '04',
       title: '办理人、候选人与多实例',
-      summary: '配置固定人员、组、角色、表达式、接口动态和会签/串行处理。',
+      summary: '统一配置固定人员、组、角色、其他节点审批人或受控人员接口，并按需启用会签/串行处理。',
       topics: [
         {
           id: 'process-assignee-methods',
@@ -320,6 +320,7 @@ export default {
                 { option: '固定人员 user', meaning: '选择一个执行人，也可多选候选人。执行人直接拥有任务，候选人可认领。', notes: '默认指定方式；保存使用 username。一个任务同时配置执行人和候选人时要明确认领规则。' },
                 { option: '用户组 group', meaning: '多选用户组，组内成员可处理任务。', notes: '保存 groupCode；成员变更会影响后续新任务。' },
                 { option: '角色 role', meaning: '多选角色，拥有角色的用户可处理任务。', notes: '在 candidateGroups 中使用 ROLE_ 前缀区分；角色编码保持稳定。' },
+                { option: '使用其他节点审批人 node_reference', meaning: '直接引用同一流程中另一个用户任务的审批人规则，不复制人员名单。', notes: '必须选择同一 BPMN Process 的其他 UserTask；保存 referencedNodeId 作为权威主键、referencedNodeName 用于回显，禁止自身或循环引用，引用链最多 16 层。被引用节点规则修改后同步生效。' },
                 { option: '表达式 expression', meaning: '执行人、候选人、候选组由流程变量或表达式决定。', notes: '示例 ${submitUser}、${initiator}、${deptManagers}；返回值必须符合 Flowable 用户/组格式。' },
                 { option: '接口动态 interface', meaning: '通过 Spring Bean 或 REST 接口解析办理人。', notes: '必须配置接口名称；Spring 可填方法名，REST 可选 GET/POST；请求参数支持流程变量；返回映射指定流程变量名。' }
               ]
@@ -354,6 +355,7 @@ export default {
                 { role: '执行人 assignee', runtime: '任务创建后直接归属一个用户，进入其待办。', recommendation: '责任人明确且无需认领时使用。' },
                 { role: '候选人 candidateUsers', runtime: '多个用户都可见任务；在工作台点击“认领”后写入当前办理人，才能审批、转办或加签。', recommendation: '小范围共享待办时使用；并发认领只有第一个用户成功，其他用户收到冲突提示。' },
                 { role: '候选组 candidateGroups', runtime: '组或角色成员可见任务；认领后任务从共享池转为个人待办。', recommendation: '按组织角色分配时使用；避免组过大导致所有人看到大量待办。' },
+                { role: '其他节点审批人', runtime: '按被引用 UserTask 的审批人规则解析当前任务办理人，不复制静态名单。', recommendation: '多个节点需要完全相同的人员规则时使用；避免引用链过长，并禁止循环引用。' },
                 { role: '接口动态', runtime: '运行时根据业务数据解析一个或多个处理人。', recommendation: '组织规则复杂或需要外部主数据时使用，并准备空结果兜底。' }
               ]
             },
@@ -381,6 +383,7 @@ export default {
               rows: [
                 { field: '审批时展示', meaning: '允许前序审批面板展示本节点及系统解析的默认审批人。', defaultLimit: '默认关闭。', effect: '只影响真正命中的下一人工节点。', publish: '只读展示时若无法解析到有效办理人，审批会被阻断。' },
                 { field: '允许修改', meaning: '允许前序办理人在受控范围内改选本节点审批人。', defaultLimit: '仅在“审批时展示”开启后可用。', effect: '直接办理为单选；候选池和多实例为多选，多实例保留选择顺序。', publish: '可编辑节点没有默认人员时，前序办理人必须至少选择一人。' },
+                { field: '使用本节点审批人', meaning: '直接引用本节点“执行人与多人办理”中已经设置的固定人员、用户组、角色或人员接口，不复制人员名单。', defaultLimit: '新配置默认使用；无需再次维护人员范围。', effect: '默认审批人与可选人员来自同一份节点规则，多实例按同一集合生成任务。', publish: '修改本节点审批人规则后同步生效，同时影响本节点默认分配和前序改选范围。' },
                 { field: '人员范围', meaning: '按指定用户、组织部门（可含下级）、角色、用户组或全部启用用户取并集。', defaultLimit: '必须至少配置一条规则；全员范围必须显式选择。', effect: '候选查询只返回启用且未删除的本地用户。', publish: '提交时服务端会重新校验范围，前端结果不能扩大权限。' },
                 { field: '人员接口', meaning: '从扩展管理中选择已注册的 PERSON_RESOLVER。', defaultLimit: '必须启用并支持 CANDIDATE 用途；extraParams 必须是 JSON 对象。', effect: '平台传入流程、节点、实体和操作人上下文后解析候选用户。', publish: '不支持在节点中填写任意 HTTP 地址；接口异常会阻止改选或只读展示。' },
                 { field: '条件变化', meaning: '审批操作、备注或表单值变化后重新计算下一节点和人员范围。', defaultLimit: '自动防抖刷新。', effect: '旧请求不会覆盖最新结果；切换分支会清理旧节点选择。', publish: '若提交时范围已变化，界面保留当前表单并要求重新确认。' }
@@ -402,18 +405,16 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '多人办理分组',
-              text: '启用后按“办理方式、参与人员、完成规则、技术参数”组织。执行方式与人员来源先配置；用户、用户组、角色或接口进入参与人员；提前结束条件单独折叠；集合变量和元素变量位于技术参数，集合变量只读。'
+              text: '先在上方统一设置审批人，再启用多人办理。启用后只需设置并行/串行、完成规则和技术参数，不会再出现第二套会签人员配置。引用其他节点时按被引用节点规则展开参与人；集合变量由平台按节点生成并只读展示。'
             },
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '启用多实例', meaning: '为人员集合中的每个成员创建任务实例。', defaultLimit: '默认关闭。', effect: '开启后普通执行人/候选人配置不再作为 BPMN 直接办理人。', publish: '人员集合为空会导致运行异常或直接跳过，必须测试。' },
+                { field: '启用多实例', meaning: '为上方审批人配置解析出的每个成员创建任务实例。', defaultLimit: '默认关闭。', effect: '开启后复用同一审批人来源生成多人任务，不再单独维护会签人员。', publish: '人员集合为空会阻止保存或运行，必须测试。' },
                 { field: '执行方式', meaning: 'parallel 并行或 sequential 串行。', defaultLimit: '默认 parallel。', effect: '并行同时生成任务；串行按集合顺序逐个生成。UI 将串行标注为“或签”，但是否任一人通过取决于完成条件。', publish: '不要把“串行”误当成自动一票通过。' },
-                { field: '集合来源', meaning: 'variable 流程变量或 interface 接口动态。', defaultLimit: '默认 variable。', effect: '决定人员集合如何生成。', publish: '接口方式必须返回可解析用户列表。' },
-                { field: '会签人员 / 用户组 / 角色', meaning: '流程变量来源时直接选择用户、组、角色。', defaultLimit: '可多选。', effect: '平台汇总用户名、组成员和角色成员，写入系统集合变量。', publish: '去重、停用用户和组织变化需验证。' },
+                { field: '审批人指定方式', meaning: '复用上方固定人员、用户组、角色、其他节点审批人或人员接口。固定人员在多人办理时显示为一个有序多选列表。', defaultLimit: '至少选择一人、一个组/角色、一个可引用节点，或支持 MULTI_INSTANCE 用途的人员接口。', effect: '平台展开成员、去重并写入当前节点集合变量；节点引用按被引用规则展开，固定人员的选择顺序会保留。', publish: '多人办理不支持表达式来源；节点引用不得形成环；切换办理模式后需重新选择匹配用途的人员接口。' },
                 { field: '集合变量', meaning: '多实例集合表达式。', defaultLimit: '系统按节点生成唯一的 ${_wfMultiInstanceUsers_<节点ID>}，界面只读。', effect: '发布时作为 loop collection，前序改选会覆盖对应目标节点的集合。', publish: '不同多实例节点不得共用集合变量；不要在 XML 外部覆盖为错误类型。' },
-                { field: '接口配置', meaning: '接口来源时填写人员集合解析器。', defaultLimit: '从扩展管理选择支持 MULTI_INSTANCE 用途的 PERSON_RESOLVER。', effect: '运行时返回本地用户标识，平台统一过滤并转换为启用用户名列表。', publish: '目标环境必须注册并具备超时/异常处理。' },
                 { field: '元素变量', meaning: '当前实例成员变量名。', defaultLimit: '默认 assignee。', effect: '每个子任务 assignee 写为 ${元素变量}。', publish: '与流程中其他变量避免重名。' },
                 { field: '完成条件', meaning: '满足后提前结束多实例。', defaultLimit: '默认空，表示全部实例完成；示例 ${nrOfCompletedInstances >= nrOfInstances * 0.5}。', effect: '可实现半数、任一、全票等策略。', publish: '使用 Flowable 多实例变量；提前结束会终止剩余实例，业务需确认。' }
               ]
@@ -422,7 +423,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '多实例保存语义',
-              text: '启用后平台清空 candidateUsers/candidateGroups，并把 BPMN assignee 设置为元素变量表达式；原人员配置和多实例人员明细保存在扩展属性中用于回显和运行准备。关闭多实例时会尝试恢复原候选配置。'
+              text: '新保存节点使用 assignmentConfigVersion: 2：审批人与多实例共用 assigneeConfig，不再写入 multiInstance* 或 collection* 重复人员字段。BPMN assignee 仍设置为元素变量表达式。历史混合会签配置在人员未被修改时原样保留；重新选择后才升级为统一配置。'
             }
           ]
         }

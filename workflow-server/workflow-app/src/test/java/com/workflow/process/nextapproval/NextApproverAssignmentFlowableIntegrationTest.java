@@ -125,14 +125,39 @@ class NextApproverAssignmentFlowableIntegrationTest {
         }
     }
 
+    @Test
+    void nodeReferenceUsesDeployedSourceRuleWhenTargetTaskIsCreated() {
+        try (Harness harness = harness(
+                "node_reference",
+                referencedSourceTask(),
+                nodeReferenceTarget())) {
+            harness.engine.getTaskService().complete(harness.source.getId());
+
+            Task target = harness.activeTarget();
+            assertNotNull(target);
+            assertEquals("alice", target.getAssignee());
+            assertTrue(harness.candidateUsers(target).isEmpty());
+        }
+    }
+
     private Harness harness(String suffix, String targetTask) {
+        return harness(
+                suffix,
+                "<bpmn:userTask id=\"source-review\" name=\"源审批\" />",
+                targetTask);
+    }
+
+    private Harness harness(
+            String suffix,
+            String sourceTask,
+            String targetTask) {
         ProcessEngine engine = buildEngine();
         String processKey = "next_approver_assignment_" + suffix;
         engine.getRepositoryService()
                 .createDeployment()
                 .addString(
                         processKey + ".bpmn20.xml",
-                        bpmn(processKey, targetTask))
+                        bpmn(processKey, sourceTask, targetTask))
                 .deploy();
         ProcessInstance instance = engine.getRuntimeService()
                 .startProcessInstanceByKey(processKey);
@@ -183,13 +208,17 @@ class NextApproverAssignmentFlowableIntegrationTest {
                         operationLogMapper,
                         mock(SysUserService.class),
                         objectMapper);
+        PersonResolverRuntimeService resolverRuntimeService =
+                mock(PersonResolverRuntimeService.class);
+        when(resolverRuntimeService.resolvePrincipalUsernames(any()))
+                .thenReturn(List.of("alice"));
         PersonResolverTaskAssignmentListener assignmentListener =
                 new PersonResolverTaskAssignmentListener(
                         mock(ProcessVersionHistoryMapper.class),
                         engine.getRepositoryService(),
                         engine.getRuntimeService(),
                         engine.getTaskService(),
-                        mock(PersonResolverRuntimeService.class),
+                        resolverRuntimeService,
                         objectMapper);
         ReflectionTestUtils.setField(
                 assignmentListener,
@@ -219,7 +248,10 @@ class NextApproverAssignmentFlowableIntegrationTest {
         return configuration.buildProcessEngine();
     }
 
-    private String bpmn(String processKey, String targetTask) {
+    private String bpmn(
+            String processKey,
+            String sourceTask,
+            String targetTask) {
         return """
                 <bpmn:definitions
                   xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -227,7 +259,7 @@ class NextApproverAssignmentFlowableIntegrationTest {
                   targetNamespace="http://workflow.test/process">
                   <bpmn:process id="%s" isExecutable="true">
                     <bpmn:startEvent id="start" />
-                    <bpmn:userTask id="source-review" name="源审批" />
+                    %s
                     %s
                     <bpmn:endEvent id="end" />
                     <bpmn:sequenceFlow id="to-source" sourceRef="start" targetRef="source-review" />
@@ -235,7 +267,35 @@ class NextApproverAssignmentFlowableIntegrationTest {
                     <bpmn:sequenceFlow id="to-end" sourceRef="target-review" targetRef="end" />
                   </bpmn:process>
                 </bpmn:definitions>
-                """.formatted(processKey, targetTask);
+                """.formatted(processKey, sourceTask, targetTask);
+    }
+
+    private String referencedSourceTask() {
+        return """
+                <bpmn:userTask id="source-review" name="源审批"
+                  flowable:assignee="alice">
+                  <bpmn:extensionElements>
+                    <flowable:properties>
+                      <flowable:property name="assigneeConfig" value="%s" />
+                    </flowable:properties>
+                  </bpmn:extensionElements>
+                </bpmn:userTask>
+                """.formatted(escape("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"user","assigneeValue":"alice"}
+                """.replaceAll("\\s+", "")));
+    }
+
+    private String nodeReferenceTarget() {
+        return userTask(
+                "",
+                "",
+                """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"node_reference",
+                 "referencedNodeId":"source-review",
+                 "referencedNodeName":"源审批"}
+                """);
     }
 
     private String directTarget() {

@@ -3,7 +3,9 @@ package com.workflow.process.task.application.nextapproval;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;
+import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
+import org.flowable.bpmn.model.Process;
 import org.flowable.bpmn.model.UserTask;
 import org.junit.jupiter.api.Test;
 
@@ -100,6 +102,194 @@ class NextApproverSelectionPolicyReaderTest {
     }
 
     @Test
+    void readsVersionTwoNodeAssignmentSourceAndBindsBaseAssignmentToScopeKey() {
+        UserTask task = userTask("manager-review", """
+                {
+                  "assignmentConfigVersion": 2,
+                  "assigneeType": "user",
+                  "assigneeValue": "alice",
+                  "candidateUsers": "bob",
+                  "nextApproverSelection": {
+                    "version": 1,
+                    "visible": true,
+                    "editable": true,
+                    "source": {"type": "NODE_ASSIGNMENT"}
+                  }
+                }
+                """);
+        task.setAssignee("alice");
+        task.setCandidateUsers(List.of("bob"));
+
+        NextApproverSelectionPolicy policy = reader.read(
+                "definition-v2", task).selectionPolicy();
+
+        assertEquals(
+                NextApproverSelectionPolicy.SourceType.NODE_ASSIGNMENT,
+                policy.sourceType());
+        assertEquals("DIRECT", policy.assignmentMode());
+        assertTrue(policy.scopes().isEmpty());
+        assertNull(policy.resolverCode());
+        assertTrue(policy.scopeKey().matches("[0-9a-f]{64}"));
+
+        UserTask changedBaseAssignment = userTask("manager-review", """
+                {
+                  "assignmentConfigVersion": 2,
+                  "assigneeType": "user",
+                  "assigneeValue": "carol",
+                  "candidateUsers": "bob",
+                  "nextApproverSelection": {
+                    "version": 1,
+                    "visible": true,
+                    "editable": true,
+                    "source": {"type": "NODE_ASSIGNMENT"}
+                  }
+                }
+                """);
+        changedBaseAssignment.setAssignee("carol");
+        changedBaseAssignment.setCandidateUsers(List.of("bob"));
+
+        assertNotEquals(
+                policy.scopeKey(),
+                reader.read("definition-v2", changedBaseAssignment)
+                        .selectionPolicy().scopeKey(),
+                "NODE_ASSIGNMENT 的 scopeKey 必须包含基础审批人配置，不能只签名展示开关");
+    }
+
+    @Test
+    void resolvesNodeReferenceAndBindsTheReferenceChainToScopeKey() {
+        UserTask current = userTask("current-review", """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"node_reference",
+                 "referencedNodeId":"candidate-source",
+                 "referencedNodeName":"候选审批",
+                 "nextApproverSelection":{"version":1,
+                   "visible":true,"editable":true,
+                   "source":{"type":"NODE_ASSIGNMENT"}}}
+                """);
+        UserTask candidateSource = userTask("candidate-source", """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"group",
+                 "assigneeValue":"finance"}
+                """);
+        candidateSource.setCandidateGroups(List.of("finance"));
+        BpmnModel model = model(current, candidateSource);
+
+        NextApprovalTarget target = reader.read(
+                "definition-ref", current, model);
+
+        assertEquals(candidateSource, target.assignmentSourceTask());
+        assertEquals("CANDIDATE",
+                target.selectionPolicy().assignmentMode());
+        assertEquals("group", target.assigneeConfig().get("assigneeType"));
+
+        UserTask alternate = userTask("alternate-source", """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"group",
+                 "assigneeValue":"finance"}
+                """);
+        alternate.setCandidateGroups(List.of("finance"));
+        UserTask changedReference = userTask("current-review", """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"node_reference",
+                 "referencedNodeId":"alternate-source",
+                 "nextApproverSelection":{"version":1,
+                   "visible":true,"editable":true,
+                   "source":{"type":"NODE_ASSIGNMENT"}}}
+                """);
+        assertNotEquals(
+                target.selectionPolicy().scopeKey(),
+                reader.read(
+                        "definition-ref",
+                        changedReference,
+                        model(changedReference, alternate))
+                        .selectionPolicy().scopeKey(),
+                "即使终端规则相同，引用链变化也必须使 scopeKey 失效");
+    }
+
+    @Test
+    void currentMultiInstanceDeterminesModeInsteadOfReferencedNodeLoop() {
+        UserTask current = userTask("joint-review", """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"node_reference",
+                 "referencedNodeId":"resolver-source",
+                 "nextApproverSelection":{"version":1,
+                   "visible":true,"editable":true,
+                   "source":{"type":"NODE_ASSIGNMENT"}}}
+                """);
+        current.setLoopCharacteristics(
+                new MultiInstanceLoopCharacteristics());
+        UserTask source = userTask("resolver-source", """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"interface",
+                 "resolverCode":"managerResolver"}
+                """);
+
+        NextApprovalTarget target = reader.read(
+                "definition-ref-mi", current, model(current, source));
+
+        assertEquals("MULTI_INSTANCE",
+                target.selectionPolicy().assignmentMode());
+        assertEquals(source, target.assignmentSourceTask());
+    }
+
+    @Test
+    void legacyIdAndMixedConfigsAreUnionedAndBoundToScopeKey() {
+        UserTask task = userTask(
+                "legacy-joint-review",
+                """
+                {"multiInstanceUserIds":"alice",
+                 "multiInstanceUsers":"carol,ROLE_AUDITOR",
+                 "nextApproverSelection":{"version":1,
+                 "visible":true,"editable":true,
+                 "source":{"type":"NODE_ASSIGNMENT"}}}
+                """,
+                """
+                {"multiInstanceUsernames":"bob",
+                 "multiInstanceGroupIds":"finance-id",
+                 "multiInstanceRoleIds":"manager-id",
+                 "multiInstanceUsers":"dave,ROLE_REVIEWER"}
+                """);
+        task.setLoopCharacteristics(
+                new MultiInstanceLoopCharacteristics());
+
+        NextApprovalTarget target = reader.read(
+                "definition-legacy", task);
+
+        assertEquals(
+                List.of("alice", "bob", "carol", "dave"),
+                target.assigneeConfig().get("multiInstanceUsernames"));
+        assertEquals(
+                List.of("finance-id"),
+                target.assigneeConfig().get("multiInstanceGroupCodes"));
+        assertEquals(
+                List.of("manager-id", "AUDITOR", "REVIEWER"),
+                target.assigneeConfig().get("multiInstanceRoleCodes"));
+
+        UserTask changed = userTask(
+                "legacy-joint-review",
+                """
+                {"multiInstanceUserIds":"alice",
+                 "multiInstanceUsers":"carol,ROLE_AUDITOR",
+                 "nextApproverSelection":{"version":1,
+                 "visible":true,"editable":true,
+                 "source":{"type":"NODE_ASSIGNMENT"}}}
+                """,
+                """
+                {"multiInstanceUsernames":"zoe",
+                 "multiInstanceGroupIds":"finance-id",
+                 "multiInstanceRoleIds":"manager-id",
+                 "multiInstanceUsers":"dave,ROLE_REVIEWER"}
+                """);
+        changed.setLoopCharacteristics(
+                new MultiInstanceLoopCharacteristics());
+        assertNotEquals(
+                target.selectionPolicy().scopeKey(),
+                reader.read("definition-legacy", changed)
+                        .selectionPolicy().scopeKey(),
+                "multiInstanceConfig 中仅 ID/mixed 旧字段变化也必须使 scopeKey 失效");
+    }
+
+    @Test
     void derivesCandidateAndMultiInstanceAssignmentModesFromBpmn() {
         UserTask candidateTask = userTask("candidate-review", scopeConfig());
         candidateTask.setCandidateGroups(List.of("ROLE_MANAGER"));
@@ -186,6 +376,41 @@ class NextApproverSelectionPolicyReaderTest {
                 NextApproverSelectionPolicy.ScopeType.USER,
                 policy.scopes().get(0).type());
         assertEquals(List.of("alice"), policy.scopes().get(0).values());
+    }
+
+    @Test
+    void usesTheSameLegacyAliasesAsPublishValidation() {
+        UserTask scopeRulesTask = userTask("scope-rules", """
+                {"nextApproverSelection":{
+                  "display":true,"allowEdit":true,
+                  "sourceType":"SCOPE",
+                  "scopeRules":[
+                    {"type":"USER","values":["alice"]}]
+                }}
+                """);
+        UserTask sourceScopesTask = userTask("source-scopes", """
+                {"nextApproverSelection":{
+                  "show":true,"allowModify":true,
+                  "source":{"type":"SCOPE","scopes":[
+                    {"type":"ROLE","values":["manager"]}]}
+                }}
+                """);
+
+        NextApproverSelectionPolicy flat = reader.read(
+                "definition-legacy", scopeRulesTask).selectionPolicy();
+        NextApproverSelectionPolicy nested = reader.read(
+                "definition-legacy", sourceScopesTask).selectionPolicy();
+
+        assertTrue(flat.visible());
+        assertTrue(flat.editable());
+        assertEquals(
+                NextApproverSelectionPolicy.ScopeType.USER,
+                flat.scopes().get(0).type());
+        assertTrue(nested.visible());
+        assertTrue(nested.editable());
+        assertEquals(
+                NextApproverSelectionPolicy.ScopeType.ROLE,
+                nested.scopes().get(0).type());
     }
 
     @Test
@@ -315,6 +540,28 @@ class NextApproverSelectionPolicyReaderTest {
         properties.addChildElement(property(
                 "assigneeConfig", assigneeConfig));
         task.addExtensionElement(properties);
+        return task;
+    }
+
+    private BpmnModel model(UserTask... tasks) {
+        Process process = new Process();
+        process.setId("process");
+        for (UserTask task : tasks) {
+            process.addFlowElement(task);
+        }
+        BpmnModel model = new BpmnModel();
+        model.addProcess(process);
+        return model;
+    }
+
+    private UserTask userTask(
+            String id,
+            String assigneeConfig,
+            String multiInstanceConfig) {
+        UserTask task = userTask(id, assigneeConfig);
+        task.getExtensionElements().get("properties").get(0)
+                .addChildElement(property(
+                        "multiInstanceConfig", multiInstanceConfig));
         return task;
     }
 

@@ -1583,9 +1583,34 @@ assert.equal(
   '节点 BPMN 配置应共用一个“应用到画布”按钮'
 )
 assert.ok(nodeConfigPanel.includes('applyNodeConfiguration'), '节点配置缺少统一应用入口')
-;['title="办理方式"', 'title="参与人员"', 'title="完成规则"', 'title="技术参数"'].forEach((marker) => {
-  assert.ok(nodeConfigPanel.includes(marker), `多人办理配置缺少任务分组: ${marker}`)
+assert.ok(nodeConfigPanel.includes('title="多人办理（会签/或签）"'), '多人办理配置缺少外层分组')
+;['title="办理方式"', 'title="完成规则"', 'title="技术参数"'].forEach((marker) => {
+  assert.equal(nodeConfigPanel.includes(marker), false, `多人办理配置不应继续嵌套任务分组: ${marker}`)
 })
+;[
+  'help-key="process.multiInstanceType"',
+  'help-key="process.multiInstanceCompletionCondition"',
+  'help-key="process.multiInstanceCollection"',
+  'help-key="process.multiInstanceElementVariable"'
+].forEach((marker) => {
+  assert.ok(nodeConfigPanel.includes(marker), `多人办理设置说明应收进问号帮助: ${marker}`)
+})
+for (const duplicateAssignmentMarker of [
+  'title="参与人员"',
+  'v-model="assigneeForm.collectionSource"',
+  'v-model="assigneeForm.multiInstanceUserIds"',
+  'v-model="assigneeForm.collectionResolverCode"'
+]) {
+  assert.equal(
+    nodeConfigPanel.includes(duplicateAssignmentMarker),
+    false,
+    `多人办理不应继续维护独立人员配置: ${duplicateAssignmentMarker}`
+  )
+}
+assert.ok(
+  nodeConfigPanel.includes('多人办理直接复用本区审批人配置'),
+  '多人办理应明确复用统一审批人配置'
+)
 ;['ENTITY_NOT_BOUND_MESSAGE', 'isEntityNotBoundError', 'entityFormsLoadingPromise', 'silentError: true'].forEach((marker) => {
   assert.ok(nodeConfigPanel.includes(marker), `流程未绑定实体时缺少预期状态去重或静默处理: ${marker}`)
 })

@@ -240,7 +240,7 @@ public class NextApprovalRouteService {
         try {
             traversal.userTasks.values().forEach(userTask ->
                     targets.add(policyReader.read(
-                            processDefinitionId, userTask)));
+                            processDefinitionId, userTask, model)));
         } catch (IllegalArgumentException exception) {
             return result(
                     task,
@@ -279,7 +279,7 @@ public class NextApprovalRouteService {
                 target.selectionPolicy().assignmentMode())) {
             return false;
         }
-        UserTask userTask = target.userTask();
+        UserTask userTask = target.assignmentSourceTask();
         if (dynamicExpression(userTask.getAssignee())) {
             return true;
         }
@@ -422,7 +422,8 @@ public class NextApprovalRouteService {
             return false;
         }
         if (element instanceof UserTask userTask) {
-            return policyReader.read(processDefinitionId, userTask)
+            return policyReader.read(
+                    processDefinitionId, userTask, model)
                     .selectionPolicy().visible();
         }
         if (!(element instanceof FlowNode flowNode)

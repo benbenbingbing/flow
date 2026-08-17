@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -103,9 +104,25 @@ public class PersonResolverRuntimeService {
                             + resolverCode);
         }
 
+        return resolvePrincipalUsernames(
+                resolver.resolve(request).principals());
+    }
+
+    /**
+     * 将用户、角色、用户组或组织主体统一展开为启用且未删除的本地用户名。
+     * Flowable 任务监听器也使用该入口校验实际 identity link，避免静态配置
+     * 绕过受控解析器已有的本地用户安全边界。
+     */
+    public List<String> resolvePrincipalUsernames(
+            Collection<PersonPrincipal> principals) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
-        for (PersonPrincipal principal :
-                resolver.resolve(request).principals()) {
+        if (principals == null) {
+            return List.of();
+        }
+        for (PersonPrincipal principal : principals) {
+            if (principal == null) {
+                continue;
+            }
             List<SysUser> resolved = switch (principal.type()) {
                 case USER -> resolveDirectUsers(List.of(principal.key()));
                 case ROLE -> resolveRoles(List.of(principal.key()));

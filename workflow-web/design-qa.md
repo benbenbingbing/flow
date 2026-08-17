@@ -93,6 +93,75 @@ final result: blocked
 
 final result: passed
 
+---
+
+# 流程节点配置宽度、多人办理扁平化与审批人节点复用验收
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-03618640-6729-4476-b593-796527d35b31.png`
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-6ef84767-4ebb-4020-b8fc-5e6021b8c0e0.png`
+- Browser-rendered implementation screenshots:
+  - `/private/tmp/node-reference-panel-selected.png`
+  - `/private/tmp/node-reference-panel-multi-instance.png`
+- Same-input comparison: `/private/tmp/node-config-design-comparison.png`
+- Source pixels: `2652 x 1840`（侧栏参考）、`866 x 1364`（多人实例参考）。
+- Implementation pixels: `1892 x 1339` for both desktop states.
+- CSS viewport: `1892 x 1339`; measured panel width `630.65625px`, ratio `0.3333` of the viewport.
+- Density normalization: the comparison page preserves each source image's aspect ratio and places it beside the implementation; the focused多人实例 implementation uses a right-aligned panel crop. No density-only differences were filed.
+- State: authenticated process designer, `经理审批` selected; first state uses `使用其他节点审批人 → 组长审批`, second state additionally enables多人办理.
+- Local preview: `http://localhost:3001/process/design/node-reference-demo`.
+
+## Findings
+
+- No actionable P0/P1/P2 visual or interaction differences remain.
+- Fonts and typography: the implementation keeps the existing Element Plus/system font stack, weight hierarchy, line heights, and compact form density. The wider panel prevents the reference-node label and selected node from wrapping or truncating prematurely.
+- Spacing and layout rhythm: the desktop panel occupies exactly one third of the viewport and retains the fixed header/footer plus independently scrollable body. 多人办理 keeps one outer section only; execution mode, completion condition, collection variable, and element variable are direct form rows rather than nested cards.
+- Colors and visual tokens: borders, neutral surfaces, active blue, enabled green, disabled gray, focus ring, and status tags reuse the existing product tokens.
+- Image quality and asset fidelity: these configuration screens contain no product image assets. Existing bpmn-js and Element Plus icons remain sharp and no placeholder, CSS-art, emoji, or custom SVG substitute was introduced.
+- Copy and content: `使用其他节点审批人` clearly expresses reuse; the selected value shows both `组长审批` and its stable node ID. The four多人办理 explanations are exposed through accessible question-mark controls instead of persistent text below each setting.
+- Icons and accessibility: the four help controls have accessible names `查看执行方式配置说明`、`查看完成条件配置说明`、`查看集合变量配置说明`、`查看元素变量配置说明`. The reference-node selector has an explicit required label and searchable combobox.
+- Viewport resilience: the desktop target is browser-verified. The `<=900px` full-width rule is protected by `node-config-layout.spec.js`; the in-app browser retained its desktop viewport when a temporary narrow override was requested, so no separate narrow screenshot is claimed.
+
+## Primary Interactions Tested
+
+- Opened `经理审批` from the BPMN canvas and verified the node panel width.
+- Opened `指定方式`, selected `使用其他节点审批人`, and confirmed the current node is excluded while `组长审批` is available.
+- Selected `组长审批 (UserTask_TeamLead)` and applied the configuration to the in-memory canvas.
+- Opened `查看 XML` and confirmed canonical serialization: `assigneeType=node_reference`, `referencedNodeId=UserTask_TeamLead`, and `referencedNodeName=组长审批`.
+- Expanded and enabled多人办理, then confirmed the four direct rows and their help buttons with no nested `办理方式`、`完成规则`、`技术参数` cards.
+- Checked browser warnings/errors after the full interaction sequence: application console errors `0`.
+
+## Full-view and Focused Comparison
+
+- Full-view evidence confirms the panel grows from the earlier narrow drawer to one third of the desktop viewport without covering the persistent footer or breaking the BPMN canvas.
+- Focused多人实例 evidence confirms the three nested subgroups are removed and the four settings retain clear labels, controls, and question-mark help affordances.
+- The red rectangles in the source screenshots are request annotations and are intentionally absent from the implementation.
+
+## Comparison History
+
+- Pass 1: the combined source/implementation comparison found no actionable P0/P1/P2 issue. The requested width, hierarchy flattening, tooltip affordances, and node-reference control were all visible and functional, so no visual correction iteration was required.
+
+## Open Questions
+
+- None.
+
+## Implementation Checklist
+
+- [x] Use a one-third desktop node configuration panel with a full-width narrow-screen fallback.
+- [x] Flatten多人办理 settings into one section.
+- [x] Move the four setting explanations into question-mark help controls.
+- [x] Add same-process UserTask selection for reusing another node's approver rules.
+- [x] Exclude the current task and preserve stable node-ID serialization.
+- [x] Verify the interaction in the in-app browser and inspect the generated BPMN XML.
+
+## Follow-up Polish
+
+- None required for this scoped change.
+
+final result: passed
+
 # 表单字段长度与字数显示配置归位验收
 
 ## Evidence

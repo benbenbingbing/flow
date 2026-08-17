@@ -15,7 +15,10 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.core.result.PageResult;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.request.NextApproverOptionsRequest;
 import com.workflow.process.task.api.response.NextApproverCandidateDTO;
@@ -23,6 +26,9 @@ import lombok.RequiredArgsConstructor;
 import org.flowable.bpmn.model.UserTask;
 import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.task.api.Task;
+import org.flowable.engine.RepositoryService;
+import org.flowable.engine.repository.ProcessDefinition;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -51,6 +57,13 @@ public class NextApproverCandidateService {
     private final SysGroupMapper groupMapper;
     private final SysUserGroupMapper userGroupMapper;
     private final SysOrganizationMapper organizationMapper;
+
+    /** 仅按任务绑定的部署定义解析稳定流程配置身份。 */
+    @Autowired(required = false)
+    private RepositoryService repositoryService;
+
+    @Autowired(required = false)
+    private ProcessVersionHistoryMapper processVersionMapper;
 
     public PageResult<NextApproverCandidateDTO> options(
             String taskId,
@@ -112,153 +125,9 @@ public class NextApproverCandidateService {
     public List<NextApproverCandidateDTO> defaultAssignees(
             NextApprovalResolution resolution,
             NextApprovalTarget target) {
-        if ("MULTI_INSTANCE".equals(
-                target.selectionPolicy().assignmentMode())) {
-            String collectionVariable = multiInstanceCollectionVariable(
-                    target.userTask());
-            if (StringUtils.hasText(collectionVariable)
-                    && resolution.variables().containsKey(
-                    collectionVariable)) {
-                Object value = resolution.variables().get(
-                        collectionVariable);
-                if (!(value instanceof Collection<?> collection)) {
-                    throw new IllegalArgumentException(
-                            "多实例集合变量不是人员列表: "
-                                    + collectionVariable);
-                }
-                LinkedHashSet<String> keys = new LinkedHashSet<>();
-                collection.stream()
-                        .filter(java.util.Objects::nonNull)
-                        .map(String::valueOf)
-                        .filter(StringUtils::hasText)
-                        .map(String::trim)
-                        .forEach(keys::add);
-                return resolveUsers(keys).stream()
-                        .map(this::toDto)
-                        .toList();
-            }
-        }
-        Map<String, Object> config = target.assigneeConfig();
-        UserTask userTask = target.userTask();
-        String type = text(config.get("assigneeType"));
-        String configuredAssignee = text(config.get("assigneeValue"));
-        if ("DIRECT".equals(target.selectionPolicy().assignmentMode())) {
-            List<SysUser> primary = null;
-            if (StringUtils.hasText(userTask.getAssignee())) {
-                if (!literal(userTask.getAssignee())) {
-                    throw new IllegalArgumentException(
-                            "直接办理人使用动态表达式，无法提前解析: "
-                                    + userTask.getId());
-                }
-                primary = resolveUsers(List.of(userTask.getAssignee()));
-            } else if ("user".equalsIgnoreCase(type)
-                    && StringUtils.hasText(configuredAssignee)) {
-                LinkedHashSet<String> configuredAssignees =
-                        new LinkedHashSet<>();
-                addCsv(configuredAssignees,
-                        config.get("assigneeValue"));
-                primary = resolveUsers(configuredAssignees);
-            } else if ("interface".equalsIgnoreCase(type)
-                    || "resolver".equalsIgnoreCase(type)) {
-                String resolverCode = firstText(
-                        config.get("resolverCode"),
-                        config.get("interfaceName"));
-                resolverRuntimeService.requireConfigured(
-                        resolverCode, PersonResolveUsage.ASSIGNEE);
-                primary = resolveUsers(
-                        resolverRuntimeService.resolveUsernames(
-                                resolverCode,
-                                resolverRequest(
-                                        resolution,
-                                        target,
-                                        PersonResolveUsage.ASSIGNEE,
-                                        mapValue(config.get("extraParams")))));
-            }
-            if (primary != null) {
-                return primary.stream()
-                        .limit(1)
-                        .map(this::toDto)
-                        .toList();
-            }
-        }
-        LinkedHashSet<String> userKeys = new LinkedHashSet<>();
-        addCsv(userKeys, config.get("multiInstanceUsernames"));
-        addCsv(userKeys, config.get("candidateUsers"));
-        if ("user".equalsIgnoreCase(type)) {
-            addCsv(userKeys, config.get("assigneeValue"));
-        }
-
-        List<SysUser> result = new ArrayList<>(resolveUsers(userKeys));
-        LinkedHashSet<String> groupKeys = new LinkedHashSet<>();
-        LinkedHashSet<String> roleKeys = new LinkedHashSet<>();
-        addCsv(groupKeys, config.get("multiInstanceGroupCodes"));
-        addCsv(roleKeys, config.get("multiInstanceRoleCodes"));
-        if ("group".equalsIgnoreCase(type)) {
-            addCsv(groupKeys, config.get("assigneeValue"));
-        } else if ("role".equalsIgnoreCase(type)) {
-            addCsv(roleKeys, config.get("assigneeValue"));
-        }
-
-        if (userTask.getCandidateUsers() != null) {
-            userTask.getCandidateUsers().stream()
-                    .filter(this::literal)
-                    .forEach(userKeys::add);
-        }
-        if (literal(userTask.getAssignee())) {
-            userKeys.add(userTask.getAssignee());
-        }
-        if (userTask.getCandidateGroups() != null) {
-            for (String value : userTask.getCandidateGroups()) {
-                if (!literal(value)) {
-                    continue;
-                }
-                if (value.startsWith("ROLE_")) {
-                    roleKeys.add(value.substring(5));
-                } else {
-                    groupKeys.add(value);
-                }
-            }
-        }
-        result.addAll(resolveUsers(userKeys));
-        result.addAll(resolveRoles(roleKeys));
-        result.addAll(resolveGroups(groupKeys));
-
-        String collectionSource = text(config.get("collectionSource"));
-        boolean collectionResolver = "MULTI_INSTANCE".equals(
-                target.selectionPolicy().assignmentMode())
-                && ("interface".equalsIgnoreCase(collectionSource)
-                || "resolver".equalsIgnoreCase(collectionSource));
-        if (collectionResolver) {
-            String resolverCode = firstText(
-                    config.get("collectionResolverCode"),
-                    config.get("collectionInterface"));
-            resolverRuntimeService.requireConfigured(
-                    resolverCode, PersonResolveUsage.MULTI_INSTANCE);
-            List<String> usernames = resolverRuntimeService.resolveUsernames(
-                    resolverCode,
-                    resolverRequest(
-                            resolution,
-                            target,
-                            PersonResolveUsage.MULTI_INSTANCE,
-                            mapValue(config.get("collectionExtraParams"))));
-            result.addAll(resolveUsers(usernames));
-        } else if ("interface".equalsIgnoreCase(type)
-                || "resolver".equalsIgnoreCase(type)) {
-            String resolverCode = firstText(
-                    config.get("resolverCode"),
-                    config.get("interfaceName"));
-            resolverRuntimeService.requireConfigured(
-                    resolverCode, PersonResolveUsage.ASSIGNEE);
-            List<String> usernames = resolverRuntimeService.resolveUsernames(
-                    resolverCode,
-                    resolverRequest(
-                            resolution,
-                            target,
-                            PersonResolveUsage.ASSIGNEE,
-                            mapValue(config.get("extraParams"))));
-            result.addAll(resolveUsers(usernames));
-        }
-        List<NextApproverCandidateDTO> defaults = dedupeEnabled(result).stream()
+        List<NextApproverCandidateDTO> defaults =
+                resolveNodeAssignmentUsers(
+                        resolution, target, true).stream()
                 .map(this::toDto)
                 .toList();
         if ("DIRECT".equals(
@@ -267,6 +136,242 @@ public class NextApproverCandidateService {
             return List.of(defaults.get(0));
         }
         return defaults;
+    }
+
+    /**
+     * 展开目标节点自身的完整办理人集合。
+     *
+     * <p>DIRECT 的“只取第一人”由调用方在默认值投影时处理；本方法始终返回
+     * 完整集合，NODE_ASSIGNMENT 的候选范围和提交重验才能使用同一边界。</p>
+     */
+    private List<SysUser> resolveNodeAssignmentUsers(
+            NextApprovalResolution resolution,
+            NextApprovalTarget target,
+            boolean preferPreparedMultiInstanceSnapshot) {
+        Map<String, Object> config = target.assigneeConfig();
+        int version = assignmentConfigVersion(config);
+        if (config.containsKey("assignmentConfigVersion")
+                && version != 2) {
+            throw new IllegalArgumentException(
+                    "不支持的 assignmentConfigVersion: " + version);
+        }
+        if (preferPreparedMultiInstanceSnapshot) {
+            List<SysUser> prepared = preparedMultiInstanceUsers(
+                    resolution, target);
+            if (prepared != null) {
+                return prepared;
+            }
+        }
+        boolean multiInstance = "MULTI_INSTANCE".equals(
+                target.selectionPolicy().assignmentMode());
+        LegacyAssignment legacyAssignment =
+                LegacyMultiInstanceAssignmentParser.parse(config);
+        boolean sourceUsesLegacyMultiInstance =
+                target.assignmentSourceTask()
+                        .hasMultiInstanceLoopCharacteristics();
+        if ((multiInstance || sourceUsesLegacyMultiInstance)
+                && version < 2
+                && legacyAssignment.effective()) {
+            return resolveLegacyMultiInstanceUsers(
+                    resolution, target, legacyAssignment);
+        }
+        return resolveBaseAssignmentUsers(resolution, target, config);
+    }
+
+    /**
+     * 已在流程启动时准备的多实例集合是该实例的人员快照，优先于重新展开
+     * 可变的组、角色或解析器结果；返回 null 表示变量尚未准备。
+     */
+    private List<SysUser> preparedMultiInstanceUsers(
+            NextApprovalResolution resolution,
+            NextApprovalTarget target) {
+        if (!"MULTI_INSTANCE".equals(
+                target.selectionPolicy().assignmentMode())) {
+            return null;
+        }
+        String variable = multiInstanceCollectionVariable(
+                target.userTask());
+        if (!StringUtils.hasText(variable)
+                || !resolution.variables().containsKey(variable)) {
+            return null;
+        }
+        Object value = resolution.variables().get(variable);
+        if (!(value instanceof Collection<?> collection)) {
+            throw new IllegalArgumentException(
+                    "多实例集合变量不是人员列表: " + variable);
+        }
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        collection.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::valueOf)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .forEach(keys::add);
+        return resolveUsers(keys);
+    }
+
+    /**
+     * 历史多实例部署以独立 multiInstance 与 collection 来源字段为准。
+     * 解析器来源即使返回空集合也不能回退到可能陈旧的基础配置；静态旧字段
+     * 全为空时保留历史行为，继续尝试基础 user 配置。
+     */
+    private List<SysUser> resolveLegacyMultiInstanceUsers(
+            NextApprovalResolution resolution,
+            NextApprovalTarget target,
+            LegacyAssignment legacy) {
+        if (legacy.resolver()) {
+            PersonResolveUsage usage = "MULTI_INSTANCE".equals(
+                    target.selectionPolicy().assignmentMode())
+                    ? PersonResolveUsage.MULTI_INSTANCE
+                    : PersonResolveUsage.ASSIGNEE;
+            return resolveWithResolver(
+                    resolution,
+                    target,
+                    legacy.resolverCode(),
+                    usage,
+                    legacy.resolverExtraParams());
+        }
+        List<SysUser> result = new ArrayList<>(
+                resolveUsers(legacy.userKeys()));
+        result.addAll(resolveGroups(legacy.groupKeys()));
+        result.addAll(resolveRoles(legacy.roleKeys()));
+        return dedupeEnabled(result);
+    }
+
+    /**
+     * v2 普通任务和多实例共同使用的基础办理人解析。
+     */
+    private List<SysUser> resolveBaseAssignmentUsers(
+            NextApprovalResolution resolution,
+            NextApprovalTarget target,
+            Map<String, Object> config) {
+        UserTask task = target.assignmentSourceTask();
+        String type = normalizeAssignmentType(
+                config.get("assigneeType"));
+        boolean multiInstance = "MULTI_INSTANCE".equals(
+                target.selectionPolicy().assignmentMode());
+        if ("expression".equals(type)) {
+            throw new IllegalArgumentException(
+                    "表达式办理人无法安全枚举: "
+                            + target.userTask().getId());
+        }
+        if ("node_reference".equals(type)
+                || "nodereference".equals(type)) {
+            throw new IllegalArgumentException(
+                    "审批人节点引用未在部署模型中解析: "
+                            + target.userTask().getId());
+        }
+        if ("resolver".equals(type)) {
+            PersonResolveUsage usage = multiInstance
+                    ? PersonResolveUsage.MULTI_INSTANCE
+                    : PersonResolveUsage.ASSIGNEE;
+            return resolveWithResolver(
+                    resolution,
+                    target,
+                    firstText(
+                            config.get("resolverCode"),
+                            config.get("interfaceName")),
+                    usage,
+                    mapValue(config.get("extraParams")));
+        }
+
+        LinkedHashSet<String> users = new LinkedHashSet<>();
+        LinkedHashSet<String> groups = new LinkedHashSet<>();
+        LinkedHashSet<String> roles = new LinkedHashSet<>();
+        // 实际 BPMN assignee 决定 DIRECT 的第一默认人员，必须保持最高顺序。
+        if (literal(task.getAssignee())) {
+            users.add(task.getAssignee().trim());
+        } else if (!multiInstance
+                && StringUtils.hasText(task.getAssignee())) {
+            throw new IllegalArgumentException(
+                    "直接办理人使用动态表达式，无法提前解析: "
+                            + target.userTask().getId());
+        }
+        if ("user".equals(type) || "candidate".equals(type)) {
+            addCsv(users, config.get("assigneeValue"));
+            addCsv(users, config.get("candidateUsers"));
+        } else if ("group".equals(type)) {
+            addCsv(groups, config.get("assigneeValue"));
+        } else if ("role".equals(type)) {
+            addCsv(roles, config.get("assigneeValue"));
+        }
+        addLiteralCandidateUsers(task, users);
+        addLiteralCandidateGroups(task, groups, roles);
+
+        List<SysUser> result = new ArrayList<>(resolveUsers(users));
+        result.addAll(resolveGroups(groups));
+        result.addAll(resolveRoles(roles));
+        return dedupeEnabled(result);
+    }
+
+    private List<SysUser> resolveWithResolver(
+            NextApprovalResolution resolution,
+            NextApprovalTarget target,
+            String resolverCode,
+            PersonResolveUsage usage,
+            Map<String, Object> extraParams) {
+        resolverRuntimeService.requireConfigured(resolverCode, usage);
+        return resolveUsers(resolverRuntimeService.resolveUsernames(
+                resolverCode,
+                resolverRequest(
+                        resolution,
+                        target,
+                        usage,
+                        extraParams)));
+    }
+
+    private void addLiteralCandidateUsers(
+            UserTask task,
+            Set<String> users) {
+        if (task.getCandidateUsers() != null) {
+            task.getCandidateUsers().stream()
+                    .filter(this::literal)
+                    .map(String::trim)
+                    .forEach(users::add);
+        }
+    }
+
+    private void addLiteralCandidateGroups(
+            UserTask task,
+            Set<String> groups,
+            Set<String> roles) {
+        if (task.getCandidateGroups() == null) {
+            return;
+        }
+        for (String value : task.getCandidateGroups()) {
+            if (!literal(value)) {
+                continue;
+            }
+            String normalized = value.trim();
+            if (normalized.startsWith("ROLE_")) {
+                roles.add(normalized.substring(5));
+            } else {
+                groups.add(normalized);
+            }
+        }
+    }
+
+    private int assignmentConfigVersion(Map<String, Object> config) {
+        Object raw = config.get("assignmentConfigVersion");
+        if (raw == null) {
+            return 1;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(raw));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "assignmentConfigVersion 必须是整数", exception);
+        }
+    }
+
+    private String normalizeAssignmentType(Object value) {
+        String type = text(value);
+        if (!StringUtils.hasText(type)) {
+            return "";
+        }
+        String normalized = type.trim().toLowerCase(Locale.ROOT);
+        return "interface".equals(normalized)
+                ? "resolver" : normalized;
     }
 
     private String multiInstanceCollectionVariable(UserTask userTask) {
@@ -298,6 +403,15 @@ public class NextApproverCandidateService {
             NextApprovalTarget target,
             PersonResolveUsage usage) {
         NextApproverSelectionPolicy policy = target.selectionPolicy();
+        if (policy.sourceType()
+                == NextApproverSelectionPolicy.SourceType.NODE_ASSIGNMENT) {
+            // 调用方为独立 RESOLVER 传入 CANDIDATE；NODE_ASSIGNMENT 必须忽略
+            // 该 usage，并按目标真实分配模式复用 ASSIGNEE/MULTI_INSTANCE。
+            // options 与完成任务重验必须按当前组、角色或解析器范围重算；
+            // 启动时的 collection 仅是默认展示快照，不能授权旧人员继续被选。
+            return resolveNodeAssignmentUsers(
+                    resolution, target, false);
+        }
         if (policy.sourceType()
                 == NextApproverSelectionPolicy.SourceType.RESOLVER) {
             resolverRuntimeService.requireConfigured(
@@ -346,7 +460,7 @@ public class NextApproverCandidateService {
                         task.getId(),
                         target.userTask().getId()),
                 usage,
-                null,
+                publishedProcessConfigId(task.getProcessDefinitionId()),
                 task.getProcessDefinitionId(),
                 task.getProcessInstanceId(),
                 firstText(
@@ -365,6 +479,26 @@ public class NextApproverCandidateService {
                 variables,
                 mapValue(variables.get("entityData")),
                 extraParams);
+    }
+
+    private String publishedProcessConfigId(String processDefinitionId) {
+        if (repositoryService == null
+                || processVersionMapper == null
+                || !StringUtils.hasText(processDefinitionId)) {
+            return null;
+        }
+        ProcessDefinition definition = repositoryService
+                .createProcessDefinitionQuery()
+                .processDefinitionId(processDefinitionId)
+                .singleResult();
+        if (definition == null
+                || !StringUtils.hasText(definition.getDeploymentId())) {
+            return null;
+        }
+        return processVersionMapper
+                .findByDeploymentId(definition.getDeploymentId())
+                .map(history -> history.getProcessConfigId())
+                .orElse(null);
     }
 
     private List<SysUser> allEnabledUsers() {

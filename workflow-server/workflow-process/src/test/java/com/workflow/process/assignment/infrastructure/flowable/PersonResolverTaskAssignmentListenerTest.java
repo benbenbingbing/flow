@@ -24,6 +24,7 @@ import org.flowable.bpmn.model.UserTask;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -378,10 +380,173 @@ class PersonResolverTaskAssignmentListenerTest {
     }
 
     @Test
+    void hiddenVersionTwoResolverFailureRollsBackTaskCreation() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"resolver",
+                 "resolverCode":"managerResolver",
+                 "nextApproverSelection":{"version":1,
+                 "visible":false,"editable":false,
+                 "source":{"type":"NODE_ASSIGNMENT"}}}
+                """);
+        when(fixture.resolverRuntimeService().supportsConfigured(
+                "managerResolver", PersonResolveUsage.ASSIGNEE))
+                .thenReturn(false);
+
+        assertThrows(
+                RuntimeException.class,
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void hiddenVersionTwoStaticTaskWithoutRuntimeIdentityFailsFast() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"user",
+                 "assigneeValue":"alice",
+                 "nextApproverSelection":{"version":1,
+                 "visible":false,"editable":false,
+                 "source":{"type":"NODE_ASSIGNMENT"}}}
+                """);
+
+        assertThrows(
+                RuntimeException.class,
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void versionTwoStaticTaskAcceptsActualFlowableCandidate() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"user",
+                 "assigneeValue":"alice"}
+                """);
+        IdentityLink candidate = mock(IdentityLink.class);
+        when(candidate.getType()).thenReturn("candidate");
+        when(candidate.getUserId()).thenReturn("alice");
+        when(fixture.taskService().getIdentityLinksForTask("task-gate"))
+                .thenReturn(List.of(candidate));
+        when(fixture.resolverRuntimeService()
+                .resolvePrincipalUsernames(any()))
+                .thenReturn(List.of("alice"));
+
+        assertDoesNotThrow(
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void versionTwoStaticTaskRejectsDisabledDirectAssignee() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"user",
+                 "assigneeValue":"disabled"}
+                """);
+        when(fixture.task().getAssignee()).thenReturn("disabled");
+        when(fixture.resolverRuntimeService()
+                .resolvePrincipalUsernames(any()))
+                .thenReturn(List.of());
+
+        assertThrows(
+                RuntimeException.class,
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void versionTwoStaticTaskRejectsDeletedCandidateUser() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"candidate",
+                 "candidateUsers":"deleted"}
+                """);
+        IdentityLink candidate = mock(IdentityLink.class);
+        when(candidate.getType()).thenReturn("candidate");
+        when(candidate.getUserId()).thenReturn("deleted");
+        when(fixture.taskService().getIdentityLinksForTask("task-gate"))
+                .thenReturn(List.of(candidate));
+        when(fixture.resolverRuntimeService()
+                .resolvePrincipalUsernames(any()))
+                .thenReturn(List.of());
+
+        assertThrows(
+                RuntimeException.class,
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void visibleEditableStaticTaskWithoutOverrideOrDefaultFailsFast() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"user",
+                 "assigneeValue":"",
+                 "nextApproverSelection":{"version":1,
+                 "visible":true,"editable":true,
+                 "source":{"type":"SCOPE","rules":[
+                 {"type":"USER","values":["alice"]}]}}}
+                """);
+
+        assertThrows(
+                RuntimeException.class,
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void hiddenLegacyResolverFailureRemainsCompatible() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assigneeType":"resolver",
+                 "resolverCode":"managerResolver",
+                 "nextApproverSelection":{"version":1,
+                 "visible":false,"editable":false,
+                 "source":{"type":"NODE_ASSIGNMENT"}}}
+                """);
+        when(fixture.resolverRuntimeService().supportsConfigured(
+                "managerResolver", PersonResolveUsage.ASSIGNEE))
+                .thenReturn(false);
+
+        assertDoesNotThrow(
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void hiddenLegacyStaticTaskWithoutRuntimeIdentityRemainsCompatible() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assigneeType":"user","assigneeValue":"alice",
+                 "nextApproverSelection":{"version":1,
+                 "visible":false,"editable":false}}
+                """);
+
+        assertDoesNotThrow(
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void legacyEditableButHiddenTaskFailsClosed() {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assigneeType":"user","assigneeValue":"alice",
+                 "nextApproverSelection":{"version":1,
+                 "visible":false,"editable":true}}
+                """);
+
+        assertThrows(
+                RuntimeException.class,
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
     void malformedConfigDeclaringNextApproverSelectionFailsFast() {
         AssignmentFixture fixture = assignmentFixture(
                 "{\"assigneeType\":\"resolver\","
                         + "\"nextApproverSelection\":");
+
+        assertThrows(
+                RuntimeException.class,
+                () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void malformedHiddenVersionTwoConfigFailsFast() {
+        AssignmentFixture fixture = assignmentFixture(
+                "{\"assignmentConfigVersion\":2,"
+                        + "\"assigneeType\":\"resolver\"");
 
         assertThrows(
                 RuntimeException.class,
@@ -395,6 +560,97 @@ class PersonResolverTaskAssignmentListenerTest {
 
         assertDoesNotThrow(
                 () -> fixture.listener().onEvent(fixture.event()));
+    }
+
+    @Test
+    void referencedCandidateTaskAppliesSourceCandidateSemantics() {
+        UserTask source = configuredTask(
+                "shared-source",
+                """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"candidate",
+                 "candidateUsers":"alice,bob"}
+                """);
+        source.setCandidateUsers(List.of("alice", "bob"));
+        AssignmentFixture fixture = referenceAssignmentFixture(source);
+        when(fixture.resolverRuntimeService()
+                .resolvePrincipalUsernames(any()))
+                .thenReturn(List.of("alice", "bob"));
+
+        fixture.listener().onEvent(fixture.event());
+
+        verify(fixture.taskService()).addCandidateUser(
+                "task-gate", "alice");
+        verify(fixture.taskService()).addCandidateUser(
+                "task-gate", "bob");
+        verify(fixture.taskService(), never()).setAssignee(
+                "task-gate", "alice");
+    }
+
+    @Test
+    void referencedResolverUsesAssigneeUsageEvenWhenSourceIsMultiInstance() {
+        UserTask source = configuredTask(
+                "shared-source",
+                """
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"resolver",
+                 "resolverCode":"sharedResolver"}
+                """);
+        source.setLoopCharacteristics(
+                new org.flowable.bpmn.model.MultiInstanceLoopCharacteristics());
+        AssignmentFixture fixture = referenceAssignmentFixture(source);
+        when(fixture.resolverRuntimeService().resolveUsernames(
+                eq("sharedResolver"), any()))
+                .thenReturn(List.of("alice"));
+
+        fixture.listener().onEvent(fixture.event());
+
+        ArgumentCaptor<PersonResolveRequest> request =
+                ArgumentCaptor.forClass(PersonResolveRequest.class);
+        verify(fixture.resolverRuntimeService()).resolveUsernames(
+                eq("sharedResolver"), request.capture());
+        assertEquals(PersonResolveUsage.ASSIGNEE,
+                request.getValue().usage());
+        verify(fixture.taskService()).setAssignee(
+                "task-gate", "alice");
+    }
+
+    private AssignmentFixture referenceAssignmentFixture(UserTask source) {
+        AssignmentFixture fixture = assignmentFixture("""
+                {"assignmentConfigVersion":2,
+                 "assigneeType":"node_reference",
+                 "referencedNodeId":"shared-source",
+                 "referencedNodeName":"源审批"}
+                """);
+        RepositoryService repositoryService = (RepositoryService)
+                ReflectionTestUtils.getField(
+                        fixture.listener(), "repositoryService");
+        BpmnModel model = repositoryService.getBpmnModel(
+                "definition-gate");
+        model.getMainProcess().addFlowElement(source);
+        when(fixture.taskService().getIdentityLinksForTask("task-gate"))
+                .thenReturn(List.of());
+        RuntimeService runtimeService = (RuntimeService)
+                ReflectionTestUtils.getField(
+                        fixture.listener(), "runtimeService");
+        when(runtimeService.getVariables("instance-gate"))
+                .thenReturn(Map.of());
+        return fixture;
+    }
+
+    private UserTask configuredTask(String id, String configDocument) {
+        UserTask task = new UserTask();
+        task.setId(id);
+        task.setName(id);
+        ExtensionElement properties = extension("properties");
+        ExtensionElement property = extension("property");
+        property.addAttribute(new ExtensionAttribute(
+                "name", "assigneeConfig"));
+        property.addAttribute(new ExtensionAttribute(
+                "value", configDocument));
+        properties.addChildElement(property);
+        task.addExtensionElement(properties);
+        return task;
     }
 
     private AssignmentFixture assignmentFixture(String configDocument) {
@@ -454,12 +710,18 @@ class PersonResolverTaskAssignmentListenerTest {
                 .thenReturn(FlowableEngineEventType.TASK_CREATED);
         when(event.getEntity()).thenReturn(task);
         return new AssignmentFixture(
-                listener, resolverRuntimeService, event);
+                listener,
+                resolverRuntimeService,
+                taskService,
+                task,
+                event);
     }
 
     private record AssignmentFixture(
             PersonResolverTaskAssignmentListener listener,
             PersonResolverRuntimeService resolverRuntimeService,
+            TaskService taskService,
+            Task task,
             FlowableEntityEvent event) {
     }
 

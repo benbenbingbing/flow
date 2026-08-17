@@ -21,7 +21,14 @@ public record NextApproverSelectionPolicy(
 
     public enum SourceType {
         SCOPE,
-        RESOLVER
+        RESOLVER,
+        /**
+         * 复用目标节点自身的办理人配置作为可选人员边界。
+         *
+         * <p>该来源不是新的人员池：固定人员、候选用户/组/角色以及人员解析器
+         * 都按目标节点真实分配模式展开，确保预览、改选校验与任务创建同源。</p>
+         */
+        NODE_ASSIGNMENT
     }
 
     public enum ScopeType {

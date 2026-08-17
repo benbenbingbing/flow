@@ -173,22 +173,50 @@
           primary
         >
           <el-form :model="assigneeForm" label-width="100px" size="small">
-          <!-- 多实例启用时，常规执行人配置不再使用，改为下方的会签人员配置 -->
-          <template v-if="!assigneeForm.isMultiInstance">
           <!-- 执行人选择类型 -->
           <el-form-item label="指定方式">
             <el-select v-model="assigneeForm.assigneeType" @change="onAssigneeTypeChange" style="width: 100%">
               <el-option label="固定人员" value="user" />
               <el-option label="用户组" value="group" />
               <el-option label="角色" value="role" />
-              <el-option label="表达式" value="expression" />
+              <el-option label="使用其他节点审批人" value="node_reference" />
+              <el-option label="表达式" value="expression" :disabled="assigneeForm.isMultiInstance" />
               <el-option label="接口动态" value="interface" />
             </el-select>
           </el-form-item>
+
+          <el-alert
+            v-if="assigneeForm.legacyMultiInstanceMixed && !assigneeForm.assignmentConfigDirty"
+            title="这是历史混合会签配置，原用户、用户组和角色会继续原样生效；重新选择或修改上方审批人后将升级为统一配置。"
+            type="warning"
+            show-icon
+            :closable="false"
+            class="legacy-assignment-alert"
+          />
+
+          <div v-if="assigneeForm.isMultiInstance" class="form-tip assignment-reuse-tip">
+            多人办理直接复用本区审批人配置，不需要在会签设置中再次选择人员
+          </div>
           
           <!-- 固定人员选择 -->
           <template v-if="assigneeForm.assigneeType === 'user'">
-            <el-form-item label="执行人">
+            <el-form-item
+              v-if="assigneeForm.isMultiInstance"
+              label="审批人"
+              :required="!canLeaveMultiInstanceAssignmentEmpty"
+            >
+              <UserSelector
+                v-model="assigneeForm.candidateUserIds"
+                multiple
+                value-key="code"
+                placeholder="请选择多人办理参与人员"
+                title="选择多人办理参与人员"
+                @change="updateMultiInstanceAssigneeUsers"
+              />
+              <div class="form-tip">按选择顺序生成任务，首人同时作为基础执行人保存</div>
+            </el-form-item>
+
+            <el-form-item v-else label="执行人">
               <UserSelector
                 v-model="assigneeForm.assignee"
                 value-key="code"
@@ -199,7 +227,7 @@
               <div class="form-tip">指定一个固定用户处理此任务</div>
             </el-form-item>
 
-            <el-form-item label="候选人">
+            <el-form-item v-if="!assigneeForm.isMultiInstance" label="候选人">
               <UserSelector
                 v-model="assigneeForm.candidateUserIds"
                 multiple
@@ -230,7 +258,11 @@
                   <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
                 </template>
               </el-select-v2>
-              <div class="form-tip">组内所有成员都可处理任务</div>
+              <div class="form-tip">
+                {{ assigneeForm.isMultiInstance
+                  ? '组内启用用户会展开为多人办理参与人并分别生成任务'
+                  : '组内所有成员都可处理任务' }}
+              </div>
             </el-form-item>
           </template>
           
@@ -252,7 +284,47 @@
                   <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
                 </template>
               </el-select-v2>
-              <div class="form-tip">拥有该角色的用户都可处理任务</div>
+              <div class="form-tip">
+                {{ assigneeForm.isMultiInstance
+                  ? '拥有该角色的启用用户会展开为多人办理参与人并分别生成任务'
+                  : '拥有该角色的用户都可处理任务' }}
+              </div>
+            </el-form-item>
+          </template>
+
+          <!-- 引用同一流程中其他用户任务的审批人规则 -->
+          <template v-if="assigneeForm.assigneeType === 'node_reference'">
+            <el-form-item required>
+              <template #label>
+                <span class="assignee-reference-label">
+                  引用节点
+                  <el-tooltip
+                    content="直接引用所选节点的审批人规则，规则修改后同步生效且不复制人员名单；多人办理时按所选节点规则展开参与人。引用链最多 16 层且不能成环。"
+                    placement="top"
+                  >
+                    <el-icon class="assignee-reference-help"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-select
+                v-model="assigneeForm.referencedNodeId"
+                filterable
+                clearable
+                placeholder="搜索并选择其他用户任务节点"
+                no-data-text="当前流程没有可引用的其他用户任务"
+                style="width: 100%"
+                @change="onReferencedNodeChange"
+              >
+                <el-option
+                  v-for="option in referencedUserTaskOptions"
+                  :key="option.nodeId"
+                  :label="option.nodeName ? `${option.nodeName} (${option.nodeId})` : option.label"
+                  :value="option.nodeId"
+                >
+                  <span>{{ option.label }}</span>
+                  <span v-if="option.nodeName" class="reference-node-id">{{ option.nodeId }}</span>
+                </el-option>
+              </el-select>
             </el-form-item>
           </template>
           
@@ -262,6 +334,7 @@
               <el-input 
                 v-model="assigneeForm.assignee" 
                 placeholder="如：${submitUser} 或 ${initiator}"
+                @input="markAssignmentConfigDirty"
               />
               <div class="form-tip">使用流程变量动态指定执行人</div>
             </el-form-item>
@@ -272,6 +345,7 @@
                 type="textarea"
                 :rows="2"
                 placeholder="如：${deptManagers}"
+                @input="markAssignmentConfigDirty"
               />
               <div class="form-tip">返回用户ID列表的表达式</div>
             </el-form-item>
@@ -282,6 +356,7 @@
                 type="textarea"
                 :rows="2"
                 placeholder="如：${deptCode}_manager"
+                @input="markAssignmentConfigDirty"
               />
               <div class="form-tip">返回组编码的表达式</div>
             </el-form-item>
@@ -293,7 +368,9 @@
               <ExtensionCapabilityPicker
                 v-model="assigneeForm.resolverCode"
                 capability-type="PERSON_RESOLVER"
-                placeholder="输入名称或编码搜索办理人接口"
+                :placeholder="assigneeForm.isMultiInstance
+                  ? '输入名称或编码搜索多人办理人员接口'
+                  : '输入名称或编码搜索办理人接口'"
                 :context-params="assigneeResolverContext"
                 :current-option="assigneeResolverCurrentOption"
                 @selected="onAssigneeResolverSelected"
@@ -313,10 +390,10 @@
                 type="textarea"
                 :rows="4"
                 placeholder='JSON 对象，例如 {"level": 2}'
+                @input="markAssignmentConfigDirty"
               />
               <div class="form-tip">仅填写此人员接口声明的扩展参数</div>
             </el-form-item>
-          </template>
           </template>
           
           <SettingsSection
@@ -335,178 +412,58 @@
             </el-form-item>
 
             <template v-if="assigneeForm.isMultiInstance">
-              <SettingsSection
-                title="办理方式"
-                description="设置多人任务并行或串行执行，以及参与人员来源"
-                :collapsible="false"
-                primary
-              >
-                <el-form-item label="执行方式">
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="执行方式"
-                      help-key="process.multiInstanceType"
-                    />
-                  </template>
-                  <el-radio-group v-model="assigneeForm.multiInstanceType">
-                    <el-radio-button value="parallel">并行多实例</el-radio-button>
-                    <el-radio-button value="sequential">串行多实例</el-radio-button>
-                  </el-radio-group>
-                  <div class="form-tip">并行：多人同时审批；串行：按顺序审批</div>
-                </el-form-item>
-
-                <el-form-item label="人员来源">
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="人员来源"
-                      help-key="process.multiInstanceSource"
-                    />
-                  </template>
-                  <el-radio-group v-model="assigneeForm.collectionSource" @change="onCollectionSourceChange">
-                    <el-radio-button value="variable">直接选择</el-radio-button>
-                    <el-radio-button value="interface">人员接口</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-              </SettingsSection>
-
-              <SettingsSection
-                title="参与人员"
-                description="选择生成多人任务的用户、用户组或角色"
-                :collapsible="false"
-              >
-                <template #summary>
-                  <el-tag size="small" type="info">
-                    {{ assigneeForm.collectionSource === 'interface' ? '动态获取' : '直接选择' }}
-                  </el-tag>
-                </template>
-
-                <template v-if="assigneeForm.collectionSource === 'variable'">
-                  <el-form-item label="会签人员">
-                    <UserSelector
-                      v-model="assigneeForm.multiInstanceUserIds"
-                      multiple
-                      value-key="code"
-                      placeholder="请选择会签用户"
-                      title="选择会签用户"
-                      @change="updateMultiInstanceUsers"
-                    />
-                    <div class="form-tip">所选用户每人都会生成一个会签任务</div>
-                  </el-form-item>
-
-                  <el-form-item label="会签用户组">
-                    <el-select-v2
-                      v-model="assigneeForm.multiInstanceGroupIds"
-                      :options="groupOptions"
-                      placeholder="选择会签用户组"
-                      multiple
-                      filterable
-                      clearable
-                      style="width: 100%"
-                      @change="updateMultiInstanceUsers"
-                    >
-                      <template #default="{ item }">
-                        <span>{{ item.label }}</span>
-                        <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
-                      </template>
-                    </el-select-v2>
-                    <div class="form-tip">组内所有成员都会生成会签任务</div>
-                  </el-form-item>
-
-                  <el-form-item label="会签角色">
-                    <el-select-v2
-                      v-model="assigneeForm.multiInstanceRoleIds"
-                      :options="roleOptions"
-                      placeholder="选择会签角色"
-                      multiple
-                      filterable
-                      clearable
-                      style="width: 100%"
-                      @change="updateMultiInstanceUsers"
-                    >
-                      <template #default="{ item }">
-                        <span>{{ item.label }}</span>
-                        <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
-                      </template>
-                    </el-select-v2>
-                    <div class="form-tip">拥有该角色的所有成员都会生成会签任务</div>
-                  </el-form-item>
-                </template>
-
-                <template v-else>
-                  <el-form-item label="人员接口" required>
-                    <ExtensionCapabilityPicker
-                      v-model="assigneeForm.collectionResolverCode"
-                      capability-type="PERSON_RESOLVER"
-                      placeholder="输入名称或编码搜索会签人员接口"
-                      :context-params="multiInstanceResolverContext"
-                      :current-option="collectionResolverCurrentOption"
-                      @selected="onCollectionResolverSelected"
-                    />
-                  </el-form-item>
-                  <el-form-item label="extraParams">
-                    <template #label>
-                      <JsonConfigLabel
-                        label="extraParams"
-                        help-key="process.multiInstanceExtraParams"
-                      />
-                    </template>
-                    <el-input
-                      v-model="assigneeForm.collectionExtraParamsText"
-                      type="textarea"
-                      :rows="3"
-                      placeholder='JSON 对象，例如 {"departmentLevel": 2}'
-                    />
-                  </el-form-item>
-                </template>
-              </SettingsSection>
-
-              <SettingsSection
-                title="完成规则"
-                description="默认等待全部实例完成；仅特殊会签规则需要修改"
-                :default-expanded="!!assigneeForm.completionCondition"
-              >
-                <template #summary>
-                  <el-tag size="small" :type="assigneeForm.completionCondition ? 'warning' : 'info'">
-                    {{ assigneeForm.completionCondition ? '自定义条件' : '全部完成' }}
-                  </el-tag>
-                </template>
-
-                <el-form-item label="完成条件">
-                  <el-input
-                    v-model="assigneeForm.completionCondition"
-                    placeholder="如：${nrOfCompletedInstances >= nrOfInstances * 0.5}"
+              <el-form-item label="执行方式">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="执行方式"
+                    help-key="process.multiInstanceType"
                   />
-                  <div class="form-tip">满足此条件时任务完成，留空表示全部实例完成</div>
-                </el-form-item>
-              </SettingsSection>
-
-              <SettingsSection
-                title="技术参数"
-                description="BPMN 多实例集合与单个办理人的变量名，通常保持默认"
-              >
-                <template #summary>
-                  <el-tag size="small" type="info">
-                    {{ assigneeForm.elementVariable || 'assignee' }}
-                  </el-tag>
                 </template>
+                <el-radio-group v-model="assigneeForm.multiInstanceType">
+                  <el-radio-button value="parallel">并行多实例</el-radio-button>
+                  <el-radio-button value="sequential">串行多实例</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
 
-                <el-form-item v-if="assigneeForm.collectionSource === 'variable'" label="集合变量">
-                  <el-input
-                    v-model="assigneeForm.collection"
-                    placeholder="系统自动生成当前节点唯一集合变量"
-                    disabled
+              <el-form-item label="完成条件">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="完成条件"
+                    help-key="process.multiInstanceCompletionCondition"
                   />
-                  <div class="form-tip">系统生成的用户ID集合变量，只读展示</div>
-                </el-form-item>
+                </template>
+                <el-input
+                  v-model="assigneeForm.completionCondition"
+                  placeholder="如：${nrOfCompletedInstances >= nrOfInstances * 0.5}"
+                />
+              </el-form-item>
 
-                <el-form-item label="元素变量">
-                  <el-input
-                    v-model="assigneeForm.elementVariable"
-                    placeholder="如：approver"
+              <el-form-item label="集合变量">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="集合变量"
+                    help-key="process.multiInstanceCollection"
                   />
-                  <div class="form-tip">集合中单个用户ID在任务内使用的变量名</div>
-                </el-form-item>
-              </SettingsSection>
+                </template>
+                <el-input
+                  v-model="assigneeForm.collection"
+                  placeholder="系统自动生成当前节点唯一集合变量"
+                  disabled
+                />
+              </el-form-item>
+
+              <el-form-item label="元素变量">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="元素变量"
+                    help-key="process.multiInstanceElementVariable"
+                  />
+                </template>
+                <el-input
+                  v-model="assigneeForm.elementVariable"
+                  placeholder="如：approver"
+                />
+              </el-form-item>
             </template>
           </SettingsSection>
           <NextApproverConfigEditor
@@ -1541,9 +1498,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, toRaw } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Delete, View, WarningFilled } from '@element-plus/icons-vue'
+import { Plus, Delete, View, WarningFilled, QuestionFilled } from '@element-plus/icons-vue'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { deleteStatusMappings, getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import { processApi } from '@/api/process'
@@ -1552,8 +1509,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   buildNodeScopedMultiInstanceCollection,
   buildAssigneeConfig,
+  buildUserTaskReferenceOptions,
   getProcessConditionFieldCode,
-  getProcessConditionFieldType
+  getProcessConditionFieldType,
+  MAX_NODE_REFERENCE_DEPTH,
+  NODE_REFERENCE_ASSIGNEE_TYPE,
+  normalizeDesignerAssigneeConfig,
+  normalizeNodeReferenceAssigneeConfig,
+  validateNodeReferenceChain
 } from '@/shared/process-config'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
@@ -1564,7 +1527,9 @@ import UserSelector from '@/components/UserSelector.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import NextApproverConfigEditor from '@/components/NextApproverConfigEditor.vue'
 import {
+  canDeferMultiInstanceAssignmentToNextApprover,
   createNextApproverSelectionConfig,
+  normalizeUserKeys,
   validateNextApproverSelectionConfig
 } from '@/shared/next-approver'
 import { parseJsonConfig } from '@/utils/jsonConfig'
@@ -1664,8 +1629,6 @@ const SERVICE_EXAMPLES = {
 
 // ========== 表单数据 ==========
 const basicForm = ref({ id: '', name: '', documentation: '' })
-const assigneeResolverContext = { usage: 'ASSIGNEE' }
-const multiInstanceResolverContext = { usage: 'MULTI_INSTANCE' }
 const nextApproverConfigEditorRef = ref()
 const assigneeForm = ref({
   assignee: '',
@@ -1679,16 +1642,9 @@ const assigneeForm = ref({
   collection: '',
   elementVariable: 'assignee',
   completionCondition: '',
-  // 会签人员配置（独立于执行人/候选人）
-  multiInstanceUsers: '',
-  multiInstanceUserIds: [],
-  multiInstanceUsernames: '',
-  multiInstanceGroupIds: [],
-  multiInstanceGroupCodes: '',
-  multiInstanceRoleIds: [],
-  multiInstanceRoleCodes: '',
-  // 新增字段
-  assigneeType: 'user', // user/group/role/expression/interface
+  assigneeType: 'user', // user/group/role/node_reference/expression/interface
+  referencedNodeId: '',
+  referencedNodeName: '',
   resolverCode: '',
   resolverDisplayName: '',
   extraParams: {},
@@ -1699,14 +1655,49 @@ const assigneeForm = ref({
   interfaceParams: '',
   restMethod: 'POST',
   resultMapping: 'assignee',
-  collectionSource: 'variable', // variable/interface
-  collectionInterface: '',
-  collectionResolverCode: '',
-  collectionResolverDisplayName: '',
-  collectionExtraParams: {},
-  collectionExtraParamsText: '{}',
+  legacyAssigneeConfig: null,
+  legacyMultiInstanceConfig: null,
+  legacyMultiInstanceMixed: false,
+  assignmentConfigDirty: false,
   nextApproverSelection: createNextApproverSelectionConfig()
 })
+const referenceOptionsRevision = ref(0)
+const referencedUserTaskOptions = computed(() => {
+  // elementRegistry 不是响应式对象；命令栈版本用于让新增、删除、改名和撤销后重新枚举。
+  void referenceOptionsRevision.value
+  return getCurrentUserTaskReferenceOptions()
+})
+let referenceOptionsEventBus = null
+const refreshReferenceOptions = () => {
+  referenceOptionsRevision.value += 1
+}
+function bindReferenceOptionsEventBus(modeler) {
+  if (referenceOptionsEventBus?.off) {
+    referenceOptionsEventBus.off('commandStack.changed', refreshReferenceOptions)
+  }
+  referenceOptionsEventBus = null
+  try {
+    referenceOptionsEventBus = modeler?.get?.('eventBus') || null
+    referenceOptionsEventBus?.on?.(
+      'commandStack.changed',
+      refreshReferenceOptions
+    )
+  } catch {
+    referenceOptionsEventBus = null
+  }
+  refreshReferenceOptions()
+}
+watch(
+  () => props.element?._modeler,
+  modeler => bindReferenceOptionsEventBus(modeler),
+  { immediate: true }
+)
+onBeforeUnmount(() => bindReferenceOptionsEventBus(null))
+const assigneeResolverContext = computed(() => ({
+  usage: assigneeForm.value.isMultiInstance
+    ? 'MULTI_INSTANCE'
+    : 'ASSIGNEE'
+}))
 const assigneeResolverCurrentOption = computed(() => {
   if (!assigneeForm.value.resolverCode) return null
   return {
@@ -1716,15 +1707,12 @@ const assigneeResolverCurrentOption = computed(() => {
       || assigneeForm.value.resolverCode
   }
 })
-const collectionResolverCurrentOption = computed(() => {
-  if (!assigneeForm.value.collectionResolverCode) return null
-  return {
-    key: assigneeForm.value.collectionResolverCode,
-    displayName:
-      assigneeForm.value.collectionResolverDisplayName
-      || assigneeForm.value.collectionResolverCode
-  }
-})
+const canLeaveMultiInstanceAssignmentEmpty = computed(() =>
+  assigneeForm.value.isMultiInstance
+  && canDeferMultiInstanceAssignmentToNextApprover(
+    assigneeForm.value.nextApproverSelection
+  )
+)
 const serviceForm = ref({ implementationType: 'class', implementation: '', resultVariable: '' })
 
 // REST接口配置
@@ -2249,6 +2237,14 @@ watch(() => props.element, async (newElement) => {
           console.error('解析 multiInstanceConfig 失败:', e)
         }
       }
+
+      // v1 多实例把参与人另存一套字段；设计器先投影到统一审批人表单，
+      // 同时保留原始配置，确保用户未修改人员时 load -> save 完全无损。
+      assigneeConfig = normalizeDesignerAssigneeConfig(
+        assigneeConfig,
+        multiInstanceConfig,
+        Boolean(loop)
+      )
       
       // 处理候选人和候选组
       let candidateUsers = bo.get('candidateUsers') || bo.get('flowable:candidateUsers') || ''
@@ -2286,17 +2282,10 @@ watch(() => props.element, async (newElement) => {
         elementVariable: loop?.elementVariable || multiInstanceConfig.elementVariable || 'assignee', 
         completionCondition: loop?.completionCondition?.body || multiInstanceConfig.completionCondition || '',
         
-        // 会签人员配置（从扩展属性恢复）
-        multiInstanceUsers: assigneeConfig.multiInstanceUsers || '',
-        multiInstanceUserIds: assigneeConfig.multiInstanceUserIds || [],
-        multiInstanceUsernames: assigneeConfig.multiInstanceUsernames || '',
-        multiInstanceGroupIds: assigneeConfig.multiInstanceGroupIds || [],
-        multiInstanceGroupCodes: assigneeConfig.multiInstanceGroupCodes || '',
-        multiInstanceRoleIds: assigneeConfig.multiInstanceRoleIds || [],
-        multiInstanceRoleCodes: assigneeConfig.multiInstanceRoleCodes || '',
-        
         // 执行人类型和接口配置（从扩展属性）
         assigneeType: assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
+        referencedNodeId: assigneeConfig.referencedNodeId || '',
+        referencedNodeName: assigneeConfig.referencedNodeName || '',
         resolverCode: assigneeConfig.resolverCode || assigneeConfig.interfaceName || '',
         resolverDisplayName: assigneeConfig.resolverDisplayName || '',
         extraParams: assigneeConfig.extraParams || {},
@@ -2307,28 +2296,12 @@ watch(() => props.element, async (newElement) => {
         interfaceParams: assigneeConfig.interfaceParams || '',
         restMethod: assigneeConfig.restMethod || 'GET',
         resultMapping: assigneeConfig.resultMapping || '',
-        collectionSource: assigneeConfig.collectionSource || multiInstanceConfig.collectionSource || 'interface',
-        collectionInterface: assigneeConfig.collectionResolverCode
-          || multiInstanceConfig.collectionResolverCode
-          || assigneeConfig.collectionInterface
-          || multiInstanceConfig.collectionInterface
-          || '',
-        collectionResolverCode: assigneeConfig.collectionResolverCode
-          || multiInstanceConfig.collectionResolverCode
-          || assigneeConfig.collectionInterface
-          || multiInstanceConfig.collectionInterface
-          || '',
-        collectionResolverDisplayName: assigneeConfig.collectionResolverDisplayName || '',
-        collectionExtraParams: assigneeConfig.collectionExtraParams
-          || multiInstanceConfig.collectionExtraParams
-          || {},
-        collectionExtraParamsText: JSON.stringify(
-          assigneeConfig.collectionExtraParams
-            || multiInstanceConfig.collectionExtraParams
-            || {},
-          null,
-          2
-        ),
+        legacyAssigneeConfig: assigneeConfig.legacyAssigneeConfig,
+        legacyMultiInstanceConfig:
+          assigneeConfig.legacyMultiInstanceConfig,
+        legacyMultiInstanceMixed:
+          assigneeConfig.legacyMultiInstanceMixed === true,
+        assignmentConfigDirty: false,
         nextApproverSelection: createNextApproverSelectionConfig(
           assigneeConfig.nextApproverSelection
         )
@@ -2623,6 +2596,19 @@ watch(() => props.element, async (newElement) => {
 // ========== 更新方法 ==========
 function getModeling() { return props.element?._modeler?.get('modeling') }
 function getModdle() { return props.element?._modeler?.get('moddle') }
+function getProcessBpmnElements() {
+  try {
+    return props.element?._modeler?.get('elementRegistry')?.getAll?.() || []
+  } catch {
+    return []
+  }
+}
+function getCurrentUserTaskReferenceOptions() {
+  return buildUserTaskReferenceOptions(
+    getProcessBpmnElements(),
+    basicForm.value.id || props.element?.id
+  )
+}
 
 // 获取扩展属性
 function getExtensionProperties(bo) {
@@ -2668,6 +2654,55 @@ function updateDocumentation() {
 }
 
 function onMultiInstanceChange(enabled) {
+  if (
+    !enabled
+    && assigneeForm.value.legacyMultiInstanceMixed
+    && !assigneeForm.value.assignmentConfigDirty
+  ) {
+    assigneeForm.value.isMultiInstance = true
+    ElMessage.warning('历史混合会签包含多种人员来源，请先重新选择上方审批人后再关闭多人办理')
+    return
+  }
+
+  if (enabled && assigneeForm.value.assigneeType === 'expression') {
+    assigneeForm.value.isMultiInstance = false
+    ElMessage.warning('多人办理不支持表达式人员来源，请改用固定人员、用户组、角色、其他节点审批人或人员接口')
+    return
+  }
+
+  markAssignmentConfigDirty()
+  if (assigneeForm.value.assigneeType === 'user') {
+    if (enabled) {
+      const users = normalizeUserKeys([
+        assigneeForm.value.assignee,
+        ...(assigneeForm.value.candidateUserIds || [])
+      ])
+      assigneeForm.value.candidateUserIds = users
+      assigneeForm.value.assignee = users[0] || ''
+      assigneeForm.value.candidateUsers = users.join(',')
+    } else {
+      const assignee = assigneeForm.value.assignee
+        || assigneeForm.value.candidateUserIds?.[0]
+        || ''
+      assigneeForm.value.assignee = assignee
+      assigneeForm.value.candidateUserIds = normalizeUserKeys(
+        assigneeForm.value.candidateUserIds
+      ).filter(user => user !== assignee)
+      assigneeForm.value.candidateUsers =
+        assigneeForm.value.candidateUserIds.join(',')
+    }
+  }
+  if (assigneeForm.value.assigneeType === 'interface'
+      && assigneeForm.value.resolverCode) {
+    // ASSIGNEE 与 MULTI_INSTANCE 是不同的解析器用途，切换办理模式后
+    // 必须重新从受控目录选择，不能沿用一个未经用途校验的旧编码。
+    assigneeForm.value.resolverCode = ''
+    assigneeForm.value.resolverDisplayName = ''
+    assigneeForm.value.interfaceName = ''
+    ElMessage.warning(enabled
+      ? '请重新选择支持 MULTI_INSTANCE 用途的人员接口'
+      : '请重新选择支持 ASSIGNEE 用途的人员接口')
+  }
   if (enabled) {
     assigneeForm.value.collection = buildNodeScopedMultiInstanceCollection(
       basicForm.value.id || props.element?.businessObject?.id,
@@ -2704,15 +2739,15 @@ function updateMultiInstance() {
   })
 
   // 保存多实例高级配置到扩展属性（用于回显）
+  const currentConfig = assigneeForm.value.legacyMultiInstanceConfig
+    && !assigneeForm.value.assignmentConfigDirty
+    ? assigneeForm.value.legacyMultiInstanceConfig
+    : {}
   const multiInstanceConfig = {
+    ...currentConfig,
     collection: collection,
     elementVariable: assigneeForm.value.elementVariable || 'assignee',
-    completionCondition: assigneeForm.value.completionCondition,
-    collectionSource: assigneeForm.value.collectionSource,
-    collectionInterface: assigneeForm.value.collectionResolverCode,
-    collectionResolverCode: assigneeForm.value.collectionResolverCode,
-    collectionExtraParams: parseJsonObjectQuietly(
-      assigneeForm.value.collectionExtraParamsText)
+    completionCondition: assigneeForm.value.completionCondition
   }
   updateExtensionProperty('multiInstanceConfig', JSON.stringify(multiInstanceConfig))
 }
@@ -2871,6 +2906,7 @@ function updateSlaConfig() {
 
 // ========== 执行人配置更新方法 ==========
 function onAssigneeTypeChange(type) {
+  markAssignmentConfigDirty()
   // 切换类型时清空之前的配置
   assigneeForm.value.assignee = ''
   assigneeForm.value.candidateUsers = ''
@@ -2878,12 +2914,98 @@ function onAssigneeTypeChange(type) {
   assigneeForm.value.candidateUserIds = []
   assigneeForm.value.candidateGroupIds = []
   assigneeForm.value.candidateRoleIds = []
+  assigneeForm.value.referencedNodeId = ''
+  assigneeForm.value.referencedNodeName = ''
   if (type !== 'interface') {
     assigneeForm.value.resolverCode = ''
     assigneeForm.value.resolverDisplayName = ''
     assigneeForm.value.extraParams = {}
     assigneeForm.value.extraParamsText = '{}'
   }
+}
+
+/** 读取画布中各 UserTask 已保存的节点引用关系，供设计期基础环检测。 */
+function getNodeAssignmentReferences() {
+  const references = new Map()
+  for (const element of getProcessBpmnElements()) {
+    if (element?.type !== 'bpmn:UserTask') continue
+    const businessObject = toRaw(element.businessObject || element)
+    const serialized = getExtensionProperties(businessObject).assigneeConfig
+    if (!serialized) continue
+    try {
+      const config = normalizeNodeReferenceAssigneeConfig(
+        typeof serialized === 'string' ? JSON.parse(serialized) : serialized
+      )
+      if (config.assigneeType === NODE_REFERENCE_ASSIGNEE_TYPE
+          && config.referencedNodeId) {
+        references.set(String(element.id || businessObject.id), config.referencedNodeId)
+      }
+    } catch {
+      // 其他节点的损坏配置由发布校验统一报告，这里只跳过无法解析的环检测边。
+    }
+  }
+  return references
+}
+
+/** 校验并解析当前选择；后端发布及运行时仍会再次做权威校验。 */
+function validateReferencedNodeAssignment() {
+  const currentNodeId = String(
+    basicForm.value.id || props.element?.businessObject?.id || props.element?.id || ''
+  ).trim()
+  const referencedNodeId = String(
+    assigneeForm.value.referencedNodeId || ''
+  ).trim()
+  if (!referencedNodeId) {
+    return { valid: false, message: '请选择要引用的用户任务节点' }
+  }
+  if (referencedNodeId === currentNodeId) {
+    return { valid: false, message: '不能引用当前节点自身的审批人' }
+  }
+  // 保存校验直接读取 registry，避免 computed 尚未来得及响应画布命令。
+  const option = getCurrentUserTaskReferenceOptions().find(
+    item => item.nodeId === referencedNodeId
+  )
+  if (!option) {
+    return { valid: false, message: '引用节点不存在或不属于当前流程的其他用户任务' }
+  }
+  const referenceChainValidation = validateNodeReferenceChain(
+    currentNodeId,
+    referencedNodeId,
+    getNodeAssignmentReferences(),
+    MAX_NODE_REFERENCE_DEPTH,
+    new Set([
+      currentNodeId,
+      ...getCurrentUserTaskReferenceOptions().map(item => item.nodeId)
+    ])
+  )
+  if (!referenceChainValidation.valid) {
+    return {
+      valid: false,
+      message: referenceChainValidation.reason === 'depth'
+        ? `节点审批人引用最多支持 ${MAX_NODE_REFERENCE_DEPTH} 层`
+        : referenceChainValidation.reason === 'invalid_target'
+          ? '节点审批人引用链包含不存在或不属于当前流程的用户任务'
+          : '节点审批人引用不能形成循环'
+    }
+  }
+  return { valid: true, option }
+}
+
+function onReferencedNodeChange() {
+  markAssignmentConfigDirty()
+  if (!assigneeForm.value.referencedNodeId) {
+    assigneeForm.value.referencedNodeName = ''
+    return
+  }
+  const validation = validateReferencedNodeAssignment()
+  if (!validation.valid) {
+    assigneeForm.value.referencedNodeId = ''
+    assigneeForm.value.referencedNodeName = ''
+    ElMessage.warning(validation.message)
+    return
+  }
+  assigneeForm.value.referencedNodeName = validation.option.nodeName
+    || validation.option.label
 }
 
 // ========== 表单配置更新方法 ==========
@@ -3036,24 +3158,10 @@ function updateExtensionProperty(name, value) {
   }
 }
 
-function onCollectionSourceChange() {
-  assigneeForm.value.collection = ''
-  assigneeForm.value.collectionInterface = ''
-  assigneeForm.value.collectionResolverCode = ''
-  assigneeForm.value.collectionResolverDisplayName = ''
-  assigneeForm.value.collectionExtraParams = {}
-  assigneeForm.value.collectionExtraParamsText = '{}'
-}
-
 function onAssigneeResolverSelected(option) {
+  markAssignmentConfigDirty()
   assigneeForm.value.resolverDisplayName = option?.displayName || ''
   assigneeForm.value.interfaceName = option?.key || ''
-}
-
-function onCollectionResolverSelected(option) {
-  assigneeForm.value.collectionResolverDisplayName =
-    option?.displayName || ''
-  assigneeForm.value.collectionInterface = option?.key || ''
 }
 
 function parseLegacyParams(value) {
@@ -3082,27 +3190,31 @@ function parseJsonObject(value, label) {
   return parsed
 }
 
-function parseJsonObjectQuietly(value) {
-  try {
-    return parseJsonObject(value, 'extraParams')
-  } catch {
-    return {}
-  }
-}
-
 function updateAssignee() {
   // v-model 已保存选择值，实际 BPMN 写入统一由“应用到画布”完成。
+  markAssignmentConfigDirty()
 }
 
 function updateCandidateUsers() {
   assigneeForm.value.candidateUsers =
     (assigneeForm.value.candidateUserIds || []).join(',')
+  markAssignmentConfigDirty()
+}
+
+/** 多实例固定人员只维护一个有序列表，并同步到 v2 基础办理人字段。 */
+function updateMultiInstanceAssigneeUsers() {
+  const users = normalizeUserKeys(assigneeForm.value.candidateUserIds)
+  assigneeForm.value.candidateUserIds = users
+  assigneeForm.value.assignee = users[0] || ''
+  assigneeForm.value.candidateUsers = users.join(',')
+  markAssignmentConfigDirty()
 }
 
 function updateCandidateGroups() {
   // candidateGroupIds 里存的是 groupCode（el-select-v2 的 value）
   const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
   assigneeForm.value.candidateGroups = selectedGroups.map(g => g.code).join(',')
+  markAssignmentConfigDirty()
 }
 
 function updateCandidateRoles() {
@@ -3111,23 +3223,11 @@ function updateCandidateRoles() {
   // 角色也存储在candidateGroups中，通过前缀区分
   const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
   assigneeForm.value.candidateGroups = roleCodes
+  markAssignmentConfigDirty()
 }
 
-function updateMultiInstanceUsers() {
-  // 用户选择器保存 username；组和角色选择器保存各自编码
-  const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.multiInstanceGroupIds?.includes(g.value))
-  const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.multiInstanceRoleIds?.includes(r.value))
-  
-  const userNames = assigneeForm.value.multiInstanceUserIds || []
-  const groupCodes = selectedGroups.map(g => g.code)
-  const roleCodes = selectedRoles.map(r => r.code)
-  
-  // 保存结构化的会签人员编码，方便后端解析
-  assigneeForm.value.multiInstanceUsers = [...userNames, ...groupCodes, ...roleCodes.map(c => 'ROLE_' + c)].join(',')
-  assigneeForm.value.multiInstanceUsernames = userNames.join(',')
-  assigneeForm.value.multiInstanceGroupCodes = groupCodes.join(',')
-  assigneeForm.value.multiInstanceRoleCodes = roleCodes.join(',')
-  
+function markAssignmentConfigDirty() {
+  assigneeForm.value.assignmentConfigDirty = true
 }
 
 function updateAssigneeInterface() {
@@ -3138,7 +3238,9 @@ function updateAssigneeInterface() {
   assigneeForm.value.interfaceName = assigneeForm.value.resolverCode
   const interfaceConfig = {
     type: 'resolver',
-    usage: 'ASSIGNEE',
+    usage: assigneeForm.value.isMultiInstance
+      ? 'MULTI_INSTANCE'
+      : 'ASSIGNEE',
     resolverCode: assigneeForm.value.resolverCode,
     extraParams
   }
@@ -3214,63 +3316,79 @@ function applyConfigurationSection(section) {
           ElMessage.warning(nextApproverValidation.message)
           return false
         }
-        const updates = {}
-        if (assigneeForm.value.isMultiInstance) {
-          if (assigneeForm.value.collectionSource === 'interface') {
-            if (!assigneeForm.value.collectionResolverCode) {
-              ElMessage.warning('请选择会签人员接口')
-              return
-            }
-            try {
-              assigneeForm.value.collectionExtraParams = parseJsonObject(
-                assigneeForm.value.collectionExtraParamsText,
-                '会签人员接口 extraParams')
-            } catch (error) {
-              ElMessage.warning(error.message)
-              return
-            }
+        const preservingLegacy = Boolean(
+          assigneeForm.value.legacyAssigneeConfig
+          && !assigneeForm.value.assignmentConfigDirty
+        )
+        const type = assigneeForm.value.assigneeType
+
+        if (type === NODE_REFERENCE_ASSIGNEE_TYPE) {
+          const referenceValidation = validateReferencedNodeAssignment()
+          if (!referenceValidation.valid) {
+            ElMessage.warning(referenceValidation.message)
+            return false
           }
-          modeling.updateProperties(toRaw(props.element), {
-            assignee: null,
-            candidateUsers: null,
-            candidateGroups: null
-          })
-          updateAssigneeConfig()
-          updateMultiInstance()
-          break
-        }
-        // 统一计算并写入执行人相关 BPMN 属性，不依赖 @change 事件
-        updates.loopCharacteristics = undefined
-        updateExtensionProperty('multiInstanceConfig', null)
-        if (assigneeForm.value.assigneeType === 'user') {
-          const usersStr =
-            (assigneeForm.value.candidateUserIds || []).join(',')
-          assigneeForm.value.candidateUsers = usersStr
-          updates.assignee = assigneeForm.value.assignee || null
-          updates.candidateUsers = usersStr || null
-          updates.candidateGroups = null
-        } else if (assigneeForm.value.assigneeType === 'group') {
-          const selectedGroups = groupOptions.value.filter(g => assigneeForm.value.candidateGroupIds?.includes(g.value))
-          const groupsStr = selectedGroups.map(g => g.code).join(',')
-          assigneeForm.value.candidateGroups = groupsStr
-          updates.assignee = null
-          updates.candidateUsers = null
-          updates.candidateGroups = groupsStr || null
-        } else if (assigneeForm.value.assigneeType === 'role') {
-          const selectedRoles = roleOptions.value.filter(r => assigneeForm.value.candidateRoleIds?.includes(r.value))
-          const roleCodes = selectedRoles.map(r => 'ROLE_' + r.code).join(',')
+          assigneeForm.value.referencedNodeName =
+            referenceValidation.option.nodeName
+            || referenceValidation.option.label
+        } else if (!preservingLegacy && type === 'user') {
+          if (assigneeForm.value.isMultiInstance) {
+            const users = normalizeUserKeys(
+              assigneeForm.value.candidateUserIds
+            )
+            if (!users.length && !canLeaveMultiInstanceAssignmentEmpty.value) {
+              ElMessage.warning('请至少选择一名多人办理审批人')
+              return false
+            }
+            // v2 以一个有序列表表达多实例固定人员；首人同时写 assigneeValue，
+            // 全量写 candidateUsers，供设计器回显和运行时准备 collection。
+            assigneeForm.value.candidateUserIds = users
+            assigneeForm.value.assignee = users[0] || ''
+            assigneeForm.value.candidateUsers = users.join(',')
+          } else {
+            assigneeForm.value.candidateUsers = normalizeUserKeys(
+              assigneeForm.value.candidateUserIds
+            ).join(',')
+          }
+        } else if (!preservingLegacy && type === 'group') {
+          const groupCodes = normalizeUserKeys(
+            assigneeForm.value.candidateGroupIds
+          ).map(value => groupOptions.value.find(
+            option => option.value === value || option.code === value
+          )?.code || value)
+          if (assigneeForm.value.isMultiInstance
+              && !groupCodes.length
+              && !canLeaveMultiInstanceAssignmentEmpty.value) {
+            ElMessage.warning('请至少选择一个多人办理用户组')
+            return false
+          }
+          assigneeForm.value.candidateGroups = groupCodes.join(',')
+        } else if (!preservingLegacy && type === 'role') {
+          const roleCodes = normalizeUserKeys(
+            assigneeForm.value.candidateRoleIds
+          ).map(value => roleOptions.value.find(
+            option => option.value === value || option.code === value
+          )?.code || String(value).replace(/^ROLE_/, ''))
+          if (assigneeForm.value.isMultiInstance
+              && !roleCodes.length
+              && !canLeaveMultiInstanceAssignmentEmpty.value) {
+            ElMessage.warning('请至少选择一个多人办理角色')
+            return false
+          }
           assigneeForm.value.candidateGroups = roleCodes
-          updates.assignee = null
-          updates.candidateUsers = null
-          updates.candidateGroups = roleCodes || null
-        } else if (assigneeForm.value.assigneeType === 'expression') {
-          updates.assignee = assigneeForm.value.assignee || null
-          updates.candidateUsers = assigneeForm.value.candidateUsers || null
-          updates.candidateGroups = assigneeForm.value.candidateGroups || null
-        } else if (assigneeForm.value.assigneeType === 'interface') {
+            .map(code => `ROLE_${code}`)
+            .join(',')
+        } else if (!preservingLegacy && type === 'expression') {
+          if (assigneeForm.value.isMultiInstance) {
+            ElMessage.warning('多人办理不支持表达式人员来源，请改用固定人员、用户组、角色、其他节点审批人或人员接口')
+            return false
+          }
+        } else if (!preservingLegacy && type === 'interface') {
           if (!assigneeForm.value.resolverCode) {
-            ElMessage.warning('请选择办理人接口')
-            return
+            ElMessage.warning(assigneeForm.value.isMultiInstance
+              ? '请选择支持 MULTI_INSTANCE 用途的人员接口'
+              : '请选择支持 ASSIGNEE 用途的人员接口')
+            return false
           }
           try {
             assigneeForm.value.extraParams = parseJsonObject(
@@ -3278,17 +3396,48 @@ function applyConfigurationSection(section) {
               '办理人接口 extraParams')
           } catch (error) {
             ElMessage.warning(error.message)
-            return
+            return false
           }
+        }
+
+        if (assigneeForm.value.isMultiInstance) {
+          if (type === 'interface' && !preservingLegacy) {
+            updateAssigneeInterface()
+          } else if (!preservingLegacy) {
+            updateExtensionProperty('assigneeInterface', null)
+          }
+          updateAssigneeConfig()
+          updateMultiInstance()
+          break
+        }
+
+        // 普通任务把统一表单映射回 Flowable 的直接办理人和候选属性。
+        const updates = { loopCharacteristics: undefined }
+        updateExtensionProperty('multiInstanceConfig', null)
+        if (type === 'user') {
+          updates.assignee = assigneeForm.value.assignee || null
+          updates.candidateUsers = assigneeForm.value.candidateUsers || null
+          updates.candidateGroups = null
+        } else if (type === 'group' || type === 'role') {
+          updates.assignee = null
+          updates.candidateUsers = null
+          updates.candidateGroups = assigneeForm.value.candidateGroups || null
+        } else if (type === 'expression') {
+          updates.assignee = assigneeForm.value.assignee || null
+          updates.candidateUsers = assigneeForm.value.candidateUsers || null
+          updates.candidateGroups = assigneeForm.value.candidateGroups || null
+        } else if (type === NODE_REFERENCE_ASSIGNEE_TYPE) {
+          updates.assignee = null
+          updates.candidateUsers = null
+          updates.candidateGroups = null
+        } else if (type === 'interface') {
           updates.assignee = null
           updates.candidateUsers = null
           updates.candidateGroups = null
           updateAssigneeInterface()
-        } else {
-          updateExtensionProperty('assigneeInterface', null)
         }
         modeling.updateProperties(toRaw(props.element), updates)
-        if (assigneeForm.value.assigneeType !== 'interface') {
+        if (type !== 'interface') {
           updateExtensionProperty('assigneeInterface', null)
         }
         updateAssigneeConfig()
@@ -3800,6 +3949,11 @@ async function saveStatusConfig() {
   min-height: 100%;
 }
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
+.assignment-reuse-tip { margin: -2px 0 12px 100px; }
+.legacy-assignment-alert { margin-bottom: 12px; }
+.assignee-reference-label { display: inline-flex; align-items: center; gap: 4px; }
+.assignee-reference-help { color: #909399; cursor: help; }
+.reference-node-id { float: right; margin-left: 12px; color: #909399; font-size: 12px; }
 :deep(.el-divider__text) { font-size: 12px; color: #909399; }
 .unit { margin-left: 8px; color: #606266; }
 .code-input :deep(textarea) { font-family: monospace; }

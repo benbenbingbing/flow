@@ -57,6 +57,13 @@ class PersonResolverRuntimeSecurityTest {
         assertEquals(
                 List.of("active"),
                 service.resolveUsernames("securityResolver", request()));
+        assertEquals(
+                List.of("active"),
+                service.resolvePrincipalUsernames(List.of(
+                        PersonPrincipal.user("active"),
+                        PersonPrincipal.user("disabled"),
+                        PersonPrincipal.user("deleted"),
+                        PersonPrincipal.user("unknown"))));
     }
 
     @Test
@@ -105,6 +112,15 @@ class PersonResolverRuntimeSecurityTest {
                 List.of(),
                 service.resolveUsernames("securityResolver", request()),
                 "停用角色或用户组不能继续扩大受控接口的候选范围");
+        assertEquals(
+                List.of(),
+                service.resolvePrincipalUsernames(List.of(
+                        new PersonPrincipal(
+                                PersonPrincipalType.ROLE,
+                                "disabled-role"),
+                        new PersonPrincipal(
+                                PersonPrincipalType.GROUP,
+                                "disabled-group"))));
     }
 
     private PersonResolver resolver(List<PersonPrincipal> principals) {

@@ -463,6 +463,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
       ['user', '固定人员', '直接指定办理人或候选用户。'],
       ['group', '用户组', '用户组成员成为候选办理人。'],
       ['role', '角色', '拥有所选角色的用户成为候选办理人。'],
+      ['node_reference', '使用其他节点审批人', '按同一流程中被引用 UserTask 的审批人规则解析，不复制名单。'],
       ['expression', '表达式', '从流程变量表达式解析办理人或候选组。'],
       ['interface', '接口动态', '调用已注册人员解析器计算办理人。']
     ]
@@ -1214,20 +1215,17 @@ const KEY_GUIDANCE = Object.freeze({
   asyncBefore: ['在进入节点逻辑前创建异步作业边界。', true, '节点实际执行前先提交当前事务，后续失败由作业重试处理。'],
   asyncAfter: ['在节点逻辑执行完成后创建异步作业边界。', true, '节点完成后先提交，再由作业继续后续流转。'],
   skipNode: ['允许节点在满足跳过表达式时自动完成。', true, '令牌到达后计算跳过表达式；为真时不创建或不保留人工办理任务。'],
-  assignee: ['设置固定办理人编码，或在表达式模式下设置办理人表达式。', 'zhangsan', '固定人员模式直接分配给该用户；表达式模式从流程变量解析用户。'],
-  candidateUserIds: ['选择可领取或办理任务的候选用户。', ['zhangsan', 'lisi'], '任务创建后这些用户可在候选任务中领取或办理。'],
-  candidateGroupIds: ['选择可领取任务的候选用户组。', ['finance'], '运行时属于所选用户组的成员成为候选办理人。'],
-  candidateRoleIds: ['选择可领取任务的候选角色。', ['finance_manager'], '运行时把当前拥有这些角色的用户解析为候选办理人。'],
+  assignee: ['设置固定办理人编码，或在表达式模式下设置办理人表达式。', 'zhangsan', '普通任务直接分配给该用户；固定人员多实例以有序人员列表首人同步此值。'],
+  candidateUserIds: ['选择普通任务候选用户，或选择多实例的有序固定审批人列表。', ['zhangsan', 'lisi'], '普通任务中用户可认领；多实例中平台按当前顺序为每个用户生成任务。'],
+  candidateGroupIds: ['选择候选用户组；启用多实例时同一配置作为参与人来源。', ['finance'], '普通任务中组成员成为候选人；多实例中启用成员会展开为任务实例。'],
+  candidateRoleIds: ['选择候选角色；启用多实例时同一配置作为参与人来源。', ['finance_manager'], '普通任务中角色成员成为候选人；多实例中启用成员会展开为任务实例。'],
+  referencedNodeId: ['选择同一 BPMN Process 中要复用审批人规则的其他用户任务节点。', 'UserTask_ManagerReview', '运行时只按该稳定节点 ID 定位被引用规则；禁止引用自身、已删除节点、跨 Process 或形成引用环，引用链最多 16 层。'],
+  referencedNodeName: ['记录被引用用户任务的显示名称。', '经理审批', '仅用于设计器回显和审计；运行时不以名称定位节点。'],
   candidateUsers: ['设置候选用户集合的流程表达式。', '${deptManagers}', '任务创建时表达式结果被解析为候选用户集合。'],
   candidateGroups: ['设置候选用户组集合的流程表达式。', '${departmentCode}_manager', '任务创建时表达式结果被解析为候选组编码。'],
-  extraParamsText: ['为受管理人员或知会解析器提供额外 JSON 参数。', '{"level":2}', '运行时把参数连同流程、任务和实体上下文传给已注册解析器。'],
+  extraParamsText: ['为受管理人员或知会解析器提供额外 JSON 参数。', '{"level":2}', '运行时把参数连同流程、任务和实体上下文传给已注册解析器；多人办理要求解析器支持 MULTI_INSTANCE 用途。'],
   isMultiInstance: ['把单个用户任务转换为多实例会签或依次办理任务。', true, '引擎按人员集合创建并行或串行任务实例。'],
   multiInstanceType: ['选择多实例任务并行创建还是逐个串行创建。', 'parallel', '并行时同时产生多个实例；串行时前一个完成后再创建下一个。'],
-  collectionSource: ['选择多实例人员由设计器直接选择，还是由受管理人员接口动态解析。', 'variable', '直接选择使用已配置用户、组和角色；接口方式在运行时按上下文计算。'],
-  multiInstanceUserIds: ['选择直接参与多实例任务的固定用户。', ['zhangsan', 'lisi'], '发布时生成多实例人员集合，运行时为每个用户创建任务实例。'],
-  multiInstanceGroupIds: ['选择需要展开为多实例人员的用户组。', ['finance'], '运行时解析组成员并纳入多实例人员集合。'],
-  multiInstanceRoleIds: ['选择需要展开为多实例人员的角色。', ['finance_manager'], '运行时解析角色成员并纳入多实例人员集合。'],
-  collectionExtraParamsText: ['为多实例人员解析接口提供额外 JSON 参数。', '{"departmentLevel":2}', '接口解析人员时收到这些参数以及流程、节点和实体上下文。'],
   collection: ['显示多实例内部使用的人员集合表达式。', '${_wfMultiInstanceUsers_}', '引擎从该内部变量读取多实例办理人集合；此字段由平台维护。'],
   elementVariable: ['设置多实例中当前单个办理人的流程变量名。', 'approver', '每个实例执行时可通过该变量读取当前人员 ID。'],
   implementation: ['设置非 REST 服务任务的 Java 类名、表达式或 Spring Bean 表达式。', '${budgetCheckDelegate}', '服务任务按所选实现类型解析并执行该受管理实现。'],
@@ -1539,6 +1537,19 @@ const CONTROL_OVERRIDES = Object.freeze({
     meaning: '设置动作参数的原始值；静态类型直接使用该值，流程变量类型则把它作为变量名解析。',
     example: 'businessId',
     expectedEffect: '当参数类型为 variable 时，执行动作会读取流程变量 businessId，并以参数名传给处理器。'
+  },
+  'src/components/NodeConfigPanel.vue:assigneeForm.nextApproverSelection': {
+    label: '下一节点审批人配置',
+    meaning: '决定前序审批是否展示或允许改选本节点审批人，并选择复用本节点审批人、受控人员范围或人员接口。',
+    configureWhen: '需要让前序审批人预览或调整本节点实际办理人时配置。',
+    skipWhen: '本节点无需在前序审批面板展示人员时保持关闭。',
+    example: {
+      version: 1,
+      visible: true,
+      editable: true,
+      source: { type: 'NODE_ASSIGNMENT' }
+    },
+    expectedEffect: '运行时按实际命中的本节点展示审批人；NODE_ASSIGNMENT 直接引用本节点审批人规则，规则修改后同步生效且不复制人员名单。'
   },
   'src/components/ui-config/EventBindingEditor.vue:step.name': {
     label: '事件步骤名称',

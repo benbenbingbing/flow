@@ -830,7 +830,7 @@ async function runProcessNodePanelChecks(client, routePath) {
               maxScroll,
               scrollTop: content.scrollTop,
               overflowY: getComputedStyle(content).overflowY,
-              lowerConfigRendered: normalize(content.textContent).includes('技术参数')
+              lowerConfigRendered: normalize(content.textContent).includes('元素变量')
             };
             content.style.flex = previousStyles.flex;
             content.style.height = previousStyles.height;
