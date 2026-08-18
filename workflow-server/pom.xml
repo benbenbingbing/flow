@@ -40,7 +40,7 @@
         <jjwt.version>0.13.0</jjwt.version>
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
         <lombok.version>1.18.30</lombok.version>
-        <aws-sdk.version>2.47.6</aws-sdk.version>
+        <aws-sdk.version>2.51.4</aws-sdk.version>
         <bouncycastle.version>1.85</bouncycastle.version>
         <jackson-bom.version>2.21.5</jackson-bom.version>
         <netty.version>4.1.136.Final</netty.version>
