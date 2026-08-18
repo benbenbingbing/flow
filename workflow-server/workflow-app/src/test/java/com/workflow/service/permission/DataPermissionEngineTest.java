@@ -57,8 +57,6 @@ class DataPermissionEngineTest {
     private final EntityListScopeAuditService auditService =
             mock(EntityListScopeAuditService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final com.workflow.entity.data.application.EntityRecordTeamService entityRecordTeamService =
-            mock(com.workflow.entity.data.application.EntityRecordTeamService.class);
     /** 被测权限引擎 */
     private DataPermissionEngine engine;
 
@@ -85,10 +83,7 @@ class DataPermissionEngineTest {
                         List.of()),
                 sqlBuilder,
                 userService,
-                auditService,
-                entityRecordTeamService);
-        when(entityRecordTeamService.teamPermission(anyString(), anyString()))
-                .thenReturn(com.workflow.entity.data.application.EntityRecordTeamService.TeamPermission.disabled());
+                auditService);
     }
 
     /** 测试缺失发布快照时 fail-closed：验证无权限且 SQL 为 1=0 */
@@ -103,63 +98,142 @@ class DataPermissionEngineTest {
         assertTrue(result.getExplanation().contains("没有已发布"));
     }
 
-    /** 测试绝对团队访问在缺失常规允许时仍生效：验证有权限且 SQL 含 team 表 */
     @Test
-    void absoluteTeamAccessSurvivesMissingNormalAllow() {
+    void unboundListAllowsAllData() {
         EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT");
         snapshot.setBindings(List.of());
         when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
-        when(entityRecordTeamService.teamPermission("expense", "u1"))
-                .thenReturn(new com.workflow.entity.data.application.EntityRecordTeamService.TeamPermission(
-                        true,
-                        com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.ABSOLUTE,
-                        "EXISTS (SELECT 1 FROM expense_team)",
-                        java.util.Map.of()));
+
+        var result = engine.calculatePermission("expense", "default", user());
+        var preview = engine.previewPermissionDetail("expense", "default", user());
+
+        assertTrue(result.isHasPermission());
+        assertFalse(result.isNeedFilter());
+        assertEquals("1=1", preview.getSql());
+        assertTrue(preview.getRemark().contains("未绑定规则，可见全部"));
+    }
+
+    @Test
+    void legacyEntityDefaultBindingIsIgnored() {
+        EntityListScopeSnapshotDTO snapshot = snapshot(
+                "INHERIT",
+                policy("personal", filter("PERSONAL", null)));
+        snapshot.setBindings(List.of(binding("personal", null, "ALLOW")));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
         var result = engine.calculatePermission("expense", "default", user());
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.getSqlCondition().contains("expense_team"));
+        assertFalse(result.isNeedFilter());
+        assertFalse(result.getSqlCondition() != null
+                && result.getSqlCondition().contains("create_by"));
     }
 
-    /** 测试继承模式使用实体允许与当前列表拒绝：验证 SQL 含 create_by 与 NOT SECRET 否定 */
     @Test
-    void inheritUsesEntityAllowAndCurrentListDeny() {
+    void listDenySubtractsFromUnboundAll() {
         EntityListScopeSnapshotDTO snapshot = snapshot(
                 "INHERIT",
-                policy("personal", filter("PERSONAL", null)),
                 policy("secret", filter("RULE", condition(
                         "STATUS_CODE", "EQ", "SECRET"))));
         snapshot.setBindings(List.of(
-                binding("personal", null, "ALLOW"),
                 binding("secret", "default", "DENY")));
         when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
         var result = engine.calculatePermission("expense", "default", user());
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.getSqlCondition().contains("create_by"));
         assertTrue(result.getSqlCondition().contains("NOT (status = 'SECRET')"));
-        assertEquals("INHERIT", result.getDataScopeMode());
     }
 
-    /** 测试收窄模式取实体与列表允许的交集：验证 SQL 含 create_by 与 OPEN 条件 */
     @Test
-    void narrowIntersectsEntityAndListAllow() {
+    void hasTodoBindingUsesQualifiedProcessTask() {
+        com.workflow.entity.data.application.EntityPhysicalTableResolver tableResolver =
+                mock(com.workflow.entity.data.application.EntityPhysicalTableResolver.class);
+        when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
+                definitionMapper,
+                fieldMapper,
+                statusMapper,
+                List.of(),
+                null,
+                tableResolver);
+        DataPermissionEngine todoEngine = new DataPermissionEngine(
+                scopeService,
+                delegationMapper,
+                objectMapper,
+                new PermissionRuleMatcher(
+                        organizationMapper,
+                        userGroupMapper,
+                        List.of()),
+                sqlBuilder,
+                userService,
+                auditService);
         EntityListScopeSnapshotDTO snapshot = snapshot(
-                "NARROW",
-                policy("personal", filter("PERSONAL", null)),
-                policy("open", filter("RULE", condition(
-                        "STATUS_CODE", "EQ", "OPEN"))));
-        snapshot.setBindings(List.of(
-                binding("personal", null, "ALLOW"),
-                binding("open", "default", "ALLOW")));
+                "INHERIT",
+                policy("todo", filter("HAS_TODO", null)));
+        snapshot.setBindings(List.of(binding("todo", "default", "ALLOW")));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+
+        SysUser lisi = new SysUser();
+        lisi.setId("2038628006255251457");
+        lisi.setUsername("lisi");
+        var result = todoEngine.calculatePermission("expense", "default", lisi);
+
+        assertTrue(result.isHasPermission());
+        assertTrue(result.getSqlCondition().contains("pt.entity_data_id = `wf_expense`.id"));
+        assertTrue(result.getSqlCondition().contains("assignee_id IN ('2038628006255251457','lisi')"));
+        assertFalse(result.getSqlCondition().contains("_team"));
+    }
+
+    @Test
+    void teamBindingDoesNotIncludeProcessTask() {
+        com.workflow.entity.data.application.EntityRecordTeamService teamService =
+                mock(com.workflow.entity.data.application.EntityRecordTeamService.class);
+        when(teamService.relatedPeopleSql("expense", "u1", "alice"))
+                .thenReturn("EXISTS (SELECT 1 FROM `wf_expense_team` team "
+                        + "WHERE team.record_id = `wf_expense`.id "
+                        + "AND team.user_id IN ('u1','alice'))");
+        PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
+                definitionMapper,
+                fieldMapper,
+                statusMapper,
+                List.of(),
+                teamService);
+        DataPermissionEngine teamEngine = new DataPermissionEngine(
+                scopeService,
+                delegationMapper,
+                objectMapper,
+                new PermissionRuleMatcher(
+                        organizationMapper,
+                        userGroupMapper,
+                        List.of()),
+                sqlBuilder,
+                userService,
+                auditService);
+        EntityListScopeSnapshotDTO snapshot = snapshot(
+                "INHERIT",
+                policy("team", filter("TEAM", null)));
+        snapshot.setBindings(List.of(binding("team", "default", "ALLOW")));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+
+        var result = teamEngine.calculatePermission("expense", "default", user());
+
+        assertTrue(result.isHasPermission());
+        assertTrue(result.getSqlCondition().contains("wf_expense_team"));
+        assertFalse(result.getSqlCondition().contains("process_task"));
+    }
+
+    @Test
+    void teamOverlayNoLongerGrantsAccessWithoutBinding() {
+        EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT");
+        snapshot.setBindings(List.of());
         when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
         var result = engine.calculatePermission("expense", "default", user());
 
-        assertTrue(result.getSqlCondition().contains("create_by"));
-        assertTrue(result.getSqlCondition().contains("AND (status = 'OPEN')"));
+        assertTrue(result.isHasPermission());
+        assertFalse(result.getSqlCondition() != null
+                && result.getSqlCondition().contains("_team"));
     }
 
     /** 测试覆盖模式仅用列表允许：验证 SQL 仅含 status = 'OPEN' 且模式为 OVERRIDE */
@@ -178,7 +252,6 @@ class DataPermissionEngineTest {
         var result = engine.calculatePermission("expense", "default", user());
 
         assertEquals("status = 'OPEN'", result.getSqlCondition());
-        assertEquals("OVERRIDE", result.getDataScopeMode());
     }
 
     /** 测试对其他列表的拒绝不影响当前列表：验证当前列表仍有权限且无需过滤 */

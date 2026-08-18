@@ -50,6 +50,20 @@ public class EntityActionCapabilityService {
     }
 
     /**
+     * 读取实体元数据（按编码查询定义）所需的最低权限。
+     * 设计人员可凭 entity:definition:view 访问；业务用户只要拥有该实体任一标准动作权限即可，
+     * 例如列表菜单授权后的 entity:{code}:list。
+     *
+     * @param entityCode 实体编码
+     */
+    public void requireEntityMetadataAccess(String entityCode) {
+        if (PermissionUtil.hasPermission("entity:definition:view")) {
+            return;
+        }
+        requireAnyStandardPermission(entityCode, EntityPermissionAction.values());
+    }
+
+    /**
      * 强制要求当前用户拥有给定动作中任意一个的权限。
      *
      * @param entityCode 实体编码

@@ -67,6 +67,8 @@ public class TaskActionService {
     private final ProcessCcService processCcService;
     /** 下一审批人预览与覆盖必须存在，避免生产配置异常时静默跳过权威重验。 */
     private final NextApproverOverrideService nextApproverOverrideService;
+    /** 多实例通过人数、否决标记与汇聚判断的唯一入口。 */
+    private final MultiInstanceOutcomeService multiInstanceOutcomeService;
 
     /**
      * 完成任务
@@ -183,7 +185,7 @@ public class TaskActionService {
         return nextApproverOverrideService
                 .requiresManualSelectionForDeferredCompletion(
                         task,
-                        normalizeAction(action),
+                        multiInstanceOutcomeService.normalizeAction(action),
                         actionLabel,
                         comment == null ? "" : comment,
                         formData);
@@ -225,7 +227,7 @@ public class TaskActionService {
             taskService.setAssignee(taskId, userId);
         }
 
-        String normalizedAction = normalizeAction(action);
+        String normalizedAction = multiInstanceOutcomeService.normalizeAction(action);
         boolean nextApprovalPreviewDeferred = false;
         if (validateNextApprover
                 && !"transfer".equals(normalizedAction)) {
@@ -240,8 +242,8 @@ public class TaskActionService {
 
         nodeFormSubmissionService.applyEditableData(task, formData);
 
-        // 检查是否是多实例任务（会签/或签）
-        boolean isMultiInstance = isMultiInstanceTask(task);
+        // 检查是否是多实例任务（会签/或签），以已部署 BPMN 为准
+        boolean isMultiInstance = multiInstanceOutcomeService.isMultiInstance(task);
 
         if ("transfer".equals(normalizedAction)) {
             if (nextApproverSelections != null
@@ -316,11 +318,10 @@ public class TaskActionService {
                 break;
 
             default:
-                // 自定义操作类型：按普通审批完成，approved 使用原始 action 值
-                // 这样前端可以配置任意审批选项值（如 needMeeting、approve、reject 等），
-                // 网关条件通过 ${approved == 'xxx'} 即可分支。
+                // 自定义操作类型：按普通审批完成，approved 使用原始 action 值。
+                // 自定义项不加通过人数、不触发否决，避免会签阈值被非审批动作污染。
                 Map<String, Object> customVars = new HashMap<>();
-                customVars.put("approved", normalizedAction);
+                putApprovedOutcome(customVars, task, normalizedAction);
                 customVars.put("action", normalizedAction);
                 if (actionLabel != null && !actionLabel.isBlank()) {
                     customVars.put("actionLabel", actionLabel);
@@ -509,80 +510,54 @@ public class TaskActionService {
         return value == null ? null : String.valueOf(value);
     }
 
-    private String normalizeAction(String action) {
-        if (action == null || action.isBlank()) {
-            return "approve";
-        }
-
-        return switch (action.trim().toUpperCase(Locale.ROOT)) {
-            case "APPROVE", "APPROVED" -> "approve";
-            case "REJECT", "REJECTED" -> "reject";
-            case "TRANSFER", "TRANSFERRED" -> "transfer";
-            default -> action;
-        };
-    }
-    
     /**
-     * 检查任务是否是多实例任务（会签/或签）
-     */
-    private boolean isMultiInstanceTask(Task task) {
-        try {
-            Object instances = taskService.getVariable(task.getId(), "nrOfInstances");
-            Object completed = taskService.getVariable(task.getId(), "nrOfCompletedInstances");
-            return instances != null || completed != null;
-        } catch (Exception e) {
-            log.debug("检查多实例任务失败: {}", e.getMessage());
-            return false;
-        }
-    }
-    
-    /**
-     * 处理通过操作（支持单签/会签）
+     * 处理通过操作。会签只给本节点通过人数 +1；或签同样 +1，完成条件 count>=1
+     * 会让 Flowable 删除其余实例。若节点已被否决，approved 保持 reject。
      */
     private void handleApprove(Task task, String userId, String comment, boolean isMultiInstance, String actionLabel) {
         String taskId = task.getId();
-        
-        // 设置流程变量
+        if (isMultiInstance) {
+            multiInstanceOutcomeService.recordApprove(task);
+        }
+
         Map<String, Object> vars = new HashMap<>();
-        vars.put("approved", "approve");
+        putApprovedOutcome(vars, task, "approve");
         vars.put("action", "approve");
         if (actionLabel != null && !actionLabel.isBlank()) {
             vars.put("actionLabel", actionLabel);
         }
         vars.put("comment", comment);
         vars.put("approver", userId);
-        
-        // 记录审批人信息到变量（用于会签统计）
+
         List<String> approvers = (List<String>) runtimeService.getVariable(task.getProcessInstanceId(), "_approvers_");
         if (approvers == null) {
             approvers = new ArrayList<>();
         }
         approvers.add(userId);
         vars.put("_approvers_", approvers);
-        
-        // 将操作显示文本存为任务本地变量，便于后续按任务ID读取
+
         if (actionLabel != null && !actionLabel.isBlank()) {
             taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
         }
 
-        // 完成任务
         taskService.complete(taskId, vars);
         processTaskService.completeTask(taskId, "approve", comment, actionLabel);
-        
+
         log.info("任务 {} 已通过，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
     }
-    
+
     /**
-     * 处理驳回操作（支持单签/会签）
-     * 会签模式下：一人驳回即整体驳回
+     * 处理驳回。会签按票数模型：驳回不加通过人数；仅当剩下的人全通过
+     * 也达不到阈值，或已全部办完且未达标时，才结束节点。或签仍一票否决。
      */
     private void handleReject(Task task, String userId, String comment, boolean isMultiInstance, String actionLabel) {
         String taskId = task.getId();
-        String processInstanceId = task.getProcessInstanceId();
-        
-        // 设置流程变量
+        if (isMultiInstance) {
+            multiInstanceOutcomeService.recordReject(task);
+        }
+
         Map<String, Object> vars = new HashMap<>();
-        vars.put("approved", "reject");
+        putApprovedOutcome(vars, task, "reject");
         vars.put("action", "reject");
         if (actionLabel != null && !actionLabel.isBlank()) {
             vars.put("actionLabel", actionLabel);
@@ -590,48 +565,21 @@ public class TaskActionService {
         vars.put("comment", comment);
         vars.put("rejectBy", userId);
         vars.put("rejectTime", new Date());
-        
-        if (isMultiInstance) {
-            // 会签模式下：记录驳回信息，所有未完成的实例将被终止
-            vars.put("_multiInstanceRejected_", true);
-            vars.put("_rejectReason_", comment);
-            
-            // 终止其他未完成的多实例任务
-            terminateOtherMultiInstanceTasks(processInstanceId, taskId);
-        }
-        
-        // 将操作显示文本存为任务本地变量，便于后续按任务ID读取
+
         if (actionLabel != null && !actionLabel.isBlank()) {
             taskService.setVariableLocal(taskId, "actionLabel", actionLabel);
         }
 
-        // 完成任务
         taskService.complete(taskId, vars);
         processTaskService.completeTask(taskId, "reject", comment, actionLabel);
-        
+
         log.info("任务 {} 已驳回，处理人: {}，是否多实例: {}", taskId, userId, isMultiInstance);
     }
-    
-    /**
-     * 终止其他未完成的多实例任务（会签驳回时使用）
-     */
-    private void terminateOtherMultiInstanceTasks(String processInstanceId, String currentTaskId) {
-        try {
-            // 获取同一节点上的其他未完成任务
-            List<Task> activeTasks = taskService.createTaskQuery()
-                    .processInstanceId(processInstanceId)
-                    .list();
-            
-            for (Task otherTask : activeTasks) {
-                if (!otherTask.getId().equals(currentTaskId)) {
-                    // 设置变量标记该任务因驳回而跳过
-                    taskService.setVariable(otherTask.getId(), "_skippedDueToReject_", true);
-                    taskService.setVariable(otherTask.getId(), "approved", "reject");
-                    log.debug("多实例任务 {} 因驳回而被跳过", otherTask.getId());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("终止其他多实例任务失败: {}", e.getMessage());
+
+    private void putApprovedOutcome(Map<String, Object> vars, Task task, String action) {
+        String approved = multiInstanceOutcomeService.resolveApprovedOutcome(task, action);
+        if (approved != null) {
+            vars.put("approved", approved);
         }
     }
 

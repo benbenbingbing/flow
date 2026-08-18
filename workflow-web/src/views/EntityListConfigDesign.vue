@@ -253,11 +253,34 @@
                         help-key="entityList.dataScopeMode"
                       />
                     </template>
-                    <el-select v-model="configInfo.dataScopeMode" style="width: 420px">
-                      <el-option label="继承实体默认范围" value="INHERIT" />
-                      <el-option v-if="!isSystemEntity" label="在实体范围内缩小" value="NARROW" />
-                      <el-option v-if="!isSystemEntity" label="使用列表独立范围（高风险）" value="OVERRIDE" />
+                    <el-select v-model="configInfo.dataScopeMode" style="width: 420px" disabled>
+                      <el-option label="仅使用本列表绑定的规则" value="INHERIT" />
                     </el-select>
+                    <div class="form-tip">数据范围只认本列表绑定的规则，不再继承实体默认范围。</div>
+                  </el-form-item>
+                  <el-form-item v-if="!isSystemEntity" label="绑定数据规则" class="view-config-item--full">
+                    <el-select
+                      v-model="boundPolicyIds"
+                      multiple
+                      collapse-tags
+                      collapse-tags-tooltip
+                      placeholder="不选则有本列表权限的人看到全部数据"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        v-for="rule in scopePolicies"
+                        :key="rule.policyId"
+                        :label="`${rule.ruleName} · ${rule.filterType || rule.presetCode}`"
+                        :value="rule.policyId"
+                      />
+                    </el-select>
+                    <el-alert
+                      v-if="!boundPolicyIds.length"
+                      type="warning"
+                      :closable="false"
+                      style="margin-top: 8px"
+                      title="未绑定数据规则，有本列表权限的人将看到全部数据"
+                    />
                   </el-form-item>
                   <el-form-item label="访问权限码">
                     <el-input
@@ -868,6 +891,7 @@ import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi } from '@/api/entity'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
+import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
 import EntityDataSearchForm from '@/views/entity/components/EntityDataSearchForm.vue'
@@ -896,6 +920,7 @@ import {
   listActionFingerprint as actionFingerprint,
   listMetadataDetailEntries,
   listMetadataFingerprint,
+  listScopeBindingFingerprint,
   normalizeListActionForSave as normalizeActionForSave,
   resolveListButtonType,
   withListButtonTypeDefault
@@ -926,6 +951,8 @@ const selectionReturnMappingExampleCompactText =
 const configInfo = ref({})
 const entityName = ref('')
 const entityCode = ref('')
+const scopePolicies = ref([])
+const boundPolicyIds = ref([])
 const entityId = ref('')
 const entityFields = ref([])
 const entityDefinition = ref({})
@@ -1149,6 +1176,7 @@ const sceneSavingCodes = ref(new Set())
 const sceneSortCache = new Map()
 const baselinesReady = ref(false)
 const metadataBaseline = ref('')
+const scopeBindingBaseline = ref('[]')
 const metadataDetailBaselines = ref(new Map())
 const fieldBaselines = ref(new Map())
 const actionBaselines = ref(new Map())
@@ -1179,6 +1207,10 @@ const previewQueryFields = computed(() =>
 const previewListFields = computed(() =>
   fieldConfigList.value.filter(field => field.showInList)
 )
+function rememberScopeBindingBaseline() {
+  scopeBindingBaseline.value = listScopeBindingFingerprint(boundPolicyIds.value)
+}
+
 function rememberMetadataBaseline() {
   metadataBaseline.value = listMetadataFingerprint(configInfo.value, viewConfig.value)
   metadataDetailBaselines.value = new Map(
@@ -1201,6 +1233,7 @@ function rememberActionBaseline(button, position) {
 }
 function rememberAllBaselines() {
   rememberMetadataBaseline()
+  rememberScopeBindingBaseline()
   fieldBaselines.value = new Map()
   fieldConfigList.value.forEach(rememberFieldBaseline)
   actionBaselines.value = new Map()
@@ -1211,6 +1244,11 @@ function rememberAllBaselines() {
 const metadataDirty = computed(() =>
   baselinesReady.value
     && metadataBaseline.value !== listMetadataFingerprint(configInfo.value, viewConfig.value)
+)
+const scopeBindingDirty = computed(() =>
+  baselinesReady.value
+    && !isSystemEntity.value
+    && scopeBindingBaseline.value !== listScopeBindingFingerprint(boundPolicyIds.value)
 )
 const dirtyMetadataItems = computed(() => {
   if (!metadataDirty.value) return []
@@ -1242,11 +1280,15 @@ const dirtyActions = computed(() => {
 })
 const isDirty = computed(() =>
   metadataDirty.value
+    || scopeBindingDirty.value
     || dirtyFields.value.length > 0
     || dirtyActions.value.length > 0
 )
 const unsavedItems = computed(() => [
   ...dirtyMetadataItems.value,
+  ...(scopeBindingDirty.value
+    ? [{ key: 'scope-bindings', label: '列表设置：数据规则绑定' }]
+    : []),
   ...dirtyFields.value.map(field => ({
     key: `field:${field.fieldId}`,
     label: `字段配置：${field.fieldName || field.fieldCode || '未命名字段'}`
@@ -1260,7 +1302,7 @@ const unsavedSummary = computed(() => {
   return `${unsavedItems.value.length} 项未保存`
 })
 useUnsavedChangesGuard(isDirty, {
-  message: '列表设置、查询接口、字段或按钮有未保存修改，离开后这些修改将丢失。'
+  message: '列表设置、数据规则绑定、查询接口、字段或按钮有未保存修改，离开后这些修改将丢失。'
 })
 function refreshFieldTableLayout() {
   if (fieldLayoutFrame && typeof cancelAnimationFrame === 'function') {
@@ -1309,6 +1351,25 @@ watch(activeConfigTab, async (tab) => {
   refreshFieldTableLayout()
   initSortable()
 })
+async function loadScopeBindings() {
+  if (!entityCode.value || !configInfo.value.listKey) {
+    scopePolicies.value = []
+    boundPolicyIds.value = []
+    return
+  }
+  const configuration = await entityListScopeRuleApi.getConfiguration(entityCode.value)
+  scopePolicies.value = (configuration?.policies || []).map(policy => ({
+    policyId: policy.id,
+    ruleName: policy.policyName,
+    presetCode: policy.presetCode,
+    filterType: policy.filterConfig?.type || policy.presetCode
+  }))
+  boundPolicyIds.value = (configuration?.bindings || [])
+    .filter(binding => binding.listKey === configInfo.value.listKey && binding.policyId)
+    .map(binding => binding.policyId)
+  rememberScopeBindingBaseline()
+}
+
 async function loadData() {
   pageLoading.value = true
   loadError.value = ''
@@ -1407,6 +1468,9 @@ async function loadData() {
     }
 
     // 合并字段配置
+    if (entityCode.value && !isSystemEntity.value) {
+      await loadScopeBindings()
+    }
     mergeFieldConfig(configRes?.fields || [])
     // 解析按钮配置
     parseButtonConfig(configRes)
@@ -2118,6 +2182,9 @@ async function saveListMetadata(options = {}) {
           ? configInfo.value.queryOperationCode || ''
           : ''
     })
+    if (entityCode.value && configInfo.value.listKey && !isSystemEntity.value) {
+      await saveScopeBindings({ silent: true })
+    }
     configInfo.value.revision = saved.revision
     configInfo.value.queryDataSourceId =
       saved.queryDataSourceId || ''
@@ -2126,7 +2193,7 @@ async function saveListMetadata(options = {}) {
     rememberMetadataBaseline()
     await loadDiff()
     if (!options.silent) {
-      ElMessage.success('列表设置已保存，尚未发布')
+      ElMessage.success('列表设置已保存。数据规则绑定已立即生效；其余列表配置仍需点「发布生效」')
     }
     return true
   } catch (error) {
@@ -2134,6 +2201,29 @@ async function saveListMetadata(options = {}) {
     return false
   }
 }
+
+async function saveScopeBindings(options = {}) {
+  if (!entityCode.value || !configInfo.value.listKey || isSystemEntity.value) {
+    rememberScopeBindingBaseline()
+    return true
+  }
+  try {
+    await entityListScopeRuleApi.replaceListBindings(
+      entityCode.value,
+      configInfo.value.listKey,
+      boundPolicyIds.value
+    )
+    rememberScopeBindingBaseline()
+    if (!options.silent) {
+      ElMessage.success('数据规则绑定已保存并立即生效')
+    }
+    return true
+  } catch (error) {
+    ElMessage.error(error?.message || '保存数据规则绑定失败')
+    return false
+  }
+}
+
 async function saveAll() {
   if (!isDirty.value) {
     ElMessage.info('当前没有未保存修改')
@@ -2144,6 +2234,9 @@ async function saveAll() {
   try {
     if (metadataDirty.value) {
       if (!await saveListMetadata({ silent: true })) return
+      savedCount += 1
+    } else if (scopeBindingDirty.value) {
+      if (!await saveScopeBindings({ silent: true })) return
       savedCount += 1
     }
     for (const field of [...dirtyFields.value]) {
@@ -2169,13 +2262,23 @@ async function loadDiff() {
   }
 }
 async function handlePublish() {
-  if (isDirty.value) {
+  const listUiDirty = metadataDirty.value
+    || dirtyFields.value.length > 0
+    || dirtyActions.value.length > 0
+  if (listUiDirty) {
     ElMessage.warning('页面仍有未保存修改，请先保存全部后再发布')
+    return
+  }
+  // 数据规则绑定不在列表界面快照里，保存时已经发布。
+  // 只改绑定再点发布，不能拿列表草稿对比结果当成失败。
+  if (scopeBindingDirty.value) {
+    if (!await saveScopeBindings({ silent: true })) return
+    ElMessage.success('数据规则绑定已发布生效')
     return
   }
   const diff = await entityListConfigApi.getDiff(configId)
   if (!diff.changed) {
-    ElMessage.info('当前草稿与已发布版本一致')
+    ElMessage.success('数据规则绑定已生效。列表界面配置没有需要发布的修改。')
     return
   }
   publishDialogVisible.value = true

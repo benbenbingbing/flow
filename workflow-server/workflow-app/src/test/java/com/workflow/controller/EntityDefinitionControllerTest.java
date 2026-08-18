@@ -15,6 +15,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.definition.application.EntityDefinitionOptionService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldDefinitionService;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +53,9 @@ public class EntityDefinitionControllerTest {
 
     @MockitoBean
     private EntityDefinitionOptionService entityOptionService;
+
+    @MockitoBean
+    private EntityActionCapabilityService actionCapabilityService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -156,6 +160,7 @@ public class EntityDefinitionControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.entityCode").value("test_entity"));
 
+        verify(actionCapabilityService).requireEntityMetadataAccess("test_entity");
         verify(entityService, times(1)).findByCode("test_entity");
     }
 

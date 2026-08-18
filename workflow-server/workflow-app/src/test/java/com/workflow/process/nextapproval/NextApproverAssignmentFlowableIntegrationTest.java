@@ -104,7 +104,12 @@ class NextApproverAssignmentFlowableIntegrationTest {
             assertEquals("alice", second.getAssignee());
             harness.assertSingleAudit(
                     "target-review", List.of("bob", "alice"));
-            assertNull(harness.overrideVariable());
+            // 会签覆盖同时写入 collection（供本次 complete 立即建实例）
+            // 和 store（供集合监听器重入消费）。本测试引擎未挂监听器，store 应仍在。
+            Object stagedOverride = harness.overrideVariable();
+            assertTrue(stagedOverride instanceof Map<?, ?>);
+            assertTrue(((Map<?, ?>) stagedOverride)
+                    .containsKey("target-review"));
         }
     }
 
@@ -180,7 +185,12 @@ class NextApproverAssignmentFlowableIntegrationTest {
                         new FlowableConditionEvaluator(engine),
                         new NextApproverSelectionPolicyReader(objectMapper),
                         formService,
-                        objectMapper);
+                        objectMapper,
+                        new com.workflow.process.task.application.MultiInstanceOutcomeService(
+                                engine.getRuntimeService(),
+                                engine.getRepositoryService(),
+                                engine.getTaskService(),
+                                objectMapper));
         NextApproverCandidateService candidateService =
                 mock(NextApproverCandidateService.class);
         when(candidateService.defaultAssignees(any(), any()))

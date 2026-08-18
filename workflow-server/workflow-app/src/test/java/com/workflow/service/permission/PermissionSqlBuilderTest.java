@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -55,6 +56,94 @@ class PermissionSqlBuilderTest {
         amount.setDbColumnName("amount");
         when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(definition));
         when(fieldMapper.findByEntityId("entity-1")).thenReturn(List.of(amount));
+    }
+
+    @Test
+    void teamFilterCompilesRelatedPeopleSql() {
+        com.workflow.entity.data.application.EntityRecordTeamService teamService =
+                mock(com.workflow.entity.data.application.EntityRecordTeamService.class);
+        when(teamService.relatedPeopleSql("expense", "u1", "alice"))
+                .thenReturn("EXISTS (SELECT 1 FROM `wf_expense_team` team "
+                        + "WHERE team.record_id = `wf_expense`.id "
+                        + "AND team.user_id IN ('u1','alice'))");
+        PermissionSqlBuilder teamBuilder = new PermissionSqlBuilder(
+                definitionMapper,
+                fieldMapper,
+                statusMapper,
+                List.of(),
+                teamService);
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("TEAM");
+
+        String sql = teamBuilder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1"));
+
+        assertTrue(sql.contains("wf_expense_team"));
+        assertTrue(sql.contains("user_id IN ('u1','alice')"));
+        assertFalse(sql.contains("process_task"));
+        assertFalse(sql.contains("current_task_assignee"));
+    }
+
+    @Test
+    void hasTodoUsesQualifiedBusinessTableId() {
+        com.workflow.entity.data.application.EntityPhysicalTableResolver tableResolver =
+                mock(com.workflow.entity.data.application.EntityPhysicalTableResolver.class);
+        when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
+                definitionMapper,
+                fieldMapper,
+                statusMapper,
+                List.of(),
+                null,
+                tableResolver);
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("HAS_TODO");
+
+        String sql = todoBuilder.buildFilterSql(
+                "expense",
+                filter,
+                user("2038628006255251457", "lisi", "dept-1"));
+
+        assertTrue(sql.contains("process_task"));
+        assertTrue(sql.contains("pt.entity_data_id = `wf_expense`.id"));
+        assertTrue(sql.contains("assignee_id IN ('2038628006255251457','lisi')"));
+        assertFalse(sql.contains("pt.entity_data_id = id"));
+        assertFalse(sql.contains("_team"));
+    }
+
+    @Test
+    void currentAssigneeUsesOnlyAssigneeField() {
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("CURRENT_ASSIGNEE");
+
+        String sql = builder.buildFilterSql(
+                "expense",
+                filter,
+                user("2038628006255251457", "lisi", "dept-1"));
+
+        assertEquals(
+                "current_task_assignee IN ('2038628006255251457','lisi')",
+                sql);
+    }
+
+    @Test
+    void teamFilterWithoutServiceFailsClosed() {
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("TEAM");
+
+        assertEquals(
+                "1=0",
+                builder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1")));
+    }
+
+    @Test
+    void hasTodoWithoutTableResolverFailsClosed() {
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("HAS_TODO");
+
+        assertEquals(
+                "1=0",
+                builder.buildFilterSql(
+                        "expense", filter, user("u1", "alice", "dept-1")));
     }
 
     /** 测试构建过滤 SQL 拒绝非法字段名：验证含 SQL 注入的字段映射被拒绝并返回 1=0 */

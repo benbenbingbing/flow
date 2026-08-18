@@ -28,6 +28,24 @@ class PermissionRuleMatcherTest {
     private final SysOrganizationMapper orgMapper = mock(SysOrganizationMapper.class);
     private final SysUserGroupMapper userGroupMapper = mock(SysUserGroupMapper.class);
 
+    @Test
+    void matchesSpecifiedUserByUsernameOrId() {
+        PermissionRuleMatcher matcher = matcher();
+        SysUser user = new SysUser();
+        user.setId("2038628006255251457");
+        user.setUsername("lisi");
+
+        assertTrue(matcher.matches(
+                match("OR", condition("USER", List.of("lisi"), "ANY", false)),
+                user));
+        assertTrue(matcher.matches(
+                match("OR", condition("USER", List.of("2038628006255251457"), "ANY", false)),
+                user));
+        assertFalse(matcher.matches(
+                match("OR", condition("USER", List.of("zhangsan"), "ANY", false)),
+                user));
+    }
+
     /** 测试匹配任意角色：验证用户含目标角色时匹配为真 */
     @Test
     void matchesAnyRole() {

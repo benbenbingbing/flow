@@ -793,6 +793,20 @@ public class EntityFormService {
     }
 
     /**
+     * 根据实体 ID 解析编码，供运行态元数据权限校验使用。
+     *
+     * @param entityId 实体定义 ID
+     * @return 实体编码
+     */
+    public String requireEntityCode(String entityId) {
+        EntityDefinition entity = entityMapper.selectById(entityId);
+        if (entity == null || !StringUtils.hasText(entity.getEntityCode())) {
+            throw new IllegalArgumentException("实体不存在: " + entityId);
+        }
+        return entity.getEntityCode();
+    }
+
+    /**
      * 获取实体的字段列表（用于创建表单时选择）
      */
     public List<EntityField> getEntityFields(String entityId) {

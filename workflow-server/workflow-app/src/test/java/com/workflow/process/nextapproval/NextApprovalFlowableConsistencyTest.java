@@ -114,7 +114,12 @@ class NextApprovalFlowableConsistencyTest {
                 new FlowableConditionEvaluator(engine),
                 new NextApproverSelectionPolicyReader(objectMapper),
                 formService,
-                objectMapper);
+                objectMapper,
+                new com.workflow.process.task.application.MultiInstanceOutcomeService(
+                        engine.getRuntimeService(),
+                        engine.getRepositoryService(),
+                        engine.getTaskService(),
+                        objectMapper));
         NextApproverCandidateService candidateService =
                 mock(NextApproverCandidateService.class);
         when(candidateService.defaultAssignees(any(), any()))

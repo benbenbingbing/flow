@@ -247,10 +247,15 @@ class NextApproverOverrideServiceTest {
                 "instance-1",
                 "_wfMultiInstanceUsers_joint_review",
                 List.of("alice", "bob"));
-        verify(runtimeService, never()).setVariable(
+        ArgumentCaptor<Object> staged = ArgumentCaptor.forClass(Object.class);
+        verify(runtimeService).setVariable(
                 eq("instance-1"),
                 eq(NextApproverOverrideService.VARIABLE_NAME),
-                any());
+                staged.capture());
+        Map<?, ?> overrides = (Map<?, ?>) staged.getValue();
+        Map<?, ?> entry = (Map<?, ?>) overrides.get("joint-review");
+        assertEquals("MULTI_INSTANCE", entry.get("assignmentMode"));
+        assertEquals(List.of("alice", "bob"), entry.get("usernames"));
     }
 
     @Test

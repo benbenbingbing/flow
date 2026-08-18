@@ -114,6 +114,28 @@ assert.deepEqual(
   applyPermissionTransferChange(['system', 'user', 'role', 'role-edit'], 'left', ['role'], permissionOptions),
   ['system', 'user']
 )
+const entityPermissionOptions = flattenPermissionMenuTree([
+  {
+    id: 'entity-root',
+    menuName: '实体数据权限',
+    menuType: 'M',
+    children: [
+      {
+        id: 'zdwreq-perms',
+        menuName: 'zdw-需求管理权限',
+        menuType: 'C',
+        children: [
+          { id: 'zdwreq-list', menuName: '查询列表', menuType: 'F', perm: 'entity:zdwreq:list' },
+          { id: 'zdwreq-bypass', menuName: '绕过数据范围', menuType: 'F', perm: 'entity:zdwreq:scope:bypass' }
+        ]
+      }
+    ]
+  }
+])
+assert.deepEqual(
+  applyPermissionTransferChange([], 'right', ['zdwreq-perms'], entityPermissionOptions),
+  ['entity-root', 'zdwreq-perms', 'zdwreq-list', 'zdwreq-bypass']
+)
 const availablePermissionTree = buildPermissionTreeView([
   {
     id: 'system',
@@ -649,7 +671,7 @@ const pageFeatureExpectations = {
   'src/views/Home.vue': ['loadTaskOperations', 'openAddSignDialog', 'submitAddSign', 'handleCancelAddSign', 'openCcDialog', 'submitCc', 'loadCcList', 'readCc'],
   'src/views/system/Menu.vue': ['handleAddTopLevel', 'handleAddChild', 'handleEdit', 'handleDelete', 'handleStatusChange', 'handleVisibleChange', 'handleSortChange'],
   'src/views/system/User.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleResetPassword'],
-  'src/views/system/Role.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleAssignMenu', 'handleSaveMenus'],
+  'src/views/system/Role.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleAssignMenu', 'handleSaveMenus', '确认绕过数据范围'],
   'src/views/system/Dict.vue': ['handleAddDict', 'handleEditDict', 'handleDeleteDict', 'handleAddItem', 'handleEditItem', 'handleDeleteItem'],
   'src/views/system/OpenIntegration.vue': ['loadApplications', 'createApplication', 'selectedId'],
   'src/views/system/open-integration/IntegrationApplicationPanel.vue': ['saveAccess', 'saveContracts', 'rotateCredential', 'revokeCredential'],

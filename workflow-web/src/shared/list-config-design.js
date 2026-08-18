@@ -1,3 +1,9 @@
+export function listScopeBindingFingerprint(policyIds = []) {
+  return JSON.stringify(
+    [...new Set((policyIds || []).filter(Boolean).map(String))].sort()
+  )
+}
+
 export function listMetadataFingerprint(config, viewConfig) {
   return JSON.stringify({
     listName: config.listName || '',

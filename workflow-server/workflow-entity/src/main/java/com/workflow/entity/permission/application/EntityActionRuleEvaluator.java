@@ -3,9 +3,10 @@ package com.workflow.entity.permission.application;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.temporal.Temporal;
@@ -19,10 +20,29 @@ import java.util.Objects;
  * 结构化实体按钮规则执行器。
  */
 @Component
-@RequiredArgsConstructor
 public class EntityActionRuleEvaluator {
 
     private final List<EntityActionRuleConditionProvider> conditionProviders;
+    private final CurrentProcessTaskAssigneeLookup assigneeLookup;
+
+    public EntityActionRuleEvaluator(
+            List<EntityActionRuleConditionProvider> conditionProviders) {
+        this(conditionProviders, (CurrentProcessTaskAssigneeLookup) null);
+    }
+
+    public EntityActionRuleEvaluator(
+            List<EntityActionRuleConditionProvider> conditionProviders,
+            CurrentProcessTaskAssigneeLookup assigneeLookup) {
+        this.conditionProviders = conditionProviders == null ? List.of() : conditionProviders;
+        this.assigneeLookup = assigneeLookup;
+    }
+
+    @Autowired
+    public EntityActionRuleEvaluator(
+            List<EntityActionRuleConditionProvider> conditionProviders,
+            ObjectProvider<CurrentProcessTaskAssigneeLookup> assigneeLookup) {
+        this(conditionProviders, assigneeLookup.getIfAvailable());
+    }
 
     /**
      * 评估按钮可用性规则是否满足。
@@ -98,7 +118,8 @@ public class EntityActionRuleEvaluator {
         return switch (relation.toUpperCase(Locale.ROOT)) {
             case "CURRENT_USER_IS_CREATOR" -> matchesUser(row.getCreatedBy(), user);
             case "CURRENT_USER_IS_SUBMITTER" -> matchesUser(row.getSubmitterId(), user);
-            case "CURRENT_USER_IS_ASSIGNEE" -> matchesUser(row.getCurrentTaskAssignee(), user);
+            case "CURRENT_USER_IS_ASSIGNEE" -> matchesUser(row.getCurrentTaskAssignee(), user)
+                    || isLiveProcessTaskAssignee(row, user);
             case "CURRENT_USER_SAME_DEPT" -> StringUtils.hasText(row.getDeptId())
                     && Objects.equals(row.getDeptId(), user.getDeptId());
             default -> false;
@@ -108,6 +129,13 @@ public class EntityActionRuleEvaluator {
     private boolean matchesUser(String value, SysUser user) {
         return StringUtils.hasText(value)
                 && (Objects.equals(value, user.getId()) || Objects.equals(value, user.getUsername()));
+    }
+
+    /**
+     * 会签时实体只记其中一个办理人，回查未完成待办判断当前用户是否真正持有任务。
+     */
+    private boolean isLiveProcessTaskAssignee(EntityDataDTO row, SysUser user) {
+        return assigneeLookup != null && assigneeLookup.isCurrentAssignee(row, user);
     }
 
     private String processState(EntityDataDTO row, String statusCategory) {

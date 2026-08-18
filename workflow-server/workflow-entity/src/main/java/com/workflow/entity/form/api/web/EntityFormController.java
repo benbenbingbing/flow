@@ -10,6 +10,7 @@ import com.workflow.entity.form.api.request.EntityFormCopyRequest;
 import com.workflow.entity.form.api.request.EntityFormMetadataPatchRequest;
 import com.workflow.entity.form.api.request.EntityFormSaveRequest;
 import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import lombok.Data;
@@ -33,6 +34,7 @@ public class EntityFormController {
     private final EntityFormService formService;
     private final UiConfigDraftMetadataService metadataService;
     private final UiConfigurationAccessService accessService;
+    private final EntityActionCapabilityService actionCapabilityService;
     
     /**
      * 查询所有表单列表
@@ -112,11 +114,14 @@ public class EntityFormController {
     }
     
     /**
-     * 获取实体的字段列表
+     * 获取实体的字段列表。
+     * 子表单运行态会按实体 ID 读取字段做回退渲染，不能要求表单设计管理权限。
+     * 登录用户需具备该实体的设计查看权，或任一标准数据动作权限。
      */
     @GetMapping("/entity/{entityId}/fields")
     public Result<List<EntityField>> getEntityFields(@PathVariable String entityId) {
-        accessService.requireEntityFormAccess(entityId);
+        actionCapabilityService.requireEntityMetadataAccess(
+                formService.requireEntityCode(entityId));
         return Result.success(formService.getEntityFields(entityId));
     }
     

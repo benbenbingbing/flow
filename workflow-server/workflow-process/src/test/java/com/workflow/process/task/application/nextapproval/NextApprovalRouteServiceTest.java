@@ -3,6 +3,7 @@ package com.workflow.process.task.application.nextapproval;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.form.application.FormSubmissionPreviewDeferredException;
 import com.workflow.process.form.application.NodeFormSubmissionService;
+import com.workflow.process.task.application.MultiInstanceOutcomeService;
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.response.NextApprovalPreviewStatus;
 import org.flowable.bpmn.model.BpmnModel;
@@ -44,6 +45,7 @@ class NextApprovalRouteServiceTest {
     private FlowableConditionEvaluator conditionEvaluator;
     private NextApproverSelectionPolicyReader policyReader;
     private NodeFormSubmissionService nodeFormSubmissionService;
+    private MultiInstanceOutcomeService multiInstanceOutcomeService;
     private NextApprovalRouteService service;
     private Task task;
 
@@ -54,6 +56,7 @@ class NextApprovalRouteServiceTest {
         conditionEvaluator = mock(FlowableConditionEvaluator.class);
         policyReader = mock(NextApproverSelectionPolicyReader.class);
         nodeFormSubmissionService = mock(NodeFormSubmissionService.class);
+        multiInstanceOutcomeService = mock(MultiInstanceOutcomeService.class);
         service = new NextApprovalRouteService(
                 mock(TaskService.class),
                 runtimeService,
@@ -61,7 +64,8 @@ class NextApprovalRouteServiceTest {
                 conditionEvaluator,
                 policyReader,
                 nodeFormSubmissionService,
-                new ObjectMapper());
+                new ObjectMapper(),
+                multiInstanceOutcomeService);
         task = mock(Task.class);
         when(task.getProcessDefinitionId()).thenReturn("definition-7");
         when(task.getProcessInstanceId()).thenReturn("instance-1");
@@ -689,6 +693,52 @@ class NextApprovalRouteServiceTest {
                 resolution.status());
         assertEquals(List.of(), resolution.targets());
         assertEquals(null, resolution.scopeKey());
+    }
+
+    @Test
+    void unfinishedMultiInstanceIsDeferred() {
+        org.flowable.bpmn.model.Process process = process();
+        UserTask current = node(new UserTask(), "current-review");
+        current.setLoopCharacteristics(new MultiInstanceLoopCharacteristics());
+        UserTask next = node(new UserTask(), "manager-review");
+        add(process, current, next);
+        connect(process, current, next, "to-manager", null);
+        when(repositoryService.getBpmnModel("definition-7"))
+                .thenReturn(model(process));
+        when(multiInstanceOutcomeService.willFinishCurrentNode(
+                any(Task.class), anyString()))
+                .thenReturn(false);
+
+        NextApprovalResolution resolution = service.resolve(
+                task, request("approve", 2000), true);
+
+        assertEquals(NextApprovalPreviewStatus.DEFERRED, resolution.status());
+        assertEquals(List.of(), resolution.targets());
+    }
+
+    @Test
+    void finishingMultiInstanceCanResolveNextApprover() {
+        org.flowable.bpmn.model.Process process = process();
+        UserTask current = node(new UserTask(), "current-review");
+        current.setLoopCharacteristics(new MultiInstanceLoopCharacteristics());
+        UserTask next = node(new UserTask(), "manager-review");
+        add(process, current, next);
+        connect(process, current, next, "to-manager", null);
+        when(repositoryService.getBpmnModel("definition-7"))
+                .thenReturn(model(process));
+        when(multiInstanceOutcomeService.willFinishCurrentNode(
+                any(Task.class), anyString()))
+                .thenReturn(true);
+
+        NextApprovalResolution resolution = service.resolve(
+                task, request("reject", 2000), true);
+
+        assertEquals(NextApprovalPreviewStatus.READY, resolution.status());
+        assertEquals(
+                List.of("manager-review"),
+                resolution.targets().stream()
+                        .map(target -> target.userTask().getId())
+                        .toList());
     }
 
     private NextApprovalPreviewRequest request(String action, int amount) {

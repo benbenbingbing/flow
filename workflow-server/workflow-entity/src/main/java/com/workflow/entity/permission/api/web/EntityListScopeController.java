@@ -2,6 +2,7 @@ package com.workflow.entity.permission.api.web;
 
 import com.workflow.core.security.RequiresPermission;
 
+import com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest;
 import com.workflow.entity.permission.api.request.EntityListScopePublishRequest;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeConfigurationDTO;
@@ -13,6 +14,8 @@ import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.entity.permission.application.EntityListScopeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 实体列表数据范围管理控制器。
@@ -121,6 +124,21 @@ public class EntityListScopeController {
         requireAdministrator();
         scopeService.deleteBinding(id);
         return Result.success();
+    }
+
+    /**
+     * 覆盖指定列表的规则绑定。POST /api/entity-list-scopes/{entityCode}/lists/{listKey}/bindings/update
+     */
+    @PostMapping("/{entityCode}/lists/{listKey}/bindings/update")
+    public Result<List<EntityListScopeBindingDTO>> replaceListBindings(
+            @PathVariable String entityCode,
+            @PathVariable String listKey,
+            @RequestBody(required = false) EntityListScopeListBindingsRequest request) {
+        requireAdministrator();
+        return Result.success(scopeService.replaceListBindings(
+                entityCode,
+                listKey,
+                request == null ? List.of() : request.getBindings()));
     }
 
     /**

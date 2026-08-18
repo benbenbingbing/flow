@@ -37,13 +37,16 @@ public class EntityRecordMutationAdapter
             String currentTaskId,
             String currentTaskName,
             String currentTaskAssignee) {
+        // 会签时每人完成自己的任务后，剩余活跃任务的第一个 ID 经常不变。
+        // 幂等键若只含该任务 ID，后办的人会带着不同操作者撞上首次同步回执。
+        // 键按「当前任务快照」区分，操作者固定为系统，相同快照视为重放。
         String key = String.join(
                 ":",
                 "task-runtime",
                 entityCode,
                 entityRecordId,
-                currentTaskId == null
-                        ? "none" : currentTaskId);
+                blankToNone(currentTaskId),
+                blankToNone(currentTaskAssignee));
         Map<String, Object> payload =
                 new LinkedHashMap<>();
         payload.put(
@@ -68,6 +71,7 @@ public class EntityRecordMutationAdapter
                         .sourceRecord(
                                 entityCode,
                                 entityRecordId)
+                        .operator("system", "流程引擎")
                         .trace(key, key)
                         .build()));
     }
@@ -157,6 +161,10 @@ public class EntityRecordMutationAdapter
                         .sourceRecord(entityCode, entityRecordId)
                         .trace(key, key)
                         .build()));
+    }
+
+    private String blankToNone(String value) {
+        return value == null || value.isBlank() ? "none" : value;
     }
 
     @Override

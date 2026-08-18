@@ -619,50 +619,20 @@
   </div>
 
   <!-- 数据权限配置对话框 -->
-  <el-dialog v-model="permissionVisible" title="数据权限配置" width="900px" :close-on-click-modal="false">
+  <el-dialog
+    v-model="permissionVisible"
+    title="数据权限配置"
+    width="min(1440px, 94vw)"
+    top="3vh"
+    class="entity-permission-dialog"
+    :close-on-click-modal="false"
+  >
     <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-      配置“谁在什么列表能看到哪些数据”。保存只更新草稿，发布后才影响运行时；没有匹配的允许方案时默认拒绝全部数据。
+      这里只维护规则目录。把规则绑到哪个列表，请到该列表的「访问范围」中设置。列表绑定保存后立即生效。列表未绑定任何允许规则时，有该列表权限的人将看到全部数据。
     </el-alert>
-    <div class="permission-workflow-bar">
-      <div>
-        <strong>权限草稿</strong>
-        <span>实体参与设置与规则先保存为草稿，统一发布后影响运行时。</span>
-      </div>
-      <div class="permission-workflow-actions">
-        <el-button size="small" @click="savePermissionDraft">保存权限草稿</el-button>
-        <el-button type="success" size="small" @click="publishPermissions">校验并发布权限</el-button>
-      </div>
-    </div>
-    <el-card shadow="never" style="margin-bottom: 16px">
-      <template #header><span>数据参与团队</span></template>
-      <el-form label-width="150px" size="small">
-        <el-form-item label="参与后允许查看">
-          <el-switch v-model="entityData.teamVisibilityEnabled" />
-          <span class="form-tip" style="margin-left: 12px">
-            所有人工操作始终形成参与事件；此开关只控制参与记录是否授予查看权限。
-          </span>
-        </el-form-item>
-        <el-form-item v-if="entityData.teamVisibilityEnabled" label="权限覆盖级别">
-          <template #label>
-            <ConfigHelpLabel
-              label="权限覆盖级别"
-              help-key="entity.teamVisibilityLevel"
-            />
-          </template>
-          <el-select v-model="entityData.teamVisibilityLevel" style="width: 260px">
-            <el-option label="附加授权（列表收窄和拒绝仍生效）" value="ADDITIVE" />
-            <el-option label="覆盖普通数据范围（拒绝仍生效）" value="OVERRIDE_SCOPE" />
-            <el-option label="绝对参与授权（覆盖业务拒绝）" value="ABSOLUTE" />
-          </el-select>
-        </el-form-item>
-        <el-alert
-          v-if="entityData.teamVisibilityEnabled"
-          type="warning"
-          :closable="false"
-          title="配置保存后还需要重新发布实体，运行时才会建表并启用新版本。该能力只授予查看，不授予编辑、删除或审批。"
-        />
-      </el-form>
-    </el-card>
+    <el-alert type="warning" :closable="false" style="margin-bottom: 16px">
+      相关人只认 team 表已发生的参与；存在待办只认 process_task 未完成待办。列表分别绑定。尚未生成任务的下一审批人不会进入这两条规则。
+    </el-alert>
     <div class="permission-header">
       <el-button type="primary" size="small" @click="handleAddPermission">
         <el-icon><Plus /></el-icon>添加规则
@@ -681,7 +651,7 @@
     <PageState
       v-if="permissionError"
       type="error"
-      title="权限草稿加载失败"
+      title="规则目录加载失败"
       :description="permissionError"
       retryable
       compact
@@ -704,18 +674,15 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="允许绑定" width="90" align="center">
-        <template #default="{ row }">{{ countListBindings(row.listKey, 'ALLOW') }}</template>
-      </el-table-column>
-      <el-table-column label="拒绝绑定" width="90" align="center">
-        <template #default="{ row }">{{ countListBindings(row.listKey, 'DENY') }}</template>
+      <el-table-column label="已绑定规则" min-width="180">
+        <template #default="{ row }">{{ formatListBoundRules(row.listKey) }}</template>
       </el-table-column>
     </el-table>
     <el-table :data="permissionList" border size="small" style="margin-top: 12px">
       <el-table-column prop="ruleName" label="规则名称" width="140" />
-      <el-table-column label="适用列表" width="120" align="center">
+      <el-table-column label="已绑定列表" min-width="160">
         <template #default="{ row }">
-          <span>{{ getListConfigName(row.listKey) || '实体默认' }}</span>
+          <span>{{ formatBoundLists(row.boundListKeys) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="匹配范围" min-width="160">
@@ -750,22 +717,23 @@
   </el-dialog>
 
   <!-- 规则编辑对话框 -->
-  <el-dialog v-model="permissionEditVisible" :title="permissionForm.id ? '编辑规则' : '新增规则'" width="980px" :close-on-click-modal="false">
+  <el-dialog
+    v-model="permissionEditVisible"
+    :title="permissionForm.id ? '编辑规则' : '新增规则'"
+    width="min(1200px, 92vw)"
+    top="4vh"
+    class="entity-permission-edit-dialog"
+    :close-on-click-modal="false"
+  >
     <el-form class="permission-edit-form" :model="permissionForm" label-width="100px" size="default">
       <SettingsSection
         title="基本规则"
-        description="配置规则名称、作用列表、允许或拒绝效果"
+        description="配置规则名称、允许或拒绝效果。绑定列表请到列表设置中完成"
         :collapsible="false"
         primary
       >
         <el-form-item label="规则名称" required>
           <el-input v-model="permissionForm.ruleName" placeholder="如：部门经理查看全部门数据" />
-        </el-form-item>
-        <el-form-item label="适用列表">
-          <el-select v-model="permissionForm.listKey" placeholder="留空表示实体默认范围" clearable style="width: 100%">
-            <el-option label="实体默认范围" value="" />
-            <el-option v-for="config in availableListConfigs" :key="config.listKey" :label="config.listName || config.listKey" :value="config.listKey" />
-          </el-select>
         </el-form-item>
         <el-form-item label="规则效果">
           <template #label>
@@ -918,7 +886,13 @@
             <el-option label="全部数据" value="ALL" />
             <el-option label="当前用户是创建人" value="PERSONAL" />
             <el-option label="当前用户是提交人" value="SUBMITTER" />
-            <el-option label="当前用户是当前办理人" value="CURRENT_ASSIGNEE" />
+            <el-option label="当前用户存在待办（待办表，会签逐人）" value="HAS_TODO" />
+            <el-option label="当前用户是相关人（参与过该记录）" value="TEAM" />
+            <el-option
+              v-if="permissionForm.filterType === 'CURRENT_ASSIGNEE'"
+              label="当前用户是当前办理人（已停用，请改用存在待办）"
+              value="CURRENT_ASSIGNEE"
+            />
             <el-option label="本部门" value="DEPT" />
             <el-option label="本部门及子部门" value="DEPT_TREE" />
             <el-option label="结构化条件组" value="RULE" />
@@ -1682,8 +1656,8 @@ const loadPermissions = async () => {
         || ['EXPRESSION', 'CUSTOM_SQL'].includes(filter.type)
       return {
         ...item,
-        listKey: item.listKey || '',
-        ruleEffect: item.ruleEffect || 'ALLOW',
+        boundListKeys: item.boundListKeys || [],
+        ruleEffect: item.ruleEffect || filter.ruleEffect || 'ALLOW',
         matchLogic: match.logic || 'OR',
         matchConditions: (match.conditions || []).map(c => ({
           ...c,
@@ -1699,7 +1673,7 @@ const loadPermissions = async () => {
     })
   } catch (error) {
     console.error('加载权限规则失败:', error)
-    permissionError.value = error?.message || '无法读取权限草稿，请检查权限或稍后重试。'
+    permissionError.value = error?.message || '无法读取规则目录，请检查权限或稍后重试。'
   }
 }
 
@@ -1743,7 +1717,7 @@ const handleEditPermission = (row) => {
 const handleDeletePermission = async (row) => {
   try {
     await ElMessageBox.confirm(
-      `删除规则「${row.ruleName}」后，命中该规则的用户可能失去草稿中的可见范围。发布前仍可重新创建。`,
+      `删除规则「${row.ruleName}」后，已绑定该规则的列表将无法再引用它。若仍有列表绑定，请先到列表设置中解绑。`,
       '删除权限规则草稿',
       { type: 'warning', confirmButtonText: '确认删除' }
     )
@@ -1810,6 +1784,8 @@ const getFilterTypeTag = (type) => {
     PERSONAL: '',
     SUBMITTER: '',
     CURRENT_ASSIGNEE: 'primary',
+    HAS_TODO: 'primary',
+    TEAM: 'success',
     DEPT: 'warning',
     DEPT_TREE: 'warning',
     RULE: 'info'
@@ -1822,7 +1798,9 @@ const getFilterTypeLabel = (type) => {
     ALL: '全部数据',
     PERSONAL: '创建人是当前用户',
     SUBMITTER: '提交人是当前用户',
-    CURRENT_ASSIGNEE: '当前办理人',
+    CURRENT_ASSIGNEE: '当前办理人（实体字段）',
+    HAS_TODO: '存在待办',
+    TEAM: '相关人（参与过该记录）',
     DEPT: '本部门',
     DEPT_TREE: '本部门及子部门',
     RULE: '结构化条件组',
@@ -1841,9 +1819,17 @@ const getScopeModeLabel = (mode) => {
   return labels[mode || 'INHERIT'] || mode
 }
 
-const countListBindings = (listKey, effect) => permissionList.value.filter(item =>
-  item.listKey === listKey && item.ruleEffect === effect
-).length
+const formatBoundLists = (listKeys) => {
+  const names = (listKeys || []).map(getListConfigName).filter(Boolean)
+  return names.length ? names.join('、') : '未绑定'
+}
+
+const formatListBoundRules = (listKey) => {
+  const names = permissionList.value
+    .filter(item => (item.boundListKeys || []).includes(listKey))
+    .map(item => item.ruleName)
+  return names.length ? names.join('、') : '未绑定（可见全部）'
+}
 
 const getListConfigName = (listKey) => {
   if (!listKey) return ''
@@ -1872,38 +1858,6 @@ const handlePreviewPermissionSql = async (requestedListKey) => {
   } catch (error) {
     console.error('预览权限 SQL 失败:', error)
     ElMessage.error('预览失败')
-  }
-}
-
-const savePermissionDraft = async () => {
-  const saved = await handleSave({ silent: true })
-  if (!saved) return false
-  await loadPermissions()
-  ElMessage.success('权限草稿已保存，尚未影响运行时')
-  return true
-}
-
-const publishPermissions = async () => {
-  try {
-    const saved = await handleSave({ silent: true })
-    if (!saved) return
-    const enabledRules = permissionList.value.filter(rule => Number(rule.enabled) === 1)
-    const allowRules = enabledRules.filter(rule => rule.ruleEffect !== 'DENY')
-    if (!allowRules.length) {
-      ElMessage.warning('至少需要一条已启用的允许规则，否则所有用户都会被拒绝')
-      return
-    }
-    await ElMessageBox.confirm(
-      `将发布 ${enabledRules.length} 条启用规则，其中 ${allowRules.length} 条允许规则、${enabledRules.length - allowRules.length} 条拒绝规则。发布后立即影响运行时数据可见范围。`,
-      '发布数据权限',
-      { type: 'warning', confirmButtonText: '确认发布' }
-    )
-    await entityListScopeRuleApi.publish(entityData.value.entityCode, '实体设计器发布数据范围')
-    ElMessage.success('数据权限已发布并开始影响运行时')
-    loadPermissions()
-  } catch (error) {
-    console.error('发布数据范围失败:', error)
-    ElMessage.error(error?.message || '发布失败')
   }
 }
 
@@ -1961,7 +1915,9 @@ const savePermission = async () => {
     type: form.filterType,
     root: form.filterType === 'RULE' ? form.filterRoot : null,
     fieldMapping: form.fieldMapping,
-    statusLimit: form.statusLimit
+    statusLimit: form.statusLimit,
+    ruleEffect: form.ruleEffect || 'ALLOW',
+    audience: parseJson(matchConfig, {})
   })
 
   const payload = {
@@ -1970,7 +1926,6 @@ const savePermission = async () => {
     policyKey: form.policyKey || `scope_${Date.now()}`,
     ruleName: form.ruleName,
     enabled: form.enabled,
-    listKey: form.listKey || null,
     ruleEffect: form.ruleEffect || 'ALLOW',
     filterType: form.filterType,
     matchConfig,
@@ -2479,8 +2434,7 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-.field-list-actions,
-.permission-workflow-actions {
+.field-list-actions {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2542,26 +2496,10 @@ onMounted(async () => {
   margin-bottom: 8px;
 }
 
-.permission-workflow-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  border: 1px solid #dcdfe6;
-  border-left: 3px solid #409eff;
-  border-radius: 6px;
-}
-
-.permission-workflow-bar > div:first-child {
-  display: grid;
-  gap: 3px;
-}
-
-.permission-workflow-bar span {
-  color: #909399;
-  font-size: 12px;
+.entity-permission-dialog :deep(.el-dialog__body),
+.entity-permission-edit-dialog :deep(.el-dialog__body) {
+  max-height: calc(92vh - 140px);
+  overflow-y: auto;
 }
 
 .sql-variable-tags {
@@ -2619,8 +2557,7 @@ onMounted(async () => {
   }
 
   .header-left,
-  .header-right,
-  .permission-workflow-bar {
+  .header-right {
     width: 100%;
     flex-wrap: wrap;
   }

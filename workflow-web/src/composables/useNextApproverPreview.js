@@ -1,6 +1,10 @@
 import { onScopeDispose, ref } from 'vue'
 import { previewNextApproval } from '@/api/processTask'
-import { normalizeNextApproverPreview } from '@/shared/next-approver'
+import {
+  areNextApproverPreviewsEqual,
+  createNextApproverPreviewRequestSignature,
+  normalizeNextApproverPreview
+} from '@/shared/next-approver'
 import {
   BUSINESS_TRACE_HEADER,
   createBusinessTraceKey
@@ -37,11 +41,10 @@ export function useNextApproverPreview(options) {
 
   function signature(payload = requestPayload()) {
     try {
-      return JSON.stringify({
+      return createNextApproverPreviewRequestSignature({
         taskId: options.getTaskId?.() || '',
         action: payload.action,
         actionLabel: payload.actionLabel,
-        comment: payload.comment,
         formData: payload.formData
       })
     } catch {
@@ -95,7 +98,10 @@ export function useNextApproverPreview(options) {
           || !enabled()
           || String(options.getTaskId?.() || '') !== taskId
         ) return false
-        preview.value = normalizeNextApproverPreview(result)
+        const nextPreview = normalizeNextApproverPreview(result)
+        if (!areNextApproverPreviewsEqual(preview.value, nextPreview)) {
+          preview.value = nextPreview
+        }
         lastSignature = currentSignature
         lastTraceKey = requestTraceKey
         return true

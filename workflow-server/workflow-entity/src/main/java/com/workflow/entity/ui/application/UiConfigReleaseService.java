@@ -2994,14 +2994,13 @@ public class UiConfigReleaseService {
         if (owner == null
                 || !Objects.equals(
                         owner.getActiveReleaseId(),
-                        release.getId())
-                || !Objects.equals(
-                        owner.getPublishedVersion(),
-                        release.getVersion())) {
+                        release.getId())) {
             throw new BusinessConflictException(
                     "LIST_RELEASE_STATE_CONFLICT",
                     "列表发布状态不一致，请重新发布或激活版本");
         }
+        // schema 等读路径是只读事务，不能在这里回写 published_version。
+        // 该字段若曾被数据范围发布误改，以激活的界面发布为准，不拦截加载。
         if (StringUtils.hasText(releaseId)
                 && !Objects.equals(releaseId, release.getId())) {
             throw new BusinessConflictException(

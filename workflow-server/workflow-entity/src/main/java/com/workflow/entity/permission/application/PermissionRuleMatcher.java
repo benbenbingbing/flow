@@ -7,6 +7,7 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -179,7 +180,7 @@ public class PermissionRuleMatcher {
         // 根据范围类型分派到不同的内置匹配或自定义扩展匹配
         return switch (scopeType) {
             case "ALL_USERS" -> true;
-            case "USER" -> matchesCollection(condition, List.of(user.getId()));
+            case "USER" -> matchesCollection(condition, userIdentities(user));
             case "ROLE" -> matchesCollection(condition, user.getRoleIds());
             case "GROUP" -> matchesCollection(
                     condition,
@@ -192,6 +193,20 @@ public class PermissionRuleMatcher {
                     user.getOrgId());
             default -> matchesCustom(condition, user);
         };
+    }
+
+    /**
+     * 指定用户既可能保存系统用户 ID，也可能保存用户名（选择器 value-key 或历史数据）。
+     */
+    private List<String> userIdentities(SysUser user) {
+        LinkedHashSet<String> identities = new LinkedHashSet<>();
+        if (user != null && user.getId() != null && !user.getId().isBlank()) {
+            identities.add(user.getId());
+        }
+        if (user != null && user.getUsername() != null && !user.getUsername().isBlank()) {
+            identities.add(user.getUsername());
+        }
+        return List.copyOf(identities);
     }
 
     private boolean matchesCollection(

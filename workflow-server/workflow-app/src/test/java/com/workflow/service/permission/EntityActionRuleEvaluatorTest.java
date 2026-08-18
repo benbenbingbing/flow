@@ -61,6 +61,29 @@ class EntityActionRuleEvaluatorTest {
         assertTrue(evaluator.evaluate(deleteRule(), row, user, "WITHDRAWN"));
     }
 
+    @Test
+    void currentAssigneeMatchesLiveProcessTaskWhenFieldPointsToAnotherUser() {
+        com.workflow.entity.permission.application.CurrentProcessTaskAssigneeLookup lookup =
+                org.mockito.Mockito.mock(
+                        com.workflow.entity.permission.application.CurrentProcessTaskAssigneeLookup.class);
+        EntityDataDTO row = row("admin", "admin", "proc-1", "PENDING");
+        row.setEntityCode("ZDWREQ");
+        row.setCurrentTaskAssignee("verify_user");
+        SysUser lisi = user("2038628006255251457", "lisi", "dept-1");
+        org.mockito.Mockito.when(lookup.isCurrentAssignee(row, lisi)).thenReturn(true);
+        EntityActionRuleEvaluator liveEvaluator =
+                new EntityActionRuleEvaluator(List.of(), lookup);
+
+        assertTrue(liveEvaluator.evaluate(assigneeRule(), row, lisi, "PROCESSING"));
+        assertFalse(evaluator.evaluate(assigneeRule(), row, lisi, "PROCESSING"));
+    }
+
+    private EntityActionRuleDTO assigneeRule() {
+        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        rule.setRoot(relation("CURRENT_USER_IS_ASSIGNEE"));
+        return rule;
+    }
+
     /** 测试支持自定义字段条件：验证 amount > 100 的字段条件求值为真 */
     @Test
     void customFieldConditionsAreSupported() {

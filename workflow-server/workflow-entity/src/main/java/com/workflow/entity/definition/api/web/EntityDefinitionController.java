@@ -1,5 +1,6 @@
 package com.workflow.entity.definition.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.PageResult;
@@ -16,6 +17,7 @@ import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.application.EntityDefinitionOptionService;
 import com.workflow.entity.definition.application.EntityDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldDefinitionService;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,6 +36,7 @@ public class EntityDefinitionController {
     private final EntityDefinitionService entityService;
     private final EntityFieldDefinitionService fieldDefinitionService;
     private final EntityDefinitionOptionService entityOptionService;
+    private final EntityActionCapabilityService actionCapabilityService;
     
     /**
      * 获取实体定义分页列表
@@ -69,10 +72,14 @@ public class EntityDefinitionController {
     }
     
     /**
-     * 根据编码获取实体定义
+     * 根据编码获取实体定义。
+     * 运行态列表/表单会按编码读取元数据，不能要求菜单管理权限 entity:definition:view。
+     * 登录用户需具备该实体的设计查看权，或任一标准数据动作权限（如 entity:{code}:list）。
      */
     @GetMapping("/code/{code}")
+    @AuthenticatedApi(objectAuthorization = true)
     public ApiResponse<EntityDefinitionDTO> getByCode(@PathVariable String code) {
+        actionCapabilityService.requireEntityMetadataAccess(code);
         return ApiResponse.success(entityService.findByCode(code));
     }
     

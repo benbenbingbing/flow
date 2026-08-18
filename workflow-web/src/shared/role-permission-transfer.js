@@ -89,6 +89,19 @@ export function sanitizePermissionKeys(keys = [], options = []) {
     .filter(id => selectedKeys.has(id))
 }
 
+export function isScopeBypassPermission(option) {
+  return String(option?.perm || '').endsWith(':scope:bypass')
+}
+
+export function collectNewlyAssignedScopeBypass(currentKeys = [], nextKeys = [], options = []) {
+  const before = new Set((currentKeys || []).map(normalizeKey))
+  const after = new Set((nextKeys || []).map(normalizeKey))
+  return (options || []).filter(option =>
+    isScopeBypassPermission(option)
+    && after.has(normalizeKey(option.id))
+    && !before.has(normalizeKey(option.id)))
+}
+
 export function applyPermissionTransferChange(keys, direction, movedKeys, options) {
   const optionMap = new Map(options.map(option => [normalizeKey(option.id), option]))
   const selectedKeys = new Set(sanitizePermissionKeys(keys, options))

@@ -399,7 +399,7 @@ export default {
         },
         {
           id: 'process-multi-instance',
-          title: '多实例（会签 / 串行）',
+          title: '多实例（会签 / 或签）',
           blocks: [
             {
               type: 'callout',
@@ -412,11 +412,12 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '启用多实例', meaning: '为上方审批人配置解析出的每个成员创建任务实例。', defaultLimit: '默认关闭。', effect: '开启后复用同一审批人来源生成多人任务，不再单独维护会签人员。', publish: '人员集合为空会阻止保存或运行，必须测试。' },
-                { field: '执行方式', meaning: 'parallel 并行或 sequential 串行。', defaultLimit: '默认 parallel。', effect: '并行同时生成任务；串行按集合顺序逐个生成。UI 将串行标注为“或签”，但是否任一人通过取决于完成条件。', publish: '不要把“串行”误当成自动一票通过。' },
+                { field: '办理模式', meaning: 'countersign 会签或 orsign 或签。', defaultLimit: '默认会签。', effect: '会签只统计通过票，达标通过、剩余票不够则拒绝；或签第一人通过或驳回即结束。', publish: '并行/串行只表示创建顺序，不要把串行当成或签。' },
+                { field: '执行方式', meaning: 'parallel 并行或 sequential 串行。', defaultLimit: '默认 parallel。', effect: '并行同时生成任务；串行按集合顺序逐个生成。', publish: '不要把“串行”误当成自动一票通过。' },
                 { field: '审批人指定方式', meaning: '复用上方固定人员、用户组、角色、其他节点审批人或人员接口。固定人员在多人办理时显示为一个有序多选列表。', defaultLimit: '至少选择一人、一个组/角色、一个可引用节点，或支持 MULTI_INSTANCE 用途的人员接口。', effect: '平台展开成员、去重并写入当前节点集合变量；节点引用按被引用规则展开，固定人员的选择顺序会保留。', publish: '多人办理不支持表达式来源；节点引用不得形成环；切换办理模式后需重新选择匹配用途的人员接口。' },
                 { field: '集合变量', meaning: '多实例集合表达式。', defaultLimit: '系统按节点生成唯一的 ${_wfMultiInstanceUsers_<节点ID>}，界面只读。', effect: '发布时作为 loop collection，前序改选会覆盖对应目标节点的集合。', publish: '不同多实例节点不得共用集合变量；不要在 XML 外部覆盖为错误类型。' },
                 { field: '元素变量', meaning: '当前实例成员变量名。', defaultLimit: '默认 assignee。', effect: '每个子任务 assignee 写为 ${元素变量}。', publish: '与流程中其他变量避免重名。' },
-                { field: '完成条件', meaning: '满足后提前结束多实例。', defaultLimit: '默认空，表示全部实例完成；示例 ${nrOfCompletedInstances >= nrOfInstances * 0.5}。', effect: '可实现半数、任一、全票等策略。', publish: '使用 Flowable 多实例变量；提前结束会终止剩余实例，业务需确认。' }
+                { field: '完成条件', meaning: '满足后提前结束多实例。', defaultLimit: '会签按通过人数达标或剩余票不够结束；开启“需要所有人审批”则等全员。或签为通过人数 >= 1 或驳回标记。', effect: '会签驳回不加通过人数；未开全员时只在不可能达标时提前拒绝。', publish: '完成条件由设计器按办理模式生成，不要手改。' }
               ]
             },
             {

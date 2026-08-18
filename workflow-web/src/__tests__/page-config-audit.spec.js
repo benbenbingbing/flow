@@ -1362,7 +1362,8 @@ assert.match(
   'filterRoot',
   'permissionRuleFieldOptions',
   'getEnabledGroups',
-  'CURRENT_ASSIGNEE',
+  'value="HAS_TODO"',
+  'value="TEAM"',
   'value="GROUP"',
   'value="ORG"',
   'value="RULE"'

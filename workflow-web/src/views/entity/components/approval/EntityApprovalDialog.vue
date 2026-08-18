@@ -379,7 +379,7 @@ async function loadFormActions() {
 }
 
 watch(
-  () => [approveForm.action, approveForm.comment],
+  () => approveForm.action,
   scheduleNextApproverPreview
 )
 watch(entityData, scheduleNextApproverPreview, { deep: true })

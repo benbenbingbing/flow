@@ -57,8 +57,22 @@ function canonicalRequestValue(value) {
 }
 
 /**
- * 候选人员请求的稳定签名。搜索、分页或任一审批上下文发生变化时，签名都会
- * 改变，选择器据此拒绝晚到的旧响应。
+ * 下一节点预览请求的稳定签名。审批意见不参与路径计算，因此不进入签名，
+ * 避免输入备注时反复请求。
+ */
+export function createNextApproverPreviewRequestSignature(value = {}) {
+  const source = objectValue(value)
+  return JSON.stringify(canonicalRequestValue({
+    taskId: source.taskId ?? '',
+    action: source.action ?? '',
+    actionLabel: source.actionLabel ?? '',
+    formData: source.formData ?? {}
+  }))
+}
+
+/**
+ * 候选人员请求的稳定签名。搜索、分页、操作或表单变化时签名改变；
+ * 审批意见不参与候选范围，因此不进入签名。
  */
 export function createNextApproverOptionsRequestSignature(value = {}) {
   const source = objectValue(value)
@@ -68,12 +82,36 @@ export function createNextApproverOptionsRequestSignature(value = {}) {
     scopeKey: source.scopeKey ?? '',
     action: source.action ?? '',
     actionLabel: source.actionLabel ?? '',
-    comment: source.comment ?? '',
     formData: source.formData ?? {},
     keyword: source.keyword ?? '',
     pageNum: source.pageNum ?? 1,
     pageSize: source.pageSize ?? 10
   }))
+}
+
+/**
+ * 比较两次预览是否会改变下一节点展示。一致时调用方应保留现有画面，避免闪烁。
+ */
+export function nextApproverPreviewFingerprint(preview) {
+  const normalized = normalizeNextApproverPreview(preview)
+  return JSON.stringify({
+    status: normalized.status,
+    message: normalized.message,
+    scopeKey: normalized.scopeKey,
+    nodes: normalized.nextNodes.map(node => ({
+      nodeId: node.nodeId,
+      nodeName: node.nodeName,
+      visible: node.visible,
+      editable: node.editable,
+      assignmentMode: node.assignmentMode,
+      assignees: node.assignees.map(user => user.userKey)
+    }))
+  })
+}
+
+export function areNextApproverPreviewsEqual(left, right) {
+  return nextApproverPreviewFingerprint(left)
+    === nextApproverPreviewFingerprint(right)
 }
 
 /** 保留显式人员顺序，供顺序或并行多实例保存参与人次序。 */
@@ -447,9 +485,11 @@ export function buildChangedNextApproverSelections(preview, draftMap = {}) {
 export function hasNextApproverPresentation(preview, loading = false) {
   const normalized = normalizeNextApproverPreview(preview)
   const hasVisibleNodes = normalized.nextNodes.some(node => node.visible)
+  if (normalized.status === 'DEFERRED' || normalized.status === 'BLOCKED') {
+    return true
+  }
   if (loading) return hasVisibleNodes
-  return normalized.status !== 'READY'
-    || hasVisibleNodes
+  return normalized.status !== 'READY' || hasVisibleNodes
 }
 
 export function validateNextApproverDraft(preview, draftMap = {}) {

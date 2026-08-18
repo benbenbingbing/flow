@@ -13,7 +13,7 @@ public class FilterConfigDTO {
     /** 结构化配置版本 */
     private Integer version = 1;
 
-    /** 过滤类型：ALL / PERSONAL / SUBMITTER / CURRENT_ASSIGNEE / DEPT / DEPT_TREE / RULE */
+    /** 过滤类型：ALL / PERSONAL / SUBMITTER / CURRENT_ASSIGNEE / HAS_TODO / TEAM / DEPT / DEPT_TREE / RULE */
     private String type;
 
     /** 是否包含子部门 */
@@ -33,6 +33,16 @@ public class FilterConfigDTO {
      * 为空时兼容旧版简单类型。
      */
     private EntityActionRuleDTO.RuleNode root;
+
+    /**
+     * 规则目录上的允许/拒绝，列表绑定时复制到 binding。
+     */
+    private String ruleEffect;
+
+    /**
+     * 规则目录上的适用对象，列表绑定时复制到 binding。
+     */
+    private MatchConfigDTO audience;
 
     /**
      * 旧版自定义 SQL，已废弃。

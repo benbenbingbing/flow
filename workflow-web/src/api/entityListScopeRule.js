@@ -1,31 +1,6 @@
 import { entityListScopeApi } from './entityListScope'
 import { entityListRuntimeApi } from './entityListRuntime'
 
-function combine(configuration) {
-  const policies = new Map((configuration?.policies || []).map(policy => [policy.id, policy]))
-  return (configuration?.bindings || []).map(binding => {
-    const policy = policies.get(binding.policyId) || {}
-    return {
-      ...binding,
-      id: binding.id,
-      bindingId: binding.id,
-      policyId: policy.id,
-      policyKey: policy.policyKey,
-      ruleName: policy.policyName,
-      description: policy.description,
-      presetCode: policy.presetCode,
-      enabled: binding.enabled,
-      listKey: binding.listKey || '',
-      ruleEffect: binding.ruleEffect || 'ALLOW',
-      matchConfig: JSON.stringify(binding.matchConfig || {}),
-      filterConfig: JSON.stringify(policy.filterConfig || {}),
-      status: policy.status,
-      version: policy.version,
-      reviewRequired: policy.reviewRequired
-    }
-  })
-}
-
 function parse(value, fallback) {
   if (!value) return fallback
   if (typeof value === 'object') return value
@@ -36,72 +11,103 @@ function parse(value, fallback) {
   }
 }
 
+function toPolicyRow(policy, bindings = []) {
+  const filter = parse(policy.filterConfig, { type: 'PERSONAL' })
+  const boundListKeys = Array.isArray(policy.boundListKeys)
+    ? policy.boundListKeys
+    : bindings
+      .filter(binding => binding.policyId === policy.id && binding.listKey)
+      .map(binding => binding.listKey)
+  return {
+    id: policy.id,
+    policyId: policy.id,
+    policyKey: policy.policyKey,
+    entityCode: policy.entityCode,
+    ruleName: policy.policyName,
+    description: policy.description,
+    presetCode: policy.presetCode || filter.type,
+    enabled: policy.enabled,
+    status: policy.status,
+    version: policy.version,
+    reviewRequired: policy.reviewRequired,
+    boundListKeys,
+    ruleEffect: filter.ruleEffect || 'ALLOW',
+    matchConfig: JSON.stringify(filter.audience || { logic: 'OR', conditions: [] }),
+    filterConfig: JSON.stringify(filter)
+  }
+}
+
 export const entityListScopeRuleApi = {
+  async getConfiguration(entityCode) {
+    return entityListScopeApi.getConfiguration(entityCode)
+  },
+
   async getByEntityCode(entityCode) {
-    return combine(await entityListScopeApi.getConfiguration(entityCode))
+    const configuration = await entityListScopeApi.getConfiguration(entityCode)
+    return (configuration?.policies || []).map(policy =>
+      toPolicyRow(policy, configuration?.bindings || []))
   },
 
   async create(data) {
-    const policy = await entityListScopeApi.createPolicy({
+    const filter = parse(data.filterConfig, { version: 1, type: 'PERSONAL' })
+    filter.ruleEffect = data.ruleEffect || filter.ruleEffect || 'ALLOW'
+    filter.audience = parse(data.matchConfig, filter.audience || {})
+    return entityListScopeApi.createPolicy({
       entityCode: data.entityCode,
       policyKey: data.policyKey || `scope_${Date.now()}`,
       policyName: data.ruleName,
       description: data.description || '',
-      presetCode: data.filterType || parse(data.filterConfig, {}).type,
-      filterConfig: parse(data.filterConfig, { version: 1, type: 'PERSONAL' }),
-      enabled: data.enabled
-    })
-    return entityListScopeApi.createBinding({
-      entityCode: data.entityCode,
-      policyId: policy.id,
-      listKey: data.listKey || null,
-      matchConfig: parse(data.matchConfig, {}),
-      ruleEffect: data.ruleEffect || 'ALLOW',
+      presetCode: data.filterType || filter.type,
+      filterConfig: filter,
       enabled: data.enabled
     })
   },
 
   async update(id, data) {
-    await entityListScopeApi.updatePolicy(data.policyId, {
-      id: data.policyId,
+    const filter = parse(data.filterConfig, { version: 1, type: 'PERSONAL' })
+    filter.ruleEffect = data.ruleEffect || filter.ruleEffect || 'ALLOW'
+    filter.audience = parse(data.matchConfig, filter.audience || {})
+    return entityListScopeApi.updatePolicy(data.policyId || id, {
+      id: data.policyId || id,
       entityCode: data.entityCode,
       policyKey: data.policyKey,
       policyName: data.ruleName,
       description: data.description || '',
-      presetCode: data.filterType || parse(data.filterConfig, {}).type,
-      filterConfig: parse(data.filterConfig, { version: 1, type: 'PERSONAL' }),
-      enabled: data.enabled
-    })
-    return entityListScopeApi.updateBinding(id, {
-      id,
-      entityCode: data.entityCode,
-      policyId: data.policyId,
-      listKey: data.listKey || null,
-      matchConfig: parse(data.matchConfig, {}),
-      ruleEffect: data.ruleEffect || 'ALLOW',
+      presetCode: data.filterType || filter.type,
+      filterConfig: filter,
       enabled: data.enabled
     })
   },
 
   async delete(row) {
-    const bindingId = typeof row === 'string' ? row : row.bindingId || row.id
-    const policyId = typeof row === 'string' ? null : row.policyId
-    await entityListScopeApi.deleteBinding(bindingId)
+    const policyId = typeof row === 'string' ? row : row.policyId || row.id
     if (policyId) {
       await entityListScopeApi.deletePolicy(policyId)
     }
   },
 
   updateEnabled(row) {
-    return entityListScopeApi.updateBinding(row.bindingId || row.id, {
-      id: row.bindingId || row.id,
+    const filter = parse(row.filterConfig, { version: 1, type: row.filterType || 'PERSONAL' })
+    filter.ruleEffect = row.ruleEffect || filter.ruleEffect || 'ALLOW'
+    filter.audience = parse(row.matchConfig, filter.audience || {})
+    return entityListScopeApi.updatePolicy(row.policyId || row.id, {
+      id: row.policyId || row.id,
       entityCode: row.entityCode,
-      policyId: row.policyId,
-      listKey: row.listKey || null,
-      matchConfig: parse(row.matchConfig, {}),
-      ruleEffect: row.ruleEffect,
+      policyKey: row.policyKey,
+      policyName: row.ruleName,
+      description: row.description || '',
+      presetCode: row.filterType || filter.type,
+      filterConfig: filter,
       enabled: row.enabled
     })
+  },
+
+  replaceListBindings(entityCode, listKey, policyIds = []) {
+    return entityListScopeApi.replaceListBindings(
+      entityCode,
+      listKey,
+      policyIds.filter(Boolean).map(policyId => ({ policyId, enabled: 1 }))
+    )
   },
 
   previewSql(entityCode, listKey, data = {}) {

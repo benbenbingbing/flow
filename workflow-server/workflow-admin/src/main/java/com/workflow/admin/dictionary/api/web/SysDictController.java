@@ -1,5 +1,6 @@
 package com.workflow.admin.dictionary.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.PageResult;
@@ -155,12 +156,14 @@ public class SysDictController {
     }
 
     /**
-     * 根据字典编码查询字典项树
+     * 根据字典编码查询字典项树。
+     * 表单/列表下拉选项会按编码读取，不能要求字典管理权限；登录即可。
      *
      * @param dictCode 字典编码
      * @return 树形结构的字典项列表
      */
     @GetMapping("/item/tree/code/{dictCode}")
+    @AuthenticatedApi
     public Result<List<SysDictItem>> getItemTreeByDictCode(@PathVariable String dictCode) {
         return Result.success(dictItemService.getItemTreeByDictCode(dictCode));
     }

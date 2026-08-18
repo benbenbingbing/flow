@@ -412,6 +412,19 @@
             </el-form-item>
 
             <template v-if="assigneeForm.isMultiInstance">
+              <el-form-item label="办理模式">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="办理模式"
+                    help-key="process.multiInstanceDecision"
+                  />
+                </template>
+                <el-radio-group v-model="assigneeForm.multiInstanceDecision">
+                  <el-radio-button value="countersign">会签</el-radio-button>
+                  <el-radio-button value="orsign">或签</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+
               <el-form-item label="执行方式">
                 <template #label>
                   <ConfigHelpLabel
@@ -425,17 +438,39 @@
                 </el-radio-group>
               </el-form-item>
 
-              <el-form-item label="完成条件">
+              <el-form-item
+                label="通过率阈值（%）"
+                v-if="assigneeForm.multiInstanceDecision !== 'orsign'"
+              >
                 <template #label>
                   <ConfigHelpLabel
-                    label="完成条件"
+                    label="通过率阈值（%）"
                     help-key="process.multiInstanceCompletionCondition"
                   />
                 </template>
-                <el-input
-                  v-model="assigneeForm.completionCondition"
-                  placeholder="如：${nrOfCompletedInstances >= nrOfInstances * 0.5}"
+                <el-input-number
+                  v-model="assigneeForm.multiInstanceCompletionRate"
+                  :min="1"
+                  :max="100"
+                  :step="1"
+                  :controls="false"
+                  style="width: 180px"
+                  controls-position="right"
                 />
+              </el-form-item>
+
+              <el-form-item
+                label="是否需要所有人审批"
+                v-if="assigneeForm.multiInstanceDecision !== 'orsign'"
+              >
+                <template #label>
+                  <ConfigHelpLabel
+                    label="是否需要所有人审批"
+                    help-key="process.multiInstanceCompletionCondition"
+                  />
+                </template>
+                <el-switch v-model="assigneeForm.multiInstanceNeedAllApprovers" />
+                <div class="form-tip">开启后无论通过还是驳回都等全部人办完，再按通过率判定；关闭则达标立即通过，剩下的人全通过也凑不够立即拒绝</div>
               </el-form-item>
 
               <el-form-item label="集合变量">
@@ -1508,7 +1543,13 @@ import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   buildNodeScopedMultiInstanceCollection,
+  buildNodeScopedMultiInstanceApprovedCountVariable,
+  buildMultiInstanceCompletionCondition,
   buildAssigneeConfig,
+  normalizeMultiInstanceCompletionRate,
+  normalizeMultiInstanceDecision,
+  normalizeMultiInstanceNeedAllApprovers,
+  MULTI_INSTANCE_DECISION_COUNTERSIGN,
   buildUserTaskReferenceOptions,
   getProcessConditionFieldCode,
   getProcessConditionFieldType,
@@ -1639,8 +1680,11 @@ const assigneeForm = ref({
   candidateRoleIds: [],
   isMultiInstance: false,
   multiInstanceType: 'parallel',
+  multiInstanceDecision: MULTI_INSTANCE_DECISION_COUNTERSIGN,
   collection: '',
   elementVariable: 'assignee',
+  multiInstanceCompletionRate: 100,
+  multiInstanceNeedAllApprovers: false,
   completionCondition: '',
   assigneeType: 'user', // user/group/role/node_reference/expression/interface
   referencedNodeId: '',
@@ -2206,6 +2250,54 @@ function getRoleIdsFromCodes(codes) {
   }).filter(Boolean)
 }
 
+function currentMultiInstanceCompletionCondition(nodeId = basicForm.value.id) {
+  return buildMultiInstanceCompletionCondition({
+    decision: assigneeForm.value.multiInstanceDecision,
+    completionRate: assigneeForm.value.multiInstanceCompletionRate,
+    needAllApprovers: assigneeForm.value.multiInstanceNeedAllApprovers,
+    nodeId
+  })
+}
+
+function parseLegacyCompletionRate(conditionBody) {
+  const condition = String(conditionBody || '').trim()
+  if (!condition) {
+    return 100
+  }
+
+  // 兼容旧版表达式：approved*100>=nrOfInstances*百分比 或 nrOfCompletedInstances>=nrOfInstances*比例
+  const percentMatch = condition.match(/\*\s*100\s*>=\s*[^*]+\*\s*([0-9]+(?:\.[0-9]+)?)/)
+  if (percentMatch?.[1]) {
+    return normalizeMultiInstanceCompletionRate(percentMatch[1])
+  }
+
+  const ratioMatch = condition.match(
+    /nrOfCompletedInstances\s*>=\s*nrOfInstances\s*\*\s*([0-9]+(?:\.[0-9]+)?)/i
+  )
+  if (ratioMatch?.[1]) {
+    const value = Number(ratioMatch[1])
+    if (!Number.isFinite(value)) {
+      return 100
+    }
+    const rate = value <= 1 ? value * 100 : value
+    return normalizeMultiInstanceCompletionRate(rate)
+  }
+
+  return 100
+}
+
+function parseLegacyMultiInstanceDecision(conditionBody, configuredDecision) {
+  if (configuredDecision) {
+    return normalizeMultiInstanceDecision(configuredDecision)
+  }
+  const condition = String(conditionBody || '').trim()
+  if (/_wf_mi_approved_count_[A-Za-z0-9_]+\s*>=\s*1/.test(condition)
+    && !condition.includes('nrOfInstances')) {
+    return 'orsign'
+  }
+  return MULTI_INSTANCE_DECISION_COUNTERSIGN
+}
+
 watch(() => props.element, async (newElement) => {
   if (newElement?.businessObject) {
     const bo = toRaw(newElement).businessObject
@@ -2217,7 +2309,7 @@ watch(() => props.element, async (newElement) => {
     
     if (isUserTask.value) {
       const loop = bo.loopCharacteristics
-      
+
       // 解析 assigneeConfig（包含执行人类型、接口配置等）
       let assigneeConfig = {}
       if (extProps['assigneeConfig']) {
@@ -2237,6 +2329,33 @@ watch(() => props.element, async (newElement) => {
           console.error('解析 multiInstanceConfig 失败:', e)
         }
       }
+      const completionRate = Object.prototype.hasOwnProperty.call(
+        multiInstanceConfig,
+        'multiInstanceCompletionRate'
+      )
+        ? normalizeMultiInstanceCompletionRate(
+          multiInstanceConfig.multiInstanceCompletionRate
+        )
+        : parseLegacyCompletionRate(
+          loop?.completionCondition?.body
+          || multiInstanceConfig.completionCondition
+        )
+      const needAllApprovers = Object.prototype.hasOwnProperty.call(
+        multiInstanceConfig,
+        'multiInstanceNeedAllApprovers'
+      )
+        ? normalizeMultiInstanceNeedAllApprovers(
+          multiInstanceConfig.multiInstanceNeedAllApprovers
+        )
+        : normalizeMultiInstanceNeedAllApprovers(
+          assigneeConfig.multiInstanceNeedAllApprovers
+        )
+      const multiInstanceDecision = parseLegacyMultiInstanceDecision(
+        loop?.completionCondition?.body
+          || multiInstanceConfig.completionCondition,
+        multiInstanceConfig.multiInstanceDecision
+          || assigneeConfig.multiInstanceDecision
+      )
 
       // v1 多实例把参与人另存一套字段；设计器先投影到统一审批人表单，
       // 同时保留原始配置，确保用户未修改人员时 load -> save 完全无损。
@@ -2277,10 +2396,18 @@ watch(() => props.element, async (newElement) => {
         
         // 多实例配置
         isMultiInstance: !!loop, 
-        multiInstanceType: loop?.isSequential ? 'sequential' : 'parallel', 
+        multiInstanceType: loop?.isSequential ? 'sequential' : 'parallel',
+        multiInstanceDecision,
         collection: loop?.collection || multiInstanceConfig.collection || '${_wfMultiInstanceUsers_}', 
         elementVariable: loop?.elementVariable || multiInstanceConfig.elementVariable || 'assignee', 
-        completionCondition: loop?.completionCondition?.body || multiInstanceConfig.completionCondition || '',
+        multiInstanceCompletionRate: completionRate,
+        multiInstanceNeedAllApprovers: needAllApprovers,
+        completionCondition: buildMultiInstanceCompletionCondition({
+          decision: multiInstanceDecision,
+          completionRate,
+          needAllApprovers,
+          nodeId: basicForm.value.id
+        }),
         
         // 执行人类型和接口配置（从扩展属性）
         assigneeType: assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
@@ -2704,9 +2831,22 @@ function onMultiInstanceChange(enabled) {
       : '请重新选择支持 ASSIGNEE 用途的人员接口')
   }
   if (enabled) {
+    assigneeForm.value.multiInstanceDecision = normalizeMultiInstanceDecision(
+      assigneeForm.value.multiInstanceDecision
+    )
+    assigneeForm.value.multiInstanceCompletionRate = normalizeMultiInstanceCompletionRate(
+      assigneeForm.value.multiInstanceCompletionRate
+    )
+    assigneeForm.value.multiInstanceNeedAllApprovers =
+      normalizeMultiInstanceNeedAllApprovers(
+        assigneeForm.value.multiInstanceNeedAllApprovers
+      )
     assigneeForm.value.collection = buildNodeScopedMultiInstanceCollection(
       basicForm.value.id || props.element?.businessObject?.id,
       assigneeForm.value.collection
+    )
+    assigneeForm.value.completionCondition = currentMultiInstanceCompletionCondition(
+      basicForm.value.id || props.element?.businessObject?.id
     )
   }
 }
@@ -2716,19 +2856,37 @@ function updateMultiInstance() {
   const modeling = getModeling(), moddle = getModdle()
   if (!modeling || !moddle) return
   // 使用内部系统变量，由后端监听器自动根据审批人配置计算
+  const nodeId = basicForm.value.id || props.element?.businessObject?.id
   const collection = buildNodeScopedMultiInstanceCollection(
-    basicForm.value.id || props.element?.businessObject?.id,
+    nodeId,
     assigneeForm.value.collection
   )
   assigneeForm.value.collection = collection
+  const completionRate = normalizeMultiInstanceCompletionRate(
+    assigneeForm.value.multiInstanceCompletionRate
+  )
+  const needAllApprovers = assigneeForm.value.multiInstanceNeedAllApprovers === true
+  const multiInstanceDecision = normalizeMultiInstanceDecision(
+    assigneeForm.value.multiInstanceDecision
+  )
+  const completionCondition = buildMultiInstanceCompletionCondition({
+    decision: multiInstanceDecision,
+    completionRate,
+    needAllApprovers,
+    nodeId
+  })
+  assigneeForm.value.multiInstanceDecision = multiInstanceDecision
+  assigneeForm.value.multiInstanceCompletionRate = completionRate
+  assigneeForm.value.multiInstanceNeedAllApprovers = needAllApprovers
+  assigneeForm.value.completionCondition = completionCondition
   const loop = moddle.create('bpmn:MultiInstanceLoopCharacteristics', {
     isSequential: assigneeForm.value.multiInstanceType === 'sequential',
     collection: collection,
     elementVariable: assigneeForm.value.elementVariable || 'assignee'
   })
-  if (assigneeForm.value.completionCondition) {
-    loop.completionCondition = moddle.create('bpmn:FormalExpression', { body: assigneeForm.value.completionCondition })
-  }
+  loop.completionCondition = moddle.create('bpmn:FormalExpression', {
+    body: completionCondition
+  })
   // 多实例任务必须设置 assignee 为 elementVariable 表达式，
   // 否则 Flowable 会沿用原来的 candidateGroups，导致所有人都能看到所有会签任务
   modeling.updateProperties(toRaw(props.element), { 
@@ -2747,7 +2905,12 @@ function updateMultiInstance() {
     ...currentConfig,
     collection: collection,
     elementVariable: assigneeForm.value.elementVariable || 'assignee',
-    completionCondition: assigneeForm.value.completionCondition
+    completionCondition: completionCondition,
+    multiInstanceDecision,
+    multiInstanceCompletionRate: completionRate,
+    multiInstanceNeedAllApprovers: needAllApprovers,
+    multiInstanceApprovedCountVariable:
+      buildNodeScopedMultiInstanceApprovedCountVariable(nodeId)
   }
   updateExtensionProperty('multiInstanceConfig', JSON.stringify(multiInstanceConfig))
 }

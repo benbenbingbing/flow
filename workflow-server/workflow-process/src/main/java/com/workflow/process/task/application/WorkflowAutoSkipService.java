@@ -42,6 +42,7 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
     private final TaskService taskService;
     private final RuntimeService runtimeService;
     private final RepositoryService repositoryService;
+    private final MultiInstanceOutcomeService multiInstanceOutcomeService;
 
     /** 跳过节点总数硬上限，防止异常流程（如环路）导致死循环 */
     private static final int MAX_SKIP_TOTAL = 500;
@@ -92,6 +93,8 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
                 try {
                     taskService.addComment(task.getId(), processInstanceId, "系统自动跳过此节点");
                     taskService.setVariable(task.getId(), "approved", "approve");
+                    // 跳过按通过处理，否则会签阈值永远到不了。
+                    multiInstanceOutcomeService.recordApprove(task);
                     taskService.complete(task.getId(), Map.of("approved", "approve"));
                     completedTaskIds.add(task.getId());
                     totalSkipped++;
@@ -169,6 +172,7 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
             try {
                 taskService.addComment(task.getId(), processInstanceId, "系统自动跳过此节点");
                 taskService.setVariable(task.getId(), "approved", "approve");
+                multiInstanceOutcomeService.recordApprove(task);
                 taskService.complete(task.getId(), Map.of("approved", "approve"));
                 log.info("实时自动跳过节点: processInstanceId={}, taskId={}, taskDefKey={}",
                         processInstanceId, task.getId(), activityId);

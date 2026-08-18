@@ -77,6 +77,25 @@ assert.equal(
   'bob,alice',
   '多实例固定人员必须去重、保序，并把列表首人同步为 assigneeValue'
 )
+assert.equal(
+  orderedMultiInstance.multiInstanceDecision,
+  'countersign',
+  '未指定办理模式时默认会签'
+)
+
+const orSignConfig = buildAssigneeConfig({
+  isMultiInstance: true,
+  multiInstanceDecision: 'orsign',
+  multiInstanceCompletionRate: 0,
+  assigneeType: 'user',
+  candidateUserIds: ['alice']
+})
+assert.equal(orSignConfig.multiInstanceDecision, 'orsign')
+assert.equal(
+  orSignConfig.multiInstanceCompletionRate,
+  1,
+  '通过率 0 必须抬到最小值 1'
+)
 
 for (const [legacyType, legacyFields] of [
   ['nodeReference', {

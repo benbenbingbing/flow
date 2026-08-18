@@ -188,8 +188,6 @@ public class NextApproverOverrideService {
 
         Map<String, Object> overrides = currentOverrides(
                 task.getProcessInstanceId());
-        Map<String, List<String>> multiInstanceVariables =
-                new LinkedHashMap<>();
         Map<String, String> multiInstanceVariableTargets =
                 new LinkedHashMap<>();
         List<AuditEntry> audits = new ArrayList<>();
@@ -292,18 +290,24 @@ public class NextApproverOverrideService {
                                     + ", "
                                     + target.userTask().getId());
                 }
-                multiInstanceVariables.put(
-                        variableName, List.copyOf(usernames));
-            } else {
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("sourceTaskId", task.getId());
-                entry.put("targetNodeId", target.userTask().getId());
-                entry.put("assignmentMode", policy.assignmentMode());
-                entry.put("usernames", List.copyOf(usernames));
-                entry.put("scopeKey", resolution.scopeKey());
-                entry.put("createdAt", Instant.now().toString());
-                overrides.put(target.userTask().getId(), entry);
+                // 下一节点若在本次 complete 内立刻进入，Flowable 会先解析
+                // collection 再发 ACTIVITY_STARTED。store 供监听器重入消费，
+                // 集合变量保证当前命令内就能创建多实例。
+                runtimeService.setVariable(
+                        task.getProcessInstanceId(),
+                        variableName,
+                        List.copyOf(usernames));
             }
+            // 会签/或签覆盖写入一次性 store，由集合监听器在节点进入时消费。
+            // 不在这里直接改 collection，避免路径未走到该节点或循环重入时沿用旧人选。
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("sourceTaskId", task.getId());
+            entry.put("targetNodeId", target.userTask().getId());
+            entry.put("assignmentMode", policy.assignmentMode());
+            entry.put("usernames", List.copyOf(usernames));
+            entry.put("scopeKey", resolution.scopeKey());
+            entry.put("createdAt", Instant.now().toString());
+            overrides.put(target.userTask().getId(), entry);
             audits.add(new AuditEntry(
                     target.userTask().getId(),
                     target.userTask().getName(),
@@ -311,11 +315,6 @@ public class NextApproverOverrideService {
                             target.userTask().getId(), List.of()),
                     List.copyOf(usernames)));
         }
-        multiInstanceVariables.forEach((variableName, usernames) ->
-                runtimeService.setVariable(
-                        task.getProcessInstanceId(),
-                        variableName,
-                        usernames));
         if (!overrides.isEmpty()) {
             runtimeService.setVariable(
                     task.getProcessInstanceId(),

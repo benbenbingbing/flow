@@ -38,16 +38,28 @@ for (const nestedTitle of ['办理方式', '完成规则', '技术参数']) {
 
 const fieldContracts = [
   {
+    label: '办理模式',
+    model: 'assigneeForm.multiInstanceDecision',
+    helpKey: 'process.multiInstanceDecision',
+    legacyTip: ''
+  },
+  {
     label: '执行方式',
     model: 'assigneeForm.multiInstanceType',
     helpKey: 'process.multiInstanceType',
     legacyTip: '并行：多人同时审批；串行：按顺序审批'
   },
   {
-    label: '完成条件',
-    model: 'assigneeForm.completionCondition',
+    label: '通过率阈值（%）',
+    model: 'assigneeForm.multiInstanceCompletionRate',
     helpKey: 'process.multiInstanceCompletionCondition',
-    legacyTip: '满足此条件时任务完成，留空表示全部实例完成'
+    legacyTip: ''
+  },
+  {
+    label: '是否需要所有人审批',
+    model: 'assigneeForm.multiInstanceNeedAllApprovers',
+    helpKey: 'process.multiInstanceCompletionCondition',
+    legacyTip: ''
   },
   {
     label: '集合变量',
@@ -72,7 +84,9 @@ for (const { label, model, helpKey, legacyTip } of fieldContracts) {
   assert.ok(formItemSource.includes(`help-key="${helpKey}"`), `“${label}”问号帮助键不正确`)
   assert.ok(formItemSource.includes(`v-model="${model}"`), `“${label}”不应因扁平化丢失数据绑定`)
   assert.ok(CONFIG_FIELD_HELP[helpKey], `“${label}”问号帮助缺少帮助字典内容`)
-  assert.equal(multiInstanceSource.includes(legacyTip), false, `“${label}”不应继续内联展示说明文字`)
+  if (legacyTip) {
+    assert.equal(multiInstanceSource.includes(legacyTip), false, `“${label}”不应继续内联展示说明文字`)
+  }
 }
 
 console.log('node config layout contract passed')

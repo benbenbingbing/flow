@@ -73,6 +73,30 @@ class EndpointAuthorizationInterceptorTest {
     }
 
     @Test
+    void methodAuthenticatedApiOverridesClassPermission() throws Exception {
+        UserContext.setCurrentUser("user-1", "reader");
+        when(menuMapper.selectPermsByUserId("user-1")).thenReturn(Set.of());
+        Method method = ManagedController.class.getDeclaredMethod("sidebarTree");
+
+        assertDoesNotThrow(() -> interceptor.preHandle(
+                new MockHttpServletRequest("GET", "/api/system/menu/sidebar-tree"),
+                new MockHttpServletResponse(),
+                new HandlerMethod(new ManagedController(), method)));
+    }
+
+    @Test
+    void classPermissionStillProtectsManagementEndpoints() throws Exception {
+        UserContext.setCurrentUser("user-1", "reader");
+        when(menuMapper.selectPermsByUserId("user-1")).thenReturn(Set.of());
+        Method method = ManagedController.class.getDeclaredMethod("tree");
+
+        assertThrows(ForbiddenException.class, () -> interceptor.preHandle(
+                new MockHttpServletRequest("GET", "/api/system/menu/tree"),
+                new MockHttpServletResponse(),
+                new HandlerMethod(new ManagedController(), method)));
+    }
+
+    @Test
     void stateChangingAuthenticatedEndpointFailsClosedWithoutObjectAuthorization() {
         UserContext.setCurrentUser("user-1", "reader");
 
@@ -138,6 +162,17 @@ class EndpointAuthorizationInterceptorTest {
         }
 
         public void unclassifiedEndpoint() {
+        }
+    }
+
+    @RequiresPermission("system:menu:view")
+    private static class ManagedController {
+
+        @AuthenticatedApi
+        public void sidebarTree() {
+        }
+
+        public void tree() {
         }
     }
 }

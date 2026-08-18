@@ -1,6 +1,10 @@
 export const CONFIG_FIELD_HELP = Object.freeze({
   'entity.teamVisibilityLevel':
-    '控制“参与团队”授予的查看权限能否越过普通数据范围或拒绝规则。ADDITIVE 最保守；ABSOLUTE 权限最高，只应在明确的跨范围协作场景使用。',
+    '相关人查看改为列表绑定 TEAM 规则。此开关不再参与运行时计算。',
+  'entity.permissionFilterTeam':
+    '相关人只包含已在该记录 team 表留下参与事件的人。尚未生成任务的下一审批人不算相关人。',
+  'entity.permissionFilterHasTodo':
+    '匹配 process_task 中当前用户未完成的待办。会签按人一条；办理人可见数据应绑这条，不要再用实体当前办理人字段。',
   'entity.permissionRuleEffect':
     'ALLOW 把规则计算出的范围加入可见结果；DENY 从最终结果中排除该范围。多条规则会与实体和列表的数据范围一起计算。',
   'entity.permissionMatchLogic':
@@ -8,7 +12,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entity.permissionScopeType':
     '决定规则按全部用户、指定用户、角色、用户组、部门或组织匹配。部门和组织还可选择是否包含下级。',
   'entityList.dataScopeMode':
-    'INHERIT 直接继承实体权限；NARROW 只能在实体已允许的数据中继续收窄；OVERRIDE 使用列表独立范围，可能扩大访问面，发布前必须模拟验证。',
+    '本列表只使用自己绑定的数据规则。未绑定允许规则时，有列表权限的人看到全部数据。',
   'entityList.selectionMode':
     '决定列表是普通浏览页，还是给表单或其他页面返回一条或多条选中记录。选择模式还需配置返回值字段和返回映射。',
   'entityList.queryType':
@@ -34,13 +38,15 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'actionRule.unavailableBehavior':
     '条件不满足时可完全隐藏按钮，或保留为禁用状态并展示原因。需要让用户知道功能存在但当前不可用时选择“禁用并说明”。',
   'process.multiInstanceType':
-    '并行会同时创建多人任务；串行会按人员集合顺序逐个创建任务。完成条件可决定是否等待所有实例。',
+    '并行会同时创建多人任务；串行会按人员集合顺序逐个创建任务。并行或串行只表示创建顺序，不决定会签还是或签。',
+  'process.multiInstanceDecision':
+    '会签只统计通过票：达到阈值就通过，剩下的人全通过也凑不够才拒绝。或签第一人通过或驳回即结束本节点。',
   'process.multiInstanceCompletionCondition':
-    '满足表达式时会提前结束多实例任务；留空表示等待全部实例完成。仅在需要特殊会签通过规则时配置。',
+    '会签按已通过人数判断是否达标；驳回不加通过人数。开启“需要所有人审批”后等全员办完再按阈值判定，不会因一人驳回提前结束。',
   'process.multiInstanceCollection':
-    '系统为当前节点生成的用户 ID 集合变量，用于创建多实例任务。该变量只读，无需手工配置。',
+    '系统为当前节点生成的用户名集合变量，用于创建多实例任务。该变量只读，无需手工配置。',
   'process.multiInstanceElementVariable':
-    '集合中的单个用户 ID 在每个任务实例内使用的变量名，通常保持默认值 assignee。',
+    '集合中的单个用户名在每个任务实例内使用的变量名，通常保持默认值 assignee。',
   'process.serviceImplementationType':
     '决定服务任务由 Java 类、表达式、Spring Bean 还是平台代理的 REST 调用执行。外部 HTTP 调用应使用 REST 配置并设置超时与失败策略。',
   'process.sequenceConditionType':

@@ -286,7 +286,6 @@ watch(
     props.scopeKey,
     props.action,
     props.actionLabel,
-    props.comment,
     props.formData
   ],
   () => {

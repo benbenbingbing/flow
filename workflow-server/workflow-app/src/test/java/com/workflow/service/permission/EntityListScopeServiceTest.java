@@ -132,4 +132,105 @@ class EntityListScopeServiceTest {
                 IllegalStateException.class,
                 () -> service.publish("expense", "test"));
     }
+
+    @Test
+    void publishDoesNotRequireEntityDefaultAllow() {
+        EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);
+        EntityListScopeBindingMapper bindingMapper = mock(EntityListScopeBindingMapper.class);
+        EntityListScopeReleaseMapper releaseMapper = mock(EntityListScopeReleaseMapper.class);
+        EntityListConfigMapper listConfigMapper = mock(EntityListConfigMapper.class);
+        EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
+        EntityDefinitionAccessPolicy accessPolicy = mock(EntityDefinitionAccessPolicy.class);
+        EntityListScopeService service = new EntityListScopeService(
+                policyMapper,
+                bindingMapper,
+                releaseMapper,
+                listConfigMapper,
+                definitionMapper,
+                mock(PermissionSqlBuilder.class),
+                mock(PermissionRuleMatcher.class),
+                new ObjectMapper(),
+                mock(EntityListScopeAuditService.class),
+                accessPolicy);
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("expense");
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(accessPolicy.requireDynamicByCodeForUpdate("expense")).thenReturn(entity);
+        when(policyMapper.findByEntityCode("expense")).thenReturn(List.of());
+        when(bindingMapper.findByEntityCode("expense")).thenReturn(List.of());
+        when(listConfigMapper.findByEntityCode("expense")).thenReturn(List.of());
+        when(releaseMapper.findMaxVersion("expense")).thenReturn(0);
+
+        assertDoesNotThrow(() -> service.publish("expense", "empty-catalog"));
+        verify(releaseMapper).insert(any(com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease.class));
+        verify(listConfigMapper, never()).updateById(any(com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig.class));
+    }
+
+    @Test
+    void deletePolicyFailsWhenStillBound() {
+        EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);
+        EntityListScopeBindingMapper bindingMapper = mock(EntityListScopeBindingMapper.class);
+        EntityListScopeService service = new EntityListScopeService(
+                policyMapper,
+                bindingMapper,
+                mock(EntityListScopeReleaseMapper.class),
+                mock(EntityListConfigMapper.class),
+                mock(EntityDefinitionMapper.class),
+                mock(PermissionSqlBuilder.class),
+                mock(PermissionRuleMatcher.class),
+                new ObjectMapper(),
+                mock(EntityListScopeAuditService.class),
+                mock(EntityDefinitionAccessPolicy.class));
+        EntityListScopePolicy policy = new EntityListScopePolicy();
+        policy.setId("policy-1");
+        when(policyMapper.selectById("policy-1")).thenReturn(policy);
+        when(bindingMapper.selectCount(any())).thenReturn(1L);
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> service.deletePolicy("policy-1"));
+        assertTrue(error.getMessage().contains("列表设置"));
+    }
+
+    @Test
+    void replaceListBindingsPublishesActiveSnapshot() {
+        EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);
+        EntityListScopeBindingMapper bindingMapper = mock(EntityListScopeBindingMapper.class);
+        EntityListScopeReleaseMapper releaseMapper = mock(EntityListScopeReleaseMapper.class);
+        EntityListConfigMapper listConfigMapper = mock(EntityListConfigMapper.class);
+        EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
+        EntityDefinitionAccessPolicy accessPolicy = mock(EntityDefinitionAccessPolicy.class);
+        PermissionRuleMatcher matcher = mock(PermissionRuleMatcher.class);
+        EntityListScopeService service = new EntityListScopeService(
+                policyMapper,
+                bindingMapper,
+                releaseMapper,
+                listConfigMapper,
+                definitionMapper,
+                mock(PermissionSqlBuilder.class),
+                matcher,
+                new ObjectMapper(),
+                mock(EntityListScopeAuditService.class),
+                accessPolicy);
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("expense");
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(accessPolicy.requireDynamicByCode("expense")).thenReturn(entity);
+        when(accessPolicy.requireDynamicByCodeForUpdate("expense")).thenReturn(entity);
+        com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig list =
+                new com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig();
+        list.setListKey("all");
+        when(listConfigMapper.findByEntityCodeAndListKey("expense", "all"))
+                .thenReturn(list);
+        when(listConfigMapper.findByEntityCode("expense")).thenReturn(List.of(list));
+        when(bindingMapper.selectList(any())).thenReturn(List.of());
+        when(bindingMapper.findByEntityCode("expense")).thenReturn(List.of());
+        when(policyMapper.findByEntityCode("expense")).thenReturn(List.of());
+        when(releaseMapper.findMaxVersion("expense")).thenReturn(2);
+
+        service.replaceListBindings("expense", "all", List.of());
+
+        verify(releaseMapper).insert(any(
+                com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease.class));
+    }
 }

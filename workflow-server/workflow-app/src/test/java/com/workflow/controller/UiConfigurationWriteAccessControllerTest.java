@@ -48,7 +48,10 @@ class UiConfigurationWriteAccessControllerTest {
         doThrow(new ForbiddenException("forbidden"))
                 .when(accessService).requireNewFormAccess(form);
         EntityFormController controller = new EntityFormController(
-                formService, metadataService, accessService);
+                formService,
+                metadataService,
+                accessService,
+                mock(EntityActionCapabilityService.class));
 
         assertThrows(ForbiddenException.class, () -> controller.save(form));
 
@@ -67,7 +70,10 @@ class UiConfigurationWriteAccessControllerTest {
                 mock(UiConfigurationAccessService.class);
         EntityForm form = new EntityForm();
         EntityFormController controller = new EntityFormController(
-                formService, metadataService, accessService);
+                formService,
+                metadataService,
+                accessService,
+                mock(EntityActionCapabilityService.class));
 
         controller.save(form);
 

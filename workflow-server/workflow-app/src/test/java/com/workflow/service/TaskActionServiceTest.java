@@ -35,6 +35,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -121,7 +122,12 @@ class TaskActionServiceTest {
                 entityActionCapabilityService,
                 entityRecordPort,
                 processCcService,
-                nextApproverOverrideService
+                nextApproverOverrideService,
+                new com.workflow.process.task.application.MultiInstanceOutcomeService(
+                        runtimeService,
+                        repositoryService,
+                        taskService,
+                        new com.fasterxml.jackson.databind.ObjectMapper())
         );
         UserContext.setCurrentUser("admin-id", "admin");
     }
@@ -194,8 +200,6 @@ class TaskActionServiceTest {
     void candidateCompletionClaimsBeforeCheckingEntityApprovalCapability() {
         mockCandidateTask("task-1");
         when(task.getProcessInstanceId()).thenReturn("proc-1");
-        when(taskService.getVariable("task-1", "nrOfInstances")).thenReturn(null);
-        when(taskService.getVariable("task-1", "nrOfCompletedInstances")).thenReturn(null);
         when(runtimeService.getVariable("proc-1", "entityCode")).thenReturn("expense");
         when(runtimeService.getVariable("proc-1", "entityDataId")).thenReturn("record-1");
         service.completeTask("task-1", "admin", "approve", "同意", null, null);
@@ -270,6 +274,132 @@ class TaskActionServiceTest {
         assertEquals("approve", history.get(0).getResult());
     }
 
+    @Test
+    void countersignRejectDoesNotVetoWhenRemainingVotesCanMeetRate() {
+        mockTask("task-1", "proc-1", "admin");
+        stubMultiInstanceTask("joint-review", "countersign", 50, false);
+        stubInstanceProgress(4, 0, 0);
+
+        service.completeTask("task-1", "admin", "reject", "不同意", null, null);
+
+        verify(runtimeService, never()).setVariable(
+                eq("proc-1"),
+                eq("_wf_mi_rejected_joint_review"),
+                any());
+        verify(taskService).complete(eq("task-1"), anyMap());
+        verify(processTaskService).completeTask("task-1", "reject", "不同意", null);
+    }
+
+    @Test
+    void countersignRejectFailsNodeWhenRemainingVotesCannotMeetRate() {
+        mockTask("task-1", "proc-1", "admin");
+        stubMultiInstanceTask("joint-review", "countersign", 100, false);
+        stubInstanceProgress(3, 0, 0);
+
+        service.completeTask("task-1", "admin", "reject", "不同意", null, null);
+
+        org.mockito.ArgumentCaptor<java.util.Map<String, Object>> vars =
+                org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        verify(taskService).complete(eq("task-1"), vars.capture());
+        assertEquals("reject", vars.getValue().get("approved"));
+        verify(runtimeService, never()).setVariable(
+                eq("proc-1"),
+                eq("_wf_mi_rejected_joint_review"),
+                any());
+    }
+
+    @Test
+    void countersignApproveIncrementsNodeScopedCount() {
+        mockTask("task-1", "proc-1", "admin");
+        stubMultiInstanceTask("joint-review");
+        when(runtimeService.getVariable(eq("proc-1"), anyString()))
+                .thenAnswer(invocation -> {
+                    String name = invocation.getArgument(1);
+                    return "_wf_mi_approved_count_joint_review".equals(name)
+                            ? 1
+                            : null;
+                });
+
+        service.completeTask("task-1", "admin", "approve", "同意", null, null);
+
+        verify(runtimeService).setVariable(
+                "proc-1", "_wf_mi_approved_count_joint_review", 2);
+        verify(taskService).complete(eq("task-1"), anyMap());
+    }
+
+    @Test
+    void customActionDoesNotIncrementApprovedCount() {
+        mockTask("task-1", "proc-1", "admin");
+        stubMultiInstanceTask("joint-review");
+
+        service.completeTask("task-1", "admin", "needMeeting", "开会", null, null);
+
+        verify(runtimeService, never()).setVariable(
+                eq("proc-1"),
+                eq("_wf_mi_approved_count_joint_review"),
+                any());
+        verify(runtimeService, never()).setVariable(
+                eq("proc-1"),
+                eq("_wf_mi_rejected_joint_review"),
+                any());
+    }
+
+    private void stubMultiInstanceTask(String nodeId) {
+        stubMultiInstanceTask(nodeId, "countersign", 100, false);
+    }
+
+    private void stubMultiInstanceTask(
+            String nodeId,
+            String decision,
+            int rate,
+            boolean needAll) {
+        when(task.getTaskDefinitionKey()).thenReturn(nodeId);
+        when(task.getProcessDefinitionId()).thenReturn("def-1");
+        org.flowable.bpmn.model.UserTask userTask =
+                new org.flowable.bpmn.model.UserTask();
+        userTask.setId(nodeId);
+        userTask.setLoopCharacteristics(
+                new org.flowable.bpmn.model.MultiInstanceLoopCharacteristics());
+        org.flowable.bpmn.model.ExtensionElement assignee =
+                new org.flowable.bpmn.model.ExtensionElement();
+        assignee.setName("property");
+        org.flowable.bpmn.model.ExtensionAttribute name =
+                new org.flowable.bpmn.model.ExtensionAttribute();
+        name.setName("name");
+        name.setValue("assigneeConfig");
+        org.flowable.bpmn.model.ExtensionAttribute value =
+                new org.flowable.bpmn.model.ExtensionAttribute();
+        value.setName("value");
+        value.setValue("{\"multiInstanceDecision\":\"" + decision
+                + "\",\"multiInstanceCompletionRate\":" + rate
+                + ",\"multiInstanceNeedAllApprovers\":" + needAll + "}");
+        assignee.addAttribute(name);
+        assignee.addAttribute(value);
+        userTask.addExtensionElement(assignee);
+        org.flowable.bpmn.model.Process process =
+                new org.flowable.bpmn.model.Process();
+        process.addFlowElement(userTask);
+        org.flowable.bpmn.model.BpmnModel model =
+                new org.flowable.bpmn.model.BpmnModel();
+        model.addProcess(process);
+        when(repositoryService.getBpmnModel("def-1")).thenReturn(model);
+    }
+
+    private void stubInstanceProgress(int instances, int completed, int approved) {
+        when(taskService.getVariableLocal("task-1", "nrOfInstances"))
+                .thenReturn(instances);
+        when(taskService.getVariableLocal("task-1", "nrOfCompletedInstances"))
+                .thenReturn(completed);
+        when(runtimeService.getVariable(eq("proc-1"), anyString()))
+                .thenAnswer(invocation -> {
+                    String name = invocation.getArgument(1);
+                    if ("_wf_mi_approved_count_joint_review".equals(name)) {
+                        return approved;
+                    }
+                    return null;
+                });
+    }
+
     /** Mock 一个已分配给指定处理人的任务查询链 */
     private void mockTask(String taskId, String processInstanceId, String assignee) {
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
@@ -280,8 +410,6 @@ class TaskActionServiceTest {
         when(task.getId()).thenReturn(taskId);
         when(task.getAssignee()).thenReturn(assignee);
         when(task.getProcessInstanceId()).thenReturn(processInstanceId);
-        when(taskService.getVariable(taskId, "nrOfInstances")).thenReturn(null);
-        when(taskService.getVariable(taskId, "nrOfCompletedInstances")).thenReturn(null);
     }
 
     /** Mock 一个候选人任务查询链（assignee 为空、候选人计数为 1） */

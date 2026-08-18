@@ -36,6 +36,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SystemEntityService {
 
+    /**
+     * 表单/审批运行态引用类型。选择器只返回 id/name/code/status 等公开标识，
+     * 已登录即可读取，不能再要求组织/用户/角色后台管理权限。
+     */
+    private static final Set<String> RUNTIME_SELECTOR_TYPES =
+            Set.of("USER", "DEPT", "ROLE", "GROUP");
+
     private final SysUserMapper userMapper;
     private final SysOrganizationMapper organizationMapper;
     private final SysRoleMapper roleMapper;
@@ -492,12 +499,17 @@ public class SystemEntityService {
         return map;
     }
 
+    /**
+     * 校验系统实体读取权限。
+     * USER/DEPT/ROLE/GROUP 供运行态选择器回显和选人，已登录即可；
+     * MENU/DICT 仍属于后台配置数据，继续要求对应管理权限。
+     */
     private void requirePermission(String entityType) {
-        String permission = switch (
-                entityType.toUpperCase(Locale.ROOT)) {
-            case "USER", "GROUP" -> "system:user:view";
-            case "DEPT" -> "system:organization:view";
-            case "ROLE" -> "system:role:view";
+        String normalized = entityType.toUpperCase(Locale.ROOT);
+        if (RUNTIME_SELECTOR_TYPES.contains(normalized)) {
+            return;
+        }
+        String permission = switch (normalized) {
             case "MENU" -> "system:menu:view";
             case "DICT", "DICT_ITEM" ->
                     "system:dictionary:view";

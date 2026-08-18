@@ -51,6 +51,8 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
     private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    /** 办理权威入口。本类不再维护第二套会签完成逻辑。 */
+    private final TaskActionService taskActionService;
 
     /**
      * 自动完成标记为跳过的任务
@@ -225,231 +227,17 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             risk = AuditRiskLevel.MEDIUM,
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
+    /**
+     * 完成任务。办理语义统一走 {@link TaskActionService}，避免会签/或签出现第二套实现。
+     */
     public void completeTask(String taskId, String action, String comment, String transferTo, String actionLabel) {
-        org.flowable.task.api.Task task = flowableTaskService.createTaskQuery()
-                .taskId(taskId)
-                .singleResult();
-        
-        if (task == null) {
-            throw new RuntimeException("任务不存在或已处理");
-        }
-        
-        String processInstanceId = task.getProcessInstanceId();
-        String taskDefinitionKey = task.getTaskDefinitionKey();
-        
-        // 添加审批意见
-        if (StringUtils.hasText(comment)) {
-            flowableTaskService.addComment(taskId, processInstanceId, comment);
-        }
-        
-        switch (action) {
-            case "approve":
-                // 通过 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
-                runtimeService.setVariable(processInstanceId, "approved", "approve");
-                if (actionLabel != null && !actionLabel.isBlank()) {
-                    // 任务本地变量，避免多实例下互相覆盖，后续按 taskId 读取显示文本
-                    flowableTaskService.setVariableLocal(taskId, "actionLabel", actionLabel);
-                }
-
-                // 检查是否是多实例任务（会签/或签）
-                if (isMultiInstanceTask(task)) {
-                    // 多实例任务处理
-                    handleMultiInstanceApproval(task, action, comment);
-                } else {
-                    // 普通任务处理
-                    flowableTaskService.complete(taskId);
-                }
-                
-                // 更新本地待办状态
-                processTaskService.completeTask(taskId, action, comment, actionLabel);
-                
-                // 同步创建下一节点的待办（如果不是多实例或已是最后一人）
-                processTaskService.syncTasksFromFlowable(processInstanceId);
-                
-                log.info("任务审批通过: taskId={}, user={}", taskId, UserContext.requireUsernameOrId());
-                break;
-                
-            case "reject":
-                // 驳回 - 设置流程变量（使用runtimeService设置流程实例变量，供网关条件使用）
-                runtimeService.setVariable(processInstanceId, "approved", "reject");
-                if (actionLabel != null && !actionLabel.isBlank()) {
-                    // 任务本地变量，避免多实例下互相覆盖，后续按 taskId 读取显示文本
-                    flowableTaskService.setVariableLocal(taskId, "actionLabel", actionLabel);
-                }
-
-                // 如果是多实例任务，直接结束整个多实例
-                if (isMultiInstanceTask(task)) {
-                    // 设置多实例完成条件为true，强制结束
-                    runtimeService.setVariable(processInstanceId, 
-                            "nrOfCompletedInstances", 
-                            getMultiInstanceTotal(task));
-                }
-                
-                flowableTaskService.complete(taskId);
-                
-                // 更新本地待办状态
-                processTaskService.completeTask(taskId, action, comment, actionLabel);
-                
-                // 驳回时结束该节点的其他待办
-                completeOtherTasksInSameNode(processInstanceId, taskDefinitionKey, taskId, action, comment);
-                
-                log.info("任务审批驳回: taskId={}, user={}", taskId, UserContext.requireUsernameOrId());
-                break;
-                
-            case "transfer":
-                // 转办
-                if (!StringUtils.hasText(transferTo)) {
-                    throw new RuntimeException("转办人不能为空");
-                }
-                
-                // 添加转办评论记录
-                String transferComment = "转办给: " + transferTo;
-                if (StringUtils.hasText(comment)) {
-                    transferComment += "，意见: " + comment;
-                }
-                flowableTaskService.addComment(taskId, processInstanceId, transferComment);
-                
-                flowableTaskService.setAssignee(taskId, transferTo);
-                
-                // 更新本地待办的执行人为转办人，保持待办状态
-                processTaskService.transferTask(taskId, transferTo, comment);
-                
-                log.info("任务转办: taskId={}, from={}, to={}", taskId, UserContext.requireUsernameOrId(), transferTo);
-                break;
-                
-            default:
-                // 自定义操作类型：按普通审批完成，approved 使用原始 action 值
-                runtimeService.setVariable(processInstanceId, "approved", action);
-                runtimeService.setVariable(processInstanceId, "action", action);
-                if (actionLabel != null && !actionLabel.isBlank()) {
-                    // 任务本地变量，避免多实例下互相覆盖，后续按 taskId 读取显示文本
-                    flowableTaskService.setVariableLocal(taskId, "actionLabel", actionLabel);
-                }
-                runtimeService.setVariable(processInstanceId, "comment", comment);
-                runtimeService.setVariable(processInstanceId, "approver", UserContext.requireUsernameOrId());
-
-                flowableTaskService.complete(taskId);
-
-                processTaskService.completeTask(taskId, action, comment, actionLabel);
-                processTaskService.syncTasksFromFlowable(processInstanceId);
-
-                log.info("任务审批完成（自定义操作）: taskId={}, action={}, user={}", taskId, action, UserContext.requireUsernameOrId());
-                break;
-        }
-    }
-    
-    /**
-     * 判断是否是多实例任务（会签/或签）
-     */
-    private boolean isMultiInstanceTask(org.flowable.task.api.Task task) {
-        // 通过检查执行实例是否有父执行实例来判断是否是多实例
-        // 多实例任务的执行实例会有特定的父执行实例
-        String executionId = task.getExecutionId();
-        var execution = runtimeService.createExecutionQuery()
-                .executionId(executionId)
-                .singleResult();
-        
-        if (execution != null) {
-            // 检查是否是多实例的一部分
-            String parentId = execution.getParentId();
-            if (parentId != null) {
-                var parentExecution = runtimeService.createExecutionQuery()
-                        .executionId(parentId)
-                        .singleResult();
-                // 父执行实例的activityId通常是多实例活动
-                if (parentExecution != null && 
-                    parentExecution.getActivityId() != null &&
-                    parentExecution.getActivityId().contains(task.getTaskDefinitionKey())) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-    
-    /**
-     * 处理多实例任务的审批
-     * 单签（或签）：一人通过，其他任务自动结束
-     * 会签：需所有人审批通过
-     */
-    private void handleMultiInstanceApproval(org.flowable.task.api.Task task, 
-                                              String action, String comment) {
-        String processInstanceId = task.getProcessInstanceId();
-        String taskDefinitionKey = task.getTaskDefinitionKey();
-        
-        // 获取多实例类型配置（从流程变量或节点配置）
-        // 默认是单签（或签）
-        String multiInstanceType = (String) runtimeService.getVariable(
-                processInstanceId, 
-                taskDefinitionKey + "_multiInstanceType");
-        
-        if (multiInstanceType == null) {
-            multiInstanceType = "single"; // 默认单签
-        }
-        
-        if ("single".equals(multiInstanceType)) {
-            // 单签（或签）：当前人通过，自动完成同节点的其他任务
-            flowableTaskService.complete(task.getId());
-            
-            // 自动完成同节点的其他待办
-            completeOtherTasksInSameNode(processInstanceId, taskDefinitionKey, 
-                    task.getId(), action, comment);
-        } else {
-            // 会签：正常完成，由Flowable自动判断多实例完成条件
-            flowableTaskService.complete(task.getId());
-        }
-    }
-    
-    /**
-     * 自动完成同节点的其他待办任务
-     * 用于单签（或签）场景
-     */
-    private void completeOtherTasksInSameNode(String processInstanceId, 
-                                               String taskDefinitionKey,
-                                               String excludeTaskId,
-                                               String action,
-                                               String comment) {
-        // 查询同节点的其他活跃任务
-        List<Task> otherTasks = flowableTaskService.createTaskQuery()
-                .processInstanceId(processInstanceId)
-                .taskDefinitionKey(taskDefinitionKey)
-                .active()
-                .list();
-        
-        for (Task otherTask : otherTasks) {
-            if (!otherTask.getId().equals(excludeTaskId)) {
-                try {
-                    // 添加系统自动审批意见
-                    flowableTaskService.addComment(otherTask.getId(), processInstanceId, 
-                            "系统自动完成（他人已审批）");
-                    
-                    // 设置变量
-                    flowableTaskService.setVariable(otherTask.getId(), "approved", "approve");
-                    flowableTaskService.setVariable(otherTask.getId(), "autoCompleted", true);
-                    
-                    // 完成任务
-                    flowableTaskService.complete(otherTask.getId());
-                    
-                    // 更新本地待办状态
-                    processTaskService.completeTask(otherTask.getId(), "auto", 
-                            "系统自动完成（他人已审批）");
-                    
-                    log.info("自动完成同节点任务: taskId={}, node={}", 
-                            otherTask.getId(), taskDefinitionKey);
-                } catch (Exception e) {
-                    log.error("自动完成任务失败: taskId={}, error={}", otherTask.getId(), e.getMessage());
-                }
-            }
-        }
-    }
-    
-    /**
-     * 获取多实例任务的总数
-     */
-    private int getMultiInstanceTotal(org.flowable.task.api.Task task) {
-        String processInstanceId = task.getProcessInstanceId();
-        Object total = runtimeService.getVariable(processInstanceId, "nrOfInstances");
-        return total != null ? (Integer) total : 1;
+        taskActionService.completeTask(
+                taskId,
+                UserContext.requireUsernameOrId(),
+                action,
+                comment,
+                transferTo,
+                actionLabel);
     }
 
     @Override

@@ -36,4 +36,6 @@ public class EntityListScopePolicyDTO {
     private LocalDateTime createdAt;
     /** 更新时间 */
     private LocalDateTime updatedAt;
+    /** 已绑定该规则的列表 Key，供实体规则目录只读展示 */
+    private java.util.List<String> boundListKeys = new java.util.ArrayList<>();
 }

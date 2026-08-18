@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
+  areNextApproverPreviewsEqual,
   buildChangedNextApproverSelections,
   canDeferMultiInstanceAssignmentToNextApprover,
   createNextApproverDraftMap,
   createNextApproverOptionsRequestSignature,
+  createNextApproverPreviewRequestSignature,
   createNextApproverSelectionConfig,
   hasNextApproverPresentation,
   normalizeNextApproverPreview,
@@ -88,8 +90,36 @@ assert.match(
 )
 assert.match(
   nextApproverPreviewComposableSource,
+  /createNextApproverPreviewRequestSignature\(/,
+  '预览防抖签名必须排除审批备注'
+)
+assert.doesNotMatch(
+  nextApproverPreviewComposableSource,
   /comment:\s*payload\.comment/,
-  '审批备注必须参与预览防抖签名，避免复用旧 scopeKey'
+  '输入审批意见不得改变预览请求签名'
+)
+assert.doesNotMatch(
+  readFileSync(new URL(
+    '../../views/entity/components/approval/EntityApprovalDialog.vue',
+    import.meta.url
+  ), 'utf8'),
+  /\[\s*approveForm\.action\s*,\s*approveForm\.comment\s*\]/,
+  '审批意见变化不得触发下一节点预览请求'
+)
+assert.match(
+  nextApproverSectionSource,
+  /showInitialLoading/,
+  '已有下一节点画面时刷新不得整块切成 loading'
+)
+assert.doesNotMatch(
+  controlledUserSelectorSource,
+  /props\.action[\s\S]*?props\.comment[\s\S]*?props\.formData[\s\S]*?void load\(\)/,
+  '选择弹窗打开时，审批意见变化不得重新加载候选人员'
+)
+assert.match(
+  controlledUserSelectorSource,
+  /props\.action[\s\S]*?props\.actionLabel[\s\S]*?props\.formData[\s\S]*?void load\(\)/,
+  '选择弹窗打开时，审批操作或表单变化仍须重新加载候选人员'
 )
 assert.match(
   nextApproverConfigEditorSource,
@@ -131,10 +161,91 @@ assert.match(
   /optionsRequestGeneration[\s\S]*?activeOptionsRequestSignature/,
   '候选请求必须同时使用代次与上下文签名拒绝晚到响应'
 )
-assert.match(
-  controlledUserSelectorSource,
-  /props\.action[\s\S]*?props\.comment[\s\S]*?props\.formData[\s\S]*?void load\(\)/,
-  '选择弹窗打开时，审批上下文变化必须重新加载候选人员'
+
+assert.equal(
+  createNextApproverPreviewRequestSignature({
+    taskId: 'task-1',
+    action: 'approve',
+    actionLabel: '同意',
+    comment: '第一次意见',
+    formData: { amount: 1 }
+  }),
+  createNextApproverPreviewRequestSignature({
+    taskId: 'task-1',
+    action: 'approve',
+    actionLabel: '同意',
+    comment: '改过的意见',
+    formData: { amount: 1 }
+  }),
+  '审批意见不得改变下一节点预览签名'
+)
+assert.notEqual(
+  createNextApproverPreviewRequestSignature({
+    taskId: 'task-1',
+    action: 'approve',
+    formData: {}
+  }),
+  createNextApproverPreviewRequestSignature({
+    taskId: 'task-1',
+    action: 'reject',
+    formData: {}
+  }),
+  '切换审批操作必须改变下一节点预览签名'
+)
+assert.equal(
+  createNextApproverOptionsRequestSignature({
+    taskId: 'task-1',
+    targetNodeId: 'next',
+    scopeKey: 'scope',
+    action: 'approve',
+    comment: '第一次意见',
+    formData: {}
+  }),
+  createNextApproverOptionsRequestSignature({
+    taskId: 'task-1',
+    targetNodeId: 'next',
+    scopeKey: 'scope',
+    action: 'approve',
+    comment: '改过的意见',
+    formData: {}
+  }),
+  '审批意见不得改变候选人员请求签名'
+)
+
+const samePreview = {
+  status: 'READY',
+  scopeKey: 'scope-1',
+  message: '',
+  nextNodes: [{
+    nodeId: 'manager-review',
+    nodeName: '经理审批',
+    visible: true,
+    editable: true,
+    assignmentMode: 'DIRECT',
+    assignees: [{ userKey: 'alice', username: 'alice' }]
+  }]
+}
+assert.equal(
+  areNextApproverPreviewsEqual(samePreview, {
+    ...samePreview,
+    nextNodes: [{
+      ...samePreview.nextNodes[0],
+      assignees: [{ userKey: 'alice', username: 'alice', displayName: 'Alice' }]
+    }]
+  }),
+  true,
+  '相同下一节点和审批人不得视为预览变化'
+)
+assert.equal(
+  areNextApproverPreviewsEqual(samePreview, {
+    ...samePreview,
+    nextNodes: [{
+      ...samePreview.nextNodes[0],
+      assignees: [{ userKey: 'bob', username: 'bob' }]
+    }]
+  }),
+  false,
+  '下一节点审批人变化时必须刷新'
 )
 
 assert.equal(
@@ -201,7 +312,6 @@ assert.equal(
 for (const [field, value] of [
   ['scopeKey', 'scope-2'],
   ['action', 'REJECT'],
-  ['comment', 'changed'],
   ['formData', { amount: 11 }],
   ['keyword', 'carol'],
   ['pageNum', 3],
@@ -216,6 +326,14 @@ for (const [field, value] of [
     `${field} 变化时旧候选请求签名必须立即失效`
   )
 }
+assert.equal(
+  createNextApproverOptionsRequestSignature(optionsRequestContext),
+  createNextApproverOptionsRequestSignature({
+    ...optionsRequestContext,
+    comment: 'changed'
+  }),
+  '审批意见变化不得让候选请求签名失效'
+)
 
 const originalOrder = ['first', 'second', 'third']
 assert.deepEqual(

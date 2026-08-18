@@ -1,6 +1,6 @@
 <template>
   <div v-if="hasContent" class="next-approver-section">
-    <el-form-item v-if="loading" label="下一节点审批人">
+    <el-form-item v-if="showInitialLoading" label="下一节点审批人">
       <div class="next-approver-section__loading">
         <el-icon class="is-loading"><Loading /></el-icon>
         <span>正在根据审批条件计算下一节点…</span>
@@ -124,6 +124,14 @@ const normalizedPreview = computed(() =>
 )
 const visibleNodes = computed(() =>
   normalizedPreview.value.nextNodes.filter(node => node.visible)
+)
+const hasExistingPreview = computed(() =>
+  normalizedPreview.value.status === 'DEFERRED'
+  || normalizedPreview.value.status === 'BLOCKED'
+  || visibleNodes.value.length > 0
+)
+const showInitialLoading = computed(() =>
+  props.loading && !hasExistingPreview.value
 )
 const hasContent = computed(() =>
   hasNextApproverPresentation(normalizedPreview.value, props.loading)

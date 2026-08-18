@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.workflow.entity.form.application.FormSubmissionPreviewDeferredException;
 import com.workflow.process.form.application.NodeFormSubmissionService;
+import com.workflow.process.task.application.MultiInstanceOutcomeService;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.response.NextApprovalPreviewStatus;
@@ -52,6 +53,7 @@ public class NextApprovalRouteService {
     private final NextApproverSelectionPolicyReader policyReader;
     private final NodeFormSubmissionService nodeFormSubmissionService;
     private final ObjectMapper objectMapper;
+    private final MultiInstanceOutcomeService multiInstanceOutcomeService;
 
     public NextApprovalResolution resolve(
             String taskId,
@@ -132,14 +134,13 @@ public class NextApprovalRouteService {
                     Map.of());
         }
         if (currentTask.hasMultiInstanceLoopCharacteristics()
-                || taskService.getVariable(
-                task.getId(), "nrOfInstances") != null
-                || taskService.getVariable(
-                task.getId(), "nrOfCompletedInstances") != null) {
+                && !multiInstanceOutcomeService.willFinishCurrentNode(
+                task,
+                request == null ? "approve" : request.getAction())) {
             return result(
                     task,
                     NextApprovalPreviewStatus.DEFERRED,
-                    "当前任务为多实例审批，需等待全部实例汇聚后确定下一节点",
+                    "当前任务为多实例审批，需等待本节点汇聚后确定下一节点",
                     null,
                     List.of(),
                     Map.of());

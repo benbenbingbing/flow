@@ -4,6 +4,10 @@ export const LEGACY_MULTI_INSTANCE_COLLECTION = '${_wfMultiInstanceUsers_}'
 export const ASSIGNMENT_CONFIG_VERSION = 2
 export const NODE_REFERENCE_ASSIGNEE_TYPE = 'node_reference'
 export const MAX_NODE_REFERENCE_DEPTH = 16
+export const MULTI_INSTANCE_DECISION_COUNTERSIGN = 'countersign'
+export const MULTI_INSTANCE_DECISION_ORSIGN = 'orsign'
+export const DEFAULT_MULTI_INSTANCE_COMPLETION_RATE = 100
+export const MIN_MULTI_INSTANCE_COMPLETION_RATE = 1
 
 function firstNonBlankString(...values) {
   for (const value of values) {
@@ -141,6 +145,16 @@ export function validateNodeReferenceChain(
   return { valid: true, reason: '', depth }
 }
 
+/** 与后端 MultiInstanceVariableNames.sanitizeNodeId 保持同一套清洗规则。 */
+export function sanitizeMultiInstanceNodeId(nodeId) {
+  const sanitizedNodeId = String(nodeId || 'node')
+    .trim()
+    .replace(/[^A-Za-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return sanitizedNodeId || 'node'
+}
+
 export function buildNodeScopedMultiInstanceCollection(
   nodeId,
   currentCollection = ''
@@ -149,12 +163,88 @@ export function buildNodeScopedMultiInstanceCollection(
   if (current && current !== LEGACY_MULTI_INSTANCE_COLLECTION) {
     return current
   }
-  const sanitizedNodeId = String(nodeId || 'node')
+  return '${_wfMultiInstanceUsers_' + sanitizeMultiInstanceNodeId(nodeId) + '}'
+}
+
+export function buildNodeScopedMultiInstanceApprovedCountVariable(nodeId) {
+  return '${_wf_mi_approved_count_' + sanitizeMultiInstanceNodeId(nodeId) + '}'
+}
+
+export function buildNodeScopedMultiInstanceRejectedVariable(nodeId) {
+  return '${_wf_mi_rejected_' + sanitizeMultiInstanceNodeId(nodeId) + '}'
+}
+
+export function normalizeMultiInstanceDecision(value) {
+  const normalized = String(value || '')
     .trim()
-    .replace(/[^A-Za-z0-9_]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'node'
-  return '${_wfMultiInstanceUsers_' + sanitizedNodeId + '}'
+    .toLowerCase()
+    .replace(/[-\s]/g, '_')
+  if (normalized === 'orsign'
+    || normalized === 'or_sign'
+    || normalized === 'or'
+    || normalized === 'any') {
+    return MULTI_INSTANCE_DECISION_ORSIGN
+  }
+  return MULTI_INSTANCE_DECISION_COUNTERSIGN
+}
+
+export function normalizeMultiInstanceCompletionRate(value) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_MULTI_INSTANCE_COMPLETION_RATE
+  }
+  return Math.min(
+    100,
+    Math.max(MIN_MULTI_INSTANCE_COMPLETION_RATE, Math.round(parsed))
+  )
+}
+
+export function normalizeMultiInstanceNeedAllApprovers(value) {
+  if (value === true) return true
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase() === 'true'
+  }
+  return false
+}
+
+function toExpressionVariable(value) {
+  const raw = String(value || '').trim()
+  return raw.startsWith('${') && raw.endsWith('}')
+    ? raw.substring(2, raw.length - 1).trim()
+    : raw
+}
+
+/**
+ * 按办理模式生成 Flowable 多实例完成条件。
+ * 或签：一人通过或一人驳回即结束。
+ * 会签：按通过人数达标通过；剩下的人全通过也凑不够则失败。
+ * 开启「全部办完」后只等全员办理，再由后端按通过率写 approved。
+ */
+export function buildMultiInstanceCompletionCondition({
+  decision,
+  completionRate,
+  needAllApprovers,
+  nodeId
+} = {}) {
+  const rejectedVariable = toExpressionVariable(
+    buildNodeScopedMultiInstanceRejectedVariable(nodeId)
+  )
+  const approvedCountVariable = toExpressionVariable(
+    buildNodeScopedMultiInstanceApprovedCountVariable(nodeId)
+  )
+  const normalizedDecision = normalizeMultiInstanceDecision(decision)
+  if (normalizedDecision === MULTI_INSTANCE_DECISION_ORSIGN) {
+    return '${' + rejectedVariable + ' || ' + approvedCountVariable + ' >= 1}'
+  }
+  if (normalizeMultiInstanceNeedAllApprovers(needAllApprovers)) {
+    return '${nrOfCompletedInstances >= nrOfInstances}'
+  }
+  const safeRate = normalizeMultiInstanceCompletionRate(completionRate)
+  const passCondition =
+    `${approvedCountVariable} * 100 >= nrOfInstances * ${safeRate}`
+  const remainingCannotMeet =
+    `(${approvedCountVariable} + nrOfInstances - nrOfCompletedInstances) * 100 < nrOfInstances * ${safeRate}`
+  return '${' + passCondition + ' || ' + remainingCannotMeet + '}'
 }
 
 export const NODE_TYPE_DESCRIPTIONS = {
@@ -532,7 +622,20 @@ export function buildAssigneeConfig(form) {
           referencedNodeName: normalizedReference.referencedNodeName
         }
       : {}),
-    nextApproverSelection
+    nextApproverSelection,
+    ...(form.isMultiInstance
+      ? {
+          multiInstanceDecision: normalizeMultiInstanceDecision(
+            form.multiInstanceDecision
+          ),
+          multiInstanceCompletionRate: normalizeMultiInstanceCompletionRate(
+            form.multiInstanceCompletionRate
+          ),
+          multiInstanceNeedAllApprovers: normalizeMultiInstanceNeedAllApprovers(
+            form.multiInstanceNeedAllApprovers
+          )
+        }
+      : {})
   }
 }
 

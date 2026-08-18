@@ -29,7 +29,8 @@ class WorkflowAutoSkipServiceTest {
                 new WorkflowAutoSkipService(
                         taskService,
                         runtimeService,
-                        repositoryService);
+                        repositoryService,
+                        mock(MultiInstanceOutcomeService.class));
 
         ProcessInstanceQuery instanceQuery =
                 mock(ProcessInstanceQuery.class);
@@ -88,7 +89,8 @@ class WorkflowAutoSkipServiceTest {
         WorkflowAutoSkipService service = new WorkflowAutoSkipService(
                 taskService,
                 runtimeService,
-                repositoryService);
+                repositoryService,
+                mock(MultiInstanceOutcomeService.class));
         ProcessInstanceQuery instanceQuery =
                 mock(ProcessInstanceQuery.class);
         ProcessInstance processInstance = mock(ProcessInstance.class);
@@ -129,7 +131,8 @@ class WorkflowAutoSkipServiceTest {
         WorkflowAutoSkipService service = new WorkflowAutoSkipService(
                 taskService,
                 runtimeService,
-                repositoryService);
+                repositoryService,
+                mock(MultiInstanceOutcomeService.class));
         ProcessInstanceQuery instanceQuery =
                 mock(ProcessInstanceQuery.class);
         ProcessInstance processInstance = mock(ProcessInstance.class);

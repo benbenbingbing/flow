@@ -6,6 +6,7 @@ import {
   listActionFingerprint,
   listMetadataDetailEntries,
   listMetadataFingerprint,
+  listScopeBindingFingerprint,
   normalizeListActionForSave,
   resolveListButtonType,
   withListButtonTypeDefault
@@ -24,6 +25,10 @@ const viewConfig = {
   customComponentProps: {}
 }
 
+assert.equal(
+  listScopeBindingFingerprint(['b', 'a', 'a']),
+  listScopeBindingFingerprint(['a', 'b'])
+)
 assert.equal(
   JSON.parse(listMetadataFingerprint(config, viewConfig)).selectionValueField,
   'id'

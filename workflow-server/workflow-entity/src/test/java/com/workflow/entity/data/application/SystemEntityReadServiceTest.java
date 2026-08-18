@@ -5,6 +5,7 @@ import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.S
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMenuMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
@@ -224,6 +225,48 @@ class SystemEntityReadServiceTest {
                 .contains("`username` LIKE ?"));
         assertFalse(countSql.getValue()
                 .contains("password"));
+    }
+
+    @Test
+    void identitySelectorDoesNotRequireOrganizationAdminPermission() {
+        grantPermissions("entity:ZDWREQ:list");
+        EntityDefinition entity = systemEntity("sys_organization");
+        when(definitionMapper.findByEntityCode("sys_organization"))
+                .thenReturn(Optional.of(entity));
+        when(fieldMapper.findByEntityId("entity-1"))
+                .thenReturn(List.of(field("id"), field("org_name"), field("deleted")));
+        when(jdbcTemplate.queryForObject(
+                anyString(),
+                eq(Long.class),
+                any(Object[].class)))
+                .thenReturn(0L);
+
+        PageResult<EntityDataDTO> result =
+                service.findSelectorPage("sys_organization", "研发", 1, 10);
+
+        assertEquals(0, result.getTotal());
+    }
+
+    @Test
+    void menuTableStillRequiresMenuAdminPermission() {
+        grantPermissions("entity:ZDWREQ:list");
+
+        ForbiddenException error = assertThrows(
+                ForbiddenException.class,
+                () -> service.requirePermissions("sys_menu"));
+        assertEquals(
+                "没有权限访问平台系统表：system:menu:view",
+                error.getMessage());
+    }
+
+    private void grantPermissions(String... permissions) {
+        SysMenuMapper menuMapper = mock(SysMenuMapper.class);
+        when(menuMapper.selectPermsByUserId("user-1"))
+                .thenReturn(Set.of(permissions));
+        new PermissionUtil(
+                mock(SysUserRoleMapper.class),
+                mock(SysRoleMenuMapper.class),
+                menuMapper).init();
     }
 
     private EntityDefinition systemEntity(String entityCode) {

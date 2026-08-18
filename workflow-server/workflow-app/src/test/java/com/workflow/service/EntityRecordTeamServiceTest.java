@@ -88,4 +88,50 @@ class EntityRecordTeamServiceTest {
         assertTrue(permission.sqlCondition().contains("team.user_id = #{permissionParameters.teamUserId}"));
         assertEquals("user-1", permission.sqlParameters().get("teamUserId"));
     }
+
+    @Test
+    void relatedPeopleSqlUsesTeamTableAndEscapesUserId() {
+        when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq("wf_expense_team")))
+                .thenReturn(1);
+
+        String sql = service.relatedPeopleSql("expense", "u'1", "li'si");
+
+        assertTrue(sql.contains("`wf_expense_team`"));
+        assertTrue(sql.contains("team.record_id = `wf_expense`.id"));
+        assertTrue(sql.contains("team.user_id IN ('u''1','li''si')"));
+        assertFalse(sql.contains("current_task_assignee"));
+    }
+
+    @Test
+    void recordWritesWithoutPublishedSnapshot() {
+        UserContext.setCurrentUser("2038628006255251457", "lisi");
+        when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq("wf_expense_team")))
+                .thenReturn(1);
+        when(snapshotService.getLatestByEntityCode("expense"))
+                .thenThrow(new RuntimeException("实体未发布: expense"));
+
+        service.record("expense", "record-1", "APPROVE", "通过", "pi-1", "task-1");
+
+        verify(jdbcTemplate).update(
+                contains("INSERT INTO `wf_expense_team`"),
+                any(),
+                eq("record-1"),
+                eq("2038628006255251457"),
+                eq("APPROVE"),
+                eq("通过"),
+                eq("pi-1"),
+                eq("task-1"));
+        verify(snapshotService, never()).getLatestByEntityCode(anyString());
+    }
+
+    @Test
+    void relatedPeopleSqlFailsClosedWhenTeamTableMissing() {
+        when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq("wf_expense_team")))
+                .thenReturn(0);
+
+        assertEquals("1=0", service.relatedPeopleSql("expense", "user-1"));
+    }
 }

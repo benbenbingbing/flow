@@ -14,7 +14,6 @@ import com.workflow.entity.permission.infrastructure.persistence.record.EntityLi
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeDelegationMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.entity.data.application.EntityRecordTeamService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -38,7 +37,6 @@ public class DataPermissionEngine {
     private final PermissionSqlBuilder sqlBuilder;
     private final SysUserService sysUserService;
     private final EntityListScopeAuditService auditService;
-    private final EntityRecordTeamService entityRecordTeamService;
 
     /**
      * 计算实体级数据权限结果（不区分列表）。
@@ -95,8 +93,9 @@ public class DataPermissionEngine {
     }
 
     /**
-     * 核心权限计算逻辑：依次处理绕过权限、发布快照绑定匹配、团队权限叠加、
-     * 数据范围委托，最终合成 allow/deny SQL 条件。
+     * 核心权限计算逻辑：只认当前列表上的绑定；
+     * listKey 为空的旧实体默认绑定不参与；无 ALLOW 视为全部可见，再扣除本列表 DENY。
+     * 实体级 team 开关不再叠加，相关人只走 TEAM 规则绑定。
      */
     private CalculationResult calculate(
             String entityCode,
@@ -147,16 +146,16 @@ public class DataPermissionEngine {
                 ? normalized(snapshot.getListModes().get(listKey), "INHERIT")
                 : "INHERIT";
         List<PermissionPreviewDTO.MatchedRuleDTO> matched = new ArrayList<>();
-        List<String> entityAllows = new ArrayList<>();
         List<String> listAllows = new ArrayList<>();
         List<String> denies = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
+        boolean hasAllowBinding = false;
 
         for (EntityListScopeBindingDTO binding : snapshot.getBindings()) {
             if (binding == null || !Integer.valueOf(1).equals(binding.getEnabled())
                     || !isEffective(binding, now)
-                    || (StringUtils.hasText(binding.getListKey())
-                    && !binding.getListKey().equals(listKey))) {
+                    || !StringUtils.hasText(binding.getListKey())
+                    || !binding.getListKey().equals(listKey)) {
                 continue;
             }
             EntityListScopePolicyDTO policy = policyMap.get(binding.getPolicyId());
@@ -167,7 +166,11 @@ public class DataPermissionEngine {
                             snapshot.getVersion(),
                             matched);
                 }
+                hasAllowBinding = true;
                 continue;
+            }
+            if (!"DENY".equalsIgnoreCase(binding.getRuleEffect())) {
+                hasAllowBinding = true;
             }
             try {
                 if (!ruleMatcher.matches(binding.getMatchConfig(), user)) {
@@ -183,9 +186,8 @@ public class DataPermissionEngine {
                 matched.add(detail);
                 if ("DENY".equalsIgnoreCase(binding.getRuleEffect())) {
                     denies.add(sql);
-                } else if (!StringUtils.hasText(binding.getListKey())) {
-                    entityAllows.add(sql);
-                } else if (binding.getListKey().equals(listKey)) {
+                } else {
+                    hasAllowBinding = true;
                     listAllows.add(sql);
                 }
             } catch (RuntimeException exception) {
@@ -202,58 +204,24 @@ public class DataPermissionEngine {
             }
         }
 
-        // 叠加记录团队权限范围（叠加模式时直接加入允许集合）
-        EntityRecordTeamService.TeamPermission teamPermission =
-                entityRecordTeamService.teamPermission(entityCode, user.getId());
-        if (teamPermission.enabled()
-                && teamPermission.level()
-                == com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.ADDITIVE) {
-            entityAllows.add(teamPermission.sqlCondition());
-        }
-
-        String entityAllow = or(entityAllows);
-        String listAllow = or(listAllows);
-        String allow = switch (mode) {
-            case "NARROW" -> and(entityAllow, listAllow);
-            case "OVERRIDE" -> listAllow;
-            default -> entityAllow;
-        };
-
+        boolean unboundAllow = !hasAllowBinding;
+        String allow = unboundAllow ? "1=1" : or(listAllows);
         String delegatedAllow = buildDelegatedAllow(
                 entityCode, snapshot, policyMap, user);
         allow = orNonNull(allow, delegatedAllow);
-        if (teamPermission.enabled()
-                && teamPermission.level()
-                == com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.OVERRIDE_SCOPE) {
-            allow = orNonNull(allow, teamPermission.sqlCondition());
-        }
         if (!StringUtils.hasText(allow)) {
-            if (teamPermission.enabled()
-                    && teamPermission.level()
-                    == com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.ABSOLUTE) {
-                allow = "1=0";
-            } else {
-                return denied(
-                        "没有匹配到任何允许数据范围",
-                        snapshot.getVersion(),
-                        matched,
-                        mode);
-            }
+            return denied(
+                    "没有匹配到任何允许数据范围",
+                    snapshot.getVersion(),
+                    matched,
+                    mode);
         }
 
         String deny = or(denies);
         String finalSql = StringUtils.hasText(deny)
                 ? "(" + allow + ") AND NOT (" + deny + ")"
                 : allow;
-        if (teamPermission.enabled()
-                && teamPermission.level()
-                == com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.ABSOLUTE) {
-            finalSql = orNonNull(finalSql, teamPermission.sqlCondition());
-        }
-        boolean absoluteTeamAccess = teamPermission.enabled()
-                && teamPermission.level()
-                == com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.TeamVisibilityLevel.ABSOLUTE;
-        if (!absoluteTeamAccess && ("1=0".equals(allow) || "1=1".equals(deny))) {
+        if ("1=0".equals(allow) || "1=1".equals(deny)) {
             return denied(
                     "数据被拒绝方案全部排除",
                     snapshot.getVersion(),
@@ -263,15 +231,13 @@ public class DataPermissionEngine {
 
         DataPermissionResult result = "1=1".equals(finalSql)
                 ? DataPermissionResult.allowAll()
-                : DataPermissionResult.withCondition(
-                        finalSql,
-                        teamPermission.enabled() ? teamPermission.sqlParameters() : Map.of());
+                : DataPermissionResult.withCondition(finalSql, Map.of());
         result.setMatchedRuleNames(matched.stream()
                 .map(PermissionPreviewDTO.MatchedRuleDTO::getRuleName)
                 .toList());
         result.setReleaseVersion(snapshot.getVersion());
         result.setDataScopeMode(mode);
-        result.setExplanation(explanation(mode, entityAllows, listAllows, denies));
+        result.setExplanation(explanation(unboundAllow, denies));
         return new CalculationResult(result, matched);
     }
 
@@ -402,19 +368,13 @@ public class DataPermissionEngine {
         return new CalculationResult(result, matched);
     }
 
-    private String explanation(
-            String mode,
-            List<String> entityAllows,
-            List<String> listAllows,
-            List<String> denies) {
-        return switch (mode) {
-            case "NARROW" -> "实体默认范围与列表范围取交集"
+    private String explanation(boolean unboundAllow, List<String> denies) {
+        if (unboundAllow) {
+            return "未绑定规则，可见全部"
                     + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
-            case "OVERRIDE" -> "使用列表独立范围"
-                    + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
-            default -> "继承实体默认范围"
-                    + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
-        };
+        }
+        return "使用本列表绑定的允许规则"
+                + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
     }
 
     private String or(List<String> parts) {

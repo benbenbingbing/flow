@@ -55,8 +55,13 @@ assert.match(
 )
 assert.match(
   previewComposable,
+  /createNextApproverPreviewRequestSignature\(/,
+  '预览请求签名必须使用不含审批备注的稳定签名'
+)
+assert.doesNotMatch(
+  previewComposable,
   /comment:\s*payload\.comment/,
-  '审批备注必须进入预览请求签名，参与过期请求判断'
+  '审批备注不得进入预览请求签名，避免输入意见时反复请求'
 )
 assert.match(
   previewComposable,

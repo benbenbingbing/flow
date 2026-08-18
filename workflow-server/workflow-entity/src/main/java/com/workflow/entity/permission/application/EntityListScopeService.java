@@ -36,6 +36,7 @@ import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * 数据范围草稿、发布快照和回滚的统一服务。
@@ -76,12 +77,28 @@ public class EntityListScopeService {
         result.setEntityCode(entityCode);
         EntityListScopeRelease active = releaseMapper.findActive(entityCode);
         result.setActiveVersion(active == null ? null : active.getVersion());
-        result.setPolicies(policyMapper.findByEntityCode(entityCode).stream()
-                .map(this::toPolicyDTO)
-                .toList());
-        result.setBindings(bindingMapper.findByEntityCode(entityCode).stream()
+        List<EntityListScopeBindingDTO> bindings = bindingMapper.findByEntityCode(entityCode)
+                .stream()
                 .map(this::toBindingDTO)
+                .toList();
+        Map<String, List<String>> boundLists = new LinkedHashMap<>();
+        for (EntityListScopeBindingDTO binding : bindings) {
+            if (!StringUtils.hasText(binding.getPolicyId())
+                    || !StringUtils.hasText(binding.getListKey())) {
+                continue;
+            }
+            boundLists.computeIfAbsent(binding.getPolicyId(), key -> new ArrayList<>())
+                    .add(binding.getListKey());
+        }
+        result.setPolicies(policyMapper.findByEntityCode(entityCode).stream()
+                .map(policy -> {
+                    EntityListScopePolicyDTO dto = toPolicyDTO(policy);
+                    dto.setBoundListKeys(boundLists.getOrDefault(
+                            policy.getId(), List.of()));
+                    return dto;
+                })
                 .toList());
+        result.setBindings(bindings);
         return result;
     }
 
@@ -164,10 +181,61 @@ public class EntityListScopeService {
         } else {
             policyMapper.updateById(policy);
         }
+        syncBindingAudience(policy.getId(), filter);
         auditService.record(
                 policy.getEntityCode(), null, UserContext.getUserId(),
                 "SAVE", "SUCCESS", Map.of("policyKey", policy.getPolicyKey()));
         return toPolicyDTO(policyMapper.selectById(policy.getId()));
+    }
+
+    /**
+     * 按列表覆盖绑定集合。空列表表示该列表不绑规则，运行时可见全部。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "覆盖列表数据权限绑定",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_BINDING",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
+    public List<EntityListScopeBindingDTO> replaceListBindings(
+            String entityCode,
+            String listKey,
+            List<EntityListScopeBindingDTO> requests) {
+        if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) {
+            throw new IllegalArgumentException("实体编码和列表标识不能为空");
+        }
+        requireEntity(entityCode);
+        if (listConfigMapper.findByEntityCodeAndListKey(entityCode, listKey) == null) {
+            throw new IllegalArgumentException("适用列表不存在: " + listKey);
+        }
+        List<EntityListScopeBinding> existing = bindingMapper.selectList(
+                new LambdaQueryWrapper<EntityListScopeBinding>()
+                        .eq(EntityListScopeBinding::getEntityCode, entityCode)
+                        .eq(EntityListScopeBinding::getListKey, listKey)
+                        .eq(EntityListScopeBinding::getDeleted, 0));
+        for (EntityListScopeBinding binding : existing) {
+            bindingMapper.deleteById(binding.getId());
+        }
+        List<EntityListScopeBindingDTO> saved = new ArrayList<>();
+        for (EntityListScopeBindingDTO request : requests == null
+                ? List.<EntityListScopeBindingDTO>of() : requests) {
+            if (request == null || !StringUtils.hasText(request.getPolicyId())) {
+                continue;
+            }
+            request.setEntityCode(entityCode);
+            request.setListKey(listKey);
+            applyPolicyAudience(request);
+            saved.add(saveBinding(null, request));
+        }
+        // 列表绑定是运行时唯一生效入口，保存后必须立即发布，
+        // 否则引擎仍读旧快照，未绑定会被当成全部可见。
+        publish(entityCode, "列表绑定数据规则");
+        return saved;
     }
 
     /**
@@ -200,8 +268,10 @@ public class EntityListScopeService {
         if (policy == null || !request.getEntityCode().equals(policy.getEntityCode())) {
             throw new IllegalArgumentException("数据范围方案不存在或不属于当前实体");
         }
-        if (StringUtils.hasText(request.getListKey())
-                && listConfigMapper.findByEntityCodeAndListKey(
+        if (!StringUtils.hasText(request.getListKey())) {
+            throw new IllegalArgumentException("列表标识不能为空，请在列表设置中绑定规则");
+        }
+        if (listConfigMapper.findByEntityCodeAndListKey(
                 request.getEntityCode(), request.getListKey()) == null) {
             throw new IllegalArgumentException("适用列表不存在: " + request.getListKey());
         }
@@ -272,7 +342,7 @@ public class EntityListScopeService {
                         .eq(EntityListScopeBinding::getPolicyId, id)
                         .eq(EntityListScopeBinding::getDeleted, 0));
         if (bindingCount > 0) {
-            throw new IllegalStateException("方案仍被适用对象绑定引用，不能删除");
+            throw new IllegalStateException("规则仍被列表绑定，请先到列表设置中解绑");
         }
         policyMapper.deleteById(id);
     }
@@ -324,11 +394,20 @@ public class EntityListScopeService {
             throw new EntityListScopeManualReviewRequiredException(
                     "存在需要人工确认的历史复杂规则，请重新保存方案后再发布");
         }
-        if (bindings.stream().noneMatch(binding ->
-                binding.getListKey() == null
-                        && "ALLOW".equalsIgnoreCase(binding.getRuleEffect())
-                        && Integer.valueOf(1).equals(binding.getEnabled()))) {
-            throw new IllegalStateException("必须至少配置一个实体默认 ALLOW 数据范围");
+        Map<String, EntityListScopePolicy> policyById = policies.stream()
+                .collect(Collectors.toMap(
+                        EntityListScopePolicy::getId,
+                        policy -> policy,
+                        (left, right) -> left));
+        for (EntityListScopeBinding binding : bindings) {
+            if (!Integer.valueOf(1).equals(binding.getEnabled())) {
+                continue;
+            }
+            EntityListScopePolicy policy = policyById.get(binding.getPolicyId());
+            if (policy == null || !Integer.valueOf(1).equals(policy.getEnabled())) {
+                throw new IllegalStateException(
+                        "绑定引用了不存在或未启用的规则: " + binding.getPolicyId());
+            }
         }
 
         EntityListScopeSnapshotDTO snapshot = new EntityListScopeSnapshotDTO();
@@ -342,16 +421,7 @@ public class EntityListScopeService {
             if (!LIST_MODES.contains(mode)) {
                 throw new IllegalStateException("列表数据范围模式无效: " + config.getListKey());
             }
-            if ("NARROW".equals(mode) && bindings.stream().noneMatch(binding ->
-                    config.getListKey().equals(binding.getListKey())
-                            && "ALLOW".equalsIgnoreCase(binding.getRuleEffect())
-                            && Integer.valueOf(1).equals(binding.getEnabled()))) {
-                throw new IllegalStateException(
-                        "缩小范围列表必须至少配置一个列表级 ALLOW 绑定: " + config.getListKey());
-            }
             snapshot.getListModes().put(config.getListKey(), mode);
-            config.setPublishedVersion(version);
-            listConfigMapper.updateById(config);
         }
 
         String snapshotJson = writeJson(snapshot);
@@ -451,26 +521,84 @@ public class EntityListScopeService {
         }
         List<EntityListScopePolicy> existing = policyMapper.findByEntityCode(entityCode);
         if (existing.isEmpty()) {
-            FilterConfigDTO filter = defaultPersonalFilter();
-            EntityListScopePolicyDTO policyRequest = new EntityListScopePolicyDTO();
-            policyRequest.setEntityCode(entityCode);
-            policyRequest.setPolicyKey("default_personal");
-            policyRequest.setPolicyName("本人创建或提交的数据");
-            policyRequest.setDescription("系统为新实体生成的默认安全范围");
-            policyRequest.setPresetCode("PERSONAL_OR_SUBMITTER");
-            policyRequest.setFilterConfig(filter);
-            policyRequest.setEnabled(1);
-            EntityListScopePolicyDTO policy = savePolicy(null, policyRequest);
-
-            EntityListScopeBindingDTO binding = new EntityListScopeBindingDTO();
-            binding.setEntityCode(entityCode);
-            binding.setPolicyId(policy.getId());
-            binding.setRuleEffect("ALLOW");
-            binding.setEnabled(1);
-            binding.setMatchConfig(allUsersMatch());
-            saveBinding(null, binding);
+            savePolicy(null, catalogPolicy(
+                    entityCode,
+                    "default_personal",
+                    "本人创建或提交的数据",
+                    "PERSONAL_OR_SUBMITTER",
+                    defaultPersonalFilter()));
+            savePolicy(null, catalogPolicy(
+                    entityCode,
+                    "default_team",
+                    "相关人（参与过该记录）",
+                    "TEAM",
+                    defaultTeamFilter()));
+            savePolicy(null, catalogPolicy(
+                    entityCode,
+                    "default_has_todo",
+                    "当前用户存在待办",
+                    "HAS_TODO",
+                    defaultHasTodoFilter()));
         }
         publish(entityCode, "系统初始化数据范围");
+    }
+
+    private EntityListScopePolicyDTO catalogPolicy(
+            String entityCode,
+            String policyKey,
+            String policyName,
+            String presetCode,
+            FilterConfigDTO filter) {
+        EntityListScopePolicyDTO policyRequest = new EntityListScopePolicyDTO();
+        policyRequest.setEntityCode(entityCode);
+        policyRequest.setPolicyKey(policyKey);
+        policyRequest.setPolicyName(policyName);
+        policyRequest.setDescription("系统预置规则目录，需在列表设置中绑定后才生效");
+        policyRequest.setPresetCode(presetCode);
+        policyRequest.setFilterConfig(filter);
+        policyRequest.setEnabled(1);
+        return policyRequest;
+    }
+
+    private void applyPolicyAudience(EntityListScopeBindingDTO request) {
+        EntityListScopePolicy policy = policyMapper.selectById(request.getPolicyId());
+        if (policy == null) {
+            return;
+        }
+        FilterConfigDTO filter = readJson(policy.getFilterConfig(), FilterConfigDTO.class);
+        if (filter == null) {
+            return;
+        }
+        if (!StringUtils.hasText(request.getRuleEffect())
+                && StringUtils.hasText(filter.getRuleEffect())) {
+            request.setRuleEffect(filter.getRuleEffect());
+        }
+        if (request.getMatchConfig() == null && filter.getAudience() != null) {
+            request.setMatchConfig(filter.getAudience());
+        }
+        if (request.getMatchConfig() == null) {
+            request.setMatchConfig(allUsersMatch());
+        }
+    }
+
+    private void syncBindingAudience(String policyId, FilterConfigDTO filter) {
+        if (!StringUtils.hasText(policyId) || filter == null) {
+            return;
+        }
+        List<EntityListScopeBinding> bindings = bindingMapper.selectList(
+                new LambdaQueryWrapper<EntityListScopeBinding>()
+                        .eq(EntityListScopeBinding::getPolicyId, policyId)
+                        .eq(EntityListScopeBinding::getDeleted, 0));
+        for (EntityListScopeBinding binding : bindings) {
+            if (StringUtils.hasText(filter.getRuleEffect())) {
+                binding.setRuleEffect(filter.getRuleEffect());
+            }
+            if (filter.getAudience() != null) {
+                binding.setMatchConfig(writeJson(filter.getAudience()));
+            }
+            binding.setUpdatedAt(LocalDateTime.now());
+            bindingMapper.updateById(binding);
+        }
     }
 
     private EntityListScopePolicyDTO toPolicyDTO(EntityListScopePolicy policy) {
@@ -512,6 +640,24 @@ public class EntityListScopeService {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("RULE");
         filter.setRoot(root);
+        filter.setRuleEffect("ALLOW");
+        filter.setAudience(allUsersMatch());
+        return filter;
+    }
+
+    private FilterConfigDTO defaultTeamFilter() {
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("TEAM");
+        filter.setRuleEffect("ALLOW");
+        filter.setAudience(allUsersMatch());
+        return filter;
+    }
+
+    private FilterConfigDTO defaultHasTodoFilter() {
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("HAS_TODO");
+        filter.setRuleEffect("ALLOW");
+        filter.setAudience(allUsersMatch());
         return filter;
     }
 

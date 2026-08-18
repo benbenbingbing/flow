@@ -538,6 +538,7 @@ import { formatDateColumn } from '@/shared/list-runtime'
 import {
   applyPermissionTransferChange,
   buildPermissionTreeView,
+  collectNewlyAssignedScopeBypass,
   flattenPermissionMenuTree,
   sanitizePermissionKeys
 } from '@/shared/role-permission-transfer'
@@ -645,7 +646,7 @@ const permissionDiff = computed(() => {
   }
 })
 const isHighRiskPermission = (permission: any) =>
-  /(delete|remove|disable|publish|rollback|import|hotfix|override|admin)/i
+  /(delete|remove|disable|publish|rollback|import|hotfix|override|admin|bypass|绕过数据范围)/i
     .test(`${permission?.perm || ''} ${permission?.menuName || ''}`)
 const assignedHighRiskCount = computed(() =>
   permissionOptions.value.filter((option: any) =>
@@ -977,12 +978,38 @@ const refreshPermissionTrees = async () => {
 }
 
 const movePermissions = async (direction: 'left' | 'right', movedKeys: string[]) => {
-  selectedMenuIds.value = applyPermissionTransferChange(
+  const nextKeys = applyPermissionTransferChange(
     selectedMenuIds.value,
     direction,
     movedKeys,
     permissionOptions.value
   )
+  if (direction === 'right') {
+    const bypassItems = collectNewlyAssignedScopeBypass(
+      selectedMenuIds.value,
+      nextKeys,
+      permissionOptions.value
+    )
+    if (bypassItems.length) {
+      try {
+        const names = bypassItems
+          .map(item => item.fullPath || item.menuName)
+          .join('、')
+        await ElMessageBox.confirm(
+          `将授予 ${bypassItems.length} 项「绕过数据范围」：${names}。拥有该权限的用户会看到对应实体的全部数据，列表绑定的数据规则不再生效。确认继续？`,
+          '确认绕过数据范围',
+          {
+            type: 'warning',
+            confirmButtonText: '确认授予',
+            cancelButtonText: '取消'
+          }
+        )
+      } catch {
+        return
+      }
+    }
+  }
+  selectedMenuIds.value = nextKeys
   await refreshPermissionTrees()
 }
 

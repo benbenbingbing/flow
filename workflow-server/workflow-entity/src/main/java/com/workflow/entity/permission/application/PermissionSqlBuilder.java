@@ -6,9 +6,12 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.entity.data.application.EntityPhysicalTableResolver;
+import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -57,20 +60,48 @@ public class PermissionSqlBuilder {
     /** 系统字段到数据库列名的映射（含驼峰和下划线两种形式）。 */
     private static final Map<String, String> SYSTEM_FIELD_COLUMNS = systemFieldColumns();
 
+    private static final Set<String> FILTER_TYPES = Set.of(
+            "ALL", "PERSONAL", "SUBMITTER", "CURRENT_ASSIGNEE", "HAS_TODO",
+            "DEPT", "DEPT_TREE", "RULE", "TEAM");
+
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityStatusMapper statusMapper;
     private final List<EntityDataPermissionFilterProvider> filterProviders;
+    private final EntityRecordTeamService teamService;
+    private final EntityPhysicalTableResolver tableResolver;
 
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
             EntityStatusMapper statusMapper,
             List<EntityDataPermissionFilterProvider> filterProviders) {
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, null, null);
+    }
+
+    public PermissionSqlBuilder(
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityStatusMapper statusMapper,
+            List<EntityDataPermissionFilterProvider> filterProviders,
+            EntityRecordTeamService teamService) {
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, null);
+    }
+
+    @Autowired
+    public PermissionSqlBuilder(
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityStatusMapper statusMapper,
+            List<EntityDataPermissionFilterProvider> filterProviders,
+            EntityRecordTeamService teamService,
+            EntityPhysicalTableResolver tableResolver) {
         this.definitionMapper = definitionMapper;
         this.fieldMapper = fieldMapper;
         this.statusMapper = statusMapper;
         this.filterProviders = filterProviders == null ? List.of() : filterProviders;
+        this.teamService = teamService;
+        this.tableResolver = tableResolver;
     }
 
     /**
@@ -87,7 +118,7 @@ public class PermissionSqlBuilder {
     /**
      * 编译数据过滤配置为 SQL 条件片段。
      *
-     * <p>根据过滤类型（全部、本人、提交人、当前办理人、部门、部门树、结构化规则）
+     * <p>根据过滤类型（全部、本人、提交人、当前办理人、存在待办、相关人、部门、部门树、结构化规则）
      * 生成基础范围 SQL，再叠加状态限制条件。</p>
      *
      * @param entityCode 实体编码，可为 null（不解析实体字段）
@@ -118,6 +149,8 @@ public class PermissionSqlBuilder {
             case "PERSONAL" -> matchesUserSql(userField, user);
             case "SUBMITTER" -> matchesUserSql("submitter_id", user);
             case "CURRENT_ASSIGNEE" -> matchesUserSql("current_task_assignee", user);
+            case "HAS_TODO" -> currentProcessTaskSql(entityCode, user);
+            case "TEAM" -> buildTeamSql(entityCode, user);
             case "DEPT" -> equalsSql(deptField, user.getDeptId());
             case "DEPT_TREE" -> buildDeptTreeSql(deptField, user.getDeptId());
             case "RULE" -> buildRuleSql(
@@ -158,9 +191,7 @@ public class PermissionSqlBuilder {
                 || StringUtils.hasText(filter.getCustomSql())) {
             throw new IllegalArgumentException("数据权限不再支持表达式或自定义 SQL，请改用结构化条件");
         }
-        if (!Set.of(
-                "ALL", "PERSONAL", "SUBMITTER", "CURRENT_ASSIGNEE",
-                "DEPT", "DEPT_TREE", "RULE").contains(type)) {
+        if (!FILTER_TYPES.contains(type)) {
             throw new IllegalArgumentException("不支持的数据范围类型: " + type);
         }
         FilterConfigDTO.FieldMappingDTO mapping = filter.getFieldMapping();
@@ -219,7 +250,7 @@ public class PermissionSqlBuilder {
                     fieldColumns,
                     depth,
                     count);
-            case "RELATION" -> buildRelationSql(node.getRelation(), user);
+            case "RELATION" -> buildRelationSql(entityCode, node.getRelation(), user);
             case "PROCESS_STATE" -> buildProcessStateComparison(
                     entityCode,
                     node.getOperator(),
@@ -269,7 +300,7 @@ public class PermissionSqlBuilder {
         return parts.isEmpty() ? "1=0" : String.join(joiner, parts);
     }
 
-    private String buildRelationSql(String relation, SysUser user) {
+    private String buildRelationSql(String entityCode, String relation, SysUser user) {
         if (!StringUtils.hasText(relation)) {
             return "1=0";
         }
@@ -595,18 +626,87 @@ public class PermissionSqlBuilder {
                 "NOT_IN".equalsIgnoreCase(statusLimit.getMode()));
     }
 
-    private String matchesUserSql(String field, SysUser user) {
-        if (user == null) {
+    /**
+     * 相关人只认 _team 已发生的参与事件，不含当前待办。
+     * 待办可见性由独立的 HAS_TODO 规则绑定，列表自行选择。
+     */
+    private String buildTeamSql(String entityCode, SysUser user) {
+        if (teamService == null || user == null) {
             return "1=0";
         }
+        return teamService.relatedPeopleSql(
+                entityCode, user.getId(), user.getUsername());
+    }
+
+    /**
+     * 当前用户存在未完成待办。必须限定外层业务表 id，
+     * 不能写裸列 id，否则 MySQL 会解析成 process_task.id。
+     */
+    private String currentProcessTaskSql(String entityCode, SysUser user) {
+        if (!StringUtils.hasText(entityCode) || user == null) {
+            return "1=0";
+        }
+        String tableName = resolvePhysicalTable(entityCode);
+        LinkedHashSet<String> identities = userIdentities(user);
+        if (tableName == null || identities.isEmpty()) {
+            return "1=0";
+        }
+        String identityList = identities.stream()
+                .map(this::escapeLiteral)
+                .map(value -> "'" + value + "'")
+                .collect(java.util.stream.Collectors.joining(","));
+        return "EXISTS (SELECT 1 FROM process_task pt "
+                + "WHERE pt.entity_data_id = `" + tableName + "`.id "
+                + "AND pt.entity_code = '" + escapeLiteral(entityCode) + "' "
+                + "AND pt.deleted = 0 "
+                + "AND pt.status = 'todo' "
+                + "AND pt.assignee_id IN (" + identityList + "))";
+    }
+
+    private String resolvePhysicalTable(String entityCode) {
+        if (tableResolver == null || !StringUtils.hasText(entityCode)) {
+            return null;
+        }
+        try {
+            String tableName = tableResolver.resolve(entityCode);
+            return SQL_IDENTIFIER.matcher(tableName).matches() ? tableName : null;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private LinkedHashSet<String> userIdentities(SysUser user) {
         LinkedHashSet<String> identities = new LinkedHashSet<>();
+        if (user == null) {
+            return identities;
+        }
         if (StringUtils.hasText(user.getId())) {
             identities.add(user.getId());
         }
         if (StringUtils.hasText(user.getUsername())) {
             identities.add(user.getUsername());
         }
-        return inSql(field, new ArrayList<>(identities), false);
+        return identities;
+    }
+
+    private String orSql(String left, String right) {
+        if (!StringUtils.hasText(left) || "1=0".equals(left)) {
+            return StringUtils.hasText(right) ? right : "1=0";
+        }
+        if (!StringUtils.hasText(right) || "1=0".equals(right)) {
+            return left;
+        }
+        if ("1=1".equals(left) || "1=1".equals(right)) {
+            return "1=1";
+        }
+        return "(" + left + ") OR (" + right + ")";
+    }
+
+    private String matchesUserSql(String field, SysUser user) {
+        LinkedHashSet<String> identities = userIdentities(user);
+        return identities.isEmpty()
+                ? "1=0"
+                : inSql(field, new ArrayList<>(identities), false);
     }
 
     private String equalsSql(String field, String value) {

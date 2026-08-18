@@ -39,6 +39,15 @@ public class SystemEntityReadService {
     private static final Set<String> OPERATORS = Set.of(
             "EQ", "NE", "LIKE", "IN", "BETWEEN",
             "GT", "GE", "LT", "LE", "IS_NULL");
+    /**
+     * 运行态选择器对应的平台身份表。只返回公开标识字段，
+     * 不能再要求用户/组织/角色后台管理权限。
+     */
+    private static final Set<String> RUNTIME_SELECTOR_ENTITIES = Set.of(
+            "sys_user",
+            "sys_organization",
+            "sys_role",
+            "sys_group");
 
     private final JdbcTemplate jdbcTemplate;
     private final EntityDefinitionMapper definitionMapper;
@@ -184,10 +193,18 @@ public class SystemEntityReadService {
         return page.getRecords().get(0);
     }
 
+    /**
+     * 校验平台系统表读取权限。
+     * USER/DEPT/ROLE/GROUP 对应的身份表供运行态选择器和已授权列表使用，已登录即可；
+     * 菜单、字典等配置表仍要求对应后台管理权限。
+     */
     public void requirePermissions(String entityCode) {
         if (!fieldPolicy.isSupportedEntity(entityCode)) {
             throw new ForbiddenException(
                     "平台系统表不在通用只读访问白名单");
+        }
+        if (RUNTIME_SELECTOR_ENTITIES.contains(normalize(entityCode))) {
+            return;
         }
         Set<String> current =
                 PermissionUtil.getCurrentUserPermissions();

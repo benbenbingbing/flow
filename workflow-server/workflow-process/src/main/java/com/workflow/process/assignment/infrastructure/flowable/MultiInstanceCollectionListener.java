@@ -11,6 +11,7 @@ import com.workflow.process.assignment.application.NodeAssignmentReferenceResolv
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
+import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
 import lombok.extern.slf4j.Slf4j;
@@ -132,6 +133,7 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             boolean safetyCriticalDocument =
                     NextApproverAssignmentRequirement.requiresFailClosed(
                             assigneeDocument);
+            initializeOutcomeVariables(variables, activity.getId());
             boolean configParsed = false;
             boolean required = false;
             boolean visible = false;
@@ -242,7 +244,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             prepareMultiInstanceCollection(
                     processInstanceId,
                     activityId,
-                    activityEvent.getProcessDefinitionId());
+                    activityEvent.getProcessDefinitionId(),
+                    activityEvent.getExecutionId());
         } catch (RequiredMultiInstanceAssignmentException exception) {
             log.error(
                     "安全关键多实例人员准备失败，将回滚活动进入: processInstanceId={}, activityId={}, message={}",
@@ -274,6 +277,15 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             String processInstanceId,
             String activityId,
             String eventProcessDefinitionId) throws Exception {
+        prepareMultiInstanceCollection(
+                processInstanceId, activityId, eventProcessDefinitionId, null);
+    }
+
+    private void prepareMultiInstanceCollection(
+            String processInstanceId,
+            String activityId,
+            String eventProcessDefinitionId,
+            String executionId) throws Exception {
         if (processInstanceId == null || processInstanceId.isBlank()
                 || activityId == null || activityId.isBlank()) {
             return;
@@ -314,6 +326,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         boolean safetyCriticalDocument =
                 NextApproverAssignmentRequirement.requiresFailClosed(
                         assigneeDocument);
+        resetOutcomeVariablesIfNewCycle(
+                processInstanceId, executionId, deployedActivity.getId());
         boolean configParsed = false;
         boolean required = false;
         try {
@@ -662,6 +676,89 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         }
         return value.matches("[A-Za-z_][A-Za-z0-9_]*")
                 ? value : null;
+    }
+
+    /**
+     * 流程启动时为每个会签节点准备通过人数与否决标记。
+     * 启动阶段每次都写成初始值，避免沿用调用方传入的脏计数。
+     */
+    private void initializeOutcomeVariables(
+            Map<String, Object> variables,
+            String activityId) {
+        if (variables == null || activityId == null || activityId.isBlank()) {
+            return;
+        }
+        variables.put(
+                MultiInstanceVariableNames.buildApprovedCountVariableName(activityId),
+                0);
+        variables.put(
+                MultiInstanceVariableNames.buildRejectedVariableName(activityId),
+                false);
+    }
+
+    /**
+     * 节点重入时重置计数。串行会签后续实例的 ACTIVITY_STARTED 不能清零，
+     * 因此只在 nrOfCompletedInstances 仍为 0（新一轮多实例）时重置。
+     */
+    private void resetOutcomeVariablesIfNewCycle(
+            String processInstanceId,
+            String executionId,
+            String activityId) {
+        if (processInstanceId == null || processInstanceId.isBlank()
+                || activityId == null || activityId.isBlank()) {
+            return;
+        }
+        if (!isNewMultiInstanceCycle(processInstanceId, executionId)) {
+            return;
+        }
+        runtimeService.setVariable(
+                processInstanceId,
+                MultiInstanceVariableNames.buildApprovedCountVariableName(activityId),
+                0);
+        runtimeService.setVariable(
+                processInstanceId,
+                MultiInstanceVariableNames.buildRejectedVariableName(activityId),
+                false);
+    }
+
+    private boolean isNewMultiInstanceCycle(
+            String processInstanceId,
+            String executionId) {
+        Object completed = null;
+        if (StringUtils.hasText(executionId)) {
+            try {
+                completed = runtimeService.getVariableLocal(
+                        executionId, "nrOfCompletedInstances");
+                if (completed == null) {
+                    var execution = runtimeService.createExecutionQuery()
+                            .executionId(executionId)
+                            .singleResult();
+                    if (execution != null
+                            && StringUtils.hasText(execution.getParentId())) {
+                        completed = runtimeService.getVariableLocal(
+                                execution.getParentId(),
+                                "nrOfCompletedInstances");
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // 回退到流程变量
+            }
+        }
+        if (completed == null) {
+            completed = runtimeService.getVariable(
+                    processInstanceId, "nrOfCompletedInstances");
+        }
+        if (completed == null) {
+            return true;
+        }
+        if (completed instanceof Number number) {
+            return number.intValue() == 0;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(completed).trim()) == 0;
+        } catch (NumberFormatException exception) {
+            return true;
+        }
     }
 
     /** 将人员展开委托给独立组件，监听器只保留版本门禁和变量编排。 */

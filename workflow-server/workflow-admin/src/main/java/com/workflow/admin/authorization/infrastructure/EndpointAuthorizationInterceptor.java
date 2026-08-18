@@ -53,7 +53,12 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        if (findAnnotation(handlerMethod, PublicApi.class) != null) {
+        // 方法上的策略覆盖类上的策略，避免管理控制器的类级权限
+        // 把登录用户自己的运行态接口（如侧栏菜单）一并挡住。
+        if (findMethodAnnotation(handlerMethod, PublicApi.class) != null
+                || (findMethodAnnotation(handlerMethod, RequiresPermission.class) == null
+                && findMethodAnnotation(handlerMethod, AuthenticatedApi.class) == null
+                && findClassAnnotation(handlerMethod, PublicApi.class) != null)) {
             return true;
         }
 
@@ -61,13 +66,22 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
             throw new ForbiddenException("用户未登录");
         }
 
-        RequiresPermission permission = findAnnotation(handlerMethod, RequiresPermission.class);
+        RequiresPermission permission = findMethodAnnotation(
+                handlerMethod, RequiresPermission.class);
+        if (permission == null
+                && findMethodAnnotation(handlerMethod, AuthenticatedApi.class) == null) {
+            permission = findClassAnnotation(handlerMethod, RequiresPermission.class);
+        }
         if (permission != null) {
             requirePermission(permission);
             return true;
         }
 
-        AuthenticatedApi authenticated = findAnnotation(handlerMethod, AuthenticatedApi.class);
+        AuthenticatedApi authenticated = findMethodAnnotation(
+                handlerMethod, AuthenticatedApi.class);
+        if (authenticated == null) {
+            authenticated = findClassAnnotation(handlerMethod, AuthenticatedApi.class);
+        }
         if (authenticated != null) {
             if (isStateChanging(request) && !authenticated.objectAuthorization()) {
                 throw new ForbiddenException("写接口未配置功能权限或对象级授权");
@@ -111,14 +125,17 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
                 || "DELETE".equals(method);
     }
 
-    private <A extends java.lang.annotation.Annotation> A findAnnotation(
+    private <A extends java.lang.annotation.Annotation> A findMethodAnnotation(
             HandlerMethod handlerMethod,
             Class<A> annotationType) {
-        A methodAnnotation = AnnotatedElementUtils.findMergedAnnotation(
+        return AnnotatedElementUtils.findMergedAnnotation(
                 handlerMethod.getMethod(), annotationType);
-        return methodAnnotation != null
-                ? methodAnnotation
-                : AnnotatedElementUtils.findMergedAnnotation(
-                        handlerMethod.getBeanType(), annotationType);
+    }
+
+    private <A extends java.lang.annotation.Annotation> A findClassAnnotation(
+            HandlerMethod handlerMethod,
+            Class<A> annotationType) {
+        return AnnotatedElementUtils.findMergedAnnotation(
+                handlerMethod.getBeanType(), annotationType);
     }
 }

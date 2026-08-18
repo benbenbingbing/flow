@@ -202,6 +202,8 @@ public class EntitySelectorController {
                 }
             }
         } else {
+            // USER/DEPT/ROLE/GROUP 运行态回显走选择器公开字段，
+            // 不能要求组织管理等后台权限。
             result = systemEntityService.selectBatch(
                     entityType,
                     idList,

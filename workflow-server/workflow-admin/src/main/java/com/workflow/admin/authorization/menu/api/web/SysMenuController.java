@@ -1,5 +1,6 @@
 package com.workflow.admin.authorization.menu.api.web;
 
+import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.PageResult;
@@ -57,9 +58,12 @@ public class SysMenuController {
     }
 
     /**
-     * 查询运行态侧栏菜单树
+     * 查询当前登录用户的运行态侧栏菜单树。
+     * 该方法只要求已登录：菜单管理权限 system:menu:view 属于配置后台，
+     * 不能用来拦截普通用户拉取自己被授权的侧栏。
      */
     @GetMapping("/sidebar-tree")
+    @AuthenticatedApi
     public Result<List<SysMenu>> sidebarTree() {
         return Result.success(menuService.getSidebarMenuTree(UserContext.getUserId()));
     }

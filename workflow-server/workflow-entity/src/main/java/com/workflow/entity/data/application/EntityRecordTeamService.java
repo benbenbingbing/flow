@@ -12,8 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.UUID;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 实体数据参与团队服务，负责维护记录级参与事件表与团队可见性权限范围。
@@ -119,13 +121,14 @@ public class EntityRecordTeamService {
                 || !StringUtils.hasText(recordId)) {
             return;
         }
-        EntityPublishedSnapshot snapshot;
-        try {
-            snapshot = snapshotService.getLatestByEntityCode(entityCode);
-        } catch (RuntimeException exception) {
+        // 参与事件只记录已经发生的动作，不依赖实体发布快照。
+        // 旧逻辑在快照缺失时静默跳过，审批人办理后仍不会进入 team 表。
+        String tableName = teamTableName(entityCode);
+        if (!teamTableExists(tableName)) {
+            log.error("实体参与团队表不存在，跳过记录: entityCode={}, tableName={}",
+                    LogValue.safe(entityCode), LogValue.safe(tableName));
             return;
         }
-        String tableName = teamTableName(entityCode);
         jdbcTemplate.update(
                 "INSERT INTO `" + tableName + "` "
                         + "(id, record_id, user_id, action_type, action_description, "
@@ -138,6 +141,44 @@ public class EntityRecordTeamService {
                 trim(actionDescription, 500),
                 blankToNull(processInstanceId),
                 blankToNull(processTaskId));
+    }
+
+    /**
+     * 编译「当前用户是相关人」范围 SQL。
+     * 只认 _team 已发生的参与事件；流程办理人可能写入用户 ID 或用户名，因此两者都匹配。
+     *
+     * @param entityCode 实体编码
+     * @param userId     当前用户 ID
+     * @return EXISTS 条件；表不存在或参数非法时返回 1=0
+     */
+    public String relatedPeopleSql(String entityCode, String userId) {
+        return relatedPeopleSql(entityCode, userId, null);
+    }
+
+    /**
+     * 编译「当前用户是相关人」范围 SQL，同时匹配用户 ID 与用户名。
+     *
+     * <p>team.user_id 在创建/编辑时写 UserContext 用户 ID，流程异步动作可能写入用户名。
+     * 只比其中一个会漏掉历史参与记录。</p>
+     *
+     * @param entityCode 实体编码
+     * @param userId     当前用户 ID
+     * @param username   当前用户名，可为空
+     * @return EXISTS 条件；表不存在或身份为空时返回 1=0
+     */
+    public String relatedPeopleSql(String entityCode, String userId, String username) {
+        String identitySql = identityInSql("team.user_id", userId, username);
+        if (!StringUtils.hasText(entityCode) || identitySql == null) {
+            return "1=0";
+        }
+        String tableName = teamTableName(entityCode);
+        if (!teamTableExists(tableName)) {
+            return "1=0";
+        }
+        return "EXISTS (SELECT 1 FROM `" + tableName + "` team "
+                + "WHERE team.record_id = `"
+                + checkedIdentifier(tableResolver.resolve(entityCode))
+                + "`.id AND " + identitySql + ")";
     }
 
     /**
@@ -161,12 +202,7 @@ public class EntityRecordTeamService {
             return TeamPermission.disabled();
         }
         String tableName = teamTableName(entityCode);
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.TABLES "
-                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
-                Integer.class,
-                tableName);
-        if (count == null || count == 0) {
+        if (!teamTableExists(tableName)) {
             log.error("实体参与团队表不存在: entityCode={}, tableName={}",
                     LogValue.safe(entityCode), LogValue.safe(tableName));
             return TeamPermission.disabled();
@@ -201,6 +237,39 @@ public class EntityRecordTeamService {
 
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
+    }
+
+    private boolean teamTableExists(String tableName) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                Integer.class,
+                tableName);
+        return count != null && count > 0;
+    }
+
+    private String escapeLiteral(String input) {
+        return input == null ? "" : input.replace("'", "''");
+    }
+
+    /**
+     * 把用户 ID、用户名编成 IN 条件。流程任务常用用户名，实体写入常用用户 ID。
+     */
+    private String identityInSql(String column, String userId, String username) {
+        LinkedHashSet<String> identities = new LinkedHashSet<>();
+        if (StringUtils.hasText(userId)) {
+            identities.add(userId);
+        }
+        if (StringUtils.hasText(username)) {
+            identities.add(username);
+        }
+        if (identities.isEmpty()) {
+            return null;
+        }
+        return column + " IN (" + identities.stream()
+                .map(this::escapeLiteral)
+                .map(value -> "'" + value + "'")
+                .collect(Collectors.joining(",")) + ")";
     }
 
     /**
