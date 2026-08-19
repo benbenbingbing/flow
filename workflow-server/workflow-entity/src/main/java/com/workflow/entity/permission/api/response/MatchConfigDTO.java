@@ -31,7 +31,7 @@ public class MatchConfigDTO {
     @Data
     public static class MatchConditionDTO {
 
-        /** 范围类型：ROLE / GROUP / DEPT / ORG / USER / ALL_USERS */
+        /** 范围类型：ROLE / GROUP / DEPT / ORG / USER / ALL_USERS / SQL */
         private String scopeType;
 
         /** 目标ID列表 */
@@ -42,6 +42,9 @@ public class MatchConfigDTO {
 
         /** 是否包含下级节点（DEPT/ORG 类型时有效） */
         private Boolean includeSubDept;
+
+        /** 范围类型为 SQL 时的用户命中条件，不能引用主表别名 biz */
+        private String sql;
     }
 
     /**

@@ -28,11 +28,12 @@ public class PermissionRuleMatcher {
     private static final int MAX_NODES = 100;
     /** 内置的适用用户范围类型集合。 */
     private static final Set<String> BUILTIN_TYPES =
-            Set.of("ALL_USERS", "USER", "ROLE", "GROUP", "DEPT", "ORG");
+            Set.of("ALL_USERS", "USER", "ROLE", "GROUP", "DEPT", "ORG", "SQL");
 
     private final SysOrganizationMapper orgMapper;
     private final SysUserGroupMapper userGroupMapper;
     private final List<EntityDataPermissionMatchProvider> matchProviders;
+    private final PermissionSqlFragmentCompiler sqlFragmentCompiler;
 
     /**
      * 构造匹配器。
@@ -45,9 +46,19 @@ public class PermissionRuleMatcher {
             SysOrganizationMapper orgMapper,
             SysUserGroupMapper userGroupMapper,
             List<EntityDataPermissionMatchProvider> matchProviders) {
+        this(orgMapper, userGroupMapper, matchProviders, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PermissionRuleMatcher(
+            SysOrganizationMapper orgMapper,
+            SysUserGroupMapper userGroupMapper,
+            List<EntityDataPermissionMatchProvider> matchProviders,
+            PermissionSqlFragmentCompiler sqlFragmentCompiler) {
         this.orgMapper = orgMapper;
         this.userGroupMapper = userGroupMapper;
         this.matchProviders = matchProviders == null ? List.of() : matchProviders;
+        this.sqlFragmentCompiler = sqlFragmentCompiler;
     }
 
     /**
@@ -136,6 +147,13 @@ public class PermissionRuleMatcher {
                     .validate(condition);
             return;
         }
+        if ("SQL".equals(type)) {
+            if (sqlFragmentCompiler == null) {
+                throw new IllegalArgumentException("未配置 SQL 条件编译器");
+            }
+            sqlFragmentCompiler.validate(condition.getSql(), false);
+            return;
+        }
         if (!"ALL_USERS".equals(type)
                 && (condition.getTargetIds() == null || condition.getTargetIds().isEmpty())) {
             throw new IllegalArgumentException("适用用户范围未选择目标");
@@ -180,6 +198,8 @@ public class PermissionRuleMatcher {
         // 根据范围类型分派到不同的内置匹配或自定义扩展匹配
         return switch (scopeType) {
             case "ALL_USERS" -> true;
+            case "SQL" -> sqlFragmentCompiler != null
+                    && sqlFragmentCompiler.matchesUser(condition.getSql(), user);
             case "USER" -> matchesCollection(condition, userIdentities(user));
             case "ROLE" -> matchesCollection(condition, user.getRoleIds());
             case "GROUP" -> matchesCollection(

@@ -446,7 +446,7 @@ export default {
             {
               type: 'steps',
               items: [
-                { title: '配置范围方案', text: '方案只描述哪些数据可见，可使用本人、提交人、存在待办、相关人、部门、状态或嵌套结构化条件组。' },
+                { title: '配置范围方案', text: '方案只描述哪些数据可见，可使用本人、提交人、存在待办、相关人、部门、状态、嵌套结构化条件组或自定义 SQL。手写 SQL 时主表别名统一为 biz。' },
                 { title: '绑定适用对象', text: '规则上的适用对象决定谁命中该方案；列表设置只选择绑定哪些规则。' },
                 { title: '在列表绑定规则', text: '未绑定允许规则即全部可见。TEAM 只看已参与记录，HAS_TODO 只看当前未完成待办，列表可单独或同时绑定。授予「绕过数据范围」后该用户将看到全部数据。' },
                 { title: '固定组合语义', text: '实体 ALLOW 取并集，列表 ALLOW 取并集，所有当前列表 DENY 最后统一扣除；不再配置优先级、顺序合并和命中停止。' },
@@ -493,7 +493,8 @@ export default {
                 { option: '指定角色 ROLE', meaning: '多选角色，并选择 ANY 任一角色或 ALL 全部角色。', notes: '默认新增条件类型为角色、操作符 ANY。' },
                 { option: '指定用户组 GROUP', meaning: '多选系统用户组，并选择满足任一组或全部组。', notes: '用户组成员调整会立即改变规则命中结果。' },
                 { option: '指定部门 DEPT', meaning: '多选部门，可开启包含子部门。', notes: '组织树调整会改变实际命中人员。' },
-                { option: '指定组织 ORG', meaning: '按用户所属组织匹配，可包含下级组织。', notes: '组织与部门使用独立的用户属性，不要混选。' }
+                { option: '指定组织 ORG', meaning: '按用户所属组织匹配，可包含下级组织。', notes: '组织与部门使用独立的用户属性，不要混选。' },
+                { option: '自定义 SQL', meaning: '用手写条件判断当前用户是否命中。', notes: '只写布尔条件，不要写完整 SELECT。这里没有当前行，不能写主表别名 biz。可用 #{userId}、#{username}、#{deptId}、#{orgId}。示例：#{userId} IN (SELECT user_id FROM special_auditors)。' }
               ]
             }
           ]
@@ -513,7 +514,8 @@ export default {
                 { option: '当前用户是相关人 TEAM', meaning: '只匹配该记录 _team 表中已发生的参与事件。', notes: '不含当前待办和尚未生成任务的下一审批人；需在列表中绑定后才生效。' },
                 { option: '本部门 DEPT', meaning: '使用平台标准所属部门字段匹配当前用户部门。', notes: '字段由系统元数据自动解析。' },
                 { option: '本部门及子部门 DEPT_TREE', meaning: '匹配当前部门和所有下级部门。', notes: '大组织树需要关注查询性能。' },
-                { option: '结构化条件组 RULE', meaning: '使用 AND/OR 嵌套组配置用户关系、流程状态、状态编码/分类、当前用户属性和实体字段条件。', notes: '后端只编译白名单字段与操作符，不开放脚本或自由 SQL。' }
+                { option: '结构化条件组 RULE', meaning: '使用 AND/OR 嵌套组配置用户关系、流程状态、状态编码/分类、当前用户属性和实体字段条件。', notes: '后端只编译白名单字段与操作符。需要手写条件时改用自定义 SQL。' },
+                { option: '自定义 SQL', meaning: '手写记录过滤条件。主表别名统一为 biz，运行时替换成实体物理表。', notes: '只写 WHERE 条件，不要写完整语句。可用 #{userId}、#{username}、#{deptId}、#{orgId}。示例：biz.create_by = #{userId}。关联其它表用 EXISTS，当前行写 biz.id。禁止分号、注释和增删改关键字。旧版未校验的 CUSTOM_SQL 仍被拒绝。' }
               ]
             },
             {

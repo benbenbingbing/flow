@@ -13,7 +13,7 @@ public class FilterConfigDTO {
     /** 结构化配置版本 */
     private Integer version = 1;
 
-    /** 过滤类型：ALL / PERSONAL / SUBMITTER / CURRENT_ASSIGNEE / HAS_TODO / TEAM / DEPT / DEPT_TREE / RULE */
+    /** 过滤类型：ALL / PERSONAL / SUBMITTER / CURRENT_ASSIGNEE / HAS_TODO / TEAM / DEPT / DEPT_TREE / RULE / SQL */
     private String type;
 
     /** 是否包含子部门 */
@@ -43,6 +43,11 @@ public class FilterConfigDTO {
      * 规则目录上的适用对象，列表绑定时复制到 binding。
      */
     private MatchConfigDTO audience;
+
+    /**
+     * 类型为 SQL 时的记录过滤片段。主表别名固定为 biz。
+     */
+    private String sql;
 
     /**
      * 旧版自定义 SQL，已废弃。

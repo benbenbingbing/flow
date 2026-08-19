@@ -2,6 +2,8 @@ package com.workflow.service.permission;
 
 import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
+import com.workflow.entity.permission.application.PermissionSqlFragmentCompiler;
+import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
@@ -277,6 +279,56 @@ class PermissionSqlBuilderTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> builder.validateFilter("expense", filter));
+    }
+
+    @Test
+    void compilesControlledSqlAndRewritesMainAlias() {
+        EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
+        when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(null, tableResolver);
+        PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
+                definitionMapper,
+                fieldMapper,
+                statusMapper,
+                List.of(),
+                null,
+                tableResolver,
+                compiler);
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("SQL");
+        filter.setSql("biz.create_by = #{userId} OR biz.submitter_id = #{username}");
+
+        sqlBuilder.validateFilter("expense", filter);
+        String sql = sqlBuilder.buildFilterSql(
+                "expense",
+                filter,
+                user("u1", "alice", "dept-1"));
+
+        assertEquals(
+                "`wf_expense`.create_by = 'u1' OR `wf_expense`.submitter_id = 'alice'",
+                sql);
+    }
+
+    @Test
+    void rejectsUnsafeControlledSql() {
+        PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(
+                null,
+                mock(EntityPhysicalTableResolver.class));
+        PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
+                definitionMapper,
+                fieldMapper,
+                statusMapper,
+                List.of(),
+                null,
+                null,
+                compiler);
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("SQL");
+        filter.setSql("1=1; DELETE FROM t");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sqlBuilder.validateFilter("expense", filter));
     }
 
     /** 测试拒绝缺失与未知结构化值：验证缺少比较值与未知流程状态值均抛出 IllegalArgumentException */

@@ -62,7 +62,7 @@ public class PermissionSqlBuilder {
 
     private static final Set<String> FILTER_TYPES = Set.of(
             "ALL", "PERSONAL", "SUBMITTER", "CURRENT_ASSIGNEE", "HAS_TODO",
-            "DEPT", "DEPT_TREE", "RULE", "TEAM");
+            "DEPT", "DEPT_TREE", "RULE", "TEAM", "SQL");
 
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFieldMapper fieldMapper;
@@ -70,13 +70,14 @@ public class PermissionSqlBuilder {
     private final List<EntityDataPermissionFilterProvider> filterProviders;
     private final EntityRecordTeamService teamService;
     private final EntityPhysicalTableResolver tableResolver;
+    private final PermissionSqlFragmentCompiler sqlFragmentCompiler;
 
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
             EntityStatusMapper statusMapper,
             List<EntityDataPermissionFilterProvider> filterProviders) {
-        this(definitionMapper, fieldMapper, statusMapper, filterProviders, null, null);
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, null, null, null);
     }
 
     public PermissionSqlBuilder(
@@ -85,7 +86,17 @@ public class PermissionSqlBuilder {
             EntityStatusMapper statusMapper,
             List<EntityDataPermissionFilterProvider> filterProviders,
             EntityRecordTeamService teamService) {
-        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, null);
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, null, null);
+    }
+
+    public PermissionSqlBuilder(
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityStatusMapper statusMapper,
+            List<EntityDataPermissionFilterProvider> filterProviders,
+            EntityRecordTeamService teamService,
+            EntityPhysicalTableResolver tableResolver) {
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, tableResolver, null);
     }
 
     @Autowired
@@ -95,13 +106,15 @@ public class PermissionSqlBuilder {
             EntityStatusMapper statusMapper,
             List<EntityDataPermissionFilterProvider> filterProviders,
             EntityRecordTeamService teamService,
-            EntityPhysicalTableResolver tableResolver) {
+            EntityPhysicalTableResolver tableResolver,
+            PermissionSqlFragmentCompiler sqlFragmentCompiler) {
         this.definitionMapper = definitionMapper;
         this.fieldMapper = fieldMapper;
         this.statusMapper = statusMapper;
         this.filterProviders = filterProviders == null ? List.of() : filterProviders;
         this.teamService = teamService;
         this.tableResolver = tableResolver;
+        this.sqlFragmentCompiler = sqlFragmentCompiler;
     }
 
     /**
@@ -118,7 +131,7 @@ public class PermissionSqlBuilder {
     /**
      * 编译数据过滤配置为 SQL 条件片段。
      *
-     * <p>根据过滤类型（全部、本人、提交人、当前办理人、存在待办、相关人、部门、部门树、结构化规则）
+     * <p>根据过滤类型（全部、本人、提交人、当前办理人、存在待办、相关人、部门、部门树、结构化规则、受控 SQL）
      * 生成基础范围 SQL，再叠加状态限制条件。</p>
      *
      * @param entityCode 实体编码，可为 null（不解析实体字段）
@@ -151,6 +164,7 @@ public class PermissionSqlBuilder {
             case "CURRENT_ASSIGNEE" -> matchesUserSql("current_task_assignee", user);
             case "HAS_TODO" -> currentProcessTaskSql(entityCode, user);
             case "TEAM" -> buildTeamSql(entityCode, user);
+            case "SQL" -> buildConfiguredSql(entityCode, filter, user);
             case "DEPT" -> equalsSql(deptField, user.getDeptId());
             case "DEPT_TREE" -> buildDeptTreeSql(deptField, user.getDeptId());
             case "RULE" -> buildRuleSql(
@@ -188,8 +202,8 @@ public class PermissionSqlBuilder {
         String type = normalized(filter.getType(), "PERSONAL");
         if ("EXPRESSION".equals(type) || "CUSTOM_SQL".equals(type)
                 || StringUtils.hasText(filter.getExpression())
-                || StringUtils.hasText(filter.getCustomSql())) {
-            throw new IllegalArgumentException("数据权限不再支持表达式或自定义 SQL，请改用结构化条件");
+                || (StringUtils.hasText(filter.getCustomSql()) && !"SQL".equals(type))) {
+            throw new IllegalArgumentException("数据权限不再支持表达式或未校验的自定义 SQL，请改用结构化条件或受控 SQL");
         }
         if (!FILTER_TYPES.contains(type)) {
             throw new IllegalArgumentException("不支持的数据范围类型: " + type);
@@ -204,6 +218,12 @@ public class PermissionSqlBuilder {
         if (statusLimit != null && Boolean.TRUE.equals(statusLimit.getEnabled())
                 && !Set.of("IN", "NOT_IN").contains(normalized(statusLimit.getMode(), "IN"))) {
             throw new IllegalArgumentException("状态限制仅支持 IN 或 NOT_IN");
+        }
+        if ("SQL".equals(type)) {
+            if (sqlFragmentCompiler == null) {
+                throw new IllegalArgumentException("未配置 SQL 条件编译器");
+            }
+            sqlFragmentCompiler.validate(firstSql(filter), true);
         }
         if ("RULE".equals(type)) {
             if (filter.getRoot() == null) {
@@ -624,6 +644,25 @@ public class PermissionSqlBuilder {
                 statusField,
                 new ArrayList<>(values),
                 "NOT_IN".equalsIgnoreCase(statusLimit.getMode()));
+    }
+
+    private String buildConfiguredSql(
+            String entityCode,
+            FilterConfigDTO filter,
+            SysUser user) {
+        if (sqlFragmentCompiler == null) {
+            return "1=0";
+        }
+        return sqlFragmentCompiler.compileRecordSql(entityCode, firstSql(filter), user);
+    }
+
+    private String firstSql(FilterConfigDTO filter) {
+        if (filter == null) {
+            return null;
+        }
+        return StringUtils.hasText(filter.getSql())
+                ? filter.getSql()
+                : filter.getCustomSql();
     }
 
     /**

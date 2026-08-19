@@ -140,6 +140,10 @@ public class EntityListScopeService {
             throw new IllegalArgumentException("数据范围条件不能为空");
         }
         sqlBuilder.validateFilter(request.getEntityCode(), filter);
+        // 适用对象 SQL 也在保存规则时校验，避免绑到列表才发现写错
+        if (filter.getAudience() != null) {
+            validateMatchConfig(filter.getAudience());
+        }
 
         EntityListScopePolicy duplicate = policyMapper.selectOne(
                 new LambdaQueryWrapper<EntityListScopePolicy>()

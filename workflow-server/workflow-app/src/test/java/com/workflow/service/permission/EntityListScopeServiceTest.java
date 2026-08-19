@@ -13,6 +13,7 @@ import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityLi
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
+import com.workflow.entity.permission.api.response.MatchConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopePolicy;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
@@ -96,6 +97,57 @@ class EntityListScopeServiceTest {
         assertEquals("DRAFT", saved.getStatus());
         assertEquals(0, saved.getReviewRequired());
         verify(sqlBuilder).validateFilter("expense", filter);
+        verify(matcher, never()).validate(any());
+    }
+
+    @Test
+    void savingPolicyValidatesAudienceSql() {
+        EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);
+        EntityListScopeBindingMapper bindingMapper = mock(EntityListScopeBindingMapper.class);
+        EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
+        PermissionSqlBuilder sqlBuilder = mock(PermissionSqlBuilder.class);
+        PermissionRuleMatcher matcher = mock(PermissionRuleMatcher.class);
+        EntityDefinitionAccessPolicy accessPolicy = mock(EntityDefinitionAccessPolicy.class);
+        EntityListScopeService service = new EntityListScopeService(
+                policyMapper,
+                bindingMapper,
+                mock(EntityListScopeReleaseMapper.class),
+                mock(EntityListConfigMapper.class),
+                definitionMapper,
+                sqlBuilder,
+                matcher,
+                new ObjectMapper(),
+                mock(EntityListScopeAuditService.class),
+                accessPolicy);
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("expense");
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(entity));
+        when(accessPolicy.requireDynamicByCode("expense")).thenReturn(entity);
+        doThrow(new IllegalArgumentException("适用对象 SQL 没有当前行，不能引用主表别名 biz"))
+                .when(matcher).validate(any());
+
+        EntityListScopePolicyDTO request = new EntityListScopePolicyDTO();
+        request.setEntityCode("expense");
+        request.setPolicyKey("sql_scope");
+        request.setPolicyName("SQL 范围");
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("SQL");
+        filter.setSql("biz.create_by = #{userId}");
+        MatchConfigDTO audience = new MatchConfigDTO();
+        MatchConfigDTO.MatchConditionDTO condition = new MatchConfigDTO.MatchConditionDTO();
+        condition.setScopeType("SQL");
+        condition.setSql("biz.create_by = #{userId}");
+        audience.setConditions(List.of(condition));
+        filter.setAudience(audience);
+        request.setFilterConfig(filter);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.savePolicy(null, request));
+        assertTrue(error.getMessage().contains("不能引用主表别名 biz"));
+        verify(sqlBuilder).validateFilter("expense", filter);
+        verify(policyMapper, never()).insert(any(EntityListScopePolicy.class));
     }
 
     /** 测试发布拒绝未审核的遗留规则：验证存在需审核策略时发布抛出 IllegalStateException */

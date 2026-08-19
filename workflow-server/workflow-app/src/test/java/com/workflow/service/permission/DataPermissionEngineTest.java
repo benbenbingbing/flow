@@ -14,6 +14,8 @@ import com.workflow.entity.permission.application.EntityListScopeAuditService;
 import com.workflow.entity.permission.application.EntityListScopeService;
 import com.workflow.entity.permission.application.PermissionRuleMatcher;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
+import com.workflow.entity.permission.application.PermissionSqlFragmentCompiler;
+import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeDelegationMapper;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,6 +26,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.identity.user.application.SysUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.Map;
@@ -221,6 +224,53 @@ class DataPermissionEngineTest {
         assertTrue(result.isHasPermission());
         assertTrue(result.getSqlCondition().contains("wf_expense_team"));
         assertFalse(result.getSqlCondition().contains("process_task"));
+    }
+
+    @Test
+    void controlledSqlFilterAndAudienceCompileTogether() {
+        EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
+        when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+        PermissionSqlFragmentCompiler compiler =
+                new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver);
+        PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
+                definitionMapper,
+                fieldMapper,
+                statusMapper,
+                List.of(),
+                null,
+                tableResolver,
+                compiler);
+        DataPermissionEngine sqlEngine = new DataPermissionEngine(
+                scopeService,
+                delegationMapper,
+                objectMapper,
+                new PermissionRuleMatcher(
+                        organizationMapper,
+                        userGroupMapper,
+                        List.of(),
+                        compiler),
+                sqlBuilder,
+                userService,
+                auditService);
+        FilterConfigDTO filter = filter("SQL", null);
+        filter.setSql("biz.create_by = #{userId}");
+        EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT", policy("sql", filter));
+        EntityListScopeBindingDTO binding = binding("sql", "default", "ALLOW");
+        MatchConfigDTO.MatchConditionDTO sqlAudience = new MatchConfigDTO.MatchConditionDTO();
+        sqlAudience.setScopeType("SQL");
+        sqlAudience.setSql("#{userId} = 'u1'");
+        MatchConfigDTO match = new MatchConfigDTO();
+        match.setConditions(List.of(sqlAudience));
+        binding.setMatchConfig(match);
+        snapshot.setBindings(List.of(binding));
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+
+        var result = sqlEngine.calculatePermission("expense", "default", user());
+
+        assertTrue(result.isHasPermission());
+        assertEquals("`wf_expense`.create_by = 'u1'", result.getSqlCondition());
     }
 
     @Test

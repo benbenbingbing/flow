@@ -2,6 +2,7 @@ package com.workflow.service.permission;
 
 import com.workflow.entity.permission.application.EntityDataPermissionMatchProvider;
 import com.workflow.entity.permission.application.PermissionRuleMatcher;
+import com.workflow.entity.permission.application.PermissionSqlFragmentCompiler;
 
 import com.workflow.entity.permission.api.response.MatchConfigDTO;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
@@ -9,11 +10,15 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -141,6 +146,37 @@ class PermissionRuleMatcherTest {
                 condition("CRM:CUSTOMER_MANAGER", List.of(), "ANY", false));
 
         assertTrue(matcher.matches(match, user));
+    }
+
+    @Test
+    void matchesControlledSqlAudience() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+        PermissionSqlFragmentCompiler compiler =
+                new PermissionSqlFragmentCompiler(jdbcTemplate, null);
+        PermissionRuleMatcher matcher = new PermissionRuleMatcher(
+                orgMapper, userGroupMapper, List.of(), compiler);
+        SysUser user = new SysUser();
+        user.setId("u1");
+        MatchConfigDTO.MatchConditionDTO condition =
+                condition("SQL", List.of(), "ANY", false);
+        condition.setSql("#{userId} = 'u1'");
+
+        matcher.validate(match("OR", condition));
+        assertTrue(matcher.matches(match("OR", condition), user));
+    }
+
+    @Test
+    void rejectsAudienceSqlThatUsesMainAlias() {
+        PermissionSqlFragmentCompiler compiler =
+                new PermissionSqlFragmentCompiler(mock(JdbcTemplate.class), null);
+        PermissionRuleMatcher matcher = new PermissionRuleMatcher(
+                orgMapper, userGroupMapper, List.of(), compiler);
+        MatchConfigDTO.MatchConditionDTO condition =
+                condition("SQL", List.of(), "ANY", false);
+        condition.setSql("biz.create_by = #{userId}");
+
+        assertThrows(IllegalArgumentException.class, () -> matcher.validate(match("OR", condition)));
     }
 
     /** 测试拒绝已移除的表达式作用域：验证 EXPRESSION 类型匹配为假 */

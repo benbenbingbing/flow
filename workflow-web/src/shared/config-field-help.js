@@ -10,7 +10,11 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entity.permissionMatchLogic':
     'OR 表示命中任一适用对象条件即可应用规则；AND 表示用户必须同时满足全部条件。',
   'entity.permissionScopeType':
-    '决定规则按全部用户、指定用户、角色、用户组、部门或组织匹配。部门和组织还可选择是否包含下级。',
+    '决定规则按全部用户、指定用户、角色、用户组、部门、组织或自定义 SQL 匹配。部门和组织还可选择是否包含下级。',
+  'entity.permissionMatchSql':
+    '只写判断当前用户是否命中的条件，不要写完整语句。不能引用主表别名 biz。可用 #{userId}、#{username}、#{deptId}、#{orgId}。',
+  'entity.permissionFilterSql':
+    '选择「自定义 SQL」后只写 WHERE 条件。主表别名统一为 biz，例如 biz.create_by = #{userId}。运行时会替换成实体物理表。',
   'entityList.dataScopeMode':
     '本列表只使用自己绑定的数据规则。未绑定允许规则时，有列表权限的人看到全部数据。',
   'entityList.selectionMode':

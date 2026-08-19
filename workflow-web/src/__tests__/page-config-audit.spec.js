@@ -1366,12 +1366,14 @@ assert.match(
   'value="TEAM"',
   'value="GROUP"',
   'value="ORG"',
-  'value="RULE"'
+  'value="RULE"',
+  'value="SQL"',
+  'biz.create_by = #{userId}'
 ].forEach((marker) => {
   assert.ok(entityDesigner.includes(marker), `实体数据权限配置缺少结构化能力: ${marker}`)
 })
 assert.equal(entityDesigner.includes('value="EXPRESSION"'), false, '数据权限配置不得继续暴露自由表达式')
-assert.equal(entityDesigner.includes('value="CUSTOM_SQL"'), false, '数据权限配置不得继续暴露自定义 SQL')
+assert.equal(entityDesigner.includes('value="CUSTOM_SQL"'), false, '数据权限配置不得继续暴露未校验的 CUSTOM_SQL')
 
 const entityDataTable = readFileSync(path.join(root, 'src/views/entity/components/EntityDataTable.vue'), 'utf8')
 assert.match(

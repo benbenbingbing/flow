@@ -754,7 +754,7 @@
 
       <SettingsSection
         title="适用对象"
-        description="定义哪些用户、角色、用户组或组织成员命中规则"
+        description="定义哪些用户命中规则，可选用户/角色/部门，或手写 SQL"
       >
         <template #summary>
           {{ permissionForm.matchConditions?.length || 0 }} 个条件 ·
@@ -795,6 +795,7 @@
               <el-option label="指定用户组" value="GROUP" />
               <el-option label="指定部门" value="DEPT" />
               <el-option label="指定组织" value="ORG" />
+              <el-option label="自定义 SQL" value="SQL" />
             </el-select>
           </el-form-item>
           <el-form-item v-if="cond.scopeType === 'USER'" label="选择用户">
@@ -866,6 +867,37 @@
           <el-form-item v-if="['DEPT', 'ORG'].includes(cond.scopeType)" :label="cond.scopeType === 'DEPT' ? '包含子部门' : '包含下级组织'">
             <el-switch v-model="cond.includeSubDept" />
           </el-form-item>
+          <el-form-item v-if="cond.scopeType === 'SQL'" label="用户 SQL" required>
+            <template #label>
+              <ConfigHelpLabel
+                label="用户 SQL"
+                help-key="entity.permissionMatchSql"
+              />
+            </template>
+            <div class="permission-sql-editor">
+              <el-alert type="info" :closable="false" class="permission-sql-help">
+                <div>只写判断当前用户是否命中的条件，不要写完整 SELECT 语句。</div>
+                <div>这里没有当前行，不能写主表别名 <code>biz</code>。</div>
+                <div>示例：<code>#{userId} IN (SELECT user_id FROM special_auditors)</code></div>
+                <div>或：<code>#{deptId} = 'D001'</code></div>
+              </el-alert>
+              <div class="sql-variable-tags">
+                <el-tag
+                  v-for="item in permissionSqlPlaceholders"
+                  :key="item.token"
+                  class="variable-tag"
+                  @click="appendPermissionSql(cond, item.token)"
+                >{{ item.label }} {{ item.token }}</el-tag>
+              </div>
+              <el-input
+                v-model="cond.sql"
+                type="textarea"
+                :rows="4"
+                class="permission-sql-input"
+                placeholder="#{userId} IN (SELECT user_id FROM special_auditors)"
+              />
+            </div>
+          </el-form-item>
         </div>
         <el-button type="primary" size="small" text @click="addMatchCondition">
           <el-icon><Plus /></el-icon>添加匹配条件
@@ -874,7 +906,7 @@
 
       <SettingsSection
         title="可见数据范围"
-        description="配置命中规则后可查看的数据，并可附加状态限制"
+        description="配置命中规则后可查看的数据。手写 SQL 时主表别名统一为 biz"
       >
         <template #summary>
           {{ getFilterTypeLabel(permissionForm.filterType) }}
@@ -882,6 +914,12 @@
         </template>
 
         <el-form-item label="数据范围" required>
+          <template #label>
+            <ConfigHelpLabel
+              label="数据范围"
+              help-key="entity.permissionFilterSql"
+            />
+          </template>
           <el-select v-model="permissionForm.filterType" placeholder="选择数据范围" style="width: 100%">
             <el-option label="全部数据" value="ALL" />
             <el-option label="当前用户是创建人" value="PERSONAL" />
@@ -896,6 +934,7 @@
             <el-option label="本部门" value="DEPT" />
             <el-option label="本部门及子部门" value="DEPT_TREE" />
             <el-option label="结构化条件组" value="RULE" />
+            <el-option label="自定义 SQL" value="SQL" />
           </el-select>
         </el-form-item>
 
@@ -904,7 +943,7 @@
             <el-alert
               type="info"
               :closable="false"
-              title="条件组由后端编译为安全 SQL；不支持自由脚本或自定义 SQL。"
+              title="条件组由后端编译为安全 SQL。需要手写条件时，请改用「自定义 SQL」范围。"
               style="margin-bottom: 10px"
             />
             <ActionRuleGroupEditor
@@ -915,6 +954,33 @@
             />
             <el-button v-else type="primary" text @click="createPermissionFilterRoot">添加条件组</el-button>
             <el-button v-if="permissionForm.filterRoot" type="danger" text @click="permissionForm.filterRoot = null">清空条件</el-button>
+          </div>
+        </el-form-item>
+
+        <el-form-item v-if="permissionForm.filterType === 'SQL'" label="范围 SQL" required>
+          <div class="permission-sql-editor">
+            <el-alert type="info" :closable="false" class="permission-sql-help">
+              <div>只写 WHERE 条件，不要写 SELECT / UPDATE 完整语句。</div>
+              <div>主表别名统一写 <code>biz</code>，保存后会替换成该实体物理表，例如 <code>biz.create_by = #{userId}</code>。</div>
+              <div>关联其它表时用 EXISTS，当前行用 <code>biz.id</code>。不要把其它表也起名为 biz。</div>
+              <div>示例：<code>EXISTS (SELECT 1 FROM extra_acl t WHERE t.record_id = biz.id AND t.user_id = #{userId})</code></div>
+            </el-alert>
+            <div class="sql-variable-tags">
+              <el-tag class="variable-tag" @click="appendPermissionSql('filter', 'biz.')">主表别名 biz.</el-tag>
+              <el-tag
+                v-for="item in permissionSqlPlaceholders"
+                :key="item.token"
+                class="variable-tag"
+                @click="appendPermissionSql('filter', item.token)"
+              >{{ item.label }} {{ item.token }}</el-tag>
+            </div>
+            <el-input
+              v-model="permissionForm.filterSql"
+              type="textarea"
+              :rows="5"
+              class="permission-sql-input"
+              placeholder="biz.create_by = #{userId}"
+            />
           </div>
         </el-form-item>
 
@@ -1219,10 +1285,12 @@ function createEmptyPermissionForm() {
       scopeType: 'ALL_USERS',
       targetIds: [],
       operator: 'ANY',
-      includeSubDept: false
+      includeSubDept: false,
+      sql: ''
     }],
     matchRoot: null,
     filterType: 'PERSONAL',
+    filterSql: '',
     filterRoot: null,
     legacyUnsafeConfig: false,
     fieldMapping: { userField: 'create_by', deptField: 'dept_id', statusField: 'status' },
@@ -1661,10 +1729,12 @@ const loadPermissions = async () => {
         matchLogic: match.logic || 'OR',
         matchConditions: (match.conditions || []).map(c => ({
           ...c,
-          targetIds: Array.isArray(c.targetIds) ? c.targetIds.map(id => String(id)) : []
+          targetIds: Array.isArray(c.targetIds) ? c.targetIds.map(id => String(id)) : [],
+          sql: c.sql || ''
         })),
         matchRoot: match.root || null,
         filterType: ['EXPRESSION', 'CUSTOM_SQL'].includes(filter.type) ? 'PERSONAL' : (filter.type || 'PERSONAL'),
+        filterSql: filter.sql || filter.customSql || '',
         filterRoot: filter.root || null,
         legacyUnsafeConfig,
         fieldMapping: filter.fieldMapping || { userField: 'create_by', deptField: 'dept_id', statusField: 'status' },
@@ -1751,8 +1821,29 @@ const addMatchCondition = () => {
     scopeType: 'ROLE',
     targetIds: [],
     operator: 'ANY',
-    includeSubDept: false
+    includeSubDept: false,
+    sql: ''
   })
+}
+
+const permissionSqlPlaceholders = [
+  { token: '#{userId}', label: '当前用户ID' },
+  { token: '#{username}', label: '当前用户名' },
+  { token: '#{deptId}', label: '当前部门ID' },
+  { token: '#{orgId}', label: '当前组织ID' }
+]
+
+const appendPermissionSql = (target, token) => {
+  if (target === 'filter') {
+    permissionForm.value.filterSql = `${permissionForm.value.filterSql || ''}${token}`
+    return
+  }
+  target.sql = `${target.sql || ''}${token}`
+}
+
+const permissionSqlLooksUnsafe = (sql) => {
+  const text = String(sql || '')
+  return text.includes(';') || text.includes('--') || text.includes('/*') || text.includes('*/')
 }
 
 const removeMatchCondition = (index) => {
@@ -1770,6 +1861,7 @@ const formatMatchSummary = (row) => {
       GROUP: '指定用户组',
       DEPT: '指定部门',
       ORG: '指定组织',
+      SQL: '自定义 SQL',
       EXPRESSION: '已废弃表达式'
     }
     return map[c.scopeType] || c.scopeType
@@ -1788,7 +1880,8 @@ const getFilterTypeTag = (type) => {
     TEAM: 'success',
     DEPT: 'warning',
     DEPT_TREE: 'warning',
-    RULE: 'info'
+    RULE: 'info',
+    SQL: 'danger'
   }
   return tags[type] || ''
 }
@@ -1804,6 +1897,7 @@ const getFilterTypeLabel = (type) => {
     DEPT: '本部门',
     DEPT_TREE: '本部门及子部门',
     RULE: '结构化条件组',
+    SQL: '自定义 SQL',
     EXPRESSION: '已废弃表达式',
     CUSTOM_SQL: '已废弃自定义 SQL'
   }
@@ -1883,15 +1977,34 @@ const savePermission = async () => {
     ElMessage.warning('请至少配置一个适用用户条件')
     return
   }
-  const invalidMatch = (form.matchConditions || []).find(condition =>
-    condition.scopeType !== 'ALL_USERS' && (!condition.targetIds || condition.targetIds.length === 0)
-  )
+  const invalidMatch = (form.matchConditions || []).find(condition => {
+    if (condition.scopeType === 'ALL_USERS') return false
+    if (condition.scopeType === 'SQL') return !String(condition.sql || '').trim()
+    return !condition.targetIds || condition.targetIds.length === 0
+  })
   if (invalidMatch) {
-    ElMessage.warning('指定用户、角色、用户组、部门或组织时必须选择目标')
+    ElMessage.warning(invalidMatch.scopeType === 'SQL'
+      ? '请填写适用对象 SQL'
+      : '指定用户、角色、用户组、部门或组织时必须选择目标')
+    return
+  }
+  const unsafeMatch = (form.matchConditions || []).find(condition =>
+    condition.scopeType === 'SQL' && permissionSqlLooksUnsafe(condition.sql)
+  )
+  if (unsafeMatch) {
+    ElMessage.warning('适用对象 SQL 不能包含分号或注释')
     return
   }
   if (form.filterType === 'RULE' && (!form.filterRoot?.children?.length)) {
     ElMessage.warning('结构化条件组不能为空')
+    return
+  }
+  if (form.filterType === 'SQL' && !String(form.filterSql || '').trim()) {
+    ElMessage.warning('请填写数据范围 SQL')
+    return
+  }
+  if (form.filterType === 'SQL' && permissionSqlLooksUnsafe(form.filterSql)) {
+    ElMessage.warning('数据范围 SQL 不能包含分号或注释')
     return
   }
 
@@ -1900,7 +2013,8 @@ const savePermission = async () => {
     scopeType: c.scopeType,
     targetIds: Array.isArray(c.targetIds) ? c.targetIds.map(id => String(id)).filter(Boolean) : [],
     operator: c.operator,
-    includeSubDept: c.includeSubDept
+    includeSubDept: c.includeSubDept,
+    sql: c.scopeType === 'SQL' ? String(c.sql || '').trim() : undefined
   }))
 
   const matchConfig = JSON.stringify({
@@ -1914,6 +2028,7 @@ const savePermission = async () => {
     version: 1,
     type: form.filterType,
     root: form.filterType === 'RULE' ? form.filterRoot : null,
+    sql: form.filterType === 'SQL' ? String(form.filterSql || '').trim() : undefined,
     fieldMapping: form.fieldMapping,
     statusLimit: form.statusLimit,
     ruleEffect: form.ruleEffect || 'ALLOW',
@@ -2510,6 +2625,23 @@ onMounted(async () => {
 
 .sql-variable-tags .variable-tag {
   cursor: pointer;
+}
+
+.permission-sql-editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.permission-sql-help :deep(.el-alert__description),
+.permission-sql-help {
+  line-height: 1.6;
+}
+
+.permission-sql-help code,
+.permission-sql-input :deep(textarea) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .preview-section {
