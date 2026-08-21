@@ -34,6 +34,13 @@ public class ListFieldDataSourceOptionDTO {
     /** 是否支持查询 */
     private boolean supportsQuery;
 
+    /**
+     * 适用实体编码。空表示全部实体。
+     * 设计器按当前 entityCode 过滤下拉。
+     */
+    @Builder.Default
+    private List<String> supportedEntityCodes = new ArrayList<>();
+
     /** 数据源配置项的 Schema 描述 */
     @Builder.Default
     private List<Map<String, Object>> configSchema = new ArrayList<>();

@@ -39,7 +39,12 @@
       :max-height="maxHeight"
       @selection-change="handleSelectionChange"
     >
-      <el-table-column v-if="showSelectionColumn" type="selection" width="50" />
+      <el-table-column
+        v-if="showSelectionColumn"
+        type="selection"
+        width="50"
+        fixed="left"
+      />
       <el-table-column v-if="tableConfig.showIndex !== false" type="index" width="50" />
       <!-- 使用列表配置时：完全动态列 -->
       <template v-if="useListConfig">

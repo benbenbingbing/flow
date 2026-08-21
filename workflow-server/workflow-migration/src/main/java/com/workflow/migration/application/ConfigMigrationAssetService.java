@@ -14,6 +14,10 @@ import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.migration.api.request.ConfigMigrationAssetQuery;
 import com.workflow.migration.api.request.ConfigMigrationMarkRequest;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
+import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
+import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
+import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -34,6 +38,7 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.application.UiExtensionReferencePolicy;
+import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
@@ -92,6 +97,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -101,6 +107,7 @@ import java.util.regex.Pattern;
 public class ConfigMigrationAssetService implements MigrationAssetHandler {
     public static final String ENTITY = "ENTITY";
     public static final String PROCESS = "PROCESS";
+    public static final String DICTIONARY = "DICTIONARY";
     public static final String SYSTEM_ENTITY_UI = "SYSTEM_ENTITY_UI"; // 资产类型：系统实体UI
     public static final String WORK_CALENDAR = "WORK_CALENDAR"; // 资产类型：工作日历
     public static final String TASK_SLA_POLICY = "TASK_SLA_POLICY"; // 资产类型：SLA策略
@@ -118,6 +125,8 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             "(?i)(password|secret|token|apiKey)(\\s*=\\s*\")([^\"]*)(\")");
     private final ConfigMigrationAssetMapper assetMapper;
     private final EntityDefinitionMapper entityMapper;
+    private final SysDictMapper dictMapper;
+    private final SysDictItemMapper dictItemMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityFieldFileItemMapper fileItemMapper;
     private final EntityRelationMapper relationMapper;
@@ -152,6 +161,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final UiConfigReleaseMapper configReleaseMapper;
     private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
     private final UiExtensionDefinitionMapper extensionDefinitionMapper;
+    private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ObjectMapper objectMapper;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
@@ -215,12 +225,17 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             throw new IllegalArgumentException("平台系统实体不属于可迁移动态配置: " + entity.getEntityCode());
         }
         Map<String, Object> snapshot = buildEntitySnapshot(entity);
+        ConfigMigrationAsset latest = findLatest(ENTITY, entity.getEntityCode());
+        int sourceVersion = Math.max(
+                history.getVersion() == null ? 1 : history.getVersion(),
+                latest == null || latest.getSourceVersion() == null
+                        ? 1 : latest.getSourceVersion() + 1);
         return saveAsset(
                 ENTITY,
                 entity.getEntityCode(),
                 entity.getEntityName(),
                 history.getId(),
-                history.getVersion(),
+                sourceVersion,
                 effectiveDescription(request, history.getVersionDescription()),
                 effectiveTag(request),
                 effectiveMark(request),
@@ -242,6 +257,95 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             throw new IllegalStateException("实体发布快照上下文不存在: " + entityId);
         }
         recordEntity(entity, history, request);
+    }
+
+    @Override
+    @Transactional
+    public void recordEntityUi(
+            String entityId,
+            String releaseId,
+            ConfigMigrationPublishRequest request) {
+        EntityDefinition entity = entityMapper.selectById(entityId);
+        UiConfigRelease release = configReleaseMapper.selectById(releaseId);
+        if (entity == null || release == null) {
+            throw new IllegalStateException(
+                    "自定义实体UI发布快照上下文不存在: " + entityId);
+        }
+        if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            throw new IllegalArgumentException(
+                    "系统实体UI必须登记为独立系统UI资产: "
+                            + entity.getEntityCode());
+        }
+        Map<String, Object> snapshot = buildEntitySnapshot(entity);
+        ConfigMigrationAsset latest = findLatest(
+                ENTITY, entity.getEntityCode());
+        if (sameSnapshot(latest, snapshot)) {
+            return;
+        }
+        int nextVersion = latest == null
+                || latest.getSourceVersion() == null
+                        ? 1 : latest.getSourceVersion() + 1;
+        saveAsset(
+                ENTITY,
+                entity.getEntityCode(),
+                entity.getEntityName(),
+                release.getId() + ":v" + nextVersion,
+                nextVersion,
+                effectiveDescription(
+                        request, release.getDescription()),
+                effectiveTag(request),
+                effectiveMark(request),
+                COMPLETE,
+                snapshot,
+                castList(snapshot.get("dependencies")),
+                release.getPublishedAt(),
+                release.getPublishedBy());
+    }
+
+    /**
+     * 确保指定字典存在与当前生效内容一致的不可变迁移资产。
+     *
+     * <p>字典没有独立发布动作，因此在实体依赖扩包时惰性登记；内容未变化时复用
+     * 最新资产，避免每次导出产生无意义版本。</p>
+     */
+    @Transactional
+    public ConfigMigrationAsset ensureDictionaryAsset(String dictCode) {
+        if (!StringUtils.hasText(dictCode)) {
+            return null;
+        }
+        SysDict dictionary = dictMapper.selectOne(
+                new LambdaQueryWrapper<SysDict>()
+                        .eq(SysDict::getDictCode, dictCode)
+                        .last("LIMIT 1"));
+        if (dictionary == null) {
+            return null;
+        }
+        Map<String, Object> snapshot =
+                buildDictionarySnapshot(dictionary);
+        ConfigMigrationAsset latest = findLatest(
+                DICTIONARY, dictCode);
+        if (sameSnapshot(latest, snapshot)) {
+            return latest;
+        }
+        int nextVersion = latest == null
+                || latest.getSourceVersion() == null
+                        ? 1 : latest.getSourceVersion() + 1;
+        return saveAsset(
+                DICTIONARY,
+                dictionary.getDictCode(),
+                dictionary.getDictName(),
+                dictionary.getId() + ":v" + nextVersion,
+                nextVersion,
+                "字典依赖快照",
+                null,
+                true,
+                COMPLETE,
+                snapshot,
+                List.of(),
+                dictionary.getUpdateTime() == null
+                        ? LocalDateTime.now()
+                        : dictionary.getUpdateTime(),
+                null);
     }
 
     @Transactional
@@ -625,6 +729,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         Set<String> referencedFields = new LinkedHashSet<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();
+        List<Map<String, Object>> entityEventBindings =
+                portableEventBindings(
+                        eventBindingSnapshotService.snapshotOwner(
+                                "ENTITY", entity.getId()));
+        collectDataSourceIds(
+                entityEventBindings, dataSourceIds);
         List<Map<String, Object>> forms = new ArrayList<>();
         for (EntityForm form : formMapper.selectByEntityId(entity.getId())) {
             UiConfigRelease active = configReleaseMapper.findActive("FORM", form.getId());
@@ -685,6 +795,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 nodes.add(node);
             }
             formSnapshot.put("nodes", nodes);
+            formSnapshot.put(
+                    "eventBindings",
+                    releasedOwnerBindings(
+                            releaseSnapshot,
+                            "FORM",
+                            form.getId()));
             collectDataSourceIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
@@ -730,10 +846,21 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 listFields.add(field);
             }
             listSnapshot.put("fields", listFields);
+            listSnapshot.put(
+                    "eventBindings",
+                    releasedOwnerBindings(
+                            releaseSnapshot,
+                            "LIST",
+                            list.getId()));
             collectDataSourceIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
         Map<String, String> dataSourceCodes = dataSourceCodesById(dataSourceIds);
+        snapshot.put(
+                "eventBindings",
+                rewriteDataSourceReferences(
+                        entityEventBindings,
+                        dataSourceCodes));
         snapshot.put(
                 "forms",
                 forms.stream()
@@ -827,6 +954,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         List<Map<String, Object>> forms = new ArrayList<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();
+        List<Map<String, Object>> entityEventBindings =
+                portableEventBindings(
+                        eventBindingSnapshotService.snapshotOwner(
+                                "ENTITY", entity.getId()));
+        collectDataSourceIds(
+                entityEventBindings, dataSourceIds);
         for (EntityForm form : formMapper.selectByEntityId(entity.getId())) {
             UiConfigRelease activeRelease = configReleaseMapper.findActive("FORM", form.getId());
             Map<String, Object> releaseSnapshot = activeRelease == null
@@ -890,6 +1023,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 nodeSnapshots.add(nodeSnapshot);
             }
             formSnapshot.put("nodes", nodeSnapshots);
+            formSnapshot.put(
+                    "eventBindings",
+                    releasedOwnerBindings(
+                            releaseSnapshot,
+                            "FORM",
+                            form.getId()));
             collectDataSourceIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
@@ -903,11 +1042,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         for (EntityListConfig listConfig : listConfigs) {
             listKeysById.put(listConfig.getId(), listConfig.getListKey());
             UiConfigRelease active = configReleaseMapper.findActive("LIST", listConfig.getId());
+            Map<String, Object> releaseSnapshot = Map.of();
             Map<String, Object> listSnapshot;
             if (active == null) {
                 listSnapshot = portableMap(listConfig);
             } else {
-                Map<String, Object> releaseSnapshot = mapValue(parseJson(
+                releaseSnapshot = mapValue(parseJson(
                         active.getSnapshotDocument(),
                         Map.of()));
                 listSnapshot = sanitizeMap(mapValue(
@@ -915,10 +1055,21 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             }
             rewriteTargetFormReferencesForExport(listSnapshot);
             listSnapshot.put("fields", portableList(listFieldMapper.findByListConfigId(listConfig.getId())));
+            listSnapshot.put(
+                    "eventBindings",
+                    releasedOwnerBindings(
+                            releaseSnapshot,
+                            "LIST",
+                            listConfig.getId()));
             collectDataSourceIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
         Map<String, String> dataSourceCodesById = dataSourceCodesById(dataSourceIds);
+        snapshot.put(
+                "eventBindings",
+                rewriteDataSourceReferences(
+                        entityEventBindings,
+                        dataSourceCodesById));
         snapshot.put(
                 "forms",
                 forms.stream()
@@ -973,6 +1124,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             addDependency(dependencies, PROCESS, process.getProcessKey(), true, "实体绑定流程");
         }
         for (EntityField field : fieldMapper.findByEntityId(entity.getId())) {
+            if (StringUtils.hasText(field.getDictType())) {
+                addDependency(
+                        dependencies,
+                        DICTIONARY,
+                        field.getDictType(),
+                        true,
+                        "实体字段字典");
+            }
             if (field.getRefEntityType() == EntityField.RefEntityType.CUSTOM
                     && StringUtils.hasText(field.getRefEntityId())) {
                 EntityDefinition referenced = entityMapper.selectById(field.getRefEntityId());
@@ -984,6 +1143,96 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         collectExtensionDependencies(snapshot, dependencies);
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
+    }
+
+    private Map<String, Object> buildDictionarySnapshot(
+            SysDict dictionary) {
+        Map<String, Object> snapshot = baseSnapshot(
+                DICTIONARY,
+                dictionary.getDictCode(),
+                dictionary.getDictName());
+        snapshot.put("definition", portableMap(dictionary));
+        List<SysDictItem> items = dictItemMapper
+                .selectAllByDictId(dictionary.getId())
+                .stream()
+                .filter(item -> item.getDeleted() == null
+                        || item.getDeleted() == 0)
+                .sorted(Comparator
+                        .comparing(
+                                SysDictItem::getSort,
+                                Comparator.nullsLast(
+                                        Integer::compareTo))
+                        .thenComparing(
+                                SysDictItem::getItemCode,
+                                Comparator.nullsLast(
+                                        String::compareTo)))
+                .toList();
+        Map<String, String> itemCodesById = items.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SysDictItem::getId,
+                        SysDictItem::getItemCode,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        List<Map<String, Object>> itemSnapshots =
+                new ArrayList<>();
+        for (SysDictItem item : items) {
+            Map<String, Object> value = portableMap(item);
+            value.remove("dictId");
+            value.remove("parentId");
+            value.remove("children");
+            value.put(
+                    "parentItemCode",
+                    itemCodesById.get(item.getParentId()));
+            itemSnapshots.add(value);
+        }
+        snapshot.put("items", itemSnapshots);
+        snapshot.put("dependencies", List.of());
+        return snapshot;
+    }
+
+    private boolean sameSnapshot(
+            ConfigMigrationAsset latest,
+            Map<String, Object> snapshot) {
+        return latest != null
+                && Objects.equals(
+                        latest.getContentHash(),
+                        sha256(writeJson(snapshot).getBytes(
+                                StandardCharsets.UTF_8)));
+    }
+
+    /**
+     * 优先使用发布版本中的本地绑定；兼容旧快照时回退到当前绑定草稿。
+     */
+    private List<Map<String, Object>> releasedOwnerBindings(
+            Map<String, Object> releaseSnapshot,
+            String ownerType,
+            String ownerId) {
+        List<Map<String, Object>> source =
+                releaseSnapshot.containsKey("eventBindings")
+                        ? castList(
+                                releaseSnapshot.get(
+                                        "eventBindings"))
+                        : eventBindingSnapshotService.snapshotOwner(
+                                ownerType, ownerId);
+        return portableEventBindings(source.stream()
+                .filter(value -> ownerType.equalsIgnoreCase(
+                        text(value.get("ownerType"))))
+                .filter(value -> ownerId.equals(
+                        text(value.get("ownerId"))))
+                .toList());
+    }
+
+    private List<Map<String, Object>> portableEventBindings(
+            Collection<Map<String, Object>> bindings) {
+        return bindings.stream()
+                .map(value -> {
+                    Map<String, Object> portable =
+                            sanitizeMap(value);
+                    portable.remove("ownerId");
+                    portable.remove("revision");
+                    return portable;
+                })
+                .toList();
     }
 
     private List<Map<String, Object>> extensionSnapshots(
@@ -1495,7 +1744,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                     } else if ("dataProvider".equals(name) || "providerName".equals(name)) {
                         addDependency(dependencies, "DATA_PROVIDER", text, true, name);
                     } else if ("dictCode".equals(name)) {
-                        addDependency(dependencies, "DICTIONARY", text, false, name);
+                        addDependency(dependencies, DICTIONARY, text, true, name);
                     }
                 }
                 collectExtensionDependencies(child, dependencies);

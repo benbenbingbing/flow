@@ -543,6 +543,11 @@ public class ConfigMigrationPackageService {
                     assetService.findLatest(ConfigMigrationAssetService.PROCESS, key);
             return asset == null ? null : new DependencyAsset(asset, Map.of("full", true));
         }
+        if (ConfigMigrationAssetService.DICTIONARY.equals(type)) {
+            // 字典没有独立发布历史，导出时按当前生效内容惰性生成不可变资产。
+            ConfigMigrationAsset asset = assetService.ensureDictionaryAsset(key);
+            return asset == null ? null : new DependencyAsset(asset, Map.of("full", true));
+        }
         if ("FORM".equals(type) && key.startsWith("wf-form://")) {
             String[] segments = key.substring("wf-form://".length()).split("/", 2);
             if (segments.length != 2) {
@@ -655,6 +660,9 @@ public class ConfigMigrationPackageService {
         }
         if (ConfigMigrationAssetService.PROCESS.equals(assetType)) {
             return processMapper.findByProcessKey(businessKey).isPresent();
+        }
+        if (ConfigMigrationAssetService.DICTIONARY.equals(assetType)) {
+            return dictMapper.existsDictCode(businessKey, "");
         }
         return false;
     }
@@ -805,8 +813,9 @@ public class ConfigMigrationPackageService {
             EntityDefinition entity = entityMapper.findByEntityCode(segments[0]).orElse(null);
             return entity != null && formMapper.selectByEntityIdAndFormKey(entity.getId(), segments[1]) != null;
         }
-        if ("DICTIONARY".equals(type)) {
-            return dictMapper.existsDictCode(key, "");
+        if (ConfigMigrationAssetService.DICTIONARY.equals(type)) {
+            return (!targetOnly && packageAssets.containsKey(type + ":" + key))
+                    || dictMapper.existsDictCode(key, "");
         }
         if ("USER".equals(type)) {
             return userMapper.selectByUsername(key) != null || hasMapping(type, key);

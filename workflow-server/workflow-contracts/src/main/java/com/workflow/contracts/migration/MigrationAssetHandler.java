@@ -12,6 +12,14 @@ public interface MigrationAssetHandler {
             String publishHistoryId,
             ConfigMigrationPublishRequest request);
 
+    /**
+     * 自定义实体的表单或列表发布后，按实体当前完整配置登记新的迁移快照。
+     */
+    void recordEntityUi(
+            String entityId,
+            String releaseId,
+            ConfigMigrationPublishRequest request);
+
     void recordProcess(
             String processId,
             String versionHistoryId,

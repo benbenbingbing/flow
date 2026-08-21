@@ -40,6 +40,14 @@ public interface ListFieldDataProvider {
         return false;
     }
 
+    /**
+     * 适用实体编码。空列表或包含 * 表示全部实体。
+     * 只收窄设计器数据源下拉，不阻止已保存列在运行时继续补数。
+     */
+    default List<String> getSupportedEntityCodes() {
+        return List.of();
+    }
+
     /** 返回数据源配置项 schema（key/label/type/required/defaultValue），默认无配置项 */
     default List<Map<String, Object>> getConfigSchema() {
         return List.of();

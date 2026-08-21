@@ -30,6 +30,7 @@
                   <el-option label="实体" value="ENTITY" />
                   <el-option label="系统实体 UI" value="SYSTEM_ENTITY_UI" />
                   <el-option label="流程" value="PROCESS" />
+                  <el-option label="数据字典" value="DICTIONARY" />
                   <el-option label="工作日历" value="WORK_CALENDAR" />
                   <el-option label="SLA 策略" value="TASK_SLA_POLICY" />
                 </el-select>
@@ -568,6 +569,12 @@ const sectionOptions = computed(() => {
   if (asset.assetType === 'TASK_SLA_POLICY') {
     return [{ label: '时限与升级步骤', value: 'configuration' }]
   }
+  if (asset.assetType === 'DICTIONARY') {
+    return [
+      { label: '字典定义', value: 'definition' },
+      { label: '字典项', value: 'items' }
+    ]
+  }
   return [
     { label: '实体基本信息与流程绑定', value: 'definition' },
     { label: '实体字段与关系', value: 'fields' },
@@ -893,6 +900,7 @@ const assetTypeLabel = (assetType) => ({
   ENTITY: '实体',
   SYSTEM_ENTITY_UI: '系统实体 UI',
   PROCESS: '流程',
+  DICTIONARY: '数据字典',
   WORK_CALENDAR: '工作日历',
   TASK_SLA_POLICY: 'SLA 策略'
 }[assetType] || assetType || '未知')
@@ -900,6 +908,7 @@ const assetTypeTagType = (assetType) => ({
   ENTITY: 'primary',
   SYSTEM_ENTITY_UI: 'warning',
   PROCESS: 'success',
+  DICTIONARY: 'primary',
   WORK_CALENDAR: 'info',
   TASK_SLA_POLICY: 'danger'
 }[assetType] || 'info')

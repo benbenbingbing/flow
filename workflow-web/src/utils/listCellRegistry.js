@@ -2,6 +2,7 @@
  * 列表单元格渲染组件注册中心
  * 
  * 二次开发者可通过 registerCellComponent 注册自定义渲染组件。
+ * metadata.supportedEntityCodes 可限定适用实体；空或 ['*'] 表示全部实体。
  * 组件接收的 props：
  *   - value: 单元格值
  *   - row: 整行数据

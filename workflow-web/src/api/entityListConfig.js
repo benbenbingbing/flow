@@ -18,8 +18,10 @@ export const entityListConfigApi = {
     return request.get(`/entity-list-config/${id}`)
   },
 
-  getExtensionOptions() {
-    return request.get('/entity-list-config/extension-options')
+  getExtensionOptions(entityCode) {
+    return request.get('/entity-list-config/extension-options', {
+      params: entityCode ? { entityCode } : {}
+    })
   },
 
   /**

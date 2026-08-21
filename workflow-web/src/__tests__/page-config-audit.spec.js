@@ -79,6 +79,7 @@ const documentationRoutes = {
   '/manual/open-integration': ['OpenIntegrationManual.vue', '开放集成手册'],
   '/manual/interface-service': ['InterfaceServiceManual.vue', '接口服务手册'],
   '/system/dev-guide': ['DevGuide.vue', '列表字段扩展'],
+  '/system/list-field-guide': ['ListFieldExtensionGuide.vue', '列表字段扩展2'],
   '/system/custom-list-guide': ['CustomListGuide.vue', '自定义列表组件'],
   '/system/custom-form-guide': ['CustomFormGuide.vue', '自定义表单组件']
 }
@@ -89,6 +90,27 @@ for (const [routePath, markers] of Object.entries(documentationRoutes)) {
     assert.ok(routeBlock.includes(marker), `手册或扩展指南入口缺少配置: ${routePath} -> ${marker}`)
   })
 }
+
+const listFieldGuideMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V047__list_field_extension_guide_menu.sql'
+  ),
+  'utf8'
+)
+;[
+  'list_field_guide_v2_001',
+  '列表字段扩展2',
+  '/system/list-field-guide',
+  'system/ListFieldExtensionGuide',
+  'dev_guide_dir',
+  'system:dev:list'
+].forEach((marker) => {
+  assert.ok(
+    listFieldGuideMigration.includes(marker),
+    `列表字段扩展2菜单迁移缺少配置: ${marker}`
+  )
+})
 
 const interfaceServiceManualMigration = readFileSync(
   path.join(
@@ -427,7 +449,7 @@ const entityDataSearchForm = readFileSync(
   path.join(root, 'src/views/entity/components/EntityDataSearchForm.vue'),
   'utf8'
 )
-;['addVirtualField', 'getExtensionOptions', 'ConfigSchemaEditor', 'renderConfig', 'queryConfig', 'columnConfig'].forEach((marker) => {
+;['addVirtualField', 'getExtensionOptions', 'ConfigSchemaEditor', 'renderConfig', 'queryConfig', 'columnConfig', 'filterOptionsByEntity', 'selectableCellComponentOptions', 'supportedEntityCodes'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设计器缺少动态配置能力: ${marker}`)
 })
 ;['dataScopeMode', 'allowedSceneValues', 'selectionMode', 'fixedFilterConfig', 'contextBindingConfig'].forEach((marker) => {
@@ -1817,6 +1839,16 @@ const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fiel
 
 const guideExpectations = {
   'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'DemoRiskProgressCell', 'test:demo:real', 'SettingsSection'],
+  'src/views/system/ListFieldExtensionGuide.vue': [
+    'registerCellComponent',
+    'ListFieldDataProvider',
+    'FIELD_TEMPLATE',
+    'DemoRiskProgressCell',
+    'extData',
+    'renderConfig',
+    'supportedEntityCodes',
+    'GET /api/entity-list-config/extension-options'
+  ],
   'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
   'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerFormNodeComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
 }

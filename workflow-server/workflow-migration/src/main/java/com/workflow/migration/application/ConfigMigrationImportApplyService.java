@@ -8,6 +8,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.workflow.admin.dictionary.application.DictCacheService;
+import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
+import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
+import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
+import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -76,6 +81,7 @@ import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.action.application.FlowActionService;
 import com.workflow.entity.ui.application.UiDataSourceService;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 import com.workflow.process.form.application.ProcessNodeFormService;
@@ -128,6 +134,8 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationAssetMapper migrationAssetMapper;
     private final ConfigEnvironmentMappingMapper environmentMappingMapper;
     private final EntityDefinitionMapper entityMapper;
+    private final SysDictMapper dictMapper;
+    private final SysDictItemMapper dictItemMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityFieldFileItemMapper fileItemMapper;
     private final EntityFormMapper formMapper;
@@ -160,6 +168,8 @@ public class ConfigMigrationImportApplyService {
     private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
     private final UiConfigReleaseMapper uiConfigReleaseMapper;
     private final UiConfigReleaseService uiConfigReleaseService;
+    private final UiEventBindingSnapshotService eventBindingSnapshotService;
+    private final DictCacheService dictCacheService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ConfigMigrationAssetService assetService;
     private final ConfigMigrationMenuImporter menuImporter;
@@ -229,6 +239,21 @@ public class ConfigMigrationImportApplyService {
                 actionableItems.size(),
                 items.size() - actionableItems.size());
 
+        List<ConfigImportItem> dictionaries = itemsOfType(
+                actionableItems,
+                ConfigMigrationAssetService.DICTIONARY);
+        for (ConfigImportItem item : dictionaries) {
+            applyDictionary(item);
+        }
+        if (!dictionaries.isEmpty()) {
+            dictCacheService.reload();
+            for (ConfigImportItem item : dictionaries) {
+                assetService.ensureDictionaryAsset(
+                        item.getBusinessKey());
+                markPublished(item);
+            }
+        }
+
         List<EntityContext> entities = new ArrayList<>();
         for (ConfigImportItem item : itemsOfType(
                 actionableItems, ConfigMigrationAssetService.ENTITY)) {
@@ -297,6 +322,110 @@ public class ConfigMigrationImportApplyService {
         log.info("配置迁移包原子发布完成，importId={}，packageNo={}，itemCount={}",
                 importId, importPackage.getPackageNo(), items.size());
         return publishResult(importPackage, items);
+    }
+
+    /**
+     * 按字典编码和字典项编码非破坏性合并字典配置，并通过 parentItemCode 重建树关系。
+     * 目标环境额外存在的字典项会被保留，避免实体迁移误删生产专用配置。
+     */
+    private void applyDictionary(ConfigImportItem item) {
+        Map<String, Object> snapshot =
+                readMap(item.getSnapshotJson());
+        SysDict incoming = convert(
+                mapValue(snapshot.get("definition")),
+                SysDict.class);
+        String dictCode = text(
+                incoming.getDictCode(), item.getBusinessKey());
+        SysDict dictionary = dictMapper.selectOne(
+                new LambdaQueryWrapper<SysDict>()
+                        .eq(SysDict::getDictCode, dictCode)
+                        .last("LIMIT 1"));
+        LocalDateTime now = LocalDateTime.now();
+        if (dictionary == null) {
+            dictionary = incoming;
+            dictionary.setId(null);
+            dictionary.setDictCode(dictCode);
+            dictionary.setStatus(
+                    StringUtils.hasText(dictionary.getStatus())
+                            ? dictionary.getStatus()
+                            : SysDict.Status.ENABLED.getValue());
+            dictionary.setDeleted(0);
+            dictionary.setCreateTime(now);
+            dictionary.setUpdateTime(now);
+            dictMapper.insert(dictionary);
+        } else {
+            dictionary.setDictName(incoming.getDictName());
+            dictionary.setDescription(incoming.getDescription());
+            dictionary.setStatus(incoming.getStatus());
+            dictionary.setSort(incoming.getSort());
+            dictionary.setUpdateTime(now);
+            dictMapper.updateById(dictionary);
+        }
+
+        Map<String, SysDictItem> targetItems = dictItemMapper
+                .selectAllByDictId(dictionary.getId())
+                .stream()
+                .filter(value -> value.getDeleted() == null
+                        || value.getDeleted() == 0)
+                .collect(java.util.stream.Collectors.toMap(
+                        SysDictItem::getItemCode,
+                        value -> value,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        List<Map<String, Object>> incomingItems =
+                mapList(snapshot.get("items"));
+        for (Map<String, Object> value : incomingItems) {
+            SysDictItem incomingItem = convert(
+                    value, SysDictItem.class);
+            if (!StringUtils.hasText(
+                    incomingItem.getItemCode())) {
+                throw new IllegalStateException(
+                        "迁移字典项缺少 itemCode: " + dictCode);
+            }
+            SysDictItem target = targetItems.get(
+                    incomingItem.getItemCode());
+            String targetId =
+                    target == null ? null : target.getId();
+            LocalDateTime createdAt = target == null
+                    ? now : target.getCreateTime();
+            incomingItem.setId(targetId);
+            incomingItem.setDictId(dictionary.getId());
+            incomingItem.setDictCode(dictCode);
+            incomingItem.setParentId("0");
+            incomingItem.setDeleted(0);
+            incomingItem.setCreateTime(createdAt);
+            incomingItem.setUpdateTime(now);
+            if (target == null) {
+                dictItemMapper.insert(incomingItem);
+            } else {
+                dictItemMapper.updateById(incomingItem);
+            }
+            targetItems.put(
+                    incomingItem.getItemCode(), incomingItem);
+        }
+
+        // 首轮写入取得目标主键后，再解析父项编码，避免依赖源环境 parentId。
+        for (Map<String, Object> value : incomingItems) {
+            String itemCode = text(
+                    value.get("itemCode"), null);
+            String parentItemCode = text(
+                    value.get("parentItemCode"), null);
+            SysDictItem target = targetItems.get(itemCode);
+            SysDictItem parent =
+                    StringUtils.hasText(parentItemCode)
+                            ? targetItems.get(parentItemCode)
+                            : null;
+            if (StringUtils.hasText(parentItemCode)
+                    && parent == null) {
+                throw new IllegalStateException(
+                        "迁移字典项父节点不存在: "
+                                + dictCode + "." + parentItemCode);
+            }
+            target.setParentId(
+                    parent == null ? "0" : parent.getId());
+            target.setUpdateTime(now);
+            dictItemMapper.updateById(target);
+        }
     }
 
     private void applyWorkCalendar(
@@ -532,6 +661,8 @@ public class ConfigMigrationImportApplyService {
                 new ArrayList<>();
         List<ConfigImportItem> taskSlaPolicyRollbacks =
                 new ArrayList<>();
+        List<ConfigImportItem> dictionaryRollbacks =
+                new ArrayList<>();
         List<ProcessContext> processContexts = new ArrayList<>();
         for (ConfigImportItem item : items) {
             ConfigMigrationAsset previous = previousAsset(item);
@@ -570,11 +701,23 @@ public class ConfigMigrationImportApplyService {
             } else if (ConfigMigrationAssetService.TASK_SLA_POLICY
                     .equals(item.getAssetType())) {
                 taskSlaPolicyRollbacks.add(rollbackItem);
+            } else if (ConfigMigrationAssetService.DICTIONARY
+                    .equals(item.getAssetType())) {
+                dictionaryRollbacks.add(rollbackItem);
             } else {
                 throw new IllegalStateException(
                         "不支持回滚的迁移资产类型: "
                                 + item.getAssetType());
             }
+        }
+        for (ConfigImportItem item : dictionaryRollbacks) {
+            applyDictionary(item);
+        }
+        if (!dictionaryRollbacks.isEmpty()) {
+            dictCacheService.reload();
+            dictionaryRollbacks.forEach(item ->
+                    assetService.ensureDictionaryAsset(
+                            item.getBusinessKey()));
         }
         for (EntityRollbackContext rollback : entityRollbacks) {
             applyEntityConfiguration(rollback.context(), true);
@@ -692,6 +835,19 @@ public class ConfigMigrationImportApplyService {
                     rewriteDataSourceReferences(
                             snapshot.get("lists"),
                             dataSourceIds));
+            if (snapshot.containsKey("eventBindings")) {
+                snapshot.put(
+                        "eventBindings",
+                        rewriteDataSourceReferences(
+                                snapshot.get("eventBindings"),
+                                dataSourceIds));
+            }
+        }
+        if (snapshot.containsKey("eventBindings")) {
+            restoreEventBindings(
+                    "ENTITY",
+                    entity.getId(),
+                    mapList(snapshot.get("eventBindings")));
         }
         if (snapshot.containsKey("forms")) {
             applyForms(entity, mapList(snapshot.get("forms")));
@@ -873,6 +1029,19 @@ public class ConfigMigrationImportApplyService {
                     rewriteDataSourceReferences(
                             snapshot.get("lists"),
                             dataSourceIds));
+            if (snapshot.containsKey("eventBindings")) {
+                snapshot.put(
+                        "eventBindings",
+                        rewriteDataSourceReferences(
+                                snapshot.get("eventBindings"),
+                                dataSourceIds));
+            }
+        }
+        if (snapshot.containsKey("eventBindings")) {
+            restoreEventBindings(
+                    "ENTITY",
+                    entity.getId(),
+                    mapList(snapshot.get("eventBindings")));
         }
         if (snapshot.containsKey("forms")) {
             applyForms(entity, mapList(snapshot.get("forms")));
@@ -1040,6 +1209,12 @@ public class ConfigMigrationImportApplyService {
             if (value.containsKey("nodes")) {
                 entityFormNodeService.replaceByDiff(
                         saved.getId(), nodes);
+            }
+            if (value.containsKey("eventBindings")) {
+                restoreEventBindings(
+                        UiConfigReleaseService.FORM,
+                        saved.getId(),
+                        mapList(value.get("eventBindings")));
             }
             formIds.add(saved.getId());
         }
@@ -1409,12 +1584,40 @@ public class ConfigMigrationImportApplyService {
             dto.setFields(listFields);
             EntityListConfigDTO saved =
                     entityListConfigService.saveConfig(dto);
+            if (value.containsKey("eventBindings")) {
+                restoreEventBindings(
+                        UiConfigReleaseService.LIST,
+                        saved.getId(),
+                        mapList(value.get("eventBindings")));
+            }
             listIds.add(saved.getId());
         }
         publishImportedConfigurations(
                 UiConfigReleaseService.LIST,
                 listIds,
                 "配置迁移导入列表初始发布");
+    }
+
+    /**
+     * 将源环境事件绑定改写到目标所有者后恢复；绑定自身 ID 和修订号不参与导入。
+     */
+    private void restoreEventBindings(
+            String ownerType,
+            String ownerId,
+            List<Map<String, Object>> bindings) {
+        List<Map<String, Object>> targetBindings = bindings.stream()
+                .map(source -> {
+                    Map<String, Object> target =
+                            new LinkedHashMap<>(source);
+                    target.remove("id");
+                    target.remove("revision");
+                    target.put("ownerType", ownerType);
+                    target.put("ownerId", ownerId);
+                    return target;
+                })
+                .toList();
+        eventBindingSnapshotService.restoreLocalBindings(
+                ownerType, ownerId, targetBindings);
     }
 
     private Map<String, Object> resolveListTargetFormReferences(
@@ -1879,6 +2082,24 @@ public class ConfigMigrationImportApplyService {
                 .equals(item.getAssetType())) {
             taskSlaPolicyService.disableForMigration(
                     item.getBusinessKey());
+            return;
+        }
+        if (ConfigMigrationAssetService.DICTIONARY
+                .equals(item.getAssetType())) {
+            SysDict dictionary = dictMapper.selectOne(
+                    new LambdaQueryWrapper<SysDict>()
+                            .eq(SysDict::getDictCode,
+                                    item.getBusinessKey())
+                            .last("LIMIT 1"));
+            if (dictionary != null) {
+                dictionary.setStatus(
+                        SysDict.Status.DISABLED.getValue());
+                dictionary.setUpdateTime(LocalDateTime.now());
+                dictMapper.updateById(dictionary);
+                dictCacheService.reload();
+                assetService.ensureDictionaryAsset(
+                        item.getBusinessKey());
+            }
             return;
         }
         if (!ConfigMigrationAssetService.PROCESS

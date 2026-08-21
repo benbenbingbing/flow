@@ -53,6 +53,22 @@ public class UiEventBindingSnapshotService {
     }
 
     /**
+     * 只快照指定所有者的本地事件绑定，供实体级配置迁移使用。
+     *
+     * <p>与 {@link #snapshot(String, String, String)} 不同，本方法不会混入继承绑定，
+     * 避免实体绑定被重复写入每个表单或列表。</p>
+     */
+    public List<Map<String, Object>> snapshotOwner(
+            String ownerType,
+            String ownerId) {
+        return bindingMapper.findByOwner(
+                        normalize(ownerType), ownerId)
+                .stream()
+                .map(this::snapshotValue)
+                .toList();
+    }
+
+    /**
      * 用不可变发布快照恢复配置自身的事件绑定草稿；实体级继承绑定不受影响。
      */
     public void restoreLocalBindings(

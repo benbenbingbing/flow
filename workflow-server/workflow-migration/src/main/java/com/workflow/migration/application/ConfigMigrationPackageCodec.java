@@ -425,6 +425,8 @@ public class ConfigMigrationPackageCodec {
                 || ConfigMigrationAssetService.SYSTEM_ENTITY_UI.equals(assetType))
                 && (sections.contains("forms") || sections.contains("lists"))) {
             expanded.add("referencedFields");
+            // 实体级绑定会被表单和列表继承，细粒度 UI 导出也必须携带。
+            expanded.add("eventBindings");
         }
         return expanded;
     }
@@ -654,6 +656,8 @@ public class ConfigMigrationPackageCodec {
                     "assets/work-calendars/";
             case ConfigMigrationAssetService.TASK_SLA_POLICY ->
                     "assets/task-sla-policies/";
+            case ConfigMigrationAssetService.DICTIONARY ->
+                    "assets/dictionaries/";
             case ConfigMigrationAssetService.PROCESS ->
                     "assets/processes/";
             default -> throw new IllegalArgumentException(

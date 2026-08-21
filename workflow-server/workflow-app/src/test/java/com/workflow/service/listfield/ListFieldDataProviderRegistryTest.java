@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,6 +34,7 @@ class ListFieldDataProviderRegistryTest {
 
         assertTrue(registry.supports("custom_score"));
         assertEquals("CUSTOM_SCORE", registry.getOptions().get(1).getValue());
+        assertTrue(registry.getOptions().get(1).getSupportedEntityCodes().isEmpty());
 
         EntityListField field = new EntityListField();
         field.setDataSourceType("CUSTOM_SCORE");
@@ -43,6 +45,29 @@ class ListFieldDataProviderRegistryTest {
         registry.validate(field);
     }
 
+    @Test
+    void filtersOptionsBySupportedEntityCodes() {
+        ListFieldDataProvider expenseOnly = scopedProvider("EXPENSE_RISK", List.of("expense"));
+        ListFieldDataProvider allEntities = scopedProvider("COMMON_SCORE", List.of());
+        ListFieldDataProviderRegistry registry = new ListFieldDataProviderRegistry(
+                List.of(expenseOnly, allEntities),
+                new ObjectMapper());
+
+        List<String> expenseOptions = registry.getOptions("expense").stream()
+                .map(option -> option.getValue())
+                .toList();
+        List<String> contractOptions = registry.getOptions("contract").stream()
+                .map(option -> option.getValue())
+                .toList();
+
+        assertTrue(expenseOptions.contains("ENTITY_FIELD"));
+        assertTrue(expenseOptions.contains("EXPENSE_RISK"));
+        assertTrue(expenseOptions.contains("COMMON_SCORE"));
+        assertTrue(contractOptions.contains("COMMON_SCORE"));
+        assertTrue(contractOptions.contains("ENTITY_FIELD"));
+        assertFalse(contractOptions.contains("EXPENSE_RISK"));
+    }
+
     /** 测试拒绝重复的提供者键：验证大小写归一化后键重复时抛出 IllegalStateException */
     @Test
     void rejectsDuplicateProviderKeys() {
@@ -51,6 +76,27 @@ class ListFieldDataProviderRegistryTest {
                 () -> new ListFieldDataProviderRegistry(
                         List.of(provider("CUSTOM_SCORE"), provider("custom_score")),
                         new ObjectMapper()));
+    }
+
+    private ListFieldDataProvider scopedProvider(String key, List<String> entityCodes) {
+        return new ListFieldDataProvider() {
+            @Override
+            public String getDataSourceType() {
+                return key;
+            }
+
+            @Override
+            public List<String> getSupportedEntityCodes() {
+                return entityCodes;
+            }
+
+            @Override
+            public void enrich(
+                    List<EntityDataDTO> records,
+                    List<EntityListField> fields,
+                    Map<String, Object> context) {
+            }
+        };
     }
 
     /** 构造指定键的测试数据提供者，含 sourceField 必填配置 schema */

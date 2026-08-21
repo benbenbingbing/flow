@@ -4,6 +4,7 @@ import {
   isAttachmentItemRequired,
   resolveAttachmentItems
 } from '../file-attachment.js'
+import { normalizeSupportedEntityCodes } from '../extension-entity-scope.js'
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 const RUNTIME_REGEX_MAX_LENGTH = 500
@@ -48,6 +49,7 @@ export function normalizeExtensionDescriptor(name, component, metadata = {}) {
     capabilities: metadata.capabilities || {},
     supportedModes: metadata.supportedModes || [],
     supportedFieldTypes: metadata.supportedFieldTypes || [],
+    supportedEntityCodes: normalizeSupportedEntityCodes(metadata.supportedEntityCodes),
     version: Number(metadata.version || 1),
     snapshotVersion: Number(metadata.snapshotVersion || 1)
   }

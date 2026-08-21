@@ -78,6 +78,13 @@ public class ListFieldDataProviderRegistry {
      * @return 数据源选项列表
      */
     public List<ListFieldDataSourceOptionDTO> getOptions() {
+        return getOptions(null);
+    }
+
+    /**
+     * 按实体编码过滤数据源下拉。空编码不过滤；已声明范围的提供者只对命中实体出现。
+     */
+    public List<ListFieldDataSourceOptionDTO> getOptions(String entityCode) {
         List<ListFieldDataSourceOptionDTO> options = new ArrayList<>();
         options.add(ListFieldDataSourceOptionDTO.builder()
                 .value("ENTITY_FIELD")
@@ -85,16 +92,23 @@ public class ListFieldDataProviderRegistry {
                 .description("直接读取实体系统字段或自定义字段。")
                 .supportsVirtualField(false)
                 .supportsQuery(true)
+                .supportedEntityCodes(List.of())
                 .configSchema(List.of())
                 .build());
         for (Map.Entry<String, ListFieldDataProvider> entry : providers.entrySet()) {
             ListFieldDataProvider provider = entry.getValue();
+            List<String> supportedEntityCodes =
+                    normalizeSupportedEntityCodes(provider.getSupportedEntityCodes());
+            if (!matchesEntity(supportedEntityCodes, entityCode)) {
+                continue;
+            }
             options.add(ListFieldDataSourceOptionDTO.builder()
                     .value(entry.getKey())
                     .label(provider.getDisplayName())
                     .description(provider.getDescription())
                     .supportsVirtualField(provider.supportsVirtualField())
                     .supportsQuery(provider.supportsQuery())
+                    .supportedEntityCodes(supportedEntityCodes)
                     .configSchema(provider.getConfigSchema())
                     .build());
         }
@@ -164,5 +178,35 @@ public class ListFieldDataProviderRegistry {
     /** 归一化数据源类型：去除空白并转大写，null 返回空串 */
     private String normalize(String value) {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * 空范围或包含 * 表示全部实体。当前实体为空时也不过滤。
+     */
+    boolean matchesEntity(List<String> supportedEntityCodes, String entityCode) {
+        List<String> codes = normalizeSupportedEntityCodes(supportedEntityCodes);
+        if (codes.isEmpty() || !StringUtils.hasText(entityCode)) {
+            return true;
+        }
+        String current = entityCode.trim();
+        return codes.stream().anyMatch(code -> code.equalsIgnoreCase(current));
+    }
+
+    private List<String> normalizeSupportedEntityCodes(List<String> value) {
+        if (value == null || value.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> codes = new LinkedHashSet<>();
+        for (String item : value) {
+            if (!StringUtils.hasText(item)) {
+                continue;
+            }
+            String code = item.trim();
+            if ("*".equals(code)) {
+                return List.of();
+            }
+            codes.add(code);
+        }
+        return List.copyOf(codes);
     }
 }

@@ -42,11 +42,13 @@ public class EntityListConfigController {
     /**
      * 查询列表字段数据源扩展选项（可用数据源提供方）。GET /api/entity-list-config/extension-options
      *
+     * @param entityCode 当前实体编码，传入后只返回该实体可用的数据源
      * @return 扩展选项列表
      */
     @GetMapping("/extension-options")
-    public Result<List<ListFieldDataSourceOptionDTO>> extensionOptions() {
-        return Result.success(dataProviderRegistry.getOptions());
+    public Result<List<ListFieldDataSourceOptionDTO>> extensionOptions(
+            @RequestParam(required = false) String entityCode) {
+        return Result.success(dataProviderRegistry.getOptions(entityCode));
     }
 
     /**

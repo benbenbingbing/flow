@@ -284,6 +284,12 @@ const routes = [
         meta: { title: '列表字段扩展', developerOnly: true }
       },
       {
+        path: '/system/list-field-guide',
+        name: 'ListFieldExtensionGuide',
+        component: () => import('@/views/system/ListFieldExtensionGuide.vue'),
+        meta: { title: '列表字段扩展2', developerOnly: true }
+      },
+      {
         path: '/system/custom-list-guide',
         name: 'CustomListGuide',
         component: () => import('@/views/system/CustomListGuide.vue'),

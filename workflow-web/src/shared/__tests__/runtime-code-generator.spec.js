@@ -136,6 +136,10 @@ assert.match(listArtifact.code, /<template>/)
 assert.match(listArtifact.code, /EntityDataSearchForm/)
 assert.match(listArtifact.code, /entityListRuntimeApi\.query/)
 assert.match(listArtifact.code, /ROW_BUTTON_CLICK/)
+assert.match(
+  listArtifact.code,
+  /type="selection"\s+width="50"\s+fixed="left"/
+)
 assert.doesNotMatch(listArtifact.code, /as const/)
 assert.ok(listArtifact.logicItems.some(item =>
   item.category === '查询' && item.name === '固定查询条件'

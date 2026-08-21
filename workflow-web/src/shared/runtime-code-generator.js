@@ -450,6 +450,7 @@ function toEquivalentListVue(configLabel, sourceLabel, definition) {
     '        v-if="selectionMode !== \'NONE\'"',
     '        type="selection"',
     '        width="50"',
+    '        fixed="left"',
     '      />',
     '      <el-table-column',
     '        v-for="field in displayFields"',

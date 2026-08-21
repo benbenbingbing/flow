@@ -1438,7 +1438,7 @@ public class UiConfigReleaseService {
                     configId,
                     active,
                     active.getContentHash());
-            recordSystemEntityUiAsset(
+            recordEntityUiAsset(
                     configType, configId, active, request);
             log.info(
                     "UI配置发布复用现有版本: configType={}, configId={}, releaseId={}, releaseVersion={}, releaseMode=STANDARD, reason=CONTENT_UNCHANGED",
@@ -1483,7 +1483,7 @@ public class UiConfigReleaseService {
                         "version", release.getVersion(),
                         "contentHash", contentHash,
                         "riskItems", patch.riskItems()));
-        recordSystemEntityUiAsset(
+        recordEntityUiAsset(
                 configType, configId, release, request);
         log.info(
                 "UI配置标准发布完成: configType={}, configId={}, releaseId={}, releaseVersion={}, previousReleaseId={}, contentHash={}, operatorId={}",
@@ -2390,7 +2390,7 @@ public class UiConfigReleaseService {
                 activationPatch.riskLevel(),
                 reason,
                 audit);
-        recordSystemEntityUiAsset(
+        recordEntityUiAsset(
                 configType, configId, release, null);
         log.info(
                 "UI配置历史版本激活完成: configType={}, configId={}, releaseId={}, releaseVersion={}, contentHash={}, operatorId={}",
@@ -2492,16 +2492,14 @@ public class UiConfigReleaseService {
         }
     }
 
-    private void recordSystemEntityUiAsset(
+    private void recordEntityUiAsset(
             String configType,
             String configId,
             UiConfigRelease release,
             UiConfigPublishRequest request) {
         EntityDefinition entity = ownerEntity(
                 configType, configId);
-        if (entity == null
-                || entity.getStorageMode()
-                != EntityDefinition.StorageMode.SYSTEM) {
+        if (entity == null) {
             return;
         }
         ConfigMigrationPublishRequest migrationRequest =
@@ -2511,10 +2509,19 @@ public class UiConfigReleaseService {
                         ? release.getDescription()
                         : request.getDescription());
         migrationRequest.setMarkForExport(true);
-        migrationAssetHandler.recordSystemEntityUi(
-                entity.getId(),
-                release.getId(),
-                migrationRequest);
+        if (entity.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM) {
+            migrationAssetHandler.recordSystemEntityUi(
+                    entity.getId(),
+                    release.getId(),
+                    migrationRequest);
+        } else {
+            // 自定义实体的 UI 发布同样会改变可迁移配置，必须刷新完整实体快照。
+            migrationAssetHandler.recordEntityUi(
+                    entity.getId(),
+                    release.getId(),
+                    migrationRequest);
+        }
     }
 
     private EntityDefinition ownerEntity(

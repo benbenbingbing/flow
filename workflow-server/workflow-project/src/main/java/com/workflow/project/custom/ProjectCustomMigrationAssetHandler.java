@@ -28,6 +28,18 @@ public class ProjectCustomMigrationAssetHandler
     }
 
     @Override
+    public void recordEntityUi(
+            String entityId,
+            String releaseId,
+            ConfigMigrationPublishRequest request) {
+        logRecord(
+                "ENTITY",
+                entityId,
+                releaseId,
+                request);
+    }
+
+    @Override
     public void recordProcess(
             String processId,
             String versionHistoryId,

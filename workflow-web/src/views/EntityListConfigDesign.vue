@@ -745,13 +745,14 @@
                     @change="handleDataSourceChange(editingField)"
                   >
                     <el-option
-                      v-for="option in dataSourceOptions"
+                      v-for="option in selectableDataSourceOptions"
                       :key="option.value"
                       :label="option.label"
                       :value="option.value"
                       :disabled="isVirtualField(editingField) && option.supportsVirtualField === false"
                     />
                   </el-select>
+                  <div class="form-tip">只列出当前实体可用的数据源。没写适用范围的数据源对全部实体可见。</div>
                 </el-form-item>
                 <el-form-item label="统一数据源">
                   <el-select
@@ -808,12 +809,13 @@
                     style="width: 100%"
                   >
                     <el-option
-                      v-for="option in cellComponentOptions"
+                      v-for="option in selectableCellComponentOptions"
                       :key="option.value"
                       :label="option.label"
                       :value="option.value"
                     />
                   </el-select>
+                  <div class="form-tip">只列出当前实体可用的扩展。没写适用范围的扩展对全部实体可见。</div>
                 </el-form-item>
               </el-form>
               <ConfigSchemaEditor
@@ -905,6 +907,7 @@ import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
+import { filterOptionsByEntity } from '@/shared/extension-entity-scope'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
 import { getFormFieldComponentOptions } from '@/components/form-fields'
 import {
@@ -1085,6 +1088,21 @@ const selectedCustomListSchema = computed(() =>
 const fieldConfigDialogVisible = ref(false)
 const activeFieldConfigTab = ref('common')
 const editingField = ref(null)
+// 下拉按 supportedEntityCodes 收窄到当前实体；当前已选值始终保留
+const selectableDataSourceOptions = computed(() =>
+  filterOptionsByEntity(
+    dataSourceOptions.value,
+    entityCode.value,
+    editingField.value?.dataSourceType
+  )
+)
+const selectableCellComponentOptions = computed(() =>
+  filterOptionsByEntity(
+    cellComponentOptions,
+    entityCode.value,
+    editingField.value?.renderComponent
+  )
+)
 const editingDataSourceConfig = ref({})
 const editingRenderConfig = ref({})
 const editingQueryConfig = ref({})
@@ -1583,7 +1601,8 @@ function supportsQuery(field) {
 }
 function addVirtualField() {
   const timestamp = Date.now()
-  const defaultSource = dataSourceOptions.value.find(option => option.supportsVirtualField !== false)
+  const defaultSource = filterOptionsByEntity(dataSourceOptions.value, entityCode.value)
+    .find(option => option.supportsVirtualField !== false)
   fieldConfigList.value.push({
     fieldId: `virtual_${timestamp}`,
     fieldCode: `virtual_${timestamp}`,
