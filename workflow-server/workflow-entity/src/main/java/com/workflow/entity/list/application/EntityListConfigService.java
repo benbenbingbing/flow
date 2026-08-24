@@ -60,7 +60,8 @@ public class EntityListConfigService {
                     "IS_NULL");
     private enum SaveMode {
         USER_CAS,
-        SYSTEM_IMPORT
+        SYSTEM_IMPORT,
+        RELEASE_RESTORE
     }
     private final EntityListConfigMapper configMapper;
     private final EntityListFieldMapper fieldMapper;
@@ -149,6 +150,51 @@ public class EntityListConfigService {
     public EntityListConfigDTO saveConfigForImport(EntityListConfigDTO dto) {
         return saveConfigInternal(dto, null, SaveMode.SYSTEM_IMPORT);
     }
+
+    /**
+     * 锁定列表字段、按钮和场景草稿，供配置级撤销重算 canonical hash。
+     */
+    public void lockDraftChildrenForRelease(String listConfigId) {
+        fieldMapper.findAllByListConfigIdForUpdate(listConfigId);
+        relationalConfigService.lockDraftChildrenForRelease(listConfigId);
+    }
+
+    /**
+     * 从不可变发布快照恢复列表草稿，并校验调用方看到的 owner revision。
+     *
+     * <p>字段和按钮采用物理重建，以便复用发布快照中的稳定 ID，避免逻辑删除
+     * 行占用主键或生成新 ID。独立的数据范围规则不属于 UI 发布快照，本方法不
+     * 读取也不修改这些即时配置。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityListConfigDTO restoreConfigForRelease(
+            EntityListConfigDTO dto,
+            Integer expectedRevision) {
+        if (dto == null || !StringUtils.hasText(dto.getId())) {
+            throw new IllegalArgumentException("发布列表快照不能为空");
+        }
+        EntityListConfig current = lockList(dto.getId());
+        requireExpectedRevision(
+                expectedRevision,
+                current,
+                "列表配置已被其他人修改");
+        lockDraftChildrenForRelease(dto.getId());
+
+        // 发布历史已保存在 ui_config_release；这里只精确重建可编辑草稿子项。
+        fieldMapper.deleteByListConfigId(dto.getId());
+        actionConfigService.deleteRelationalConfig(dto.getId());
+        EntityListConfigDTO restored = saveConfigInternal(
+                dto,
+                null,
+                SaveMode.RELEASE_RESTORE);
+
+        // 普通导入会为新按钮分配 ID；再次物化发布 ID，保证 canonical hash 对齐。
+        actionConfigService.deleteRelationalConfig(dto.getId());
+        EntityListConfig persisted = configMapper.selectById(dto.getId());
+        actionConfigService.synchronizeRelationalConfigForRelease(persisted);
+        return findById(restored.getId());
+    }
+
     private EntityListConfigDTO saveConfigInternal(
             EntityListConfigDTO source,
             Integer expectedRevision,
@@ -179,7 +225,11 @@ public class EntityListConfigService {
                 candidate,
                 current,
                 saveMode);
-        actionConfigService.normalizeForSave(config);
+        if (saveMode == SaveMode.RELEASE_RESTORE) {
+            actionConfigService.normalizeForReleaseRestore(config);
+        } else {
+            actionConfigService.normalizeForSave(config);
+        }
         LocalDateTime now = LocalDateTime.now();
         config.setUpdatedAt(now);
         if (isNew) {
@@ -431,7 +481,13 @@ public class EntityListConfigService {
                 copyWholeFieldProperties(source, created);
                 created.setId(source.getId());
                 created.setListConfigId(config.getId());
-                created.setSortOrder(index);
+                // 发布恢复必须保留快照中的旧 sortOrder；稀疏 orderKey 重排不会
+                // 同步该兼容字段，改写为数组下标会导致恢复后的 canonical hash 漂移。
+                created.setSortOrder(
+                        saveMode == SaveMode.RELEASE_RESTORE
+                                && source.getSortOrder() != null
+                                ? source.getSortOrder()
+                                : index);
                 created.setOrderKey(source.getOrderKey() == null
                         ? (index + 1L) * EntityFormNodeService.ORDER_STEP
                         : source.getOrderKey());

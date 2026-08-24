@@ -6,6 +6,7 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeConfigurationDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeDefaultDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
@@ -45,6 +46,21 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EntityListScopeService {
 
+    /** 允许把未绑定规则显式放行为全量数据的高风险权限。 */
+    public static final String EXPLICIT_ALL_PERMISSION = "entity:list-scope:explicit-all";
+
+    /**
+     * 角色服务采用可选注入，避免该领域服务的既有构造契约发生变化。
+     * 运行时由 Spring 注入，纯单元测试未启动容器时仍按最小权限处理。
+     */
+    private com.workflow.admin.authorization.application.CurrentUserRoleService currentUserRoleService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setCurrentUserRoleService(
+            com.workflow.admin.authorization.application.CurrentUserRoleService currentUserRoleService) {
+        this.currentUserRoleService = currentUserRoleService;
+    }
+
     private static final Pattern KEY_PATTERN =
             Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,99}");
     /** 允许的规则效果：允许或拒绝。 */
@@ -52,6 +68,9 @@ public class EntityListScopeService {
     /** 允许的列表数据范围模式：继承、缩小、覆盖。 */
     private static final Set<String> LIST_MODES =
             Set.of("INHERIT", "NARROW", "OVERRIDE");
+    /** 未绑定 ALLOW 规则时允许选择的安全策略。 */
+    private static final Set<String> UNBOUND_POLICIES =
+            Set.of("DENY_ALL", "PERSONAL", "EXPLICIT_ALL");
 
     private final EntityListScopePolicyMapper policyMapper;
     private final EntityListScopeBindingMapper bindingMapper;
@@ -99,6 +118,11 @@ public class EntityListScopeService {
                 })
                 .toList());
         result.setBindings(bindings);
+        for (EntityListConfig config : listConfigMapper.findByEntityCode(entityCode)) {
+            result.getListDefaults().put(
+                    config.getListKey(),
+                    toScopeDefaultDTO(config));
+        }
         return result;
     }
 
@@ -193,7 +217,7 @@ public class EntityListScopeService {
     }
 
     /**
-     * 按列表覆盖绑定集合。空列表表示该列表不绑规则，运行时可见全部。
+     * 按列表覆盖绑定集合。兼容既有服务调用，不改变该列表当前安全默认值。
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -210,13 +234,40 @@ public class EntityListScopeService {
             String entityCode,
             String listKey,
             List<EntityListScopeBindingDTO> requests) {
+        return replaceListConfiguration(entityCode, listKey, requests, null);
+    }
+
+    /**
+     * 原子更新列表的数据范围绑定和未绑定默认策略，并立即发布同一份运行时快照。
+     * EXPLICIT_ALL 必须由管理员提供确认标志与业务原因，避免空绑定静默扩大权限。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.UPSERT,
+            operation = "更新列表数据权限边界",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "ENTITY_SCOPE_BINDING",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
+    public List<EntityListScopeBindingDTO> replaceListConfiguration(
+            String entityCode,
+            String listKey,
+            List<EntityListScopeBindingDTO> requests,
+            com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest
+                    defaultRequest) {
         if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) {
             throw new IllegalArgumentException("实体编码和列表标识不能为空");
         }
         requireEntity(entityCode);
-        if (listConfigMapper.findByEntityCodeAndListKey(entityCode, listKey) == null) {
+        EntityListConfig listConfig =
+                listConfigMapper.findByEntityCodeAndListKey(entityCode, listKey);
+        if (listConfig == null) {
             throw new IllegalArgumentException("适用列表不存在: " + listKey);
         }
+        applyUnboundPolicy(entityCode, listConfig, defaultRequest);
         List<EntityListScopeBinding> existing = bindingMapper.selectList(
                 new LambdaQueryWrapper<EntityListScopeBinding>()
                         .eq(EntityListScopeBinding::getEntityCode, entityCode)
@@ -418,6 +469,7 @@ public class EntityListScopeService {
         snapshot.setEntityCode(entityCode);
         int version = releaseMapper.findMaxVersion(entityCode) + 1;
         snapshot.setVersion(version);
+        snapshot.setSecureDefaultsVersion(1);
         snapshot.setPolicies(policies.stream().map(this::toPolicyDTO).toList());
         snapshot.setBindings(bindings.stream().map(this::toBindingDTO).toList());
         for (EntityListConfig config : listConfigMapper.findByEntityCode(entityCode)) {
@@ -426,6 +478,9 @@ public class EntityListScopeService {
                 throw new IllegalStateException("列表数据范围模式无效: " + config.getListKey());
             }
             snapshot.getListModes().put(config.getListKey(), mode);
+            snapshot.getListDefaults().put(
+                    config.getListKey(),
+                    toScopeDefaultDTO(config));
         }
 
         String snapshotJson = writeJson(snapshot);
@@ -616,6 +671,128 @@ public class EntityListScopeService {
         EntityListScopeBindingDTO dto = new EntityListScopeBindingDTO();
         BeanUtils.copyProperties(binding, dto);
         dto.setMatchConfig(readJson(binding.getMatchConfig(), MatchConfigDTO.class));
+        return dto;
+    }
+
+    /**
+     * 应用管理员提交的未绑定默认策略。为空表示只改规则绑定；安全策略一旦修改就退出观察期。
+     */
+    /**
+     * 仅确认一个存量列表的未绑定规则策略，不触碰该列表现有的 ALLOW/DENY 绑定。
+     *
+     * @param listConfig       已在外层事务中锁定的列表配置
+     * @param selectedPolicy   DENY_ALL、PERSONAL 或 EXPLICIT_ALL
+     * @param confirmationNote EXPLICIT_ALL 的确认原因
+     */
+    @Transactional
+    public void confirmInventoryPolicy(
+            EntityListConfig listConfig,
+            String selectedPolicy,
+            String confirmationNote) {
+        if (listConfig == null || listConfig.getId() == null) {
+            throw new IllegalArgumentException("列表配置不存在");
+        }
+        com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest request =
+                new com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest();
+        request.setUnboundPolicy(selectedPolicy);
+        request.setConfirmExplicitAll("EXPLICIT_ALL".equals(selectedPolicy));
+        request.setConfirmationNote(confirmationNote);
+        applyUnboundPolicy(listConfig.getEntityCode(), listConfig, request);
+        publish(listConfig.getEntityCode(), "存量列表数据范围策略确认");
+    }
+
+    /**
+     * 校验 EXPLICIT_ALL 专用权限。超级管理员始终允许，其他账号必须显式获得高风险权限。
+     */
+    public void requireExplicitAllPermission() {
+        if (currentUserRoleService != null && currentUserRoleService.isSuperAdmin()) {
+            return;
+        }
+        if (com.workflow.admin.authorization.application.PermissionUtil.hasPermission(
+                EXPLICIT_ALL_PERMISSION)) {
+            return;
+        }
+        throw new com.workflow.core.error.ForbiddenException(
+                "缺少全量数据放行权限：" + EXPLICIT_ALL_PERMISSION);
+    }
+
+    private void applyUnboundPolicy(
+            String entityCode,
+            EntityListConfig config,
+            com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest
+                    request) {
+        if (request == null || !StringUtils.hasText(request.getUnboundPolicy())) {
+            return;
+        }
+        String policy = normalized(request.getUnboundPolicy(), "DENY_ALL");
+        if (!UNBOUND_POLICIES.contains(policy)) {
+            throw new IllegalArgumentException(
+                    "未绑定规则策略只能是 DENY_ALL、PERSONAL 或 EXPLICIT_ALL");
+        }
+        boolean alreadyConfirmed = "EXPLICIT_ALL".equals(policy)
+                && "EXPLICIT_ALL".equals(normalized(
+                        config.getUnboundScopePolicy(), "DENY_ALL"))
+                && "ENFORCE".equals(normalized(
+                        config.getScopeEnforcementMode(), "ENFORCE"))
+                && Integer.valueOf(1).equals(config.getScopeDefaultConfirmed());
+        if ("EXPLICIT_ALL".equals(policy) && !alreadyConfirmed) {
+            if (!Boolean.TRUE.equals(request.getConfirmExplicitAll())) {
+                throw new IllegalArgumentException("选择全量可见必须由管理员显式确认");
+            }
+            String note = request.getConfirmationNote() == null
+                    ? "" : request.getConfirmationNote().trim();
+            if (note.length() < 5) {
+                throw new IllegalArgumentException("请填写至少 5 个字符的全量可见业务原因");
+            }
+            requireExplicitAllPermission();
+            config.setScopeDefaultConfirmed(1);
+            config.setScopeDefaultConfirmedBy(UserContext.getUserId());
+            config.setScopeDefaultConfirmedAt(LocalDateTime.now());
+            config.setScopeDefaultConfirmationNote(note);
+        } else if (!"EXPLICIT_ALL".equals(policy)) {
+            config.setScopeDefaultConfirmed(0);
+            config.setScopeDefaultConfirmedBy(null);
+            config.setScopeDefaultConfirmedAt(null);
+            config.setScopeDefaultConfirmationNote(null);
+        }
+        config.setUnboundScopePolicy(policy);
+        config.setScopeEnforcementMode("ENFORCE");
+        config.setUpdatedAt(LocalDateTime.now());
+        listConfigMapper.updateById(config);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("unboundPolicy", policy);
+        detail.put("enforcementMode", "ENFORCE");
+        detail.put("confirmed", Integer.valueOf(1).equals(
+                config.getScopeDefaultConfirmed()));
+        if (StringUtils.hasText(config.getScopeDefaultConfirmationNote())) {
+            detail.put("confirmationNote", config.getScopeDefaultConfirmationNote());
+        }
+        auditService.record(
+                entityCode,
+                config.getListKey(),
+                UserContext.getUserId(),
+                "EXPLICIT_ALL".equals(policy)
+                        ? "CONFIRM_UNBOUND_ALL" : "SET_UNBOUND_DEFAULT",
+                "SUCCESS",
+                detail);
+    }
+
+    /** 将数据库中的列表安全字段规范化为 API/发布快照使用的稳定结构。 */
+    private EntityListScopeDefaultDTO toScopeDefaultDTO(EntityListConfig config) {
+        EntityListScopeDefaultDTO dto = new EntityListScopeDefaultDTO();
+        dto.setListKey(config.getListKey());
+        String policy = normalized(config.getUnboundScopePolicy(), "DENY_ALL");
+        dto.setUnboundPolicy(UNBOUND_POLICIES.contains(policy)
+                ? policy : "DENY_ALL");
+        String enforcement = normalized(
+                config.getScopeEnforcementMode(), "ENFORCE");
+        dto.setEnforcementMode(Set.of("OBSERVE", "ENFORCE").contains(enforcement)
+                ? enforcement : "ENFORCE");
+        dto.setConfirmed(Integer.valueOf(1).equals(
+                config.getScopeDefaultConfirmed()));
+        dto.setConfirmedBy(config.getScopeDefaultConfirmedBy());
+        dto.setConfirmedAt(config.getScopeDefaultConfirmedAt());
+        dto.setConfirmationNote(config.getScopeDefaultConfirmationNote());
         return dto;
     }
 

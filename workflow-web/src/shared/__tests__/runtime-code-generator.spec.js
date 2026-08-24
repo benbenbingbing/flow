@@ -10,7 +10,12 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
   form: {
     id: 'form-1',
     formName: '项目审批表单',
-    initConfig: '{"loadMode":"DETAIL"}',
+    dataSourceBindingsDocument: JSON.stringify({
+      FORM_INIT: {
+        serviceId: 'form-source-1',
+        operationCode: 'initializeForm'
+      }
+    }),
     viewConfig: '{"actionBar":{"customButtons":[{"key":"submit"}]}}'
   },
   nodes: [{
@@ -44,7 +49,10 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
   }]
 })
 
-assert.equal(formSnapshot.form.initConfig.loadMode, 'DETAIL')
+assert.equal(
+  formSnapshot.form.dataSourceBindings.FORM_INIT.serviceId,
+  'form-source-1'
+)
 assert.equal(formSnapshot.nodes[0].props.label, '项目')
 assert.equal(formSnapshot.nodes[0].rules.validation.required, true)
 assert.equal(
@@ -68,7 +76,7 @@ assert.ok(formArtifact.logicItems.some(item =>
   item.category === '规则' && item.name === '项目'
 ))
 assert.ok(formArtifact.logicItems.some(item =>
-  item.category === '数据源'
+  item.category === '数据源' && item.name === '初始化与数据处理'
 ))
 assert.ok(formArtifact.logicItems.some(item =>
   item.category === '关系'

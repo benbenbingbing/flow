@@ -5,6 +5,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Delete;
 
 import java.util.List;
 
@@ -26,6 +27,17 @@ public interface EntityFormNodeMapper extends BaseMapper<EntityFormNode> {
             + "WHERE form_id = #{formId} AND deleted = 0 "
             + "ORDER BY COALESCE(parent_id, ''), order_key, create_time")
     List<EntityFormNode> findByFormId(@Param("formId") String formId);
+
+    /** 锁定表单下全部草稿节点，包含逻辑删除节点。 */
+    @Select("SELECT * FROM entity_form_node "
+            + "WHERE form_id = #{formId} ORDER BY id FOR UPDATE")
+    List<EntityFormNode> findAllByFormIdForUpdate(
+            @Param("formId") String formId);
+
+    /** 物理清理表单草稿节点，供发布快照精确恢复稳定 ID。 */
+    @Delete("DELETE FROM entity_form_node WHERE form_id = #{formId}")
+    int deleteAllByFormIdForReleaseRestore(
+            @Param("formId") String formId);
 
     /**
      * 根据表单 ID 与节点 key 查询最新的活跃节点（取更新时间最新的一条）。

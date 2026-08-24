@@ -15,4 +15,6 @@ public class ConfigMigrationPublishRequest {
     private Boolean markForExport = Boolean.TRUE;
     /** 迁移标签 */
     private String migrationTag;
+    /** 是否已人工确认高风险表结构变更，默认不确认 */
+    private Boolean confirmHighRiskSchemaChange = Boolean.FALSE;
 }

@@ -173,6 +173,14 @@ export {
   isClientPrevalidationBinding,
   getFormDataSourceBindings
 } from './dataSourceRuntime.js'
+export {
+  FORM_DATA_SOURCE_USAGE_OPTIONS,
+  assertUniqueFormDataSourceOutputTargets,
+  countFormDataSourceBindings,
+  formatFormDataSourceBindingSummary,
+  getFormDataSourceBindingStepLabel,
+  totalFormDataSourceBindings
+} from './formDataSourceBindings.js'
 export { resolveRuntimeFormTabLayout } from './runtimeFormTabs.js'
 
 export function normalizeRuntimeFormConfigs(progressRes) {

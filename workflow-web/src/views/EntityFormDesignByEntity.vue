@@ -1,5 +1,8 @@
 <template>
-  <div class="entity-form-design">
+  <div
+    v-loading="discardDraftLoading || initializing"
+    class="entity-form-design"
+  >
     <div class="design-header">
       <div class="header-left">
         <el-button @click="$router.back()">
@@ -8,9 +11,19 @@
         <span class="title">表单设计 - {{ form.formName || '新建表单' }}</span>
       </div>
       <div class="header-right">
-        <el-tag :type="diffInfo.changed ? 'warning' : 'success'" effect="plain">
-          {{ diffInfo.changed ? '草稿有未发布修改' : '已与发布版本一致' }}
+        <el-tag :type="draftStatus.type" effect="plain">
+          {{ draftStatus.label }}
         </el-tag>
+        <el-button
+          v-if="canDiscardDraft"
+          link
+          type="danger"
+          :loading="discardDraftLoading"
+          :disabled="discardDraftLoading || saving || initializing"
+          @click="handleDiscardDraft"
+        >
+          撤销
+        </el-button>
         <el-button
           :loading="runtimeCodeLoading"
           :disabled="initializing"
@@ -25,10 +38,20 @@
           <el-icon><View /></el-icon>预览
         </el-button>
         <el-button @click="showReleaseHistory">版本</el-button>
-        <el-button type="success" plain @click="handlePublish" :disabled="!isEdit">
+        <el-button
+          type="success"
+          plain
+          :disabled="!isEdit || discardDraftLoading"
+          @click="handlePublish"
+        >
           发布
         </el-button>
-        <el-button type="primary" @click="handleSave" :loading="saving">
+        <el-button
+          type="primary"
+          :loading="saving"
+          :disabled="discardDraftLoading"
+          @click="handleSave"
+        >
           <el-icon><Check /></el-icon>保存全部草稿
         </el-button>
       </div>
@@ -336,6 +359,24 @@
                     <el-option label="右侧" value="right" />
                     <el-option label="底部" value="bottom" />
                   </el-select>
+                </el-form-item>
+                <el-form-item v-if="selectedNodeType === 'TAB_SET'" label="默认页签">
+                  <el-select
+                    :model-value="selectedNodeConfig.defaultActiveTabKey || ''"
+                    clearable
+                    placeholder="首个可见页签"
+                    @update:model-value="updateSelectedNodeConfig('defaultActiveTabKey', $event || undefined)"
+                  >
+                    <el-option
+                      v-for="tab in designChildrenFor(selectedField.id).filter(item => item.nodeType === 'TAB')"
+                      :key="tab.id"
+                      :label="tab.fieldLabel || tab.nodeKey || tab.id"
+                      :value="tab.nodeKey || tab.id"
+                    />
+                  </el-select>
+                  <div class="form-tip">
+                    使用稳定页签标识；页签删除、隐藏或无权限时自动降级到首个可见页签。
+                  </div>
                 </el-form-item>
 
                 <el-form-item v-if="selectedNodeType === 'COLLAPSE'" label="默认展开">
@@ -764,6 +805,7 @@
     <FormDesignerSettingsDrawer
       v-model="showFormSettings"
       v-model:active-tab="activeFormSettingsTab"
+      v-model:active-behavior-tab="activeFormBehaviorTab"
     />
 
     <el-dialog v-model="showPreview" title="表单预览" width="900px" destroy-on-close>
@@ -827,7 +869,7 @@
       </template>
     </el-dialog>
 
-    <FormDataSourceCompatDialog
+    <FormDataSourceDialog
       ref="formDataSourceDialogRef"
       :form="form"
       :data-sources-by-usage="dataSourcesByUsage"
@@ -849,6 +891,7 @@
       :owner-id="form.id || ''"
       owner-label="表单"
       :field-options="eventFieldOptions"
+      @changed="loadDiff"
     />
     <EntitySelectionMappingDialog
       ref="selectionMappingDialogRef"
@@ -881,7 +924,7 @@ import LinkageConfigPanel from '@/components/LinkageConfigPanel.vue'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import EntitySelectionMappingDialog from '@/components/ui-config/EntitySelectionMappingDialog.vue'
-import FormDataSourceCompatDialog from '@/components/ui-config/FormDataSourceCompatDialog.vue'
+import FormDataSourceDialog from '@/components/ui-config/FormDataSourceDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
@@ -997,12 +1040,19 @@ import {
   getFormReleases
 } from '@/api/entityForm'
 import {
+  uiConfigDraftApi,
   uiDataSourceApi,
   uiComponentTemplateApi,
   uiExtensionApi,
   uiEventBindingApi
 } from '@/api/uiConfig'
 import { serviceOperations } from '@/components/ui-config/interfaceServiceModel'
+import {
+  buildUiConfigDraftDiscardRequest,
+  canDiscardUiConfigDraft,
+  isUiConfigDraftDiscardConflict,
+  resolveUiConfigDraftStatus
+} from '@/shared/ui-config-draft'
 
 const route = useRoute()
 const router = useRouter()
@@ -1019,6 +1069,7 @@ const formBaseline = ref('')
 const showPreview = ref(false)
 const showFormSettings = ref(false)
 const activeFormSettingsTab = ref('basic')
+const activeFormBehaviorTab = ref('data-source')
 const formRendererMode = ref(FORM_RENDERER_MODE_DEFAULT)
 const previewMode = ref('create')
 const propertyDrawerVisible = ref(false)
@@ -1037,6 +1088,8 @@ const activeNodeSettingsTab = ref('basic')
 const activeNodeInteractionTab = ref('state')
 const publishDialogVisible = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
+const diffLoadSucceeded = ref(false)
+const discardDraftLoading = ref(false)
 const dataSources = ref([])
 const dataSourcesByUsage = ref({})
 const extensionDefinitions = ref([])
@@ -1187,11 +1240,20 @@ const form = ref({
   formKey: '',
   layoutType: 'vertical',
   status: 1,
-  initConfig: null,
   dataSourceBindingsDocument: null,
   customComponent: '',
   viewConfig: ''
 })
+const canDiscardDraft = computed(() => canDiscardUiConfigDraft({
+  diffLoadSucceeded: diffLoadSucceeded.value,
+  diff: diffInfo.value,
+  serverCanDiscardDraft: diffInfo.value.canDiscardDraft === true,
+  activeReleaseId: form.value.activeReleaseId
+}))
+const draftStatus = computed(() => resolveUiConfigDraftStatus({
+  diffLoadSucceeded: diffLoadSucceeded.value,
+  diff: diffInfo.value
+}))
 
 const selectedCustomFormSchema = computed(() =>
   getCustomFormDescriptor(form.value.customComponent)?.configSchema || []
@@ -1272,9 +1334,25 @@ function refreshExtensionCatalog() {
   loadExtensionDefinitions()
 }
 
-function openFormSettings(tab = 'basic') {
+function openFormSettings(tab = 'basic', behaviorTab = '') {
   activeFormSettingsTab.value = tab
+  if (tab === 'data-events' && behaviorTab) {
+    activeFormBehaviorTab.value = behaviorTab
+  }
   showFormSettings.value = true
+}
+
+/**
+ * 消费列表页的数据配置深链，让两个入口落到同一个设置页和同一个编辑器。
+ */
+function openLinkedFormSettings() {
+  if (String(route.query.settings || '') !== 'data-events') return
+  const requestedSection = String(route.query.section || 'data-source')
+  const section = ['input-parameters', 'data-source', 'events']
+    .includes(requestedSection)
+    ? requestedSection
+    : 'data-source'
+  openFormSettings('data-events', section)
 }
 
 function handleFormRendererModeChange(mode) {
@@ -1290,7 +1368,6 @@ function handleFormRendererModeChange(mode) {
   if (next.mode === FORM_RENDERER_MODE_CUSTOM) {
     propertyDrawerVisible.value = false
     selectedField.value = null
-    activeFormSettingsTab.value = 'rendering'
   }
 }
 
@@ -1360,11 +1437,12 @@ function openExtensionManagement() {
   })
 }
 
-async function loadExtensionDefinitions() {
+async function loadExtensionDefinitions({ strict = false } = {}) {
   try {
     extensionDefinitions.value = await uiExtensionApi.list()
-  } catch {
+  } catch (error) {
     extensionDefinitions.value = []
+    if (strict) throw error
   }
 }
 
@@ -1823,10 +1901,14 @@ function getNodeDesignStyle(field) {
 }
 
 // 加载实体信息
-async function loadEntityInfo() {
-  if (!entityId) return
+async function loadEntityInfo({ strict = false } = {}) {
+  const eid = entityId || form.value.entityId
+  if (!eid) {
+    if (strict) throw new Error('表单所属实体缺失')
+    return
+  }
   try {
-    const data = await entityApi.getById(entityId)
+    const data = await entityApi.getById(eid)
     entityInfo.value = data
     if (!isEdit.value) {
       form.value.formName = data.entityName + '表单'
@@ -1834,6 +1916,7 @@ async function loadEntityInfo() {
     }
   } catch (e) {
     console.error('加载实体信息失败:', e)
+    if (strict) throw e
   }
 }
 
@@ -2346,9 +2429,12 @@ function enrichFieldCodes() {
 }
 
 // 加载实体字段
-async function loadEntityFields() {
+async function loadEntityFields({ strict = false } = {}) {
   const eid = entityId || form.value.entityId
-  if (!eid) return
+  if (!eid) {
+    if (strict) throw new Error('表单所属实体缺失')
+    return
+  }
 
   try {
     const detailedFields = Array.isArray(entityInfo.value?.fields)
@@ -2364,12 +2450,16 @@ async function loadEntityFields() {
     enrichFieldCodes()
   } catch (e) {
     console.error('加载实体字段失败:', e)
+    if (strict) throw e
   }
 }
 
 // 加载表单信息
-async function loadFormInfo() {
-  if (!isEdit.value) return
+async function loadFormInfo({ strict = false } = {}) {
+  if (!isEdit.value) {
+    if (strict) throw new Error('当前表单尚未创建')
+    return
+  }
   
   try {
     const data = await getFormById(formId)
@@ -2386,9 +2476,10 @@ async function loadFormInfo() {
       form.value.entityId = data.entityId
     }
     rememberFormBaseline()
-    await loadDiff()
+    await loadDiff({ strict })
   } catch (e) {
     console.error('加载表单信息失败:', e)
+    if (strict) throw e
   }
 }
 
@@ -2847,7 +2938,6 @@ function formFingerprint() {
     customComponentVersion: form.value.customComponentVersion || null,
     customComponentSnapshotVersion:
       form.value.customComponentSnapshotVersion || null,
-    initConfig: safeParseConfig(form.value.initConfig),
     viewConfig: viewConfig.value
   })
 }
@@ -3099,13 +3189,18 @@ function buildSerializedFieldComponentProps(field) {
 }
 
 // 加载表单字段
-async function loadFormFields() {
-  if (!isEdit.value) return
+async function loadFormFields({ strict = false } = {}) {
+  if (!isEdit.value) {
+    if (strict) throw new Error('当前表单尚未创建')
+    return
+  }
 
   try {
     const [legacyFields, nodes] = await Promise.all([
       getFormFields(formId),
-      getFormNodes(formId).catch(() => [])
+      strict
+        ? getFormNodes(formId)
+        : getFormNodes(formId).catch(() => [])
     ])
     formNodes.value = Array.isArray(nodes) ? nodes : []
     if (formNodes.value.length > 0) {
@@ -3155,6 +3250,7 @@ async function loadFormFields() {
     formFields.value.forEach(rememberNodeBaseline)
   } catch (e) {
     console.error('加载表单字段失败:', e)
+    if (strict) throw e
   }
 }
 
@@ -3850,7 +3946,7 @@ async function loadReferenceLists(targetEntityId, reset = true) {
   }
 }
 
-async function loadDataSources() {
+async function loadDataSources({ strict = false } = {}) {
   if (!form.value.id) {
     dataSources.value = []
     dataSourcesByUsage.value = {}
@@ -3867,7 +3963,10 @@ async function loadDataSources() {
         ownerType: 'FORM',
         ownerId: form.value.id,
         bindingCode: usage
-      }).catch(() => [])
+      }).catch(error => {
+        if (strict) throw error
+        return []
+      })
     ]))
     dataSourcesByUsage.value = Object.fromEntries(
       rows.map(([usage, operations]) => [
@@ -3882,6 +3981,7 @@ async function loadDataSources() {
     console.error('加载统一数据源失败:', error)
     dataSources.value = []
     dataSourcesByUsage.value = {}
+    if (strict) throw error
   }
 }
 
@@ -3932,11 +4032,12 @@ function mergeAvailableServices(rows = []) {
   return [...services.values()]
 }
 
-async function loadComponentTemplates() {
+async function loadComponentTemplates({ strict = false } = {}) {
   try {
     componentTemplates.value = await uiComponentTemplateApi.list()
-  } catch {
+  } catch (error) {
     componentTemplates.value = []
+    if (strict) throw error
   }
 }
 
@@ -3997,20 +4098,28 @@ async function upgradeSelectedTemplate() {
   ElMessage.success(`已保存模板升级 v${template.currentVersion}`)
 }
 
-async function loadDiff() {
+async function loadDiff({ strict = false } = {}) {
+  diffLoadSucceeded.value = false
   if (!form.value.id) {
     diffInfo.value = { changed: true, changedSections: ['form', 'nodes'] }
     return
   }
   try {
     diffInfo.value = await getFormDiff(form.value.id)
-  } catch {
+    diffLoadSucceeded.value = true
+  } catch (error) {
     diffInfo.value = { changed: true, changedSections: [] }
+    if (strict) throw error
   }
 }
 
+function isRevisionConflict(error) {
+  return error?.status === 409
+    || error?.errorCode === 'CONFIG_REVISION_CONFLICT'
+}
+
 function handleRevisionConflict(error, field) {
-  if (error?.status === 409 || error?.errorCode === 'CONFIG_REVISION_CONFLICT') {
+  if (isRevisionConflict(error)) {
     ElMessage.warning('配置已被其他人修改，已保留服务器当前版本，请重新确认')
     if (field && error.currentData) {
       const refreshed = nodeToField(error.currentData, field)
@@ -4220,7 +4329,6 @@ async function openRuntimeCode() {
       form: {
         ...form.value,
         entityId: form.value.entityId || entityId,
-        initConfig: safeParseConfig(form.value.initConfig),
         viewConfig: viewConfig.value
       },
       legacyFields: orderedFields.map((field, index) =>
@@ -4331,9 +4439,6 @@ async function handleSave() {
           isSystemEntity.value
             ? null
             : form.value.customComponentSnapshotVersion,
-        initConfig: isSystemEntity.value
-          ? null
-          : safeParseConfig(form.value.initConfig),
         viewConfig: viewConfig.value
       })
       form.value = { ...form.value, ...updated }
@@ -4382,19 +4487,101 @@ async function handleSave() {
   }
 }
 
-onMounted(async () => {
-  try {
-    await loadEntityInfo()
-    await loadFormInfo()
-    await loadEntityFields()
-    await loadFormFields()
-    await loadDataSources()
-    await loadComponentTemplates()
-    await loadExtensionDefinitions()
-    await loadDiff()
-  } finally {
-    initializing.value = false
+/**
+ * 重新获取设计器依赖的完整草稿状态；撤销后不能只合并根表单，否则节点 revision 和本地指纹会失真。
+ */
+async function reloadFormDesignerData({ resetInteraction = false } = {}) {
+  initializing.value = true
+  const strict = resetInteraction
+  let completed = false
+  diffLoadSucceeded.value = false
+  if (resetInteraction) {
+    selectedField.value = null
+    currentEventField.value = null
+    propertyDrawerVisible.value = false
+    showLinkageConfig.value = false
+    showEventConfig.value = false
+    formBaseline.value = ''
+    nodeBaselines.value = new Map()
+    // 撤销或冲突后不再保留旧画布，避免重载失败时将旧内容再次写回。
+    formFields.value = []
+    formNodes.value = []
   }
+  try {
+    await loadFormInfo({ strict })
+    await loadEntityInfo({ strict })
+    await loadEntityFields({ strict })
+    await loadFormFields({ strict })
+    await loadDataSources({ strict })
+    await loadComponentTemplates({ strict })
+    await loadExtensionDefinitions({ strict })
+    await loadDiff({ strict })
+    completed = true
+  } finally {
+    // 严格重载失败后保持阻塞，只允许用户刷新页面，不让不完整快照继续编辑。
+    if (!strict || completed) initializing.value = false
+  }
+}
+
+async function handleDiscardDraft() {
+  if (discardDraftLoading.value || !canDiscardDraft.value) return
+  try {
+    await ElMessageBox.confirm(
+      '撤销后将恢复到当前发布版本。自当前发布版本以来所有已保存但未发布的修改，以及当前页面尚未保存的编辑，都会被覆盖且不可恢复。确定继续吗？',
+      '撤销未发布修改',
+      {
+        type: 'warning',
+        confirmButtonText: '确认撤销',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+  if (discardDraftLoading.value || !canDiscardDraft.value) return
+
+  discardDraftLoading.value = true
+  let discardCommitted = false
+  try {
+    const preconditions = buildUiConfigDraftDiscardRequest({
+      revision: form.value.revision,
+      diffLoadSucceeded: diffLoadSucceeded.value,
+      diff: diffInfo.value,
+      serverCanDiscardDraft: diffInfo.value.canDiscardDraft === true,
+      activeReleaseId: form.value.activeReleaseId
+    })
+    await uiConfigDraftApi.discard('FORM', form.value.id, preconditions)
+    discardCommitted = true
+    await reloadFormDesignerData({ resetInteraction: true })
+    if (diffInfo.value.changed) {
+      ElMessage.warning('本地草稿已撤销，但当前仍存在依赖版本差异，请检查继承事件或引用配置')
+      return
+    }
+    ElMessage.success('已撤销未发布修改，并恢复到当前发布版本')
+  } catch (error) {
+    if (discardCommitted) {
+      ElMessage.warning('撤销已完成，但页面重新加载失败，请手动刷新')
+      return
+    }
+    if (isUiConfigDraftDiscardConflict(error)) {
+      try {
+        await reloadFormDesignerData({ resetInteraction: true })
+      } catch {
+        ElMessage.warning('配置状态已变化，但页面重新加载失败，请手动刷新')
+        return
+      }
+      ElMessage.warning('草稿或发布状态已变化，已重新加载最新配置，请重新确认')
+      return
+    }
+    ElMessage.error(error?.message || '撤销未发布修改失败')
+  } finally {
+    discardDraftLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  await reloadFormDesignerData()
+  openLinkedFormSettings()
 })
 </script>
 

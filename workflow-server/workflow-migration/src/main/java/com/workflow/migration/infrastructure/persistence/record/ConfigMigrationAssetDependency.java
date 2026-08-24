@@ -26,6 +26,15 @@ public class ConfigMigrationAssetDependency {
     private Boolean required;                   // 是否为硬依赖(必须满足才能导出/发布)
     private String sourceDescription;           // 依赖来源说明
     private String dependencyDocument;          // 依赖完整描述文档(JSON)
+    private String sourceAssetType;              // 来源资产类型冗余
+    private String sourceBusinessKey;            // 来源资产稳定标识冗余
+    private Integer sourceVersion;               // 来源发布版本
+    private String referenceLocation;            // 引用在配置中的稳定位置
+    private String dependencyStrength;           // HARD/SOFT/UNKNOWN
+    private String parseStatus;                  // RESOLVED/UNKNOWN/INVALID
+
+    @TableField("extracted_at")
+    private LocalDateTime extractedAt;           // 最近抽取时间
 
     @TableField("create_time")
     private LocalDateTime createdAt;            // 依赖记录创建时间

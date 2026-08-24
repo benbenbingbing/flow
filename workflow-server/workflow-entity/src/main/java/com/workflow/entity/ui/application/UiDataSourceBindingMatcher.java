@@ -126,20 +126,6 @@ public class UiDataSourceBindingMatcher {
             if (StringUtils.hasText(bindingPath)) {
                 return bindingPath;
             }
-            Map<String, Object> init = parseObject(
-                    owner.get("initConfig"),
-                    "表单初始化配置");
-            if (!init.isEmpty()) {
-                bindingPath = findConfiguredBinding(
-                        init,
-                        usage,
-                        sourceId,
-                        operationCode,
-                        ownerPath + ".initConfig");
-                if (StringUtils.hasText(bindingPath)) {
-                    return bindingPath;
-                }
-            }
         }
         return null;
     }

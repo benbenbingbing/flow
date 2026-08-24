@@ -22,7 +22,9 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entityList.queryType':
     '决定查询控件如何生成条件，例如等于、模糊、区间或多值匹配。可选项会按字段类型过滤。',
   'entityList.dataSourceType':
-    '实体字段通常直接读取记录值；虚拟列可通过模板、受控 Provider 或统一数据源计算展示值。',
+    '自定义列数据源需实现 ListFieldDataProvider、加 @Component，并用 getDataSourceType() 返回唯一编码；实体字段可直接读取记录值。',
+  'uiDataSource.service':
+    '后端自定义需实现 UiDataSourceProvider、加 @Component，并保证 getCode() 唯一；可参考 ProjectCustomFormUiDataSourceProvider，再到“接口服务”中新建“平台注册能力”。',
   'entityList.renderComponent':
     '只改变单元格如何展示，例如文本、状态标签、日期或已注册扩展组件，不改变原始字段值。',
   'uiConfig.releaseMode':
@@ -52,7 +54,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'process.multiInstanceElementVariable':
     '集合中的单个用户名在每个任务实例内使用的变量名，通常保持默认值 assignee。',
   'process.serviceImplementationType':
-    '决定服务任务由 Java 类、表达式、Spring Bean 还是平台代理的 REST 调用执行。外部 HTTP 调用应使用 REST 配置并设置超时与失败策略。',
+    'Java 类需实现 Flowable JavaDelegate 并填写全限定类名；Spring Bean 同样实现 JavaDelegate、加 @Component，并填写 ${beanName}。外部 HTTP 使用 REST 配置。',
   'process.sequenceConditionType':
     '无条件会直接通过；表达式在计算为真时通过；默认流只在同一网关其他条件都未命中时使用，一个排他网关只能有一条默认流。',
   'process.allowManualCc':
@@ -60,11 +62,15 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'process.slaCalendarSource':
     '决定 SLA 工作时间从节点、流程、业务归属部门、发起人部门还是系统默认日历解析。自然时间口径不受日历影响。',
   'process.actionTriggerTiming':
-    '决定动作在任务创建、任务完成、连线通过、流程完成等哪个生命周期事件执行；可用时机会随当前作用域变化。',
+    '决定动作在哪个流程生命周期事件执行；可用时机会随当前作用域变化。新增自定义时机需实现 FlowActionTriggerProvider 并注册为 Spring Bean。',
   'process.actionExecutionMode':
     '事务内执行失败时可回滚当前流程操作；提交后执行不阻塞主事务，适合通知和外部接口，但必须依赖幂等与重试。',
   'process.actionFailurePolicy':
     '事务内可选择回滚或记录后继续；提交后可选择自动重试或记录后忽略。可用策略会随执行方式变化。',
+  'process.flowActionHandler':
+    '后端自定义需实现 FlowActionHandler、加 @Component；Bean 名称即处理器编码。需要类型化参数时可实现 TypedFlowActionHandler。',
+  'process.personResolver':
+    '后端自定义需实现 PersonResolver、加 @Component，并在 descriptor() 中声明唯一编码、适用场景和参数 Schema。',
   'uiEvent.inheritanceMode':
     '继承并追加会保留上级事件链；替换上级只使用当前层自定义链；禁用自定义会清空当前层步骤但保留平台默认处理。',
   'uiEvent.stepStrategy':
@@ -72,7 +78,9 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'uiEvent.failurePolicy':
     '停止执行会返回错误；记录后继续会跳过失败步骤；按空结果继续会把失败步骤当作空结果再执行后续映射。',
   'interfaceService.operationConfig':
-    '当前操作的静态配置，不是调用时传入的 input。执行时先加载服务基础配置，再用操作配置覆盖同名键，并自动加入 operation 操作编码。适合不同操作的查询模式、目标字段或固定参数。',
+    '当前操作的静态配置，不是调用时传入的 input。执行时先加载服务基础配置，再用操作配置覆盖同名键；Provider 可从 context.common().operationCode() 读取操作编码。',
+  'interfaceService.backendImplementation':
+    '平台注册能力需实现 UiDataSourceProvider、加 @Component，getCode() 返回唯一编码；外部连接需实现 IntegrationConnector，code() 返回连接器编码。',
   'interfaceService.operationInputSchema':
     '在调用 Provider 或 Connector 前校验当前操作最终收到的 input。支持 type、required、properties、items；填写空对象表示不校验。多操作服务运行时以操作级 Schema 为准。',
   'interfaceService.operationOutputSchema':
@@ -91,8 +99,12 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '准备和写入前发生在落库前；写入后仍在事务内；提交后发生在事务成功后，适合外部副作用。',
   'entityVersion.stepType':
     '选择内置规则、表达式、字段映射、受管理接口或 Java Provider。受管理接口固定在准备阶段执行。',
+  'entityVersion.stepImplementation':
+    'Java Provider 需实现 EntityMutationStepProvider、加 @Component，并由 getCode() 返回唯一编码；受管理接口从“接口服务”中选择。',
   'entityVersion.resolverType':
     '决定如何找到需要联动修改的目标记录：从引用字段取 ID、按实体关系查找，或调用受管理的 Java 解析器。',
+  'entityVersion.targetResolver':
+    'Java 解析器需实现 EntityChangeTargetResolver、加 @Component，并由 getCode() 返回唯一编码。',
   'entityVersion.applyStrategy':
     '合并只更新映射得到的字段；替换按新结果重建目标内容，未提供字段可能被清除。',
   'workCalendar.scopeType':

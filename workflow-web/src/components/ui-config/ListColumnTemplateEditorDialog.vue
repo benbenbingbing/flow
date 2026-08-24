@@ -46,6 +46,12 @@
             />
             <div class="form-grid">
               <el-form-item label="数据来源" required>
+                <template #label>
+                  <ConfigHelpLabel
+                    label="数据来源"
+                    help-key="entityList.dataSourceType"
+                  />
+                </template>
                 <el-select
                   v-model="form.dataSourceType"
                   style="width: 100%"
@@ -68,6 +74,12 @@
                 </div>
               </el-form-item>
               <el-form-item label="接口数据源">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="接口数据源"
+                    help-key="uiDataSource.service"
+                  />
+                </template>
                 <el-select
                   v-model="form.dataSourceId"
                   clearable
@@ -301,6 +313,7 @@ import { computed, defineComponent, h, reactive, ref } from 'vue'
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { ElInput, ElMessage } from 'element-plus'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ObjectMappingEditor from '@/components/ui-config/ObjectMappingEditor.vue'
 import { uiComponentTemplateApi } from '@/api/uiConfig'

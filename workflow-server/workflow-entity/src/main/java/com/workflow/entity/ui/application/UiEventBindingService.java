@@ -70,6 +70,56 @@ public class UiEventBindingService {
             UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
             UiDataSourceUsages.ROW_BUTTON_CLICK,
             UiDataSourceUsages.FORM_BUTTON_CLICK);
+    private static final Set<String> FORM_EVENTS = Set.of(
+            UiDataSourceUsages.DETAIL_LOAD,
+            UiDataSourceUsages.DATA_CREATE,
+            UiDataSourceUsages.DATA_UPDATE,
+            UiDataSourceUsages.FORM_OPEN,
+            UiDataSourceUsages.FORM_SAVE,
+            UiDataSourceUsages.FORM_RESET,
+            UiDataSourceUsages.FIELD_CHANGE,
+            UiDataSourceUsages.ENTITY_SELECTED,
+            UiDataSourceUsages.FIELD_BUTTON_CLICK,
+            UiDataSourceUsages.SUBFORM_LOAD,
+            UiDataSourceUsages.SUBFORM_SAVE,
+            UiDataSourceUsages.FORM_BUTTON_CLICK);
+    private static final Set<String> LIST_EVENTS = Set.of(
+            UiDataSourceUsages.LIST_LOAD,
+            UiDataSourceUsages.LIST_EXPORT,
+            UiDataSourceUsages.DETAIL_LOAD,
+            UiDataSourceUsages.DATA_CREATE,
+            UiDataSourceUsages.DATA_UPDATE,
+            UiDataSourceUsages.DATA_DELETE,
+            UiDataSourceUsages.DATA_BATCH_DELETE,
+            UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
+            UiDataSourceUsages.ROW_BUTTON_CLICK);
+    private static final Set<String> FORM_FIELD_EVENTS = Set.of(
+            UiDataSourceUsages.FIELD_CHANGE,
+            UiDataSourceUsages.ENTITY_SELECTED,
+            UiDataSourceUsages.FIELD_BUTTON_CLICK,
+            UiDataSourceUsages.SUBFORM_LOAD,
+            UiDataSourceUsages.SUBFORM_SAVE);
+    private static final Set<String> FORM_BUTTON_EVENTS =
+            Set.of(UiDataSourceUsages.FORM_BUTTON_CLICK);
+    private static final Set<String> LIST_BUTTON_EVENTS = Set.of(
+            UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
+            UiDataSourceUsages.ROW_BUTTON_CLICK);
+
+    /**
+     * 事件按配置来源和精确目标分域。OWNER 保留同类目标事件，用于为当前
+     * 表单全部字段或按钮、当前列表全部按钮配置一层公共默认绑定。
+     */
+    private static final Map<String, Map<String, Set<String>>> EVENT_SCOPES =
+            Map.of(
+                    "ENTITY", Map.of(
+                            "OWNER", EVENTS),
+                    "FORM", Map.of(
+                            "OWNER", FORM_EVENTS,
+                            "FIELD", FORM_FIELD_EVENTS,
+                            "BUTTON", FORM_BUTTON_EVENTS),
+                    "LIST", Map.of(
+                            "OWNER", LIST_EVENTS,
+                            "BUTTON", LIST_BUTTON_EVENTS));
     private static final Set<String> INHERITANCE_MODES =
             Set.of("INHERIT", "REPLACE", "DISABLE");
     private static final Set<String> STRATEGIES =
@@ -111,6 +161,7 @@ public class UiEventBindingService {
         catalog.put("ownerTypes", OWNER_TYPES);
         catalog.put("targetTypes", TARGET_TYPES);
         catalog.put("events", EVENTS);
+        catalog.put("eventScopes", EVENT_SCOPES);
         catalog.put("inheritanceModes", INHERITANCE_MODES);
         catalog.put("strategies", STRATEGIES);
         catalog.put("failurePolicies", FAILURE_POLICIES);
@@ -133,6 +184,7 @@ public class UiEventBindingService {
             throw new IllegalArgumentException(
                     "不支持的事件编码: " + eventCode);
         }
+        validateEventScope(normalizedOwner, "OWNER", normalizedEvent);
         ConfigIdentity identity =
                 identity(normalizedOwner, ownerId);
         List<Map<String, Object>> bindings =
@@ -317,6 +369,26 @@ public class UiEventBindingService {
             throw new IllegalArgumentException(
                     "事件运行时必须声明 FORM/LIST 配置来源");
         }
+        String targetType = normalize(
+                StringUtils.hasText(request.getTargetType())
+                        ? request.getTargetType() : "OWNER");
+        String eventCode = normalize(request.getEventCode());
+        if (!TARGET_TYPES.contains(targetType)) {
+            throw new IllegalArgumentException(
+                    "不支持的事件目标类型: "
+                            + request.getTargetType());
+        }
+        if (!EVENTS.contains(eventCode)) {
+            throw new IllegalArgumentException(
+                    "不支持的 UI 事件: "
+                            + request.getEventCode());
+        }
+        if (!"OWNER".equals(targetType)
+                && !StringUtils.hasText(request.getTargetKey())) {
+            throw new IllegalArgumentException(
+                    "字段或按钮事件必须指定稳定 targetKey");
+        }
+        validateEventScope(configType, targetType, eventCode);
         if ("FORM".equals(configType)) {
             UiConfigReleaseService.ResolvedUiEventSnapshot resolved =
                     releaseService.resolveRuntimeEventSnapshot(
@@ -562,6 +634,7 @@ public class UiEventBindingService {
             throw new IllegalArgumentException(
                     "不支持的事件编码: " + request.getEventCode());
         }
+        validateEventScope(ownerType, targetType, eventCode);
         if (!INHERITANCE_MODES.contains(inheritance)) {
             throw new IllegalArgumentException(
                     "不支持的继承模式: " + request.getInheritanceMode());
@@ -619,6 +692,30 @@ public class UiEventBindingService {
         if (replaceCount > 1) {
             throw new IllegalArgumentException(
                     "一个事件绑定链最多只能有一个 REPLACE 步骤");
+        }
+    }
+
+    /**
+     * 校验事件是否属于当前配置来源及目标，避免把列表、表单、字段或按钮
+     * 事件保存到不会触发的作用域，也阻止运行时伪造跨作用域事件请求。
+     */
+    private void validateEventScope(
+            String ownerType,
+            String targetType,
+            String eventCode) {
+        Map<String, Set<String>> targetScopes =
+                EVENT_SCOPES.get(ownerType);
+        Set<String> allowed = targetScopes == null
+                ? null : targetScopes.get(targetType);
+        if (allowed == null) {
+            throw new IllegalArgumentException(
+                    ownerType + " 作用域不支持 "
+                            + targetType + " 事件目标");
+        }
+        if (!allowed.contains(eventCode)) {
+            throw new IllegalArgumentException(
+                    ownerType + " 作用域的 " + targetType
+                            + " 目标不支持事件: " + eventCode);
         }
     }
 

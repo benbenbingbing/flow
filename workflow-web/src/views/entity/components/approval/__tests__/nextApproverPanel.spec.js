@@ -39,6 +39,35 @@ assert.ok(
   '审批决策面板必须位于表单页签之后'
 )
 assert.match(
+  dialog,
+  /v-model:expanded="approvalDecisionExpanded"/,
+  '审批弹窗必须持有审批信息折叠状态'
+)
+assert.match(
+  dialog,
+  /openApprove[\s\S]*?approvalDecisionExpanded\.value\s*=\s*true/,
+  '每次打开审批弹窗时必须默认展开审批信息'
+)
+;[
+  ':aria-expanded="expanded"',
+  'aria-controls="approval-decision-content"',
+  "expanded ? '收起审批信息' : '展开审批信息'",
+  '<ArrowUp v-if="expanded" />',
+  '<ArrowDown v-else />'
+].forEach(marker => {
+  assert.ok(panel.includes(marker), `审批信息折叠按钮缺少交互或可访问性语义: ${marker}`)
+})
+assert.match(
+  panel,
+  /<el-collapse-transition>[\s\S]*?v-show="expanded"[\s\S]*?<NextApproverSection/,
+  '折叠审批信息时必须保留审批意见和下一审批人选择状态'
+)
+assert.match(
+  panel,
+  /function validate\(\)[\s\S]*?!result\.valid\s*&&\s*!props\.expanded[\s\S]*?emit\('update:expanded', true\)/,
+  '折叠状态下校验失败时必须自动展开审批信息'
+)
+assert.match(
   panel,
   /:comment="comment"/,
   '审批备注必须从决策面板传入下一审批人区域'

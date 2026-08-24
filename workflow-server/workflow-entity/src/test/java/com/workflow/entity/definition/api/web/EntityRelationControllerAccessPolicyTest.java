@@ -3,9 +3,7 @@ package com.workflow.entity.definition.api.web;
 import com.workflow.core.security.RequiresPermission;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -32,20 +30,20 @@ class EntityRelationControllerAccessPolicyTest {
         assertPermission(create, "entity:definition:manage");
 
         Method update = method("update");
-        PutMapping put = AnnotatedElementUtils.findMergedAnnotation(
-                update, PutMapping.class);
-        assertNotNull(put);
-        assertArrayEquals(new String[]{"/{relationId}"}, put.value());
+        PostMapping updatePost = AnnotatedElementUtils.findMergedAnnotation(
+                update, PostMapping.class);
+        assertNotNull(updatePost);
+        assertArrayEquals(new String[]{"/{relationId}"}, updatePost.value());
         assertPermission(update, "entity:definition:manage");
 
         Method delete = method("delete");
-        DeleteMapping deleteMapping =
+        PostMapping deletePost =
                 AnnotatedElementUtils.findMergedAnnotation(
-                        delete, DeleteMapping.class);
-        assertNotNull(deleteMapping);
+                        delete, PostMapping.class);
+        assertNotNull(deletePost);
         assertArrayEquals(
-                new String[]{"/{relationId}"},
-                deleteMapping.value());
+                new String[]{"/{relationId}/delete"},
+                deletePost.value());
         assertPermission(delete, "entity:definition:manage");
     }
 

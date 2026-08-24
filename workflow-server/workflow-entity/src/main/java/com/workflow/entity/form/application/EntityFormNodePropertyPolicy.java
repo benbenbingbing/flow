@@ -113,7 +113,7 @@ final class EntityFormNodePropertyPolicy {
     private static final Map<String, Set<String>> CONTAINER_CONFIG_KEYS =
             Map.of(
                     "GRID", Set.of("gutter", "defaultSpan"),
-                    "TAB_SET", Set.of("tabPosition"),
+                    "TAB_SET", Set.of("tabPosition", "defaultActiveTabKey"),
                     "COLLAPSE", Set.of("defaultExpanded", "accordion"),
                     "TEXT", Set.of("text", "textStyle"));
 
@@ -561,7 +561,7 @@ final class EntityFormNodePropertyPolicy {
                 COMMON_CONTAINER_PROPS, Set.of("gutter", "defaultSpan")));
         result.put("TAB_SET", union(
                 COMMON_CONTAINER_PROPS,
-                Set.of("tabPosition")));
+                Set.of("tabPosition", "defaultActiveTabKey")));
         result.put("TAB", union(COMMON_CONTAINER_PROPS, Set.of()));
         result.put("COLLAPSE", union(
                 COMMON_CONTAINER_PROPS,
@@ -594,10 +594,14 @@ final class EntityFormNodePropertyPolicy {
                 requireIntegerRange(props, "gutter", 0, 48);
                 requireIntegerRange(props, "defaultSpan", 1, 24);
             }
-            case "TAB_SET" -> requireEnum(
-                    props,
-                    "tabPosition",
-                    Set.of("top", "left", "right", "bottom"));
+            case "TAB_SET" -> {
+                requireEnum(
+                        props,
+                        "tabPosition",
+                        Set.of("top", "left", "right", "bottom"));
+                // 默认页签使用稳定节点 key，避免标题调整后配置失效。
+                requireText(props, "defaultActiveTabKey", 200);
+            }
             case "COLLAPSE" -> {
                 requireBoolean(props, "defaultExpanded");
                 requireBoolean(props, "accordion");

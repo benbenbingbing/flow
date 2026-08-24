@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopePolicy;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
@@ -283,6 +284,96 @@ class EntityListScopeServiceTest {
         service.replaceListBindings("expense", "all", List.of());
 
         verify(releaseMapper).insert(any(
+                com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease.class));
+    }
+
+    @Test
+    void explicitAllRequiresConfirmationReason() {
+        EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);
+        EntityListScopeBindingMapper bindingMapper = mock(EntityListScopeBindingMapper.class);
+        EntityListScopeReleaseMapper releaseMapper = mock(EntityListScopeReleaseMapper.class);
+        EntityListConfigMapper listConfigMapper = mock(EntityListConfigMapper.class);
+        EntityDefinitionAccessPolicy accessPolicy = mock(EntityDefinitionAccessPolicy.class);
+        EntityListScopeService service = new EntityListScopeService(
+                policyMapper,
+                bindingMapper,
+                releaseMapper,
+                listConfigMapper,
+                mock(EntityDefinitionMapper.class),
+                mock(PermissionSqlBuilder.class),
+                mock(PermissionRuleMatcher.class),
+                new ObjectMapper(),
+                mock(EntityListScopeAuditService.class),
+                accessPolicy);
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("expense");
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(accessPolicy.requireDynamicByCode("expense")).thenReturn(entity);
+        com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig list =
+                new com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig();
+        list.setListKey("all");
+        list.setUnboundScopePolicy("DENY_ALL");
+        list.setScopeEnforcementMode("ENFORCE");
+        when(listConfigMapper.findByEntityCodeAndListKey("expense", "all"))
+                .thenReturn(list);
+        EntityListScopeListBindingsRequest request =
+                new EntityListScopeListBindingsRequest();
+        request.setUnboundPolicy("EXPLICIT_ALL");
+        request.setConfirmExplicitAll(true);
+        request.setConfirmationNote("短");
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.replaceListConfiguration(
+                        "expense", "all", List.of(), request));
+
+        assertTrue(error.getMessage().contains("至少 5 个字符"));
+        verify(bindingMapper, never()).deleteById(
+                any(java.io.Serializable.class));
+        verify(releaseMapper, never()).insert(any(
+                com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease.class));
+    }
+
+    @Test
+    void explicitAllRequiresDedicatedHighRiskPermission() {
+        EntityListScopePolicyMapper policyMapper = mock(EntityListScopePolicyMapper.class);
+        EntityListScopeBindingMapper bindingMapper = mock(EntityListScopeBindingMapper.class);
+        EntityListScopeReleaseMapper releaseMapper = mock(EntityListScopeReleaseMapper.class);
+        EntityListConfigMapper listConfigMapper = mock(EntityListConfigMapper.class);
+        EntityDefinitionAccessPolicy accessPolicy = mock(EntityDefinitionAccessPolicy.class);
+        EntityListScopeService service = new EntityListScopeService(
+                policyMapper,
+                bindingMapper,
+                releaseMapper,
+                listConfigMapper,
+                mock(EntityDefinitionMapper.class),
+                mock(PermissionSqlBuilder.class),
+                mock(PermissionRuleMatcher.class),
+                new ObjectMapper(),
+                mock(EntityListScopeAuditService.class),
+                accessPolicy);
+        EntityDefinition entity = new EntityDefinition();
+        entity.setEntityCode("expense");
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(accessPolicy.requireDynamicByCode("expense")).thenReturn(entity);
+        com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig list =
+                new com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig();
+        list.setListKey("all");
+        list.setUnboundScopePolicy("DENY_ALL");
+        list.setScopeEnforcementMode("ENFORCE");
+        when(listConfigMapper.findByEntityCodeAndListKey("expense", "all"))
+                .thenReturn(list);
+        EntityListScopeListBindingsRequest request = new EntityListScopeListBindingsRequest();
+        request.setUnboundPolicy("EXPLICIT_ALL");
+        request.setConfirmExplicitAll(true);
+        request.setConfirmationNote("业务负责人确认需要查看全部记录");
+
+        assertThrows(
+                com.workflow.core.error.ForbiddenException.class,
+                () -> service.replaceListConfiguration("expense", "all", List.of(), request));
+        verify(listConfigMapper, never()).updateById(any(
+                com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig.class));
+        verify(releaseMapper, never()).insert(any(
                 com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease.class));
     }
 }

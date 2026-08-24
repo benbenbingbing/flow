@@ -32,6 +32,10 @@ import java.util.Map;
 public class ProcessInstanceController {
     
     private final ProcessInstanceService processInstanceService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.workflow.process.task.application.operation.NodeOperationDecisionService
+            nodeOperationDecisionService;
     
     /**
      * 获取流程实例的执行进度
@@ -116,6 +120,13 @@ public class ProcessInstanceController {
         }
         
         String reason = requestBody != null ? requestBody.get("reason") : null;
+        if (nodeOperationDecisionService != null) {
+            nodeOperationDecisionService.requireAllowedForProcess(
+                    processInstanceId,
+                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.TERMINATE,
+                    com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+                            .ofReason(reason));
+        }
         return processInstanceService.terminateProcess(processInstanceId, userId, reason);
     }
     

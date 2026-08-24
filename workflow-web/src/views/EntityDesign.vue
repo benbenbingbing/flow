@@ -628,7 +628,7 @@
     :close-on-click-modal="false"
   >
     <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-      这里只维护规则目录。把规则绑到哪个列表，请到该列表的「访问范围」中设置。列表绑定保存后立即生效。列表未绑定任何允许规则时，有该列表权限的人将看到全部数据。
+      这里只维护规则目录。把规则绑到哪个列表，请到该列表的「访问范围」中设置。列表绑定保存后立即生效。列表未绑定任何允许规则时，将执行该列表配置的安全默认策略；新列表默认拒绝全部数据。
     </el-alert>
     <el-alert type="warning" :closable="false" style="margin-bottom: 16px">
       相关人只认 team 表已发生的参与；存在待办只认 process_task 未完成待办。列表分别绑定。尚未生成任务的下一审批人不会进入这两条规则。

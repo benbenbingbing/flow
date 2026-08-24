@@ -2,12 +2,15 @@ import assert from 'node:assert/strict'
 
 import {
   applyRuntimeFieldDefaults,
+  assertUniqueFormDataSourceOutputTargets,
   collectRuntimeFormFieldCodes,
   createFormDataSourceRuntime,
   filterRuntimeFormSubmissionData,
+  formatFormDataSourceBindingSummary,
   getClientBeforeSubmitBindings,
   getFieldKey,
   getFieldModelPath,
+  getFormDataSourceBindingStepLabel,
   isClientPrevalidationBinding,
   isSystemField,
   isRuntimeFieldReadonly,
@@ -449,6 +452,98 @@ assert.deepEqual(
     afterLoaded: true
   }
 )
+assert.equal(
+  formatFormDataSourceBindingSummary(
+    initializationForm.dataSourceBindingsDocument
+  ),
+  '初始化 1 · 加载后 1 · 提交前 0'
+)
+assert.equal(
+  getFormDataSourceBindingStepLabel([
+    { usage: 'FORM_INIT' },
+    { usage: 'AFTER_LOAD' },
+    { usage: 'FORM_INIT' }
+  ], 2),
+  '初始化数据 · 步骤 2'
+)
+assert.throws(
+  () => assertUniqueFormDataSourceOutputTargets([
+    { usage: 'FORM_INIT', outputMapping: { ownerName: 'data.owner.name' } },
+    { usage: 'FORM_INIT', outputMapping: { ownerName: 'data.approver.name' } }
+  ]),
+  /步骤 1 与步骤 2 都写入目标路径“ownerName”/
+)
+assert.throws(
+  () => assertUniqueFormDataSourceOutputTargets([
+    { usage: 'AFTER_LOAD', outputMapping: { 'owner. .name': 'data.owner.name' } },
+    { usage: 'AFTER_LOAD', outputMapping: { 'owner.name': 'data.approver.name' } }
+  ]),
+  /目标路径“owner.name”/
+)
+assert.doesNotThrow(() => assertUniqueFormDataSourceOutputTargets([
+  { usage: 'FORM_INIT', outputMapping: { ownerName: 'data.owner.name' } },
+  { usage: 'AFTER_LOAD', outputMapping: { ownerName: 'data.owner.name' } }
+]))
+
+const orderedInitializationExecutions = []
+const orderedInitializationRecord = {}
+const orderedInitializationRuntime = createFormDataSourceRuntime({
+  getRecord: () => orderedInitializationRecord,
+  getMode: () => 'create',
+  executeDataSource: async request => {
+    orderedInitializationExecutions.push(request.serviceId)
+    return { data: { [request.serviceId]: true } }
+  }
+})
+await orderedInitializationRuntime.initialize({
+  form: {
+    id: 'ordered-form',
+    dataSourceBindings: {
+      FORM_INIT: [
+        { serviceId: 'step-one', operationCode: 'load' },
+        { serviceId: 'step-two', operationCode: 'load' }
+      ]
+    }
+  }
+})
+assert.deepEqual(orderedInitializationExecutions, ['step-one', 'step-two'])
+assert.deepEqual(orderedInitializationRecord, {
+  'step-one': true,
+  'step-two': true
+})
+
+const nestedOutputRecord = {}
+const nestedOutputRuntime = createFormDataSourceRuntime({
+  getRecord: () => nestedOutputRecord,
+  getMode: () => 'create',
+  executeDataSource: async request => ({
+    data: request.serviceId === 'owner-name'
+      ? { value: '张三' }
+      : { value: 28 }
+  })
+})
+await nestedOutputRuntime.initialize({
+  form: {
+    id: 'nested-output-form',
+    dataSourceBindings: {
+      FORM_INIT: [
+        {
+          serviceId: 'owner-name',
+          operationCode: 'load',
+          outputMapping: { 'owner.name': 'data.value' }
+        },
+        {
+          serviceId: 'owner-age',
+          operationCode: 'load',
+          outputMapping: { 'owner.age': 'data.value' }
+        }
+      ]
+    }
+  }
+})
+assert.deepEqual(nestedOutputRecord, {
+  owner: { name: '张三', age: 28 }
+})
 
 const nestedInitializationExecutions = []
 const parentRecord = { parentOnly: true }
@@ -494,16 +589,18 @@ await nestedRuntime.initialize({
 })
 assert.deepEqual(childRowOne, {
   rowKey: 'one',
-  initializedForChild: 'one',
   afterLoadedForChild: 'one'
 })
 assert.deepEqual(childRowTwo, {
   rowKey: 'two',
-  initializedForChild: 'two',
   afterLoadedForChild: 'two'
 })
 assert.deepEqual(parentRecord, { parentOnly: true })
-assert.equal(nestedInitializationExecutions.length, 4)
+assert.deepEqual(
+  nestedInitializationExecutions.map(request => request.serviceId),
+  ['child-form-after-load-source', 'child-form-after-load-source']
+)
+assert.equal(nestedInitializationExecutions.length, 2)
 assert.equal(nestedInitializationExecutions[0].ownerId, 'child-form-1')
 assert.equal(nestedInitializationExecutions[0].ownerType, 'FORM')
 assert.equal(nestedInitializationExecutions[0].input.recordId, 'parent-1:lines:0')

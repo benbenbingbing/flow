@@ -5,6 +5,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeDefaultDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
@@ -102,7 +103,7 @@ class DataPermissionEngineTest {
     }
 
     @Test
-    void unboundListAllowsAllData() {
+    void unboundListDeniesAllByDefault() {
         EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT");
         snapshot.setBindings(List.of());
         when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
@@ -110,10 +111,52 @@ class DataPermissionEngineTest {
         var result = engine.calculatePermission("expense", "default", user());
         var preview = engine.previewPermissionDetail("expense", "default", user());
 
+        assertFalse(result.isHasPermission());
+        assertEquals("1=0", preview.getSql());
+        assertTrue(preview.getRemark().contains("拒绝全部"));
+    }
+
+    @Test
+    void unboundPersonalOnlyAllowsCreatorOrSubmitter() {
+        EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT");
+        snapshot.getListDefaults().get("default").setUnboundPolicy("PERSONAL");
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+
+        var result = engine.calculatePermission("expense", "default", user());
+
+        assertTrue(result.isHasPermission());
+        assertTrue(result.getSqlCondition().contains("create_by IN ('u1','alice')"));
+        assertTrue(result.getSqlCondition().contains("submitter_id IN ('u1','alice')"));
+    }
+
+    @Test
+    void explicitAllRequiresConfirmation() {
+        EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT");
+        EntityListScopeDefaultDTO setting = snapshot.getListDefaults().get("default");
+        setting.setUnboundPolicy("EXPLICIT_ALL");
+        setting.setConfirmed(false);
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+
+        var result = engine.calculatePermission("expense", "default", user());
+
+        assertFalse(result.isHasPermission());
+    }
+
+    @Test
+    void legacySnapshotStaysObservableAndAudited() {
+        EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT");
+        snapshot.setSecureDefaultsVersion(null);
+        snapshot.getListDefaults().clear();
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+
+        var result = engine.calculatePermission("expense", "default", user());
+
         assertTrue(result.isHasPermission());
         assertFalse(result.isNeedFilter());
-        assertEquals("1=1", preview.getSql());
-        assertTrue(preview.getRemark().contains("未绑定规则，可见全部"));
+        assertTrue(result.getExplanation().contains("观察期"));
+        verify(auditService).record(
+                eq("expense"), eq("default"), eq("u1"),
+                eq("UNBOUND_SCOPE_OBSERVE"), eq("WARNING"), any());
     }
 
     @Test
@@ -126,10 +169,7 @@ class DataPermissionEngineTest {
 
         var result = engine.calculatePermission("expense", "default", user());
 
-        assertTrue(result.isHasPermission());
-        assertFalse(result.isNeedFilter());
-        assertFalse(result.getSqlCondition() != null
-                && result.getSqlCondition().contains("create_by"));
+        assertFalse(result.isHasPermission());
     }
 
     @Test
@@ -140,6 +180,7 @@ class DataPermissionEngineTest {
                         "STATUS_CODE", "EQ", "SECRET"))));
         snapshot.setBindings(List.of(
                 binding("secret", "default", "DENY")));
+        allowExplicitAll(snapshot, "default");
         when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
         var result = engine.calculatePermission("expense", "default", user());
@@ -281,9 +322,7 @@ class DataPermissionEngineTest {
 
         var result = engine.calculatePermission("expense", "default", user());
 
-        assertTrue(result.isHasPermission());
-        assertFalse(result.getSqlCondition() != null
-                && result.getSqlCondition().contains("_team"));
+        assertFalse(result.isHasPermission());
     }
 
     /** 测试覆盖模式仅用列表允许：验证 SQL 仅含 status = 'OPEN' 且模式为 OVERRIDE */
@@ -315,6 +354,7 @@ class DataPermissionEngineTest {
         snapshot.setBindings(List.of(
                 binding("all", null, "ALLOW"),
                 binding("secret", "other", "DENY")));
+        allowExplicitAll(snapshot, "default");
         when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
 
         var result = engine.calculatePermission("expense", "default", user());
@@ -332,7 +372,23 @@ class DataPermissionEngineTest {
         snapshot.setVersion(3);
         snapshot.setPolicies(List.of(policies));
         snapshot.setListModes(new java.util.LinkedHashMap<>(Map.of("default", mode)));
+        snapshot.setSecureDefaultsVersion(1);
+        EntityListScopeDefaultDTO setting = new EntityListScopeDefaultDTO();
+        setting.setListKey("default");
+        setting.setUnboundPolicy("DENY_ALL");
+        setting.setEnforcementMode("ENFORCE");
+        setting.setConfirmed(false);
+        snapshot.getListDefaults().put("default", setting);
         return snapshot;
+    }
+
+    /** 为需要验证拒绝规则交集的场景显式启用并确认全量默认策略。 */
+    private void allowExplicitAll(
+            EntityListScopeSnapshotDTO snapshot,
+            String listKey) {
+        EntityListScopeDefaultDTO setting = snapshot.getListDefaults().get(listKey);
+        setting.setUnboundPolicy("EXPLICIT_ALL");
+        setting.setConfirmed(true);
     }
 
     /** 构造带 id 与过滤配置的策略对象 */

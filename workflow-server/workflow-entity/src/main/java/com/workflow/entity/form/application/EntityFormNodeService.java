@@ -153,6 +153,18 @@ public class EntityFormNodeService {
                         String formId,
                         EntityFormNodeCreateRequest request,
                         boolean migrateUnsupported) {
+                return createInternal(
+                                formId,
+                                request,
+                                migrateUnsupported,
+                                true);
+        }
+
+        private EntityFormNode createInternal(
+                        String formId,
+                        EntityFormNodeCreateRequest request,
+                        boolean migrateUnsupported,
+                        boolean touchOwner) {
                 requireForm(formId);
                 EntityFormNode node = new EntityFormNode();
                 node.setId(StringUtils.hasText(request.getId())
@@ -203,7 +215,9 @@ public class EntityFormNodeService {
                         throw translateNodeWriteException(
                                         formId, node.getNodeKey(), exception);
                 }
-                touchForm(formId);
+                if (touchOwner) {
+                        touchForm(formId);
+                }
                 return node;
         }
 
@@ -366,6 +380,70 @@ public class EntityFormNodeService {
                         throw conflict(formId, nodeId);
                 }
                 touchForm(formId);
+        }
+
+        /**
+         * 锁定表单下全部节点草稿，供配置级撤销在重算 hash 前建立并发边界。
+         */
+        public void lockDraftNodesForRelease(String formId) {
+                nodeMapper.findAllByFormIdForUpdate(formId);
+        }
+
+        /**
+         * 使用不可变发布快照精确重建表单节点草稿。
+         *
+         * <p>节点逻辑删除后原稳定 ID 仍占用主键，因此恢复时先物理清理当前
+         * 草稿节点，再按父节点优先顺序以发布 ID 重建。调用方必须已锁定表单
+         * owner；本方法不触碰 owner revision，确保一次撤销只递增一次配置修订号。</p>
+         */
+        @Transactional(rollbackFor = Exception.class)
+        public void restorePublishedNodes(
+                        String formId,
+                        List<EntityFormNode> publishedNodes) {
+                requireForm(formId);
+                lockDraftNodesForRelease(formId);
+                nodeMapper.deleteAllByFormIdForReleaseRestore(formId);
+                List<EntityFormNode> ordered = nodesInRestoreOrder(
+                                publishedNodes == null ? List.of() : publishedNodes);
+                long fallbackOrder = ORDER_STEP;
+                for (EntityFormNode source : ordered) {
+                        createInternal(
+                                        formId,
+                                        toCreateRequest(
+                                                        source,
+                                                        fallbackOrder,
+                                                        PatchMode.SYSTEM_IMPORT),
+                                        true,
+                                        false);
+                        fallbackOrder += ORDER_STEP;
+                }
+                validateTree(formId);
+        }
+
+        private List<EntityFormNode> nodesInRestoreOrder(
+                        List<EntityFormNode> nodes) {
+                Map<String, EntityFormNode> byId = new HashMap<>();
+                for (EntityFormNode node : nodes) {
+                        if (!StringUtils.hasText(node.getId())
+                                        || byId.put(node.getId(), node) != null) {
+                                throw new IllegalArgumentException(
+                                                "发布快照包含缺失或重复的表单节点ID");
+                        }
+                }
+                Map<String, Integer> depthById = new HashMap<>();
+                List<EntityFormNode> ordered = new ArrayList<>(nodes);
+                ordered.sort(Comparator
+                                .comparingInt((EntityFormNode node) ->
+                                                resolveNodeDepth(
+                                                                node,
+                                                                byId,
+                                                                depthById))
+                                .thenComparing(node ->
+                                                node.getOrderKey() == null
+                                                                ? Long.MAX_VALUE
+                                                                : node.getOrderKey())
+                                .thenComparing(EntityFormNode::getId));
+                return ordered;
         }
 
         /**

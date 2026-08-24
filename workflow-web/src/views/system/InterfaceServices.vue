@@ -227,6 +227,7 @@ import {
   serviceOperations,
   sourceTypeOptions
 } from '@/components/ui-config/interfaceServiceModel'
+import { eventsForScope } from '@/components/ui-config/uiEventScope'
 import { entityApi } from '@/api/entity'
 import {
   getEntityFields,
@@ -307,30 +308,10 @@ const fieldOptions = computed(() =>
 )
 
 const allowedEvents = computed(() => {
-  if (effectiveTargetType.value === 'FIELD') {
-    return ['FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK']
-  }
-  if (effectiveTargetType.value === 'BUTTON') {
-    return bindingOwnerType.value === 'LIST'
-      ? ['TOOLBAR_BUTTON_CLICK', 'ROW_BUTTON_CLICK']
-      : ['FORM_BUTTON_CLICK', 'FIELD_BUTTON_CLICK']
-  }
-  if (bindingOwnerType.value === 'LIST') {
-    return [
-      'LIST_LOAD', 'LIST_EXPORT', 'DETAIL_LOAD',
-      'DATA_CREATE', 'DATA_UPDATE', 'DATA_DELETE', 'DATA_BATCH_DELETE'
-    ]
-  }
-  if (bindingOwnerType.value === 'FORM') {
-    return [
-      'DETAIL_LOAD', 'FORM_OPEN', 'FORM_SAVE', 'FORM_RESET',
-      'DATA_CREATE', 'DATA_UPDATE', 'SUBFORM_LOAD', 'SUBFORM_SAVE'
-    ]
-  }
-  return [
-    'LIST_LOAD', 'LIST_EXPORT', 'DETAIL_LOAD',
-    'DATA_CREATE', 'DATA_UPDATE', 'DATA_DELETE', 'DATA_BATCH_DELETE'
-  ]
+  return eventsForScope(
+    bindingOwnerType.value,
+    effectiveTargetType.value
+  )
 })
 
 async function loadAll() {

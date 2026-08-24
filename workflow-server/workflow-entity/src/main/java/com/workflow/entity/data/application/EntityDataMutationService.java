@@ -23,6 +23,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -56,6 +57,8 @@ public class EntityDataMutationService {
     private final EntityRecordTeamService entityRecordTeamService;
     private final EntityDataMutationValidator validator;
     private final EntityDataMutationPayloadMapper payloadMapper;
+    @Autowired(required = false)
+    private EntityUniqueValueService uniqueValueService;
 
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO save(EntityDataDTO dto) {
@@ -102,6 +105,11 @@ public class EntityDataMutationService {
         String currentUserName =
                 getCurrentUserName(dto.getSubmitterName());
 
+        boolean creating = !StringUtils.hasText(dto.getId());
+        // 创建场景必须在唯一值预留前生成稳定ID，确保预留和业务写入属于同一事务主体。
+        if (creating) {
+            dto.setId(generateId());
+        }
         dto.setData(parentData);
         Map<String, Object> data =
                 recordMapper.toStorageMap(dto);
@@ -113,7 +121,7 @@ public class EntityDataMutationService {
                         ? null
                         : String.valueOf(data.get("id")));
 
-        if (!StringUtils.hasText(dto.getId())) {
+        if (creating) {
             insert(
                     dto,
                     definition,
@@ -262,6 +270,9 @@ public class EntityDataMutationService {
                 dynamicTableService.getTableName(
                         entityCode),
                 id);
+        if (uniqueValueService != null) {
+            uniqueValueService.release(entityCode, id);
+        }
         entityRecordTeamService.record(
                 entityCode,
                 id,
@@ -288,6 +299,9 @@ public class EntityDataMutationService {
                 dynamicTableService.getTableName(
                         entityCode),
                 id);
+        if (uniqueValueService != null) {
+            uniqueValueService.release(entityCode, id);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -372,7 +386,7 @@ public class EntityDataMutationService {
             Map<String, Object> data,
             String currentUserId,
             String currentUserName) {
-        String id = generateId();
+        String id = StringUtils.hasText(dto.getId()) ? dto.getId() : generateId();
         LocalDateTime now = LocalDateTime.now();
         data.put("id", id);
         data.put("create_by", currentUserId);

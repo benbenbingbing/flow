@@ -7,10 +7,8 @@ import com.workflow.entity.definition.api.response.EntityRelationDTO;
 import com.workflow.entity.definition.application.EntityRelationDefinitionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -49,7 +47,7 @@ public class EntityRelationController {
                 relationService.create(entityId, request));
     }
 
-    @PutMapping("/{relationId}")
+    @PostMapping("/{relationId}")
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityRelationDTO> update(
             @PathVariable String entityId,
@@ -59,7 +57,7 @@ public class EntityRelationController {
                 relationService.update(entityId, relationId, request));
     }
 
-    @DeleteMapping("/{relationId}")
+    @PostMapping("/{relationId}/delete")
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<Void> delete(
             @PathVariable String entityId,

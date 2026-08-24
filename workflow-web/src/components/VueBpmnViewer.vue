@@ -1,6 +1,11 @@
 <template>
   <div class="bpmn-viewer-wrapper">
-    <div ref="canvasRef" class="vue-bpmn-viewer-canvas"></div>
+    <div
+      ref="canvasRef"
+      class="vue-bpmn-viewer-canvas"
+      :class="{ 'is-ready': renderReady }"
+      :aria-busy="!renderReady"
+    ></div>
     
     <!-- 节点悬停/点击提示框 -->
     <div v-if="tooltip.visible"
@@ -82,6 +87,12 @@ const emit = defineEmits(['imported', 'error'])
 
 const canvasRef = ref()
 const viewer = ref(null)
+const renderReady = ref(false)
+let importGeneration = 0
+let importQueue = Promise.resolve()
+let pendingViewportGeneration = null
+let canvasResizeObserver = null
+let flowFixTimer = null
 
 // 提示框状态
 const tooltip = ref({
@@ -132,7 +143,11 @@ const initViewer = () => {
 }
 
 const applyViewport = () => {
-  if (!viewer.value || !canvasRef.value) return
+  if (!viewer.value || !canvasRef.value) return false
+  // 隐藏页签的可用尺寸为 0，此时计算视口会产生无效缩放矩阵。
+  if (canvasRef.value.clientWidth <= 0 || canvasRef.value.clientHeight <= 0) {
+    return false
+  }
   const canvas = viewer.value.get('canvas')
   canvas.resized()
   if (props.fitViewport) {
@@ -153,37 +168,23 @@ const applyViewport = () => {
       svg.style.minHeight = ''
       svg.removeAttribute('viewBox')
     }
+    return true
   } else {
     // 按 100% 显示，不缩放节点；超出容器时通过滚动条查看
     const svg = canvasRef.value.querySelector('.djs-container svg')
     const djsContainer = canvasRef.value.querySelector('.djs-container')
-    if (!svg || !djsContainer) return
+    if (!svg || !djsContainer) return false
 
-    const viewbox = canvas.viewbox()
-    if (!viewbox || !viewbox.inner) return
+    // 强制重新读取活动图层的流程坐标，避免复用上一次 viewport 的缓存。
+    const viewbox = canvas.viewbox(false)
+    if (!viewbox || !viewbox.inner) return false
 
     const padding = 60
     const inner = viewbox.inner
-
-    // 优先读取 SVG 实际渲染包围盒（包含箭头 marker、标签、徽章等）
-    let minX = inner.x
-    let minY = inner.y
-    let maxX = inner.x + inner.width
-    let maxY = inner.y + inner.height
-    try {
-      const bbox = svg.getBBox()
-      if (bbox && bbox.width > 0 && bbox.height > 0) {
-        minX = Math.min(minX, bbox.x)
-        minY = Math.min(minY, bbox.y)
-        maxX = Math.max(maxX, bbox.x + bbox.width)
-        maxY = Math.max(maxY, bbox.y + bbox.height)
-      }
-    } catch (e) {
-      // ignore
-    }
-
-    const width = Math.ceil(maxX - minX + padding * 2)
-    const height = Math.ceil(maxY - minY + padding * 2)
+    const minX = inner.x
+    const minY = inner.y
+    const width = Math.ceil(inner.width + padding * 2)
+    const height = Math.ceil(inner.height + padding * 2)
 
     // 先固定 SVG 像素尺寸，再按 1:1 缩放，最后把 viewBox 对准完整包围盒
     svg.style.width = width + 'px'
@@ -203,36 +204,93 @@ const applyViewport = () => {
       width,
       height
     })
+    return true
   }
 }
 
-const importXML = async (xml) => {
-  if (!viewer.value) return
+const waitForAnimationFrame = () => new Promise(resolve => {
+  requestAnimationFrame(resolve)
+})
+
+/**
+ * 在容器具备有效尺寸后提交本次导入的唯一最终视口。
+ * 隐藏页签中的导入会保持不可见，待 ResizeObserver 检测到页签显示后再提交。
+ */
+const commitImportedViewport = (currentImport) => {
+  if (
+    currentImport !== importGeneration
+    || pendingViewportGeneration !== currentImport
+    || !viewer.value
+  ) {
+    return false
+  }
+  // SVG 位于 display:none 的祖先下时 getBBox 可能无效，高亮和徽章必须延后到可见尺寸。
+  if (canvasRef.value.clientWidth <= 0 || canvasRef.value.clientHeight <= 0) {
+    return false
+  }
+  highlightProcess()
+  if (!applyViewport()) return false
+
+  pendingViewportGeneration = null
+  addMouseEventListeners()
+  startFlowFixTimer()
+  renderReady.value = true
+  emit('imported', { viewer: viewer.value })
+  return true
+}
+
+const importXML = async (xml, currentImport) => {
+  if (currentImport !== importGeneration || !viewer.value) return
   try {
-    await viewer.value.importXML(xml)
-    // 先确保 canvas 尺寸计算正确，再应用 viewport
-    nextTick(() => applyViewport())
-    // 延迟高亮，确保 bpmn-js 渲染完成
-    setTimeout(() => {
-      applyViewport()
-      highlightProcess()
-      addMouseEventListeners()
-      startFlowFixTimer()
-    }, 200)
-    emit('imported', { viewer: viewer.value })
+    // 先隐藏旧画面，避免 importXML 的默认视口在稳定布局前被用户看到。
+    await nextTick()
+    if (currentImport !== importGeneration || !viewer.value) return
+    const importingViewer = viewer.value
+    await importingViewer.importXML(xml)
+    await nextTick()
+    await waitForAnimationFrame()
+    // 弹窗可能在导入期间关闭，旧导入不得再操作已销毁或已换图的 Viewer。
+    if (
+      currentImport !== importGeneration
+      || !viewer.value
+      || viewer.value !== importingViewer
+    ) return
+    pendingViewportGeneration = currentImport
+    commitImportedViewport(currentImport)
   } catch (error) {
+    if (currentImport !== importGeneration) return
     console.error('Viewer 导入XML失败:', error)
     emit('error', error)
   }
 }
 
-const loadXml = async (xml) => {
-  if (!xml) return
-  if (!viewer.value) {
-    await nextTick()
-    initViewer()
+/**
+ * 串行导入 XML，确保同一 Viewer 连续收到更新时，较早任务不会晚到覆盖最后一次输入。
+ */
+const loadXml = (xml) => {
+  const currentImport = ++importGeneration
+  pendingViewportGeneration = null
+  renderReady.value = false
+  // 新流程开始导入后暂停旧图的修色任务，避免它与 bpmn-js 导入并发操作注册表。
+  if (flowFixTimer) {
+    clearInterval(flowFixTimer)
+    flowFixTimer = null
   }
-  await importXML(xml)
+  if (!xml) return Promise.resolve()
+
+  const runImport = async () => {
+    if (currentImport !== importGeneration) return
+    if (!viewer.value) {
+      await nextTick()
+      if (currentImport !== importGeneration || !canvasRef.value) return
+      initViewer()
+    }
+    await importXML(xml, currentImport)
+  }
+
+  // bpmn-js 不支持同一 Viewer 并发 importXML；队列失败后仍允许最新任务继续执行。
+  importQueue = importQueue.then(runImport, runImport)
+  return importQueue
 }
 
 /**
@@ -438,7 +496,6 @@ const setFlowStyle = (canvas, element, isExecuted) => {
   }
 }
 
-let flowFixTimer = null
 let tooltipLeaveTimer = null
 let tooltipOverNode = false
 let tooltipOverTooltip = false
@@ -680,25 +737,51 @@ const onTooltipLeave = () => {
 }
 
 watch(() => props.xml, (newXml) => {
-  if (newXml) loadXml(newXml)
+  loadXml(newXml)
 }, { immediate: false })
 
-watch(() => props.progressData, () => {
-  setTimeout(() => {
-    nextTick(() => {
-      applyViewport()
-      highlightProcess()
-      startFlowFixTimer()
-    })
-  }, 500)
+watch(() => props.progressData, async () => {
+  const currentImport = importGeneration
+  const currentViewer = viewer.value
+  await nextTick()
+  if (
+    !currentViewer
+    || viewer.value !== currentViewer
+    || currentImport !== importGeneration
+    || !renderReady.value
+  ) return
+  // 状态变化只更新颜色和徽章，不重置用户当前查看位置。
+  highlightProcess()
+  startFlowFixTimer()
 }, { deep: true })
 
 onMounted(() => {
   initViewer()
+  // lazy 页签首次打开后会被 v-show 保留；隐藏期间导入需在尺寸恢复时补交视口。
+  canvasResizeObserver = new ResizeObserver(entries => {
+    const entry = entries[0]
+    if (!entry || entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return
+    if (pendingViewportGeneration !== null) {
+      commitImportedViewport(pendingViewportGeneration)
+      return
+    }
+    // 已显示的画布只同步容器尺寸，不重新定位，保留用户的缩放和滚动位置。
+    if (renderReady.value && viewer.value) {
+      viewer.value.get('canvas').resized()
+    }
+  })
+  canvasResizeObserver.observe(canvasRef.value)
   if (props.xml) loadXml(props.xml)
 })
 
 onUnmounted(() => {
+  importGeneration += 1
+  pendingViewportGeneration = null
+  renderReady.value = false
+  if (canvasResizeObserver) {
+    canvasResizeObserver.disconnect()
+    canvasResizeObserver = null
+  }
   if (flowFixTimer) {
     clearInterval(flowFixTimer)
     flowFixTimer = null
@@ -709,6 +792,7 @@ onUnmounted(() => {
   }
   if (viewer.value) {
     viewer.value.destroy()
+    viewer.value = null
   }
 })
 
@@ -730,6 +814,11 @@ defineExpose({
   height: 100%;
   overflow: auto !important;
   position: relative;
+  visibility: hidden;
+}
+
+.vue-bpmn-viewer-canvas.is-ready {
+  visibility: visible;
 }
 
 .vue-bpmn-viewer-canvas .djs-container {

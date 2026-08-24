@@ -134,6 +134,12 @@
         </el-select>
       </el-form-item>
       <el-form-item label="实现">
+        <template #label>
+          <ConfigHelpLabel
+            label="实现"
+            help-key="entityVersion.stepImplementation"
+          />
+        </template>
         <div class="selector-field">
           <el-select
             v-if="step.stepType === 'BUILT_IN_RULE'"
@@ -223,6 +229,12 @@
         <el-segmented v-model="target.resolverType" :options="resolverTypeOptions" />
       </el-form-item>
       <el-form-item label="解析字段">
+        <template #label>
+          <ConfigHelpLabel
+            label="解析字段"
+            help-key="entityVersion.targetResolver"
+          />
+        </template>
         <div class="selector-field">
           <el-input
             v-model="target.resolverCode"

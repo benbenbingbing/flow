@@ -98,6 +98,32 @@ public class EntityListConfig {
     private String dataScopeMode;
 
     /**
+     * 未绑定 ALLOW 规则时的安全策略：DENY_ALL/PERSONAL/EXPLICIT_ALL。
+     */
+    @TableField("unbound_scope_policy")
+    private String unboundScopePolicy;
+
+    /** 安全默认值执行阶段：OBSERVE/ENFORCE。 */
+    @TableField("scope_enforcement_mode")
+    private String scopeEnforcementMode;
+
+    /** EXPLICIT_ALL 是否已经管理员显式确认。 */
+    @TableField("scope_default_confirmed")
+    private Integer scopeDefaultConfirmed;
+
+    /** 全量可见确认人。 */
+    @TableField("scope_default_confirmed_by")
+    private String scopeDefaultConfirmedBy;
+
+    /** 全量可见确认时间。 */
+    @TableField("scope_default_confirmed_at")
+    private LocalDateTime scopeDefaultConfirmedAt;
+
+    /** 全量可见确认原因。 */
+    @TableField("scope_default_confirmation_note")
+    private String scopeDefaultConfirmationNote;
+
+    /**
      * 列表访问权限码，空时继承 entity:{code}:list
      */
     @TableField("access_permission_code")

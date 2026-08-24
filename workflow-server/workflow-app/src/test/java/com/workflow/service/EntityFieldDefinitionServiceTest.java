@@ -116,7 +116,8 @@ class EntityFieldDefinitionServiceTest {
         verify(fieldMapper).updateById(existingField);
         verify(fieldMapper, never()).deleteByEntityId(anyString());
         verify(fieldMapper, never()).deleteById(anyString());
-        verify(relationMapper).deleteByParentField("1", "name");
+        // 字段与关系已解耦，单字段更新不能隐式删除独立关系配置。
+        verify(relationMapper, never()).deleteByParentField(anyString(), anyString());
         verify(entityMapper).updateById(entity);
     }
 

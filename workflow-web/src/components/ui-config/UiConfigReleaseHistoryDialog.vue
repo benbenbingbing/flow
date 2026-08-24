@@ -15,6 +15,20 @@
             <el-descriptions-item label="热修复状态">
               {{ row.rolloutStatus || '-' }}
             </el-descriptions-item>
+            <template v-if="hotfixForRelease(row.id)">
+              <el-descriptions-item label="治理状态">
+                {{ requestStatusLabel(hotfixForRelease(row.id).status) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="关联工单">
+                {{ hotfixForRelease(row.id).ticketRef || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="观察状态">
+                {{ hotfixForRelease(row.id).observationStatus || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="独立复核人">
+                {{ hotfixForRelease(row.id).reviewerName || hotfixForRelease(row.id).reviewerId || '-' }}
+              </el-descriptions-item>
+            </template>
           </el-descriptions>
         </template>
       </el-table-column>
@@ -43,13 +57,21 @@
             激活
           </el-button>
           <el-button
-            v-else
+            v-else-if="canRollbackHotfix"
             link
             type="danger"
             :disabled="row.rolloutStatus !== 'ACTIVE'"
             @click="rollback(row)"
           >
             撤回热修复
+          </el-button>
+          <el-button
+            v-if="row.releaseMode === 'HOTFIX' && hotfixForRelease(row.id)"
+            link
+            type="primary"
+            @click="showObservation(row)"
+          >
+            观察详情
           </el-button>
           <el-button
             v-if="configType === 'LIST'"
@@ -71,11 +93,42 @@
       class="history-pagination"
       @current-change="load"
     />
+    <el-dialog
+      v-model="observationVisible"
+      title="HOTFIX 观察详情"
+      width="720px"
+      append-to-body
+    >
+      <el-descriptions v-if="observationDetail" :column="2" border>
+        <el-descriptions-item label="治理状态">
+          {{ requestStatusLabel(observationDetail.status) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="观察状态">
+          {{ observationDetail.observationStatus || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="变更原因">
+          {{ observationDetail.reason }}
+        </el-descriptions-item>
+        <el-descriptions-item label="关联工单">
+          {{ observationDetail.ticketRef }}
+        </el-descriptions-item>
+      </el-descriptions>
+      <el-table
+        :data="observationDetail?.metrics || []"
+        size="small"
+        class="observation-table"
+      >
+        <el-table-column prop="metricCode" label="指标" width="150" />
+        <el-table-column prop="totalCount" label="总次数" width="100" />
+        <el-table-column prop="failureCount" label="失败" width="100" />
+        <el-table-column prop="lastError" label="最近错误" min-width="220" />
+      </el-table>
+    </el-dialog>
   </el-dialog>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   activateFormRelease,
@@ -84,6 +137,8 @@ import {
   rollbackFormHotfix
 } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
+import { uiHotfixGovernanceApi } from '@/api/uiHotfixGovernance'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
   configType: { type: String, required: true },
@@ -92,15 +147,27 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['changed'])
+const userStore = useUserStore()
 const visible = ref(false)
 const loading = ref(false)
 const releases = ref([])
 const pageNum = ref(1)
 const pageSize = 20
 const total = ref(0)
+const hotfixRequests = ref([])
+const observationVisible = ref(false)
+const observationDetail = ref(null)
+const canViewHotfix = computed(() =>
+  userStore.isSuperAdmin
+  || userStore.permissions.includes('entity:ui-config:hotfix')
+)
+const canRollbackHotfix = computed(() =>
+  userStore.isSuperAdmin
+  || userStore.permissions.includes('entity:ui-config:hotfix:rollback')
+)
 
 async function load() {
-  const page = props.configType === 'FORM'
+  const pagePromise = props.configType === 'FORM'
     ? await getFormReleaseSummaries(String(props.configId), {
         pageNum: pageNum.value,
         pageSize
@@ -109,8 +176,12 @@ async function load() {
         props.configId,
         { pageNum: pageNum.value, pageSize }
       )
+  const page = pagePromise
   releases.value = page?.records || []
   total.value = Number(page?.total || 0)
+  hotfixRequests.value = props.configType === 'FORM' && canViewHotfix.value
+    ? await uiHotfixGovernanceApi.list('FORM', String(props.configId)) || []
+    : []
 }
 
 async function open() {
@@ -219,6 +290,26 @@ async function rollback(release) {
   ElMessage.success(`${props.configLabel}热修复已撤回`)
 }
 
+function hotfixForRelease(releaseId) {
+  return hotfixRequests.value.find(item => item.releaseId === releaseId)
+}
+
+async function showObservation(release) {
+  const summary = hotfixForRelease(release.id)
+  if (!summary) return
+  observationDetail.value = await uiHotfixGovernanceApi.get(summary.id)
+  observationVisible.value = true
+}
+
+function requestStatusLabel(status) {
+  return {
+    OBSERVING: '观察中',
+    OBSERVED_OK: '观察通过',
+    OBSERVED_ALERT: '观察告警',
+    ROLLED_BACK: '已回滚'
+  }[status] || status || '-'
+}
+
 defineExpose({ open })
 </script>
 
@@ -229,6 +320,10 @@ defineExpose({ open })
 
 .history-pagination {
   justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.observation-table {
   margin-top: 16px;
 }
 </style>

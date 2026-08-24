@@ -27,8 +27,12 @@ import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
+import com.workflow.entity.list.application.EntityListRelationalConfigService;
+import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
+import com.workflow.entity.ui.api.response.UiConfigDraftDiscardResultDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
+import com.workflow.entity.ui.api.request.UiConfigDraftDiscardRequest;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
@@ -45,10 +49,12 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTempl
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTargetMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseAuditMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.application.UiHotfixGovernanceService;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -69,6 +75,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -78,6 +86,458 @@ import static org.mockito.Mockito.when;
  * 发布激活时的完整性校验、节点结构校验、跨表单嵌套校验、模板兼容性校验等场景。
  */
 class UiConfigReleaseServiceTest {
+
+    @Test
+    void formDiscardDraftRestoresActiveSnapshotAndAlignsHash() {
+        TestContext context = context();
+        EntityForm published = form();
+        published.setFormName("已发布表单");
+        published.setRevision(10);
+        published.setActiveReleaseId("release-active");
+        when(context.formService().getById("form-1"))
+                .thenReturn(published);
+        Map<String, Object> activeSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.FORM, "form-1");
+        UiConfigRelease active = configRelease(
+                context.codec(),
+                "release-active",
+                UiConfigReleaseService.FORM,
+                "form-1",
+                activeSnapshot);
+
+        EntityForm current = form();
+        current.setFormName("未发布表单");
+        current.setRevision(9);
+        current.setActiveReleaseId(active.getId());
+        when(context.formService().getById("form-1"))
+                .thenReturn(current);
+        Map<String, Object> currentSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.FORM, "form-1");
+        String currentHash = snapshotHash(
+                context.codec(), currentSnapshot);
+
+        when(context.formMapper().selectByIdForUpdate("form-1"))
+                .thenReturn(current);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+        when(context.formService().getById("form-1"))
+                .thenReturn(current, published);
+        when(context.formService().restoreFormForRelease(
+                any(EntityForm.class),
+                org.mockito.ArgumentMatchers.eq(9)))
+                .thenReturn(published);
+
+        UiConfigDraftDiscardResultDTO result = context.service()
+                .discardDraft(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        discardRequest(
+                                9,
+                                currentHash,
+                                active.getId()));
+
+        assertEquals(9, result.getPreviousRevision());
+        assertEquals(10, result.getRevision());
+        assertEquals(active.getContentHash(), result.getDraftHash());
+        assertEquals(active.getContentHash(), result.getPublishedHash());
+        verify(context.formService()).restoreFormForRelease(
+                any(EntityForm.class),
+                org.mockito.ArgumentMatchers.eq(9));
+        verify(context.releaseMapper(), never())
+                .insert(any(UiConfigRelease.class));
+    }
+
+    @Test
+    void formDiscardNormalizesLegacyActiveSnapshotLikeDiff() {
+        TestContext context = context();
+        EntityForm published = form();
+        published.setFormName("已发布表单");
+        published.setRevision(10);
+        published.setActiveReleaseId("release-active");
+        when(context.formService().getById("form-1"))
+                .thenReturn(published);
+        Map<String, Object> stableActiveSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.FORM, "form-1");
+        Map<String, Object> legacyActiveSnapshot = new LinkedHashMap<>(
+                stableActiveSnapshot);
+        legacyActiveSnapshot.put("revision", 7);
+        UiConfigRelease active = configRelease(
+                context.codec(),
+                "release-active",
+                UiConfigReleaseService.FORM,
+                "form-1",
+                legacyActiveSnapshot);
+
+        EntityForm current = form();
+        current.setFormName("未发布表单");
+        current.setRevision(9);
+        current.setActiveReleaseId(active.getId());
+        when(context.formService().getById("form-1"))
+                .thenReturn(current);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+        Map<String, Object> currentSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.FORM, "form-1");
+        String currentHash = snapshotHash(
+                context.codec(), currentSnapshot);
+
+        UiConfigDiffDTO diff = context.service().diff(
+                UiConfigReleaseService.FORM,
+                "form-1");
+        assertTrue(diff.isCanDiscardDraft());
+        assertFalse(diff.isDependencyChanged());
+
+        when(context.formMapper().selectByIdForUpdate("form-1"))
+                .thenReturn(current);
+        when(context.formService().getById("form-1"))
+                .thenReturn(current, published);
+        when(context.formService().restoreFormForRelease(
+                any(EntityForm.class),
+                org.mockito.ArgumentMatchers.eq(9)))
+                .thenReturn(published);
+
+        UiConfigDraftDiscardResultDTO result = context.service()
+                .discardDraft(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        discardRequest(
+                                9,
+                                currentHash,
+                                active.getId()));
+
+        assertEquals(
+                snapshotHash(context.codec(), stableActiveSnapshot),
+                result.getDraftHash());
+        assertFalse(result.isRemainingChanged());
+        assertFalse(result.isDependencyChanged());
+    }
+
+    @Test
+    void listDiscardDraftRestoresActiveSnapshotAndAlignsHash() {
+        TestContext context = context();
+        EntityListConfigDTO published = listConfig(3);
+        published.setListName("已发布列表");
+        published.setRevision(6);
+        published.setActiveReleaseId("list-release-active");
+        when(context.listConfigService().findById("list-1"))
+                .thenReturn(published);
+        Map<String, Object> activeSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.LIST, "list-1");
+        UiConfigRelease active = configRelease(
+                context.codec(),
+                "list-release-active",
+                UiConfigReleaseService.LIST,
+                "list-1",
+                activeSnapshot);
+
+        EntityListConfigDTO current = listConfig(3);
+        current.setListName("未发布列表");
+        current.setRevision(5);
+        current.setActiveReleaseId(active.getId());
+        when(context.listConfigService().findById("list-1"))
+                .thenReturn(current);
+        Map<String, Object> currentSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.LIST, "list-1");
+        String currentHash = snapshotHash(
+                context.codec(), currentSnapshot);
+
+        EntityListConfig owner = new EntityListConfig();
+        owner.setId("list-1");
+        owner.setEntityId("entity-1");
+        owner.setRevision(5);
+        owner.setActiveReleaseId(active.getId());
+        when(context.listConfigMapper().selectByIdForUpdate("list-1"))
+                .thenReturn(owner);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.LIST,
+                "list-1")).thenReturn(active);
+        when(context.listConfigService().findById("list-1"))
+                .thenReturn(current, published);
+        when(context.listConfigService().restoreConfigForRelease(
+                any(EntityListConfigDTO.class),
+                org.mockito.ArgumentMatchers.eq(5)))
+                .thenReturn(published);
+
+        UiConfigDraftDiscardResultDTO result = context.service()
+                .discardDraft(
+                        UiConfigReleaseService.LIST,
+                        "list-1",
+                        discardRequest(
+                                5,
+                                currentHash,
+                                active.getId()));
+
+        assertEquals(6, result.getRevision());
+        assertEquals(active.getContentHash(), result.getDraftHash());
+        verify(context.listConfigService()).restoreConfigForRelease(
+                any(EntityListConfigDTO.class),
+                org.mockito.ArgumentMatchers.eq(5));
+        verify(context.releaseMapper(), never())
+                .insert(any(UiConfigRelease.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void listDiscardNormalizesLegacyButtonDefaultsWithoutKeepingLocalChanges() {
+        TestContext context = context();
+        EntityListConfigDTO published = listConfig(3);
+        published.setListName("已发布列表");
+        published.setRevision(6);
+        published.setActiveReleaseId("list-release-active");
+        when(context.listConfigService().findById("list-1"))
+                .thenReturn(published);
+        Map<String, Object> legacySnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.LIST, "list-1");
+        Map<String, Object> publishedList =
+                (Map<String, Object>) legacySnapshot.get("list");
+        Map<String, Object> legacyCreate =
+                (Map<String, Object>) ((List<?>) publishedList.get(
+                        "toolbarConfig")).get(0);
+        for (String key : List.of(
+                "id", "orderKey", "link", "sort", "type", "enabled")) {
+            legacyCreate.remove(key);
+        }
+        UiConfigRelease active = configRelease(
+                context.codec(),
+                "list-release-active",
+                UiConfigReleaseService.LIST,
+                "list-1",
+                legacySnapshot);
+
+        EntityListConfigDTO current = listConfig(3);
+        current.setListName("未发布列表");
+        current.setRevision(5);
+        current.setActiveReleaseId(active.getId());
+        Map<String, Object> currentCreate =
+                current.getToolbarConfig().get(0);
+        currentCreate.put("link", true);
+        currentCreate.put("sort", 9);
+        currentCreate.put("orderKey", 9_000_000L);
+        java.util.concurrent.atomic.AtomicReference<EntityListConfigDTO>
+                restoredRef = new java.util.concurrent.atomic.AtomicReference<>();
+        when(context.listConfigService().findById("list-1"))
+                .thenAnswer(invocation -> restoredRef.get() == null
+                        ? current : restoredRef.get());
+        Map<String, Object> currentSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.LIST, "list-1");
+        String currentHash = snapshotHash(
+                context.codec(), currentSnapshot);
+
+        EntityListConfig owner = new EntityListConfig();
+        owner.setId("list-1");
+        owner.setEntityId("entity-1");
+        owner.setRevision(5);
+        owner.setActiveReleaseId(active.getId());
+        when(context.listConfigMapper().selectByIdForUpdate("list-1"))
+                .thenReturn(owner);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.LIST,
+                "list-1")).thenReturn(active);
+        when(context.listConfigService().restoreConfigForRelease(
+                any(EntityListConfigDTO.class),
+                org.mockito.ArgumentMatchers.eq(5)))
+                .thenAnswer(invocation -> {
+                    EntityListConfigDTO restored = invocation.getArgument(0);
+                    restored.setRevision(6);
+                    restored.setActiveReleaseId(active.getId());
+                    restoredRef.set(restored);
+                    return restored;
+                });
+
+        UiConfigDiffDTO diff = context.service().diff(
+                UiConfigReleaseService.LIST,
+                "list-1");
+        assertTrue(diff.isCanDiscardDraft());
+        assertFalse(diff.isDependencyChanged());
+
+        UiConfigDraftDiscardResultDTO result = context.service()
+                .discardDraft(
+                        UiConfigReleaseService.LIST,
+                        "list-1",
+                        discardRequest(
+                                5,
+                                currentHash,
+                                active.getId()));
+
+        ArgumentCaptor<EntityListConfigDTO> restoredCaptor =
+                ArgumentCaptor.forClass(EntityListConfigDTO.class);
+        verify(context.listConfigService()).restoreConfigForRelease(
+                restoredCaptor.capture(),
+                org.mockito.ArgumentMatchers.eq(5));
+        Map<String, Object> restoredCreate = restoredCaptor.getValue()
+                .getToolbarConfig().get(0);
+        assertEquals("toolbar-create", restoredCreate.get("id"));
+        assertEquals(1_000_000L, restoredCreate.get("orderKey"));
+        assertEquals(0, restoredCreate.get("sort"));
+        assertEquals("built-in", restoredCreate.get("type"));
+        assertEquals(false, restoredCreate.get("link"));
+        assertEquals(true, restoredCreate.get("enabled"));
+        assertFalse(result.isRemainingChanged());
+        assertFalse(result.isDependencyChanged());
+    }
+
+    @Test
+    void diffDoesNotOfferDiscardForPureInheritedBindingDrift() {
+        TestContext context = context();
+        EntityForm form = form();
+        form.setActiveReleaseId("release-active");
+        when(context.formService().getById("form-1"))
+                .thenReturn(form);
+        UiEventBinding inherited = inheritedBinding("[]");
+        when(context.eventBindingMapper().findForSnapshot(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                "entity-1"))
+                .thenReturn(List.of(inherited));
+        Map<String, Object> activeSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.FORM, "form-1");
+        UiConfigRelease active = configRelease(
+                context.codec(),
+                "release-active",
+                UiConfigReleaseService.FORM,
+                "form-1",
+                activeSnapshot);
+        inherited.setStepsDocument(
+                "[{\"stepCode\":\"EXTERNAL_CHANGE\",\"strategy\":\"AFTER\"}]");
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+
+        UiConfigDiffDTO diff = context.service().diff(
+                UiConfigReleaseService.FORM,
+                "form-1");
+
+        assertTrue(diff.isChanged());
+        assertFalse(diff.isDiscardableChanged());
+        assertFalse(diff.isCanDiscardDraft());
+        assertTrue(diff.getDiscardBlockedReason().contains("继承"));
+    }
+
+    @Test
+    void formDiscardKeepsInheritedDriftAsRemainingDifference() {
+        TestContext context = context();
+        EntityForm published = form();
+        published.setFormName("已发布表单");
+        published.setRevision(10);
+        published.setActiveReleaseId("release-active");
+        when(context.formService().getById("form-1"))
+                .thenReturn(published);
+        UiEventBinding inherited = inheritedBinding("[]");
+        when(context.eventBindingMapper().findForSnapshot(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                "entity-1"))
+                .thenReturn(List.of(inherited));
+        Map<String, Object> activeSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.FORM, "form-1");
+        UiConfigRelease active = configRelease(
+                context.codec(),
+                "release-active",
+                UiConfigReleaseService.FORM,
+                "form-1",
+                activeSnapshot);
+
+        EntityForm current = form();
+        current.setFormName("本地未发布表单");
+        current.setRevision(9);
+        current.setActiveReleaseId(active.getId());
+        inherited.setStepsDocument(
+                "[{\"stepCode\":\"ENTITY_DEFAULT_CHANGED\",\"strategy\":\"AFTER\"}]");
+        when(context.formService().getById("form-1"))
+                .thenReturn(current);
+        Map<String, Object> currentSnapshot = context.service()
+                .draftSnapshot(UiConfigReleaseService.FORM, "form-1");
+        String currentHash = snapshotHash(
+                context.codec(), currentSnapshot);
+
+        when(context.formMapper().selectByIdForUpdate("form-1"))
+                .thenReturn(current);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+        when(context.formService().getById("form-1"))
+                .thenReturn(current, published);
+        when(context.formService().restoreFormForRelease(
+                any(EntityForm.class),
+                org.mockito.ArgumentMatchers.eq(9)))
+                .thenReturn(published);
+
+        UiConfigDraftDiscardResultDTO result = context.service()
+                .discardDraft(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        discardRequest(
+                                9,
+                                currentHash,
+                                active.getId()));
+
+        assertTrue(result.isRemainingChanged());
+        assertTrue(result.isDependencyChanged());
+        assertFalse(result.getDraftHash().equals(
+                result.getPublishedHash()));
+    }
+
+    @Test
+    void discardDraftRejectsConfigurationWithoutPublishedBaseline() {
+        TestContext context = context();
+        EntityForm owner = form();
+        owner.setActiveReleaseId(null);
+        when(context.formMapper().selectByIdForUpdate("form-1"))
+                .thenReturn(owner);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(null);
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> context.service().discardDraft(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        discardRequest(9, "draft-hash", "release-missing")));
+
+        assertEquals(
+                "UI_CONFIG_ACTIVE_RELEASE_REQUIRED",
+                exception.getErrorCode());
+    }
+
+    @Test
+    void eventBindingReleaseRestoreReusesPublishedStableId() {
+        ObjectMapper objectMapper =
+                new ObjectMapper().findAndRegisterModules();
+        JsonDocumentCodec codec = new JsonDocumentCodec(objectMapper);
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        UiEventBindingSnapshotService service =
+                new UiEventBindingSnapshotService(
+                        mapper,
+                        mock(UiDataSourceDefinitionMapper.class),
+                        codec);
+        when(mapper.findByOwnerForUpdate("FORM", "form-1"))
+                .thenReturn(List.of());
+
+        service.restoreLocalBindingsForRelease(
+                "FORM",
+                "form-1",
+                List.of(Map.of(
+                        "id", "published-binding-id",
+                        "ownerType", "FORM",
+                        "ownerId", "form-1",
+                        "targetType", "OWNER",
+                        "targetKey", "",
+                        "eventCode", "FORM_OPEN",
+                        "inheritanceMode", "INHERIT",
+                        "steps", List.of())));
+
+        ArgumentCaptor<UiEventBinding> captor =
+                ArgumentCaptor.forClass(UiEventBinding.class);
+        verify(mapper).deleteByOwner("FORM", "form-1");
+        verify(mapper).insert(captor.capture());
+        assertEquals(
+                "published-binding-id",
+                captor.getValue().getId());
+        assertEquals(1, captor.getValue().getRevision());
+    }
 
     @Test
     @SuppressWarnings("unchecked")
@@ -1773,6 +2233,25 @@ class UiConfigReleaseServiceTest {
                 codec,
                 objectMapper,
                 mock(MigrationAssetHandler.class));
+        UiHotfixGovernanceService governanceService =
+                mock(UiHotfixGovernanceService.class);
+        when(governanceService.beginPublish(any(), any()))
+                .thenReturn(new UiHotfixGovernanceService.PublishAuthorization(
+                        "hotfix-request-1", null, false));
+        ReflectionTestUtils.setField(
+                service,
+                "hotfixGovernanceService",
+                governanceService);
+        ReflectionTestUtils.setField(
+                service,
+                "listActionConfigService",
+                new EntityListActionConfigService(
+                        objectMapper,
+                        entityDefinitionMapper,
+                        listConfigMapper,
+                        mock(EntityListRelationalConfigService.class),
+                        List.of(),
+                        List.of()));
         return new TestContext(
                 service,
                 releaseMapper,
@@ -1861,6 +2340,64 @@ class UiConfigReleaseServiceTest {
         return release;
     }
 
+    private UiConfigRelease configRelease(
+            JsonDocumentCodec codec,
+            String releaseId,
+            String configType,
+            String configId,
+            Map<String, Object> snapshot) {
+        String document = codec.canonicalize(
+                codec.write(snapshot, "测试发布快照"),
+                "测试发布快照");
+        UiConfigRelease release = new UiConfigRelease();
+        release.setId(releaseId);
+        release.setConfigType(configType);
+        release.setConfigId(configId);
+        release.setVersion(3);
+        release.setStatus("ACTIVE");
+        release.setReleaseMode(UiConfigReleaseService.STANDARD);
+        release.setSnapshotDocument(document);
+        release.setContentHash(sha256(document));
+        return release;
+    }
+
+    private String snapshotHash(
+            JsonDocumentCodec codec,
+            Map<String, Object> snapshot) {
+        return sha256(codec.canonicalize(
+                codec.write(snapshot, "测试草稿快照"),
+                "测试草稿快照"));
+    }
+
+    private UiConfigDraftDiscardRequest discardRequest(
+            int revision,
+            String draftHash,
+            String activeReleaseId) {
+        UiConfigDraftDiscardRequest request =
+                new UiConfigDraftDiscardRequest();
+        request.setExpectedRevision(revision);
+        request.setExpectedDraftHash(draftHash);
+        request.setExpectedActiveReleaseId(activeReleaseId);
+        request.setReason("测试撤销未发布修改");
+        return request;
+    }
+
+    private UiEventBinding inheritedBinding(String stepsDocument) {
+        UiEventBinding binding = new UiEventBinding();
+        binding.setId("entity-binding-1");
+        binding.setOwnerType("ENTITY");
+        binding.setOwnerId("entity-1");
+        binding.setTargetType("OWNER");
+        binding.setTargetKey("");
+        binding.setEventCode("FORM_OPEN");
+        binding.setInheritanceMode("INHERIT");
+        binding.setStepsDocument(stepsDocument);
+        binding.setRevision(1);
+        binding.setEnabled(true);
+        binding.setDeleted(0);
+        return binding;
+    }
+
     private UiConfigHotfixTarget target(
             JsonDocumentCodec codec,
             String targetId,
@@ -1910,9 +2447,42 @@ class UiConfigReleaseServiceTest {
         list.setListName("默认列表");
         list.setViewConfig(viewConfig);
         list.setFields(List.of());
-        list.setToolbarConfig(List.of());
-        list.setRowActionConfig(List.of());
+        list.setToolbarConfig(List.of(listButton(
+                "toolbar-create",
+                "create",
+                "新增数据",
+                "entity:demo_entity:create",
+                1,
+                1_000_000L)));
+        list.setRowActionConfig(List.of(listButton(
+                "row-view",
+                "view",
+                "查看",
+                "entity:demo_entity:view",
+                1,
+                1_000_000L)));
         return list;
+    }
+
+    private Map<String, Object> listButton(
+            String id,
+            String key,
+            String label,
+            String permission,
+            int sort,
+            long orderKey) {
+        Map<String, Object> button = new LinkedHashMap<>();
+        button.put("id", id);
+        button.put("key", key);
+        button.put("type", "built-in");
+        button.put("label", label);
+        button.put("buttonType", "primary");
+        button.put("link", false);
+        button.put("perm", permission);
+        button.put("sort", sort);
+        button.put("enabled", true);
+        button.put("orderKey", orderKey);
+        return button;
     }
 
     /** 构造一个表单节点 Map，含 id、parentId、nodeType 等基础字段 */

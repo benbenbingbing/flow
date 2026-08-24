@@ -41,6 +41,7 @@ export function resolveRuntimeFormTabLayout(form) {
   const rootNodes = childrenMap.get('') || []
   const tabs = []
   const liftedRootNodeIds = []
+  let defaultActiveTabName = ''
 
   rootNodes.forEach(tabSet => {
     if (tabSet.nodeType !== 'TAB_SET') return
@@ -50,14 +51,22 @@ export function resolveRuntimeFormTabLayout(form) {
     if (tabNodes.length === 0) return
 
     liftedRootNodeIds.push(tabSet.id)
+    const configuredDefault = String(tabSet.props.defaultActiveTabKey || '')
     tabNodes.forEach(tabNode => {
-      tabs.push({
+      const tab = {
         id: tabNode.id,
         name: `form_tab_${tabNode.id}`,
         label: tabNode.props.label || tabNode.props.title || tabNode.nodeKey || '未命名页签',
         rootParentId: tabNode.id,
-        tabSetId: tabSet.id
-      })
+        tabSetId: tabSet.id,
+        stableKey: tabNode.nodeKey || tabNode.id,
+        defaultActive: configuredDefault !== ''
+          && [String(tabNode.nodeKey || ''), String(tabNode.id)].includes(configuredDefault)
+      }
+      tabs.push(tab)
+      if (!defaultActiveTabName && tab.defaultActive) {
+        defaultActiveTabName = tab.name
+      }
     })
   })
 
@@ -65,6 +74,7 @@ export function resolveRuntimeFormTabLayout(form) {
   return {
     tabs,
     liftedRootNodeIds,
-    hasBaseContent: rootNodes.some(node => !liftedIds.has(String(node.id)))
+    hasBaseContent: rootNodes.some(node => !liftedIds.has(String(node.id))),
+    defaultActiveTabName: defaultActiveTabName || tabs[0]?.name || ''
   }
 }

@@ -30,8 +30,6 @@ public class EntityFormMetadataPatchRequest {
     private Integer customComponentVersion;
     /** 自定义组件快照版本 */
     private Integer customComponentSnapshotVersion;
-    /** 初始化配置 */
-    private Map<String, Object> initConfig;
     /** 数据源绑定配置 */
     private Map<String, Object> dataSourceBindings;
     /** 视图配置 */

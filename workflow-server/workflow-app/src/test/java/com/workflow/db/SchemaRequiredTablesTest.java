@@ -42,7 +42,7 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(46, files.size());
+        assertEquals(60, files.size());
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -274,6 +274,25 @@ class SchemaRequiredTablesTest {
                 403469585,
                 flywayChecksum(migration),
                 "V034 已发布，后续变更必须新增更高版本迁移");
+    }
+
+    @Test
+    void appliedListExperienceMigrationRemainsImmutableAndRemovalIsForwardOnly()
+            throws Exception {
+        Path appliedMigration = MIGRATION_DIRECTORY.resolve(
+                "V058__list_experience_and_config_references.sql");
+        assertEquals(
+                854403987,
+                flywayChecksum(appliedMigration),
+                "V058 已执行，后续变更必须新增更高版本迁移");
+
+        String removal = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V060__remove_list_saved_view_feature.sql"));
+        assertTrue(removal.contains("DROP TABLE IF EXISTS entity_list_saved_view"));
+        assertTrue(removal.contains("'list-view:aggregate'"));
+        assertFalse(removal.contains("DROP TABLE IF EXISTS entity_index_advice"));
+        assertFalse(removal.contains("'index-advisor:execute'"));
+        assertFalse(removal.contains("'config-reference:list'"));
     }
 
     @Test

@@ -12,28 +12,47 @@
       <el-form-item label="关键词">
         <el-input
           v-model="queryParams.keyword"
+          class="keyword-input"
           placeholder="账号、姓名、邮箱或手机号"
           clearable
           @keyup.enter="handleSearch"
         />
       </el-form-item>
       <el-form-item label="组织">
-        <el-select v-model="queryParams.orgId" clearable filterable placeholder="全部组织">
+        <el-select
+          v-model="queryParams.orgId"
+          class="filter-select"
+          clearable
+          filterable
+          placeholder="全部组织"
+        >
           <el-option v-for="item in orgOptions" :key="item.id" :label="item.orgName" :value="item.id" />
         </el-select>
       </el-form-item>
       <el-form-item label="部门">
-        <el-select v-model="queryParams.deptId" clearable filterable placeholder="全部部门">
+        <el-select
+          v-model="queryParams.deptId"
+          class="filter-select"
+          clearable
+          filterable
+          placeholder="全部部门"
+        >
           <el-option v-for="item in deptOptions" :key="item.id" :label="item.orgName" :value="item.id" />
         </el-select>
       </el-form-item>
       <el-form-item label="角色">
-        <el-select v-model="queryParams.roleId" clearable filterable placeholder="全部角色">
+        <el-select
+          v-model="queryParams.roleId"
+          class="filter-select"
+          clearable
+          filterable
+          placeholder="全部角色"
+        >
           <el-option v-for="role in roleOptions" :key="role.id" :label="role.roleName" :value="role.id" />
         </el-select>
       </el-form-item>
       <el-form-item label="状态">
-        <el-select v-model="queryParams.status" clearable placeholder="全部状态">
+        <el-select v-model="queryParams.status" class="status-select" clearable placeholder="全部状态">
           <el-option label="启用" value="0" />
           <el-option label="禁用" value="1" />
         </el-select>
@@ -61,8 +80,8 @@
       retryable
       @retry="fetchUserList"
     />
-    
-    <!-- 用户表格 -->
+
+    <!-- 用户表格沿用系统管理模块的标准表格，仅对长内容做收纳处理。 -->
     <el-table
       v-else
       v-loading="loading"
@@ -74,32 +93,39 @@
     >
       <el-table-column type="selection" width="44" :selectable="row => row.username !== 'admin'" />
       <el-table-column type="index" label="#" width="60" align="center" />
-      
-      <el-table-column prop="username" label="用户名" min-width="120" />
-      
-      <el-table-column prop="nickname" label="昵称" min-width="120" />
-      
-      <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
-      
-      <el-table-column prop="phone" label="手机号" min-width="120" />
-      
-      <el-table-column prop="orgName" label="组织" min-width="120" />
-      
-      <el-table-column prop="deptName" label="部门" min-width="120" />
-      
-      <el-table-column prop="roles" label="角色" min-width="180">
+
+      <el-table-column prop="username" label="用户名" min-width="150" show-overflow-tooltip />
+
+      <el-table-column prop="nickname" label="昵称" min-width="130" show-overflow-tooltip />
+
+      <el-table-column prop="email" label="邮箱" min-width="190" show-overflow-tooltip />
+
+      <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
+
+      <el-table-column prop="orgName" label="组织" min-width="130" show-overflow-tooltip />
+
+      <el-table-column prop="deptName" label="部门" min-width="130" show-overflow-tooltip />
+
+      <el-table-column prop="roles" label="角色" min-width="200">
         <template #default="{ row }">
-          <el-tag 
-            v-for="role in row.roles" 
-            :key="role.id"
-            size="small"
-            style="margin-right: 4px; margin-bottom: 2px"
-          >
-            {{ role.roleName }}
-          </el-tag>
+          <div v-if="row.roles?.length" class="role-list">
+            <el-tooltip :content="row.roles[0].roleName" placement="top">
+              <el-tag size="small" class="role-tag">
+                <span class="role-tag__text">{{ row.roles[0].roleName }}</span>
+              </el-tag>
+            </el-tooltip>
+            <el-tooltip
+              v-if="row.roles.length > 1"
+              :content="row.roles.slice(1).map(role => role.roleName).join('、')"
+              placement="top"
+            >
+              <el-tag size="small" type="info">+{{ row.roles.length - 1 }}</el-tag>
+            </el-tooltip>
+          </div>
+          <span v-else>-</span>
         </template>
       </el-table-column>
-      
+
       <el-table-column prop="status" label="状态" width="90" align="center">
         <template #default="{ row }">
           <el-switch
@@ -114,10 +140,10 @@
           />
         </template>
       </el-table-column>
-      
+
       <el-table-column prop="createTime" label="创建时间" width="170" :formatter="formatDateColumn" />
-      
-      <el-table-column label="操作" width="240" fixed="right">
+
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="handleEdit(row)">
             编辑
@@ -125,10 +151,10 @@
           <el-button type="primary" link size="small" @click="handleResetPassword(row)">
             重置密码
           </el-button>
-          <el-button 
-            type="danger" 
-            link 
-            size="small" 
+          <el-button
+            type="danger"
+            link
+            size="small"
             :disabled="row.username === 'admin'"
             @click="handleDelete(row)"
           >
@@ -659,6 +685,18 @@ onMounted(() => {
   margin-bottom: 8px;
 }
 
+.keyword-input {
+  width: 230px;
+}
+
+.filter-select {
+  width: 140px;
+}
+
+.status-select {
+  width: 120px;
+}
+
 .batch-toolbar {
   display: flex;
   align-items: center;
@@ -666,6 +704,25 @@ onMounted(() => {
   min-height: 40px;
   margin-bottom: 12px;
   color: #606266;
+}
+
+.role-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.role-tag {
+  min-width: 0;
+  max-width: 150px;
+}
+
+.role-tag__text {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .pagination {
@@ -687,8 +744,9 @@ onMounted(() => {
   }
 
   .user-filters :deep(.el-form-item),
-  .user-filters :deep(.el-input),
-  .user-filters :deep(.el-select) {
+  .keyword-input,
+  .filter-select,
+  .status-select {
     width: 100%;
   }
 }

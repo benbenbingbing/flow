@@ -29,10 +29,10 @@ export const entityListScopeApi = {
     return request.post(`/entity-list-scopes/bindings/${id}/delete`)
   },
 
-  replaceListBindings(entityCode, listKey, bindings = []) {
+  replaceListBindings(entityCode, listKey, bindings = [], defaultPolicy = {}) {
     return request.post(
       `/entity-list-scopes/${entityCode}/lists/${listKey}/bindings/update`,
-      { bindings }
+      { bindings, ...defaultPolicy }
     )
   },
 

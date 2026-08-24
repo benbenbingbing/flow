@@ -6,7 +6,7 @@
 
 - `com.workflow.entity.api`：实体模块对外应用接口和请求适配。
 - `com.workflow.entity.definition`：实体、字段、关系和编码规则。
-- `com.workflow.entity.form`：表单、初始化配置、联动和事件配置。
+- `com.workflow.entity.form`：表单、生命周期数据处理、联动和事件配置。
 - `com.workflow.entity.list`：列表、动态字段和按钮配置。
 - `com.workflow.entity.policy`：数据权限、按钮权限和适用条件。
 - `com.workflow.entity.publish`：发布快照、版本和兼容校验。

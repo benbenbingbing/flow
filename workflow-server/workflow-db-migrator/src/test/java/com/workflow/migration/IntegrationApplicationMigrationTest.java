@@ -76,6 +76,9 @@ class IntegrationApplicationMigrationTest {
                 assertFalse(columnExists(
                                 "integration_application_credential",
                                 "client_secret"));
+                assertFalse(columnExists(
+                                "entity_form",
+                                "init_config"));
                 assertTrue(columnExists(
                                 "integration_application_credential",
                                 "secret_hash"));

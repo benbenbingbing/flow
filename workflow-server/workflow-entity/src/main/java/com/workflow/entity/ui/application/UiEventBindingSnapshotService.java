@@ -69,6 +69,73 @@ public class UiEventBindingSnapshotService {
     }
 
     /**
+     * 锁定指定所有者的全部事件绑定草稿，包含已逻辑删除记录。
+     *
+     * <p>FORM/LIST 的 revision 不会随事件绑定独立保存而变化，撤销草稿必须先
+     * 获取此范围锁，再在同一事务内重算 canonical hash。</p>
+     */
+    public void lockOwnerBindings(String ownerType, String ownerId) {
+        if (!StringUtils.hasText(ownerId)) {
+            return;
+        }
+        bindingMapper.findByOwnerForUpdate(
+                normalize(ownerType), ownerId);
+    }
+
+    /**
+     * 将发布快照中的本地绑定精确物化为当前草稿。
+     *
+     * <p>先物理清理 owner 范围内的草稿行，再使用发布快照中的稳定 ID 重建，
+     * 避免逻辑删除后重新插入产生主键冲突或 ID 漂移。发布快照存储在独立表中，
+     * 本操作不会修改任何历史发布记录。</p>
+     */
+    public void restoreLocalBindingsForRelease(
+            String configType,
+            String configId,
+            List<Map<String, Object>> snapshotBindings) {
+        String normalizedType = normalize(configType);
+        lockOwnerBindings(normalizedType, configId);
+        bindingMapper.deleteByOwner(normalizedType, configId);
+        for (Map<String, Object> value : snapshotBindings == null
+                ? List.<Map<String, Object>>of()
+                : snapshotBindings) {
+            if (!normalizedType.equals(normalize(text(
+                    value.get("ownerType"))))
+                    || !configId.equals(text(value.get("ownerId")))) {
+                continue;
+            }
+            UiEventBinding created = new UiEventBinding();
+            String publishedId = text(value.get("id"));
+            if (StringUtils.hasText(publishedId)) {
+                created.setId(publishedId.trim());
+            }
+            created.setOwnerType(normalizedType);
+            created.setOwnerId(configId);
+            created.setTargetType(normalize(text(
+                    value.get("targetType"))));
+            created.setTargetKey(normalizedTargetKey(text(
+                    value.get("targetKey"))));
+            created.setEventCode(normalize(text(
+                    value.get("eventCode"))));
+            String inheritanceMode = normalize(text(
+                    value.get("inheritanceMode")));
+            created.setInheritanceMode(
+                    StringUtils.hasText(inheritanceMode)
+                            ? inheritanceMode : "INHERIT");
+            created.setStepsDocument(codec.write(
+                    value.get("steps") instanceof List<?> steps
+                            ? steps : List.of(),
+                    "恢复UI事件绑定步骤"));
+            created.setRevision(1);
+            created.setEnabled(true);
+            created.setDeleted(0);
+            created.setCreatedAt(LocalDateTime.now());
+            created.setUpdatedAt(LocalDateTime.now());
+            bindingMapper.insert(created);
+        }
+    }
+
+    /**
      * 用不可变发布快照恢复配置自身的事件绑定草稿；实体级继承绑定不受影响。
      */
     public void restoreLocalBindings(

@@ -1,6 +1,6 @@
 <template>
   <span class="config-help-label">
-    <span>{{ label }}</span>
+    <span v-if="showLabel">{{ label }}</span>
     <el-tooltip
       v-if="resolvedContent"
       :content="resolvedContent"
@@ -30,6 +30,7 @@ import { getConfigFieldHelp } from '@/shared/config-field-help'
 
 const props = defineProps({
   label: { type: String, required: true },
+  showLabel: { type: Boolean, default: true },
   content: { type: String, default: '' },
   helpKey: { type: String, default: '' }
 })

@@ -102,11 +102,12 @@ export const entityListScopeRuleApi = {
     })
   },
 
-  replaceListBindings(entityCode, listKey, policyIds = []) {
+  replaceListBindings(entityCode, listKey, policyIds = [], defaultPolicy = {}) {
     return entityListScopeApi.replaceListBindings(
       entityCode,
       listKey,
-      policyIds.filter(Boolean).map(policyId => ({ policyId, enabled: 1 }))
+      policyIds.filter(Boolean).map(policyId => ({ policyId, enabled: 1 })),
+      defaultPolicy
     )
   },
 

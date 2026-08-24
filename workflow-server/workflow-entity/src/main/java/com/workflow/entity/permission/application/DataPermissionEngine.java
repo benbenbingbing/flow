@@ -3,6 +3,7 @@ package com.workflow.entity.permission.application;
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
+import com.workflow.entity.permission.api.response.EntityListScopeDefaultDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
@@ -94,7 +95,7 @@ public class DataPermissionEngine {
 
     /**
      * 核心权限计算逻辑：只认当前列表上的绑定；
-     * listKey 为空的旧实体默认绑定不参与；无 ALLOW 视为全部可见，再扣除本列表 DENY。
+     * listKey 为空的旧实体默认绑定不参与；无 ALLOW 时执行列表的安全默认策略，再扣除本列表 DENY。
      * 实体级 team 开关不再叠加，相关人只走 TEAM 规则绑定。
      */
     private CalculationResult calculate(
@@ -205,13 +206,18 @@ public class DataPermissionEngine {
         }
 
         boolean unboundAllow = !hasAllowBinding;
-        String allow = unboundAllow ? "1=1" : or(listAllows);
+        UnboundDecision unboundDecision = unboundAllow
+                ? resolveUnboundDecision(entityCode, listKey, snapshot, user)
+                : null;
+        String allow = unboundAllow ? unboundDecision.sql() : or(listAllows);
         String delegatedAllow = buildDelegatedAllow(
                 entityCode, snapshot, policyMap, user);
         allow = orNonNull(allow, delegatedAllow);
         if (!StringUtils.hasText(allow)) {
             return denied(
-                    "没有匹配到任何允许数据范围",
+                    unboundAllow
+                            ? unboundDecision.explanation()
+                            : "没有匹配到任何允许数据范围",
                     snapshot.getVersion(),
                     matched,
                     mode);
@@ -237,8 +243,67 @@ public class DataPermissionEngine {
                 .toList());
         result.setReleaseVersion(snapshot.getVersion());
         result.setDataScopeMode(mode);
-        result.setExplanation(explanation(unboundAllow, denies));
+        result.setExplanation(explanation(
+                unboundAllow,
+                denies,
+                unboundDecision == null ? null : unboundDecision.explanation()));
         return new CalculationResult(result, matched);
+    }
+
+    /**
+     * 解析未绑定 ALLOW 规则时的安全策略。旧快照仅在观察期兼容放行并写审计；
+     * 新快照缺少列表配置一律拒绝，防止未知入口退化为全量访问。
+     */
+    private UnboundDecision resolveUnboundDecision(
+            String entityCode,
+            String listKey,
+            EntityListScopeSnapshotDTO snapshot,
+            SysUser user) {
+        EntityListScopeDefaultDTO configured = StringUtils.hasText(listKey)
+                && snapshot.getListDefaults() != null
+                ? snapshot.getListDefaults().get(listKey)
+                : null;
+        boolean legacySnapshot = snapshot.getSecureDefaultsVersion() == null;
+        String enforcement = configured == null
+                ? (legacySnapshot ? "OBSERVE" : "ENFORCE")
+                : normalized(configured.getEnforcementMode(), "ENFORCE");
+        String policy = configured == null
+                ? (legacySnapshot ? "EXPLICIT_ALL" : "DENY_ALL")
+                : normalized(configured.getUnboundPolicy(), "DENY_ALL");
+
+        if ("OBSERVE".equals(enforcement)) {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("unboundPolicy", policy);
+            detail.put("releaseVersion", snapshot.getVersion());
+            detail.put("legacySnapshot", legacySnapshot);
+            auditService.record(
+                    entityCode,
+                    listKey,
+                    user.getId(),
+                    "UNBOUND_SCOPE_OBSERVE",
+                    "WARNING",
+                    detail);
+            return new UnboundDecision(
+                    "1=1",
+                    "存量观察期：未绑定允许规则，暂时保持全部可见并已记录审计");
+        }
+        if ("PERSONAL".equals(policy)) {
+            return new UnboundDecision(
+                    or(List.of(
+                            userRelation("create_by", user),
+                            userRelation("submitter_id", user))),
+                    "未绑定允许规则，仅可见本人创建或提交的数据");
+        }
+        if ("EXPLICIT_ALL".equals(policy)
+                && configured != null
+                && Boolean.TRUE.equals(configured.getConfirmed())) {
+            return new UnboundDecision(
+                    "1=1",
+                    "未绑定允许规则，使用管理员已确认的全量可见策略");
+        }
+        return new UnboundDecision(
+                null,
+                "未绑定允许规则，安全默认策略拒绝全部数据");
     }
 
     private String buildDelegatedAllow(
@@ -368,9 +433,13 @@ public class DataPermissionEngine {
         return new CalculationResult(result, matched);
     }
 
-    private String explanation(boolean unboundAllow, List<String> denies) {
+    private String explanation(
+            boolean unboundAllow,
+            List<String> denies,
+            String unboundExplanation) {
         if (unboundAllow) {
-            return "未绑定规则，可见全部"
+            return (StringUtils.hasText(unboundExplanation)
+                    ? unboundExplanation : "未绑定允许规则，默认拒绝")
                     + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
         }
         return "使用本列表绑定的允许规则"
@@ -441,5 +510,9 @@ public class DataPermissionEngine {
     private record CalculationResult(
             DataPermissionResult result,
             List<PermissionPreviewDTO.MatchedRuleDTO> matchedRules) {
+    }
+
+    /** 未绑定规则决策结果；sql 为空表示拒绝全部。 */
+    private record UnboundDecision(String sql, String explanation) {
     }
 }

@@ -20,6 +20,12 @@ public interface EntityFormFieldMapper extends BaseMapper<EntityFormField> {
      */
     @Select("SELECT * FROM entity_form_field WHERE form_id = #{formId} ORDER BY sort_order")
     List<EntityFormField> selectByFormId(@Param("formId") String formId);
+
+    /** 锁定表单下全部字段草稿，供配置级撤销建立串行化边界。 */
+    @Select("SELECT * FROM entity_form_field WHERE form_id = #{formId} "
+            + "ORDER BY id FOR UPDATE")
+    List<EntityFormField> selectByFormIdForUpdate(
+            @Param("formId") String formId);
     
     /**
      * 删除表单的所有字段

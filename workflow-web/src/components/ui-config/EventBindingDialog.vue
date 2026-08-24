@@ -27,6 +27,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import EventBindingEditor from './EventBindingEditor.vue'
+import { eventsForScope } from './uiEventScope'
 
 const props = defineProps({
   ownerType: { type: String, required: true },
@@ -43,22 +44,9 @@ const targetKey = ref('')
 const targetName = ref('')
 
 const allowedEvents = computed(() =>
-  targetType.value === 'FIELD'
-    ? ['FIELD_CHANGE', 'ENTITY_SELECTED', 'FIELD_BUTTON_CLICK']
-    : targetType.value === 'BUTTON'
-      ? ['FORM_BUTTON_CLICK']
-    : props.ownerEvents.length
-      ? props.ownerEvents
-      : String(props.ownerType).toUpperCase() === 'LIST'
-        ? [
-            'LIST_LOAD', 'LIST_EXPORT', 'DETAIL_LOAD',
-            'DATA_CREATE', 'DATA_UPDATE', 'DATA_DELETE', 'DATA_BATCH_DELETE'
-          ]
-        : [
-            'DETAIL_LOAD', 'FORM_OPEN', 'FORM_SAVE', 'FORM_RESET',
-            'DATA_CREATE', 'DATA_UPDATE', 'SUBFORM_LOAD', 'SUBFORM_SAVE',
-            'FORM_BUTTON_CLICK'
-          ])
+  props.ownerEvents.length
+    ? props.ownerEvents
+    : eventsForScope(props.ownerType, targetType.value))
 
 function openOwner(name = '') {
   targetType.value = 'OWNER'

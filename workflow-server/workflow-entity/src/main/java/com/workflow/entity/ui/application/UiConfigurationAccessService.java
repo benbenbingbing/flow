@@ -53,6 +53,32 @@ public class UiConfigurationAccessService {
         }
     }
 
+    /** 要求当前用户拥有独立 HOTFIX 复核权限。 */
+    public void requireHotfixReviewAccess() {
+        if (currentUserRoleService.isSuperAdmin()) {
+            return;
+        }
+        if (!PermissionUtil.hasPermission(
+                "entity:ui-config:hotfix:review")) {
+            throw new BusinessForbiddenException(
+                    "UI_HOTFIX_REVIEW_PERMISSION_REQUIRED",
+                    "没有 UI 配置热修复独立复核权限");
+        }
+    }
+
+    /** 要求当前用户拥有 HOTFIX 专用回滚权限。 */
+    public void requireHotfixRollbackAccess() {
+        if (currentUserRoleService.isSuperAdmin()) {
+            return;
+        }
+        if (!PermissionUtil.hasPermission(
+                "entity:ui-config:hotfix:rollback")) {
+            throw new BusinessForbiddenException(
+                    "UI_HOTFIX_ROLLBACK_PERMISSION_REQUIRED",
+                    "没有 UI 配置热修复回滚权限");
+        }
+    }
+
     /**
      * 校验当前用户可维护指定表单配置。
      *

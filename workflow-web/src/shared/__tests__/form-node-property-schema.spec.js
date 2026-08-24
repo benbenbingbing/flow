@@ -39,7 +39,7 @@ const expectedSchemas = {
     capabilities: {}
   },
   TAB_SET: {
-    editable: ['parentId', 'tabPosition'],
+    editable: ['parentId', 'tabPosition', 'defaultActiveTabKey'],
     capabilities: {}
   },
   TAB: {
@@ -216,7 +216,7 @@ assert.deepEqual(
 const structuralNodeCases = {
   SECTION: {},
   GRID: { gutter: 24, defaultSpan: 8 },
-  TAB_SET: { tabPosition: 'left' },
+  TAB_SET: { tabPosition: 'left', defaultActiveTabKey: 'tab-details' },
   TAB: {},
   COLLAPSE: { defaultExpanded: false, accordion: true },
   TEXT: { text: '只读说明' },

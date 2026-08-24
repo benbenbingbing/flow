@@ -47,8 +47,13 @@
           />
         </el-tab-pane>
 
-        <!-- 流程图（仅在有流程实例时显示）-->
-        <el-tab-pane v-if="currentTask?.processInstanceId" label="流程图" name="diagram">
+        <!-- 延迟到页签可见后再创建 Viewer，避免在零尺寸隐藏容器中初始化。 -->
+        <el-tab-pane
+          v-if="currentTask?.processInstanceId"
+          label="流程图"
+          name="diagram"
+          lazy
+        >
           <EntityApprovalDiagram
             :bpmnXml="bpmnXml"
             :progressData="progressData"
@@ -78,6 +83,7 @@
         ref="approvalDecisionRef"
         v-model:action="approveForm.action"
         v-model:comment="approveForm.comment"
+        v-model:expanded="approvalDecisionExpanded"
         :approval-config="effectiveApprovalConfig"
         :preview="nextApproverPreview"
         :loading="nextApproverPreviewLoading"
@@ -198,6 +204,7 @@ const formReleaseContext = computed(() => ({
 const basicInfoRef = ref<any>()
 const nodeTabRefs = ref<Record<string, any>>({})
 const approvalDecisionRef = ref<any>()
+const approvalDecisionExpanded = ref(true)
 
 const approveForm = reactive({
   action: 'approve',
@@ -408,19 +415,6 @@ watch(
   }
 )
 
-// 监听审批弹窗 Tab 切换，切换到流程图时重新触发渲染
-watch(activeDialogTab, (newVal) => {
-  if (newVal === 'diagram' && bpmnXml.value && progressData.value) {
-    nextTick(() => {
-      const tempXml = bpmnXml.value
-      bpmnXml.value = ''
-      nextTick(() => {
-        bpmnXml.value = tempXml
-      })
-    })
-  }
-})
-
 // 打开审批弹窗
 interface OpenApproveOptions {
   form?: any
@@ -431,6 +425,8 @@ const openApprove = async (
   options: OpenApproveOptions = {}
 ) => {
   resetNextApproverPreview()
+  // 每次打开审批任务都恢复完整审批信息，避免沿用上一次弹窗的折叠状态。
+  approvalDecisionExpanded.value = true
   overrideForm.value = options.form || null
   isViewMode.value = false
   currentTask.value = {

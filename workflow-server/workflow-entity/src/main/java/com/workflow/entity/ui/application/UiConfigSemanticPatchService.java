@@ -62,8 +62,7 @@ public class UiConfigSemanticPatchService {
             "propsDocument", "rulesDocument", "legacyPropsDocument",
             "localOverridesDocument", "viewConfig", "columnConfig",
             "queryConfig", "renderConfig", "selectionConfig",
-            "fixedFilterConfig", "contextBindingConfig", "initConfig",
-            "componentProps");
+            "fixedFilterConfig", "contextBindingConfig", "componentProps");
 
     private final JsonDocumentCodec codec;
 

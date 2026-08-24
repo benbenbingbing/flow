@@ -260,6 +260,11 @@ public class UiDataSourceExecutionAccessService {
             ConfigTarget target,
             UiDataSourceExecuteRequest request) {
         if (request.isServerPinnedRelease()) {
+            if (!StringUtils.hasText(request.getServerIdempotencyKey())) {
+                throw new BusinessForbiddenException(
+                        "UI_DATA_SOURCE_TRUSTED_EXECUTION_REQUIRED",
+                        "历史钉版发布只允许携带服务端可信执行种子的内部调用");
+            }
             if (!StringUtils.hasText(request.getReleaseId())
                     || request.getReleaseVersion() == null) {
                 throw conflict(

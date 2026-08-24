@@ -27,6 +27,10 @@ public class ProcessRollbackController {
     private final TaskActionService taskActionService;
     private final ProcessInstanceAccessService processInstanceAccessService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.workflow.process.task.application.operation.NodeOperationDecisionService
+            nodeOperationDecisionService;
+
     /**
      * 驳回任务（驳回到发起人）
      *
@@ -43,6 +47,19 @@ public class ProcessRollbackController {
             throw new ForbiddenException("用户未登录");
         }
         taskActionService.requireTaskAccess(taskId);
+        if (nodeOperationDecisionService != null) {
+            Map<String, String> effectiveRequest = requestBody == null ? Map.of() : requestBody;
+            String reason = effectiveRequest.getOrDefault(
+                    "reason", effectiveRequest.getOrDefault("comment", ""));
+            String targetNodeId = effectiveRequest.getOrDefault(
+                    "targetNodeId", effectiveRequest.get("targetActivityId"));
+            nodeOperationDecisionService.requireAllowed(
+                    taskId,
+                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.REJECT,
+                    com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+                            .ofTarget(reason, java.util.Set.of(), targetNodeId, null,
+                                    new java.util.LinkedHashMap<>(effectiveRequest)));
+        }
 
         String comment = requestBody != null ? requestBody.get("comment") : null;
         String targetNodeId = requestBody != null ? requestBody.get("targetNodeId") : null;

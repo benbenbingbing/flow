@@ -53,6 +53,12 @@
 
       <template v-else-if="localConfig.source.type === 'RESOLVER'">
         <el-form-item label="人员接口" required>
+          <template #label>
+            <ConfigHelpLabel
+              label="人员接口"
+              help-key="process.personResolver"
+            />
+          </template>
           <ExtensionCapabilityPicker
             v-model="localConfig.source.resolverCode"
             capability-type="PERSON_RESOLVER"
@@ -83,6 +89,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import PersonScopeRuleEditor from '@/components/PersonScopeRuleEditor.vue'
 import SettingsSection from '@/components/SettingsSection.vue'

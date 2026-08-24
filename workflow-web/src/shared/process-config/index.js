@@ -563,6 +563,18 @@ export function normalizeDesignerAssigneeConfig(
   }
 }
 
+export function normalizeEmptyAssigneeStrategy(value = {}, allowInherit = true) {
+  return {
+    policy: value?.policy || (allowInherit ? 'INHERIT' : 'BLOCK_PUBLISH'),
+    fallbackUser: value?.fallbackUser || '',
+    fallbackGroup: value?.fallbackGroup || '',
+    maxRetries: Number(value?.maxRetries || 3),
+    initialDelaySeconds: Number(value?.initialDelaySeconds || 60),
+    backoffMultiplier: Number(value?.backoffMultiplier || 2),
+    responsibilityOwner: value?.responsibilityOwner || ''
+  }
+}
+
 export function buildAssigneeConfig(form) {
   const normalizedReference = normalizeNodeReferenceAssigneeConfig(form)
   const type = normalizedReference.assigneeType || form.assigneeType
@@ -598,12 +610,19 @@ export function buildAssigneeConfig(form) {
   if (form.legacyAssigneeConfig && !form.assignmentConfigDirty) {
     return {
       ...form.legacyAssigneeConfig,
+      nodeOperationPolicy: form.nodeOperationPolicy
+        ? JSON.parse(JSON.stringify(form.nodeOperationPolicy))
+        : null,
       nextApproverSelection
     }
   }
 
   return {
     assignmentConfigVersion: ASSIGNMENT_CONFIG_VERSION,
+    emptyAssigneeStrategy: normalizeEmptyAssigneeStrategy(form.emptyAssigneeStrategy),
+    nodeOperationPolicy: form.nodeOperationPolicy
+      ? JSON.parse(JSON.stringify(form.nodeOperationPolicy))
+      : null,
     assigneeType: type,
     assigneeValue,
     candidateUsers,

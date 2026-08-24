@@ -207,7 +207,8 @@ public class ProcessProgressDTO {
 
         /**
          * 表单级统一数据源绑定文档。
-         * 审批页需要使用该配置执行 FORM_INIT、AFTER_LOAD 和 BEFORE_SUBMIT 等绑定。
+         * 审批页跳过仅用于新增的 FORM_INIT，执行 AFTER_LOAD 和允许的浏览器预校验；
+         * BEFORE_SUBMIT 最终仍由服务端权威执行。
          */
         private String dataSourceBindingsDocument;
         

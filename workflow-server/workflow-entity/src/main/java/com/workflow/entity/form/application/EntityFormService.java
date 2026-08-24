@@ -122,6 +122,39 @@ public class EntityFormService {
         return saveFormInternal(form, null, SaveMode.SYSTEM_IMPORT);
     }
 
+    /**
+     * 锁定表单字段草稿，供发布服务在重算撤销前 hash 时阻止字段并发写入。
+     */
+    public void lockDraftFieldsForRelease(String formId) {
+        formFieldMapper.selectByFormIdForUpdate(formId);
+    }
+
+    /**
+     * 按发布快照恢复表单元数据与兼容字段，并校验调用方看到的 owner revision。
+     *
+     * <p>方法在同一事务中先执行 expectedRevision 校验，再复用系统导入的完整
+     * 配置校验，并物理重建兼容字段以恢复发布快照中的稳定 ID；最终只对表单
+     * owner 递增一次 revision。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityForm restoreFormForRelease(
+            EntityForm form,
+            Integer expectedRevision) {
+        if (form == null || !StringUtils.hasText(form.getId())) {
+            throw new IllegalArgumentException("发布表单快照不能为空");
+        }
+        EntityForm current = lockForm(form.getId());
+        requireExpectedRevision(
+                expectedRevision,
+                current,
+                "表单已被其他人修改");
+        lockDraftFieldsForRelease(form.getId());
+        // SYSTEM_IMPORT 默认按 fieldCode 兼容复用旧行；撤销发布草稿必须先清空，
+        // 否则同编码的新草稿字段会保留未发布 ID，造成节点与兼容字段身份分裂。
+        formFieldMapper.deleteByFormId(form.getId());
+        return saveFormInternal(form, null, SaveMode.SYSTEM_IMPORT);
+    }
+
     private EntityForm saveFormInternal(
             EntityForm source,
             Integer expectedRevision,
@@ -315,29 +348,6 @@ public class EntityFormService {
             }
         }
         return false;
-    }
-
-    /**
-     * 仅更新表单初始化配置
-     */
-    @Transactional(rollbackFor = Exception.class)
-    @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "更新表单初始化配置", risk = AuditRiskLevel.HIGH, targetType = "ENTITY_FORM", targetIdArg = 0, captureArguments = true)
-    public void updateInitConfig(String id, Map<String, Object> initConfig) {
-        EntityForm form = formMapper.selectById(id);
-        if (form == null) {
-            throw new RuntimeException("表单不存在");
-        }
-        String document = initConfig == null || initConfig.isEmpty()
-                ? null
-                : jsonDocumentCodec.write(
-                        jsonDocumentCodec.ensureSchemaVersion(initConfig, 1),
-                        "表单初始化配置");
-        UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();
-        wrapper.eq("id", id)
-                .set("init_config", document)
-                .set("update_time", LocalDateTime.now());
-        formMapper.update(null, wrapper);
-        log.info("更新表单初始化配置：{}", form.getFormName());
     }
 
     /**
@@ -550,7 +560,6 @@ public class EntityFormService {
         target.setCustomComponentVersion(source.getCustomComponentVersion());
         target.setCustomComponentSnapshotVersion(
                 source.getCustomComponentSnapshotVersion());
-        target.setInitConfig(source.getInitConfig());
         if (isNew
                 || saveMode == SaveMode.SYSTEM_IMPORT
                 || source.getDataSourceBindingsDocument() != null) {
@@ -601,7 +610,6 @@ public class EntityFormService {
                         form.getCustomComponentVersion())
                 .set("custom_component_snapshot_version",
                         form.getCustomComponentSnapshotVersion())
-                .set("init_config", form.getInitConfig())
                 .set("data_source_bindings_document",
                         form.getDataSourceBindingsDocument())
                 .set("view_config", form.getViewConfig());
@@ -960,7 +968,9 @@ public class EntityFormService {
                 sourceForm.getCustomComponentVersion());
         newForm.setCustomComponentSnapshotVersion(
                 sourceForm.getCustomComponentSnapshotVersion());
-        newForm.setInitConfig(sourceForm.getInitConfig());
+        // 生命周期数据处理属于表单定义的一部分，复制时必须保持步骤、顺序和映射完整。
+        newForm.setDataSourceBindingsDocument(
+                sourceForm.getDataSourceBindingsDocument());
         newForm.setViewConfig(sourceForm.getViewConfig());
         newForm.setStatus(1);
         newForm.setRevision(1);

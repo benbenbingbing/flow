@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     :title="`${configLabel}发布`"
-    width="820px"
+    width="920px"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
     @opened="initialize"
@@ -36,7 +36,7 @@
             </span>
           </template>
           <template v-else>
-            所有通过发布校验的表单变更都可热修复；REVIEW 仅提示风险，不阻止发布，并原子作用于当前可发起版本和运行中实例。
+            HOTFIX 必须登记原因、工单和发布窗口；REVIEW 风险由非申请人独立复核，批准后才可作用于当前可发起版本和运行中实例。
           </template>
         </div>
       </el-form-item>
@@ -50,6 +50,43 @@
           show-word-limit
         />
       </el-form-item>
+
+      <template v-if="form.releaseMode === 'HOTFIX'">
+        <el-form-item label="变更原因" required>
+          <el-input
+            v-model="form.reason"
+            type="textarea"
+            :rows="2"
+            maxlength="1000"
+            show-word-limit
+            placeholder="说明故障现象、修复目的和预期结果"
+          />
+        </el-form-item>
+        <el-form-item label="关联工单" required>
+          <el-input
+            v-model="form.ticketRef"
+            maxlength="255"
+            placeholder="例如 INC-2026-001"
+          />
+        </el-form-item>
+        <el-form-item label="发布窗口" required>
+          <div class="release-window">
+            <el-date-picker
+              v-model="form.windowStart"
+              type="datetime"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              placeholder="开始时间"
+            />
+            <span>至</span>
+            <el-date-picker
+              v-model="form.windowEnd"
+              type="datetime"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              placeholder="结束时间"
+            />
+          </div>
+        </el-form-item>
+      </template>
     </el-form>
 
     <el-alert
@@ -78,6 +115,62 @@
             跳过历史实例 {{ preview.skippedHistoricalInstanceCount || 0 }} 个
           </span>
         </div>
+
+        <section
+          v-if="form.releaseMode === 'HOTFIX' && displayedRequest"
+          class="governance-card"
+        >
+          <div class="governance-card__header">
+            <strong>HOTFIX 治理状态</strong>
+            <el-tag :type="requestStatusType(displayedRequest.status)">
+              {{ requestStatusLabel(displayedRequest.status) }}
+            </el-tag>
+            <el-tag v-if="!requestMatchesPreview" type="danger">
+              审批快照已过期
+            </el-tag>
+          </div>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="申请人">
+              {{ displayedRequest.applicantName || displayedRequest.applicantId }}
+            </el-descriptions-item>
+            <el-descriptions-item label="关联工单">
+              {{ displayedRequest.ticketRef }}
+            </el-descriptions-item>
+            <el-descriptions-item label="发布窗口">
+              {{ displayedRequest.windowStart }} 至 {{ displayedRequest.windowEnd }}
+            </el-descriptions-item>
+            <el-descriptions-item label="复核人">
+              {{ displayedRequest.reviewerName || displayedRequest.reviewerId || '待独立复核' }}
+            </el-descriptions-item>
+          </el-descriptions>
+          <div class="governance-actions">
+            <el-button
+              v-if="displayedRequest.status === 'PENDING_REVIEW' && canReview"
+              size="small"
+              type="success"
+              @click="reviewRequest(true)"
+            >
+              批准
+            </el-button>
+            <el-button
+              v-if="displayedRequest.status === 'PENDING_REVIEW' && canReview"
+              size="small"
+              type="danger"
+              @click="reviewRequest(false)"
+            >
+              驳回
+            </el-button>
+            <el-button
+              v-if="canCancelRequest"
+              size="small"
+              type="warning"
+              plain
+              @click="cancelRequest"
+            >
+              取消申请
+            </el-button>
+          </div>
+        </section>
 
         <el-alert
           v-if="preview.blockers?.length"
@@ -172,13 +265,14 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import {
   previewFormPublish,
   publishForm
 } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
+import { uiHotfixGovernanceApi } from '@/api/uiHotfixGovernance'
 import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
@@ -193,9 +287,14 @@ const userStore = useUserStore()
 const preview = ref(null)
 const previewLoading = ref(false)
 const publishing = ref(false)
+const hotfixRequests = ref([])
 const form = reactive({
   releaseMode: 'STANDARD',
-  description: ''
+  description: '',
+  reason: '',
+  ticketRef: '',
+  windowStart: '',
+  windowEnd: ''
 })
 
 const canHotfix = computed(() =>
@@ -203,8 +302,49 @@ const canHotfix = computed(() =>
   && (userStore.isSuperAdmin
     || userStore.permissions.includes('entity:ui-config:hotfix'))
 )
+const canReview = computed(() =>
+  userStore.isSuperAdmin
+  || userStore.permissions.includes('entity:ui-config:hotfix:review')
+)
+const openRequest = computed(() =>
+  hotfixRequests.value.find(item =>
+    ['PENDING_REVIEW', 'APPROVED', 'PUBLISHING'].includes(item.status)
+  ) || null
+)
+const matchingRequest = computed(() =>
+  hotfixRequests.value.find(item =>
+    ['PENDING_REVIEW', 'APPROVED', 'PUBLISHING'].includes(item.status)
+    && matchesPreview(item)
+  ) || null
+)
+const displayedRequest = computed(() =>
+  matchingRequest.value
+  || openRequest.value
+  || hotfixRequests.value.find(item =>
+    ['OBSERVING', 'OBSERVED_OK', 'OBSERVED_ALERT'].includes(item.status)
+  )
+  || null
+)
+const requestMatchesPreview = computed(() =>
+  Boolean(displayedRequest.value && matchesPreview(displayedRequest.value))
+)
+const canCancelRequest = computed(() =>
+  Boolean(openRequest.value
+    && ['PENDING_REVIEW', 'APPROVED'].includes(openRequest.value.status))
+)
 const canSubmit = computed(() =>
-  Boolean(preview.value?.changed && preview.value?.canPublish)
+  Boolean(preview.value?.changed
+    && preview.value?.canPublish
+    && (form.releaseMode !== 'HOTFIX'
+      || (matchingRequest.value?.status === 'APPROVED')
+      || (!openRequest.value && hotfixFieldsComplete.value)))
+)
+const hotfixFieldsComplete = computed(() =>
+  Boolean(form.reason.trim()
+    && form.ticketRef.trim()
+    && form.windowStart
+    && form.windowEnd
+    && form.windowStart < form.windowEnd)
 )
 const forcedTargets = computed(() =>
   (preview.value?.targets || []).filter(target =>
@@ -220,9 +360,16 @@ const forceReviewText = computed(() =>
 )
 const submitLabel = computed(() => {
   if (form.releaseMode !== 'HOTFIX') return '普通发布'
-  return hasForcedTargets.value
-    ? '强制发布热修复'
-    : '发布兼容热修复'
+  if (matchingRequest.value?.status === 'PENDING_REVIEW') {
+    return '等待独立复核'
+  }
+  if (matchingRequest.value?.status === 'APPROVED') {
+    return '发布已批准热修复'
+  }
+  if (openRequest.value && !matchingRequest.value) {
+    return '先取消过期申请'
+  }
+  return '提交热修复申请'
 })
 
 function requestPayload(includePreviewState = false) {
@@ -236,7 +383,8 @@ function requestPayload(includePreviewState = false) {
       ? {
           expectedActiveReleaseId: preview.value.activeReleaseId,
           expectedDraftHash: preview.value.draftHash,
-          impactToken: preview.value.impactToken
+          impactToken: preview.value.impactToken,
+          hotfixRequestId: matchingRequest.value?.id
         }
       : {})
   }
@@ -245,6 +393,11 @@ function requestPayload(includePreviewState = false) {
 async function initialize() {
   form.releaseMode = 'STANDARD'
   form.description = ''
+  form.reason = ''
+  form.ticketRef = ''
+  form.windowStart = localDateTime(0)
+  form.windowEnd = localDateTime(120)
+  hotfixRequests.value = []
   await loadPreview()
 }
 
@@ -257,6 +410,10 @@ async function loadPreview() {
           props.configId,
           requestPayload()
         )
+    if (form.releaseMode === 'HOTFIX') {
+      await loadRequests()
+      hydrateFromOpenRequest()
+    }
   } catch (error) {
     preview.value = null
     ElMessage.error(error?.message || '发布预检失败')
@@ -272,15 +429,33 @@ async function submit() {
   if (!canSubmit.value) return
   publishing.value = true
   try {
+    let authorization = matchingRequest.value
+    if (form.releaseMode === 'HOTFIX' && !authorization) {
+      authorization = await uiHotfixGovernanceApi.apply({
+        configType: props.configType,
+        configId: props.configId,
+        expectedActiveReleaseId: preview.value.activeReleaseId,
+        expectedDraftHash: preview.value.draftHash,
+        impactToken: preview.value.impactToken,
+        reason: form.reason.trim(),
+        ticketRef: form.ticketRef.trim(),
+        windowStart: form.windowStart,
+        windowEnd: form.windowEnd
+      })
+      await loadRequests()
+      if (authorization.status !== 'APPROVED') {
+        ElMessage.success('HOTFIX 申请已提交，等待非申请人独立复核')
+        return
+      }
+    }
     const payload = requestPayload(true)
+    if (authorization?.id) payload.hotfixRequestId = authorization.id
     const release = props.configType === 'FORM'
       ? await publishForm(props.configId, payload)
       : await entityListConfigApi.publish(props.configId, payload)
     ElMessage.success(
       form.releaseMode === 'HOTFIX'
-        ? hasForcedTargets.value
-          ? '强制热修复已通过完整快照原子生效'
-          : '兼容热修复已原子生效'
+        ? '已批准热修复进入运行观察窗口'
         : '普通发布成功'
     )
     emit('published', release)
@@ -293,6 +468,90 @@ async function submit() {
   } finally {
     publishing.value = false
   }
+}
+
+async function loadRequests() {
+  hotfixRequests.value = await uiHotfixGovernanceApi.list(
+    props.configType,
+    props.configId
+  ) || []
+}
+
+function hydrateFromOpenRequest() {
+  if (!openRequest.value) return
+  form.reason = openRequest.value.reason || form.reason
+  form.ticketRef = openRequest.value.ticketRef || form.ticketRef
+  form.windowStart = openRequest.value.windowStart || form.windowStart
+  form.windowEnd = openRequest.value.windowEnd || form.windowEnd
+}
+
+function matchesPreview(request) {
+  return Boolean(preview.value
+    && request?.draftHash === preview.value.draftHash
+    && request?.activeReleaseId === preview.value.activeReleaseId
+    && request?.targetHash === preview.value.targetHash)
+}
+
+async function reviewRequest(approved) {
+  const { value } = await ElMessageBox.prompt(
+    approved ? '确认批准该 HOTFIX 申请？' : '确认驳回该 HOTFIX 申请？',
+    approved ? '独立复核批准' : '独立复核驳回',
+    {
+      inputPlaceholder: '请输入复核意见',
+      inputValidator: text => Boolean(String(text || '').trim())
+        || '复核意见不能为空'
+    }
+  )
+  await uiHotfixGovernanceApi.review(
+    displayedRequest.value.id,
+    approved,
+    value
+  )
+  await loadRequests()
+  ElMessage.success(approved ? '复核已批准，可由发布人执行' : '申请已驳回')
+}
+
+async function cancelRequest() {
+  const { value } = await ElMessageBox.prompt(
+    '取消后将释放当前申请，可基于最新预检重新提交。',
+    '取消 HOTFIX 申请',
+    {
+      type: 'warning',
+      inputPlaceholder: '请输入取消原因',
+      inputValidator: text => Boolean(String(text || '').trim())
+        || '取消原因不能为空'
+    }
+  )
+  await uiHotfixGovernanceApi.cancel(openRequest.value.id, value)
+  await loadRequests()
+  ElMessage.success('HOTFIX 申请已取消')
+}
+
+function localDateTime(offsetMinutes) {
+  const value = new Date(Date.now() + offsetMinutes * 60 * 1000)
+  value.setMinutes(value.getMinutes() - value.getTimezoneOffset())
+  return value.toISOString().slice(0, 19)
+}
+
+function requestStatusLabel(status) {
+  return {
+    PENDING_REVIEW: '待独立复核',
+    APPROVED: '已批准待发布',
+    PUBLISHING: '发布中',
+    OBSERVING: '观察中',
+    OBSERVED_OK: '观察通过',
+    OBSERVED_ALERT: '观察告警',
+    REJECTED: '已驳回',
+    ROLLED_BACK: '已回滚',
+    CANCELLED: '已取消'
+  }[status] || status || '未知'
+}
+
+function requestStatusType(status) {
+  if (['APPROVED', 'OBSERVED_OK'].includes(status)) return 'success'
+  if (['REJECTED', 'OBSERVED_ALERT', 'ROLLED_BACK'].includes(status)) return 'danger'
+  if (['PENDING_REVIEW', 'OBSERVING', 'PUBLISHING'].includes(status)) return 'warning'
+  return 'info'
 }
 
 function riskTagType(risk) {
@@ -366,6 +625,34 @@ function publishPathLabel(path) {
   flex-wrap: wrap;
   margin-bottom: 12px;
   color: var(--el-text-color-regular);
+}
+
+.release-window {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.governance-card {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+
+.governance-card__header,
+.governance-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.governance-actions {
+  margin: 10px 0 0;
+  justify-content: flex-end;
 }
 
 </style>

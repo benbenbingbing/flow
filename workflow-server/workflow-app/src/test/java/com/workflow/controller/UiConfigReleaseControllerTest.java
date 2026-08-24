@@ -4,7 +4,9 @@ import com.workflow.entity.ui.api.web.UiConfigReleaseController;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
+import com.workflow.entity.ui.api.response.UiConfigDraftDiscardResultDTO;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
+import com.workflow.entity.ui.api.request.UiConfigDraftDiscardRequest;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
@@ -51,6 +53,69 @@ class UiConfigReleaseControllerTest {
                                 releaseService,
                                 accessService))
                 .build();
+    }
+
+    @Test
+    void formDiscardDraftMapsConcurrencyContract() throws Exception {
+        when(releaseService.discardDraft(
+                eq(UiConfigReleaseService.FORM),
+                eq("form-discard"),
+                any(UiConfigDraftDiscardRequest.class)))
+                .thenReturn(discardResult(
+                        UiConfigReleaseService.FORM,
+                        "form-discard"));
+
+        mockMvc.perform(post(
+                        "/api/entity-forms/{id}/discard-draft",
+                        "form-discard")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(discardRequestJson()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.configType").value("FORM"))
+                .andExpect(jsonPath("$.data.revision").value(10))
+                .andExpect(jsonPath("$.data.draftHash")
+                        .value("published-hash"));
+
+        ArgumentCaptor<UiConfigDraftDiscardRequest> captor =
+                ArgumentCaptor.forClass(
+                        UiConfigDraftDiscardRequest.class);
+        verify(accessService).requireFormAccess("form-discard");
+        verify(releaseService).discardDraft(
+                eq(UiConfigReleaseService.FORM),
+                eq("form-discard"),
+                captor.capture());
+        assertDiscardRequest(captor.getValue());
+    }
+
+    @Test
+    void listDiscardDraftMapsConcurrencyContract() throws Exception {
+        when(releaseService.discardDraft(
+                eq(UiConfigReleaseService.LIST),
+                eq("list-discard"),
+                any(UiConfigDraftDiscardRequest.class)))
+                .thenReturn(discardResult(
+                        UiConfigReleaseService.LIST,
+                        "list-discard"));
+
+        mockMvc.perform(post(
+                        "/api/entity-list-config/{id}/discard-draft",
+                        "list-discard")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(discardRequestJson()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.configType").value("LIST"))
+                .andExpect(jsonPath("$.data.activeReleaseId")
+                        .value("active-release"));
+
+        ArgumentCaptor<UiConfigDraftDiscardRequest> captor =
+                ArgumentCaptor.forClass(
+                        UiConfigDraftDiscardRequest.class);
+        verify(accessService).requireListAccess("list-discard");
+        verify(releaseService).discardDraft(
+                eq(UiConfigReleaseService.LIST),
+                eq("list-discard"),
+                captor.capture());
+        assertDiscardRequest(captor.getValue());
     }
 
     @Test
@@ -296,6 +361,45 @@ class UiConfigReleaseControllerTest {
         request.put("expectedDraftHash", "draft-hash");
         request.put("impactToken", "impact-token");
         return objectMapper.writeValueAsString(request);
+    }
+
+    private String discardRequestJson() throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "expectedRevision", 9,
+                "expectedDraftHash", "draft-hash",
+                "expectedActiveReleaseId", "active-release",
+                "reason", "放弃本次调整"));
+    }
+
+    private void assertDiscardRequest(
+            UiConfigDraftDiscardRequest request) {
+        assertAll(
+                () -> assertEquals(9, request.getExpectedRevision()),
+                () -> assertEquals(
+                        "draft-hash",
+                        request.getExpectedDraftHash()),
+                () -> assertEquals(
+                        "active-release",
+                        request.getExpectedActiveReleaseId()),
+                () -> assertEquals(
+                        "放弃本次调整",
+                        request.getReason()));
+    }
+
+    private UiConfigDraftDiscardResultDTO discardResult(
+            String configType,
+            String configId) {
+        return UiConfigDraftDiscardResultDTO.builder()
+                .configType(configType)
+                .configId(configId)
+                .discardedDraftHash("draft-hash")
+                .draftHash("published-hash")
+                .publishedHash("published-hash")
+                .activeReleaseId("active-release")
+                .activeVersion(3)
+                .previousRevision(9)
+                .revision(10)
+                .build();
     }
 
     private void assertHotfixRequest(

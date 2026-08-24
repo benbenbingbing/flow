@@ -15,15 +15,15 @@ public class UiEventBindingSaveRequest {
     private String id;
     /** 客户端读取到的修订号，用于更新时的乐观并发控制。 */
     private Integer expectedRevision;
-    /** 绑定所有者类型：ENTITY、FORM 或 LIST。 */
+    /** 绑定所有者类型：ENTITY、FORM 或 LIST；事件必须属于对应作用域。 */
     private String ownerType;
     /** 绑定所有者 ID。 */
     private String ownerId;
-    /** 精确目标类型：OWNER、FIELD 或 BUTTON。 */
+    /** 精确目标类型：ENTITY 仅 OWNER，FORM 可用 FIELD/BUTTON，LIST 可用 BUTTON。 */
     private String targetType;
     /** 字段编码或按钮编码；OWNER 目标时为空。 */
     private String targetKey;
-    /** 事件编码，例如 FORM_OPEN、LIST_LOAD。 */
+    /** 事件编码，例如 FORM_OPEN、LIST_LOAD；必须与所有者和目标类型匹配。 */
     private String eventCode;
     /** 继承模式：INHERIT、REPLACE 或 DISABLE。 */
     private String inheritanceMode;

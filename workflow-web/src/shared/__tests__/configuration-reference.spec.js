@@ -96,7 +96,7 @@ assert.ok(
 )
 
 const formLayoutEntry = entries.find(entry =>
-  entry.area === '表单定义与初始化'
+  entry.area === '表单定义'
     && entry.binding === 'form.layoutType'
 )
 assert.equal(

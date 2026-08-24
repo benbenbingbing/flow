@@ -5,6 +5,7 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Delete;
 
 import java.util.List;
 
@@ -18,6 +19,26 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
             + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId} "
             + "AND deleted = 0 ORDER BY target_type, target_key, event_code")
     List<UiEventBinding> findByOwner(
+            @Param("ownerType") String ownerType,
+            @Param("ownerId") String ownerId);
+
+    /**
+     * 锁定指定所有者的全部事件绑定（包含逻辑删除行）。
+     *
+     * <p>撤销草稿会以 owner 范围作为串行化边界，防止事件绑定未更新 FORM/LIST
+     * revision 时绕过配置级 CAS。</p>
+     */
+    @Select("SELECT * FROM ui_event_binding "
+            + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId} "
+            + "ORDER BY target_type, target_key, event_code FOR UPDATE")
+    List<UiEventBinding> findByOwnerForUpdate(
+            @Param("ownerType") String ownerType,
+            @Param("ownerId") String ownerId);
+
+    /** 物理清理指定所有者的草稿绑定，发布快照不在本表且不受影响。 */
+    @Delete("DELETE FROM ui_event_binding "
+            + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId}")
+    int deleteByOwner(
             @Param("ownerType") String ownerType,
             @Param("ownerId") String ownerId);
 

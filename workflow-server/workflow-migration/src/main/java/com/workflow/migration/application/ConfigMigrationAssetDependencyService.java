@@ -4,6 +4,7 @@ import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAssetDependency;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetDependencyMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -25,6 +26,7 @@ public class ConfigMigrationAssetDependencyService {
 
     private final ConfigMigrationAssetDependencyMapper dependencyMapper;
     private final JsonDocumentCodec codec;
+    private final JdbcTemplate jdbcTemplate;
 
     /**
      * 用新的依赖列表覆盖指定资产的依赖记录。
@@ -36,6 +38,7 @@ public class ConfigMigrationAssetDependencyService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void replace(String assetId, List<Map<String, Object>> dependencies) {
+        Map<String, Object> owner = sourceAsset(assetId);
         dependencyMapper.deleteByAssetId(assetId);
         for (Map<String, Object> source : dependencies == null
                 ? List.<Map<String, Object>>of()
@@ -52,9 +55,19 @@ public class ConfigMigrationAssetDependencyService {
             dependency.setDependencyKey(key);
             dependency.setRequired(!Boolean.FALSE.equals(source.get("required")));
             dependency.setSourceDescription(text(source.get("source")));
+            dependency.setSourceAssetType(text(owner.get("assetType")));
+            dependency.setSourceBusinessKey(text(owner.get("businessKey")));
+            dependency.setSourceVersion(number(owner.get("sourceVersion")));
+            dependency.setReferenceLocation(text(source.get("location")));
+            dependency.setDependencyStrength(normalized(
+                    text(source.get("strength")),
+                    dependency.getRequired() ? "HARD" : "SOFT"));
+            dependency.setParseStatus(normalized(
+                    text(source.get("parseStatus")), "RESOLVED"));
             dependency.setDependencyDocument(codec.write(
                     source, "配置迁移依赖"));
             dependency.setCreatedAt(LocalDateTime.now());
+            dependency.setExtractedAt(LocalDateTime.now());
             dependencyMapper.insert(dependency);
         }
     }
@@ -83,7 +96,36 @@ public class ConfigMigrationAssetDependencyService {
         result.put("key", dependency.getDependencyKey());
         result.put("required", dependency.getRequired());
         result.put("source", dependency.getSourceDescription());
+        result.put("sourceAssetType", dependency.getSourceAssetType());
+        result.put("sourceBusinessKey", dependency.getSourceBusinessKey());
+        result.put("sourceVersion", dependency.getSourceVersion());
+        result.put("location", dependency.getReferenceLocation());
+        result.put("strength", dependency.getDependencyStrength());
+        result.put("parseStatus", dependency.getParseStatus());
+        result.put("extractedAt", dependency.getExtractedAt());
         return result;
+    }
+
+    /** 查询依赖所属资产的稳定标识和版本，确保引用记录不会混淆不同历史版本。 */
+    private Map<String, Object> sourceAsset(String assetId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                SELECT asset_type AS assetType, business_key AS businessKey,
+                       source_version AS sourceVersion
+                FROM config_migration_asset
+                WHERE id = ? AND deleted = 0
+                """, assetId);
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("配置迁移资产不存在: " + assetId);
+        }
+        return rows.get(0);
+    }
+
+    private Integer number(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private String normalized(String value, String fallback) {
+        return StringUtils.hasText(value) ? value.trim().toUpperCase() : fallback;
     }
 
     private String text(Object value) {

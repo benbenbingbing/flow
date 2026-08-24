@@ -43,6 +43,8 @@
           <el-icon><Document /></el-icon>查看 XML
         </el-button>
 
+        <el-button @click="openEmptyAssigneePolicy">空办理人默认策略</el-button>
+
         <el-button type="primary" @click="handleSave">
           <el-icon><Check /></el-icon>保存草稿
         </el-button>
@@ -158,12 +160,29 @@
       </aside>
     </div>
   </div>
+<el-dialog v-model="emptyAssigneeDialogVisible" title="流程空办理人默认策略" width="600px" append-to-body destroy-on-close>
+  <el-alert
+    title="该配置会固化到 BPMN 版本快照，节点可选择继承或覆盖。"
+    type="info"
+    :closable="false"
+    show-icon
+    style="margin-bottom: 16px"
+  />
+  <el-form label-position="top">
+    <EmptyAssigneePolicyEditor v-model="emptyAssigneeDefault" :allow-inherit="false" />
+  </el-form>
+  <template #footer>
+    <el-button @click="emptyAssigneeDialogVisible = false">取消</el-button>
+    <el-button type="primary" @click="saveEmptyAssigneePolicy">写入流程配置</el-button>
+  </template>
+</el-dialog>
 </template>
 
 <script setup>
+import EmptyAssigneePolicyEditor from '@/components/EmptyAssigneePolicyEditor.vue'
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Document, Check, Back, Right, Setting, Close, InfoFilled } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
 import { getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
@@ -418,6 +437,106 @@ const handleSaveXML = async () => {
   }
 }
 
+const EMPTY_ASSIGNEE_PROPERTY = 'emptyAssigneeDefault'
+const BPMN_MODEL_NS = 'http://www.omg.org/spec/BPMN/20100524/MODEL'
+const FLOWABLE_NS = 'http://flowable.org/bpmn'
+const emptyAssigneeDialogVisible = ref(false)
+const emptyAssigneeDefault = ref(createEmptyAssigneeDefault())
+
+function createEmptyAssigneeDefault(value = {}) {
+  return {
+    policy: value.policy || 'BLOCK_PUBLISH',
+    fallbackUser: value.fallbackUser || '',
+    fallbackGroup: value.fallbackGroup || '',
+    maxRetries: Number(value.maxRetries || 3),
+    initialDelaySeconds: Number(value.initialDelaySeconds || 60),
+    backoffMultiplier: Number(value.backoffMultiplier || 2),
+    responsibilityOwner: value.responsibilityOwner || ''
+  }
+}
+
+function xmlText(result) {
+  return typeof result === 'string' ? result : result?.xml
+}
+
+function directChild(parent, localName) {
+  return Array.from(parent?.childNodes || []).find(node => node.nodeType === 1 && node.localName === localName)
+}
+
+function parseProcessXml(xml) {
+  const document = new DOMParser().parseFromString(xml, 'application/xml')
+  if (document.getElementsByTagName('parsererror').length) {
+    throw new Error('流程 XML 解析失败')
+  }
+  const process = document.getElementsByTagNameNS(BPMN_MODEL_NS, 'process')[0]
+    || Array.from(document.getElementsByTagName('*')).find(node => node.localName === 'process')
+  if (!process) throw new Error('流程 XML 中未找到 process 节点')
+  return { document, process }
+}
+
+function findProcessProperty(process, propertyName) {
+  const extensionElements = directChild(process, 'extensionElements')
+  const properties = directChild(extensionElements, 'properties')
+  const property = Array.from(properties?.childNodes || []).find(node =>
+    node.nodeType === 1
+    && node.localName === 'property'
+    && node.getAttribute('name') === propertyName
+  )
+  return { extensionElements, properties, property }
+}
+
+async function openEmptyAssigneePolicy() {
+  try {
+    const xml = xmlText(await designerRef.value?.getXml())
+    if (!xml) throw new Error('暂时无法读取流程 XML')
+    const { process } = parseProcessXml(xml)
+    const { property } = findProcessProperty(process, EMPTY_ASSIGNEE_PROPERTY)
+    const raw = property?.getAttribute('value') || property?.textContent
+    emptyAssigneeDefault.value = createEmptyAssigneeDefault(raw ? JSON.parse(raw) : {})
+    emptyAssigneeDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error(error.message || '读取空办理人策略失败')
+  }
+}
+
+function validateEmptyAssigneeDefault(policy) {
+  if (policy.policy === 'FALLBACK_USER' && !policy.fallbackUser) return '请配置兜底用户 ID'
+  if (policy.policy === 'FALLBACK_GROUP' && !policy.fallbackGroup) return '请配置兜底用户组编码'
+  if (!['BLOCK_PUBLISH'].includes(policy.policy) && !policy.responsibilityOwner) return '请配置责任人或值班组'
+  return ''
+}
+
+async function saveEmptyAssigneePolicy() {
+  try {
+    const policy = createEmptyAssigneeDefault(emptyAssigneeDefault.value)
+    const validationMessage = validateEmptyAssigneeDefault(policy)
+    if (validationMessage) return ElMessage.warning(validationMessage)
+    const xml = xmlText(await designerRef.value?.getXml())
+    if (!xml) throw new Error('暂时无法读取流程 XML')
+    const { document, process } = parseProcessXml(xml)
+    let { extensionElements, properties, property } = findProcessProperty(process, EMPTY_ASSIGNEE_PROPERTY)
+    if (!extensionElements) {
+      extensionElements = document.createElementNS(BPMN_MODEL_NS, 'bpmn:extensionElements')
+      process.insertBefore(extensionElements, process.firstChild)
+    }
+    if (!properties) {
+      properties = document.createElementNS(FLOWABLE_NS, 'flowable:properties')
+      extensionElements.appendChild(properties)
+    }
+    if (!property) {
+      property = document.createElementNS(FLOWABLE_NS, 'flowable:property')
+      property.setAttribute('name', EMPTY_ASSIGNEE_PROPERTY)
+      properties.appendChild(property)
+    }
+    property.setAttribute('value', JSON.stringify(policy))
+    await designerRef.value?.loadXml(new XMLSerializer().serializeToString(document))
+    emptyAssigneeDialogVisible.value = false
+    ElMessage.success('流程空办理人默认策略已写入，请保存草稿')
+  } catch (error) {
+    ElMessage.error(error.message || '写入空办理人策略失败')
+  }
+}
+
 const handleSave = async () => {
   try {
     const xml = await designerRef.value?.getXml()
@@ -435,10 +554,12 @@ const handleSave = async () => {
     }
     
     if (processId) {
-      await processApi.update(processId, {
+      const saved = await processApi.update(processId, {
         ...processData.value,
         bpmnXml: executableXml
       })
+      // 后续保存必须使用服务端返回的新 revision，不能继续复用加载页面时的旧值。
+      processData.value = saved
     } else {
       ElMessage.info('请先填写流程基本信息')
       return
@@ -450,6 +571,24 @@ const handleSave = async () => {
     ElMessage.success('草稿保存成功，发布后运行时生效')
   } catch (error) {
     console.error(error)
+    if (error?.status === 409 && error.currentData) {
+      try {
+        await ElMessageBox.confirm(
+          '服务器上的流程草稿已发生变化。加载服务器版本会替换当前画布；选择“保留本地内容”可先查看或复制当前 XML。',
+          '流程草稿冲突',
+          {
+            type: 'warning',
+            confirmButtonText: '加载服务器版本',
+            cancelButtonText: '保留本地内容',
+            distinguishCancelAndClose: true
+          }
+        )
+        await loadProcess()
+      } catch {
+        // 用户选择保留本地内容时不修改画布，方便手工比较或导出。
+      }
+      return
+    }
     ElMessage.error('保存失败')
   }
 }

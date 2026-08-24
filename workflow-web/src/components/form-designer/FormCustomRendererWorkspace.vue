@@ -63,10 +63,10 @@
           <button
             type="button"
             class="config-entry"
-            @click="$emit('open-form-settings', 'data-events')"
+            @click="$emit('open-form-settings', 'data-events', 'data-source')"
           >
-            <span>数据与事件</span>
-            <span class="config-entry-meta">{{ formDataSourceBindingCount }} 项数据源绑定</span>
+            <span>初始化与数据处理</span>
+            <span class="config-entry-meta">{{ formDataSourceBindingCount }} 个处理步骤</span>
             <el-icon><ArrowRight /></el-icon>
           </button>
         </div>

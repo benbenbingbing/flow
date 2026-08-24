@@ -15,6 +15,8 @@ import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
+import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
+import com.workflow.core.error.RevisionConflictException;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.Deployment;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,6 +68,9 @@ public class ProcessDefinitionServiceTest {
     private ProcessDefinitionNodeSyncService nodeSyncService;
 
     @Mock
+    private ProcessDefinitionPreflightService preflightService;
+
+    @Mock
     private ObjectMapper objectMapper;
 
     @InjectMocks
@@ -83,6 +88,8 @@ public class ProcessDefinitionServiceTest {
         testProcess.setVersion(1);
         testProcess.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
         testProcess.setBpmnXml("<bpmn:definitions>...</bpmn:definitions>");
+        testProcess.setDraftRevision(1L);
+        testProcess.setPublishedRevision(0L);
     }
 
     /**
@@ -187,6 +194,11 @@ public class ProcessDefinitionServiceTest {
         assertEquals("new_process", result.getProcessKey());
         assertEquals(0, result.getVersion());
         assertEquals(ProcessDefinitionConfig.ProcessStatus.DRAFT, result.getStatus());
+        assertEquals(1L, result.getRevision());
+        assertEquals(0L, result.getPublishedRevision());
+        assertTrue(result.getHasUnpublishedChanges());
+        assertNotNull(result.getDraftHash());
+        assertEquals(64, result.getDraftHash().length());
     }
 
     /**
@@ -198,16 +210,107 @@ public class ProcessDefinitionServiceTest {
         dto.setProcessName("更新后的流程名");
         dto.setDescription("更新后的描述");
         dto.setBpmnXml("<bpmn:definitions>updated</bpmn:definitions>");
+        dto.setExpectedRevision(1L);
 
         when(processMapper.selectById("1")).thenReturn(testProcess);
-        when(processMapper.updateById(any(ProcessDefinitionConfig.class))).thenReturn(1);
+        when(processMapper.updateDraftCas(
+                anyString(), anyLong(), any(), any(), any(), any(), anyString()))
+                .thenReturn(1);
 
         ProcessDefinitionDTO result = processService.update("1", dto);
 
         assertNotNull(result);
+        assertEquals(2L, result.getRevision());
+        assertTrue(result.getHasUnpublishedChanges());
         verify(processMapper, times(1)).selectById("1");
-        verify(processMapper, times(1)).updateById(any(ProcessDefinitionConfig.class));
+        verify(processMapper, times(1)).updateDraftCas(
+                eq("1"), eq(1L), eq("更新后的流程名"), eq("更新后的描述"),
+                isNull(), eq("<bpmn:definitions>updated</bpmn:definitions>"), anyString());
         verify(nodeSyncService).syncBpmnNodeBindings(eq("1"), eq("<bpmn:definitions>updated</bpmn:definitions>"));
+    }
+
+    /** 测试流程更新强制携带 expectedRevision，避免旧客户端绕过并发保护。 */
+    @Test
+    void testUpdateRequiresExpectedRevision() {
+        when(processMapper.selectById("1")).thenReturn(testProcess);
+
+        ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
+        dto.setProcessName("更新后的流程名");
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> processService.update("1", dto));
+
+        assertTrue(exception.getMessage().contains("expectedRevision"));
+        verify(processMapper, never()).updateDraftCas(
+                anyString(), anyLong(), any(), any(), any(), any(), anyString());
+    }
+
+    /** 测试过期修订号返回服务端最新草稿，且不会执行数据库更新。 */
+    @Test
+    void testUpdateRejectsStaleRevisionWithCurrentDraft() {
+        testProcess.setDraftRevision(3L);
+        when(processMapper.selectById("1")).thenReturn(testProcess);
+
+        ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
+        dto.setExpectedRevision(2L);
+
+        RevisionConflictException exception = assertThrows(
+                RevisionConflictException.class,
+                () -> processService.update("1", dto));
+
+        ProcessDefinitionDTO current = (ProcessDefinitionDTO) exception.getCurrentData();
+        assertEquals(3L, current.getRevision());
+        verify(processMapper, never()).updateDraftCas(
+                anyString(), anyLong(), any(), any(), any(), any(), anyString());
+    }
+
+    /** 测试 CAS 更新期间发生竞态时重新读取并返回真正的服务端最新 revision。 */
+    @Test
+    void testUpdateTranslatesCasRaceToRevisionConflict() {
+        ProcessDefinitionConfig raced = new ProcessDefinitionConfig();
+        raced.setId("1");
+        raced.setProcessKey("leave_process");
+        raced.setProcessName("其他管理员的修改");
+        raced.setBpmnXml("<bpmn:definitions>server</bpmn:definitions>");
+        raced.setDraftRevision(2L);
+        raced.setPublishedRevision(0L);
+        when(processMapper.selectById("1")).thenReturn(testProcess, raced);
+        when(processMapper.updateDraftCas(
+                anyString(), anyLong(), any(), any(), any(), any(), anyString()))
+                .thenReturn(0);
+
+        ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
+        dto.setProcessName("本地修改");
+        dto.setBpmnXml("<bpmn:definitions>local</bpmn:definitions>");
+        dto.setExpectedRevision(1L);
+
+        RevisionConflictException exception = assertThrows(
+                RevisionConflictException.class,
+                () -> processService.update("1", dto));
+
+        ProcessDefinitionDTO current = (ProcessDefinitionDTO) exception.getCurrentData();
+        assertEquals(2L, current.getRevision());
+        assertEquals("其他管理员的修改", current.getProcessName());
+    }
+
+    /** 测试相同内容的网络重试保持幂等，不递增草稿 revision。 */
+    @Test
+    void testUpdateSameContentIsIdempotent() {
+        when(processMapper.selectById("1")).thenReturn(testProcess);
+
+        ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
+        dto.setProcessName(testProcess.getProcessName());
+        dto.setDescription(testProcess.getDescription());
+        dto.setCategory(testProcess.getCategory());
+        dto.setBpmnXml(testProcess.getBpmnXml());
+        dto.setExpectedRevision(1L);
+
+        ProcessDefinitionDTO result = processService.update("1", dto);
+
+        assertEquals(1L, result.getRevision());
+        verify(processMapper, never()).updateDraftCas(
+                anyString(), anyLong(), any(), any(), any(), any(), anyString());
     }
 
     /**

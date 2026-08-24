@@ -33,6 +33,12 @@
           label="受控连接"
           required
         >
+          <template #label>
+            <ConfigHelpLabel
+              label="受控连接"
+              help-key="interfaceService.backendImplementation"
+            />
+          </template>
           <el-select
             v-model="editor.providerCode"
             filterable

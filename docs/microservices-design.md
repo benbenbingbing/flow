@@ -121,8 +121,8 @@ POST /api/entity/{id}/publish  POST /{entityId}/bind-process/{processId}
 
 # 表单  /api/entity-form
 GET /list | /entity/{entityId} | /{id} | /entity/{entityId}/fields | /entity/{entityId}/default
-POST /api/entity-form  PUT /{id}  DELETE /{id}
-PUT /{id}/fields  POST /{id}/copy  PUT /{id}/default  PUT /{id}/init-config
+POST /api/entity-form | /{id}/update | /{id}/patch | /{id}/delete
+POST /{id}/fields | /{id}/copy | /{id}/default
 
 # 表单解析  /api/entity-form-resolve
 GET /new-data/{entityCode}  GET /view-data/{entityCode}/{entityDataId}

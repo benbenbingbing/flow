@@ -97,10 +97,11 @@ public class EntityFormConfigurationValidator {
                 false);
         validateInputParameterSchema(viewConfig);
         form.setViewConfig(blankToNull(form.getViewConfig()));
-        structuredConfigValidator.parseObject(form.getInitConfig(), "表单初始化配置");
-        structuredConfigValidator.parseObject(
-                form.getDataSourceBindingsDocument(),
-                "表单级数据源绑定");
+        Map<String, Object> dataSourceBindings =
+                structuredConfigValidator.parseObject(
+                        form.getDataSourceBindingsDocument(),
+                        "表单级数据源绑定");
+        validateUniqueDataSourceOutputTargets(dataSourceBindings);
         form.setDataSourceBindingsDocument(
                 blankToNull(
                         form.getDataSourceBindingsDocument()));
@@ -111,6 +112,81 @@ public class EntityFormConfigurationValidator {
                 form.getFields(),
                 validEntityProperties(form, entityFields),
                 entityFields == null ? List.of() : entityFields);
+    }
+
+    /**
+     * 校验同一生命周期位置内的数据源步骤不会写入相同目标路径。
+     *
+     * <p>运行时会按步骤顺序合并输出，重复目标会被后一步静默覆盖；服务端必须在保存与发布共用的
+     * 表单校验入口阻断该配置，避免绕过前端校验后产生顺序相关的数据丢失。
+     */
+    private void validateUniqueDataSourceOutputTargets(
+            Map<String, Object> dataSourceBindings) {
+        for (Map.Entry<String, Object> usageEntry
+                : dataSourceBindings.entrySet()) {
+            Object configured = usageEntry.getValue();
+            if (configured == null) {
+                continue;
+            }
+            List<?> bindings = configured instanceof List<?> list
+                    ? list : List.of(configured);
+            Map<String, Integer> firstStepByTarget =
+                    new LinkedHashMap<>();
+            for (int index = 0; index < bindings.size(); index++) {
+                Object bindingValue = bindings.get(index);
+                if (!(bindingValue instanceof Map<?, ?> binding)
+                        || !(binding.get("outputMapping")
+                        instanceof Map<?, ?> outputMapping)) {
+                    continue;
+                }
+                for (Object targetValue : outputMapping.keySet()) {
+                    String targetPath = normalizeDataSourceOutputTarget(
+                            targetValue);
+                    if (targetPath.isEmpty()) {
+                        continue;
+                    }
+                    Integer previousStep = firstStepByTarget.putIfAbsent(
+                            targetPath,
+                            index + 1);
+                    if (previousStep != null) {
+                        throw new IllegalArgumentException(
+                                "表单级数据源 "
+                                        + usageEntry.getKey()
+                                        + " 的步骤 "
+                                        + previousStep
+                                        + " 与步骤 "
+                                        + (index + 1)
+                                        + " 重复写入目标路径“"
+                                        + targetPath
+                                        + "”");
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 按前端运行时 {@code split(".").filter(Boolean)} 的路径语义归一化目标。
+     *
+     * <p>例如 {@code owner..name}、{@code owner. .name} 与 {@code owner.name} 实际都会写到
+     * 同一字段；保存时必须将其视为同一路径，避免通过空路径段绕过重复写入校验。
+     */
+    private String normalizeDataSourceOutputTarget(Object targetValue) {
+        if (targetValue == null) {
+            return "";
+        }
+        StringBuilder normalized = new StringBuilder();
+        for (String segment : String.valueOf(targetValue)
+                .split("\\.", -1)) {
+            if (segment.isBlank()) {
+                continue;
+            }
+            if (!normalized.isEmpty()) {
+                normalized.append('.');
+            }
+            normalized.append(segment);
+        }
+        return normalized.toString();
     }
 
     /**

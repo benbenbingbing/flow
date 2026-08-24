@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -157,6 +158,81 @@ public class EntityListActionConfigService {
     }
 
     /**
+     * 发布恢复专用按钮规范化：保留发布快照中的按钮成员关系。
+     *
+     * <p>实体生命周期可能在发布后变化。恢复时若按当前生命周期过滤审批按钮，
+     * projected 与物理结果会产生假漂移，或吞掉 ACTIVE 原有语义；因此仅补齐按钮
+     * 默认属性，不过滤快照中已经存在的 approve。</p>
+     */
+    public void normalizeForReleaseRestore(EntityListConfig config) {
+        config.setToolbarConfig(writeButtons(normalizeButtons(
+                parseButtons(config.getToolbarConfig()),
+                true,
+                config.getEntityCode(),
+                true,
+                false)));
+        config.setRowActionConfig(writeButtons(normalizeButtons(
+                parseButtons(config.getRowActionConfig()),
+                false,
+                config.getEntityCode(),
+                true,
+                false)));
+    }
+
+    /**
+     * 将历史发布快照按钮规范化为关系表恢复后会读取到的 canonical 形态。
+     *
+     * <p>发布快照已有的业务值保持不变；旧快照缺失的默认按钮属性按既有发布
+     * 规范补齐。按钮 ID 由关系服务优先沿用当前草稿同 key 的稳定 ID，其余关系
+     * 默认值严格按发布数组顺序生成，防止本地重排或 link 修改泄漏到基线。</p>
+     *
+     * @param publishedList 发布快照中的列表配置，会被就地规范化
+     * @param currentList   当前草稿列表，仅用于恢复旧快照缺失的按钮 ID
+     */
+    public void normalizePublishedActionsForRestore(
+            EntityListConfigDTO publishedList,
+            EntityListConfigDTO currentList) {
+        if (publishedList == null
+                || !StringUtils.hasText(publishedList.getId())) {
+            throw new IllegalArgumentException("发布列表快照不能为空");
+        }
+        List<Map<String, Object>> currentToolbar = currentList == null
+                ? List.of() : currentList.getToolbarConfig();
+        List<Map<String, Object>> currentRows = currentList == null
+                ? List.of() : currentList.getRowActionConfig();
+        List<Map<String, Object>> publishedToolbar = normalizeButtons(
+                publishedList.getToolbarConfig() == null
+                        ? List.of()
+                        : publishedList.getToolbarConfig(),
+                true,
+                publishedList.getEntityCode(),
+                true,
+                false);
+        List<Map<String, Object>> publishedRows = normalizeButtons(
+                publishedList.getRowActionConfig() == null
+                        ? List.of()
+                        : publishedList.getRowActionConfig(),
+                false,
+                publishedList.getEntityCode(),
+                true,
+                false);
+        publishedList.setToolbarConfig(
+                EntityListRelationalConfigService
+                        .normalizeReleaseActionPersistenceDefaults(
+                                publishedList.getId(),
+                                EntityListRelationalConfigService.TOOLBAR,
+                                publishedToolbar,
+                                currentToolbar));
+        publishedList.setRowActionConfig(
+                EntityListRelationalConfigService
+                        .normalizeReleaseActionPersistenceDefaults(
+                                publishedList.getId(),
+                                EntityListRelationalConfigService.ROW,
+                                publishedRows,
+                                currentRows));
+    }
+
+    /**
      * 将按钮和场景配置同步到关系型存储表。
      *
      * @param config 列表配置
@@ -169,6 +245,31 @@ public class EntityListActionConfigService {
         relationalConfigService.replaceActions(
                 config.getId(), EntityListRelationalConfigService.TOOLBAR, toolbar);
         relationalConfigService.replaceActions(
+                config.getId(), EntityListRelationalConfigService.ROW, row);
+        relationalConfigService.replaceScenes(
+                config.getId(), parseScenes(config.getAllowedScenes()));
+    }
+
+    /**
+     * 从发布快照同步关系型按钮，保留快照中用于事件绑定的稳定按钮 ID。
+     */
+    public void synchronizeRelationalConfigForRelease(
+            EntityListConfig config) {
+        List<Map<String, Object>> toolbar = normalizeButtons(
+                parseButtons(config.getToolbarConfig()),
+                true,
+                config.getEntityCode(),
+                true,
+                false);
+        List<Map<String, Object>> row = normalizeButtons(
+                parseButtons(config.getRowActionConfig()),
+                false,
+                config.getEntityCode(),
+                true,
+                false);
+        relationalConfigService.replaceActionsForRelease(
+                config.getId(), EntityListRelationalConfigService.TOOLBAR, toolbar);
+        relationalConfigService.replaceActionsForRelease(
                 config.getId(), EntityListRelationalConfigService.ROW, row);
         relationalConfigService.replaceScenes(
                 config.getId(), parseScenes(config.getAllowedScenes()));
@@ -262,6 +363,20 @@ public class EntityListActionConfigService {
             boolean toolbar,
             String entityCode,
             boolean strictCustomPermission) {
+        return normalizeButtons(
+                source,
+                toolbar,
+                entityCode,
+                strictCustomPermission,
+                true);
+    }
+
+    private List<Map<String, Object>> normalizeButtons(
+            List<Map<String, Object>> source,
+            boolean toolbar,
+            String entityCode,
+            boolean strictCustomPermission,
+            boolean filterUnavailableApprove) {
         EntityDefinition definition = StringUtils.hasText(entityCode)
                 ? definitionMapper.findByEntityCode(entityCode).orElse(null)
                 : null;
@@ -320,6 +435,7 @@ public class EntityListActionConfigService {
             }
             EntityPermissionAction action = EntityPermissionAction.fromButtonKey(key);
             if (action == EntityPermissionAction.APPROVE
+                    && filterUnavailableApprove
                     && definition != null
                     && definition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
                 continue;

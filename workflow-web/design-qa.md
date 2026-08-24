@@ -95,6 +95,108 @@ final result: passed
 
 ---
 
+# 表单与列表设计器撤销未发布草稿验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-d4bf058b-230a-4882-aad5-8bd9834e62d4.png`
+- Form implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/ui-draft-undo-form.png`
+- List implementation screenshot: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/ui-draft-undo-list.png`
+- Source pixels: `3090 x 1192`; form implementation pixels: `1545 x 596`, exactly the same `2.592:1` viewport ratio; list implementation pixels: `1280 x 720`.
+- State: authenticated custom-entity FORM/LIST designers with a current ACTIVE release and a server-confirmed local unpublished draft.
+- Same-input comparison: the source and form implementation were opened together in one comparison input; the highlighted status area, toolbar alignment, typography, spacing, and action order were judged as one visual pair.
+
+## Findings
+
+- No actionable P0/P1/P2 visual difference remains in the requested toolbar area.
+- The `撤销` control is an Element Plus danger link immediately after `草稿有未发布修改`, matching the existing compact toolbar rhythm without introducing a second button border.
+- The source status tag, neighboring actions, header height, typography, borders, and existing color tokens remain unchanged.
+- The form toolbar remains on one line at the source-equivalent viewport. The list toolbar uses its existing responsive wrapping behavior at `1280 x 720`; the status and undo link stay adjacent.
+- The target region contains no new image assets, CSS drawings, inline SVG, or placeholders. Existing Element Plus icons and controls are reused.
+- The red rectangle in the source is a request annotation and is intentionally absent from the implementation.
+
+## Interaction And Safety Verification
+
+- FORM and LIST both show `撤销` only when diff loading succeeded and the backend confirms `canDiscardDraft`, with a valid ACTIVE release, draft hash, and active hash.
+- FORM confirmation explains that all saved unpublished changes since the current release, plus browser-only edits, will be overwritten; cancel keeps the link and unpublished state unchanged.
+- LIST confirmation additionally explains that immediately effective data-scope bindings are not reverted.
+- Confirmed FORM discard performs a strict full reload, removes the link, and changes the status to `已与发布版本一致`.
+- Confirmed LIST discard performs a strict full reload, removes the link, and changes the status to `已发布`.
+- Duplicate submission is blocked while discarding. Revision, canonical draft hash, and ACTIVE release ID are sent as three concurrent preconditions.
+- Browser console warnings/errors during both verified flows: `0`.
+
+## Automated Verification
+
+- Frontend draft helper test: passed.
+- `npm run test:page-config`: passed.
+- `npm run test:functional`: passed.
+- List designer and list-scope focused tests: passed.
+- `npm run build`: passed.
+- FORM/LIST backend service and controller focused suite: `48` tests passed.
+- `git diff --check`: passed.
+- Full frontend `test:unit` reached and passed the new draft test, then stopped on the pre-existing unrelated `entity-relation-ui-contract.spec.js` expectation for `method: 'PUT'`.
+
+## Comparison History
+
+- Pass 1: full-view same-input comparison showed the new link aligned directly beside the highlighted status tag with no toolbar shift, overlap, clipping, or P0/P1/P2 mismatch; no visual correction loop was required.
+- Interaction pass: cancel and confirm paths were exercised for FORM, and confirm plus data-scope boundary copy were exercised for LIST; both completed without application console errors.
+
+final result: passed
+
+---
+
+# 审批信息折叠交互验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-52018aaf-d8ba-4266-8765-7ac780b6be71.png`
+- Browser-rendered implementation screenshots:
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/approval-collapse-expanded.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/approval-collapse-collapsed.png`
+- Full-view comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/approval-collapse-comparison.png`
+- Focused comparison: `/Users/dawei/Documents/ddup/ai/flow/workflow-web/design-qa-assets/approval-collapse-focused-comparison.png`
+- Source pixels: `2672 x 1824`, corresponding to `1336 x 912` CSS pixels at density `2`.
+- Implementation pixels and viewport: `1336 x 912`, density `1`.
+- Density normalization: the source was downsampled to `1336 x 912`; the implementation was captured at the same CSS viewport before composing the comparisons.
+- State: authenticated home todo list, `组长审批（运行中）` dialog open on the first approval-form tab; mock business values replace the source data while preserving the same approval-dialog structure.
+
+## Findings
+
+- No actionable P0/P1/P2 visual or interaction differences remain in the scoped approval area.
+- Fonts and typography: the new `收起` / `展开` control uses the existing Element Plus button and icon typography; the approval title hierarchy is unchanged.
+- Spacing and layout rhythm: the control occupies the annotated center position on the divider. Expanded state preserves the existing approval-panel spacing; collapsed state reduces the panel from `172.5px` to `47.5px` and returns `125px` to the business-information tabs.
+- Colors and visual tokens: border, white surface, primary-blue text, hover/focus background, radius, and subtle shadow reuse the current dialog palette.
+- Image quality and asset fidelity: the page contains no new raster imagery; `ArrowUp` and `ArrowDown` come from the project's existing Element Plus icon library.
+- Copy and content: `收起`、`展开` and the accessible names `收起审批信息`、`展开审批信息` make the control's effect explicit.
+- The source and implementation use different business mock values and form controls; those data-state differences are outside this scoped change. The approval divider, title, decision controls, comment field, footer, and new fold affordance are directly comparable.
+
+## Primary Interactions Tested
+
+- Opened the approval dialog and confirmed it starts expanded with `aria-expanded="true"`.
+- Entered an approval comment, collapsed the panel, and confirmed the comment field is hidden while the business-information region grows by `125px`.
+- Re-expanded the panel and confirmed the comment value `折叠状态保留测试` remains intact.
+- Closed and reopened the same task; the panel returned to the default expanded state and the new approval session started with an empty comment.
+- Verified the control renders as a focusable native `button` with `type="button"`, `tabIndex=0`, `aria-expanded`, and `aria-controls="approval-decision-content"`.
+- Browser application console warnings/errors after the interaction sequence: `0`.
+
+## Automated Verification
+
+- `npm run test:unit`: passed.
+- `npm run build`: passed.
+- Scoped `git diff --check`: passed.
+
+## Comparison History
+
+- Pass 1: the normalized full-view and focused comparisons found the new control aligned with the source annotation and consistent with the existing dialog. No P0/P1/P2 correction loop was required.
+
+## Follow-up Polish
+
+- None required for this scoped change.
+
+final result: passed
+
+---
+
 # 流程节点配置宽度、多人办理扁平化与审批人节点复用验收
 
 ## Evidence
@@ -1125,5 +1227,56 @@ final result: passed
 
 - Pass 1: the source and implementation comparison showed the new row fitting the existing card with consistent spacing and no P0/P1/P2 issue.
 - Invalid-state pass: malformed syntax produced immediate inline feedback without moving or obscuring adjacent controls.
+
+final result: passed
+
+---
+
+# 表单事件范围、接口服务与平台默认处理说明验收
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-16bf0c8a-40a0-4a0b-b867-fd06afea0f23.png`
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-63111805-1969-42ee-8a41-cff91b49c65f.png`
+- Implementation screenshots:
+  - `/Users/dawei/Documents/ddup/ai/flow/ui-event-grouping-implementation.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/ui-event-scope-implementation.png`
+  - `/Users/dawei/Documents/ddup/ai/flow/ui-event-mismatch-cleanup.png`
+- Browser viewport and implementation pixels: `1280 x 720`.
+- State: authenticated `form001` designer, `表单设置 → 初始化与数据处理 → 表单事件`, new binding dialog open.
+
+## Findings
+
+- No actionable P0/P1/P2 difference remains in the requested area.
+- The form event selector is grouped into `表单生命周期`、`表单数据`、`字段默认事件`、`子表单默认事件` and `表单按钮`; list-only events are absent.
+- The scope hint explicitly directs list events to list configuration, removing the ambiguity visible in the source screenshot.
+- Existing Element Plus typography, spacing, colors, dialog width, selectors, tags, and icon treatment are preserved.
+- `平台默认处理` has an icon-only accessible help control beside the green tag; its message changes with the selected event and explains BEFORE/REPLACE/AFTER semantics.
+- `接口服务` has an accessible help control explaining the actual `UiDataSourceProvider` contract, Spring registration, unique provider code, example class, and interface-service registration step.
+- No new graphic assets, placeholders, CSS art, or custom SVGs were introduced.
+
+## Interaction And Scope Verification
+
+- Opened the form event dialog and expanded the trigger selector.
+- Confirmed `LIST_LOAD`、`LIST_EXPORT`、`DATA_DELETE`、`DATA_BATCH_DELETE`、`TOOLBAR_BUTTON_CLICK` and `ROW_BUTTON_CLICK` are absent from the form selector.
+- Confirmed form lifecycle, form data, subform, and form button groups remain selectable.
+- Added a draft step and opened both `查看平台默认处理配置说明` and `查看接口服务配置说明` tooltips.
+- Backend save, draft resolution, and published-runtime resolution now reject invalid owner/target/event combinations.
+- Existing mismatched draft bindings remain visible for cleanup, show `范围不匹配`, disable editing, and retain deletion.
+- The only browser error log belongs to the earlier failed login before the local mock API was started; no new application error appeared during the verified interaction sequence.
+
+## Automated Verification
+
+- `npm run test:unit`: passed.
+- `npm run test:page-config`: passed.
+- `npm run test:terminology`: passed.
+- `npm run build`: passed.
+- `UiEventBindingScopeTest` and `UiEventBindingServiceRevisionTest`: 8 tests passed.
+- `git diff --check`: passed.
+
+## Comparison History
+
+- Pass 1: same-input source and implementation review confirmed that the mixed list-event catalog was replaced by clear form-only groups while retaining the established visual system. No correction loop was required.
 
 final result: passed

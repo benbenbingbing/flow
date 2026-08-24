@@ -9,6 +9,7 @@ import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import com.workflow.entity.list.application.EntityListConfigService;
+import com.workflow.entity.permission.application.EntityListActionConfigService;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -16,6 +17,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
+import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -33,12 +35,14 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigDiffItemDTO;
+import com.workflow.entity.ui.api.response.UiConfigDraftDiscardResultDTO;
 import com.workflow.entity.ui.api.response.UiConfigActivationPreviewDTO;
 import com.workflow.entity.ui.api.response.UiConfigHotfixRiskItemDTO;
 import com.workflow.entity.ui.api.response.UiConfigHotfixTargetPreviewDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
 import com.workflow.entity.ui.api.response.UiConfigReleaseSummaryDTO;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
+import com.workflow.entity.ui.api.request.UiConfigDraftDiscardRequest;
 import com.workflow.entity.ui.api.model.UiConfigSemanticPatchOperation;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
@@ -60,6 +64,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTempl
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -150,6 +155,25 @@ public class UiConfigReleaseService {
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
     private final MigrationAssetHandler migrationAssetHandler;
+    private EntityListActionConfigService listActionConfigService;
+    private UiHotfixGovernanceService hotfixGovernanceService;
+
+    /**
+     * 治理服务采用 setter 注入，避免改变大量纯单元测试的显式构造签名；
+     * 生产 Spring 容器中该依赖为必需，HOTFIX 发布缺失时会 fail-closed。
+     */
+    @Autowired
+    void setHotfixGovernanceService(
+            UiHotfixGovernanceService hotfixGovernanceService) {
+        this.hotfixGovernanceService = hotfixGovernanceService;
+    }
+
+    /** 注入列表按钮发布规范化服务，供 legacy 快照差异与恢复共用。 */
+    @Autowired
+    void setListActionConfigService(
+            EntityListActionConfigService listActionConfigService) {
+        this.listActionConfigService = listActionConfigService;
+    }
 
     /**
      * 查询指定配置的所有发布历史记录。
@@ -285,6 +309,37 @@ public class UiConfigReleaseService {
      * 使用签名上下文令牌解析嵌套表单的有效发布快照。
      */
     public Map<String, Object> runtimeFormRelease(
+            String formId,
+            String releaseId,
+            Integer expectedVersion,
+            String releaseResolutionToken) {
+        try {
+            Map<String, Object> result = runtimeFormReleaseInternal(
+                    formId,
+                    releaseId,
+                    expectedVersion,
+                    releaseResolutionToken);
+            Object effectiveReleaseId = result.get(
+                    "effectiveReleaseId");
+            recordHotfixMetricSafely(
+                    effectiveReleaseId == null
+                            ? null : String.valueOf(effectiveReleaseId),
+                    "FORM_LOAD",
+                    true,
+                    null);
+            return result;
+        } catch (RuntimeException exception) {
+            recordHotfixConfigMetricSafely(
+                    FORM,
+                    formId,
+                    "FORM_LOAD",
+                    false,
+                    exception.getMessage());
+            throw exception;
+        }
+    }
+
+    private Map<String, Object> runtimeFormReleaseInternal(
             String formId,
             String releaseId,
             Integer expectedVersion,
@@ -890,16 +945,33 @@ public class UiConfigReleaseService {
         UiConfigRelease active = active(configType, configId);
         Map<String, Object> activeSnapshot = active == null
                 ? Map.of()
-                : snapshotSupport.stableMap(
-                        verifiedSnapshot(active));
+                : normalizeReleaseComparisonSnapshot(
+                        configType,
+                        configId,
+                        draft,
+                        snapshotSupport.stableMap(
+                                verifiedSnapshot(active)));
         String activeHash = active == null
                 ? null
                 : active.getContentHash();
+        String activeComparisonHash = active == null
+                ? null
+                : snapshotSupport.hash(
+                        snapshotSupport.canonical(activeSnapshot));
         boolean changed = active == null
                 || !semanticPatchService.build(
                         configType,
                         activeSnapshot,
                         draft).operations().isEmpty();
+        DraftDiscardAssessment discardAssessment = active == null
+                ? DraftDiscardAssessment.unavailable(
+                        "当前配置尚未发布，不能撤销到发布基线")
+                : assessDraftDiscard(
+                        configType,
+                        configId,
+                        draft,
+                        activeSnapshot,
+                        activeComparisonHash);
         List<String> changedSections = new ArrayList<>();
         if (changed) {
             for (String key : draft.keySet()) {
@@ -916,6 +988,14 @@ public class UiConfigReleaseService {
                 .draftHash(draftHash)
                 .activeHash(activeHash)
                 .changed(changed)
+                .discardableChanged(
+                        discardAssessment.discardableChanged())
+                .canDiscardDraft(
+                        discardAssessment.canDiscardDraft())
+                .dependencyChanged(
+                        discardAssessment.dependencyChanged())
+                .discardBlockedReason(
+                        discardAssessment.blockedReason())
                 .changedSections(changedSections)
                 .changedItems(changed
                         ? detailedChanges(
@@ -1532,6 +1612,25 @@ public class UiConfigReleaseService {
                     String.join("；", preparation.preview().getBlockers()));
         }
 
+        UiHotfixGovernanceService.PublishAuthorization authorization =
+                requireHotfixGovernance().beginPublish(
+                        request,
+                        preparation.preview());
+        if (authorization.idempotent()) {
+            UiConfigRelease existing = releaseMapper.selectById(
+                    authorization.existingReleaseId());
+            if (existing == null
+                    || !Objects.equals(configType, existing.getConfigType())
+                    || !Objects.equals(configId, existing.getConfigId())
+                    || !HOTFIX.equals(existing.getReleaseMode())) {
+                throw new BusinessConflictException(
+                        "UI_HOTFIX_IDEMPOTENCY_CONFLICT",
+                        "HOTFIX 申请关联的发布版本不存在或不匹配");
+            }
+            verifiedSnapshot(existing);
+            return existing;
+        }
+
         UiConfigRelease active = preparation.active();
         int nextVersion = Math.max(
                 releaseMapper.findMaxVersion(
@@ -1610,6 +1709,9 @@ public class UiConfigReleaseService {
                 preparation.preview().getRiskLevel(),
                 request.getDescription(),
                 auditDetail(preparation.preview()));
+        requireHotfixGovernance().markPublished(
+                authorization.requestId(),
+                release.getId());
         log.info(
                 "UI配置热发布完成: configType={}, configId={}, releaseId={}, releaseVersion={}, baseReleaseId={}, riskLevel={}, targetCount={}, operatorId={}",
                 LogValue.safe(configType),
@@ -2128,6 +2230,63 @@ public class UiConfigReleaseService {
         return value == null ? "" : value;
     }
 
+    private UiHotfixGovernanceService requireHotfixGovernance() {
+        if (hotfixGovernanceService == null) {
+            throw new IllegalStateException(
+                    "UI HOTFIX 治理服务未初始化，已拒绝发布或回滚");
+        }
+        return hotfixGovernanceService;
+    }
+
+    private void recordHotfixMetricSafely(
+            String releaseId,
+            String metricCode,
+            boolean successful,
+            String errorMessage) {
+        if (hotfixGovernanceService == null) {
+            return;
+        }
+        try {
+            hotfixGovernanceService.recordReleaseMetric(
+                    releaseId,
+                    metricCode,
+                    successful,
+                    errorMessage);
+        } catch (RuntimeException metricException) {
+            log.warn(
+                    "记录 UI HOTFIX 观察指标失败: releaseId={}, metricCode={}, failureType={}",
+                    LogValue.safe(releaseId),
+                    LogValue.safe(metricCode),
+                    LogValue.failureType(metricException));
+        }
+    }
+
+    private void recordHotfixConfigMetricSafely(
+            String configType,
+            String configId,
+            String metricCode,
+            boolean successful,
+            String errorMessage) {
+        if (hotfixGovernanceService == null) {
+            return;
+        }
+        try {
+            hotfixGovernanceService.recordConfigMetric(
+                    configType,
+                    configId,
+                    metricCode,
+                    successful,
+                    errorMessage);
+        } catch (RuntimeException metricException) {
+            log.warn(
+                    "按配置记录 UI HOTFIX 观察指标失败: configType={}, configId={}, metricCode={}, failureType={}",
+                    LogValue.safe(configType),
+                    LogValue.safe(configId),
+                    LogValue.safe(metricCode),
+                    LogValue.failureType(metricException));
+        }
+    }
+
     private String maxRisk(String left, String right) {
         if (Set.of(
                 UiConfigSemanticPatchService.REVIEW,
@@ -2156,7 +2315,9 @@ public class UiConfigReleaseService {
                 LogValue.safe(releaseId),
                 StringUtils.hasText(reason),
                 LogValue.safe(UserContext.getUserId()));
-        configurationAccessService.requireHotfixAccess(false);
+        requireHotfixGovernance().authorizeRollback(
+                releaseId,
+                reason);
         lockOwner(configType, configId);
         UiConfigRelease release = releaseMapper.selectById(releaseId);
         if (release == null
@@ -2229,6 +2390,8 @@ public class UiConfigReleaseService {
                         "HOTFIX_BASE_RELEASE_MISSING",
                         "热修复基线版本不存在，无法回滚");
             }
+            // 只有内容哈希仍可验证的不可变发布快照才允许成为回滚目标。
+            verifiedSnapshot(base);
             deactivate(configType, configId);
             UpdateWrapper<UiConfigRelease> activateBase =
                     new UpdateWrapper<>();
@@ -2250,6 +2413,9 @@ public class UiConfigReleaseService {
                 release.getRiskLevel(),
                 reason,
                 Map.of("targetCount", targets.size()));
+        requireHotfixGovernance().markRolledBack(
+                releaseId,
+                reason);
         log.info(
                 "UI配置热发布撤回完成: configType={}, configId={}, releaseId={}, baseReleaseId={}, targetCount={}, resultingStatus={}, operatorId={}",
                 LogValue.safe(configType),
@@ -2452,6 +2618,220 @@ public class UiConfigReleaseService {
         return restored;
     }
 
+    /**
+     * 撤销表单或列表当前已保存但尚未发布的修改，恢复为当前 ACTIVE 发布快照。
+     *
+     * <p>该操作以 owner 行锁、revision、草稿 canonical hash 和 ACTIVE release ID
+     * 共同作为并发前置条件。事件绑定不递增 FORM/LIST revision，因此会额外锁定
+     * 本地及实体继承绑定，并在锁内重算 hash。恢复结果必须与预演的“ACTIVE 本地
+     * 内容 + 当前依赖”快照一致；继承配置或外部发布引用漂移会被保留为剩余差异，
+     * 不会被误当成本地草稿覆盖。</p>
+     *
+     * @param configType FORM 或 LIST
+     * @param configId 表单或列表配置 ID
+     * @param request 用户确认撤销时读取到的并发前置条件
+     * @return 恢复后的 revision 与对齐哈希
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public UiConfigDraftDiscardResultDTO discardDraft(
+            String configType,
+            String configId,
+            UiConfigDraftDiscardRequest request) {
+        requireDraftDiscardRequest(request);
+        Object owner = lockOwner(configType, configId);
+        int previousRevision = ownerRevision(owner);
+        if (!Objects.equals(
+                request.getExpectedRevision(),
+                previousRevision)) {
+            throw new RevisionConflictException(
+                    "配置已被其他人修改，请刷新后重试",
+                    owner);
+        }
+
+        lockDraftComponents(configType, configId, owner);
+        UiConfigRelease active = releaseMapper.findActive(
+                configType,
+                configId);
+        if (active == null) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_ACTIVE_RELEASE_REQUIRED",
+                    "当前配置尚未发布，不能撤销到发布基线");
+        }
+        String ownerActiveReleaseId = ownerActiveReleaseId(owner);
+        if (!Objects.equals(ownerActiveReleaseId, active.getId())) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_RELEASE_STATE_CONFLICT",
+                    "当前配置与激活发布状态不一致，请刷新后重试");
+        }
+        if (!Objects.equals(
+                request.getExpectedActiveReleaseId(),
+                active.getId())) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_ACTIVE_RELEASE_CHANGED",
+                    "当前激活发布版本已变化，请重新确认撤销");
+        }
+
+        // 历史发布可能仍携带 revision 等易变字段；完整性校验后必须与 diff()
+        // 使用相同的稳定化基线，避免预览可撤销而执行阶段无法重建同一快照。
+        Map<String, Object> rawActiveSnapshot = snapshotSupport.stableMap(
+                verifiedSnapshot(active));
+        Map<String, Object> currentDraft = buildDraftSnapshot(
+                configType,
+                configId);
+        Map<String, Object> activeSnapshot =
+                normalizeReleaseComparisonSnapshot(
+                        configType,
+                        configId,
+                        currentDraft,
+                        rawActiveSnapshot);
+        String activeComparisonHash = snapshotSupport.hash(
+                snapshotSupport.canonical(activeSnapshot));
+        String currentDraftHash = snapshotSupport.hash(
+                snapshotSupport.canonical(currentDraft));
+        if (!Objects.equals(
+                request.getExpectedDraftHash(),
+                currentDraftHash)) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_DRAFT_CHANGED",
+                    "草稿已发生变化，请重新确认撤销");
+        }
+
+        Map<String, Object> projectedDraft = projectedDraftAfterDiscard(
+                configType,
+                configId,
+                currentDraft,
+                activeSnapshot);
+        DraftDiscardAssessment assessment = assessDraftDiscard(
+                configType,
+                currentDraft,
+                activeSnapshot,
+                projectedDraft,
+                activeComparisonHash);
+        if (!assessment.discardableChanged()) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_NO_DISCARDABLE_DRAFT",
+                    assessment.blockedReason());
+        }
+        if (!assessment.canDiscardDraft()) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_DISCARD_BASELINE_DRIFT",
+                    assessment.blockedReason());
+        }
+
+        UiConfigSemanticPatchService.PatchAnalysis discardPatch =
+                semanticPatchService.build(
+                        configType,
+                        currentDraft,
+                        projectedDraft);
+        int restoredRevision;
+        if (FORM.equals(configType)) {
+            EntityForm publishedForm = runtimeForm(activeSnapshot);
+            publishedForm.setId(configId);
+            EntityForm restored = formService.restoreFormForRelease(
+                    publishedForm,
+                    previousRevision);
+            formNodeService.restorePublishedNodes(
+                    configId,
+                    publishedForm.getNodes());
+            restoredRevision = ownerRevision(restored);
+        } else {
+            EntityListConfigDTO publishedList = runtimeList(
+                    activeSnapshot,
+                    configId);
+            publishedList.setId(configId);
+            EntityListConfigDTO restored =
+                    listConfigService.restoreConfigForRelease(
+                            publishedList,
+                            previousRevision);
+            restoredRevision = restored.getRevision() == null
+                    ? 0 : restored.getRevision();
+        }
+        if (restoredRevision != previousRevision + 1) {
+            throw new BusinessConflictException(
+                    "UI_CONFIG_RESTORE_REVISION_INVALID",
+                    "草稿恢复后的修订号不符合预期，操作已回滚");
+        }
+
+        eventBindingSnapshotService.restoreLocalBindingsForRelease(
+                configType,
+                configId,
+                mapList(activeSnapshot.get("eventBindings")));
+
+        Map<String, Object> restoredDraft = buildDraftSnapshot(
+                configType,
+                configId);
+        String restoredHash = snapshotSupport.hash(
+                snapshotSupport.canonical(restoredDraft));
+        if (!Objects.equals(
+                restoredHash,
+                assessment.projectedHash())
+                || !semanticPatchService.build(
+                        configType,
+                        projectedDraft,
+                        restoredDraft).operations().isEmpty()) {
+            // 稳定 ID 或已锁定的继承配置在恢复期间漂移时必须整体回滚。
+            throw new BusinessConflictException(
+                    "UI_CONFIG_DISCARD_BASELINE_DRIFT",
+                    "草稿依赖在恢复期间发生变化，无法安全完成撤销");
+        }
+        alignOwnerDraftHash(
+                configType,
+                configId,
+                active,
+                restoredRevision,
+                restoredHash);
+        boolean remainingChanged = !Objects.equals(
+                restoredHash,
+                activeComparisonHash)
+                || !semanticPatchService.build(
+                        configType,
+                        activeSnapshot,
+                        restoredDraft).operations().isEmpty();
+
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("activeReleaseId", active.getId());
+        audit.put("activeVersion", active.getVersion());
+        audit.put("previousRevision", previousRevision);
+        audit.put("revision", restoredRevision);
+        audit.put("discardedDraftHash", currentDraftHash);
+        audit.put("publishedHash", active.getContentHash());
+        audit.put("restoredDraftHash", restoredHash);
+        audit.put("remainingChanged", remainingChanged);
+        audit.put("dependencyChanged", assessment.dependencyChanged());
+        audit.put("riskItems", discardPatch.riskItems());
+        recordAudit(
+                configType,
+                configId,
+                active.getId(),
+                "DISCARD_DRAFT",
+                discardPatch.riskLevel(),
+                request.getReason(),
+                audit);
+        log.info(
+                "UI配置未发布修改已撤销: configType={}, configId={}, activeReleaseId={}, previousRevision={}, revision={}, discardedDraftHash={}, publishedHash={}, operatorId={}",
+                LogValue.safe(configType),
+                LogValue.safe(configId),
+                LogValue.safe(active.getId()),
+                previousRevision,
+                restoredRevision,
+                LogValue.safe(currentDraftHash),
+                LogValue.safe(active.getContentHash()),
+                LogValue.safe(UserContext.getUserId()));
+        return UiConfigDraftDiscardResultDTO.builder()
+                .configType(configType)
+                .configId(configId)
+                .discardedDraftHash(currentDraftHash)
+                .draftHash(restoredHash)
+                .publishedHash(active.getContentHash())
+                .activeReleaseId(active.getId())
+                .activeVersion(active.getVersion())
+                .previousRevision(previousRevision)
+                .revision(restoredRevision)
+                .remainingChanged(remainingChanged)
+                .dependencyChanged(assessment.dependencyChanged())
+                .build();
+    }
+
     private Map<String, Object> restoredListDraftSnapshot(
             String configId,
             Map<String, Object> currentDraft,
@@ -2474,14 +2854,193 @@ public class UiConfigReleaseService {
         return restored;
     }
 
-    private boolean isLocalListBinding(
+    /**
+     * 生成发布快照的恢复比较副本，统一处理旧列表按钮缺失的关系型默认值。
+     *
+     * <p>快照完整性始终针对原始不可变文档校验；这里只在校验后构造稳定副本，
+     * 同时供 diff、projected hash 和物理恢复使用。当前草稿只参与缺失按钮 ID 的
+     * 回填，且调用方已通过 draft hash/revision 建立并发边界。</p>
+     */
+    private Map<String, Object> normalizeReleaseComparisonSnapshot(
+            String configType,
+            String configId,
+            Map<String, Object> currentDraft,
+            Map<String, Object> activeSnapshot) {
+        if (!LIST.equals(configType)) {
+            return activeSnapshot;
+        }
+        if (listActionConfigService == null) {
+            throw new IllegalStateException(
+                    "列表按钮发布规范化服务未配置");
+        }
+        EntityListConfigDTO publishedList = runtimeList(
+                activeSnapshot,
+                configId);
+        EntityListConfigDTO currentList = runtimeList(
+                currentDraft,
+                configId);
+        listActionConfigService.normalizePublishedActionsForRestore(
+                publishedList,
+                currentList);
+        Map<String, Object> normalized = new LinkedHashMap<>(
+                activeSnapshot);
+        normalized.put(
+                "list",
+                snapshotSupport.stableValue(publishedList));
+        return normalized;
+    }
+
+    private DraftDiscardAssessment assessDraftDiscard(
+            String configType,
+            String configId,
+            Map<String, Object> currentDraft,
+            Map<String, Object> activeSnapshot,
+            String activeHash) {
+        Map<String, Object> projected = projectedDraftAfterDiscard(
+                configType,
+                configId,
+                currentDraft,
+                activeSnapshot);
+        return assessDraftDiscard(
+                configType,
+                currentDraft,
+                activeSnapshot,
+                projected,
+                activeHash);
+    }
+
+    private DraftDiscardAssessment assessDraftDiscard(
+            String configType,
+            Map<String, Object> currentDraft,
+            Map<String, Object> activeSnapshot,
+            Map<String, Object> projected,
+            String activeHash) {
+        boolean localChanged = !semanticPatchService.build(
+                configType,
+                currentDraft,
+                projected).operations().isEmpty();
+        String projectedHash = snapshotSupport.hash(
+                snapshotSupport.canonical(projected));
+        boolean dependencyChanged = !Objects.equals(
+                projectedHash,
+                activeHash)
+                || !semanticPatchService.build(
+                        configType,
+                        activeSnapshot,
+                        projected).operations().isEmpty();
+        if (!localChanged) {
+            return new DraftDiscardAssessment(
+                    false,
+                    false,
+                    dependencyChanged,
+                    "当前没有可撤销的本地未发布修改；差异可能来自继承配置或外部发布引用",
+                    projectedHash);
+        }
+        return new DraftDiscardAssessment(
+                true,
+                true,
+                dependencyChanged,
+                null,
+                projectedHash);
+    }
+
+    /**
+     * 模拟只恢复当前配置本地内容后的 canonical 草稿。
+     *
+     * <p>实体继承事件继续使用当前值，子列表和目标表单引用按当前 ACTIVE 重新钉定，
+     * 因而纯外部漂移不会被错误标记为本地可撤销修改。</p>
+     */
+    private Map<String, Object> projectedDraftAfterDiscard(
+            String configType,
+            String configId,
+            Map<String, Object> currentDraft,
+            Map<String, Object> activeSnapshot) {
+        Map<String, Object> projected = new LinkedHashMap<>(
+                activeSnapshot);
+        if (FORM.equals(configType)) {
+            EntityForm form = runtimeForm(activeSnapshot);
+            List<EntityFormNode> nodes = pinSubListReleases(
+                    form.getNodes());
+            projected.put(
+                    "nodes",
+                    snapshotSupport.stableValue(nodes));
+            projected.put(
+                    "legacyFields",
+                    snapshotSupport.stableValue(
+                            deriveRuntimeFields(form, nodes)));
+        } else {
+            EntityListConfigDTO list = runtimeList(
+                    activeSnapshot,
+                    configId);
+            pinListTargetFormReleases(list);
+            projected.put(
+                    "list",
+                    snapshotSupport.stableValue(list));
+        }
+        projected.put(
+                "eventBindings",
+                projectedEventBindings(
+                        configType,
+                        configId,
+                        currentDraft,
+                        activeSnapshot));
+        return projected;
+    }
+
+    private List<Map<String, Object>> projectedEventBindings(
+            String configType,
+            String configId,
+            Map<String, Object> currentDraft,
+            Map<String, Object> activeSnapshot) {
+        List<Map<String, Object>> bindings = new ArrayList<>();
+        mapList(currentDraft.get("eventBindings")).stream()
+                .filter(binding -> !isLocalBinding(
+                        binding,
+                        configType,
+                        configId))
+                .forEach(bindings::add);
+        mapList(activeSnapshot.get("eventBindings")).stream()
+                .filter(binding -> isLocalBinding(
+                        binding,
+                        configType,
+                        configId))
+                .forEach(bindings::add);
+        return bindings;
+    }
+
+    private boolean isLocalBinding(
             Map<String, Object> binding,
+            String configType,
             String configId) {
-        return LIST.equals(normalize(text(
+        return configType.equals(normalize(text(
                 binding.get("ownerType"))))
                 && Objects.equals(
                         configId,
                         text(binding.get("ownerId")));
+    }
+
+    private boolean isLocalListBinding(
+            Map<String, Object> binding,
+            String configId) {
+        return isLocalBinding(binding, LIST, configId);
+    }
+
+    private record DraftDiscardAssessment(
+            boolean discardableChanged,
+            boolean canDiscardDraft,
+            boolean dependencyChanged,
+            String blockedReason,
+            String projectedHash) {
+
+        private static DraftDiscardAssessment unavailable(
+                String reason) {
+            return new DraftDiscardAssessment(
+                    false,
+                    false,
+                    false,
+                    reason,
+                    null);
+        }
     }
 
     private void requireOperationReason(
@@ -2524,6 +3083,115 @@ public class UiConfigReleaseService {
         }
     }
 
+    private void requireDraftDiscardRequest(
+            UiConfigDraftDiscardRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("撤销草稿请求不能为空");
+        }
+        if (request.getExpectedRevision() == null) {
+            throw new IllegalArgumentException(
+                    "expectedRevision 不能为空");
+        }
+        if (!StringUtils.hasText(request.getExpectedDraftHash())) {
+            throw new IllegalArgumentException(
+                    "expectedDraftHash 不能为空");
+        }
+        if (!StringUtils.hasText(
+                request.getExpectedActiveReleaseId())) {
+            throw new IllegalArgumentException(
+                    "expectedActiveReleaseId 不能为空");
+        }
+        request.setExpectedDraftHash(
+                request.getExpectedDraftHash().trim());
+        request.setExpectedActiveReleaseId(
+                request.getExpectedActiveReleaseId().trim());
+    }
+
+    private void lockDraftComponents(
+            String configType,
+            String configId,
+            Object owner) {
+        if (FORM.equals(configType)) {
+            formService.lockDraftFieldsForRelease(configId);
+            formNodeService.lockDraftNodesForRelease(configId);
+        } else {
+            listConfigService.lockDraftChildrenForRelease(configId);
+        }
+        eventBindingSnapshotService.lockOwnerBindings(
+                configType,
+                configId);
+        eventBindingSnapshotService.lockOwnerBindings(
+                "ENTITY",
+                ownerEntityId(owner));
+    }
+
+    private int ownerRevision(Object owner) {
+        Integer revision;
+        if (owner instanceof EntityForm form) {
+            revision = form.getRevision();
+        } else if (owner instanceof EntityListConfig list) {
+            revision = list.getRevision();
+        } else {
+            throw new IllegalArgumentException("不支持的UI配置所有者");
+        }
+        return revision == null ? 0 : revision;
+    }
+
+    private String ownerActiveReleaseId(Object owner) {
+        if (owner instanceof EntityForm form) {
+            return form.getActiveReleaseId();
+        }
+        if (owner instanceof EntityListConfig list) {
+            return list.getActiveReleaseId();
+        }
+        throw new IllegalArgumentException("不支持的UI配置所有者");
+    }
+
+    private String ownerEntityId(Object owner) {
+        if (owner instanceof EntityForm form) {
+            return form.getEntityId();
+        }
+        if (owner instanceof EntityListConfig list) {
+            return list.getEntityId();
+        }
+        throw new IllegalArgumentException("不支持的UI配置所有者");
+    }
+
+    private void alignOwnerDraftHash(
+            String configType,
+            String configId,
+            UiConfigRelease active,
+            int revision,
+            String publishedHash) {
+        if (FORM.equals(configType)) {
+            UpdateWrapper<EntityForm> update = new UpdateWrapper<>();
+            update.eq("id", configId)
+                    .eq("deleted", 0)
+                    .eq("revision", revision)
+                    .eq("active_release_id", active.getId())
+                    .set("draft_hash", publishedHash)
+                    .set("update_time", LocalDateTime.now());
+            if (formMapper.update(null, update) != 1) {
+                throw new RevisionConflictException(
+                        "表单已被其他人修改，请刷新后重试",
+                        formService.getById(configId));
+            }
+            return;
+        }
+        UpdateWrapper<EntityListConfig> update = new UpdateWrapper<>();
+        update.eq("id", configId)
+                .eq("deleted", 0)
+                .eq("revision", revision)
+                .eq("active_release_id", active.getId())
+                .set("draft_hash", publishedHash)
+                .set("update_time", LocalDateTime.now());
+        if (listConfigMapper.update(null, update) != 1) {
+            throw new RevisionConflictException(
+                    "列表配置已被其他人修改，请刷新后重试",
+                    listConfigService.findById(configId));
+        }
+    }
+
     private EntityDefinition ownerEntity(
             String configType,
             String configId) {
@@ -2541,17 +3209,21 @@ public class UiConfigReleaseService {
                 : null;
     }
 
-    private void lockOwner(String configType, String configId) {
+    private Object lockOwner(String configType, String configId) {
         requireType(configType);
         if (FORM.equals(configType)) {
-            if (formMapper.selectByIdForUpdate(configId) == null) {
+            EntityForm form = formMapper.selectByIdForUpdate(configId);
+            if (form == null) {
                 throw new IllegalArgumentException("表单不存在");
             }
-            return;
+            return form;
         }
-        if (listConfigMapper.selectByIdForUpdate(configId) == null) {
+        EntityListConfig list =
+                listConfigMapper.selectByIdForUpdate(configId);
+        if (list == null) {
             throw new IllegalArgumentException("列表配置不存在");
         }
+        return list;
     }
 
     /**
@@ -3249,7 +3921,6 @@ public class UiConfigReleaseService {
         metadata.put(
                 "customComponentSnapshotVersion",
                 form.getCustomComponentSnapshotVersion());
-        metadata.put("initConfig", form.getInitConfig());
         metadata.put(
                 "dataSourceBindingsDocument",
                 form.getDataSourceBindingsDocument());

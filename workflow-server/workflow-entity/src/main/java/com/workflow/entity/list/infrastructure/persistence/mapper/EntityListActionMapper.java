@@ -31,6 +31,12 @@ public interface EntityListActionMapper extends BaseMapper<EntityListAction> {
             @Param("listConfigId") String listConfigId,
             @Param("position") String position);
 
+    /** 锁定列表下全部按钮草稿，包含逻辑删除行。 */
+    @Select("SELECT * FROM entity_list_action "
+            + "WHERE list_config_id = #{listConfigId} ORDER BY id FOR UPDATE")
+    List<EntityListAction> findAllByListConfigIdForUpdate(
+            @Param("listConfigId") String listConfigId);
+
     /**
      * 根据列表配置 ID 物理删除所有操作项（用于批量保存前清理旧数据）。
      *

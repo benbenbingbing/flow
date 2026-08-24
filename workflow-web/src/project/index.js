@@ -11,9 +11,6 @@ import {
   registerListButtonComponent
 } from '@/utils/listButtonComponentRegistry'
 import {
-  registerFormInitializer
-} from '@/utils/formInitializerRegistry'
-import {
   registerEntityActionRuleCondition,
   registerEntityPermissionOptionProvider
 } from '@/utils/entityActionRuleRegistry'
@@ -31,7 +28,6 @@ import ProjectAcceptanceScoreCell from './list-cells/ProjectAcceptanceScoreCell.
 import ProjectAcceptanceInspectButton from './buttons/ProjectAcceptanceInspectButton.vue'
 import ProjectAcceptanceRuleCondition from './rules/ProjectAcceptanceRuleCondition.vue'
 import {
-  projectAcceptanceInitializer,
   projectAcceptanceRowAction,
   projectAcceptanceSelectionAction,
   projectAcceptanceToolbarAction
@@ -55,8 +51,6 @@ export const PROJECT_ACCEPTANCE_SCORE_CELL =
   'ProjectAcceptanceScoreCell'
 export const PROJECT_ACCEPTANCE_INSPECT_BUTTON =
   'ProjectAcceptanceInspectButton'
-export const PROJECT_ACCEPTANCE_INITIALIZER =
-  'projectAcceptanceInitializer'
 export const PROJECT_ACCEPTANCE_TOOLBAR_ACTION =
   'projectAcceptanceToolbarAction'
 export const PROJECT_ACCEPTANCE_ROW_ACTION =
@@ -299,10 +293,6 @@ export function registerProjectExtensions() {
   registerListRowAction(
     PROJECT_ACCEPTANCE_SELECTION_ACTION,
     projectAcceptanceSelectionAction
-  )
-  registerFormInitializer(
-    PROJECT_ACCEPTANCE_INITIALIZER,
-    projectAcceptanceInitializer
   )
   registerEntityActionRuleCondition({
     type: PROJECT_ACCEPTANCE_RULE_CONDITION,

@@ -404,11 +404,6 @@ JOIN entity_form f
 JOIN tmp_cleanup_entity_form tf
   ON tf.id = f.id COLLATE utf8mb4_unicode_ci
 WHERE JSON_SEARCH(
-          IF(JSON_VALID(f.init_config), f.init_config, '{}'),
-          'one',
-          d.dict_code
-      ) IS NOT NULL
-   OR JSON_SEARCH(
           IF(JSON_VALID(f.view_config), f.view_config, '{}'),
           'one',
           d.dict_code

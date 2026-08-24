@@ -13,14 +13,12 @@ import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 实体表单管理控制器
@@ -184,18 +182,4 @@ public class EntityFormController {
         return Result.success();
     }
     
-    /**
-     * 仅更新表单初始化配置
-     */
-    @PostMapping("/{id}/init-config")
-    public Result<Void> updateInitConfig(@PathVariable String id, @RequestBody InitConfigRequest request) {
-        accessService.requireFormAccess(id);
-        formService.updateInitConfig(id, request.getInitConfig());
-        return Result.success();
-    }
-    
-    @Data
-    public static class InitConfigRequest {
-        private Map<String, Object> initConfig;
-    }
 }

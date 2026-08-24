@@ -517,6 +517,62 @@
               <pre v-for="(ddl, index) in publishDiffData.pendingDdls" :key="index">{{ ddl }}</pre>
             </div>
           </div>
+          <div v-if="publishDiffData.schemaOperation" class="schema-operation-panel">
+            <div class="section-title">
+              <el-tag :type="schemaRiskTag(publishDiffData.schemaOperation.riskLevel)">
+                {{ publishDiffData.schemaOperation.riskLevel }} 风险
+              </el-tag>
+              <span>物理结构发布检查</span>
+              <el-tag type="info" effect="plain">
+                {{ schemaStatusText(publishDiffData.schemaOperation.status) }}
+              </el-tag>
+            </div>
+            <el-descriptions :column="2" size="small" border>
+              <el-descriptions-item label="预估行数">
+                {{ Number(publishDiffData.schemaOperation.estimatedRows || 0).toLocaleString() }}
+              </el-descriptions-item>
+              <el-descriptions-item label="锁表风险">
+                {{ publishDiffData.schemaOperation.lockRisk }}
+              </el-descriptions-item>
+              <el-descriptions-item label="风险原因" :span="2">
+                {{ publishDiffData.schemaOperation.riskReason }}
+              </el-descriptions-item>
+              <el-descriptions-item label="建议窗口" :span="2">
+                {{ publishDiffData.schemaOperation.releaseWindow }}
+              </el-descriptions-item>
+              <el-descriptions-item label="目标指纹" :span="2">
+                <code>{{ publishDiffData.schemaOperation.targetFingerprint }}</code>
+              </el-descriptions-item>
+            </el-descriptions>
+            <el-alert
+              v-if="publishDiffData.schemaOperation.drift?.length"
+              type="warning"
+              :closable="false"
+              title="检测到元数据与当前物理表存在差异；下列差异必须由本次计划消除"
+              class="schema-operation-alert"
+            >
+              <ul class="schema-operation-list">
+                <li v-for="item in publishDiffData.schemaOperation.drift" :key="item">{{ item }}</li>
+              </ul>
+            </el-alert>
+            <el-alert
+              v-if="publishDiffData.schemaOperation.uniqueConflicts?.length"
+              type="error"
+              :closable="false"
+              title="唯一约束扫描失败，请先清理重复数据"
+              class="schema-operation-alert"
+            >
+              <ul class="schema-operation-list">
+                <li v-for="item in publishDiffData.schemaOperation.uniqueConflicts" :key="item">{{ item }}</li>
+              </ul>
+            </el-alert>
+            <div v-if="publishDiffData.schemaOperation.status === 'DDL_FAILED'" class="schema-operation-actions">
+              <span>{{ publishDiffData.schemaOperation.errorMessage || '上次 DDL 执行失败' }}</span>
+              <el-button type="warning" plain :loading="schemaRetryLoading" @click="retrySchemaOperation">
+                恢复为待重试
+              </el-button>
+            </div>
+          </div>
           <el-divider>发布与迁移</el-divider>
           <el-form :model="publishMigrationForm" label-width="110px">
             <el-form-item label="发布说明">
@@ -534,12 +590,25 @@
             <el-form-item v-if="publishMigrationForm.markForExport" label="迁移标记">
               <el-input v-model="publishMigrationForm.migrationTag" placeholder="如 REL-20260716-001" />
             </el-form-item>
+            <el-form-item
+              v-if="publishDiffData.schemaOperation?.riskLevel === 'HIGH'"
+              label="高风险确认"
+            >
+              <el-checkbox v-model="publishMigrationForm.confirmHighRiskSchemaChange">
+                我已核对 DDL、影响行数、锁表风险和发布窗口，并确认继续
+              </el-checkbox>
+            </el-form-item>
           </el-form>
         </div>
       </div>
       <template #footer>
         <el-button @click="publishDiffDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmPublish" :loading="publishDiffLoading">
+        <el-button
+          type="primary"
+          @click="confirmPublish"
+          :loading="publishDiffLoading"
+          :disabled="publishDiffData?.schemaOperation?.uniqueConflicts?.length > 0"
+        >
           {{ publishDiffData?.isFirstPublish ? '确认发布' : '确认重新发布' }}
         </el-button>
       </template>
@@ -555,6 +624,7 @@ import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
 import { entityVersionDiffApi } from '@/api/entityVersionDiff'
+import { schemaOperationApi } from '@/api/schemaOperation'
 import { processApi } from '@/api/process'
 import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
 import { generateMigrationTag } from '@/utils/migrationTag'
@@ -824,11 +894,22 @@ const publishDiffDialogVisible = ref(false)
 const publishDiffLoading = ref(false)
 const publishDiffData = ref(null)
 const publishTargetEntity = ref(null)
+const schemaRetryLoading = ref(false)
 const publishMigrationForm = ref({
   versionDescription: '',
   markForExport: true,
-  migrationTag: generateMigrationTag()
+  migrationTag: generateMigrationTag(),
+  confirmHighRiskSchemaChange: false
 })
+const schemaRiskTag = (risk) => ({ HIGH: 'danger', MEDIUM: 'warning', LOW: 'success' })[risk] || 'info'
+const schemaStatusText = (status) => ({
+  METADATA_SAVED: '元数据已保存',
+  DDL_PENDING: 'DDL 待执行',
+  DDL_RUNNING: 'DDL 执行中',
+  SCHEMA_CONSISTENT: '结构一致',
+  DDL_FAILED: 'DDL 失败',
+  TERMINATED: '已终止'
+})[status] || status
 // 格式化日期
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -885,7 +966,8 @@ const handlePublish = async (row) => {
   publishMigrationForm.value = {
     versionDescription: '',
     markForExport: true,
-    migrationTag: generateMigrationTag()
+    migrationTag: generateMigrationTag(),
+    confirmHighRiskSchemaChange: false
   }
   publishDiffDialogVisible.value = true
   publishDiffLoading.value = true
@@ -905,7 +987,8 @@ const handleRepublish = async (row) => {
   publishMigrationForm.value = {
     versionDescription: '',
     markForExport: true,
-    migrationTag: generateMigrationTag()
+    migrationTag: generateMigrationTag(),
+    confirmHighRiskSchemaChange: false
   }
   publishDiffDialogVisible.value = true
   publishDiffLoading.value = true
@@ -926,6 +1009,15 @@ const confirmPublish = async () => {
     ElMessage.warning('加入待导出清单时必须填写迁移标记')
     return
   }
+  const schemaOperation = publishDiffData.value?.schemaOperation
+  if (schemaOperation?.uniqueConflicts?.length) {
+    ElMessage.error('唯一约束扫描存在冲突，请先清理重复数据')
+    return
+  }
+  if (schemaOperation?.riskLevel === 'HIGH' && !publishMigrationForm.value.confirmHighRiskSchemaChange) {
+    ElMessage.warning('请先确认高风险结构变更')
+    return
+  }
   publishDiffLoading.value = true
   try {
     await entityApi.publish(publishTargetEntity.value.id, { ...publishMigrationForm.value })
@@ -937,6 +1029,19 @@ const confirmPublish = async () => {
     ElMessage.error(error.response?.data?.message || '发布失败')
   } finally {
     publishDiffLoading.value = false
+  }
+}
+const retrySchemaOperation = async () => {
+  if (!publishTargetEntity.value) return
+  schemaRetryLoading.value = true
+  try {
+    await schemaOperationApi.retry(publishTargetEntity.value.id)
+    publishDiffData.value = await entityVersionDiffApi.getPendingPublishDiff(publishTargetEntity.value.id)
+    ElMessage.success('结构操作已恢复为待重试，请确认后重新发布')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || error.message || '恢复结构操作失败')
+  } finally {
+    schemaRetryLoading.value = false
   }
 }
 // 查看版本历史
@@ -1136,6 +1241,29 @@ onMounted(() => {
   background-color: #fff;
   border-radius: 4px;
   border: 1px solid #e4e7ed;
+}
+.schema-operation-panel {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #d6dde8;
+  border-left: 4px solid #d78b2d;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #fffdf8 0%, #f6f9fc 100%);
+}
+.schema-operation-alert {
+  margin-top: 12px;
+}
+.schema-operation-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.schema-operation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  color: #b42318;
 }
 .version-item.version-clickable {
   cursor: pointer;

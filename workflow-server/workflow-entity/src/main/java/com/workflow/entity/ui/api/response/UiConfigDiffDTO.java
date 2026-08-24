@@ -22,6 +22,14 @@ public class UiConfigDiffDTO {
     String activeHash;
     /** 是否存在差异 */
     boolean changed;
+    /** 是否包含当前表单或列表自身可撤销的草稿修改。 */
+    boolean discardableChanged;
+    /** 是否能在不修改继承配置和外部发布引用的前提下撤销本地草稿。 */
+    boolean canDiscardDraft;
+    /** 当前差异是否包含继承配置或外部发布引用漂移。 */
+    boolean dependencyChanged;
+    /** 不能撤销时的简要原因；可撤销时为空。 */
+    String discardBlockedReason;
     /** 存在变更的分区名称列表 */
     List<String> changedSections;
     /** 变更明细条目 */

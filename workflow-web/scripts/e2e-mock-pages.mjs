@@ -472,7 +472,7 @@ const interactionPlans = new Map([
   ['/entity-form/design/e2e-form', [
     {
       click: '表单设置',
-      expect: ['基本与布局', '按钮与操作', '数据与事件', '渲染与扩展']
+      expect: ['基本与布局', '按钮与操作', '初始化与数据处理']
     },
     {
       click: '按钮与操作',

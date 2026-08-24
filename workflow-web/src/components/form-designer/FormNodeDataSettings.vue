@@ -68,6 +68,12 @@
         </el-button>
       </div>
       <el-form-item label="数据源">
+        <template #label>
+          <ConfigHelpLabel
+            label="数据源"
+            help-key="uiDataSource.service"
+          />
+        </template>
         <el-select
           v-model="selectedField.dataSourceId"
           clearable

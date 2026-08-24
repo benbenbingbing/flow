@@ -7,6 +7,7 @@ import com.workflow.entity.ui.application.UiDataSourceService;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.ui.hotfix.UiHotfixObservationPort;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;
@@ -47,11 +48,19 @@ public class PublishedFormSubmissionService {
     private final UiDataSourceDefinitionValidator schemaValidator;
     private final PublishedFormRequiredValidator requiredValidator;
     private EntityPublishedRelationService publishedRelationService;
+    private UiHotfixObservationPort hotfixObservationPort;
 
     @Autowired(required = false)
     void setPublishedRelationService(
             EntityPublishedRelationService publishedRelationService) {
         this.publishedRelationService = publishedRelationService;
+    }
+
+    /** 观察能力可选接入，缺失时不影响独立模块测试和基础提交能力。 */
+    @Autowired(required = false)
+    void setHotfixObservationPort(
+            UiHotfixObservationPort hotfixObservationPort) {
+        this.hotfixObservationPort = hotfixObservationPort;
     }
 
     /**
@@ -314,6 +323,50 @@ public class PublishedFormSubmissionService {
     }
 
     private Map<String, Object> applyResolvedForm(
+            ResolvedEntityFormRelease resolved,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext,
+            UiRuntimeResolutionContext resolutionContext,
+            PublishedSubFormSubmissionProcessor.Context nestedContext,
+            int depth,
+            BindingExecutionMode executionMode) {
+        if (executionMode != BindingExecutionMode.AUTHORITATIVE) {
+            return applyResolvedFormInternal(
+                    resolved,
+                    entityCode,
+                    recordId,
+                    mode,
+                    submittedData,
+                    executionContext,
+                    resolutionContext,
+                    nestedContext,
+                    depth,
+                    executionMode);
+        }
+        try {
+            Map<String, Object> result = applyResolvedFormInternal(
+                    resolved,
+                    entityCode,
+                    recordId,
+                    mode,
+                    submittedData,
+                    executionContext,
+                    resolutionContext,
+                    nestedContext,
+                    depth,
+                    executionMode);
+            observeSubmission(resolved, true, null);
+            return result;
+        } catch (RuntimeException exception) {
+            observeSubmission(resolved, false, exception.getMessage());
+            throw exception;
+        }
+    }
+
+    private Map<String, Object> applyResolvedFormInternal(
             ResolvedEntityFormRelease resolved,
             String entityCode,
             String recordId,
@@ -713,8 +766,7 @@ public class PublishedFormSubmissionService {
                             response == null ? Map.of() : response),
                     response);
             if (response instanceof Map<?, ?> map) {
-                map.forEach((key, child) ->
-                        record.put(String.valueOf(key), child));
+                mergeMappedOutput(record, map);
             }
             bindingIndex++;
         }
@@ -853,6 +905,34 @@ public class PublishedFormSubmissionService {
         return result;
     }
 
+    /**
+     * 递归合并数据源映射补丁，同一对象下的不同叶子字段均需保留。
+     *
+     * <p>映射步骤仍按顺序执行；后一步只有命中同一叶子路径时才覆盖前值，数组和标量按叶子值
+     * 整体替换。每层都会创建可变副本，避免发布快照或 Provider 返回不可变 Map 时写入失败。
+     */
+    static void mergeMappedOutput(
+            Map<String, Object> target,
+            Map<?, ?> patch) {
+        patch.forEach((rawKey, value) -> {
+            String key = String.valueOf(rawKey);
+            if (value instanceof Map<?, ?> childPatch) {
+                Map<String, Object> merged = new LinkedHashMap<>();
+                Object existing = target.get(key);
+                if (existing instanceof Map<?, ?> existingMap) {
+                    existingMap.forEach((existingKey, existingValue) ->
+                            merged.put(
+                                    String.valueOf(existingKey),
+                                    existingValue));
+                }
+                mergeMappedOutput(merged, childPatch);
+                target.put(key, merged);
+                return;
+            }
+            target.put(key, value);
+        });
+    }
+
     private Object applyMapping(
             Map<String, Object> mapping,
             Map<String, Object> source,
@@ -940,6 +1020,24 @@ public class PublishedFormSubmissionService {
     private enum BindingExecutionMode {
         AUTHORITATIVE,
         SIDE_EFFECT_FREE_PREVIEW
+    }
+
+    private void observeSubmission(
+            ResolvedEntityFormRelease resolved,
+            boolean successful,
+            String errorMessage) {
+        if (hotfixObservationPort == null || resolved == null) {
+            return;
+        }
+        try {
+            hotfixObservationPort.recordReleaseMetric(
+                    resolved.effectiveReleaseId(),
+                    "FORM_SUBMIT",
+                    successful,
+                    errorMessage);
+        } catch (RuntimeException ignored) {
+            // 观察数据不得改变表单提交结果，告警由治理指标链路自身处理。
+        }
     }
 
 }

@@ -72,6 +72,11 @@ public class EntityVersionDiffDTO {
     private List<String> pendingDdls = new ArrayList<>();
 
     /**
+     * 结构发布状态、实际漂移、唯一性扫描与锁表风险。
+     */
+    private EntitySchemaOperationDTO schemaOperation;
+
+    /**
      * 字段差异详情
      */
     @Data

@@ -36,8 +36,6 @@ public class EntityFormSaveRequest {
     private Integer customComponentVersion;
     /** 自定义组件快照版本 */
     private Integer customComponentSnapshotVersion;
-    /** 初始化配置（JSON 文档） */
-    private String initConfig;
     /** 数据源绑定配置（JSON 文档） */
     private String dataSourceBindingsDocument;
     /** 视图配置（JSON 文档） */
@@ -65,7 +63,6 @@ public class EntityFormSaveRequest {
         form.setCustomComponentVersion(customComponentVersion);
         form.setCustomComponentSnapshotVersion(
                 customComponentSnapshotVersion);
-        form.setInitConfig(initConfig);
         form.setDataSourceBindingsDocument(dataSourceBindingsDocument);
         form.setViewConfig(viewConfig);
         form.setFields(fields);

@@ -26,6 +26,12 @@ public interface EntityListSceneMapper extends BaseMapper<EntityListScene> {
     @Select("SELECT * FROM entity_list_scene WHERE list_config_id = #{listConfigId} ORDER BY sort_order")
     List<EntityListScene> findByListConfigId(@Param("listConfigId") String listConfigId);
 
+    /** 锁定列表下全部场景草稿。 */
+    @Select("SELECT * FROM entity_list_scene "
+            + "WHERE list_config_id = #{listConfigId} ORDER BY id FOR UPDATE")
+    List<EntityListScene> findAllByListConfigIdForUpdate(
+            @Param("listConfigId") String listConfigId);
+
     /**
      * 根据列表配置 ID 物理删除所有场景（用于批量保存前清理旧数据）。
      *

@@ -72,13 +72,20 @@
                 默认
               </el-button>
               <el-button type="primary" link size="small" @click="handleCopy(row)">复制</el-button>
-              <el-button
+              <el-tooltip
                 v-if="entityInfo.storageMode !== 'SYSTEM'"
-                type="primary"
-                link
-                size="small"
-                @click="handleInitConfig(row)"
-              >配置</el-button>
+                :content="formDataConfigSummary(row)"
+                placement="top"
+              >
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click="handleDataConfig(row)"
+                >
+                  数据配置<span v-if="formDataConfigCount(row)">({{ formDataConfigCount(row) }})</span>
+                </el-button>
+              </el-tooltip>
               <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
             </div>
           </template>
@@ -150,164 +157,6 @@
       <FormPreviewLinkage v-if="previewForm" :form="previewForm" :showHeader="false" />
     </el-dialog>
 
-    <!-- 初始化配置弹窗 -->
-    <el-dialog v-model="initConfigVisible" title="表单初始化配置" width="700px">
-      <div class="init-config-wrapper">
-        <el-radio-group v-model="initConfigType" size="small" @change="onInitConfigTypeChange">
-          <el-radio-button value="">无</el-radio-button>
-          <el-radio-button value="api">API</el-radio-button>
-          <el-radio-button value="entity">实体</el-radio-button>
-          <el-radio-button value="static">静态</el-radio-button>
-          <el-radio-button value="custom">自定义</el-radio-button>
-        </el-radio-group>
-
-        <div v-if="initConfigType === 'api'" class="init-config-section">
-          <el-form inline size="small">
-            <el-form-item label="请求地址">
-              <el-input v-model="initConfigData.api.url" placeholder="/api/xxx 或完整 URL" style="width: 260px" />
-            </el-form-item>
-            <el-form-item label="请求方式">
-              <el-select v-model="initConfigData.api.method" style="width: 100px">
-                <el-option label="GET" value="GET" />
-                <el-option label="POST" value="POST" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="响应路径">
-              <el-input v-model="initConfigData.api.responsePath" placeholder="如 data，留空取根" style="width: 140px" />
-            </el-form-item>
-          </el-form>
-          <el-form inline size="small">
-            <el-form-item label="Query 参数(JSON)">
-              <template #label>
-                <JsonConfigLabel
-                  label="Query 参数(JSON)"
-                  help-key="entityForm.init.apiQuery"
-                />
-              </template>
-              <el-input v-model="initConfigData.api.paramsText" type="textarea" :rows="3" placeholder='{"projectId":"{{routeQuery.projectId}}"}' style="width: 260px" />
-            </el-form-item>
-            <el-form-item label="请求体(JSON)">
-              <template #label>
-                <JsonConfigLabel
-                  label="请求体(JSON)"
-                  help-key="entityForm.init.apiBody"
-                />
-              </template>
-              <el-input v-model="initConfigData.api.dataText" type="textarea" :rows="3" placeholder='{"key":"value"}' style="width: 260px" />
-            </el-form-item>
-          </el-form>
-          <el-form inline size="small">
-            <el-form-item label="字段映射(JSON)">
-              <template #label>
-                <JsonConfigLabel
-                  label="字段映射(JSON)"
-                  help-key="entityForm.init.apiMapping"
-                />
-              </template>
-              <el-input v-model="initConfigData.api.mappingText" type="textarea" :rows="3" placeholder='{"projectName":"name","projectCode":"code"}' style="width: 540px" />
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <div v-else-if="initConfigType === 'entity'" class="init-config-section">
-          <el-form inline size="small">
-            <el-form-item label="目标实体">
-              <EntityDefinitionPicker
-                v-model="initConfigData.entity.entityCode"
-                value-key="entityCode"
-                title="选择初始化数据实体"
-                placeholder="选择实体"
-                :query="{ storageMode: 'DYNAMIC' }"
-              />
-            </el-form-item>
-            <el-form-item label="取第几条">
-              <el-input-number v-model="initConfigData.entity.index" :min="0" :max="100" style="width: 100px" />
-            </el-form-item>
-          </el-form>
-          <el-form inline size="small">
-            <el-form-item label="过滤参数(JSON)">
-              <template #label>
-                <JsonConfigLabel
-                  label="过滤参数(JSON)"
-                  help-key="entityForm.init.entityFilters"
-                />
-              </template>
-              <el-input v-model="initConfigData.entity.paramsText" type="textarea" :rows="3" placeholder='{"status":"APPROVED"}' style="width: 540px" />
-            </el-form-item>
-          </el-form>
-          <el-form inline size="small">
-            <el-form-item label="字段映射(JSON)">
-              <template #label>
-                <JsonConfigLabel
-                  label="字段映射(JSON)"
-                  help-key="entityForm.init.entityMapping"
-                />
-              </template>
-              <el-input v-model="initConfigData.entity.mappingText" type="textarea" :rows="3" placeholder='{"projectName":"name","projectCode":"code"}' style="width: 540px" />
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <div v-else-if="initConfigType === 'static'" class="init-config-section">
-          <el-form inline size="small">
-            <el-form-item label="静态值(JSON)">
-              <template #label>
-                <JsonConfigLabel
-                  label="静态值(JSON)"
-                  help-key="entityForm.init.staticValues"
-                />
-              </template>
-              <el-input v-model="initConfigData.staticText" type="textarea" :rows="4" placeholder='{"status":"DRAFT","reqType":"重大"}' style="width: 540px" />
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <div v-else-if="initConfigType === 'custom'" class="init-config-section">
-          <el-form inline size="small">
-            <el-form-item label="初始化器名称">
-              <el-select
-                v-model="initConfigData.custom.name"
-                placeholder="选择已注册初始化器"
-                filterable
-                clearable
-                style="width: 320px"
-              >
-                <el-option
-                  v-for="name in registeredInitializers"
-                  :key="name"
-                  :label="name"
-                  :value="name"
-                />
-                <el-option
-                  v-if="initConfigData.custom.name && !registeredInitializers.includes(initConfigData.custom.name)"
-                  :label="`${initConfigData.custom.name}（当前未注册）`"
-                  :value="initConfigData.custom.name"
-                  disabled
-                />
-              </el-select>
-              <div v-if="registeredInitializers.length === 0" class="field-help">
-                当前环境没有已注册的自定义初始化器，请联系开发人员先完成扩展注册。
-              </div>
-            </el-form-item>
-          </el-form>
-          <el-form inline size="small">
-            <el-form-item label="参数(JSON)">
-              <template #label>
-                <JsonConfigLabel
-                  label="参数(JSON)"
-                  help-key="entityForm.init.customParams"
-                />
-              </template>
-              <el-input v-model="initConfigData.custom.paramsText" type="textarea" :rows="3" placeholder='{"key":"value"}' style="width: 540px" />
-            </el-form-item>
-          </el-form>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="initConfigVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSaveInitConfig" :loading="initConfigLoading">保存</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -318,15 +167,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import { entityApi } from '@/api/entity'
-import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
-import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
-import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm, copyForm, updateFormInitConfig } from '@/api/entityForm'
-import { parseJsonConfig } from '@/utils/jsonConfig'
-import { getRegisteredFormInitializerNames } from '@/utils/formInitializerRegistry'
+import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm, copyForm } from '@/api/entityForm'
+import {
+  formatFormDataSourceBindingSummary,
+  totalFormDataSourceBindings
+} from '@/shared/form-runtime'
 import { formatDateValue } from '@/shared/list-runtime'
 import PageState from '@/components/PageState.vue'
-
-const registeredInitializers = getRegisteredFormInitializerNames()
 
 const route = useRoute()
 const router = useRouter()
@@ -339,25 +186,14 @@ const dialogVisible = ref(false)
 const copyDialogVisible = ref(false)
 const copyLoading = ref(false)
 const previewVisible = ref(false)
-const initConfigVisible = ref(false)
-const initConfigLoading = ref(false)
 const isEdit = ref(false)
 const formRef = ref(null)
 const copyFormRef = ref(null)
-const currentInitFormId = ref('')
 const copySourceFormId = ref('')
 
 const entityInfo = ref({})
 const formList = ref([])
 const previewForm = ref(null)
-
-const initConfigType = ref('')
-const initConfigData = reactive({
-  api: { url: '', method: 'GET', responsePath: '', paramsText: '', dataText: '', mappingText: '' },
-  entity: { entityCode: '', index: 0, paramsText: '', mappingText: '' },
-  staticText: '',
-  custom: { name: '', paramsText: '' }
-})
 
 const form = reactive({
   id: '',
@@ -433,6 +269,33 @@ function handleEdit(row) {
 function handleDesign(row) {
   // 跳转到表单设计页面，传入表单ID
   router.push(`/entity-form/design/${row.id}?entityId=${entityId}`)
+}
+
+/**
+ * 列表只提供统一数据配置的深链入口，实际编辑始终在表单设计器完成。
+ */
+function handleDataConfig(row) {
+  router.push({
+    name: 'EntityFormDesign',
+    params: { id: row.id },
+    query: {
+      entityId,
+      settings: 'data-events',
+      section: 'data-source'
+    }
+  })
+}
+
+function formDataConfigSummary(row) {
+  return formatFormDataSourceBindingSummary(
+    row.dataSourceBindingsDocument || row.dataSourceBindings
+  )
+}
+
+function formDataConfigCount(row) {
+  return totalFormDataSourceBindings(
+    row.dataSourceBindingsDocument || row.dataSourceBindings
+  )
 }
 
 async function handlePreview(row) {
@@ -567,111 +430,6 @@ onMounted(() => {
   loadEntityInfo()
   loadForms()
 })
-
-function safeJsonStringify(obj, space = 0) {
-  if (obj == null) return ''
-  try {
-    return JSON.stringify(obj, null, space)
-  } catch (e) {
-    return ''
-  }
-}
-
-function parseInitConfigToUI(config) {
-  if (typeof config === 'string' && config) {
-    try {
-      config = JSON.parse(config)
-    } catch (e) {
-      config = null
-    }
-  }
-  if (!config || !config.type) {
-    initConfigType.value = ''
-    return
-  }
-  initConfigType.value = config.type
-  if (config.type === 'api' && config.api) {
-    initConfigData.api.url = config.api.url || ''
-    initConfigData.api.method = config.api.method || 'GET'
-    initConfigData.api.responsePath = config.api.responsePath || ''
-    initConfigData.api.paramsText = safeJsonStringify(config.api.params, 2)
-    initConfigData.api.dataText = safeJsonStringify(config.api.data, 2)
-    initConfigData.api.mappingText = safeJsonStringify(config.api.mapping, 2)
-  } else if (config.type === 'entity' && config.entity) {
-    initConfigData.entity.entityCode = config.entity.entityCode || ''
-    initConfigData.entity.index = config.entity.index ?? 0
-    initConfigData.entity.paramsText = safeJsonStringify(config.entity.params, 2)
-    initConfigData.entity.mappingText = safeJsonStringify(config.entity.mapping, 2)
-  } else if (config.type === 'static') {
-    initConfigData.staticText = safeJsonStringify(config.static, 2)
-  } else if (config.type === 'custom' && config.custom) {
-    initConfigData.custom.name = config.custom.name || ''
-    initConfigData.custom.paramsText = safeJsonStringify(config.custom.params, 2)
-  }
-}
-
-function buildInitConfigFromUI() {
-  const type = initConfigType.value
-  if (!type) return null
-  const config = { type }
-  if (type === 'api') {
-    config.api = {
-      url: initConfigData.api.url,
-      method: initConfigData.api.method || 'GET',
-      responsePath: initConfigData.api.responsePath,
-      params: parseJsonConfig(initConfigData.api.paramsText, { fieldName: 'Query 参数' }),
-      data: parseJsonConfig(initConfigData.api.dataText, { fieldName: '请求体' }),
-      mapping: parseJsonConfig(initConfigData.api.mappingText, { fieldName: '字段映射' })
-    }
-  } else if (type === 'entity') {
-    config.entity = {
-      entityCode: initConfigData.entity.entityCode,
-      index: initConfigData.entity.index,
-      params: parseJsonConfig(initConfigData.entity.paramsText, { fieldName: '过滤参数' }),
-      mapping: parseJsonConfig(initConfigData.entity.mappingText, { fieldName: '字段映射' })
-    }
-  } else if (type === 'static') {
-    config.static = parseJsonConfig(initConfigData.staticText, { fieldName: '静态值' })
-  } else if (type === 'custom') {
-    config.custom = {
-      name: initConfigData.custom.name,
-      params: parseJsonConfig(initConfigData.custom.paramsText, { fieldName: '自定义参数' })
-    }
-  }
-  return config
-}
-
-function onInitConfigTypeChange() {
-  // 切换类型时清空其他类型的数据，保留当前类型的默认值
-}
-
-function handleInitConfig(row) {
-  currentInitFormId.value = row.id
-  parseInitConfigToUI(row.initConfig)
-  initConfigVisible.value = true
-}
-
-async function handleSaveInitConfig() {
-  if (!currentInitFormId.value) return
-  if (initConfigType.value === 'custom'
-      && !registeredInitializers.includes(initConfigData.custom.name)) {
-    ElMessage.error('请选择当前环境已注册的自定义初始化器')
-    return
-  }
-  initConfigLoading.value = true
-  try {
-    const initConfig = buildInitConfigFromUI()
-    await updateFormInitConfig(currentInitFormId.value, initConfig || null)
-    ElMessage.success('初始化配置保存成功')
-    initConfigVisible.value = false
-    loadForms()
-  } catch (e) {
-    console.error('保存初始化配置失败:', e)
-    ElMessage.error(e.message || '保存失败')
-  } finally {
-    initConfigLoading.value = false
-  }
-}
 </script>
 
 <style scoped>
@@ -708,15 +466,4 @@ async function handleSaveInitConfig() {
   font-weight: 500;
 }
 
-.init-config-wrapper {
-  padding: 10px 0;
-}
-
-.init-config-wrapper .el-radio-group {
-  margin-bottom: 20px;
-}
-
-.init-config-section {
-  padding: 10px 0;
-}
 </style>

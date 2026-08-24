@@ -1,6 +1,10 @@
 package com.workflow.process.definition.application;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.core.error.RevisionConflictException;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.process.definition.api.request.ProcessPublishRequest;
+import com.workflow.process.definition.api.response.ProcessPublishPreviewDTO;
 import com.workflow.process.definition.api.request.ProcessDefinitionQueryDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
@@ -33,6 +37,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
 
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.stream.Collectors;
 
 /**
@@ -54,6 +60,7 @@ public class ProcessDefinitionService {
     private final ProcessBpmnPublishSanitizer bpmnPublishSanitizer;
     private final FlowActionDesignPort flowActionDesignPort;
     private final MigrationAssetHandler migrationAssetHandler;
+    private final ProcessDefinitionPreflightService preflightService;
     
     /**
      * 查询所有启用的流程定义。
@@ -238,6 +245,10 @@ public class ProcessDefinitionService {
         ProcessDefinitionConfig config = convertToEntity(dto);
         config.setVersion(0); // 初始版本为0，表示从未发布
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
+        config.setDraftRevision(1L);
+        config.setPublishedRevision(0L);
+        config.setBasePublishedVersion(0);
+        config.setDraftHash(ProcessDraftHashSupport.hash(config));
         processMapper.insert(config);
         return convertToDTO(config);
     }
@@ -248,7 +259,9 @@ public class ProcessDefinitionService {
      * @param id  流程定义ID
      * @param dto 更新的流程定义数据
      * @return 更新后的流程定义
-     * @throws RuntimeException 流程不存在时抛出
+     * @throws RuntimeException         流程不存在时抛出
+     * @throws IllegalArgumentException 未携带 expectedRevision 时抛出
+     * @throws RevisionConflictException 草稿已被其他请求修改时抛出，并携带服务端最新草稿
      */
     @Transactional
     @SystemAudit(
@@ -265,23 +278,52 @@ public class ProcessDefinitionService {
         if (existing == null) {
             throw new RuntimeException("Process not found: " + id);
         }
-        
-        // 已发布的流程不能直接编辑，必须先创建新版本
-        if (existing.getStatus() == ProcessDefinitionConfig.ProcessStatus.PUBLISHED) {
-            // 允许更新基本信息和XML（作为草稿修改）
-            existing.setProcessName(dto.getProcessName());
-            existing.setDescription(dto.getDescription());
-            existing.setCategory(dto.getCategory());
-            existing.setBpmnXml(dto.getBpmnXml());
-            // 状态保持PUBLISHED，表示这是基于已发布版本的修改
-        } else {
-            existing.setProcessName(dto.getProcessName());
-            existing.setDescription(dto.getDescription());
-            existing.setCategory(dto.getCategory());
-            existing.setBpmnXml(dto.getBpmnXml());
+
+        Long expectedRevision = dto.getExpectedRevision();
+        if (expectedRevision == null || expectedRevision < 1) {
+            throw new IllegalArgumentException("expectedRevision 不能为空且必须大于 0");
         }
-        
-        processMapper.updateById(existing);
+
+        long currentRevision = revisionOf(existing);
+        if (expectedRevision != currentRevision) {
+            throw draftConflict(existing);
+        }
+
+        String nextDraftHash = ProcessDraftHashSupport.hash(
+                existing.getProcessKey(),
+                dto.getProcessName(),
+                dto.getDescription(),
+                dto.getCategory(),
+                dto.getBpmnXml());
+
+        // 完全相同的整包重试直接返回当前草稿，避免网络重试制造无意义 revision。
+        if (dto.getNodes() == null && nextDraftHash.equals(draftHashOf(existing))) {
+            return convertToDTO(existing);
+        }
+
+        int updated = processMapper.updateDraftCas(
+                id,
+                expectedRevision,
+                dto.getProcessName(),
+                dto.getDescription(),
+                dto.getCategory(),
+                dto.getBpmnXml(),
+                nextDraftHash);
+        if (updated != 1) {
+            ProcessDefinitionConfig current = processMapper.selectById(id);
+            if (current == null) {
+                throw new RuntimeException("Process not found: " + id);
+            }
+            throw draftConflict(current);
+        }
+
+        // CAS 成功后才更新内存对象和关联节点；后续同步失败会回滚同一事务内的草稿更新。
+        existing.setProcessName(dto.getProcessName());
+        existing.setDescription(dto.getDescription());
+        existing.setCategory(dto.getCategory());
+        existing.setBpmnXml(dto.getBpmnXml());
+        existing.setDraftRevision(expectedRevision + 1);
+        existing.setDraftHash(nextDraftHash);
         
         // 更新节点配置
         if (dto.getNodes() != null) {
@@ -364,6 +406,69 @@ public class ProcessDefinitionService {
         if (config == null) {
             throw new RuntimeException("Process not found: " + id);
         }
+        return publishLocked(config, request);
+    }
+
+    /**
+     * 发布经过预检的流程定义。
+     *
+     * <p>在流程配置行锁内重新执行预检，并同时验证 revision、draftHash 和 previewToken，
+     * 确保正式部署的内容就是管理员预览确认的内容。</p>
+     */
+    @Transactional
+    @SystemAudit(
+            module = AuditModule.PROCESS,
+            action = AuditAction.PUBLISH,
+            operation = "发布已预检流程定义",
+            risk = AuditRiskLevel.CRITICAL,
+            required = true,
+            targetType = "PROCESS_DEFINITION",
+            targetIdArg = 0,
+            captureArguments = true,
+            captureResult = true)
+    public ProcessDefinitionDTO publish(String id, ProcessPublishRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("PROCESS_PUBLISH_PREVIEW_REQUIRED: 发布请求不能为空");
+        }
+        ProcessDefinitionConfig config = processMapper.selectByIdForUpdate(id);
+        if (config == null) {
+            throw new RuntimeException("Process not found: " + id);
+        }
+        long currentRevision = revisionOf(config);
+        String currentHash = draftHashOf(config);
+        if (request.getExpectedRevision() == null
+                || request.getExpectedRevision() != currentRevision
+                || request.getExpectedDraftHash() == null
+                || !MessageDigest.isEqual(
+                        request.getExpectedDraftHash().getBytes(StandardCharsets.UTF_8),
+                        currentHash.getBytes(StandardCharsets.UTF_8))) {
+            throw draftConflict(config);
+        }
+
+        ProcessPublishPreviewDTO preview = preflightService.preview(config);
+        if (!preview.publishable()) {
+            throw new IllegalArgumentException(
+                    "PROCESS_PUBLISH_BLOCKED: 发布预检存在 " + preview.blockerCount() + " 个阻断项");
+        }
+        if (request.getPreviewToken() == null || !MessageDigest.isEqual(
+                request.getPreviewToken().getBytes(StandardCharsets.UTF_8),
+                preview.previewToken().getBytes(StandardCharsets.UTF_8))) {
+            throw new BusinessConflictException(
+                    "PROCESS_PUBLISH_PREVIEW_STALE", "流程草稿或依赖已变化，请重新执行发布预检");
+        }
+
+        ConfigMigrationPublishRequest migrationRequest = new ConfigMigrationPublishRequest();
+        migrationRequest.setVersionDescription(request.getVersionDescription());
+        migrationRequest.setMarkForExport(request.getMarkForExport());
+        migrationRequest.setMigrationTag(request.getMigrationTag());
+        return publishLocked(config, migrationRequest);
+    }
+
+    /** 在调用方已经锁定流程配置后执行实际部署。 */
+    private ProcessDefinitionDTO publishLocked(
+            ProcessDefinitionConfig config,
+            ConfigMigrationPublishRequest request) {
+        String id = config.getId();
         
         if (config.getBpmnXml() == null || config.getBpmnXml().isEmpty()) {
             throw new RuntimeException("BPMN XML is required for publishing");
@@ -405,6 +510,10 @@ public class ProcessDefinitionService {
         // 更新主流程配置
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
         config.setVersion(newVersion);
+        config.setDraftHash(draftHashOf(config));
+        config.setPublishedDraftHash(config.getDraftHash());
+        config.setPublishedRevision(revisionOf(config));
+        config.setBasePublishedVersion(newVersion);
         processMapper.updateById(config);
         migrationAssetHandler.recordProcess(config.getId(), history.getId(), publishRequest);
         
@@ -428,7 +537,7 @@ public class ProcessDefinitionService {
             captureArguments = true,
             captureResult = true)
     public ProcessDefinitionDTO rollbackToVersion(String processId, String versionId, String reason) {
-        ProcessDefinitionConfig config = processMapper.selectById(processId);
+        ProcessDefinitionConfig config = processMapper.selectByIdForUpdate(processId);
         if (config == null) {
             throw new RuntimeException("Process not found: " + processId);
         }
@@ -441,6 +550,8 @@ public class ProcessDefinitionService {
         // 使用目标版本的XML作为新版本的起点
         config.setBpmnXml(targetVersion.getBpmnXml());
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
+        config.setDraftRevision(revisionOf(config) + 1);
+        config.setDraftHash(ProcessDraftHashSupport.hash(config));
         processMapper.updateById(config);
         
         log.info("Process {} rolled back to version {} for reason: {}", 
@@ -518,6 +629,12 @@ public class ProcessDefinitionService {
         dto.setVersion(config.getVersion());
         dto.setStatus(config.getStatus());
         dto.setBpmnXml(config.getBpmnXml());
+        dto.setRevision(revisionOf(config));
+        dto.setDraftHash(draftHashOf(config));
+        dto.setPublishedRevision(publishedRevisionOf(config));
+        dto.setBasePublishedVersion(basePublishedVersionOf(config));
+        dto.setHasUnpublishedChanges(
+                revisionOf(config) > publishedRevisionOf(config));
         dto.setCreatedAt(config.getCreatedAt());
         dto.setUpdatedAt(config.getUpdatedAt());
         dto.setCreatedBy(config.getCreatedBy());
@@ -555,6 +672,43 @@ public class ProcessDefinitionService {
         config.setBpmnXml(dto.getBpmnXml());
         config.setCreatedBy(dto.getCreatedBy());
         return config;
+    }
+
+    /** 返回兼容存量数据的当前草稿修订号。 */
+    private long revisionOf(ProcessDefinitionConfig config) {
+        return config.getDraftRevision() == null || config.getDraftRevision() < 1
+                ? 1L : config.getDraftRevision();
+    }
+
+    /** 返回兼容存量数据的最近发布修订号。 */
+    private long publishedRevisionOf(ProcessDefinitionConfig config) {
+        if (config.getPublishedRevision() != null) {
+            return Math.max(config.getPublishedRevision(), 0L);
+        }
+        return config.getVersion() != null && config.getVersion() > 0
+                ? revisionOf(config) : 0L;
+    }
+
+    /** 返回当前草稿哈希；存量空值在读取时按同一算法计算。 */
+    private String draftHashOf(ProcessDefinitionConfig config) {
+        return config.getDraftHash() == null || config.getDraftHash().isBlank()
+                ? ProcessDraftHashSupport.hash(config)
+                : config.getDraftHash();
+    }
+
+    /** 返回当前草稿所基于的发布版本。 */
+    private int basePublishedVersionOf(ProcessDefinitionConfig config) {
+        if (config.getBasePublishedVersion() != null) {
+            return Math.max(config.getBasePublishedVersion(), 0);
+        }
+        return config.getVersion() == null ? 0 : Math.max(config.getVersion(), 0);
+    }
+
+    /** 构造包含服务端最新草稿的统一 409 冲突。 */
+    private RevisionConflictException draftConflict(ProcessDefinitionConfig current) {
+        return new RevisionConflictException(
+                "流程草稿已被其他人或其他标签页修改，请先比较最新版本",
+                convertToDTO(current));
     }
     
     /**

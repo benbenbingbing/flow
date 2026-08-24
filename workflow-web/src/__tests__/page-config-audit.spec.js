@@ -444,6 +444,14 @@ const entitySelector = readFileSync(path.join(root, 'src/components/EntitySelect
 
 const listDesigner = readFileSync(path.join(root, 'src/views/EntityListConfigDesign.vue'), 'utf8')
 const listDesignerShared = readFileSync(path.join(root, 'src/shared/list-config-design.js'), 'utf8')
+const uiConfigDraftShared = readFileSync(
+  path.join(root, 'src/shared/ui-config-draft.js'),
+  'utf8'
+)
+const uiConfigApiSource = readFileSync(
+  path.join(root, 'src/api/uiConfig.js'),
+  'utf8'
+)
 const listDesignerImplementation = `${listDesigner}\n${listDesignerShared}`
 const entityDataSearchForm = readFileSync(
   path.join(root, 'src/views/entity/components/EntityDataSearchForm.vue'),
@@ -463,6 +471,66 @@ assert.ok(
   listDesigner.includes('@click="saveAll"') && listDesigner.includes('保存全部'),
   '列表设计器应提供页面级保存全部，同时保留增量保存接口'
 )
+;[listDesigner].forEach((designer) => {
+  assert.match(
+    designer,
+    /:type="draftStatus\.type"[\s\S]*?\{\{\s*draftStatus\.label\s*\}\}[\s\S]*?<\/el-tag>[\s\S]*?v-if="canDiscardDraft"[\s\S]*?\blink(?:\s|>)[\s\S]*?>\s*撤销\s*<\/el-button>/,
+    '撤销入口必须紧邻未发布状态，并使用 link 按钮'
+  )
+  ;[
+    'diffLoadSucceeded',
+    'diffInfo.value.canDiscardDraft === true',
+    'resolveUiConfigDraftStatus',
+    'discardDraftLoading',
+    'handleDiscardDraft',
+    '自当前发布版本以来所有已保存但未发布的修改',
+    '当前页面尚未保存的编辑',
+    '不可恢复'
+  ].forEach((marker) => {
+    assert.ok(designer.includes(marker), `设计器撤销草稿缺少保护: ${marker}`)
+  })
+})
+assert.ok(
+  listDesigner.includes("uiConfigDraftApi.discard('LIST'")
+    && listDesigner.includes('await loadData({ strict: true })')
+    && listDesigner.includes('已即时生效的数据范围绑定不会被撤销'),
+  '列表撤销必须完整重载，并明确排除即时生效的数据范围绑定'
+)
+;[
+  'expectedRevision',
+  'expectedDraftHash',
+  'expectedActiveReleaseId',
+  'serverCanDiscardDraft === true',
+  'diffLoadSucceeded === true',
+  'diff?.changed === true',
+  "String(diff?.draftHash || '').trim()",
+  "String(diff?.activeHash || '').trim()",
+  'UI_CONFIG_DISCARD_BASELINE_DRIFT'
+].forEach((marker) => {
+  assert.ok(
+    uiConfigDraftShared.includes(marker),
+    `撤销草稿前置条件缺少: ${marker}`
+  )
+})
+;[
+  'diffLoadSucceeded !== true',
+  'discardableChanged === true',
+  'dependencyChanged === true',
+  'diff?.changed === false',
+  '发布状态未知',
+  '草稿有未发布修改',
+  '存在外部依赖差异',
+  '已与发布版本一致'
+].forEach((marker) => {
+  assert.ok(uiConfigDraftShared.includes(marker), `发布状态区分缺少: ${marker}`)
+})
+;[
+  'uiConfigDraftApi',
+  '/entity-forms/${id}/discard-draft',
+  '/entity-list-config/${id}/discard-draft'
+].forEach((marker) => {
+  assert.ok(uiConfigApiSource.includes(marker), `集中撤销 API 缺少: ${marker}`)
+})
 assert.equal(listDesigner.includes('preview-panel'), false, '列表设计器不应保留右侧预览面板')
 ;[
   '@click="openPreview"',
@@ -777,6 +845,33 @@ assert.deepEqual(
 )
 
 const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByEntity.vue'), 'utf8')
+assert.match(
+  formDesigner,
+  /<EventBindingDialog[\s\S]*?@changed="loadDiff"[\s\S]*?\/>/,
+  '表单事件绑定保存或删除后必须刷新未发布差异与撤销入口'
+)
+assert.match(
+  formDesigner,
+  /:type="draftStatus\.type"[\s\S]*?\{\{\s*draftStatus\.label\s*\}\}[\s\S]*?<\/el-tag>[\s\S]*?v-if="canDiscardDraft"[\s\S]*?\blink(?:\s|>)[\s\S]*?>\s*撤销\s*<\/el-button>/,
+  '表单撤销入口必须紧邻未发布状态，并使用 link 按钮'
+)
+;[
+  'diffLoadSucceeded',
+  'diffInfo.value.canDiscardDraft === true',
+  'resolveUiConfigDraftStatus',
+  'discardDraftLoading',
+  'handleDiscardDraft',
+  '自当前发布版本以来所有已保存但未发布的修改',
+  '当前页面尚未保存的编辑',
+  '不可恢复'
+].forEach((marker) => {
+  assert.ok(formDesigner.includes(marker), `表单设计器撤销草稿缺少保护: ${marker}`)
+})
+assert.ok(
+  formDesigner.includes('reloadFormDesignerData({ resetInteraction: true })')
+    && formDesigner.includes("uiConfigDraftApi.discard('FORM'"),
+  '表单撤销成功或冲突后必须完整重载设计器'
+)
 const runtimeCodeViewer = readFileSync(
   path.join(root, 'src/components/RuntimeCodeViewerDialog.vue'),
   'utf8'
@@ -804,7 +899,11 @@ const runtimeCodeGenerator = readFileSync(
   )
 })
 const formDataSourceDialog = readFileSync(
-  path.join(root, 'src/components/ui-config/FormDataSourceCompatDialog.vue'),
+  path.join(root, 'src/components/ui-config/FormDataSourceDialog.vue'),
+  'utf8'
+)
+const eventBindingEditor = readFileSync(
+  path.join(root, 'src/components/ui-config/EventBindingEditor.vue'),
   'utf8'
 )
 const formSettingsDrawer = readFileSync(
@@ -815,6 +914,10 @@ const formNodeDataSettings = readFileSync(
   path.join(root, 'src/components/form-designer/FormNodeDataSettings.vue'),
   'utf8'
 )
+const formCustomRendererWorkspace = readFileSync(
+  path.join(root, 'src/components/form-designer/FormCustomRendererWorkspace.vue'),
+  'utf8'
+)
 const formButtonConfigPanel = readFileSync(
   path.join(root, 'src/components/FormButtonConfigPanel.vue'),
   'utf8'
@@ -822,7 +925,8 @@ const formButtonConfigPanel = readFileSync(
 const formDesignerSurface = [
   formDesigner,
   formSettingsDrawer,
-  formNodeDataSettings
+  formNodeDataSettings,
+  formCustomRendererWorkspace
 ].join('\n')
 assert.equal(formDesigner.includes('designMode'), false, '表单设计器不得再按基础、高级或开发者模式隐藏配置')
 assert.equal(
@@ -843,8 +947,7 @@ assert.ok(
   '表单设置',
   '基本与布局',
   '按钮与操作',
-  '数据与事件',
-  '渲染与扩展',
+  '初始化与数据处理',
   '自定义组件',
   '数据源绑定',
   '校验规则',
@@ -852,6 +955,12 @@ assert.ok(
 ].forEach((marker) => {
   assert.ok(formDesignerSurface.includes(marker), `表单设计器缺少直接展示的配置项: ${marker}`)
 })
+assert.ok(
+  formCustomRendererWorkspace.includes(
+    "$emit('open-form-settings', 'data-events', 'data-source')"
+  ),
+  '自定义表单工作区的数据处理入口必须定位到唯一的数据源编辑页'
+)
 ;[
   '先确定按钮在哪些模式和位置出现',
   'label="稳定编码"',
@@ -867,11 +976,30 @@ assert.ok(
 })
 ;[
   "parseJsonConfig(row.inputMappingText",
-  "parseJsonConfig(row.outputMappingText"
+  "parseJsonConfig(row.outputMappingText",
+  'getFormDataSourceBindingStepLabel(rows, index)',
+  'assertUniqueFormDataSourceOutputTargets'
 ].forEach((marker) => {
   assert.ok(
     formDataSourceDialog.includes(marker),
     `表单数据源映射保存前必须执行严格 JSON 校验: ${marker}`
+  )
+})
+;[
+  'platformDefaultDescriptions',
+  'DATA_BATCH_DELETE: \'校验权限后批量删除所选实体记录\'',
+  'platformDefaultHelp(editor.eventCode)',
+  ':show-label="false"',
+  'availableEventGroups',
+  'eventGroupsForScope(props.ownerType, props.targetType)',
+  '列表事件请到列表配置',
+  'outOfScopeBindings',
+  'hiddenOutOfScopeBindings',
+  '待清理的历史错配绑定'
+].forEach((marker) => {
+  assert.ok(
+    eventBindingEditor.includes(marker),
+    `事件执行链的平台默认处理缺少简要说明: ${marker}`
   )
 })
 ;[
@@ -2078,9 +2206,11 @@ const uiConfigPublishDialog = readFileSync(
   'utf8'
 )
 assert.ok(
-  uiConfigPublishDialog.includes('所有通过发布校验的表单变更都可热修复')
-    && uiConfigPublishDialog.includes('REVIEW 仅提示风险，不阻止发布')
-    && uiConfigPublishDialog.includes('强制发布热修复')
+  uiConfigPublishDialog.includes('REVIEW 风险由非申请人独立复核')
+    && uiConfigPublishDialog.includes('提交热修复申请')
+    && uiConfigPublishDialog.includes('发布已批准热修复')
+    && uiConfigPublishDialog.includes('取消申请')
+    && uiConfigPublishDialog.includes('entity:ui-config:hotfix:review')
     && uiConfigPublishDialog.includes('FULL_SNAPSHOT')
     && uiConfigPublishDialog.includes('完整快照强制覆盖')
     && uiConfigPublishDialog.includes('v-if="configType === \'FORM\'"')
@@ -2123,7 +2253,7 @@ const entityFormListSource = readFileSync(
   ],
   [
     entityFormListSource,
-    ['handleDesign(row)', '设计', 'handlePreview(row)', '预览', 'handleEdit(row)', '编辑', 'handleSetDefault(row)', '默认', 'handleCopy(row)', '复制', 'handleInitConfig(row)', '配置', 'handleDelete(row)', '删除']
+    ['handleDesign(row)', '设计', 'handlePreview(row)', '预览', 'handleEdit(row)', '编辑', 'handleSetDefault(row)', '默认', 'handleCopy(row)', '复制', 'handleDataConfig(row)', '数据配置', 'handleDelete(row)', '删除']
   ]
 ].forEach(([source, markers]) => {
   assert.doesNotMatch(source, /<el-dropdown(?:\s|>)/, '列表操作不得继续收纳到更多下拉')
@@ -2132,13 +2262,46 @@ const entityFormListSource = readFileSync(
   })
 })
 
+;[
+  "settings: 'data-events'",
+  "section: 'data-source'",
+  'formatFormDataSourceBindingSummary',
+  'totalFormDataSourceBindings'
+].forEach((marker) => {
+  assert.ok(
+    entityFormListSource.includes(marker),
+    `表单列表数据配置入口缺少深链或摘要: ${marker}`
+  )
+})
+assert.equal(
+  entityFormListSource.includes('initConfig'),
+  false,
+  '表单列表不得保留旧 initConfig 编辑链路'
+)
+;[
+  'openLinkedFormSettings',
+  "route.query.settings",
+  "route.query.section",
+  'v-model:active-behavior-tab="activeFormBehaviorTab"'
+].forEach((marker) => {
+  assert.ok(
+    formDesigner.includes(marker),
+    `表单设计器缺少数据配置深链处理: ${marker}`
+  )
+})
+assert.ok(
+  formSettingsDrawer.includes("'update:activeBehaviorTab'"),
+  '表单设置抽屉必须允许外部定位初始化数据二级页签'
+)
+
 const processManualSource = readFileSync(
   path.join(root, 'src/data/user-manual/process.js'),
   'utf8'
 )
 assert.ok(
   processManualSource.includes('列表配置只允许 STANDARD 发布')
-    && processManualSource.includes('REVIEW 仅提示风险，不阻止发布'),
+    && processManualSource.includes('申请人不能自审')
+    && processManualSource.includes('entity:ui-config:hotfix:rollback'),
   '流程手册应说明表单热修复风险和列表普通发布边界'
 )
 assert.doesNotMatch(

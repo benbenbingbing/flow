@@ -23,7 +23,6 @@ const STRUCTURED_KEYS = new Set([
   'dataSourceConfig',
   'extensionConfig',
   'fixedFilterConfig',
-  'initConfig',
   'legacyProps',
   'localOverrides',
   'queryConfig',
@@ -59,7 +58,6 @@ export function buildFormDraftRuntimeSnapshot({
 } = {}) {
   const normalizedForm = normalizeValue({
     ...withoutKeys(form, ['fields', 'nodes']),
-    initConfig: safeParseConfig(form.initConfig),
     viewConfig: safeParseConfig(form.viewConfig)
   })
   return normalizeValue({
@@ -637,12 +635,12 @@ function collectFormLogic(snapshot) {
   const items = []
   const form = snapshot.form || {}
   const viewConfig = form.viewConfig || {}
-  if (hasContent(form.initConfig)) {
+  if (hasContent(form.dataSourceBindings)) {
     items.push(logicItem(
-      '初始化',
-      'form.initConfig',
-      '表单初始化',
-      summarizeValue(form.initConfig)
+      '数据源',
+      'form.dataSourceBindings',
+      '初始化与数据处理',
+      summarizeValue(form.dataSourceBindings)
     ))
   }
   if (hasContent(viewConfig.actionBar)) {

@@ -1,5 +1,8 @@
 <template>
-  <div class="entity-list-config-design">
+  <div
+    v-loading="discardDraftLoading"
+    class="entity-list-config-design"
+  >
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-left">
@@ -8,9 +11,19 @@
         </el-button>
         <span>列表配置设计：{{ configInfo.listName }}</span>
         <el-tag size="small" type="info">{{ entityName }}</el-tag>
-        <el-tag :type="diffInfo.changed ? 'warning' : 'success'" effect="plain">
-          {{ diffInfo.changed ? '草稿有未发布修改' : '已发布' }}
+        <el-tag :type="draftStatus.type" effect="plain">
+          {{ draftStatus.label }}
         </el-tag>
+        <el-button
+          v-if="canDiscardDraft"
+          link
+          type="danger"
+          :loading="discardDraftLoading"
+          :disabled="discardDraftLoading || savingAll || pageLoading"
+          @click="handleDiscardDraft"
+        >
+          撤销
+        </el-button>
         <el-tooltip
           v-if="isDirty"
           placement="bottom-start"
@@ -37,12 +50,17 @@
       <div class="header-actions">
         <el-button
           v-if="!isSystemEntity"
-          :disabled="!configInfo.id"
+          :disabled="!configInfo.id || discardDraftLoading || pageLoading"
           @click="openListEventBindings"
         >
           事件绑定
         </el-button>
-        <el-button :loading="savingAll" type="primary" @click="saveAll">
+        <el-button
+          :loading="savingAll"
+          :disabled="discardDraftLoading || pageLoading"
+          type="primary"
+          @click="saveAll"
+        >
           保存全部
         </el-button>
         <el-button
@@ -52,14 +70,19 @@
         >
           <el-icon><Document /></el-icon>查看最终代码
         </el-button>
-        <el-button @click="showReleaseHistory">版本</el-button>
+        <el-button :disabled="pageLoading" @click="showReleaseHistory">版本</el-button>
         <el-button
-          :disabled="!entityCode || !configInfo.listKey"
+          :disabled="!entityCode || !configInfo.listKey || pageLoading"
           @click="openPreview"
         >
           预览
         </el-button>
-        <el-button type="success" plain @click="handlePublish">发布生效</el-button>
+        <el-button
+          type="success"
+          plain
+          :disabled="discardDraftLoading || pageLoading"
+          @click="handlePublish"
+        >发布生效</el-button>
       </div>
     </div>
     <el-alert
@@ -82,7 +105,10 @@
         <el-button size="small" type="danger" plain @click="loadData">重新加载</el-button>
       </template>
     </el-alert>
-    <div v-loading="pageLoading" class="design-container">
+    <div
+      v-loading="pageLoading || discardDraftLoading"
+      class="design-container"
+    >
       <div ref="configPanelRef" class="config-panel">
         <el-card shadow="never">
           <el-tabs v-model="activeConfigTab" type="border-card" class="config-tabs">
@@ -258,13 +284,34 @@
                     </el-select>
                     <div class="form-tip">数据范围只认本列表绑定的规则，不再继承实体默认范围。</div>
                   </el-form-item>
+                  <el-form-item v-if="!isSystemEntity" label="未绑定允许规则时" class="view-config-item--full">
+                    <el-select v-model="scopeDefault.unboundPolicy" style="width: 420px">
+                      <el-option label="拒绝全部数据（推荐）" value="DENY_ALL" />
+                      <el-option label="仅本人创建或提交" value="PERSONAL" />
+                      <el-option label="全部数据（高风险，需确认）" value="EXPLICIT_ALL" />
+                    </el-select>
+                    <el-tag
+                      v-if="scopeDefault.enforcementMode === 'OBSERVE'"
+                      type="danger"
+                      effect="dark"
+                      style="margin-left: 8px"
+                    >存量观察期</el-tag>
+                    <el-button
+                      v-if="scopeDefault.unboundPolicy === 'EXPLICIT_ALL' && !scopeDefault.confirmed"
+                      type="danger"
+                      plain
+                      style="margin-left: 8px"
+                      @click="confirmExplicitAll"
+                    >确认继续全量可见</el-button>
+                    <div class="form-tip">该策略仅在本列表没有任何启用的 ALLOW 绑定时生效。</div>
+                  </el-form-item>
                   <el-form-item v-if="!isSystemEntity" label="绑定数据规则" class="view-config-item--full">
                     <el-select
                       v-model="boundPolicyIds"
                       multiple
                       collapse-tags
                       collapse-tags-tooltip
-                      placeholder="不选则有本列表权限的人看到全部数据"
+                      placeholder="不选时执行上方安全默认策略"
                       style="width: 100%"
                     >
                       <el-option
@@ -276,10 +323,10 @@
                     </el-select>
                     <el-alert
                       v-if="!boundPolicyIds.length"
-                      type="warning"
+                      :type="scopeDefaultAlertType"
                       :closable="false"
                       style="margin-top: 8px"
-                      title="未绑定数据规则，有本列表权限的人将看到全部数据"
+                      :title="scopeDefaultAlertTitle"
                     />
                   </el-form-item>
                   <el-form-item label="访问权限码">
@@ -406,6 +453,12 @@
 
                     <div class="list-query-interface__grid">
                       <el-form-item label="接口服务">
+                        <template #label>
+                          <ConfigHelpLabel
+                            label="接口服务"
+                            help-key="uiDataSource.service"
+                          />
+                        </template>
                         <el-select
                           v-model="configInfo.queryDataSourceId"
                           clearable
@@ -755,6 +808,12 @@
                   <div class="form-tip">只列出当前实体可用的数据源。没写适用范围的数据源对全部实体可见。</div>
                 </el-form-item>
                 <el-form-item label="统一数据源">
+                  <template #label>
+                    <ConfigHelpLabel
+                      label="统一数据源"
+                      help-key="uiDataSource.service"
+                    />
+                  </template>
                   <el-select
                     v-model="editingField.dataSourceId"
                     clearable
@@ -934,6 +993,7 @@ import {
   selectRuntimeRelease
 } from '@/shared/runtime-code-generator'
 import {
+  uiConfigDraftApi,
   uiDataSourceApi,
   uiEventBindingApi,
   uiComponentTemplateApi
@@ -942,6 +1002,12 @@ import { serviceOperations } from '@/components/ui-config/interfaceServiceModel'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import { applyListColumnTemplateSnapshot } from '@/shared/list-column-template'
+import {
+  buildUiConfigDraftDiscardRequest,
+  canDiscardUiConfigDraft,
+  isUiConfigDraftDiscardConflict,
+  resolveUiConfigDraftStatus
+} from '@/shared/ui-config-draft'
 import {
   SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
 } from '@/utils/selectionReturnMappings'
@@ -956,6 +1022,12 @@ const entityName = ref('')
 const entityCode = ref('')
 const scopePolicies = ref([])
 const boundPolicyIds = ref([])
+const scopeDefault = ref({
+  unboundPolicy: 'DENY_ALL',
+  enforcementMode: 'ENFORCE',
+  confirmed: false,
+  confirmationNote: ''
+})
 const entityId = ref('')
 const entityFields = ref([])
 const entityDefinition = ref({})
@@ -966,6 +1038,18 @@ const releaseHistoryDialogRef = ref(null)
 const runtimeCodeDialogRef = ref(null)
 const runtimeCodeLoading = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
+const diffLoadSucceeded = ref(false)
+const discardDraftLoading = ref(false)
+const canDiscardDraft = computed(() => canDiscardUiConfigDraft({
+  diffLoadSucceeded: diffLoadSucceeded.value,
+  diff: diffInfo.value,
+  serverCanDiscardDraft: diffInfo.value.canDiscardDraft === true,
+  activeReleaseId: configInfo.value.activeReleaseId
+}))
+const draftStatus = computed(() => resolveUiConfigDraftStatus({
+  diffLoadSucceeded: diffLoadSucceeded.value,
+  diff: diffInfo.value
+}))
 const pageLoading = ref(false)
 const loadError = ref('')
 const previewDialogVisible = ref(false)
@@ -1195,6 +1279,7 @@ const sceneSortCache = new Map()
 const baselinesReady = ref(false)
 const metadataBaseline = ref('')
 const scopeBindingBaseline = ref('[]')
+const scopeDefaultBaseline = ref('')
 const metadataDetailBaselines = ref(new Map())
 const fieldBaselines = ref(new Map())
 const actionBaselines = ref(new Map())
@@ -1227,6 +1312,11 @@ const previewListFields = computed(() =>
 )
 function rememberScopeBindingBaseline() {
   scopeBindingBaseline.value = listScopeBindingFingerprint(boundPolicyIds.value)
+  scopeDefaultBaseline.value = JSON.stringify({
+    unboundPolicy: scopeDefault.value.unboundPolicy,
+    enforcementMode: scopeDefault.value.enforcementMode,
+    confirmed: scopeDefault.value.confirmed
+  })
 }
 
 function rememberMetadataBaseline() {
@@ -1268,6 +1358,33 @@ const scopeBindingDirty = computed(() =>
     && !isSystemEntity.value
     && scopeBindingBaseline.value !== listScopeBindingFingerprint(boundPolicyIds.value)
 )
+const scopeDefaultDirty = computed(() =>
+  baselinesReady.value
+    && !isSystemEntity.value
+    && scopeDefaultBaseline.value !== JSON.stringify({
+      unboundPolicy: scopeDefault.value.unboundPolicy,
+      enforcementMode: scopeDefault.value.enforcementMode,
+      confirmed: scopeDefault.value.confirmed
+    })
+)
+const scopeDefaultAlertType = computed(() => {
+  if (scopeDefault.value.enforcementMode === 'OBSERVE') return 'error'
+  return scopeDefault.value.unboundPolicy === 'EXPLICIT_ALL' ? 'warning' : 'info'
+})
+const scopeDefaultAlertTitle = computed(() => {
+  if (scopeDefault.value.enforcementMode === 'OBSERVE') {
+    return '存量观察期仍会全部放行，请尽快选择安全策略或显式确认全量可见'
+  }
+  if (scopeDefault.value.unboundPolicy === 'PERSONAL') {
+    return '未绑定数据规则时，仅返回本人创建或提交的数据'
+  }
+  if (scopeDefault.value.unboundPolicy === 'EXPLICIT_ALL') {
+    return scopeDefault.value.confirmed
+      ? '管理员已显式确认：未绑定数据规则时允许查看全部数据'
+      : '全量可见尚未确认，后端将按拒绝全部处理'
+  }
+  return '未绑定数据规则时默认拒绝全部数据'
+})
 const dirtyMetadataItems = computed(() => {
   if (!metadataDirty.value) return []
   const items = listMetadataDetailEntries(configInfo.value, viewConfig.value)
@@ -1299,6 +1416,7 @@ const dirtyActions = computed(() => {
 const isDirty = computed(() =>
   metadataDirty.value
     || scopeBindingDirty.value
+    || scopeDefaultDirty.value
     || dirtyFields.value.length > 0
     || dirtyActions.value.length > 0
 )
@@ -1306,6 +1424,9 @@ const unsavedItems = computed(() => [
   ...dirtyMetadataItems.value,
   ...(scopeBindingDirty.value
     ? [{ key: 'scope-bindings', label: '列表设置：数据规则绑定' }]
+    : []),
+  ...(scopeDefaultDirty.value
+    ? [{ key: 'scope-default', label: '列表设置：未绑定规则安全策略' }]
     : []),
   ...dirtyFields.value.map(field => ({
     key: `field:${field.fieldId}`,
@@ -1385,18 +1506,35 @@ async function loadScopeBindings() {
   boundPolicyIds.value = (configuration?.bindings || [])
     .filter(binding => binding.listKey === configInfo.value.listKey && binding.policyId)
     .map(binding => binding.policyId)
+  const configuredDefault = configuration?.listDefaults?.[configInfo.value.listKey]
+  scopeDefault.value = {
+    unboundPolicy: configuredDefault?.unboundPolicy || 'DENY_ALL',
+    enforcementMode: configuredDefault?.enforcementMode || 'ENFORCE',
+    confirmed: configuredDefault?.confirmed === true,
+    confirmationNote: configuredDefault?.confirmationNote || ''
+  }
   rememberScopeBindingBaseline()
 }
 
-async function loadData() {
+async function loadData(options = {}) {
+  // 撤销成功或前置条件冲突后使用严格模式，任一快照分区失败都不建立新本地基线。
+  const strict = options?.strict === true
+  let completed = false
   pageLoading.value = true
   loadError.value = ''
   baselinesReady.value = false
+  diffLoadSucceeded.value = false
   try {
     const [extensionOptions, templates, buttons] = await Promise.all([
-      entityListConfigApi.getExtensionOptions().catch(() => []),
-      uiComponentTemplateApi.list({ templateType: 'LIST_COLUMN_GROUP' }).catch(() => []),
-      uiComponentTemplateApi.list({ templateType: 'BUTTON_GROUP' }).catch(() => [])
+      strict
+        ? entityListConfigApi.getExtensionOptions()
+        : entityListConfigApi.getExtensionOptions().catch(() => []),
+      strict
+        ? uiComponentTemplateApi.list({ templateType: 'LIST_COLUMN_GROUP' })
+        : uiComponentTemplateApi.list({ templateType: 'LIST_COLUMN_GROUP' }).catch(() => []),
+      strict
+        ? uiComponentTemplateApi.list({ templateType: 'BUTTON_GROUP' })
+        : uiComponentTemplateApi.list({ templateType: 'BUTTON_GROUP' }).catch(() => [])
     ])
     listTemplates.value = Array.isArray(templates) ? templates : []
     buttonTemplates.value = Array.isArray(buttons) ? buttons : []
@@ -1406,7 +1544,9 @@ async function loadData() {
     // 加载列表配置
     const [configRes, scenes] = await Promise.all([
       entityListConfigApi.getById(configId),
-      entityListConfigApi.getScenes(configId).catch(() => [])
+      strict
+        ? entityListConfigApi.getScenes(configId)
+        : entityListConfigApi.getScenes(configId).catch(() => [])
     ])
     sceneItems.value = Array.isArray(scenes) ? scenes : []
     sceneItems.value.forEach(scene => {
@@ -1440,19 +1580,31 @@ async function loadData() {
       entityId.value = configRes.entityId
       entityCode.value = configRes.entityCode
       viewConfig.value = mergeViewConfig(safeParseConfig(configRes.viewConfig))
-      await loadDiff()
+      await loadDiff({ strict })
     }
     const [columnOperations, queryOperations] = await Promise.all([
-      uiDataSourceApi.availableOperations({
-        ownerType: 'LIST',
-        ownerId: configId,
-        bindingCode: 'LIST_COLUMN'
-      }).catch(() => []),
-      uiDataSourceApi.availableOperations({
-        ownerType: 'LIST',
-        ownerId: configId,
-        bindingCode: 'LIST_QUERY'
-      }).catch(() => [])
+      (strict
+        ? uiDataSourceApi.availableOperations({
+            ownerType: 'LIST',
+            ownerId: configId,
+            bindingCode: 'LIST_COLUMN'
+          })
+        : uiDataSourceApi.availableOperations({
+            ownerType: 'LIST',
+            ownerId: configId,
+            bindingCode: 'LIST_COLUMN'
+          }).catch(() => [])),
+      (strict
+        ? uiDataSourceApi.availableOperations({
+            ownerType: 'LIST',
+            ownerId: configId,
+            bindingCode: 'LIST_QUERY'
+          })
+        : uiDataSourceApi.availableOperations({
+            ownerType: 'LIST',
+            ownerId: configId,
+            bindingCode: 'LIST_QUERY'
+          }).catch(() => []))
     ])
     availableListColumnOperations.value = Array.isArray(columnOperations)
       ? columnOperations
@@ -1496,11 +1648,14 @@ async function loadData() {
     rememberAllBaselines()
     refreshFieldTableLayout()
     initSortable()
+    completed = true
   } catch (e) {
     console.error('加载数据失败:', e)
     loadError.value = e?.message || '列表配置加载失败，请重试'
+    if (strict) throw e
   } finally {
-    pageLoading.value = false
+    // 严格重载失败时继续锁住设计区，但保留上方错误提示中的“重新加载”入口。
+    if (!strict || completed) pageLoading.value = false
   }
 }
 
@@ -2101,8 +2256,12 @@ function fieldConfigSummary(field) {
   }
   return parts.join(' · ') || '未启用'
 }
+function isRevisionConflict(error) {
+  return error?.status === 409
+    || error?.errorCode === 'CONFIG_REVISION_CONFLICT'
+}
 function handleRevisionConflict(error, target) {
-  if (error?.status === 409 || error?.errorCode === 'CONFIG_REVISION_CONFLICT') {
+  if (isRevisionConflict(error)) {
     ElMessage.warning('配置已被其他人修改，已切换为服务器当前版本')
     if (target && error.currentData) {
       Object.assign(target, error.currentData)
@@ -2226,12 +2385,44 @@ async function saveScopeBindings(options = {}) {
     rememberScopeBindingBaseline()
     return true
   }
+  const includeDefault = scopeDefaultDirty.value || options.forceDefault === true
+  let defaultPolicy = {}
+  if (includeDefault) {
+    defaultPolicy = { unboundPolicy: scopeDefault.value.unboundPolicy }
+    if (scopeDefault.value.unboundPolicy === 'EXPLICIT_ALL'
+      && !scopeDefault.value.confirmed) {
+      let confirmation
+      try {
+        confirmation = await ElMessageBox.prompt(
+          '全量可见会扩大数据访问范围，请填写业务原因（至少 5 个字符）',
+          '确认未绑定规则时允许查看全部数据',
+          {
+            confirmButtonText: '确认并立即生效',
+            cancelButtonText: '取消',
+            inputPattern: /^.{5,}$/,
+            inputErrorMessage: '业务原因至少需要 5 个字符',
+            type: 'warning'
+          }
+        )
+      } catch {
+        return false
+      }
+      defaultPolicy.confirmExplicitAll = true
+      defaultPolicy.confirmationNote = confirmation.value.trim()
+    }
+  }
   try {
     await entityListScopeRuleApi.replaceListBindings(
       entityCode.value,
       configInfo.value.listKey,
-      boundPolicyIds.value
+      boundPolicyIds.value,
+      defaultPolicy
     )
+    if (includeDefault) {
+      scopeDefault.value.enforcementMode = 'ENFORCE'
+      scopeDefault.value.confirmed =
+        scopeDefault.value.unboundPolicy === 'EXPLICIT_ALL'
+    }
     rememberScopeBindingBaseline()
     if (!options.silent) {
       ElMessage.success('数据规则绑定已保存并立即生效')
@@ -2241,6 +2432,10 @@ async function saveScopeBindings(options = {}) {
     ElMessage.error(error?.message || '保存数据规则绑定失败')
     return false
   }
+}
+
+async function confirmExplicitAll() {
+  await saveScopeBindings({ forceDefault: true })
 }
 
 async function saveAll() {
@@ -2254,7 +2449,7 @@ async function saveAll() {
     if (metadataDirty.value) {
       if (!await saveListMetadata({ silent: true })) return
       savedCount += 1
-    } else if (scopeBindingDirty.value) {
+    } else if (scopeBindingDirty.value || scopeDefaultDirty.value) {
       if (!await saveScopeBindings({ silent: true })) return
       savedCount += 1
     }
@@ -2273,11 +2468,73 @@ async function saveAll() {
     savingAll.value = false
   }
 }
-async function loadDiff() {
+async function loadDiff({ strict = false } = {}) {
+  diffLoadSucceeded.value = false
   try {
     diffInfo.value = await entityListConfigApi.getDiff(configId)
-  } catch {
+    diffLoadSucceeded.value = true
+  } catch (error) {
     diffInfo.value = { changed: true, changedSections: [] }
+    if (strict) throw error
+  }
+}
+async function handleDiscardDraft() {
+  if (discardDraftLoading.value || !canDiscardDraft.value) return
+  try {
+    await ElMessageBox.confirm(
+      '撤销后将恢复到当前发布版本。自当前发布版本以来所有已保存但未发布的修改，以及当前页面尚未保存的编辑，都会被覆盖且不可恢复。列表中已即时生效的数据范围绑定不会被撤销。确定继续吗？',
+      '撤销未发布修改',
+      {
+        type: 'warning',
+        confirmButtonText: '确认撤销',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+  if (discardDraftLoading.value || !canDiscardDraft.value) return
+
+  discardDraftLoading.value = true
+  let discardCommitted = false
+  try {
+    const preconditions = buildUiConfigDraftDiscardRequest({
+      revision: configInfo.value.revision,
+      diffLoadSucceeded: diffLoadSucceeded.value,
+      diff: diffInfo.value,
+      serverCanDiscardDraft: diffInfo.value.canDiscardDraft === true,
+      activeReleaseId: configInfo.value.activeReleaseId
+    })
+    await uiConfigDraftApi.discard('LIST', configId, preconditions)
+    discardCommitted = true
+    await loadData({ strict: true })
+    if (loadError.value) {
+      ElMessage.warning('撤销已完成，但页面重新加载失败，请点击“重新加载”')
+      return
+    }
+    if (diffInfo.value.changed) {
+      ElMessage.warning('本地草稿已撤销，但当前仍存在依赖版本差异，请检查继承事件或引用配置')
+      return
+    }
+    ElMessage.success('已撤销未发布修改，并恢复到当前发布版本')
+  } catch (error) {
+    if (discardCommitted) {
+      ElMessage.warning('撤销已完成，但页面重新加载失败，请点击“重新加载”')
+      return
+    }
+    if (isUiConfigDraftDiscardConflict(error)) {
+      try {
+        await loadData({ strict: true })
+      } catch {
+        ElMessage.warning('配置状态已变化，但页面重新加载失败，请点击“重新加载”')
+        return
+      }
+      ElMessage.warning('草稿或发布状态已变化，已重新加载最新配置，请重新确认')
+      return
+    }
+    ElMessage.error(error?.message || '撤销未发布修改失败')
+  } finally {
+    discardDraftLoading.value = false
   }
 }
 async function handlePublish() {

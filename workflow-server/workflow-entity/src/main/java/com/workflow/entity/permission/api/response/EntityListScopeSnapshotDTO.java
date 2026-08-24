@@ -23,4 +23,10 @@ public class EntityListScopeSnapshotDTO {
     private List<EntityListScopeBindingDTO> bindings = new ArrayList<>();
     /** 列表标识 -> 数据范围模式 的映射 */
     private Map<String, String> listModes = new LinkedHashMap<>();
+    /**
+     * 安全默认值契约版本。为空表示升级前的旧快照，运行时进入观察模式而非直接切断流量。
+     */
+    private Integer secureDefaultsVersion;
+    /** 列表标识 -> 未绑定 ALLOW 规则安全策略。 */
+    private Map<String, EntityListScopeDefaultDTO> listDefaults = new LinkedHashMap<>();
 }

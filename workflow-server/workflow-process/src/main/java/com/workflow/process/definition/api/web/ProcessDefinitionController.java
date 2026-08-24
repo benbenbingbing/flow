@@ -6,9 +6,13 @@ import com.workflow.core.result.PageResult;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.process.definition.api.request.ProcessDefinitionQueryDTO;
+import com.workflow.process.definition.api.request.ProcessPublishRequest;
+import com.workflow.process.definition.api.response.ProcessDefinitionDiffDTO;
+import com.workflow.process.definition.api.response.ProcessPublishPreviewDTO;
 import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.process.definition.application.ProcessDefinitionService;
+import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,6 +37,7 @@ public class ProcessDefinitionController {
      * 流程定义服务
      */
     private final ProcessDefinitionService processService;
+    private final ProcessDefinitionPreflightService preflightService;
 
     /**
      * 获取流程定义分页列表
@@ -151,8 +156,28 @@ public class ProcessDefinitionController {
     @RequiresPermission("process:definition:publish")
     public ApiResponse<ProcessDefinitionDTO> publish(
             @PathVariable String id,
-            @RequestBody(required = false) ConfigMigrationPublishRequest request) {
+            @RequestBody(required = false) ProcessPublishRequest request) {
         return ApiResponse.success(processService.publish(id, request));
+    }
+
+    /** 校验当前流程草稿并返回可定位的问题清单。 */
+    @PostMapping("/{id}/validate")
+    @RequiresPermission("process:definition:manage")
+    public ApiResponse<ProcessPublishPreviewDTO> validate(@PathVariable String id) {
+        return ApiResponse.success(preflightService.preview(id));
+    }
+
+    /** 生成正式发布所需的影响预览和内容绑定令牌。 */
+    @PostMapping("/{id}/publish-preview")
+    @RequiresPermission("process:definition:publish")
+    public ApiResponse<ProcessPublishPreviewDTO> publishPreview(@PathVariable String id) {
+        return ApiResponse.success(preflightService.preview(id));
+    }
+
+    /** 查询当前流程草稿与最近发布版本的结构化差异。 */
+    @GetMapping("/{id}/diff")
+    public ApiResponse<ProcessDefinitionDiffDTO> diff(@PathVariable String id) {
+        return ApiResponse.success(preflightService.diff(id));
     }
 
     /**

@@ -14,6 +14,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -32,6 +33,8 @@ public class EntityVersionDiffService {
     private final EntityPublishHistoryService publishHistoryService;
     private final DynamicTableService dynamicTableService;
     private final ObjectMapper objectMapper;
+    @Autowired(required = false)
+    private EntitySchemaOperationService schemaOperationService;
 
     /**
      * 获取即将发布的版本差异
@@ -128,6 +131,12 @@ public class EntityVersionDiffService {
             }
         }
 
+        if (schemaOperationService != null) {
+            diff.setSchemaOperation(schemaOperationService.preview(
+                    entity,
+                    currentFields,
+                    diff.getPendingDdls()));
+        }
         return diff;
     }
 

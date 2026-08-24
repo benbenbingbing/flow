@@ -654,7 +654,7 @@ ProcessNodeForm（流程节点表单绑定）
 | `layoutType` | 表单布局 | `vertical`（垂直）/`horizontal`（水平）/`grid`（网格） | 表单整体布局 | 不同布局渲染正确 |
 | `isDefault` | 是否默认表单 | `false` | 节点未绑定时回退到默认表单 | 只有一个默认 |
 | `customComponent` | 自定义组件注册名 | 可选 | 使用完全自定义的表单组件 | 组件存在性 |
-| `initConfig` | 表单初始化配置 JSON | 可选 | 表单加载时执行初始化逻辑 | JSON 合法性 |
+| `dataSourceBindingsDocument` | 表单生命周期数据源绑定 JSON | 可选 | 按 `FORM_INIT`、`AFTER_LOAD`、`BEFORE_SUBMIT` 执行受控数据处理 | JSON、数据源引用与绑定位置合法性 |
 | `fieldCode` | 字段编码 | 对应 `entity_field.field_code` | 数据绑定 key | 一致性 |
 | `fieldLabel` | 字段显示标签 | 如 `报销金额` | 表单 label | 可覆盖 `entity_field` 的字段名 |
 | `componentType` | 组件类型 | `input`/`select`/`date`/`number`/`sub_form` 等 | 前端渲染组件 | 与 `fieldType` 匹配 |

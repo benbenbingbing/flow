@@ -62,6 +62,24 @@ public class ProcessDefinitionDTO {
      */
     private String bpmnXml;
 
+    /** 当前流程草稿修订号，由服务端维护 */
+    private Long revision;
+
+    /** 更新时客户端读取到的修订号，服务端据此执行 CAS */
+    private Long expectedRevision;
+
+    /** 当前流程草稿内容哈希 */
+    private String draftHash;
+
+    /** 最近发布对应的草稿修订号 */
+    private Long publishedRevision;
+
+    /** 当前草稿基于的已发布版本 */
+    private Integer basePublishedVersion;
+
+    /** 是否存在尚未发布的草稿修改 */
+    private Boolean hasUnpublishedChanges;
+
     /**
      * 节点配置列表
      */

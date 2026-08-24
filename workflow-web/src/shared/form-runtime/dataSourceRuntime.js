@@ -43,21 +43,43 @@ export function getClientBeforeSubmitBindings(owner) {
     .filter(isClientPrevalidationBinding)
 }
 
+function isMergeableObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * 按映射目标路径递归合并步骤结果；同一对象下的不同叶子字段不能被后一步整体覆盖。
+ */
+function mergeMappedOutput(target, patch) {
+  Object.entries(patch).forEach(([key, value]) => {
+    if (isMergeableObject(value) && isMergeableObject(target[key])) {
+      mergeMappedOutput(target[key], value)
+      return
+    }
+    target[key] = value
+  })
+}
+
 function mergeObject(target, result) {
   const value = result?.data ?? result
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    Object.assign(target, value)
+  if (isMergeableObject(value)) {
+    mergeMappedOutput(target, value)
   }
   return value
 }
 
+function mappingPathParts(path) {
+  return String(path || '').split('.')
+    .filter(part => part.trim().length > 0)
+}
+
 function resolvePath(source, path) {
-  return String(path || '').split('.').filter(Boolean)
+  return mappingPathParts(path)
     .reduce((current, key) => current?.[key], source)
 }
 
 function setPath(target, path, value) {
-  const parts = String(path || '').split('.').filter(Boolean)
+  const parts = mappingPathParts(path)
   if (!parts.length) return
   let current = target
   parts.slice(0, -1).forEach(key => {
@@ -213,10 +235,16 @@ export function createFormDataSourceRuntime(options) {
     initializationKey: explicitInitializationKey,
     runtimeContext: initialRuntimeContext = {}
     }) {
+    const runtimeMode = String(
+      initialRuntimeContext.mode
+      || initialRuntimeContext.context?.mode
+      || options.getMode?.()
+      || 'view'
+    ).toLowerCase()
     const initializationKey = explicitInitializationKey || [
       getRuntimeFormId(form) || 'form',
       recordId ?? options.getRecordId?.() ?? 'new',
-      options.getMode?.() || 'view'
+      runtimeMode
     ].join(':')
     if (initialized.has(initializationKey)) return
     initialized.add(initializationKey)
@@ -228,12 +256,15 @@ export function createFormDataSourceRuntime(options) {
       recordId
     })
     try {
-      for (const result of await executeOwnerUsage(
-        form,
-        'FORM_INIT',
-        runtimeContext
-      )) {
-        mergeObject(record, result)
+      // FORM_INIT 只定义“新增记录的初始值”；编辑、查看和审批不得覆盖已有业务数据。
+      if (runtimeMode === 'create') {
+        for (const result of await executeOwnerUsage(
+          form,
+          'FORM_INIT',
+          runtimeContext
+        )) {
+          mergeObject(record, result)
+        }
       }
       for (const result of await executeOwnerUsage(
         form,

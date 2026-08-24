@@ -28,7 +28,6 @@ const expectedRegistrations = [
   'registerListButtonComponent',
   'registerListToolbarAction',
   'registerListRowAction',
-  'registerFormInitializer',
   'registerEntityActionRuleCondition',
   'registerEntityPermissionOptionProvider'
 ]

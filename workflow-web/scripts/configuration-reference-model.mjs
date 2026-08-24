@@ -58,10 +58,8 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^node\\.logic$',
     '^child\\.(type|relation|operator|value|field)$'
   ]),
-  source('src/views/EntityFormList.vue', '实体配置', '表单定义与初始化', [
-    '^form\\.',
-    '^initConfigType$',
-    '^initConfigData\\.'
+  source('src/views/EntityFormList.vue', '实体配置', '表单定义', [
+    '^form\\.'
   ]),
   source('src/views/EntityFormDesignByEntity.vue', '实体配置', '表单设计', [
     '^form\\.layoutType$',
@@ -81,7 +79,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^selectedParameterContract$',
     '^selectedSubListParameterContract$'
   ]),
-  source('src/components/ui-config/FormDataSourceCompatDialog.vue', '实体配置', '表单级数据源', [
+  source('src/components/ui-config/FormDataSourceDialog.vue', '实体配置', '初始化与数据处理', [
     '^binding\\.'
   ]),
   source('src/components/FormButtonConfigPanel.vue', '实体配置', '表单按钮', [
@@ -190,7 +188,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^visible$', '^preset$'
   ],
   'src/views/EntityFormList.vue': [
-    '^dialogVisible$', '^previewVisible$', '^initConfigVisible$'
+    '^dialogVisible$', '^previewVisible$'
   ],
   'src/views/EntityFormDesignByEntity.vue': [
     '^fieldSearch$', '^propertyDrawerVisible$', '^activeNodeSettingsTab$',
@@ -200,7 +198,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
   'src/components/form-designer/FormDesignerSettingsDrawer.vue': [
     '^drawerVisible$', '^currentTab$', '^activeBehaviorTab$'
   ],
-  'src/components/ui-config/FormDataSourceCompatDialog.vue': [
+  'src/components/ui-config/FormDataSourceDialog.vue': [
     '^visible$'
   ],
   'src/components/FormButtonConfigPanel.vue': [
@@ -720,12 +718,12 @@ const DEFAULT_LOCATION_BY_AREA = Object.freeze({
   '列表按钮': '实体配置-列表-编辑-按钮配置',
   '列表按钮结构': '实体配置-列表-编辑-按钮配置',
   '按钮适用条件': '实体配置-列表或表单-按钮配置-适用条件',
-  '表单定义与初始化': '实体配置-表单-编辑',
+  '表单定义': '实体配置-表单-编辑',
   '表单设计': '实体配置-表单-编辑-设计器',
   '表单设置': '实体配置-表单-编辑-表单设置',
   '表单节点结构化属性': '实体配置-表单-编辑-节点属性',
   '表单节点数据绑定': '实体配置-表单-编辑-节点属性-数据设置',
-  '表单级数据源': '实体配置-表单-编辑-表单设置-数据与事件-数据源',
+  '初始化与数据处理': '实体配置-表单-编辑-表单设置-初始化与数据处理-初始化数据',
   '表单按钮': '实体配置-表单-编辑-表单设置-按钮与操作',
   '表单操作栏结构': '实体配置-表单-编辑-表单设置-按钮与操作',
   '表单字段联动': '实体配置-表单-编辑-字段属性-交互与规则',
@@ -789,7 +787,6 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/ListButtonConfigPanel.vue', '^openListForm\\.', '实体配置-列表-编辑-按钮配置-打开实体列表'),
 
   locationRule('src/views/EntityFormList.vue', '^form\\.', '实体配置-表单-编辑'),
-  locationRule('src/views/EntityFormList.vue', '^(initConfigType|initConfigData\\.)', '实体配置-表单-编辑-初始化配置'),
 
   locationRule('src/views/EntityFormDesignByEntity.vue', '^form\\.layoutType$', '实体配置-表单-编辑'),
   locationRule('src/views/EntityFormDesignByEntity.vue', '^selectedField\\.(fieldLabel|componentType|placeholder|gridSpan|isRequired|isReadonly|isHidden)$', '实体配置-表单-编辑-字段属性-常用'),
@@ -797,10 +794,10 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityFormDesignByEntity.vue', '^(selectedComponentConfig|viewConfig\\.customComponentProps)$', '实体配置-表单-编辑-字段属性-复用与扩展-组件参数'),
 
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.actionBar$', '实体配置-表单-编辑-表单设置-按钮与操作'),
-  locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.inputParameterSchema$', '实体配置-表单-编辑-表单设置-数据与事件-输入参数'),
+  locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.inputParameterSchema$', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^form\\.customComponent$', '实体配置-表单-编辑-表单设置-渲染与扩展'),
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^(form\\.|viewConfig\\.labelWidth$)', '实体配置-表单-编辑-表单设置-基本与布局'),
-  locationRule('src/components/form-designer/FormInputParameterEditor.vue', '^row\\.', '实体配置-表单-编辑-表单设置-数据与事件-输入参数'),
+  locationRule('src/components/form-designer/FormInputParameterEditor.vue', '^row\\.', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
   locationRule('src/components/form-designer/FormNodeDataSettings.vue', '^selectedParameterContract$', '实体配置-表单-编辑-字段属性-数据与关系-参数传递'),
 
   locationRule('src/components/LinkageConfigPanel.vue', '^(config\\.visibility|condition\\.)', '实体配置-表单-编辑-字段属性-交互与规则-显示条件'),
@@ -1272,11 +1269,8 @@ const KEY_GUIDANCE = Object.freeze({
   icon: ['选择按钮前显示的已注册 Element Plus 图标。', 'Document', '运行时在按钮名称前显示该图标；留空时只显示文字。'],
   buttonType: ['设置按钮默认、主要、成功、警告或危险视觉层级。', 'primary', '只改变视觉强调，不改变按钮动作、权限或确认策略。'],
   validateBeforeExecute: ['决定自定义表单按钮执行事件前是否先校验当前表单。', true, '开启后必填或格式校验失败会阻止 FORM_BUTTON_CLICK 事件。'],
-  paramsText: ['配置初始化接口、实体查询或自定义初始化器的 JSON 输入参数。', '{"projectId":"{{routeQuery.projectId}}"}', '打开新增表单时解析上下文模板并把参数传给所选初始化来源。'],
-  dataText: ['配置表单初始化 API 的 JSON 请求体。', '{"requestType":"URGENT"}', '初始化请求使用该正文，返回数据再按字段映射写入表单。'],
   mappingText: ['配置来源数据字段到当前记录或目标记录字段的映射。', '{"projectName":"name","projectCode":"code"}', '运行时只回写映射目标，未映射字段保持原值或由应用策略处理。'],
-  staticText: ['配置新增表单直接使用的静态 JSON 初始值。', '{"status":"DRAFT","requestType":"URGENT"}', '打开新增表单时把这些值合并到空白表单。'],
-  usage: ['选择表单数据源在默认值、选项、加载后还是提交前阶段执行。', 'BEFORE_SUBMIT', '运行时只在所选阶段调用数据源，并应用对应输入输出映射。'],
+  usage: ['选择表单数据源在新增初始化、加载后处理还是提交前处理阶段执行。', 'BEFORE_SUBMIT', '运行时只在所选阶段调用数据源，并应用对应输入输出映射。'],
   inputMappingText: ['把表单、路由或上下文路径映射成数据源输入参数。', '{"filters.ownerId":"data.ownerId"}', '调用数据源前按路径读取当前值并构造输入对象。'],
   outputMappingText: ['把数据源返回路径映射回当前表单字段。', '{"ownerName":"data.user.name"}', '数据源成功后批量写入映射目标字段。'],
   dataSourceInputMappingText: ['把当前节点或表单数据映射成节点数据源输入。', '{"filters.ownerId":"data.ownerId"}', '节点数据源执行前按映射生成过滤或业务参数。'],
@@ -1735,18 +1729,6 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: 'draft:草稿',
     expectedEffect: '该控件已禁用，不会修改发布配置；新选项必须改用系统代码表。'
   },
-  'src/views/EntityFormList.vue:initConfigType': {
-    label: '初始化方式',
-    meaning: '选择新建表单数据时从 API、实体、静态值或受控初始化器取得默认数据。',
-    example: 'entity',
-    expectedEffect: '打开新增表单时先执行对应初始化器，再把映射结果填入表单。'
-  },
-  'src/views/EntityFormList.vue:initConfigData.custom.name': {
-    label: '注册初始化器名称',
-    meaning: '选择平台已注册的受控表单初始化器，不允许在配置中直接填写和执行脚本。',
-    example: 'changeRequestInitializer',
-    expectedEffect: '打开新增表单时调用该初始化器取得初始数据；初始化器未注册时保存校验会提示不可用。'
-  },
   'src/views/EntityFormDesignByEntity.vue:form.layoutType': {
     label: '表单布局',
     meaning: '设置当前表单的顶层布局类型。',
@@ -2021,13 +2003,13 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: '选中数据后触发',
     expectedEffect: '字段事件配置页显示该说明，便于维护者识别；不改变事件触发条件。'
   },
-  'src/components/ui-config/FormDataSourceCompatDialog.vue:binding.clientPrevalidate': {
+  'src/components/ui-config/FormDataSourceDialog.vue:binding.clientPrevalidate': {
     label: '浏览器预校验',
     meaning: '允许 BEFORE_SUBMIT 数据源在浏览器中提前校验，服务端仍执行最终校验。',
     example: true,
     expectedEffect: '同时声明无副作用后，提交前先在浏览器调用数据源并尽早提示错误。'
   },
-  'src/components/ui-config/FormDataSourceCompatDialog.vue:binding.sideEffectFree': {
+  'src/components/ui-config/FormDataSourceDialog.vue:binding.sideEffectFree': {
     label: '无副作用',
     meaning: '声明该提交前数据源不会写库、发消息或产生外部副作用。',
     example: true,
@@ -2050,7 +2032,7 @@ const EVIDENCE_BY_AREA = Object.freeze({
   '表单设计': 'src/shared/__tests__/form-node-property-schema.spec.js；src/shared/__tests__/form-node-drag.spec.js；workflow-entity EntityFormNodePropertyPolicyTest / EntityFormNodeServicePropertyPolicyTest',
   '表单设置': 'src/shared/__tests__/form-actions.spec.js；workflow-app EntityFormConfigurationValidatorTest / EntityFormRuntimeServiceTest',
   '表单节点数据绑定': 'src/shared/__tests__/form-node-property-schema.spec.js；workflow-entity EntityFormNodeServicePropertyPolicyTest',
-  '表单级数据源': 'workflow-entity UiDataSourceProviderPolicyTest / UiDataSourceServiceRevisionTest',
+  '初始化与数据处理': 'src/__tests__/runtime-integration.spec.js；workflow-entity UiDataSourceProviderPolicyTest / UiDataSourceServiceRevisionTest',
   '表单按钮': 'src/shared/__tests__/form-actions.spec.js；workflow-entity EntityFormActionConfigPolicyTest',
   '表单字段联动': 'src/components/form-fields/composables/__tests__/useFormField.spec.js',
   '实体选择后回填': 'src/shared/__tests__/entity-selection-mapping.spec.js',
@@ -2089,9 +2071,9 @@ const USAGE_CONTEXT_BY_AREA = Object.freeze({
     '同一按钮只允许在特定用户关系、流程状态、实体状态或字段值下使用时',
     '按钮通过权限校验后在所有记录上都可使用时'
   ],
-  '表单定义与初始化': [
-    '实体需要新增一张用途独立的表单，或新增页面需要预填业务数据时',
-    '实体只使用已有默认表单且新增时不需要额外预填时'
+  '表单定义': [
+    '实体需要新增一张用途独立或基础属性不同的表单时',
+    '实体只使用已有默认表单且基础属性无需调整时'
   ],
   '表单设计': [
     '当前表单的布局、字段呈现或节点组件需要区别于实体和组件默认值时',
@@ -2105,8 +2087,8 @@ const USAGE_CONTEXT_BY_AREA = Object.freeze({
     '容器、子表单、重复器或动作插槽需要绑定特定实体、表单版本或数据路径时',
     '节点只展示静态内容，或使用当前表单的直接字段绑定时'
   ],
-  '表单级数据源': [
-    '表单初始化、字段选项、提交校验或数据转换需要调用受管理动态数据源时',
+  '初始化与数据处理': [
+    '初始化数据、加载后处理或提交校验需要调用受管理动态数据源时',
     '表单数据完全来自当前记录和静态选项时'
   ],
   '表单按钮': [

@@ -12,7 +12,7 @@ export const entityMutationPolicyApi = {
   saveDraft(entityCode, data, revision = data?.revision) {
     return request({
       url: `${base}/${entityCode}/draft`,
-      method: 'PUT',
+      method: 'POST',
       data,
       headers: revision == null ? {} : { 'If-Match': String(revision) }
     })

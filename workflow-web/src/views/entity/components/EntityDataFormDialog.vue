@@ -46,7 +46,13 @@
           @form-action="handleFormAction"
         />
       </el-tab-pane>
-      <el-tab-pane v-if="hasProcessInfo" label="流程图" name="diagram">
+      <!-- 延迟到页签可见后再创建 Viewer，避免在零尺寸隐藏容器中初始化。 -->
+      <el-tab-pane
+        v-if="hasProcessInfo"
+        label="流程图"
+        name="diagram"
+        lazy
+      >
         <EntityApprovalDiagram
           :bpmnXml="bpmnXml"
           :progressData="progressData"
@@ -99,12 +105,11 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { useUserStore } from '@/stores/user'
-import { executeFormInitializer } from '@/utils/formInitializer'
 import { useProcessDetail } from '@/composables/useProcessDetail'
 import {
   applyRuntimeFieldDefaults,
@@ -141,7 +146,6 @@ const emit = defineEmits<{
   success: []
 }>()
 
-const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
@@ -257,19 +261,6 @@ function refreshFormLinkage() {
   }
   nodeFormFieldsRefs.value[firstFormTabName.value]?.refreshLinkage()
 }
-
-// 切换到流程图 tab 时重新触发 BPMN 渲染，避免隐藏 tab 中画布尺寸为 0
-watch(activeTab, (newVal) => {
-  if (newVal === 'diagram' && bpmnXml.value && progressData.value) {
-    nextTick(() => {
-      const tempXml = bpmnXml.value
-      bpmnXml.value = ''
-      nextTick(() => {
-        bpmnXml.value = tempXml
-      })
-    })
-  }
-})
 
 // 重置表单
 const resetForm = () => {
@@ -554,27 +545,6 @@ const openCreate = async (options: any = {}) => {
   dialogTitle.value = runtimeForm.value?.formName
     ? `新增数据 - ${runtimeForm.value.formName}${runtimeForm.value.formKey ? `（${runtimeForm.value.formKey}）` : ''}`
     : '新增数据'
-
-  if (runtimeForm.value?.initConfig) {
-    try {
-      const initData = await executeFormInitializer(runtimeForm.value.initConfig, {
-        entityCode: props.entityCode,
-        entityDefinition: props.entityDefinition,
-        routeQuery: route.query,
-        userStore: userStore,
-        params: inputParameters,
-        parent: launchRuntimeContext.value?.parent || {},
-        context: launchRuntimeContext.value
-      })
-      if (initData && typeof initData === 'object') {
-        Object.entries(initData).forEach(([key, value]) => {
-          formData.data[key] = value
-        })
-      }
-    } catch (e) {
-      console.warn('表单初始化失败:', e)
-    }
-  }
 
   applyCreateInitialData(initialData)
 

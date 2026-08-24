@@ -80,12 +80,6 @@ public class EntityForm {
     private Integer customComponentSnapshotVersion;
 
     /**
-     * 表单初始化配置（JSON）
-     */
-    @TableField("init_config")
-    private String initConfig;
-
-    /**
      * 表单级统一数据源绑定（JSON）
      */
     @TableField("data_source_bindings_document")

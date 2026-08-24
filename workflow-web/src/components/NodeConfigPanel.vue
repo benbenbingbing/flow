@@ -365,6 +365,12 @@
           <!-- 接口动态 -->
           <template v-if="assigneeForm.assigneeType === 'interface'">
             <el-form-item label="人员接口" required>
+              <template #label>
+                <ConfigHelpLabel
+                  label="人员接口"
+                  help-key="process.personResolver"
+                />
+              </template>
               <ExtensionCapabilityPicker
                 v-model="assigneeForm.resolverCode"
                 capability-type="PERSON_RESOLVER"
@@ -500,6 +506,13 @@
                 />
               </el-form-item>
             </template>
+        <EmptyAssigneePolicyEditor v-model="assigneeForm.emptyAssigneeStrategy" :allow-inherit="true" />
+        <NodeOperationMatrixEditor
+          v-model="assigneeForm.nodeOperationPolicy"
+          :node-options="operationMatrixNodeOptions"
+          :current-node-id="currentOperationMatrixNodeId"
+          @copy-to-nodes="copyOperationMatrixToNodes"
+        />
           </SettingsSection>
           <NextApproverConfigEditor
             ref="nextApproverConfigEditorRef"
@@ -1299,16 +1312,21 @@
                     <el-option v-for="item in organizationOptions" :key="item.value" :label="item.label" :value="item.value" />
                   </el-select>
                   <el-input v-else-if="rule.type === 'ENTITY_FIELD'" v-model="rule.fieldCode" style="flex:1" placeholder="实体用户字段编码" />
-                  <ExtensionCapabilityPicker
-                    v-else-if="rule.type === 'RESOLVER'"
-                    v-model="rule.resolverCode"
-                    capability-type="PERSON_RESOLVER"
-                    placeholder="输入名称或编码搜索知会人员接口"
-                    :context-params="ccResolverContext"
-                    :current-option="ccResolverCurrentOption(rule)"
-                    style="flex:1"
-                    @selected="option => onCcResolverSelected(rule, option)"
-                  />
+                  <template v-else-if="rule.type === 'RESOLVER'">
+                    <ConfigHelpLabel
+                      label="人员接口"
+                      help-key="process.personResolver"
+                    />
+                    <ExtensionCapabilityPicker
+                      v-model="rule.resolverCode"
+                      capability-type="PERSON_RESOLVER"
+                      placeholder="输入名称或编码搜索知会人员接口"
+                      :context-params="ccResolverContext"
+                      :current-option="ccResolverCurrentOption(rule)"
+                      style="flex:1"
+                      @selected="option => onCcResolverSelected(rule, option)"
+                    />
+                  </template>
                   <el-input v-else style="flex:1" :model-value="ccRuleStaticText(rule.type)" disabled />
                   <el-checkbox v-if="rule.type === 'DEPARTMENT'" v-model="rule.includeChildren">含下级</el-checkbox>
                   <el-button type="danger" link aria-label="删除收件人规则" title="删除收件人规则" :disabled="ccForm.recipientRules.length <= 1" @click="removeCcRule(index)">
@@ -1533,6 +1551,8 @@
 </template>
 
 <script setup>
+import EmptyAssigneePolicyEditor from "./EmptyAssigneePolicyEditor.vue"
+import NodeOperationMatrixEditor from './NodeOperationMatrixEditor.vue'
 import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Delete, View, WarningFilled, QuestionFilled } from '@element-plus/icons-vue'
@@ -1672,6 +1692,16 @@ const SERVICE_EXAMPLES = {
 const basicForm = ref({ id: '', name: '', documentation: '' })
 const nextApproverConfigEditorRef = ref()
 const assigneeForm = ref({
+  emptyAssigneeStrategy: {
+    policy: 'INHERIT',
+    fallbackUser: '',
+    fallbackGroup: '',
+    maxRetries: 3,
+    initialDelaySeconds: 60,
+    backoffMultiplier: 2,
+    responsibilityOwner: ''
+  },
+  nodeOperationPolicy: null,
   assignee: '',
   candidateUsers: '',
   candidateGroups: '',
@@ -1711,6 +1741,13 @@ const referencedUserTaskOptions = computed(() => {
   void referenceOptionsRevision.value
   return getCurrentUserTaskReferenceOptions()
 })
+const currentOperationMatrixNodeId = computed(() => String(
+  basicForm.value.id || props.element?.businessObject?.id || props.element?.id || ''
+))
+const operationMatrixNodeOptions = computed(() => referencedUserTaskOptions.value.map(option => ({
+  label: option.nodeName ? `${option.nodeName} (${option.nodeId})` : option.label,
+  value: option.nodeId
+})))
 let referenceOptionsEventBus = null
 const refreshReferenceOptions = () => {
   referenceOptionsRevision.value += 1
@@ -2384,6 +2421,15 @@ watch(() => props.element, async (newElement) => {
       }
       
       assigneeForm.value = { 
+        emptyAssigneeStrategy: assigneeConfig.emptyAssigneeStrategy || {
+          policy: 'INHERIT',
+          fallbackUser: '',
+          fallbackGroup: '',
+          maxRetries: 3,
+          initialDelaySeconds: 60,
+          backoffMultiplier: 2,
+          responsibilityOwner: ''
+        },
         // 基础执行人配置
         assignee: assignee, 
         candidateUsers: candidateUsers, 
@@ -3414,6 +3460,62 @@ function updateAssigneeConfig() {
   const config = buildAssigneeConfig(assigneeForm.value)
   // 使用 updateExtensionProperty 存储 JSON 字符串
   updateExtensionProperty('assigneeConfig', JSON.stringify(config))
+}
+
+/**
+ * 将当前矩阵写入多个用户任务各自的 assigneeConfig，保持其他节点配置不变。
+ * 每个节点仍保存独立快照，后续可单独调整，并由命令栈支持撤销。
+ */
+function copyOperationMatrixToNodes({ nodeIds, policy }) {
+  const modeling = getModeling()
+  if (!modeling || !Array.isArray(nodeIds) || !nodeIds.length) return
+  const elements = getProcessBpmnElements()
+  let updated = 0
+  for (const nodeId of nodeIds) {
+    const element = elements.find(item => String(item?.id || item?.businessObject?.id) === String(nodeId))
+    if (!element || element.type !== 'bpmn:UserTask') continue
+    const businessObject = toRaw(element.businessObject || element)
+    const serialized = getExtensionProperties(businessObject).assigneeConfig
+    let config = {}
+    try {
+      config = serialized ? JSON.parse(serialized) : {}
+    } catch (error) {
+      ElMessage.warning(`节点 ${nodeId} 的办理人配置不是有效 JSON，已跳过`)
+      continue
+    }
+    writeElementExtensionProperty(
+      element,
+      'assigneeConfig',
+      JSON.stringify({ ...config, nodeOperationPolicy: JSON.parse(JSON.stringify(policy)) }),
+      modeling)
+    updated += 1
+  }
+  if (updated) {
+    ElMessage.success(`已将操作矩阵应用到 ${updated} 个节点`)
+  }
+}
+
+/** 为指定画布元素重建 flowable:Properties，避免直接修改 moddle 对象绕过命令栈。 */
+function writeElementExtensionProperty(element, name, value, modeling) {
+  const businessObject = toRaw(element.businessObject || element)
+  const moddle = businessObject.$model
+  if (!moddle?.create) {
+    throw new Error('BPMN moddle 未初始化')
+  }
+  const extensionValues = businessObject.extensionElements?.values || []
+  const existingProperties = extensionValues.find(item => item.$type === 'flowable:Properties')
+  const retainedProperties = (existingProperties?.values || []).filter(item => item.name !== name)
+  const nextProperty = moddle.create('flowable:Property', { name, value })
+  const nextProperties = moddle.create('flowable:Properties', {
+    values: [...retainedProperties, nextProperty]
+  })
+  const nextExtensionElements = moddle.create('bpmn:ExtensionElements', {
+    values: [
+      ...extensionValues.filter(item => item.$type !== 'flowable:Properties'),
+      nextProperties
+    ]
+  })
+  modeling.updateProperties(toRaw(element), { extensionElements: nextExtensionElements })
 }
 
 // REST接口配置更新

@@ -90,7 +90,7 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="数据与事件" name="data-events">
+      <el-tab-pane label="初始化与数据处理" name="data-events">
         <div class="form-settings-pane">
           <el-tabs v-model="activeBehaviorTab" class="form-behavior-tabs">
             <el-tab-pane name="input-parameters">
@@ -112,7 +112,7 @@
             </el-tab-pane>
             <el-tab-pane name="data-source">
               <template #label>
-                <span>表单数据源</span>
+                <span>初始化数据</span>
                 <el-tag
                   v-if="formDataSourceBindingCount"
                   size="small"
@@ -125,9 +125,9 @@
               </template>
               <div class="behavior-entry">
                 <div>
-                  <h3>表单生命周期数据源</h3>
+                  <h3>初始化与数据处理</h3>
                   <p>
-                    统一配置表单初始化、加载后处理和提交前处理，并保留输入输出映射、浏览器预校验与无副作用设置。
+                    统一配置新增时的初始化数据、全模式加载后处理和提交前处理，并保留请求参数与返回字段映射。
                   </p>
                 </div>
                 <el-button
@@ -135,7 +135,7 @@
                   :disabled="!form.id"
                   @click="openFormDataSourceConfig"
                 >
-                  配置数据源
+                  配置初始化与处理
                 </el-button>
               </div>
               <el-alert
@@ -143,7 +143,7 @@
                 type="info"
                 :closable="false"
                 show-icon
-                title="先保存表单草稿，再配置表单生命周期数据源。"
+                title="先保存表单草稿，再配置初始化与数据处理。"
               />
             </el-tab-pane>
             <el-tab-pane label="表单事件" name="events">
@@ -158,81 +158,28 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="渲染与扩展" name="rendering">
-        <div class="form-settings-pane form-settings-pane--narrow">
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            title="按钮、数据源和事件配置由两种渲染方式共用；默认布局节点只在动态表单模式参与渲染。"
-          />
-          <el-form label-width="120px" class="form-settings-form">
-            <el-form-item label="渲染方式">
-              <el-segmented
-                :model-value="formRendererMode"
-                :options="rendererModeOptions"
-                :disabled="isSystemEntity"
-                @change="handleFormRendererModeChange"
-              />
-            </el-form-item>
-            <el-form-item
-              v-if="!isSystemEntity && formRendererMode === 'CUSTOM'"
-              label="自定义组件"
-            >
-              <ExtensionCapabilityPicker
-                v-model="form.customComponent"
-                placeholder="请选择自定义表单组件"
-                capability-type="UI_FORM"
-                :context-params="formExtensionContext"
-                :local-options="customFormOptions"
-                :current-option="selectedCustomFormCatalogOption"
-                style="width: 100%"
-              />
-            </el-form-item>
-            <el-form-item
-              v-if="!isSystemEntity && formRendererMode === 'CUSTOM' && form.customComponent"
-              label="组件版本"
-            >
-              <el-tag>实现 v{{ form.customComponentVersion || 1 }}</el-tag>
-              <el-tag style="margin-left: 8px">
-                快照 v{{ form.customComponentSnapshotVersion || 1 }}
-              </el-tag>
-            </el-form-item>
-            <el-form-item
-              v-if="formRendererMode === 'CUSTOM' && selectedCustomFormSchema.length"
-              label="组件参数"
-            >
-              <el-button @click="showFormExtensionConfig = true">
-                配置参数
-              </el-button>
-            </el-form-item>
-            <el-form-item v-if="!isSystemEntity" label="扩展目录">
-              <el-button @click="openExtensionManagement">管理表单扩展</el-button>
-              <el-button text type="primary" @click="refreshExtensionCatalog">
-                刷新目录
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </div>
-      </el-tab-pane>
     </el-tabs>
   </el-drawer>
 </template>
 
 <script setup>
-import { computed, inject, ref } from 'vue'
+import { computed, inject } from 'vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
-import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import FormInputParameterEditor from './FormInputParameterEditor.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  activeTab: { type: String, default: 'basic' }
+  activeTab: { type: String, default: 'basic' },
+  activeBehaviorTab: { type: String, default: 'data-source' }
 })
 
-const emit = defineEmits(['update:modelValue', 'update:activeTab'])
+const emit = defineEmits([
+  'update:modelValue',
+  'update:activeTab',
+  'update:activeBehaviorTab'
+])
 const context = inject(FORM_DESIGNER_CONTEXT_KEY)
 
 if (!context) {
@@ -241,8 +188,6 @@ if (!context) {
 
 const {
   form,
-  formRendererMode,
-  rendererModeOptions,
   viewConfig,
   isEdit,
   isSystemEntity,
@@ -252,17 +197,13 @@ const {
   formFields,
   formDataSourceBindingCount,
   eventFieldOptions,
-  selectedCustomFormSchema,
-  customFormOptions,
-  selectedCustomFormCatalogOption,
-  showFormExtensionConfig,
-  openFormDataSourceConfig,
-  handleFormRendererModeChange,
-  openExtensionManagement,
-  refreshExtensionCatalog
+  openFormDataSourceConfig
 } = context
 
-const activeBehaviorTab = ref('data-source')
+const activeBehaviorTab = computed({
+  get: () => props.activeBehaviorTab,
+  set: value => emit('update:activeBehaviorTab', value)
+})
 const inputParameterCount = computed(() =>
   Object.keys(
     viewConfig.value?.inputParameterSchema?.properties || {}
@@ -273,9 +214,6 @@ const formLayoutOptions = [
   { value: 'horizontal', label: '水平' },
   { value: 'grid', label: '网格' }
 ]
-const formExtensionContext = computed(() => ({
-  entityCode: entityInfo.value?.entityCode || ''
-}))
 const drawerVisible = computed({
   get: () => props.modelValue,
   set: value => emit('update:modelValue', value)

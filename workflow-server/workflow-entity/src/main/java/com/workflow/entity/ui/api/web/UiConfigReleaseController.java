@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.result.PageResult;
@@ -8,8 +9,10 @@ import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigActivationPreviewDTO;
 import com.workflow.entity.ui.api.request.UiConfigHotfixRollbackRequest;
 import com.workflow.entity.ui.api.request.UiConfigReleaseOperationRequest;
+import com.workflow.entity.ui.api.request.UiConfigDraftDiscardRequest;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
+import com.workflow.entity.ui.api.response.UiConfigDraftDiscardResultDTO;
 import com.workflow.entity.ui.api.response.UiConfigReleaseSummaryDTO;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -86,6 +89,20 @@ public class UiConfigReleaseController {
     public Result<UiConfigDiffDTO> formDiff(@PathVariable String id) {
         accessService.requireFormAccess(id);
         return Result.success(releaseService.diff(UiConfigReleaseService.FORM, id));
+    }
+
+    /**
+     * 撤销表单自身已保存但尚未发布的修改，外部依赖漂移保持不变。
+     */
+    @PostMapping("/entity-forms/{id}/discard-draft")
+    public Result<UiConfigDraftDiscardResultDTO> discardFormDraft(
+            @PathVariable String id,
+            @RequestBody UiConfigDraftDiscardRequest request) {
+        accessService.requireFormAccess(id);
+        return Result.success(releaseService.discardDraft(
+                UiConfigReleaseService.FORM,
+                id,
+                request));
     }
 
     /**
@@ -185,6 +202,7 @@ public class UiConfigReleaseController {
      * 按发布顺序撤回表单热修复 rollout。
      */
     @PostMapping("/entity-forms/{id}/releases/{releaseId}/rollback-hotfix")
+    @RequiresPermission("entity:ui-config:hotfix:rollback")
     public Result<UiConfigRelease> rollbackFormHotfix(
             @PathVariable String id,
             @PathVariable String releaseId,
@@ -221,6 +239,20 @@ public class UiConfigReleaseController {
     public Result<UiConfigDiffDTO> listDiff(@PathVariable String id) {
         accessService.requireListAccess(id);
         return Result.success(releaseService.diff(UiConfigReleaseService.LIST, id));
+    }
+
+    /**
+     * 撤销列表自身已保存但尚未发布的修改，外部依赖漂移保持不变。
+     */
+    @PostMapping("/entity-list-config/{id}/discard-draft")
+    public Result<UiConfigDraftDiscardResultDTO> discardListDraft(
+            @PathVariable String id,
+            @RequestBody UiConfigDraftDiscardRequest request) {
+        accessService.requireListAccess(id);
+        return Result.success(releaseService.discardDraft(
+                UiConfigReleaseService.LIST,
+                id,
+                request));
     }
 
     /**
@@ -336,6 +368,7 @@ public class UiConfigReleaseController {
      */
     @PostMapping(
             "/entity-list-config/{id}/releases/{releaseId}/rollback-hotfix")
+    @RequiresPermission("entity:ui-config:hotfix:rollback")
     public Result<UiConfigRelease> rollbackListHotfix(
             @PathVariable String id,
             @PathVariable String releaseId,

@@ -9,9 +9,10 @@ import com.workflow.entity.definition.application.EntityFieldDefinitionService;
 import com.workflow.entity.definition.application.EntityFieldOptionService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
+import com.workflow.entity.definition.application.EntityRelationDefinitionService;
 import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
-import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
+import com.workflow.entity.version.application.EntityVersionConfigurationService;
 
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
@@ -51,7 +52,7 @@ import static org.mockito.Mockito.*;
  * 实体定义服务单元测试。
  *
  * <p>
- * 被测对象：{@link EntityDefinitionService}，覆盖实体定义的增删改查、子表单关系同步、发布、
+ * 被测对象：{@link EntityDefinitionService}，覆盖实体定义的增删改查、字段与关系边界、发布、
  * 流程绑定、生命周期模式校验等核心场景。
  */
 @ExtendWith(MockitoExtension.class)
@@ -110,6 +111,12 @@ public class EntityDefinitionServiceTest {
 
     @Mock
     private EntityFieldDefinitionService fieldDefinitionService;
+
+    @Mock
+    private EntityRelationDefinitionService relationDefinitionService;
+
+    @Mock
+    private EntityVersionConfigurationService versionConfigurationService;
 
     @Mock
     private SystemEntityFieldPolicy systemEntityFieldPolicy;
@@ -176,7 +183,7 @@ public class EntityDefinitionServiceTest {
         EntityPublishHistory history = new EntityPublishHistory();
         history.setId("history-1");
         lenient().when(publishHistoryService.createVersion(
-                any(), anyList(), any(), any(), any(), any(), any(), any()))
+                any(), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(history);
     }
 
@@ -390,9 +397,9 @@ public class EntityDefinitionServiceTest {
                 fieldDTO);
     }
 
-    /** 测试更新时同步子表单关系：验证旧关系被删除并按 DTO 重新插入正确的关系记录 */
+    /** 测试批量字段更新不再隐式同步子表单关系，关系必须通过独立关系接口维护。 */
     @Test
-    void testUpdateSyncsSubFormRelation() {
+    void testUpdateDoesNotSyncLegacySubFormRelation() {
         EntityField detailField = new EntityField();
         detailField.setId("field-detail");
         detailField.setEntityId("1");
@@ -421,10 +428,8 @@ public class EntityDefinitionServiceTest {
 
         entityService.update("1", dto);
 
-        verify(fieldDefinitionService).syncRelations(
-                testEntity,
-                List.of(detailDTO),
-                List.of(detailField));
+        verify(fieldDefinitionService).updateDefinition(detailField, detailDTO);
+        verify(fieldDefinitionService, never()).syncRelations(any(), anyList(), anyList());
     }
 
     /** 测试更新不存在的实体：验证抛出 RuntimeException 且消息包含对应 ID */
@@ -497,6 +502,7 @@ public class EntityDefinitionServiceTest {
         verify(publishHistoryService).createVersion(
                 any(EntityDefinition.class),
                 fieldsCaptor.capture(),
+                any(),
                 any(),
                 any(),
                 any(),

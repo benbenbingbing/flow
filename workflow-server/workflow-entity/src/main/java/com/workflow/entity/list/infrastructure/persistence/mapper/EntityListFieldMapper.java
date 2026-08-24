@@ -22,6 +22,12 @@ public interface EntityListFieldMapper extends BaseMapper<EntityListField> {
             + "AND deleted = 0 ORDER BY order_key ASC, sort_order ASC")
     List<EntityListField> findByListConfigId(@Param("listConfigId") String listConfigId);
 
+    /** 锁定列表下全部字段草稿，包含逻辑删除行。 */
+    @Select("SELECT * FROM entity_list_field "
+            + "WHERE list_config_id = #{listConfigId} ORDER BY id FOR UPDATE")
+    List<EntityListField> findAllByListConfigIdForUpdate(
+            @Param("listConfigId") String listConfigId);
+
     /**
      * 根据列表配置ID删除字段（物理删除）
      */

@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,8 +42,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -378,6 +381,110 @@ class EntityWholePackageCasServiceTest {
                         listRequest("list-1", null));
 
         assertEquals(10, saved.getRevision());
+    }
+
+    /**
+     * 发布恢复应保留字段快照中的双排序值：稀疏 orderKey 重排后 sortOrder
+     * 可能仍是旧序号，撤销已保存草稿不能把它改写为当前数组下标。
+     */
+    @Test
+    void listReleaseRestorePreservesPublishedFieldSortMetadata() {
+        ListContext context = listContext();
+        EntityListConfig current = listConfig("list-1", 5);
+        current.setListName("已保存未发布列表");
+        current.setActiveReleaseId("release-1");
+        EntityListConfig refreshed = listConfig("list-1", 6);
+        refreshed.setListName("已发布列表");
+        refreshed.setActiveReleaseId("release-1");
+
+        EntityListField movedFirst = listField(
+                "field-b", "code", 3, 120);
+        movedFirst.setSortOrder(1);
+        movedFirst.setOrderKey(1_000_000L);
+        EntityListField movedSecond = listField(
+                "field-a", "amount", 2, 160);
+        movedSecond.setSortOrder(0);
+        movedSecond.setOrderKey(2_000_000L);
+        EntityListConfigDTO published = listRequest(
+                "list-1",
+                List.of(movedFirst, movedSecond));
+        published.setListName("已发布列表");
+        List<EntityListField> persistedFields = new ArrayList<>(List.of(
+                listField("draft-a", "draft_amount", 5, 200)));
+
+        when(context.configMapper().selectByIdForUpdate("list-1"))
+                .thenReturn(current);
+        when(context.configMapper().update(isNull(), any()))
+                .thenReturn(1);
+        when(context.configMapper().selectById("list-1"))
+                .thenReturn(refreshed);
+        when(context.fieldMapper().findAllByListConfigIdForUpdate("list-1"))
+                .thenAnswer(invocation -> List.copyOf(persistedFields));
+        doAnswer(invocation -> {
+            persistedFields.clear();
+            return null;
+        }).when(context.fieldMapper()).deleteByListConfigId("list-1");
+        when(context.fieldMapper().findByListConfigId("list-1"))
+                .thenAnswer(invocation -> List.copyOf(persistedFields));
+        when(context.fieldMapper().selectById(any()))
+                .thenAnswer(invocation -> persistedFields.stream()
+                        .filter(field -> field.getId().equals(
+                                invocation.getArgument(0)))
+                        .findFirst()
+                        .orElse(null));
+        doAnswer(invocation -> {
+            persistedFields.add(invocation.getArgument(0));
+            return 1;
+        }).when(context.fieldMapper()).insert(any(EntityListField.class));
+
+        EntityListConfigDTO restored = context.service()
+                .restoreConfigForRelease(published, 5);
+
+        assertEquals(6, restored.getRevision());
+        ArgumentCaptor<EntityListField> inserted =
+                ArgumentCaptor.forClass(EntityListField.class);
+        verify(context.fieldMapper(), times(2)).insert(inserted.capture());
+        EntityListField restoredFirst = inserted.getAllValues().get(0);
+        EntityListField restoredSecond = inserted.getAllValues().get(1);
+        assertEquals("field-b", restoredFirst.getId());
+        assertEquals(1, restoredFirst.getSortOrder());
+        assertEquals(1_000_000L, restoredFirst.getOrderKey());
+        assertEquals("field-a", restoredSecond.getId());
+        assertEquals(0, restoredSecond.getSortOrder());
+        assertEquals(2_000_000L, restoredSecond.getOrderKey());
+        assertEquals(1, restored.getFields().get(0).getSortOrder());
+        assertEquals(0, restored.getFields().get(1).getSortOrder());
+    }
+
+    /** 普通系统导入继续按 payload 数组顺序规范化 sortOrder。 */
+    @Test
+    void listSystemImportStillNormalizesFieldSortOrderByPayloadOrder() {
+        ListContext context = listContext();
+        EntityListConfig current = listConfig("list-1", 9);
+        EntityListConfig refreshed = listConfig("list-1", 10);
+        EntityListField first = listField(
+                "field-a", "amount", null, 100);
+        first.setSortOrder(9);
+        EntityListField second = listField(
+                "field-b", "code", null, 120);
+        second.setSortOrder(4);
+        when(context.configMapper().selectByIdForUpdate("list-1"))
+                .thenReturn(current);
+        when(context.configMapper().update(isNull(), any()))
+                .thenReturn(1);
+        when(context.configMapper().selectById("list-1"))
+                .thenReturn(refreshed);
+        when(context.fieldMapper().findByListConfigId("list-1"))
+                .thenReturn(List.of(), List.of(first, second));
+
+        context.service().saveConfigForImport(
+                listRequest("list-1", List.of(first, second)));
+
+        ArgumentCaptor<EntityListField> inserted =
+                ArgumentCaptor.forClass(EntityListField.class);
+        verify(context.fieldMapper(), times(2)).insert(inserted.capture());
+        assertEquals(0, inserted.getAllValues().get(0).getSortOrder());
+        assertEquals(1, inserted.getAllValues().get(1).getSortOrder());
     }
 
     /** 装配表单服务及其 Mock 依赖，返回表单测试上下文 */

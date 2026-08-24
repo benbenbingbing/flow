@@ -50,7 +50,7 @@
     @update:model-value="activeTab = $event"
   >
     <el-tab-pane
-      v-for="tabNode in children"
+      v-for="tabNode in visibleTabs"
       :key="tabNode.id"
       :name="tabNode.id"
       :label="tabNode.props.label || tabNode.props.title || tabNode.nodeKey"
@@ -197,6 +197,20 @@ const sectionTitleField = computed(() => ({
     || props.node.nodeKey
 }))
 const activeTab = ref('')
+const visibleTabs = computed(() => children.value.filter(tab => {
+  if (tab?.props?.hidden === true) return false
+  const modeRule = tab?.props?.modeAccess?.[props.mode]
+  if (String(modeRule || '').toUpperCase() === 'HIDDEN') return false
+  const permissionCode = String(tab?.props?.permissionCode || '').trim()
+  if (!permissionCode) return true
+  if (typeof props.context?.hasPermission === 'function') {
+    return props.context.hasPermission(permissionCode)
+  }
+  const permissions = props.context?.permissions
+  return Array.isArray(permissions)
+    ? (permissions.includes('*') || permissions.includes(permissionCode))
+    : false
+}))
 const activeCollapseNames = ref([])
 const collapseModelValue = computed(() =>
   props.node.props?.accordion === true
@@ -213,11 +227,17 @@ const actionSlotRenderer = computed(() => defineComponent({
   }
 }))
 
-watch(children, value => {
+watch(visibleTabs, value => {
   if (props.node.nodeType === 'TAB_SET'
       && value.length
       && !value.some(item => item.id === activeTab.value)) {
-    activeTab.value = value[0].id
+    const configured = String(props.node.props?.defaultActiveTabKey || '')
+    const preferred = value.find(item =>
+      [String(item.nodeKey || ''), String(item.id)].includes(configured)
+    )
+    activeTab.value = (preferred || value[0]).id
+  } else if (props.node.nodeType === 'TAB_SET' && value.length === 0) {
+    activeTab.value = ''
   }
 }, { immediate: true })
 

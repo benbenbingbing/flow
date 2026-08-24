@@ -7,10 +7,17 @@ const form = {
     { id: 'section', nodeType: 'SECTION', parentId: '', orderKey: 1_000_000 },
     { id: 'nested-tab-set', nodeType: 'TAB_SET', parentId: 'section', orderKey: 1_000_000 },
     { id: 'nested-tab', nodeType: 'TAB', parentId: 'nested-tab-set', orderKey: 1_000_000 },
-    { id: 'root-tab-set', nodeType: 'TAB_SET', parentId: '', orderKey: 2_000_000 },
+    {
+      id: 'root-tab-set',
+      nodeType: 'TAB_SET',
+      parentId: '',
+      orderKey: 2_000_000,
+      props: { defaultActiveTabKey: 'tab_second' }
+    },
     {
       id: 'root-tab-a',
       nodeType: 'TAB',
+      nodeKey: 'tab_first',
       parentId: 'root-tab-set',
       orderKey: 1_000_000,
       propsDocument: JSON.stringify({ label: '第一个页签' })
@@ -18,6 +25,7 @@ const form = {
     {
       id: 'root-tab-b',
       nodeType: 'TAB',
+      nodeKey: 'tab_second',
       parentId: 'root-tab-set',
       orderKey: 2_000_000,
       props: { title: '第二个页签' }
@@ -28,6 +36,8 @@ const form = {
 const layout = resolveRuntimeFormTabLayout(form)
 assert.deepEqual(layout.liftedRootNodeIds, ['root-tab-set'])
 assert.equal(layout.hasBaseContent, true)
+assert.equal(layout.defaultActiveTabName, 'form_tab_root-tab-b')
+assert.equal(layout.tabs[1].defaultActive, true)
 assert.deepEqual(
   layout.tabs.map(tab => ({
     name: tab.name,
@@ -56,6 +66,7 @@ const tabsOnlyLayout = resolveRuntimeFormTabLayout({
 })
 assert.equal(tabsOnlyLayout.hasBaseContent, false)
 assert.equal(tabsOnlyLayout.tabs.length, 1)
+assert.equal(tabsOnlyLayout.defaultActiveTabName, 'form_tab_tab')
 
 const customComponentLayout = resolveRuntimeFormTabLayout({
   customComponent: 'CustomRuntimeForm',

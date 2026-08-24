@@ -11,6 +11,7 @@ import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -32,6 +33,8 @@ public class EntityDataMutationValidator {
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityFieldValidationRuleService fieldValidationRuleService;
     private final ObjectMapper objectMapper;
+    @Autowired(required = false)
+    private EntityUniqueValueService uniqueValueService;
 
     public void validateProcessStart(
             boolean requested,
@@ -287,6 +290,7 @@ public class EntityDataMutationValidator {
             String excludeId) {
         String tableName =
                 dynamicTableService.getTableName(entityCode);
+        Map<String, Object> uniqueValues = new HashMap<>();
         for (EntityField field : snapshot.getFields()) {
             if (!Boolean.TRUE.equals(
                     field.getIsUnique())
@@ -300,6 +304,7 @@ public class EntityDataMutationValidator {
             if (isBlank(value)) {
                 continue;
             }
+            uniqueValues.put(field.getFieldCode(), value);
             Map<String, Object> condition =
                     new HashMap<>();
             condition.put(columnName, value);
@@ -315,6 +320,9 @@ public class EntityDataMutationValidator {
                         "字段值已存在: "
                                 + field.getFieldName());
             }
+        }
+        if (uniqueValueService != null && StringUtils.hasText(excludeId)) {
+            uniqueValueService.replace(entityCode, excludeId, uniqueValues);
         }
     }
 

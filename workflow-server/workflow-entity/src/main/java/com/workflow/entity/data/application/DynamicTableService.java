@@ -12,9 +12,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 动态表管理服务
@@ -29,6 +39,18 @@ public class DynamicTableService {
     private static final int MAX_DECIMAL_PRECISION = 65;
     private static final int MAX_DECIMAL_SCALE = 30;
     private static final int MAX_DEFAULT_LENGTH = 4096;
+    private static final Set<String> BASE_COLUMNS = Set.of(
+            "id", "data_no", "title", "name", "code", "status",
+            "process_instance_id", "process_start_time", "process_end_time",
+            "current_task_id", "current_task_name", "current_task_assignee",
+            "submitter_id", "submitter_name", "submit_time", "dept_id",
+            "create_by", "update_by", "create_time", "update_time", "deleted");
+    private static final Set<String> SYSTEM_FIELD_CODES = Set.of(
+            "name", "code", "status", "processInstanceId", "processInstance_id",
+            "processStartTime", "process_startTime", "processStart_time",
+            "processEndTime", "process_endTime", "processEnd_time",
+            "submitterId", "submitter_id", "submitterName", "submitter_name",
+            "deptId", "dept_id");
     private final JdbcTemplate jdbcTemplate;
     private final EntityFieldMapper entityFieldMapper;
     private final EntityPhysicalTableResolver tableResolver;
@@ -110,9 +132,6 @@ public class DynamicTableService {
         schemaDdlExecutor.execute(createTableSql);
         ensureMultiValueTable(tableName);
         
-        // 创建索引
-        createIndexes(tableName, fields);
-        
         log.info("实体数据表 {} 创建成功", tableName);
         return createTableSql;
     }
@@ -124,66 +143,115 @@ public class DynamicTableService {
      */
     @Transactional(rollbackFor = Exception.class)
     public List<String> syncEntityTableStructure(EntityDefinition entityDefinition) {
+        String tableName = tableResolver.resolve(entityDefinition);
+        List<String> plan = planEntityTableStructure(entityDefinition);
+        // 计划先完整固化，再按顺序执行；任何一步失败都向上抛出并保留失败状态，禁止“告警后继续发布”。
+        for (String ddl : plan) {
+            schemaDdlExecutor.execute(ddl);
+        }
+        ensureMultiValueTable(tableName);
+        return plan;
+    }
+
+    /**
+     * 生成一次不可变的结构变更计划，不执行 DDL。
+     * 仅当 information_schema 与目标字段定义不一致时才生成 MODIFY，避免无变更重复锁表。
+     */
+    public List<String> planEntityTableStructure(EntityDefinition entityDefinition) {
         String entityCode = entityDefinition.getEntityCode();
         String tableName = tableResolver.resolve(entityDefinition);
-        List<String> executedDdls = new java.util.ArrayList<>();
-        
-        // 获取实体字段定义
         List<EntityField> fields = entityFieldMapper.findByEntityId(entityDefinition.getId());
-        
         if (!tableExists(entityCode)) {
-            // 表不存在，创建新表（包含所有非子表单字段）
-            String ddl = buildCreateTableSql(tableName, fields, entityDefinition.getEntityName());
-            schemaDdlExecutor.execute(ddl);
-            ensureMultiValueTable(tableName);
-            createIndexes(tableName, fields);
-            executedDdls.add(ddl);
-            log.info("创建实体数据表: {}", tableName);
-        } else {
-            ensureMultiValueTable(tableName);
-            // 表已存在，同步未发布的字段到数据库表
-            List<ColumnInfo> existingColumns = getTableColumns(entityCode);
-            java.util.Set<String> existingColumnNames = existingColumns.stream()
-                    .map(ColumnInfo::getName)
-                    .collect(java.util.stream.Collectors.toSet());
-            
-            for (EntityField field : fields) {
-                // 跳过系统字段和子表单字段
-                if (Boolean.TRUE.equals(field.getIsSystem())
-                        || isSubFormField(field)
-                        || isMultiValueField(field)) {
-                    continue;
-                }
-                
-                String dbColumnName = field.getDbColumnName() != null && !field.getDbColumnName().isEmpty() 
-                    ? field.getDbColumnName() 
-                    : field.getFieldCode();
-                
-                if (!existingColumnNames.contains(dbColumnName)) {
-                    // 字段在数据库中不存在，添加字段（新字段或未发布的字段）
-                    String columnDef = buildColumnDefinition(field);
-                    String sql = "ALTER TABLE " + quoteIdentifier(tableName)
-                            + " ADD COLUMN " + columnDef;
-                    schemaDdlExecutor.execute(sql);
-                    executedDdls.add(sql);
-                    log.info("为表 {} 添加字段: {}", tableName, dbColumnName);
-                } else if (Boolean.TRUE.equals(field.getIsPublished())) {
-                    // 已发布的字段，检查是否需要修改列定义（长度、精度、必填等变更）
-                    try {
-                        String columnDef = buildColumnDefinition(field);
-                        String sql = "ALTER TABLE " + quoteIdentifier(tableName)
-                                + " MODIFY COLUMN " + columnDef;
-                        schemaDdlExecutor.execute(sql);
-                        executedDdls.add(sql);
-                        log.info("修改表 {} 字段定义: {}", tableName, dbColumnName);
-                    } catch (Exception e) {
-                        log.warn("修改表 {} 字段 {} 定义失败: {}", tableName, dbColumnName, e.getMessage());
-                    }
-                }
+            return List.of(buildCreateTableSql(tableName, fields, entityDefinition.getEntityName()));
+        }
+        Map<String, ColumnInfo> existing = getTableColumns(entityCode).stream()
+                .collect(Collectors.toMap(ColumnInfo::getName, Function.identity(), (left, right) -> left));
+        List<String> plan = new ArrayList<>();
+        for (EntityField field : fields) {
+            if (!isPhysicalDynamicField(field)) {
+                continue;
+            }
+            String columnName = columnName(field);
+            ColumnInfo actual = existing.get(columnName);
+            String action = actual == null ? " ADD COLUMN " : " MODIFY COLUMN ";
+            if (actual == null || (Boolean.TRUE.equals(field.getIsPublished())
+                    && !columnMatches(actual, field))) {
+                plan.add("ALTER TABLE " + quoteIdentifier(tableName)
+                        + action + buildColumnDefinition(field));
             }
         }
-        
-        return executedDdls;
+        return plan;
+    }
+
+    /** 返回目标元数据与实际表之间可供发布拦截和修复预览使用的真实列级差异。 */
+    public List<String> inspectSchemaDrift(EntityDefinition entity, List<EntityField> fields) {
+        if (!tableExists(entity.getEntityCode())) {
+            return List.of("物理表不存在: " + getTableName(entity.getEntityCode()));
+        }
+        Set<String> expected = expectedColumns(fields);
+        Set<String> actual = getTableColumns(entity.getEntityCode()).stream()
+                .map(ColumnInfo::getName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<String> drift = new ArrayList<>();
+        expected.stream().filter(column -> !actual.contains(column)).sorted()
+                .forEach(column -> drift.add("缺少列: " + column));
+        actual.stream().filter(column -> !expected.contains(column)).sorted()
+                .forEach(column -> drift.add("存在元数据未声明列: " + column));
+        return drift;
+    }
+
+    /** 目标指纹由规范化的目标列集合生成，用于确认发布计划未在执行期间被替换。 */
+    public String targetSchemaFingerprint(EntityDefinition entity, List<EntityField> fields) {
+        return fingerprint(expectedColumns(fields));
+    }
+
+    /** 实际指纹直接读取 information_schema；表不存在时返回稳定的缺失指纹。 */
+    public String actualSchemaFingerprint(String entityCode) {
+        if (!tableExists(entityCode)) {
+            return sha256("TABLE_MISSING:" + getTableName(entityCode));
+        }
+        Set<String> columns = getTableColumns(entityCode).stream()
+                .map(ColumnInfo::getName)
+                .collect(Collectors.toSet());
+        return fingerprint(columns);
+    }
+
+    /** 使用 information_schema 的表统计值评估 DDL 影响量级。 */
+    public long estimateRows(String entityCode) {
+        if (!tableExists(entityCode)) {
+            return 0L;
+        }
+        Long rows = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(TABLE_ROWS, 0) FROM information_schema.TABLES "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                Long.class,
+                getTableName(entityCode));
+        return rows == null ? 0L : rows;
+    }
+
+    /**
+     * 发布唯一约束前扫描存量重复值。运行期并发写入仍由 entity_unique_value 主键串行化。
+     */
+    public List<String> scanUniqueConflicts(EntityDefinition entity, List<EntityField> fields) {
+        if (!tableExists(entity.getEntityCode())) {
+            return List.of();
+        }
+        String tableName = quoteIdentifier(getTableName(entity.getEntityCode()));
+        List<String> conflicts = new ArrayList<>();
+        for (EntityField field : fields) {
+            if (!Boolean.TRUE.equals(field.getIsUnique()) || !isPhysicalDynamicField(field)) {
+                continue;
+            }
+            String column = quoteIdentifier(columnName(field));
+            String sql = "SELECT CAST(" + column + " AS CHAR) value_text, COUNT(*) duplicate_count FROM "
+                    + tableName + " WHERE `deleted` = 0 AND " + column + " IS NOT NULL "
+                    + "GROUP BY " + column + " HAVING COUNT(*) > 1 LIMIT 5";
+            jdbcTemplate.query(sql, rs -> {
+                conflicts.add(field.getFieldName() + "=" + rs.getString("value_text")
+                        + "（" + rs.getLong("duplicate_count") + "条）");
+            });
+        }
+        return conflicts;
     }
 
     /**
@@ -280,14 +348,6 @@ public class DynamicTableService {
         sql.append("  `deleted` TINYINT DEFAULT 0 COMMENT '是否删除（0否/1是）',\n");
         
         // 动态字段（跳过系统字段和子表单字段）
-        Set<String> systemFieldCodes = new HashSet<>(Arrays.asList(
-                "name", "code", "status", "processInstanceId", "processInstance_id",
-                "processStartTime", "process_startTime", "processStart_time",
-                "processEndTime", "process_endTime", "processEnd_time",
-                "submitterId", "submitter_id", "submitterName", "submitter_name",
-                "deptId", "dept_id"
-        ));
-        
         for (EntityField field : fields) {
             // 跳过子表单字段（子表单有独立表）
             if (isSubFormField(field) || isMultiValueField(field)) {
@@ -295,12 +355,17 @@ public class DynamicTableService {
             }
             // 跳过系统字段（已在基础字段中定义）
             if (Boolean.TRUE.equals(field.getIsSystem()) || 
-                systemFieldCodes.contains(field.getFieldCode())) {
+                SYSTEM_FIELD_CODES.contains(field.getFieldCode())) {
                 continue;
             }
             sql.append("  ").append(buildColumnDefinition(field)).append(",\n");
         }
         
+        // 基线索引随 CREATE TABLE 原子创建，避免建表成功但后续索引步骤遗漏。
+        sql.append("  KEY `").append(indexName(tableName, "status")).append("` (`status`),\n");
+        sql.append("  KEY `").append(indexName(tableName, "process")).append("` (`process_instance_id`),\n");
+        sql.append("  KEY `").append(indexName(tableName, "deleted")).append("` (`deleted`),\n");
+        sql.append("  KEY `").append(indexName(tableName, "created")).append("` (`create_time`),\n");
         // 主键
         sql.append("  PRIMARY KEY (`id`)\n");
         String comment = entityName != null && !entityName.isEmpty() ? entityName : tableName;
@@ -435,6 +500,60 @@ public class DynamicTableService {
                 || field.getFieldType() == EntityField.FieldType.CHECKBOX)
                 && field.getDictType() != null
                 && !field.getDictType().isBlank();
+    }
+
+    private boolean isPhysicalDynamicField(EntityField field) {
+        return !Boolean.TRUE.equals(field.getIsSystem())
+                && !SYSTEM_FIELD_CODES.contains(field.getFieldCode())
+                && !isSubFormField(field)
+                && !isMultiValueField(field);
+    }
+
+    private String columnName(EntityField field) {
+        return field.getDbColumnName() != null && !field.getDbColumnName().isBlank()
+                ? validateIdentifier(field.getDbColumnName())
+                : validateIdentifier(field.getFieldCode());
+    }
+
+    private boolean columnMatches(ColumnInfo actual, EntityField field) {
+        String expectedType = getDbType(field).toLowerCase(Locale.ROOT);
+        String expectedBase = expectedType.contains("(")
+                ? expectedType.substring(0, expectedType.indexOf('(')) : expectedType;
+        if (!expectedBase.equals(actual.getType().toLowerCase(Locale.ROOT))) {
+            return false;
+        }
+        if (expectedBase.equals("varchar")) {
+            int start = expectedType.indexOf('(') + 1;
+            int end = expectedType.indexOf(')');
+            long expectedLength = Long.parseLong(expectedType.substring(start, end));
+            return actual.getLength() != null && actual.getLength() == expectedLength;
+        }
+        return true;
+    }
+
+    private Set<String> expectedColumns(List<EntityField> fields) {
+        Set<String> expected = new LinkedHashSet<>(BASE_COLUMNS);
+        for (EntityField field : fields == null ? List.<EntityField>of() : fields) {
+            if (isPhysicalDynamicField(field)) {
+                expected.add(columnName(field));
+            }
+        }
+        return expected;
+    }
+
+    private static String fingerprint(Set<String> columns) {
+        String canonical = columns.stream().sorted(Comparator.naturalOrder())
+                .collect(Collectors.joining("\n"));
+        return sha256(canonical);
+    }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("运行环境不支持 SHA-256", exception);
+        }
     }
 
     public String getMultiValueTableName(String entityCode) {

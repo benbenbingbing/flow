@@ -12,6 +12,7 @@ import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
 import com.workflow.process.definition.application.ProcessFlowableDeploymentService;
 import com.workflow.process.definition.application.ProcessPublishHistoryService;
+import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import org.flowable.engine.repository.Deployment;
 import org.junit.jupiter.api.Test;
 
@@ -45,6 +46,8 @@ class ProcessDefinitionServicePublishTest {
                 mock(FlowActionDesignPort.class);
         MigrationAssetHandler migrationAssetHandler =
                 mock(MigrationAssetHandler.class);
+        ProcessDefinitionPreflightService preflightService =
+                mock(ProcessDefinitionPreflightService.class);
         ProcessDefinitionService service = new ProcessDefinitionService(
                 processMapper,
                 versionHistoryMapper,
@@ -53,7 +56,8 @@ class ProcessDefinitionServicePublishTest {
                 nodeSyncService,
                 sanitizer,
                 actionDesignPort,
-                migrationAssetHandler);
+                migrationAssetHandler,
+                preflightService);
 
         String designXml = "<bpmn:scriptTask id=\"script\" />";
         String sanitizedXml = "<bpmn:serviceTask id=\"script\" />";

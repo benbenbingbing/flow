@@ -1809,6 +1809,11 @@ public class ConfigMigrationImportApplyService {
                 ? text(definition.get("category"), null)
                 : existing.getCategory());
         dto.setBpmnXml(bpmnXml);
+        if (existing != null) {
+            // 配置迁移也遵守目标环境的草稿 CAS，避免导入批次覆盖管理员刚保存的流程修改。
+            dto.setExpectedRevision(existing.getDraftRevision() == null
+                    ? 1L : existing.getDraftRevision());
+        }
 
         ProcessDefinitionDTO saved;
         if (existing == null) {

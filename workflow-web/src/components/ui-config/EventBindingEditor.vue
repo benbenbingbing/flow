@@ -40,8 +40,16 @@
       v-if="!ownerId"
       description="请先选择实体、表单或列表"
     />
+    <el-alert
+      v-if="ownerId && outOfScopeBindings.length"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="scope-warning"
+      :title="`检测到 ${outOfScopeBindings.length} 条历史绑定与当前${ownerTypeLabel}范围不匹配，已禁止继续编辑；请删除后到正确的配置位置重建。`"
+    />
     <el-table
-      v-else
+      v-if="ownerId"
       v-loading="loading"
       :data="visibleBindings"
       row-key="id"
@@ -49,7 +57,15 @@
     >
       <el-table-column label="触发事件" min-width="180">
         <template #default="{ row }">
-          <div class="primary-text">{{ eventLabel(row.eventCode) }}</div>
+          <div class="event-name-line">
+            <span class="primary-text">{{ eventLabel(row.eventCode) }}</span>
+            <el-tag
+              v-if="!isEventAllowed(row.eventCode)"
+              size="small"
+              type="danger"
+              effect="plain"
+            >范围不匹配</el-tag>
+          </div>
           <div class="secondary-text">{{ row.eventCode }}</div>
         </template>
       </el-table-column>
@@ -68,12 +84,20 @@
               :key="`${item.kind}-${index}`"
             >
               <span v-if="index" class="chain-arrow">→</span>
-              <el-tag
-                :type="item.type"
-                :effect="item.kind === 'platform' ? 'dark' : 'plain'"
-              >
-                {{ item.label }}
-              </el-tag>
+              <span class="chain-node">
+                <el-tag
+                  :type="item.type"
+                  :effect="item.kind === 'platform' ? 'dark' : 'plain'"
+                >
+                  {{ item.label }}
+                </el-tag>
+                <ConfigHelpLabel
+                  v-if="item.kind === 'platform'"
+                  label="平台默认处理"
+                  :show-label="false"
+                  :content="platformDefaultHelp(row.eventCode)"
+                />
+              </span>
             </template>
           </div>
         </template>
@@ -87,11 +111,41 @@
       </el-table-column>
       <el-table-column label="操作" width="130" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button
+            link
+            type="primary"
+            :disabled="!isEventAllowed(row.eventCode)"
+            :title="isEventAllowed(row.eventCode)
+              ? '编辑事件绑定'
+              : '该历史绑定与当前配置范围不匹配，请删除后到正确位置重新配置'"
+            @click="openEdit(row)"
+          >编辑</el-button>
           <el-button link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <section
+      v-if="hiddenOutOfScopeBindings.length"
+      class="scope-cleanup"
+    >
+      <div class="section-title">待清理的历史错配绑定</div>
+      <div class="secondary-text">
+        以下绑定位于当前配置不支持的字段或按钮目标，常规入口无法打开；可在此直接删除后重新配置。
+      </div>
+      <div
+        v-for="row in hiddenOutOfScopeBindings"
+        :key="row.id || `${row.targetType}-${row.targetKey}-${row.eventCode}`"
+        class="scope-cleanup-row"
+      >
+        <div class="scope-cleanup-content">
+          <el-tag size="small" type="danger" effect="plain">范围不匹配</el-tag>
+          <span>{{ eventLabel(row.eventCode) }} ({{ row.eventCode }})</span>
+          <span class="secondary-text">{{ bindingTargetLabel(row) }}</span>
+        </div>
+        <el-button link type="danger" @click="remove(row)">删除</el-button>
+      </div>
+    </section>
 
     <el-dialog
       v-model="dialogVisible"
@@ -111,13 +165,20 @@
               :disabled="Boolean(editor.id)"
               @change="handleEventChange"
             >
-              <el-option
-                v-for="event in availableEvents"
-                :key="event"
-                :label="`${eventLabel(event)} (${event})`"
-                :value="event"
-              />
+              <el-option-group
+                v-for="group in availableEventGroups"
+                :key="group.label"
+                :label="group.label"
+              >
+                <el-option
+                  v-for="event in group.events"
+                  :key="event"
+                  :label="`${eventLabel(event)} (${event})`"
+                  :value="event"
+                />
+              </el-option-group>
             </el-select>
+            <div class="event-scope-hint">{{ eventScopeHint }}</div>
           </el-form-item>
           <el-form-item label="继承方式" required>
             <template #label>
@@ -161,12 +222,20 @@
               :key="`${item.kind}-${index}`"
             >
               <span v-if="index" class="chain-arrow">→</span>
-              <el-tag
-                :type="item.type"
-                :effect="item.kind === 'platform' ? 'dark' : 'plain'"
-              >
-                {{ item.label }}
-              </el-tag>
+              <span class="chain-node">
+                <el-tag
+                  :type="item.type"
+                  :effect="item.kind === 'platform' ? 'dark' : 'plain'"
+                >
+                  {{ item.label }}
+                </el-tag>
+                <ConfigHelpLabel
+                  v-if="item.kind === 'platform'"
+                  label="平台默认处理"
+                  :show-label="false"
+                  :content="platformDefaultHelp(editor.eventCode)"
+                />
+              </span>
             </template>
           </div>
 
@@ -230,6 +299,12 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="接口服务">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="接口服务"
+                    help-key="uiDataSource.service"
+                  />
+                </template>
                 <el-select
                   v-model="step.serviceId"
                   filterable
@@ -354,6 +429,10 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
+import {
+  eventGroupsForScope,
+  eventsForScope
+} from '@/components/ui-config/uiEventScope'
 import { uiDataSourceApi, uiEventBindingApi } from '@/api/uiConfig'
 
 const props = defineProps({
@@ -390,6 +469,27 @@ const eventLabels = {
   FORM_BUTTON_CLICK: '表单按钮点击'
 }
 
+const platformDefaultDescriptions = {
+  LIST_LOAD: '按当前条件查询并展示列表数据',
+  LIST_EXPORT: '按当前条件导出列表数据',
+  DETAIL_LOAD: '读取并展示当前记录详情',
+  DATA_CREATE: '完成权限、表单规则校验并新增实体记录',
+  DATA_UPDATE: '完成权限、表单规则校验并更新实体记录',
+  DATA_DELETE: '校验权限后删除当前实体记录',
+  DATA_BATCH_DELETE: '校验权限后批量删除所选实体记录',
+  FORM_OPEN: '加载记录或新增初始值并打开表单',
+  FORM_SAVE: '校验并提交当前表单数据',
+  FORM_RESET: '把表单恢复到本次打开时的初始值',
+  FIELD_CHANGE: '更新字段值并执行平台联动与校验',
+  ENTITY_SELECTED: '回填选中记录及已配置的字段映射',
+  FIELD_BUTTON_CLICK: '执行该字段按钮原有的内置动作',
+  SUBFORM_LOAD: '加载当前子表数据',
+  SUBFORM_SAVE: '校验并保存当前子表数据',
+  TOOLBAR_BUTTON_CLICK: '执行该工具栏按钮原有的内置动作',
+  ROW_BUTTON_CLICK: '执行该行按钮原有的内置动作',
+  FORM_BUTTON_CLICK: '执行该表单按钮原有的内置动作'
+}
+
 const inheritanceOptions = [
   { label: '继承并追加', value: 'INHERIT' },
   { label: '替换上级', value: 'REPLACE' },
@@ -423,12 +523,67 @@ const visibleBindings = computed(() =>
   )
 )
 
-const availableEvents = computed(() => {
-  const source = props.allowedEvents.length
-    ? props.allowedEvents
-    : catalog.value.events || Object.keys(eventLabels)
-  return source.map(item => String(item).toUpperCase())
+const scopeEvents = computed(() =>
+  eventsForScope(props.ownerType, props.targetType))
+
+const availableEventGroups = computed(() => {
+  const catalogSource = Array.isArray(catalog.value.events)
+    && catalog.value.events.length
+    ? catalog.value.events
+    : Object.keys(eventLabels)
+  const catalogEvents = new Set(
+    catalogSource
+      .map(item => String(item).toUpperCase())
+  )
+  const explicitEvents = props.allowedEvents.length
+    ? new Set(props.allowedEvents.map(item => String(item).toUpperCase()))
+    : null
+  return eventGroupsForScope(props.ownerType, props.targetType)
+    .map(group => ({
+      ...group,
+      events: group.events.filter(event =>
+        catalogEvents.has(event)
+        && (!explicitEvents || explicitEvents.has(event)))
+    }))
+    .filter(group => group.events.length)
 })
+
+const availableEvents = computed(() =>
+  availableEventGroups.value.flatMap(group => group.events))
+
+const eventScopeHint = computed(() => {
+  const owner = String(props.ownerType).toUpperCase()
+  const target = String(props.targetType || 'OWNER').toUpperCase()
+  if (target === 'FIELD') return '仅显示字段相关事件。'
+  if (target === 'BUTTON') {
+    return owner === 'LIST'
+      ? '仅显示列表工具栏或行按钮事件。'
+      : '仅显示表单按钮事件。'
+  }
+  return owner === 'LIST'
+    ? '仅显示列表加载、导出、数据操作和列表按钮事件。'
+    : owner === 'FORM'
+      ? '仅显示表单生命周期、表单数据、字段、子表单和表单按钮事件；列表事件请到列表配置。'
+      : '当前为实体默认事件，可被表单或列表的同名事件继承。'
+})
+
+const currentOutOfScopeBindings = computed(() =>
+  visibleBindings.value.filter(row => !isEventAllowed(row.eventCode)))
+
+// OWNER 页面同时兜底展示那些没有合法字段/按钮入口的历史错配，确保管理员仍有可恢复的删除路径。
+const hiddenOutOfScopeBindings = computed(() => {
+  if (String(props.targetType || 'OWNER').toUpperCase() !== 'OWNER') {
+    return []
+  }
+  return bindings.value.filter(row =>
+    !visibleBindings.value.includes(row)
+    && !isScopeContractAllowed(row))
+})
+
+const outOfScopeBindings = computed(() => [
+  ...currentOutOfScopeBindings.value,
+  ...hiddenOutOfScopeBindings.value
+])
 
 const editorChainItems = computed(() => chainItems({
   inheritanceMode: editor.inheritanceMode,
@@ -537,6 +692,7 @@ async function openCreate() {
 }
 
 async function openEdit(row) {
+  if (!isEventAllowed(row.eventCode)) return
   const steps = parseJson(row.stepsDocument, row.steps || [])
   resetEditor({
     id: row.id,
@@ -665,6 +821,10 @@ async function save() {
     ElMessage.warning('请选择触发事件')
     return
   }
+  if (!isEventAllowed(editor.eventCode)) {
+    ElMessage.warning('该事件不属于当前配置范围，请在正确的表单、列表、字段或按钮位置配置')
+    return
+  }
   const steps = editor.inheritanceMode === 'DISABLE'
     ? []
     : editor.steps.map(serializeStep)
@@ -721,6 +881,43 @@ async function remove(row) {
 
 function eventLabel(code) {
   return eventLabels[code] || code
+}
+
+function isEventAllowed(code) {
+  const normalized = String(code || '').toUpperCase()
+  return scopeEvents.value.includes(normalized)
+    && (props.allowedEvents.length === 0
+      || props.allowedEvents.some(item =>
+        String(item).toUpperCase() === normalized))
+}
+
+function isScopeContractAllowed(row) {
+  const ownerType = row?.ownerType || props.ownerType
+  const targetType = row?.targetType || 'OWNER'
+  const normalized = String(row?.eventCode || '').toUpperCase()
+  return eventsForScope(ownerType, targetType).includes(normalized)
+}
+
+function bindingTargetLabel(row) {
+  const targetType = String(row?.targetType || 'OWNER').toUpperCase()
+  const targetName = targetType === 'FIELD'
+    ? '字段'
+    : targetType === 'BUTTON'
+      ? '按钮'
+      : '当前配置'
+  return row?.targetKey
+    ? `${targetName}：${row.targetKey}`
+    : targetName
+}
+
+/**
+ * 说明事件链中间的“平台默认处理”究竟代表哪个原有动作，并明确替代语义。
+ */
+function platformDefaultHelp(eventCode) {
+  const code = String(eventCode || '').toUpperCase()
+  const action = platformDefaultDescriptions[code]
+    || `执行“${eventLabel(code)}”原有的内置动作`
+  return `平台默认处理：${action}。前置步骤在它之前执行；“替代平台处理”会跳过它；后置步骤在它成功后执行。`
 }
 
 function inheritanceLabel(mode) {
@@ -810,6 +1007,8 @@ onMounted(load)
 .toolbar-actions,
 .chain-preview,
 .draft-chain,
+.chain-node,
+.event-name-line,
 .step-tools {
   display: flex;
   align-items: center;
@@ -818,8 +1017,40 @@ onMounted(load)
 
 .binding-hint,
 .editor-alert,
-.draft-chain {
+.draft-chain,
+.scope-warning {
   margin-bottom: 14px;
+}
+
+.scope-warning {
+  margin-top: 14px;
+}
+
+.event-scope-hint {
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.scope-cleanup {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--el-color-warning-light-5);
+  border-radius: 6px;
+  background: var(--el-color-warning-light-9);
+}
+
+.scope-cleanup-row,
+.scope-cleanup-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scope-cleanup-row {
+  justify-content: space-between;
+  margin-top: 10px;
 }
 
 .chain-preview,
@@ -829,6 +1060,10 @@ onMounted(load)
 
 .chain-arrow {
   color: var(--el-text-color-placeholder);
+}
+
+.chain-node {
+  gap: 4px;
 }
 
 .base-grid,

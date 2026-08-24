@@ -8,6 +8,8 @@ import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.process.definition.api.request.ProcessDefinitionQueryDTO;
 import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.process.definition.api.request.ProcessPublishRequest;
+import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +43,9 @@ public class ProcessDefinitionControllerTest {
 
     @MockitoBean
     private ProcessDefinitionService processService;
+
+    @MockitoBean
+    private ProcessDefinitionPreflightService preflightService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -164,7 +169,7 @@ public class ProcessDefinitionControllerTest {
     @Test
     void testPublish() throws Exception {
         testProcess.setStatus(ProcessDefinitionConfig.ProcessStatus.PUBLISHED);
-        when(processService.publish(eq("1"), any(ConfigMigrationPublishRequest.class))).thenReturn(testProcess);
+        when(processService.publish(eq("1"), any(ProcessPublishRequest.class))).thenReturn(testProcess);
 
         Map<String, String> request = new HashMap<>();
         request.put("versionDescription", "初始版本");
@@ -176,7 +181,7 @@ public class ProcessDefinitionControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
 
-        verify(processService, times(1)).publish(eq("1"), any(ConfigMigrationPublishRequest.class));
+        verify(processService, times(1)).publish(eq("1"), any(ProcessPublishRequest.class));
     }
 
     /** 测试停用流程定义接口，断言返回 200 且状态变为 DISABLED */

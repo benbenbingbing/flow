@@ -43,6 +43,18 @@ class EntityFormCopyServiceTest {
                 "entity-1", "archive_request", "");
     }
 
+    /** 复制表单必须保留唯一的初始化与生命周期数据处理配置。 */
+    @Test
+    void copyPreservesDataSourceBindings() {
+        Fixture fixture = fixture();
+
+        EntityForm copied = fixture.service().copyForm("form-1");
+
+        assertEquals(
+                "{\"FORM_INIT\":{\"serviceId\":\"source-1\"}}",
+                copied.getDataSourceBindingsDocument());
+    }
+
     @Test
     void copyWithoutRequestUsesReadableIncrementingKey() {
         Fixture fixture = fixture();
@@ -85,6 +97,8 @@ class EntityFormCopyServiceTest {
         source.setFormName("request_form");
         source.setFormKey("request_form");
         source.setLayoutType("vertical");
+        source.setDataSourceBindingsDocument(
+                "{\"FORM_INIT\":{\"serviceId\":\"source-1\"}}");
         source.setStatus(1);
 
         when(formMapper.selectById("form-1")).thenReturn(source);

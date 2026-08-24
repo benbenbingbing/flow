@@ -259,8 +259,41 @@
     <el-dialog
       v-model="publishDialogVisible"
       title="发布流程"
-      width="500px"
+      width="680px"
     >
+      <div v-loading="publishPreviewLoading" class="process-publish-preview">
+        <el-alert
+          v-if="publishPreview"
+          :type="publishPreview.publishable ? 'success' : 'error'"
+          :closable="false"
+          show-icon
+          :title="publishPreview.publishable
+            ? `预检通过，${publishPreview.warningCount || 0} 个警告`
+            : `预检未通过，${publishPreview.blockerCount || 0} 个阻断项`"
+        />
+        <el-descriptions v-if="publishPreview" :column="3" border size="small" class="publish-impact">
+          <el-descriptions-item label="草稿修订">r{{ publishPreview.revision }}</el-descriptions-item>
+          <el-descriptions-item label="活跃实例">
+            {{ publishPreview.activeInstanceCount < 0 ? '统计失败' : publishPreview.activeInstanceCount }}
+          </el-descriptions-item>
+          <el-descriptions-item label="历史版本">{{ publishPreview.affectedVersionCount }}</el-descriptions-item>
+          <el-descriptions-item label="新增元素">{{ publishPreview.diff?.addedElementIds?.length || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="修改元素">{{ publishPreview.diff?.changedElementIds?.length || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="删除元素">{{ publishPreview.diff?.removedElementIds?.length || 0 }}</el-descriptions-item>
+        </el-descriptions>
+        <div v-if="publishPreview?.issues?.length" class="publish-issues">
+          <div
+            v-for="issue in publishPreview.issues.slice(0, 8)"
+            :key="`${issue.code}-${issue.elementId || 'global'}`"
+            class="publish-issue"
+          >
+            <el-tag :type="issue.blocking ? 'danger' : 'warning'" size="small">
+              {{ issue.blocking ? '阻断' : '警告' }}
+            </el-tag>
+            <span>{{ issue.elementId ? `[${issue.elementId}] ` : '' }}{{ issue.message }}</span>
+          </div>
+        </div>
+      </div>
       <el-form :model="publishForm" label-width="100px">
         <el-form-item label="流程名称">
           <span>{{ currentProcess?.processName }}</span>
@@ -296,7 +329,12 @@
       </el-form>
       <template #footer>
         <el-button @click="publishDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleConfirmPublish" :loading="publishing">
+        <el-button
+          type="primary"
+          @click="handleConfirmPublish"
+          :loading="publishing"
+          :disabled="publishPreviewLoading || !publishPreview?.publishable"
+        >
           发布
         </el-button>
       </template>
@@ -349,6 +387,8 @@ const versionBpmnXml = ref('')
 // 发布对话框
 const publishDialogVisible = ref(false)
 const publishing = ref(false)
+const publishPreviewLoading = ref(false)
+const publishPreview = ref(null)
 const publishForm = ref({
   versionDescription: '',
   markForExport: true,
@@ -476,6 +516,22 @@ const handleSubmit = async () => {
     fetchData()
   } catch (error) {
     console.error(error)
+    if (error?.status === 409 && error.currentData) {
+      try {
+        await ElMessageBox.confirm(
+          '流程基本信息已被其他人修改。是否加载服务器最新内容？取消后将保留当前输入。',
+          '流程草稿冲突',
+          {
+            type: 'warning',
+            confirmButtonText: '加载最新内容',
+            cancelButtonText: '保留当前输入'
+          }
+        )
+        formData.value = { ...error.currentData }
+      } catch {
+        // 保留当前输入，用户可自行复制后再加载最新版本。
+      }
+    }
   } finally {
     submitting.value = false
   }
@@ -505,14 +561,29 @@ const handleDelete = async (row) => {
   }
 }
 
-const handlePublish = (row) => {
+const loadPublishPreview = async () => {
+  if (!currentProcess.value?.id) return
+  publishPreviewLoading.value = true
+  try {
+    publishPreview.value = await processApi.publishPreview(currentProcess.value.id)
+  } catch (error) {
+    console.error(error)
+    publishPreview.value = null
+  } finally {
+    publishPreviewLoading.value = false
+  }
+}
+
+const handlePublish = async (row) => {
   currentProcess.value = row
+  publishPreview.value = null
   publishForm.value = {
     versionDescription: '',
     markForExport: true,
     migrationTag: generateMigrationTag()
   }
   publishDialogVisible.value = true
+  await loadPublishPreview()
 }
 
 const handleConfirmPublish = async () => {
@@ -522,13 +593,21 @@ const handleConfirmPublish = async () => {
   }
   publishing.value = true
   try {
-    await processApi.publish(currentProcess.value.id, { ...publishForm.value })
+    await processApi.publish(currentProcess.value.id, {
+      ...publishForm.value,
+      expectedRevision: publishPreview.value.revision,
+      expectedDraftHash: publishPreview.value.draftHash,
+      previewToken: publishPreview.value.previewToken
+    })
     ElMessage.success('发布成功')
     publishDialogVisible.value = false
     fetchData()
   } catch (error) {
     console.error(error)
     ElMessage.error(error.message || '发布失败')
+    if (error?.status === 409 || error?.errorCode === 'PROCESS_PUBLISH_PREVIEW_STALE') {
+      await loadPublishPreview()
+    }
   } finally {
     publishing.value = false
   }
@@ -675,6 +754,31 @@ code {
   margin-left: 10px;
   color: #909399;
   font-size: 12px;
+}
+
+.process-publish-preview {
+  min-height: 52px;
+  margin-bottom: 18px;
+}
+
+.publish-impact {
+  margin-top: 12px;
+}
+
+.publish-issues {
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.publish-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #606266;
+  line-height: 1.5;
 }
 
 .search-form {

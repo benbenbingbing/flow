@@ -18,7 +18,9 @@ const files = [
   'src/views/system/components/EntityVersionConfigDialogs.vue',
   'src/views/system/WorkCalendarManagement.vue',
   'src/components/form-designer/FormNodeDataSettings.vue',
-  'src/components/ui-config/FormDataSourceCompatDialog.vue',
+  'src/components/ui-config/FormDataSourceDialog.vue',
+  'src/components/ui-config/ListColumnTemplateEditorDialog.vue',
+  'src/components/NextApproverConfigEditor.vue',
   'src/components/ui-config/EntitySelectionMappingEditor.vue',
   'src/components/ActionRuleEditorDialog.vue'
 ]
@@ -44,7 +46,14 @@ for (const required of [
   'entityList.dataScopeMode',
   'uiConfig.releaseMode',
   'process.allowManualCc',
+  'process.personResolver',
+  'process.flowActionHandler',
   'uiEvent.inheritanceMode',
+  'uiDataSource.service',
+  'interfaceService.backendImplementation',
+  'entityList.dataSourceType',
+  'entityVersion.stepImplementation',
+  'entityVersion.targetResolver',
   'entityVersion.applyStrategy'
 ]) {
   assert.ok(usedKeys.has(required), `关键复杂配置缺少问号帮助: ${required}`)

@@ -116,13 +116,12 @@ class ProductionArtifactSecurityTest {
         String deploymentWorkflow = Files.readString(
                 Path.of("../../.github/workflows/deploy.yml"));
         assertTrue(deploymentWorkflow.contains(
-                "steps.server-image.outputs.digest"));
+                "github.event.workflow_run.head_sha"));
         assertTrue(deploymentWorkflow.contains(
-                "helm upgrade --install"));
-        assertTrue(deploymentWorkflow.contains(
-                "--atomic"));
-        assertTrue(deploymentWorkflow.contains(
-                "test \"$GITHUB_REF\" = \"refs/heads/main\""));
+                "github.event.workflow_run.conclusion == 'success'"));
+        assertTrue(deploymentWorkflow.contains("gzip -t"));
+        assertTrue(deploymentWorkflow.contains("./deploy.sh"));
+        assertTrue(deploymentWorkflow.contains("known_hosts"));
         assertFalse(deploymentWorkflow.contains(
                 "docker compose"));
     }

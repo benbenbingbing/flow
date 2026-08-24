@@ -17,15 +17,15 @@ export const entityRelationApi = {
   update(entityId, relationId, data) {
     return request({
       url: `/entity/${entityId}/relations/${relationId}`,
-      method: 'PUT',
+      method: 'POST',
       data
     })
   },
 
   delete(entityId, relationId) {
     return request({
-      url: `/entity/${entityId}/relations/${relationId}`,
-      method: 'DELETE'
+      url: `/entity/${entityId}/relations/${relationId}/delete`,
+      method: 'POST'
     })
   }
 }

@@ -62,6 +62,9 @@ public class PersonResolverTaskAssignmentListener
     @Autowired(required = false)
     private NodeAssignmentReferenceResolver nodeReferenceResolver;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.workflow.process.assignment.application.EmptyAssigneePolicyService emptyAssigneePolicyService;
+
     @Override
     public void onEvent(FlowableEvent event) {
         if (event.getType() == null
@@ -160,6 +163,10 @@ public class PersonResolverTaskAssignmentListener
         String configDocument = ConfiguredTaskPropertyReader.read(
                 userTask, "assigneeConfig");
         if (!StringUtils.hasText(configDocument)) {
+            if (!hasCurrentAssignment(task)) {
+                handleEmptyAssignment(task, bpmnModel, Map.of(), processConfigId, processKey,
+                        "EMPTY_CONFIGURATION", "Task has no effective assignee configuration");
+            }
             return;
         }
         Map<String, Object> assigneeConfig;
@@ -248,6 +255,11 @@ public class PersonResolverTaskAssignmentListener
                         effectiveVersion,
                         variables);
                 if (users.isEmpty()) {
+                    handleEmptyAssignment(task, bpmnModel, effectiveConfig, processConfigId, processKey,
+                            "EMPTY_RESOLUTION", "Assignee resolver returned no users");
+                    return;
+                }
+                if (users.isEmpty()) {
                     throw new IllegalStateException(
                             "被引用节点没有可用办理人: "
                                     + resolvedAssignment.sourceTask().getId());
@@ -335,6 +347,11 @@ public class PersonResolverTaskAssignmentListener
                             variables,
                             mapValue(variables.get("entityData")),
                             extraParams));
+            if (users.isEmpty()) {
+                handleEmptyAssignment(task, bpmnModel, effectiveConfig, processConfigId, processKey,
+                        "EMPTY_RESOLUTION", "Assignee resolver returned no users");
+                return;
+            }
             if (users.isEmpty()) {
                 throw new IllegalStateException(
                         "人员接口未返回可用办理人: " + resolverCode);
@@ -764,5 +781,41 @@ public class PersonResolverTaskAssignmentListener
                 Throwable cause) {
             super(message, cause);
         }
+    }
+
+    /**
+     * Applies the version-snapshotted empty-assignee policy and keeps unresolved work visible.
+     */
+    private void handleEmptyAssignment(
+            org.flowable.task.api.Task task,
+            org.flowable.bpmn.model.BpmnModel bpmnModel,
+            Map<String, Object> effectiveConfig,
+            String processConfigId,
+            String processKey,
+            String reasonCode,
+            String reasonMessage) {
+        if (emptyAssigneePolicyService == null) {
+            throw new RequiredAssignmentException(reasonMessage, null);
+        }
+        String resolverCode = firstText(
+                effectiveConfig.get("resolverCode"),
+                effectiveConfig.get("interfaceName"));
+        com.workflow.process.assignment.application.EmptyAssigneePolicyService.Outcome outcome =
+                emptyAssigneePolicyService.handleEmpty(
+                        task,
+                        bpmnModel,
+                        effectiveConfig,
+                        new com.workflow.process.assignment.application.EmptyAssigneePolicyService.EmptyContext(
+                                processConfigId,
+                                processKey,
+                                resolverCode,
+                                mapValue(effectiveConfig.get("extraParams"))),
+                        com.workflow.process.assignment.domain.AssigneeResolutionResult.empty(
+                                reasonCode, reasonMessage, resolverCode));
+        if (outcome.blocking()) {
+            throw new RequiredAssignmentException(reasonMessage, null);
+        }
+        log.warn("Empty assignee policy applied: taskId={}, nodeId={}, policy={}, incidentId={}, fallbackApplied={}",
+                task.getId(), task.getTaskDefinitionKey(), outcome.policy(), outcome.incidentId(), outcome.fallbackApplied());
     }
 }

@@ -3,7 +3,9 @@ package com.workflow.entity.permission.api.response;
 import lombok.Data;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体列表数据范围配置 DTO。
@@ -19,4 +21,6 @@ public class EntityListScopeConfigurationDTO {
     private List<EntityListScopePolicyDTO> policies = new ArrayList<>();
     /** 列表与策略绑定关系列表 */
     private List<EntityListScopeBindingDTO> bindings = new ArrayList<>();
+    /** 各列表未绑定 ALLOW 规则时的安全默认策略。 */
+    private Map<String, EntityListScopeDefaultDTO> listDefaults = new LinkedHashMap<>();
 }

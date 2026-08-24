@@ -8,7 +8,7 @@
     :close-on-click-modal="false"
   >
     <el-alert
-      title="这里配置技术处理器的中文名称和可见范围。实体流程只能选择“全局”或明确包含当前实体的动作。"
+      title="技术处理器需在后端实现 FlowActionHandler 并加 @Component；这里仅配置中文名称、启用状态和可见范围。"
       type="info"
       :closable="false"
       show-icon

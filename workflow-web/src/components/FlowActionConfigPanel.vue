@@ -173,6 +173,12 @@
           </el-form-item>
 
           <el-form-item label="处理器" required>
+            <template #label>
+              <ConfigHelpLabel
+                label="处理器"
+                help-key="process.flowActionHandler"
+              />
+            </template>
             <ExtensionCapabilityPicker
               v-model="editingAction.actionDefinitionId"
               capability-type="FLOW_ACTION"

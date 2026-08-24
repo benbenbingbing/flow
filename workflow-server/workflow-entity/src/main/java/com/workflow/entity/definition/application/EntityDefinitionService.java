@@ -32,6 +32,7 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelation
 import com.workflow.entity.version.application.EntityVersionConfigurationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -67,6 +68,8 @@ public class EntityDefinitionService {
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
     private final MigrationAssetHandler migrationAssetHandler;
+    @Autowired(required = false)
+    private EntitySchemaOperationService schemaOperationService;
 
     /**
      * 查询所有实体定义
@@ -607,6 +610,24 @@ public class EntityDefinitionService {
         List<EntityField> fields = fieldMapper.findByEntityId(id);
         attachFileItems(fields);
         entity.setFields(fields);
+        ConfigMigrationPublishRequest publishRequest = request == null
+                ? new ConfigMigrationPublishRequest()
+                : request;
+
+        // 发布前先固化不可变 DDL 计划；高风险计划必须由调用方明确确认后才能进入执行态。
+        List<String> plannedDdls = dynamicTableService.planEntityTableStructure(entity);
+        com.workflow.entity.definition.api.response.EntitySchemaOperationDTO schemaOperation = null;
+        if (schemaOperationService != null) {
+            com.workflow.entity.definition.api.response.EntitySchemaOperationDTO preview =
+                    schemaOperationService.preview(entity, fields, plannedDdls);
+            if ("HIGH".equals(preview.getRiskLevel())
+                    && !Boolean.TRUE.equals(publishRequest.getConfirmHighRiskSchemaChange())) {
+                throw new BusinessConflictException(
+                        "ENTITY_SCHEMA_HIGH_RISK_CONFIRMATION_REQUIRED",
+                        "本次结构变更风险较高，需查看预览并明确确认后发布");
+            }
+            schemaOperation = schemaOperationService.prepare(entity, fields, plannedDdls, userId);
+        }
 
         // 判断是首次发布还是字段变更
         boolean isFirstPublish = entity.getStatus() != EntityDefinition.Status.PUBLISHED;
@@ -615,7 +636,23 @@ public class EntityDefinitionService {
                 : EntityPublishHistory.PublishType.ALTER;
 
         // 同步表结构（创建表或添加字段）
-        List<String> executedDdls = dynamicTableService.syncEntityTableStructure(entity);
+        List<String> executedDdls;
+        try {
+            if (schemaOperation != null
+                    && !"SCHEMA_CONSISTENT".equals(schemaOperation.getStatus())) {
+                schemaOperationService.markRunning(schemaOperation.getId());
+            }
+            executedDdls = dynamicTableService.syncEntityTableStructure(entity);
+            if (schemaOperation != null
+                    && !"SCHEMA_CONSISTENT".equals(schemaOperation.getStatus())) {
+                schemaOperationService.complete(schemaOperation.getId(), entity, fields);
+            }
+        } catch (RuntimeException exception) {
+            if (schemaOperation != null) {
+                schemaOperationService.markFailed(schemaOperation.getId(), exception);
+            }
+            throw exception;
+        }
         entityRecordTeamService.ensureTeamTable(entity);
 
         // 标记已同步的字段为已发布状态
@@ -637,9 +674,6 @@ public class EntityDefinitionService {
 
         // 记录版本历史
         String ddlString = executedDdls.isEmpty() ? null : String.join(";\n", executedDdls);
-        ConfigMigrationPublishRequest publishRequest = request == null
-                ? new ConfigMigrationPublishRequest()
-                : request;
         EntityPublishHistory history = publishHistoryService.createVersion(
                 entity, fields, ddlString, publishType, changesDesc, userId, userName,
                 publishRequest.getVersionDescription(),

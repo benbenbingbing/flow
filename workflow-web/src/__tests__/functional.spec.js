@@ -36,13 +36,6 @@ import {
   hasListButtonComponent
 } from '@/utils/listButtonComponentRegistry.js'
 import {
-  registerFormInitializer,
-  getFormInitializer,
-  hasFormInitializer,
-  getRegisteredFormInitializerNames
-} from '@/utils/formInitializerRegistry.js'
-import { executeFormInitializer } from '@/utils/formInitializer.js'
-import {
   formatLinkageConditionLiteral,
   LinkageEngine,
   normalizeLegacyBooleanComparisons
@@ -340,14 +333,6 @@ registerListButtonComponent('buttonDemo', DemoButton)
 assert.equal(hasListButtonComponent('buttonDemo'), true)
 assert.equal(getListButtonComponent('buttonDemo'), DemoButton)
 
-const initializer = async (config, context) => ({ owner: context.userId, source: config.source })
-registerFormInitializer('ownerInitializer', initializer)
-assert.equal(hasFormInitializer('ownerInitializer'), true)
-assert.deepEqual(await getFormInitializer('ownerInitializer')({ source: '功能测试' }, { userId: 'u1' }), { owner: 'u1', source: '功能测试' })
-assert.ok(getRegisteredFormInitializerNames().includes('ownerInitializer'))
-assert.deepEqual(await executeFormInitializer({}), {})
-assert.deepEqual(await executeFormInitializer('{}'), {})
-
 assert.deepEqual(
   LinkageEngine.getFieldLinkageRules({
     visibilityRule: "${status} == 'OPEN'",
@@ -539,6 +524,30 @@ assert.equal(buildAssigneeConfig({ assigneeType: 'user', assignee: 'zhangsan', c
 assert.equal(buildAssigneeConfig({ assigneeType: 'group', candidateGroups: 'finance' }).assigneeValue, 'finance')
 assert.equal(buildAssigneeConfig({ assigneeType: 'expression', candidateUsers: '${starter}' }).assigneeValue, '${starter}')
 
+const nodeOperationPolicy = {
+  version: 1,
+  allowedVariables: ['amount'],
+  operations: {
+    approve: {
+      enabled: true,
+      conditionExpression: 'amount <= 5000',
+      permissionCode: 'process:task:approve'
+    }
+  }
+}
+assert.deepEqual(
+  buildAssigneeConfig({ assigneeType: 'user', nodeOperationPolicy }).nodeOperationPolicy,
+  nodeOperationPolicy
+)
+assert.deepEqual(
+  buildAssigneeConfig({
+    legacyAssigneeConfig: { assignmentConfigVersion: 1, assigneeType: 'user' },
+    assignmentConfigDirty: false,
+    nodeOperationPolicy
+  }).nodeOperationPolicy,
+  nodeOperationPolicy
+)
+
 assert.ok(ENTITY_FIELD_TYPES.length >= 20)
 assert.equal(getEntityFieldTypeLabel('STRING'), '文本')
 assert.equal(getEntityFieldTypeLabel('UNKNOWN_TYPE'), 'UNKNOWN_TYPE')
@@ -580,6 +589,7 @@ const apiExpectations = {
     'publish',
     'delete'
   ],
+  'src/api/uiHotfixGovernance.js': ['apply', 'review', 'cancel', 'get', 'list'],
   'src/api/entityListRuntime.js': ['getSchema', 'query', 'simulate'],
   'src/api/entityListScope.js': ['getConfiguration', 'createPolicy', 'createBinding', 'publish'],
   'src/api/processTask.js': ['getTodoList', 'getDoneList', 'getStatistics', 'completeTask', 'getTaskOperations', 'previewAddSign', 'addSignTask', 'cancelAddSign', 'ccTask', 'getMyCcList', 'markCcRead', 'withdrawProcess', 'terminateProcess'],
@@ -632,6 +642,34 @@ assert.ok(
     entityListConfigPageSource
   ),
   '列表基本信息编辑未携带 expectedRevision'
+)
+
+const processApiSource = readFileSync('src/api/process.js', 'utf8')
+const processDesignSource = readFileSync('src/views/ProcessDesign.vue', 'utf8')
+const processListSource = readFileSync('src/views/ProcessList.vue', 'utf8')
+assert.ok(
+  /expectedRevision:\s*data\.expectedRevision\s*\?\?\s*data\.revision/.test(processApiSource),
+  '流程草稿更新未携带 expectedRevision'
+)
+for (const route of ['/validate', '/publish-preview', '/diff']) {
+  assert.ok(processApiSource.includes(route), `流程发布预检接口缺少路径: ${route}`)
+}
+assert.ok(
+  processListSource.includes('expectedDraftHash: publishPreview.value.draftHash')
+    && processListSource.includes('previewToken: publishPreview.value.previewToken')
+    && processListSource.includes('!publishPreview?.publishable'),
+  '流程发布必须绑定最新预检哈希、令牌，并在存在阻断项时禁用发布'
+)
+assert.ok(
+  processDesignSource.includes('processData.value = saved')
+    && processDesignSource.includes('error?.status === 409')
+    && processDesignSource.includes('保留本地内容'),
+  '流程设计器必须刷新服务端 revision，并为 409 冲突保留本地草稿'
+)
+assert.ok(
+  processListSource.includes('error?.status === 409')
+    && processListSource.includes('保留当前输入'),
+  '流程基本信息编辑必须显式处理 revision 冲突'
 )
 
 const layoutSource = readFileSync('src/views/Layout.vue', 'utf8')
@@ -943,6 +981,21 @@ for (const helpText of [
     `SLA策略配置说明缺少关键规则：${helpText}`
   )
 }
+
+const entityListSource = readFileSync('src/views/EntityList.vue', 'utf8')
+const schemaOperationApiSource = readFileSync('src/api/schemaOperation.js', 'utf8')
+assert.ok(
+  entityListSource.includes('物理结构发布检查')
+    && entityListSource.includes('confirmHighRiskSchemaChange')
+    && entityListSource.includes('唯一约束扫描失败')
+    && entityListSource.includes('恢复为待重试'),
+  '实体发布预览必须展示结构状态、唯一性冲突、高风险确认和失败重试入口'
+)
+assert.ok(
+  schemaOperationApiSource.includes('/entity-schema-operation/${entityId}/retry')
+    && schemaOperationApiSource.includes('/entity-schema-operation/${entityId}/terminate'),
+  '实体结构操作 API 必须提供受控重试和终止入口'
+)
 
 assert.ok(
   /v-model="form\.leaderId"[\s\S]*?value-key="id"/.test(

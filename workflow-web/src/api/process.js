@@ -37,7 +37,10 @@ export const processApi = {
   
   // 更新流程
   update(id, data) {
-    return request.post(`/process/${id}/update`, data)
+    return request.post(`/process/${id}/update`, {
+      ...data,
+      expectedRevision: data.expectedRevision ?? data.revision
+    })
   },
   
   // 删除流程
@@ -49,6 +52,21 @@ export const processApi = {
   publish(id, data = {}) {
     const payload = typeof data === 'string' ? { versionDescription: data } : data
     return request.post(`/process/${id}/publish`, payload)
+  },
+
+  // 校验流程草稿并返回节点级问题
+  validate(id) {
+    return request.post(`/process/${id}/validate`)
+  },
+
+  // 生成正式发布所需的差异、影响统计和预检令牌
+  publishPreview(id) {
+    return request.post(`/process/${id}/publish-preview`)
+  },
+
+  // 查询当前草稿与最近发布版本差异
+  diff(id) {
+    return request.get(`/process/${id}/diff`)
   },
   
   // 禁用流程

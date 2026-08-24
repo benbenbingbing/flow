@@ -68,6 +68,28 @@ class UiDataSourceBindingMatcherTest {
                 "$.draft.form"));
     }
 
+    /**
+     * 旧 initConfig 即使携带完整接口标识也不能再被识别为统一数据源绑定。
+     */
+    @Test
+    void legacyInitConfigIsNotMatchedAsFormDataSourceBinding() {
+        List<Map<String, Object>> owners = List.of(Map.of(
+                "formKey", "expense-form",
+                "initConfig", Map.of(
+                        "FORM_INIT", Map.of(
+                                "serviceId", "service-a",
+                                "operationCode", "initializeForm"))));
+
+        assertNull(matcher.findForm(
+                owners,
+                "FORM_INIT",
+                "OWNER",
+                null,
+                "service-a",
+                "initializeForm",
+                "$.draft.form"));
+    }
+
     @Test
     void listColumnAndListQueryRequireConfiguredOperation() {
         Map<String, Object> list = Map.of(

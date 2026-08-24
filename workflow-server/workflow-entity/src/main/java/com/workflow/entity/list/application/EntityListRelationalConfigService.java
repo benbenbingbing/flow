@@ -22,13 +22,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 实体列表关系型配置服务，管理按钮和场景的关系型存储与差异同步。
@@ -117,6 +120,140 @@ public class EntityListRelationalConfigService {
             String listConfigId,
             String position,
             List<Map<String, Object>> buttons) {
+        replaceActionsInternal(
+                listConfigId,
+                position,
+                buttons,
+                false);
+    }
+
+    /**
+     * 按发布快照全量替换按钮，并保留快照中的稳定按钮 ID。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void replaceActionsForRelease(
+            String listConfigId,
+            String position,
+            List<Map<String, Object>> buttons) {
+        replaceActionsInternal(
+                listConfigId,
+                position,
+                normalizeReleaseActionPersistenceDefaults(
+                        listConfigId,
+                        position,
+                        buttons,
+                        List.of()),
+                true);
+    }
+
+    /**
+     * 为历史发布按钮补齐关系表必然物化的稳定值。
+     *
+     * <p>旧快照可能没有按钮 ID 和关系表默认字段。缺失 ID 时优先沿用当前草稿中
+     * 同位置、同 key 的 ID，以保持事件绑定目标稳定；没有可沿用 ID 时再按列表、
+     * 位置和 key 派生确定性 ID。排序和展示默认值只按发布快照顺序补齐，禁止从
+     * 当前草稿回填，避免把待撤销的重排或 link 修改带回发布基线。</p>
+     *
+     * @param listConfigId     列表配置 ID
+     * @param position         TOOLBAR 或 ROW
+     * @param publishedButtons 发布快照按钮
+     * @param currentButtons   当前草稿按钮，仅用于回填缺失 ID
+     * @return 不修改入参的规范化按钮副本
+     */
+    public static List<Map<String, Object>>
+            normalizeReleaseActionPersistenceDefaults(
+                    String listConfigId,
+                    String position,
+                    List<Map<String, Object>> publishedButtons,
+                    List<Map<String, Object>> currentButtons) {
+        if (!StringUtils.hasText(listConfigId)) {
+            throw new IllegalArgumentException("列表配置ID不能为空");
+        }
+        String normalizedPosition = StringUtils.hasText(position)
+                ? position.trim().toUpperCase(Locale.ROOT)
+                : TOOLBAR;
+        if (!Set.of(TOOLBAR, ROW).contains(normalizedPosition)) {
+            throw new IllegalArgumentException(
+                    "按钮位置只能是 TOOLBAR 或 ROW");
+        }
+
+        Map<String, String> currentIdsByKey = new LinkedHashMap<>();
+        List<Map<String, Object>> safeCurrent = currentButtons == null
+                ? List.of() : currentButtons;
+        for (int index = 0; index < safeCurrent.size(); index++) {
+            Map<String, Object> current = safeCurrent.get(index);
+            if (current == null) {
+                continue;
+            }
+            String key = releaseText(
+                    current.get("key"),
+                    fallbackButtonKey(normalizedPosition, index));
+            String id = releaseText(current.get("id"), null);
+            if (StringUtils.hasText(id)) {
+                currentIdsByKey.putIfAbsent(
+                        key.toLowerCase(Locale.ROOT),
+                        id);
+            }
+        }
+
+        List<Map<String, Object>> safePublished = publishedButtons == null
+                ? List.of() : publishedButtons;
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        Set<String> publishedKeys = new java.util.HashSet<>();
+        for (int index = 0; index < safePublished.size(); index++) {
+            Map<String, Object> original = safePublished.get(index);
+            Map<String, Object> button = original == null
+                    ? new LinkedHashMap<>()
+                    : new LinkedHashMap<>(original);
+            String key = releaseText(
+                    button.get("key"),
+                    fallbackButtonKey(normalizedPosition, index));
+            button.put("key", key);
+            String logicalKey = key.toLowerCase(Locale.ROOT);
+            if (!publishedKeys.add(logicalKey)) {
+                // 数据库唯一键使用大小写不敏感排序规则，必须在写入前给出明确错误。
+                throw new IllegalArgumentException(
+                        "发布列表按钮编码重复: " + key);
+            }
+
+            String id = releaseText(button.get("id"), null);
+            if (!StringUtils.hasText(id)) {
+                id = currentIdsByKey.get(logicalKey);
+            }
+            button.put(
+                    "id",
+                    StringUtils.hasText(id)
+                            ? id
+                            : deterministicReleaseActionId(
+                                    listConfigId,
+                                    normalizedPosition,
+                                    logicalKey));
+            button.put(
+                    "orderKey",
+                    releaseLong(
+                            button.get("orderKey"),
+                            (index + 1L)
+                                    * EntityFormNodeService.ORDER_STEP));
+            button.put("sort", releaseInteger(
+                    button.get("sort"), index));
+            button.put("type", releaseText(
+                    button.get("type"), "built-in"));
+            button.put("label", releaseText(
+                    button.get("label"), key));
+            button.put("link", Boolean.TRUE.equals(
+                    button.get("link")));
+            button.put("enabled", !Boolean.FALSE.equals(
+                    button.get("enabled")));
+            normalized.add(button);
+        }
+        return List.copyOf(normalized);
+    }
+
+    private void replaceActionsInternal(
+            String listConfigId,
+            String position,
+            List<Map<String, Object>> buttons,
+            boolean preservePublishedIds) {
         if (!StringUtils.hasText(listConfigId)) {
             throw new IllegalArgumentException("列表配置ID不能为空");
         }
@@ -141,6 +278,10 @@ public class EntityListRelationalConfigService {
                     : existingByKey.get(key);
             EntityListAction desired =
                     actionFromButton(listConfigId, position, button, fallbackSort);
+            if (preservePublishedIds
+                    && StringUtils.hasText(actionId)) {
+                desired.setId(actionId.trim());
+            }
             validateAndSanitizeTargetForm(listConfig, desired);
             if (current == null) {
                 actionMapper.insert(desired);
@@ -161,6 +302,12 @@ public class EntityListRelationalConfigService {
         existing.stream()
                 .filter(action -> !retained.contains(action.getId()))
                 .forEach(actionMapper::deleteById);
+    }
+
+    /** 锁定列表按钮与场景草稿，供配置级撤销建立串行化边界。 */
+    public void lockDraftChildrenForRelease(String listConfigId) {
+        actionMapper.findAllByListConfigIdForUpdate(listConfigId);
+        sceneMapper.findAllByListConfigIdForUpdate(listConfigId);
     }
 
     /**
@@ -880,6 +1027,59 @@ public class EntityListRelationalConfigService {
         }
         try {
             return value == null ? fallback : Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    /** 历史发布按钮缺少 ID 时，按逻辑身份生成可重复的物理主键。 */
+    private static String deterministicReleaseActionId(
+            String listConfigId,
+            String position,
+            String buttonKey) {
+        String identity = "ENTITY_LIST_RELEASE_ACTION:"
+                + listConfigId.trim()
+                + ":" + position
+                + ":" + buttonKey;
+        return UUID.nameUUIDFromBytes(
+                        identity.getBytes(StandardCharsets.UTF_8))
+                .toString()
+                .replace("-", "");
+    }
+
+    private static String fallbackButtonKey(
+            String position,
+            int index) {
+        return position.toLowerCase(Locale.ROOT) + "_" + index;
+    }
+
+    private static String releaseText(Object value, String fallback) {
+        return value == null || !StringUtils.hasText(String.valueOf(value))
+                ? fallback
+                : String.valueOf(value).trim();
+    }
+
+    private static int releaseInteger(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return value == null
+                    ? fallback
+                    : Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    private static long releaseLong(Object value, long fallback) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return value == null
+                    ? fallback
+                    : Long.parseLong(String.valueOf(value));
         } catch (NumberFormatException exception) {
             return fallback;
         }

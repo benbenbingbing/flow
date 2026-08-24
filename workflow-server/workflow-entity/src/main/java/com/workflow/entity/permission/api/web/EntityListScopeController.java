@@ -135,10 +135,13 @@ public class EntityListScopeController {
             @PathVariable String listKey,
             @RequestBody(required = false) EntityListScopeListBindingsRequest request) {
         requireAdministrator();
-        return Result.success(scopeService.replaceListBindings(
+        EntityListScopeListBindingsRequest safeRequest = request == null
+                ? new EntityListScopeListBindingsRequest() : request;
+        return Result.success(scopeService.replaceListConfiguration(
                 entityCode,
                 listKey,
-                request == null ? List.of() : request.getBindings()));
+                safeRequest.getBindings(),
+                safeRequest));
     }
 
     /**

@@ -58,8 +58,8 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     configKeys: ['gutter', 'defaultSpan']
   }),
   TAB_SET: schema({
-    editable: ['parentId', 'tabPosition'],
-    configKeys: ['tabPosition']
+    editable: ['parentId', 'tabPosition', 'defaultActiveTabKey'],
+    configKeys: ['tabPosition', 'defaultActiveTabKey']
   }),
   TAB: schema({
     editable: ['label', 'parentId']

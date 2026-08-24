@@ -577,7 +577,6 @@ async function ensureForm(entity, formKey, payload) {
       customComponentVersion: payload.customComponentVersion || null,
       customComponentSnapshotVersion:
         payload.customComponentSnapshotVersion || null,
-      initConfig: payload.initConfig || null,
       dataSourceBindingsDocument:
         payload.dataSourceBindingsDocument || null,
       viewConfig: payload.viewConfig || null,
@@ -598,7 +597,6 @@ async function ensureForm(entity, formKey, payload) {
       customComponentVersion: payload.customComponentVersion || null,
       customComponentSnapshotVersion:
         payload.customComponentSnapshotVersion || null,
-      initConfig: payload.initConfig || null,
       dataSourceBindingsDocument:
         payload.dataSourceBindingsDocument || null,
       viewConfig: payload.viewConfig || null,
@@ -667,7 +665,6 @@ async function updateFormBindings(form, payload) {
     customComponentVersion: detail.customComponentVersion,
     customComponentSnapshotVersion:
       detail.customComponentSnapshotVersion,
-    initConfig: detail.initConfig,
     dataSourceBindingsDocument:
       json(payload.dataSourceBindings || {}),
     viewConfig: detail.viewConfig,
@@ -897,23 +894,13 @@ async function configureForms(entity) {
     {
       formName: '扩展验收整表单',
       description:
-        '全自定义整表单，包含前端初始化器和 FORM 统一数据源。',
+        '全自定义整表单，包含 FORM 统一数据源。',
       layoutType: 'grid',
       isDefault: true,
       customComponent:
         'ProjectExtensionAcceptanceForm',
       customComponentVersion: 1,
       customComponentSnapshotVersion: 1,
-      initConfig: json({
-        type: 'custom',
-        custom: {
-          name: 'projectAcceptanceInitializer',
-          params: {
-            scene: 'FULL_EXTENSION',
-            defaultScore: 72
-          }
-        }
-      }),
       viewConfig: json({
         labelWidth: 110,
         customComponentProps: {
@@ -1022,16 +1009,6 @@ async function configureForms(entity) {
         '标准渲染器、自定义字段、自定义节点和 ENTITY/FORM 数据源。',
       layoutType: 'grid',
       isDefault: false,
-      initConfig: json({
-        type: 'custom',
-        custom: {
-          name: 'projectAcceptanceInitializer',
-          params: {
-            scene: 'FORM_EXTENSION',
-            defaultScore: 68
-          }
-        }
-      }),
       viewConfig: json({
         labelWidth: 120,
         labelPosition: 'right',

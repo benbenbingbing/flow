@@ -75,7 +75,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
           </el-table>
           <ul class="check-list">
             <li>FIELD 可绑定实体字段、实体关系、计算字段或运行上下文字段；TEXT 和布局节点可以不绑定数据。</li>
-            <li>SUB_FORM 必须引用子实体、关系和指定已发布表单版本；关系编码、子实体、关系类型和外键由实体关系定义只读推导，引用 release 必须属于该子实体。发布时检查跨表单循环引用。运行时每条子表行使用自己的 recordId 与数据对象执行子表 `FORM_INIT`、`AFTER_LOAD`、默认值和计算，不会污染父记录。</li>
+            <li>SUB_FORM 必须引用子实体、关系和指定已发布表单版本；关系编码、子实体、关系类型和外键由实体关系定义只读推导，引用 release 必须属于该子实体。发布时检查跨表单循环引用。运行时每条子表行使用自己的 recordId 与数据对象；仅新增模式执行子表 `FORM_INIT`，所有模式执行 `AFTER_LOAD`、默认值和计算，不会污染父记录。</li>
             <li>树深度超过 8、TAB 不属于 TAB_SET、孤儿节点或父子类型不合法时禁止发布。</li>
             <li>所有节点都可在属性抽屉选择合法父容器；TAB 只能选择 TAB_SET，普通字段不能直接放入 TAB_SET，但可以放入具体 TAB 页。候选项必须排除自身、后代、循环和移动整棵子树后超过 8 层的目标。</li>
             <li>历史 `componentProps` 中可识别的子表、引用、事件和选项迁移为显式属性，未知内容保存在 `legacyProps`。</li>
@@ -272,8 +272,8 @@ defineExpose({ validate })
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">节点设计器与草稿预览读取，包含节点 revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">比较草稿与当前激活 release，校验全树、数据源、关系、循环引用和权限；响应同时返回兼容的 `changedSections` 与 `changedItems[]`（section、id、label、changeType、changedFields），按稳定 ID 表示新增、修改、移动、删除。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；REVIEW 只作风险提示。</el-descriptions-item>
-            <el-descriptions-item label="/publish">`STANDARD` 默认发布；`HOTFIX` 必须带 expectedActiveReleaseId、expectedDraftHash、impactToken 和固定 `ACTIVE_AND_FUTURE` rolloutScope。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；REVIEW 必须独立复核。</el-descriptions-item>
+            <el-descriptions-item label="/publish">`STANDARD` 默认发布；`HOTFIX` 必须登记原因、工单、发布窗口并携带已批准 hotfixRequestId、预检状态及固定 `ACTIVE_AND_FUTURE` rolloutScope。</el-descriptions-item>
             <el-descriptions-item label="/releases">查看历史发布记录及 HOTFIX rolloutStatus：ACTIVE、SUPERSEDED、ROLLED_BACK。</el-descriptions-item>
             <el-descriptions-item label="/activate">只激活 STANDARD 历史版本；HOTFIX 只能通过 rollback-hotfix 撤回。</el-descriptions-item>
             <el-descriptions-item label="/rollback-hotfix">只有 rolloutStatus=`ACTIVE` 可从最新热修复开始按发布时间逆序原子恢复上一有效快照。</el-descriptions-item>
@@ -281,7 +281,7 @@ defineExpose({ validate })
           <ul class="check-list">
             <li>`SAFE` 用于展示型修改；其他所有通过发布校验的表单修改统一为 `REVIEW`，包括节点/字段增删、绑定、权限、数据源、提交映射、关系/子表、写操作和未声明兼容的自定义组件。</li>
             <li>表单 HOTFIX 只作用于当前可发起流程版本和运行中实例；`HISTORICAL` 模式下已完成、已终止实例始终读取流程发布时的原始钉定 release。</li>
-            <li>HOTFIX 发布和撤回都只需要 `entity:ui-config:hotfix`；`REVIEW` 仅提示风险，不要求额外覆盖权限、确认勾选或原因，也不阻止发布。</li>
+            <li>HOTFIX 申请使用 `entity:ui-config:hotfix`，REVIEW 由持有 `entity:ui-config:hotfix:review` 的非申请人独立复核，回滚另需 `entity:ui-config:hotfix:rollback`。</li>
             <li>`rolloutStatus=ACTIVE` 表示正在生效且可撤回，`SUPERSEDED` 表示已被更新热修复替代，`ROLLED_BACK` 表示已撤回；只有 ACTIVE 接受 rollback-hotfix。</li>
             <li>预检后草稿、ACTIVE release 或目标流程/实例集合变化时返回 `409 HOTFIX_IMPACT_CHANGED`；客户端必须丢弃旧 impactToken 并重新预检。</li>
           </ul>

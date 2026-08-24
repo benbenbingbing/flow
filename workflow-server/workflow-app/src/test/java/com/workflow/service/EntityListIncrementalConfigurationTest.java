@@ -10,6 +10,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
+import com.workflow.entity.permission.application.EntityListActionConfigService;
 
 import com.workflow.entity.list.api.request.EntityListActionSaveRequest;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListAction;
@@ -25,6 +26,7 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Field;
@@ -38,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -255,5 +258,171 @@ class EntityListIncrementalConfigurationTest {
                 IllegalArgumentException.class,
                 () -> service.createAction("list-1", request));
         assertTrue(error.getMessage().contains("当前列表实体"));
+    }
+
+    @Test
+    void legacyReleaseActionUsesCurrentIdButPublishedPersistenceDefaults() {
+        Map<String, Object> legacy = Map.of(
+                "key", "create",
+                "buttonType", "primary",
+                "perm", "entity:demo_entity:create");
+        Map<String, Object> current = Map.of(
+                "key", "create",
+                "id", "stable-current-action",
+                "link", true,
+                "sort", 9,
+                "orderKey", 9_000_000L);
+
+        List<Map<String, Object>> normalized =
+                EntityListRelationalConfigService
+                        .normalizeReleaseActionPersistenceDefaults(
+                                "list-1",
+                                EntityListRelationalConfigService.TOOLBAR,
+                                List.of(legacy),
+                                List.of(current));
+        Map<String, Object> restored = normalized.get(0);
+        assertEquals("stable-current-action", restored.get("id"));
+        assertEquals(1_000_000L, restored.get("orderKey"));
+        assertEquals(0, restored.get("sort"));
+        assertEquals("built-in", restored.get("type"));
+        assertEquals("create", restored.get("label"));
+        assertEquals(false, restored.get("link"));
+        assertEquals(true, restored.get("enabled"));
+
+        EntityListActionMapper actionMapper =
+                mock(EntityListActionMapper.class);
+        EntityListConfigMapper configMapper =
+                mock(EntityListConfigMapper.class);
+        EntityListConfig config = new EntityListConfig();
+        config.setId("list-1");
+        config.setEntityId("entity-1");
+        when(configMapper.selectById("list-1"))
+                .thenReturn(config);
+        java.util.concurrent.atomic.AtomicReference<EntityListAction>
+                persisted = new java.util.concurrent.atomic.AtomicReference<>();
+        when(actionMapper.findByListAndPosition(
+                "list-1",
+                EntityListRelationalConfigService.TOOLBAR))
+                .thenAnswer(invocation -> persisted.get() == null
+                        ? List.of()
+                        : List.of(persisted.get()));
+        when(actionMapper.insert(any(EntityListAction.class)))
+                .thenAnswer(invocation -> {
+                    persisted.set(invocation.getArgument(0));
+                    return 1;
+                });
+        EntityListRelationalConfigService service =
+                new EntityListRelationalConfigService(
+                        actionMapper,
+                        mock(EntityListSceneMapper.class),
+                        configMapper,
+                        mock(EntityFormMapper.class),
+                        mock(UiConfigReleaseMapper.class),
+                        new JsonDocumentCodec(new ObjectMapper()));
+
+        service.replaceActionsForRelease(
+                "list-1",
+                EntityListRelationalConfigService.TOOLBAR,
+                normalized);
+
+        ArgumentCaptor<EntityListAction> actionCaptor =
+                ArgumentCaptor.forClass(EntityListAction.class);
+        verify(actionMapper).insert(actionCaptor.capture());
+        assertEquals(
+                "stable-current-action",
+                actionCaptor.getValue().getId());
+        assertEquals(
+                1_000_000L,
+                actionCaptor.getValue().getOrderKey());
+        assertEquals(false, actionCaptor.getValue().getLinkMode());
+        Map<String, Object> roundTrip = service.findActions(
+                "list-1",
+                EntityListRelationalConfigService.TOOLBAR).get(0);
+        assertEquals("stable-current-action", roundTrip.get("id"));
+        assertEquals(1_000_000L, roundTrip.get("orderKey"));
+        assertEquals(0, roundTrip.get("sort"));
+        assertEquals(false, roundTrip.get("link"));
+    }
+
+    @Test
+    void legacyReleaseRejectsCaseInsensitiveDuplicateActionKeys() {
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> EntityListRelationalConfigService
+                        .normalizeReleaseActionPersistenceDefaults(
+                                "list-1",
+                                EntityListRelationalConfigService.ROW,
+                                List.of(
+                                        Map.of("key", "Review"),
+                                        Map.of("key", "review")),
+                                List.of()));
+
+        assertTrue(error.getMessage().contains("按钮编码重复"));
+    }
+
+    @Test
+    void releaseRestorePreservesApproveAcrossLifecycleDrift()
+            throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        EntityDefinitionMapper definitionMapper =
+                mock(EntityDefinitionMapper.class);
+        EntityDefinition definition = new EntityDefinition();
+        definition.setLifecycleMode(
+                EntityDefinition.LifecycleMode.STANDALONE);
+        when(definitionMapper.findByEntityCode("demo_entity"))
+                .thenReturn(java.util.Optional.of(definition));
+        EntityListRelationalConfigService relationalConfigService =
+                mock(EntityListRelationalConfigService.class);
+        EntityListActionConfigService service =
+                new EntityListActionConfigService(
+                        objectMapper,
+                        definitionMapper,
+                        mock(EntityListConfigMapper.class),
+                        relationalConfigService,
+                        List.of(),
+                        List.of());
+        EntityListConfigDTO published = new EntityListConfigDTO();
+        published.setId("list-1");
+        published.setEntityCode("demo_entity");
+        published.setToolbarConfig(List.of());
+        published.setRowActionConfig(List.of(Map.of(
+                "key", "approve",
+                "type", "built-in",
+                "label", "审批")));
+
+        service.normalizePublishedActionsForRestore(
+                published,
+                null);
+
+        assertEquals(
+                "approve",
+                published.getRowActionConfig().get(0).get("key"));
+
+        EntityListConfig persistent = new EntityListConfig();
+        persistent.setId("list-1");
+        persistent.setEntityCode("demo_entity");
+        persistent.setToolbarConfig("[]");
+        persistent.setRowActionConfig(objectMapper.writeValueAsString(
+                List.of(Map.of(
+                        "key", "approve",
+                        "type", "built-in",
+                        "label", "审批"))));
+        service.normalizeForReleaseRestore(persistent);
+        List<?> restoredRows = objectMapper.readValue(
+                persistent.getRowActionConfig(),
+                List.class);
+        assertEquals(
+                "approve",
+                ((Map<?, ?>) restoredRows.get(0)).get("key"));
+
+        service.synchronizeRelationalConfigForRelease(persistent);
+        verify(relationalConfigService).replaceActionsForRelease(
+                org.mockito.ArgumentMatchers.eq("list-1"),
+                org.mockito.ArgumentMatchers.eq(
+                        EntityListRelationalConfigService.ROW),
+                org.mockito.ArgumentMatchers.argThat(buttons ->
+                        buttons.size() == 1
+                                && "approve".equals(
+                                buttons.get(0).get("key"))));
     }
 }

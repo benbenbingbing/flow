@@ -8,6 +8,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.ui.hotfix.UiHotfixObservationPort;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
@@ -58,6 +60,14 @@ public class NodeFormSubmissionService {
     /** 表单提交追踪服务 */
     private final FormSubmissionTraceService formSubmissionTraceService;
     private final ObjectMapper objectMapper;
+    private UiHotfixObservationPort hotfixObservationPort;
+
+    /** 可选观察端口不参与流程主事务成败判定。 */
+    @Autowired(required = false)
+    void setHotfixObservationPort(
+            UiHotfixObservationPort hotfixObservationPort) {
+        this.hotfixObservationPort = hotfixObservationPort;
+    }
 
     /**
      * 只读投影审批表单中允许当前节点编辑的提交值。
@@ -228,6 +238,47 @@ public class NodeFormSubmissionService {
             Map<String, Object> submittedValues,
             FormSubmissionExecutionContext executionContext,
             boolean sideEffectFreePreview) {
+        if (sideEffectFreePreview) {
+            return applyBeforeSubmitInternal(
+                    nodeForms,
+                    processVersionHistoryId,
+                    task,
+                    entityCode,
+                    entityDataId,
+                    submittedValues,
+                    executionContext,
+                    true);
+        }
+        try {
+            Map<String, Object> result = applyBeforeSubmitInternal(
+                    nodeForms,
+                    processVersionHistoryId,
+                    task,
+                    entityCode,
+                    entityDataId,
+                    submittedValues,
+                    executionContext,
+                    false);
+            observeTask(processVersionHistoryId, true, null);
+            return result;
+        } catch (RuntimeException exception) {
+            observeTask(
+                    processVersionHistoryId,
+                    false,
+                    exception.getMessage());
+            throw exception;
+        }
+    }
+
+    private Map<String, Object> applyBeforeSubmitInternal(
+            List<ProcessNodeForm> nodeForms,
+            String processVersionHistoryId,
+            Task task,
+            String entityCode,
+            String entityDataId,
+            Map<String, Object> submittedValues,
+            FormSubmissionExecutionContext executionContext,
+            boolean sideEffectFreePreview) {
         Map<String, Object> result =
                 new HashMap<>(submittedValues);
         if (!nodeForms.isEmpty()) {
@@ -300,6 +351,26 @@ public class NodeFormSubmissionService {
                         result,
                         executionContext,
                         null);
+    }
+
+    private void observeTask(
+            String processVersionHistoryId,
+            boolean successful,
+            String errorMessage) {
+        if (hotfixObservationPort == null) {
+            return;
+        }
+        try {
+            hotfixObservationPort.recordProcessVersionMetric(
+                    processVersionHistoryId,
+                    successful,
+                    errorMessage);
+        } catch (RuntimeException metricException) {
+            log.warn(
+                    "记录 HOTFIX 流程任务观察指标失败: processVersionHistoryId={}, failureType={}",
+                    processVersionHistoryId,
+                    metricException.getClass().getSimpleName());
+        }
     }
 
     private SubmissionProjection projectSubmission(

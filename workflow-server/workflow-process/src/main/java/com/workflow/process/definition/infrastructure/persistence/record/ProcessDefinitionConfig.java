@@ -76,6 +76,36 @@ public class ProcessDefinitionConfig {
     private String bpmnXml;
 
     /**
+     * 当前草稿修订号，每次内容变更通过数据库 CAS 原子递增。
+     */
+    @TableField("draft_revision")
+    private Long draftRevision;
+
+    /**
+     * 最近一次发布所对应的草稿修订号，用于判断是否存在待发布修改。
+     */
+    @TableField("published_revision")
+    private Long publishedRevision;
+
+    /**
+     * 当前草稿内容哈希。
+     */
+    @TableField("draft_hash")
+    private String draftHash;
+
+    /**
+     * 最近一次发布的草稿内容哈希。
+     */
+    @TableField("published_draft_hash")
+    private String publishedDraftHash;
+
+    /**
+     * 当前草稿基于的已发布流程版本。
+     */
+    @TableField("base_published_version")
+    private Integer basePublishedVersion;
+
+    /**
      * 创建时间，自动填充
      */
     @TableField(value = "create_time", fill = FieldFill.INSERT)

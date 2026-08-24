@@ -45,8 +45,8 @@ assert.match(
 )
 assert.match(
   entityDesign,
-  /未绑定任何允许规则时，有该列表权限的人将看到全部数据/,
-  '实体权限页应说明未绑定即全部'
+  /未绑定任何允许规则时，将执行该列表配置的安全默认策略/,
+  '实体权限页应说明未绑定时执行安全默认策略'
 )
 assert.doesNotMatch(
   entityDesign,
@@ -66,9 +66,12 @@ assert.match(
 )
 assert.match(
   listDesign,
-  /未绑定数据规则，有本列表权限的人将看到全部数据/,
-  '列表空绑定必须醒目提示全部可见'
+  /拒绝全部数据（推荐）/,
+  '列表空绑定必须默认拒绝全部数据'
 )
+assert.match(listDesign, /仅本人创建或提交/, '列表应支持 PERSONAL 安全默认策略')
+assert.match(listDesign, /确认继续全量可见/, 'EXPLICIT_ALL 必须提供显式确认入口')
+assert.match(listDesign, /存量观察期/, '存量宽松配置必须展示观察期风险')
 assert.match(
   listDesign,
   /replaceListBindings/,
@@ -95,7 +98,8 @@ assert.match(
   '只改绑定后点发布不能再报列表草稿已一致'
 )
 
-assert.match(manual, /列表未绑定规则时可见全部/)
+assert.match(manual, /列表未绑定规则时默认拒绝/)
+assert.match(manual, /DENY_ALL、PERSONAL 或经管理员确认的 EXPLICIT_ALL/)
 assert.match(manual, /尚未办理的下一审批人不会进入相关人/)
 assert.match(manual, /HAS_TODO/)
 assert.match(manual, /TEAM 只看已参与记录/)

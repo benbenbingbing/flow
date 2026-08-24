@@ -70,6 +70,10 @@ public class TaskActionService {
     /** 多实例通过人数、否决标记与汇聚判断的唯一入口。 */
     private final MultiInstanceOutcomeService multiInstanceOutcomeService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.workflow.process.task.application.operation.NodeOperationDecisionService
+            nodeOperationDecisionService;
+
     /**
      * 完成任务
      *
@@ -198,6 +202,7 @@ public class TaskActionService {
                                       boolean checkAccess,
                                       boolean validateNextApprover) {
         comment = comment == null ? "" : comment;
+        requireConfiguredNodeOperation(taskId, action, comment, transferTo, formData);
         // 验证任务是否存在
         Task task = taskService.createTaskQuery()
                 .taskId(taskId)
@@ -364,6 +369,51 @@ public class TaskActionService {
                     processInstanceId,
                     taskId);
         }
+    }
+
+    /**
+     * 将现有完成任务动作映射到标准操作矩阵，并在产生任何流程副作用前完成授权。
+     */
+    private void requireConfiguredNodeOperation(
+            String taskId,
+            String action,
+            String comment,
+            String transferTo,
+            Map<String, Object> formData) {
+        if (nodeOperationDecisionService == null) {
+            return;
+        }
+        String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+        com.workflow.process.task.application.operation.NodeOperationPolicy.Operation operation =
+                switch (normalized) {
+                    case "REJECT", "ROLLBACK" ->
+                            com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.REJECT;
+                    case "TRANSFER" ->
+                            com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.TRANSFER;
+                    default ->
+                            com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.APPROVE;
+                };
+        java.util.Set<String> targets = StringUtils.hasText(transferTo)
+                ? java.util.Set.of(transferTo)
+                : java.util.Set.of();
+        Map<String, Object> requestVariables = formData == null ? Map.of() : formData;
+        String targetNodeId = firstText(
+                requestVariables, "targetNodeId", "targetActivityId", "rejectTarget");
+        nodeOperationDecisionService.requireAllowed(
+                taskId,
+                operation,
+                com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+                        .ofTarget(comment, targets, targetNodeId, null, requestVariables));
+    }
+
+    private String firstText(Map<String, Object> values, String... keys) {
+        for (String key : keys) {
+            Object value = values.get(key);
+            if (value != null && StringUtils.hasText(value.toString())) {
+                return value.toString();
+            }
+        }
+        return null;
     }
 
     @Transactional(readOnly = true)
@@ -600,6 +650,13 @@ public class TaskActionService {
             targetType = "PROCESS_INSTANCE",
             targetIdArg = 0)
     public void withdrawProcess(String processInstanceId, String userId, String reason) {
+        if (nodeOperationDecisionService != null) {
+            nodeOperationDecisionService.requireAllowedForProcess(
+                    processInstanceId,
+                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.WITHDRAW,
+                    com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+                            .ofReason(reason));
+        }
         // 验证流程实例是否存在
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)

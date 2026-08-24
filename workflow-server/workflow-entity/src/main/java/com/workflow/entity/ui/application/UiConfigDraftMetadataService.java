@@ -96,10 +96,6 @@ public class UiConfigDraftMetadataService {
                             ? null
                             : request.getCustomComponentSnapshotVersion());
         }
-        if (request.getInitConfig() != null || clear.contains("initConfig")) {
-            updated.setInitConfig(clear.contains("initConfig")
-                    ? null : write(request.getInitConfig(), "表单初始化配置"));
-        }
         if (request.getDataSourceBindings() != null
                 || clear.contains("dataSourceBindings")) {
             updated.setDataSourceBindingsDocument(
@@ -130,7 +126,6 @@ public class UiConfigDraftMetadataService {
                 .set("custom_component_version", updated.getCustomComponentVersion())
                 .set("custom_component_snapshot_version",
                         updated.getCustomComponentSnapshotVersion())
-                .set("init_config", updated.getInitConfig())
                 .set(
                         "data_source_bindings_document",
                         updated.getDataSourceBindingsDocument())

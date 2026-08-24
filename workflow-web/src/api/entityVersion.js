@@ -38,7 +38,7 @@ export const entityVersionApi = {
     return withLegacyFallback(
       () => request({
         url: `/entity-versions/configs/${entityCode}/draft`,
-        method: 'PUT',
+        method: 'POST',
         data,
         headers: revision == null ? {} : { 'If-Match': String(revision) },
         silentError: true

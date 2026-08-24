@@ -3,6 +3,26 @@ import {
   buildUiEventExecutionPayload
 } from '@/shared/ui-event-request'
 
+const UI_CONFIG_DRAFT_DISCARD_ENDPOINTS = Object.freeze({
+  FORM: id => `/entity-forms/${id}/discard-draft`,
+  LIST: id => `/entity-list-config/${id}/discard-draft`
+})
+
+export const uiConfigDraftApi = {
+  /**
+   * 以 revision、草稿哈希和当前发布版本三重校验，原子恢复到当前发布版本。
+   */
+  discard(configType, configId, preconditions) {
+    const endpoint = UI_CONFIG_DRAFT_DISCARD_ENDPOINTS[
+      String(configType || '').toUpperCase()
+    ]
+    if (!endpoint) {
+      throw new Error(`不支持撤销 ${configType || '未知'} 配置草稿`)
+    }
+    return request.post(endpoint(configId), preconditions)
+  }
+}
+
 export const uiDataSourceApi = {
   catalog() {
     return request.get('/ui-data-sources/catalog')

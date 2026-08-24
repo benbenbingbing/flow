@@ -37,7 +37,7 @@ class UiConfigDraftMetadataServiceTest {
      * 验证传入校验器的表单数据源绑定 JSON 文档与修订号自增（4 -> 5）符合预期。
      */
     @Test
-    void patchesFormLevelDataSourceBindingsWithRevisionCas() {
+    void patchesFormLevelDataSourceBindingsWithRevisionCas() throws Exception {
         EntityFormMapper formMapper =
                 mock(EntityFormMapper.class);
         EntityFormService formService =
@@ -83,10 +83,11 @@ class UiConfigDraftMetadataServiceTest {
                 ArgumentCaptor.forClass(EntityForm.class);
         verify(formValidator).validateForm(
                 captor.capture());
+        ObjectMapper objectMapper = new ObjectMapper();
         assertEquals(
-                "{\"FORM_INIT\":{\"operationCode\":\"initializeForm\",\"serviceId\":\"source-init\"}}",
-                captor.getValue()
-                        .getDataSourceBindingsDocument());
+                objectMapper.readTree(
+                        "{\"FORM_INIT\":{\"operationCode\":\"initializeForm\",\"serviceId\":\"source-init\"}}"),
+                objectMapper.readTree(captor.getValue().getDataSourceBindingsDocument()));
         assertEquals(5, captor.getValue().getRevision());
     }
 }
