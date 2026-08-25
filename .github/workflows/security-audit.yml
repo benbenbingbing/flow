@@ -128,7 +128,7 @@ jobs:
           persist-credentials: false
 
       - name: 配置容器构建环境
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: 构建后端镜像
         id: server-build
