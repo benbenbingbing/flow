@@ -272,8 +272,8 @@ defineExpose({ validate })
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">节点设计器与草稿预览读取，包含节点 revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">比较草稿与当前激活 release，校验全树、数据源、关系、循环引用和权限；响应同时返回兼容的 `changedSections` 与 `changedItems[]`（section、id、label、changeType、changedFields），按稳定 ID 表示新增、修改、移动、删除。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；REVIEW 必须独立复核。</el-descriptions-item>
-            <el-descriptions-item label="/publish">`STANDARD` 默认发布；`HOTFIX` 必须登记原因、工单、发布窗口并携带已批准 hotfixRequestId、预检状态及固定 `ACTIVE_AND_FUTURE` rolloutScope。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；REVIEW 仅显示高风险提醒。</el-descriptions-item>
+            <el-descriptions-item label="/publish">`STANDARD` 默认发布；`HOTFIX` 在确认风险提醒后直接发布，并携带预检状态及固定 `ACTIVE_AND_FUTURE` rolloutScope。</el-descriptions-item>
             <el-descriptions-item label="/releases">查看历史发布记录及 HOTFIX rolloutStatus：ACTIVE、SUPERSEDED、ROLLED_BACK。</el-descriptions-item>
             <el-descriptions-item label="/activate">只激活 STANDARD 历史版本；HOTFIX 只能通过 rollback-hotfix 撤回。</el-descriptions-item>
             <el-descriptions-item label="/rollback-hotfix">只有 rolloutStatus=`ACTIVE` 可从最新热修复开始按发布时间逆序原子恢复上一有效快照。</el-descriptions-item>
@@ -281,7 +281,7 @@ defineExpose({ validate })
           <ul class="check-list">
             <li>`SAFE` 用于展示型修改；其他所有通过发布校验的表单修改统一为 `REVIEW`，包括节点/字段增删、绑定、权限、数据源、提交映射、关系/子表、写操作和未声明兼容的自定义组件。</li>
             <li>表单 HOTFIX 只作用于当前可发起流程版本和运行中实例；`HISTORICAL` 模式下已完成、已终止实例始终读取流程发布时的原始钉定 release。</li>
-            <li>HOTFIX 申请使用 `entity:ui-config:hotfix`，REVIEW 由持有 `entity:ui-config:hotfix:review` 的非申请人独立复核，回滚另需 `entity:ui-config:hotfix:rollback`。</li>
+            <li>HOTFIX 直接发布使用 `entity:ui-config:hotfix`；回滚另需 `entity:ui-config:hotfix:rollback`。</li>
             <li>`rolloutStatus=ACTIVE` 表示正在生效且可撤回，`SUPERSEDED` 表示已被更新热修复替代，`ROLLED_BACK` 表示已撤回；只有 ACTIVE 接受 rollback-hotfix。</li>
             <li>预检后草稿、ACTIVE release 或目标流程/实例集合变化时返回 `409 HOTFIX_IMPACT_CHANGED`；客户端必须丢弃旧 impactToken 并重新预检。</li>
           </ul>

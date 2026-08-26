@@ -7,7 +7,13 @@ import java.time.LocalDateTime;
  */
 public record AuditLogPayload(
         String eventId,
+        String operationId,
         String traceId,
+        String parentOperationId,
+        String sourceSystem,
+        String sourceType,
+        String sourceId,
+        String sourceEventId,
         String moduleCode,
         String operationCode,
         String operationName,

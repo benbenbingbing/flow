@@ -231,7 +231,8 @@ public class EntityRecordVersionComparisonService {
                 .stream()
                 .map(item -> new SnapshotRow(
                         item.getRecordId(), item.getRecordTitle(),
-                        item.getRowOrder(), readValues(item.getValuesDocument())))
+                        item.getRowOrder(), publicValues(
+                                readValues(item.getValuesDocument()))))
                 .toList();
         return new SnapshotRowPage(
                 nodeCode,
@@ -314,6 +315,23 @@ public class EntityRecordVersionComparisonService {
                     oldPresentation.withValues(oldValues),
                     newPresentation.withValues(newValues),
                     ignored);
+            Object oldParent = rawValue(
+                    oldValues.get(EntityRecordSnapshotService
+                            .INTERNAL_PARENT_RECORD_ID));
+            Object newParent = rawValue(
+                    newValues.get(EntityRecordSnapshotService
+                            .INTERNAL_PARENT_RECORD_ID));
+            // 旧一层 V2 行没有父身份元数据；首次引入该内部字段不能把所有历史行误报为换父。
+            boolean bothTrackParent = oldValues.containsKey(
+                    EntityRecordSnapshotService.INTERNAL_PARENT_RECORD_ID)
+                    && newValues.containsKey(
+                            EntityRecordSnapshotService
+                                    .INTERNAL_PARENT_RECORD_ID);
+            if (bothTrackParent
+                    && !Objects.equals(oldParent, newParent)
+                    && (oldParent != null || newParent != null)) {
+                fields = withParentChange(fields, oldParent, newParent);
+            }
             boolean moved = oldRow != null
                     && newRow != null
                     && trackOrder
@@ -525,6 +543,51 @@ public class EntityRecordVersionComparisonService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("版本数据集行解析失败", exception);
         }
+    }
+
+    /** 内部图身份用于比较和恢复预演，历史详情不得把它当作业务字段返回。 */
+    private Map<String, FrozenValue> publicValues(
+            Map<String, FrozenValue> values) {
+        Map<String, FrozenValue> result = new LinkedHashMap<>(values);
+        result.keySet().removeIf(code -> code != null
+                && code.startsWith("__scope"));
+        return result;
+    }
+
+    /** 子记录换父是关系图变化，即使业务字段完全相同也必须显示为修改。 */
+    private FieldDiff withParentChange(
+            FieldDiff fields,
+            Object oldParent,
+            Object newParent) {
+        List<FormSectionComparison> sections =
+                new ArrayList<>(fields.sections());
+        FrozenValue oldValue = internalValue(oldParent);
+        FrozenValue newValue = internalValue(newParent);
+        FieldComparison comparison = new FieldComparison(
+                EntityRecordSnapshotService.INTERNAL_PARENT_RECORD_ID,
+                "所属父记录", "所属父记录", "所属父记录",
+                "REFERENCE", "REFERENCE",
+                oldValue, newValue,
+                oldParent == null ? "ADDED"
+                        : newParent == null ? "REMOVED" : "MODIFIED",
+                false, List.of());
+        sections.add(new FormSectionComparison(
+                "RELATION_CONTEXT", "关系归属", List.of(comparison)));
+        return new FieldDiff(
+                sections,
+                fields.dataChanges() + 1,
+                fields.displayChanges(),
+                fields.schemaChanges());
+    }
+
+    private FrozenValue internalValue(Object value) {
+        return value == null ? null : new FrozenValue(
+                value, String.valueOf(value), List.of(),
+                "INTERNAL", "RESOLVED");
+    }
+
+    private Object rawValue(FrozenValue value) {
+        return value == null ? null : value.rawValue();
     }
 
     private VersionSide side(

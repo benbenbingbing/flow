@@ -200,6 +200,7 @@ public class ProcessDefinitionPreflightService {
                     "BPMN 元素 ID 重复: " + duplicateId,
                     "请重新生成重复元素的稳定 ID", config.getId());
         }
+        addDataComponentModelingWarnings(config, parsed, issues);
 
         for (FlowEdge edge : parsed.edges()) {
             if (!parsed.flowNodes().containsKey(edge.sourceRef())) {
@@ -243,6 +244,41 @@ public class ProcessDefinitionPreflightService {
                 addIssue(issues, "BPMN_NODE_UNREACHABLE", Severity.BLOCKER,
                         entry.getKey(), localName(entry.getValue()),
                         "节点无法从开始事件到达", "请补齐连线或删除孤立节点", config.getId());
+            }
+        }
+    }
+
+    /**
+     * 标明 Flowable 仅保留模型、但本平台不会自动赋予运行时读写语义的数据组件。
+     *
+     * <p>这些提示不阻断发布，目的是避免用户把 DataStore 图元理解为持久化设施，或把普通
+     * Activity 上的数据关联理解为自动变量映射。</p>
+     */
+    private void addDataComponentModelingWarnings(
+            ProcessDefinitionConfig config,
+            ParsedBpmn parsed,
+            List<ProcessValidationIssueDTO> issues) {
+        for (ModelingOnlyElement element : parsed.modelingOnlyElements()) {
+            if ("dataStoreReference".equals(element.type())) {
+                addIssue(
+                        issues,
+                        "BPMN_DATA_STORE_MODEL_ONLY",
+                        Severity.WARNING,
+                        element.id(),
+                        element.type(),
+                        "数据存储仅用于流程建模，不会自动持久化；实际读写需通过服务任务或实体接口实现",
+                        "请配置服务任务、实体接口或其他明确的数据读写能力",
+                        config.getId());
+            } else {
+                addIssue(
+                        issues,
+                        "BPMN_DATA_ASSOCIATION_MODEL_ONLY",
+                        Severity.WARNING,
+                        element.id(),
+                        element.type(),
+                        "普通任务上的数据关联仅保留模型语义，不会自动映射流程变量",
+                        "请通过服务任务结果映射、流程动作或实体接口显式读写流程变量",
+                        config.getId());
             }
         }
     }
@@ -399,6 +435,7 @@ public class ProcessDefinitionPreflightService {
         Set<String> seenIds = new HashSet<>();
         Set<String> duplicateIds = new LinkedHashSet<>();
         List<FlowEdge> edges = new ArrayList<>();
+        List<ModelingOnlyElement> modelingOnlyElements = new ArrayList<>();
         int processCount = 0;
 
         NodeList elements = document.getElementsByTagName("*");
@@ -411,6 +448,12 @@ public class ProcessDefinitionPreflightService {
             String id = element.getAttribute("id");
             if (StringUtils.hasText(id) && !seenIds.add(id)) {
                 duplicateIds.add(id);
+            }
+            if (StringUtils.hasText(id)
+                    && ("dataStoreReference".equals(type)
+                    || "dataInputAssociation".equals(type)
+                    || "dataOutputAssociation".equals(type))) {
+                modelingOnlyElements.add(new ModelingOnlyElement(id, type));
             }
             if (FLOW_NODE_TYPES.contains(type) && StringUtils.hasText(id)) {
                 flowNodes.put(id, element);
@@ -430,7 +473,8 @@ public class ProcessDefinitionPreflightService {
         }
         return new ParsedBpmn(
                 processCount, Map.copyOf(flowNodes), List.copyOf(edges), Set.copyOf(starts),
-                Set.copyOf(ends), Set.copyOf(duplicateIds), Map.copyOf(fingerprints));
+                Set.copyOf(ends), Set.copyOf(duplicateIds), Map.copyOf(fingerprints),
+                List.copyOf(modelingOnlyElements));
     }
 
     private boolean hasCondition(Element sequenceFlow) {
@@ -600,6 +644,9 @@ public class ProcessDefinitionPreflightService {
     private record FlowEdge(String id, String sourceRef, String targetRef, boolean hasCondition) {
     }
 
+    private record ModelingOnlyElement(String id, String type) {
+    }
+
     private record ParsedBpmn(
             int processCount,
             Map<String, Element> flowNodes,
@@ -607,7 +654,8 @@ public class ProcessDefinitionPreflightService {
             Set<String> startIds,
             Set<String> endIds,
             Set<String> duplicateIds,
-            Map<String, String> fingerprints) {
+            Map<String, String> fingerprints,
+            List<ModelingOnlyElement> modelingOnlyElements) {
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)

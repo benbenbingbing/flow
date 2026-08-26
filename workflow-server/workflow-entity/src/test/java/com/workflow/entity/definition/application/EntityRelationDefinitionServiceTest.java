@@ -181,6 +181,63 @@ class EntityRelationDefinitionServiceTest {
     }
 
     @Test
+    void rejectsPublishWhenChildReferenceIsNotSingleReference() {
+        stubEntitiesAndForeignKey();
+        EntityField foreignKey = childReference(
+                EntityField.FieldType.STRING, "parent-1");
+        when(fieldMapper.findByEntityIdAndFieldCode(
+                "child-1", "parentId"))
+                .thenReturn(foreignKey);
+        stubPublishedRelation();
+
+        BusinessConflictException failure = assertThrows(
+                BusinessConflictException.class,
+                () -> service.validateForPublish("parent-1"));
+
+        assertEquals(
+                "ENTITY_RELATION_CHILD_REF_TYPE_INVALID",
+                failure.getErrorCode());
+    }
+
+    @Test
+    void rejectsPublishWhenChildReferenceTargetsAnotherEntity() {
+        stubEntitiesAndForeignKey();
+        EntityField foreignKey = childReference(
+                EntityField.FieldType.REFERENCE, "another-parent");
+        when(fieldMapper.findByEntityIdAndFieldCode(
+                "child-1", "parentId"))
+                .thenReturn(foreignKey);
+        stubPublishedRelation();
+
+        BusinessConflictException failure = assertThrows(
+                BusinessConflictException.class,
+                () -> service.validateForPublish("parent-1"));
+
+        assertEquals(
+                "ENTITY_RELATION_CHILD_REF_TARGET_INVALID",
+                failure.getErrorCode());
+    }
+
+    @Test
+    void associationUsesTheSameAuthoritativeReferenceInvariant() {
+        stubEntitiesAndForeignKey();
+        EntityRelation existing = relation();
+        existing.setOwnershipType(
+                EntityRelation.OwnershipType.ASSOCIATION);
+        when(relationMapper.selectByParentEntityId("parent-1"))
+                .thenReturn(List.of(existing));
+        when(relationMapper.selectByRelationCode(
+                "parent-1", "detail_relation"))
+                .thenReturn(existing);
+        when(relationMapper.selectByDataKey(
+                "parent-1", "details"))
+                .thenReturn(existing);
+
+        assertDoesNotThrow(() ->
+                service.validateForPublish("parent-1"));
+    }
+
+    @Test
     void keepsRelationCodeAndDataKeyStableOnUpdate() {
         stubEntitiesAndForeignKey();
         EntityRelation existing = relation();
@@ -253,14 +310,36 @@ class EntityRelationDefinitionServiceTest {
                 .thenReturn(parent);
         when(entityMapper.selectById("child-1"))
                 .thenReturn(child);
-        EntityField foreignKey = new EntityField();
-        foreignKey.setId("field-parent-id");
-        foreignKey.setEntityId("child-1");
-        foreignKey.setFieldCode("parentId");
+        EntityField foreignKey = childReference(
+                EntityField.FieldType.REFERENCE, "parent-1");
         when(fieldMapper.findByEntityIdAndFieldCode(
                 "child-1", "parentId"))
                 .thenReturn(foreignKey);
         when(relationMapper.insert(any(EntityRelation.class))).thenReturn(1);
+    }
+
+    private void stubPublishedRelation() {
+        EntityRelation existing = relation();
+        when(relationMapper.selectByParentEntityId("parent-1"))
+                .thenReturn(List.of(existing));
+        when(relationMapper.selectByRelationCode(
+                "parent-1", "detail_relation"))
+                .thenReturn(existing);
+        when(relationMapper.selectByDataKey(
+                "parent-1", "details"))
+                .thenReturn(existing);
+    }
+
+    private EntityField childReference(
+            EntityField.FieldType type,
+            String targetEntityId) {
+        EntityField field = new EntityField();
+        field.setId("field-parent-id");
+        field.setEntityId("child-1");
+        field.setFieldCode("parentId");
+        field.setFieldType(type);
+        field.setRefEntityId(targetEntityId);
+        return field;
     }
 
     private EntityRelationSaveRequest request() {

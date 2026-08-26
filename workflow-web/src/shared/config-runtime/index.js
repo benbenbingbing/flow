@@ -142,6 +142,26 @@ export function resolveTextFieldMaxLength(field = {}, componentPropsValue = {}) 
   return undefined
 }
 
+/**
+ * 返回 VARCHAR 字段声明的数据库长度，供表单属性面板作为未配置最大长度时的展示默认值。
+ * 该值不应被自动序列化为表单校验规则，以便实体字段长度变更后仍可继续作为默认值生效。
+ */
+export function resolveVarcharFieldLength(field = {}) {
+  const dbType = String(field?.dbType || '').trim()
+  if (!/^varchar(?:\s|\(|$)/i.test(dbType)) return undefined
+
+  const dbLengthMatch = dbType.match(/^varchar\s*\(\s*(\d+)\s*\)$/i)
+  const candidate = field?.fieldLength ?? dbLengthMatch?.[1]
+  if (candidate === undefined || candidate === null || candidate === '') {
+    return undefined
+  }
+
+  const normalized = Number(candidate)
+  return Number.isInteger(normalized) && normalized > 0
+    ? normalized
+    : undefined
+}
+
 export function getRuntimeRegexPatternError(value) {
   if (value === undefined || value === null || value === '') return ''
   if (typeof value !== 'string') return '正则表达式必须是字符串'

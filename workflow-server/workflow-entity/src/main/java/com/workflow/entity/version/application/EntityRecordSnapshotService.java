@@ -10,6 +10,7 @@ import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.organization.application.SysOrganizationService;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
@@ -47,6 +48,9 @@ public class EntityRecordSnapshotService {
     public static final int HARD_MAX_ROWS_PER_VERSION = 2000;
     public static final long HARD_MAX_BYTES_PER_VERSION =
             5L * 1024L * 1024L;
+    /** 数据集行内部保存父记录身份，历史详情和字段比较不得向用户展示。 */
+    public static final String INTERNAL_PARENT_RECORD_ID =
+            "__scopeParentRecordId";
 
     private static final List<SystemField> SYSTEM_FIELDS = List.of(
             new SystemField("id", "数据ID", "STRING"),
@@ -155,7 +159,11 @@ public class EntityRecordSnapshotService {
     }
 
     /**
-     * 按已发布 V2 范围捕获根实体和一层关系数据集。
+     * 按已发布 V2 范围捕获根实体和多层组成关系数据集。
+     *
+     * <p>旧一层范围仍走同一逻辑；多层节点必须带有发布时冻结的父节点和关系路径。
+     * 捕获严格拒绝发布漂移、记录环、同一组成子记录归属多个父记录以及任何预算超限，
+     * 不允许用截断快照冒充完整业务版本。</p>
      */
     public SnapshotCaptureV2 captureV2(
             EntityVersionConfiguration configuration,
@@ -167,19 +175,7 @@ public class EntityRecordSnapshotService {
         if (scope == null || scope.getRoot() == null) {
             throw new IllegalStateException("V2发布配置缺少冻结固化范围");
         }
-        requireCurrentRelease(
-                scope.getRoot().getEntityCode(),
-                scope.getRoot().getEntityReleaseId(),
-                "根实体 " + scope.getRoot().getEntityName());
-        for (EntityVersionConfiguration.RelationScope relation
-                : safe(scope.getRelations())) {
-            if (!Boolean.FALSE.equals(relation.getEnabled())) {
-                requireCurrentRelease(
-                        relation.getChildEntityCode(),
-                        relation.getEntityReleaseId(),
-                        "关系 " + relation.getRelationName());
-            }
-        }
+        requireFrozenScopeCurrent(scope);
         Map<String, Object> record = deepCopy(aggregateRecord);
         Map<String, Object> customData = map(record.get("data"));
         Map<String, EntityVersionConfiguration.FieldPresentation>
@@ -211,17 +207,77 @@ public class EntityRecordSnapshotService {
 
         List<DatasetCapture> datasets = new ArrayList<>();
         int totalRows = 0;
+        Map<String, List<CaptureNodeRecord>> recordsByNode =
+                new LinkedHashMap<>();
+        String rootIdentity = recordIdentity(
+                scope.getRoot().getEntityCode(), recordId);
+        recordsByNode.put("ROOT", List.of(new CaptureNodeRecord(
+                record,
+                recordId,
+                java.util.Set.of(rootIdentity))));
+        List<EntityVersionConfiguration.RelationScope> orderedRelations =
+                safe(scope.getRelations()).stream()
+                        .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
+                        .sorted(java.util.Comparator
+                                .comparing((EntityVersionConfiguration.RelationScope item) ->
+                                        item.getDepth() == null ? 1 : item.getDepth())
+                                .thenComparing(
+                                        EntityVersionConfiguration.RelationScope::getNodeCode))
+                        .toList();
         for (EntityVersionConfiguration.RelationScope relation
-                : safe(scope.getRelations())) {
+                : orderedRelations) {
             if (Boolean.FALSE.equals(relation.getEnabled())) {
                 continue;
             }
-            List<Map<String, Object>> rows = relationRows(
-                    customData.get(relation.getDataKey()),
-                    relation.getRelationType());
-            rows = rows.stream()
-                    .filter(row -> matchesFilter(row, relation.getFilter()))
-                    .toList();
+            String parentNodeCode = normalizedParentNode(relation);
+            List<CaptureNodeRecord> parents = recordsByNode.get(
+                    parentNodeCode);
+            if (parents == null) {
+                throw new BusinessConflictException(
+                        "ENTITY_VERSION_SCOPE_PATH_INVALID",
+                        "固化范围节点 " + relation.getNodeCode()
+                                + " 的父节点不存在: " + parentNodeCode);
+            }
+            List<CapturedRawRow> rows = new ArrayList<>();
+            java.util.Set<String> childIds = new java.util.LinkedHashSet<>();
+            for (CaptureNodeRecord parent : parents) {
+                List<Map<String, Object>> nestedRows = relationRows(
+                        rowValue(parent.record(), relation.getDataKey()),
+                        relation.getRelationType()).stream()
+                        .filter(row -> matchesFilter(
+                                row, relation.getFilter()))
+                        .toList();
+                for (Map<String, Object> row : nestedRows) {
+                    String childId = firstText(row.get("id"));
+                    if (!StringUtils.hasText(childId)) {
+                        throw new BusinessConflictException(
+                                "ENTITY_VERSION_SCOPE_ROW_ID_MISSING",
+                                "关系 " + relation.getRelationName()
+                                        + " 中存在没有稳定ID的子记录");
+                    }
+                    String identity = recordIdentity(
+                            relation.getChildEntityCode(), childId);
+                    if (parent.ancestry().contains(identity)) {
+                        throw new BusinessConflictException(
+                                "ENTITY_VERSION_SCOPE_RECORD_CYCLE",
+                                "固化范围沿 " + relation.getRelationName()
+                                        + " 发现记录环: " + childId);
+                    }
+                    if (!childIds.add(childId)) {
+                        throw new BusinessConflictException(
+                                "ENTITY_VERSION_SCOPE_DUPLICATE_OWNERSHIP",
+                                "组成关系 " + relation.getRelationName()
+                                        + " 中子记录 " + childId
+                                        + " 同时归属多个父记录");
+                    }
+                    java.util.Set<String> ancestry =
+                            new java.util.LinkedHashSet<>(parent.ancestry());
+                    ancestry.add(identity);
+                    rows.add(new CapturedRawRow(
+                            row, childId, parent.recordId(),
+                            java.util.Set.copyOf(ancestry)));
+                }
+            }
             int relationLimit = effectiveRelationLimit(scope, relation);
             if (rows.size() > relationLimit) {
                 throw limitFailure(
@@ -239,8 +295,10 @@ public class EntityRecordSnapshotService {
             Map<String, EntityVersionConfiguration.FieldPresentation>
                     fields = indexPresentation(relation.getFields());
             List<DatasetRowCapture> capturedRows = new ArrayList<>();
+            List<CaptureNodeRecord> childRecords = new ArrayList<>();
             int order = 0;
-            for (Map<String, Object> row : rows) {
+            for (CapturedRawRow captured : rows) {
+                Map<String, Object> row = captured.record();
                 Map<String, FrozenValue> values = new LinkedHashMap<>();
                 for (Map.Entry<String,
                         EntityVersionConfiguration.FieldPresentation> field
@@ -250,19 +308,20 @@ public class EntityRecordSnapshotService {
                             field.getValue(),
                             rowValue(row, field.getKey())));
                 }
-                String childId = firstText(row.get("id"));
-                if (!StringUtils.hasText(childId)) {
-                    throw new BusinessConflictException(
-                            "ENTITY_VERSION_SCOPE_ROW_ID_MISSING",
-                            "关系 " + relation.getRelationName()
-                                    + " 中存在没有稳定ID的子记录");
-                }
+                String childId = captured.recordId();
+                values.put(INTERNAL_PARENT_RECORD_ID, new FrozenValue(
+                        captured.parentRecordId(),
+                        captured.parentRecordId(),
+                        List.of(), "INTERNAL", "RESOLVED"));
                 boolean trackOrder = configuration.getDiffPolicy() != null
                         && Boolean.TRUE.equals(
                                 configuration.getDiffPolicy().getTrackOrder());
                 Map<String, Object> rowHashMaterial = new LinkedHashMap<>();
                 // 子记录身份属于业务数据的一部分；同值记录被替换时也必须产生新版本差异。
                 rowHashMaterial.put("recordId", childId);
+                // 多层关系下父身份也是业务图的一部分；换父必须产生可比较差异。
+                rowHashMaterial.put("parentRecordId",
+                        captured.parentRecordId());
                 rowHashMaterial.put("values", rawValues(values));
                 if (trackOrder) {
                     rowHashMaterial.put("rowOrder", order);
@@ -278,13 +337,27 @@ public class EntityRecordSnapshotService {
                         order++,
                         values,
                         hash(rowHashMaterial)));
+                childRecords.add(new CaptureNodeRecord(
+                        row, childId, captured.ancestry()));
             }
+            recordsByNode.put(relation.getNodeCode(), childRecords);
             Map<String, Object> selector = new LinkedHashMap<>();
+            selector.put("parentNodeCode", parentNodeCode);
+            selector.put("depth", relation.getDepth());
             selector.put("relationCode", relation.getRelationCode());
             selector.put("dataKey", relation.getDataKey());
             selector.put("childEntityCode", relation.getChildEntityCode());
             selector.put("childRefFieldCode", relation.getChildRefFieldCode());
             selector.put("relationType", relation.getRelationType());
+            selector.put("relationDefinitionHash",
+                    relation.getRelationDefinitionHash());
+            selector.put("relationPath", relation.getRelationPath());
+            selector.put("parentEntityReleaseId",
+                    relation.getParentEntityReleaseId());
+            selector.put("parentEntitySchemaHash",
+                    relation.getParentEntitySchemaHash());
+            selector.put("entitySchemaHash",
+                    relation.getEntitySchemaHash());
             selector.put("filter", relation.getFilter());
             selector.put("maxRows", relationLimit);
             boolean trackOrder = configuration.getDiffPolicy() != null
@@ -361,22 +434,48 @@ public class EntityRecordSnapshotService {
             Map<String, Object> aggregateRecord) {
         EntityVersionConfiguration.SnapshotScope scope =
                 configuration.getSnapshotScope();
-        Map<String, Object> customData = map(
-                deepCopy(aggregateRecord).get("data"));
+        Map<String, Object> rootRecord = deepCopy(aggregateRecord);
         List<EntityVersionScopePreview.DatasetPreview> previews =
                 new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        Map<String, List<Map<String, Object>>> recordsByNode =
+                new LinkedHashMap<>();
+        recordsByNode.put("ROOT", List.of(rootRecord));
         int total = 0;
+        boolean valid = true;
         boolean exceeds = false;
+        List<EntityVersionConfiguration.RelationScope> orderedRelations =
+                safe(scope.getRelations()).stream()
+                        .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
+                        .sorted(java.util.Comparator
+                                .comparing((EntityVersionConfiguration.RelationScope item) ->
+                                        item.getDepth() == null ? 1 : item.getDepth())
+                                .thenComparing(
+                                        EntityVersionConfiguration.RelationScope::getNodeCode))
+                        .toList();
         for (EntityVersionConfiguration.RelationScope relation
-                : safe(scope.getRelations())) {
-            if (Boolean.FALSE.equals(relation.getEnabled())) {
+                : orderedRelations) {
+            String parentNodeCode = normalizedParentNode(relation);
+            List<Map<String, Object>> parents = recordsByNode.get(
+                    parentNodeCode);
+            if (parents == null) {
+                warnings.add("固化范围节点 " + relation.getNodeCode()
+                        + " 的父节点不存在: " + parentNodeCode);
+                valid = false;
+                recordsByNode.put(relation.getNodeCode(), List.of());
                 continue;
             }
-            int count = (int) relationRows(
-                    customData.get(relation.getDataKey()),
-                    relation.getRelationType()).stream()
-                    .filter(row -> matchesFilter(row, relation.getFilter()))
-                    .count();
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Map<String, Object> parent : parents) {
+                rows.addAll(relationRows(
+                        rowValue(parent, relation.getDataKey()),
+                        relation.getRelationType()).stream()
+                        .filter(row -> matchesFilter(
+                                row, relation.getFilter()))
+                        .toList());
+            }
+            recordsByNode.put(relation.getNodeCode(), rows);
+            int count = rows.size();
             int max = effectiveRelationLimit(scope, relation);
             boolean itemExceeds = count > max;
             total += count;
@@ -390,10 +489,12 @@ public class EntityRecordSnapshotService {
         exceeds = exceeds
                 || total > configuredTotalLimit(scope)
                 || estimatedBytes > configuredByteLimit(scope);
+        if (exceeds) {
+            warnings.add("样例记录超过固化范围上限，正式捕获将整体失败");
+        }
         return new EntityVersionScopePreview(
-                true, total, estimatedBytes, exceeds, previews,
-                exceeds ? List.of("样例记录超过固化范围上限，正式捕获将整体失败")
-                        : List.of());
+                valid, total, estimatedBytes, exceeds,
+                previews, List.copyOf(warnings));
     }
 
     /** RELATED_MUTATION 触发判定与实际捕获共用同一固定过滤语义。 */
@@ -1070,18 +1171,218 @@ public class EntityRecordSnapshotService {
                         + " 超过上限 " + limit);
     }
 
-    private void requireCurrentRelease(
+    /**
+     * 按拓扑顺序校验冻结路径仍指向当前精确发布定义。
+     *
+     * <p>旧一层发布没有指纹时保留 historyId 校验；任何多层发布缺少路径或指纹都
+     * fail-closed，防止配置损坏后降级成一层捕获。</p>
+     */
+    private void requireFrozenScopeCurrent(
+            EntityVersionConfiguration.SnapshotScope scope) {
+        Map<String, EntityPublishedSnapshot> currentByNode =
+                new LinkedHashMap<>();
+        Map<String, EntityVersionConfiguration.RelationScope> frozenByNode =
+                new LinkedHashMap<>();
+        EntityPublishedSnapshot root = requireCurrentRelease(
+                scope.getRoot().getEntityCode(),
+                scope.getRoot().getEntityReleaseId(),
+                scope.getRoot().getEntitySchemaHash(),
+                "根实体 " + scope.getRoot().getEntityName());
+        currentByNode.put("ROOT", root);
+        List<EntityVersionConfiguration.RelationScope> ordered =
+                safe(scope.getRelations()).stream()
+                        .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
+                        .sorted(java.util.Comparator
+                                .comparing((EntityVersionConfiguration.RelationScope item) ->
+                                        item.getDepth() == null ? 1 : item.getDepth())
+                                .thenComparing(
+                                        EntityVersionConfiguration.RelationScope::getNodeCode))
+                        .toList();
+        for (EntityVersionConfiguration.RelationScope relation : ordered) {
+            String parentNodeCode = normalizedParentNode(relation);
+            EntityPublishedSnapshot parent = currentByNode.get(parentNodeCode);
+            if (parent == null) {
+                throw new BusinessConflictException(
+                        "ENTITY_VERSION_SCOPE_PATH_INVALID",
+                        "冻结路径父节点不存在: " + relation.getNodeCode()
+                                + " -> " + parentNodeCode);
+            }
+            if (!Objects.equals(parent.getEntityCode(),
+                    relation.getParentEntityCode())
+                    && StringUtils.hasText(relation.getParentEntityCode())) {
+                throw stale("关系 " + relation.getRelationName()
+                        + " 的父实体与冻结路径不一致");
+            }
+            boolean strictRelationPin = StringUtils.hasText(
+                    relation.getRelationDefinitionHash())
+                    || !safe(relation.getRelationPath()).isEmpty();
+            EntityRelation frozenRelation = safe(parent.getRelations()).stream()
+                    .filter(item -> item != null
+                            && !Boolean.FALSE.equals(item.getEnabled())
+                            && item.getOwnershipType()
+                                    == EntityRelation.OwnershipType.COMPOSITION
+                            && Objects.equals(item.getRelationCode(),
+                                    relation.getRelationCode()))
+                    .findFirst()
+                    .orElse(null);
+            if (strictRelationPin && frozenRelation == null) {
+                throw stale("关系 " + relation.getRelationName()
+                        + " 已从父实体发布中消失");
+            }
+            EntityPublishedSnapshot child = requireCurrentRelease(
+                    relation.getChildEntityCode(),
+                    relation.getEntityReleaseId(),
+                    relation.getEntitySchemaHash(),
+                    "关系 " + relation.getRelationName());
+            if (StringUtils.hasText(relation.getRelationDefinitionHash())
+                    && frozenRelation != null
+                    && !Objects.equals(
+                            relation.getRelationDefinitionHash(),
+                            relationDefinitionHash(
+                                    parent, child, frozenRelation))) {
+                throw stale("关系 " + relation.getRelationName()
+                        + " 的发布定义已变化");
+            }
+            if (!"ROOT".equals(parentNodeCode)
+                    && (safe(relation.getRelationPath()).isEmpty()
+                            || !StringUtils.hasText(
+                                    relation.getRelationDefinitionHash())
+                            || !StringUtils.hasText(
+                                    relation.getEntitySchemaHash()))) {
+                throw new BusinessConflictException(
+                        "ENTITY_VERSION_SCOPE_PATH_INVALID",
+                        "多层固化范围缺少完整冻结路径: "
+                                + relation.getNodeCode());
+            }
+            List<EntityVersionConfiguration.RelationPathStep> path =
+                    safe(relation.getRelationPath());
+            if (!path.isEmpty()) {
+                EntityVersionConfiguration.RelationScope parentScope =
+                        frozenByNode.get(parentNodeCode);
+                List<EntityVersionConfiguration.RelationPathStep> prefix =
+                        parentScope == null
+                                ? List.of()
+                                : safe(parentScope.getRelationPath());
+                EntityVersionConfiguration.RelationPathStep last =
+                        path.get(path.size() - 1);
+                if (path.size() != prefix.size() + 1
+                        || !path.subList(0, prefix.size()).equals(prefix)
+                        || !pathStepMatchesRelation(last, relation)) {
+                    throw new BusinessConflictException(
+                            "ENTITY_VERSION_SCOPE_PATH_INVALID",
+                            "固化范围路径与节点定义不一致: "
+                                    + relation.getNodeCode());
+                }
+            }
+            currentByNode.put(relation.getNodeCode(), child);
+            frozenByNode.put(relation.getNodeCode(), relation);
+        }
+    }
+
+    /** 路径末跳必须完整等于节点冻结定义，不能只比较 relationCode。 */
+    private boolean pathStepMatchesRelation(
+            EntityVersionConfiguration.RelationPathStep step,
+            EntityVersionConfiguration.RelationScope relation) {
+        return Objects.equals(step.getParentNodeCode(),
+                    normalizedParentNode(relation))
+                && Objects.equals(step.getNodeCode(), relation.getNodeCode())
+                && Objects.equals(step.getRelationCode(),
+                    relation.getRelationCode())
+                && Objects.equals(step.getSourceEntityCode(),
+                    relation.getParentEntityCode())
+                && Objects.equals(step.getSourceEntityReleaseId(),
+                    relation.getParentEntityReleaseId())
+                && Objects.equals(step.getSourceEntityReleaseVersion(),
+                    relation.getParentEntityReleaseVersion())
+                && Objects.equals(step.getSourceEntitySchemaHash(),
+                    relation.getParentEntitySchemaHash())
+                && Objects.equals(step.getTargetEntityCode(),
+                    relation.getChildEntityCode())
+                && Objects.equals(step.getTargetEntityReleaseId(),
+                    relation.getEntityReleaseId())
+                && Objects.equals(step.getTargetEntityReleaseVersion(),
+                    relation.getEntityReleaseVersion())
+                && Objects.equals(step.getTargetEntitySchemaHash(),
+                    relation.getEntitySchemaHash())
+                && Objects.equals(step.getDataKey(), relation.getDataKey())
+                && Objects.equals(step.getChildRefFieldCode(),
+                    relation.getChildRefFieldCode())
+                && Objects.equals(step.getRelationType(),
+                    relation.getRelationType())
+                && Objects.equals(step.getRelationDefinitionHash(),
+                    relation.getRelationDefinitionHash());
+    }
+
+    private EntityPublishedSnapshot requireCurrentRelease(
             String entityCode,
             String frozenReleaseId,
+            String frozenSchemaHash,
             String label) {
         EntityPublishedSnapshot current = publishedSnapshotService
                 .getLatestByEntityCode(entityCode);
         if (current == null || !Objects.equals(
                 frozenReleaseId, current.getHistoryId())) {
-            throw new BusinessConflictException(
-                    "ENTITY_VERSION_SCOPE_STALE",
-                    label + " 的实体发布版本已变化，请重新发布数据版本策略后再固化");
+            throw stale(label + " 的实体发布版本已变化");
         }
+        if (StringUtils.hasText(frozenSchemaHash)
+                && !Objects.equals(
+                        frozenSchemaHash, entitySchemaHash(current))) {
+            throw stale(label + " 的发布内容指纹已变化");
+        }
+        return current;
+    }
+
+    private BusinessConflictException stale(String message) {
+        return new BusinessConflictException(
+                "ENTITY_VERSION_SCOPE_STALE",
+                message + "，请重新发布数据版本策略后再固化");
+    }
+
+    private String normalizedParentNode(
+            EntityVersionConfiguration.RelationScope relation) {
+        return StringUtils.hasText(relation.getParentNodeCode())
+                ? relation.getParentNodeCode().trim() : "ROOT";
+    }
+
+    private String recordIdentity(String entityCode, String recordId) {
+        return String.valueOf(entityCode) + ":" + String.valueOf(recordId);
+    }
+
+    private String entitySchemaHash(EntityPublishedSnapshot snapshot) {
+        Map<String, Object> material = new LinkedHashMap<>();
+        material.put("historyId", snapshot.getHistoryId());
+        material.put("entityId", snapshot.getEntityId());
+        material.put("entityCode", snapshot.getEntityCode());
+        material.put("version", snapshot.getVersion());
+        material.put("fields", safe(snapshot.getFields()));
+        material.put("relationsSnapshotAvailable",
+                snapshot.isRelationsSnapshotAvailable());
+        material.put("relations", safe(snapshot.getRelations()));
+        return hash(material);
+    }
+
+    private String relationDefinitionHash(
+            EntityPublishedSnapshot parent,
+            EntityPublishedSnapshot child,
+            EntityRelation relation) {
+        Map<String, Object> material = new LinkedHashMap<>();
+        material.put("sourceEntityCode", parent.getEntityCode());
+        material.put("sourceReleaseId", parent.getHistoryId());
+        material.put("targetEntityCode", child.getEntityCode());
+        material.put("targetReleaseId", child.getHistoryId());
+        material.put("relationCode", relation.getRelationCode());
+        material.put("dataKey", firstText(
+                relation.getDataKey(), relation.getParentFieldCode(),
+                relation.getRelationCode()));
+        material.put("childRefFieldCode", relation.getChildRefFieldCode());
+        material.put("relationType", relation.getRelationType() == null
+                ? null : relation.getRelationType().name());
+        material.put("ownershipType", relation.getOwnershipType() == null
+                ? null : relation.getOwnershipType().name());
+        material.put("cascadeDelete", relation.getCascadeDelete());
+        material.put("required", relation.getRequired());
+        material.put("enabled", relation.getEnabled());
+        return hash(material);
     }
 
     private long serializedSize(Object value) {
@@ -1150,6 +1451,21 @@ public class EntityRecordSnapshotService {
             Integer rowOrder,
             Map<String, FrozenValue> values,
             String rowHash) {
+    }
+
+    /** 捕获过程中保留原始节点及祖先身份，仅在内存中用于继续遍历和环检测。 */
+    private record CaptureNodeRecord(
+            Map<String, Object> record,
+            String recordId,
+            java.util.Set<String> ancestry) {
+    }
+
+    /** 一个已解析但尚未冻结展示值的子节点。 */
+    private record CapturedRawRow(
+            Map<String, Object> record,
+            String recordId,
+            String parentRecordId,
+            java.util.Set<String> ancestry) {
     }
 
     private <T> List<T> safe(List<T> values) {

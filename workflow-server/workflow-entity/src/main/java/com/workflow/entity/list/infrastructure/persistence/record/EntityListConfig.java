@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体列表配置
@@ -205,6 +206,10 @@ public class EntityListConfig {
     /** 当前运行时发布快照中的字段配置 */
     @TableField(exist = false)
     private List<EntityListField> runtimeFields;
+
+    /** 当前运行时发布快照中的关联内容；不从列表草稿表读取。 */
+    @TableField(exist = false)
+    private List<Map<String, Object>> viewCompositions;
 
     /** 是否由父表单签名上下文固定到历史发布版本 */
     @TableField(exist = false)

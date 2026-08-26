@@ -168,8 +168,7 @@ public class EntityVersionConfigurationService {
         }
         EntityVersionConfiguration document =
                 readReleaseConfiguration(release);
-        document.setActiveReleaseId(release.getId());
-        document.setActiveReleaseVersion(release.getVersion());
+        hydratePublishedEnvelope(document, config, release);
         return Optional.of(document);
     }
 
@@ -190,8 +189,7 @@ public class EntityVersionConfigurationService {
         }
         EntityVersionConfiguration document =
                 readReleaseConfiguration(release);
-        document.setActiveReleaseId(release.getId());
-        document.setActiveReleaseVersion(release.getVersion());
+        hydratePublishedEnvelope(document, config, release);
         return Optional.of(document);
     }
 
@@ -209,7 +207,7 @@ public class EntityVersionConfigurationService {
     }
 
     /**
-     * 查找把 B 纳入快照的一层 A 配置；即使不传播生成 A 版本，也用于 A→B 锁序。
+     * 查找把 B 纳入快照的根配置；即使不传播生成根版本，也用于 ROOT→…→B 锁序。
      */
     @Transactional(readOnly = true)
     public List<EntityVersionConfiguration> findPublishedScopedConfigurations(
@@ -236,8 +234,7 @@ public class EntityVersionConfigurationService {
                     .anyMatch(scope -> !Boolean.FALSE.equals(scope.getEnabled())
                             && childEntityCode.equals(scope.getChildEntityCode()));
             if (relationMatches) {
-                document.setActiveReleaseId(release.getId());
-                document.setActiveReleaseVersion(release.getVersion());
+                hydratePublishedEnvelope(document, config, release);
                 result.add(document);
             }
         }
@@ -251,17 +248,15 @@ public class EntityVersionConfigurationService {
     public void requireRelationScopeCompatible(
             String entityCode,
             Collection<String> publishingRelationCodes) {
-        EntityVersionConfiguration published = getPublished(entityCode)
-                .orElse(null);
-        if (published == null || value(published.getSchemaVersion(), 1) < 2
-                || published.getSnapshotScope() == null) {
+        List<EntityVersionConfiguration.RelationScope> frozenRelations =
+                publishedScopesUsingParent(entityCode);
+        if (frozenRelations.isEmpty()) {
             return;
         }
         Set<String> available = new java.util.LinkedHashSet<>(
                 publishingRelationCodes == null
                         ? List.of() : publishingRelationCodes);
-        List<String> missing = safe(
-                published.getSnapshotScope().getRelations()).stream()
+        List<String> missing = frozenRelations.stream()
                 .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
                 .map(EntityVersionConfiguration.RelationScope::getRelationCode)
                 .filter(StringUtils::hasText)
@@ -282,10 +277,9 @@ public class EntityVersionConfigurationService {
     public void requireRelationScopeDefinitionsCompatible(
             String entityCode,
             Collection<EntityRelation> publishingRelations) {
-        EntityVersionConfiguration published = getPublished(entityCode)
-                .orElse(null);
-        if (published == null || value(published.getSchemaVersion(), 1) < 2
-                || published.getSnapshotScope() == null) {
+        List<EntityVersionConfiguration.RelationScope> frozenRelations =
+                publishedScopesUsingParent(entityCode);
+        if (frozenRelations.isEmpty()) {
             return;
         }
         Map<String, EntityRelation> candidates = new LinkedHashMap<>();
@@ -301,7 +295,7 @@ public class EntityVersionConfigurationService {
         }
         List<String> incompatible = new ArrayList<>();
         for (EntityVersionConfiguration.RelationScope frozen
-                : safe(published.getSnapshotScope().getRelations())) {
+                : frozenRelations) {
             if (Boolean.FALSE.equals(frozen.getEnabled())) {
                 continue;
             }
@@ -328,6 +322,64 @@ public class EntityVersionConfigurationService {
                             + String.join(",", incompatible)
                             + "；请先调整并发布数据版本配置");
         }
+    }
+
+    /**
+     * 查找所有以指定实体作为父节点的活动冻结关系。
+     *
+     * <p>多层版本策略的根配置属于另一个实体，因此不能只读
+     * {@code getPublished(entityCode)}。旧一层发布没有 parentEntityCode 时，仍用
+     * ROOT + 配置根实体编码兼容识别。</p>
+     */
+    private List<EntityVersionConfiguration.RelationScope>
+            publishedScopesUsingParent(String entityCode) {
+        if (!StringUtils.hasText(entityCode)) {
+            return List.of();
+        }
+        Map<String, EntityVersionConfiguration> documents =
+                new LinkedHashMap<>();
+        getPublished(entityCode).ifPresent(document -> documents.put(
+                firstText(document.getActiveReleaseId(),
+                        "ROOT:" + document.getEntityCode()), document));
+        for (EntityVersionConfig config : configMapper.findAllPublished()) {
+            if (config == null || !StringUtils.hasText(
+                    config.getActiveReleaseId())) {
+                continue;
+            }
+            EntityVersionConfigRelease release = releaseMapper.selectById(
+                    config.getActiveReleaseId());
+            if (release == null || documents.containsKey(release.getId())) {
+                continue;
+            }
+            EntityVersionConfiguration document =
+                    readReleaseConfiguration(release);
+            hydratePublishedEnvelope(document, config, release);
+            documents.put(release.getId(), document);
+        }
+        List<EntityVersionConfiguration.RelationScope> result =
+                new ArrayList<>();
+        for (EntityVersionConfiguration document : documents.values()) {
+            if (value(document.getSchemaVersion(), 1) < 2
+                    || document.getSnapshotScope() == null) {
+                continue;
+            }
+            for (EntityVersionConfiguration.RelationScope relation
+                    : safe(document.getSnapshotScope().getRelations())) {
+                String parentNode = firstText(
+                        relation.getParentNodeCode(), "ROOT");
+                boolean directLegacy = !StringUtils.hasText(
+                        relation.getParentEntityCode())
+                        && "ROOT".equals(parentNode)
+                        && entityCode.equals(document.getEntityCode());
+                if (!Boolean.FALSE.equals(relation.getEnabled())
+                        && (entityCode.equals(
+                                relation.getParentEntityCode())
+                                || directLegacy)) {
+                    result.add(relation);
+                }
+            }
+        }
+        return result;
     }
 
     /**
@@ -368,10 +420,7 @@ public class EntityVersionConfigurationService {
                                     && sourceEntityCode.equals(
                                             binding.getSourceEntityCode()));
             if (matches) {
-                document.setActiveReleaseId(
-                        release.getId());
-                document.setActiveReleaseVersion(
-                        release.getVersion());
+                hydratePublishedEnvelope(document, config, release);
                 result.add(document);
             }
         }
@@ -667,7 +716,7 @@ public class EntityVersionConfigurationService {
         List<String> warnings = new ArrayList<>();
         if (normalized.getSnapshotScope() != null
                 && safe(normalized.getSnapshotScope().getRelations()).isEmpty()) {
-            warnings.add("当前只固化根实体，未选择任何一层关系");
+            warnings.add("当前只固化根实体，未选择任何组成关系");
         }
         return EntityVersionValidationResult.valid(warnings);
     }
@@ -813,6 +862,8 @@ public class EntityVersionConfigurationService {
         for (EntityVersionConfiguration.RelationScope relation
                 : source.getSnapshotScope().getRelations()) {
             relation.setNodeCode(text(relation.getNodeCode()));
+            relation.setParentNodeCode(firstText(
+                    text(relation.getParentNodeCode()), "ROOT"));
             relation.setRelationCode(text(relation.getRelationCode()));
             relation.setEnabled(!Boolean.FALSE.equals(relation.getEnabled()));
             relation.setMaxRows(value(relation.getMaxRows(), 500));
@@ -1197,6 +1248,26 @@ public class EntityVersionConfigurationService {
                 release.getConfigDocument());
         document.setSchemaVersion(value(release.getContractVersion(), 1));
         return document;
+    }
+
+    /**
+     * 为不可变发布文档补充不参与发布内容哈希的运行时信封字段。
+     *
+     * <p>早期一层 V2 发布只保证 scope 文档完整，并不一定把根实体编码重复写进 JSON。
+     * 多层逐跳解析必须知道稳定根实体，因此只在读取时从发布所属配置回填缺失身份；
+     * 已冻结文档中已有的身份绝不覆盖。</p>
+     */
+    private void hydratePublishedEnvelope(
+            EntityVersionConfiguration document,
+            EntityVersionConfig config,
+            EntityVersionConfigRelease release) {
+        document.setId(firstText(document.getId(), config.getId()));
+        document.setEntityId(firstText(
+                document.getEntityId(), config.getEntityId()));
+        document.setEntityCode(firstText(
+                document.getEntityCode(), config.getEntityCode()));
+        document.setActiveReleaseId(release.getId());
+        document.setActiveReleaseVersion(release.getVersion());
     }
 
     private boolean looksLikeLegacyRequest(

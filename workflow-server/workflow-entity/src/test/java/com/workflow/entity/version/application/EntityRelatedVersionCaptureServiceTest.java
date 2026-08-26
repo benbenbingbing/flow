@@ -6,6 +6,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.version.application.EntityRelatedVersionCaptureService.RootKey;
@@ -109,6 +110,38 @@ class EntityRelatedVersionCaptureServiceTest {
         verifyNoInteractions(policyMatcher, versionService, dataService);
     }
 
+    @Test
+    void resolvesThreeLevelFrozenPathBeforeLockingRoot() {
+        EntityMutationCommand command = new EntityMutationCommand(
+                "operation-check",
+                "asset_check",
+                "check-1",
+                EntityMutationOperationType.UPDATE,
+                Map.of("data", Map.of("componentId", "component-1")),
+                EntityMutationContext.builder(
+                                EntityMutationSourceType.CUSTOM_INTERFACE,
+                                "CHECK_CHANGE",
+                                "检查变化")
+                        .trace("trace-check", "mutation-check")
+                        .build());
+        when(configurationService.findPublishedScopedConfigurations(
+                "asset_check")).thenReturn(List.of(
+                        multiLevelConfiguration()));
+        when(dataService.findById("asset_component", "component-1"))
+                .thenReturn(dto("component-1", Map.of("lineId", "line-1")));
+        when(dataService.findById("asset_line", "line-1"))
+                .thenReturn(dto("line-1", Map.of("assetId", "asset-1")));
+
+        Set<RootKey> roots = service.lockRelatedRoots(
+                command,
+                Map.of("id", "check-1", "data",
+                        Map.of("componentId", "component-1")));
+
+        assertEquals(Set.of(new RootKey("asset", "asset-1")), roots);
+        org.mockito.Mockito.verify(aggregateWriter)
+                .lock("asset", "asset-1");
+    }
+
     private EntityVersionConfiguration configuration() {
         EntityVersionConfiguration value = new EntityVersionConfiguration();
         value.setEntityCode("asset");
@@ -124,6 +157,44 @@ class EntityRelatedVersionCaptureServiceTest {
         trigger.setTriggerType("RELATED_MUTATION");
         trigger.setRelationCode("asset_lines");
         value.setTriggers(List.of(trigger));
+        return value;
+    }
+
+    private EntityVersionConfiguration multiLevelConfiguration() {
+        EntityVersionConfiguration value = new EntityVersionConfiguration();
+        value.setEntityCode("asset");
+        EntityVersionConfiguration.RelationScope relation =
+                new EntityVersionConfiguration.RelationScope();
+        relation.setNodeCode("CHECKS");
+        relation.setParentNodeCode("COMPONENTS");
+        relation.setDepth(3);
+        relation.setRelationCode("component_checks");
+        relation.setChildEntityCode("asset_check");
+        relation.setChildRefFieldCode("componentId");
+        relation.setRelationPath(List.of(
+                pathStep("LINES", "asset_line", "assetId"),
+                pathStep("COMPONENTS", "asset_component", "lineId"),
+                pathStep("CHECKS", "asset_check", "componentId")));
+        value.getSnapshotScope().setRelations(List.of(relation));
+        return value;
+    }
+
+    private EntityVersionConfiguration.RelationPathStep pathStep(
+            String nodeCode,
+            String targetEntityCode,
+            String childRefFieldCode) {
+        EntityVersionConfiguration.RelationPathStep step =
+                new EntityVersionConfiguration.RelationPathStep();
+        step.setNodeCode(nodeCode);
+        step.setTargetEntityCode(targetEntityCode);
+        step.setChildRefFieldCode(childRefFieldCode);
+        return step;
+    }
+
+    private EntityDataDTO dto(String id, Map<String, Object> data) {
+        EntityDataDTO value = new EntityDataDTO();
+        value.setId(id);
+        value.setData(data);
         return value;
     }
 

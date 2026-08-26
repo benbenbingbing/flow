@@ -30,7 +30,13 @@ public class SystemAuditFailureWriter {
     static SystemOperationLog toLog(AuditLogPayload payload) {
         SystemOperationLog log = new SystemOperationLog();
         log.setEventId(payload.eventId());
+        log.setOperationId(payload.operationId());
         log.setTraceId(payload.traceId());
+        log.setParentOperationId(payload.parentOperationId());
+        log.setSourceSystem(payload.sourceSystem());
+        log.setSourceType(payload.sourceType());
+        log.setSourceId(payload.sourceId());
+        log.setSourceEventId(payload.sourceEventId());
         log.setModuleCode(payload.moduleCode());
         log.setOperationCode(payload.operationCode());
         log.setOperationName(payload.operationName());

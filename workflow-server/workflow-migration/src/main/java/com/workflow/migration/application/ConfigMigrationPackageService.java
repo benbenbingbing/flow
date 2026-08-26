@@ -12,6 +12,10 @@ import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.migration.infrastructure.persistence.record.ConfigAssetBaseline;
 import com.workflow.migration.infrastructure.persistence.record.ConfigEnvironmentMapping;
 import com.workflow.migration.infrastructure.persistence.record.ConfigExportPackage;
@@ -82,6 +86,8 @@ public class ConfigMigrationPackageService {
     private final EntityFieldMapper fieldMapper;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final EntityFormMapper formMapper;
+    private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
+    private final UiExtensionDefinitionMapper extensionDefinitionMapper;
     private final ProcessDefinitionConfigMapper processMapper;
     private final SysDictMapper dictMapper;
     private final SysUserMapper userMapper;
@@ -477,6 +483,10 @@ public class ConfigMigrationPackageService {
                 }
                 String type = String.valueOf(dependency.get("type"));
                 String key = String.valueOf(dependency.get("key"));
+                if (dependencyProvidedBySnapshot(
+                        selectedSnapshot, dependency, type, key)) {
+                    continue;
+                }
                 Set<String> validateOnly = request.getValidateOnlyDependencies() == null
                         ? Set.of() : request.getValidateOnlyDependencies();
                 if (validateOnly.contains(type + ":" + key)) {
@@ -833,9 +843,82 @@ public class ConfigMigrationPackageService {
             return flowActionCatalogPort.isConfiguredAndAvailable(key);
         }
         if ("CUSTOM_COMPONENT".equals(type) || "DATA_PROVIDER".equals(type)) {
+            if ("CUSTOM_COMPONENT".equals(type)
+                    && packageAssets.values().stream().anyMatch(asset ->
+                    dependencyProvidedBySnapshot(
+                            asset.snapshot(), dependency, type, key))) {
+                return true;
+            }
+            Integer version = integer(dependency.get("version"));
+            String componentKey = componentName(key);
+            if ("CUSTOM_COMPONENT".equals(type)
+                    && extensionDefinitionMapper.selectOne(
+                    new LambdaQueryWrapper<UiExtensionDefinition>()
+                            .eq(UiExtensionDefinition::getExtensionKey,
+                                    componentKey)
+                            .eq(version != null,
+                                    UiExtensionDefinition::getVersion,
+                                    version)
+                            .eq(UiExtensionDefinition::getDeleted, 0)
+                            .last("LIMIT 1")) != null) {
+                return true;
+            }
             return hasMapping(type, key);
         }
+        if ("INTERFACE_SERVICE".equals(type)) {
+            if (packageAssets.values().stream().anyMatch(asset ->
+                    dependencyProvidedBySnapshot(
+                            asset.snapshot(), dependency, type, key))) {
+                return true;
+            }
+            return dataSourceDefinitionMapper.selectOne(
+                    new LambdaQueryWrapper<UiDataSourceDefinition>()
+                            .eq(UiDataSourceDefinition::getSourceCode, key)
+                            .eq(UiDataSourceDefinition::getDeleted, 0)
+                            .last("LIMIT 1")) != null;
+        }
         return true;
+    }
+
+    /** 判断接口服务或组件是否已作为所属实体快照的内嵌定义随包迁移。 */
+    private boolean dependencyProvidedBySnapshot(
+            Map<String, Object> snapshot,
+            Map<String, Object> dependency,
+            String type,
+            String key) {
+        if ("INTERFACE_SERVICE".equals(type)) {
+            return documents.readMapList(snapshot.get("dataSources")).stream()
+                    .anyMatch(value -> Objects.equals(
+                            key, String.valueOf(value.get("sourceCode"))));
+        }
+        if ("CUSTOM_COMPONENT".equals(type)) {
+            Integer version = componentVersion(
+                    key, integer(dependency.get("version")));
+            String componentName = componentName(key);
+            return documents.readMapList(snapshot.get("extensions")).stream()
+                    .anyMatch(value -> Objects.equals(
+                                    componentName,
+                                    String.valueOf(value.get("extensionKey")))
+                            && (version == null || Objects.equals(
+                                    version, integer(value.get("version")))));
+        }
+        return false;
+    }
+
+    private String componentName(String key) {
+        if (!StringUtils.hasText(key)) {
+            return key;
+        }
+        int separator = key.lastIndexOf('@');
+        return separator > 0 ? key.substring(0, separator) : key;
+    }
+
+    private Integer componentVersion(String key, Integer fallback) {
+        if (fallback != null || !StringUtils.hasText(key)) {
+            return fallback;
+        }
+        int separator = key.lastIndexOf('@');
+        return separator > 0 ? integer(key.substring(separator + 1)) : null;
     }
 
     private boolean packageProvidesEntity(Map<String, Object> snapshot) {
@@ -1128,6 +1211,16 @@ public class ConfigMigrationPackageService {
                 .filter(StringUtils::hasText)
                 .collect(java.util.stream.Collectors.toCollection(
                         LinkedHashSet::new));
+    }
+    private Integer integer(Object value) {
+        if (value == null || !StringUtils.hasText(String.valueOf(value))) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
     private record ExpandedExport(
             List<ConfigMigrationAsset> assets,

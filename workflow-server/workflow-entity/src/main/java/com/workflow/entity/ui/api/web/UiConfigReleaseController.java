@@ -2,6 +2,10 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.SystemAudit;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.result.PageResult;
@@ -113,6 +117,12 @@ public class UiConfigReleaseController {
      * @return 新建的发布记录
      */
     @PostMapping("/entity-forms/{id}/publish")
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.PUBLISH,
+            operation = "发布表单配置",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "UI_CONFIG_RELEASE")
     public Result<UiConfigRelease> publishForm(
             @PathVariable String id,
             @RequestBody(required = false) UiConfigPublishRequest request) {
@@ -263,6 +273,12 @@ public class UiConfigReleaseController {
      * @return 新建的发布记录
      */
     @PostMapping("/entity-list-config/{id}/publish")
+    @SystemAudit(
+            module = AuditModule.ENTITY,
+            action = AuditAction.PUBLISH,
+            operation = "发布列表配置",
+            risk = AuditRiskLevel.HIGH,
+            targetType = "UI_CONFIG_RELEASE")
     public Result<UiConfigRelease> publishList(
             @PathVariable String id,
             @RequestBody(required = false) UiConfigPublishRequest request) {

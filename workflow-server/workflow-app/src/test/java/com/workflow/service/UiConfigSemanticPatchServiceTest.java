@@ -286,6 +286,33 @@ class UiConfigSemanticPatchServiceTest {
                         .get("defaultVisibleCount"));
     }
 
+    @Test
+    void includesRelatedContentInSemanticPatchAndAppliesNestedChange() {
+        Map<String, Object> source = formSnapshotNodes(List.of());
+        source.put("viewCompositions", List.of(viewComposition(
+                "project-form")));
+        Map<String, Object> target = formSnapshotNodes(List.of());
+        target.put("viewCompositions", List.of(viewComposition(
+                "project-summary")));
+
+        UiConfigSemanticPatchService.PatchAnalysis analysis =
+                service.build("FORM", source, target);
+        UiConfigSemanticPatchService.PatchApplication application =
+                service.apply(source, analysis.operations(), false);
+
+        assertEquals(UiConfigSemanticPatchService.REVIEW,
+                analysis.riskLevel());
+        assertTrue(analysis.operations().stream().anyMatch(item ->
+                "viewCompositions".equals(item.getSection())
+                        && "/config/target/contentId".equals(
+                        item.getPath())));
+        assertTrue(application.compatible());
+        assertEquals(
+                "project-summary",
+                viewCompositionTarget(application.snapshot())
+                        .get("contentId"));
+    }
+
     private Map<String, Object> formSnapshot(
             Map<String, Object> node) {
         return formSnapshot(node, null);
@@ -378,6 +405,31 @@ class UiConfigSemanticPatchServiceTest {
         snapshot.put("configType", "LIST");
         snapshot.put("list", list);
         return snapshot;
+    }
+
+    private Map<String, Object> viewComposition(String contentId) {
+        Map<String, Object> target = new LinkedHashMap<>();
+        target.put("entityId", "entity-project");
+        target.put("contentType", "FORM");
+        target.put("contentId", contentId);
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("target", target);
+        Map<String, Object> composition = new LinkedHashMap<>();
+        composition.put("id", "composition-1");
+        composition.put("compositionKey", "projectDetail");
+        composition.put("config", config);
+        return composition;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> viewCompositionTarget(
+            Map<String, Object> snapshot) {
+        Map<String, Object> composition =
+                (Map<String, Object>) ((List<?>) snapshot.get(
+                        "viewCompositions")).get(0);
+        Map<String, Object> config =
+                (Map<String, Object>) composition.get("config");
+        return (Map<String, Object>) config.get("target");
     }
 
     @SuppressWarnings("unchecked")

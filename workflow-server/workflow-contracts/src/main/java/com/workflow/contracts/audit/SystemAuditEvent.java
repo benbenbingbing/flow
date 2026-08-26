@@ -8,7 +8,10 @@ import java.util.Objects;
  */
 public record SystemAuditEvent(
         String eventId,
+        String operationId,
         String traceId,
+        String parentOperationId,
+        AuditSourcePointer sourcePointer,
         AuditModule module,
         AuditAction action,
         String operationName,
@@ -47,7 +50,10 @@ public record SystemAuditEvent(
 
     public static final class Builder {
         private String eventId;
+        private String operationId;
         private String traceId;
+        private String parentOperationId;
+        private AuditSourcePointer sourcePointer;
         private AuditModule module;
         private AuditAction action;
         private String operationName;
@@ -76,7 +82,19 @@ public record SystemAuditEvent(
         }
 
         public Builder eventId(String value) { this.eventId = value; return this; }
+        public Builder operationId(String value) { this.operationId = value; return this; }
         public Builder traceId(String value) { this.traceId = value; return this; }
+        public Builder parentOperationId(String value) { this.parentOperationId = value; return this; }
+        public Builder sourcePointer(AuditSourcePointer value) { this.sourcePointer = value; return this; }
+        public Builder operationContext(OperationContext value) {
+            if (value != null) {
+                this.operationId = value.operationId();
+                this.traceId = value.traceId();
+                this.parentOperationId = value.parentOperationId();
+                this.sourcePointer = value.sourcePointer();
+            }
+            return this;
+        }
         public Builder module(AuditModule value) { this.module = value; return this; }
         public Builder action(AuditAction value) { this.action = value; return this; }
         public Builder operationName(String value) { this.operationName = value; return this; }
@@ -103,7 +121,8 @@ public record SystemAuditEvent(
 
         public SystemAuditEvent build() {
             return new SystemAuditEvent(
-                    eventId, traceId, module, action, operationName, riskLevel, result,
+                    eventId, operationId, traceId, parentOperationId,
+                    sourcePointer, module, action, operationName, riskLevel, result,
                     required, operatorId, operatorName, operatorIp, userAgent,
                     requestMethod, requestPath, targetType, targetId, targetName,
                     summary, beforeData, afterData, changedFields, errorCode,

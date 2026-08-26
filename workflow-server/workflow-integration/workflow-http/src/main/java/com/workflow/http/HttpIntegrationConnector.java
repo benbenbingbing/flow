@@ -10,6 +10,7 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.contracts.integration.IntegrationConnector;
+import com.workflow.contracts.integration.IntegrationConnectorConfigurationSnapshot;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.integration.IntegrationRuntimeContext;
@@ -78,8 +79,7 @@ public class HttpIntegrationConnector implements IntegrationConnector {
         boolean auditGateFailed = false;
         try {
             requireRequest(request);
-            configuration = configurationProvider.findActive(
-                    request.getConnectorConfigId());
+            configuration = resolveConfiguration(request);
             HttpConnectorConfiguration.Operation operation =
                     configuration.operations().get(
                             request.getOperation());
@@ -132,6 +132,30 @@ public class HttpIntegrationConnector implements IntegrationConnector {
             }
         }
         return result;
+    }
+
+    /**
+     * 已发布的调用使用宿主快照，避免同一 connectorConfigId
+     * 后续修改导致旧宿主的请求主机、路径或映射规则漂移。
+     */
+    private HttpConnectorConfiguration resolveConfiguration(
+            IntegrationRequest request) {
+        IntegrationConnectorConfigurationSnapshot snapshot =
+                request.getConfigurationSnapshot();
+        if (snapshot == null) {
+            return configurationProvider.findActive(
+                    request.getConnectorConfigId());
+        }
+        if (!CODE.equalsIgnoreCase(snapshot.connectorCode())
+                || !request.getConnectorConfigId().equals(
+                snapshot.configurationId())) {
+            throw new IllegalArgumentException(
+                    "HTTP Connector 快照与请求不匹配");
+        }
+        return new HttpConnectorConfigurationCodec(objectMapper)
+                .readSnapshot(
+                        snapshot.configurationId(),
+                        snapshot.snapshotDocument());
     }
 
     private IntegrationResult invoke(

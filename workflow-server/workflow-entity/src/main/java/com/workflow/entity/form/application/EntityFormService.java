@@ -25,11 +25,14 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActi
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListAction;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.entity.ui.application.UiViewCompositionService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -65,6 +68,17 @@ public class EntityFormService {
     private final EntityListActionMapper listActionMapper;
     private final UiConfigReleaseMapper uiConfigReleaseMapper;
     private final JsonDocumentCodec jsonDocumentCodec;
+    private UiViewCompositionService viewCompositionService;
+
+    /**
+     * 延迟注入关联内容服务，避免表单服务、发布服务和接口服务之间形成启动期
+     * Bean 循环；仅复制完整表单设计时才会解析该依赖。
+     */
+    @Autowired
+    void setViewCompositionService(
+            @Lazy UiViewCompositionService viewCompositionService) {
+        this.viewCompositionService = viewCompositionService;
+    }
 
     /**
      * 查询所有表单列表
@@ -1026,6 +1040,9 @@ public class EntityFormService {
             newNode.setDeleted(0);
             formNodeMapper.insert(newNode);
         }
+        // 关联内容是表单设计的一部分；节点挂载必须改为副本节点 ID。
+        viewCompositionService.copyForOwner(
+                "FORM", sourceFormId, newForm.getId(), copiedIds);
         log.info("复制表单：{} -> {}", sourceForm.getFormName(), newForm.getFormName());
         // 填充详情返回
         fillFormDetails(newForm);

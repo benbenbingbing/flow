@@ -28,7 +28,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entityList.renderComponent':
     '只改变单元格如何展示，例如文本、状态标签、日期或已注册扩展组件，不改变原始字段值。',
   'uiConfig.releaseMode':
-    '普通发布遵循标准版本切换；兼容热修复会先做影响预检，并按允许范围作用于当前可发起版本和运行中实例。历史完成实例仍使用原快照。',
+    '普通发布遵循标准版本切换；兼容热修复会先做影响预检并显示风险提醒，确认后按允许范围作用于当前可发起版本和运行中实例。历史完成实例仍使用原快照。',
   'form.inputParameterSchema':
     '声明本表单作为子表单时允许父表单传入的运行参数。子表单的数据源、联动和事件通过 params.参数编码 读取；参数默认不落库，需要保存时应由父表单显式初始化到子实体字段。',
   'formNode.subFormLayout':

@@ -95,6 +95,24 @@ public final class UiDataSourceUsages {
             "FORM_BUTTON_CLICK";
 
     /**
+     * 关联内容无法用标准实体关系表达时，解析目标记录或可信列表条件。
+     *
+     * <p>该位置只允许宿主发布快照显式绑定的 READ 接口操作，不能作为
+     * 通用页面事件或实体写入入口。</p>
+     */
+    public static final String RELATED_CONTENT_RESOLVE =
+            "RELATED_CONTENT_RESOLVE";
+
+    /**
+     * 已发布关联内容显式绑定的接口动作。
+     *
+     * <p>READ 仅返回校验、计算或界面结果；WRITE 只能由受控命令计划提供者
+     * 生成实体变更计划，不能直接同步调用外部系统。</p>
+     */
+    public static final String RELATED_CONTENT_ACTION =
+            "RELATED_CONTENT_ACTION";
+
+    /**
      * 实体变更写入前的服务端内部阶段，用于执行受管理的预处理操作。
      *
      * <p>该 usage 不代表浏览器事件，运行时会按实体变更权限和作用域单独鉴权。</p>

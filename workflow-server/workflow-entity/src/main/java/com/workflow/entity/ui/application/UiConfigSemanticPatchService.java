@@ -62,7 +62,8 @@ public class UiConfigSemanticPatchService {
             "propsDocument", "rulesDocument", "legacyPropsDocument",
             "localOverridesDocument", "viewConfig", "columnConfig",
             "queryConfig", "renderConfig", "selectionConfig",
-            "fixedFilterConfig", "contextBindingConfig", "componentProps");
+            "fixedFilterConfig", "contextBindingConfig", "componentProps",
+            "configDocument");
 
     private final JsonDocumentCodec codec;
 
@@ -149,6 +150,13 @@ public class UiConfigSemanticPatchService {
                 mapList(source.get("eventBindings")),
                 mapList(target.get("eventBindings")),
                 List.of("id"),
+                operations);
+        // 关联内容随宿主一起发布、撤销和热修复，不能只比较 FORM/LIST 主配置。
+        diffCollection(
+                "viewCompositions",
+                mapList(source.get("viewCompositions")),
+                mapList(target.get("viewCompositions")),
+                List.of("id", "compositionKey"),
                 operations);
         normalizeHotfixRisk(operations);
         operations.sort(Comparator
@@ -273,6 +281,14 @@ public class UiConfigSemanticPatchService {
                     mapList(snapshot.get("eventBindings"));
             snapshot.put("eventBindings", items);
             return new CollectionLocation(items, List.of("id"));
+        }
+        if ("viewCompositions".equals(operation.getSection())) {
+            List<Map<String, Object>> items =
+                    mapList(snapshot.get("viewCompositions"));
+            snapshot.put("viewCompositions", items);
+            return new CollectionLocation(
+                    items,
+                    List.of("id", "compositionKey"));
         }
         if ("nodes".equals(operation.getSection())
                 || "legacyFields".equals(operation.getSection())) {
@@ -484,6 +500,15 @@ public class UiConfigSemanticPatchService {
                     values,
                     operation.getItemId(),
                     List.of("id"));
+        } else if ("viewCompositions".equals(
+                operation.getSection())) {
+            List<Map<String, Object>> values =
+                    mapList(snapshot.get("viewCompositions"));
+            snapshot.put("viewCompositions", values);
+            item = findItem(
+                    values,
+                    operation.getItemId(),
+                    List.of("id", "compositionKey"));
         } else if ("form".equals(operation.getSection())) {
             item = mapValue(snapshot.get("form"));
             snapshot.put("form", item);

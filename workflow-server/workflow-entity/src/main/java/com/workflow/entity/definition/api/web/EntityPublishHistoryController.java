@@ -3,6 +3,7 @@ package com.workflow.entity.definition.api.web;
 import com.workflow.core.security.AuthenticatedApi;
 
 import com.workflow.core.result.ApiResponse;
+import com.workflow.core.result.PageResult;
 import com.workflow.entity.definition.api.response.EntityPublishHistoryDTO;
 import com.workflow.entity.definition.application.EntityPublishHistoryService;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,23 @@ public class EntityPublishHistoryController {
     @GetMapping("/entity/{entityId}")
     public ApiResponse<List<EntityPublishHistoryDTO>> getVersionHistory(@PathVariable String entityId) {
         return ApiResponse.success(historyService.getVersionHistory(entityId));
+    }
+
+    /**
+     * 分页获取实体版本历史，支持前端弹窗滚动到底部后继续加载。
+     *
+     * @param entityId 实体定义 ID
+     * @param pageNum  页码，从 1 开始
+     * @param pageSize 每页条数
+     * @return 版本号倒序排列的分页结果
+     */
+    @GetMapping("/entity/{entityId}/page")
+    public ApiResponse<PageResult<EntityPublishHistoryDTO>> getVersionHistoryPage(
+            @PathVariable String entityId,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "5") Integer pageSize) {
+        return ApiResponse.success(historyService.getVersionHistoryPage(
+                entityId, pageNum, pageSize));
     }
 
     /**

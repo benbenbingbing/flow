@@ -27,6 +27,19 @@
           {{ btn.label }}
         </el-button>
       </template>
+      <RelatedContentRuntime
+        v-for="item in toolbarActionCompositions"
+        :key="item.id || item.compositionKey"
+        :composition="item"
+        owner-type="LIST"
+        :owner-id="listOwnerId"
+        :release-id="listReleaseId"
+        :release-version="listReleaseVersion"
+        :source-record-id="toolbarSourceRecordId"
+        :traversal-context-token="viewCompositionTraversalToken"
+        compact
+        @target-saved="refresh"
+      />
     </div>
     <el-table
       ref="tableRef"
@@ -39,6 +52,27 @@
       :max-height="maxHeight"
       @selection-change="handleSelectionChange"
     >
+      <el-table-column
+        v-if="rowExpandCompositions.length > 0"
+        type="expand"
+        width="48"
+        fixed="left"
+      >
+        <template #default="{ row }">
+          <RelatedContentRuntime
+            v-for="item in rowExpandCompositions"
+            :key="item.id || item.compositionKey"
+            :composition="item"
+            owner-type="LIST"
+            :owner-id="listOwnerId"
+            :release-id="listReleaseId"
+            :release-version="listReleaseVersion"
+            :source-record-id="row.id"
+            :traversal-context-token="viewCompositionTraversalToken"
+            @target-saved="refresh"
+          />
+        </template>
+      </el-table-column>
       <el-table-column
         v-if="showSelectionColumn"
         type="selection"
@@ -140,7 +174,24 @@
               {{ btn.label }}
             </el-button>
           </template>
-          <span v-if="!showVersionAction && visibleRowButtons(row).length === 0">-</span>
+          <RelatedContentRuntime
+            v-for="item in rowActionCompositions"
+            :key="item.id || item.compositionKey"
+            :composition="item"
+            owner-type="LIST"
+            :owner-id="listOwnerId"
+            :release-id="listReleaseId"
+            :release-version="listReleaseVersion"
+            :source-record-id="row.id"
+            :traversal-context-token="viewCompositionTraversalToken"
+            compact
+            @target-saved="refresh"
+          />
+          <span
+            v-if="!showVersionAction
+              && visibleRowButtons(row).length === 0
+              && rowActionCompositions.length === 0"
+          >-</span>
         </template>
       </el-table-column>
     </el-table>
@@ -180,6 +231,7 @@ import { ElMessage } from 'element-plus'
 import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import EntityListLauncher from '@/components/EntityListLauncher.vue'
+import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButtonComponentRegistry'
 import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegistry'
 import { getFieldModelPath } from '@/shared/form-runtime'
@@ -219,7 +271,23 @@ const props = defineProps<{
   showPagination?: boolean
   maxHeight?: number
   runtimeContext?: Record<string, any>
+  rowExpandCompositions?: any[]
+  rowActionCompositions?: any[]
+  toolbarActionCompositions?: any[]
+  listOwnerId?: string
+  listReleaseId?: string
+  listReleaseVersion?: number
 }>()
+
+const rowExpandCompositions = computed(() => props.rowExpandCompositions || [])
+const rowActionCompositions = computed(() => props.rowActionCompositions || [])
+const toolbarActionCompositions = computed(() => props.toolbarActionCompositions || [])
+const listOwnerId = computed(() => props.listOwnerId || '')
+const listReleaseId = computed(() => props.listReleaseId || '')
+const listReleaseVersion = computed(() => Number(props.listReleaseVersion || 0))
+const viewCompositionTraversalToken = computed(() => String(
+  props.runtimeContext?.viewCompositionTraversalToken || ''
+))
 
 const tableConfig = computed(() => props.viewConfig?.table || {})
 const paginationConfig = computed(() => props.viewConfig?.pagination || {})
@@ -427,6 +495,13 @@ const onRowActionClick = (btn: any, row: any) => {
 
 // 当前选中行（由父组件通过 selection-change 同步）
 const selectedRows = defineModel<any[]>('selectedRows', { default: () => [] })
+const toolbarSourceRecordId = computed(() => String(
+  selectedRows.value.length === 1
+    ? selectedRows.value[0]?.id || ''
+    : props.runtimeContext?.sourceRecordId
+      || props.runtimeContext?.recordId
+      || ''
+))
 const tableRef = ref<any>()
 const restoringPageSelection = ref(false)
 const entityListLauncherRef = ref<InstanceType<typeof EntityListLauncher>>()
@@ -515,7 +590,8 @@ function handleOpenListConfirm(rows: any[]) {
 }
 
 const hasVisibleRowActions = computed(() =>
-  props.showVersionAction
+  rowActionCompositions.value.length > 0
+  || props.showVersionAction
   || props.dataList.some(row => visibleRowButtons(row).length > 0)
 )
 

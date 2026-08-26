@@ -49,6 +49,23 @@ public interface EntityProcessLinkMapper {
             @Param("entityCode") String entityCode,
             @Param("entityRecordId") String entityRecordId);
 
+    /**
+     * 读取实体记录最新一代流程链接，仅用于影响预览与状态校验。
+     *
+     * <p>真正发起流程仍使用 {@link #selectLatestForUpdate(String, String)}
+     * 串行化 generation；这里不得为了只读预览长时间持有行锁。</p>
+     */
+    @Select("""
+            SELECT * FROM entity_process_link
+            WHERE entity_code = #{entityCode}
+              AND entity_record_id = #{entityRecordId}
+            ORDER BY generation DESC
+            LIMIT 1
+            """)
+    EntityProcessLink selectLatest(
+            @Param("entityCode") String entityCode,
+            @Param("entityRecordId") String entityRecordId);
+
     @Update("""
             UPDATE entity_process_link
             SET process_instance_id = #{processInstanceId},

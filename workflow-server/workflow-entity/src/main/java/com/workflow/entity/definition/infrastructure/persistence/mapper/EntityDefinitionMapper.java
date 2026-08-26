@@ -37,6 +37,22 @@ public interface EntityDefinitionMapper extends BaseMapper<EntityDefinition> {
             @Param("code") String code);
 
     /**
+     * 以共享锁读取实体定义。普通记录写可并发持有该锁，但会与实体发布的
+     * 独占锁互斥，确保关系快照在整次记录写入期间不切换。
+     */
+    @Select("SELECT " + SELECT_COLUMNS
+            + " FROM entity_definition "
+            + "WHERE entity_code = #{code} FOR SHARE")
+    Optional<EntityDefinition> findByEntityCodeForShare(
+            @Param("code") String code);
+
+    /** 发布事务按主键锁定实体定义，统一与记录写的共享锁序。 */
+    @Select("SELECT " + SELECT_COLUMNS
+            + " FROM entity_definition WHERE id = #{id} FOR UPDATE")
+    Optional<EntityDefinition> findByIdForUpdate(
+            @Param("id") String id);
+
+    /**
      * 查询所有实体及其字段
      */
     @Select("SELECT " + SELECT_COLUMNS

@@ -105,8 +105,8 @@ public class ProcessBpmnPublishSanitizer {
         result = processSkipNodeTasks(result);
         result = migrateApprovedExpressions(result);
         result = ensureFlowableNamespace(result);
-        result = resolveBpmnIdConflicts(result, processKey);
-        result = useProcessKey(result, processKey);
+        result = normalizeProcessIdentity(result, processKey);
+        result = normalizeDataObjectNames(result);
         result = removeInvalidMultiInstanceConfig(result);
         result = fixMultiInstanceAssignee(result);
         result = fixExplicitCcTasks(result);
@@ -2085,13 +2085,206 @@ public class ProcessBpmnPublishSanitizer {
                 "xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" xmlns:flowable=\"http://flowable.org/bpmn\"");
     }
 
-    private String useProcessKey(String bpmnXml, String processKey) {
-        String result = bpmnXml.replaceAll(
-                "<((?:[A-Za-z_][\\w.-]*:)?process)\\s+id=\"[^\"]+\"",
-                "<$1 id=\"" + processKey + "\"");
-        return result.replaceAll(
-                "(<bpmndi:BPMNPlane[^>]*\\s)bpmnElement=\"[^\"]+\"",
-                "$1bpmnElement=\"" + processKey + "\"");
+    /**
+     * 将平台管理的唯一可执行流程 ID 归一化为流程 Key，并同步所有直接引用。
+     *
+     * <p>协作图的 {@code BPMNPlane} 引用的是 collaboration，而不是 process，不能像旧实现一样
+     * 全局覆盖。多流程协作图也只能有一个 {@code isExecutable=true} 的主流程；其余非执行流程
+     * 仅用于表达外部参与者，必须保留各自 ID。</p>
+     *
+     * @param bpmnXml 原始 BPMN XML
+     * @param processKey 平台流程 Key，也是部署后的主流程 ID
+     * @return 引用关系一致的 BPMN XML
+     * @throws IllegalArgumentException 多流程协作图没有唯一可执行主流程、流程 Key 与其他元素 ID
+     *         冲突，或 XML 无法安全归一化时抛出
+     */
+    private String normalizeProcessIdentity(
+            String bpmnXml,
+            String processKey) {
+        try {
+            Document document = parseXml(bpmnXml);
+            List<Element> processes = elementsByLocalName(
+                    document, "process");
+            if (processes.isEmpty()) {
+                return bpmnXml;
+            }
+
+            Element executableProcess = resolveExecutableProcess(processes);
+            String previousProcessId = executableProcess.getAttribute("id");
+            if (previousProcessId.isBlank()) {
+                throw new IllegalArgumentException(
+                        "BPMN_EXECUTABLE_PROCESS_ID_MISSING: 可执行主流程缺少 ID");
+            }
+            if (processKey == null || processKey.isBlank()) {
+                throw new IllegalArgumentException(
+                        "BPMN_PROCESS_KEY_REQUIRED: 发布流程缺少 processKey");
+            }
+            if (previousProcessId.equals(processKey)) {
+                return bpmnXml;
+            }
+
+            // 自动重命名任意冲突元素无法覆盖 BPMN 的全部 QName/IDREF 语义，发布边界选择明确阻断。
+            Element conflictingElement = findElementById(
+                    document, processKey, executableProcess);
+            if (conflictingElement != null) {
+                throw new IllegalArgumentException(
+                        "BPMN_PROCESS_KEY_ID_CONFLICT: processKey 与其他 BPMN 元素 ID 冲突, element="
+                                + processKey);
+            }
+
+            executableProcess.setAttribute("id", processKey);
+            updateAttributeReferences(
+                    document,
+                    "participant",
+                    "processRef",
+                    previousProcessId,
+                    processKey);
+            updateAttributeReferences(
+                    document,
+                    null,
+                    "bpmnElement",
+                    previousProcessId,
+                    processKey);
+            return writeXml(document);
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "BPMN_PROCESS_IDENTITY_INVALID: 无法归一化流程 ID 与协作图引用: "
+                            + exception.getMessage(),
+                    exception);
+        }
+    }
+
+    /** 多流程文档必须显式且唯一地标记平台负责部署的可执行主流程。 */
+    private Element resolveExecutableProcess(List<Element> processes) {
+        if (processes.size() == 1) {
+            return processes.get(0);
+        }
+        List<Element> executableProcesses = processes.stream()
+                .filter(process -> "true".equalsIgnoreCase(
+                        process.getAttribute("isExecutable")))
+                .toList();
+        if (executableProcesses.size() != 1) {
+            throw new IllegalArgumentException(
+                    "BPMN_EXECUTABLE_PROCESS_AMBIGUOUS: 多流程协作图必须且只能包含一个 "
+                            + "isExecutable=true 的主流程");
+        }
+        return executableProcesses.get(0);
+    }
+
+    /** 查找除主流程自身外占用了目标流程 Key 的 BPMN 元素。 */
+    private Element findElementById(
+            Document document,
+            String id,
+            Element ignoredElement) {
+        NodeList elements = document.getElementsByTagName("*");
+        for (int index = 0; index < elements.getLength(); index++) {
+            Element element = (Element) elements.item(index);
+            if (element != ignoredElement
+                    && id.equals(element.getAttribute("id"))) {
+                return element;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 仅更新指向旧主流程 ID 的引用。elementLocalName 为空时检查所有元素，供 DI 引用使用。
+     */
+    private void updateAttributeReferences(
+            Document document,
+            String elementLocalName,
+            String attributeName,
+            String previousValue,
+            String nextValue) {
+        NodeList elements = document.getElementsByTagName("*");
+        for (int index = 0; index < elements.getLength(); index++) {
+            Element element = (Element) elements.item(index);
+            String localName = element.getLocalName() == null
+                    ? element.getTagName()
+                    : element.getLocalName();
+            if ((elementLocalName == null
+                    || elementLocalName.equals(localName))
+                    && previousValue.equals(
+                    element.getAttribute(attributeName))) {
+                element.setAttribute(attributeName, nextValue);
+            }
+        }
+    }
+
+    /**
+     * 补齐 Flowable 运行时要求的数据对象名称。
+     *
+     * <p>bpmn-js 将画布名称保存在 {@code dataObjectReference.name}，底层 {@code dataObject}
+     * 可能仍然无名；Flowable 会在部署校验阶段以 {@code flowable-data-object-missing-name}
+     * 拒绝。发布前优先同步引用名称，引用也无名时返回稳定阻断码，使预检与真实部署一致。</p>
+     *
+     * @param bpmnXml BPMN XML
+     * @return 已补齐底层数据对象名称的 BPMN XML
+     * @throws IllegalArgumentException 数据对象及其引用均未配置名称时抛出
+     */
+    private String normalizeDataObjectNames(String bpmnXml) {
+        try {
+            Document document = parseXml(bpmnXml);
+            List<Element> dataObjects = elementsByLocalName(
+                    document, "dataObject");
+            if (dataObjects.isEmpty()) {
+                return bpmnXml;
+            }
+            List<Element> references = elementsByLocalName(
+                    document, "dataObjectReference");
+            boolean changed = false;
+            for (Element dataObject : dataObjects) {
+                if (!dataObject.getAttribute("name").isBlank()) {
+                    continue;
+                }
+                String dataObjectId = dataObject.getAttribute("id");
+                Element firstReference = null;
+                Element namedReference = null;
+                for (Element reference : references) {
+                    if (!referencesDataObject(reference, dataObjectId)) {
+                        continue;
+                    }
+                    if (firstReference == null) {
+                        firstReference = reference;
+                    }
+                    if (!reference.getAttribute("name").isBlank()) {
+                        namedReference = reference;
+                        break;
+                    }
+                }
+                if (namedReference == null) {
+                    String elementId = firstReference == null
+                            ? dataObjectId
+                            : firstReference.getAttribute("id");
+                    throw new IllegalArgumentException(
+                            "BPMN_DATA_OBJECT_NAME_MISSING: 数据对象必须配置名称, element="
+                                    + elementId);
+                }
+                dataObject.setAttribute(
+                        "name",
+                        namedReference.getAttribute("name").trim());
+                changed = true;
+            }
+            return changed ? writeXml(document) : bpmnXml;
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "BPMN_DATA_OBJECT_INVALID: 无法校验数据对象: "
+                            + exception.getMessage(),
+                    exception);
+        }
+    }
+
+    /** 支持标准裸 ID 以及带命名空间前缀的 QName 引用。 */
+    private boolean referencesDataObject(
+            Element reference,
+            String dataObjectId) {
+        String value = reference.getAttribute("dataObjectRef");
+        return value.equals(dataObjectId)
+                || value.endsWith(":" + dataObjectId);
     }
 
     private String removeInvalidMultiInstanceConfig(String bpmnXml) {
@@ -2204,37 +2397,6 @@ public class ProcessBpmnPublishSanitizer {
         result = result.replaceAll("approved\\s*!=\\s*true\\b", "approved != 'approve'");
         // approved != false  →  approved != 'reject'
         result = result.replaceAll("approved\\s*!=\\s*false\\b", "approved != 'reject'");
-        return result;
-    }
-
-    private String resolveBpmnIdConflicts(String bpmnXml, String processKey) {
-        java.util.regex.Pattern idPattern = java.util.regex.Pattern.compile("id=\"([^\"]+)\"");
-        java.util.regex.Matcher idMatcher = idPattern.matcher(bpmnXml);
-        java.util.Set<String> allIds = new java.util.HashSet<>();
-        while (idMatcher.find()) {
-            allIds.add(idMatcher.group(1));
-        }
-
-        java.util.regex.Matcher processIdMatcher = java.util.regex.Pattern
-                .compile("<(?:(?:[A-Za-z_][\\w.-]*):)?process\\s+id=\"([^\"]+)\"")
-                .matcher(bpmnXml);
-        String currentProcessId = processIdMatcher.find() ? processIdMatcher.group(1) : null;
-        boolean hasConflict = allIds.stream().anyMatch(id -> id.equals(processKey) && !id.equals(currentProcessId));
-        if (!hasConflict) {
-            return bpmnXml;
-        }
-
-        String newId = processKey + "_" + System.currentTimeMillis();
-        while (allIds.contains(newId)) {
-            newId = processKey + "_" + System.currentTimeMillis() + "_" + (int) (Math.random() * 1000);
-        }
-
-        String result = bpmnXml;
-        result = result.replaceAll("(id=\")" + java.util.regex.Pattern.quote(processKey) + "(\")", "$1" + newId + "$2");
-        result = result.replaceAll("(sourceRef=\")" + java.util.regex.Pattern.quote(processKey) + "(\")", "$1" + newId + "$2");
-        result = result.replaceAll("(targetRef=\")" + java.util.regex.Pattern.quote(processKey) + "(\")", "$1" + newId + "$2");
-        result = result.replaceAll("(bpmnElement=\")" + java.util.regex.Pattern.quote(processKey) + "(\")", "$1" + newId + "$2");
-        result = result.replaceAll("(default=\")" + java.util.regex.Pattern.quote(processKey) + "(\")", "$1" + newId + "$2");
         return result;
     }
 

@@ -4,7 +4,8 @@ import {
   getFieldModeAccess,
   getRuntimeRegexPatternError,
   resolveRuntimeNodeFieldRules,
-  resolveTextFieldMaxLength
+  resolveTextFieldMaxLength,
+  resolveVarcharFieldLength
 } from '../config-runtime/index.js'
 
 const resolved = resolveRuntimeNodeFieldRules(
@@ -86,6 +87,21 @@ assert.equal(
   ),
   255,
   '未配置表单长度时应继续使用实体字段长度'
+)
+assert.equal(
+  resolveVarcharFieldLength({ dbType: 'varchar(128)', fieldLength: 64 }),
+  64,
+  'VARCHAR 面板默认值应优先使用实体字段保存的数据库长度'
+)
+assert.equal(
+  resolveVarcharFieldLength({ dbType: 'VARCHAR(128)' }),
+  128,
+  '缺少 fieldLength 时应可从 VARCHAR 类型声明解析长度'
+)
+assert.equal(
+  resolveVarcharFieldLength({ dbType: 'text', fieldLength: 500 }),
+  undefined,
+  '非 VARCHAR 字段不得展示数据库长度作为最大长度默认值'
 )
 
 assert.equal(getRuntimeRegexPatternError('^REQ-\\d{4}$'), '')

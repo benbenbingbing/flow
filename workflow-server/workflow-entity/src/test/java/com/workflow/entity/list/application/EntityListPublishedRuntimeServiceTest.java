@@ -33,7 +33,9 @@ class EntityListPublishedRuntimeServiceTest {
                 new EntityListPublishedRuntimeService(
                         releaseService,
                         tokenService,
-                        codec);
+                        codec,
+                        mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
+                        new ObjectMapper());
         EntityListConfig draft = new EntityListConfig();
         draft.setId("list-1");
         draft.setListName("草稿列表");
@@ -58,7 +60,11 @@ class EntityListPublishedRuntimeServiceTest {
                         "release-2",
                         2,
                         true,
-                        Map.of()));
+                        Map.of(
+                                "viewCompositions",
+                                List.of(Map.of(
+                                        "compositionKey",
+                                        "project-requirements")))));
 
         EntityListConfig result = service.resolveConfig(
                 draft,
@@ -72,6 +78,10 @@ class EntityListPublishedRuntimeServiceTest {
         assertEquals("signed-token", result.getReleaseResolutionToken());
         assertTrue(result.getPublishedSnapshot());
         assertTrue(result.getPinnedRelease());
+        assertEquals(
+                "project-requirements",
+                result.getViewCompositions().get(0)
+                        .get("compositionKey"));
     }
 
     @Test
@@ -86,7 +96,9 @@ class EntityListPublishedRuntimeServiceTest {
                 new EntityListPublishedRuntimeService(
                         releaseService,
                         tokenService,
-                        codec);
+                        codec,
+                        mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
+                        new ObjectMapper());
         EntityListConfig config = new EntityListConfig();
         config.setId("list-1");
         config.setPublishedSnapshot(true);

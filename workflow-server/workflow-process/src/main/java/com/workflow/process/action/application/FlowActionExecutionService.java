@@ -5,9 +5,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.action.api.response.FlowActionExecutionDetail;
 import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditEventIds;
 import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.AuditSourcePointer;
+import com.workflow.contracts.audit.OperationContext;
+import com.workflow.contracts.audit.OperationContextHolder;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.contracts.action.FlowActionCatalogPort;
 import com.workflow.contracts.action.FlowActionTraceFields;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
@@ -50,6 +57,7 @@ public class FlowActionExecutionService {
     private final FlowActionMapper flowActionMapper;
     private final ObjectMapper objectMapper;
     private final FlowActionCatalogPort definitionService;
+    private final SystemAuditPort auditPort;
 
     /**
      * 在主事务内创建执行记录。
@@ -101,6 +109,7 @@ public class FlowActionExecutionService {
             FlowActionTriggerEvent event,
             String idempotencyKey,
             FlowActionExecution.Status status) {
+        enrichOperationContext(event, idempotencyKey);
         FlowActionExecution execution = new FlowActionExecution();
         execution.setActionId(action.getId());
         execution.setActionName(action.getActionName());
@@ -135,7 +144,88 @@ public class FlowActionExecutionService {
                         "executionMode", valueOrEmpty(action.getExecutionMode()),
                         "failurePolicy", valueOrEmpty(action.getFailurePolicy())));
         executionMapper.insert(execution);
+        recordCreatedAudit(execution, event);
         return execution;
+    }
+
+    /**
+     * 在流程动作进入持久化队列前固化操作上下文。异步消费者只信任该服务端
+     * 写入的 payload，不从处理器参数或浏览器输入重新推导 operationId。
+     */
+    private void enrichOperationContext(
+            FlowActionTriggerEvent event,
+            String idempotencyKey) {
+        OperationContext inherited =
+                OperationContextHolder.current().orElse(null);
+        if (!StringUtils.hasText(event.getOperationId())) {
+            event.setOperationId(inherited == null
+                    ? "flow_action_" + AuditEventIds.stable(
+                            "flow-action-operation", idempotencyKey)
+                    : inherited.operationId());
+        }
+        if (!StringUtils.hasText(event.getTraceId())
+                && inherited != null) {
+            event.setTraceId(inherited.traceId());
+        }
+        if (!StringUtils.hasText(event.getParentOperationId())
+                && inherited != null
+                && !event.getOperationId().equals(
+                        inherited.operationId())) {
+            event.setParentOperationId(inherited.operationId());
+        }
+    }
+
+    /**
+     * 记录流程动作执行记录的创建事件。统一投影只保存执行记录指针和状态，
+     * 参数、结果、异常堆栈继续留在流程动作模块并走原有详情权限。
+     */
+    private void recordCreatedAudit(
+            FlowActionExecution execution,
+            FlowActionTriggerEvent event) {
+        try {
+            String sourceId = execution.getId();
+            AuditSourcePointer source = new AuditSourcePointer(
+                    "PROCESS_ACTION",
+                    "FLOW_ACTION_EXECUTION",
+                    sourceId,
+                    execution.getActionId());
+            auditPort.record(SystemAuditEvent.builder()
+                    .eventId(AuditEventIds.stable(
+                            "flow-action-created",
+                            sourceId,
+                            execution.getIdempotencyKey()))
+                    .operationContext(new OperationContext(
+                            event.getOperationId(),
+                            event.getTraceId(),
+                            event.getParentOperationId(),
+                            source))
+                    .module(AuditModule.ACTION)
+                    .action(AuditAction.CREATE)
+                    .operationName("创建流程动作执行")
+                    .riskLevel(AuditRiskLevel.MEDIUM)
+                    .result(AuditResult.SUCCESS)
+                    .operatorId(event.getOperatorId())
+                    .operatorName(event.getOperatorName())
+                    .targetType(StringUtils.hasText(
+                            execution.getProcessInstanceId())
+                            ? "PROCESS_INSTANCE"
+                            : "FLOW_ACTION_EXECUTION")
+                    .targetId(StringUtils.hasText(
+                            execution.getProcessInstanceId())
+                            ? execution.getProcessInstanceId()
+                            : sourceId)
+                    .targetName(execution.getActionName())
+                    .summary("流程动作执行已创建，状态="
+                            + execution.getStatus())
+                    .build());
+        } catch (RuntimeException exception) {
+            // 执行记录已经写入当前事务，普通统一投影故障不能改变动作调度语义。
+            log.warn(
+                    "流程动作统一审计投影失败: executionId={}, actionId={}, exceptionType={}",
+                    execution.getId(),
+                    execution.getActionId(),
+                    exception.getClass().getName());
+        }
     }
 
     /**

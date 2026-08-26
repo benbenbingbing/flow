@@ -104,6 +104,68 @@ class ProcessDefinitionPreflightServiceTest {
                 issue.message().contains("EMPTY_ASSIGNEE_POLICY_INVALID")));
     }
 
+    /** 多流程协作图的主流程歧义应转换为稳定、可定位的发布阻断码。 */
+    @Test
+    void ambiguousExecutableProcessesProduceStableBlocker() {
+        process.setBpmnXml(validXml());
+        doThrow(new IllegalArgumentException(
+                "BPMN_EXECUTABLE_PROCESS_AMBIGUOUS: 多流程协作图必须且只能包含一个主流程"))
+                .when(sanitizer)
+                .sanitize(process.getBpmnXml(), process.getProcessKey());
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.publishable());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("BPMN_EXECUTABLE_PROCESS_AMBIGUOUS")
+                        && issue.blocking()));
+    }
+
+    /** 未命名数据对象应由共享发布清洗器转换为稳定、可定位的预检阻断。 */
+    @Test
+    void unnamedDataObjectProducesStableBlocker() {
+        process.setBpmnXml(validXml());
+        doThrow(new IllegalArgumentException(
+                "BPMN_DATA_OBJECT_NAME_MISSING: 数据对象必须配置名称, "
+                        + "element=DataObjectReference_1"))
+                .when(sanitizer)
+                .sanitize(process.getBpmnXml(), process.getProcessKey());
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.publishable());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("BPMN_DATA_OBJECT_NAME_MISSING")
+                        && "DataObjectReference_1".equals(issue.elementId())
+                        && issue.blocking()));
+    }
+
+    /** 数据存储和普通任务数据关联应提示能力边界，但不能阻断合法流程发布。 */
+    @Test
+    void modelingOnlyDataComponentsProduceNonBlockingWarnings() {
+        process.setBpmnXml(modelingOnlyDataComponentsXml());
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertTrue(preview.publishable());
+        assertEquals(0, preview.blockerCount());
+        assertEquals(3, preview.warningCount());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("BPMN_DATA_STORE_MODEL_ONLY")
+                        && "DataStoreReference_1".equals(issue.elementId())
+                        && issue.message().contains("不会自动持久化")
+                        && !issue.blocking()));
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("BPMN_DATA_ASSOCIATION_MODEL_ONLY")
+                        && "DataInputAssociation_1".equals(issue.elementId())
+                        && issue.message().contains("不会自动映射流程变量")
+                        && !issue.blocking()));
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("BPMN_DATA_ASSOCIATION_MODEL_ONLY")
+                        && "DataOutputAssociation_1".equals(issue.elementId())
+                        && !issue.blocking()));
+    }
+
     /** 验证无办理人和无默认分支都定位为阻断问题。 */
     @Test
     void invalidGatewayAndAssignmentAreBlocking() {
@@ -155,6 +217,53 @@ class ProcessDefinitionPreflightServiceTest {
                     <bpmn:sequenceFlow id="Flow4" sourceRef="Decision" targetRef="Rejected">
                       <bpmn:conditionExpression>${approved == false}</bpmn:conditionExpression>
                     </bpmn:sequenceFlow>
+                  </bpmn:process>
+                </bpmn:definitions>
+                """;
+    }
+
+    private String modelingOnlyDataComponentsXml() {
+        return """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                                  xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn:dataStore id="DataStore_1" name="共享业务数据"/>
+                  <bpmn:process id="expense_flow" isExecutable="true">
+                    <bpmn:dataStoreReference id="DataStoreReference_1"
+                                             name="共享业务数据存储"
+                                             dataStoreRef="DataStore_1"/>
+                    <bpmn:dataObject id="DataObject_Input" name="输入数据"/>
+                    <bpmn:dataObjectReference id="DataObjectReference_Input"
+                                              name="输入数据"
+                                              dataObjectRef="DataObject_Input"/>
+                    <bpmn:dataObject id="DataObject_Output" name="输出数据"/>
+                    <bpmn:dataObjectReference id="DataObjectReference_Output"
+                                              name="输出数据"
+                                              dataObjectRef="DataObject_Output"/>
+                    <bpmn:startEvent id="Start"/>
+                    <bpmn:serviceTask id="MappedTask">
+                      <bpmn:ioSpecification>
+                        <bpmn:dataInput id="DataInput_1" name="input"/>
+                        <bpmn:dataOutput id="DataOutput_1" name="output"/>
+                        <bpmn:inputSet id="InputSet_1">
+                          <bpmn:dataInputRefs>DataInput_1</bpmn:dataInputRefs>
+                        </bpmn:inputSet>
+                        <bpmn:outputSet id="OutputSet_1">
+                          <bpmn:dataOutputRefs>DataOutput_1</bpmn:dataOutputRefs>
+                        </bpmn:outputSet>
+                      </bpmn:ioSpecification>
+                      <bpmn:dataInputAssociation id="DataInputAssociation_1">
+                        <bpmn:sourceRef>DataObjectReference_Input</bpmn:sourceRef>
+                        <bpmn:targetRef>DataInput_1</bpmn:targetRef>
+                      </bpmn:dataInputAssociation>
+                      <bpmn:dataOutputAssociation id="DataOutputAssociation_1">
+                        <bpmn:sourceRef>DataOutput_1</bpmn:sourceRef>
+                        <bpmn:targetRef>DataObjectReference_Output</bpmn:targetRef>
+                      </bpmn:dataOutputAssociation>
+                    </bpmn:serviceTask>
+                    <bpmn:endEvent id="End"/>
+                    <bpmn:sequenceFlow id="Flow1" sourceRef="Start" targetRef="MappedTask"/>
+                    <bpmn:sequenceFlow id="Flow2" sourceRef="MappedTask" targetRef="End"/>
                   </bpmn:process>
                 </bpmn:definitions>
                 """;

@@ -15,20 +15,6 @@
             <el-descriptions-item label="热修复状态">
               {{ row.rolloutStatus || '-' }}
             </el-descriptions-item>
-            <template v-if="hotfixForRelease(row.id)">
-              <el-descriptions-item label="治理状态">
-                {{ requestStatusLabel(hotfixForRelease(row.id).status) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="关联工单">
-                {{ hotfixForRelease(row.id).ticketRef || '-' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="观察状态">
-                {{ hotfixForRelease(row.id).observationStatus || '-' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="独立复核人">
-                {{ hotfixForRelease(row.id).reviewerName || hotfixForRelease(row.id).reviewerId || '-' }}
-              </el-descriptions-item>
-            </template>
           </el-descriptions>
         </template>
       </el-table-column>
@@ -100,17 +86,11 @@
       append-to-body
     >
       <el-descriptions v-if="observationDetail" :column="2" border>
-        <el-descriptions-item label="治理状态">
+        <el-descriptions-item label="热修复状态">
           {{ requestStatusLabel(observationDetail.status) }}
         </el-descriptions-item>
         <el-descriptions-item label="观察状态">
           {{ observationDetail.observationStatus || '-' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="变更原因">
-          {{ observationDetail.reason }}
-        </el-descriptions-item>
-        <el-descriptions-item label="关联工单">
-          {{ observationDetail.ticketRef }}
         </el-descriptions-item>
       </el-descriptions>
       <el-table

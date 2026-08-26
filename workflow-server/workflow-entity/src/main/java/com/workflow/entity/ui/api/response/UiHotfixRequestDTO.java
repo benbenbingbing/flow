@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** UI HOTFIX 申请、复核、发布和观察状态。 */
+/** UI HOTFIX 发布审计、观察和回滚状态。 */
 @Data
 public class UiHotfixRequestDTO {
 
@@ -25,12 +25,7 @@ public class UiHotfixRequestDTO {
     private String applicantName;
     private LocalDateTime windowStart;
     private LocalDateTime windowEnd;
-    private Boolean reviewRequired;
     private String status;
-    private String reviewerId;
-    private String reviewerName;
-    private String reviewComment;
-    private LocalDateTime reviewedAt;
     private String releaseId;
     private LocalDateTime publishedAt;
     private LocalDateTime observationStart;

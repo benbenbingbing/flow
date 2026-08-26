@@ -14,6 +14,7 @@ import com.workflow.entity.ui.application.UiConfigSemanticPatchService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
+import com.workflow.entity.ui.application.UiViewCompositionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -24,6 +25,10 @@ import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.audit.OperationContext;
+import com.workflow.contracts.audit.OperationContextHolder;
+import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
@@ -40,6 +45,8 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplate;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigReleaseAudit;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -86,6 +93,237 @@ import static org.mockito.Mockito.when;
  * 发布激活时的完整性校验、节点结构校验、跨表单嵌套校验、模板兼容性校验等场景。
  */
 class UiConfigReleaseServiceTest {
+
+    @Test
+    void standardPublishPreviewValidatesEveryViewCompositionDependency() {
+        TestContext context = context();
+        EntityForm draft = form();
+        draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1"))
+                .thenReturn(draft);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(null);
+
+        UiConfigPublishRequest request = new UiConfigPublishRequest();
+        request.setReleaseMode(UiConfigReleaseService.STANDARD);
+        context.service().publishPreview(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                request);
+
+        verify(context.viewCompositionService())
+                .validateReleaseSnapshot(
+                        org.mockito.ArgumentMatchers.eq(
+                                UiConfigReleaseService.FORM),
+                        org.mockito.ArgumentMatchers.eq("form-1"),
+                        any());
+    }
+
+    @Test
+    void standardPublishPreviewExplainsPinnedRelatedContentDependencies() {
+        TestContext context = context();
+        UiDataSourceDefinition serviceDefinition =
+                new UiDataSourceDefinition();
+        serviceDefinition.setId("service-1");
+        serviceDefinition.setEnabled(true);
+        serviceDefinition.setDeleted(0);
+        serviceDefinition.setScopeType("GLOBAL");
+        serviceDefinition.setOperationsDocument("""
+                [{"code":"query","contextType":"FORM","kind":"READ"}]
+                """);
+        when(context.dataSourceDefinitionMapper().selectById("service-1"))
+                .thenReturn(serviceDefinition);
+        EntityForm draft = form();
+        draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1"))
+                .thenReturn(draft);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(null);
+        when(context.viewCompositionService().snapshot(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(List.of(Map.of(
+                        "id", "composition-1",
+                        "compositionKey", "projectRequirements",
+                        "anchorType", "OWNER",
+                        "anchorKey", "",
+                        "orderKey", 1000L,
+                        "config", Map.of(
+                                "name", "项目需求",
+                                "source", Map.of(
+                                        "entityId", "entity-project",
+                                        "entityCode", "project",
+                                        "entityName", "项目"),
+                                "target", Map.of(
+                                        "entityId", "entity-requirement",
+                                        "entityCode", "requirement",
+                                        "entityName", "需求",
+                                        "contentType", "LIST",
+                                        "contentId", "list-target",
+                                        "contentKey", "requirement-list",
+                                        "contentName", "需求列表",
+                                        "releaseId", "release-list-7",
+                                        "releaseVersion", 7),
+                                "entitySnapshots", Map.of(
+                                        "source", Map.of(
+                                                "historyId", "entity-history-project-4",
+                                                "entityId", "entity-project",
+                                                "entityCode", "project",
+                                                "version", 4,
+                                                "schemaHash", "a".repeat(64)),
+                                        "target", Map.of(
+                                                "historyId", "entity-history-requirement-6",
+                                                "entityId", "entity-requirement",
+                                                "entityCode", "requirement",
+                                                "version", 6,
+                                                "schemaHash", "b".repeat(64))),
+                                "specialHandling", Map.of(
+                                        "interfaceService", Map.of(
+                                                "serviceId", "service-1",
+                                                "serviceName", "需求聚合服务",
+                                                "sourceCode", "REQ_AGG",
+                                                "operationCode", "query",
+                                                "serviceRevision", 3),
+                                        "customComponent", Map.of(
+                                                "name", "requirement-board",
+                                                "displayName", "需求看板",
+                                                "version", 2))))));
+
+        UiConfigPublishRequest request = new UiConfigPublishRequest();
+        request.setReleaseMode(UiConfigReleaseService.STANDARD);
+        UiConfigPublishPreviewDTO preview = context.service().publishPreview(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                request);
+
+        assertEquals(5, preview.getDependencies().size());
+        assertTrue(preview.getDependencies().stream().anyMatch(item ->
+                "ENTITY_SCHEMA".equals(item.get("type"))
+                        && "project".equals(item.get("key"))
+                        && Integer.valueOf(4).equals(item.get("version"))));
+        assertTrue(preview.getDependencies().stream().anyMatch(item ->
+                "ENTITY_SCHEMA".equals(item.get("type"))
+                        && "requirement".equals(item.get("key"))
+                        && Integer.valueOf(6).equals(item.get("version"))));
+        assertTrue(preview.getDependencies().stream().anyMatch(item ->
+                "LIST".equals(item.get("type"))
+                        && Integer.valueOf(7).equals(item.get("version"))));
+        assertTrue(preview.getDependencies().stream().anyMatch(item ->
+                "INTERFACE_SERVICE".equals(item.get("type"))
+                        && Integer.valueOf(3).equals(item.get("version"))));
+        assertTrue(preview.getDependencies().stream().anyMatch(item ->
+                "CUSTOM_COMPONENT".equals(item.get("type"))
+                        && Integer.valueOf(2).equals(item.get("version"))));
+    }
+
+    @Test
+    void activationValidatesViewCompositionsBeforeSwitchingActiveRelease() {
+        TestContext context = context();
+        UiConfigRelease target = release(
+                context.codec(),
+                "release-target",
+                formSnapshot(List.of()));
+        when(context.releaseMapper().selectById("release-target"))
+                .thenReturn(target);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(null);
+        when(context.releaseMapper().update(any(), any()))
+                .thenReturn(1);
+
+        context.service().activate(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                "release-target");
+
+        verify(context.viewCompositionService())
+                .validateReleaseSnapshot(
+                        org.mockito.ArgumentMatchers.eq(
+                                UiConfigReleaseService.FORM),
+                        org.mockito.ArgumentMatchers.eq("form-1"),
+                        any());
+    }
+
+    @Test
+    void invalidViewCompositionStopsActivationBeforeAnyReleaseStateChange() {
+        TestContext context = context();
+        UiConfigRelease target = release(
+                context.codec(),
+                "release-invalid-composition",
+                formSnapshot(List.of()));
+        when(context.releaseMapper().selectById(
+                "release-invalid-composition"))
+                .thenReturn(target);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(null);
+        org.mockito.Mockito.doThrow(new IllegalArgumentException(
+                        "关联内容“project_requirements”挂载的表单节点不存在"))
+                .when(context.viewCompositionService())
+                .validateReleaseSnapshot(
+                        org.mockito.ArgumentMatchers.eq(
+                                UiConfigReleaseService.FORM),
+                        org.mockito.ArgumentMatchers.eq("form-1"),
+                        any());
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> context.service().activate(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        "release-invalid-composition"));
+
+        assertTrue(failure.getMessage().contains("挂载的表单节点不存在"));
+        verify(context.releaseMapper(), never()).update(any(), any());
+    }
+
+    @Test
+    void hotfixEffectiveSnapshotUsesTheSameViewCompositionValidation() {
+        TestContext context = context();
+        Map<String, Object> effective = formSnapshot(List.of());
+
+        ReflectionTestUtils.invokeMethod(
+                context.service(),
+                "validatedEffectiveSnapshot",
+                UiConfigReleaseService.FORM,
+                "form-1",
+                effective);
+
+        verify(context.viewCompositionService())
+                .validateReleaseSnapshot(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        effective);
+    }
+
+    @Test
+    void missingViewCompositionServiceFailsSnapshotAndRestoreClosed() {
+        TestContext context = context();
+        when(context.formService().getById("form-1"))
+                .thenReturn(form());
+        ReflectionTestUtils.setField(
+                context.service(),
+                "viewCompositionService",
+                null);
+
+        IllegalStateException snapshotFailure = assertThrows(
+                IllegalStateException.class,
+                () -> context.service().draftSnapshot(
+                        UiConfigReleaseService.FORM,
+                        "form-1"));
+        IllegalStateException restoreFailure = assertThrows(
+                IllegalStateException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(),
+                        "restoreViewCompositions",
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        List.of()));
+
+        assertTrue(snapshotFailure.getMessage().contains("关联内容服务未装配"));
+        assertTrue(restoreFailure.getMessage().contains("关联内容服务未装配"));
+    }
 
     @Test
     void formDiscardDraftRestoresActiveSnapshotAndAlignsHash() {
@@ -630,6 +868,7 @@ class UiConfigReleaseServiceTest {
                 codec,
                 objectMapper,
                 mock(MigrationAssetHandler.class));
+        attachViewCompositionService(service);
 
         Map<String, Object> legacySnapshot = objectMapper.convertValue(
                 service.draftSnapshot(UiConfigReleaseService.FORM, "form-1"),
@@ -1130,6 +1369,7 @@ class UiConfigReleaseServiceTest {
                 codec,
                 objectMapper,
                 mock(MigrationAssetHandler.class));
+        attachViewCompositionService(service);
 
         UiConfigDiffDTO diff = service.diff(
                 UiConfigReleaseService.LIST, "list-1");
@@ -1734,12 +1974,18 @@ class UiConfigReleaseServiceTest {
 
     /**
      * 测试激活时模板类型与节点类型不兼容被拒绝：
-     * 验证抛出 IllegalArgumentException 且消息包含"与节点类型 FIELD 不兼容"。
+     * 验证错误消息包含可在表单设计器中直接定位节点与模板的完整信息。
      */
     @Test
     void rejectsActivationWhenTemplateTypeIsIncompatible() {
         TestContext context = context();
         Map<String, Object> field = node("field", null, "FIELD");
+        field.put("bindingRef", "customerName");
+        field.put(
+                "propsDocument",
+                """
+                {"fieldCode":"customerName","fieldName":"客户名称","label":"客户名称","fieldType":"STRING","componentType":"input"}
+                """);
         field.put("templateId", "subform-template");
         field.put("templateVersion", 1);
         UiConfigRelease release = release(
@@ -1748,6 +1994,8 @@ class UiConfigReleaseServiceTest {
                 formSnapshot(List.of(field)));
         UiComponentTemplate template = new UiComponentTemplate();
         template.setId("subform-template");
+        template.setTemplateKey("CUSTOMER_SUB_FORM");
+        template.setTemplateName("客户子表单模板");
         template.setTemplateType("SUB_FORM");
         template.setStatus("ACTIVE");
         template.setDeleted(0);
@@ -1759,7 +2007,13 @@ class UiConfigReleaseServiceTest {
                 IllegalArgumentException.class,
                 () -> context.service().activate("FORM", "form-1", "release-1"));
 
-        assertTrue(exception.getMessage().contains("与节点类型 FIELD 不兼容"));
+        assertTrue(exception.getMessage().contains("表单节点“客户名称”"));
+        assertTrue(exception.getMessage().contains("编码: customerName"));
+        assertTrue(exception.getMessage().contains("节点类型: FIELD"));
+        assertTrue(exception.getMessage().contains("节点ID: field"));
+        assertTrue(exception.getMessage().contains("组件模板“客户子表单模板”"));
+        assertTrue(exception.getMessage().contains("模板类型: SUB_FORM"));
+        assertTrue(exception.getMessage().contains("“锁定模板”"));
     }
 
     /**
@@ -2141,6 +2395,53 @@ class UiConfigReleaseServiceTest {
                 exception.getErrorCode());
     }
 
+    @Test
+    void projectsUiReleaseAuditWithNativeSourcePointer() {
+        TestContext context = context();
+        SystemAuditPort auditPort = mock(SystemAuditPort.class);
+        ReflectionTestUtils.setField(
+                context.service(), "auditPort", auditPort);
+
+        UiConfigReleaseAudit nativeAudit = new UiConfigReleaseAudit();
+        nativeAudit.setId("ui-audit-1");
+        nativeAudit.setConfigType("FORM");
+        nativeAudit.setConfigId("form-1");
+        nativeAudit.setReleaseId("release-7");
+        nativeAudit.setOperation("PUBLISH_STANDARD");
+        nativeAudit.setRiskLevel("REVIEW");
+        nativeAudit.setActorId("user-1");
+        nativeAudit.setActorName("测试用户");
+        nativeAudit.setTraceId("native-trace");
+
+        try (OperationContextHolder.Scope ignored =
+                     OperationContextHolder.open(
+                             OperationContext.root(
+                                     "operation-1", "http-trace-1"))) {
+            ReflectionTestUtils.invokeMethod(
+                    context.service(),
+                    "recordUnifiedReleaseAudit",
+                    nativeAudit);
+        }
+
+        ArgumentCaptor<SystemAuditEvent> captor =
+                ArgumentCaptor.forClass(SystemAuditEvent.class);
+        verify(auditPort).record(captor.capture());
+        SystemAuditEvent event = captor.getValue();
+        assertEquals("operation-1", event.operationId());
+        assertEquals("http-trace-1", event.traceId());
+        assertEquals("UI_CONFIG_RELEASE", event.targetType());
+        assertEquals("release-7", event.targetId());
+        assertEquals("UI_CONFIG_RELEASE_AUDIT",
+                event.sourcePointer().sourceType());
+        assertEquals("ui-audit-1",
+                event.sourcePointer().sourceId());
+        assertEquals("ui-audit-1",
+                event.sourcePointer().sourceEventId());
+        assertEquals("HIGH", event.riskLevel().name());
+        assertNull(event.beforeData());
+        assertNull(event.afterData());
+    }
+
     private UiHotfixProcessTarget processTarget(
             String pinnedReleaseId,
             Integer pinnedReleaseVersion) {
@@ -2196,6 +2497,8 @@ class UiConfigReleaseServiceTest {
                 mock(UiHotfixProcessImpactPort.class);
         UiEventBindingMapper eventBindingMapper =
                 mock(UiEventBindingMapper.class);
+        UiDataSourceDefinitionMapper dataSourceDefinitionMapper =
+                mock(UiDataSourceDefinitionMapper.class);
         UiReleaseResolutionTokenService resolutionTokenService =
                 mock(UiReleaseResolutionTokenService.class);
         when(formMapper.selectByIdForUpdate("form-1"))
@@ -2207,11 +2510,11 @@ class UiConfigReleaseServiceTest {
                 hotfixTargetMapper,
                 mock(UiConfigReleaseAuditMapper.class),
                 new UiConfigDataSourceReferenceValidator(
-                        mock(UiDataSourceDefinitionMapper.class),
+                        dataSourceDefinitionMapper,
                         codec),
                 new UiEventBindingSnapshotService(
                         eventBindingMapper,
-                        mock(UiDataSourceDefinitionMapper.class),
+                        dataSourceDefinitionMapper,
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 templateMapper,
@@ -2233,11 +2536,12 @@ class UiConfigReleaseServiceTest {
                 codec,
                 objectMapper,
                 mock(MigrationAssetHandler.class));
+        UiViewCompositionService viewCompositionService =
+                attachViewCompositionService(service);
         UiHotfixGovernanceService governanceService =
                 mock(UiHotfixGovernanceService.class);
-        when(governanceService.beginPublish(any(), any()))
-                .thenReturn(new UiHotfixGovernanceService.PublishAuthorization(
-                        "hotfix-request-1", null, false));
+        when(governanceService.beginDirectPublish(any(), any()))
+                .thenReturn("hotfix-request-1");
         ReflectionTestUtils.setField(
                 service,
                 "hotfixGovernanceService",
@@ -2265,8 +2569,34 @@ class UiConfigReleaseServiceTest {
                 entityDefinitionMapper,
                 processImpactPort,
                 eventBindingMapper,
+                dataSourceDefinitionMapper,
                 resolutionTokenService,
+                viewCompositionService,
                 codec);
+    }
+
+    /**
+     * 显式装配发布生命周期所需的关联内容服务。测试默认没有关联内容，因此
+     * snapshot 返回空数组；依赖重钉定保持输入，避免用缺失依赖掩盖生产故障。
+     */
+    private UiViewCompositionService attachViewCompositionService(
+            UiConfigReleaseService service) {
+        UiViewCompositionService viewCompositionService =
+                mock(UiViewCompositionService.class);
+        when(viewCompositionService.snapshot(any(), any()))
+                .thenReturn(List.of());
+        when(viewCompositionService
+                .normalizeSnapshotForCurrentDependencies(any()))
+                .thenAnswer(invocation -> {
+                    List<Map<String, Object>> items =
+                            invocation.getArgument(0);
+                    return items == null ? List.of() : List.copyOf(items);
+                });
+        ReflectionTestUtils.setField(
+                service,
+                "viewCompositionService",
+                viewCompositionService);
+        return viewCompositionService;
     }
 
     private Map<String, Object> eventBindingSnapshot(
@@ -2546,7 +2876,9 @@ class UiConfigReleaseServiceTest {
             EntityDefinitionMapper entityDefinitionMapper,
             UiHotfixProcessImpactPort processImpactPort,
             UiEventBindingMapper eventBindingMapper,
+            UiDataSourceDefinitionMapper dataSourceDefinitionMapper,
             UiReleaseResolutionTokenService resolutionTokenService,
+            UiViewCompositionService viewCompositionService,
             JsonDocumentCodec codec) {
     }
 

@@ -259,15 +259,6 @@ const routes = [
         }
       },
       {
-        path: '/system/entity-scope-inventory',
-        name: 'EntityListScopeInventory',
-        component: () => import('@/views/system/EntityListScopeInventory.vue'),
-        meta: {
-          title: '数据范围盘点',
-          requiredPermissions: ['entity:list-scope:inventory']
-        }
-      },
-      {
         path: '/system/entity-mutation-policies',
         name: 'EntityMutationPolicyManagement',
         component: () => import('@/views/system/EntityMutationPolicyManagement.vue'),
@@ -303,24 +294,6 @@ const routes = [
           title: '空办理人事件',
           requiredPermissions: ['process:assignee-incident:list']
         }
-      },
-      {
-        path: '/system/platform-capabilities',
-        name: 'PlatformCapabilityCenter',
-        component: () => import('@/views/system/PlatformCapabilityCenter.vue'),
-        meta: { title: '平台能力中心', requiresAuth: true }
-      },
-  {
-    path: '/system/config-intelligence',
-    name: 'ConfigurationIntelligence',
-    component: () => import('@/views/system/ConfigurationIntelligence.vue'),
-    meta: { title: '配置智能中心', requiresAuth: true }
-  },
-  {
-    path: '/system/config-test-center',
-        name: 'ConfigTestCenter',
-        component: () => import('@/views/system/ConfigTestCenter.vue'),
-        meta: { title: '配置测试中心', requiresAuth: true }
       },
       {
         path: '/system/dev-guide',

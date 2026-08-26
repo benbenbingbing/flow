@@ -29,9 +29,16 @@ public class EntityAggregateWriter {
     private final EntityDataMutationService mutationService;
     private final DynamicTableService dynamicTableService;
     private final EntityDataDynamicMapper dynamicMapper;
+    private final EntityRelationRuntimeService relationRuntimeService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 以统一顺序锁定聚合根：先取得可能存在的自关联定义守卫，再锁业务记录。
+     * 递归关系写入复用同一守卫，因此不会出现“业务行等待守卫”和“守卫等待
+     * 业务行”的反向锁序。
+     */
     public void lock(String entityCode, String recordId) {
+        relationRuntimeService.lockSelfRelationGuard(entityCode);
         Map<String, Object> value =
                 dynamicMapper.selectByIdForUpdate(
                         dynamicTableService.getTableName(

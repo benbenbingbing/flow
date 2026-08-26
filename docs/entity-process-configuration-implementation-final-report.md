@@ -25,7 +25,7 @@
 
 - 流程草稿使用 revision/hash/CAS，阻止多人或多标签页静默覆盖。
 - 实体列表数据范围使用安全默认值，未明确授权时不自动放大可见数据。
-- 表单 HOTFIX 引入风险治理、独立复核和审计，禁止申请人自审绕过。
+- 表单 HOTFIX 在发布前展示风险和影响范围，确认后直接发布，并保留发布审计、运行观察与受控回滚。
 - 实体结构变更通过受控状态机执行，支持预览、风险评估、唯一值冲突检查、失败状态和安全重试。
 - 配置引用进入发布影响分析，硬依赖缺失可阻断高风险发布。
 
@@ -180,7 +180,7 @@ JSON 顺序不稳定的既有断言已改为 Jackson 树语义比较，`UiConfig
 | `V049__entity_list_scope_secure_defaults.sql` | 列表数据范围安全默认值 |
 | `V050__entity_schema_operation_and_unique_value.sql` | 实体结构状态机与唯一值治理 |
 | `V051__ui_hotfix_governance.sql` | UI HOTFIX 治理 |
-| `V052__entity_list_scope_inventory.sql` | 存量数据范围盘点 |
+| `V052__entity_list_scope_inventory.sql` | 历史存量数据范围盘点（功能已由 V062 前向移除） |
 | `V053__release_candidate_orchestration.sql` | 发布候选编排 |
 | `V054__empty_assignee_policy_incident.sql` | 空办理人策略和 incident |
 | `V056__unified_config_test_center.sql` | 统一配置测试中心 |
@@ -188,6 +188,7 @@ JSON 顺序不稳定的既有断言已改为 Jackson 树语义比较，`UiConfig
 | `V058__list_experience_and_config_references.sql` | 原始列表体验、索引建议和配置引用（已执行，不可变） |
 | `V059__configuration_collaboration_and_instance_migration.sql` | 配置协作和实例迁移 |
 | `V060__remove_list_saved_view_feature.sql` | 前向撤除列表保存视图表和权限 |
+| `V062__remove_entity_list_scope_inventory.sql` | 前向撤除数据范围盘点页面、清单表和专属权限 |
 
 V055 属于已有独立迁移，本计划未修改。统一配置测试中心严格使用 V056，没有改用其他版本。
 

@@ -67,6 +67,30 @@ public class DataPermissionEngine {
     }
 
     /**
+     * 计算指定列表权限，并结构化标识当前用户是否实际命中显式 ALLOW 绑定。
+     *
+     * <p>关系图等高风险内部入口不能把 legacy OBSERVE、未绑定默认策略、
+     * 委托范围或仅命中 DENY 误认为显式授权，因此不能只检查最终 SQL 或说明
+     * 文案。普通列表查询继续使用 {@link #calculatePermission}。</p>
+     *
+     * @param entityCode 实体编码
+     * @param listKey    服务端固定的列表或内部入口键
+     * @param user       已认证用户
+     * @return 最终权限和显式 ALLOW 命中标识
+     */
+    public ExplicitListPermission calculateExplicitListPermission(
+            String entityCode,
+            String listKey,
+            SysUser user) {
+        CalculationResult calculation = calculate(entityCode, listKey, user);
+        boolean explicitAllow = calculation.matchedRules().stream()
+                .anyMatch(rule -> rule != null
+                        && !"DENY".equalsIgnoreCase(rule.getRuleEffect()));
+        return new ExplicitListPermission(
+                calculation.result(), explicitAllow);
+    }
+
+    /**
      * 预览数据权限计算详情，包含匹配到的规则、SQL 条件和说明。
      *
      * @param entityCode 实体编码
@@ -510,6 +534,12 @@ public class DataPermissionEngine {
     private record CalculationResult(
             DataPermissionResult result,
             List<PermissionPreviewDTO.MatchedRuleDTO> matchedRules) {
+    }
+
+    /** 高风险只读入口使用的结构化列表权限证据。 */
+    public record ExplicitListPermission(
+            DataPermissionResult permission,
+            boolean explicitAllowMatched) {
     }
 
     /** 未绑定规则决策结果；sql 为空表示拒绝全部。 */

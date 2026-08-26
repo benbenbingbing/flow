@@ -6,6 +6,7 @@ import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
+import com.workflow.entity.ui.application.UiViewCompositionActionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
@@ -70,7 +71,8 @@ public class EntityDataActionService {
             "listReleaseResolutionToken",
             "formReleaseId",
             "formReleaseVersion",
-            "formReleaseResolutionToken");
+            "formReleaseResolutionToken",
+            "viewCompositionActionContextToken");
     private static final Set<String> LIST_RELEASE_CONTEXT_FIELDS = Set.of(
             "listReleaseId",
             "listReleaseVersion",
@@ -92,6 +94,7 @@ public class EntityDataActionService {
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFormMapper formMapper;
     private final ObjectMapper objectMapper;
+    private final UiViewCompositionActionService viewCompositionActionService;
 
     /**
      * 查询实体数据详情，前置校验列表查看按钮权限。
@@ -299,10 +302,33 @@ public class EntityDataActionService {
             throw new IllegalArgumentException("实体编码不能为空");
         }
         requireDynamicRuntime(dto.getEntityCode());
-        EntityListConfig config = resolveListConfig(
-                dto.getEntityCode(),
-                dto.getListKey(),
-                releaseContext);
+        boolean compositionSubmission = StringUtils.hasText(
+                dto.getViewCompositionActionContextToken());
+        EntityListConfig config = compositionSubmission
+                ? null
+                : resolveListConfig(
+                        dto.getEntityCode(),
+                        dto.getListKey(),
+                        releaseContext);
+        if (compositionSubmission) {
+            Map<String, Object> trustedInitialValues =
+                    viewCompositionActionService.authorizeFormSubmission(
+                            dto.getViewCompositionActionContextToken(),
+                            "CREATE",
+                            dto.getEntityCode(),
+                            null,
+                            dto.getFormId(),
+                            dto.getFormReleaseId(),
+                            dto.getFormReleaseVersion(),
+                            dto.getFormReleaseResolutionToken());
+            // 发布映射生成的初值属于服务端约束。即使浏览器提交了同名字段，
+            // 也必须以锁后重新读取来源记录得到的值为准。
+            Map<String, Object> safeData = new LinkedHashMap<>(
+                    dto.getData() == null ? Map.of() : dto.getData());
+            safeData.putAll(trustedInitialValues);
+            dto.setData(safeData);
+            dto.setListKey(null);
+        }
         capabilityService.requireToolbarActionForConfig(
                 dto.getEntityCode(),
                 config,
@@ -415,10 +441,28 @@ public class EntityDataActionService {
             Map<String, Object> formData,
             EntityListReleaseContext releaseContext) {
         requireDynamicRuntime(entityCode);
-        EntityListConfig config = resolveListConfig(
-                entityCode,
-                listKey,
-                releaseContext);
+        String compositionToken = text(formData == null
+                ? null : formData.get(
+                        "viewCompositionActionContextToken"));
+        boolean compositionSubmission = StringUtils.hasText(compositionToken);
+        String effectiveListKey = compositionSubmission ? null : listKey;
+        EntityListConfig config = compositionSubmission
+                ? null
+                : resolveListConfig(
+                        entityCode,
+                        effectiveListKey,
+                        releaseContext);
+        if (compositionSubmission) {
+            viewCompositionActionService.authorizeFormSubmission(
+                    compositionToken,
+                    "EDIT",
+                    entityCode,
+                    id,
+                    text(formData.get("formId")),
+                    text(formData.get("formReleaseId")),
+                    nullableInteger(formData.get("formReleaseVersion")),
+                    text(formData.get("formReleaseResolutionToken")));
+        }
         capabilityService.requireStandardPermission(
                 entityCode,
                 EntityPermissionAction.UPDATE);
@@ -450,7 +494,7 @@ public class EntityDataActionService {
                 UiDataSourceUsages.DATA_UPDATE,
                 origin,
                 entityCode,
-                listKey,
+                effectiveListKey,
                 id,
                 updateInput(formData));
         event.setServerIdempotencyKey(

@@ -23,6 +23,29 @@
         compact
         @retry="loadDataList"
       />
+      <el-alert
+        v-if="pageSectionCompositions.length && !listSourceRecordId"
+        title="请选择一条列表记录"
+        description="选中左侧复选框后，下方关联内容会按该记录加载；切换选择会自动刷新。"
+        type="info"
+        :closable="false"
+        show-icon
+        class="master-detail-hint"
+      />
+      <template v-else>
+        <RelatedContentRuntime
+          v-for="item in pageSectionCompositions"
+          :key="item.id || item.compositionKey"
+          :composition="item"
+          owner-type="LIST"
+          :owner-id="listConfig.id"
+          :release-id="listConfig.releaseId"
+          :release-version="listConfig.publishedVersion"
+          :source-record-id="listSourceRecordId"
+          :traversal-context-token="viewCompositionTraversalToken"
+          @target-saved="loadDataList"
+        />
+      </template>
       <component
         v-if="!dataError && customListComponent && hasCustomListComponent(customListComponent)"
         :is="getCustomListComponent(customListComponent)"
@@ -91,8 +114,14 @@
           :showVersionAction="!selectionScene && !isSystemEntity && !embedded && canViewVersions"
           :show-pagination="!embedded || showPagination"
           :max-height="embedded ? maxHeight : undefined"
-          :selection-mode="effectiveSelectionMode"
-          :runtime-context="context"
+          :selection-mode="runtimeSelectionMode"
+          :runtime-context="relatedContentRuntimeContext"
+          :row-expand-compositions="rowExpandCompositions"
+          :row-action-compositions="relatedRowActionCompositions"
+          :toolbar-action-compositions="relatedToolbarActionCompositions"
+          :list-owner-id="listConfig?.id || ''"
+          :list-release-id="listConfig?.releaseId || ''"
+          :list-release-version="listConfig?.publishedVersion || 0"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
@@ -113,6 +142,16 @@
         <div>
           <el-button @click="emit('cancel')">取消</el-button>
           <el-button
+            v-for="option in selectionActionOptions"
+            :key="option.action"
+            :type="option.type || 'primary'"
+            :disabled="selectedRows.length === 0"
+            @click="confirmRelatedContentAction(option.action)"
+          >
+            {{ option.label }}
+          </el-button>
+          <el-button
+            v-if="selectionActionOptions.length === 0"
             type="primary"
             :disabled="selectedRows.length === 0"
             @click="confirmSelection"
@@ -180,6 +219,7 @@ import {
   isReferenceListField
 } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
+import { filterRelatedContentButtons } from '@/shared/related-content-runtime'
 import { withListButtonTypeDefault } from '@/shared/list-config-design'
 import { loadExplicitListButtonForm } from '@/shared/list-button-form-runtime'
 import {
@@ -195,6 +235,7 @@ import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue
 import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vue'
 import { useEntityDataSelectionState } from './composables/useEntityDataSelectionState'
 import PageState from '@/components/PageState.vue'
+import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -204,9 +245,17 @@ const props = withDefaults(defineProps<{
   releaseId?: string
   releaseVersion?: number | null
   releaseResolutionToken?: string
+  viewCompositionContextToken?: string
+  viewCompositionTraversalToken?: string
+  relatedContentActions?: string[]
   scene?: string
   context?: Record<string, any>
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
+  selectionActionOptions?: Array<{
+    action: string
+    label: string
+    type?: string
+  }>
   initialSelectedRows?: any[]
   embedded?: boolean
   showSearch?: boolean
@@ -224,8 +273,11 @@ const props = withDefaults(defineProps<{
   releaseId: '',
   releaseVersion: null,
   releaseResolutionToken: '',
+  viewCompositionContextToken: '',
+  viewCompositionTraversalToken: '',
   context: () => ({}),
   selectionMode: 'NONE',
+  selectionActionOptions: () => [],
   initialSelectedRows: () => [],
   embedded: false,
   showSearch: true,
@@ -249,6 +301,7 @@ const {
 const emit = defineEmits<{
   confirm: [rows: any[]]
   cancel: []
+  'selection-action': [action: string, rows: any[]]
 }>()
 const entityCode = computed(() =>
   props.entityCode
@@ -263,9 +316,61 @@ const runtimeListKey = computed(() =>
 const runtimeScene = computed(() =>
   (props.scene || route.query.scene as string || 'PAGE').toUpperCase()
 )
+const hasRelatedContentActionScope = computed(() =>
+  Array.isArray(props.relatedContentActions)
+)
 const listConfig = ref<any>(null), listConfigFields = ref<any[]>([])
+const publishedRelatedContents = computed(() =>
+  (listConfig.value?.viewCompositions || []).filter(
+    (item: any) => item?.config?.enabled !== false
+  )
+)
+const pageSectionCompositions = computed(() =>
+  publishedRelatedContents.value.filter((item: any) =>
+    String(item?.anchorType || '').toUpperCase() === 'PAGE_SECTION'
+  )
+)
+const rowExpandCompositions = computed(() =>
+  publishedRelatedContents.value.filter((item: any) =>
+    String(item?.anchorType || '').toUpperCase() === 'ROW_EXPAND'
+  )
+)
+const relatedRowActionCompositions = computed(() =>
+  publishedRelatedContents.value.filter((item: any) =>
+    String(item?.anchorType || '').toUpperCase() === 'ROW_ACTION'
+  )
+)
+const relatedToolbarActionCompositions = computed(() =>
+  publishedRelatedContents.value.filter((item: any) =>
+    String(item?.anchorType || '').toUpperCase() === 'TOOLBAR_ACTION'
+  )
+)
+const viewCompositionTraversalToken = computed(() => String(
+  props.viewCompositionTraversalToken
+  || props.context?.viewCompositionTraversalToken
+  || ''
+))
+const relatedContentRuntimeContext = computed(() => ({
+  ...props.context,
+  viewCompositionTraversalToken:
+    viewCompositionTraversalToken.value
+}))
 const { effectiveSelectionMode, selectionScene, selectedRows } =
   useEntityDataSelectionState(props, runtimeScene, listConfig)
+// 页级关联内容把当前选中行作为可信解析的来源标识；服务端仍会按 ID
+// 重新读取并应用数据范围，前端整行不会成为筛选或授权依据。
+const listSourceRecordId = computed(() => String(
+  props.context?.sourceRecordId
+  || props.context?.recordId
+  || selectedRows.value[0]?.id
+  || ''
+))
+const runtimeSelectionMode = computed(() => {
+  if (effectiveSelectionMode.value !== 'NONE') {
+    return effectiveSelectionMode.value
+  }
+  return pageSectionCompositions.value.length > 0 ? 'SINGLE' : 'NONE'
+})
 const loading = ref(false)
 const tableLoading = ref(false)
 const loadError = ref('')
@@ -457,7 +562,13 @@ const toolbarButtons = computed(() => {
       return listConfig.value?.toolbarCapabilities?.[b.key]?.visible !== false
     })
     .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
-  return buttons
+  return hasRelatedContentActionScope.value
+    ? filterRelatedContentButtons(
+        buttons,
+        props.relatedContentActions,
+        'TOOLBAR'
+      )
+    : buttons
 })
 // 操作列按钮（按配置 + 权限过滤）
 const rowActionButtons = computed(() => {
@@ -489,13 +600,19 @@ const rowActionButtons = computed(() => {
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
     .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
-  return buttons
+  return hasRelatedContentActionScope.value
+    ? filterRelatedContentButtons(
+        buttons,
+        props.relatedContentActions,
+        'ROW'
+      )
+    : buttons
 })
 // 是否显示选择列
 const showSelectionColumn = computed(() => {
   if (isSystemEntity.value) return false
   return selectionScene.value
-    || effectiveSelectionMode.value !== 'NONE'
+    || runtimeSelectionMode.value !== 'NONE'
     || toolbarButtons.value.some((b: any) => b.key === 'exportSelected' || b.key === 'batchDelete')
 })
 // 引用实体名称缓存
@@ -678,7 +795,8 @@ const loadListConfig = async () => {
       {
         releaseId: props.releaseId,
         releaseVersion: props.releaseVersion,
-        releaseResolutionToken: props.releaseResolutionToken
+        releaseResolutionToken: props.releaseResolutionToken,
+        viewCompositionContextToken: props.viewCompositionContextToken
       }
     )
     listConfig.value = schema || null
@@ -729,6 +847,7 @@ const loadDataList = async () => {
         releaseId: listConfig.value?.releaseId,
         releaseVersion: listConfig.value?.publishedVersion,
         releaseResolutionToken: props.releaseResolutionToken,
+        viewCompositionContextToken: props.viewCompositionContextToken,
         filters: params,
         context: props.context
       }
@@ -1030,6 +1149,17 @@ const confirmSelection = () => {
   emit('confirm', rows.map(row =>
     applySelectionReturnMappings(row, mappings)))
 }
+
+/**
+ * 关联内容动作只把选中记录 ID 交给父组件，整行数据不会成为权威输入。
+ * 这里仍传递原行对象是为了兼容 Vue 事件形态；动作桥会立即裁剪为 ID。
+ */
+const confirmRelatedContentAction = (action: string) => {
+  const rows = effectiveSelectionMode.value === 'SINGLE'
+    ? selectedRows.value.slice(0, 1)
+    : selectedRows.value
+  emit('selection-action', action, rows)
+}
 // 监听实体编码变化
 watch(() => [
   entityCode.value,
@@ -1100,6 +1230,9 @@ watch(
   
   .loading-container {
     padding: 10px;
+  }
+  .master-detail-hint {
+    margin-bottom: 12px;
   }
   .selection-footer {
     display: flex;

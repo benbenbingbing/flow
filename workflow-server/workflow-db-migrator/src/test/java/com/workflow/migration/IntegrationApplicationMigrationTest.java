@@ -98,6 +98,142 @@ class IntegrationApplicationMigrationTest {
                                 "entity_field_file_item",
                                 "is_required"));
                 assertTrue(tableExists("auth_refresh_session"));
+                assertTrue(tableExists("ui_view_composition"));
+                assertTrue(columnExists(
+                                "system_operation_log",
+                                "operation_id"));
+                assertTrue(columnNullable(
+                                "system_operation_log",
+                                "operation_id"));
+                assertTrue(columnExists(
+                                "system_operation_log",
+                                "parent_operation_id"));
+                assertTrue(columnExists(
+                                "system_operation_log",
+                                "source_type"));
+                assertTrue(columnExists(
+                                "system_operation_log",
+                                "source_event_id"));
+                assertTrue(indexExists(
+                                "system_operation_log",
+                                "idx_system_operation_operation"));
+                assertTrue(indexExists(
+                                "system_operation_log",
+                                "idx_system_operation_source"));
+                assertFalse(tableExists("entity_list_scope_inventory"));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'entity_scope_inventory_menu_001'
+                                    OR perm = 'entity:list-scope:inventory'
+                                    OR path = '/system/entity-scope-inventory'
+                                    OR component = 'system/EntityListScopeInventory'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu
+                                 WHERE menu_id = 'entity_scope_inventory_menu_001'
+                                """));
+                // EXPLICIT_ALL 仍属于列表设计器的通用安全策略，撤除盘点页不能连带移除它。
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'entity_scope_explicit_all_permission_001'
+                                   AND perm = 'entity:list-scope:explicit-all'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu role_menu
+                                  JOIN sys_role role ON role.id = role_menu.role_id
+                                  JOIN sys_menu menu ON menu.id = role_menu.menu_id
+                                 WHERE role.role_code = 'super_admin'
+                                   AND role.deleted = 0
+                                   AND menu.perm = 'entity:list-scope:explicit-all'
+                                """));
+                for (String retiredTable : Set.of(
+                                "config_test_suite",
+                                "config_test_case",
+                                "config_test_run",
+                                "config_test_result",
+                                "config_blueprint",
+                                "config_asset_dependency",
+                                "config_quality_snapshot",
+                                "entity_index_advice",
+                                "config_collaboration_workspace",
+                                "config_collaboration_branch",
+                                "config_collaboration_comment",
+                                "config_collaboration_review",
+                                "config_scheduled_release",
+                                "process_instance_migration_batch",
+                                "process_instance_migration_item",
+                                "process_instance_migration_lock",
+                                "process_instance_migration_audit")) {
+                        assertFalse(tableExists(retiredTable));
+                }
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE perm IN (
+                                           'config:test:list',
+                                           'config:intelligence:list',
+                                           'platform:capability:list',
+                                           'index-advisor:analyze',
+                                           'config-reference:list',
+                                           'config-collaboration:manage',
+                                           'process-instance-migration:preview'
+                                       )
+                                    OR path IN (
+                                           '/system/config-test-center',
+                                           '/system/config-intelligence',
+                                           '/system/platform-capabilities'
+                                       )
+                                """));
+                // 三个中心会被完整退役，但核心配置迁移与实体结构发布共享底座必须保留。
+                assertTrue(tableExists("config_migration_asset_dependency"));
+                assertTrue(columnExists(
+                                "config_migration_asset_dependency",
+                                "reference_location"));
+                assertTrue(tableExists("entity_schema_operation"));
+                assertTrue(tableExists("entity_schema_operation_event"));
+                assertTrue(columnExists(
+                                "entity_schema_operation",
+                                "operation_source"));
+                assertTrue(columnExists(
+                                "ui_view_composition",
+                                "active_composition_key"));
+                assertTrue(indexExists(
+                                "ui_view_composition",
+                                "uk_ui_view_composition_active_key"));
+                assertTrue(tableExists("ui_config_hotfix_request"));
+                assertTrue(tableExists("ui_hotfix_observation_metric"));
+                for (String reviewHistoryColumn : Set.of(
+                                "review_required",
+                                "reviewer_id",
+                                "reviewer_name",
+                                "review_comment",
+                                "reviewed_at")) {
+                        assertTrue(columnExists(
+                                        "ui_config_hotfix_request",
+                                        reviewHistoryColumn));
+                }
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'entity_ui_hotfix_review_permission'
+                                    OR perm = 'entity:ui-config:hotfix:review'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu
+                                 WHERE menu_id = 'entity_ui_hotfix_review_permission'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ui_config_hotfix_request
+                                 WHERE status IN ('PENDING_REVIEW', 'APPROVED')
+                                   AND release_id IS NULL
+                                   AND open_slot = 1
+                                """));
                 assertTrue(columnExists(
                                 "auth_refresh_session",
                                 "refresh_token_hash"));
@@ -147,6 +283,313 @@ class IntegrationApplicationMigrationTest {
                         assertTrue(columnExists(table, "create_time"));
                         assertTrue(columnExists(table, "update_time"));
                 }
+        }
+
+        @Test
+        void uiViewCompositionKeyCanBeReusedAfterRepeatedLogicalDeletes()
+                        throws Exception {
+                flyway().migrate();
+                insertViewComposition("composition-1");
+                assertThrows(SQLException.class,
+                                () -> insertViewComposition("composition-duplicate"));
+
+                execute("UPDATE ui_view_composition SET deleted = 1 "
+                                + "WHERE id = 'composition-1'");
+                insertViewComposition("composition-2");
+                execute("UPDATE ui_view_composition SET deleted = 1 "
+                                + "WHERE id = 'composition-2'");
+                insertViewComposition("composition-3");
+
+                assertEquals(1, countRows(
+                                "SELECT COUNT(*) FROM ui_view_composition "
+                                                + "WHERE owner_type = 'FORM' "
+                                                + "AND owner_id = 'form-1' "
+                                                + "AND composition_key = 'project_requirements' "
+                                                + "AND deleted = 0"));
+        }
+
+        @Test
+        void scopeInventoryRemovalAlsoCleansRecreatedMenuIds()
+                        throws Exception {
+                Flyway throughV61 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("61"))
+                                .load();
+                throughV61.migrate();
+
+                // 模拟存量环境复制盘点菜单后由系统生成了新主键；子菜单本身没有盘点页路径，
+                // 只能先记录根菜单真实 ID，才能同时清理其授权和子项。
+                execute("""
+                                INSERT INTO sys_menu (
+                                  id, parent_id, menu_name, menu_type, icon, sort,
+                                  path, component, perm, status, visible, is_frame,
+                                  is_cache, query, keep_alive, breadcrumb, remark,
+                                  deleted, create_by, create_time, update_by, update_time,
+                                  entity_code, resource_type, list_key
+                                )
+                                SELECT
+                                  'scope_inventory_copy_root', '0', CONCAT(menu_name, '副本'),
+                                  menu_type, icon, sort, '/system/entity-scope-inventory-copy',
+                                  'system/EntityListScopeInventory',
+                                  'entity:list-scope:inventory:copy', status, visible, is_frame,
+                                  is_cache, query, keep_alive, breadcrumb, remark, deleted,
+                                  create_by, create_time, update_by, update_time,
+                                  entity_code, resource_type, list_key
+                                FROM sys_menu
+                                WHERE id = 'entity_scope_inventory_menu_001'
+                                """);
+                execute("""
+                                INSERT INTO sys_menu (
+                                  id, parent_id, menu_name, menu_type, icon, sort,
+                                  path, component, perm, status, visible, is_frame,
+                                  is_cache, query, keep_alive, breadcrumb, remark,
+                                  deleted, create_by, create_time, update_by, update_time,
+                                  entity_code, resource_type, list_key
+                                )
+                                SELECT
+                                  'scope_inventory_copy_child', 'scope_inventory_copy_root',
+                                  '盘点副本确认', menu_type, icon, sort, '', '',
+                                  'entity:list-scope:inventory:copy-confirm', status, visible,
+                                  is_frame, is_cache, query, keep_alive, breadcrumb, remark,
+                                  deleted, create_by, create_time, update_by, update_time,
+                                  entity_code, resource_type, list_key
+                                FROM sys_menu
+                                WHERE id = 'entity_scope_explicit_all_permission_001'
+                                """);
+                execute("""
+                                INSERT INTO sys_role_menu (id, role_id, menu_id, create_time)
+                                VALUES
+                                  ('scope-copy-root-grant', '1', 'scope_inventory_copy_root', CURRENT_TIMESTAMP),
+                                  ('scope-copy-child-grant', '1', 'scope_inventory_copy_child', CURRENT_TIMESTAMP)
+                                """);
+
+                flyway().migrate();
+
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*) FROM sys_menu
+                                 WHERE id IN ('scope_inventory_copy_root', 'scope_inventory_copy_child')
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*) FROM sys_role_menu
+                                 WHERE menu_id IN ('scope_inventory_copy_root', 'scope_inventory_copy_child')
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*) FROM sys_menu
+                                 WHERE perm = 'entity:list-scope:explicit-all'
+                                """));
+        }
+
+        @Test
+        void unifiedAuditMigrationKeepsLegacyEventsAsSeparateOperations()
+                        throws Exception {
+                Flyway throughV63 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("63"))
+                                .load();
+                throughV63.migrate();
+                execute("""
+                                INSERT INTO system_operation_log (
+                                  id, event_id, trace_id, module_code,
+                                  operation_code, operation_name, risk_level,
+                                  result, create_time
+                                ) VALUES (
+                                  'legacy-audit-1', 'legacy-event-1',
+                                  'shared-trace', 'ENTITY', 'UPDATE',
+                                  '历史实体变更', 'MEDIUM', 'SUCCESS',
+                                  CURRENT_TIMESTAMP
+                                ), (
+                                  'legacy-audit-2', 'legacy-event-2',
+                                  'shared-trace', 'PROCESS', 'APPROVE',
+                                  '历史流程操作', 'MEDIUM', 'SUCCESS',
+                                  CURRENT_TIMESTAMP
+                                )
+                                """);
+
+                flyway().migrate();
+
+                // V064 是滚动升级的 Expand 迁移。尚未升级的旧 Pod 不会写
+                // operation_id，迁移后仍必须允许其追加审计行。
+                execute("""
+                                INSERT INTO system_operation_log (
+                                  id, event_id, trace_id, module_code,
+                                  operation_code, operation_name, risk_level,
+                                  result, create_time
+                                ) VALUES (
+                                  'rolling-old-pod-audit',
+                                  'rolling-old-pod-event',
+                                  'shared-trace', 'PROCESS', 'UPDATE',
+                                  '滚动升级旧实例写入', 'MEDIUM', 'SUCCESS',
+                                  CURRENT_TIMESTAMP
+                                )
+                                """);
+
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM system_operation_log
+                                 WHERE event_id = 'legacy-event-1'
+                                   AND operation_id = 'legacy-event-1'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM system_operation_log
+                                 WHERE event_id = 'legacy-event-2'
+                                   AND operation_id = 'legacy-event-2'
+                                """));
+                assertEquals(2, countRows("""
+                                SELECT COUNT(DISTINCT operation_id)
+                                  FROM system_operation_log
+                                 WHERE trace_id = 'shared-trace'
+                                   AND operation_id IS NOT NULL
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM system_operation_log
+                                 WHERE event_id = 'rolling-old-pod-event'
+                                   AND operation_id IS NULL
+                                """));
+        }
+
+        @Test
+        void hotfixReviewRemovalCancelsOnlyUnpublishedOpenRequests()
+                        throws Exception {
+                Flyway throughV64 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("64"))
+                                .load();
+                throughV64.migrate();
+
+                execute("""
+                                INSERT INTO sys_role_menu (
+                                  id, role_id, menu_id, create_time
+                                )
+                                SELECT
+                                  'legacy-hotfix-review-grant', '1', id,
+                                  CURRENT_TIMESTAMP
+                                FROM sys_menu
+                                WHERE id = 'entity_ui_hotfix_review_permission'
+                                """);
+                execute("""
+                                INSERT INTO ui_config_hotfix_request (
+                                  id, config_type, config_id, draft_hash,
+                                  active_release_id, target_hash,
+                                  impact_token_hash, risk_level, reason,
+                                  ticket_ref, impact_document, applicant_id,
+                                  applicant_name, window_start, window_end,
+                                  review_required, status, reviewer_id,
+                                  reviewer_name, review_comment, reviewed_at,
+                                  release_id
+                                ) VALUES (
+                                  'legacy-pending', 'FORM', 'form-pending',
+                                  REPEAT('a', 64), 'active-pending',
+                                  'target-pending', REPEAT('b', 64), 'REVIEW',
+                                  '待复核修复', 'INC-PENDING', '{}',
+                                  'applicant-pending', '申请人甲',
+                                  CURRENT_TIMESTAMP - INTERVAL 1 HOUR,
+                                  CURRENT_TIMESTAMP + INTERVAL 1 HOUR,
+                                  1, 'PENDING_REVIEW', NULL, NULL, NULL, NULL,
+                                  NULL
+                                ), (
+                                  'legacy-approved', 'FORM', 'form-approved',
+                                  REPEAT('c', 64), 'active-approved',
+                                  'target-approved', REPEAT('d', 64), 'REVIEW',
+                                  '已复核修复', 'INC-APPROVED', '{}',
+                                  'applicant-approved', '申请人乙',
+                                  CURRENT_TIMESTAMP - INTERVAL 1 HOUR,
+                                  CURRENT_TIMESTAMP + INTERVAL 1 HOUR,
+                                  1, 'APPROVED', 'legacy-reviewer', '历史复核人',
+                                  '历史复核意见', CURRENT_TIMESTAMP, NULL
+                                ), (
+                                  'legacy-publishing', 'FORM', 'form-publishing',
+                                  REPEAT('e', 64), 'active-publishing',
+                                  'target-publishing', REPEAT('f', 64), 'SAFE',
+                                  '发布中修复', 'INC-PUBLISHING', '{}',
+                                  'applicant-publishing', '申请人丙',
+                                  CURRENT_TIMESTAMP - INTERVAL 1 HOUR,
+                                  CURRENT_TIMESTAMP + INTERVAL 1 HOUR,
+                                  0, 'PUBLISHING', NULL, NULL, NULL, NULL, NULL
+                                ), (
+                                  'legacy-observing', 'FORM', 'form-observing',
+                                  REPEAT('1', 64), 'active-observing',
+                                  'target-observing', REPEAT('2', 64), 'REVIEW',
+                                  '观察中修复', 'INC-OBSERVING', '{}',
+                                  'applicant-observing', '申请人丁',
+                                  CURRENT_TIMESTAMP - INTERVAL 2 HOUR,
+                                  CURRENT_TIMESTAMP - INTERVAL 1 HOUR,
+                                  1, 'OBSERVING', 'observing-reviewer',
+                                  '观察记录复核人', '已复核',
+                                  CURRENT_TIMESTAMP - INTERVAL 2 HOUR,
+                                  'release-observing'
+                                )
+                                """);
+
+                flyway().migrate();
+
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'entity_ui_hotfix_review_permission'
+                                    OR perm = 'entity:ui-config:hotfix:review'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu
+                                 WHERE id = 'legacy-hotfix-review-grant'
+                                    OR menu_id = 'entity_ui_hotfix_review_permission'
+                                """));
+                assertEquals(2, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ui_config_hotfix_request
+                                 WHERE id IN ('legacy-pending', 'legacy-approved')
+                                   AND status = 'CANCELLED'
+                                   AND release_id IS NULL
+                                   AND open_slot IS NULL
+                                   AND cancelled_by = 'flyway:V065'
+                                   AND cancelled_at IS NOT NULL
+                                   AND cancel_reason LIKE '%重新预检后直接发布%'
+                                """));
+                // 取消旧开放申请不能抹掉已经形成的独立复核证据。
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ui_config_hotfix_request
+                                 WHERE id = 'legacy-approved'
+                                   AND review_required = 1
+                                   AND reviewer_id = 'legacy-reviewer'
+                                   AND reviewer_name = '历史复核人'
+                                   AND review_comment = '历史复核意见'
+                                   AND reviewed_at IS NOT NULL
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ui_config_hotfix_request
+                                 WHERE id = 'legacy-publishing'
+                                   AND status = 'PUBLISHING'
+                                   AND open_slot = 1
+                                   AND cancelled_at IS NULL
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ui_config_hotfix_request
+                                 WHERE id = 'legacy-observing'
+                                   AND status = 'OBSERVING'
+                                   AND release_id = 'release-observing'
+                                   AND reviewer_id = 'observing-reviewer'
+                                   AND cancelled_at IS NULL
+                                """));
         }
 
         @Test
@@ -592,6 +1035,35 @@ class IntegrationApplicationMigrationTest {
                                 .load();
         }
 
+        private void insertViewComposition(String id) throws Exception {
+                execute("""
+                                INSERT INTO ui_view_composition (
+                                  id, owner_type, owner_id, composition_key,
+                                  anchor_type, config_document, order_key,
+                                  revision, deleted
+                                ) VALUES (
+                                  '%s', 'FORM', 'form-1', 'project_requirements',
+                                  'OWNER', JSON_OBJECT(
+                                    'target', JSON_OBJECT(
+                                      'entityId', 'entity-2',
+                                      'contentType', 'LIST',
+                                      'contentId', 'list-2'
+                                    ),
+                                    'presentation', JSON_OBJECT(
+                                      'position', 'TAB',
+                                      'loadMode', 'ON_DEMAND'
+                                    ),
+                                    'relation', JSON_OBJECT(
+                                      'type', 'REVERSE_REFERENCE',
+                                      'targetField', 'projectId'
+                                    ),
+                                    'actions', JSON_ARRAY('VIEW')
+                                  ),
+                                  1000, 1, 0
+                                )
+                                """.formatted(id));
+        }
+
         private void assertSchemaIsCurrent(Flyway flyway) throws Exception {
                 assertEquals(0, flyway.info().pending().length);
                 assertEquals(
@@ -676,6 +1148,26 @@ class IntegrationApplicationMigrationTest {
                         try (ResultSet result = statement.executeQuery()) {
                                 assertTrue(result.next());
                                 return result.getString(1);
+                        }
+                }
+        }
+
+        private boolean columnNullable(String table, String column)
+                        throws Exception {
+                try (Connection connection = MYSQL.createConnection("");
+                                var statement = connection.prepareStatement("""
+                                                SELECT is_nullable
+                                                  FROM information_schema.columns
+                                                 WHERE table_schema = ?
+                                                   AND table_name = ?
+                                                   AND column_name = ?
+                                                """)) {
+                        statement.setString(1, MYSQL.getDatabaseName());
+                        statement.setString(2, table);
+                        statement.setString(3, column);
+                        try (ResultSet result = statement.executeQuery()) {
+                                assertTrue(result.next());
+                                return "YES".equals(result.getString(1));
                         }
                 }
         }

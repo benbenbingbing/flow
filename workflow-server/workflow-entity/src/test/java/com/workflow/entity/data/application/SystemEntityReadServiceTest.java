@@ -180,6 +180,43 @@ class SystemEntityReadServiceTest {
     }
 
     @Test
+    void trustedIsNullFilterUsesNullPredicateForSystemEntity() {
+        EntityDefinition entity = systemEntity("sys_user");
+        when(definitionMapper.findByEntityCode("sys_user"))
+                .thenReturn(Optional.of(entity));
+        when(fieldMapper.findByEntityId("entity-1"))
+                .thenReturn(List.of(
+                        field("id"),
+                        field("org_id"),
+                        field("deleted")));
+        when(jdbcTemplate.queryForObject(
+                anyString(),
+                eq(Long.class),
+                any(Object[].class)))
+                .thenReturn(0L);
+        when(jdbcTemplate.queryForList(
+                anyString(),
+                any(Object[].class)))
+                .thenReturn(List.of());
+
+        service.findPage(
+                "sys_user",
+                Map.of(
+                        "org_id", true,
+                        "org_id_op", "IS_NULL"),
+                1,
+                20);
+
+        ArgumentCaptor<String> sql =
+                ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForObject(
+                sql.capture(),
+                eq(Long.class),
+                any(Object[].class));
+        assertTrue(sql.getValue().contains("`org_id` IS NULL"));
+    }
+
+    @Test
     void selectorSearchesSystemRecordsByDisplayAndCodeFields() {
         EntityDefinition entity = systemEntity("sys_user");
         when(definitionMapper.findByEntityCode("sys_user"))

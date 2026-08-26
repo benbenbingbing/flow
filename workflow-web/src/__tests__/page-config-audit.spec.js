@@ -1023,6 +1023,10 @@ assert.ok(
   assert.ok(formDesigner.includes(marker), `表单模式权限缺少只读主从规则: ${marker}`)
 })
 assert.ok(
+  formDesigner.includes('approve: { editable: false }'),
+  '新增字段必须显式保存审批模式默认不可编辑，避免后端按缺省可编辑处理'
+)
+assert.ok(
   formDesigner.includes('getDefaultFormFieldComponentType as getDefaultComponentType'),
   '新增实体字段必须使用共享的兼容默认组件策略'
 )
@@ -1048,6 +1052,16 @@ assert.equal(
 ].forEach((marker) => {
   assert.ok(formDesigner.includes(marker), `状态与校验缺少字数显示配置: ${marker}`)
 })
+;[
+  'selectedValidationMaxLength',
+  'resolveVarcharFieldLength',
+  ':model-value="selectedValidationMaxLength"'
+].forEach((marker) => {
+  assert.ok(
+    formDesigner.includes(marker),
+    `VARCHAR 字段长度默认值缺少表单属性面板实现: ${marker}`
+  )
+})
 const validationMaxLengthIndex = formDesigner.indexOf(
   "updateValidationConfig('maxLength', $event)"
 )
@@ -1065,13 +1079,29 @@ assert.ok(
   'getRuntimeRegexPatternError',
   "updateValidationConfig('pattern', $event)",
   '正则表达式本体',
-  'placeholder="例如：^[A-Z][A-Z0-9_]*$"'
+  'placeholder="例如：^[A-Z][A-Z0-9_]*$"',
+  'toggleRegexTest',
+  'regexTestResult',
+  'placeholder="输入测试文本"',
+  '@update:model-value="regexTestTouched = true"',
+  'CircleCheck',
+  'CircleClose'
 ].forEach((marker) => {
   assert.ok(
     formDesigner.includes(marker),
     `表单正则校验配置缺少内容: ${marker}`
   )
 })
+const regexTestInputStart = formDesigner.indexOf('v-model="regexTestValue"')
+const regexTestInputEnd = formDesigner.indexOf('/>', regexTestInputStart)
+assert.ok(regexTestInputStart >= 0 && regexTestInputEnd > regexTestInputStart)
+assert.equal(
+  formDesigner
+    .slice(regexTestInputStart, regexTestInputEnd)
+    .includes('updateValidationConfig'),
+  false,
+  '正则测试文本只能保存在前端本地状态，不能写入校验规则'
+)
 const textFieldSource = readFileSync(
   path.join(root, 'src/components/form-fields/components/TextField.vue'),
   'utf8'
@@ -2206,17 +2236,66 @@ const uiConfigPublishDialog = readFileSync(
   'utf8'
 )
 assert.ok(
-  uiConfigPublishDialog.includes('REVIEW 风险由非申请人独立复核')
-    && uiConfigPublishDialog.includes('提交热修复申请')
-    && uiConfigPublishDialog.includes('发布已批准热修复')
-    && uiConfigPublishDialog.includes('取消申请')
-    && uiConfigPublishDialog.includes('entity:ui-config:hotfix:review')
+  uiConfigPublishDialog.includes('HOTFIX 会先展示风险、影响目标和阻断项')
+    && uiConfigPublishDialog.includes('ElMessageBox.confirm')
+    && uiConfigPublishDialog.includes('确认直接发布热修复')
+    && uiConfigPublishDialog.includes('热修复已直接发布')
+    && uiConfigPublishDialog.includes('expectedActiveReleaseId: preview.value.activeReleaseId')
+    && uiConfigPublishDialog.includes('expectedDraftHash: preview.value.draftHash')
+    && uiConfigPublishDialog.includes('impactToken: preview.value.impactToken')
     && uiConfigPublishDialog.includes('FULL_SNAPSHOT')
     && uiConfigPublishDialog.includes('完整快照强制覆盖')
     && uiConfigPublishDialog.includes('v-if="configType === \'FORM\'"')
     && uiConfigPublishDialog.includes('列表发布后立即切换当前全局生效版本'),
-  '表单热修复应明确风险策略，列表应固定使用普通发布'
+  '表单热修复应提示风险后直接发布，列表应固定使用普通发布'
 )
+;[
+  '提交热修复申请',
+  '发布已批准热修复',
+  '取消申请',
+  'entity:ui-config:hotfix:review',
+  'hotfixRequestId',
+  'uiHotfixGovernanceApi',
+  'form.reason',
+  'form.ticketRef',
+  'windowStart',
+  'windowEnd'
+].forEach((marker) => {
+  assert.ok(
+    !uiConfigPublishDialog.includes(marker),
+    `热修复发布界面不得保留申请或独立复核阻断逻辑: ${marker}`
+  )
+})
+const uiHotfixGovernanceSource = readFileSync(
+  path.join(root, 'src/api/uiHotfixGovernance.js'),
+  'utf8'
+)
+assert.ok(
+  uiHotfixGovernanceSource.includes('get(id)')
+    && uiHotfixGovernanceSource.includes('list(configType, configId)'),
+  'HOTFIX 历史观察 API 必须保留 get/list'
+)
+assert.doesNotMatch(
+  uiHotfixGovernanceSource,
+  /\b(?:apply|review|cancel)\s*\(/,
+  'HOTFIX 治理 API 不得保留申请、审核或取消接口'
+)
+const uiConfigReleaseHistoryDialog = readFileSync(
+  path.join(root, 'src/components/ui-config/UiConfigReleaseHistoryDialog.vue'),
+  'utf8'
+)
+assert.ok(
+  uiConfigReleaseHistoryDialog.includes('label="热修复状态"')
+    && uiConfigReleaseHistoryDialog.includes('观察详情')
+    && uiConfigReleaseHistoryDialog.includes('撤回热修复'),
+  '发布历史必须保留热修复观察和回滚能力'
+)
+;['治理状态', '独立复核人', '关联工单'].forEach((marker) => {
+  assert.ok(
+    !uiConfigReleaseHistoryDialog.includes(marker),
+    `发布历史不得展示热修复审核申请字段: ${marker}`
+  )
+})
 assert.ok(
   !uiConfigPublishDialog.includes('所有通过发布校验的列表变更都可热修复'),
   '列表发布界面不得继续提供语义重复的热修复模式'
@@ -2300,9 +2379,14 @@ const processManualSource = readFileSync(
 )
 assert.ok(
   processManualSource.includes('列表配置只允许 STANDARD 发布')
-    && processManualSource.includes('申请人不能自审')
+    && processManualSource.includes('REVIEW 仅作高风险提醒')
     && processManualSource.includes('entity:ui-config:hotfix:rollback'),
   '流程手册应说明表单热修复风险和列表普通发布边界'
+)
+assert.doesNotMatch(
+  processManualSource,
+  /申请人不能自审|独立复核|hotfixRequestId/,
+  '流程手册不得保留表单热修复申请或独立复核说明'
 )
 assert.doesNotMatch(
   processManualSource,

@@ -133,4 +133,87 @@ class UiDataSourceBindingMatcherTest {
                 "other-operation",
                 "$.release.list"));
     }
+
+    @Test
+    void publishedCompositionRequiresExactUsageKeyAndOperation() {
+        Map<String, Object> snapshot = Map.of(
+                "viewCompositions",
+                List.of(Map.of(
+                        "compositionKey", "project-requirements",
+                        "config", Map.of(
+                                "specialHandling", Map.of(
+                                        "mode", "INTERFACE_SERVICE",
+                                        "interfaceService", Map.of(
+                                                "serviceId", "service-a",
+                                                "operationCode", "resolveRequirements"))))));
+
+        assertEquals(
+                "$.release.viewCompositions[0].config.specialHandling.interfaceService",
+                matcher.findPublished(
+                        "FORM",
+                        snapshot,
+                        "RELATED_CONTENT_RESOLVE",
+                        "COMPOSITION",
+                        "project-requirements",
+                        "service-a",
+                        "resolveRequirements"));
+        assertNull(matcher.findPublished(
+                "FORM",
+                snapshot,
+                "RELATED_CONTENT_RESOLVE",
+                "COMPOSITION",
+                "another-composition",
+                "service-a",
+                "resolveRequirements"));
+        assertNull(matcher.findPublished(
+                "FORM",
+                snapshot,
+                "FORM_INIT",
+                "COMPOSITION",
+                "project-requirements",
+                "service-a",
+                "resolveRequirements"));
+    }
+
+    @Test
+    void publishedCompositionActionRequiresExplicitActionKeyAndOperation() {
+        Map<String, Object> snapshot = Map.of(
+                "viewCompositions",
+                List.of(Map.of(
+                        "compositionKey", "project-requirements",
+                        "config", Map.of(
+                                "specialHandling", Map.of(
+                                        "mode", "INTERFACE_SERVICE",
+                                        "actionServices", List.of(Map.of(
+                                                "actionKey", "calculateRisk",
+                                                "serviceId", "service-a",
+                                                "operationCode", "calculateRisk")))))));
+
+        assertEquals(
+                "$.release.viewCompositions[0].config.specialHandling.actionServices[0]",
+                matcher.findPublished(
+                        "FORM",
+                        snapshot,
+                        "RELATED_CONTENT_ACTION",
+                        "COMPOSITION_ACTION",
+                        "project-requirements::CALCULATERISK",
+                        "service-a",
+                        "calculateRisk"));
+        assertNull(matcher.findPublished(
+                "FORM",
+                snapshot,
+                "RELATED_CONTENT_ACTION",
+                "COMPOSITION_ACTION",
+                "project-requirements::anotherAction",
+                "service-a",
+                "calculateRisk"));
+        assertNull(matcher.findPublished(
+                "FORM",
+                snapshot,
+                "RELATED_CONTENT_ACTION",
+                "COMPOSITION_ACTION",
+                "project-requirements::calculateRisk",
+                "service-a",
+                "anotherOperation"));
+    }
 }

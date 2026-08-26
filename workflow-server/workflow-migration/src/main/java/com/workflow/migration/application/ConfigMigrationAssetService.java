@@ -801,6 +801,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             releaseSnapshot,
                             "FORM",
                             form.getId()));
+            formSnapshot.put(
+                    "viewCompositions",
+                    portableViewCompositions(
+                            releaseSnapshot,
+                            nodeKeysById,
+                            entity.getEntityCode(),
+                            extensionReferences,
+                            dataSourceIds));
             collectDataSourceIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
@@ -852,6 +860,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             releaseSnapshot,
                             "LIST",
                             list.getId()));
+            listSnapshot.put(
+                    "viewCompositions",
+                    portableViewCompositions(
+                            releaseSnapshot,
+                            Map.of(),
+                            entity.getEntityCode(),
+                            extensionReferences,
+                            dataSourceIds));
             collectDataSourceIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
@@ -887,7 +903,9 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                         dataSourceIds,
                         entity.getId(),
                         entity.getEntityCode()));
-        snapshot.put("dependencies", List.of());
+        List<Map<String, Object>> dependencies = new ArrayList<>();
+        collectViewCompositionDependencies(snapshot, dependencies);
+        snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
     }
 
@@ -1029,13 +1047,18 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             releaseSnapshot,
                             "FORM",
                             form.getId()));
+            formSnapshot.put(
+                    "viewCompositions",
+                    portableViewCompositions(
+                            releaseSnapshot,
+                            nodeKeysById,
+                            entity.getEntityCode(),
+                            extensionReferences,
+                            dataSourceIds));
             collectDataSourceIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
         snapshot.put("forms", forms);
-        snapshot.put(
-                "extensions",
-                extensionSnapshots(extensionReferences));
         List<EntityListConfig> listConfigs = listConfigMapper.findByEntityId(entity.getId());
         Map<String, String> listKeysById = new LinkedHashMap<>();
         List<Map<String, Object>> lists = new ArrayList<>();
@@ -1061,9 +1084,20 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             releaseSnapshot,
                             "LIST",
                             listConfig.getId()));
+            listSnapshot.put(
+                    "viewCompositions",
+                    portableViewCompositions(
+                            releaseSnapshot,
+                            Map.of(),
+                            entity.getEntityCode(),
+                            extensionReferences,
+                            dataSourceIds));
             collectDataSourceIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
+        snapshot.put(
+                "extensions",
+                extensionSnapshots(extensionReferences));
         Map<String, String> dataSourceCodesById = dataSourceCodesById(dataSourceIds);
         snapshot.put(
                 "eventBindings",
@@ -1141,6 +1175,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             }
         }
         collectExtensionDependencies(snapshot, dependencies);
+        collectViewCompositionDependencies(snapshot, dependencies);
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
     }
@@ -1198,6 +1233,178 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                         latest.getContentHash(),
                         sha256(writeJson(snapshot).getBytes(
                                 StandardCharsets.UTF_8)));
+    }
+
+    /**
+     * 将发布快照中的关联内容转换为跨环境便携描述。
+     *
+     * <p>数据库 ID、releaseId 和修订号不会进入迁移包；目标内容改用
+     * entityCode + contentType + contentKey，表单节点挂载点改用 nodeKey，
+     * 接口服务改用 serviceCode。导入端会根据这些业务编码重新解析目标环境 ID。</p>
+     */
+    private List<Map<String, Object>> portableViewCompositions(
+            Map<String, Object> releaseSnapshot,
+            Map<String, String> nodeKeysById,
+            String sourceEntityCode,
+            Set<String> extensionReferences,
+            Set<String> dataSourceIds) {
+        if (releaseSnapshot == null
+                || !releaseSnapshot.containsKey("viewCompositions")) {
+            return List.of();
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> raw : castList(
+                releaseSnapshot.get("viewCompositions"))) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("compositionKey", text(raw.get("compositionKey")));
+            String anchorType = text(raw.get("anchorType"));
+            item.put("anchorType", anchorType);
+            if ("FORM_NODE".equalsIgnoreCase(anchorType)) {
+                item.put("anchorNodeKey", portableAnchorNodeKey(
+                        text(raw.get("anchorKey")), nodeKeysById));
+            } else if (StringUtils.hasText(text(raw.get("anchorKey")))) {
+                item.put("anchorKey", text(raw.get("anchorKey")));
+            }
+            item.put("orderKey", raw.get("orderKey"));
+
+            Map<String, Object> config = mapValue(parseJson(
+                    writeJson(mapValue(raw.get("config"))), Map.of()));
+            // 实体发布历史 ID/指纹只在源环境有意义；目标环境
+            // 会在导入后首次发布时以本地权威历史重新钉定。
+            config.remove("entitySnapshots");
+            Map<String, Object> source = mapValue(config.get("source"));
+            source.remove("entityId");
+            source.put("entityCode", sourceEntityCode);
+            config.put("source", source);
+            config.put("target", portableCompositionTarget(
+                    mapValue(config.get("target"))));
+
+            Map<String, Object> special = mapValue(
+                    config.get("specialHandling"));
+            if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
+                Map<String, Object> service = mapValue(rawService);
+                String serviceId = text(service.get("serviceId"));
+                UiDataSourceDefinition definition = StringUtils.hasText(serviceId)
+                        ? dataSourceDefinitionMapper.selectById(serviceId)
+                        : dataSourceDefinitionMapper.selectOne(
+                                new LambdaQueryWrapper<UiDataSourceDefinition>()
+                                        .eq(UiDataSourceDefinition::getSourceCode,
+                                                firstNonBlank(
+                                                        text(service.get("sourceCode")),
+                                                        text(service.get("serviceCode"))))
+                                        .eq(UiDataSourceDefinition::getDeleted, 0)
+                                        .last("LIMIT 1"));
+                if (definition == null
+                        || !StringUtils.hasText(definition.getSourceCode())) {
+                    throw new IllegalStateException(
+                            "关联内容引用的接口服务不存在: " + serviceId);
+                }
+                dataSourceIds.add(definition.getId());
+                service.remove("serviceId");
+                service.remove("sourceCode");
+                service.remove("serviceRevision");
+                service.remove("executableSnapshot");
+                service.remove("definitionHash");
+                service.put("serviceCode", definition.getSourceCode());
+                special.put("interfaceService", service);
+            }
+            if (special.get("customComponent") instanceof Map<?, ?> rawComponent) {
+                Map<String, Object> component = mapValue(rawComponent);
+                String name = text(component.get("name"));
+                Integer version = integer(component.get("version"));
+                String extensionType = firstNonBlank(
+                        text(component.get("extensionType")), "NODE");
+                if (StringUtils.hasText(name) && version != null) {
+                    extensionReferences.add(extensionReference(
+                            extensionType, name, version));
+                }
+                component.remove("snapshotVersion");
+                component.remove("definitionSnapshot");
+                component.remove("definitionHash");
+                special.put("customComponent", component);
+            }
+            config.put("specialHandling", special);
+            item.put("config", config);
+            result.add(item);
+        }
+        return List.copyOf(result);
+    }
+
+    private Map<String, Object> portableCompositionTarget(
+            Map<String, Object> source) {
+        String contentType = text(source.get("contentType"));
+        String contentId = text(source.get("contentId"));
+        String entityId = text(source.get("entityId"));
+        EntityDefinition targetEntity = StringUtils.hasText(entityId)
+                ? entityMapper.selectById(entityId) : null;
+        if (targetEntity == null && StringUtils.hasText(
+                text(source.get("entityCode")))) {
+            targetEntity = entityMapper.findByEntityCode(
+                    text(source.get("entityCode"))).orElse(null);
+        }
+        if (targetEntity == null) {
+            throw new IllegalStateException("关联内容目标实体不存在: " + entityId);
+        }
+        String contentKey = text(source.get("contentKey"));
+        String contentName = text(source.get("contentName"));
+        if ("FORM".equalsIgnoreCase(contentType)) {
+            EntityForm form = StringUtils.hasText(contentId)
+                    ? formMapper.selectById(contentId)
+                    : formMapper.selectByEntityIdAndFormKey(
+                            targetEntity.getId(), contentKey);
+            if (form == null) {
+                throw new IllegalStateException(
+                        "关联内容目标表单不存在: " + contentKey);
+            }
+            contentKey = form.getFormKey();
+            contentName = form.getFormName();
+        } else if ("LIST".equalsIgnoreCase(contentType)) {
+            EntityListConfig list = StringUtils.hasText(contentId)
+                    ? listConfigMapper.selectById(contentId)
+                    : listConfigMapper.findByEntityIdAndListKey(
+                            targetEntity.getId(), contentKey);
+            if (list == null) {
+                throw new IllegalStateException(
+                        "关联内容目标列表不存在: " + contentKey);
+            }
+            contentKey = list.getListKey();
+            contentName = list.getListName();
+        } else {
+            throw new IllegalStateException(
+                    "关联内容目标类型不支持: " + contentType);
+        }
+        Map<String, Object> portable = new LinkedHashMap<>(source);
+        portable.remove("entityId");
+        portable.remove("contentId");
+        portable.remove("releaseId");
+        portable.remove("releaseVersion");
+        portable.remove("contentHash");
+        portable.put("entityCode", targetEntity.getEntityCode());
+        portable.put("entityName", targetEntity.getEntityName());
+        portable.put("contentType", contentType.toUpperCase(Locale.ROOT));
+        portable.put("contentKey", contentKey);
+        portable.put("contentName", contentName);
+        return portable;
+    }
+
+    static String portableAnchorNodeKey(
+            String anchorKey,
+            Map<String, String> nodeKeysById) {
+        if (!StringUtils.hasText(anchorKey)) {
+            throw new IllegalStateException("表单节点关联内容缺少挂载点");
+        }
+        String nodeKey = nodeKeysById == null
+                ? null : nodeKeysById.get(anchorKey);
+        if (!StringUtils.hasText(nodeKey)
+                && nodeKeysById != null
+                && nodeKeysById.containsValue(anchorKey)) {
+            nodeKey = anchorKey;
+        }
+        if (!StringUtils.hasText(nodeKey)) {
+            throw new IllegalStateException(
+                    "关联内容挂载的表单节点不存在: " + anchorKey);
+        }
+        return nodeKey;
     }
 
     /**
@@ -1755,6 +1962,77 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             Object parsed = parseJson(text, null);
             if (parsed != null) {
                 collectExtensionDependencies(parsed, dependencies);
+            }
+        }
+    }
+
+    /** 收集关联内容显式依赖，供导出展开和导入预检展示。 */
+    private void collectViewCompositionDependencies(
+            Map<String, Object> snapshot,
+            List<Map<String, Object>> dependencies) {
+        for (String ownerSection : List.of("forms", "lists")) {
+            for (Map<String, Object> owner : castList(
+                    snapshot.get(ownerSection))) {
+                for (Map<String, Object> composition : castList(
+                        owner.get("viewCompositions"))) {
+                    Map<String, Object> config = mapValue(
+                            composition.get("config"));
+                    Map<String, Object> target = mapValue(
+                            config.get("target"));
+                    String targetEntityCode = text(
+                            target.get("entityCode"));
+                    EntityDefinition targetEntity = StringUtils.hasText(
+                            targetEntityCode)
+                            ? entityMapper.findByEntityCode(
+                                    targetEntityCode).orElse(null)
+                            : null;
+                    if (targetEntity != null
+                            && targetEntity.getStorageMode()
+                            == EntityDefinition.StorageMode.SYSTEM) {
+                        Map<String, Object> dependency = new LinkedHashMap<>();
+                        dependency.put("type", ENTITY);
+                        dependency.put("key", targetEntityCode);
+                        dependency.put("required", true);
+                        dependency.put("source", "关联内容目标系统实体");
+                        dependency.put(
+                                ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY,
+                                true);
+                        dependencies.add(dependency);
+                    } else {
+                        addDependency(
+                                dependencies,
+                                ENTITY,
+                                targetEntityCode,
+                                true,
+                                "关联内容目标实体");
+                    }
+                    Map<String, Object> special = mapValue(
+                            config.get("specialHandling"));
+                    if (special.get("interfaceService") instanceof Map<?, ?> raw) {
+                        Map<String, Object> service = mapValue(raw);
+                        addDependency(
+                                dependencies,
+                                "INTERFACE_SERVICE",
+                                text(service.get("serviceCode")),
+                                true,
+                                "关联内容接口服务");
+                    }
+                    if (special.get("customComponent") instanceof Map<?, ?> raw) {
+                        Map<String, Object> component = mapValue(raw);
+                        String name = text(component.get("name"));
+                        Integer version = integer(component.get("version"));
+                        if (!StringUtils.hasText(name) || version == null) {
+                            continue;
+                        }
+                        Map<String, Object> dependency = new LinkedHashMap<>();
+                        dependency.put("type", "CUSTOM_COMPONENT");
+                        dependency.put("key", name + "@" + version);
+                        dependency.put("version", version);
+                        dependency.put("required", true);
+                        dependency.put("source", "关联内容自定义组件");
+                        dependencies.add(dependency);
+                    }
+                }
             }
         }
     }

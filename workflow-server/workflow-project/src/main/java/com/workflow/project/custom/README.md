@@ -72,6 +72,11 @@ Provider 接口只收到已经过平台授权的 `UiInvocationContext`、`DataSc
 表单或列表。所有示例日志都以“项目统一数据源”开头，可同时按
 `providerCode`、`recommendedScope` 和 `usage` 检索。
 
+Provider 的 `getCode() + getVersion()` 必须唯一且不可变；修改实现语义时应提升
+`getVersion()`，不要覆盖已被发布配置引用的版本。平台会在发布时固定实现版本和
+制品摘要，运行时找不到精确版本或摘要不一致会拒绝执行。实现还依赖模型、规则包等
+外部制品时，应覆盖 `getArtifactDigest()`，把这些制品的版本摘要一并纳入固定身份。
+
 表单初始化、加载后处理、提交前处理和字段事件的 `targetField` 默认留空，此时
 只记录日志或返回事件消息，不修改表单数据。需要观察回填效果时，应填写当前
 实体中真实存在且允许修改的字段编码。

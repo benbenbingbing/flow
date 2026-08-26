@@ -17,7 +17,13 @@ public class SystemOperationLog {
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
     private String eventId;
+    private String operationId;
     private String traceId;
+    private String parentOperationId;
+    private String sourceSystem;
+    private String sourceType;
+    private String sourceId;
+    private String sourceEventId;
     private String moduleCode;
     private String operationCode;
     private String operationName;

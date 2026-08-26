@@ -149,18 +149,17 @@ public class EntityVersionDiffService {
      * @return 版本差异信息
      */
     public EntityVersionDiffDTO compareVersions(String entityId, Integer versionFrom, Integer versionTo) {
-        // 获取版本历史列表
-        List<EntityPublishHistoryDTO> histories = publishHistoryService.getVersionHistory(entityId);
-
-        EntityPublishHistoryDTO fromHistory = histories.stream()
-                .filter(h -> h.getVersion().equals(versionFrom))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("版本不存在: " + versionFrom));
-
-        EntityPublishHistoryDTO toHistory = histories.stream()
-                .filter(h -> h.getVersion().equals(versionTo))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("版本不存在: " + versionTo));
+        // 历史可能包含大量字段快照；差异比较只点查目标两版，不能回退到全量历史解析。
+        EntityPublishHistoryDTO fromHistory = publishHistoryService
+                .getVersion(entityId, versionFrom);
+        if (fromHistory == null) {
+            throw new RuntimeException("版本不存在: " + versionFrom);
+        }
+        EntityPublishHistoryDTO toHistory = publishHistoryService
+                .getVersion(entityId, versionTo);
+        if (toHistory == null) {
+            throw new RuntimeException("版本不存在: " + versionTo);
+        }
 
         EntityVersionDiffDTO diff = new EntityVersionDiffDTO();
         diff.setEntityId(entityId);

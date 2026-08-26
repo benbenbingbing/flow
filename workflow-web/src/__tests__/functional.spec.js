@@ -11,7 +11,9 @@ import {
   hasCustomFormComponent,
   getRegisteredCustomFormNames,
   getCustomListDescriptor,
-  getCustomFormDescriptor
+  getCustomFormDescriptor,
+  getCustomListComponentVersionOptions,
+  getCustomFormComponentVersionOptions
 } from '@/utils/customComponentRegistry.js'
 import {
   getFormNodeComponent,
@@ -44,6 +46,7 @@ import {
   createFlowConditionConfig,
   createFlowConditionGroup
 } from '@/utils/flowConditionGroups.js'
+import { translate as translateBpmn } from '@/utils/bpmn-i18n.js'
 import {
   getNodeTypeDescription,
   getNodeTypeTag,
@@ -64,6 +67,11 @@ import {
   flattenPermissionMenuTree,
   sanitizePermissionKeys
 } from '@/shared/role-permission-transfer'
+import {
+  hasPreviousEntityVersion,
+  isEntityHistoryNearBottom,
+  mergeEntityHistoryPage
+} from '@/shared/entity-history-pagination'
 
 const DemoComponent = { name: 'DemoComponent' }
 const DemoForm = { name: 'DemoForm' }
@@ -185,6 +193,36 @@ assert.equal(hasCustomListComponent('functionalList'), true)
 assert.equal(getCustomListComponent('functionalList'), DemoComponent)
 assert.ok(getRegisteredCustomListNames().includes('functionalList'))
 assert.equal(getCustomListDescriptor('functionalList').label, '功能列表')
+const functionalListDigest = getCustomListDescriptor(
+  'functionalList'
+).artifactDigest
+assert.match(functionalListDigest, /^[a-f0-9]{64}$/)
+assert.equal(
+  getCustomListComponent('functionalList', 1, functionalListDigest),
+  DemoComponent
+)
+assert.equal(
+  getCustomListComponent('functionalList', 1, 'f'.repeat(64)),
+  undefined
+)
+
+registerCustomListComponent('immutableListArtifact', DemoListV1, {
+  version: 1,
+  artifactDigest: 'a'.repeat(64)
+})
+assert.throws(
+  () => registerCustomListComponent('immutableListArtifact', DemoListV2, {
+    version: 1,
+    artifactDigest: 'b'.repeat(64)
+  }),
+  /已注册不同制品摘要/
+)
+assert.equal(
+  getCustomListComponent(
+    'immutableListArtifact', 1, 'a'.repeat(64)
+  ),
+  DemoListV1
+)
 
 registerCustomListComponent('versionedList', DemoListV1, { version: 1 })
 registerCustomListComponent('versionedList', DemoListV2, { version: 2 })
@@ -193,6 +231,10 @@ assert.equal(getCustomListComponent('versionedList', 2), DemoListV2)
 assert.equal(getCustomListComponent('versionedList'), DemoListV2)
 assert.equal(getCustomListComponent('versionedList', 'invalid'), undefined)
 assert.equal(hasCustomListComponent('versionedList', 3), false)
+assert.deepEqual(
+  getCustomListComponentVersionOptions('versionedList').map(item => item.version),
+  [2, 1]
+)
 
 registerCustomFormComponent('functionalForm', DemoForm, {
   label: '功能表单',
@@ -202,6 +244,10 @@ assert.equal(hasCustomFormComponent('functionalForm'), true)
 assert.equal(getCustomFormComponent('functionalForm'), DemoForm)
 assert.ok(getRegisteredCustomFormNames().includes('functionalForm'))
 assert.deepEqual(getCustomFormDescriptor('functionalForm').supportedModes, ['create', 'edit', 'approve', 'view'])
+assert.match(
+  getCustomFormDescriptor('functionalForm').artifactDigest,
+  /^[a-f0-9]{64}$/
+)
 
 registerCustomFormComponent('versionedForm', DemoForm, { version: 1 })
 registerCustomFormComponent('versionedForm', DemoComponent, { version: 2 })
@@ -210,6 +256,10 @@ assert.equal(getCustomFormComponent('versionedForm', 2), DemoComponent)
 assert.equal(getCustomFormComponent('versionedForm'), DemoComponent)
 assert.equal(getCustomFormComponent('versionedForm', 'invalid'), undefined)
 assert.equal(hasCustomFormComponent('versionedForm', 3), false)
+assert.deepEqual(
+  getCustomFormComponentVersionOptions('versionedForm').map(item => item.version),
+  [2, 1]
+)
 
 registerFormNodeComponent('versionedNode', DemoNodeV1, {
   version: 1,
@@ -761,9 +811,57 @@ for (const unavailableTitle of [
 }
 
 const designerSource = readFileSync('src/components/VueBpmnDesigner.vue', 'utf8')
+for (const [sourceText, expectedText] of [
+  ['Delete', '删除'],
+  ['Add text annotation', '添加文本注释'],
+  ['Connect to other element', '连接到其他元素'],
+  ['Connect using association', '使用普通关联连接'],
+  ['Connect using data input association', '创建数据输入关联'],
+  ['Create pool/participant', '创建泳池 / 参与者'],
+  ['Create expanded sub-process', '创建展开子流程']
+]) {
+  assert.equal(translateBpmn(sourceText), expectedText, `BPMN 上下文菜单缺少汉化: ${sourceText}`)
+}
+assert.match(
+  translateBpmn('Create data object reference'),
+  /流程数据变量建模/,
+  '数据对象 palette 提示应明确其流程数据建模用途'
+)
+assert.match(
+  translateBpmn('Create data store reference'),
+  /仅建模，不自动持久化/,
+  '数据存储 palette 提示应避免暗示平台会自动持久化业务数据'
+)
+const processManualSource = readFileSync('src/data/user-manual/process.js', 'utf8')
+assert.ok(
+  processManualSource.includes('数据存储是外部持久数据的建模引用，不提供自动读写'),
+  '流程手册应说明数据存储图形不提供自动读写能力'
+)
+assert.ok(
+  processManualSource.includes('真实读写和变量映射需由服务任务、实体接口或流程动作显式实现'),
+  '流程手册应区分数据关联建模与实际运行时数据传输'
+)
 for (const configurableType of ['bpmn:CallActivity', 'bpmn:SubProcess']) {
   assert.ok(designerSource.includes(`'${configurableType}'`), `流程设计器无法打开配置面板: ${configurableType}`)
 }
+const designerElementClickBlock = designerSource.slice(
+  designerSource.indexOf("modeler.value.on('element.click'"),
+  designerSource.indexOf("modeler.value.on('elements.changed'")
+)
+assert.match(
+  designerElementClickBlock,
+  /else\s*\{[\s\S]*?emit\('element-click', null\)/,
+  '点击无平台配置的 BPMN 元素时应清空旧属性面板选择'
+)
+const processDesignElementClickBlock = processDesignSource.slice(
+  processDesignSource.indexOf('const onElementClick'),
+  processDesignSource.indexOf('const openNodeConfig')
+)
+assert.match(
+  processDesignElementClickBlock,
+  /selectedElement\.value = element \|\| null[\s\S]*?nodeConfigVisible\.value = Boolean\(element\)/,
+  '流程设计页应在元素不可配置时清空选择并关闭属性面板'
+)
 
 const nodeConfigPanelSource = readFileSync('src/components/NodeConfigPanel.vue', 'utf8')
 assert.ok(
@@ -983,7 +1081,50 @@ for (const helpText of [
 }
 
 const entityListSource = readFileSync('src/views/EntityList.vue', 'utf8')
+const entityPublishHistoryApiSource = readFileSync(
+  'src/api/entityPublishHistory.js',
+  'utf8'
+)
 const schemaOperationApiSource = readFileSync('src/api/schemaOperation.js', 'utf8')
+assert.ok(
+  entityListSource.includes('width="75%"')
+    && entityListSource.includes('top="3vh"')
+    && entityListSource.includes('height: 94vh')
+    && entityListSource.includes(':global(.entity-history-dialog)')
+    && entityListSource.includes('@scroll.passive="handleHistoryScroll"'),
+  '实体历史弹窗应与新增数据弹窗同位置、固定高度并由独立容器触底加载'
+)
+assert.ok(
+  entityPublishHistoryApiSource.includes('/entity/${entityId}/page')
+    && entityPublishHistoryApiSource.includes('pageNum:')
+    && entityPublishHistoryApiSource.includes('pageSize:'),
+  '实体历史 API 必须请求服务端分页端点并传递页码与页大小'
+)
+assert.equal(
+  isEntityHistoryNearBottom({ scrollHeight: 1_000, scrollTop: 652, clientHeight: 300 }),
+  true,
+  '距底部 48px 时应触发加载下一页'
+)
+assert.equal(
+  isEntityHistoryNearBottom({ scrollHeight: 1_000, scrollTop: 651, clientHeight: 300 }),
+  false,
+  '未进入触底阈值时不应提前加载'
+)
+assert.equal(hasPreviousEntityVersion({ version: 14 }), true)
+assert.equal(hasPreviousEntityVersion({ version: 1 }), false)
+assert.deepEqual(
+  mergeEntityHistoryPage(
+    [{ id: 'v5', version: 5 }],
+    [{ id: 'v5', version: 5 }, { id: 'v4', version: 4 }]
+  ).map(item => item.id),
+  ['v5', 'v4'],
+  '滚动分页结果不应出现重复历史卡片'
+)
+assert.match(
+  entityListSource,
+  /historyRequestGeneration \+= 1[\s\S]*?requestGeneration !== historyRequestGeneration/,
+  '关闭或切换实体后，迟到的历史请求不得写入新实体列表'
+)
 assert.ok(
   entityListSource.includes('物理结构发布检查')
     && entityListSource.includes('confirmHighRiskSchemaChange')

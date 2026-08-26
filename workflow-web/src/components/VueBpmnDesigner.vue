@@ -147,6 +147,9 @@ const initModeler = () => {
     ]
     if (configurableTypes.some(type => element.type?.includes(type))) {
       activateElement(element)
+    } else {
+      // 非平台配置元素仍由 bpmn-js 保持画布选中，但必须清空旧属性面板，避免误改上一个节点。
+      emit('element-click', null)
     }
   })
 

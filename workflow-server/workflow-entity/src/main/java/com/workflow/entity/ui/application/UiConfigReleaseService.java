@@ -23,6 +23,16 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.AuditEventIds;
+import com.workflow.contracts.audit.AuditModule;
+import com.workflow.contracts.audit.AuditResult;
+import com.workflow.contracts.audit.AuditRiskLevel;
+import com.workflow.contracts.audit.AuditSourcePointer;
+import com.workflow.contracts.audit.OperationContext;
+import com.workflow.contracts.audit.OperationContextHolder;
+import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpactPort;
 import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
@@ -65,6 +75,7 @@ import com.workflow.entity.list.application.validation.EntityListConfigurationVa
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,6 +83,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -157,6 +169,8 @@ public class UiConfigReleaseService {
     private final MigrationAssetHandler migrationAssetHandler;
     private EntityListActionConfigService listActionConfigService;
     private UiHotfixGovernanceService hotfixGovernanceService;
+    private UiViewCompositionService viewCompositionService;
+    private SystemAuditPort auditPort;
 
     /**
      * 治理服务采用 setter 注入，避免改变大量纯单元测试的显式构造签名；
@@ -173,6 +187,25 @@ public class UiConfigReleaseService {
     void setListActionConfigService(
             EntityListActionConfigService listActionConfigService) {
         this.listActionConfigService = listActionConfigService;
+    }
+
+    /**
+     * 关联内容是宿主草稿的一部分，但使用独立表保存。采用 setter 注入以兼容
+     * 现有显式构造的单元测试；生产环境由 Spring 注入后参与完整发布生命周期。
+     */
+    @Autowired
+    void setViewCompositionService(
+            @Lazy UiViewCompositionService viewCompositionService) {
+        this.viewCompositionService = viewCompositionService;
+    }
+
+    /**
+     * 统一审计通过 setter 注入以保持已有纯单元测试的显式构造签名稳定。
+     * 生产容器中该端口由 workflow-admin 提供。
+     */
+    @Autowired
+    void setAuditPort(SystemAuditPort auditPort) {
+        this.auditPort = auditPort;
     }
 
     /**
@@ -713,6 +746,7 @@ public class UiConfigReleaseService {
                 new TypeReference<Map<String, Object>>() {});
         formDocument.remove("fields");
         formDocument.remove("nodes");
+        formDocument.remove("viewCompositions");
         formDocument.remove("entity");
         formDocument.remove("runtimeReleaseId");
         formDocument.remove("runtimeReleaseVersion");
@@ -730,6 +764,10 @@ public class UiConfigReleaseService {
                 "legacyFields",
                 form.getFields() == null
                         ? List.of() : form.getFields());
+        snapshot.put(
+                "viewCompositions",
+                form.getViewCompositions() == null
+                        ? List.of() : form.getViewCompositions());
         return snapshot;
     }
 
@@ -1028,6 +1066,10 @@ public class UiConfigReleaseService {
         }
         Map<String, Object> targetSnapshot =
                 verifiedSnapshot(target);
+        // 预览阶段即执行与真正激活相同的完整校验，使失效挂载点或固定依赖
+        // 在用户确认切换版本前被准确指出，而不是等状态更新事务才暴露。
+        validateSnapshotForActivation(
+                configType, configId, targetSnapshot);
         UiConfigRelease current = releaseMapper.findActive(
                 configType,
                 configId);
@@ -1096,6 +1138,7 @@ public class UiConfigReleaseService {
                     List.of("id", "nodeKey"),
                     List.of("label", "fieldLabel", "fieldName", "nodeKey"),
                     true);
+            appendViewCompositionChanges(changes, draft, active);
             appendEventBindingChanges(
                     changes,
                     draft,
@@ -1152,6 +1195,7 @@ public class UiConfigReleaseService {
                 "列表场景",
                 draftList.get("allowedScenes"),
                 activeList.get("allowedScenes"));
+        appendViewCompositionChanges(changes, draft, active);
         appendEventBindingChanges(
                 changes,
                 draft,
@@ -1176,6 +1220,21 @@ public class UiConfigReleaseService {
                 mapList(active.get("eventBindings")),
                 List.of("id"),
                 List.of("eventCode", "targetKey"),
+                false);
+    }
+
+    private void appendViewCompositionChanges(
+            List<UiConfigDiffItemDTO> changes,
+            Map<String, Object> draft,
+            Map<String, Object> active) {
+        appendCollectionChanges(
+                changes,
+                "viewCompositions",
+                "关联内容",
+                mapList(draft.get("viewCompositions")),
+                mapList(active.get("viewCompositions")),
+                List.of("id", "compositionKey"),
+                List.of("compositionKey"),
                 false);
     }
 
@@ -1366,6 +1425,160 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 汇总发布时会被关联内容精确固定的业务依赖。
+     *
+     * <p>该清单只用于发布前的人类确认，不参与权限或运行时解析；运行时仍以
+     * 不可变快照中的 ID、版本和哈希为权威。按稳定引用去重，避免同一目标被
+     * 多个关联内容使用时在发布窗口重复展示。</p>
+     */
+    private List<Map<String, Object>> publishDependencies(
+            Map<String, Object> snapshot) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Map<String, Object> item : mapList(
+                snapshot.get("viewCompositions"))) {
+            Map<String, Object> config = mapValue(item.get("config"));
+            String compositionName = firstNonBlank(
+                    config.get("name"),
+                    item.get("compositionKey"),
+                    "关联内容");
+            Map<String, Object> source = mapValue(config.get("source"));
+            Map<String, Object> target = mapValue(config.get("target"));
+
+            // 关系解析依赖实体发布定义。把来源和目标实体历史一并展示，
+            // 避免用户只确认了目标页面版本，却不知道字段/关系语义也已冻结。
+            Map<String, Object> entitySnapshots = mapValue(
+                    config.get("entitySnapshots"));
+            addEntitySchemaDependency(
+                    result,
+                    seen,
+                    mapValue(entitySnapshots.get("source")),
+                    source,
+                    compositionName);
+            addEntitySchemaDependency(
+                    result,
+                    seen,
+                    mapValue(entitySnapshots.get("target")),
+                    target,
+                    compositionName);
+
+            String targetType = text(target.get("contentType"));
+            String targetId = text(target.get("contentId"));
+            if (StringUtils.hasText(targetType)
+                    && StringUtils.hasText(targetId)) {
+                Map<String, Object> dependency = new LinkedHashMap<>();
+                dependency.put("type", targetType);
+                dependency.put("name", firstNonBlank(
+                        target.get("contentName"),
+                        target.get("contentKey"),
+                        targetId));
+                dependency.put("key", target.get("contentKey"));
+                dependency.put("version", target.get("releaseVersion"));
+                dependency.put("releaseId", target.get("releaseId"));
+                dependency.put("usedBy", compositionName);
+                addPublishDependency(
+                        result,
+                        seen,
+                        targetType + ":" + targetId + ":"
+                                + text(target.get("releaseId")),
+                        dependency);
+            }
+
+            Map<String, Object> special = mapValue(
+                    config.get("specialHandling"));
+            Map<String, Object> service = mapValue(
+                    special.get("interfaceService"));
+            String serviceId = text(service.get("serviceId"));
+            String operationCode = text(service.get("operationCode"));
+            if (StringUtils.hasText(serviceId)
+                    && StringUtils.hasText(operationCode)) {
+                Map<String, Object> dependency = new LinkedHashMap<>();
+                dependency.put("type", "INTERFACE_SERVICE");
+                dependency.put("name", firstNonBlank(
+                        service.get("serviceName"),
+                        service.get("sourceCode"),
+                        serviceId));
+                dependency.put("key", operationCode);
+                dependency.put("version", service.get("serviceRevision"));
+                dependency.put("usedBy", compositionName);
+                addPublishDependency(
+                        result,
+                        seen,
+                        "SERVICE:" + serviceId + ":" + operationCode + ":"
+                                + text(service.get("serviceRevision")),
+                        dependency);
+            }
+
+            Map<String, Object> component = mapValue(
+                    special.get("customComponent"));
+            String componentName = text(component.get("name"));
+            if (StringUtils.hasText(componentName)) {
+                Map<String, Object> dependency = new LinkedHashMap<>();
+                dependency.put("type", "CUSTOM_COMPONENT");
+                dependency.put("name", firstNonBlank(
+                        component.get("displayName"), componentName));
+                dependency.put("key", componentName);
+                dependency.put("version", component.get("version"));
+                dependency.put("usedBy", compositionName);
+                addPublishDependency(
+                        result,
+                        seen,
+                        "COMPONENT:" + componentName + ":"
+                                + text(component.get("version")),
+                        dependency);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private void addEntitySchemaDependency(
+            List<Map<String, Object>> result,
+            Set<String> seen,
+            Map<String, Object> pinned,
+            Map<String, Object> entity,
+            String compositionName) {
+        String historyId = text(pinned.get("historyId"));
+        if (!StringUtils.hasText(historyId)) {
+            return;
+        }
+        Map<String, Object> dependency = new LinkedHashMap<>();
+        dependency.put("type", "ENTITY_SCHEMA");
+        dependency.put("name", firstNonBlank(
+                entity.get("entityName"),
+                pinned.get("entityCode"),
+                pinned.get("entityId")));
+        dependency.put("key", pinned.get("entityCode"));
+        dependency.put("version", pinned.get("version"));
+        dependency.put("releaseId", historyId);
+        dependency.put("usedBy", compositionName);
+        addPublishDependency(
+                result,
+                seen,
+                "ENTITY_SCHEMA:" + historyId,
+                dependency);
+    }
+
+    private void addPublishDependency(
+            List<Map<String, Object>> result,
+            Set<String> seen,
+            String identity,
+            Map<String, Object> dependency) {
+        if (seen.add(identity)) {
+            result.add(Collections.unmodifiableMap(dependency));
+        }
+    }
+
+    private String firstNonBlank(Object... values) {
+        for (Object value : values) {
+            String candidate = text(value);
+            if (StringUtils.hasText(candidate)) {
+                return candidate;
+            }
+        }
+        return "";
+    }
+
     private Set<String> textSet(Object source) {
         Set<String> result = new LinkedHashSet<>();
         if (!(source instanceof List<?> list)) {
@@ -1435,6 +1648,7 @@ public class UiConfigReleaseService {
                 .changedItems(diff.getChangedItems())
                 .riskItems(patch.riskItems())
                 .targets(List.of())
+                .dependencies(publishDependencies(draft))
                 .blockers(diff.isChanged()
                         ? List.of() : List.of("当前草稿与已发布版本一致"))
                 .build();
@@ -1612,24 +1826,10 @@ public class UiConfigReleaseService {
                     String.join("；", preparation.preview().getBlockers()));
         }
 
-        UiHotfixGovernanceService.PublishAuthorization authorization =
-                requireHotfixGovernance().beginPublish(
+        String governanceRequestId =
+                requireHotfixGovernance().beginDirectPublish(
                         request,
                         preparation.preview());
-        if (authorization.idempotent()) {
-            UiConfigRelease existing = releaseMapper.selectById(
-                    authorization.existingReleaseId());
-            if (existing == null
-                    || !Objects.equals(configType, existing.getConfigType())
-                    || !Objects.equals(configId, existing.getConfigId())
-                    || !HOTFIX.equals(existing.getReleaseMode())) {
-                throw new BusinessConflictException(
-                        "UI_HOTFIX_IDEMPOTENCY_CONFLICT",
-                        "HOTFIX 申请关联的发布版本不存在或不匹配");
-            }
-            verifiedSnapshot(existing);
-            return existing;
-        }
 
         UiConfigRelease active = preparation.active();
         int nextVersion = Math.max(
@@ -1710,7 +1910,7 @@ public class UiConfigReleaseService {
                 request.getDescription(),
                 auditDetail(preparation.preview()));
         requireHotfixGovernance().markPublished(
-                authorization.requestId(),
+                governanceRequestId,
                 release.getId());
         log.info(
                 "UI配置热发布完成: configType={}, configId={}, releaseId={}, releaseVersion={}, baseReleaseId={}, riskLevel={}, targetCount={}, operatorId={}",
@@ -1952,6 +2152,7 @@ public class UiConfigReleaseService {
                         .changedItems(diff.getChangedItems())
                         .riskItems(patch.riskItems())
                         .targets(List.copyOf(targetPreviews))
+                        .dependencies(publishDependencies(draft))
                         .blockers(List.copyOf(blockers))
                         .build();
         return new HotfixPreparation(
@@ -2600,6 +2801,10 @@ public class UiConfigReleaseService {
         list.setId(configId);
         EntityListConfigDTO restored =
                 listConfigService.saveConfigForImport(list);
+        restoreViewCompositions(
+                LIST,
+                configId,
+                mapList(snapshot.get("viewCompositions")));
         eventBindingSnapshotService.restoreLocalBindings(
                 LIST,
                 configId,
@@ -2752,6 +2957,11 @@ public class UiConfigReleaseService {
                     "草稿恢复后的修订号不符合预期，操作已回滚");
         }
 
+        restoreViewCompositions(
+                configType,
+                configId,
+                mapList(activeSnapshot.get("viewCompositions")));
+
         eventBindingSnapshotService.restoreLocalBindingsForRelease(
                 configType,
                 configId,
@@ -2839,6 +3049,10 @@ public class UiConfigReleaseService {
         Map<String, Object> restored =
                 new LinkedHashMap<>(currentDraft);
         restored.put("list", sourceRelease.get("list"));
+        restored.put(
+                "viewCompositions",
+                normalizeViewCompositionsForCurrentDependencies(
+                        mapList(sourceRelease.get("viewCompositions"))));
         List<Map<String, Object>> bindings = new ArrayList<>();
         mapList(currentDraft.get("eventBindings")).stream()
                 .filter(binding -> !isLocalListBinding(
@@ -2977,6 +3191,12 @@ public class UiConfigReleaseService {
                     "list",
                     snapshotSupport.stableValue(list));
         }
+        projected.put(
+                "viewCompositions",
+                snapshotSupport.stableValue(
+                        normalizeViewCompositionsForCurrentDependencies(
+                                mapList(activeSnapshot.get(
+                                        "viewCompositions")))));
         projected.put(
                 "eventBindings",
                 projectedEventBindings(
@@ -3123,6 +3343,7 @@ public class UiConfigReleaseService {
         eventBindingSnapshotService.lockOwnerBindings(
                 "ENTITY",
                 ownerEntityId(owner));
+        requireViewCompositionService().lockByOwner(configType, configId);
     }
 
     private int ownerRevision(Object owner) {
@@ -3581,6 +3802,10 @@ public class UiConfigReleaseService {
         form.setNodes(objectMapper.convertValue(
                 snapshot.getOrDefault("nodes", List.of()),
                 new TypeReference<List<EntityFormNode>>() {}));
+        // 只从已验证的发布快照填充，避免运行时误读关联内容草稿。
+        form.setViewCompositions(objectMapper.convertValue(
+                snapshot.getOrDefault("viewCompositions", List.of()),
+                new TypeReference<List<Map<String, Object>>>() {}));
         return form;
     }
 
@@ -3883,6 +4108,10 @@ public class UiConfigReleaseService {
                                     FORM,
                                     configId,
                                     form.getEntityId())));
+            snapshot.put(
+                    "viewCompositions",
+                    snapshotSupport.stableValue(
+                            snapshotViewCompositions(FORM, configId)));
             return snapshot;
         }
         EntityListConfigDTO list = listConfigService.findById(configId);
@@ -3901,7 +4130,47 @@ public class UiConfigReleaseService {
                                 LIST,
                                 configId,
                                 list.getEntityId())));
+        snapshot.put(
+                "viewCompositions",
+                snapshotSupport.stableValue(
+                        snapshotViewCompositions(LIST, configId)));
         return snapshot;
+    }
+
+    private List<Map<String, Object>> snapshotViewCompositions(
+            String configType,
+            String configId) {
+        return requireViewCompositionService().snapshot(configType, configId);
+    }
+
+    private List<Map<String, Object>>
+            normalizeViewCompositionsForCurrentDependencies(
+                    List<Map<String, Object>> items) {
+        return requireViewCompositionService()
+                .normalizeSnapshotForCurrentDependencies(items);
+    }
+
+    private void restoreViewCompositions(
+            String configType,
+            String configId,
+            List<Map<String, Object>> items) {
+        requireViewCompositionService().restoreForRelease(
+                configType,
+                configId,
+                items == null ? List.of() : items);
+    }
+
+    /**
+     * 关联内容属于发布快照和恢复事务的强制组成部分。服务未装配时静默返回
+     * 空集合会永久丢失配置，跳过恢复也会造成草稿与发布哈希伪对齐，因此所有
+     * 发布生命周期入口都必须 fail-closed。
+     */
+    private UiViewCompositionService requireViewCompositionService() {
+        if (viewCompositionService == null) {
+            throw new IllegalStateException(
+                    "关联内容服务未装配，无法安全处理UI配置发布快照");
+        }
+        return viewCompositionService;
     }
 
     private Map<String, Object> formMetadata(EntityForm form) {
@@ -4111,6 +4380,8 @@ public class UiConfigReleaseService {
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
             dataSourceValidator.validate(snapshot);
+            requireViewCompositionService().validateReleaseSnapshot(
+                    configType, configId, snapshot);
             return;
         }
         EntityListConfigDTO list = objectMapper.convertValue(
@@ -4119,6 +4390,8 @@ public class UiConfigReleaseService {
         validatePinnedListTargetForms(list);
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
+        requireViewCompositionService().validateReleaseSnapshot(
+                configType, configId, snapshot);
     }
 
     private void pinListTargetFormReleases(EntityListConfigDTO list) {
@@ -4288,6 +4561,8 @@ public class UiConfigReleaseService {
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
             dataSourceValidator.validate(snapshot);
+            requireViewCompositionService().validateReleaseSnapshot(
+                    configType, configId, snapshot);
             return;
         }
         EntityListConfigDTO list = objectMapper.convertValue(
@@ -4296,6 +4571,8 @@ public class UiConfigReleaseService {
         validatePinnedListTargetForms(list);
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
+        requireViewCompositionService().validateReleaseSnapshot(
+                configType, configId, snapshot);
     }
 
     private void validateExtensionReferences(Map<String, Object> snapshot) {
@@ -4563,12 +4840,10 @@ public class UiConfigReleaseService {
             if (compatibleTypes == null
                     || !compatibleTypes.contains(normalize(node.getNodeType()))) {
                 throw new IllegalArgumentException(
-                        "组件模板类型 "
-                                + templateType
-                                + " 与节点类型 "
-                                + node.getNodeType()
-                                + " 不兼容: "
-                                + nodeLabel(node));
+                        incompatibleTemplateMessage(
+                                node,
+                                template,
+                                templateType));
             }
             UiComponentTemplateVersion version = templateVersionMapper.selectOne(
                     new LambdaQueryWrapper<UiComponentTemplateVersion>()
@@ -4866,6 +5141,53 @@ public class UiConfigReleaseService {
                 : node.getId();
     }
 
+    /**
+     * 生成可直接定位表单设计器节点的模板不兼容提示。
+     *
+     * <p>优先展示用户可见的节点标签，同时保留字段/节点编码、节点 ID、
+     * 模板名称与类型，避免仅返回内部 nodeKey 导致用户无法定位配置项。</p>
+     */
+    private String incompatibleTemplateMessage(
+            EntityFormNode node,
+            UiComponentTemplate template,
+            String templateType) {
+        Map<String, Object> props = StringUtils.hasText(node.getPropsDocument())
+                ? codec.readObject(
+                        node.getPropsDocument(),
+                        "组件模板引用节点属性")
+                : Map.of();
+        String displayName = firstNonBlank(
+                props.get("label"),
+                props.get("fieldName"),
+                node.getBindingRef(),
+                node.getNodeKey(),
+                node.getId());
+        String nodeCode = firstNonBlank(
+                props.get("fieldCode"),
+                node.getBindingRef(),
+                node.getNodeKey(),
+                node.getId());
+        String templateName = firstNonBlank(
+                template.getTemplateName(),
+                template.getTemplateKey(),
+                template.getId());
+        return "表单节点“"
+                + displayName
+                + "”（编码: "
+                + nodeCode
+                + "，节点类型: "
+                + node.getNodeType()
+                + "，节点ID: "
+                + node.getId()
+                + "）绑定了不兼容的组件模板“"
+                + templateName
+                + "”（模板类型: "
+                + templateType
+                + "，模板ID: "
+                + template.getId()
+                + "）。请在表单设计器中定位该节点，并在“锁定模板”中清除或更换兼容模板。";
+    }
+
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
@@ -4910,6 +5232,106 @@ public class UiConfigReleaseService {
                 ? null : codec.write(detail, "UI发布审计明细"));
         audit.setCreateTime(LocalDateTime.now());
         releaseAuditMapper.insert(audit);
+        recordUnifiedReleaseAudit(audit);
+    }
+
+    /**
+     * 将既有 UI 发布审计行投影到统一时间线。投影只保存审计行指针，发布快照、
+     * 风险明细和原因仍由 UI 发布模块自己的接口鉴权读取。
+     */
+    private void recordUnifiedReleaseAudit(
+            UiConfigReleaseAudit audit) {
+        if (auditPort == null) {
+            // 仅允许非 Spring 的纯单元测试缺少端口；生产环境 setter 为必需注入。
+            return;
+        }
+        OperationContext inherited =
+                OperationContextHolder.current().orElse(null);
+        String operationId = inherited == null
+                ? AuditEventIds.stable(
+                        "ui-release-operation",
+                        audit.getId(),
+                        audit.getOperation())
+                : inherited.operationId();
+        String traceId = inherited != null
+                && StringUtils.hasText(inherited.traceId())
+                ? inherited.traceId()
+                : audit.getTraceId();
+        AuditSourcePointer source = new AuditSourcePointer(
+                "ENTITY_UI_RELEASE",
+                "UI_CONFIG_RELEASE_AUDIT",
+                audit.getId(),
+                audit.getId());
+        try {
+            auditPort.record(SystemAuditEvent.builder()
+                    .eventId(AuditEventIds.stable(
+                            "ui-release-audit", audit.getId()))
+                    .operationContext(new OperationContext(
+                            operationId,
+                            traceId,
+                            inherited == null
+                                    ? null
+                                    : inherited.parentOperationId(),
+                            source))
+                    .module(AuditModule.ENTITY)
+                    .action(releaseAuditAction(audit.getOperation()))
+                    .operationName("UI配置发布审计："
+                            + audit.getOperation())
+                    .riskLevel(releaseAuditRisk(audit.getRiskLevel()))
+                    .result(AuditResult.SUCCESS)
+                    .operatorId(audit.getActorId())
+                    .operatorName(audit.getActorName())
+                    .targetType("UI_CONFIG_RELEASE")
+                    .targetId(audit.getReleaseId())
+                    .summary("UI配置审计已记录："
+                            + audit.getConfigType()
+                            + "/" + audit.getConfigId()
+                            + "/" + audit.getOperation())
+                    .build());
+        } catch (RuntimeException exception) {
+            // 权威 ui_config_release_audit 已写入当前事务；统一只读投影故障
+            // 由审计基础设施告警，不应改变发布本身的业务语义。
+            log.warn(
+                    "UI发布统一审计投影失败: auditId={}, releaseId={}, exceptionType={}",
+                    audit.getId(),
+                    audit.getReleaseId(),
+                    exception.getClass().getName());
+        }
+    }
+
+    private AuditAction releaseAuditAction(String operation) {
+        String normalized = normalize(operation);
+        if (normalized != null
+                && normalized.startsWith("PUBLISH")) {
+            return AuditAction.PUBLISH;
+        }
+        if ("ROLLBACK_HOTFIX".equals(normalized)
+                || "RESTORE_DRAFT".equals(normalized)
+                || "DISCARD_DRAFT".equals(normalized)) {
+            return AuditAction.ROLLBACK;
+        }
+        if ("ACTIVATE_RELEASE".equals(normalized)) {
+            return AuditAction.ENABLE;
+        }
+        return AuditAction.CONFIGURE;
+    }
+
+    private AuditRiskLevel releaseAuditRisk(String value) {
+        String normalized = normalize(value);
+        if (UiConfigSemanticPatchService.SAFE.equals(normalized)) {
+            return AuditRiskLevel.LOW;
+        }
+        if (UiConfigSemanticPatchService.REVIEW.equals(normalized)) {
+            return AuditRiskLevel.HIGH;
+        }
+        if (UiConfigSemanticPatchService.BLOCKED.equals(normalized)) {
+            return AuditRiskLevel.CRITICAL;
+        }
+        try {
+            return AuditRiskLevel.valueOf(normalized);
+        } catch (IllegalArgumentException | NullPointerException ignored) {
+            return AuditRiskLevel.MEDIUM;
+        }
     }
 
     private void deactivate(String configType, String configId) {

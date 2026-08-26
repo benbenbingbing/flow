@@ -55,4 +55,6 @@ public class EntityListSchemaDTO {
     private Map<String, ?> toolbarCapabilities = new LinkedHashMap<>();
     /** 列表字段配置 */
     private List<?> fields = new ArrayList<>();
+    /** 当前发布快照中可供运行时渲染的关联内容。 */
+    private List<Map<String, Object>> viewCompositions = new ArrayList<>();
 }

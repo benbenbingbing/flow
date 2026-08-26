@@ -67,6 +67,21 @@ class SystemAuditAspectTest {
         assertEquals("外层审计操作", port.events.get(0).operationName());
     }
 
+    @Test
+    void usesBusinessOperationIdToLinkAuditAndMutationReceipts() {
+        RecordingAuditPort port = new RecordingAuditPort();
+        SampleService service = proxy(port);
+
+        service.executeRelatedAction(new ActionRequest("operation-42"));
+
+        SystemAuditEvent event = port.events.get(0);
+        assertEquals("operation-42", event.operationId());
+        assertEquals("project-7", event.targetId());
+        assertEquals("UI_VIEW_COMPOSITION_ACTION",
+                event.sourcePointer().sourceType());
+        assertEquals("project-7", event.sourcePointer().sourceId());
+    }
+
     private SampleService proxy(RecordingAuditPort port) {
         return proxy(new SampleService(), port);
     }
@@ -109,6 +124,45 @@ class SystemAuditAspectTest {
                 targetIdArg = 0)
         public void fail(String id) {
             throw new IllegalStateException("boom");
+        }
+
+        @SystemAudit(
+                module = AuditModule.ENTITY,
+                action = AuditAction.OTHER,
+                operation = "执行关联内容动作",
+                targetType = "UI_VIEW_COMPOSITION_ACTION")
+        public ActionResponse executeRelatedAction(ActionRequest request) {
+            return new ActionResponse(request.getOperationId(), "project-7");
+        }
+    }
+
+    static final class ActionRequest {
+        private final String operationId;
+
+        ActionRequest(String operationId) {
+            this.operationId = operationId;
+        }
+
+        public String getOperationId() {
+            return operationId;
+        }
+    }
+
+    static final class ActionResponse {
+        private final String operationId;
+        private final String sourceRecordId;
+
+        ActionResponse(String operationId, String sourceRecordId) {
+            this.operationId = operationId;
+            this.sourceRecordId = sourceRecordId;
+        }
+
+        public String getOperationId() {
+            return operationId;
+        }
+
+        public String getSourceRecordId() {
+            return sourceRecordId;
         }
     }
 

@@ -2,6 +2,8 @@ package com.workflow.entity.definition.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.result.PageResult;
+import com.workflow.core.result.PageRequest;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.api.response.EntityPublishHistoryDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -176,6 +178,52 @@ public class EntityPublishHistoryService {
     public List<EntityPublishHistoryDTO> getVersionHistory(String entityId) {
         List<EntityPublishHistory> list = historyMapper.findByEntityId(entityId);
         return list.stream().map(this::convertToDTO).collect(Collectors.toList());
+    }
+
+    /**
+     * 分页获取实体发布历史，供历史弹窗按滚动位置逐页加载。
+     *
+     * <p>页码最小为 1，单页最多 50 条，避免历史字段快照一次性返回导致弹窗打开变慢。</p>
+     *
+     * @param entityId         实体定义 ID
+     * @param requestedPageNum 请求页码
+     * @param requestedPageSize 请求条数
+     * @return 按版本号倒序排列的历史分页结果
+     */
+    @Transactional(readOnly = true)
+    public PageResult<EntityPublishHistoryDTO> getVersionHistoryPage(
+            String entityId,
+            Integer requestedPageNum,
+            Integer requestedPageSize) {
+        PageRequest page = PageRequest.normalize(
+                requestedPageNum, requestedPageSize, 5, 50);
+        long total = historyMapper.countByEntityId(entityId);
+        List<EntityPublishHistoryDTO> records = historyMapper
+                .findPageByEntityId(
+                        entityId,
+                        page.offset(),
+                        page.pageSize())
+                .stream()
+                .map(this::convertToDTO)
+                .toList();
+        return new PageResult<>(
+                records, total, page.pageNumber(), page.pageSize());
+    }
+
+    /**
+     * 获取实体的指定发布版本，供相邻版本差异比较点查使用。
+     *
+     * @param entityId 实体定义 ID
+     * @param version  发布版本号
+     * @return 指定版本；不存在时返回 null
+     */
+    @Transactional(readOnly = true)
+    public EntityPublishHistoryDTO getVersion(
+            String entityId,
+            Integer version) {
+        EntityPublishHistory history = historyMapper
+                .findByEntityIdAndVersion(entityId, version);
+        return history == null ? null : convertToDTO(history);
     }
 
     /**

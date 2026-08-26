@@ -21,6 +21,10 @@ import com.workflow.contracts.ui.CommonInvocationContext;
 import com.workflow.contracts.ui.EntityDescriptor;
 import com.workflow.contracts.ui.ListInvocationContext;
 import com.workflow.contracts.ui.UiDataSourceProvider;
+import com.workflow.contracts.ui.UiActionCommandPlan;
+import com.workflow.contracts.ui.UiActionCommandPlanProvider;
+import com.workflow.contracts.ui.UiActionMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -106,6 +110,297 @@ class UiDataSourceServiceTest {
 
         assertTrue(exception.getMessage().contains(
                 "required 必须为字符串数组"));
+    }
+
+    /**
+     * 当管理端后续修改同一接口服务时，旧宿主必须继续执行发布时
+     * 固定的配置，而不是仅比对 revision 后报错。
+     */
+    @Test
+    void pinnedOperationExecutesFrozenDefinitionAfterDraftChanges() {
+        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        when(provider.getCode()).thenReturn("safe-provider");
+        when(provider.getVersion()).thenReturn(1);
+        when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
+        when(provider.execute(any(), any(), anyMap(), anyMap()))
+                .thenAnswer(invocation -> ((Map<?, ?>)
+                        invocation.getArgument(2)).get("marker"));
+        TestContext context = context(List.of(provider));
+        UiDataSourceDefinition definition = definition(
+                context.codec(),
+                "REGISTERED_PROVIDER",
+                "safe-provider",
+                Map.of(),
+                Map.of(),
+                Map.of("marker", "published"),
+                Map.of(
+                        "timeoutMs", 3000,
+                        "failurePolicy", "FAIL"));
+        definition.setSourceCode("expense-query");
+        definition.setSourceName("费用查询");
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+        authorize(context, plan("1=1", 3));
+
+        UiDataSourceService.PublishedOperationSnapshot pinned =
+                context.service().freezeOperation("source-1", "query");
+        definition.setRevision(4);
+        definition.setConfigDocument(context.codec().write(
+                Map.of("marker", "changed"), "changed definition"));
+
+        Object result = context.service().executePinnedOperation(
+                pinned.document(),
+                pinned.hash(),
+                executeRequest(Map.of(), Map.of()));
+
+        assertEquals("published", result);
+    }
+
+    @Test
+    void pinnedOperationRejectsDefinitionHashTampering() {
+        TestContext context = context(List.of());
+        UiDataSourceDefinition definition = definition(
+                context.codec(),
+                "STATIC_OPTIONS",
+                null,
+                Map.of(),
+                Map.of(),
+                Map.of("options", List.of("A")),
+                Map.of("failurePolicy", "FAIL"));
+        definition.setSourceCode("static-options");
+        definition.setSourceName("静态选项");
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+        UiDataSourceService.PublishedOperationSnapshot pinned =
+                context.service().freezeOperation("source-1", "query");
+
+        assertThrows(
+                com.workflow.core.error.BusinessConflictException.class,
+                () -> context.service().executePinnedOperation(
+                        pinned.document().replace(
+                                "static-options", "changed-options"),
+                        pinned.hash(),
+                        executeRequest(Map.of(), Map.of())));
+    }
+
+    /** 同编码、同版本但制品摘要变化时，旧宿主必须 fail-closed。 */
+    @Test
+    void pinnedOperationRejectsProviderArtifactDrift() {
+        AtomicInteger publishedCalls = new AtomicInteger();
+        UiDataSourceProvider publishedProvider = provider(
+                publishedCalls, "published");
+        TestContext publishContext = context(List.of(publishedProvider));
+        UiDataSourceDefinition definition = definition(
+                publishContext.codec(),
+                "REGISTERED_PROVIDER",
+                "safe-provider",
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of("failurePolicy", "FAIL"));
+        definition.setSourceCode("artifact-pinned-query");
+        definition.setSourceName("制品钉定查询");
+        when(publishContext.mapper().selectById("source-1"))
+                .thenReturn(definition);
+        UiDataSourceService.PublishedOperationSnapshot pinned =
+                publishContext.service().freezeOperation(
+                        "source-1", "query");
+
+        UiDataSourceProvider driftedProvider =
+                mock(UiDataSourceProvider.class);
+        when(driftedProvider.getCode()).thenReturn("safe-provider");
+        when(driftedProvider.getVersion()).thenReturn(1);
+        when(driftedProvider.getArtifactDigest())
+                .thenReturn("b".repeat(64));
+        TestContext runtimeContext = context(List.of(driftedProvider));
+        authorize(runtimeContext, plan("1=1", 3));
+
+        com.workflow.core.error.BusinessConflictException error =
+                assertThrows(
+                        com.workflow.core.error.BusinessConflictException.class,
+                        () -> runtimeContext.service()
+                                .executePinnedOperation(
+                                        pinned.document(),
+                                        pinned.hash(),
+                                        executeRequest(Map.of(), Map.of())));
+
+        assertEquals(
+                "UI_INTERFACE_PINNED_PROVIDER_MISSING",
+                error.getErrorCode());
+        verify(driftedProvider, never()).execute(
+                any(), any(), anyMap(), anyMap());
+        assertEquals(0, publishedCalls.get());
+    }
+
+    /** 关联内容真实数据测试必须在同一次定义解析中拒绝 WRITE 操作。 */
+    @Test
+    void relatedContentPreviewRejectsWriteOperationBeforeAuthorization() {
+        TestContext context = context(List.of());
+        UiDataSourceDefinition definition = definition(
+                context.codec(),
+                "STATIC_OPTIONS",
+                null,
+                Map.of(),
+                Map.of(),
+                Map.of("options", List.of("A")));
+        definition.setOperationsDocument(context.codec().write(
+                List.of(Map.of(
+                        "code", "query",
+                        "name", "写入",
+                        "kind", "WRITE",
+                        "contextType", "LIST",
+                        "inputSchema", Map.of(),
+                        "outputSchema", Map.of())),
+                "WRITE 接口操作"));
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+
+        assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service()
+                        .previewRelatedContentReadOperation(
+                                "source-1",
+                                "query",
+                                executeRequest(Map.of(), Map.of())));
+
+        verify(context.executionAccessService(), never())
+                .authorizeManagementPreview(any(), any());
+    }
+
+    @Test
+    void relatedContentActionRejectsConnectorWriteAtPublishTime() {
+        TestContext context = context(List.of());
+        UiDataSourceDefinition definition = definition(
+                context.codec(),
+                "INTEGRATION_CONNECTOR",
+                "http",
+                Map.of(),
+                Map.of(),
+                Map.of("connectorConfigId", "connector-1"),
+                Map.of("failurePolicy", "FAIL"));
+        definition.setOperationsDocument(context.codec().write(
+                List.of(Map.of(
+                        "code", "send",
+                        "name", "发送外部系统",
+                        "kind", "WRITE",
+                        "contextType", "LIST",
+                        "inputSchema", Map.of(),
+                        "outputSchema", Map.of())),
+                "WRITE 接口操作"));
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+
+        BusinessForbiddenException error = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service().validateActionOperation(
+                        "source-1", "send", "LIST"));
+
+        assertTrue(error.getMessage().contains("异步执行"));
+        verify(context.executionAccessService(), never())
+                .authorizePublished(any(), any());
+    }
+
+    @Test
+    void pinnedLocalWriteOnlyReturnsTypedCommandPlan() {
+        UiActionCommandPlanProvider provider =
+                new UiActionCommandPlanProvider() {
+                    @Override
+                    public String getCode() {
+                        return "controlled-writer";
+                    }
+
+                    @Override
+                    public String getDisplayName() {
+                        return "受控本地写入";
+                    }
+
+                    @Override
+                    public UiActionCommandPlan plan(
+                            com.workflow.contracts.ui.UiInvocationContext call,
+                            Map<String, Object> configuration,
+                            Map<String, Object> input) {
+                        return new UiActionCommandPlan(
+                                List.of(new UiActionMutationCommand(
+                                        "requirement",
+                                        "req-1",
+                                        EntityMutationOperationType.UPDATE,
+                                        Map.of("status", input.get("status")))),
+                                Map.of("message", "已生成计划"));
+                    }
+                };
+        TestContext context = context(List.of());
+        context.service().setActionCommandPlanProviders(List.of(provider));
+        UiDataSourceDefinition definition = definition(
+                context.codec(),
+                "REGISTERED_PROVIDER",
+                "controlled-writer",
+                Map.of(
+                        "type", "object",
+                        "required", List.of("status"),
+                        "properties", Map.of(
+                                "status", Map.of("type", "string"))),
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "message", Map.of("type", "string"))),
+                Map.of(),
+                Map.of("failurePolicy", "FAIL"));
+        definition.setSourceCode("controlled-writer");
+        definition.setOperationsDocument(context.codec().write(
+                List.of(Map.of(
+                        "code", "batchUpdate",
+                        "name", "批量更新",
+                        "kind", "WRITE",
+                        "contextType", "LIST",
+                        "inputSchema", Map.of(
+                                "type", "object",
+                                "required", List.of("status"),
+                                "properties", Map.of(
+                                        "status", Map.of("type", "string"))),
+                        "outputSchema", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "message", Map.of("type", "string"))),
+                        "executionPolicy", Map.of(
+                                "failurePolicy", "FAIL"))),
+                "WRITE 接口操作"));
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+        authorize(context, plan("1=1", 3));
+        UiDataSourceService.PublishedOperationSnapshot pinned =
+                context.service().freezeActionOperation(
+                        "source-1", "batchUpdate");
+        UiDataSourceExecuteRequest request = executeRequest(
+                Map.of("status", "DONE"), Map.of());
+        request.setUsage("RELATED_CONTENT_ACTION");
+
+        UiActionCommandPlan result = context.service()
+                .planPinnedActionOperation(
+                        pinned.document(), pinned.hash(), request);
+
+        assertEquals(1, result.commands().size());
+        assertEquals("requirement", result.commands().get(0).entityCode());
+        assertEquals("已生成计划", result.result().get("message"));
+
+        UiActionCommandPlanProvider driftedProvider =
+                mock(UiActionCommandPlanProvider.class);
+        when(driftedProvider.getCode()).thenReturn("controlled-writer");
+        when(driftedProvider.getVersion()).thenReturn(provider.getVersion());
+        when(driftedProvider.getArtifactDigest())
+                .thenReturn("f".repeat(64));
+        context.service().setActionCommandPlanProviders(
+                List.of(driftedProvider));
+
+        com.workflow.core.error.BusinessConflictException error =
+                assertThrows(
+                        com.workflow.core.error.BusinessConflictException.class,
+                        () -> context.service().planPinnedActionOperation(
+                                pinned.document(), pinned.hash(), request));
+        assertEquals(
+                "UI_INTERFACE_PINNED_PROVIDER_MISSING",
+                error.getErrorCode());
+        verify(driftedProvider, never()).plan(
+                any(), anyMap(), anyMap());
     }
 
     /** 测试执行前拒绝缺失必填映射输入：验证缺少 customerId 时抛出 IllegalArgumentException */
@@ -528,6 +823,19 @@ class UiDataSourceServiceTest {
         return request;
     }
 
+    /** 构造关联内容从已发布宿主执行钉版接口操作的请求。 */
+    private UiDataSourceExecuteRequest executeRequest(
+            Map<String, Object> input,
+            Map<String, Object> context) {
+        UiDataSourceExecuteRequest request = request(input, context);
+        request.setUsage("RELATED_CONTENT_RESOLVE");
+        request.setConfigType("LIST");
+        request.setConfigId("list-1");
+        request.setReleaseId("release-1");
+        request.setReleaseVersion(3);
+        return request;
+    }
+
     /** 构造启用缓存策略的注册 provider 数据源定义 */
     private UiDataSourceDefinition cachedProvider(
             JsonDocumentCodec codec) {
@@ -630,6 +938,8 @@ class UiDataSourceServiceTest {
         UiDataSourceProvider provider =
                 mock(UiDataSourceProvider.class);
         when(provider.getCode()).thenReturn("safe-provider");
+        when(provider.getVersion()).thenReturn(1);
+        when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
         when(provider.execute(
                 any(),
                 any(),

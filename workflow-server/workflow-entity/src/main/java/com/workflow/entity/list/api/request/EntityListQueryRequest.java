@@ -24,6 +24,8 @@ public class EntityListQueryRequest {
     private Integer releaseVersion;
     /** 父表单签发的列表版本解析令牌 */
     private String releaseResolutionToken;
+    /** 关联内容解析接口签发的目标列表上下文令牌。 */
+    private String viewCompositionContextToken;
     /** 查询过滤条件 */
     private Map<String, Object> filters = new LinkedHashMap<>();
     /** 列表运行时上下文（关联来源、参数等） */

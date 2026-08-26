@@ -9,9 +9,11 @@ import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.version.application.EntityRecordVersionService;
 import com.workflow.entity.version.application.EntityRecordVersionComparisonService;
+import com.workflow.entity.version.application.EntityVersionRestorePlanService;
 import com.workflow.entity.version.api.request.ManualVersionCaptureRequest;
 import com.workflow.entity.version.application.model.EntityRecordVersionSummary;
 import com.workflow.entity.version.application.model.RecordVersionComparisonV2;
+import com.workflow.entity.version.application.model.EntityVersionRestorePlan;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,6 +41,7 @@ public class EntityRecordVersionController {
     private final EntityRecordVersionService service;
     private final EntityActionCapabilityService actionCapabilityService;
     private final EntityRecordVersionComparisonService comparisonService;
+    private final EntityVersionRestorePlanService restorePlanService;
     private final EntityDataDynamicService dataService;
 
     @GetMapping("/{entityCode}/{recordId}")
@@ -59,6 +62,19 @@ public class EntityRecordVersionController {
             @PathVariable Integer versionNo) {
         requireHistoricalView(entityCode, recordId);
         return ApiResponse.success(service.detail(
+                entityCode, recordId, versionNo));
+    }
+
+    /**
+     * 生成历史版本恢复的只读预演。当前没有执行端点，返回计划也始终不可执行。
+     */
+    @GetMapping("/{entityCode}/{recordId}/{versionNo}/restore-plan")
+    public ApiResponse<EntityVersionRestorePlan> restorePlan(
+            @PathVariable String entityCode,
+            @PathVariable String recordId,
+            @PathVariable Integer versionNo) {
+        requireHistoricalView(entityCode, recordId);
+        return ApiResponse.success(restorePlanService.plan(
                 entityCode, recordId, versionNo));
     }
 

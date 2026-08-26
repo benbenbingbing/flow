@@ -590,10 +590,11 @@ public class EntityDefinitionService {
             String userId,
             String userName,
             ConfigMigrationPublishRequest request) {
-        EntityDefinition entity = entityMapper.selectById(id);
-        if (entity == null) {
-            throw new RuntimeException("实体不存在: " + id);
-        }
+        // 发布在读取字段与关系草稿前先独占实体定义行；记录写统一先持有同一
+        // 行的共享锁，避免首次启用自关联时旧写事务跳过循环校验。
+        EntityDefinition entity = entityMapper.findByIdForUpdate(id)
+                .orElseThrow(() -> new RuntimeException(
+                        "实体不存在: " + id));
         if (storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
             throw new BusinessConflictException(
                     "ENTITY_SYSTEM_DEFINITION_PROTECTED",

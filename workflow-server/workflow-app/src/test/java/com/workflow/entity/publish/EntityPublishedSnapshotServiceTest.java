@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -125,6 +126,50 @@ class EntityPublishedSnapshotServiceTest {
                 () -> service.getLatestByEntityId("entity-1"));
 
         assertEquals("实体未发布: entity-1", exception.getMessage());
+    }
+
+    @Test
+    void getPinnedByHistoryIdUsesExactHistoryAndFingerprintsSchemaDocuments() {
+        EntityPublishHistoryMapper historyMapper =
+                mock(EntityPublishHistoryMapper.class);
+        EntityPublishHistory original = history(
+                "history-1", "entity-1", "expense", 3, "[]");
+        original.setRelationsSnapshot("[]");
+        EntityPublishHistory changed = history(
+                "history-1", "entity-1", "expense", 3,
+                "[{\"fieldCode\":\"amount\",\"fieldType\":\"DECIMAL\"}]");
+        changed.setRelationsSnapshot("[]");
+        when(historyMapper.selectById("history-1"))
+                .thenReturn(original, changed);
+        EntityPublishedSnapshotService service =
+                new EntityPublishedSnapshotService(
+                        historyMapper, new ObjectMapper());
+
+        EntityPublishedSnapshotService.PinnedEntitySnapshot first =
+                service.getPinnedByHistoryId("history-1");
+        EntityPublishedSnapshotService.PinnedEntitySnapshot second =
+                service.getPinnedByHistoryId("history-1");
+
+        assertEquals("history-1", first.snapshot().getHistoryId());
+        assertEquals(64, first.schemaHash().length());
+        assertNotEquals(first.schemaHash(), second.schemaHash());
+    }
+
+    @Test
+    void getPinnedByHistoryIdDoesNotFallbackWhenHistoryIsMissing() {
+        EntityPublishHistoryMapper historyMapper =
+                mock(EntityPublishHistoryMapper.class);
+        EntityPublishedSnapshotService service =
+                new EntityPublishedSnapshotService(
+                        historyMapper, new ObjectMapper());
+
+        RuntimeException failure = assertThrows(
+                RuntimeException.class,
+                () -> service.getPinnedByHistoryId("missing-history"));
+
+        assertEquals(
+                "实体发布历史不存在: missing-history",
+                failure.getMessage());
     }
 
     /**

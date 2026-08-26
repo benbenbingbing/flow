@@ -1,6 +1,9 @@
 package com.workflow.entity.version.application;
 
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPhase;
@@ -11,12 +14,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -30,6 +35,8 @@ class EntityMutationPipelineTest {
     private EntityMutationStepExecutor stepExecutor;
     @Mock
     private EntityMutationTransactionExecutor transactionExecutor;
+    @Mock
+    private SystemAuditPort auditPort;
 
     private EntityMutationPipeline pipeline;
 
@@ -37,7 +44,8 @@ class EntityMutationPipelineTest {
     void setUp() {
         pipeline = new EntityMutationPipeline(
                 stepExecutor,
-                transactionExecutor);
+                transactionExecutor,
+                auditPort);
     }
 
     @Test
@@ -90,6 +98,41 @@ class EntityMutationPipelineTest {
                 anyMap(),
                 eq(result.record()),
                 eq("CHANGE_EFFECTIVE"));
+        ArgumentCaptor<SystemAuditEvent> audit =
+                ArgumentCaptor.forClass(SystemAuditEvent.class);
+        verify(auditPort).record(audit.capture());
+        assertEquals("operation-1", audit.getValue().operationId());
+        assertEquals("trace-1", audit.getValue().traceId());
+        assertEquals("ENTITY_RECORD", audit.getValue().targetType());
+        assertEquals("asset:record-1", audit.getValue().targetId());
+    }
+
+    /** PREPARE 追加命令后仍必须遵守关联内容动作声明的整批硬预算。 */
+    @Test
+    void expandedPlanIsRejectedBeforeTransactionWhenBudgetExceeded() {
+        EntityMutationCommand command = commandWithExpansionBudget(1);
+        EntityMutationCommand planned = new EntityMutationCommand(
+                "operation-2",
+                "asset",
+                "record-2",
+                EntityMutationOperationType.UPDATE,
+                Map.of("data", Map.of("name", "派生命令")),
+                command.context());
+        when(stepExecutor.execute(
+                eq(command),
+                eq(EntityMutationPhase.PREPARE),
+                anyMap(),
+                anyMap())).thenReturn(
+                        new ExecutionOutcome(command, List.of(planned)));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> pipeline.executeBatch(
+                        new EntityMutationBatchCommand(
+                                "batch-1", List.of(command), true)));
+
+        verify(transactionExecutor, never()).executeBatch(
+                org.mockito.ArgumentMatchers.anyList());
     }
 
     private EntityMutationCommand command() {
@@ -108,6 +151,24 @@ class EntityMutationPipelineTest {
                         .operator("user-1", "张三")
                         .trace("trace-1", "mutation-1")
                         .build());
+    }
+
+    private EntityMutationCommand commandWithExpansionBudget(int budget) {
+        EntityMutationContext context = EntityMutationContext.builder(
+                        EntityMutationSourceType.FORM,
+                        "VIEW_COMPOSITION_INTERFACE_ACTION",
+                        "关联内容接口动作")
+                .operator("user-1", "张三")
+                .trace("trace-1", "mutation-budget-1")
+                .extraParams(Map.of("maxExpandedCommands", budget))
+                .build();
+        return new EntityMutationCommand(
+                "operation-1",
+                "asset",
+                "record-1",
+                EntityMutationOperationType.UPDATE,
+                Map.of("data", Map.of("name", "新名称")),
+                context);
     }
 
     private EntityMutationResult result(

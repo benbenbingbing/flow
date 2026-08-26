@@ -420,7 +420,7 @@ public class EntityDataSqlProvider {
     /**
      * 追加查询条件到 SQL
      * 支持查询方式：EQ(等于)、NE(不等于)、LIKE(包含)、GT(大于)、LT(小于)、
-     * BETWEEN(范围)、IN(包含于)、NOT_IN(不包含于)
+     * BETWEEN(范围)、IN(包含于)、NOT_IN(不包含于)、IS_NULL(为空)
      * 通过 _op 后缀参数指定查询方式，例如：name=xxx&name_op=EQ
      */
     private void appendConditionSql(
@@ -489,7 +489,11 @@ public class EntityDataSqlProvider {
             Object value = entry.getValue();
             String op = opMap.getOrDefault(fieldKey, "");
 
-            if ("EQ".equals(op)) {
+            if ("IS_NULL".equals(op)) {
+                // IS_NULL 只接受由服务端可信配置生成的操作符。调用方仍需提供
+                // 非空占位值，使该字段进入 normalConditions；值本身不会拼入 SQL。
+                sql.append(" AND ").append(columnName).append(" IS NULL");
+            } else if ("EQ".equals(op)) {
                 sql.append(" AND ").append(columnName).append(" = #{condition.").append(fieldKey).append("}");
             } else if ("NE".equals(op)) {
                 sql.append(" AND ").append(columnName).append(" <> #{condition.").append(fieldKey).append("}");

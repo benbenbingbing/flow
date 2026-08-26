@@ -83,6 +83,7 @@ import com.workflow.entity.ui.application.UiDataSourceService;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
+import com.workflow.entity.ui.application.UiViewCompositionService;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 import com.workflow.process.form.application.ProcessNodeFormService;
 import com.workflow.process.sla.calendar.api.request.WorkCalendarSaveRequest;
@@ -169,6 +170,7 @@ public class ConfigMigrationImportApplyService {
     private final UiConfigReleaseMapper uiConfigReleaseMapper;
     private final UiConfigReleaseService uiConfigReleaseService;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
+    private final UiViewCompositionService viewCompositionService;
     private final DictCacheService dictCacheService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ConfigMigrationAssetService assetService;
@@ -272,6 +274,21 @@ public class ConfigMigrationImportApplyService {
         }
         for (SystemEntityUiContext context : systemEntityUis) {
             applySystemEntityUiConfiguration(context);
+        }
+
+        // 所有目标表单、列表、数据源和扩展都已落库并产生初始发布版本后，
+        // 再统一恢复跨实体关联内容，避免导入顺序导致目标内容尚不存在。
+        List<ImportedUiOwner> compositionOwners = new ArrayList<>();
+        for (EntityContext context : entities) {
+            compositionOwners.addAll(applyImportedViewCompositions(
+                    context.entity(), context.snapshot()));
+        }
+        for (SystemEntityUiContext context : systemEntityUis) {
+            compositionOwners.addAll(applyImportedViewCompositions(
+                    context.entity(), context.snapshot()));
+        }
+        publishImportedViewCompositions(compositionOwners);
+        for (SystemEntityUiContext context : systemEntityUis) {
             markPublished(context.item());
         }
 
@@ -678,10 +695,13 @@ public class ConfigMigrationImportApplyService {
             rollbackItem.setBusinessKey(item.getBusinessKey());
             rollbackItem.setAssetName(item.getAssetName());
             Map<String, Object> importedSnapshot = readMap(item.getSnapshotJson());
-            rollbackItem.setSnapshotJson(writeJson(
+            Map<String, Object> rollbackSnapshot =
                     packageCodec.selectSnapshotAllowingMissingKeys(
                             previous.getSnapshotJson(),
-                            packageCodec.selectionOf(importedSnapshot))));
+                            packageCodec.selectionOf(importedSnapshot));
+            markRemovedViewCompositionsForRollback(
+                    rollbackSnapshot, importedSnapshot);
+            rollbackItem.setSnapshotJson(writeJson(rollbackSnapshot));
             if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
                 entityRollbacks.add(new EntityRollbackContext(
                         prepareEntity(rollbackItem, true),
@@ -729,6 +749,18 @@ public class ConfigMigrationImportApplyService {
                     rollback.originalItem(),
                     rollback.context().snapshot());
         }
+        List<ImportedUiOwner> rollbackCompositionOwners = new ArrayList<>();
+        for (EntityRollbackContext rollback : entityRollbacks) {
+            rollbackCompositionOwners.addAll(applyImportedViewCompositions(
+                    rollback.context().entity(),
+                    rollback.context().snapshot()));
+        }
+        for (SystemEntityUiRollbackContext rollback : systemUiContexts) {
+            rollbackCompositionOwners.addAll(applyImportedViewCompositions(
+                    rollback.context().entity(),
+                    rollback.context().snapshot()));
+        }
+        publishImportedViewCompositions(rollbackCompositionOwners);
         bindEntities(entityRollbacks.stream()
                 .map(EntityRollbackContext::context)
                 .toList(), processContexts);
@@ -1596,6 +1628,254 @@ public class ConfigMigrationImportApplyService {
                 UiConfigReleaseService.LIST,
                 listIds,
                 "配置迁移导入列表初始发布");
+    }
+
+    /**
+     * 恢复实体快照中的便携关联内容草稿。
+     *
+     * <p>调用时目标环境的表单、列表、节点、接口服务和扩展必须已经就绪。
+     * 解析仅使用业务编码，不接受源环境数据库 ID 或 releaseId；实际发布在所有
+     * 实体草稿恢复完成后统一执行。</p>
+     */
+    private List<ImportedUiOwner> applyImportedViewCompositions(
+            EntityDefinition entity,
+            Map<String, Object> snapshot) {
+        List<ImportedUiOwner> owners = new ArrayList<>();
+        for (Map<String, Object> formValue : mapList(snapshot.get("forms"))) {
+            if (!formValue.containsKey("viewCompositions")) {
+                continue; // 旧迁移包不含该字段时保留目标环境现有配置。
+            }
+            String formKey = text(formValue.get("formKey"), null);
+            EntityForm form = formMapper.selectByEntityIdAndFormKey(
+                    entity.getId(), formKey);
+            if (form == null) {
+                throw new IllegalStateException(
+                        "关联内容宿主表单不存在: " + entity.getEntityCode()
+                                + "/" + formKey);
+            }
+            Map<String, String> nodeIdsByKey = entityFormNodeService
+                    .findByFormId(form.getId()).stream()
+                    .filter(node -> StringUtils.hasText(node.getNodeKey()))
+                    .collect(java.util.stream.Collectors.toMap(
+                            EntityFormNode::getNodeKey,
+                            EntityFormNode::getId,
+                            (left, right) -> left,
+                            LinkedHashMap::new));
+            List<Map<String, Object>> resolved = mapList(
+                    formValue.get("viewCompositions")).stream()
+                    .map(item -> resolvePortableViewComposition(
+                            entity, item, nodeIdsByKey))
+                    .toList();
+            viewCompositionService.importPortableDraft(
+                    UiConfigReleaseService.FORM, form.getId(), resolved);
+            owners.add(new ImportedUiOwner(
+                    UiConfigReleaseService.FORM, form.getId()));
+        }
+        for (Map<String, Object> listValue : mapList(snapshot.get("lists"))) {
+            if (!listValue.containsKey("viewCompositions")) {
+                continue;
+            }
+            String listKey = text(listValue.get("listKey"), null);
+            EntityListConfig list = listConfigMapper
+                    .findByEntityIdAndListKey(entity.getId(), listKey);
+            if (list == null) {
+                throw new IllegalStateException(
+                        "关联内容宿主列表不存在: " + entity.getEntityCode()
+                                + "/" + listKey);
+            }
+            List<Map<String, Object>> resolved = mapList(
+                    listValue.get("viewCompositions")).stream()
+                    .map(item -> resolvePortableViewComposition(
+                            entity, item, Map.of()))
+                    .toList();
+            viewCompositionService.importPortableDraft(
+                    UiConfigReleaseService.LIST, list.getId(), resolved);
+            owners.add(new ImportedUiOwner(
+                    UiConfigReleaseService.LIST, list.getId()));
+        }
+        return owners;
+    }
+
+    private Map<String, Object> resolvePortableViewComposition(
+            EntityDefinition sourceEntity,
+            Map<String, Object> sourceItem,
+            Map<String, String> nodeIdsByKey) {
+        Map<String, Object> item = new LinkedHashMap<>(sourceItem);
+        item.remove("id");
+        item.remove("revision");
+        String anchorType = text(item.get("anchorType"), "OWNER")
+                .toUpperCase(Locale.ROOT);
+        if ("FORM_NODE".equals(anchorType)) {
+            String nodeKey = text(item.get("anchorNodeKey"), null);
+            String nodeId = nodeIdsByKey.get(nodeKey);
+            if (!StringUtils.hasText(nodeId)) {
+                throw new IllegalStateException(
+                        "关联内容挂载节点不存在: " + nodeKey);
+            }
+            item.put("anchorKey", nodeId);
+            item.remove("anchorNodeKey");
+        }
+
+        Map<String, Object> config = mapValue(item.get("config"));
+        // 迁移包不得把源环境的实体历史 ID 或指纹带入草稿。
+        // 导入完成后的发布流程会重新生成目标环境钉定。
+        config.remove("entitySnapshots");
+        Map<String, Object> source = mapValue(config.get("source"));
+        source.put("entityId", sourceEntity.getId());
+        source.put("entityCode", sourceEntity.getEntityCode());
+        source.put("entityName", sourceEntity.getEntityName());
+        config.put("source", source);
+
+        Map<String, Object> target = mapValue(config.get("target"));
+        String sourceTargetCode = text(target.get("entityCode"), null);
+        if (!StringUtils.hasText(sourceTargetCode)) {
+            throw new IllegalStateException("关联内容目标实体缺少 entityCode");
+        }
+        String targetCode = mappedKey("ENTITY", sourceTargetCode);
+        EntityDefinition targetEntity = entityMapper.findByEntityCode(targetCode)
+                .orElseThrow(() -> new IllegalStateException(
+                        "关联内容目标实体不存在: " + targetCode));
+        String contentType = text(target.get("contentType"), "")
+                .toUpperCase(Locale.ROOT);
+        String contentKey = text(target.get("contentKey"), null);
+        String contentId;
+        String contentName;
+        if (UiConfigReleaseService.FORM.equals(contentType)) {
+            EntityForm targetForm = formMapper.selectByEntityIdAndFormKey(
+                    targetEntity.getId(), contentKey);
+            if (targetForm == null) {
+                throw new IllegalStateException(
+                        "关联内容目标表单不存在: " + targetCode + "/" + contentKey);
+            }
+            contentId = targetForm.getId();
+            contentName = targetForm.getFormName();
+        } else if (UiConfigReleaseService.LIST.equals(contentType)) {
+            EntityListConfig targetList = listConfigMapper
+                    .findByEntityIdAndListKey(targetEntity.getId(), contentKey);
+            if (targetList == null) {
+                throw new IllegalStateException(
+                        "关联内容目标列表不存在: " + targetCode + "/" + contentKey);
+            }
+            contentId = targetList.getId();
+            contentName = targetList.getListName();
+        } else {
+            throw new IllegalStateException(
+                    "关联内容目标类型不支持: " + contentType);
+        }
+        target.remove("releaseId");
+        target.remove("releaseVersion");
+        target.remove("contentHash");
+        target.put("entityId", targetEntity.getId());
+        target.put("entityCode", targetEntity.getEntityCode());
+        target.put("entityName", targetEntity.getEntityName());
+        target.put("contentId", contentId);
+        target.put("contentKey", contentKey);
+        target.put("contentName", contentName);
+        config.put("target", target);
+
+        Map<String, Object> special = mapValue(config.get("specialHandling"));
+        if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
+            Map<String, Object> service = mapValue(rawService);
+            if (!StringUtils.hasText(text(service.get("serviceId"), null))) {
+                String serviceCode = text(service.get("serviceCode"), null);
+                UiDataSourceDefinition definition = dataSourceDefinitionMapper.selectOne(
+                        new LambdaQueryWrapper<UiDataSourceDefinition>()
+                                .eq(UiDataSourceDefinition::getSourceCode, serviceCode)
+                                .eq(UiDataSourceDefinition::getDeleted, 0)
+                                .last("LIMIT 1"));
+                if (definition == null) {
+                    throw new IllegalStateException(
+                            "关联内容接口服务不存在: " + serviceCode);
+                }
+                service.put("serviceId", definition.getId());
+                service.remove("serviceCode");
+            }
+            service.remove("serviceRevision");
+            service.remove("executableSnapshot");
+            service.remove("definitionHash");
+            special.put("interfaceService", service);
+        }
+        if (special.get("customComponent") instanceof Map<?, ?> rawComponent) {
+            Map<String, Object> component = mapValue(rawComponent);
+            component.remove("snapshotVersion");
+            component.remove("definitionSnapshot");
+            component.remove("definitionHash");
+            special.put("customComponent", component);
+        }
+        config.put("specialHandling", special);
+        item.put("config", config);
+        return item;
+    }
+
+    private void publishImportedViewCompositions(
+            List<ImportedUiOwner> owners) {
+        Map<String, List<String>> idsByType = owners.stream()
+                .distinct()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        ImportedUiOwner::ownerType,
+                        LinkedHashMap::new,
+                        java.util.stream.Collectors.mapping(
+                                ImportedUiOwner::ownerId,
+                                java.util.stream.Collectors.toList())));
+        idsByType.forEach((ownerType, ownerIds) ->
+                publishImportedConfigurations(
+                        ownerType,
+                        ownerIds,
+                        "配置迁移导入关联内容发布"));
+    }
+
+    /**
+     * 旧历史快照没有 viewCompositions 字段时，用显式空数组表示回滚删除。
+     * 仅对本次导入确实携带该字段的宿主加标记，普通旧包仍保持兼容、不触碰目标配置。
+     */
+    static void markRemovedViewCompositionsForRollback(
+            Map<String, Object> rollbackSnapshot,
+            Map<String, Object> importedSnapshot) {
+        if (rollbackSnapshot == null || importedSnapshot == null) {
+            return;
+        }
+        for (String section : List.of("forms", "lists")) {
+            Map<String, Map<String, Object>> importedByKey =
+                    new LinkedHashMap<>();
+            String keyName = "forms".equals(section)
+                    ? "formKey" : "listKey";
+            for (Map<String, Object> value : staticMapList(
+                    importedSnapshot.get(section))) {
+                importedByKey.put(String.valueOf(value.get(keyName)), value);
+            }
+            List<Map<String, Object>> rewritten = new ArrayList<>();
+            for (Map<String, Object> source : staticMapList(
+                    rollbackSnapshot.get(section))) {
+                Map<String, Object> value = new LinkedHashMap<>(source);
+                Map<String, Object> imported = importedByKey.get(
+                        String.valueOf(value.get(keyName)));
+                if (imported != null
+                        && imported.containsKey("viewCompositions")
+                        && !value.containsKey("viewCompositions")) {
+                    value.put("viewCompositions", List.of());
+                }
+                rewritten.add(value);
+            }
+            if (rollbackSnapshot.containsKey(section)) {
+                rollbackSnapshot.put(section, rewritten);
+            }
+        }
+    }
+
+    private static List<Map<String, Object>> staticMapList(Object value) {
+        if (!(value instanceof Collection<?> collection)) {
+            return List.of();
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : collection) {
+            if (item instanceof Map<?, ?> map) {
+                Map<String, Object> converted = new LinkedHashMap<>();
+                map.forEach((key, child) ->
+                        converted.put(String.valueOf(key), child));
+                result.add(converted);
+            }
+        }
+        return result;
     }
 
     /**
@@ -2592,6 +2872,10 @@ public class ConfigMigrationImportApplyService {
     private record SystemEntityUiRollbackContext(
             SystemEntityUiContext context,
             ConfigImportItem originalItem) {
+    }
+
+    /** 已恢复关联内容草稿、等待统一重新发布的宿主。 */
+    private record ImportedUiOwner(String ownerType, String ownerId) {
     }
 
     /** 流程应用上下文：导入条目、快照、定义与流程定义配置。 */

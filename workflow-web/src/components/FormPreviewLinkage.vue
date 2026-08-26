@@ -101,6 +101,21 @@
         </el-form-item>
       </div>
     </el-form>
+
+    <RelatedContentRuntime
+      v-for="item in ownerRelatedContents"
+      :key="item.id || item.compositionKey"
+      :composition="item"
+      owner-type="FORM"
+      :owner-id="form.id"
+      :release-id="runtimeReleaseId"
+      :release-version="runtimeReleaseVersion"
+      :source-record-id="sourceRecordId"
+      :host-readonly="readonly"
+      :traversal-context-token="runtimeTraversalContextToken"
+      :release-resolution-token="runtimeReleaseResolutionToken"
+      @source-patch="applyRelatedContentPatch"
+    />
   </div>
 </template>
 
@@ -109,6 +124,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import FormNodeRenderer from './FormNodeRenderer.vue'
 import FormActionBar from './FormActionBar.vue'
+import RelatedContentRuntime from './related-content/RelatedContentRuntime.vue'
 import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
@@ -197,6 +213,18 @@ function handleCustomFormUpdate(val) {
   emit('update:modelValue', formData.value)
 }
 
+/**
+ * 关联选择的回填字段已经由服务端按发布快照、字段权限和映射白名单校验。
+ * 这里只合并服务端返回的字段补丁，让它继续经过表单既有联动与校验链。
+ */
+function applyRelatedContentPatch(patch) {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return
+  formData.value = {
+    ...formData.value,
+    ...patch
+  }
+}
+
 const formRef = ref(null)
 const customFormRef = ref(null)
 const nodeFormRef = ref(null)
@@ -237,6 +265,40 @@ const runtimeContext = computed(() => ({
   entityCode: props.entityCode,
   entityDefinition: props.entityDefinition
 }))
+
+const runtimeReleaseId = computed(() =>
+  props.form?.runtimeReleaseId
+  || props.form?.formReleaseId
+  || ''
+)
+const runtimeReleaseVersion = computed(() => Number(
+  props.form?.runtimeReleaseVersion
+  ?? props.form?.formReleaseVersion
+  ?? 0
+))
+const sourceRecordId = computed(() => String(
+  props.context?.record?.id
+  || props.context?.recordId
+  || ''
+))
+const runtimeTraversalContextToken = computed(() => String(
+  props.context?.viewCompositionTraversalToken || ''
+))
+const runtimeReleaseResolutionToken = computed(() => String(
+  props.form?.releaseResolutionToken
+  || props.context?.releaseResolutionToken
+  || ''
+))
+const ownerRelatedContents = computed(() =>
+  !props.nodeRootParentId
+    && runtimeReleaseId.value
+    && runtimeReleaseVersion.value > 0
+    ? (props.form?.viewCompositions || []).filter(item =>
+        String(item?.anchorType || '').toUpperCase() === 'OWNER'
+          && item?.config?.enabled !== false
+      )
+    : []
+)
 
 // 判断是否为 Tab 模式的子表单
 function isSectionField(field) {

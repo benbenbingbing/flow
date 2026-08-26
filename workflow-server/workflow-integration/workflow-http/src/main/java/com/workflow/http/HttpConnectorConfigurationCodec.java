@@ -3,6 +3,7 @@ package com.workflow.http;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.net.IDN;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -125,6 +126,55 @@ public class HttpConnectorConfigurationCodec {
                 baseUri,
                 Set.copyOf(allowedHosts),
                 Map.copyOf(operations));
+    }
+
+    /**
+     * 把已校验的 HTTP Connector 配置固定为发布快照。
+     *
+     * <p>快照保留 SecretRef 而不解析密钥；因此即使快照进入 UI 发布
+     * 文档，也不会把凭据明文复制到业务配置中。</p>
+     */
+    public String freezeSnapshot(
+            String id,
+            String applicationId,
+            String configurationDocument,
+            String allowedHostsDocument) {
+        read(id, applicationId, configurationDocument, allowedHostsDocument);
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("applicationId", applicationId);
+        root.set("configuration", readObject(
+                configurationDocument, "连接器配置"));
+        root.set("allowedHosts", readArray(
+                allowedHostsDocument, "连接器主机白名单"));
+        try {
+            return objectMapper.writeValueAsString(root);
+        } catch (JsonProcessingException exception) {
+            throw invalid("连接器快照无法序列化");
+        }
+    }
+
+    /** 读取宿主发布时固定的 HTTP Connector 配置。 */
+    public HttpConnectorConfiguration readSnapshot(
+            String id,
+            String snapshotDocument) {
+        JsonNode root = readObject(
+                snapshotDocument, "连接器发布快照");
+        rejectUnknown(
+                root,
+                Set.of("applicationId", "configuration", "allowedHosts"),
+                "连接器发布快照");
+        String applicationId = requiredText(root, "applicationId");
+        try {
+            return read(
+                    id,
+                    applicationId,
+                    objectMapper.writeValueAsString(
+                            root.path("configuration")),
+                    objectMapper.writeValueAsString(
+                            root.path("allowedHosts")));
+        } catch (JsonProcessingException exception) {
+            throw invalid("连接器发布快照无法解析");
+        }
     }
 
     private HttpConnectorConfiguration.Operation readOperation(
@@ -467,6 +517,18 @@ public class HttpConnectorConfigurationCodec {
             JsonNode node = objectMapper.readTree(document);
             if (node == null || !node.isObject()) {
                 throw invalid(label + "必须是 JSON 对象");
+            }
+            return node;
+        } catch (JsonProcessingException exception) {
+            throw invalid(label + "不是合法 JSON");
+        }
+    }
+
+    private JsonNode readArray(String document, String label) {
+        try {
+            JsonNode node = objectMapper.readTree(document);
+            if (node == null || !node.isArray()) {
+                throw invalid(label + "必须是 JSON 数组");
             }
             return node;
         } catch (JsonProcessingException exception) {

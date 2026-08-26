@@ -11,6 +11,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.data.application.DynamicTableService;
@@ -19,6 +20,8 @@ import com.workflow.entity.definition.application.EntityPublishedRelationService
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -27,6 +30,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -39,9 +43,11 @@ import java.util.stream.Collectors;
 public class EntityRelationRuntimeService {
 
     private static final int MAX_RELATION_DEPTH = 8;
+    private static final int MAX_SELF_RELATION_ANCESTORS = 256;
 
     private final EntityDataDynamicMapper dynamicMapper;
     private final EntityDefinitionMapper definitionMapper;
+    private final EntityPublishHistoryMapper publishHistoryMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
     private final DynamicTableService dynamicTableService;
@@ -54,6 +60,7 @@ public class EntityRelationRuntimeService {
     public EntityRelationRuntimeService(
             EntityDataDynamicMapper dynamicMapper,
             EntityDefinitionMapper definitionMapper,
+            EntityPublishHistoryMapper publishHistoryMapper,
             EntityFieldMapper fieldMapper,
             EntityRelationMapper relationMapper,
             DynamicTableService dynamicTableService,
@@ -63,6 +70,7 @@ public class EntityRelationRuntimeService {
             EntityPublishedRelationService publishedRelationService) {
         this.dynamicMapper = dynamicMapper;
         this.definitionMapper = definitionMapper;
+        this.publishHistoryMapper = publishHistoryMapper;
         this.fieldMapper = fieldMapper;
         this.relationMapper = relationMapper;
         this.dynamicTableService = dynamicTableService;
@@ -70,6 +78,30 @@ public class EntityRelationRuntimeService {
         this.recordMapper = recordMapper;
         this.codeGeneratorService = codeGeneratorService;
         this.publishedRelationService = publishedRelationService;
+    }
+
+    /** 兼容显式装配；生产容器使用包含发布历史 Mapper 的主构造器。 */
+    public EntityRelationRuntimeService(
+            EntityDataDynamicMapper dynamicMapper,
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityRelationMapper relationMapper,
+            DynamicTableService dynamicTableService,
+            ObjectMapper objectMapper,
+            EntityRuntimeRecordMapper recordMapper,
+            EntityCodeGeneratorService codeGeneratorService,
+            EntityPublishedRelationService publishedRelationService) {
+        this(
+                dynamicMapper,
+                definitionMapper,
+                null,
+                fieldMapper,
+                relationMapper,
+                dynamicTableService,
+                objectMapper,
+                recordMapper,
+                codeGeneratorService,
+                publishedRelationService);
     }
 
     /**
@@ -87,6 +119,7 @@ public class EntityRelationRuntimeService {
         this(
                 dynamicMapper,
                 definitionMapper,
+                null,
                 fieldMapper,
                 relationMapper,
                 dynamicTableService,
@@ -110,6 +143,122 @@ public class EntityRelationRuntimeService {
                 ? relationMapper.selectByParentEntityId(definition.getId())
                 : publishedRelationService.list(definition);
         return relations != null ? relations : List.of();
+    }
+
+    /**
+     * 在事务内取得实体自关联写入守卫。
+     *
+     * <p>所有记录写先共享锁实体定义，允许普通记录并发，同时阻止实体发布切换
+     * 关系快照。存在自关联时再独占锁当前发布历史行，使同一棵树的写入串行化；
+     * 发布事务先独占定义行，故两类锁始终保持一致顺序。</p>
+     *
+     * @param entityCode 实体编码
+     * @throws BusinessConflictException 实体定义在加锁前后不存在时抛出
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockSelfRelationGuard(String entityCode) {
+        if (!StringUtils.hasText(entityCode)) {
+            throw new IllegalArgumentException("实体编码不能为空");
+        }
+        EntityDefinition definition = (publishHistoryMapper == null
+                ? definitionMapper.findByEntityCode(entityCode.trim())
+                : definitionMapper.findByEntityCodeForShare(entityCode.trim()))
+                .orElseThrow(() -> new BusinessConflictException(
+                        "ENTITY_SELF_RELATION_DEFINITION_NOT_FOUND",
+                        "自关联校验失败，实体不存在: " + entityCode));
+        if (selfRelations(definition).isEmpty()) {
+            return;
+        }
+        // 仅供不启动 Spring 的遗留单元测试使用；生产主构造器必有发布历史
+        // Mapper，并采用共享定义锁 + 发布历史互斥锁的并发路径。
+        if (publishHistoryMapper == null) {
+            definitionMapper.findByEntityCodeForUpdate(entityCode.trim())
+                    .orElseThrow(() -> new BusinessConflictException(
+                            "ENTITY_SELF_RELATION_DEFINITION_NOT_FOUND",
+                            "自关联校验失败，实体不存在: " + entityCode));
+            return;
+        }
+        if (publishHistoryMapper.findLatestByEntityIdForUpdate(
+                definition.getId()) == null) {
+            throw new BusinessConflictException(
+                    "ENTITY_SELF_RELATION_RELEASE_GUARD_MISSING",
+                    "自关联校验失败，当前实体缺少可锁定的发布版本");
+        }
+    }
+
+    /**
+     * 校验同实体父引用写入不会产生自指或祖先循环。
+     *
+     * <p>调用方必须处于写事务中。本方法先复用实体定义守卫，再锁定当前记录和
+     * 每一级祖先并读取数据库权威值；不存在的父记录、既有祖先环和超过安全深度
+     * 都按冲突拒绝，不能把不确定状态当作无环。</p>
+     *
+     * @param definition 当前实体定义
+     * @param recordId 当前写入记录 ID；创建场景也必须预先生成稳定 ID
+     * @param storageData 即将写入动态表的数据，可使用字段编码或数据库列名
+     * @param creating 是否为新增记录
+     * @throws BusinessConflictException 父记录不存在或关系图不满足树完整性时抛出
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void validateSelfRelationWrite(
+            EntityDefinition definition,
+            String recordId,
+            Map<String, Object> storageData,
+            boolean creating) {
+        if (definition == null
+                || !StringUtils.hasText(definition.getEntityCode())) {
+            throw new IllegalArgumentException("实体定义不能为空");
+        }
+        if (!StringUtils.hasText(recordId)) {
+            throw new IllegalArgumentException("自关联写入记录 ID 不能为空");
+        }
+        // 即便当前还没有自关联，也必须先取得定义共享锁。否则“检查为空”与
+        // 首次发布自关联之间存在窗口，旧写事务可能在新关系生效后绕过防环。
+        // 同一事务中的嵌套写会再次调用本方法，数据库行锁可重入。
+        lockSelfRelationGuard(definition.getEntityCode());
+        List<EntityRelation> currentRelations = selfRelations(definition);
+        if (currentRelations.isEmpty()) {
+            return;
+        }
+
+        String normalizedRecordId = recordId.trim();
+        String tableName = dynamicTableService.getTableName(
+                definition.getEntityCode());
+        Map<String, Object> currentRecord = null;
+        if (!creating) {
+            currentRecord = dynamicMapper.selectByIdForUpdate(
+                    tableName, normalizedRecordId);
+            if (currentRecord == null) {
+                throw new BusinessConflictException(
+                        "ENTITY_SELF_RELATION_RECORD_NOT_FOUND",
+                        "自关联校验失败，当前记录不存在: "
+                                + normalizedRecordId);
+            }
+        }
+
+        for (EntityRelation relation : currentRelations) {
+            EntityField referenceField = requireSelfReferenceField(
+                    definition, relation);
+            String columnName = StringUtils.hasText(
+                    referenceField.getDbColumnName())
+                    ? referenceField.getDbColumnName()
+                    : recordMapper.toColumnName(
+                            referenceField.getFieldCode());
+            Object proposedValue = proposedReferenceValue(
+                    storageData,
+                    currentRecord,
+                    referenceField.getFieldCode(),
+                    columnName);
+            String parentId = normalizeReferenceId(
+                    proposedValue,
+                    referenceField.getFieldCode());
+            validateAncestorChain(
+                    tableName,
+                    normalizedRecordId,
+                    parentId,
+                    referenceField.getFieldCode(),
+                    columnName);
+        }
     }
 
     /**
@@ -236,7 +385,23 @@ public class EntityRelationRuntimeService {
      * @param physical          true-物理删除 false-逻辑删除
      */
     public void cascadeDeleteRelations(EntityDefinition parentDefinition, String parentId, boolean physical) {
-        cascadeDeleteRelations(parentDefinition, parentId, physical, 1, new HashSet<>());
+        if (parentDefinition == null
+                || !StringUtils.hasText(parentDefinition.getEntityCode())
+                || !StringUtils.hasText(parentId)) {
+            return;
+        }
+        // 公开删除入口可能不经过 EntityDataMutationService，因此必须自行取得
+        // 发布守卫。关系必须在守卫之后读取，并作为本层递归的冻结输入使用。
+        lockSelfRelationGuard(parentDefinition.getEntityCode());
+        List<EntityRelation> guardedRelations =
+                loadRelations(parentDefinition);
+        cascadeDeleteRelations(
+                parentDefinition,
+                parentId,
+                physical,
+                guardedRelations,
+                1,
+                new HashSet<>());
     }
 
     private void saveRelationData(String parentId, List<EntityRelation> relations, Map<String, Object> relationData,
@@ -280,10 +445,23 @@ public class EntityRelationRuntimeService {
 
             ensureEntityTable(childDefinition);
             String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            // 不允许先判断“当前是否自关联”再决定加锁，否则首次发布可在判断
+            // 和子行锁之间生效。任何递归子写都无条件先锁定义/发布守卫；随后
+            // 冻结的关系会一直受定义共享锁保护，直到外层事务结束。
+            lockSelfRelationGuard(childDefinition.getEntityCode());
+            List<EntityRelation> childRelations =
+                    loadRelations(childDefinition);
             List<Map<String, Object>> existingRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
+            // 聚合提交采用“传入集合替换当前集合”语义。先按稳定顺序锁定全部
+            // 当前子记录，既避免两个并发提交互相覆盖，也形成不可伪造的归属集合。
+            // 客户端携带的已有子 ID 只能来自该集合，不能借父表单把其他父记录
+            // 的子项重新挂到当前父记录。
+            Set<String> ownedChildIds = lockAndCollectOwnedChildIds(
+                    childTableName,
+                    relation.getChildRefFieldCode(),
+                    parentId,
+                    existingRows);
             Set<String> activeIds = new HashSet<>();
-
-            List<EntityRelation> childRelations = loadRelations(childDefinition);
             for (Map<String, Object> row : incomingRows) {
                 Map<String, Object> childRelationData = extractRelationData(row, childRelations);
                 Map<String, Object> childData = withoutRelationData(row, childRelations);
@@ -295,6 +473,11 @@ public class EntityRelationRuntimeService {
 
                 String childId = stringValue(childData.get("id"));
                 boolean isNewChild = !StringUtils.hasText(childId);
+                if (!isNewChild && !ownedChildIds.contains(childId)) {
+                    throw new BusinessConflictException(
+                            "ENTITY_RELATION_CHILD_OWNERSHIP_CONFLICT",
+                            "子记录 " + childId + " 不属于当前父记录，不能随聚合表单修改");
+                }
                 if (isNewChild) {
                     childId = generateId();
                     childData.put("id", childId);
@@ -310,6 +493,11 @@ public class EntityRelationRuntimeService {
                     }
                 }
 
+                validateSelfRelationWrite(
+                        childDefinition,
+                        childId,
+                        childData,
+                        isNewChild);
                 if (isNewChild) {
                     dynamicMapper.insert(childTableName, childData);
                 } else {
@@ -319,7 +507,10 @@ public class EntityRelationRuntimeService {
                 saveRelationData(childId, childRelations, childRelationData, depth + 1, path);
             }
 
-            deleteMissingRows(childTableName, existingRows, activeIds);
+            deleteMissingRows(
+                    childTableName,
+                    existingRows,
+                    activeIds);
             path.remove(pathKey);
         }
     }
@@ -379,12 +570,18 @@ public class EntityRelationRuntimeService {
         }
     }
 
-    private void cascadeDeleteRelations(EntityDefinition parentDefinition, String parentId, boolean physical,
-                                        int depth, Set<String> path) {
+    private void cascadeDeleteRelations(
+            EntityDefinition parentDefinition,
+            String parentId,
+            boolean physical,
+            List<EntityRelation> guardedRelations,
+            int depth,
+            Set<String> path) {
         if (parentDefinition == null || !StringUtils.hasText(parentId) || depth > MAX_RELATION_DEPTH) {
             return;
         }
-        for (EntityRelation relation : loadRelations(parentDefinition)) {
+        for (EntityRelation relation : guardedRelations == null
+                ? List.<EntityRelation>of() : guardedRelations) {
             String dataKey = effectiveDataKey(relation);
             if (!Boolean.TRUE.equals(relation.getCascadeDelete())
                     || relation.getOwnershipType()
@@ -404,13 +601,24 @@ public class EntityRelationRuntimeService {
                 continue;
             }
             String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
+            // 每个子实体都在触碰业务行前取得守卫，并在守卫后冻结其发布关系。
+            // 递归只消费该冻结集合，不能在删除途中悄悄切换到另一发布版本。
+            lockSelfRelationGuard(childDefinition.getEntityCode());
+            List<EntityRelation> childRelations =
+                    loadRelations(childDefinition);
             List<Map<String, Object>> childRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
             for (Map<String, Object> childRow : childRows) {
                 String childId = stringValue(childRow.get("id"));
                 if (!StringUtils.hasText(childId)) {
                     continue;
                 }
-                cascadeDeleteRelations(childDefinition, childId, physical, depth + 1, path);
+                cascadeDeleteRelations(
+                        childDefinition,
+                        childId,
+                        physical,
+                        childRelations,
+                        depth + 1,
+                        path);
                 if (physical) {
                     dynamicMapper.physicalDeleteById(childTableName, childId);
                 } else {
@@ -485,7 +693,192 @@ public class EntityRelationRuntimeService {
         return rows != null ? rows : List.of();
     }
 
-    private void deleteMissingRows(String tableName, List<Map<String, Object>> existingRows, Set<String> activeIds) {
+    /**
+     * 锁定当前父记录已经拥有的子记录并返回稳定 ID 集合。
+     *
+     * <p>关系查询和逐行锁之间仍可能发生直接写入，因此锁后再次核对承载外键；
+     * 发现归属改变即终止整个事务，不使用过期快照继续覆盖。</p>
+     */
+    private Set<String> lockAndCollectOwnedChildIds(
+            String tableName,
+            String refFieldCode,
+            String parentId,
+            List<Map<String, Object>> existingRows) {
+        List<String> ids = existingRows == null
+                ? List.of()
+                : existingRows.stream()
+                .map(row -> stringValue(row.get("id")))
+                .filter(StringUtils::hasText)
+                .sorted()
+                .toList();
+        Set<String> result = new HashSet<>();
+        for (String id : ids) {
+            Map<String, Object> locked = dynamicMapper.selectByIdForUpdate(
+                    tableName, id);
+            if (locked == null || !parentId.equals(
+                    stringValue(locked.get(refFieldCode)))) {
+                throw new BusinessConflictException(
+                        "ENTITY_RELATION_CHILD_OWNERSHIP_CHANGED",
+                        "子记录归属在保存期间发生变化，请刷新后重试");
+            }
+            result.add(id);
+        }
+        return Set.copyOf(result);
+    }
+
+    /** 返回当前已发布关系中的同实体父引用，所有权类型不影响树完整性约束。 */
+    private List<EntityRelation> selfRelations(
+            EntityDefinition definition) {
+        if (definition == null) {
+            return List.of();
+        }
+        return loadRelations(definition).stream()
+                .filter(Objects::nonNull)
+                .filter(relation -> !Boolean.FALSE.equals(
+                        relation.getEnabled()))
+                .filter(relation -> isSameEntity(
+                        definition, relation))
+                .toList();
+    }
+
+    private boolean isSameEntity(
+            EntityDefinition definition,
+            EntityRelation relation) {
+        if (StringUtils.hasText(definition.getId())
+                && StringUtils.hasText(relation.getChildEntityId())) {
+            return Objects.equals(
+                    definition.getId(),
+                    relation.getChildEntityId());
+        }
+        return StringUtils.hasText(definition.getEntityCode())
+                && Objects.equals(
+                definition.getEntityCode(),
+                relation.getChildEntityCode());
+    }
+
+    /**
+     * 运行时再次确认发布关系的承载字段，旧快照配置不完整时也必须关闭写入。
+     */
+    private EntityField requireSelfReferenceField(
+            EntityDefinition definition,
+            EntityRelation relation) {
+        if (!StringUtils.hasText(relation.getChildRefFieldCode())) {
+            throw new BusinessConflictException(
+                    "ENTITY_SELF_RELATION_REF_FIELD_INVALID",
+                    "自关联关系缺少父引用字段: "
+                            + relation.getRelationName());
+        }
+        EntityField field = fieldMapper.findByEntityIdAndFieldCode(
+                definition.getId(),
+                relation.getChildRefFieldCode());
+        if (field == null
+                || field.getFieldType()
+                != EntityField.FieldType.REFERENCE
+                || !Objects.equals(
+                definition.getId(), field.getRefEntityId())) {
+            throw new BusinessConflictException(
+                    "ENTITY_SELF_RELATION_REF_FIELD_INVALID",
+                    "自关联关系的父引用字段配置无效: "
+                            + definition.getEntityCode() + "."
+                            + relation.getChildRefFieldCode());
+        }
+        return field;
+    }
+
+    private Object proposedReferenceValue(
+            Map<String, Object> storageData,
+            Map<String, Object> currentRecord,
+            String fieldCode,
+            String columnName) {
+        if (storageData != null) {
+            if (storageData.containsKey(columnName)) {
+                return storageData.get(columnName);
+            }
+            if (storageData.containsKey(fieldCode)) {
+                return storageData.get(fieldCode);
+            }
+        }
+        if (currentRecord == null) {
+            return null;
+        }
+        if (currentRecord.containsKey(columnName)) {
+            return currentRecord.get(columnName);
+        }
+        return currentRecord.get(fieldCode);
+    }
+
+    private String normalizeReferenceId(
+            Object value,
+            String fieldCode) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof CharSequence
+                || value instanceof Number
+                || value instanceof UUID) {
+            String text = String.valueOf(value).trim();
+            return text.isEmpty() ? null : text;
+        }
+        throw new BusinessConflictException(
+                "ENTITY_SELF_RELATION_PARENT_VALUE_INVALID",
+                "自关联父引用必须是单条记录 ID: " + fieldCode);
+    }
+
+    /**
+     * 从拟设置的直接父级向上逐级锁定并读取，确保校验依据与后续更新处于同一事务。
+     */
+    private void validateAncestorChain(
+            String tableName,
+            String recordId,
+            String proposedParentId,
+            String fieldCode,
+            String columnName) {
+        if (!StringUtils.hasText(proposedParentId)) {
+            return;
+        }
+        if (recordId.equals(proposedParentId)) {
+            throw new BusinessConflictException(
+                    "ENTITY_SELF_RELATION_SELF_PARENT",
+                    "记录不能把自己设置为父级");
+        }
+
+        Set<String> visited = new HashSet<>();
+        visited.add(recordId);
+        String ancestorId = proposedParentId;
+        int ancestorCount = 0;
+        while (StringUtils.hasText(ancestorId)) {
+            if (++ancestorCount > MAX_SELF_RELATION_ANCESTORS) {
+                throw new BusinessConflictException(
+                        "ENTITY_SELF_RELATION_DEPTH_EXCEEDED",
+                        "自关联祖先层级超过安全上限 "
+                                + MAX_SELF_RELATION_ANCESTORS
+                                + "，无法确认关系无环");
+            }
+            if (!visited.add(ancestorId)) {
+                throw new BusinessConflictException(
+                        "ENTITY_SELF_RELATION_CYCLE",
+                        "自关联父级链已存在循环，不能保存当前关系");
+            }
+
+            Map<String, Object> ancestor =
+                    dynamicMapper.selectByIdForUpdate(
+                            tableName, ancestorId);
+            if (ancestor == null) {
+                throw new BusinessConflictException(
+                        "ENTITY_SELF_RELATION_PARENT_NOT_FOUND",
+                        "自关联父记录不存在: " + ancestorId);
+            }
+            Object nextValue = ancestor.containsKey(columnName)
+                    ? ancestor.get(columnName)
+                    : ancestor.get(fieldCode);
+            ancestorId = normalizeReferenceId(nextValue, fieldCode);
+        }
+    }
+
+    private void deleteMissingRows(
+            String tableName,
+            List<Map<String, Object>> existingRows,
+            Set<String> activeIds) {
         if (existingRows == null || existingRows.isEmpty()) {
             return;
         }

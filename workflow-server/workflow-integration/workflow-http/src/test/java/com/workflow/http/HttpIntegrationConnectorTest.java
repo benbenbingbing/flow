@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.audit.SystemAuditPort;
 import com.workflow.contracts.integration.IntegrationRequest;
+import com.workflow.contracts.integration.IntegrationConnectorConfigurationSnapshot;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.integration.IntegrationRuntimeContext;
 import com.workflow.contracts.integration.IntegrationSecretResolver;
@@ -97,6 +98,59 @@ class HttpIntegrationConnectorTest {
                 "https://erp.example.com/api/orders?dryRun=true",
                 outbound.getValue().uri().toString());
         verify(auditPort, times(2)).record(any());
+    }
+
+    @Test
+    void publishedInvocationUsesPinnedConnectorConfiguration()
+            throws Exception {
+        HttpConnectorConfigurationCodec codec =
+                new HttpConnectorConfigurationCodec(new ObjectMapper());
+        String snapshotDocument = codec.freezeSnapshot(
+                "config-1",
+                "app-1",
+                """
+                {
+                  "baseUrl": "https://snapshot.example.com/api",
+                  "operations": {
+                    "sync-order": {
+                      "method": "POST",
+                      "path": "/orders",
+                      "query": {"dryRun": "$input.dryRun"},
+                      "headers": {"X-Tenant": "$context.tenantId"},
+                      "body": {"/orderId": "$input.order.id"},
+                      "response": {"remoteId": "/data/id"},
+                      "acceptedStatuses": [200],
+                      "authentication": {
+                        "type": "BEARER",
+                        "secretRef": "secret://integration/app-1/api-token"
+                      }
+                    }
+                  }
+                }
+                """,
+                "[\"snapshot.example.com\"]");
+        when(transport.execute(any())).thenReturn(
+                new HttpTransportResult(
+                        200,
+                        "{\"data\":{\"id\":\"remote-42\"}}",
+                        null,
+                        false));
+
+        IntegrationResult result = connector.execute(request(
+                new IntegrationConnectorConfigurationSnapshot(
+                        "http-json",
+                        "config-1",
+                        "7",
+                        snapshotDocument)));
+
+        assertEquals(true, result.isSuccess());
+        ArgumentCaptor<HttpTransportRequest> outbound =
+                ArgumentCaptor.forClass(HttpTransportRequest.class);
+        verify(transport).execute(outbound.capture());
+        assertEquals(
+                "https://snapshot.example.com/api/orders?dryRun=true",
+                outbound.getValue().uri().toString());
+        verify(provider, never()).findActive(any());
     }
 
     @Test
@@ -226,10 +280,16 @@ class HttpIntegrationConnectorTest {
     }
 
     private IntegrationRequest request() {
+        return request(null);
+    }
+
+    private IntegrationRequest request(
+            IntegrationConnectorConfigurationSnapshot snapshot) {
         return IntegrationRequest.builder()
                 .connectorConfigId("config-1")
                 .operation("sync-order")
                 .idempotencyKey("idem-1")
+                .configurationSnapshot(snapshot)
                 .parameters(Map.of(
                         "dryRun", true,
                         "order", Map.of("id", "order-1")))

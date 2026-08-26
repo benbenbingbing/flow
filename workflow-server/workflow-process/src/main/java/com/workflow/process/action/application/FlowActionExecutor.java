@@ -6,6 +6,10 @@ import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionHandler;
 import com.workflow.contracts.action.FlowActionScopeType;
 import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.contracts.audit.AuditEventIds;
+import com.workflow.contracts.audit.AuditSourcePointer;
+import com.workflow.contracts.audit.OperationContext;
+import com.workflow.contracts.audit.OperationContextHolder;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
@@ -93,34 +97,90 @@ public class FlowActionExecutor {
             FlowActionTriggerEvent event,
             String idempotencyKey,
             FlowActionExecution execution) {
-        FlowActionContext context = buildContext(action, event, idempotencyKey);
-        if (execution != null) {
-            executionService.markHandlerStarted(execution, context);
-        }
-        try {
-            invoke(action, context);
-            // 处理器未显式写入结果时，补充默认成功标记
-            if (context.getExecutionResult() == null) {
-                context.setExecutionResult(Map.of(
-                        "status", "SUCCESS",
-                        "handlerReturnType", "void"));
-            }
-            context.addExecutionTrace("HANDLER_COMPLETED", "流程动作处理器执行完成");
+        OperationContext operationContext = operationContext(
+                action, event, idempotencyKey, execution);
+        // 提交后动作运行在线程池中，ThreadLocal 不会自动继承。这里从已持久化
+        // 的触发事件恢复作用域，使处理器发起的实体变更仍归属于原业务操作。
+        try (OperationContextHolder.Scope ignored =
+                     OperationContextHolder.open(operationContext)) {
+            FlowActionContext context = buildContext(
+                    action, event, idempotencyKey);
             if (execution != null) {
-                executionService.captureContext(execution, context);
+                executionService.markHandlerStarted(execution, context);
             }
-            return context;
-        } catch (RuntimeException error) {
-            // 捕获失败上下文后重新抛出，交由上层决定是否回滚或重试
-            context.addExecutionTrace(
-                    "HANDLER_FAILED",
-                    "流程动作处理器执行失败",
-                    Map.of("error", error.getMessage() == null ? error.getClass().getName() : error.getMessage()));
-            if (execution != null) {
-                executionService.captureContext(execution, context);
+            try {
+                invoke(action, context);
+                // 处理器未显式写入结果时，补充默认成功标记
+                if (context.getExecutionResult() == null) {
+                    context.setExecutionResult(Map.of(
+                            "status", "SUCCESS",
+                            "handlerReturnType", "void"));
+                }
+                context.addExecutionTrace(
+                        "HANDLER_COMPLETED", "流程动作处理器执行完成");
+                if (execution != null) {
+                    executionService.captureContext(execution, context);
+                }
+                return context;
+            } catch (RuntimeException error) {
+                // 捕获失败上下文后重新抛出，交由上层决定是否回滚或重试
+                context.addExecutionTrace(
+                        "HANDLER_FAILED",
+                        "流程动作处理器执行失败",
+                        Map.of("error", error.getMessage() == null
+                                ? error.getClass().getName()
+                                : error.getMessage()));
+                if (execution != null) {
+                    executionService.captureContext(execution, context);
+                }
+                throw error;
             }
-            throw error;
         }
+    }
+
+    /**
+     * 从持久化触发事件恢复业务操作上下文。旧执行记录缺少 operationId 时，
+     * 以动作和幂等键生成独立操作，绝不使用 traceId 猜测归并。
+     */
+    private OperationContext operationContext(
+            FlowAction action,
+            FlowActionTriggerEvent event,
+            String idempotencyKey,
+            FlowActionExecution execution) {
+        OperationContext inherited =
+                OperationContextHolder.current().orElse(null);
+        String operationId = firstNonBlank(
+                event.getOperationId(),
+                inherited == null ? null : inherited.operationId());
+        if (!StringUtils.hasText(operationId)) {
+            operationId = "flow_action_" + AuditEventIds.stable(
+                    "flow-action-operation",
+                    action.getId(),
+                    idempotencyKey);
+        }
+        String traceId = firstNonBlank(
+                event.getTraceId(),
+                inherited == null ? null : inherited.traceId());
+        String parentOperationId = event.getParentOperationId();
+        if (!StringUtils.hasText(parentOperationId)
+                && inherited != null
+                && !operationId.equals(inherited.operationId())) {
+            parentOperationId = inherited.operationId();
+        }
+        String sourceId = execution == null
+                ? action.getId()
+                : execution.getId();
+        return new OperationContext(
+                operationId,
+                traceId,
+                parentOperationId,
+                new AuditSourcePointer(
+                        "PROCESS_ACTION",
+                        execution == null
+                                ? "FLOW_ACTION"
+                                : "FLOW_ACTION_EXECUTION",
+                        sourceId,
+                        idempotencyKey));
     }
 
     /**
@@ -161,6 +221,11 @@ public class FlowActionExecutor {
         ctx.setApprovalAction(event.getApprovalAction());
         ctx.setEndReason(event.getEndReason());
         ctx.setIdempotencyKey(idempotencyKey);
+        // 需要阻断主流程的处理器必须能复核执行方式与失败策略，
+        // 避免把“前置校验”错配成提交后通知而实际未阻断主操作。
+        ctx.setProcessVersionId(event.getVersionId());
+        ctx.setExecutionMode(action.getExecutionMode());
+        ctx.setFailurePolicy(action.getFailurePolicy());
         ctx.setVariablesSnapshot(event.getVariables());
         Map<String, Object> extraParams =
                 resolveCustomParams(action.getParamsJson(), event.getVariables());

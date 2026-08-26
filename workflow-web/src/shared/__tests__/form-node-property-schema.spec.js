@@ -361,6 +361,34 @@ assert.deepEqual(fieldPayload.rules, {
     }
   }
 })
+const approvalReadonlyPayload = buildFormNodePayload({
+  id: 'approval-readonly-field',
+  nodeType: 'FIELD',
+  nodeKey: 'approval_readonly_field',
+  fieldId: '102',
+  fieldCode: 'approval_readonly_field',
+  fieldName: '审批只读字段',
+  fieldLabel: '审批只读字段',
+  fieldType: 'STRING',
+  componentType: 'input',
+  extensionConfig: {
+    modes: {
+      approve: { editable: false }
+    }
+  }
+})
+assert.deepEqual(
+  approvalReadonlyPayload.rules,
+  {
+    validation: {},
+    extension: {
+      modes: {
+        approve: { editable: false }
+      }
+    }
+  },
+  '审批默认不可编辑必须作为显式规则保存，供前后端运行时共同执行'
+)
 assert.deepEqual(Object.keys(fieldPayload.dataSourceBindings).sort(), [
   'FIELD_DEFAULT',
   'FIELD_OPTIONS'

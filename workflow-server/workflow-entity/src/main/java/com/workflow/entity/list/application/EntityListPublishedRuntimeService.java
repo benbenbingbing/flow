@@ -2,7 +2,11 @@ package com.workflow.entity.list.application;
 
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -33,6 +37,8 @@ public class EntityListPublishedRuntimeService {
     private final UiConfigReleaseService releaseService;
     private final UiReleaseResolutionTokenService resolutionTokenService;
     private final JsonDocumentCodec codec;
+    private final UiConfigReleaseMapper releaseMapper;
+    private final ObjectMapper objectMapper;
 
     /**
      * 解析列表运行时配置，存在发布版本时用发布快照覆盖草稿。
@@ -61,7 +67,74 @@ public class EntityListPublishedRuntimeService {
                         releaseId,
                         releaseVersion,
                         releaseResolutionToken);
-        EntityListConfigDTO snapshot = resolved.list();
+        EntityListConfig config = runtimeConfig(
+                resolved.list(),
+                resolved.releaseId(),
+                resolved.releaseVersion(),
+                resolved.pinned(),
+                releaseResolutionToken);
+        config.setViewCompositions(viewCompositions(resolved.snapshot()));
+        return config;
+    }
+
+    /**
+     * 使用已经验证的关联内容列表上下文读取精确钉定版本。
+     *
+     * <p>公开列表 API 不能凭 releaseId 读取历史版本；调用方必须先校验
+     * {@code UiViewCompositionTokenService} 签名，再进入本服务。</p>
+     */
+    public EntityListConfig resolveViewCompositionConfig(
+            EntityListConfig draft,
+            String releaseId,
+            Integer releaseVersion) {
+        if (draft == null
+                || !StringUtils.hasText(releaseId)
+                || releaseVersion == null) {
+            throw new BusinessConflictException(
+                    "VIEW_COMPOSITION_LIST_RELEASE_REQUIRED",
+                    "关联内容目标列表缺少固定发布版本");
+        }
+        UiConfigRelease release = releaseMapper.selectById(releaseId);
+        if (release == null
+                || !"LIST".equals(release.getConfigType())
+                || !draft.getId().equals(release.getConfigId())
+                || !releaseVersion.equals(release.getVersion())) {
+            throw new BusinessConflictException(
+                    "VIEW_COMPOSITION_LIST_RELEASE_CONFLICT",
+                    "关联内容目标列表固定版本不存在或不一致");
+        }
+        Map<String, Object> snapshot =
+                releaseService.verifiedReleaseSnapshot(release);
+        Object listDocument = snapshot.get("list");
+        if (listDocument == null) {
+            throw new BusinessConflictException(
+                    "VIEW_COMPOSITION_LIST_RELEASE_CONFLICT",
+                    "关联内容目标列表发布快照缺少列表文档");
+        }
+        EntityListConfigDTO published = objectMapper.convertValue(
+                listDocument,
+                EntityListConfigDTO.class);
+        if (!draft.getId().equals(published.getId())) {
+            throw new BusinessConflictException(
+                    "VIEW_COMPOSITION_LIST_RELEASE_CONFLICT",
+                    "关联内容目标列表发布快照归属不一致");
+        }
+        EntityListConfig config = runtimeConfig(
+                published,
+                release.getId(),
+                release.getVersion(),
+                true,
+                null);
+        config.setViewCompositions(viewCompositions(snapshot));
+        return config;
+    }
+
+    private EntityListConfig runtimeConfig(
+            EntityListConfigDTO snapshot,
+            String releaseId,
+            Integer releaseVersion,
+            boolean pinned,
+            String releaseResolutionToken) {
         EntityListConfig config = new EntityListConfig();
         BeanUtils.copyProperties(snapshot, config);
         config.setToolbarConfig(write(snapshot.getToolbarConfig(), "发布工具栏配置"));
@@ -72,22 +145,38 @@ public class EntityListPublishedRuntimeService {
         config.setFixedFilterConfig(write(snapshot.getFixedFilterConfig(), "发布固定条件"));
         config.setContextBindingConfig(
                 write(snapshot.getContextBindingConfig(), "发布上下文绑定"));
-        config.setActiveReleaseId(resolved.releaseId());
-        config.setPublishedVersion(resolved.releaseVersion());
+        config.setActiveReleaseId(releaseId);
+        config.setPublishedVersion(releaseVersion);
         config.setPublishedSnapshot(true);
         config.setRuntimeFields(snapshot.getFields() == null
                 ? List.of() : List.copyOf(snapshot.getFields()));
-        config.setPinnedRelease(resolved.pinned());
+        config.setPinnedRelease(pinned);
         config.setReleaseResolutionToken(
                 releaseResolutionToken);
         log.info(
                 "列表运行时解析完成: listId={}, listKey={}, releaseId={}, releaseVersion={}, source={}",
                 LogValue.safe(config.getId()),
                 LogValue.safe(config.getListKey()),
-                LogValue.safe(resolved.releaseId()),
-                resolved.releaseVersion(),
-                resolved.pinned() ? "PINNED" : "ACTIVE");
+                LogValue.safe(releaseId),
+                releaseVersion,
+                pinned ? "PINNED" : "ACTIVE");
         return config;
+    }
+
+    /**
+     * 关联内容只取自已完成哈希校验的发布快照，绝不从列表草稿补齐。
+     */
+    private List<Map<String, Object>> viewCompositions(
+            Map<String, Object> snapshot) {
+        if (snapshot == null
+                || !(snapshot.get("viewCompositions")
+                instanceof List<?>)) {
+            return List.of();
+        }
+        List<Map<String, Object>> values = objectMapper.convertValue(
+                snapshot.get("viewCompositions"),
+                new TypeReference<List<Map<String, Object>>>() {});
+        return values == null ? List.of() : List.copyOf(values);
     }
 
     /**

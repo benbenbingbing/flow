@@ -9,10 +9,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.contracts.ui.hotfix.UiHotfixObservationPort;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
-import com.workflow.entity.ui.api.request.UiHotfixApplyRequest;
-import com.workflow.entity.ui.api.request.UiHotfixCancelRequest;
 import com.workflow.entity.ui.api.request.UiHotfixObservationMetricRequest;
-import com.workflow.entity.ui.api.request.UiHotfixReviewRequest;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
 import com.workflow.entity.ui.api.response.UiHotfixObservationMetricDTO;
 import com.workflow.entity.ui.api.response.UiHotfixRequestDTO;
@@ -37,13 +34,12 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * UI HOTFIX 的申请、独立复核、发布授权与观察窗口服务。
- * 审批绑定草稿、基线和影响预览摘要，批准后任一内容漂移都会使发布失败。
+ * UI HOTFIX 的直接发布审计、观察窗口与回滚治理服务。
+ * 发布记录绑定草稿、基线和影响预览摘要，并与实际发布在同一事务中创建。
  */
 @Service
 @RequiredArgsConstructor
@@ -59,30 +55,46 @@ public class UiHotfixGovernanceService
     private final ObjectMapper objectMapper;
     private final UiConfigurationAccessService accessService;
 
-    /** SAFE 是否也启用双人复核，可按环境逐步收紧。 */
-    @Value("${workflow.ui.hotfix.review-safe:false}")
-    private boolean reviewSafe;
-
     /** 发布后的指标观察窗口，至少保留一分钟。 */
     @Value("${workflow.ui.hotfix.observation-minutes:60}")
     private int observationMinutes = 60;
 
-    /** 创建绑定当前预检结果的申请；REVIEW 自动进入待复核，SAFE 自动批准。 */
+    /**
+     * 在发布事务内创建直接发布记录。
+     *
+     * <p>调用方必须先锁定配置归属记录并完成技术预检。方法会关闭同配置遗留的
+     * 待复核或已批准记录，但不会抢占已经进入发布阶段的记录。</p>
+     *
+     * @return 新建的 HOTFIX 治理记录 ID
+     */
     @Transactional(rollbackFor = Exception.class)
-    public UiHotfixRequestDTO apply(
-            UiConfigPublishPreviewDTO preview,
-            UiHotfixApplyRequest request) {
+    public String beginDirectPublish(
+            UiConfigPublishRequest publishRequest,
+            UiConfigPublishPreviewDTO preview) {
         accessService.requireHotfixAccess(false);
-        requireApplyRequest(preview, request);
+        requireDirectPublishPreview(preview);
         requireConfigAccess(preview.getConfigType(), preview.getConfigId());
-        if (!preview.isCanPublish() || "BLOCKED".equals(preview.getRiskLevel())) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_PREVIEW_BLOCKED",
-                    "当前 HOTFIX 预检未通过，不能提交申请");
-        }
         LocalDateTime now = LocalDateTime.now();
-        boolean reviewRequired = "REVIEW".equals(preview.getRiskLevel())
-                || reviewSafe;
+
+        // 人工审核链路退役后，旧开放申请不再具有发布授权意义；关闭后重新绑定本次预检。
+        requestMapper.update(
+                null,
+                new LambdaUpdateWrapper<>(UiConfigHotfixRequest.class)
+                        .eq(UiConfigHotfixRequest::getConfigType,
+                                preview.getConfigType())
+                        .eq(UiConfigHotfixRequest::getConfigId,
+                                preview.getConfigId())
+                        .in(UiConfigHotfixRequest::getStatus,
+                                "PENDING_REVIEW", "APPROVED")
+                        .isNull(UiConfigHotfixRequest::getReleaseId)
+                        .set(UiConfigHotfixRequest::getStatus, "CANCELLED")
+                        .set(UiConfigHotfixRequest::getCancelledBy,
+                                currentUserId())
+                        .set(UiConfigHotfixRequest::getCancelledAt, now)
+                        .set(UiConfigHotfixRequest::getCancelReason,
+                                "人工审核链路已退役，由直接发布替代")
+                        .set(UiConfigHotfixRequest::getUpdatedAt, now));
+
         UiConfigHotfixRequest record = new UiConfigHotfixRequest();
         record.setConfigType(preview.getConfigType());
         record.setConfigId(preview.getConfigId());
@@ -91,172 +103,32 @@ public class UiHotfixGovernanceService
         record.setTargetHash(preview.getTargetHash());
         record.setImpactTokenHash(sha256(preview.getImpactToken()));
         record.setRiskLevel(preview.getRiskLevel());
-        record.setReason(request.getReason().trim());
-        record.setTicketRef(request.getTicketRef().trim());
+        record.setReason(publishReason(publishRequest));
+        record.setTicketRef("");
         record.setImpactDocument(writeJson(preview));
         record.setApplicantId(currentUserId());
         record.setApplicantName(UserContext.getUsername());
-        record.setWindowStart(request.getWindowStart());
-        record.setWindowEnd(request.getWindowEnd());
-        record.setReviewRequired(reviewRequired ? 1 : 0);
-        record.setStatus(reviewRequired ? "PENDING_REVIEW" : "APPROVED");
+        record.setWindowStart(now);
+        record.setWindowEnd(now.plusMinutes(1));
+        record.setReviewRequired(0);
+        record.setReviewerId(null);
+        record.setReviewerName(null);
+        record.setReviewComment(null);
+        record.setReviewedAt(null);
+        record.setStatus("PUBLISHING");
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         try {
             requestMapper.insert(record);
         } catch (DuplicateKeyException exception) {
             throw new BusinessConflictException(
-                    "UI_HOTFIX_OPEN_REQUEST_EXISTS",
-                    "该配置已有待处理或观察中的 HOTFIX 申请");
-        }
-        return toDto(record, false);
-    }
-
-    /** REVIEW 风险必须由非申请人且拥有独立权限的用户审批。 */
-    @Transactional(rollbackFor = Exception.class)
-    public UiHotfixRequestDTO review(String id, UiHotfixReviewRequest review) {
-        accessService.requireHotfixReviewAccess();
-        UiConfigHotfixRequest record = requireRequest(id);
-        requireConfigAccess(record.getConfigType(), record.getConfigId());
-        if (!"PENDING_REVIEW".equals(record.getStatus())) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_REVIEW_STATE_CONFLICT",
-                    "HOTFIX 申请当前不处于待复核状态");
-        }
-        String reviewerId = currentUserId();
-        if (Objects.equals(record.getApplicantId(), reviewerId)) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_SELF_REVIEW_FORBIDDEN",
-                    "高风险 HOTFIX 申请人不能审批自己的申请");
-        }
-        if (review == null || review.getApproved() == null
-                || !StringUtils.hasText(review.getComment())) {
-            throw new IllegalArgumentException("复核结论和意见不能为空");
-        }
-        String nextStatus = Boolean.TRUE.equals(review.getApproved())
-                ? "APPROVED" : "REJECTED";
-        LocalDateTime now = LocalDateTime.now();
-        int updated = requestMapper.update(
-                null,
-                new LambdaUpdateWrapper<UiConfigHotfixRequest>()
-                        .eq(UiConfigHotfixRequest::getId, id)
-                        .eq(UiConfigHotfixRequest::getStatus, "PENDING_REVIEW")
-                        .set(UiConfigHotfixRequest::getStatus, nextStatus)
-                        .set(UiConfigHotfixRequest::getReviewerId, reviewerId)
-                        .set(UiConfigHotfixRequest::getReviewerName, UserContext.getUsername())
-                        .set(UiConfigHotfixRequest::getReviewComment, review.getComment().trim())
-                        .set(UiConfigHotfixRequest::getReviewedAt, now)
-                        .set(UiConfigHotfixRequest::getUpdatedAt, now));
-        if (updated != 1) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_REVIEW_STATE_CONFLICT",
-                    "HOTFIX 申请已被其他复核人处理");
-        }
-        return toDto(requireRequest(id), true);
-    }
-
-    /**
-     * 申请人可取消尚未发布的申请，使过期审批快照释放开放槽位。
-     * 已进入发布或观察阶段的申请只能通过受控回滚处理。
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public UiHotfixRequestDTO cancel(
-            String id,
-            UiHotfixCancelRequest cancelRequest) {
-        accessService.requireHotfixAccess(false);
-        UiConfigHotfixRequest record = requireRequest(id);
-        requireConfigAccess(record.getConfigType(), record.getConfigId());
-        if (!Set.of("PENDING_REVIEW", "APPROVED")
-                .contains(record.getStatus())) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_CANCEL_STATE_CONFLICT",
-                    "只有待复核或已批准且未发布的 HOTFIX 申请可以取消");
-        }
-        String actorId = currentUserId();
-        if (!Objects.equals(record.getApplicantId(), actorId)) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_CANCEL_APPLICANT_REQUIRED",
-                    "只有 HOTFIX 申请人可以取消申请");
-        }
-        if (cancelRequest == null
-                || !StringUtils.hasText(cancelRequest.getReason())) {
-            throw new IllegalArgumentException("取消原因不能为空");
-        }
-        LocalDateTime now = LocalDateTime.now();
-        int updated = requestMapper.update(
-                null,
-                new LambdaUpdateWrapper<UiConfigHotfixRequest>()
-                        .eq(UiConfigHotfixRequest::getId, id)
-                        .in(UiConfigHotfixRequest::getStatus,
-                                "PENDING_REVIEW", "APPROVED")
-                        .set(UiConfigHotfixRequest::getStatus, "CANCELLED")
-                        .set(UiConfigHotfixRequest::getCancelledBy, actorId)
-                        .set(UiConfigHotfixRequest::getCancelledAt, now)
-                        .set(UiConfigHotfixRequest::getCancelReason,
-                                cancelRequest.getReason().trim())
-                        .set(UiConfigHotfixRequest::getUpdatedAt, now));
-        if (updated != 1) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_CANCEL_STATE_CONFLICT",
-                    "HOTFIX 申请状态已变化，请刷新后重试");
-        }
-        return toDto(requireRequest(id), true);
-    }
-
-    /**
-     * 发布前再次校验审批快照和窗口，并以 CAS 进入 PUBLISHING。
-     * 返回已发布 releaseId 时表示同一申请的幂等重试。
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public PublishAuthorization beginPublish(
-            UiConfigPublishRequest publishRequest,
-            UiConfigPublishPreviewDTO preview) {
-        accessService.requireHotfixAccess(false);
-        String requestId = publishRequest == null
-                ? null : publishRequest.getHotfixRequestId();
-        if (!StringUtils.hasText(requestId)) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_APPROVAL_REQUIRED",
-                    "HOTFIX 发布必须携带已批准的申请ID");
-        }
-        UiConfigHotfixRequest record = requireRequest(requestId);
-        if (StringUtils.hasText(record.getReleaseId())
-                && Set.of("OBSERVING", "OBSERVED_OK", "OBSERVED_ALERT")
-                        .contains(record.getStatus())) {
-            return new PublishAuthorization(record.getId(), record.getReleaseId(), true);
-        }
-        if (!"APPROVED".equals(record.getStatus())) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_APPROVAL_REQUIRED",
-                    "HOTFIX 申请尚未完成独立复核");
-        }
-        verifyApprovedSnapshot(record, preview);
-        LocalDateTime now = LocalDateTime.now();
-        if (now.isBefore(record.getWindowStart()) || now.isAfter(record.getWindowEnd())) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_OUTSIDE_RELEASE_WINDOW",
-                    "当前时间不在已批准的 HOTFIX 发布窗口内");
-        }
-        if (Integer.valueOf(1).equals(record.getReviewRequired())
-                && (!StringUtils.hasText(record.getReviewerId())
-                        || Objects.equals(record.getApplicantId(), record.getReviewerId()))) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_INDEPENDENT_REVIEW_REQUIRED",
-                    "REVIEW 风险 HOTFIX 必须由非申请人独立复核");
-        }
-        int updated = requestMapper.update(
-                null,
-                new LambdaUpdateWrapper<UiConfigHotfixRequest>()
-                        .eq(UiConfigHotfixRequest::getId, record.getId())
-                        .eq(UiConfigHotfixRequest::getStatus, "APPROVED")
-                        .set(UiConfigHotfixRequest::getStatus, "PUBLISHING")
-                        .set(UiConfigHotfixRequest::getUpdatedAt, now));
-        if (updated != 1) {
-            throw new BusinessConflictException(
                     "UI_HOTFIX_PUBLISH_STATE_CONFLICT",
-                    "HOTFIX 申请正在被其他请求发布");
+                    "该配置已有 HOTFIX 正在发布");
         }
-        return new PublishAuthorization(record.getId(), null, false);
+        if (!StringUtils.hasText(record.getId())) {
+            throw new IllegalStateException("HOTFIX 直接发布记录ID生成失败");
+        }
+        return record.getId();
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -264,7 +136,7 @@ public class UiHotfixGovernanceService
         LocalDateTime now = LocalDateTime.now();
         int updated = requestMapper.update(
                 null,
-                new LambdaUpdateWrapper<UiConfigHotfixRequest>()
+                new LambdaUpdateWrapper<>(UiConfigHotfixRequest.class)
                         .eq(UiConfigHotfixRequest::getId, requestId)
                         .eq(UiConfigHotfixRequest::getStatus, "PUBLISHING")
                         .set(UiConfigHotfixRequest::getStatus, "OBSERVING")
@@ -300,7 +172,7 @@ public class UiHotfixGovernanceService
         LocalDateTime now = LocalDateTime.now();
         requestMapper.update(
                 null,
-                new LambdaUpdateWrapper<UiConfigHotfixRequest>()
+                new LambdaUpdateWrapper<>(UiConfigHotfixRequest.class)
                         .eq(UiConfigHotfixRequest::getId, record.getId())
                         .set(UiConfigHotfixRequest::getStatus, "ROLLED_BACK")
                         .set(UiConfigHotfixRequest::getObservationStatus, "ALERT")
@@ -454,7 +326,7 @@ public class UiHotfixGovernanceService
         accessService.requireHotfixAccess(false);
         requireConfigAccess(normalize(configType), configId);
         return requestMapper.selectList(
-                        new LambdaQueryWrapper<UiConfigHotfixRequest>()
+                        new LambdaQueryWrapper<>(UiConfigHotfixRequest.class)
                                 .eq(UiConfigHotfixRequest::getConfigType, normalize(configType))
                                 .eq(UiConfigHotfixRequest::getConfigId, configId)
                                 .orderByDesc(UiConfigHotfixRequest::getCreatedAt))
@@ -474,7 +346,7 @@ public class UiHotfixGovernanceService
         boolean alert = failures != null && failures > 0;
         requestMapper.update(
                 null,
-                new LambdaUpdateWrapper<UiConfigHotfixRequest>()
+                new LambdaUpdateWrapper<>(UiConfigHotfixRequest.class)
                         .eq(UiConfigHotfixRequest::getId, record.getId())
                         .eq(UiConfigHotfixRequest::getStatus, "OBSERVING")
                         .set(UiConfigHotfixRequest::getStatus, alert ? "OBSERVED_ALERT" : "OBSERVED_OK")
@@ -499,59 +371,39 @@ public class UiHotfixGovernanceService
                 requestId);
     }
 
-    private void requireApplyRequest(
-            UiConfigPublishPreviewDTO preview,
-            UiHotfixApplyRequest request) {
+    private void requireDirectPublishPreview(
+            UiConfigPublishPreviewDTO preview) {
         if (preview == null || !"HOTFIX".equals(preview.getReleaseMode())) {
-            throw new IllegalArgumentException("必须基于 HOTFIX 预检创建申请");
+            throw new IllegalArgumentException("必须基于 HOTFIX 预检直接发布");
         }
-        if (request == null || !StringUtils.hasText(request.getReason())
-                || !StringUtils.hasText(request.getTicketRef())) {
-            throw new IllegalArgumentException("HOTFIX 变更原因和关联工单不能为空");
-        }
-        if (request.getWindowStart() == null || request.getWindowEnd() == null
-                || !request.getWindowStart().isBefore(request.getWindowEnd())
-                || request.getWindowEnd().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("HOTFIX 发布时间窗口无效");
-        }
-        if (!Objects.equals(normalize(request.getConfigType()), preview.getConfigType())
-                || !Objects.equals(request.getConfigId(), preview.getConfigId())
-                || !Objects.equals(request.getExpectedDraftHash(), preview.getDraftHash())
-                || !Objects.equals(request.getExpectedActiveReleaseId(), preview.getActiveReleaseId())
-                || !Objects.equals(request.getImpactToken(), preview.getImpactToken())) {
+        if (!preview.isCanPublish()
+                || "BLOCKED".equals(preview.getRiskLevel())) {
             throw new BusinessConflictException(
-                    "UI_HOTFIX_PREVIEW_STALE",
-                    "HOTFIX 申请内容与最新预检不一致，请重新预检");
+                    "UI_HOTFIX_PREVIEW_BLOCKED",
+                    "当前 HOTFIX 预检未通过，不能直接发布");
         }
     }
 
-    private void verifyApprovedSnapshot(
-            UiConfigHotfixRequest record,
-            UiConfigPublishPreviewDTO preview) {
-        if (!Objects.equals(record.getConfigType(), preview.getConfigType())
-                || !Objects.equals(record.getConfigId(), preview.getConfigId())
-                || !Objects.equals(record.getDraftHash(), preview.getDraftHash())
-                || !Objects.equals(record.getActiveReleaseId(), preview.getActiveReleaseId())
-                || !Objects.equals(record.getTargetHash(), preview.getTargetHash())
-                || !Objects.equals(record.getRiskLevel(), preview.getRiskLevel())
-                || !Objects.equals(record.getImpactTokenHash(), sha256(preview.getImpactToken()))) {
-            throw new BusinessConflictException(
-                    "UI_HOTFIX_APPROVAL_STALE",
-                    "草稿、基线或影响范围已变化，原 HOTFIX 审批已失效");
-        }
+    private String publishReason(UiConfigPublishRequest request) {
+        String reason = request != null
+                && StringUtils.hasText(request.getDescription())
+                ? request.getDescription().trim()
+                : "直接发布热修复";
+        // 兼容既有 VARCHAR(1000) 列，避免直接发布因过长说明回滚整个事务。
+        return reason.substring(0, Math.min(reason.length(), 1000));
     }
 
     private UiConfigHotfixRequest requireRequest(String id) {
         UiConfigHotfixRequest record = requestMapper.selectById(id);
         if (record == null) {
-            throw new IllegalArgumentException("HOTFIX 申请不存在: " + id);
+            throw new IllegalArgumentException("HOTFIX 记录不存在: " + id);
         }
         return record;
     }
 
     private UiConfigHotfixRequest findByReleaseId(String releaseId) {
         return requestMapper.selectOne(
-                new LambdaQueryWrapper<UiConfigHotfixRequest>()
+                new LambdaQueryWrapper<>(UiConfigHotfixRequest.class)
                         .eq(UiConfigHotfixRequest::getReleaseId, releaseId)
                         .last("LIMIT 1"));
     }
@@ -577,7 +429,6 @@ public class UiHotfixGovernanceService
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("HOTFIX 影响快照损坏", exception);
         }
-        dto.setReviewRequired(Integer.valueOf(1).equals(record.getReviewRequired()));
         if (includeMetrics) {
             dto.setMetrics(metrics(record.getId()));
         }
@@ -630,9 +481,4 @@ public class UiHotfixGovernanceService
         return UUID.randomUUID().toString().replace("-", "");
     }
 
-    public record PublishAuthorization(
-            String requestId,
-            String existingReleaseId,
-            boolean idempotent) {
-    }
 }

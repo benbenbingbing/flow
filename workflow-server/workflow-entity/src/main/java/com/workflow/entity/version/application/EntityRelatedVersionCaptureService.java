@@ -23,9 +23,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 子实体独立变化向一层父聚合传播版本。
+ * 子实体独立变化沿冻结组成路径向根聚合传播版本。
  *
- * <p>范围和时机相互独立：只有 RELATED_MUTATION 触发器明确启用时才传播。</p>
+ * <p>旧一层配置仍直接读取 childRef；多层配置按发布时冻结的 relationPath 逐跳反查。
+ * 范围和时机相互独立：只有 RELATED_MUTATION 触发器明确启用时才传播。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -89,7 +90,7 @@ public class EntityRelatedVersionCaptureService {
             for (EntityVersionConfiguration.RelationScope relation
                     : scopedRelationsForChild(
                             configuration, command.entityCode())) {
-                Set<String> parentIds = parentIds(
+                Set<String> parentIds = rootIds(
                         relation,
                         recordsWithPayload(command, currentRecords));
                 for (String parentId : parentIds) {
@@ -120,21 +121,27 @@ public class EntityRelatedVersionCaptureService {
                 }
                 MatchedScenario scenario = policyMatcher.matchRelated(
                                 configuration,
-                                relation.getRelationCode(),
+                                relation.getNodeCode(),
                                 command,
                                 beforeRecord,
                                 afterRecord)
+                        .or(() -> policyMatcher.matchRelated(
+                                configuration,
+                                relation.getRelationCode(),
+                                command,
+                                beforeRecord,
+                                afterRecord))
                         .orElse(null);
                 if (scenario == null) {
                     continue;
                 }
                 Set<String> parentIds = new LinkedHashSet<>();
                 if (oldIncluded) {
-                    parentIds.addAll(parentIds(
+                    parentIds.addAll(rootIds(
                             relation, beforeRecord, Map.of()));
                 }
                 if (newIncluded) {
-                    parentIds.addAll(parentIds(
+                    parentIds.addAll(rootIds(
                             relation, afterRecord, Map.of()));
                 }
                 parentIds.stream().sorted().forEach(parentId ->
@@ -200,8 +207,11 @@ public class EntityRelatedVersionCaptureService {
                 .filter(item -> safe(configuration.getTriggers()).stream()
                         .anyMatch(trigger -> !Boolean.FALSE.equals(trigger.getEnabled())
                                 && "RELATED_MUTATION".equals(trigger.getTriggerType())
-                                && item.getRelationCode().equals(
-                                        trigger.getRelationCode())))
+                                && (item.getRelationCode().equals(
+                                        trigger.getRelationCode())
+                                        || java.util.Objects.equals(
+                                                item.getNodeCode(),
+                                                trigger.getRelationCode()))))
                 .toList();
     }
 
@@ -234,6 +244,70 @@ public class EntityRelatedVersionCaptureService {
             }
         }
         return result;
+    }
+
+    /**
+     * 从当前变化节点逐跳解析根记录 ID。
+     *
+     * <p>预锁阶段允许无锁读取中间节点，但子记录锁获得后会再次执行完全相同的解析；
+     * 若路径在等待期间变化，{@link #requireRootsLocked} 会 fail-closed，而不是反向补锁。</p>
+     */
+    private Set<String> rootIds(
+            EntityVersionConfiguration.RelationScope relation,
+            Map<String, Object>... records) {
+        Set<String> currentIds = parentIds(relation, records);
+        List<EntityVersionConfiguration.RelationPathStep> path =
+                relation.getRelationPath() == null
+                        ? List.of() : relation.getRelationPath();
+        if (path.size() <= 1) {
+            return currentIds;
+        }
+        if (relation.getDepth() == null
+                || relation.getDepth() != path.size()) {
+            throw new BusinessConflictException(
+                    "ENTITY_VERSION_SCOPE_PATH_INVALID",
+                    "多层版本范围缺少完整冻结路径: "
+                            + relation.getNodeCode());
+        }
+        Set<String> visited = new LinkedHashSet<>();
+        for (int index = path.size() - 2; index >= 0; index--) {
+            EntityVersionConfiguration.RelationPathStep step = path.get(index);
+            Set<String> parentIds = new LinkedHashSet<>();
+            for (String currentId : currentIds) {
+                String identity = step.getTargetEntityCode() + ":" + currentId;
+                if (!visited.add(identity)) {
+                    throw new BusinessConflictException(
+                            "ENTITY_VERSION_SCOPE_RECORD_CYCLE",
+                            "沿冻结路径反查根记录时发现记录环: " + identity);
+                }
+                EntityDataDTO current = dataService.findById(
+                        step.getTargetEntityCode(), currentId);
+                Map<String, Object> currentRecord = objectMapper.convertValue(
+                        current, new TypeReference<>() { });
+                String parentId = firstParentId(
+                        currentRecord, step.getChildRefFieldCode());
+                if (!StringUtils.hasText(parentId)) {
+                    throw new BusinessConflictException(
+                            "ENTITY_VERSION_SCOPE_PARENT_MISSING",
+                            "组成路径节点 " + step.getNodeCode()
+                                    + " 缺少父记录引用，无法稳定锁根");
+                }
+                parentIds.add(parentId);
+            }
+            currentIds = parentIds;
+        }
+        return currentIds;
+    }
+
+    private String firstParentId(
+            Map<String, Object> record,
+            String childRefFieldCode) {
+        String value = text(path(record, childRefFieldCode));
+        if (value == null) {
+            value = text(path(map(record == null
+                    ? null : record.get("data")), childRefFieldCode));
+        }
+        return value;
     }
 
     private Map<String, Object>[] recordsWithPayload(

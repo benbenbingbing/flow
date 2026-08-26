@@ -54,6 +54,27 @@ public class SystemAuditController {
         return ApiResponse.success(queryService.getRequired(id));
     }
 
+    /**
+     * 查询跨实体、流程、动作和配置发布的统一时间线投影。
+     */
+    @GetMapping("/unified")
+    public ApiResponse<PageResult<UnifiedAuditEventView>> unified(
+            UnifiedAuditQuery query) {
+        require("system:audit:list");
+        return ApiResponse.success(queryService.unifiedPage(query));
+    }
+
+    /**
+     * 查询一次业务操作内的全部已接入事件，最多返回 500 条。
+     */
+    @GetMapping("/unified/operations/{operationId}")
+    public ApiResponse<List<UnifiedAuditEventView>> operationTimeline(
+            @PathVariable String operationId) {
+        require("system:audit:detail");
+        return ApiResponse.success(
+                queryService.operationTimeline(operationId));
+    }
+
     @PostMapping("/export")
     @SystemAudit(
             module = AuditModule.SYSTEM,

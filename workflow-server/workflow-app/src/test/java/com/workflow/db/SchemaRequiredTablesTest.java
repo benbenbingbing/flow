@@ -296,6 +296,45 @@ class SchemaRequiredTablesTest {
     }
 
     @Test
+    void optionalGovernanceCentersAreRemovedByForwardMigration()
+            throws Exception {
+        String removal = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V063__remove_optional_governance_centers.sql"));
+
+        for (String table : List.of(
+                "config_test_suite",
+                "config_test_case",
+                "config_test_run",
+                "config_test_result",
+                "config_blueprint",
+                "config_asset_dependency",
+                "config_quality_snapshot",
+                "entity_index_advice",
+                "config_collaboration_workspace",
+                "config_collaboration_branch",
+                "config_collaboration_comment",
+                "config_collaboration_review",
+                "config_scheduled_release",
+                "process_instance_migration_batch",
+                "process_instance_migration_item",
+                "process_instance_migration_lock",
+                "process_instance_migration_audit")) {
+            assertTrue(removal.contains("DROP TABLE IF EXISTS " + table));
+        }
+        assertTrue(removal.contains("'/system/config-test-center'"));
+        assertTrue(removal.contains("'/system/config-intelligence'"));
+        assertTrue(removal.contains("'/system/platform-capabilities'"));
+        assertTrue(removal.contains("'config-collaboration:schedule'"));
+        assertTrue(removal.contains("'process-instance-migration:execute'"));
+        assertFalse(removal.contains(
+                "DROP TABLE IF EXISTS config_migration_asset_dependency"));
+        assertFalse(removal.contains(
+                "DROP TABLE IF EXISTS entity_schema_operation"));
+        assertFalse(removal.contains(
+                "DROP TABLE IF EXISTS entity_schema_operation_event"));
+    }
+
+    @Test
     void listQueryBindingResetLivesInForwardMigration()
             throws Exception {
         String sql = Files.readString(MIGRATION_DIRECTORY.resolve(

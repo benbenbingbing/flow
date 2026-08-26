@@ -40,3 +40,47 @@ No actionable P0, P1, or P2 visual differences were found. The viewport width di
 Initial comparison found no actionable P0/P1/P2 mismatch, so no visual repair iteration was required.
 
 final result: passed
+
+---
+
+# 实体配置版本历史触底分页验收
+
+- source history screenshot: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-954eb40f-68b3-4135-8f10-dffa1b940d99.png`
+- position reference screenshot: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-cd68ab2f-b40a-4f78-887c-aed0e583e375.png`
+- implementation screenshot: `/private/tmp/entity-history-pagination-implemented.png`
+- viewport: implementation and live geometry comparison used `1708 x 861` CSS px
+- pixel dimensions: history source `3040 x 1764`; create-dialog source `3326 x 1806`; implementation `1708 x 861`
+- state: “ZDW 需求条目”版本历史首屏，V18 至 V14，共 5 条记录
+- comparison input: the two source screenshots and the implementation screenshot were inspected together at original detail.
+
+## Geometry evidence
+
+The live create-data dialog and history dialog were measured in the same authenticated browser viewport. Both resolve to `top=25.828px`, `left=213.5px`, and `width=1281px`, so the history dialog matches the create-data dialog's `top=3vh`, centered `left`, and `width=75%`. The history dialog height is fixed at `809.336px` (`94vh`). Its dedicated scroll container has `clientHeight=615px`, so the header and footer remain fixed while only the timeline scrolls.
+
+## Visual comparison evidence
+
+The timeline, cards, version labels, status tags, metadata, diff link, field-detail row, spacing, borders, typography, and colors remain consistent with the source. The only intended visible changes are the wider/create-dialog-aligned modal geometry and fixed-height content viewport. No image assets were added or replaced.
+
+## Findings
+
+No actionable P0, P1, or P2 visual differences were found. The blue V18 border in the source is a transient hover state; the non-hover implementation uses the existing neutral card border.
+
+## Interaction evidence
+
+- Opening history waits for the first page before showing the dialog, matching the create-data dialog's prepared-then-open behavior.
+- First page loads 5 records (`V18` through `V14`). Successive bottom scrolls load 10, 15, and finally all 18 records through `V1`.
+- Scrolling again at the end performs no additional append and produces no duplicate versions.
+- The last item of the first page (`V14`) still opens the correct `V13 → V14` comparison; only `V1` has no previous-version action.
+- Closing and reopening restores the first 5 records and resets `scrollTop` to `0`.
+- Request-generation and entity-id checks prevent a late response from a previously opened entity from contaminating the current history list.
+
+## Console and verification evidence
+
+- Browser console errors: `0`; only the existing Element Plus `el-link underline` deprecation warning remains.
+- Frontend functional tests: passed.
+- Frontend production build: passed; only existing ineffective-dynamic-import warnings remain.
+- Backend pagination/diff tests: 4/4 passed.
+- Backend package build: passed.
+- `git diff --check`: passed.
+
+final result: passed

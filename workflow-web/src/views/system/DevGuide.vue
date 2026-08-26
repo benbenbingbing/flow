@@ -259,6 +259,11 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <pre v-pre><code>public interface UiDataSourceProvider {
     String getCode();
     String getDisplayName();
+    default int getVersion() { return 1; }
+    default String getArtifactDigest() {
+        return UiProviderArtifactIdentity.defaultDigest(
+            getClass(), getVersion());
+    }
     default Map&lt;String, Object&gt; configurationSchema() {
         return Map.of();
     }
@@ -279,6 +284,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
           </CodeCard>
           <ul class="check-list">
             <li>自定义实现加 `@Component`（或显式声明 `@Bean`）；Provider 的 `getCode()`、Connector 的 `code()` 必须全局唯一。</li>
+            <li>同一 `getCode() + getVersion()` 对应的实现必须保持不可变；逻辑或依赖变化时提升版本。默认摘要覆盖实现类字节码，依赖额外模型、脚本或资源时必须覆盖 `getArtifactDigest()`，返回整个受审制品的稳定 SHA-256。</li>
             <li>表单事件 Provider 可参考 `ProjectCustomFormUiDataSourceProvider`，操作编码从 `context.common().operationCode()` 读取。</li>
             <li>`UiInvocationContext` 按 FORM、LIST、ENTITY 分型，只暴露服务端解析的用户、实体、页面、发布版本和绑定位置等可信元数据。</li>
             <li>Connector 配置只保存 `connectorCode + operation + credentialRef`；URL、令牌和密钥由平台连接器中心管理。</li>
@@ -417,7 +423,7 @@ Content-Type: application/json
             <li>`STANDARD` 是默认模式。流程表单发布后仍由流程 release 钉定；未重新发布流程时新增入口可返回 `409 PROCESS_FORM_RELEASE_STALE`，运行中和历史实例继续使用原快照。</li>
             <li>`HOTFIX` 表单只影响当前可发起流程版本和仍有运行实例的历史版本；已完成、已终止实例明确使用 `HISTORICAL`，始终读取原始钉定快照。</li>
             <li>普通列表页面读取 `ACTIVE` release；发布表单中的子列表由服务端签名上下文固定到父表单引用的列表 release，历史流程不再被列表后续发布静默改写。</li>
-            <li>列表只允许 STANDARD；表单 HOTFIX 必须登记工单与窗口，高风险 REVIEW 需要非申请人独立复核，回滚使用专用权限。</li>
+            <li>列表只允许 STANDARD；表单 HOTFIX 在风险提醒和影响预检通过后直接发布，回滚使用专用权限。</li>
             <li>发布历史聚合 `rolloutStatus`：`ACTIVE` 正在生效且可撤回，`SUPERSEDED` 已被更新热修复替代，`ROLLED_BACK` 已撤回；只有 ACTIVE 显示或接受撤回操作。</li>
             <li>`impactToken` 绑定 configType/configId、releaseMode、draftHash、activeReleaseId、targetHash 和 riskLevel；任一输入变化必须重新预检。</li>
             <li>`releaseResolutionToken` 是服务端 HMAC 签发的 5 分钟短期令牌，绑定用户、运行目的、流程历史版本、节点、父表单 release 和深度；嵌套最大 8 层，前端不得自行拼接流程版本上下文。</li>

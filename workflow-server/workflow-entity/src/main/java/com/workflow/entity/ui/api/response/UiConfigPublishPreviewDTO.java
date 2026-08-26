@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Value;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * UI 配置发布预检结果。
@@ -32,5 +33,7 @@ public class UiConfigPublishPreviewDTO {
     List<UiConfigDiffItemDTO> changedItems;
     List<UiConfigHotfixRiskItemDTO> riskItems;
     List<UiConfigHotfixTargetPreviewDTO> targets;
+    /** 发布后会被精确固定的关联内容依赖，供配置人员发布前确认。 */
+    List<Map<String, Object>> dependencies;
     List<String> blockers;
 }

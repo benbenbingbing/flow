@@ -55,6 +55,19 @@
         >
           事件绑定
         </el-button>
+        <el-badge
+          v-if="!isSystemEntity"
+          :value="relatedContentCount"
+          :hidden="relatedContentCount === 0"
+          class="related-content-entry"
+        >
+          <el-button
+            :disabled="!configInfo.id || discardDraftLoading || pageLoading"
+            @click="openRelatedContent"
+          >
+            <el-icon><Connection /></el-icon>关联内容
+          </el-button>
+        </el-badge>
         <el-button
           :loading="savingAll"
           :disabled="discardDraftLoading || pageLoading"
@@ -941,13 +954,23 @@
       @changed="handleReleaseChanged"
     />
     <RuntimeCodeViewerDialog ref="runtimeCodeDialogRef" />
+    <RelatedContentPanel
+      ref="relatedContentPanelRef"
+      owner-type="LIST"
+      :owner-id="configInfo.id || configId"
+      :source-entity="entityDefinition"
+      :source-fields="entityFields"
+      :source-content-fields="fieldConfigList"
+      @count-change="relatedContentCount = $event"
+      @changed="handleRelatedContentChanged"
+    />
   </div>
 </template>
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Delete, Document, Rank, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, Connection, Delete, Document, Rank, Plus } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi } from '@/api/entity'
@@ -965,6 +988,7 @@ import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
+import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
 import { filterOptionsByEntity } from '@/shared/extension-entity-scope'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
@@ -1036,6 +1060,8 @@ const publishDialogVisible = ref(false)
 const eventBindingDialogRef = ref(null)
 const releaseHistoryDialogRef = ref(null)
 const runtimeCodeDialogRef = ref(null)
+const relatedContentPanelRef = ref(null)
+const relatedContentCount = ref(0)
 const runtimeCodeLoading = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
 const diffLoadSucceeded = ref(false)
@@ -2704,7 +2730,19 @@ function openListEventBindings() {
   eventBindingDialogRef.value?.openOwner(configInfo.value.listName || '')
 }
 
+function openRelatedContent() {
+  relatedContentPanelRef.value?.open()
+}
+
 async function handleEventBindingsChanged() {
+  await loadDiff()
+}
+
+async function handleRelatedContentChanged(event) {
+  // 关联内容独立保存到列表草稿，差异状态由宿主列表统一发布和撤销。
+  if (Number.isInteger(Number(event?.ownerRevision))) {
+    configInfo.value.revision = Number(event.ownerRevision)
+  }
   await loadDiff()
 }
 
@@ -2729,6 +2767,10 @@ function goBack() {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+}
+
+.related-content-entry {
+  display: inline-flex;
 }
 .page-header {
   display: flex;

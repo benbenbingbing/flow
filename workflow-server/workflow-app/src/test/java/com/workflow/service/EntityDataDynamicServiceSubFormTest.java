@@ -506,6 +506,8 @@ class EntityDataDynamicServiceSubFormTest {
 
             when(definitionMapper.findByEntityCode("parent")).thenReturn(Optional.of(parent));
             when(definitionMapper.findByEntityCode("child")).thenReturn(Optional.of(child));
+            // 递归聚合现在会在触碰每一级子业务行前无条件取得实体定义守卫。
+            when(definitionMapper.findByEntityCode("tax")).thenReturn(Optional.of(tax));
             when(definitionMapper.selectById("child-id")).thenReturn(child);
             when(definitionMapper.selectById("tax-id")).thenReturn(tax);
             when(fieldMapper.findByEntityId("parent-id")).thenReturn(List.of(subForm));

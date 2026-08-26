@@ -1,6 +1,9 @@
 package com.workflow.admin.audit.application;
 
 import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.AuditSourcePointer;
+import com.workflow.contracts.audit.OperationContext;
+import com.workflow.contracts.audit.OperationContextHolder;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.infrastructure.AuditDiffCalculator;
 import com.workflow.admin.audit.infrastructure.AuditPayloadSanitizer;
@@ -25,6 +28,11 @@ public class AuditLogPayloadFactory {
 
     public AuditLogPayload create(SystemAuditEvent event) {
         AuditRequestMetadataProvider.AuditRequestMetadata metadata = metadataProvider.current();
+        String eventId = defaultValue(event.eventId(), newId());
+        OperationContext operationContext =
+                OperationContextHolder.current().orElse(null);
+        AuditSourcePointer source = sourcePointer(
+                event, operationContext);
         AuditPayloadSanitizer.SanitizedPayload before = sanitizer.sanitize(event.beforeData());
         AuditPayloadSanitizer.SanitizedPayload after = sanitizer.sanitize(event.afterData());
         Object changedFields = event.changedFields() != null
@@ -32,8 +40,28 @@ public class AuditLogPayloadFactory {
                 : diffCalculator.calculate(event.beforeData(), event.afterData());
         AuditPayloadSanitizer.SanitizedPayload changed = sanitizer.sanitize(changedFields);
         return new AuditLogPayload(
-                defaultValue(event.eventId(), newId()),
-                defaultValue(event.traceId(), metadata.traceId()),
+                eventId,
+                truncate(defaultValue(
+                        event.operationId(),
+                        operationContext == null
+                                ? eventId
+                                : operationContext.operationId()), 128),
+                truncate(defaultValue(
+                        event.traceId(),
+                        operationContext == null
+                                ? metadata.traceId()
+                                : defaultValue(
+                                        operationContext.traceId(),
+                                        metadata.traceId())), 64),
+                truncate(defaultValue(
+                        event.parentOperationId(),
+                        operationContext == null
+                                ? null
+                                : operationContext.parentOperationId()), 128),
+                truncate(source == null ? null : source.sourceSystem(), 32),
+                truncate(source == null ? null : source.sourceType(), 64),
+                truncate(source == null ? null : source.sourceId(), 128),
+                truncate(source == null ? null : source.sourceEventId(), 128),
                 event.module().name(),
                 event.action().name(),
                 truncate(event.operationName(), 128),
@@ -57,6 +85,31 @@ public class AuditLogPayloadFactory {
                 sanitizer.sanitizeText(event.errorMessage(), 1000),
                 event.durationMs(),
                 event.createdAt() == null ? LocalDateTime.now() : event.createdAt());
+    }
+
+    /**
+     * 显式来源优先，其次继承调用链来源；最后只使用目标稳定标识构造指针，
+     * 绝不把请求参数或业务载荷复制进来源字段。
+     */
+    private AuditSourcePointer sourcePointer(
+            SystemAuditEvent event,
+            OperationContext operationContext) {
+        if (event.sourcePointer() != null) {
+            return event.sourcePointer();
+        }
+        if (operationContext != null
+                && operationContext.sourcePointer() != null) {
+            return operationContext.sourcePointer();
+        }
+        if (!StringUtils.hasText(event.targetType())
+                && !StringUtils.hasText(event.targetId())) {
+            return null;
+        }
+        return new AuditSourcePointer(
+                event.module().name(),
+                event.targetType(),
+                event.targetId(),
+                null);
     }
 
     private String defaultValue(String preferred, String fallback) {

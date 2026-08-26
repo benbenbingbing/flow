@@ -210,27 +210,27 @@ flowchart LR
 - 两个并发请求写入同一唯一值时最多一个成功。
 - 大表 DDL 有风险提示、超时策略和恢复手册。
 
-### 6.5 P0-05 HOTFIX 风险治理
+### 6.5 P0-05 HOTFIX 风险提示与运行观察
 
-**目标**：把 HOTFIX 从风险提示升级为可授权、可复核、可观察和可回滚的受控发布路径。
+**目标**：在不引入人工审批门禁的前提下，为 HOTFIX 提供明确风险提示、影响预检、运行观察和可回滚能力。
 
 **服务端任务**：
 
-- HOTFIX 请求记录变更原因、关联工单、风险等级、影响对象、申请人和时间窗口。
-- `REVIEW` 及以上风险需要独立权限；可配置双人复核，申请人不能审批自己的高风险变更。
-- 发布前抽样检查受影响运行实例和表单 release 兼容性。
+- HOTFIX 发布记录风险等级、影响对象、发布人和完整预检快照。
+- `REVIEW` 表示需要在发布确认框中重点提醒，不产生人工审批状态或额外授权门禁。
+- 发布前检查受影响运行实例和表单 release 兼容性；技术不兼容、草稿漂移或影响范围变化仍拒绝发布。
 - 发布后创建观察窗口，采集表单加载失败、提交失败和流程任务异常指标。
 - 回滚只允许恢复到已验证的不可变版本，并完整记录回滚原因和执行人。
 
 **前端任务**：
 
-- 提供风险摘要、原因和工单输入、复核状态、影响抽样及回滚入口。
-- 未满足复核条件时禁止提交，而不是只显示警告。
+- 提供风险摘要、影响目标、明确的二次确认及回滚入口。
+- 用户确认风险后直接发布，不进入申请、复核或待办流程。
 
 **验收标准**：
 
-- 高风险 HOTFIX 缺少原因、权限或复核时，前后端均不能发布。
-- 申请人与复核人分离规则在服务端生效。
+- 高风险 HOTFIX 在确认前展示具体风险和影响范围，确认后可以直接发布。
+- 不存在待复核状态、独立复核权限或已批准申请 ID 门禁。
 - 发布后观察窗口和异常指标可查询。
 - 一键回滚只能选择兼容且已发布的历史版本。
 
@@ -441,7 +441,7 @@ flowchart LR
 
 | 阶段 | 迁移主题 |
 | --- | --- |
-| M1 | 流程草稿 revision/hash、数据范围默认模式、HOTFIX 申请与复核、引用关系索引 |
+| M1 | 流程草稿 revision/hash、数据范围默认模式、HOTFIX 发布观察、引用关系索引 |
 | M2 | 结构操作状态与修复记录、发布候选/条目/步骤/报告 |
 | M3 | 空办理人策略与 incident、节点操作策略快照、测试套件/用例/运行记录 |
 | M4 | 个人/共享视图、聚合视图配置、索引建议、TAB_SET 默认页签配置兼容 |
@@ -484,7 +484,7 @@ flowchart LR
 - `process-definition:validate`、`process-definition:publish`；
 - `data-scope:configure-all`；
 - `schema-operation:preview`、`schema-operation:execute`、`schema-operation:repair`；
-- `form-hotfix:apply`、`form-hotfix:review`、`form-hotfix:rollback`；
+- `entity:ui-config:hotfix`、`entity:ui-config:hotfix:observe`、`entity:ui-config:hotfix:rollback`；
 - `release-candidate:create`、`release-candidate:publish`、`release-candidate:recover`；
 - `process-incident:handle`；
 - `config-test:execute`、`config-test:manage`；
@@ -502,7 +502,7 @@ flowchart LR
 | API 契约测试 | 409 冲突、阻断问题模型、幂等键、权限拒绝、分页和错误码 |
 | 数据库集成测试 | DDL 状态机、唯一约束并发、漂移检测、迁移脚本升级和存量回填 |
 | Flowable 集成测试 | 发布、空办理人、操作策略、并行/多实例及实例版本迁移 |
-| 安全测试 | 未绑定数据范围、详情/导出/聚合绕过、越权发布、申请人自审、租户隔离 |
+| 安全测试 | 未绑定数据范围、详情/导出/聚合绕过、越权发布、HOTFIX 越权直发、租户隔离 |
 | 并发测试 | 多标签保存、重复发布、DDL 重试、发布候选重复提交、迁移批次锁 |
 | 端到端测试 | 设计、预检、测试、审批、发布、运行 incident、回滚完整旅程 |
 | 性能测试 | 大 BPMN 校验、依赖图、百万级聚合、索引建议、大批量实例干运行 |
@@ -520,7 +520,7 @@ flowchart LR
 | `DATA_SCOPE_SECURE_DEFAULT` | 观察模式 | 存量对象完成显式确认 |
 | `PROCESS_PUBLISH_PREFLIGHT_REQUIRED` | 先告警后阻断 | 校验误报率达到可接受水平 |
 | `SCHEMA_OPERATION_STATE_MACHINE` | 新实体先启用 | 重试和漂移修复演练通过 |
-| `HOTFIX_REVIEW_ENFORCED` | 高风险先启用 | 审批人和应急流程就绪 |
+| `HOTFIX_RISK_CONFIRM_ENABLED` | 默认开启 | 风险文案、影响预检和观察告警通过验收 |
 | `RELEASE_CANDIDATE_ENABLED` | 试点应用 | 发布/补偿/续跑演练通过 |
 | `EMPTY_ASSIGNEE_POLICY_ENFORCED` | 新流程先启用 | 存量节点均完成策略补齐 |
 | `NODE_OPERATION_MATRIX_ENFORCED` | 影子决策 | 影子结果与现网操作差异完成处理 |
@@ -537,7 +537,7 @@ flowchart LR
 - 草稿 revision 冲突次数、冲突处理成功率和未保存草稿恢复率；
 - 数据范围观察模式命中数、强制拒绝数和 `EXPLICIT_ALL` 配置数量；
 - DDL 各状态数量、失败率、平均恢复时间和结构漂移数量；
-- HOTFIX 风险等级、复核耗时、观察窗口异常和回滚率；
+- HOTFIX 风险等级、确认后发布耗时、观察窗口异常和回滚率；
 - 发布候选成功率、失败步骤、重复提交拦截数和平均发布耗时；
 - 空办理人次数、策略分布、incident 积压和平均处置时间；
 - 节点操作拒绝原因分布和前后端决策不一致数；
@@ -565,7 +565,7 @@ flowchart LR
 
 - 流程草稿并发覆盖测试全部通过；
 - 新对象安全默认值生效，存量对象盘点率达到 100%；
-- 高风险 HOTFIX 不能自审或绕过复核；
+- 高风险 HOTFIX 会展示明确风险与影响范围，且技术阻断项不能被确认操作绕过；
 - 引用索引内核可为发布预检提供稳定依赖数据。
 
 ### Gate B：发布可靠性
@@ -608,7 +608,7 @@ flowchart LR
 进入编码前需要由产品、架构、研发、安全和运维共同确认：
 
 1. 新实体默认采用 `DENY_ALL` 还是租户模板指定的 `PERSONAL`。
-2. 哪些 HOTFIX 风险级别强制双人复核，以及紧急发布的授权和补审流程。
+2. HOTFIX 风险提示内容、直接发布确认文案，以及哪些技术不兼容项必须阻断。
 3. 发布候选的补偿边界，哪些步骤允许自动回滚，哪些必须人工处置。
 4. 配置测试中心允许使用哪些脱敏数据，外部服务采用 stub、沙箱还是专用测试租户。
 5. 空办理人的平台默认策略和管理员兜底组。

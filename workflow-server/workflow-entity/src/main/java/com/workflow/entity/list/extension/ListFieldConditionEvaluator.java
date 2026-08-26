@@ -94,7 +94,7 @@ public class ListFieldConditionEvaluator {
             case "LE", "LTE" -> compare(actual, expected) <= 0;
             case "IN" -> in(actual, expected);
             case "NOT_IN" -> !in(actual, expected);
-            case "EMPTY", "IS_EMPTY" -> !hasValue(actual);
+            case "EMPTY", "IS_EMPTY", "IS_NULL" -> !hasValue(actual);
             case "NOT_EMPTY", "IS_NOT_EMPTY" -> hasValue(actual);
             default -> false;
         };

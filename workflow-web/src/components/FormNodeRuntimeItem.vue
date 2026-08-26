@@ -67,6 +67,20 @@
           />
         </el-col>
       </el-row>
+      <RelatedContentRuntime
+        v-for="item in relatedContentsForNode(tabNode)"
+        :key="item.id || item.compositionKey"
+        :composition="item"
+        owner-type="FORM"
+        :owner-id="runtimeForm.id"
+        :release-id="runtimeReleaseId"
+        :release-version="runtimeReleaseVersion"
+        :source-record-id="sourceRecordId"
+        :host-readonly="readonly"
+        :traversal-context-token="runtimeTraversalContextToken"
+        :release-resolution-token="runtimeReleaseResolutionToken"
+        @source-patch="applyRelatedContentPatch"
+      />
     </el-tab-pane>
   </el-tabs>
 
@@ -138,12 +152,28 @@
       </el-col>
     </el-row>
   </div>
+
+  <RelatedContentRuntime
+    v-for="item in relatedContentsForNode(node)"
+    :key="item.id || item.compositionKey"
+    :composition="item"
+    owner-type="FORM"
+    :owner-id="runtimeForm.id"
+    :release-id="runtimeReleaseId"
+    :release-version="runtimeReleaseVersion"
+    :source-record-id="sourceRecordId"
+    :host-readonly="readonly"
+    :traversal-context-token="runtimeTraversalContextToken"
+    :release-resolution-token="runtimeReleaseResolutionToken"
+    @source-patch="applyRelatedContentPatch"
+  />
 </template>
 
 <script setup>
 import { computed, defineComponent, h, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
+import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
 import {
   getFieldModeAccess,
@@ -177,6 +207,55 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
+const runtimeForm = computed(() => props.context?.form || {})
+const runtimeReleaseId = computed(() =>
+  runtimeForm.value.runtimeReleaseId
+  || runtimeForm.value.formReleaseId
+  || ''
+)
+const runtimeReleaseVersion = computed(() => Number(
+  runtimeForm.value.runtimeReleaseVersion
+  ?? runtimeForm.value.formReleaseVersion
+  ?? 0
+))
+const sourceRecordId = computed(() => String(
+  props.context?.record?.id
+  || props.context?.recordId
+  || ''
+))
+const runtimeTraversalContextToken = computed(() => String(
+  props.context?.viewCompositionTraversalToken || ''
+))
+const runtimeReleaseResolutionToken = computed(() => String(
+  runtimeForm.value.releaseResolutionToken
+  || props.context?.releaseResolutionToken
+  || ''
+))
+
+function relatedContentsForNode(targetNode) {
+  if (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1) return []
+  const keys = new Set([
+    String(targetNode?.id || ''),
+    String(targetNode?.nodeKey || '')
+  ].filter(Boolean))
+  return (runtimeForm.value.viewCompositions || []).filter(item =>
+    String(item?.anchorType || '').toUpperCase() === 'FORM_NODE'
+      && keys.has(String(item?.anchorKey || ''))
+      && item?.config?.enabled !== false
+  )
+}
+
+/**
+ * 节点内关联内容的选择结果只接受服务端裁剪后的字段补丁，并通过统一
+ * modelValue 事件交给父表单，避免节点局部状态绕过表单联动与校验。
+ */
+function applyRelatedContentPatch(patch) {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return
+  emit('update:modelValue', {
+    ...props.modelValue,
+    ...patch
+  })
+}
 const children = computed(() => props.childrenFor(props.node.id))
 const childGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
 const customDescriptor = computed(() =>

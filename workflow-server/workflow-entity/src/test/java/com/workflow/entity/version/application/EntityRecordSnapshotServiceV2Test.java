@@ -5,6 +5,7 @@ import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.organization.application.SysOrganizationService;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldOptionMapper;
@@ -25,6 +26,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,10 +59,26 @@ class EntityRecordSnapshotServiceV2Test {
                 userService,
                 organizationService,
                 objectMapper);
-        when(publishedSnapshotService.getLatestByEntityCode("asset"))
-                .thenReturn(published("asset-release-1"));
-        when(publishedSnapshotService.getLatestByEntityCode("asset_line"))
-                .thenReturn(published("line-release-1"));
+        // 共享夹具覆盖三层关系；旧一层用例有意只读取其中一段路径。
+        lenient().when(publishedSnapshotService.getLatestByEntityCode("asset"))
+                .thenReturn(publishedEntity(
+                        "asset", "asset-release-1", List.of(relation(
+                                "asset_lines", "asset_line", "lines",
+                                "assetId"))));
+        lenient().when(publishedSnapshotService.getLatestByEntityCode("asset_line"))
+                .thenReturn(publishedEntity(
+                        "asset_line", "line-release-1", List.of(relation(
+                                "line_components", "asset_component",
+                                "components", "lineId"))));
+        lenient().when(publishedSnapshotService.getLatestByEntityCode(
+                "asset_component")).thenReturn(publishedEntity(
+                        "asset_component", "component-release-1",
+                        List.of(relation(
+                                "component_checks", "asset_check",
+                                "checks", "componentId"))));
+        lenient().when(publishedSnapshotService.getLatestByEntityCode("asset_check"))
+                .thenReturn(publishedEntity(
+                        "asset_check", "check-release-1", List.of()));
     }
 
     @Test
@@ -230,7 +248,8 @@ class EntityRecordSnapshotServiceV2Test {
     @Test
     void rejectsCaptureWhenFrozenEntityReleaseIsStale() {
         when(publishedSnapshotService.getLatestByEntityCode("asset_line"))
-                .thenReturn(published("line-release-2"));
+                .thenReturn(publishedEntity(
+                        "asset_line", "line-release-2", List.of()));
 
         BusinessConflictException exception = assertThrows(
                 BusinessConflictException.class,
@@ -241,6 +260,89 @@ class EntityRecordSnapshotServiceV2Test {
                         false));
 
         assertEquals("ENTITY_VERSION_SCOPE_STALE", exception.getErrorCode());
+    }
+
+    @Test
+    void capturesThreeRelationLevelsWithStableParentIdentity() {
+        EntityVersionConfiguration draft = new EntityVersionConfiguration();
+        draft.setEntityCode("asset");
+        draft.setEntityName("资产");
+        draft.getSnapshotScope().setRelations(List.of(
+                scope("CHECKS", "COMPONENTS", "component_checks"),
+                scope("LINES", "ROOT", "asset_lines"),
+                scope("COMPONENTS", "LINES", "line_components")));
+        EntityVersionScopeFreezer freezer = new EntityVersionScopeFreezer(
+                publishedSnapshotService, new ObjectMapper(), optionMapper);
+        EntityVersionConfiguration frozen = freezer.freeze(draft);
+
+        Map<String, Object> check = nestedRow(
+                "check-1", Map.of("result", "PASS"));
+        Map<String, Object> component = nestedRow(
+                "component-1", Map.of(
+                        "componentName", "主板",
+                        "checks", List.of(check)));
+        Map<String, Object> line = nestedRow(
+                "line-1", Map.of(
+                        "productName", "服务器",
+                        "components", List.of(component)));
+        Map<String, Object> aggregate = Map.of(
+                "id", "asset-1",
+                "data", Map.of(
+                        "assetName", "服务器资产",
+                        "lines", List.of(line)));
+
+        SnapshotCaptureV2 capture = service.captureV2(
+                frozen, "asset-1", aggregate, false);
+        var preview = service.previewV2(frozen, aggregate);
+
+        assertEquals(List.of("LINES", "COMPONENTS", "CHECKS"),
+                capture.datasets().stream()
+                        .map(EntityRecordSnapshotService.DatasetCapture
+                                ::nodeCode)
+                        .toList());
+        assertEquals(3, capture.relationRowCount());
+        assertEquals("component-1", capture.datasets().get(2).rows().get(0)
+                .values().get(EntityRecordSnapshotService
+                        .INTERNAL_PARENT_RECORD_ID).rawValue());
+        assertEquals("COMPONENTS", capture.datasets().get(2)
+                .selector().get("parentNodeCode"));
+        assertEquals(List.of(1, 1, 1), preview.datasets().stream()
+                .map(item -> item.rowCount()).toList());
+        assertEquals(3, preview.totalRows());
+
+        frozen.getSnapshotScope().getRelations().get(2)
+                .getRelationPath().get(0).setRelationCode("tampered");
+        BusinessConflictException invalidPath = assertThrows(
+                BusinessConflictException.class,
+                () -> service.captureV2(
+                        frozen, "asset-1", aggregate, false));
+        assertEquals("ENTITY_VERSION_SCOPE_PATH_INVALID",
+                invalidPath.getErrorCode());
+    }
+
+    @Test
+    void rejectsRecordCycleInsteadOfTruncatingGraph() {
+        EntityVersionConfiguration configuration = configuration(false);
+        EntityVersionConfiguration.RelationScope relation = configuration
+                .getSnapshotScope().getRelations().get(0);
+        relation.setChildEntityCode("asset");
+        relation.setEntityCode("asset");
+        relation.setEntityReleaseId("asset-release-1");
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.captureV2(
+                        configuration,
+                        "asset-1",
+                        Map.of("id", "asset-1", "data", Map.of(
+                                "assetName", "服务器",
+                                "lines", List.of(Map.of(
+                                        "id", "asset-1",
+                                        "data", Map.of())))),
+                        false));
+
+        assertEquals("ENTITY_VERSION_SCOPE_RECORD_CYCLE",
+                exception.getErrorCode());
     }
 
     private EntityVersionConfiguration configuration(boolean trackOrder) {
@@ -275,6 +377,24 @@ class EntityRecordSnapshotServiceV2Test {
                         Map.of("HW", "硬件", "SERVICE", "服务"), 2)));
         value.getSnapshotScope().setRelations(List.of(relation));
         return value;
+    }
+
+    private EntityVersionConfiguration.RelationScope scope(
+            String nodeCode,
+            String parentNodeCode,
+            String relationCode) {
+        EntityVersionConfiguration.RelationScope value =
+                new EntityVersionConfiguration.RelationScope();
+        value.setNodeCode(nodeCode);
+        value.setParentNodeCode(parentNodeCode);
+        value.setRelationCode(relationCode);
+        return value;
+    }
+
+    private Map<String, Object> nestedRow(
+            String id,
+            Map<String, Object> data) {
+        return Map.of("id", id, "data", data);
     }
 
     private EntityVersionConfiguration.FieldPresentation field(
@@ -315,9 +435,36 @@ class EntityRecordSnapshotServiceV2Test {
                         "category", category));
     }
 
-    private EntityPublishedSnapshot published(String releaseId) {
+    private EntityPublishedSnapshot publishedEntity(
+            String entityCode,
+            String releaseId,
+            List<EntityRelation> relations) {
         EntityPublishedSnapshot value = new EntityPublishedSnapshot();
         value.setHistoryId(releaseId);
+        value.setEntityId(entityCode + "-id");
+        value.setEntityCode(entityCode);
+        value.setEntityName(entityCode);
+        value.setVersion(1);
+        value.setFields(List.of());
+        value.setRelations(relations);
+        value.setRelationsSnapshotAvailable(true);
+        return value;
+    }
+
+    private EntityRelation relation(
+            String relationCode,
+            String childEntityCode,
+            String dataKey,
+            String childRefFieldCode) {
+        EntityRelation value = new EntityRelation();
+        value.setRelationCode(relationCode);
+        value.setRelationName(relationCode);
+        value.setChildEntityCode(childEntityCode);
+        value.setDataKey(dataKey);
+        value.setChildRefFieldCode(childRefFieldCode);
+        value.setRelationType(EntityRelation.RelationType.ONE_TO_MANY);
+        value.setOwnershipType(EntityRelation.OwnershipType.COMPOSITION);
+        value.setEnabled(true);
         return value;
     }
 }

@@ -120,6 +120,11 @@ public class EntityDataMutationService {
                 data.get("id") == null
                         ? null
                         : String.valueOf(data.get("id")));
+        relationRuntimeService.validateSelfRelationWrite(
+                definition,
+                dto.getId(),
+                data,
+                creating);
 
         if (creating) {
             insert(
@@ -213,6 +218,11 @@ public class EntityDataMutationService {
                 entityCode,
                 updateData,
                 id);
+        relationRuntimeService.validateSelfRelationWrite(
+                definition,
+                id,
+                updateData,
+                false);
 
         dynamicMapper.update(tableName, updateData);
         entityRecordTeamService.record(
@@ -257,18 +267,26 @@ public class EntityDataMutationService {
     public void delete(
             String entityCode,
             String id) {
+        // 删除也必须与保存、更新使用同一发布守卫。尤其在尚无自关联的实体上，
+        // 先共享锁定义行才能关闭“判断无关系后首次发布自关联”的并发窗口。
+        relationRuntimeService.lockSelfRelationGuard(entityCode);
         EntityDefinition definition =
                 definitionMapper
                         .findByEntityCode(entityCode)
-                        .orElse(null);
+                        .orElseThrow(() ->
+                                new BusinessConflictException(
+                                        "ENTITY_DEFINITION_NOT_FOUND",
+                                        "实体不存在: " + entityCode));
+        String tableName =
+                dynamicTableService.getTableName(entityCode);
+        lockDeleteRoot(tableName, id);
         relationRuntimeService.cascadeDeleteRelations(
                 definition,
                 id,
                 false);
         multiValueRuntimeService.delete(entityCode, id);
         dynamicMapper.deleteById(
-                dynamicTableService.getTableName(
-                        entityCode),
+                tableName,
                 id);
         if (uniqueValueService != null) {
             uniqueValueService.release(entityCode, id);
@@ -286,21 +304,43 @@ public class EntityDataMutationService {
     public void physicalDelete(
             String entityCode,
             String id) {
+        // 物理删除会递归触发多张业务表写锁，必须仍从定义/发布守卫开始，
+        // 避免与发布事务或普通聚合写形成反向锁序。
+        relationRuntimeService.lockSelfRelationGuard(entityCode);
         EntityDefinition definition =
                 definitionMapper
                         .findByEntityCode(entityCode)
-                        .orElse(null);
+                        .orElseThrow(() ->
+                                new BusinessConflictException(
+                                        "ENTITY_DEFINITION_NOT_FOUND",
+                                        "实体不存在: " + entityCode));
+        String tableName =
+                dynamicTableService.getTableName(entityCode);
+        lockDeleteRoot(tableName, id);
         relationRuntimeService.cascadeDeleteRelations(
                 definition,
                 id,
                 true);
         multiValueRuntimeService.delete(entityCode, id);
         dynamicMapper.physicalDeleteById(
-                dynamicTableService.getTableName(
-                        entityCode),
+                tableName,
                 id);
         if (uniqueValueService != null) {
             uniqueValueService.release(entityCode, id);
+        }
+    }
+
+    /**
+     * 在级联递归前锁定聚合根，维持“根定义/发布守卫 → 根业务行 → 子定义/发布
+     * 守卫 → 子业务行”的固定顺序；目标不存在时终止，不能删除孤立子记录。
+     */
+    private void lockDeleteRoot(
+            String tableName,
+            String id) {
+        if (dynamicMapper.selectByIdForUpdate(tableName, id) == null) {
+            throw new BusinessConflictException(
+                    "ENTITY_DATA_NOT_FOUND",
+                    "数据不存在: " + id);
         }
     }
 

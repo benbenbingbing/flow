@@ -236,6 +236,7 @@ public class EntityRelationDefinitionService {
                             + child.getEntityCode() + "."
                             + childRefFieldCode);
         }
+        validateChildReference(parent, child, childRef);
         EntityRelation.RelationType relationType =
                 request.getRelationType() == null
                         ? EntityRelation.RelationType.ONE_TO_MANY
@@ -257,6 +258,34 @@ public class EntityRelationDefinitionService {
                 childRefFieldCode,
                 relationType,
                 ownershipType);
+    }
+
+    /**
+     * 校验关系承载字段确实是指向父实体的单值引用。
+     *
+     * <p>组成关系和普通关联在所有权、删除语义上不同，但二者都依赖子记录上的
+     * 同一个权威父引用；若允许普通字段或指向其他实体的引用发布，运行时无法
+     * 可信判断归属、反向查询和自关联祖先链。</p>
+     */
+    private void validateChildReference(
+            EntityDefinition parent,
+            EntityDefinition child,
+            EntityField childRef) {
+        if (childRef.getFieldType() != EntityField.FieldType.REFERENCE) {
+            throw new BusinessConflictException(
+                    "ENTITY_RELATION_CHILD_REF_TYPE_INVALID",
+                    "关系承载字段必须是单值实体引用: "
+                            + child.getEntityCode() + "."
+                            + childRef.getFieldCode());
+        }
+        if (!Objects.equals(parent.getId(), childRef.getRefEntityId())) {
+            throw new BusinessConflictException(
+                    "ENTITY_RELATION_CHILD_REF_TARGET_INVALID",
+                    "关系承载字段必须指向父实体 “"
+                            + parent.getEntityName() + "”: "
+                            + child.getEntityCode() + "."
+                            + childRef.getFieldCode());
+        }
     }
 
     private void validateParentFieldNamespace(

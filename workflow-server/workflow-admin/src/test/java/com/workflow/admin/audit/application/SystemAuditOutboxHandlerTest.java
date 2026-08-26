@@ -44,7 +44,13 @@ class SystemAuditOutboxHandlerTest {
     private AuditLogPayload payload() {
         return new AuditLogPayload(
                 "event-1",
+                "operation-1",
                 "trace-1",
+                null,
+                "SYSTEM",
+                "TEST",
+                "1",
+                null,
                 "SYSTEM",
                 "UPDATE",
                 "测试操作",

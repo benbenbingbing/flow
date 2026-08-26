@@ -13,6 +13,12 @@ import java.util.Map;
  */
 @Data
 public class FlowActionTriggerEvent {
+    /** 跨模块业务操作 ID；异步执行时从持久化 payload 恢复 */
+    private String operationId;
+    /** 请求/消息链路 Trace ID，不与 operationId 混用 */
+    private String traceId;
+    /** 父业务操作 ID（存在显式子操作时使用） */
+    private String parentOperationId;
     /** 所属流程发布版本 ID */
     private String versionId;
     /** Flowable 流程定义 ID */

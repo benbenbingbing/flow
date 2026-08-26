@@ -75,6 +75,10 @@ public class EntityVersionConfiguration {
         private String entityName;
         private String entityReleaseId;
         private Integer entityReleaseVersion;
+        /**
+         * 发布定义完整性指纹。历史 ID 防止追随 latest，指纹防止历史行被异常改写。
+         */
+        private String entitySchemaHash;
         private String fieldMode = "ALL_PUBLISHED";
         private List<String> fieldCodes = new ArrayList<>();
         /** 发布时冻结，捕获和历史展示均不得再读取当前定义。 */
@@ -91,6 +95,21 @@ public class EntityVersionConfiguration {
 
         private String relationCode;
         private String relationName;
+        /** 未配置时兼容旧一层范围，等价于 ROOT。 */
+        private String parentNodeCode = "ROOT";
+        /** 发布冻结后的层级，根的直接子关系为 1。 */
+        private Integer depth = 1;
+        private String parentEntityCode;
+        private String parentEntityName;
+        private String parentEntityReleaseId;
+        private Integer parentEntityReleaseVersion;
+        private String parentEntitySchemaHash;
+        /** 当前关系定义的稳定摘要，捕获时必须与发布定义一致。 */
+        private String relationDefinitionHash;
+        /**
+         * 从 ROOT 到当前节点的完整不可变路径。运行时不得再根据当前关系猜测路径。
+         */
+        private List<RelationPathStep> relationPath = new ArrayList<>();
         private String childEntityCode;
         private String childEntityName;
         private String dataKey;
@@ -99,6 +118,33 @@ public class EntityVersionConfiguration {
         private FixedFilter filter = new FixedFilter();
         private Integer maxRows = 500;
         private Boolean enabled = true;
+    }
+
+    /**
+     * 版本范围中的一个已发布组成关系跳。
+     *
+     * <p>同时固定来源、目标实体版本和关系语义，保证多层捕获不会在实体重新发布后
+     * 静默改走另一条路径。</p>
+     */
+    @Data
+    public static class RelationPathStep {
+
+        private String parentNodeCode;
+        private String nodeCode;
+        private String relationCode;
+        private String relationName;
+        private String sourceEntityCode;
+        private String sourceEntityReleaseId;
+        private Integer sourceEntityReleaseVersion;
+        private String sourceEntitySchemaHash;
+        private String targetEntityCode;
+        private String targetEntityReleaseId;
+        private Integer targetEntityReleaseVersion;
+        private String targetEntitySchemaHash;
+        private String dataKey;
+        private String childRefFieldCode;
+        private String relationType;
+        private String relationDefinitionHash;
     }
 
     @Data
@@ -122,6 +168,10 @@ public class EntityVersionConfiguration {
         private Integer maxRowsPerRelation = 500;
         private Integer maxRowsPerVersion = 2000;
         private Long maxBytesPerVersion = 5L * 1024L * 1024L;
+        /** 内部治理上限；配置端无需暴露为新概念。 */
+        private Integer maxDepth = 8;
+        /** 冻结范围定义节点上限，不包含 ROOT。 */
+        private Integer maxScopeNodes = 64;
         private String overflowPolicy = "FAIL";
     }
 

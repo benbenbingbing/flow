@@ -14,9 +14,11 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNode
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.application.UiViewCompositionService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -53,6 +55,16 @@ class EntityFormCopyServiceTest {
         assertEquals(
                 "{\"FORM_INIT\":{\"serviceId\":\"source-1\"}}",
                 copied.getDataSourceBindingsDocument());
+    }
+
+    @Test
+    void copyPreservesRelatedContentsAndRemapsNodeAnchors() {
+        Fixture fixture = fixture();
+
+        fixture.service().copyForm("form-1");
+
+        verify(fixture.viewCompositionService()).copyForOwner(
+                "FORM", "form-1", "form-copy", Map.of());
     }
 
     @Test
@@ -123,12 +135,17 @@ class EntityFormCopyServiceTest {
                 mock(EntityListActionMapper.class),
                 mock(UiConfigReleaseMapper.class),
                 new JsonDocumentCodec(new ObjectMapper()));
-        return new Fixture(service, formMapper, validator);
+        UiViewCompositionService viewCompositionService =
+                mock(UiViewCompositionService.class);
+        service.setViewCompositionService(viewCompositionService);
+        return new Fixture(
+                service, formMapper, validator, viewCompositionService);
     }
 
     private record Fixture(
             EntityFormService service,
             EntityFormMapper formMapper,
-            EntityFormConfigurationValidator validator) {
+            EntityFormConfigurationValidator validator,
+            UiViewCompositionService viewCompositionService) {
     }
 }

@@ -774,13 +774,13 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '最小长度 / 最大长度', meaning: 'STRING、TEXT 字段的字符串长度校验。', defaultLimit: '仅兼容字段显示；0–20000；可留空；最小不能大于最大。', effect: '提交前阻止不符合长度的数据。', publish: '应小于等于数据库字段长度；其他字段类型的手工请求由后端拒绝。' },
+                { field: '最小长度 / 最大长度', meaning: 'STRING、TEXT 字段的字符串长度校验。', defaultLimit: '仅兼容字段显示；0–20000；可留空；VARCHAR 字段未配置最大长度时，面板默认显示数据库列长度（仅默认值）；最小不能大于最大。', effect: '提交前阻止不符合长度的数据。', publish: '应小于等于数据库字段长度；其他字段类型的手工请求由后端拒绝。' },
                 { field: '最小值 / 最大值', meaning: 'INTEGER、LONG、DECIMAL、DOUBLE 字段的数字范围校验。', defaultLimit: '仅兼容字段显示；可留空；最小不能大于最大。', effect: '限制数字输入。', publish: '与业务单位和小数精度一致；文本字段的手工数值规则由后端拒绝。' },
                 { field: '格式', meaning: 'STRING、TEXT 字段的预置格式校验。', defaultLimit: '仅兼容字段显示；EMAIL、PHONE、URL 或空。', effect: '校验常见文本格式。', publish: '格式仅校验形态，不验证邮箱/手机号真实存在。' },
                 { field: '正则', meaning: 'STRING、TEXT 字段的自定义正则表达式校验。', defaultLimit: '最多 500 字符；输入表达式本体，不添加 / 包裹；空值不执行。', effect: '字段失焦和表单提交时校验文本格式。', publish: '使用 JavaScript/Java 通用语法；完整匹配需自行添加 ^ 和 $。' },
                 { field: '新增 create', meaning: '新增记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制新增表单字段。', publish: '关键创建字段不可隐藏或只读。' },
                 { field: '编辑 edit', meaning: '编辑记录模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '控制编辑页面字段。', publish: '编码、流程字段等通常应只读。' },
-                { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示、可编辑默认均为 true。', effect: '字段在审批办理时的默认编辑权限。', publish: '流程节点开启“强制整表只读”后，可编辑配置不生效。' },
+                { field: '审批 approve', meaning: '审批办理模式。', defaultLimit: '显示默认 true；可编辑默认 false。', effect: '字段在审批办理时的默认编辑权限。', publish: '流程节点开启“强制整表只读”后，可编辑配置不生效。' },
                 { field: '查看 view', meaning: '查看详情模式。', defaultLimit: '固定只读，仅允许配置是否显示。', effect: '控制详情可见性，不能授予编辑权限。', publish: '敏感字段需要关闭 visible，而不仅是只读。' }
               ]
             }
@@ -1279,7 +1279,7 @@ export default {
               ],
               rows: [
                 { mode: 'STANDARD 普通发布', useCase: '业务结构、字段绑定、数据权限、数据源、提交映射和写操作等常规变更。', effect: '独立表单使用新 ACTIVE；流程表单需要重新发布流程后供新实例使用，运行中实例仍使用流程原快照。', limits: '默认选项；旧客户端只传 description 时也按 STANDARD 处理。' },
-                { mode: 'HOTFIX 流程表单热修复', useCase: '需要把任意通过发布校验的表单修改立即推送到当前流程。', effect: '表单作用于当前可发起流程版本及仍有运行实例的历史版本；已完成、已终止实例跳过。', limits: '展示修改为 SAFE；结构、绑定、权限、数据源、提交映射和自定义组件等高风险修改统一为 REVIEW，确认后可热修复。' },
+                { mode: 'HOTFIX 流程表单热修复', useCase: '需要把任意通过发布校验的表单修改立即推送到当前流程。', effect: '表单作用于当前可发起流程版本及仍有运行实例的历史版本；已完成、已终止实例跳过。', limits: '展示修改为 SAFE；结构、绑定、权限、数据源、提交映射和自定义组件等高风险修改统一为 REVIEW，显示风险提醒后可直接热修复。' },
                 { mode: '列表 STANDARD 发布', useCase: '列表标题、列宽、格式化、按钮、事件或其他列表配置。', effect: '普通页面读取当前 ACTIVE；已发布父表单按签名上下文读取其固定的列表 release。', limits: '不提供语义重复的列表 HOTFIX；历史版本可带原因激活，也可只恢复为草稿而不影响线上。' }
               ]
             },
@@ -1310,7 +1310,7 @@ export default {
             {
               type: 'bullets',
               items: [
-                '表单 HOTFIX 必须登记原因、工单和发布窗口；REVIEW 需要独立复核，回滚使用专用权限并记录原因。',
+                '表单 HOTFIX 在风险提醒和影响预检通过后可直接发布；回滚使用专用权限并记录原因。',
                 '风险等级由后端根据语义补丁判定。列表 STANDARD 与表单发布都使用 SAFE/REVIEW；除 SAFE 外统一提升为 REVIEW。',
                 '流程表单自定义组件无论是否声明热修复兼容能力都允许进入 REVIEW；声明能力用于完善风险说明，不再形成硬阻断。',
                 '影响预检必须核对 processVersionCount、activeInstanceCount、skippedHistoricalInstanceCount、targets[].compatible 和 blockers。',

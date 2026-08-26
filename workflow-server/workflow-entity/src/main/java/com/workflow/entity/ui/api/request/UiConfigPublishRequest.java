@@ -24,6 +24,4 @@ public class UiConfigPublishRequest {
     private Boolean overrideRisk;
     /** 兼容旧客户端保留，不再参与热修复发布判断 */
     private String overrideReason;
-    /** 已审批的 HOTFIX 申请ID；HOTFIX 发布时必填 */
-    private String hotfixRequestId;
 }

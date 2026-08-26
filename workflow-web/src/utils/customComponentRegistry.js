@@ -48,6 +48,132 @@ import { normalizeExtensionDescriptor } from '@/shared/config-runtime'
 const listRegistry = new Map()
 const formRegistry = new Map()
 
+const SHA256_CONSTANTS = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+  0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+  0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+  0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+  0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+  0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+]
+
+function rotateRight(value, amount) {
+  return value >>> amount | value << (32 - amount)
+}
+
+/**
+ * 同步计算 SHA-256，注册过程因此无需等待 Web Crypto 异步完成。
+ * 摘要用于可信的一方组件制品身份与发布漂移检测，不是脚本沙箱。
+ */
+function sha256(value) {
+  const bytes = new TextEncoder().encode(value)
+  const bitLength = bytes.length * 8
+  const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64
+  const padded = new Uint8Array(paddedLength)
+  padded.set(bytes)
+  padded[bytes.length] = 0x80
+  const view = new DataView(padded.buffer)
+  view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000))
+  view.setUint32(paddedLength - 4, bitLength >>> 0)
+
+  const state = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+  ]
+  const words = new Uint32Array(64)
+  for (let offset = 0; offset < paddedLength; offset += 64) {
+    for (let index = 0; index < 16; index += 1) {
+      words[index] = view.getUint32(offset + index * 4)
+    }
+    for (let index = 16; index < 64; index += 1) {
+      const previous15 = words[index - 15]
+      const previous2 = words[index - 2]
+      const sigma0 = rotateRight(previous15, 7)
+        ^ rotateRight(previous15, 18) ^ previous15 >>> 3
+      const sigma1 = rotateRight(previous2, 17)
+        ^ rotateRight(previous2, 19) ^ previous2 >>> 10
+      words[index] = (words[index - 16] + sigma0
+        + words[index - 7] + sigma1) >>> 0
+    }
+
+    let [a, b, c, d, e, f, g, h] = state
+    for (let index = 0; index < 64; index += 1) {
+      const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25)
+      const choice = e & f ^ ~e & g
+      const temporary1 = (h + sum1 + choice
+        + SHA256_CONSTANTS[index] + words[index]) >>> 0
+      const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22)
+      const majority = a & b ^ a & c ^ b & c
+      const temporary2 = (sum0 + majority) >>> 0
+      h = g
+      g = f
+      f = e
+      e = (d + temporary1) >>> 0
+      d = c
+      c = b
+      b = a
+      a = (temporary1 + temporary2) >>> 0
+    }
+    ;[a, b, c, d, e, f, g, h].forEach((value, index) => {
+      state[index] = (state[index] + value) >>> 0
+    })
+  }
+  return state.map(value => value.toString(16).padStart(8, '0')).join('')
+}
+
+function stableArtifactMaterial(value, seen = new WeakSet()) {
+  if (value === null) return 'null'
+  if (typeof value === 'function') {
+    return `function:${Function.prototype.toString.call(value)}`
+  }
+  if (typeof value !== 'object') return `${typeof value}:${String(value)}`
+  if (seen.has(value)) return '[circular]'
+  seen.add(value)
+  const material = Array.isArray(value)
+    ? `[${value.map(item => stableArtifactMaterial(item, seen)).join(',')}]`
+    : `{${Object.keys(value).sort().map(key => {
+        let item
+        try {
+          item = value[key]
+        } catch {
+          item = '[unreadable]'
+        }
+        return `${JSON.stringify(key)}:${stableArtifactMaterial(item, seen)}`
+      }).join(',')}}`
+  seen.delete(value)
+  return material
+}
+
+function normalizeRegisteredArtifactDigest(value) {
+  if (value === undefined || value === null || value === '') return ''
+  const digest = String(value).trim().toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error('自定义组件 artifactDigest 必须为 64 位十六进制字符串')
+  }
+  return digest
+}
+
+function componentArtifactDigest(descriptor, configuredDigest) {
+  const explicit = normalizeRegisteredArtifactDigest(configuredDigest)
+  if (explicit) return explicit
+  return sha256(stableArtifactMaterial({
+    name: descriptor.name,
+    version: descriptor.version,
+    snapshotVersion: descriptor.snapshotVersion,
+    component: descriptor.component
+  }))
+}
+
 function normalizeVersion(version) {
   const normalized = Number(version)
   return Number.isFinite(normalized) && normalized > 0 ? normalized : 1
@@ -58,22 +184,46 @@ function parseRequestedVersion(version) {
   return Number.isFinite(normalized) && normalized > 0 ? normalized : undefined
 }
 
-function registerVersionedComponent(registry, descriptor) {
+function registerVersionedComponent(registry, descriptor, configuredDigest) {
   descriptor.version = normalizeVersion(descriptor.version)
+  descriptor.artifactDigest = componentArtifactDigest(
+    descriptor,
+    configuredDigest
+  )
   const versions = registry.get(descriptor.name) || new Map()
+  const registered = versions.get(descriptor.version)
+  if (registered) {
+    if (registered.artifactDigest !== descriptor.artifactDigest) {
+      throw new Error(
+        `自定义组件 ${descriptor.name} v${descriptor.version} 已注册不同制品摘要，请提升版本后再注册`
+      )
+    }
+    return registered
+  }
   versions.set(descriptor.version, descriptor)
   registry.set(descriptor.name, versions)
+  return descriptor
 }
 
-function getVersionedDescriptor(registry, name, version) {
+function getVersionedDescriptor(registry, name, version, artifactDigest) {
   const versions = registry.get(name)
   if (!versions) return undefined
+  let descriptor
   if (version !== undefined && version !== null && version !== '') {
     const requestedVersion = parseRequestedVersion(version)
-    return requestedVersion === undefined ? undefined : versions.get(requestedVersion)
+    descriptor = requestedVersion === undefined
+      ? undefined : versions.get(requestedVersion)
+  } else {
+    descriptor = Array.from(versions.values())
+      .sort((left, right) => right.version - left.version)[0]
   }
-  return Array.from(versions.values())
-    .sort((left, right) => right.version - left.version)[0]
+  if (!descriptor || artifactDigest === undefined
+    || artifactDigest === null || artifactDigest === '') return descriptor
+  const expected = String(artifactDigest).trim().toLowerCase()
+  return /^[a-f0-9]{64}$/.test(expected)
+    && descriptor.artifactDigest === expected
+    ? descriptor
+    : undefined
 }
 
 function getVersionedOptions(registry) {
@@ -81,6 +231,15 @@ function getVersionedOptions(registry) {
     .map(versions => Array.from(versions.values())
       .sort((left, right) => right.version - left.version)[0])
     .sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function getAllVersionedOptions(registry, name) {
+  const entries = name ? [registry.get(name)].filter(Boolean) : Array.from(registry.values())
+  return entries
+    .flatMap(versions => Array.from(versions.values()))
+    .sort((left, right) => left.name.localeCompare(right.name)
+      || right.version - left.version)
+    .map(({ component, ...descriptor }) => descriptor)
 }
 
 // ========== 自定义列表组件 ==========
@@ -92,7 +251,11 @@ function getVersionedOptions(registry) {
  */
 export function registerCustomListComponent(name, component, metadata = {}) {
   const descriptor = normalizeExtensionDescriptor(name, component, metadata)
-  registerVersionedComponent(listRegistry, descriptor)
+  return registerVersionedComponent(
+    listRegistry,
+    descriptor,
+    metadata.artifactDigest || name?.artifactDigest
+  )
 }
 
 /**
@@ -100,8 +263,8 @@ export function registerCustomListComponent(name, component, metadata = {}) {
  * @param {string} name 组件标识名
  * @returns {Component|undefined}
  */
-export function getCustomListComponent(name, version) {
-  return getCustomListDescriptor(name, version)?.component
+export function getCustomListComponent(name, version, artifactDigest) {
+  return getCustomListDescriptor(name, version, artifactDigest)?.component
 }
 
 /**
@@ -109,8 +272,8 @@ export function getCustomListComponent(name, version) {
  * @param {string} name 组件标识名
  * @returns {boolean}
  */
-export function hasCustomListComponent(name, version) {
-  return Boolean(getCustomListDescriptor(name, version))
+export function hasCustomListComponent(name, version, artifactDigest) {
+  return Boolean(getCustomListDescriptor(name, version, artifactDigest))
 }
 
 /**
@@ -121,13 +284,23 @@ export function getRegisteredCustomListNames() {
   return Array.from(listRegistry.keys())
 }
 
-export function getCustomListDescriptor(name, version) {
-  return getVersionedDescriptor(listRegistry, name, version)
+export function getCustomListDescriptor(name, version, artifactDigest) {
+  return getVersionedDescriptor(
+    listRegistry,
+    name,
+    version,
+    artifactDigest
+  )
 }
 
 export function getCustomListComponentOptions() {
   return getVersionedOptions(listRegistry)
     .map(({ component, ...descriptor }) => descriptor)
+}
+
+/** 返回指定列表组件所有已注册版本，供发布配置显式选版。 */
+export function getCustomListComponentVersionOptions(name) {
+  return getAllVersionedOptions(listRegistry, name)
 }
 
 // ========== 自定义表单组件 ==========
@@ -139,7 +312,11 @@ export function getCustomListComponentOptions() {
  */
 export function registerCustomFormComponent(name, component, metadata = {}) {
   const descriptor = normalizeExtensionDescriptor(name, component, metadata)
-  registerVersionedComponent(formRegistry, descriptor)
+  return registerVersionedComponent(
+    formRegistry,
+    descriptor,
+    metadata.artifactDigest || name?.artifactDigest
+  )
 }
 
 /**
@@ -147,8 +324,8 @@ export function registerCustomFormComponent(name, component, metadata = {}) {
  * @param {string} name 组件标识名
  * @returns {Component|undefined}
  */
-export function getCustomFormComponent(name, version) {
-  return getCustomFormDescriptor(name, version)?.component
+export function getCustomFormComponent(name, version, artifactDigest) {
+  return getCustomFormDescriptor(name, version, artifactDigest)?.component
 }
 
 /**
@@ -156,8 +333,8 @@ export function getCustomFormComponent(name, version) {
  * @param {string} name 组件标识名
  * @returns {boolean}
  */
-export function hasCustomFormComponent(name, version) {
-  return Boolean(getCustomFormDescriptor(name, version))
+export function hasCustomFormComponent(name, version, artifactDigest) {
+  return Boolean(getCustomFormDescriptor(name, version, artifactDigest))
 }
 
 /**
@@ -168,11 +345,21 @@ export function getRegisteredCustomFormNames() {
   return Array.from(formRegistry.keys())
 }
 
-export function getCustomFormDescriptor(name, version) {
-  return getVersionedDescriptor(formRegistry, name, version)
+export function getCustomFormDescriptor(name, version, artifactDigest) {
+  return getVersionedDescriptor(
+    formRegistry,
+    name,
+    version,
+    artifactDigest
+  )
 }
 
 export function getCustomFormComponentOptions() {
   return getVersionedOptions(formRegistry)
     .map(({ component, ...descriptor }) => descriptor)
+}
+
+/** 返回指定表单组件所有已注册版本，供发布配置显式选版。 */
+export function getCustomFormComponentVersionOptions(name) {
+  return getAllVersionedOptions(formRegistry, name)
 }

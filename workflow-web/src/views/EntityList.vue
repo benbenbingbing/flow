@@ -276,69 +276,85 @@
       </template>
     </el-dialog>
     <!-- 版本历史对话框 -->
-    <el-dialog v-model="historyDialogVisible" title="版本历史" width="900px">
-      <div class="version-header">
-        <span>实体：{{ currentEntity?.entityName }} ({{ currentEntity?.entityCode }})</span>
-        <el-tag v-if="currentEntity?.status === 'PUBLISHED'" type="success">已发布</el-tag>
-        <el-tag v-else type="info">草稿</el-tag>
-      </div>
-      <el-timeline>
-        <el-timeline-item
-          v-for="(item, index) in versionHistoryList"
-          :key="item.id"
-          :type="index === 0 ? 'primary' : ''"
-          :color="index === 0 ? '#409EFF' : ''"
-          :timestamp="formatDate(item.publishedAt)"
+    <el-dialog
+      v-model="historyDialogVisible"
+      title="版本历史"
+      width="75%"
+      top="3vh"
+      class="entity-history-dialog"
+      @closed="resetHistoryPagination"
+    >
+      <div class="entity-history-layout">
+        <div class="version-header">
+          <span>实体：{{ currentEntity?.entityName }} ({{ currentEntity?.entityCode }})</span>
+          <el-tag v-if="currentEntity?.status === 'PUBLISHED'" type="success">已发布</el-tag>
+          <el-tag v-else type="info">草稿</el-tag>
+        </div>
+        <div
+          ref="historyScrollRef"
+          class="version-history-scroll"
+          @scroll.passive="handleHistoryScroll"
         >
-          <div class="version-item" :class="{ 'version-clickable': index < versionHistoryList.length - 1 }" @click="viewVersionDiff(item, index)">
-            <div class="version-title">
-              <span class="version-number">V{{ item.version }}</span>
-              <el-tag size="small" :type="item.publishType === 'CREATE' ? 'success' : 'warning'" class="version-type">
-                {{ item.publishType === 'CREATE' ? '首次发布' : '结构变更' }}
-              </el-tag>
-            </div>
-            <div class="version-desc">{{ item.versionDescription }}</div>
-            <div class="version-meta">
-              <span v-if="item.publishedByName">发布人：{{ item.publishedByName }}</span>
-              <span v-else-if="item.publishedBy">发布人：{{ item.publishedBy }}</span>
-              <span v-if="item.changesDescription" class="changes-desc">变更：{{ item.changesDescription }}</span>
-            </div>
-            <div v-if="index < versionHistoryList.length - 1" class="version-tip">
-              <el-link type="primary" :underline="false" @click.stop="viewVersionDiff(item, index)">
-                <el-icon><View /></el-icon> 点击查看与上一版本的差异
-              </el-link>
-            </div>
-            <div v-if="item.fields && item.fields.length > 0" class="version-fields">
-              <el-collapse>
-                <el-collapse-item title="查看字段详情" name="1">
-                  <el-table :data="item.fields" size="small" border>
-                    <el-table-column prop="fieldCode" label="字段编码" width="120" />
-                    <el-table-column prop="fieldName" label="字段名称" width="120" />
-                    <el-table-column prop="fieldType" label="字段类型" width="100" />
-                    <el-table-column label="数据库类型" width="120">
-                      <template #default="{ row }">
-                        {{ formatDbType(row) }}
-                      </template>
-                    </el-table-column>
-                    <el-table-column prop="isRequired" label="必填" width="60">
-                      <template #default="{ row }">
-                        <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
-                        <span v-else>-</span>
-                      </template>
-                    </el-table-column>
-                    <el-table-column prop="isSystem" label="系统" width="60">
-                      <template #default="{ row }">
-                        <el-tag v-if="row.isSystem" type="info" size="small">是</el-tag>
-                        <span v-else>-</span>
-                      </template>
-                    </el-table-column>
-                  </el-table>
-                </el-collapse-item>
-              </el-collapse>
-            </div>
-          </div>
-        </el-timeline-item>
-      </el-timeline>
+          <el-timeline>
+            <el-timeline-item
+              v-for="(item, index) in versionHistoryList"
+              :key="item.id"
+              :type="index === 0 ? 'primary' : ''"
+              :color="index === 0 ? '#409EFF' : ''"
+              :timestamp="formatDate(item.publishedAt)"
+            >
+              <div class="version-item" :class="{ 'version-clickable': hasPreviousVersion(item) }" @click="viewVersionDiff(item)">
+                <div class="version-title">
+                  <span class="version-number">V{{ item.version }}</span>
+                  <el-tag size="small" :type="item.publishType === 'CREATE' ? 'success' : 'warning'" class="version-type">
+                    {{ item.publishType === 'CREATE' ? '首次发布' : '结构变更' }}
+                  </el-tag>
+                </div>
+                <div class="version-desc">{{ item.versionDescription }}</div>
+                <div class="version-meta">
+                  <span v-if="item.publishedByName">发布人：{{ item.publishedByName }}</span>
+                  <span v-else-if="item.publishedBy">发布人：{{ item.publishedBy }}</span>
+                  <span v-if="item.changesDescription" class="changes-desc">变更：{{ item.changesDescription }}</span>
+                </div>
+                <div v-if="hasPreviousVersion(item)" class="version-tip">
+                  <el-link type="primary" :underline="false" @click.stop="viewVersionDiff(item)">
+                    <el-icon><View /></el-icon> 点击查看与上一版本的差异
+                  </el-link>
+                </div>
+                <div v-if="item.fields && item.fields.length > 0" class="version-fields">
+                  <el-collapse>
+                    <el-collapse-item title="查看字段详情" name="1">
+                      <el-table :data="item.fields" size="small" border>
+                        <el-table-column prop="fieldCode" label="字段编码" width="120" />
+                        <el-table-column prop="fieldName" label="字段名称" width="120" />
+                        <el-table-column prop="fieldType" label="字段类型" width="100" />
+                        <el-table-column label="数据库类型" width="120">
+                          <template #default="{ row }">
+                            {{ formatDbType(row) }}
+                          </template>
+                        </el-table-column>
+                        <el-table-column prop="isRequired" label="必填" width="60">
+                          <template #default="{ row }">
+                            <el-tag v-if="row.isRequired" type="danger" size="small">是</el-tag>
+                            <span v-else>-</span>
+                          </template>
+                        </el-table-column>
+                        <el-table-column prop="isSystem" label="系统" width="60">
+                          <template #default="{ row }">
+                            <el-tag v-if="row.isSystem" type="info" size="small">是</el-tag>
+                            <span v-else>-</span>
+                          </template>
+                        </el-table-column>
+                      </el-table>
+                    </el-collapse-item>
+                  </el-collapse>
+                </div>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+          <div v-if="historyLoading" class="history-load-more">正在加载...</div>
+        </div>
+      </div>
       <template #footer>
         <el-button @click="historyDialogVisible = false">关闭</el-button>
       </template>
@@ -628,6 +644,11 @@ import { schemaOperationApi } from '@/api/schemaOperation'
 import { processApi } from '@/api/process'
 import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
 import { generateMigrationTag } from '@/utils/migrationTag'
+import {
+  hasPreviousEntityVersion,
+  isEntityHistoryNearBottom,
+  mergeEntityHistoryPage
+} from '@/shared/entity-history-pagination'
 import Sortable from 'sortablejs'
 import PageState from '@/components/PageState.vue'
 const router = useRouter()
@@ -885,7 +906,14 @@ const statusList = ref([])
 // ========== 版本历史相关 ==========
 const historyDialogVisible = ref(false)
 const versionHistoryList = ref([])
-const selectedVersionIndex = ref(null)
+const historyScrollRef = ref(null)
+const historyLoading = ref(false)
+const historyOpening = ref(false)
+const historyPageNum = ref(1)
+const historyPageSize = 5
+const historyTotal = ref(0)
+const historyHasMore = ref(false)
+let historyRequestGeneration = 0
 const versionDiffDialogVisible = ref(false)
 const versionDiffLoading = ref(false)
 const versionDiffData = ref(null)
@@ -1044,24 +1072,96 @@ const retrySchemaOperation = async () => {
     schemaRetryLoading.value = false
   }
 }
-// 查看版本历史
-const handleViewHistory = async (row) => {
-  currentEntity.value = row
-  historyDialogVisible.value = true
-  selectedVersionIndex.value = null
+// 关闭或切换实体时清空分页状态，避免上一实体的历史短暂残留。
+const resetHistoryPagination = () => {
+  // 递增代次使关闭弹窗或切换实体前发出的请求失效，避免迟到响应污染新实体。
+  historyRequestGeneration += 1
+  versionHistoryList.value = []
+  historyPageNum.value = 1
+  historyTotal.value = 0
+  historyHasMore.value = false
+  historyLoading.value = false
+}
+
+/**
+ * 加载下一页发布历史。首屏在弹窗显示前完成，后续页由滚动触底触发。
+ *
+ * @param {boolean} reset 是否从第一页重新加载
+ */
+const loadHistoryPage = async (reset = false) => {
+  if (!currentEntity.value || historyLoading.value) return
+  if (!reset && !historyHasMore.value) return
+  const entityId = currentEntity.value.id
+  const requestGeneration = historyRequestGeneration
+  historyLoading.value = true
+  const pageNum = reset ? 1 : historyPageNum.value
   try {
-    const res = await entityPublishHistoryApi.getVersionHistory(row.id)
-    versionHistoryList.value = res || []
+    const page = await entityPublishHistoryApi.getVersionHistoryPage(
+      entityId,
+      { pageNum, pageSize: historyPageSize }
+    )
+    if (
+      requestGeneration !== historyRequestGeneration
+      || currentEntity.value?.id !== entityId
+    ) {
+      return
+    }
+    const records = Array.isArray(page?.records) ? page.records : []
+    versionHistoryList.value = mergeEntityHistoryPage(
+      versionHistoryList.value,
+      records,
+      reset
+    )
+    historyTotal.value = Number(page?.total || 0)
+    historyPageNum.value = pageNum + 1
+    historyHasMore.value = versionHistoryList.value.length < historyTotal.value
+  } finally {
+    if (requestGeneration === historyRequestGeneration) {
+      historyLoading.value = false
+    }
+  }
+}
+
+// 与实体数据新增一致：先完成首屏初始化，再显示固定位置的弹窗。
+const handleViewHistory = async (row) => {
+  if (historyOpening.value) return
+  historyOpening.value = true
+  currentEntity.value = row
+  resetHistoryPagination()
+  try {
+    await loadHistoryPage(true)
+    historyDialogVisible.value = true
+    await nextTick()
+    if (historyScrollRef.value) {
+      historyScrollRef.value.scrollTop = 0
+    }
   } catch (error) {
     console.error('加载版本历史失败:', error)
     ElMessage.error('加载版本历史失败')
-    versionHistoryList.value = []
+    resetHistoryPagination()
+  } finally {
+    historyOpening.value = false
   }
 }
+
+// 预留少量阈值，避免高分屏下必须精确滚到最后一个像素才触发。
+const handleHistoryScroll = (event) => {
+  const target = event.currentTarget
+  if (!target || historyLoading.value || !historyHasMore.value) return
+  if (isEntityHistoryNearBottom(target)) {
+    loadHistoryPage().catch((error) => {
+      console.error('加载更多版本历史失败:', error)
+      ElMessage.error('加载更多版本历史失败')
+    })
+  }
+}
+
+const hasPreviousVersion = hasPreviousEntityVersion
+
 // 查看版本与上一版本的差异
-const viewVersionDiff = async (item, index) => {
-  if (index === versionHistoryList.value.length - 1) {
-    // 最后一个版本，没有上一个版本可比较
+const viewVersionDiff = async (item) => {
+  if (!hasPreviousVersion(item)) {
+    // V1 是第一个版本，没有上一个版本可比较。
     ElMessage.info('这是第一个版本，无上一版本可比较')
     return
   }
@@ -1226,6 +1326,37 @@ onMounted(() => {
   background-color: #f5f7fa;
 }
 /* 版本历史样式 */
+:global(.entity-history-dialog) {
+  height: 94vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+:global(.entity-history-dialog .el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.entity-history-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.version-history-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.history-load-more {
+  padding: 12px 0;
+  color: #909399;
+  font-size: 13px;
+  text-align: center;
+}
 .version-header {
   display: flex;
   justify-content: space-between;

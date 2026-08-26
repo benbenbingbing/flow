@@ -182,6 +182,53 @@ class UiDataSourceExecutionAccessServiceTest {
         verifyNoInteractions(context.releaseMapper());
     }
 
+    /** 嵌套映射也不能绕过可信元数据检查，包含数组中的对象同样应被拒绝。 */
+    @Test
+    void rejectsNestedTrustedMetadataInMappedPayload() {
+        UiDataSourceExecuteRequest request =
+                request("BEFORE_SUBMIT", "form-1", null);
+        request.setInput(Map.of(
+                "payload", Map.of(
+                        "rows", List.of(Map.of(
+                                "tenantId", "forged-tenant")))));
+
+        BusinessForbiddenException exception = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service().authorizePublished(
+                        definition(
+                                "INTEGRATION_CONNECTOR",
+                                "GLOBAL",
+                                null),
+                        request));
+
+        assertEquals(
+                "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                exception.getErrorCode());
+        assertTrue(exception.getMessage().contains("tenantId"));
+        verifyNoInteractions(context.releaseMapper());
+    }
+
+    /** 来源记录身份不能藏在嵌套上下文中交由 Provider 当作授权依据。 */
+    @Test
+    void rejectsNestedSourceRecordIdentity() {
+        UiDataSourceExecuteRequest request =
+                request("FIELD_OPTIONS", "form-1", null);
+        request.setContext(Map.of(
+                "payload", Map.of(
+                        "source_record_id", "forged-record")));
+
+        BusinessForbiddenException exception = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service().authorizePublished(
+                        definition("STATIC_OPTIONS", "GLOBAL", null),
+                        request));
+
+        assertEquals(
+                "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                exception.getErrorCode());
+        verifyNoInteractions(context.releaseMapper());
+    }
+
     /** 测试拒绝连接器客户端伪造幂等键：验证 input 含 idempotencyKey 时抛出上下文伪造异常 */
     @Test
     void rejectsConnectorClientSpoofingIdempotencyKey() {

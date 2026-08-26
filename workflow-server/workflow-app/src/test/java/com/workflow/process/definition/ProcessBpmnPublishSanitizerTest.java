@@ -8,6 +8,7 @@ import org.flowable.bpmn.model.BoundaryEvent;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.CallActivity;
 import org.flowable.bpmn.model.ServiceTask;
+import org.flowable.validation.ProcessValidatorFactory;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -82,6 +83,163 @@ class ProcessBpmnPublishSanitizerTest {
         assertTrue(result.contains("xmlns:flowable=\"http://flowable.org/bpmn\""));
         assertTrue(result.contains("bpmnElement=\"expense_flow\""));
         assertFalse(result.contains("camunda:"));
+    }
+
+    /**
+     * 单池协作图发布时应同步 participant.processRef，但保留指向 collaboration 的画布平面。
+     */
+    @Test
+    void sanitizeKeepsCollaborationPlaneAndSynchronizesParticipantProcessRef() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = """
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                    xmlns:flowable="http://flowable.org/bpmn"
+                    targetNamespace="http://workflow.test/process">
+                  <bpmn:collaboration id="Collaboration_01mvdtz">
+                    <bpmn:participant id="Participant_1" processRef="Process_1" />
+                  </bpmn:collaboration>
+                  <bpmn:process id="Process_1" isExecutable="true">
+                    <bpmn:startEvent id="Start_1" />
+                    <bpmn:endEvent id="End_1" />
+                    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="End_1" />
+                  </bpmn:process>
+                  <bpmndi:BPMNDiagram id="Diagram_1">
+                    <bpmndi:BPMNPlane id="Plane_1" bpmnElement="Collaboration_01mvdtz" />
+                  </bpmndi:BPMNDiagram>
+                </bpmn:definitions>
+                """;
+
+        String result = sanitizer.sanitize(
+                input, "component_palette_test_20260824_codex");
+
+        assertTrue(result.contains(
+                "<bpmn:process id=\"component_palette_test_20260824_codex\""));
+        assertTrue(result.contains(
+                "processRef=\"component_palette_test_20260824_codex\""));
+        assertTrue(result.contains(
+                "bpmnElement=\"Collaboration_01mvdtz\""));
+        assertFalse(result.contains(
+                "bpmnElement=\"component_palette_test_20260824_codex\""));
+
+        BpmnModel model = parse(result);
+        assertEquals(1, model.getPools().size());
+        assertEquals(
+                "component_palette_test_20260824_codex",
+                model.getPools().get(0).getProcessRef());
+    }
+
+    /**
+     * 多池协作图只改写唯一可执行主流程；外部参与者的非执行流程 ID 与引用保持不变。
+     */
+    @Test
+    void sanitizeOnlyRenamesUniqueExecutableProcessInCollaboration() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = """
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                    xmlns:flowable="http://flowable.org/bpmn"
+                    targetNamespace="http://workflow.test/process">
+                  <bpmn:collaboration id="Collaboration_1">
+                    <bpmn:participant id="ExternalParticipant" processRef="ExternalProcess" />
+                    <bpmn:participant id="ManagedParticipant" processRef="ManagedDraft" />
+                  </bpmn:collaboration>
+                  <bpmn:process id="ExternalProcess" isExecutable="false" />
+                  <bpmn:process id="ManagedDraft" isExecutable="true">
+                    <bpmn:startEvent id="Start_1" />
+                    <bpmn:endEvent id="End_1" />
+                    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_1" targetRef="End_1" />
+                  </bpmn:process>
+                  <bpmndi:BPMNDiagram id="Diagram_1">
+                    <bpmndi:BPMNPlane id="Plane_1" bpmnElement="Collaboration_1" />
+                  </bpmndi:BPMNDiagram>
+                </bpmn:definitions>
+                """;
+
+        String result = sanitizer.sanitize(input, "managed_process");
+
+        assertTrue(result.contains(
+                "<bpmn:process id=\"ExternalProcess\" isExecutable=\"false\""));
+        assertTrue(result.contains(
+                "processRef=\"ExternalProcess\""));
+        assertTrue(result.contains(
+                "<bpmn:process id=\"managed_process\" isExecutable=\"true\""));
+        assertTrue(result.contains(
+                "processRef=\"managed_process\""));
+        assertTrue(result.contains("bpmnElement=\"Collaboration_1\""));
+    }
+
+    /** 多流程协作图存在多个可执行流程时必须在部署前稳定阻断。 */
+    @Test
+    void sanitizeRejectsCollaborationWithMultipleExecutableProcesses() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = """
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:flowable="http://flowable.org/bpmn"
+                    targetNamespace="http://workflow.test/process">
+                  <bpmn:process id="Process_1" isExecutable="true" />
+                  <bpmn:process id="Process_2" isExecutable="true" />
+                </bpmn:definitions>
+                """;
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(input, "managed_process"));
+
+        assertTrue(exception.getMessage().startsWith(
+                "BPMN_EXECUTABLE_PROCESS_AMBIGUOUS:"));
+    }
+
+    /** 未命名数据对象必须在 Flowable 部署前返回稳定阻断码。 */
+    @Test
+    void sanitizeRejectsUnnamedDataObjectBeforeDeployment() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = wrap("""
+                <bpmn:dataObject id="DataObject_1lgzvmb" />
+                <bpmn:dataObjectReference id="DataObjectReference_1"
+                    dataObjectRef="DataObject_1lgzvmb" />
+                """);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(input, "managed_process"));
+
+        assertTrue(exception.getMessage().startsWith(
+                "BPMN_DATA_OBJECT_NAME_MISSING:"));
+        assertTrue(exception.getMessage().contains(
+                "element=DataObjectReference_1"));
+    }
+
+    /** 画布引用已有名称时，应同步到底层 dataObject 以满足 Flowable 校验。 */
+    @Test
+    void sanitizeCopiesReferenceNameToRuntimeDataObject() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = wrap("""
+                <bpmn:dataObject id="DataObject_1" />
+                <bpmn:dataObjectReference id="DataObjectReference_1"
+                    name="申请数据" dataObjectRef="DataObject_1" />
+                """);
+
+        String result = sanitizer.sanitize(input, "managed_process");
+
+        assertTrue(result.contains(
+                "<bpmn:dataObject id=\"DataObject_1\" name=\"申请数据\""));
+        BpmnModel model = parse(result);
+        assertEquals(
+                "申请数据",
+                model.getMainProcess().getDataObjects().get(0).getName());
+        assertTrue(new ProcessValidatorFactory()
+                .createDefaultProcessValidator()
+                .validate(model)
+                .stream()
+                .noneMatch(error ->
+                        "flowable-data-object-missing-name".equals(
+                                error.getProblem())));
     }
 
     /**

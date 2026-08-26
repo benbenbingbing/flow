@@ -87,6 +87,12 @@ public class EntityDataDTO {
     private String formReleaseResolutionToken;
 
     /**
+     * 关联内容打开目标表单时签发的短期动作上下文，不持久化。
+     * 仅当该值存在时，服务端才额外校验目标实体、固定表单版本和目标记录。
+     */
+    private String viewCompositionActionContextToken;
+
+    /**
      * 当前用户针对本行数据的按钮能力。
      */
     private Map<String, EntityActionCapabilityDTO> actionCapabilities = new LinkedHashMap<>();

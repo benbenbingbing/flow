@@ -13,6 +13,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
+import com.workflow.entity.ui.application.UiViewCompositionActionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
@@ -95,6 +96,9 @@ class EntityDataActionServiceTest {
 
         @Mock
         private UiEventRuntimeService eventRuntimeService;
+
+        @Mock
+        private UiViewCompositionActionService viewCompositionActionService;
 
         @Mock
         private EntityDefinitionMapper definitionMapper;
@@ -390,6 +394,90 @@ class EntityDataActionServiceTest {
                                                 anyString(),
                                                 anyMap(),
                                                 any());
+        }
+
+        @Test
+        void compositionCreateOverwritesClientValueWithTrustedInitialMapping() {
+                EntityDataDTO dto = new EntityDataDTO();
+                dto.setEntityCode("asset");
+                dto.setFormId("form-1");
+                dto.setFormReleaseId("form-release-1");
+                dto.setFormReleaseVersion(2);
+                dto.setFormReleaseResolutionToken("form-release-token");
+                dto.setViewCompositionActionContextToken("composition-token");
+                dto.setData(Map.of(
+                                "displayName", "浏览器篡改值",
+                                "note", "保留值"));
+                EntityForm form = form("form-1", "entity-asset");
+                EntityDefinition asset = new EntityDefinition();
+                asset.setId("entity-asset");
+                asset.setEntityCode("asset");
+                when(formMapper.selectById("form-1")).thenReturn(form);
+                when(definitionMapper.selectById("entity-asset"))
+                                .thenReturn(asset);
+                when(viewCompositionActionService.authorizeFormSubmission(
+                                "composition-token",
+                                "CREATE",
+                                "asset",
+                                null,
+                                "form-1",
+                                "form-release-1",
+                                2,
+                                "form-release-token"))
+                                .thenReturn(Map.of(
+                                                "displayName",
+                                                "服务端来源值"));
+                FormSubmissionExecutionContext context = context(
+                                "composition-create-trace",
+                                "ENTITY_CREATE");
+                when(formSubmissionTraceService.current(
+                                eq("ENTITY_CREATE"),
+                                isNull(),
+                                anyMap())).thenReturn(context);
+                Map<String, Object> trustedSubmission = Map.of(
+                                "displayName", "服务端来源值",
+                                "note", "保留值");
+                when(formSubmissionService.applyAuthorizedForm(
+                                "form-1",
+                                "form-release-1",
+                                2,
+                                "form-release-token",
+                                "asset",
+                                null,
+                                "create",
+                                trustedSubmission,
+                                context)).thenReturn(trustedSubmission);
+                stubDefaultEventExecution();
+                when(mutationPort.execute(any(EntityMutationCommand.class)))
+                                .thenReturn(mutationResult(
+                                                "1",
+                                                EntityMutationOperationType.CREATE,
+                                                trustedSubmission));
+
+                service.create(dto);
+
+                verify(viewCompositionActionService)
+                                .authorizeFormSubmission(
+                                                "composition-token",
+                                                "CREATE",
+                                                "asset",
+                                                null,
+                                                "form-1",
+                                                "form-release-1",
+                                                2,
+                                                "form-release-token");
+                verify(formSubmissionService).applyAuthorizedForm(
+                                "form-1",
+                                "form-release-1",
+                                2,
+                                "form-release-token",
+                                "asset",
+                                null,
+                                "create",
+                                trustedSubmission,
+                                context);
+                verify(actionConfigService, never())
+                                .resolveListConfig(anyString(), any());
         }
 
         /**

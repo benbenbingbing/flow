@@ -149,7 +149,7 @@ export default {
                 { option: '网关', meaning: '创建排他网关。', notes: '可更改为并行、包容、复杂、基于事件网关。' },
                 { option: '用户任务', meaning: '当前平台把默认“任务”入口替换为用户任务。', notes: '其他任务类型通过“更改类型”切换。' },
                 { option: '展开子流程', meaning: '创建含开始事件的展开子流程。', notes: '用于局部封装；当前专用右侧配置以可选择元素支持为准。' },
-                { option: '数据对象 / 数据存储', meaning: '表达流程数据输入、输出和持久存储。', notes: '主要用于建模说明，平台没有额外业务字段配置。' },
+                { option: '数据对象 / 数据存储', meaning: '数据对象描述流程实例变量；数据存储引用描述外部持久数据源。', notes: '数据关联线只保留建模语义；真实读写和变量映射需由服务任务、实体接口或流程动作显式实现。' },
                 { option: '泳池 / 参与者', meaning: '表达组织或系统参与边界。', notes: '跨泳池通常使用消息流；不直接等同系统用户组。' },
                 { option: '组', meaning: '视觉分组，不改变执行语义。', notes: '用于提高大图可读性。' }
               ]
@@ -294,7 +294,7 @@ export default {
               items: [
                 '泳池/参与者表示外部组织、系统或独立流程参与方；不是系统角色或用户组配置。',
                 '泳道可用于责任区分，但当前办理人仍由用户任务“执行人”配置决定。',
-                '数据对象表示流程中使用或产生的数据，数据存储表示持久数据源；当前平台实体绑定不由这些图形自动建立。',
+                '数据对象用于描述流程中使用或产生的数据变量；数据存储是外部持久数据的建模引用，不提供自动读写，也不会自动建立平台实体绑定。',
                 '组只改变视觉分组，不改变顺序、事务或人员。',
                 '建模元素必须服务于可读性；发布前确保流程主路径仍由可执行节点和顺序流完整连接。'
               ]
@@ -668,7 +668,7 @@ export default {
               type: 'callout',
               tone: 'warning',
               title: '普通发布与兼容热修复',
-              text: '流程发布快照会固定节点表单的 release ID 和版本。STANDARD 普通发布仍要求重新发布流程：未重发时新增流程数据返回 409 PROCESS_FORM_RELEASE_STALE；重发后新实例使用新版本，运行中实例继续使用原版本。流程表单的任意有效修改都可选择 HOTFIX：展示修改为 SAFE，其余高风险修改统一为 REVIEW，经授权确认后直接作用于当前可发起版本和运行中实例。'
+              text: '流程发布快照会固定节点表单的 release ID 和版本。STANDARD 普通发布仍要求重新发布流程：未重发时新增流程数据返回 409 PROCESS_FORM_RELEASE_STALE；重发后新实例使用新版本，运行中实例继续使用原版本。流程表单的任意有效修改都可选择 HOTFIX：展示修改为 SAFE，其余高风险修改统一为 REVIEW，确认风险提示后直接作用于当前可发起版本和运行中实例。'
             },
             {
               type: 'table',
@@ -1011,8 +1011,7 @@ export default {
               items: [
                 { title: '保存草稿', text: '保存需要热修复的表单节点或字段，所有通过发布校验的表单修改都可以进入 HOTFIX 预检。' },
                 { title: '选择 HOTFIX 预检', text: '核对 SAFE/REVIEW、当前可发起流程版本、仍有运行实例的历史版本、运行中实例数量和跳过的已完成实例。列表配置只允许 STANDARD 发布。' },
-                { title: '申请与独立复核', text: '登记原因、关联工单和发布窗口。节点增删、绑定、权限、数据源、提交映射、关系/子表和写操作等 REVIEW 修改必须由非申请人独立复核。' },
-                { title: '原子发布', text: '发布请求回传已批准 hotfixRequestId、expectedActiveReleaseId、expectedDraftHash 和 impactToken；任一目标或审批快照变化时整次失败。' },
+                { title: '风险提示与原子发布', text: '节点增删、绑定、权限、数据源、提交映射、关系/子表和写操作等 REVIEW 修改仅作高风险提醒。确认后请求回传 expectedActiveReleaseId、expectedDraftHash 和 impactToken；任一目标或预检快照变化时整次失败。' },
                 { title: '观察与回滚', text: '观察表单加载、提交和流程任务指标；出现异常时，拥有专用回滚权限的人员从最新版本开始按发布时间逆序原子回滚。' }
               ]
             },
@@ -1026,7 +1025,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '权限与 rolloutStatus',
-              text: 'HOTFIX 申请需要 entity:ui-config:hotfix；REVIEW 复核需要 entity:ui-config:hotfix:review 且申请人不能自审；回滚需要 entity:ui-config:hotfix:rollback。发布历史同时展示观察状态和三类运行指标。'
+              text: 'HOTFIX 直接发布需要 entity:ui-config:hotfix；回滚需要 entity:ui-config:hotfix:rollback。发布历史同时展示观察状态和三类运行指标。'
             },
             {
               type: 'callout',
@@ -1090,7 +1089,7 @@ export default {
                 '所有服务、发送、接收、规则、脚本和子流程目标在目标环境存在。',
                 '排他/包容网关条件覆盖所有情况，默认流唯一，approved 使用审批项 value。',
                 '节点表单已保存、启用、模式权限正确；只读与隐藏叠加符合预期。',
-                '节点表单使用 STANDARD 时依赖流程已重新发布；使用 HOTFIX 时 SAFE/REVIEW、结构增删补丁、权限、原因、影响预检和原子生效均已验证。',
+                '节点表单使用 STANDARD 时依赖流程已重新发布；使用 HOTFIX 时 SAFE/REVIEW 风险提示、结构增删补丁、权限、影响预检、直接确认和原子生效均已验证。',
                 '当前可发起版本与运行中实例读取有效 HOTFIX，已完成和已终止实例仍读取原始钉定快照。',
                 '嵌套表单 releaseResolutionToken 不可伪造、会过期、绑定当前用户且超过 8 层被拒绝。',
                 '审批选项 label/value、备注显示与必填、所有出线条件保持一致。',

@@ -12,6 +12,18 @@ export const entityPublishHistoryApi = {
   },
 
   /**
+   * 分页获取实体版本历史，用于弹窗滚动加载。
+   */
+  getVersionHistoryPage(entityId, params = {}) {
+    return request.get(`/entity-publish-history/entity/${entityId}/page`, {
+      params: {
+        pageNum: params.pageNum ?? 1,
+        pageSize: params.pageSize ?? 5
+      }
+    })
+  },
+
+  /**
    * 获取实体的最新版本
    */
   getLatestVersion(entityId) {

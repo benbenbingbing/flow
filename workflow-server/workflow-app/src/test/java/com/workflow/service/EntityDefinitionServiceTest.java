@@ -460,7 +460,8 @@ public class EntityDefinitionServiceTest {
     /** 测试发布实体：验证发布后状态变为 PUBLISHED 并触发表结构同步与更新 */
     @Test
     void testPublish() {
-        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(testEntity));
         when(fieldMapper.findByEntityId("1")).thenReturn(List.of(testField));
         when(dynamicTableService.syncEntityTableStructure(any(EntityDefinition.class)))
                 .thenReturn(Collections.emptyList());
@@ -470,6 +471,8 @@ public class EntityDefinitionServiceTest {
 
         assertNotNull(result);
         assertEquals(EntityDefinition.Status.PUBLISHED, result.getStatus());
+        verify(entityMapper).findByIdForUpdate("1");
+        verify(entityMapper, never()).selectById("1");
         verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
     }
 
@@ -487,7 +490,8 @@ public class EntityDefinitionServiceTest {
         requiredItem.setItemName("项目章程");
         requiredItem.setRequired(true);
 
-        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(testEntity));
         when(fieldMapper.findByEntityId("1")).thenReturn(List.of(attachmentField));
         when(fileItemService.findByFieldId("file-1"))
                 .thenReturn(List.of(requiredItem));
@@ -518,7 +522,8 @@ public class EntityDefinitionServiceTest {
     /** 测试发布不存在的实体：验证抛出 RuntimeException 且消息包含对应 ID */
     @Test
     void testPublishNotFound() {
-        when(entityMapper.selectById("999")).thenReturn(null);
+        when(entityMapper.findByIdForUpdate("999"))
+                .thenReturn(Optional.empty());
 
         Exception exception = assertThrows(RuntimeException.class, () -> {
             entityService.publish("999", "user1", "测试用户");

@@ -11,6 +11,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 实体表单定义
@@ -123,6 +124,12 @@ public class EntityForm {
      */
     @TableField(exist = false)
     private List<EntityFormNode> nodes;
+
+    /**
+     * 当前运行时发布快照中的关联内容；草稿查询不会填充该字段。
+     */
+    @TableField(exist = false)
+    private List<Map<String, Object>> viewCompositions;
     
     /**
      * 实体信息（非数据库字段）

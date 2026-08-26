@@ -1,37 +1,52 @@
 package com.workflow.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
-import com.workflow.entity.ui.api.request.UiHotfixApplyRequest;
-import com.workflow.entity.ui.api.request.UiHotfixCancelRequest;
-import com.workflow.entity.ui.api.request.UiHotfixReviewRequest;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiHotfixGovernanceService;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixRequestMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixRequest;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** UI HOTFIX 双人复核、快照绑定和强制发布授权测试。 */
+/** UI HOTFIX 直接发布、观察窗口和回滚治理测试。 */
 class UiHotfixGovernanceServiceTest {
+
+    @BeforeAll
+    static void initializeMybatisMetadata() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""),
+                UiConfigHotfixRequest.class);
+    }
 
     @AfterEach
     void clearUser() {
@@ -39,82 +54,138 @@ class UiHotfixGovernanceServiceTest {
     }
 
     @Test
-    void reviewRiskApplicationWaitsForIndependentReviewer() {
+    void directPublishCreatesPublishingAuditRecordForReviewRisk() {
         TestContext context = context();
-        UserContext.setCurrentUser("applicant-1", "申请人");
-        when(context.mapper().insert(
-                any(UiConfigHotfixRequest.class)))
-                .thenAnswer(invocation -> {
-            UiConfigHotfixRequest record = invocation.getArgument(0);
-            record.setId("request-1");
-            return 1;
-        });
+        UserContext.setCurrentUser("publisher-1", "发布人");
+        assignInsertedId(context, "request-direct-1");
 
-        context.service().apply(preview("REVIEW", "draft-1"),
-                applyRequest());
+        String requestId = context.service().beginDirectPublish(
+                publishRequest("修复审批表单展示错误"),
+                preview("REVIEW", true));
 
         ArgumentCaptor<UiConfigHotfixRequest> captor =
                 ArgumentCaptor.forClass(UiConfigHotfixRequest.class);
         verify(context.mapper()).insert(captor.capture());
-        assertEquals("PENDING_REVIEW", captor.getValue().getStatus());
-        assertEquals(1, captor.getValue().getReviewRequired());
-        assertEquals("applicant-1", captor.getValue().getApplicantId());
+        UiConfigHotfixRequest record = captor.getValue();
+        assertEquals("request-direct-1", requestId);
+        assertEquals("PUBLISHING", record.getStatus());
+        assertEquals(0, record.getReviewRequired());
+        assertEquals("REVIEW", record.getRiskLevel());
+        assertEquals("修复审批表单展示错误", record.getReason());
+        assertEquals("", record.getTicketRef());
+        assertEquals("publisher-1", record.getApplicantId());
+        assertEquals("发布人", record.getApplicantName());
+        assertNull(record.getReviewerId());
+        assertNull(record.getReviewerName());
+        assertNull(record.getReviewComment());
+        assertNull(record.getReviewedAt());
+        assertNotNull(record.getImpactTokenHash());
+        assertEquals(record.getWindowStart().plusMinutes(1),
+                record.getWindowEnd());
+        verify(context.accessService()).requireHotfixAccess(false);
+        verify(context.accessService()).requireFormAccess("form-1");
     }
 
     @Test
-    void applicantCannotReviewOwnHighRiskApplication() {
-        TestContext context = context();
-        UserContext.setCurrentUser("applicant-1", "申请人");
-        UiConfigHotfixRequest record = approvedRecord("PENDING_REVIEW");
-        when(context.mapper().selectById("request-1"))
-                .thenReturn(record);
-        UiHotfixReviewRequest review = new UiHotfixReviewRequest();
-        review.setApproved(true);
-        review.setComment("同意发布");
+    void directPublishUsesDefaultAndColumnSafeReason() {
+        TestContext defaultContext = context();
+        UserContext.setCurrentUser("publisher-1", "发布人");
+        assignInsertedId(defaultContext, "request-default");
 
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
-                () -> context.service().review("request-1", review));
+        defaultContext.service().beginDirectPublish(
+                publishRequest("  "), preview("SAFE", true));
 
-        assertEquals("UI_HOTFIX_SELF_REVIEW_FORBIDDEN",
-                exception.getErrorCode());
+        ArgumentCaptor<UiConfigHotfixRequest> defaultCaptor =
+                ArgumentCaptor.forClass(UiConfigHotfixRequest.class);
+        verify(defaultContext.mapper()).insert(defaultCaptor.capture());
+        assertEquals("直接发布热修复", defaultCaptor.getValue().getReason());
+
+        TestContext longReasonContext = context();
+        assignInsertedId(longReasonContext, "request-long-reason");
+        longReasonContext.service().beginDirectPublish(
+                publishRequest("变".repeat(1001)),
+                preview("SAFE", true));
+
+        ArgumentCaptor<UiConfigHotfixRequest> longReasonCaptor =
+                ArgumentCaptor.forClass(UiConfigHotfixRequest.class);
+        verify(longReasonContext.mapper()).insert(longReasonCaptor.capture());
+        assertEquals(1000, longReasonCaptor.getValue().getReason().length());
     }
 
     @Test
-    void pendingReviewCannotBeBypassedByPublishRequest() {
+    void directPublishRetiresLegacyOpenSlotsBeforeInsert() {
         TestContext context = context();
         UserContext.setCurrentUser("publisher-1", "发布人");
-        UiConfigHotfixRequest record = approvedRecord("PENDING_REVIEW");
-        when(context.mapper().selectById("request-1"))
-                .thenReturn(record);
-        UiConfigPublishRequest request = publishRequest();
+        assignInsertedId(context, "request-direct-1");
+
+        context.service().beginDirectPublish(
+                publishRequest("直接发布"), preview("SAFE", true));
+
+        InOrder order = inOrder(context.mapper());
+        ArgumentCaptor<LambdaUpdateWrapper<UiConfigHotfixRequest>> captor =
+                updateWrapperCaptor();
+        order.verify(context.mapper()).update(isNull(), captor.capture());
+        order.verify(context.mapper()).insert(
+                any(UiConfigHotfixRequest.class));
+        Map<String, Object> parameters = renderParameters(captor.getValue());
+        assertTrue(parameters.containsValue("PENDING_REVIEW"));
+        assertTrue(parameters.containsValue("APPROVED"));
+        assertTrue(parameters.containsValue("CANCELLED"));
+        assertFalse(parameters.containsValue("PUBLISHING"));
+        assertTrue(captor.getValue().getSqlSegment()
+                .contains("release_id IS NULL"));
+    }
+
+    @Test
+    void directPublishDoesNotStealExistingPublishingSlot() {
+        TestContext context = context();
+        UserContext.setCurrentUser("publisher-1", "发布人");
+        when(context.mapper().insert(any(UiConfigHotfixRequest.class)))
+                .thenThrow(new DuplicateKeyException("open slot"));
 
         BusinessConflictException exception = assertThrows(
                 BusinessConflictException.class,
-                () -> context.service().beginPublish(
-                        request,
-                        preview("REVIEW", "draft-1")));
+                () -> context.service().beginDirectPublish(
+                        publishRequest("直接发布"),
+                        preview("REVIEW", true)));
 
-        assertEquals("UI_HOTFIX_APPROVAL_REQUIRED",
+        assertEquals("UI_HOTFIX_PUBLISH_STATE_CONFLICT",
                 exception.getErrorCode());
     }
 
     @Test
-    void approvedSnapshotDriftInvalidatesAuthorization() {
+    void blockedPreviewCannotCreatePublishingRecord() {
         TestContext context = context();
         UserContext.setCurrentUser("publisher-1", "发布人");
-        UiConfigHotfixRequest record = approvedRecord("APPROVED");
-        when(context.mapper().selectById("request-1"))
-                .thenReturn(record);
 
         BusinessConflictException exception = assertThrows(
                 BusinessConflictException.class,
-                () -> context.service().beginPublish(
-                        publishRequest(),
-                        preview("REVIEW", "draft-2")));
+                () -> context.service().beginDirectPublish(
+                        publishRequest("直接发布"),
+                        preview("BLOCKED", false)));
 
-        assertEquals("UI_HOTFIX_APPROVAL_STALE",
+        assertEquals("UI_HOTFIX_PREVIEW_BLOCKED",
                 exception.getErrorCode());
+        verify(context.mapper(), never()).insert(
+                any(UiConfigHotfixRequest.class));
+    }
+
+    @Test
+    void markPublishedMovesPublishingRecordIntoObservation() {
+        TestContext context = context();
+        when(context.mapper().update(isNull(), any()))
+                .thenReturn(1);
+
+        context.service().markPublished("request-direct-1", "release-2");
+
+        ArgumentCaptor<LambdaUpdateWrapper<UiConfigHotfixRequest>> captor =
+                updateWrapperCaptor();
+        verify(context.mapper()).update(isNull(), captor.capture());
+        Map<String, Object> parameters = renderParameters(captor.getValue());
+        assertTrue(parameters.containsValue("request-direct-1"));
+        assertTrue(parameters.containsValue("PUBLISHING"));
+        assertTrue(parameters.containsValue("OBSERVING"));
+        assertTrue(parameters.containsValue("release-2"));
     }
 
     @Test
@@ -127,24 +198,6 @@ class UiHotfixGovernanceServiceTest {
                 () -> context.service().authorizeRollback(
                         "release-hotfix-1", " "));
         verify(context.accessService()).requireHotfixRollbackAccess();
-    }
-
-    @Test
-    void onlyApplicantCanCancelOpenApplication() {
-        TestContext context = context();
-        UserContext.setCurrentUser("other-user", "其他管理员");
-        UiConfigHotfixRequest record = approvedRecord("APPROVED");
-        when(context.mapper().selectById("request-1"))
-                .thenReturn(record);
-        UiHotfixCancelRequest request = new UiHotfixCancelRequest();
-        request.setReason("草稿已变化");
-
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
-                () -> context.service().cancel("request-1", request));
-
-        assertEquals("UI_HOTFIX_CANCEL_APPLICANT_REQUIRED",
-                exception.getErrorCode());
     }
 
     private TestContext context() {
@@ -162,78 +215,57 @@ class UiHotfixGovernanceServiceTest {
                 accessService);
     }
 
-    private UiHotfixApplyRequest applyRequest() {
-        UiHotfixApplyRequest request = new UiHotfixApplyRequest();
-        request.setConfigType("FORM");
-        request.setConfigId("form-1");
-        request.setExpectedDraftHash("draft-1");
-        request.setExpectedActiveReleaseId("release-base-1");
-        request.setImpactToken("impact-token-1");
-        request.setReason("修复审批表单展示错误");
-        request.setTicketRef("INC-1001");
-        request.setWindowStart(LocalDateTime.now().minusMinutes(1));
-        request.setWindowEnd(LocalDateTime.now().plusMinutes(30));
-        return request;
+    private void assignInsertedId(TestContext context, String id) {
+        when(context.mapper().insert(any(UiConfigHotfixRequest.class)))
+                .thenAnswer(invocation -> {
+                    UiConfigHotfixRequest record = invocation.getArgument(0);
+                    record.setId(id);
+                    return 1;
+                });
     }
 
-    private UiConfigPublishRequest publishRequest() {
+    private UiConfigPublishRequest publishRequest(String description) {
         UiConfigPublishRequest request = new UiConfigPublishRequest();
         request.setReleaseMode("HOTFIX");
-        request.setHotfixRequestId("request-1");
+        request.setDescription(description);
         return request;
     }
 
     private UiConfigPublishPreviewDTO preview(
             String riskLevel,
-            String draftHash) {
+            boolean canPublish) {
         return UiConfigPublishPreviewDTO.builder()
                 .configType("FORM")
                 .configId("form-1")
                 .releaseMode("HOTFIX")
                 .rolloutScope("ACTIVE_AND_FUTURE")
-                .draftHash(draftHash)
+                .draftHash("draft-1")
                 .activeReleaseId("release-base-1")
                 .activeVersion(1)
                 .targetHash("target-hash-1")
                 .impactToken("impact-token-1")
                 .riskLevel(riskLevel)
                 .changed(true)
-                .canPublish(true)
+                .canPublish(canPublish)
                 .changedItems(List.of())
                 .riskItems(List.of())
                 .targets(List.of())
-                .blockers(List.of())
+                .blockers(canPublish ? List.of() : List.of("预检未通过"))
                 .build();
     }
 
-    private UiConfigHotfixRequest approvedRecord(String status) {
-        UiConfigHotfixRequest record = new UiConfigHotfixRequest();
-        record.setId("request-1");
-        record.setConfigType("FORM");
-        record.setConfigId("form-1");
-        record.setDraftHash("draft-1");
-        record.setActiveReleaseId("release-base-1");
-        record.setTargetHash("target-hash-1");
-        record.setImpactTokenHash(sha256("impact-token-1"));
-        record.setRiskLevel("REVIEW");
-        record.setApplicantId("applicant-1");
-        record.setReviewRequired(1);
-        record.setReviewerId("reviewer-1");
-        record.setStatus(status);
-        record.setWindowStart(LocalDateTime.now().minusMinutes(1));
-        record.setWindowEnd(LocalDateTime.now().plusMinutes(30));
-        record.setImpactDocument("{}");
-        return record;
+    private Map<String, Object> renderParameters(
+            LambdaUpdateWrapper<UiConfigHotfixRequest> wrapper) {
+        wrapper.getSqlSet();
+        wrapper.getSqlSegment();
+        return wrapper.getParamNameValuePairs();
     }
 
-    private String sha256(String value) {
-        try {
-            return java.util.HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256")
-                            .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception exception) {
-            throw new IllegalStateException(exception);
-        }
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private ArgumentCaptor<LambdaUpdateWrapper<UiConfigHotfixRequest>>
+            updateWrapperCaptor() {
+        return (ArgumentCaptor) ArgumentCaptor.forClass(
+                LambdaUpdateWrapper.class);
     }
 
     private record TestContext(

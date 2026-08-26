@@ -567,6 +567,7 @@ const openEdit = async (row: any, options: any = {}) => {
   activeForm.value = options?.form || null
   isEdit.value = true
   launchRuntimeContext.value = {
+    ...(options?.context || {}),
     initializationKey: `edit:${row?.id || 'record'}:${++launchSequence}`
   }
   formData.startProcess = false
@@ -657,6 +658,9 @@ const handleSubmit = async (startProcess = false) => {
       formReleaseVersion: formReleaseContext.value.releaseVersion,
       formReleaseResolutionToken:
         formReleaseContext.value.releaseResolutionToken,
+      viewCompositionActionContextToken:
+        launchRuntimeContext.value?.viewCompositionActionContextToken
+        || undefined,
       id: formData.id,
       name: submittedData?.name || formData.name,
       data: submittedData,
@@ -674,6 +678,9 @@ const handleSubmit = async (startProcess = false) => {
           formReleaseVersion: formReleaseContext.value.releaseVersion,
           formReleaseResolutionToken:
             formReleaseContext.value.releaseResolutionToken,
+          viewCompositionActionContextToken:
+            launchRuntimeContext.value?.viewCompositionActionContextToken
+            || undefined,
           startProcess: formData.startProcess
         },
         formData.startProcess,

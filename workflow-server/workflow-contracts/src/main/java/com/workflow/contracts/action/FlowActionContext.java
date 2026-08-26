@@ -95,6 +95,12 @@ public class FlowActionContext {
     private String endReason;
     /** 幂等键，防止同一动作重复执行 */
     private String idempotencyKey;
+    /** 当前动作所属的精确流程发布版本 ID */
+    private String processVersionId;
+    /** 当前动作执行方式：IN_TRANSACTION 或 AFTER_COMMIT */
+    private String executionMode;
+    /** 当前动作失败策略 */
+    private String failurePolicy;
     /** 触发时的流程变量快照 */
     private Map<String, Object> variablesSnapshot;
 

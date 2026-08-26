@@ -42,6 +42,8 @@ public class EntityVersionConfigurationValidator {
     private static final int MAX_ROWS_PER_RELATION = 500;
     private static final int MAX_ROWS_PER_VERSION = 2000;
     private static final long MAX_BYTES_PER_VERSION = 5L * 1024L * 1024L;
+    private static final int MAX_SCOPE_DEPTH = 8;
+    private static final int MAX_SCOPE_NODES = 64;
     private static final int MAX_CONDITION_DEPTH = 16;
 
     private final EntityDefinitionMapper definitionMapper;
@@ -87,6 +89,9 @@ public class EntityVersionConfigurationValidator {
         Set<String> triggerCodes = new HashSet<>();
         Set<Integer> priorities = new HashSet<>();
         Set<String> scopedRelations = new HashSet<>();
+        Set<String> scopedNodes = new HashSet<>();
+        Map<String, EntityVersionConfiguration.RelationScope> scopeByNode =
+                new java.util.LinkedHashMap<>();
         EntityVersionConfiguration.SnapshotScope scope =
                 document.getSnapshotScope();
         if (scope == null || scope.getRoot() == null) {
@@ -101,10 +106,14 @@ public class EntityVersionConfigurationValidator {
             if (!StringUtils.hasText(relation.getRelationCode())) {
                 throw new IllegalArgumentException("关系固化范围必须选择关系编码");
             }
-            if (!scopedRelations.add(relation.getRelationCode())) {
+            scopedRelations.add(relation.getRelationCode());
+            String nodeCode = effectiveNodeCode(relation);
+            if ("ROOT".equalsIgnoreCase(nodeCode)
+                    || !scopedNodes.add(nodeCode)) {
                 throw new IllegalArgumentException(
-                        "关系在固化范围中重复: " + relation.getRelationCode());
+                        "关系固化范围节点编码重复或保留: " + nodeCode);
             }
+            scopeByNode.put(nodeCode, relation);
             validateNode(relation, "关系 " + relation.getRelationCode());
             int maxRows = value(relation.getMaxRows(), MAX_ROWS_PER_RELATION);
             if (maxRows < 1 || maxRows > MAX_ROWS_PER_RELATION) {
@@ -114,6 +123,7 @@ public class EntityVersionConfigurationValidator {
             }
             validateFilter(relation);
         }
+        validateScopeTree(scopeByNode, scope.getLimits());
         validateLimits(scope.getLimits());
         for (EntityVersionConfiguration.CaptureTrigger trigger : triggers) {
             normalizeTrigger(trigger);
@@ -136,7 +146,8 @@ public class EntityVersionConfigurationValidator {
                                 + trigger.getPriority());
             }
             if ("RELATED_MUTATION".equals(trigger.getTriggerType())
-                    && !scopedRelations.contains(trigger.getRelationCode())) {
+                    && !scopedRelations.contains(trigger.getRelationCode())
+                    && !scopedNodes.contains(trigger.getRelationCode())) {
                 throw new IllegalArgumentException(
                         "子实体变化触发器必须引用已纳入范围的关系: "
                                 + trigger.getRelationCode());
@@ -306,9 +317,115 @@ public class EntityVersionConfigurationValidator {
         if (bytes < 1 || bytes > MAX_BYTES_PER_VERSION) {
             throw new IllegalArgumentException("整版大小上限不能超过5MiB");
         }
+        if (value(value.getMaxDepth(), MAX_SCOPE_DEPTH) < 1
+                || value(value.getMaxDepth(), MAX_SCOPE_DEPTH)
+                        > MAX_SCOPE_DEPTH) {
+            throw new IllegalArgumentException("固化范围深度必须在1-8之间");
+        }
+        if (value(value.getMaxScopeNodes(), MAX_SCOPE_NODES) < 1
+                || value(value.getMaxScopeNodes(), MAX_SCOPE_NODES)
+                        > MAX_SCOPE_NODES) {
+            throw new IllegalArgumentException("固化范围节点数必须在1-64之间");
+        }
         if (!"FAIL".equals(upper(value.getOverflowPolicy()))) {
             throw new IllegalArgumentException("V2范围超限策略只允许FAIL，禁止静默截断");
         }
+    }
+
+    /**
+     * 校验内部树形 scope。旧一层配置未提供 parentNodeCode 时自动视为 ROOT，
+     * 因而不会改变既有发布行为。
+     */
+    private void validateScopeTree(
+            Map<String, EntityVersionConfiguration.RelationScope> scopes,
+            EntityVersionConfiguration.ScopeLimits limits) {
+        int nodeLimit = value(limits == null
+                ? null : limits.getMaxScopeNodes(), MAX_SCOPE_NODES);
+        if (scopes.size() > nodeLimit) {
+            throw new IllegalArgumentException(
+                    "固化范围节点数 " + scopes.size()
+                            + " 超过上限 " + nodeLimit);
+        }
+        int depthLimit = value(limits == null
+                ? null : limits.getMaxDepth(), MAX_SCOPE_DEPTH);
+        Map<String, Integer> depths = new java.util.HashMap<>();
+        for (Map.Entry<String,
+                EntityVersionConfiguration.RelationScope> entry
+                : scopes.entrySet()) {
+            int depth = scopeDepth(
+                    entry.getKey(), scopes, depths, new HashSet<>());
+            if (depth > depthLimit) {
+                throw new IllegalArgumentException(
+                        "固化范围路径深度 " + depth
+                                + " 超过上限 " + depthLimit
+                                + ": " + entry.getKey());
+            }
+            EntityVersionConfiguration.RelationScope relation =
+                    entry.getValue();
+            if (relation.getRelationPath() != null
+                    && !relation.getRelationPath().isEmpty()) {
+                if (relation.getDepth() == null
+                        || !relation.getDepth().equals(depth)) {
+                    throw new IllegalArgumentException(
+                            "固化范围节点层级与父路径不一致: " + entry.getKey());
+                }
+                if (relation.getRelationPath().size() != depth
+                        || !entry.getKey().equals(
+                                relation.getRelationPath()
+                                        .get(depth - 1).getNodeCode())) {
+                    throw new IllegalArgumentException(
+                            "固化范围冻结路径不完整: " + entry.getKey());
+                }
+                if (!StringUtils.hasText(
+                        relation.getRelationDefinitionHash())
+                        || !StringUtils.hasText(
+                                relation.getEntitySchemaHash())) {
+                    throw new IllegalArgumentException(
+                            "固化范围冻结路径缺少发布指纹: " + entry.getKey());
+                }
+            }
+        }
+    }
+
+    private int scopeDepth(
+            String nodeCode,
+            Map<String, EntityVersionConfiguration.RelationScope> scopes,
+            Map<String, Integer> memo,
+            Set<String> visiting) {
+        Integer cached = memo.get(nodeCode);
+        if (cached != null) {
+            return cached;
+        }
+        if (!visiting.add(nodeCode)) {
+            throw new IllegalArgumentException(
+                    "固化范围存在节点环: " + nodeCode);
+        }
+        EntityVersionConfiguration.RelationScope relation = scopes.get(nodeCode);
+        String parent = relation == null
+                ? null : normalizedParent(relation.getParentNodeCode());
+        int depth;
+        if ("ROOT".equals(parent)) {
+            depth = 1;
+        } else if (!scopes.containsKey(parent)) {
+            throw new IllegalArgumentException(
+                    "固化范围父节点不存在: " + nodeCode + " -> " + parent);
+        } else {
+            depth = scopeDepth(parent, scopes, memo, visiting) + 1;
+        }
+        visiting.remove(nodeCode);
+        memo.put(nodeCode, depth);
+        return depth;
+    }
+
+    private String effectiveNodeCode(
+            EntityVersionConfiguration.RelationScope relation) {
+        return StringUtils.hasText(relation.getNodeCode())
+                ? relation.getNodeCode().trim()
+                : "REL_" + relation.getRelationCode();
+    }
+
+    private String normalizedParent(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "ROOT";
     }
 
     private void normalizeTrigger(

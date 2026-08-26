@@ -39,14 +39,17 @@ public class EntityListRuntimeController {
             @RequestParam(required = false) String releaseId,
             @RequestParam(required = false) Integer releaseVersion,
             @RequestParam(required = false)
-            String releaseResolutionToken) {
+            String releaseResolutionToken,
+            @RequestParam(required = false)
+            String viewCompositionContextToken) {
         return Result.success(runtimeService.schema(
                 entityCode,
                 listKey,
                 scene,
                 releaseId,
                 releaseVersion,
-                releaseResolutionToken));
+                releaseResolutionToken,
+                viewCompositionContextToken));
     }
 
     /**

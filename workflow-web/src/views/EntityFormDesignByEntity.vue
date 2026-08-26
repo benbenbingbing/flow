@@ -37,6 +37,18 @@
         >
           <el-icon><View /></el-icon>预览
         </el-button>
+        <el-badge
+          :value="relatedContentCount"
+          :hidden="relatedContentCount === 0"
+          class="related-content-entry"
+        >
+          <el-button
+            :disabled="!form.id || initializing"
+            @click="openRelatedContent"
+          >
+            <el-icon><Connection /></el-icon>关联内容
+          </el-button>
+        </el-badge>
         <el-button @click="showReleaseHistory">版本</el-button>
         <el-button
           type="success"
@@ -480,7 +492,7 @@
                   label="最大长度"
                 >
                   <el-input-number
-                    :model-value="selectedValidationConfig.maxLength"
+                    :model-value="selectedValidationMaxLength"
                     :min="0"
                     :max="20000"
                     @update:model-value="updateValidationConfig('maxLength', $event)"
@@ -538,13 +550,51 @@
                       content="输入 JavaScript/Java 通用的正则表达式本体，不要添加 / 包裹。需要校验完整内容时请使用 ^ 和 $；与“格式”同时配置时必须全部通过。"
                     />
                   </template>
-                  <el-input
-                    :model-value="selectedValidationConfig.pattern || ''"
-                    clearable
-                    :maxlength="500"
-                    placeholder="例如：^[A-Z][A-Z0-9_]*$"
-                    @update:model-value="updateValidationConfig('pattern', $event)"
-                  />
+                  <div class="regex-validation-editor">
+                    <div class="regex-pattern-row">
+                      <el-input
+                        :model-value="selectedValidationConfig.pattern || ''"
+                        clearable
+                        :maxlength="500"
+                        placeholder="例如：^[A-Z][A-Z0-9_]*$"
+                        @update:model-value="updateValidationConfig('pattern', $event)"
+                      />
+                      <el-button
+                        type="primary"
+                        link
+                        :aria-expanded="regexTestVisible"
+                        @click="toggleRegexTest"
+                      >
+                        test
+                      </el-button>
+                    </div>
+                    <div v-if="regexTestVisible" class="regex-test-row">
+                      <el-input
+                        v-model="regexTestValue"
+                        clearable
+                        :disabled="isRegexTestInputDisabled"
+                        placeholder="输入测试文本"
+                        @update:model-value="regexTestTouched = true"
+                      />
+                      <el-icon
+                        v-if="regexTestResult !== null"
+                        :class="[
+                          'regex-test-result',
+                          regexTestResult ? 'is-match' : 'is-mismatch'
+                        ]"
+                        :title="regexTestResult ? '匹配成功' : '不匹配'"
+                      >
+                        <CircleCheck v-if="regexTestResult" />
+                        <CircleClose v-else />
+                      </el-icon>
+                    </div>
+                    <div
+                      v-if="regexTestVisible && isRegexTestInputDisabled"
+                      class="regex-test-hint"
+                    >
+                      请先输入有效的正则表达式
+                    </div>
+                  </div>
                 </el-form-item>
               </SettingsSection>
 
@@ -907,6 +957,17 @@
       @changed="handleReleaseChanged"
     />
     <RuntimeCodeViewerDialog ref="runtimeCodeDialogRef" />
+    <RelatedContentPanel
+      ref="relatedContentPanelRef"
+      owner-type="FORM"
+      :owner-id="form.id || ''"
+      :source-entity="entityInfo"
+      :source-fields="entityFields"
+      :source-content-fields="formFields"
+      :anchor-options="relatedContentAnchorOptions"
+      @count-change="relatedContentCount = $event"
+      @changed="handleRelatedContentChanged"
+    />
 
   </div>
 </template>
@@ -915,7 +976,7 @@
 import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank, Setting, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
@@ -934,6 +995,7 @@ import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerS
 import FormCustomRendererWorkspace from '@/components/form-designer/FormCustomRendererWorkspace.vue'
 import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
+import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
@@ -992,6 +1054,7 @@ import {
 } from '@/shared/form-field-extension'
 import {
   getRuntimeRegexPatternError,
+  resolveVarcharFieldLength,
   safeParseConfig,
   stringifyConfig
 } from '@/shared/config-runtime'
@@ -1082,6 +1145,8 @@ const eventBindingDialogRef = ref(null)
 const selectionMappingDialogRef = ref(null)
 const releaseHistoryDialogRef = ref(null)
 const runtimeCodeDialogRef = ref(null)
+const relatedContentPanelRef = ref(null)
+const relatedContentCount = ref(0)
 const runtimeCodeLoading = ref(false)
 const currentEventField = ref(null)
 const activeNodeSettingsTab = ref('basic')
@@ -1113,6 +1178,13 @@ const designChildrenMap = computed(() => {
   return result
 })
 const rootDesignNodes = computed(() => designChildrenFor(''))
+const relatedContentAnchorOptions = computed(() => formFields.value
+  .filter(node => node?.id || node?.nodeKey)
+  .map(node => ({
+    value: String(node.id || node.nodeKey),
+    label: `${nodeLabel(node)}（${formNodeTypeLabel(node.nodeType || legacyNodeType(node))}之后）`,
+    nodeType: String(node.nodeType || legacyNodeType(node) || '').toUpperCase()
+  })))
 const componentTemplates = ref([])
 const formFieldComponentOptions = getFormFieldComponentOptions()
 const localCustomFormOptions = getCustomFormComponentOptions()
@@ -1214,6 +1286,10 @@ watch(isSystemEntity, value => {
 const entityFields = ref([])
 const formFields = ref([])
 const selectedField = ref(null)
+const regexTestVisible = ref(false)
+const regexTestValue = ref('')
+const regexTestTouched = ref(false)
+watch(() => selectedField.value?.id, resetRegexTest)
 const fieldSearch = ref('')
 const entityNameById = ref({})
 const entityCodeById = ref({})
@@ -1340,6 +1416,18 @@ function openFormSettings(tab = 'basic', behaviorTab = '') {
     activeFormBehaviorTab.value = behaviorTab
   }
   showFormSettings.value = true
+}
+
+function openRelatedContent() {
+  relatedContentPanelRef.value?.open()
+}
+
+async function handleRelatedContentChanged(event) {
+  // 关联内容属于当前表单草稿；刷新差异后，发布与撤销入口才能立即反映最新状态。
+  if (Number.isInteger(Number(event?.ownerRevision))) {
+    form.value.revision = Number(event.ownerRevision)
+  }
+  await loadDiff()
 }
 
 /**
@@ -1583,6 +1671,19 @@ const selectedParentHelp = computed(() => {
 const selectedValidationConfig = computed(() =>
   safeParseConfig(selectedField.value?.validationRules)
 )
+const selectedValidationMaxLength = computed(() => {
+  const configuredMaxLength = selectedValidationConfig.value.maxLength
+  if (configuredMaxLength !== undefined
+      && configuredMaxLength !== null
+      && configuredMaxLength !== '') {
+    return configuredMaxLength
+  }
+
+  // 数据库列长度只用于面板初始展示，不能写入 validationRules 固化为表单规则。
+  const entityField = entityFieldForFormField(selectedField.value)
+  return resolveVarcharFieldLength(entityField)
+    ?? resolveVarcharFieldLength(selectedField.value)
+})
 const selectedValidationCapabilities = computed(() =>
   getFormFieldValidationCapabilities(selectedField.value?.fieldType)
 )
@@ -1598,6 +1699,20 @@ const selectedValidationRuleCount = computed(() =>
 const selectedPatternError = computed(() =>
   getRuntimeRegexPatternError(selectedValidationConfig.value.pattern)
 )
+const isRegexTestInputDisabled = computed(() =>
+  !selectedValidationConfig.value.pattern || Boolean(selectedPatternError.value)
+)
+const regexTestResult = computed(() => {
+  if (!regexTestTouched.value || isRegexTestInputDisabled.value) return null
+  try {
+    // 与表单运行时保持相同的 JavaScript 正则语义，避免设计器测试结果与实际校验不一致。
+    const pattern = new RegExp(selectedValidationConfig.value.pattern)
+    pattern.lastIndex = 0
+    return pattern.test(String(regexTestValue.value ?? ''))
+  } catch {
+    return null
+  }
+})
 const canConfigureSelectedNodeDataSource = computed(() =>
   selectedNodePropertySchema.value.dataSourceUsages.length > 0
 )
@@ -3291,7 +3406,12 @@ function addField(entityField) {
     isReadonly: isSystemEntity.value ? 1 : 0,
     isHidden: 0,
     validationRules: '',
-    extensionConfig: '',
+    // 显式保存审批默认只读，保证设计器、运行时与后端提交校验使用同一权限语义。
+    extensionConfig: stringifyConfig({
+      modes: {
+        approve: { editable: false }
+      }
+    }),
     gridSpan: 24,
     sortOrder: placement.sortOrder
   }
@@ -3825,6 +3945,19 @@ function updateValidationConfig(key, value) {
       }
     )
   )
+}
+
+/**
+ * 切换纯前端的正则测试区域；测试文本和结果不写入 validationRules，保存节点时不会持久化。
+ */
+function toggleRegexTest() {
+  regexTestVisible.value = !regexTestVisible.value
+}
+
+function resetRegexTest() {
+  regexTestVisible.value = false
+  regexTestValue.value = ''
+  regexTestTouched.value = false
 }
 
 function validateNodeValidationRules(field) {
@@ -4596,6 +4729,10 @@ onMounted(async () => {
   background-color: #f5f7fa;
 }
 
+.related-content-entry {
+  display: inline-flex;
+}
+
 .system-config-alert {
   flex: 0 0 auto;
   margin: 12px 16px 0;
@@ -4744,6 +4881,48 @@ onMounted(async () => {
   color: #606266;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.regex-validation-editor {
+  width: 100%;
+}
+
+.regex-pattern-row,
+.regex-test-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.regex-test-row {
+  margin-top: 8px;
+}
+
+.regex-pattern-row :deep(.el-input),
+.regex-test-row :deep(.el-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.regex-test-result {
+  flex: 0 0 20px;
+  font-size: 20px;
+}
+
+.regex-test-result.is-match {
+  color: var(--el-color-success);
+}
+
+.regex-test-result.is-mismatch {
+  color: var(--el-color-danger);
+}
+
+.regex-test-hint {
+  margin-top: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .field-info {

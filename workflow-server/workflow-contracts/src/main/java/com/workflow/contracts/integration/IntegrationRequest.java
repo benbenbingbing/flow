@@ -20,6 +20,11 @@ public class IntegrationRequest {
     String operation;
     /** 管理端创建的连接器配置 ID */
     String connectorConfigId;
+    /**
+     * 宿主发布时固定的连接器配置快照；为空时仅允许非钉版调试链路
+     * 按 connectorConfigId 读取当前配置。
+     */
+    IntegrationConnectorConfigurationSnapshot configurationSnapshot;
     /** 调用参数 */
     Map<String, Object> parameters;
     /** 运行时上下文（来源、配置、用户、租户等） */

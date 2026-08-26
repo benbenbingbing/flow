@@ -319,8 +319,9 @@ const handleKeydown = (e) => {
 }
 
 const onElementClick = (element) => {
-  selectedElement.value = element
-  openNodeConfig()
+  selectedElement.value = element || null
+  // 数据对象、参与者等建模元素没有平台属性面板，点击后应同步关闭旧节点配置。
+  nodeConfigVisible.value = Boolean(element)
 }
 
 const openNodeConfig = () => {

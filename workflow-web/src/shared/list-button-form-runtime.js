@@ -24,6 +24,10 @@ export function normalizeRuntimeFormRelease(
       ? snapshot.legacyFields
       : [],
     nodes: Array.isArray(snapshot.nodes) ? snapshot.nodes : [],
+    // 关联内容与字段、节点同属不可变发布快照；遗漏会导致固定目标表单运行时静默丢失入口。
+    viewCompositions: Array.isArray(snapshot.viewCompositions)
+      ? snapshot.viewCompositions
+      : [],
     runtimeReleaseId: release.id,
     runtimeReleaseVersion: release.version,
     effectiveReleaseId: release.effectiveReleaseId || release.id,

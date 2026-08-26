@@ -8,7 +8,9 @@ export const entityListRuntimeApi = {
         releaseId: release.releaseId || undefined,
         releaseVersion: release.releaseVersion ?? undefined,
         releaseResolutionToken:
-          release.releaseResolutionToken || undefined
+          release.releaseResolutionToken || undefined,
+        viewCompositionContextToken:
+          release.viewCompositionContextToken || undefined
       }
     })
   },

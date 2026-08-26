@@ -455,6 +455,7 @@ public class ConfigMigrationPackageCodec {
         Set<String> extensionKeys = new LinkedHashSet<>();
         collectValuesForKeys(selected, Set.of(
                 "customComponent", "renderComponent", "componentName"), extensionKeys);
+        collectViewComponentKeys(selected, extensionKeys);
         if (sections.contains("extensions")) {
             copyIfPresent(source, selected, "extensions");
         } else if (!extensionKeys.isEmpty()) {
@@ -493,6 +494,27 @@ public class ConfigMigrationPackageCodec {
             } catch (Exception ignored) {
                 // Plain text configuration is not a structured reference document.
             }
+        }
+    }
+
+    /** 收集关联内容 specialHandling.customComponent.name 形式的组件引用。 */
+    private void collectViewComponentKeys(
+            Object value,
+            Set<String> result) {
+        if (value instanceof Map<?, ?> map) {
+            Object component = map.get("customComponent");
+            if (component instanceof Map<?, ?> componentMap) {
+                Object name = componentMap.get("name");
+                if (name instanceof String text
+                        && StringUtils.hasText(text)) {
+                    result.add(text);
+                }
+            }
+            map.values().forEach(child ->
+                    collectViewComponentKeys(child, result));
+        } else if (value instanceof Collection<?> collection) {
+            collection.forEach(child ->
+                    collectViewComponentKeys(child, result));
         }
     }
 
@@ -549,6 +571,16 @@ public class ConfigMigrationPackageCodec {
             return false;
         }
         if (value instanceof Map<?, ?> map) {
+            int versionSeparator = key.lastIndexOf('@');
+            if (versionSeparator > 0
+                    && map.get("name") != null
+                    && map.get("version") != null
+                    && key.substring(0, versionSeparator).equals(
+                            String.valueOf(map.get("name")))
+                    && key.substring(versionSeparator + 1).equals(
+                            String.valueOf(map.get("version")))) {
+                return true;
+            }
             return map.values().stream().anyMatch(child -> containsReference(child, key));
         }
         if (value instanceof Collection<?> collection) {

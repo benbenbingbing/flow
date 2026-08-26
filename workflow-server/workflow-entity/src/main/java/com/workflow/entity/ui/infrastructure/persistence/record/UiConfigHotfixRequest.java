@@ -8,7 +8,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/** 受控 UI HOTFIX 申请持久化记录。 */
+/** UI HOTFIX 发布审计、观察与回滚持久化记录；复核字段仅供历史兼容。 */
 @Data
 @TableName("ui_config_hotfix_request")
 public class UiConfigHotfixRequest {

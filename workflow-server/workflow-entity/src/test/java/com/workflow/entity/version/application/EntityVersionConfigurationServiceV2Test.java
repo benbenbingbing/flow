@@ -266,6 +266,34 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
+    void readsOldOneLayerV2JsonWithoutTreeFields() {
+        config.setActiveReleaseId("old-v2-release");
+        EntityVersionConfigRelease release = new EntityVersionConfigRelease();
+        release.setId("old-v2-release");
+        release.setConfigId("config-1");
+        release.setVersion(4);
+        release.setContractVersion(2);
+        release.setConfigDocument("""
+                {"enabled":true,"snapshotScope":{"root":{},"relations":[
+                  {"nodeCode":"REL_LINES","relationCode":"asset_lines",
+                   "childEntityCode":"asset_line","enabled":true}
+                ]}}
+                """);
+        when(releaseMapper.selectById("old-v2-release"))
+                .thenReturn(release);
+
+        EntityVersionConfiguration published = service.getPublished("asset")
+                .orElseThrow();
+        EntityVersionConfiguration.RelationScope relation = published
+                .getSnapshotScope().getRelations().get(0);
+
+        assertEquals("asset", published.getEntityCode());
+        assertEquals("ROOT", relation.getParentNodeCode());
+        assertEquals(1, relation.getDepth());
+        assertTrue(relation.getRelationPath().isEmpty());
+    }
+
+    @Test
     void releaseHistoryUsesServerSidePagination() {
         EntityVersionConfigRelease release = new EntityVersionConfigRelease();
         release.setId("release-1");

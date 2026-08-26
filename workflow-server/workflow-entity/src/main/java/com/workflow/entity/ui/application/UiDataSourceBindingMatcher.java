@@ -73,6 +73,17 @@ public class UiDataSourceBindingMatcher {
         if (StringUtils.hasText(eventPath)) {
             return eventPath;
         }
+        String compositionPath = findViewComposition(
+                mapList(snapshot.get("viewCompositions")),
+                usage,
+                targetType,
+                targetKey,
+                sourceId,
+                operationCode,
+                "$.release.viewCompositions");
+        if (StringUtils.hasText(compositionPath)) {
+            return compositionPath;
+        }
         if ("FORM".equals(configType)) {
             List<Map<String, Object>> owners = new ArrayList<>();
             addMap(owners, snapshot.get("form"));
@@ -97,6 +108,89 @@ public class UiDataSourceBindingMatcher {
                 sourceId,
                 operationCode,
                 "$.release.list");
+    }
+
+    /**
+     * 查找关联内容中特殊处理的精确接口操作绑定。
+     *
+     * <p>关联内容不是表单字段或列表列，必须同时匹配固定 usage、
+     * COMPOSITION 目标类型和 compositionKey，避免同一页面其它接口服务
+     * 被借用执行。</p>
+     */
+    private String findViewComposition(
+            List<Map<String, Object>> compositions,
+            String usage,
+            String targetType,
+            String targetKey,
+            String sourceId,
+            String operationCode,
+            String basePath) {
+        String normalizedUsage = normalize(usage);
+        boolean resolve = UiDataSourceUsages.RELATED_CONTENT_RESOLVE.equals(
+                normalizedUsage);
+        boolean action = UiDataSourceUsages.RELATED_CONTENT_ACTION.equals(
+                normalizedUsage);
+        if ((!resolve && !action) || !StringUtils.hasText(targetKey)
+                || resolve && !"COMPOSITION".equals(normalize(targetType))
+                || action && !"COMPOSITION_ACTION".equals(
+                normalize(targetType))) {
+            return null;
+        }
+        String compositionKey = resolve ? targetKey.trim()
+                : beforeSeparator(targetKey, "::");
+        String actionKey = action ? afterSeparator(targetKey, "::") : null;
+        if (!StringUtils.hasText(compositionKey)
+                || action && !StringUtils.hasText(actionKey)) {
+            return null;
+        }
+        for (int index = 0; index < compositions.size(); index++) {
+            Map<String, Object> composition = compositions.get(index);
+            if (!Objects.equals(
+                    compositionKey,
+                    text(composition.get("compositionKey")))) {
+                continue;
+            }
+            Map<String, Object> config = stringMap(
+                    composition.get("config"));
+            Map<String, Object> special = stringMap(
+                    config.get("specialHandling"));
+            if (resolve && matchesBinding(
+                    stringMap(special.get("interfaceService")),
+                    sourceId, operationCode)) {
+                return basePath
+                        + "[" + index + "]"
+                        + ".config.specialHandling.interfaceService";
+            }
+            if (action) {
+                List<Map<String, Object>> services = mapList(
+                        special.get("actionServices"));
+                for (int actionIndex = 0;
+                        actionIndex < services.size(); actionIndex++) {
+                    Map<String, Object> service = services.get(actionIndex);
+                    if (Objects.equals(
+                            normalize(actionKey),
+                            normalize(text(service.get("actionKey"))))
+                            && matchesBinding(
+                            service, sourceId, operationCode)) {
+                        return basePath + "[" + index + "]"
+                                + ".config.specialHandling.actionServices["
+                                + actionIndex + "]";
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String beforeSeparator(String value, String separator) {
+        int index = value == null ? -1 : value.indexOf(separator);
+        return index <= 0 ? null : value.substring(0, index).trim();
+    }
+
+    private String afterSeparator(String value, String separator) {
+        int index = value == null ? -1 : value.indexOf(separator);
+        return index < 0 || index + separator.length() >= value.length()
+                ? null : value.substring(index + separator.length()).trim();
     }
 
     public String findForm(

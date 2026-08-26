@@ -32,7 +32,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -82,6 +84,7 @@ public class UiDataSourceExecutionAccessService {
             "operationcode",
             "bindingcode",
             "requestid",
+            "sourcerecordid",
             "releaseid",
             "releaseversion",
             "publishedreleaseid");
@@ -717,23 +720,91 @@ public class UiDataSourceExecutionAccessService {
         if (value == null) {
             return null;
         }
-        return value.keySet().stream()
-                .filter(Objects::nonNull)
-                .filter(key -> {
-                    String normalized = key.replace("_", "")
-                            .replace("-", "")
-                            .toLowerCase(Locale.ROOT);
-                    if ("idempotencykey".equals(normalized)
-                            && StringUtils.hasText(trustedIdempotencyKey)
-                            && Objects.equals(
-                                    trustedIdempotencyKey,
-                                    text(value.get(key)))) {
-                        return false;
-                    }
-                    return RESERVED_REQUEST_KEYS.contains(normalized);
-                })
-                .findFirst()
-                .orElse(null);
+        return reservedKey(
+                value,
+                trustedIdempotencyKey,
+                "$",
+                0,
+                new int[] {0},
+                Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    /**
+     * 递归检查接口输入中的可信元数据键。
+     *
+     * <p>字段映射允许有限层级对象，如果只检查顶层，调用方可把 tenantId、
+     * userId 等身份字段包在 payload/context 内交给 Provider。服务端幂等种子
+     * 只允许位于根层且必须精确匹配；嵌套同名字段仍视为伪造。</p>
+     */
+    private String reservedKey(
+            Object value,
+            String trustedIdempotencyKey,
+            String path,
+            int depth,
+            int[] visitedNodes,
+            Set<Object> visitedContainers) {
+        if (value == null) {
+            return null;
+        }
+        if (depth > 12 || ++visitedNodes[0] > 4096) {
+            return path + "（结构过深或过大）";
+        }
+        if (value instanceof Map<?, ?> map) {
+            if (!visitedContainers.add(value)) {
+                return path + "（循环结构）";
+            }
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() == null) {
+                    continue;
+                }
+                String key = String.valueOf(entry.getKey());
+                String normalized = key.replace("_", "")
+                        .replace("-", "")
+                        .toLowerCase(Locale.ROOT);
+                boolean trustedRootSeed = depth == 0
+                        && "idempotencykey".equals(normalized)
+                        && StringUtils.hasText(trustedIdempotencyKey)
+                        && Objects.equals(
+                                trustedIdempotencyKey,
+                                text(entry.getValue()));
+                if (!trustedRootSeed
+                        && RESERVED_REQUEST_KEYS.contains(normalized)) {
+                    return path + "." + key;
+                }
+                String nested = reservedKey(
+                        entry.getValue(),
+                        trustedIdempotencyKey,
+                        path + "." + key,
+                        depth + 1,
+                        visitedNodes,
+                        visitedContainers);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+            visitedContainers.remove(value);
+            return null;
+        }
+        if (value instanceof Collection<?> collection) {
+            if (!visitedContainers.add(value)) {
+                return path + "（循环结构）";
+            }
+            int index = 0;
+            for (Object item : collection) {
+                String nested = reservedKey(
+                        item,
+                        trustedIdempotencyKey,
+                        path + "[" + index++ + "]",
+                        depth + 1,
+                        visitedNodes,
+                        visitedContainers);
+                if (StringUtils.hasText(nested)) {
+                    return nested;
+                }
+            }
+            visitedContainers.remove(value);
+        }
+        return null;
     }
 
     private Map<String, Object> sanitizeContext(

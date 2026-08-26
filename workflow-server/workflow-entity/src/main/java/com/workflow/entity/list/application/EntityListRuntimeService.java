@@ -18,6 +18,7 @@ import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiDataSourceService;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
+import com.workflow.entity.ui.application.UiViewCompositionTokenService;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,6 +35,7 @@ import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
+import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
@@ -63,6 +65,7 @@ public class EntityListRuntimeService {
     private final EntityFieldMapper entityFieldMapper;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final EntityListFieldMapper fieldMapper;
+    private final EntityListConfigMapper listConfigMapper;
     private final SysUserService sysUserService;
     private final DataPermissionEngine dataPermissionEngine;
     private final EntityListScopeAuditService auditService;
@@ -76,6 +79,7 @@ public class EntityListRuntimeService {
     private final UiEventRuntimeService uiEventRuntimeService;
     private final UiDataSourceService uiDataSourceService;
     private final CurrentUserRoleService currentUserRoleService;
+    private final UiViewCompositionTokenService viewCompositionTokenService;
     private final List<EntityListContextResolver> contextResolvers;
     private final List<EntityListDataProvider> dataProviders;
     private final List<EntityListSchemaProvider> schemaProviders;
@@ -102,12 +106,35 @@ public class EntityListRuntimeService {
             String releaseId,
             Integer releaseVersion,
             String releaseResolutionToken) {
+        return schema(
+                entityCode,
+                listKey,
+                requestedScene,
+                releaseId,
+                releaseVersion,
+                releaseResolutionToken,
+                null);
+    }
+
+    @Transactional(readOnly = true)
+    public EntityListSchemaDTO schema(
+            String entityCode,
+            String listKey,
+            String requestedScene,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken,
+            String viewCompositionContextToken) {
+        UiViewCompositionTokenService.Claims compositionContext =
+                verifyViewCompositionContext(
+                        viewCompositionContextToken);
         EntityListConfig config = requireList(
                 entityCode,
                 listKey,
                 releaseId,
                 releaseVersion,
-                releaseResolutionToken);
+                releaseResolutionToken,
+                compositionContext);
         String scene = validateScene(config, requestedScene);
         requireListAccess(config);
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
@@ -185,6 +212,11 @@ public class EntityListRuntimeService {
                     .toList();
         }
         schema.setFields(resolvedFields);
+        // 该字段由 PublishedRuntimeService 从已校验快照填充，设计态草稿不会泄漏到运行时。
+        schema.setViewCompositions(
+                config.getViewCompositions() == null
+                        ? List.of()
+                        : config.getViewCompositions());
 
         if (StringUtils.hasText(config.getCustomComponent())) {
             for (EntityListSchemaProvider provider : schemaProviders) {
@@ -209,12 +241,16 @@ public class EntityListRuntimeService {
             EntityListQueryRequest request) {
         EntityListQueryRequest safeRequest = request == null
                 ? new EntityListQueryRequest() : request;
+        UiViewCompositionTokenService.Claims compositionContext =
+                verifyViewCompositionContext(
+                        safeRequest.getViewCompositionContextToken());
         EntityListConfig config = requireList(
                 entityCode,
                 listKey,
                 safeRequest.getReleaseId(),
                 safeRequest.getReleaseVersion(),
-                safeRequest.getReleaseResolutionToken());
+                safeRequest.getReleaseResolutionToken(),
+                compositionContext);
         String scene = validateScene(
                 config,
                 safeRequest.getScene());
@@ -225,6 +261,19 @@ public class EntityListRuntimeService {
         mergeTrusted(filters, readObject(config.getFixedFilterConfig(), "列表固定条件"));
         mergeTrusted(filters, resolveContextFilters(
                 entityCode, listKey, scene, safeRequest.getContext()));
+        if (compositionContext != null) {
+            mergeTrusted(
+                    filters,
+                    compositionContext.fixedFilters());
+            if (compositionContext.matchNone()) {
+                return new PageResult<>(
+                        List.of(),
+                        0,
+                        Math.max(1, safeRequest.getPageNum()),
+                        Math.max(1, Math.min(
+                                200, safeRequest.getPageSize())));
+            }
+        }
 
         UiEventExecuteRequest event = new UiEventExecuteRequest();
         event.setEventCode(UiDataSourceUsages.LIST_LOAD);
@@ -249,19 +298,383 @@ public class EntityListRuntimeService {
                 Math.max(1, Math.min(200, safeRequest.getPageSize())));
         eventInput.put("scene", scene);
         event.setInput(eventInput);
-        Object result = uiEventRuntimeService.execute(
-                event,
-                input -> queryDefault(
-                        config,
-                        entityCode,
-                        listKey,
-                        scene,
-                        safeRequest,
-                        input)).getData();
-        return pageResultNormalizer.normalize(
+        Object result;
+        if (compositionContext == null) {
+            result = uiEventRuntimeService.execute(
+                    event,
+                    input -> queryDefault(
+                            config,
+                            entityCode,
+                            listKey,
+                            scene,
+                            safeRequest,
+                            input)).getData();
+        } else {
+            // 关联内容令牌已经固定目标列表发布版本。现有 LIST_LOAD 事件解析器
+            // 只认识父表单令牌，不能让它回退到当前 ACTIVE；这里直接执行同一
+            // 发布列表的默认查询链；自定义查询结果会在归一化后由平台再次
+            // 应用目标实体数据范围，不能依赖 Provider/Connector 自行声明。
+            result = queryDefault(
+                    config,
+                    entityCode,
+                    listKey,
+                    scene,
+                    safeRequest,
+                    eventInput);
+        }
+        PageResult<?> normalizedResult = pageResultNormalizer.normalize(
                 result,
                 Math.max(1, safeRequest.getPageNum()),
                 Math.max(1, Math.min(200, safeRequest.getPageSize())));
+        if (compositionContext == null
+                || !usesCustomRecordQuery(config)) {
+            return normalizedResult;
+        }
+        return secureCompositionCustomQueryPage(
+                config,
+                entityCode,
+                listKey,
+                filters,
+                normalizedResult,
+                Math.max(1, safeRequest.getPageNum()),
+                Math.max(1, Math.min(
+                        200, safeRequest.getPageSize())));
+    }
+
+    /**
+     * 对关联内容中的自定义查询结果执行平台侧二次校验。
+     *
+     * <p>Provider 或接口连接器只负责给出候选记录 ID 与顺序，不能成为
+     * 目标实体数据范围的权威来源。平台会把本页 ID 与已签名关联条件合并，
+     * 再走标准实体列表查询链；任一候选记录不存在、越权或不满足关联条件时，
+     * 整页拒绝，避免静默过滤造成跨页补位和数量侧信道。返回行也只投影目标
+     * 列表已经发布的展示字段，连接器附带的其它字段不会透传。</p>
+     *
+     * <p>外部数据源声明的 total 无法证明已经应用平台数据范围，因此不会
+     * 透传。这里使用“请求窗口 + 下一页哨兵”的导航总数：短页表示当前窗口
+     * 已结束，满页只额外暴露一个可继续翻页的位置；它不是统计总数，也不会
+     * 泄露未校验记录数量。</p>
+     */
+    private PageResult<?> secureCompositionCustomQueryPage(
+            EntityListConfig config,
+            String entityCode,
+            String listKey,
+            Map<String, Object> trustedFilters,
+            PageResult<?> candidatePage,
+            long requestedPageNum,
+            long requestedPageSize) {
+        List<?> candidates = candidatePage.getRecords() == null
+                ? List.of() : candidatePage.getRecords();
+        int pageSize = (int) Math.max(
+                1, Math.min(200, requestedPageSize));
+        if (candidates.size() > pageSize) {
+            throw new IllegalStateException(
+                    "关联内容自定义列表返回记录数超过请求页大小，已停止加载");
+        }
+
+        long pageNum = Math.max(1, requestedPageNum);
+        if (candidates.isEmpty()) {
+            return new PageResult<>(
+                    List.of(),
+                    verifiedWindowTotal(
+                            pageNum, pageSize, 0),
+                    pageNum,
+                    pageSize);
+        }
+
+        List<String> orderedIds = candidates.stream()
+                .map(this::requireCandidateRecordId)
+                .toList();
+        LinkedHashSet<String> uniqueIds =
+                new LinkedHashSet<>(orderedIds);
+        Map<String, Object> authoritativeFilters =
+                new LinkedHashMap<>(trustedFilters == null
+                        ? Map.of() : trustedFilters);
+        requireCandidateIdsMatchIdFilter(
+                authoritativeFilters, uniqueIds);
+        removeIdFilters(authoritativeFilters);
+        authoritativeFilters.put("id", List.copyOf(uniqueIds));
+        authoritativeFilters.put("id_op", "IN");
+
+        // 标准列表链负责在服务端应用目标 listKey 的 DataScope，并补充平台
+        // 管理的列值和行操作能力；不能复用 Provider/Connector 返回的整行。
+        PageResult<EntityDataDTO> authoritativePage =
+                dataListService.findPageWithResolvedConfig(
+                        entityCode,
+                        listKey,
+                        config,
+                        authoritativeFilters,
+                        1,
+                        uniqueIds.size());
+        Map<String, EntityDataDTO> authoritativeById =
+                indexAuthoritativeRecords(authoritativePage);
+        if (!authoritativeById.keySet().equals(uniqueIds)) {
+            throw new ForbiddenException(
+                    "关联内容数据源返回了不存在、无权访问或不满足关联条件的目标记录，已停止加载");
+        }
+
+        Set<String> visibleFieldCodes =
+                publishedVisibleFieldCodes(config);
+        List<Map<String, Object>> records = orderedIds.stream()
+                .map(authoritativeById::get)
+                .map(record -> projectPublishedListFields(
+                        record, visibleFieldCodes))
+                .toList();
+        return new PageResult<>(
+                records,
+                verifiedWindowTotal(
+                        pageNum, pageSize, records.size()),
+                pageNum,
+                pageSize);
+    }
+
+    private boolean usesCustomRecordQuery(
+            EntityListConfig config) {
+        return StringUtils.hasText(config.getQueryDataSourceId())
+                || StringUtils.hasText(
+                config.getQueryProviderCode());
+    }
+
+    private String requireCandidateRecordId(Object candidate) {
+        Object value;
+        if (candidate instanceof EntityDataDTO record) {
+            value = record.getId();
+        } else if (candidate instanceof Map<?, ?> map) {
+            value = map.get("id");
+            if (value == null) {
+                value = map.get("recordId");
+            }
+        } else {
+            throw new IllegalStateException(
+                    "关联内容自定义列表必须返回包含目标实体记录 ID 的对象，已停止加载");
+        }
+        String id = value == null
+                ? null : String.valueOf(value).trim();
+        if (!StringUtils.hasText(id)) {
+            throw new IllegalStateException(
+                    "关联内容自定义列表缺少目标实体记录 ID，已停止加载");
+        }
+        return id;
+    }
+
+    private Map<String, EntityDataDTO> indexAuthoritativeRecords(
+            PageResult<EntityDataDTO> page) {
+        if (page == null || page.getRecords() == null) {
+            throw new IllegalStateException(
+                    "平台无法复核关联内容目标记录，已停止加载");
+        }
+        Map<String, EntityDataDTO> result =
+                new LinkedHashMap<>();
+        for (EntityDataDTO record : page.getRecords()) {
+            if (record == null
+                    || !StringUtils.hasText(record.getId())
+                    || result.put(record.getId(), record) != null) {
+                throw new IllegalStateException(
+                        "平台复核关联内容目标记录时返回了无效结果，已停止加载");
+            }
+        }
+        return result;
+    }
+
+    private Set<String> publishedVisibleFieldCodes(
+            EntityListConfig config) {
+        List<EntityListField> fallback =
+                fieldMapper.findByListConfigId(config.getId());
+        List<EntityListField> fields =
+                publishedRuntimeService.resolveFields(
+                        config,
+                        fallback == null ? List.of() : fallback);
+        if (fields == null) {
+            return Set.of();
+        }
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        for (EntityListField field : fields) {
+            if (field != null
+                    && Boolean.TRUE.equals(
+                    field.getShowInList())
+                    && StringUtils.hasText(
+                    field.getFieldCode())) {
+                result.add(field.getFieldCode());
+            }
+        }
+        return Collections.unmodifiableSet(result);
+    }
+
+    private Map<String, Object> projectPublishedListFields(
+            EntityDataDTO record,
+            Set<String> visibleFieldCodes) {
+        Map<String, Object> source = objectMapper.convertValue(
+                record,
+                new TypeReference<Map<String, Object>>() {});
+        Map<String, Object> sourceData = source.get("data")
+                        instanceof Map<?, ?> data
+                ? objectMapper.convertValue(
+                        data,
+                        new TypeReference<Map<String, Object>>() {})
+                : Map.of();
+        Map<String, Object> sourceExtData = source.get("extData")
+                        instanceof Map<?, ?> extData
+                ? objectMapper.convertValue(
+                        extData,
+                        new TypeReference<Map<String, Object>>() {})
+                : Map.of();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", record.getId());
+        Map<String, Object> data = new LinkedHashMap<>();
+        Map<String, Object> extData = new LinkedHashMap<>();
+        for (String fieldCode : visibleFieldCodes) {
+            if ("id".equals(fieldCode)) {
+                continue;
+            }
+            if (source.containsKey(fieldCode)) {
+                result.put(fieldCode, source.get(fieldCode));
+            } else if (sourceData.containsKey(fieldCode)) {
+                data.put(fieldCode, sourceData.get(fieldCode));
+            } else if (sourceExtData.containsKey(fieldCode)) {
+                extData.put(fieldCode, sourceExtData.get(fieldCode));
+            }
+        }
+        if (!data.isEmpty()) {
+            result.put("data", data);
+        }
+        if (!extData.isEmpty()) {
+            result.put("extData", extData);
+        }
+        if (record.getActionCapabilities() != null
+                && !record.getActionCapabilities().isEmpty()) {
+            result.put(
+                    "actionCapabilities",
+                    record.getActionCapabilities());
+        }
+        return Collections.unmodifiableMap(result);
+    }
+
+    /**
+     * ID 条件由平台在候选 ID 集合上先行验证，再替换为内部 IN 条件，避免
+     * 自定义数据源忽略 SAME_RECORD/引用字段产生的 ID 约束。
+     */
+    private void requireCandidateIdsMatchIdFilter(
+            Map<String, Object> filters,
+            Collection<String> candidateIds) {
+        boolean hasIdCondition = filters.keySet().stream()
+                .anyMatch(key -> "id".equals(
+                        stripSuffix(key)));
+        if (!hasIdCondition) {
+            return;
+        }
+        for (String id : candidateIds) {
+            if (!matchesIdFilter(filters, id)) {
+                throw new ForbiddenException(
+                        "关联内容数据源返回了不满足关联条件的目标记录，已停止加载");
+            }
+        }
+    }
+
+    private boolean matchesIdFilter(
+            Map<String, Object> filters,
+            String id) {
+        Object lower = filters.get("id_start");
+        Object upper = filters.get("id_end");
+        if (lower != null
+                && id.compareTo(String.valueOf(lower)) < 0) {
+            return false;
+        }
+        if (upper != null
+                && id.compareTo(String.valueOf(upper)) > 0) {
+            return false;
+        }
+        if (!filters.containsKey("id")) {
+            return true;
+        }
+        Object expected = filters.get("id");
+        if (expected == null
+                || (expected instanceof String text
+                && !StringUtils.hasText(text))) {
+            return true;
+        }
+        String operator = normalized(
+                text(filters.get("id_op")),
+                expected instanceof String ? "LIKE" : "EQ");
+        return switch (operator) {
+            case "EQ" -> Objects.equals(
+                    id, String.valueOf(expected));
+            case "NE" -> !Objects.equals(
+                    id, String.valueOf(expected));
+            case "LIKE" -> id.contains(
+                    String.valueOf(expected));
+            case "GT" -> id.compareTo(
+                    String.valueOf(expected)) > 0;
+            case "LT" -> id.compareTo(
+                    String.valueOf(expected)) < 0;
+            case "IN" -> normalizeIdValues(expected)
+                    .contains(id);
+            case "NOT_IN" -> !normalizeIdValues(expected)
+                    .contains(id);
+            default -> Objects.equals(
+                    id, String.valueOf(expected));
+        };
+    }
+
+    private Set<String> normalizeIdValues(Object value) {
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        if (value instanceof Collection<?> collection) {
+            collection.forEach(item -> addIdValue(result, item));
+        } else if (value != null
+                && value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int index = 0; index < length; index++) {
+                addIdValue(
+                        result,
+                        java.lang.reflect.Array.get(value, index));
+            }
+        } else if (value instanceof String text) {
+            Arrays.stream(text.split(","))
+                    .forEach(item -> addIdValue(result, item));
+        } else {
+            addIdValue(result, value);
+        }
+        return result;
+    }
+
+    private void addIdValue(
+            Set<String> values,
+            Object value) {
+        if (value != null
+                && StringUtils.hasText(
+                String.valueOf(value))) {
+            values.add(String.valueOf(value).trim());
+        }
+    }
+
+    private void removeIdFilters(
+            Map<String, Object> filters) {
+        filters.keySet().removeIf(key -> "id".equals(
+                stripSuffix(key)));
+    }
+
+    private long verifiedWindowTotal(
+            long pageNum,
+            long pageSize,
+            int verifiedRows) {
+        long offset;
+        try {
+            offset = Math.multiplyExact(
+                    Math.max(0, pageNum - 1),
+                    pageSize);
+        } catch (ArithmeticException ignored) {
+            offset = Long.MAX_VALUE - pageSize;
+        }
+        long total;
+        try {
+            total = Math.addExact(offset, verifiedRows);
+        } catch (ArithmeticException ignored) {
+            total = Long.MAX_VALUE;
+        }
+        if (verifiedRows >= pageSize
+                && total < Long.MAX_VALUE) {
+            total++;
+        }
+        return total;
     }
 
     private Object queryDefault(
@@ -340,6 +753,14 @@ public class EntityListRuntimeService {
                     config.getPublishedVersion());
             request.setServerPinnedRelease(
                     Boolean.TRUE.equals(config.getPinnedRelease()));
+            if (Boolean.TRUE.equals(config.getPinnedRelease())) {
+                request.setServerIdempotencyKey(
+                        "view-composition-list-query:"
+                                + config.getActiveReleaseId()
+                                + ":" + UserContext.getUserId()
+                                + ":" + pageNum
+                                + ":" + pageSize);
+            }
             request.setEntityCode(entityCode);
             request.setListKey(listKey);
             request.setTargetType("OWNER");
@@ -478,15 +899,59 @@ public class EntityListRuntimeService {
             String releaseId,
             Integer releaseVersion,
             String releaseResolutionToken) {
-        if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) {
-            throw new IllegalArgumentException("entityCode 和 listKey 不能为空");
-        }
-        EntityListConfig config = dataListService.findListConfig(
+        return requireList(
                 entityCode,
                 listKey,
                 releaseId,
                 releaseVersion,
-                releaseResolutionToken);
+                releaseResolutionToken,
+                null);
+    }
+
+    private EntityListConfig requireList(
+            String entityCode,
+            String listKey,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken,
+            UiViewCompositionTokenService.Claims compositionContext) {
+        if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) {
+            throw new IllegalArgumentException("entityCode 和 listKey 不能为空");
+        }
+        EntityListConfig config;
+        if (compositionContext == null) {
+            config = dataListService.findListConfig(
+                    entityCode,
+                    listKey,
+                    releaseId,
+                    releaseVersion,
+                    releaseResolutionToken);
+        } else {
+            requireCompositionTarget(
+                    compositionContext,
+                    entityCode,
+                    releaseId,
+                    releaseVersion);
+            EntityDefinition definition = definitionMapper
+                    .findByEntityCode(entityCode)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "实体不存在: " + entityCode));
+            EntityListConfig draft =
+                    listConfigMapper.findByEntityIdAndListKey(
+                            definition.getId(), listKey);
+            if (draft == null
+                    || !Objects.equals(
+                    draft.getId(),
+                    compositionContext.targetContentId())) {
+                throw new ForbiddenException(
+                        "关联内容列表上下文与目标列表不一致");
+            }
+            config = publishedRuntimeService
+                    .resolveViewCompositionConfig(
+                            draft,
+                            compositionContext.targetReleaseId(),
+                            compositionContext.targetReleaseVersion());
+        }
         if (config == null
                 || !listKey.equals(config.getListKey())
                 || !entityCode.equals(config.getEntityCode())) {
@@ -499,6 +964,33 @@ public class EntityListRuntimeService {
             throw new IllegalStateException("列表尚未发布: " + listKey);
         }
         return config;
+    }
+
+    private UiViewCompositionTokenService.Claims
+            verifyViewCompositionContext(String token) {
+        return StringUtils.hasText(token)
+                ? viewCompositionTokenService.verifyListContext(token)
+                : null;
+    }
+
+    private void requireCompositionTarget(
+            UiViewCompositionTokenService.Claims context,
+            String entityCode,
+            String requestedReleaseId,
+            Integer requestedReleaseVersion) {
+        if (!Objects.equals(
+                entityCode, context.targetEntityCode())
+                || (StringUtils.hasText(requestedReleaseId)
+                && !Objects.equals(
+                requestedReleaseId,
+                context.targetReleaseId()))
+                || (requestedReleaseVersion != null
+                && !Objects.equals(
+                requestedReleaseVersion,
+                context.targetReleaseVersion()))) {
+            throw new ForbiddenException(
+                    "关联内容列表上下文与请求目标不一致");
+        }
     }
 
     private void requireListAccess(EntityListConfig config) {

@@ -332,7 +332,17 @@ public class EntityMutationStepExecutor {
                         dataSourceId,
                         operationCode,
                         request);
-        return toStepResult(raw);
+        EntityMutationStepResult result = toStepResult(raw);
+        if (result.decision()
+                == EntityMutationStepResult.Decision.MUTATION_PLAN) {
+            // 受管理接口属于外部信任边界。跨实体计划尚未接入逐目标 CRUD、
+            // 数据范围和字段白名单治理前，不能把接口返回的实体、记录或操作
+            // 当作新的授权来源；即便它声称仍是当前记录，也必须 fail-closed。
+            throw new BusinessConflictException(
+                    "ENTITY_MUTATION_MANAGED_PLAN_FORBIDDEN",
+                    "受管理接口暂不允许新增实体变更计划；请仅返回放行、阻止或当前命令字段补丁");
+        }
+        return result;
     }
 
     private EntityMutationStepResult javaProvider(

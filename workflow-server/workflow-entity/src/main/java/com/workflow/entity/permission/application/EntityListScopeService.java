@@ -675,33 +675,6 @@ public class EntityListScopeService {
     }
 
     /**
-     * 应用管理员提交的未绑定默认策略。为空表示只改规则绑定；安全策略一旦修改就退出观察期。
-     */
-    /**
-     * 仅确认一个存量列表的未绑定规则策略，不触碰该列表现有的 ALLOW/DENY 绑定。
-     *
-     * @param listConfig       已在外层事务中锁定的列表配置
-     * @param selectedPolicy   DENY_ALL、PERSONAL 或 EXPLICIT_ALL
-     * @param confirmationNote EXPLICIT_ALL 的确认原因
-     */
-    @Transactional
-    public void confirmInventoryPolicy(
-            EntityListConfig listConfig,
-            String selectedPolicy,
-            String confirmationNote) {
-        if (listConfig == null || listConfig.getId() == null) {
-            throw new IllegalArgumentException("列表配置不存在");
-        }
-        com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest request =
-                new com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest();
-        request.setUnboundPolicy(selectedPolicy);
-        request.setConfirmExplicitAll("EXPLICIT_ALL".equals(selectedPolicy));
-        request.setConfirmationNote(confirmationNote);
-        applyUnboundPolicy(listConfig.getEntityCode(), listConfig, request);
-        publish(listConfig.getEntityCode(), "存量列表数据范围策略确认");
-    }
-
-    /**
      * 校验 EXPLICIT_ALL 专用权限。超级管理员始终允许，其他账号必须显式获得高风险权限。
      */
     public void requireExplicitAllPermission() {
@@ -716,6 +689,9 @@ public class EntityListScopeService {
                 "缺少全量数据放行权限：" + EXPLICIT_ALL_PERMISSION);
     }
 
+    /**
+     * 应用管理员提交的未绑定默认策略。为空表示只改规则绑定；安全策略一旦修改就退出观察期。
+     */
     private void applyUnboundPolicy(
             String entityCode,
             EntityListConfig config,

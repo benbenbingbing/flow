@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
@@ -249,6 +250,84 @@ class EntityRecordVersionComparisonServiceTest {
         assertTrue(page.records().get(0).moved());
     }
 
+    @Test
+    void reportsReparentingButHidesInternalParentMetadata() throws Exception {
+        EntityRecordVersion oldVersion = version(1, 2,
+                v2Document(List.of(), Map.of()));
+        EntityRecordVersion newVersion = version(2, 2,
+                v2Document(List.of(), Map.of()));
+        stubVersions(oldVersion, newVersion);
+        EntityRecordVersionDataset oldDataset = dataset(
+                "dataset-1", "version-1", "检查项");
+        EntityRecordVersionDataset newDataset = dataset(
+                "dataset-2", "version-2", "检查项");
+        when(datasetMapper.findByNodeCode("version-1", "REL_LINES"))
+                .thenReturn(oldDataset);
+        when(datasetMapper.findByNodeCode("version-2", "REL_LINES"))
+                .thenReturn(newDataset);
+        EntityRecordVersionDatasetRow oldRow = row(
+                "row-old", "dataset-1", "line-1", "硬件");
+        EntityRecordVersionDatasetRow newRow = row(
+                "row-new", "dataset-2", "line-1", "硬件");
+        oldRow.setValuesDocument(valuesWithParent("parent-1"));
+        newRow.setValuesDocument(valuesWithParent("parent-2"));
+        when(rowMapper.findByDatasetId("dataset-1"))
+                .thenReturn(List.of(oldRow));
+        when(rowMapper.findByDatasetId("dataset-2"))
+                .thenReturn(List.of(newRow));
+        when(rowMapper.countByDatasetId("dataset-2")).thenReturn(1L);
+        when(rowMapper.findPage("dataset-2", 0, 20))
+                .thenReturn(List.of(newRow));
+
+        RecordVersionComparisonV2.RowComparisonPage page =
+                service.compareRows(
+                        "asset", "asset-1", 1, 2,
+                        "REL_LINES", 1, 20, true);
+        RecordVersionComparisonV2.SnapshotRowPage snapshot =
+                service.snapshotRows(
+                        "asset", "asset-1", 2,
+                        "REL_LINES", 1, 20);
+
+        assertEquals("MODIFIED", page.records().get(0).changeType());
+        assertEquals("所属父记录", page.records().get(0)
+                .formSections().get(1).fields().get(0).displayLabel());
+        assertFalse(snapshot.records().get(0).values().containsKey(
+                EntityRecordSnapshotService.INTERNAL_PARENT_RECORD_ID));
+    }
+
+    @Test
+    void introducingParentMetadataKeepsOldOneLayerRowsCompatible()
+            throws Exception {
+        stubVersions(
+                version(1, 2, v2Document(List.of(), Map.of())),
+                version(2, 2, v2Document(List.of(), Map.of())));
+        EntityRecordVersionDataset oldDataset = dataset(
+                "dataset-1", "version-1", "资产明细");
+        EntityRecordVersionDataset newDataset = dataset(
+                "dataset-2", "version-2", "资产明细");
+        when(datasetMapper.findByNodeCode("version-1", "REL_LINES"))
+                .thenReturn(oldDataset);
+        when(datasetMapper.findByNodeCode("version-2", "REL_LINES"))
+                .thenReturn(newDataset);
+        EntityRecordVersionDatasetRow oldRow = row(
+                "row-old", "dataset-1", "line-1", "硬件");
+        EntityRecordVersionDatasetRow newRow = row(
+                "row-new", "dataset-2", "line-1", "硬件");
+        newRow.setValuesDocument(valuesWithParent("asset-1"));
+        when(rowMapper.findByDatasetId("dataset-1"))
+                .thenReturn(List.of(oldRow));
+        when(rowMapper.findByDatasetId("dataset-2"))
+                .thenReturn(List.of(newRow));
+
+        RecordVersionComparisonV2.RowComparisonPage page =
+                service.compareRows(
+                        "asset", "asset-1", 1, 2,
+                        "REL_LINES", 1, 20, true);
+
+        assertEquals(0, page.total());
+        assertEquals(0, page.counts().modified());
+    }
+
     private void stubVersions(
             EntityRecordVersion first,
             EntityRecordVersion second) {
@@ -366,5 +445,14 @@ class EntityRecordVersionComparisonServiceTest {
         value.setValuesDocument(objectMapper.writeValueAsString(
                 Map.of("category", frozen("HW", display))));
         return value;
+    }
+
+    private String valuesWithParent(String parentId) throws Exception {
+        Map<String, FrozenValue> values = new LinkedHashMap<>();
+        values.put("category", frozen("HW", "硬件"));
+        values.put(EntityRecordSnapshotService.INTERNAL_PARENT_RECORD_ID,
+                new FrozenValue(parentId, parentId, List.of(),
+                        "INTERNAL", "RESOLVED"));
+        return objectMapper.writeValueAsString(values);
     }
 }

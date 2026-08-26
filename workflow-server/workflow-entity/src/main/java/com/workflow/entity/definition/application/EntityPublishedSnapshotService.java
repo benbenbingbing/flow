@@ -13,6 +13,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +49,48 @@ public class EntityPublishedSnapshotService {
             throw new RuntimeException("实体未发布: " + entityId);
         }
         return toSnapshot(history);
+    }
+
+    /**
+     * 读取实体当前最新的可钉定发布定义。
+     *
+     * <p>指纹覆盖历史 ID、实体身份、版本、字段文档和关系文档。
+     * 调用方应同时保存 historyId 与 schemaHash：前者防止运行时追随
+     * latest，后者防止历史行被非预期改写后静默生效。</p>
+     *
+     * @param entityId 实体定义 ID
+     * @return 最新已发布定义及其完整性指纹
+     */
+    @Transactional(readOnly = true)
+    public PinnedEntitySnapshot getLatestPinnedByEntityId(
+            String entityId) {
+        EntityPublishHistory history = historyMapper.findLatestByEntityId(
+                entityId);
+        if (history == null) {
+            throw new RuntimeException("实体未发布: " + entityId);
+        }
+        return pinned(history);
+    }
+
+    /**
+     * 按历史 ID 精确读取钉定的实体定义，不回退到最新发布。
+     *
+     * @param historyId 实体发布历史 ID
+     * @return 指定历史定义及指纹
+     * @throws RuntimeException 历史已缺失时抛出，由上层 fail-closed
+     */
+    @Transactional(readOnly = true)
+    public PinnedEntitySnapshot getPinnedByHistoryId(
+            String historyId) {
+        if (historyId == null || historyId.isBlank()) {
+            throw new IllegalArgumentException("实体发布历史ID不能为空");
+        }
+        EntityPublishHistory history = historyMapper.selectById(
+                historyId.trim());
+        if (history == null) {
+            throw new RuntimeException("实体发布历史不存在: " + historyId);
+        }
+        return pinned(history);
     }
 
     /**
@@ -101,6 +147,48 @@ public class EntityPublishedSnapshotService {
                 history.getRelationsSnapshot() != null);
         snapshot.setRelations(parseRelations(history));
         return snapshot;
+    }
+
+    private PinnedEntitySnapshot pinned(
+            EntityPublishHistory history) {
+        return new PinnedEntitySnapshot(
+                toSnapshot(history), schemaHash(history));
+    }
+
+    /**
+     * 对影响字段/关系解析的原始历史内容做长度分隔编码。
+     * 使用原始文档而非当前 POJO 再序列化，可避免后续代码属性
+     * 顺序调整导致旧宿主版本指纹无意失效。
+     */
+    private String schemaHash(EntityPublishHistory history) {
+        StringBuilder material = new StringBuilder();
+        appendFingerprintPart(material, history.getId());
+        appendFingerprintPart(material, history.getEntityId());
+        appendFingerprintPart(material, history.getEntityCode());
+        appendFingerprintPart(material, history.getVersion());
+        appendFingerprintPart(material, history.getFieldsSnapshot());
+        // NULL 表示旧版本没有关系快照，与明确的 [] 必须区分。
+        appendFingerprintPart(material, history.getRelationsSnapshot());
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(
+                            material.toString().getBytes(
+                                    StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(
+                    "运行环境不支持 SHA-256", exception);
+        }
+    }
+
+    private void appendFingerprintPart(
+            StringBuilder target,
+            Object value) {
+        if (value == null) {
+            target.append("-1:");
+            return;
+        }
+        String text = String.valueOf(value);
+        target.append(text.length()).append(':').append(text);
     }
 
     private List<EntityRelation> parseRelations(
@@ -165,5 +253,11 @@ public class EntityPublishedSnapshotService {
                         normalizedType,
                         normalizedType));
         return field;
+    }
+
+    /** 实体发布历史与其不可变完整性指纹。 */
+    public record PinnedEntitySnapshot(
+            EntityPublishedSnapshot snapshot,
+            String schemaHash) {
     }
 }
