@@ -7,7 +7,11 @@
         </el-button>
         <span class="title">{{ entityInfo.entityName }} - 表单管理</span>
       </div>
-      <el-button type="primary" @click="handleCreate">
+      <el-button
+        type="primary"
+        :disabled="!entityInfo.entityCode"
+        @click="handleCreate"
+      >
         <el-icon><Plus /></el-icon>新建表单
       </el-button>
     </div>
@@ -96,14 +100,35 @@
     </el-card>
 
     <!-- 新建/编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑表单' : '新建表单'" width="500px">
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑表单' : '新建表单'"
+      width="min(680px, 92vw)"
+    >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="表单名称" prop="formName">
           <el-input v-model="form.formName" placeholder="请输入表单名称" />
         </el-form-item>
         <el-form-item label="表单标识" prop="formKey">
-          <el-input v-model="form.formKey" placeholder="请输入表单标识" :disabled="isEdit" />
-          <div class="field-help">用于流程节点绑定和发布版本识别，创建后不可修改。</div>
+          <el-input
+            v-if="isEdit"
+            v-model="form.formKey"
+            placeholder="请输入表单标识"
+            disabled
+          />
+          <el-input
+            v-else
+            v-model="form.formKey"
+            :maxlength="formKeySuffixMaxLength"
+            placeholder="如：detail、approval"
+          >
+            <template #prepend>{{ formKeyPrefix }}</template>
+          </el-input>
+          <div class="field-help">
+            {{ isEdit
+              ? '用于流程节点绑定和发布版本识别，创建后不可修改。'
+              : '实体编码为固定前缀，将与输入内容一起保存，创建后不可修改。' }}
+          </div>
         </el-form-item>
         <el-form-item label="布局类型">
           <el-radio-group v-model="form.layoutType">
@@ -161,7 +186,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
@@ -174,6 +199,11 @@ import {
 } from '@/shared/form-runtime'
 import { formatDateValue } from '@/shared/list-runtime'
 import PageState from '@/components/PageState.vue'
+import {
+  buildEntityConfigKey,
+  getEntityConfigKeyPrefix,
+  getEntityConfigKeySuffixMaxLength
+} from '@/shared/entity-config-key'
 
 const route = useRoute()
 const router = useRouter()
@@ -194,6 +224,12 @@ const copySourceFormId = ref('')
 const entityInfo = ref({})
 const formList = ref([])
 const previewForm = ref(null)
+const formKeyPrefix = computed(() =>
+  getEntityConfigKeyPrefix(entityInfo.value.entityCode)
+)
+const formKeySuffixMaxLength = computed(() =>
+  getEntityConfigKeySuffixMaxLength(entityInfo.value.entityCode)
+)
 
 const form = reactive({
   id: '',
@@ -254,6 +290,10 @@ async function loadForms() {
 }
 
 function handleCreate() {
+  if (!entityInfo.value.entityCode) {
+    ElMessage.warning('实体编码尚未加载，暂时无法新建表单')
+    return
+  }
   isEdit.value = false
   resetForm()
   dialogVisible.value = true
@@ -326,7 +366,11 @@ async function handleSubmit() {
       await updateForm(form.id, form)
       ElMessage.success('更新成功')
     } else {
-      await createForm(form)
+      // 新增时只让用户维护后缀，提交前再合成稳定的实体级表单标识。
+      await createForm({
+        ...form,
+        formKey: buildEntityConfigKey(entityInfo.value.entityCode, form.formKey)
+      })
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

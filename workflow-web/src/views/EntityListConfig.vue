@@ -9,7 +9,7 @@
             </el-button>
             <span>实体列表配置：{{ entityName }}</span>
           </div>
-          <el-button type="primary" @click="handleCreate">
+          <el-button type="primary" :disabled="!entityCode" @click="handleCreate">
             <el-icon><Plus /></el-icon>新建列表配置
           </el-button>
         </div>
@@ -39,13 +39,33 @@
     </el-card>
 
     <!-- 新建/编辑对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
+    <el-dialog
+      v-model="dialogVisible"
+      :title="dialogTitle"
+      width="min(680px, 92vw)"
+    >
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
         <el-form-item label="列表名称" prop="listName">
           <el-input v-model="formData.listName" placeholder="请输入列表名称" />
         </el-form-item>
         <el-form-item label="列表标识" prop="listKey">
-          <el-input v-model="formData.listKey" placeholder="如：default、myList" :disabled="isEdit" />
+          <el-input
+            v-if="isEdit"
+            v-model="formData.listKey"
+            placeholder="如：default、myList"
+            disabled
+          />
+          <el-input
+            v-else
+            v-model="formData.listKey"
+            :maxlength="listKeySuffixMaxLength"
+            placeholder="如：default、myList"
+          >
+            <template #prepend>{{ listKeyPrefix }}</template>
+          </el-input>
+          <div v-if="!isEdit" class="field-help">
+            实体编码为固定前缀，将与输入内容一起保存，创建后不可修改。
+          </div>
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入说明" />
@@ -65,12 +85,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowLeft } from '@element-plus/icons-vue'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi } from '@/api/entity'
+import {
+  buildEntityConfigKey,
+  getEntityConfigKeyPrefix,
+  getEntityConfigKeySuffixMaxLength
+} from '@/shared/entity-config-key'
 
 const route = useRoute()
 const router = useRouter()
@@ -79,6 +104,7 @@ const entityId = route.params.entityId
 const loading = ref(false)
 const configList = ref([])
 const entityName = ref('')
+const entityCode = ref('')
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -96,6 +122,10 @@ const formData = ref({
   revision: 0,
   fields: []
 })
+const listKeyPrefix = computed(() => getEntityConfigKeyPrefix(entityCode.value))
+const listKeySuffixMaxLength = computed(() =>
+  getEntityConfigKeySuffixMaxLength(entityCode.value)
+)
 
 const formRules = {
   listName: [{ required: true, message: '请输入列表名称', trigger: 'blur' }],
@@ -115,7 +145,8 @@ async function loadEntityInfo() {
     const res = await entityApi.getById(entityId)
     if (res) {
       entityName.value = res.entityName || ''
-      formData.value.entityCode = res.entityCode || ''
+      entityCode.value = res.entityCode || ''
+      formData.value.entityCode = entityCode.value
     }
   } catch (e) {
     console.error('加载实体信息失败:', e)
@@ -136,12 +167,16 @@ async function loadConfigList() {
 }
 
 function handleCreate() {
+  if (!entityCode.value) {
+    ElMessage.warning('实体编码尚未加载，暂时无法新建列表配置')
+    return
+  }
   isEdit.value = false
   dialogTitle.value = '新建列表配置'
   formData.value = {
     id: '',
     entityId: entityId,
-    entityCode: formData.value.entityCode,
+    entityCode: entityCode.value,
     listKey: '',
     listName: '',
     description: '',
@@ -183,7 +218,12 @@ async function handleSubmit() {
         isDefault: formData.value.isDefault
       })
     } else {
-      await entityListConfigApi.save(formData.value)
+      // 与表单新增保持一致，只在创建请求中拼接实体编码前缀。
+      await entityListConfigApi.save({
+        ...formData.value,
+        entityCode: entityCode.value,
+        listKey: buildEntityConfigKey(entityCode.value, formData.value.listKey)
+      })
     }
     ElMessage.success('保存成功')
     dialogVisible.value = false
@@ -229,6 +269,12 @@ function goBack() {
 <style scoped>
 .entity-list-config-page {
   padding: 20px;
+}
+
+.field-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
 }
 .card-header {
   display: flex;
