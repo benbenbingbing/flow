@@ -28,10 +28,11 @@ public class AssigneeResolutionService {
         }
         try {
             if (!resolverRuntimeService.supportsConfigured(
-                    resolverCode, PersonResolveUsage.ASSIGNEE)) {
+                    resolverCode, request.usage())) {
                 return AssigneeResolutionResult.error(
                         "RESOLVER_UNAVAILABLE",
-                        "人员接口未注册、未启用或不支持办理人用途",
+                        "人员接口未注册、未启用或不支持当前用途: "
+                                + request.usage(),
                         resolverCode);
             }
             List<String> users = distinct(

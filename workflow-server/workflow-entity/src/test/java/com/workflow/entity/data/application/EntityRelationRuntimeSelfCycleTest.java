@@ -287,13 +287,15 @@ class EntityRelationRuntimeSelfCycleTest {
                 definitionMapper,
                 publishedRelationService,
                 dynamicMapper);
+        // 写前唯一 gate 需要先基于普通快照准备，因此关系行读取发生在
+        // 定义守卫/关系冻结之前；真正的子业务行锁与写入仍在 gate 之后。
+        order.verify(dynamicMapper)
+                .selectByCondition(eq("wf_child"), any());
         order.verify(definitionMapper)
                 .findByEntityCodeForShare("child");
         // 第一次用于判断是否需要历史互斥锁，第二次才是本层递归冻结的关系。
         order.verify(publishedRelationService, times(2))
                 .list(child);
-        order.verify(dynamicMapper)
-                .selectByCondition(eq("wf_child"), any());
         verify(publishHistoryMapper, never())
                 .findLatestByEntityIdForUpdate(anyString());
     }

@@ -6,6 +6,8 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
+import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,7 @@ final class PublishedSubFormSubmissionProcessor {
             UiRuntimeResolutionContext resolutionContext,
             Context parentContext,
             int depth,
+            boolean authoritativeSubmission,
             ChildFormApplier childFormApplier) {
         if (!SUB_FORM_NODE_TYPES.contains(normalize(node.getNodeType()))) {
             return;
@@ -153,7 +156,8 @@ final class PublishedSubFormSubmissionProcessor {
                             nodeOwnerKey(node)
                                     + "/row:"
                                     + rowIdentity));
-            processed.add(childFormApplier.apply(
+            Map<String, Object> processedRow = new LinkedHashMap<>(
+                    childFormApplier.apply(
                     childResolved,
                     childDefinition.getEntityCode(),
                     childRecordId,
@@ -163,6 +167,21 @@ final class PublishedSubFormSubmissionProcessor {
                     resolutionContext,
                     childContext,
                     depth + 1));
+            if (authoritativeSubmission) {
+                // 只有正式提交能激活子行终检；无副作用预览的返回值
+                // 会离开写入链路，不能携带内部可信标记。
+                TrustedSubFormUniqueReference.attach(
+                        processedRow,
+                        childDefinition.getEntityCode(),
+                        new FormUniqueMutationContext.Reference(
+                                childForm.getId(),
+                                childResolved.releaseId(),
+                                childResolved.releaseVersion(),
+                                childResolved.effectiveReleaseId(),
+                                childResolved.effectiveContentHash(),
+                                childResolved.hotfixTargetId()));
+            }
+            processed.add(processedRow);
         }
         parentRecord.put(
                 relation.fieldCode(),

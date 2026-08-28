@@ -14,8 +14,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.openapi.application.IntegrationSecretHasher;
 import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.embed.EmbedLaunchIssuePort;
+import com.workflow.contracts.embed.EmbedLaunchIssued;
+import com.workflow.contracts.embed.EmbedLaunchView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
+import com.workflow.openapi.api.web.EmbedLaunchController;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -61,6 +65,7 @@ import org.springframework.web.bind.annotation.RestController;
         classes = OpenIntegrationSecurityIntegrationTest.TestApplication.class,
         properties = {
                 "workflow.open-api.enabled=true",
+                "workflow.embed.enabled=true",
                 "workflow.open-api.issuer=https://flow.test",
                 "workflow.open-api.audience=flow-open-api",
                 "workflow.open-api.access-token-ttl=10m",
@@ -330,6 +335,39 @@ class OpenIntegrationSecurityIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void embedLaunchRequiresItsDedicatedScope() throws Exception {
+        String processReadToken = issueToken("process.instance.read");
+        mockMvc.perform(post("/api/open/v1/embed-launches")
+                        .header("Authorization", "Bearer " + processReadToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(embedLaunchRequest()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath(
+                        "$.errorCode",
+                        is("INSUFFICIENT_SCOPE")));
+
+        String launchToken = issueToken("embed.launch");
+        mockMvc.perform(post("/api/open/v1/embed-launches")
+                        .header("Authorization", "Bearer " + launchToken)
+                        .header("X-Trace-Id", "trace-embed-launch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(embedLaunchRequest()))
+                .andExpect(status().isCreated())
+                .andExpect(header().string(
+                        "Cache-Control",
+                        org.hamcrest.Matchers.containsString("no-store")))
+                .andExpect(jsonPath("$.code", is(201)))
+                .andExpect(jsonPath("$.message", is("created")))
+                .andExpect(jsonPath("$.data.launchId", is("lch-test-1")))
+                .andExpect(jsonPath(
+                        "$.data.protocolVersion",
+                        is("flow-embed/1")))
+                .andExpect(jsonPath(
+                        "$.traceId",
+                        is("trace-embed-launch")));
+    }
+
     private String issueToken(String scopes) throws Exception {
         MvcResult result = mockMvc.perform(post("/oauth2/token")
                         .with(httpBasic(CLIENT_ID, CLIENT_SECRET))
@@ -347,6 +385,30 @@ class OpenIntegrationSecurityIntegrationTest {
                 .asText();
     }
 
+    private String embedLaunchRequest() {
+        return """
+                {
+                  "viewKey": "supplier-work-orders",
+                  "parentOrigin": "https://portal.partner.example",
+                  "channelId": "66f82f09-89ec-4a5a-b81b-f54f02d22262",
+                  "subject": {
+                    "type": "SIGNED_JWT",
+                    "assertion": "signed-user-assertion"
+                  },
+                  "entry": {
+                    "mode": "LIST"
+                  },
+                  "context": {
+                    "supplierId": "S-10086"
+                  },
+                  "ui": {
+                    "locale": "zh-CN",
+                    "theme": "light"
+                  }
+                }
+                """;
+    }
+
     private static String pem(String type, byte[] value) {
         return "-----BEGIN " + type + "-----\n"
                 + Base64.getMimeEncoder(64, new byte[]{'\n'})
@@ -362,6 +424,8 @@ class OpenIntegrationSecurityIntegrationTest {
     @Import({
             OpenIntegrationSecurityConfiguration.class,
             TestBeans.class,
+            EmbedLaunchController.class,
+            OpenApplicationActorResolver.class,
             TestProbeController.class
     })
     static class TestApplication {
@@ -383,6 +447,7 @@ class OpenIntegrationSecurityIntegrationTest {
                     .authorizationGrantType(
                             AuthorizationGrantType.CLIENT_CREDENTIALS)
                     .scopes(scopes -> scopes.addAll(Set.of(
+                            "embed.launch",
                             "process.instance.start",
                             "process.instance.read",
                             "process.instance.cancel")))
@@ -471,6 +536,24 @@ class OpenIntegrationSecurityIntegrationTest {
         @Bean
         SystemAuditPort systemAuditPort() {
             return Mockito.mock(SystemAuditPort.class);
+        }
+
+        @Bean
+        EmbedLaunchIssuePort embedLaunchIssuePort() {
+            EmbedLaunchIssuePort port = Mockito.mock(
+                    EmbedLaunchIssuePort.class);
+            Mockito.when(port.issue(Mockito.any(), Mockito.any()))
+                    .thenReturn(new EmbedLaunchIssued(
+                            "lch-test-1",
+                            "https://embed.flow.test/embed/v1/launches/lch-test-1",
+                            "one-time-test-code",
+                            Instant.parse("2026-08-27T08:31:00Z"),
+                            new EmbedLaunchView(
+                                    "supplier-work-orders",
+                                    "LIST",
+                                    7),
+                            "flow-embed/1"));
+            return port;
         }
     }
 

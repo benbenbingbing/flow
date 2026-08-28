@@ -121,9 +121,8 @@ public class ProcessInstanceService {
             throw new IllegalArgumentException("当前执行不在接收任务节点: " + execution.getActivityId());
         }
         validateReceiveMessage(flowElement, request.getMessageRef());
-        Map<String, Object> variables = request.getVariables() == null
-                ? Map.of()
-                : request.getVariables();
+        Map<String, Object> variables = WorkflowReservedVariables
+                .sanitizeRuntimeMutation(request.getVariables());
         runtimeService.trigger(execution.getId(), variables);
         return execution.getId();
     }

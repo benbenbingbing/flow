@@ -9,7 +9,10 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormFiel
 import com.workflow.entity.form.api.request.EntityFormCopyRequest;
 import com.workflow.entity.form.api.request.EntityFormMetadataPatchRequest;
 import com.workflow.entity.form.api.request.EntityFormSaveRequest;
+import com.workflow.entity.form.api.request.FormUniquePrecheckRequest;
+import com.workflow.entity.form.api.response.FormUniquePrecheckResponse;
 import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.form.application.PublishedFormUniquePrecheckService;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
@@ -33,6 +36,7 @@ public class EntityFormController {
     private final UiConfigDraftMetadataService metadataService;
     private final UiConfigurationAccessService accessService;
     private final EntityActionCapabilityService actionCapabilityService;
+    private final PublishedFormUniquePrecheckService uniquePrecheckService;
     
     /**
      * 查询所有表单列表
@@ -143,6 +147,17 @@ public class EntityFormController {
     public Result<List<EntityFormField>> getFormFields(@PathVariable String id) {
         accessService.requireFormAccess(id);
         return Result.success(formService.getFormFields(id));
+    }
+
+    /**
+     * 对当前用户获准使用的已发布表单字段执行唯一性提前检查。
+     * 最终提交仍会在写事务内重新校验，调用方不能把 available 当作保存承诺。
+     */
+    @PostMapping("/{id}/unique-precheck")
+    public Result<FormUniquePrecheckResponse> uniquePrecheck(
+            @PathVariable String id,
+            @RequestBody FormUniquePrecheckRequest request) {
+        return Result.success(uniquePrecheckService.precheck(id, request));
     }
     
     /**

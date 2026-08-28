@@ -9,7 +9,11 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
+import com.workflow.admin.identity.position.api.PositionErrorCode;
+import com.workflow.admin.identity.position.api.PositionManagementException;
 import com.workflow.admin.organization.application.SysOrganizationService;
+import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +37,8 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     private final SysOrganizationMapper orgMapper;
     /** 用户 Mapper，用于查询用户所属组织/部门 */
     private final SysUserMapper userMapper;
+    /** 组织业务层级字典，用于拒绝不存在或已停用的层级编码。 */
+    private final SysDictItemMapper dictItemMapper;
     
     /**
      * 查询组织部门树
@@ -59,6 +65,21 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     @Override
     public List<SysOrganization> getEnabledList() {
         return orgMapper.selectEnabledList();
+    }
+
+    /**
+     * 组织维护只暴露专用的启用业务层级投影，避免为了编辑组织而放宽
+     * 任意系统字典的读取权限。
+     */
+    @Override
+    public List<OrganizationBusinessLevelView> getBusinessLevelOptions() {
+        return dictItemMapper.selectEnabledByDictCode(
+                        "organization_business_level")
+                .stream()
+                .map(item -> new OrganizationBusinessLevelView(
+                        item.getItemCode(), item.getItemLabel(),
+                        item.getSort() == null ? 0 : item.getSort()))
+                .toList();
     }
     
     /**
@@ -106,6 +127,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             }
         }
         
+        SysOrganization oldOrg = StringUtils.hasText(org.getId())
+                ? orgMapper.selectById(org.getId()) : null;
+        protectLeaderProjection(org, oldOrg);
+        org.setBusinessLevelCode(normalizeAndValidateBusinessLevel(
+                org.getBusinessLevelCode()));
+
         if (!StringUtils.hasText(org.getParentId())) {
             org.setParentId("0");
         }
@@ -127,7 +154,6 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             orgMapper.updateById(org);
             log.info("新增组织部门：{} ({})", LogValue.safe(org.getOrgName()), LogValue.safe(org.getOrgCode()));
         } else {
-            SysOrganization oldOrg = orgMapper.selectById(org.getId());
             if (oldOrg != null && !oldOrg.getPath().equals(org.getPath())) {
                 updateChildrenPath(oldOrg.getPath(), org.getPath());
             }
@@ -136,6 +162,52 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         }
         
         return org;
+    }
+
+    /**
+     * leader_id/leader_name 已降级为 UNIT_LEADER 的单向兼容投影。
+     *
+     * <p>组织保存不得把请求中的负责人重新当作权威来源。新组织必须先保存
+     * 获得 ID，再调用 {@code /api/system/org/{id}/leader}；更新时保留数据库
+     * 当前投影并忽略同值回显，发现试图直接换人时明确拒绝。</p>
+     */
+    private void protectLeaderProjection(
+            SysOrganization requested,
+            SysOrganization existing) {
+        String requestedLeaderId = requested.getLeaderId();
+        if (existing == null && StringUtils.hasText(requestedLeaderId)) {
+            throw new PositionManagementException(
+                    409,
+                    PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
+                    "新增组织不能直接设置负责人；请保存后通过职务任命接口设置");
+        }
+        if (existing != null && StringUtils.hasText(requestedLeaderId)
+                && !requestedLeaderId.equals(existing.getLeaderId())) {
+            throw new PositionManagementException(
+                    409,
+                    PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
+                    "负责人必须通过 UNIT_LEADER 职务任命接口变更");
+        }
+        // MyBatis-Plus 默认不更新 null 字段，从而保留已有兼容投影。
+        requested.setLeaderId(null);
+        requested.setLeaderName(null);
+    }
+
+    /**
+     * 将业务层级归一为字典中的大写稳定码；空白表示显式清空。
+     */
+    private String normalizeAndValidateBusinessLevel(String businessLevelCode) {
+        if (!StringUtils.hasText(businessLevelCode)) {
+            return null;
+        }
+        String normalized = businessLevelCode.trim().toUpperCase(
+                java.util.Locale.ROOT);
+        if (dictItemMapper.selectEnabledByCode(
+                "organization_business_level", normalized) == null) {
+            throw new IllegalArgumentException(
+                    "组织业务层级不存在或已停用: " + normalized);
+        }
+        return normalized;
     }
     
     /**

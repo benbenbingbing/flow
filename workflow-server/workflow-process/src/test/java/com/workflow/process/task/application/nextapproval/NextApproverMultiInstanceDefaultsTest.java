@@ -92,6 +92,78 @@ class NextApproverMultiInstanceDefaultsTest {
     }
 
     @Test
+    void relativePositionNeverUsesAStaleCollectionFromAnEarlierLoopCycle() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        when(userMapper.selectByUsername("old-leader"))
+                .thenReturn(user("user-old", "old-leader"));
+        when(userMapper.selectByUsername("current-leader"))
+                .thenReturn(user("user-current", "current-leader"));
+        PersonResolverRuntimeService resolverRuntimeService =
+                mock(PersonResolverRuntimeService.class);
+        when(resolverRuntimeService.resolveUsernames(
+                eq("relativeOrgPosition"), any()))
+                .thenReturn(List.of("current-leader"));
+        NextApproverCandidateService service =
+                new NextApproverCandidateService(
+                        mock(NextApprovalRouteService.class),
+                        resolverRuntimeService,
+                        userMapper,
+                        mock(SysRoleMapper.class),
+                        mock(SysUserRoleMapper.class),
+                        mock(SysGroupMapper.class),
+                        mock(SysUserGroupMapper.class),
+                        mock(SysOrganizationMapper.class));
+        UserTask userTask = new UserTask();
+        userTask.setId("relative-review");
+        MultiInstanceLoopCharacteristics loop =
+                new MultiInstanceLoopCharacteristics();
+        loop.setInputDataItem("${reviewers}");
+        userTask.setLoopCharacteristics(loop);
+        NextApproverSelectionPolicy policy =
+                new NextApproverSelectionPolicy(
+                        true,
+                        1,
+                        true,
+                        true,
+                        "MULTI_INSTANCE",
+                        true,
+                        NextApproverSelectionPolicy.SourceType.NODE_ASSIGNMENT,
+                        List.of(),
+                        null,
+                        Map.of(),
+                        "policy-relative");
+        NextApprovalTarget target = new NextApprovalTarget(
+                userTask,
+                Map.of(
+                        "assignmentConfigVersion", 2,
+                        "assigneeType", "interface",
+                        "resolverCode", "relativeOrgPosition",
+                        "extraParams", Map.of(
+                                "schemaVersion", 1)),
+                policy);
+        Task task = mock(Task.class);
+        when(task.getId()).thenReturn("source-task");
+        when(task.getProcessInstanceId()).thenReturn("instance-1");
+        when(task.getProcessDefinitionId()).thenReturn("definition-1");
+        NextApprovalResolution resolution = new NextApprovalResolution(
+                task,
+                NextApprovalPreviewStatus.READY,
+                null,
+                "scope-relative",
+                List.of(target),
+                Map.of("reviewers", List.of("old-leader")));
+
+        List<NextApproverCandidateDTO> defaults =
+                service.defaultAssignees(resolution, target);
+
+        assertEquals(List.of("current-leader"), defaults.stream()
+                .map(NextApproverCandidateDTO::getUsername)
+                .toList());
+        org.mockito.Mockito.verify(resolverRuntimeService)
+                .resolveUsernames(eq("relativeOrgPosition"), any());
+    }
+
+    @Test
     void directResolverExposesOnlyThePrimaryResolvedAssignee() {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         when(userMapper.selectByUsername("bob"))

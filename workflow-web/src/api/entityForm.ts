@@ -177,6 +177,37 @@ export const getFormRuntimeRelease = (
   })
 }
 
+export interface FormFieldUniquePrecheckRequest {
+  releaseId?: string
+  releaseVersion?: number
+  releaseResolutionToken?: string
+  ruleId?: string
+  fieldCode?: string
+  recordId?: string
+  formData: Record<string, any>
+}
+
+export interface FormFieldUniquePrecheckResponse {
+  available: boolean
+  checked: boolean
+  fieldCode?: string
+  message?: string
+  ruleId?: string
+}
+
+/**
+ * 按服务端确认的当前表单发布快照执行唯一性预检。请求只携带规则定位信息，
+ * 不传客户端规则内容，避免其他表单或被篡改的配置影响校验作用域。
+ */
+export const precheckFormFieldUnique = (
+  formId: string,
+  data: FormFieldUniquePrecheckRequest
+) => request.post<FormFieldUniquePrecheckResponse>(
+  `/entity-form/${formId}/unique-precheck`,
+  data,
+  { silentError: true }
+)
+
 export const previewFormActivation = (id: string, releaseId: string) => {
   return request.get(
     `/entity-forms/${id}/releases/${releaseId}/activation-preview`

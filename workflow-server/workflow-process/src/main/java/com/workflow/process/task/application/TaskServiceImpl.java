@@ -8,6 +8,7 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.workbench.api.response.TaskStatisticsVO;
 import com.workflow.process.task.api.response.TaskVO;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
@@ -650,8 +651,10 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         // 2. 更新表单数据
-        if (formData != null) {
-            formData.forEach((key, value) -> {
+        Map<String, Object> safeFormData =
+                WorkflowReservedVariables.sanitizeRuntimeMutation(formData);
+        if (!safeFormData.isEmpty()) {
+            safeFormData.forEach((key, value) -> {
                 runtimeService.setVariable(processInstanceId, key, value);
             });
         }

@@ -1,0 +1,19 @@
+{
+  "name": "@flow/embed-sdk",
+  "version": "1.0.0",
+  "description": "Framework-free host SDK for Flow Embed Runtime",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./types.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "types": "./types.d.ts",
+  "files": [
+    "src",
+    "types.d.ts",
+    "README.md"
+  ]
+}

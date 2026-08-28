@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 /**
  * 用户管理 Mapper
@@ -41,6 +42,23 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      */
     @Select("SELECT * FROM sys_user WHERE username = #{username} AND deleted = 0")
     SysUser selectByUsername(@Param("username") String username);
+
+    @Select("SELECT * FROM sys_user WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    SysUser selectForUpdate(@Param("id") String id);
+
+    @Select("""
+            <script>
+            SELECT * FROM sys_user
+            WHERE id IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+            </foreach>
+              AND deleted = 0
+            ORDER BY id
+            FOR UPDATE
+            </script>
+            """)
+    List<SysUser> selectForUpdateByIds(@Param("ids") List<String> ids);
 
     @Update("""
             UPDATE sys_user
@@ -105,6 +123,23 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             "<if test='orgId != null and orgId != \"\"'>AND u.org_id = #{orgId}</if>",
             "<if test='deptId != null and deptId != \"\"'>AND u.dept_id = #{deptId}</if>",
             "<if test='roleId != null and roleId != \"\"'>AND ur.role_id = #{roleId}</if>",
+            "<if test='positionCode != null and positionCode != \"\"'>",
+            "AND EXISTS (SELECT 1 FROM sys_position_assignment pa",
+            "INNER JOIN sys_position p ON p.id = pa.position_id",
+            "WHERE pa.user_id = u.id AND p.position_code = #{positionCode}",
+            "AND p.status = 'ENABLED' AND p.deleted = 0",
+            "AND pa.revoked_at IS NULL AND pa.effective_from &lt;= #{asOf}",
+            "AND (pa.effective_to IS NULL OR pa.effective_to &gt; #{asOf})",
+            "<choose>",
+            "<when test='assignmentUnitIds == null'></when>",
+            "<when test='assignmentUnitIds.size() &gt; 0'>",
+            "AND pa.organization_unit_id IN",
+            "<foreach collection='assignmentUnitIds' item='unitId' open='(' separator=',' close=')'>#{unitId}</foreach>",
+            "</when>",
+            "<otherwise>AND 1 = 0</otherwise>",
+            "</choose>",
+            ")",
+            "</if>",
             "ORDER BY u.create_time DESC",
             "</script>"
     })
@@ -114,7 +149,10 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             @Param("status") String status,
             @Param("orgId") String orgId,
             @Param("deptId") String deptId,
-            @Param("roleId") String roleId);
+            @Param("roleId") String roleId,
+            @Param("positionCode") String positionCode,
+            @Param("asOf") LocalDateTime asOf,
+            @Param("assignmentUnitIds") List<String> assignmentUnitIds);
     
     /**
      * 查询用户的角色列表

@@ -599,6 +599,124 @@
               </SettingsSection>
 
               <SettingsSection
+                v-if="canConfigureSelectedNodeUniqueness"
+                v-show="activeNodeSettingsTab === 'rules'"
+                title="唯一性"
+                description="规则只属于当前表单；未配置该规则的其他表单不会触发前后端校验"
+              >
+                <template #summary>
+                  <el-tag
+                    size="small"
+                    :type="selectedUniquenessConfig.mode === 'NONE' ? 'info' : 'success'"
+                  >
+                    {{ selectedUniquenessModeLabel }}
+                  </el-tag>
+                </template>
+
+                <el-alert
+                  type="info"
+                  :closable="false"
+                  show-icon
+                  class="uniqueness-scope-tip"
+                  title="严格按当前表单发布版生效"
+                  description="其他表单未设置时不会发起预检，服务端提交也不会套用本表单规则。"
+                />
+
+                <el-form-item label="唯一模式">
+                  <el-select
+                    :model-value="selectedUniquenessConfig.mode"
+                    style="width: 100%"
+                    @update:model-value="updateSelectedUniqueness('mode', $event)"
+                  >
+                    <el-option label="不校验" value="NONE" />
+                    <el-option label="当前字段全局唯一" value="GLOBAL" />
+                    <el-option label="满足条件时唯一" value="CONDITIONAL" />
+                  </el-select>
+                </el-form-item>
+
+                <template v-if="selectedUniquenessConfig.mode !== 'NONE'">
+                  <el-form-item label="忽略空值">
+                    <el-switch
+                      :model-value="selectedUniquenessConfig.ignoreBlank"
+                      @update:model-value="updateSelectedUniqueness('ignoreBlank', $event)"
+                    />
+                  </el-form-item>
+                  <el-form-item label="错误提示">
+                    <el-input
+                      :model-value="selectedUniquenessConfig.message || ''"
+                      maxlength="200"
+                      placeholder="例如：项目名称在当前状态下已存在"
+                      @update:model-value="updateSelectedUniqueness('message', $event)"
+                    />
+                  </el-form-item>
+
+                  <div
+                    v-if="selectedUniquenessConfig.mode === 'CONDITIONAL'"
+                    class="uniqueness-condition-editor"
+                  >
+                    <div class="uniqueness-subtitle">唯一规则生效条件</div>
+                    <div class="form-tip">
+                      只有当前记录满足条件时才查重；参与比较的数据也必须满足同一条件。
+                    </div>
+                    <FlowConditionGroupEditor
+                      :group="selectedUniquenessConditionRoot"
+                      :entity-fields="uniqueConditionFields"
+                      :include-approval-property="false"
+                      :operator-options="uniqueConditionOperatorOptions"
+                      @change="persistSelectedUniquenessCondition"
+                    />
+                  </div>
+
+                  <div class="uniqueness-precheck-editor">
+                    <div class="uniqueness-subtitle">提前重复检查</div>
+                    <el-form-item label="启用预检">
+                      <el-switch
+                        :model-value="selectedUniquenessConfig.precheck.enabled"
+                        @update:model-value="updateSelectedUniquenessPrecheck('enabled', $event)"
+                      />
+                    </el-form-item>
+                    <template v-if="selectedUniquenessConfig.precheck.enabled">
+                      <el-form-item label="触发时机">
+                        <el-select
+                          :model-value="selectedUniquenessConfig.precheck.trigger"
+                          style="width: 100%"
+                          @update:model-value="updateSelectedUniquenessPrecheck('trigger', $event)"
+                        >
+                          <el-option label="字段变化后" value="CHANGE" />
+                          <el-option label="字段失焦后" value="BLUR" />
+                          <el-option label="仅提交时" value="SUBMIT_ONLY" />
+                        </el-select>
+                      </el-form-item>
+                      <el-form-item
+                        v-if="selectedUniquenessConfig.precheck.trigger === 'CHANGE'"
+                        label="防抖时间"
+                      >
+                        <el-input-number
+                          :model-value="selectedUniquenessConfig.precheck.debounceMs"
+                          :min="200"
+                          :max="3000"
+                          :step="100"
+                          controls-position="right"
+                          @update:model-value="updateSelectedUniquenessPrecheck('debounceMs', $event)"
+                        />
+                        <span class="uniqueness-unit">毫秒</span>
+                      </el-form-item>
+                      <el-form-item
+                        v-if="selectedUniquenessConfig.mode === 'CONDITIONAL'
+                          && selectedUniquenessConfig.precheck.trigger === 'CHANGE'"
+                        label="监听条件字段"
+                      >
+                        <el-switch
+                          :model-value="selectedUniquenessConfig.precheck.watchConditionFields"
+                          @update:model-value="updateSelectedUniquenessPrecheck('watchConditionFields', $event)"
+                        />
+                      </el-form-item>
+                    </template>
+                  </div>
+                </template>
+              </SettingsSection>
+
+              <SettingsSection
                 v-if="canConfigureSelectedNodeModeAccess"
                 v-show="activeNodeSettingsTab === 'rules'"
                 title="运行模式权限"
@@ -990,6 +1108,7 @@ import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigRelease
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerSettingsDrawer.vue'
 import FormCustomRendererWorkspace from '@/components/form-designer/FormCustomRendererWorkspace.vue'
@@ -1045,6 +1164,15 @@ import {
   normalizeFormFieldValidation,
   resolveFormNodeBinding
 } from '@/shared/form-node-property-schema'
+import {
+  normalizeFormFieldUniqueness,
+  supportsFormFieldUniqueness,
+  validateFormFieldUniqueness
+} from '@/shared/form-field-uniqueness'
+import {
+  createFlowConditionConfig,
+  createFlowConditionGroup
+} from '@/utils/flowConditionGroups'
 import {
   getDefaultFormFieldComponentType as getDefaultComponentType
 } from '@/shared/form-field-component-policy'
@@ -1240,6 +1368,17 @@ const modeOptions = [
   { value: 'edit', label: '编辑' },
   { value: 'approve', label: '审批' },
   { value: 'view', label: '查看', editable: false }
+]
+const uniqueConditionOperatorOptions = [
+  { label: '等于 (==)', value: '==' },
+  { label: '不等于 (!=)', value: '!=' },
+  { label: '大于 (>)', value: '>' },
+  { label: '小于 (<)', value: '<' },
+  { label: '大于等于 (>=)', value: '>=' },
+  { label: '小于等于 (<=)', value: '<=' },
+  { label: '包含', value: 'contains' },
+  { label: '为空', value: 'empty' },
+  { label: '不为空', value: 'notEmpty' }
 ]
 const nodeTypeOptions = [
   { value: 'SECTION', label: '区块' },
@@ -1671,6 +1810,30 @@ const selectedParentHelp = computed(() => {
 const selectedValidationConfig = computed(() =>
   safeParseConfig(selectedField.value?.validationRules)
 )
+const selectedUniquenessConfig = computed(() =>
+  normalizeFormFieldUniqueness(
+    selectedValidationConfig.value.uniqueness,
+    selectedField.value?.fieldCode
+      || selectedField.value?.bindingRef
+      || selectedField.value?.nodeKey
+  )
+)
+const selectedUniquenessConditionRoot = computed(() =>
+  selectedUniquenessConfig.value.condition?.root || createFlowConditionGroup()
+)
+const selectedUniquenessModeLabel = computed(() => ({
+  NONE: '未配置',
+  GLOBAL: '全局唯一',
+  CONDITIONAL: '条件唯一'
+})[selectedUniquenessConfig.value.mode] || '未配置')
+const uniqueConditionFields = computed(() => {
+  const currentCode = selectedField.value?.fieldCode
+    || selectedField.value?.bindingRef
+    || selectedField.value?.nodeKey
+  return entityFields.value.filter(field =>
+    field.uiConfigurable !== false && field.fieldCode !== currentCode
+  )
+})
 const selectedValidationMaxLength = computed(() => {
   const configuredMaxLength = selectedValidationConfig.value.maxLength
   if (configuredMaxLength !== undefined
@@ -1719,6 +1882,10 @@ const canConfigureSelectedNodeDataSource = computed(() =>
 const canConfigureSelectedNodeValidation = computed(() =>
   selectedNodePropertySchema.value.rules
     && hasSelectedValidationCapabilities.value
+)
+const canConfigureSelectedNodeUniqueness = computed(() =>
+  selectedNodePropertySchema.value.rules
+    && supportsFormFieldUniqueness(selectedField.value)
 )
 const canConfigureSelectedNodeModeAccess = computed(() =>
   selectedNodePropertySchema.value.editable.includes('modeAccess')
@@ -3942,9 +4109,59 @@ function updateValidationConfig(key, value) {
       {
         ...selectedValidationConfig.value,
         [key]: value
-      }
+      },
+      selectedField.value.fieldCode
+        || selectedField.value.bindingRef
+        || selectedField.value.nodeKey
     )
   )
+}
+
+/**
+ * 更新当前字段的表单级唯一规则。唯一规则嵌入 validationRules，因而会随
+ * 当前表单草稿和发布快照保存，不会修改实体字段自身的 isUnique 配置。
+ */
+function persistSelectedUniqueness(rule) {
+  if (!selectedField.value) return
+  const fieldCode = selectedField.value.fieldCode
+    || selectedField.value.bindingRef
+    || selectedField.value.nodeKey
+  selectedField.value.validationRules = stringifyConfig(
+    normalizeFormFieldValidation(
+      selectedField.value.fieldType,
+      {
+        ...selectedValidationConfig.value,
+        uniqueness: normalizeFormFieldUniqueness(rule, fieldCode)
+      },
+      fieldCode
+    )
+  )
+}
+
+function updateSelectedUniqueness(key, value) {
+  persistSelectedUniqueness({
+    ...selectedUniquenessConfig.value,
+    [key]: value
+  })
+}
+
+function updateSelectedUniquenessPrecheck(key, value) {
+  persistSelectedUniqueness({
+    ...selectedUniquenessConfig.value,
+    precheck: {
+      ...selectedUniquenessConfig.value.precheck,
+      [key]: value
+    }
+  })
+}
+
+function persistSelectedUniquenessCondition() {
+  persistSelectedUniqueness({
+    ...selectedUniquenessConfig.value,
+    condition: createFlowConditionConfig(
+      selectedUniquenessConditionRoot.value
+    )
+  })
 }
 
 /**
@@ -3963,10 +4180,17 @@ function resetRegexTest() {
 function validateNodeValidationRules(field) {
   const config = safeParseConfig(field?.validationRules)
   const patternError = getRuntimeRegexPatternError(config.pattern)
-  if (!patternError) return
   const label =
     field?.fieldLabel || field?.fieldName || field?.fieldCode || '当前字段'
-  throw new Error(`“${label}”${patternError}`)
+  if (patternError) throw new Error(`“${label}”${patternError}`)
+  if (!config.uniqueness) return
+  const uniquenessValidation = validateFormFieldUniqueness(
+    config.uniqueness,
+    field?.fieldCode || field?.bindingRef || field?.nodeKey
+  )
+  if (!uniquenessValidation.valid) {
+    throw new Error(`“${label}”${uniquenessValidation.errors[0]}`)
+  }
 }
 
 function updateSelectedNodeConfig(key, value) {
@@ -5182,6 +5406,34 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.uniqueness-scope-tip {
+  margin-bottom: 14px;
+}
+
+.uniqueness-condition-editor,
+.uniqueness-precheck-editor {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.uniqueness-subtitle {
+  margin-bottom: 6px;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.uniqueness-condition-editor .form-tip {
+  margin-bottom: 12px;
+}
+
+.uniqueness-unit {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .node-interaction-tabs :deep(.el-tabs__item) {

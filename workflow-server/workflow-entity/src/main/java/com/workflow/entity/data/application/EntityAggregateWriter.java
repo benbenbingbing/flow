@@ -8,6 +8,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationSystemFields;
 import com.workflow.contracts.entity.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -53,36 +54,59 @@ public class EntityAggregateWriter {
 
     public WriteResult apply(
             EntityMutationCommand command) {
+        return apply(command, null);
+    }
+
+    /**
+     * 携带事务执行器生成的 out-of-band 唯一性计划写入聚合。
+     * 计划只沿统一变更入口向关系写层传递，不改变其他直接调用的既有语义。
+     */
+    public WriteResult apply(
+            EntityMutationCommand command,
+            PreparedUniqueClaims prepared) {
         return switch (command.operationType()) {
-            case CREATE -> create(command);
+            case CREATE -> create(command, prepared);
             case UPDATE, APPLY_CHANGE ->
-                    update(command);
+                    update(command, prepared);
             case DELETE -> delete(command);
             case STATUS_CHANGE ->
-                    statusChange(command);
-            case UPSERT -> upsert(command);
+                    statusChange(command, prepared);
+            case UPSERT -> upsert(command, prepared);
         };
     }
 
     private WriteResult create(
-            EntityMutationCommand command) {
+            EntityMutationCommand command,
+            PreparedUniqueClaims prepared) {
         EntityDataDTO dto = objectMapper.convertValue(
                 command.payload(),
                 EntityDataDTO.class);
         dto.setEntityCode(command.entityCode());
-        if (dto.getData() == null) {
+        Object rawData = command.payload().get("data");
+        if (rawData instanceof Map<?, ?> map) {
+            // 子表单发布引用使用不可伪造的 JVM 私有 Marker 跨越聚合
+            // 命令。ObjectMapper.convertValue 会将 Marker 按 @JsonValue 变成
+            // 字符串；这里只复用已受信处理的原始嵌套 Map，使关系写层
+            // 能在 SQL 前取出 Marker。客户端同名字符串仍不会通过类型检查。
+            @SuppressWarnings("unchecked")
+            Map<String, Object> trustedData =
+                    new LinkedHashMap<>((Map<String, Object>) map);
+            dto.setData(trustedData);
+        } else if (dto.getData() == null) {
             dto.setData(customPayload(command.payload()));
         }
-        EntityDataDTO saved = mutationService.save(dto);
+        EntityDataDTO saved = mutationService.save(dto, prepared);
         return new WriteResult(saved.getId(), saved);
     }
 
     private WriteResult update(
-            EntityMutationCommand command) {
+            EntityMutationCommand command,
+            PreparedUniqueClaims prepared) {
         EntityDataDTO saved = mutationService.update(
                 command.entityCode(),
                 command.recordId(),
-                cleanPayload(command.payload()));
+                cleanPayload(command.payload()),
+                prepared);
         return new WriteResult(command.recordId(), saved);
     }
 
@@ -97,7 +121,8 @@ public class EntityAggregateWriter {
     }
 
     private WriteResult statusChange(
-            EntityMutationCommand command) {
+            EntityMutationCommand command,
+            PreparedUniqueClaims prepared) {
         String mode = text(command.payload()
                 .get(EntityMutationSystemFields.MODE_KEY));
         if (EntityMutationSystemFields.PROCESS_END.equals(mode)) {
@@ -122,7 +147,8 @@ public class EntityAggregateWriter {
             mutationService.update(
                     command.entityCode(),
                     command.recordId(),
-                    cleanPayload(command.payload()));
+                    cleanPayload(command.payload()),
+                    prepared);
         }
         return new WriteResult(
                 command.recordId(),
@@ -130,12 +156,13 @@ public class EntityAggregateWriter {
     }
 
     private WriteResult upsert(
-            EntityMutationCommand command) {
+            EntityMutationCommand command,
+            PreparedUniqueClaims prepared) {
         try {
             queryService.findById(
                     command.entityCode(),
                     command.recordId());
-            return update(command);
+            return update(command, prepared);
         } catch (RuntimeException ignored) {
             Map<String, Object> payload =
                     new LinkedHashMap<>(command.payload());
@@ -146,7 +173,7 @@ public class EntityAggregateWriter {
                     null,
                     EntityMutationOperationType.CREATE,
                     payload,
-                    command.context()));
+                    command.context()), prepared);
         }
     }
 

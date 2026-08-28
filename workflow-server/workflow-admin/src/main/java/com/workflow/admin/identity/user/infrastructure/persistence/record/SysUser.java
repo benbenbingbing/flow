@@ -10,6 +10,7 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.record.S
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -120,6 +121,24 @@ public class SysUser {
      */
     @TableField(exist = false)
     private List<String> roleIds;
+
+    /** 当前有效任职摘要，仅在用户管理查询中回填。 */
+    @TableField(exist = false)
+    private List<CurrentPositionAssignment> currentPositionAssignments;
+
+    /**
+     * 用户列表所需的最小任职摘要，职务仍不等同于权限角色。
+     */
+    public record CurrentPositionAssignment(
+            String assignmentId,
+            String positionCode,
+            String positionName,
+            String organizationUnitId,
+            String organizationUnitName,
+            boolean isPrimary,
+            Instant effectiveFrom,
+            Instant effectiveTo) {
+    }
 
     public enum Status {
         /** 启用 */

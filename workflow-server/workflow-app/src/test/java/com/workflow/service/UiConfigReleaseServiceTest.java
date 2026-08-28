@@ -1710,6 +1710,71 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void trustedEffectiveFormReleaseUsesExactTargetSnapshotAfterRollback() {
+        TestContext context = context();
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-2",
+                formSnapshot(List.of(labelNode("基础版本"))));
+        pinned.setVersion(2);
+        UiConfigRelease genericHotfix = release(
+                context.codec(),
+                "hotfix-3",
+                formSnapshot(List.of(labelNode("热修复发布自身快照"))));
+        genericHotfix.setVersion(3);
+        genericHotfix.setReleaseMode(UiConfigReleaseService.HOTFIX);
+        when(context.releaseMapper().selectById("release-2"))
+                .thenReturn(pinned);
+        when(context.releaseMapper().selectById("hotfix-3"))
+                .thenReturn(genericHotfix);
+
+        UiConfigHotfixTarget target = target(
+                context.codec(),
+                "target-1",
+                "hotfix-3",
+                "release-2",
+                2,
+                formSnapshot(List.of(labelNode("目标有效快照"))));
+        // 终检时 target 可能刚被回滚，但同一次提交不能因此切换规则快照。
+        target.setStatus("ROLLED_BACK");
+        when(context.hotfixTargetMapper().selectById("target-1"))
+                .thenReturn(target);
+
+        ResolvedEntityFormRelease resolved = context.service()
+                .resolveTrustedEffectiveFormRelease(
+                        "form-1",
+                        "release-2",
+                        2,
+                        "hotfix-3",
+                        target.getEffectiveContentHash(),
+                        "target-1");
+
+        assertEquals("target-1", resolved.hotfixTargetId());
+        assertEquals(
+                target.getEffectiveContentHash(),
+                resolved.effectiveContentHash());
+        assertEquals(
+                "目标有效快照",
+                context.codec().readObject(
+                        resolved.form().getNodes().get(0)
+                                .getPropsDocument(),
+                        "测试节点属性").get("label"));
+        verify(context.hotfixTargetMapper(), never())
+                .findActiveTarget(any(), any(), any());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> context.service()
+                        .resolveTrustedEffectiveFormRelease(
+                                "form-1",
+                                "release-2",
+                                2,
+                                "hotfix-3",
+                                "wrong-hash",
+                                "target-1"));
+    }
+
+    @Test
     void corruptHotfixTargetFailsClosedInsteadOfSilentlyUsingPinnedSnapshot() {
         TestContext context = context();
         UiConfigRelease pinned = release(
@@ -2742,6 +2807,8 @@ class UiConfigReleaseServiceTest {
                 new UiConfigHotfixTarget();
         target.setId(targetId);
         target.setHotfixReleaseId(hotfixReleaseId);
+        target.setConfigType(UiConfigReleaseService.FORM);
+        target.setConfigId("form-1");
         target.setPinnedReleaseId(pinnedReleaseId);
         target.setPinnedReleaseVersion(pinnedReleaseVersion);
         target.setEffectiveSnapshotDocument(document);

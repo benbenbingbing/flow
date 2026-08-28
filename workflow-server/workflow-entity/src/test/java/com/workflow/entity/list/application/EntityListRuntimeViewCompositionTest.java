@@ -11,6 +11,7 @@ import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.EntityListDataProvider;
+import com.workflow.contracts.entity.list.EntityListSchemaProvider;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -76,6 +77,7 @@ class EntityListRuntimeViewCompositionTest {
     private UiDataSourceService uiDataSourceService;
     private UiViewCompositionTokenService tokenService;
     private List<EntityListDataProvider> dataProviders;
+    private List<EntityListSchemaProvider> schemaProviders;
     private EntityListRuntimeService service;
 
     @BeforeEach
@@ -106,6 +108,7 @@ class EntityListRuntimeViewCompositionTest {
         uiDataSourceService = mock(UiDataSourceService.class);
         tokenService = mock(UiViewCompositionTokenService.class);
         dataProviders = new ArrayList<>();
+        schemaProviders = new ArrayList<>();
         ObjectMapper objectMapper = new ObjectMapper();
         service = new EntityListRuntimeService(
                 dataListService,
@@ -133,7 +136,7 @@ class EntityListRuntimeViewCompositionTest {
                 tokenService,
                 List.of(),
                 dataProviders,
-                List.of());
+                schemaProviders);
     }
 
     @AfterEach
@@ -538,6 +541,109 @@ class EntityListRuntimeViewCompositionTest {
                         anyLong(), anyLong());
     }
 
+    @Test
+    void embedPinnedQueryCombinesPublishedClientAndTrustedContextFilters() {
+        EntityListConfig published = publishedList();
+        published.setFixedFilterConfig("{\"status\":\"ACTIVE\"}");
+        configurePinnedList(published);
+        EntityListField queryField = new EntityListField();
+        queryField.setFieldCode("title");
+        queryField.setIsQuery(true);
+        when(fieldMapper.findByListConfigId("target-list")).thenReturn(List.of());
+        when(publishedRuntimeService.resolveFields(eq(published), anyList()))
+                .thenReturn(List.of(queryField));
+        Map<String, Object> expected = new LinkedHashMap<>();
+        expected.put("title", "pump");
+        expected.put("status", "ACTIVE");
+        expected.put("supplier_id", "S-10086");
+        expected.put("supplier_id_op", "EQ");
+        PageResult<EntityDataDTO> page = new PageResult<>(List.of(), 0, 1, 20);
+        when(dataListService.findPageWithResolvedConfig(
+                "target_entity", "default", published, expected, 1, 20))
+                .thenReturn(page);
+
+        Object result = service.queryPinned(
+                "target_entity", "default", "target-release", 3,
+                1, 20,
+                Map.of("title", "pump"),
+                Map.of("supplier_id", "S-10086", "supplier_id_op", "EQ"));
+
+        assertEquals(page, result);
+        verify(dataListService).findPageWithResolvedConfig(
+                "target_entity", "default", published, expected, 1, 20);
+        verify(uiEventRuntimeService, never()).execute(any(), any());
+    }
+
+    @Test
+    void embedPinnedQueryUsesAndSemanticsForConflictingFixedFilters() {
+        EntityListConfig published = publishedList();
+        published.setFixedFilterConfig("{\"supplier_id\":\"S-1\"}");
+        configurePinnedList(published);
+
+        PageResult<?> result = (PageResult<?>) service.queryPinned(
+                "target_entity", "default", "target-release", 3,
+                1, 20, Map.of(), Map.of("supplier_id", "S-2"));
+
+        assertEquals(List.of(), result.getRecords());
+        assertEquals(0, result.getTotal());
+        verify(dataListService, never()).findPageWithResolvedConfig(
+                any(), any(), any(), anyMap(), anyLong(), anyLong());
+    }
+
+    @Test
+    void embedPinnedSchemaRejectsCustomComponentBeforeEnhancerRuns() {
+        EntityListConfig published = publishedList();
+        published.setCustomComponent("partner-widget");
+        configurePinnedList(published);
+        EntityListSchemaProvider provider = mock(EntityListSchemaProvider.class);
+        when(provider.getCode()).thenReturn("partner-widget");
+        schemaProviders.add(provider);
+
+        assertThrows(IllegalStateException.class, () -> service.schemaPinned(
+                "target_entity", "default", "target-release", 3));
+
+        verify(provider, never()).enhance(any(), anyMap());
+        verify(publishedRuntimeService, never()).resolveFields(any(), anyList());
+    }
+
+    @Test
+    void embedPinnedQueryRejectsCustomProviderBeforeProviderRuns() {
+        EntityListConfig published = publishedList();
+        published.setQueryProviderCode("partner-query");
+        configurePinnedList(published);
+        EntityListDataProvider provider = mock(EntityListDataProvider.class);
+        when(provider.getCode()).thenReturn("partner-query");
+        dataProviders.add(provider);
+
+        assertThrows(IllegalStateException.class, () -> service.queryPinned(
+                "target_entity", "default", "target-release", 3,
+                1, 20, Map.of(), Map.of()));
+
+        verify(provider, never()).query(any(), any(), anyMap());
+        verify(dataListService, never()).findPageWithResolvedConfig(
+                any(), any(), any(), anyMap(), anyLong(), anyLong());
+    }
+
+    @Test
+    void embedPinnedQueryRejectsDataSourceAndUnsafeFieldBeforeExecution() {
+        EntityListConfig published = publishedList();
+        published.setQueryDataSourceId("external-source");
+        published.setQueryOperationCode("search");
+        EntityListField field = new EntityListField();
+        field.setFieldCode("amount");
+        field.setDataSourceType("CUSTOM_PROVIDER");
+        published.setRuntimeFields(List.of(field));
+        configurePinnedList(published);
+
+        assertThrows(IllegalStateException.class, () -> service.queryPinned(
+                "target_entity", "default", "target-release", 3,
+                1, 20, Map.of(), Map.of()));
+
+        verify(uiDataSourceService, never()).executeOperation(any(), any(), any());
+        verify(dataListService, never()).findPageWithResolvedConfig(
+                any(), any(), any(), anyMap(), anyLong(), anyLong());
+    }
+
     private void configurePinnedList(EntityListConfig published) {
         EntityDefinition definition = definition(
                 EntityDefinition.StorageMode.DYNAMIC);
@@ -661,6 +767,7 @@ class EntityListRuntimeViewCompositionTest {
         config.setListName("目标列表");
         config.setAccessPermissionCode("target:list");
         config.setPublishedSnapshot(true);
+        config.setPinnedRelease(true);
         config.setActiveReleaseId("target-release");
         config.setPublishedVersion(3);
         return config;

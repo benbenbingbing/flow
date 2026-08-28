@@ -10,6 +10,7 @@ import com.workflow.process.assignment.application.LegacyMultiInstanceAssignment
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.assignment.relative.RelativeOrgPositionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;
@@ -176,6 +177,13 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 }
                 EffectiveAssignment effective = effectiveAssignment(
                         model, activity, assigneeConfig);
+                if (usesRelativePositionResolver(
+                        effective.assigneeConfig())) {
+                    // 相对职务的任职人必须在节点激活时解析。发布器已为该节点
+                    // 写入 collection handler，启动阶段仅移除调用方可能伪造的同名集合。
+                    variables.remove(varName);
+                    continue;
+                }
                 List<String> userIds = resolvePublishedUsers(
                         processConfigId,
                         activity.getId(),
@@ -603,6 +611,31 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         return StringUtils.hasText(value)
                 && !value.contains("${")
                 && !value.contains("#{");
+    }
+
+    private boolean usesRelativePositionResolver(
+            Map<String, Object> config) {
+        LegacyMultiInstanceAssignmentParser.LegacyAssignment legacy =
+                LegacyMultiInstanceAssignmentParser.parse(config);
+        if (legacy.effective() && legacy.resolver()) {
+            return RelativeOrgPositionConfig.RESOLVER_CODE.equals(
+                    legacy.resolverCode());
+        }
+        String type = normalizeAssignmentType(config.get("assigneeType"));
+        return "resolver".equals(type)
+                && RelativeOrgPositionConfig.RESOLVER_CODE.equals(firstText(
+                config.get("resolverCode"), config.get("interfaceName")));
+    }
+
+    private String normalizeAssignmentType(Object raw) {
+        String value = text(raw);
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        String normalized = value.trim().toLowerCase(
+                java.util.Locale.ROOT);
+        return "interface".equals(normalized)
+                ? "resolver" : normalized;
     }
 
     private String publishedProcessConfigId(

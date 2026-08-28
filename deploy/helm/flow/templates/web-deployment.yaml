@@ -45,6 +45,10 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            {{- if .Values.embed.enabled }}
+            - name: embed
+              containerPort: 8081
+            {{- end }}
           env:
             - name: SERVER_UPSTREAM
               value: {{ printf "%s-server:8080" (include "flow.fullname" .) | quote }}

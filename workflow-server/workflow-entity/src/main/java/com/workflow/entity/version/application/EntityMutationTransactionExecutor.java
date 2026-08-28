@@ -3,6 +3,7 @@ package com.workflow.entity.version.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
@@ -10,6 +11,11 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.Preparation;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
+import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -42,6 +48,7 @@ public class EntityMutationTransactionExecutor {
     private final EntityRecordVersionService versionService;
     private final EntityRelatedVersionCaptureService relatedVersionCaptureService;
     private final EntityMutationReceiptService receiptService;
+    private final EntityFormUniqueClaimService formUniqueClaimService;
     private final ObjectMapper objectMapper;
 
     @Transactional(
@@ -49,7 +56,71 @@ public class EntityMutationTransactionExecutor {
             isolation = Isolation.READ_COMMITTED)
     public EntityMutationResult execute(
             EntityMutationCommand command) {
-        return executeInternal(command, null, false);
+        EntityMutationResult replayed = receiptService.acquire(command);
+        if (replayed != null) {
+            return replayed;
+        }
+        Map<String, Object> before = command.operationType()
+                == EntityMutationOperationType.CREATE
+                ? Map.of()
+                : load(command.entityCode(), command.recordId());
+        EntityMutationCommand finalized = beforeWrite(
+                command,
+                before);
+        PreparedUniqueClaims prepared =
+                formUniqueClaimService.prepare(finalized, before);
+        return executeInternal(finalized, null, prepared);
+    }
+
+    /**
+     * 对当前最终值执行表单唯一终检与 claim 协调。
+     *
+     * <p>这是审批表单“实际提交但无字段变化”的受信 no-op 路径：
+     * 故意不调用 writer 和版本服务，避免产生伪更新与多余业务版本。
+     * BEFORE_WRITE 仍先执行，但任何 PATCH 都会被拒绝；随后才准备唯一性
+     * gate/扫描并锁业务记录复读。候选若因并发修改漂移会 fail closed。</p>
+     */
+    @Transactional(
+            rollbackFor = Exception.class,
+            isolation = Isolation.READ_COMMITTED)
+    public void reconcileFormUniqueness(
+            String entityCode,
+            String recordId,
+            EntityMutationContext context) {
+        if (entityCode == null || entityCode.isBlank()
+                || recordId == null || recordId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "表单唯一终检必须提供实体编码和记录ID");
+        }
+        EntityMutationCommand command = EntityMutationCommand.update(
+                entityCode,
+                recordId,
+                Map.of(),
+                context);
+        Map<String, Object> snapshot = load(
+                entityCode,
+                recordId);
+        EntityMutationCommand finalized = beforeWrite(
+                command,
+                snapshot);
+        if (!finalized.payload().isEmpty()) {
+            throw new IllegalStateException(
+                    "无字段变更唯一终检不能接受 BEFORE_WRITE PATCH");
+        }
+        PreparedUniqueClaims prepared =
+                formUniqueClaimService.prepare(finalized, snapshot);
+        writer.lock(entityCode, recordId);
+        Map<String, Object> current = load(
+                entityCode,
+                recordId);
+        formUniqueClaimService.verifyPrepared(
+                finalized,
+                current,
+                prepared);
+        formUniqueClaimService.reconcile(
+                finalized,
+                current,
+                prepared);
     }
 
     @Transactional(
@@ -82,26 +153,51 @@ public class EntityMutationTransactionExecutor {
                         results.set(item.index(), replayed);
                     }
                 });
-        Set<RootKey> lockedRoots = lockBatch(pending);
-        pending.stream()
+        List<IndexedCommand> originalWriteOrder = pending.stream()
                 .sorted(Comparator.comparingInt(IndexedCommand::index))
-                .forEach(item -> results.set(
-                        item.index(),
-                        executeInternal(item.command(), lockedRoots, true)));
+                .toList();
+        List<Map<String, Object>> snapshots = originalWriteOrder.stream()
+                .map(item -> item.command().operationType()
+                        == EntityMutationOperationType.CREATE
+                        ? Map.<String, Object>of()
+                        : load(item.command().entityCode(),
+                                item.command().recordId()))
+                .toList();
+        List<IndexedCommand> writeOrder =
+                java.util.stream.IntStream.range(
+                                0, originalWriteOrder.size())
+                        .mapToObj(index -> new IndexedCommand(
+                                originalWriteOrder.get(index).index(),
+                                beforeWrite(
+                                        originalWriteOrder.get(index)
+                                                .command(),
+                                        snapshots.get(index))))
+                        .toList();
+        List<PreparedUniqueClaims> prepared =
+                formUniqueClaimService.prepareAll(
+                        java.util.stream.IntStream.range(
+                                        0, writeOrder.size())
+                                .mapToObj(index -> preparation(
+                                        writeOrder.get(index).command(),
+                                        snapshots.get(index)))
+                                .toList());
+        Set<RootKey> lockedRoots = lockBatch(writeOrder);
+        for (int index = 0; index < writeOrder.size(); index++) {
+            IndexedCommand item = writeOrder.get(index);
+            results.set(
+                    item.index(),
+                    executeInternal(
+                            item.command(),
+                            lockedRoots,
+                            prepared.get(index)));
+        }
         return results;
     }
 
     private EntityMutationResult executeInternal(
             EntityMutationCommand original,
             Set<RootKey> batchLockedRoots,
-            boolean receiptAcquired) {
-        if (!receiptAcquired) {
-            EntityMutationResult replayed =
-                    receiptService.acquire(original);
-            if (replayed != null) {
-                return replayed;
-            }
-        }
+            PreparedUniqueClaims prepared) {
         Map<String, Object> beforeRecord =
                 new LinkedHashMap<>();
         Set<RootKey> lockedRelatedRoots;
@@ -134,21 +230,15 @@ public class EntityMutationTransactionExecutor {
             relatedVersionCaptureService.requireRootsLocked(
                     original, lockedRelatedRoots, Map.of());
         }
-        EntityMutationStepExecutor.ExecutionOutcome before =
-                stepExecutor.execute(
-                        original,
-                        EntityMutationPhase.BEFORE_WRITE,
-                        beforeRecord,
-                        Map.of());
-        if (!before.plannedCommands().isEmpty()) {
-            throw new IllegalStateException(
-                    "事务内 BEFORE_WRITE 步骤不能创建额外变更计划");
-        }
-        EntityMutationCommand command = before.command();
+        EntityMutationCommand command = original;
         relatedVersionCaptureService.requireRootsLocked(
                 command, lockedRelatedRoots, beforeRecord);
+        formUniqueClaimService.verifyPrepared(
+                command,
+                beforeRecord,
+                prepared);
         EntityAggregateWriter.WriteResult writeResult =
-                writer.apply(command);
+                writer.apply(command, prepared);
         String recordId = writeResult.recordId();
         EntityMutationCommand effectiveCommand =
                 Objects.equals(recordId, command.recordId())
@@ -167,6 +257,10 @@ public class EntityMutationTransactionExecutor {
                         : load(
                                 command.entityCode(),
                                 recordId);
+        formUniqueClaimService.reconcile(
+                effectiveCommand,
+                afterRecord,
+                prepared);
         relatedVersionCaptureService.requireRootsLocked(
                 effectiveCommand,
                 lockedRelatedRoots,
@@ -256,6 +350,50 @@ public class EntityMutationTransactionExecutor {
     private record IndexedCommand(
             int index,
             EntityMutationCommand command) {
+    }
+
+    /**
+     * 在唯一性 gate/扫描和任何业务锁之前执行最后一个 payload 变换阶段。
+     * Marker 的路径与对象身份必须保持不变；普通字段 PATCH 会由随后 prepare
+     * 基于最终 payload 重新求唯一候选。
+     */
+    private EntityMutationCommand beforeWrite(
+            EntityMutationCommand command,
+            Map<String, Object> beforeRecord) {
+        TrustedSubFormUniqueReference.PayloadSnapshot trusted =
+                TrustedSubFormUniqueReference.snapshot(
+                        command.payload());
+        EntityMutationStepExecutor.ExecutionOutcome outcome =
+                stepExecutor.execute(
+                        command,
+                        EntityMutationPhase.BEFORE_WRITE,
+                        beforeRecord,
+                        Map.of());
+        if (!outcome.plannedCommands().isEmpty()) {
+            throw new IllegalStateException(
+                    "事务内 BEFORE_WRITE 步骤不能创建额外变更计划");
+        }
+        TrustedSubFormUniqueReference.requireUnchanged(
+                trusted,
+                outcome.command().payload());
+        return outcome.command();
+    }
+
+    private Preparation preparation(
+            EntityMutationCommand command,
+            Map<String, Object> beforeRecord) {
+        return Preparation.of(
+                command.entityCode(),
+                command.recordId(),
+                beforeRecord,
+                command.operationType()
+                        == EntityMutationOperationType.DELETE
+                        ? Map.of() : command.payload(),
+                command.operationType()
+                        == EntityMutationOperationType.DELETE
+                        ? List.of()
+                        : FormUniqueMutationContext.resolveAll(
+                                command.context()));
     }
 
     private void validateBaseline(

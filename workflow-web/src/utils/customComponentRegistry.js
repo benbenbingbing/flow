@@ -39,6 +39,11 @@
  *   - mode: 'create' | 'edit' | 'approve' | 'view'
  *   - config: viewConfig.customComponentProps
  *   - context: 当前模式、实体、表单和记录等场景上下文
+ *     - context.formUniqueErrors: 当前字段唯一错误映射（兼容已有组件）
+ *     - context.formUniqueness.errors: 当前字段唯一错误映射
+ *     - context.formUniqueness.onFieldBlur(fieldOrCode): 输入失焦时按发布规则预检
+ *     - context.formUniqueness.checkField(fieldOrCode, reason): 复合控件显式预检；
+ *       reason 可为 CHANGE/BLUR/SUBMIT，实际执行仍受字段发布规则约束
  * 组件通过 update:modelValue 更新业务字段对象，并通过 defineExpose({ validate })
  * 暴露异步提交校验。
  */

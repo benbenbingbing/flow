@@ -25,7 +25,7 @@ spec:
       labels:
         {{- include "flow.componentLabels" (dict "root" . "component" "server") | nindent 8 }}
       annotations:
-        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application "openApi" .Values.openApi) | sha256sum }}
+        checksum/config: {{ toJson (dict "database" .Values.database "storage" .Values.storage "application" .Values.application "openApi" .Values.openApi "embed" .Values.embed) | sha256sum }}
     spec:
       serviceAccountName: {{ include "flow.fullname" . }}
       {{- with .Values.global.imagePullSecrets }}
@@ -167,6 +167,23 @@ spec:
               value: {{ .Values.openApi.webhook.workerDelayMs | quote }}
             - name: WORKFLOW_OPEN_API_WEBHOOK_METRICS_REFRESH_MS
               value: {{ .Values.openApi.webhook.metricsRefreshMs | quote }}
+            - name: WORKFLOW_EMBED_ENABLED
+              value: {{ .Values.embed.enabled | quote }}
+            # 禁用时仍注入满足应用配置校验的保留 HTTPS Origin，且不会指向后台 Host。
+            - name: WORKFLOW_EMBED_PUBLIC_BASE_URL
+              value: {{ ternary (printf "https://%s" .Values.embed.publicHost) "https://embed.invalid" .Values.embed.enabled | quote }}
+            {{- if .Values.embed.enabled }}
+            - name: WORKFLOW_EMBED_CONTEXT_KEY_BASE64
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.embed.contextKeySecretKey }}
+            - name: WORKFLOW_EMBED_HMAC_KEY_BASE64
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.existingSecret }}
+                  key: {{ .Values.embed.hmacKeySecretKey }}
+            {{- end }}
             {{- if .Values.openApi.webhook.enabled }}
             - name: WORKFLOW_OPEN_API_WEBHOOK_MASTER_KEY
               valueFrom:

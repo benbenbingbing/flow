@@ -5,6 +5,7 @@ import com.workflow.contracts.identity.resolver.PersonPrincipal;
 import com.workflow.contracts.identity.resolver.PersonPrincipalType;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.identity.resolver.PersonResolutionException;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
@@ -259,11 +260,6 @@ public class PersonResolverTaskAssignmentListener
                             "EMPTY_RESOLUTION", "Assignee resolver returned no users");
                     return;
                 }
-                if (users.isEmpty()) {
-                    throw new IllegalStateException(
-                            "被引用节点没有可用办理人: "
-                                    + resolvedAssignment.sourceTask().getId());
-                }
                 applyResolvedUsers(
                         task,
                         users,
@@ -277,6 +273,16 @@ public class PersonResolverTaskAssignmentListener
                         task.getTaskDefinitionKey(),
                         resolvedAssignment.sourceTask().getId(),
                         users.size());
+                return;
+            } catch (PersonResolutionException exception) {
+                handleEmptyAssignment(
+                        task,
+                        bpmnModel,
+                        effectiveConfig,
+                        processConfigId,
+                        processKey,
+                        exception.reasonCode(),
+                        exception.getMessage());
                 return;
             } catch (RuntimeException exception) {
                 throw new RequiredAssignmentException(
@@ -352,24 +358,27 @@ public class PersonResolverTaskAssignmentListener
                         "EMPTY_RESOLUTION", "Assignee resolver returned no users");
                 return;
             }
-            if (users.isEmpty()) {
-                throw new IllegalStateException(
-                        "人员接口未返回可用办理人: " + resolverCode);
-            }
-            taskService.setAssignee(task.getId(), users.get(0));
-            users.stream()
-                    .skip(1)
-                    .forEach(user -> taskService.addCandidateUser(
-                            task.getId(), user));
+            String assignmentMode = firstText(
+                    effectiveConfig.get("assignmentMode"), "DIRECT");
+            applyResolvedUsers(task, users, assignmentMode);
             log.info(
-                    "人员解析器分配任务完成: resolverCode={}, processKey={}, processInstanceId={}, taskId={}, nodeId={}, assignee={}, candidateCount={}",
+                    "人员解析器分配任务完成: resolverCode={}, processKey={}, processInstanceId={}, taskId={}, nodeId={}, assignmentMode={}, userCount={}",
                     resolverCode,
                     processKey,
                     task.getProcessInstanceId(),
                     task.getId(),
                     task.getTaskDefinitionKey(),
-                    users.get(0),
-                    Math.max(0, users.size() - 1));
+                    assignmentMode,
+                    users.size());
+        } catch (PersonResolutionException exception) {
+            handleEmptyAssignment(
+                    task,
+                    bpmnModel,
+                    effectiveConfig,
+                    processConfigId,
+                    processKey,
+                    exception.reasonCode(),
+                    exception.getMessage());
         } catch (RuntimeException exception) {
             if (strictAssignment) {
                 throw new RequiredAssignmentException(
@@ -543,8 +552,19 @@ public class PersonResolverTaskAssignmentListener
             Task task,
             List<String> users,
             String assignmentMode) {
+        String normalizedMode = StringUtils.hasText(assignmentMode)
+                ? assignmentMode.trim().toUpperCase(Locale.ROOT)
+                : "DIRECT";
+        if (!"DIRECT".equals(normalizedMode)
+                && !"CANDIDATE".equals(normalizedMode)) {
+            // 普通任务只有两种可验证的分配语义；未知值不能
+            // 降级成 DIRECT，否则配置拼写会意外绑定第一人。
+            throw new IllegalArgumentException(
+                    "不支持的普通任务 assignmentMode: "
+                            + assignmentMode);
+        }
         clearDefaultAssignments(task.getId());
-        if ("CANDIDATE".equals(assignmentMode)) {
+        if ("CANDIDATE".equals(normalizedMode)) {
             users.forEach(user -> taskService.addCandidateUser(
                     task.getId(), user));
             return;

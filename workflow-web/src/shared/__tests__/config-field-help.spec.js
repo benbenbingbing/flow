@@ -17,6 +17,13 @@ const files = [
   'src/components/ui-config/InterfaceServiceEditorDialog.vue',
   'src/views/system/components/EntityVersionConfigDialogs.vue',
   'src/views/system/WorkCalendarManagement.vue',
+  'src/views/system/embed-management/EmbedViewWorkspace.vue',
+  'src/views/system/embed-management/EmbedViewDraftPanel.vue',
+  'src/views/system/embed-management/EmbedGrantPanel.vue',
+  'src/views/system/embed-management/EmbedProviderPanel.vue',
+  'src/views/system/embed-management/EmbedBindingPanel.vue',
+  'src/views/system/embed-management/EmbedOperationsWorkspace.vue',
+  'src/views/system/embed-management/EmbedReleasePanel.vue',
   'src/components/form-designer/FormNodeDataSettings.vue',
   'src/components/ui-config/FormDataSourceDialog.vue',
   'src/components/ui-config/ListColumnTemplateEditorDialog.vue',
@@ -54,7 +61,14 @@ for (const required of [
   'entityList.dataSourceType',
   'entityVersion.stepImplementation',
   'entityVersion.targetResolver',
-  'entityVersion.applyStrategy'
+  'entityVersion.applyStrategy',
+  'embed.application.internalId',
+  'embed.view.resourceReleaseStrategy',
+  'embed.provider.type',
+  'embed.binding.externalSubject',
+  'embed.grant.revisionMode',
+  'embed.operations.queryScope',
+  'embed.release.revision'
 ]) {
   assert.ok(usedKeys.has(required), `关键复杂配置缺少问号帮助: ${required}`)
 }

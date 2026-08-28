@@ -1,0 +1,17 @@
+package com.workflow.contracts.identity.position;
+
+/**
+ * 捕获组织快照和读取职务目录时的稳定失败码。
+ */
+public enum OrganizationPositionErrorCode {
+    INITIATOR_NOT_FOUND,
+    INITIATOR_DEPARTMENT_MISSING,
+    INITIATOR_ORGANIZATION_MISSING,
+    ORG_SNAPSHOT_INVALID,
+    HIERARCHY_CYCLE,
+    HIERARCHY_EXHAUSTED,
+    ORGANIZATION_UNIT_NOT_FOUND,
+    ORGANIZATION_UNIT_DISABLED,
+    POSITION_NOT_FOUND,
+    POSITION_DISABLED
+}

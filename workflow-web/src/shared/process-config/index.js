@@ -3,11 +3,203 @@ import { createNextApproverSelectionConfig } from '../next-approver.js'
 export const LEGACY_MULTI_INSTANCE_COLLECTION = '${_wfMultiInstanceUsers_}'
 export const ASSIGNMENT_CONFIG_VERSION = 2
 export const NODE_REFERENCE_ASSIGNEE_TYPE = 'node_reference'
+export const RELATIVE_ORG_POSITION_ASSIGNEE_TYPE = 'relative_position'
+export const RELATIVE_ORG_POSITION_RESOLVER_CODE = 'relativeOrgPosition'
+export const RELATIVE_ORG_POSITION_RESOLVER_DISPLAY_NAME = '相对组织职务'
 export const MAX_NODE_REFERENCE_DEPTH = 16
 export const MULTI_INSTANCE_DECISION_COUNTERSIGN = 'countersign'
 export const MULTI_INSTANCE_DECISION_ORSIGN = 'orsign'
 export const DEFAULT_MULTI_INSTANCE_COMPLETION_RATE = 100
 export const MIN_MULTI_INSTANCE_COMPLETION_RATE = 1
+
+const RELATIVE_POSITION_ANCHORS = new Set(['DEPARTMENT', 'ORGANIZATION'])
+const RELATIVE_POSITION_HIERARCHY_MODES = new Set([
+  'SELF',
+  'FIXED_ANCESTOR',
+  'NEAREST_WITH_HOLDER',
+  'BUSINESS_LEVEL'
+])
+const RELATIVE_POSITION_ASSIGNMENT_MODES = new Set(['DIRECT', 'CANDIDATE'])
+const RELATIVE_POSITION_MATCH_POLICIES = new Set([
+  'ERROR',
+  'PRIMARY_OR_ERROR',
+  'ALL'
+])
+
+function finiteNumberOr(value, fallback) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+/**
+ * 将相对组织职务的扩展参数或完整 assigneeConfig 投影为设计器语义模型。
+ * 这里不悄悄修复越界值，保存前由校验器给出明确反馈，避免错误配置被掩盖。
+ */
+export function normalizeRelativeOrgPositionConfig(value = {}) {
+  const source = configObject(value)
+  const params = Object.keys(configObject(source.extraParams)).length
+    ? configObject(source.extraParams)
+    : source
+  const hierarchySource = configObject(params.hierarchy)
+  const anchor = String(params.anchor || 'DEPARTMENT').trim().toUpperCase()
+  const mode = String(
+    hierarchySource.mode || 'NEAREST_WITH_HOLDER'
+  ).trim().toUpperCase()
+  const assignmentMode = String(
+    source.assignmentMode || params.assignmentMode || 'DIRECT'
+  ).trim().toUpperCase()
+  const multipleMatchPolicy = String(
+    params.multipleMatchPolicy
+      || source.multipleMatchPolicy
+      || (assignmentMode === 'CANDIDATE' ? 'ALL' : 'PRIMARY_OR_ERROR')
+  ).trim().toUpperCase()
+  const eligibleUnitTypes = configValues(
+    hierarchySource.eligibleUnitTypes?.length
+      ? hierarchySource.eligibleUnitTypes
+      : [anchor === 'ORGANIZATION' ? 'org' : 'dept']
+  ).map(item => item.toLowerCase())
+
+  const hierarchy = { mode }
+  if (mode === 'FIXED_ANCESTOR') {
+    hierarchy.ancestorHops = finiteNumberOr(hierarchySource.ancestorHops, 1)
+  } else if (mode === 'NEAREST_WITH_HOLDER') {
+    hierarchy.startLevel = finiteNumberOr(hierarchySource.startLevel, 0)
+    hierarchy.maxHops = finiteNumberOr(hierarchySource.maxHops, 16)
+    hierarchy.eligibleUnitTypes = eligibleUnitTypes
+  } else if (mode === 'BUSINESS_LEVEL') {
+    hierarchy.businessLevelCode = String(
+      hierarchySource.businessLevelCode || ''
+    ).trim()
+  }
+
+  return {
+    schemaVersion: finiteNumberOr(params.schemaVersion, 1),
+    subject: String(params.subject || 'PROCESS_INITIATOR').trim().toUpperCase(),
+    anchor,
+    positionCode: String(params.positionCode || '').trim(),
+    hierarchy,
+    assignmentMode,
+    multipleMatchPolicy
+  }
+}
+
+/** 将语义模型转换为运行时唯一认可的 v2 interface resolver 配置。 */
+export function buildRelativeOrgPositionResolverConfig(value = {}) {
+  const normalized = normalizeRelativeOrgPositionConfig(value)
+  const {
+    assignmentMode,
+    multipleMatchPolicy,
+    ...params
+  } = normalized
+  return {
+    assigneeType: 'interface',
+    resolverCode: RELATIVE_ORG_POSITION_RESOLVER_CODE,
+    resolverDisplayName: RELATIVE_ORG_POSITION_RESOLVER_DISPLAY_NAME,
+    assignmentMode,
+    extraParams: {
+      ...params,
+      multipleMatchPolicy
+    }
+  }
+}
+
+/** 静态校验四种查找模式及任务分配/多人策略组合。 */
+export function validateRelativeOrgPositionConfig(
+  value = {},
+  { isMultiInstance = false } = {}
+) {
+  const config = normalizeRelativeOrgPositionConfig(value)
+  const errors = []
+  if (config.schemaVersion !== 1) errors.push('仅支持 schemaVersion 1')
+  if (config.subject !== 'PROCESS_INITIATOR') errors.push('V1 相对人员仅支持流程发起人')
+  if (!RELATIVE_POSITION_ANCHORS.has(config.anchor)) errors.push('请选择有效的组织锚点')
+  if (!config.positionCode) errors.push('请选择职务')
+  if (!RELATIVE_POSITION_HIERARCHY_MODES.has(config.hierarchy.mode)) {
+    errors.push('请选择有效的组织查找方式')
+  }
+  if (config.hierarchy.mode === 'FIXED_ANCESTOR'
+      && (!Number.isInteger(config.hierarchy.ancestorHops)
+        || config.hierarchy.ancestorHops < 1
+        || config.hierarchy.ancestorHops > 32)) {
+    errors.push('固定父级层数必须是 1 到 32 的整数')
+  }
+  if (config.hierarchy.mode === 'NEAREST_WITH_HOLDER') {
+    if (!Number.isInteger(config.hierarchy.startLevel)
+        || config.hierarchy.startLevel < 0
+        || config.hierarchy.startLevel > 32) {
+      errors.push('起始层级必须是 0 到 32 的整数')
+    }
+    if (!Number.isInteger(config.hierarchy.maxHops)
+        || config.hierarchy.maxHops < 1
+        || config.hierarchy.maxHops > 32) {
+      errors.push('最大上溯层数必须是 1 到 32 的整数')
+    }
+    if (Number.isInteger(config.hierarchy.startLevel)
+        && Number.isInteger(config.hierarchy.maxHops)
+        && config.hierarchy.startLevel > config.hierarchy.maxHops) {
+      // 后端以锚点为第 0 层，maxHops 是允许到达的最深层；起点越界时
+      // 前端必须立即拒绝，避免配置直到试算或发布阶段才失败。
+      errors.push('起始层级不能大于最大上溯层数')
+    }
+    if (!config.hierarchy.eligibleUnitTypes.length
+        || config.hierarchy.eligibleUnitTypes.some(
+          unitType => !['dept', 'org'].includes(unitType)
+        )) {
+      errors.push('请选择有效的可查找单位类型')
+    }
+  }
+  if (config.hierarchy.mode === 'BUSINESS_LEVEL'
+      && !config.hierarchy.businessLevelCode) {
+    errors.push('请选择目标业务层级')
+  }
+  if (!RELATIVE_POSITION_ASSIGNMENT_MODES.has(config.assignmentMode)) {
+    errors.push('请选择有效的任务分配方式')
+  }
+  if (!RELATIVE_POSITION_MATCH_POLICIES.has(config.multipleMatchPolicy)) {
+    errors.push('请选择有效的多人命中策略')
+  }
+  if ((isMultiInstance || config.assignmentMode === 'CANDIDATE')
+      && config.multipleMatchPolicy !== 'ALL') {
+    errors.push('候选人或多人办理必须使用全部任职人')
+  }
+  if (!isMultiInstance && config.assignmentMode === 'DIRECT'
+      && !['ERROR', 'PRIMARY_OR_ERROR'].includes(config.multipleMatchPolicy)) {
+    errors.push('直接分配只支持多人时报错或唯一主职')
+  }
+  return {
+    valid: errors.length === 0,
+    message: errors[0] || '',
+    errors,
+    config
+  }
+}
+
+/** 生成人可读摘要，帮助设计者在保存前确认相对范围语义。 */
+export function relativeOrgPositionSummary(value = {}, labels = {}) {
+  const config = normalizeRelativeOrgPositionConfig(value)
+  const position = labels.positionName || config.positionCode || '未选择职务'
+  const anchor = config.anchor === 'ORGANIZATION' ? '所属组织' : '所属部门'
+  const mode = config.hierarchy.mode
+  let lookup = '当前单位'
+  if (mode === 'FIXED_ANCESTOR') {
+    lookup = `向上 ${config.hierarchy.ancestorHops} 级的固定父节点`
+  } else if (mode === 'NEAREST_WITH_HOLDER') {
+    const start = config.hierarchy.startLevel === 0
+      ? '从本级开始'
+      : `从上级第 ${config.hierarchy.startLevel} 层开始`
+    lookup = `${start}，最多向上查找 ${config.hierarchy.maxHops} 层，取最近有任职人的单位`
+  } else if (mode === 'BUSINESS_LEVEL') {
+    lookup = `最近的业务层级「${labels.businessLevelName || config.hierarchy.businessLevelCode || '未选择'}」`
+  }
+  const assignment = labels.isMultiInstance
+    ? '全部任职人参与多人办理'
+    : config.assignmentMode === 'CANDIDATE'
+      ? '全部任职人作为候选人'
+      : config.multipleMatchPolicy === 'PRIMARY_OR_ERROR'
+        ? '唯一任职人或唯一主职直接办理，否则报错'
+        : '仅唯一任职人直接办理，多人时报错'
+  return `以流程发起人的${anchor}为锚点，查找${lookup}的「${position}」；${assignment}。`
+}
 
 function firstNonBlankString(...values) {
   for (const value of values) {
@@ -628,6 +820,9 @@ export function buildAssigneeConfig(form) {
     candidateUsers,
     resolverCode: form.resolverCode || form.interfaceName || '',
     resolverDisplayName: form.resolverDisplayName || '',
+    ...(form.assignmentMode
+      ? { assignmentMode: String(form.assignmentMode).trim().toUpperCase() }
+      : {}),
     extraParams: normalizeJsonObject(form.extraParams, form.extraParamsText),
     interfaceType: 'resolver',
     interfaceName: form.resolverCode || form.interfaceName || '',

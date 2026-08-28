@@ -97,6 +97,13 @@ openApi:
   trustForwardedHeaders: false
   trustedProxyCidrs: []
 
+embed:
+  enabled: false
+  publicHost: ""
+  tlsSecretName: ""
+  contextKeySecretKey: embed-context-key-base64
+  hmacKeySecretKey: embed-hmac-key-base64
+
 monitoring:
   serviceMonitor:
     enabled: true

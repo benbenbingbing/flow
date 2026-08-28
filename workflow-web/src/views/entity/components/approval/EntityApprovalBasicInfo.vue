@@ -1,5 +1,5 @@
 <template>
-  <div v-if="entityData" class="entity-form-section">
+  <div ref="formSectionRef" v-if="entityData" class="entity-form-section">
     <template v-if="hasConfiguredForm">
       <FormPreviewLinkage
         ref="formPreviewRef"
@@ -82,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import {
@@ -123,6 +123,8 @@ const emit = defineEmits<{
 }>()
 
 const formPreviewRef = ref<any>()
+const formSectionRef = ref<HTMLElement>()
+const lastValidationError = ref('')
 const runtimeEntityFields = computed(() =>
   (props.entityFields || []).map(field =>
     withEntityStatusFieldOptions(field, props.entityStatusOptions || [])
@@ -163,11 +165,42 @@ function formatReadonlyFieldValue(fieldCode: string, value: any) {
 }
 
 async function validate() {
+  lastValidationError.value = ''
   if (!hasConfiguredForm.value) return true
-  return (await formPreviewRef.value?.validate?.()) !== false
+  const valid = (await formPreviewRef.value?.validate?.()) !== false
+  if (!valid) {
+    // 优先从 FormPreview 读取当前作用域的唯一错误；嵌套子表和普通
+    // Element Form 校验没有统一错误对象，等待 DOM 刷新后再作显示文案兜底。
+    await nextTick()
+    lastValidationError.value = String(
+      formPreviewRef.value?.getValidationError?.() || ''
+    ).trim() || resolveRenderedValidationError()
+  }
+  return valid
 }
 
-defineExpose({ validate })
+function resolveRenderedValidationError() {
+  const root = formSectionRef.value
+  if (!root) return ''
+  const selectors = [
+    '.field-error',
+    '.custom-form-unique-error .el-alert__title',
+    '.el-alert--error .el-alert__title',
+    '.el-form-item__error'
+  ]
+  for (const selector of selectors) {
+    const message = [...root.querySelectorAll<HTMLElement>(selector)]
+      .map(element => String(element.textContent || '').trim())
+      .find(Boolean)
+    if (message) return message
+  }
+  return ''
+}
+
+defineExpose({
+  validate,
+  getValidationError: () => lastValidationError.value
+})
 </script>
 
 <style scoped lang="scss">

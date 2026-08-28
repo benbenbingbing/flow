@@ -23,6 +23,7 @@
           :data-source-runtime="dataSourceRuntime"
           :children-for="childrenFor"
           :layout-type="layoutType"
+          :reveal-field-code="revealFieldCode"
           :action-slots="$slots"
           @update:model-value="$emit('update:modelValue', $event)"
         >
@@ -39,7 +40,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import FormNodeRuntimeItem from '@/components/FormNodeRuntimeItem.vue'
 import { safeParseConfig } from '@/shared/config-runtime'
 
@@ -61,6 +62,7 @@ const props = defineProps({
 
 defineEmits(['update:modelValue'])
 const formRef = ref()
+const revealFieldCode = ref('')
 
 const normalizedNodes = computed(() =>
   (props.nodes || []).map(node => ({
@@ -122,7 +124,21 @@ async function validate() {
   }
 }
 
-defineExpose({ validate })
+/**
+ * 重新写入定位目标，即使连续两次是同一字段，也能再次触发
+ * 用户手动关闭后的 Tab/Collapse 展开逻辑。
+ */
+async function revealValidationField(fieldCode) {
+  const target = String(fieldCode || '').trim()
+  if (!target) return false
+  revealFieldCode.value = ''
+  await nextTick()
+  revealFieldCode.value = target
+  await nextTick()
+  return true
+}
+
+defineExpose({ validate, revealValidationField })
 </script>
 
 <style scoped>

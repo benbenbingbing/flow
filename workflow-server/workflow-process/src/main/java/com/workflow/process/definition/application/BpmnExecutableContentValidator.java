@@ -21,6 +21,7 @@ final class BpmnExecutableContentValidator {
             "${configuredDmnTaskDelegate}",
             "${configuredSendTaskDelegate}",
             "${receiveTaskTimeoutDelegate}",
+            "${relativeOrgPositionCollectionHandler}",
             "${restServiceTaskDelegate}",
             "${sequenceFlowExecutionListener}");
 

@@ -71,6 +71,31 @@ public class AssigneeIncidentRecorder {
         }
     }
 
+    /**
+     * 下次进入同一多实例节点已成功解析时，闭环之前 taskId 为空的节点事件。
+     *
+     * <p>成功状态必须加入 Flowable 节点进入事务；后续实例创建失败时
+     * 与外层一起回滚，避免实际未恢复却提前关闭 incident。失败创建仍由
+     * {@link #create(CreateCommand)} 使用 REQUIRES_NEW 留存证据。</p>
+     */
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void resolveOpenNodeEntry(
+            String processInstanceId,
+            String nodeId) {
+        if (processInstanceId == null || processInstanceId.isBlank()
+                || nodeId == null || nodeId.isBlank()) {
+            return;
+        }
+        jdbcTemplate.update("""
+                UPDATE process_assignee_incident
+                SET status = 'RESOLVED', resolution_action = 'NODE_ENTRY_RECOVERED',
+                    resolved_by = 'system', resolved_at = CURRENT_TIMESTAMP,
+                    next_retry_at = NULL, update_time = CURRENT_TIMESTAMP
+                WHERE process_instance_id = ? AND node_id = ? AND task_id IS NULL
+                  AND status IN ('OPEN', 'RETRY_SCHEDULED', 'MANUAL_REQUIRED')
+                """, processInstanceId, nodeId);
+    }
+
     private String findOpen(CreateCommand command) {
         List<String> ids = jdbcTemplate.query("""
                 SELECT id FROM process_assignee_incident

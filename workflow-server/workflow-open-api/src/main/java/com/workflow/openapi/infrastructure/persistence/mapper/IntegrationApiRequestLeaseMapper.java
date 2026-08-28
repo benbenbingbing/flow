@@ -13,6 +13,7 @@ public interface IntegrationApiRequestLeaseMapper {
     @Delete("""
             DELETE FROM integration_api_request_lease
              WHERE application_id = #{applicationId}
+               AND scope_key = ''
                AND expires_at <= #{now}
             """)
     int deleteExpiredForApplication(
@@ -23,6 +24,7 @@ public interface IntegrationApiRequestLeaseMapper {
             SELECT COUNT(*)
               FROM integration_api_request_lease
              WHERE application_id = #{applicationId}
+               AND scope_key = ''
                AND expires_at > #{now}
             """)
     int countActive(
@@ -31,9 +33,9 @@ public interface IntegrationApiRequestLeaseMapper {
 
     @Insert("""
             INSERT INTO integration_api_request_lease (
-              lease_id, application_id, expires_at, create_time, update_time
+              lease_id, application_id, scope_key, expires_at, create_time, update_time
             ) VALUES (
-              #{leaseId}, #{applicationId}, #{expiresAt}, #{now}, #{now}
+              #{leaseId}, #{applicationId}, '', #{expiresAt}, #{now}, #{now}
             )
             """)
     int insert(

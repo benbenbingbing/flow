@@ -231,6 +231,7 @@ public class ProcessDetailRuntimeService {
                 for (org.flowable.variable.api.history.HistoricVariableInstance var : taskVars) {
                     vars.put(var.getVariableName(), var.getValue());
                 }
+                WorkflowReservedVariables.removeInternalVariables(vars);
                 history.setVariables(vars);
             }
         } catch (Exception e) {

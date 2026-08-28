@@ -1,0 +1,2995 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: Flow Embed V1 API
+  version: 1.0.0
+  description: |
+    Flow Embed 的第三方服务端 Launch、iframe Entry、Session 和受限 Runtime 契约。
+
+    V1 入口只支持 `LIST`、`CREATE`、`VIEW`；公开能力只支持
+    `LIST_QUERY`、`SELECTION_RETURN`、`RECORD_VIEW`、`RECORD_CREATE`。
+    浏览器不能提交 entity、form、list、release、Flow 用户或任意 Provider 坐标。
+
+    本文只把已经注册的 HTTP 路由放入 `paths`。尚未实现的编辑、动作、动态数据源、
+    Lookup 候选执行和宿主导航事件列在 `x-flow-deferred`，不能据此调用不存在的接口。
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /
+    description: Flow 服务同源地址；生产 iframe 应使用专用 Embed Origin
+tags:
+  - name: Machine launch
+    description: 第三方后端使用机器 Access Token 签发一次性 Launch
+  - name: Iframe entry
+    description: 返回带精确 frame-ancestors 的动态 iframe HTML
+  - name: Session
+    description: 一次性 Launch 兑换、会话状态、心跳和退出
+  - name: Runtime list
+    description: Session 固定发布版本的外部列表投影和查询
+  - name: Runtime form
+    description: Session 固定发布版本的 CREATE/VIEW 表单、CREATE 联动重算、选项和记录接口
+
+x-flow-v1-boundary:
+  entryModes:
+    - LIST
+    - CREATE
+    - VIEW
+  capabilities:
+    - LIST_QUERY
+    - SELECTION_RETURN
+    - RECORD_VIEW
+    - RECORD_CREATE
+  browserForbiddenCoordinates:
+    - flowUserId
+    - entityCode
+    - listKey
+    - formId
+    - releaseId
+    - releaseVersion
+    - provider
+    - service
+    - operation
+    - url
+  idempotency:
+    storageScope: Application + Operation + Idempotency-Key
+    recordCreateCanonicalTarget:
+      - entityCode
+      - formId
+    excludedFromCanonicalHash:
+      - sessionId
+      - launchId
+      - viewReleaseId
+      - formReleaseId
+      - listReleaseId
+      - traceId
+      - token
+      - timestamp
+
+x-flow-release-constraints:
+  regexPattern:
+    status: publish-blocked
+    contextSchema:
+      keyword: pattern
+      managementValidationCode: SCHEMA_PATTERN_NOT_SUPPORTED
+    formFieldValidationRules:
+      keyword: pattern
+      managementValidationCode: UNTRUSTED_COMPONENT
+    runtimeFallback: 历史或篡改快照 Fail Closed；V1 不执行调用方或管理员提供的任意正则
+  lookupLikeFormFields:
+    status: publish-blocked
+    fieldTypes:
+      - REFERENCE
+      - MULTI_REFERENCE
+      - LOOKUP
+      - MULTI_LOOKUP
+      - USER
+      - DEPT
+      - ROLE
+      - GROUP
+    managementValidationCode: UNTRUSTED_COMPONENT
+
+x-flow-deferred:
+  - capability: RECORD_UPDATE
+    status: not-registered
+    wouldUse: PATCH /api/embed/v1/runtime/records/{recordId}
+    reason: 通用 record_version 与所有写入口的乐观锁链路尚未完成
+  - capability: ACTION_EXECUTE / PROCESS_START
+    status: not-registered
+    wouldUse: POST /api/embed/v1/runtime/actions/{actionKey}
+    reason: 强类型 Embed Action Registry 和动作事务契约尚未完成
+  - capability: dynamic-option-provider
+    status: fail-closed
+    reason: V1 options 路由只分页不可变 Form Release 中超过 100 项的静态选项；任意数据源绑定在发布和运行时均拒绝
+  - capability: lookup-query-provider
+    status: deferred-fail-closed
+    reason: >-
+      HTTP 路由和封闭 DTO 已注册，但受支持的发布链会以 UNTRUSTED_COMPONENT 阻断
+      REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP 字段；实体适配器也没有
+      固定候选列表版本与 External Projection。直接请求不可用字段返回 EMBED_OPERATION_NOT_ALLOWED，
+      历史或绕过发布器的可写 Lookup 快照在表单解析时返回 EMBED_RUNTIME_UNAVAILABLE。
+  - capability: navigation.request host event
+    status: sdk-schema-only
+    reason: SDK 已保留并校验类型，但当前 iframe Bridge 不发送该事件；LIST/CREATE/VIEW/BACK 导航仅在 iframe 内完成
+  - capability: action.started / action.completed host events
+    status: sdk-schema-only
+    reason: SDK 已保留并校验类型，但 V1 没有 Action Runtime，当前 iframe Bridge 不发送这些事件
+  - capability: close.requested host event
+    status: sdk-schema-only
+    reason: SDK 已保留并校验类型，但当前 iframe Bridge 不发送该事件
+
+x-flow-embed-message-protocol:
+  protocol: flow-embed/1
+  maxMessageBytes: 65536
+  localNavigation:
+    status: implemented
+    targets:
+      - LIST
+      - CREATE
+      - VIEW
+      - BACK
+    transport: iframe-local-state
+    note: 不接受宿主传入 form/entity/release；VIEW 只使用已投影列表行的 recordId
+  windowHandshake:
+    - type: ready
+      direction: iframe-to-host
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/ReadyWindowMessage'
+    - type: init
+      direction: host-to-iframe
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/InitWindowMessage'
+    - type: init.ack
+      direction: iframe-to-host-message-port
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/InitAckMessage'
+  iframeEvents:
+    - type: ack
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/AckEventPayload'
+    - type: initialized
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/InitializedEventPayload'
+    - type: resize
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/ResizeEventPayload'
+    - type: selection.changed
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/SelectionChangedEventPayload'
+    - type: form.saved
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/FormSavedEventPayload'
+    - type: error
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/EmbedBridgeErrorPayload'
+    - type: session.expired
+      status: implemented
+      payloadSchema:
+        $ref: '#/components/schemas/SessionExpiredEventPayload'
+    - type: navigation.request
+      status: deferred
+      payloadSchema:
+        $ref: '#/components/schemas/NavigationRequestEventPayload'
+    - type: action.started
+      status: deferred
+      payloadSchema:
+        $ref: '#/components/schemas/ActionStartedEventPayload'
+    - type: action.completed
+      status: deferred
+      payloadSchema:
+        $ref: '#/components/schemas/ActionCompletedEventPayload'
+    - type: close.requested
+      status: deferred
+      payloadSchema:
+        $ref: '#/components/schemas/CloseRequestedEventPayload'
+  hostCommands:
+    - refresh
+    - set-theme
+    - set-locale
+    - focus
+    - destroy
+
+paths:
+  /oauth2/token:
+    post:
+      tags:
+        - Machine launch
+      operationId: issueMachineAccessToken
+      summary: 获取机器 Access Token
+      description: 复用现有 OAuth 2.0 Client Credentials；Client Secret 只能保存在第三方后端。
+      security:
+        - clientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientCredentialsTokenRequest'
+      responses:
+        '200':
+          description: Access Token 已签发
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessTokenResponse'
+        '400':
+          description: OAuth 请求无效
+        '401':
+          description: Client 凭据无效
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/open/v1/embed-launches:
+    post:
+      tags:
+        - Machine launch
+      operationId: issueEmbedLaunch
+      summary: 签发一次性 Embed Launch
+      description: |
+        第三方后端提交 View、精确父 Origin、人员断言和入口模式。Flow 将人员精确映射到
+        已存在且启用的 Flow 用户。响应中的 `launchCode` 只返回一次，不得记录或放入 URL Query。
+      security:
+        - machineOAuth:
+            - embed.launch
+      parameters:
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbedLaunchRequest'
+            examples:
+              signedJwtList:
+                value:
+                  viewKey: supplier-work-orders
+                  parentOrigin: https://portal.partner.example
+                  channelId: 66f82f09-89ec-4a5a-b81b-f54f02d22262
+                  subject:
+                    type: SIGNED_JWT
+                    assertion: eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9...
+                  entry:
+                    mode: LIST
+                  context:
+                    supplierId: S-10086
+                  ui:
+                    locale: zh-CN
+                    theme: light
+      responses:
+        '201':
+          description: Launch 已签发
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbedLaunchEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/InvalidMachineToken'
+        '403':
+          $ref: '#/components/responses/LaunchForbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/TemporarilyUnavailable'
+
+  /embed/v1/launches/{launchId}:
+    get:
+      tags:
+        - Iframe entry
+      operationId: getEmbedLaunchEntry
+      summary: 加载动态 iframe Entry HTML
+      description: |
+        该请求不消费 Launch。成功页只携带 launchId、期望父 Origin、channelId 和协议版本，
+        不携带人员、Context、权限、launchCode 或 Session Token。
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/LaunchId'
+      responses:
+        '200':
+          description: 可嵌入的 Entry HTML
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            Content-Security-Policy:
+              $ref: '#/components/headers/FrameAncestorsCsp'
+            Referrer-Policy:
+              schema:
+                type: string
+                const: no-referrer
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+            Permissions-Policy:
+              schema:
+                type: string
+                const: 'camera=(), microphone=(), geolocation=()'
+            Pragma:
+              schema:
+                type: string
+                const: no-cache
+          content:
+            text/html:
+              schema:
+                type: string
+        '404':
+          description: Launch 未知、过期、已消费或已撤销；返回 frame-ancestors 'none' 的通用错误页
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            Content-Security-Policy:
+              $ref: '#/components/headers/FrameAncestorsCsp'
+            Referrer-Policy:
+              schema:
+                type: string
+                const: no-referrer
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+            Permissions-Policy:
+              schema:
+                type: string
+                const: 'camera=(), microphone=(), geolocation=()'
+            Pragma:
+              schema:
+                type: string
+                const: no-cache
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/embed/v1/launches/{launchId}/exchange:
+    post:
+      tags:
+        - Session
+      operationId: exchangeEmbedLaunch
+      summary: 兑换 Embed Session
+      description: |
+        使用一次性 Launch code、握手 Nonce、channelId 和精确父 Origin 原子兑换不透明
+        Embed Session Token。该路由不接受机器 Token 或普通 Flow 用户 Token。
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/LaunchId'
+        - $ref: '#/components/parameters/RequiredProtocol'
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExchangeRequest'
+      responses:
+        '200':
+          description: Session 已创建；Access Token 只在本响应返回
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExchangeEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/LaunchInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '410':
+          $ref: '#/components/responses/LaunchExpired'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/session:
+    get:
+      tags:
+        - Session
+      operationId: getEmbedSession
+      summary: 查询当前 Embed Session 状态
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/TraceId'
+      responses:
+        '200':
+          description: 当前非秘密会话状态
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStateEnvelope'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/SessionForbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      tags:
+        - Session
+      operationId: logoutEmbedSession
+      summary: 幂等退出当前 Embed Session
+      description: ACTIVE Session 被终止；已经 LOGGED_OUT 的同一 Token 仍返回 204。
+      security:
+        - embedBearer: []
+      responses:
+        '204':
+          description: 已退出或此前已退出，无响应体
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/SessionForbidden'
+
+  /api/embed/v1/session/heartbeat:
+    post:
+      tags:
+        - Session
+      operationId: heartbeatEmbedSession
+      summary: 延长 Session 空闲到期时间
+      description: '`visible` 和 `clientTime` 只作诊断；到期判断只使用服务端时钟。'
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeartbeatRequest'
+      responses:
+        '200':
+          description: 更新后的 Session 状态
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionStateEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/SessionForbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/embed/v1/runtime/bootstrap:
+    get:
+      tags:
+        - Session
+      operationId: getEmbedBootstrap
+      summary: 获取 Session 固定的最小运行态信息
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredProtocol'
+        - $ref: '#/components/parameters/TraceId'
+      responses:
+        '200':
+          description: Actor、View、能力、UI 策略和限制
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/SessionForbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/runtime/schema:
+    get:
+      tags:
+        - Runtime list
+      operationId: getEmbedListSchema
+      summary: 获取 LIST 外部投影 Schema
+      description: 仅 `LIST` Surface 且具备 `LIST_QUERY` 时可用；FORM 入口不调用本接口。
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/TraceId'
+      responses:
+        '200':
+          description: 不含内部 Provider、脚本、权限码和固定过滤器的列表投影
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSchemaEnvelope'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/runtime/list/query:
+    post:
+      tags:
+        - Runtime list
+      operationId: queryEmbedList
+      summary: 查询 Session 固定的 LIST Release
+      description: |
+        `filters` 是无客户端操作符的 discriminated array。每个字段只允许一项；操作符只从
+        不可变发布 Schema 恢复。请求不接受排序、scene、context、fixedFilters 或 release 坐标。
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListQueryRequest'
+      responses:
+        '200':
+          description: 已按字段白名单和当前 Flow 数据范围投影的分页结果
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListResultEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/runtime/form:
+    get:
+      tags:
+        - Runtime form
+      operationId: getEmbedForm
+      summary: 解析 CREATE 或 VIEW 表单
+      description: |
+        FORM 入口只能使用 Launch 固定模式；LIST 入口可在同一 View 发布动作范围内本地导航到
+        CREATE/VIEW。目标表单和 Release 始终由 Session 固定。V1 不接受 EDIT。
+      security:
+        - embedBearer: []
+      parameters:
+        - name: mode
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/FormMode'
+        - name: recordId
+          in: query
+          required: false
+          description: VIEW 必填、CREATE 禁止；Launch 已固定记录时必须与固定值一致。
+          schema:
+            $ref: '#/components/schemas/RecordId'
+        - $ref: '#/components/parameters/TraceId'
+      responses:
+        '200':
+          description: 当前模式的表单、字段状态、可回传字段和动作
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormResultEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/runtime/form/evaluations:
+    post:
+      tags:
+        - Runtime form
+      operationId: evaluateEmbedCreateForm
+      summary: 只读重算 CREATE 表单联动状态
+      description: |
+        只接受固定 `fieldPolicy.writable` 中的部分 CREATE 草稿。服务端从已认证 Session 恢复
+        entity/form/release/context，并在重算前以后端强制 Context 值覆盖同名浏览器值。
+        本接口不执行 required 或最终提交校验，不申请幂等 Claim、不写业务数据，也不发送新的
+        宿主 postMessage 事件。VIEW 入口或缺少 `RECORD_CREATE` 能力时拒绝。
+      x-flow-side-effects: none
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFormEvaluationRequest'
+            example:
+              data:
+                status: CLOSED
+      responses:
+        '200':
+          description: 重算后的 CREATE FormResult；record 固定为 null
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateFormEvaluationEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/runtime/form/fields/{fieldCode}/options/query:
+    post:
+      tags:
+        - Runtime form
+      operationId: queryEmbedFormOptions
+      summary: 分页查询不可变发布快照中的大型静态选项
+      description: |
+        V1 只分页同一 Form Release 内超过 100 项的静态选项。任意 data source、Provider、
+        service、operation、URL 或带副作用事件均 Fail Closed。`mode/recordId` 只描述 LIST
+        Session 当前的本地表单导航状态；目标表单/实体/Release 仍由 Session 恢复。
+      x-flow-status: static-release-options-only
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/FieldCode'
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptionQueryRequest'
+      responses:
+        '200':
+          description: 大型静态选项分页；动态绑定不会进入此成功分支
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptionPageEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/runtime/form/fields/{fieldCode}/lookups/query:
+    post:
+      tags:
+        - Runtime form
+      operationId: queryEmbedFormLookups
+      summary: 查询引用候选项（V1 Fail Closed）
+      description: |
+        路由和封闭请求 DTO 已注册，但当前受支持发布链会以 `UNTRUSTED_COMPONENT` 阻断
+        `REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP` 表单字段；实体适配器
+        也尚未固定候选列表版本与 External Projection。因此 V1 没有成功响应，不会回退到内部列表、
+        SQL、HTTP 或 UI Event。`mode/recordId` 只描述 LIST Session 当前本地表单状态，不是目标坐标。
+      x-flow-status: deferred-fail-closed
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/FieldCode'
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LookupQueryRequest'
+      responses:
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/embed/v1/runtime/records/{recordId}:
+    get:
+      tags:
+        - Runtime form
+      operationId: getEmbedRecord
+      summary: 获取 VIEW 记录投影
+      description: 记录不存在与无当前 Flow 用户访问权限统一返回 404，避免 ID 枚举。
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+        - $ref: '#/components/parameters/TraceId'
+      responses:
+        '200':
+          description: 可见字段、字段状态和只读动作；当前 V1 recordVersion 为 null
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordResultEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+  /api/embed/v1/runtime/records:
+    post:
+      tags:
+        - Runtime form
+      operationId: createEmbedRecord
+      summary: 幂等创建 Session 固定实体记录
+      description: |
+        V1 唯一记录写入口。服务端在 Claim 前按最终有效值重新解析同一固定 Form Release，
+        执行字段可写性、联动可见性、必填、长度、数值、格式和静态枚举校验，再注入 Context 强制值。
+        唯一性只校验本次入口中适用且未忽略的已发布表单规则；没有规则、被忽略或条件不适用的
+        其他写入口不共享该约束，因此 V1 不承诺实体字段全局唯一。
+      security:
+        - embedBearer: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecordRequest'
+      responses:
+        '201':
+          description: 记录已创建，或同一请求的成功结果已按当前权限重新投影
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            Location:
+              $ref: '#/components/headers/RecordLocation'
+            Idempotent-Replay:
+              $ref: '#/components/headers/IdempotentReplay'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateResultEnvelope'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/SessionInvalid'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '404':
+          $ref: '#/components/responses/ResourceNotFound'
+        '409':
+          $ref: '#/components/responses/CreateConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/FormValidationFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RuntimeUnavailable'
+
+components:
+  securitySchemes:
+    clientBasic:
+      type: http
+      scheme: basic
+      description: 仅用于 OAuth Token 端点的 Client ID/Secret
+    machineOAuth:
+      type: oauth2
+      description: 第三方后端机器 Token，不得进入浏览器
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            embed.launch: 签发一次性 Embed Launch
+    embedBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Exchange 返回的短期不透明 Embed Session Token；仅保存在 iframe 内存
+
+  parameters:
+    LaunchId:
+      name: launchId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^lch_[A-Za-z0-9_-]{16,60}$'
+        maxLength: 64
+    FieldCode:
+      name: fieldCode
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/FieldCode'
+    RecordId:
+      name: recordId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/RecordId'
+    TraceId:
+      name: X-Trace-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 256
+    RequiredProtocol:
+      name: X-Flow-Embed-Protocol
+      in: header
+      required: true
+      schema:
+        type: string
+        const: '1'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 同一业务请求的所有重试必须保持不变
+      schema:
+        type: string
+        pattern: '^[\x21-\x7E]{1,128}$'
+        minLength: 1
+        maxLength: 128
+
+  headers:
+    NoStore:
+      description: 动态数据和凭据不得缓存
+      schema:
+        type: string
+        const: no-store
+    IdempotentReplay:
+      description: true 表示本次未再次执行业务，而是按当前授权投影首次结果
+      required: true
+      schema:
+        type: string
+        enum:
+          - 'true'
+          - 'false'
+    RecordLocation:
+      description: 新记录的 Runtime 相对地址
+      required: true
+      schema:
+        type: string
+        pattern: '^/api/embed/v1/runtime/records/[^/?#]+$'
+    RetryAfter:
+      description: 客户端保留原 Idempotency-Key 并在该秒数后退避重试
+      schema:
+        type: integer
+        minimum: 0
+    FrameAncestorsCsp:
+      description: 成功时精确绑定已授权父 Origin，失败时为 frame-ancestors 'none'
+      schema:
+        type: string
+
+  responses:
+    InvalidRequest:
+      description: 请求头、JSON、字段或值形状无效
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: 400
+            message: Embed request is invalid
+            errorCode: INVALID_REQUEST
+            data: null
+            traceId: trace-001
+    InvalidMachineToken:
+      description: 机器 Access Token 缺失、无效或已过期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    LaunchForbidden:
+      description: Scope、View Grant、Origin、身份断言、绑定或 Flow 用户校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    LaunchInvalid:
+      description: Launch code 错误、已消费或与 path/channel/origin 不匹配
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: 401
+            message: Embed launch is invalid
+            errorCode: EMBED_LAUNCH_INVALID
+            data: null
+            traceId: trace-001
+    LaunchExpired:
+      description: 高熵 code 已正确匹配，但 Launch 已过期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    SessionInvalid:
+      description: Embed Session Token 缺失、无效或已过期
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    SessionForbidden:
+      description: Session 或其 Application/Grant/View/Provider/Binding 已撤销或停用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    OperationNotAllowed:
+      description: 当前入口、能力、字段来源或动作未发布/未开放
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            code: 403
+            message: Embed operation is not allowed
+            errorCode: EMBED_OPERATION_NOT_ALLOWED
+            data: null
+            traceId: trace-001
+    ResourceNotFound:
+      description: 资源不存在或当前 Flow 用户无权访问；两者不作区分
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    CreateConflict:
+      description: 幂等键属于不同请求/范围、相同请求仍在处理，或创建发生业务冲突
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            reused:
+              value:
+                code: 409
+                message: Idempotency key belongs to a different Embed scope
+                errorCode: EMBED_IDEMPOTENCY_KEY_REUSED
+                data: null
+                traceId: trace-001
+            processing:
+              value:
+                code: 409
+                message: The same idempotent request is still processing
+                errorCode: EMBED_REQUEST_IN_PROGRESS
+                data: null
+                traceId: trace-001
+            recordConflict:
+              value:
+                code: 409
+                message: Embed record could not be created because of a conflict
+                errorCode: EMBED_RECORD_CONFLICT
+                data: null
+                traceId: trace-001
+    FormValidationFailed:
+      description: 最终有效值不符合固定发布表单的字段、联动或业务校验
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FormValidationErrorEnvelope'
+    PayloadTooLarge:
+      description: 请求体超过 Embed 安全链配置上限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: 应用、Grant 或 Runtime 配额已超限
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RuntimeUnavailable:
+      description: 固定发布快照损坏或 Runtime 依赖暂不可用
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    TemporarilyUnavailable:
+      description: Open API 或集成能力暂不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    ClientCredentialsTokenRequest:
+      type: object
+      required:
+        - grant_type
+        - scope
+      properties:
+        grant_type:
+          type: string
+          const: client_credentials
+        scope:
+          type: string
+          const: embed.launch
+      additionalProperties: false
+    AccessTokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - scope
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          minimum: 1
+        scope:
+          type: string
+          pattern: '(^| )embed\.launch( |$)'
+      additionalProperties: true
+
+    EmbedLaunchRequest:
+      type: object
+      required:
+        - viewKey
+        - parentOrigin
+        - channelId
+        - subject
+        - entry
+      properties:
+        viewKey:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9._-]{0,99}$'
+        parentOrigin:
+          type: string
+          maxLength: 255
+          description: 规范化的精确 scheme://host[:port]；生产仅 HTTPS，不含 path/query/fragment
+        channelId:
+          $ref: '#/components/schemas/ChannelId'
+        subject:
+          $ref: '#/components/schemas/LaunchSubject'
+        entry:
+          $ref: '#/components/schemas/LaunchEntry'
+        context:
+          type: object
+          maxProperties: 32
+          description: 仅提交业务值且必须符合已发布 Context Schema；V1 发布端禁止该 Schema 使用 pattern 关键字
+          additionalProperties: true
+        ui:
+          $ref: '#/components/schemas/LaunchUi'
+      additionalProperties: false
+    LaunchSubject:
+      oneOf:
+        - $ref: '#/components/schemas/SignedJwtSubject'
+        - $ref: '#/components/schemas/TrustedExternalIdSubject'
+      discriminator:
+        propertyName: type
+        mapping:
+          SIGNED_JWT: '#/components/schemas/SignedJwtSubject'
+          TRUSTED_EXTERNAL_ID: '#/components/schemas/TrustedExternalIdSubject'
+    SignedJwtSubject:
+      type: object
+      required:
+        - type
+        - assertion
+      properties:
+        type:
+          type: string
+          const: SIGNED_JWT
+        assertion:
+          type: string
+          minLength: 1
+          maxLength: 16384
+      additionalProperties: false
+    TrustedExternalIdSubject:
+      type: object
+      required:
+        - type
+        - namespace
+        - externalUserId
+      properties:
+        type:
+          type: string
+          const: TRUSTED_EXTERNAL_ID
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 128
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 128
+      additionalProperties: false
+    LaunchEntry:
+      oneOf:
+        - $ref: '#/components/schemas/ListEntry'
+        - $ref: '#/components/schemas/CreateEntry'
+        - $ref: '#/components/schemas/ViewEntry'
+      discriminator:
+        propertyName: mode
+        mapping:
+          LIST: '#/components/schemas/ListEntry'
+          CREATE: '#/components/schemas/CreateEntry'
+          VIEW: '#/components/schemas/ViewEntry'
+    ListEntry:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          const: LIST
+      additionalProperties: false
+    CreateEntry:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          const: CREATE
+      additionalProperties: false
+    ViewEntry:
+      type: object
+      required:
+        - mode
+        - recordId
+      properties:
+        mode:
+          type: string
+          const: VIEW
+        recordId:
+          type: string
+          minLength: 1
+          maxLength: 64
+      additionalProperties: false
+    LaunchUi:
+      type: object
+      properties:
+        locale:
+          type: string
+          maxLength: 32
+        theme:
+          type: string
+          enum:
+            - light
+            - dark
+            - system
+      additionalProperties: false
+    EmbedLaunch:
+      type: object
+      required:
+        - launchId
+        - embedUrl
+        - launchCode
+        - expiresAt
+        - view
+        - protocolVersion
+      properties:
+        launchId:
+          type: string
+          pattern: '^lch_[A-Za-z0-9_-]{16,60}$'
+        embedUrl:
+          type: string
+          format: uri
+        launchCode:
+          type: string
+          description: 一次性高熵秘密，只返回一次
+        expiresAt:
+          type: string
+          format: date-time
+        view:
+          $ref: '#/components/schemas/LaunchView'
+        protocolVersion:
+          type: string
+          const: flow-embed/1
+      additionalProperties: false
+    LaunchView:
+      type: object
+      required:
+        - key
+        - surfaceType
+        - revision
+      properties:
+        key:
+          type: string
+        surfaceType:
+          $ref: '#/components/schemas/SurfaceType'
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+      additionalProperties: false
+    EmbedLaunchEnvelope:
+      type: object
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          const: 201
+        message:
+          type: string
+          const: created
+        errorCode:
+          type: 'null'
+        data:
+          $ref: '#/components/schemas/EmbedLaunch'
+        traceId:
+          type: string
+      additionalProperties: false
+
+    ExchangeRequest:
+      type: object
+      required:
+        - launchCode
+        - channelId
+        - parentOrigin
+        - parentNonce
+        - childNonce
+      properties:
+        launchCode:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43,128}$'
+        channelId:
+          $ref: '#/components/schemas/ChannelId'
+        parentOrigin:
+          type: string
+          description: 必须与 Launch 中规范化后的精确 Origin 一致
+        parentNonce:
+          $ref: '#/components/schemas/HandshakeNonce'
+        childNonce:
+          $ref: '#/components/schemas/HandshakeNonce'
+        sdkVersion:
+          type:
+            - string
+            - 'null'
+          maxLength: 64
+      additionalProperties: false
+    ExchangeResult:
+      type: object
+      required:
+        - sessionId
+        - accessToken
+        - tokenType
+        - expiresAt
+        - idleExpiresAt
+        - heartbeatAfterSeconds
+        - bootstrapUrl
+        - protocolVersion
+      properties:
+        sessionId:
+          type: string
+        accessToken:
+          type: string
+          description: 不透明 Session Token，只返回一次
+        tokenType:
+          type: string
+          const: Bearer
+        expiresAt:
+          type: string
+          format: date-time
+        idleExpiresAt:
+          type: string
+          format: date-time
+        heartbeatAfterSeconds:
+          type: integer
+          const: 60
+        bootstrapUrl:
+          type: string
+          const: /api/embed/v1/runtime/bootstrap
+        protocolVersion:
+          type: string
+          const: flow-embed/1
+      additionalProperties: false
+    ExchangeEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ExchangeResult'
+
+    HeartbeatRequest:
+      type: object
+      properties:
+        visible:
+          type:
+            - boolean
+            - 'null'
+        clientTime:
+          type:
+            - string
+            - 'null'
+          format: date-time
+      additionalProperties: false
+    SessionState:
+      type: object
+      required:
+        - sessionId
+        - status
+        - idleExpiresAt
+        - absoluteExpiresAt
+        - nextHeartbeatAfterSeconds
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+          const: ACTIVE
+        idleExpiresAt:
+          type: string
+          format: date-time
+        absoluteExpiresAt:
+          type: string
+          format: date-time
+        nextHeartbeatAfterSeconds:
+          type: integer
+          const: 60
+      additionalProperties: false
+    SessionStateEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/SessionState'
+
+    Bootstrap:
+      type: object
+      required:
+        - session
+        - actor
+        - view
+        - capabilities
+        - ui
+        - limits
+      properties:
+        session:
+          $ref: '#/components/schemas/BootstrapSession'
+        actor:
+          $ref: '#/components/schemas/BootstrapActor'
+        view:
+          $ref: '#/components/schemas/BootstrapView'
+        capabilities:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/V1Capability'
+        ui:
+          $ref: '#/components/schemas/BootstrapUi'
+        limits:
+          $ref: '#/components/schemas/BootstrapLimits'
+      additionalProperties: false
+    BootstrapSession:
+      type: object
+      required:
+        - id
+        - expiresAt
+        - idleExpiresAt
+      properties:
+        id:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        idleExpiresAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    BootstrapActor:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+      additionalProperties: false
+    BootstrapView:
+      type: object
+      required:
+        - key
+        - name
+        - surfaceType
+        - revision
+        - entryMode
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        surfaceType:
+          $ref: '#/components/schemas/SurfaceType'
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        entryMode:
+          $ref: '#/components/schemas/EntryMode'
+      additionalProperties: false
+    BootstrapUi:
+      type: object
+      required:
+        - locale
+        - theme
+        - showSearch
+        - showPagination
+        - showToolbar
+        - pageSize
+        - heightMode
+      properties:
+        locale:
+          type: string
+        theme:
+          type: string
+          enum:
+            - light
+            - dark
+            - system
+        showSearch:
+          type: boolean
+        showPagination:
+          type: boolean
+        showToolbar:
+          type: boolean
+        pageSize:
+          type: integer
+          minimum: 1
+        heightMode:
+          type: string
+          enum:
+            - AUTO
+            - FIXED
+      additionalProperties: false
+    BootstrapLimits:
+      type: object
+      required:
+        - maxPageSize
+        - maxPayloadBytes
+        - maxSelectionSize
+      properties:
+        maxPageSize:
+          type: integer
+          minimum: 1
+        maxPayloadBytes:
+          type: integer
+          minimum: 1
+        maxSelectionSize:
+          type: integer
+          minimum: 0
+      additionalProperties: false
+    BootstrapEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Bootstrap'
+
+    ListExternalSchema:
+      type: object
+      required:
+        - view
+        - entity
+        - list
+        - form
+        - actions
+      properties:
+        view:
+          $ref: '#/components/schemas/SchemaView'
+        entity:
+          $ref: '#/components/schemas/SchemaEntity'
+        list:
+          $ref: '#/components/schemas/ListSchema'
+        form:
+          type: 'null'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListActionDescriptor'
+      additionalProperties: false
+    SchemaView:
+      type: object
+      required:
+        - key
+        - surfaceType
+        - revision
+      properties:
+        key:
+          type: string
+        surfaceType:
+          type: string
+          const: LIST
+        revision:
+          type: integer
+          format: int64
+      additionalProperties: false
+    SchemaEntity:
+      type: object
+      required:
+        - code
+        - name
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+      additionalProperties: false
+    ListSchema:
+      type: object
+      required:
+        - selection
+        - pagination
+        - columns
+        - filters
+      properties:
+        selection:
+          $ref: '#/components/schemas/ListSelection'
+        pagination:
+          $ref: '#/components/schemas/ListPagination'
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListColumn'
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListFilterDescriptor'
+      additionalProperties: false
+    ListSelection:
+      type: object
+      required:
+        - mode
+        - valueField
+        - returnableFields
+      properties:
+        mode:
+          type: string
+          enum:
+            - NONE
+            - SINGLE
+            - MULTIPLE
+        valueField:
+          $ref: '#/components/schemas/FieldCode'
+          description: 固定为 id，或为 returnableFields 中已发布的字段
+        returnableFields:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/FieldCode'
+      additionalProperties: false
+    ListPagination:
+      type: object
+      required:
+        - allowTotal
+        - maxPageSize
+      properties:
+        allowTotal:
+          type: boolean
+        maxPageSize:
+          type: integer
+          minimum: 1
+      additionalProperties: false
+    ListColumn:
+      type: object
+      required:
+        - code
+        - label
+        - type
+        - sortable
+      properties:
+        code:
+          $ref: '#/components/schemas/FieldCode'
+        label:
+          type: string
+        type:
+          $ref: '#/components/schemas/ExternalFieldType'
+        width:
+          type:
+            - integer
+            - 'null'
+        sortable:
+          type: boolean
+          const: false
+        options:
+          type:
+            - array
+            - 'null'
+          items:
+            $ref: '#/components/schemas/SimpleOption'
+      additionalProperties: false
+    ListFilterDescriptor:
+      type: object
+      required:
+        - code
+        - label
+        - type
+        - operator
+      properties:
+        code:
+          $ref: '#/components/schemas/FieldCode'
+        label:
+          type: string
+        type:
+          $ref: '#/components/schemas/ExternalFieldType'
+        operator:
+          $ref: '#/components/schemas/ListFilterOperator'
+        options:
+          type:
+            - array
+            - 'null'
+          items:
+            $ref: '#/components/schemas/SimpleOption'
+      additionalProperties: false
+    SimpleOption:
+      type: object
+      required:
+        - label
+        - value
+      properties:
+        label:
+          type: string
+        value:
+          $ref: '#/components/schemas/ScalarValue'
+      additionalProperties: false
+    ListActionDescriptor:
+      type: object
+      required:
+        - key
+        - label
+        - placement
+        - kind
+        - transport
+        - recordMode
+        - selectionMode
+        - dataSchema
+        - requiresRecordVersion
+        - inputSchema
+        - idempotencyRequired
+      properties:
+        key:
+          type: string
+          enum:
+            - view
+            - create
+        label:
+          type: string
+        placement:
+          type: string
+          enum:
+            - ROW
+            - TOOLBAR
+        kind:
+          type: string
+          const: NAVIGATION
+        transport:
+          type: string
+          const: LOCAL_FORM
+        recordMode:
+          type: string
+          enum:
+            - CURRENT
+            - NONE
+        selectionMode:
+          type: string
+          const: NONE
+        dataSchema:
+          type: 'null'
+        requiresRecordVersion:
+          type: boolean
+          const: false
+        inputSchema:
+          type: 'null'
+        idempotencyRequired:
+          type: boolean
+          const: false
+      additionalProperties: false
+    ListSchemaEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ListExternalSchema'
+
+    ListQueryRequest:
+      type: object
+      properties:
+        pageNum:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 200
+          description: 还必须小于等于 Bootstrap/Schema 返回的当前 View maxPageSize
+        filters:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/ListFilterInput'
+      additionalProperties: false
+    ListFilterInput:
+      oneOf:
+        - $ref: '#/components/schemas/ScalarFilterInput'
+        - $ref: '#/components/schemas/InFilterInput'
+        - $ref: '#/components/schemas/BetweenFilterInput'
+      description: |
+        客户端不提交 operator。Schema 中发布为 EQ/CONTAINS/GT/GTE/LT/LTE 时使用 value；
+        IN 使用 values；BETWEEN 使用 range。
+    ScalarFilterInput:
+      type: object
+      required:
+        - field
+        - value
+      properties:
+        field:
+          $ref: '#/components/schemas/FieldCode'
+        value:
+          $ref: '#/components/schemas/NonNullScalarValue'
+      additionalProperties: false
+    InFilterInput:
+      type: object
+      required:
+        - field
+        - values
+      properties:
+        field:
+          $ref: '#/components/schemas/FieldCode'
+        values:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/NonNullScalarValue'
+      additionalProperties: false
+    BetweenFilterInput:
+      type: object
+      required:
+        - field
+        - range
+      properties:
+        field:
+          $ref: '#/components/schemas/FieldCode'
+        range:
+          type: object
+          required:
+            - start
+            - end
+          properties:
+            start:
+              $ref: '#/components/schemas/NonNullScalarValue'
+            end:
+              $ref: '#/components/schemas/NonNullScalarValue'
+          additionalProperties: false
+      additionalProperties: false
+    ListResult:
+      type: object
+      required:
+        - items
+        - hasMore
+        - pageNum
+        - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListItem'
+        hasMore:
+          type: boolean
+        pageNum:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        total:
+          type:
+            - integer
+            - 'null'
+          format: int64
+          minimum: 0
+          description: 只有发布配置 allowTotal=true 时非空
+      additionalProperties: false
+    ListItem:
+      type: object
+      required:
+        - id
+        - recordVersion
+        - values
+        - meta
+        - actions
+      properties:
+        id:
+          $ref: '#/components/schemas/RecordId'
+        recordVersion:
+          type: 'null'
+          description: V1 未启用通用 record_version
+        values:
+          $ref: '#/components/schemas/ProjectedValues'
+        meta:
+          $ref: '#/components/schemas/ListItemMeta'
+        actions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ActionCapability'
+      additionalProperties: false
+    ListItemMeta:
+      type: object
+      required:
+        - updatedAt
+      properties:
+        updatedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+      additionalProperties: false
+    ActionCapability:
+      type: object
+      required:
+        - visible
+        - enabled
+        - reason
+      properties:
+        visible:
+          type: boolean
+        enabled:
+          type: boolean
+        reason:
+          type:
+            - string
+            - 'null'
+      additionalProperties: false
+    ListResultEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ListResult'
+
+    FormMode:
+      type: string
+      enum:
+        - CREATE
+        - VIEW
+    FormResult:
+      type: object
+      required:
+        - mode
+        - record
+        - form
+      properties:
+        mode:
+          $ref: '#/components/schemas/FormMode'
+        record:
+          oneOf:
+            - $ref: '#/components/schemas/RecordView'
+            - type: 'null'
+          description: CREATE 为 null，VIEW 为当前已鉴权记录
+        form:
+          $ref: '#/components/schemas/FormView'
+      additionalProperties: false
+    FormView:
+      type: object
+      required:
+        - title
+        - layout
+        - fields
+        - returnableFields
+        - actions
+      properties:
+        title:
+          type: string
+        layout:
+          $ref: '#/components/schemas/FormLayout'
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormField'
+        returnableFields:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/FieldCode'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormActionDescriptor'
+      additionalProperties: false
+    FormLayout:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+      additionalProperties: false
+    FormField:
+      type: object
+      required:
+        - code
+        - label
+        - type
+        - required
+        - readOnly
+        - hidden
+        - defaultValue
+        - validation
+        - options
+        - optionSource
+        - lookupSource
+        - layout
+        - fieldState
+      properties:
+        code:
+          $ref: '#/components/schemas/FieldCode'
+        label:
+          type: string
+        type:
+          $ref: '#/components/schemas/ExternalFieldType'
+        required:
+          type: boolean
+        readOnly:
+          type: boolean
+        hidden:
+          type: boolean
+        defaultValue:
+          $ref: '#/components/schemas/ClientValue'
+        validation:
+          $ref: '#/components/schemas/FormValidationRules'
+        options:
+          type:
+            - array
+            - 'null'
+          items:
+            $ref: '#/components/schemas/FormOption'
+        optionSource:
+          oneOf:
+            - $ref: '#/components/schemas/OptionSource'
+            - type: 'null'
+        lookupSource:
+          type: 'null'
+          description: 当前 V1 不发布可用的非空 Lookup Source；已注册查询路由保持 Fail Closed
+        layout:
+          $ref: '#/components/schemas/FieldLayout'
+        fieldState:
+          $ref: '#/components/schemas/FieldState'
+      additionalProperties: false
+    FormValidationRules:
+      type: object
+      description: V1 不允许任意 pattern；发布和运行时均 Fail Closed
+      properties:
+        minLength:
+          type: integer
+          minimum: 0
+        maxLength:
+          type: integer
+          minimum: 0
+        minimum:
+          type: number
+        maximum:
+          type: number
+        format:
+          type: string
+          enum:
+            - EMAIL
+            - PHONE
+            - URL
+            - URI
+      additionalProperties: false
+    FormOption:
+      type: object
+      required:
+        - label
+        - value
+        - disabled
+      properties:
+        label:
+          type: string
+          maxLength: 200
+        value:
+          $ref: '#/components/schemas/ScalarValue'
+        disabled:
+          type: boolean
+      additionalProperties: false
+    OptionSource:
+      type: object
+      required:
+        - mode
+        - queryUrl
+        - dependencyPolicy
+      properties:
+        mode:
+          type: string
+          const: RUNTIME
+        queryUrl:
+          type: string
+          pattern: '^/api/embed/v1/runtime/form/fields/[A-Za-z][A-Za-z0-9_]{0,99}/options/query$'
+        dependencyPolicy:
+          type: array
+          maxItems: 0
+          description: 大型静态选项不依赖浏览器字段；动态依赖 V1 未开放
+          items:
+            $ref: '#/components/schemas/DependencyPolicy'
+      additionalProperties: false
+    DependencyPolicy:
+      type: object
+      required:
+        - code
+        - source
+      properties:
+        code:
+          $ref: '#/components/schemas/FieldCode'
+        source:
+          type: string
+          enum:
+            - CLIENT_WRITABLE
+            - CURRENT_RECORD_READONLY
+            - CONTEXT
+            - CONSTANT
+      additionalProperties: false
+    FieldLayout:
+      type: object
+      required:
+        - span
+      properties:
+        span:
+          type: integer
+          minimum: 1
+          maximum: 24
+      additionalProperties: false
+    FieldState:
+      type: object
+      required:
+        - visible
+        - writable
+      properties:
+        visible:
+          type: boolean
+        writable:
+          type: boolean
+      additionalProperties: false
+    FormActionDescriptor:
+      type: object
+      required:
+        - key
+        - label
+        - placement
+        - kind
+        - transport
+        - recordMode
+        - selectionMode
+        - dataSchema
+        - requiresRecordVersion
+        - inputSchema
+        - idempotencyRequired
+        - enabled
+        - disabledReason
+      properties:
+        key:
+          type: string
+          const: save
+        label:
+          type: string
+        placement:
+          type: string
+          const: FORM
+        kind:
+          type: string
+          const: MUTATION
+        transport:
+          type: string
+          const: RECORD_CREATE
+        recordMode:
+          type: string
+          const: NONE
+        selectionMode:
+          type: string
+          const: NONE
+        dataSchema:
+          type: object
+          description: 当前字段状态生成的封闭 JSON Schema
+          additionalProperties: true
+        requiresRecordVersion:
+          type: boolean
+          const: false
+        inputSchema:
+          type: 'null'
+        idempotencyRequired:
+          type: boolean
+          const: true
+        enabled:
+          type: boolean
+        disabledReason:
+          type:
+            - string
+            - 'null'
+      additionalProperties: false
+    FormResultEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/FormResult'
+
+    CreateFormEvaluationRequest:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          maxProperties: 100
+          description: 允许部分草稿；键必须属于固定发布 fieldPolicy.writable
+          additionalProperties:
+            $ref: '#/components/schemas/ClientValue'
+      additionalProperties: false
+    CreateFormEvaluationResult:
+      allOf:
+        - $ref: '#/components/schemas/FormResult'
+        - type: object
+          properties:
+            mode:
+              type: string
+              const: CREATE
+            record:
+              type: 'null'
+    CreateFormEvaluationEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CreateFormEvaluationResult'
+
+    OptionQueryRequest:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: '#/components/schemas/FormMode'
+        recordId:
+          $ref: '#/components/schemas/RecordId'
+        keyword:
+          type:
+            - string
+            - 'null'
+          maxLength: 200
+        dependencies:
+          type: object
+          maxProperties: 0
+          description: 当前 V1 静态分页实现必须为空
+          additionalProperties:
+            $ref: '#/components/schemas/ClientValue'
+        pageNum:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 50
+      allOf:
+        - if:
+            properties:
+              mode:
+                const: VIEW
+          then:
+            required:
+              - recordId
+        - if:
+            properties:
+              mode:
+                const: CREATE
+          then:
+            not:
+              required:
+                - recordId
+      additionalProperties: false
+    LookupQueryRequest:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: '#/components/schemas/FormMode'
+        recordId:
+          $ref: '#/components/schemas/RecordId'
+        keyword:
+          type:
+            - string
+            - 'null'
+          maxLength: 200
+        filters:
+          type: object
+          maxProperties: 32
+          additionalProperties:
+            $ref: '#/components/schemas/ClientValue'
+        pageNum:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      allOf:
+        - if:
+            properties:
+              mode:
+                const: VIEW
+          then:
+            required:
+              - recordId
+        - if:
+            properties:
+              mode:
+                const: CREATE
+          then:
+            not:
+              required:
+                - recordId
+      additionalProperties: false
+    OptionPage:
+      type: object
+      required:
+        - items
+        - hasMore
+        - pageNum
+        - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormOption'
+        hasMore:
+          type: boolean
+        pageNum:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 50
+      additionalProperties: false
+    OptionPageEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/OptionPage'
+
+    RecordView:
+      type: object
+      required:
+        - id
+        - recordVersion
+        - values
+        - meta
+      properties:
+        id:
+          $ref: '#/components/schemas/RecordId'
+        recordVersion:
+          type: 'null'
+          description: 当前 V1 动态实体没有通用 record_version
+        values:
+          $ref: '#/components/schemas/ProjectedValues'
+        meta:
+          $ref: '#/components/schemas/RecordMeta'
+      additionalProperties: false
+    RecordMeta:
+      type: object
+      required:
+        - createdAt
+        - updatedAt
+      properties:
+        createdAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        updatedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+      additionalProperties: false
+    RecordFieldState:
+      type: object
+      required:
+        - visible
+        - readOnly
+        - required
+      properties:
+        visible:
+          type: boolean
+        readOnly:
+          type: boolean
+          const: true
+        required:
+          type: boolean
+      additionalProperties: false
+    RecordResult:
+      type: object
+      required:
+        - record
+        - fieldStates
+        - actions
+      properties:
+        record:
+          $ref: '#/components/schemas/RecordView'
+        fieldStates:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/RecordFieldState'
+        actions:
+          type: object
+          maxProperties: 0
+          description: 当前 V1 Entity 表单 VIEW 适配器固定返回空对象
+          additionalProperties: false
+      additionalProperties: false
+    RecordResultEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RecordResult'
+
+    CreateRecordRequest:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            $ref: '#/components/schemas/ClientValue'
+        clientMutationId:
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          maxLength: 128
+          pattern: '^[\x20-\x7E]*[!-~][\x20-\x7E]*$'
+      additionalProperties: false
+    CreateResult:
+      type: object
+      required:
+        - receiptId
+        - record
+        - effects
+        - clientMutationId
+      properties:
+        receiptId:
+          type: string
+          pattern: '^eor_[A-Za-z0-9_-]{16,64}$'
+        record:
+          $ref: '#/components/schemas/RecordView'
+        effects:
+          type: array
+          maxItems: 0
+        clientMutationId:
+          type:
+            - string
+            - 'null'
+      additionalProperties: false
+    CreateResultEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelopeBase'
+        - type: object
+          description: HTTP 为 201；现有 EmbedApiEnvelope.ok 的 body code 固定为 200
+          properties:
+            code:
+              type: integer
+              const: 200
+            data:
+              $ref: '#/components/schemas/CreateResult'
+
+    SuccessEnvelopeBase:
+      type: object
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          const: 200
+        message:
+          type: string
+          const: ok
+        errorCode:
+          type: 'null'
+        data: true
+        traceId:
+          type: string
+      additionalProperties: false
+    ErrorEnvelope:
+      type: object
+      required:
+        - code
+        - message
+        - errorCode
+        - data
+        - traceId
+      properties:
+        code:
+          type: integer
+          minimum: 400
+          maximum: 599
+        message:
+          type: string
+        errorCode:
+          $ref: '#/components/schemas/PublicErrorCode'
+        data: true
+        traceId:
+          type: string
+      additionalProperties: false
+    FormValidationErrorEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ErrorEnvelope'
+        - type: object
+          properties:
+            code:
+              type: integer
+              const: 422
+            errorCode:
+              type: string
+              const: FORM_VALIDATION_FAILED
+            data:
+              $ref: '#/components/schemas/FormValidationErrorData'
+    FormValidationErrorData:
+      type: object
+      required:
+        - violations
+        - relaunchRequired
+      properties:
+        violations:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/FormViolation'
+        relaunchRequired:
+          type: boolean
+          const: false
+      additionalProperties: false
+    FormViolation:
+      type: object
+      required:
+        - path
+        - code
+        - message
+      properties:
+        path:
+          type: string
+          pattern: '^data(?:\.[A-Za-z][A-Za-z0-9_]{0,99})?$'
+        code:
+          type: string
+        message:
+          type: string
+      additionalProperties: false
+
+    PublicErrorCode:
+      type: string
+      enum:
+        - INVALID_REQUEST
+        - INVALID_ACCESS_TOKEN
+        - INSUFFICIENT_SCOPE
+        - SOURCE_ADDRESS_NOT_ALLOWED
+        - PAYLOAD_TOO_LARGE
+        - EMBED_CONTEXT_INVALID
+        - EMBED_VIEW_NOT_GRANTED
+        - EMBED_ORIGIN_NOT_ALLOWED
+        - EMBED_IDENTITY_ASSERTION_INVALID
+        - EMBED_IDENTITY_ASSERTION_REPLAYED
+        - EXTERNAL_IDENTITY_NOT_MAPPED
+        - FLOW_USER_DISABLED
+        - EMBED_VIEW_DISABLED
+        - EMBED_ACCESS_DENIED
+        - EMBED_OPERATION_NOT_ALLOWED
+        - EMBED_LAUNCH_INVALID
+        - EMBED_LAUNCH_EXPIRED
+        - EMBED_SESSION_INVALID
+        - EMBED_SESSION_EXPIRED
+        - EMBED_SESSION_REVOKED
+        - EMBED_SESSION_LIMIT_EXCEEDED
+        - RATE_LIMIT_EXCEEDED
+        - EMBED_RESOURCE_NOT_FOUND
+        - EMBED_IDEMPOTENCY_KEY_REUSED
+        - EMBED_REQUEST_IN_PROGRESS
+        - FORM_VALIDATION_FAILED
+        - EMBED_RECORD_CONFLICT
+        - EMBED_RUNTIME_UNAVAILABLE
+        - INTEGRATION_TEMPORARILY_UNAVAILABLE
+
+    ReadyWindowMessage:
+      type: object
+      required:
+        - protocol
+        - type
+        - launchId
+        - channelId
+        - childNonce
+        - supportedVersions
+      properties:
+        protocol:
+          type: string
+          const: flow-embed/1
+        type:
+          type: string
+          const: ready
+        launchId:
+          type: string
+        channelId:
+          $ref: '#/components/schemas/ChannelId'
+        childNonce:
+          $ref: '#/components/schemas/HandshakeNonce'
+        supportedVersions:
+          type: array
+          prefixItems:
+            - type: string
+              const: flow-embed/1
+          minItems: 1
+          maxItems: 1
+      additionalProperties: false
+    InitWindowMessage:
+      type: object
+      required:
+        - protocol
+        - type
+        - launchId
+        - channelId
+        - launchCode
+        - childNonce
+        - parentNonce
+      properties:
+        protocol:
+          type: string
+          const: flow-embed/1
+        type:
+          type: string
+          const: init
+        launchId:
+          type: string
+        channelId:
+          $ref: '#/components/schemas/ChannelId'
+        launchCode:
+          type: string
+        childNonce:
+          $ref: '#/components/schemas/HandshakeNonce'
+        parentNonce:
+          $ref: '#/components/schemas/HandshakeNonce'
+      additionalProperties: false
+    InitAckMessage:
+      type: object
+      required:
+        - protocol
+        - type
+        - launchId
+        - channelId
+        - childNonce
+        - parentNonce
+      properties:
+        protocol:
+          type: string
+          const: flow-embed/1
+        type:
+          type: string
+          const: init.ack
+        launchId:
+          type: string
+        channelId:
+          $ref: '#/components/schemas/ChannelId'
+        childNonce:
+          $ref: '#/components/schemas/HandshakeNonce'
+        parentNonce:
+          $ref: '#/components/schemas/HandshakeNonce'
+      additionalProperties: false
+    AckEventPayload:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          enum:
+            - refresh
+            - set-theme
+            - set-locale
+            - focus
+            - destroy
+      additionalProperties: false
+    InitializedEventPayload:
+      type: object
+      required:
+        - viewKey
+        - surfaceType
+        - capabilities
+      properties:
+        viewKey:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9._:-]{0,99}$'
+        surfaceType:
+          $ref: '#/components/schemas/SurfaceType'
+        capabilities:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/V1Capability'
+      additionalProperties: false
+    ResizeEventPayload:
+      type: object
+      required:
+        - height
+      properties:
+        height:
+          type: number
+          minimum: 0
+          maximum: 100000
+      additionalProperties: false
+    SelectionChangedEventPayload:
+      type: object
+      required:
+        - selection
+      properties:
+        selection:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/HostRecordProjection'
+      additionalProperties: false
+    FormSavedEventPayload:
+      type: object
+      required:
+        - receiptId
+        - record
+        - clientMutationId
+      properties:
+        receiptId:
+          type: string
+          pattern: '^eor_[A-Za-z0-9_-]{16,64}$'
+        record:
+          $ref: '#/components/schemas/HostRecordProjection'
+        clientMutationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[\x20-\x7E]+$'
+      additionalProperties: false
+    EmbedBridgeErrorPayload:
+      type: object
+      required:
+        - errorCode
+        - message
+        - traceId
+        - recoverable
+      properties:
+        errorCode:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{0,127}$'
+        message:
+          type: string
+          maxLength: 512
+        traceId:
+          type:
+            - string
+            - 'null'
+          maxLength: 256
+        recoverable:
+          type: boolean
+        category:
+          type: string
+          enum:
+            - SESSION
+            - IDENTITY
+            - ORIGIN
+            - RESOURCE
+            - TRANSIENT
+            - UNKNOWN
+        phase:
+          type: string
+          maxLength: 64
+        relaunchRequired:
+          type: boolean
+      additionalProperties: false
+    SessionExpiredEventPayload:
+      type: object
+      required:
+        - reason
+        - relaunchRequired
+      properties:
+        reason:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{0,127}$'
+        relaunchRequired:
+          type: boolean
+          const: true
+      additionalProperties: false
+    NavigationRequestEventPayload:
+      type: object
+      description: 仅 SDK 预留 Schema；当前 iframe Bridge 不发送
+      required:
+        - target
+        - recordId
+      properties:
+        target:
+          type: string
+          enum:
+            - LIST
+            - CREATE
+            - VIEW
+            - BACK
+        recordId:
+          oneOf:
+            - $ref: '#/components/schemas/RecordId'
+            - type: 'null'
+      additionalProperties: false
+    ActionStartedEventPayload:
+      type: object
+      description: 仅 SDK 预留 Schema；V1 没有 Action Runtime，当前 iframe Bridge 不发送
+      required:
+        - actionKey
+        - clientMutationId
+      properties:
+        actionKey:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'
+        clientMutationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[\x20-\x7E]+$'
+      additionalProperties: false
+    ActionCompletedEventPayload:
+      type: object
+      description: 仅 SDK 预留 Schema；V1 没有 Action Runtime，当前 iframe Bridge 不发送
+      required:
+        - actionKey
+        - receiptId
+        - result
+      properties:
+        actionKey:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'
+        receiptId:
+          type: string
+          pattern: '^eor_[A-Za-z0-9_-]{16,64}$'
+        result:
+          description: SDK 只接受深度和数量受限的安全 JSON；V1 不产生该 Payload
+      additionalProperties: false
+    CloseRequestedEventPayload:
+      type: object
+      description: 仅 SDK 预留 Schema；当前 iframe Bridge 不发送
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 128
+      additionalProperties: false
+    HostRecordProjection:
+      type: object
+      required:
+        - id
+        - values
+      properties:
+        id:
+          $ref: '#/components/schemas/RecordId'
+        values:
+          $ref: '#/components/schemas/ProjectedValues'
+      additionalProperties: false
+
+    EntryMode:
+      type: string
+      enum:
+        - LIST
+        - CREATE
+        - VIEW
+    SurfaceType:
+      type: string
+      enum:
+        - LIST
+        - FORM
+    V1Capability:
+      type: string
+      enum:
+        - LIST_QUERY
+        - SELECTION_RETURN
+        - RECORD_VIEW
+        - RECORD_CREATE
+    ExternalFieldType:
+      type: string
+      enum:
+        - TEXT
+        - NUMBER
+        - BOOLEAN
+        - DATE
+        - DATETIME
+        - TIME
+        - SELECT
+        - MULTI_SELECT
+      description: >-
+        成功发布的 V1 表单/列表投影类型。表单中的引用、Lookup 和主体选择类字段在发布时阻断，
+        因而不会出现在成功响应中。
+    ListFilterOperator:
+      type: string
+      enum:
+        - EQ
+        - CONTAINS
+        - IN
+        - GT
+        - GTE
+        - LT
+        - LTE
+        - BETWEEN
+    FieldCode:
+      type: string
+      pattern: '^[A-Za-z][A-Za-z0-9_]{0,99}$'
+      maxLength: 100
+    RecordId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'
+    ChannelId:
+      type: string
+      minLength: 16
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._:-]{16,128}$'
+    HandshakeNonce:
+      type: string
+      minLength: 43
+      maxLength: 128
+      pattern: '^[A-Za-z0-9_-]{43,128}$'
+      description: base64url 编码且解码后至少 32 字节
+    ScalarValue:
+      oneOf:
+        - type: string
+          maxLength: 2048
+        - type: number
+        - type: boolean
+        - type: 'null'
+    NonNullScalarValue:
+      oneOf:
+        - type: string
+          minLength: 1
+          maxLength: 2048
+        - type: number
+        - type: boolean
+    ClientValue:
+      oneOf:
+        - $ref: '#/components/schemas/ScalarValue'
+        - type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ScalarValue'
+    ProjectedValues:
+      type: object
+      maxProperties: 100
+      additionalProperties:
+        $ref: '#/components/schemas/ClientValue'

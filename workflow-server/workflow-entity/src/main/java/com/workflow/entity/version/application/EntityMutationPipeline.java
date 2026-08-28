@@ -19,6 +19,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.entity.version.application.EntityMutationStepExecutor.ExecutionOutcome;
+import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -99,6 +100,23 @@ public class EntityMutationPipeline
                 results);
     }
 
+    /**
+     * 执行不产生变更版本和审计事件的表单唯一终检。
+     *
+     * <p>该路径不经过变更规则 PREPARE/AFTER_COMMIT，因为它不改变业务
+     * 记录；但仍由事务执行器锁定最终记录并维护 claim。</p>
+     */
+    @Override
+    public void reconcileFormUniqueness(
+            String entityCode,
+            String recordId,
+            EntityMutationContext context) {
+        transactionExecutor.reconcileFormUniqueness(
+                entityCode,
+                recordId,
+                context);
+    }
+
     private int expansionBudget(
             List<EntityMutationCommand> commands) {
         int result = Integer.MAX_VALUE;
@@ -130,11 +148,20 @@ public class EntityMutationPipeline
 
     private ExecutionOutcome prepare(
             EntityMutationCommand command) {
-        return stepExecutor.execute(
+        TrustedSubFormUniqueReference.PayloadSnapshot trusted =
+                TrustedSubFormUniqueReference.snapshot(
+                        command.payload());
+        ExecutionOutcome result = stepExecutor.execute(
                 command,
                 EntityMutationPhase.PREPARE,
                 java.util.Map.of(),
                 java.util.Map.of());
+        // PREPARE 可修改普通字段或展开命令，但不能通过 managed-interface
+        // round-trip 剥离/替换服务端发布处理器附加的可信子表单身份。
+        TrustedSubFormUniqueReference.requireUnchanged(
+                trusted,
+                result.command().payload());
+        return result;
     }
 
     private void afterCommit(

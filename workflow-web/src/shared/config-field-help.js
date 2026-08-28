@@ -107,6 +107,106 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     'Java 解析器需实现 EntityChangeTargetResolver、加 @Component，并由 getCode() 返回唯一编码。',
   'entityVersion.applyStrategy':
     '合并只更新映射得到的字段；替换按新结果重建目标内容，未提供字段可能被清除。',
+  'embed.application.internalId':
+    '填写“开放集成”应用详情中的内部 Application ID。OAuth 换取 Token 使用 Client ID（client_id），二者不能互换。',
+  'embed.version.cas':
+    '用于防止多人或多标签页静默覆盖配置的乐观锁版本，不是 Draft / Published Revision；发生 409 时请刷新后重新修改。',
+  'embed.view.key':
+    '第三方创建 Launch 时提交的稳定业务标识，不是数据库 ID。对外使用后不要改名或复用为其他页面。',
+  'embed.view.surface':
+    'LIST 是列表容器，可开放 LIST、VIEW、CREATE；FORM 是直接表单入口，只可开放 VIEW、CREATE。',
+  'embed.view.entityCode':
+    '填写实体设计中的稳定 Entity Code，不是实体名称或数据库表名；目标列表和表单必须属于该实体。',
+  'embed.view.listKey':
+    '填写已发布实体列表的 List Key，不是列表名称或 Release ID；仅 LIST Surface 使用。',
+  'embed.view.defaultFormId':
+    'LIST 中用于 VIEW / CREATE 跳转的默认表单；FORM 中就是直接嵌入的目标表单。填写 Form ID，不是 Form Release ID。',
+  'embed.view.entryModes':
+    '决定 Launch API 允许进入哪些页面；勾选入口不会自动授予能力，还须开放对应 Capability。',
+  'embed.view.resourceReleaseStrategy':
+    '这里控制底层 List / Form 配置版本：PINNED 固定资源 Release ID；FOLLOW_ACTIVE 跟随其当前发布版。它不是 Grant 的 Embed View Revision Mode。',
+  'embed.view.resourceReleaseId':
+    '填写列表或表单发布记录的 Release ID，不是 Embed View 的 Revision 或 Release ID。',
+  'embed.view.capabilities':
+    'View 能力白名单；运行时能力取 View、Grant Ceiling、Flow 用户权限和数据范围的交集。',
+  'embed.view.visibleFields':
+    'iframe 可展示的字段，字段必须存在于底层已发布资源，并仍受 Flow 用户字段权限约束。',
+  'embed.view.queryableFields':
+    'LIST 中可用于筛选的字段，必须由底层已发布列表声明为可查询。',
+  'embed.view.writableFields':
+    'CREATE 可提交的字段，必须由底层已发布表单声明为可写；Context 强制值不能被浏览器覆盖。',
+  'embed.view.returnableFields':
+    '可经 selection.changed / form.saved 回传宿主的字段，必须是 Visible 子集，敏感字段禁止回传。',
+  'embed.view.advancedJson':
+    '用于 contextSchema、contextBindings、ui 等未在基础表单展开的配置。保存时，上方基础字段会覆盖 JSON 中的同名路径。',
+  'embed.provider.type':
+    'SIGNED_JWT（推荐）由第三方后端签名人员断言；TRUSTED_EXTERNAL_ID 仅限受信任的服务端直传，不是浏览器传用户名的快捷模式。',
+  'embed.provider.subjectNamespace':
+    '参与 external subject 摘要域隔离的固定命名空间，不是 JWT Claim。建议按来源系统和环境唯一命名，创建后不可修改。',
+  'embed.provider.issuer':
+    '必须与人员 JWT 的 iss Claim 完全一致；它不是 Flow 地址，也不是 JWKS URL。',
+  'embed.provider.audiences':
+    '允许的人员 JWT aud 值，每行一个，必须包含 flow-embed-launch；这里不填 OAuth Client ID。',
+  'embed.provider.algorithms':
+    '人员 JWT 签名算法白名单，必须与 JWK 密钥类型及 EC 曲线匹配；只开放第三方实际使用的算法。',
+  'embed.provider.jwksMode':
+    'STATIC_JWK_SET 由 Flow 保存公钥快照并由管理员轮换；REMOTE_JWKS 从受控 HTTPS URL 获取公钥。两种模式都不允许私钥。',
+  'embed.provider.publicJwks':
+    '只粘贴公开验签材料，每把 JWK 必须有唯一 kid。禁止提交 d、p、q、k 等私钥参数。',
+  'embed.provider.jwksUrl':
+    '填写身份提供方受控的 HTTPS JWKS 地址，返回内容只能包含公开验签材料。',
+  'embed.provider.clockSkew':
+    '签发方与 Flow 的时钟误差容忍，不会延长 Session；值越大，断言可被接受的时间窗口越大。',
+  'embed.provider.maxAssertionLifetime':
+    '限制人员 JWT 的 exp - iat，与 Clock Skew、Launch Code TTL、Session 时长都不同；生产应使用短期断言。',
+  'embed.binding.identityProvider':
+    '决定 External Subject 由哪套信任策略验证。Launch 只会在 Application、Provider 和 Subject 三者精确匹配时命中 Binding。',
+  'embed.binding.externalSubject':
+    'SIGNED_JWT 时必须与 JWT sub 精确一致。应使用稳定且不可复用的外部用户 ID，不要使用邮箱或显示名；原文不会持久化。',
+  'embed.binding.flowUserId':
+    'Flow 用户内部 ID，不是用户名或手机号；用户必须存在且启用，映射后仍按该用户角色、字段权限和 DataScope 鉴权。',
+  'embed.binding.subjectHint':
+    '仅用于管理员识别 Binding 的脱敏前后缀，不是 Subject 原文或摘要，也不能用它做精确查找。',
+  'embed.grant.identityProvider':
+    '限定该 Application 访问 View 时使用的人员断言来源，必须与对应 Binding 的 Provider 一致。',
+  'embed.grant.revisionMode':
+    '这里选择 Embed View Release：FOLLOW_ACTIVE 跟随最新兼容发布，PINNED 固定 Pinned Revision；不同于草稿中的 List / Form Release 策略。',
+  'embed.grant.pinnedRevision':
+    '填写 Embed View 发布历史中的 Revision 数字，例如 r3 填 3；不是 Release ID 或 List / Form Release ID。',
+  'embed.grant.trustedSubjectAssertion':
+    '仅 TRUSTED_EXTERNAL_ID Provider 可启用，SIGNED_JWT 必须关闭。启用会扩大服务端信任边界，浏览器仍不得直接声明用户。',
+  'embed.grant.allowedOrigins':
+    '填写第三方宿主页面的 window.origin（协议、域名、可选端口），不是 Flow Embed 地址；仅允许精确 HTTPS Origin，不含路径或通配符。',
+  'embed.grant.capabilityCeiling':
+    '该 Application 在此 View 上的能力上限，只能收窄 View 能力，不能放大；最终仍与 Flow 用户权限和数据范围取交集。',
+  'embed.grant.maxActiveSessionsPerUser':
+    '同一 Grant + Flow 用户允许同时处于 ACTIVE 的 Session 数量；达到上限后，新 Launch 在兑换 Session 时会被拒绝。',
+  'embed.grant.maxSessionSeconds':
+    '单个 Embed Session 的绝对最长时长，不是空闲超时；实际时长还会受平台上限和授权到期时间约束。',
+  'embed.grant.maxConcurrency':
+    '该 Application + Grant 允许同时执行的 Runtime 请求数，不是用户数或 Session 数。',
+  'embed.grant.launchRate':
+    '该 Application + Grant 每分钟可签发的 Launch 数量上限；超限返回 429，宿主后端应按 Retry-After 重试。',
+  'embed.grant.runtimeRate':
+    '该 Application + Grant 每分钟可执行的 iframe Runtime API 请求上限；每个 Session 还受平台硬上限约束。',
+  'embed.grant.expiresAt':
+    '授权的绝对到期时间。到期后不再签发 Launch，已建立 Session 的后续 Runtime 请求也会被拒绝。',
+  'embed.operations.queryScope':
+    'Application ID 或 View ID 至少填写一项，两项同时填写时按交集查询。未选时间默认近 24 小时，最长可查 31 天。',
+  'embed.operations.launchStatus':
+    'ISSUED 表示尚未兑换，CONSUMED 表示已兑换为 Session，EXPIRED 表示启动码超时，REVOKED 表示已撤销。已兑换后应撤销 Session。',
+  'embed.operations.sessionStatus':
+    'ACTIVE 仍可使用；LOGGED_OUT 由 iframe 正常退出；EXPIRED 已超时；REVOKED 由管理员撤销。终态 Session 不能恢复。',
+  'embed.operations.absoluteExpiry':
+    '该 Session 无论是否持续活动都会失效的绝对时间，与最后活动时间和空闲超时不同。',
+  'embed.operations.bulkScope':
+    '按 View 撤销只影响该嵌入视图；按 Application 撤销影响该接入应用的所有 View。撤销不可恢复，超过 200 条需继续下一批。',
+  'embed.release.revision':
+    'Embed View 每次发布递增的修订号。Grant 选择 PINNED 时的 Pinned Revision 填这个数字。',
+  'embed.release.id':
+    '每次 Embed View 发布生成的不可变快照 ID，主要用于运行时与审计；Grant PINNED 填的是 Revision，不是此 ID。',
+  'embed.release.configHash':
+    '服务端对不可变发布快照计算的 SHA-256 摘要，用于审计和比对配置，它不是密钥。',
   'workCalendar.scopeType':
     '部门绑定优先于组织绑定；同一范围命中多个日历时，使用优先级更高且处于生效日期内的绑定。'
 })

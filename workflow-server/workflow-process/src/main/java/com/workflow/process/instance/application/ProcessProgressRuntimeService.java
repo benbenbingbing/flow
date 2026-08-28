@@ -311,6 +311,7 @@ public class ProcessProgressRuntimeService {
                         java.util.Map<String, Object> vars = new java.util.HashMap<>();
                         for (var v : nodeVars)
                             vars.put(v.getVariableName(), v.getValue());
+                        WorkflowReservedVariables.removeInternalVariables(vars);
                         dto.setVariables(vars);
                     }
                     // 获取任务处理方式

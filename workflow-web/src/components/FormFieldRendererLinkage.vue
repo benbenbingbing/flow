@@ -6,6 +6,7 @@
 <template>
   <div class="form-field-renderer-linkage">
     <component
+      ref="fieldComponentRef"
       :is="resolvedComponent"
       :field="field"
       :modelValue="modelValue"
@@ -23,11 +24,15 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { resolveFieldComponent, TextField } from '@/components/form-fields'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { getFormId } from '@/shared/form-action-runtime'
+import {
+  FORM_UNIQUE_PRECHECK_CONTEXT_KEY,
+  resolveFormUniqueValidationTrigger
+} from '@/shared/form-runtime/uniquePrecheckContext'
 
 const props = defineProps({
   field: {
@@ -61,6 +66,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
+const fieldComponentRef = ref(null)
+const uniquePrecheckContext = inject(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, null)
 
 const resolvedComponent = computed(() => {
   const component = resolveFieldComponent(props.field)
@@ -82,8 +89,26 @@ function isEntityReferenceField() {
 async function handleRuntimeChange(value) {
   emit('change', value)
   await executeRuntimeEvent('FIELD_CHANGE', value, null)
-  if (!isEntityReferenceField()) return
-  await executeRuntimeEvent('ENTITY_SELECTED', value, value)
+  if (isEntityReferenceField()) {
+    await executeRuntimeEvent('ENTITY_SELECTED', value, value)
+  }
+  // 事件回填可能修改条件字段，必须用全部 effect 落地后的最终数据预检。
+  await checkChangeOnlyUniqueField()
+}
+
+/**
+ * EntitySelector/Radio/Switch 等复合控件没有可靠 blur 语义，也不会像
+ * Element Plus 原生输入组件那样自动触发 FormItem change 校验。因此在
+ * 运行字段的 change 链路中显式执行用户配置的 BLUR 唯一预检。
+ */
+async function checkChangeOnlyUniqueField() {
+  const rule = uniquePrecheckContext?.resolveRule?.(props.field)
+  if (!rule?.precheck?.enabled
+      || rule.precheck.trigger !== 'BLUR'
+      || resolveFormUniqueValidationTrigger(props.field) !== 'change') {
+    return
+  }
+  await uniquePrecheckContext.check(props.field, 'BLUR')
 }
 
 async function executeRuntimeEvent(eventCode, value, selection) {
@@ -208,6 +233,14 @@ function isEmpty(value) {
     || value === ''
     || (Array.isArray(value) && value.length === 0)
 }
+
+/** 将子表单等复合字段的校验能力透传给外层 FormItem。 */
+async function validate() {
+  if (!fieldComponentRef.value?.validate) return true
+  return (await fieldComponentRef.value.validate()) !== false
+}
+
+defineExpose({ validate })
 </script>
 
 <style scoped>

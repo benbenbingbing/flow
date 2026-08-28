@@ -274,6 +274,9 @@ public class TaskDetailService {
             variables.remove("entityDataId");
             variables.remove("entityCode");
             variables.remove("submitterId");
+            // 发起人组织快照是平台安全上下文，不属于可回显的实体数据。
+            com.workflow.process.instance.application.WorkflowReservedVariables
+                    .removeInternalVariables(variables);
             if (!variables.isEmpty()) {
                 dto.setEntityData(variables);
                 log.info("从流程变量获取数据: processInstanceId={}, dataKeys={}", 

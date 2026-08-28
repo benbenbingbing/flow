@@ -20,6 +20,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +63,14 @@ public class EntityDataMutationService {
 
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO save(EntityDataDTO dto) {
+        return save(dto, null);
+    }
+
+    /** 统一变更入口写入时显式下传不可伪造的递归唯一性计划。 */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityDataDTO save(
+            EntityDataDTO dto,
+            PreparedUniqueClaims prepared) {
         log.info(
                 "保存数据: entityCode={}, id={}, fieldCount={}",
                 LogValue.safe(dto.getEntityCode()),
@@ -152,7 +161,8 @@ public class EntityDataMutationService {
         relationRuntimeService.saveRelationData(
                 dto.getId(),
                 relations,
-                relationData);
+                relationData,
+                prepared);
         multiValueRuntimeService.save(
                 definition,
                 dto.getId(),
@@ -169,6 +179,16 @@ public class EntityDataMutationService {
             String entityCode,
             String id,
             Map<String, Object> formData) {
+        return update(entityCode, id, formData, null);
+    }
+
+    /** 统一变更入口更新时显式下传不可伪造的递归唯一性计划。 */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityDataDTO update(
+            String entityCode,
+            String id,
+            Map<String, Object> formData,
+            PreparedUniqueClaims prepared) {
         String tableName =
                 dynamicTableService.getTableName(entityCode);
         EntityDefinition definition =
@@ -237,7 +257,8 @@ public class EntityDataMutationService {
         relationRuntimeService.saveRelationData(
                 id,
                 relations,
-                relationData);
+                relationData,
+                prepared);
         multiValueRuntimeService.save(
                 definition,
                 id,

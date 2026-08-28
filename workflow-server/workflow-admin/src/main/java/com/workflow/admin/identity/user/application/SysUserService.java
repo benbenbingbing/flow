@@ -17,6 +17,9 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.S
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.auth.infrastructure.AuthRefreshSessionMapper;
+import com.workflow.admin.identity.position.application.PositionAssignmentQueryService;
+import com.workflow.admin.identity.position.application.PositionOrganizationScopeService;
+import com.workflow.admin.identity.position.infrastructure.persistence.record.PositionAssignmentViewRow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -25,6 +28,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -49,6 +58,10 @@ public class SysUserService {
     private final AuthRefreshSessionMapper refreshSessionMapper;
     /** 组织部门 Mapper，用于回填用户的组织/部门名称 */
     private final SysOrganizationMapper orgMapper;
+    /** 当前任职摘要查询，内部重复执行组织数据范围过滤。 */
+    private final PositionAssignmentQueryService positionAssignmentQueryService;
+    /** 用户职务筛选必须把可见组织范围下推到分页 SQL。 */
+    private final PositionOrganizationScopeService positionOrganizationScopeService;
     /** BCrypt 密码编码器，用于密码加密与校验 */
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     
@@ -77,20 +90,29 @@ public class SysUserService {
             String status,
             String orgId,
             String deptId,
-            String roleId) {
+            String roleId,
+            String positionCode) {
         int safePageNum = Math.max(pageNum, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        LocalDateTime asOf = LocalDateTime.now(ZoneOffset.UTC);
+        List<String> visibleAssignmentUnits = StringUtils.hasText(positionCode)
+                ? positionOrganizationScopeService.visibleUnitIds()
+                : null;
         Page<SysUser> page = userMapper.selectUserPage(
                 new Page<>(safePageNum, safePageSize),
                 trimToNull(keyword),
                 trimToNull(status),
                 trimToNull(orgId),
                 trimToNull(deptId),
-                trimToNull(roleId));
+                trimToNull(roleId),
+                normalizePositionCode(positionCode),
+                asOf,
+                visibleAssignmentUnits);
         page.getRecords().forEach(user -> {
             fillUserRoles(user);
             fillUserOrgInfo(user);
         });
+        fillCurrentPositionAssignments(page.getRecords(), asOf);
         return new PageResult<>(
                 page.getRecords(),
                 page.getTotal(),
@@ -237,6 +259,15 @@ public class SysUserService {
             captureArguments = true,
             captureResult = true)
     public SysUser saveUser(SysUser user) {
+        SysUser existing = null;
+        if (StringUtils.hasText(user.getId())) {
+            existing = userMapper.selectById(user.getId());
+            if (existing == null) {
+                throw new IllegalArgumentException("用户不存在");
+            }
+        }
+        validateOrganizationMembership(user, existing);
+
         // 校验用户名唯一性
         if (StringUtils.hasText(user.getUsername())) {
             String excludeId = user.getId() != null ? user.getId() : "";
@@ -264,11 +295,6 @@ public class SysUserService {
             userMapper.insert(user);
             log.info("新增用户：{}", LogValue.safe(user.getUsername()));
         } else {
-            SysUser existing =
-                    userMapper.selectById(user.getId());
-            if (existing == null) {
-                throw new IllegalArgumentException("用户不存在");
-            }
             // 更新 - 不更新密码
             user.setPassword(null);
             user.setPasswordResetRequired(null);
@@ -288,6 +314,99 @@ public class SysUserService {
         }
         
         return user;
+    }
+
+    /**
+     * 校验用户单一 org/dept 归属；父链只读取 parent_id，最多遍历 32 层，
+     * 不信任可能滞后的 path/level 冗余字段。
+     */
+    private void validateOrganizationMembership(
+            SysUser requested,
+            SysUser existing) {
+        // 现有更新接口同时服务整 DTO 表单和内部的局部对象：null 表示未提供、
+        // 沿用旧值；非 null 的空字符串表示前端 clearable 控件显式清空。
+        // 这里只计算提交后的最终归属状态，不把局部更新扩展成新的 PATCH 契约。
+        String orgId = requested.getOrgId() == null
+                ? existing == null ? null : trimToNull(existing.getOrgId())
+                : trimToNull(requested.getOrgId());
+        String deptId = requested.getDeptId() == null
+                ? existing == null ? null : trimToNull(existing.getDeptId())
+                : trimToNull(requested.getDeptId());
+        if (!StringUtils.hasText(orgId)) {
+            if (StringUtils.hasText(deptId)) {
+                throw new IllegalArgumentException("设置部门前必须先设置所属组织");
+            }
+            return;
+        }
+        SysOrganization organization = orgMapper.selectById(orgId);
+        if (organization == null
+                || !SysOrganization.Type.ORG.getValue().equals(organization.getType())
+                || !SysOrganization.Status.ENABLED.getValue().equals(
+                    organization.getStatus())) {
+            throw new IllegalArgumentException("orgId 必须指向启用的组织节点");
+        }
+        if (!StringUtils.hasText(deptId)) {
+            return;
+        }
+        SysOrganization department = orgMapper.selectById(deptId);
+        if (department == null
+                || !SysOrganization.Type.DEPT.getValue().equals(department.getType())
+                || !SysOrganization.Status.ENABLED.getValue().equals(
+                    department.getStatus())) {
+            throw new IllegalArgumentException("deptId 必须指向启用的部门节点");
+        }
+        Set<String> visited = new HashSet<>();
+        String currentId = department.getId();
+        for (int depth = 0; depth < 32; depth++) {
+            if (!visited.add(currentId)) {
+                throw new IllegalArgumentException("部门所属组织链存在环");
+            }
+            if (orgId.equals(currentId)) {
+                return;
+            }
+            SysOrganization current = orgMapper.selectById(currentId);
+            if (current == null) {
+                throw new IllegalArgumentException("部门所属组织链存在悬空节点");
+            }
+            String parentId = current.getParentId();
+            if (!StringUtils.hasText(parentId) || "0".equals(parentId)) {
+                break;
+            }
+            currentId = parentId;
+        }
+        throw new IllegalArgumentException("deptId 不在 orgId 的组织范围内");
+    }
+
+    /** 为用户分页批量回填范围安全的当前任职摘要。 */
+    private void fillCurrentPositionAssignments(
+            List<SysUser> users,
+            LocalDateTime asOf) {
+        if (users == null || users.isEmpty()) {
+            return;
+        }
+        List<PositionAssignmentViewRow> rows =
+                positionAssignmentQueryService.currentRowsByUsers(
+                        users.stream().map(SysUser::getId).toList(), asOf);
+        Map<String, List<SysUser.CurrentPositionAssignment>> byUser =
+                new HashMap<>();
+        for (PositionAssignmentViewRow row : rows) {
+            byUser.computeIfAbsent(row.getUserId(), ignored -> new ArrayList<>())
+                    .add(new SysUser.CurrentPositionAssignment(
+                            row.getId(), row.getPositionCode(),
+                            row.getPositionName(), row.getOrganizationUnitId(),
+                            row.getOrganizationUnitName(),
+                            Boolean.TRUE.equals(row.getIsPrimary()),
+                            row.getEffectiveFrom().toInstant(ZoneOffset.UTC),
+                            row.getEffectiveTo() == null ? null
+                                    : row.getEffectiveTo().toInstant(ZoneOffset.UTC)));
+        }
+        users.forEach(user -> user.setCurrentPositionAssignments(
+                List.copyOf(byUser.getOrDefault(user.getId(), List.of()))));
+    }
+
+    private String normalizePositionCode(String positionCode) {
+        return StringUtils.hasText(positionCode)
+                ? positionCode.trim().toUpperCase(java.util.Locale.ROOT) : null;
     }
     
     /**

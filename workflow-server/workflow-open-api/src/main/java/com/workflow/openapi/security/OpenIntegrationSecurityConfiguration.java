@@ -280,6 +280,10 @@ public class OpenIntegrationSecurityConfiguration {
                                     SessionCreationPolicy.STATELESS))
                     .authorizeHttpRequests(authorize -> authorize
                             .requestMatchers(
+                                    HttpMethod.POST,
+                                    "/api/open/v1/embed-launches")
+                            .hasAuthority("SCOPE_embed.launch")
+                            .requestMatchers(
                                     HttpMethod.GET,
                                     "/api/open/v1/process-definitions")
                             .hasAuthority(

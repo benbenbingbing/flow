@@ -9,3 +9,8 @@ export const getOrgTree = (type?: string) => {
 export const getEnabledOrgList = () => {
   return request.get('/system/org/enabled')
 }
+
+/** 读取组织管理专用的启用业务层级，不要求通用字典查看权限。 */
+export const getOrganizationBusinessLevelOptions = () => {
+  return request.get('/system/org/business-level-options')
+}

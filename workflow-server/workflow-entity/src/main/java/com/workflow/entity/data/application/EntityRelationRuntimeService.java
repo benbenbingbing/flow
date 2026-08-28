@@ -17,6 +17,10 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelation
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
+import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -28,6 +32,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,6 +60,7 @@ public class EntityRelationRuntimeService {
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityCodeGeneratorService codeGeneratorService;
     private final EntityPublishedRelationService publishedRelationService;
+    private final EntityFormUniqueClaimService formUniqueClaimService;
 
     @Autowired
     public EntityRelationRuntimeService(
@@ -67,7 +73,8 @@ public class EntityRelationRuntimeService {
             ObjectMapper objectMapper,
             EntityRuntimeRecordMapper recordMapper,
             EntityCodeGeneratorService codeGeneratorService,
-            EntityPublishedRelationService publishedRelationService) {
+            EntityPublishedRelationService publishedRelationService,
+            EntityFormUniqueClaimService formUniqueClaimService) {
         this.dynamicMapper = dynamicMapper;
         this.definitionMapper = definitionMapper;
         this.publishHistoryMapper = publishHistoryMapper;
@@ -78,6 +85,33 @@ public class EntityRelationRuntimeService {
         this.recordMapper = recordMapper;
         this.codeGeneratorService = codeGeneratorService;
         this.publishedRelationService = publishedRelationService;
+        this.formUniqueClaimService = formUniqueClaimService;
+    }
+
+    /** 兼容显式装配；生产容器使用包含子表单唯一终检服务的主构造器。 */
+    public EntityRelationRuntimeService(
+            EntityDataDynamicMapper dynamicMapper,
+            EntityDefinitionMapper definitionMapper,
+            EntityPublishHistoryMapper publishHistoryMapper,
+            EntityFieldMapper fieldMapper,
+            EntityRelationMapper relationMapper,
+            DynamicTableService dynamicTableService,
+            ObjectMapper objectMapper,
+            EntityRuntimeRecordMapper recordMapper,
+            EntityCodeGeneratorService codeGeneratorService,
+            EntityPublishedRelationService publishedRelationService) {
+        this(
+                dynamicMapper,
+                definitionMapper,
+                publishHistoryMapper,
+                fieldMapper,
+                relationMapper,
+                dynamicTableService,
+                objectMapper,
+                recordMapper,
+                codeGeneratorService,
+                publishedRelationService,
+                null);
     }
 
     /** 兼容显式装配；生产容器使用包含发布历史 Mapper 的主构造器。 */
@@ -101,7 +135,8 @@ public class EntityRelationRuntimeService {
                 objectMapper,
                 recordMapper,
                 codeGeneratorService,
-                publishedRelationService);
+                publishedRelationService,
+                null);
     }
 
     /**
@@ -126,6 +161,7 @@ public class EntityRelationRuntimeService {
                 objectMapper,
                 recordMapper,
                 codeGeneratorService,
+                null,
                 null);
     }
 
@@ -353,8 +389,32 @@ public class EntityRelationRuntimeService {
      * @param relations      关系定义列表
      * @param relationData   关系字段取值（可含多级嵌套子数据）
      */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class)
     public void saveRelationData(String parentId, List<EntityRelation> relations, Map<String, Object> relationData) {
-        saveRelationData(parentId, relations, relationData, 1, new HashSet<>());
+        saveRelationData(parentId, relations, relationData, null);
+    }
+
+    /**
+     * 使用统一变更事务生成的 out-of-band 父计划递归写关系数据。
+     * 缺失/漂移的 Marker 或 token 会在任何子业务行锁/写入前失败。
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class)
+    public void saveRelationData(
+            String parentId,
+            List<EntityRelation> relations,
+            Map<String, Object> relationData,
+            EntityFormUniqueClaimService.PreparedUniqueClaims prepared) {
+        saveRelationData(
+                parentId,
+                relations,
+                relationData,
+                prepared,
+                1,
+                new HashSet<>());
     }
 
     /**
@@ -384,14 +444,18 @@ public class EntityRelationRuntimeService {
      * @param parentId          父记录ID
      * @param physical          true-物理删除 false-逻辑删除
      */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class)
     public void cascadeDeleteRelations(EntityDefinition parentDefinition, String parentId, boolean physical) {
         if (parentDefinition == null
                 || !StringUtils.hasText(parentDefinition.getEntityCode())
                 || !StringUtils.hasText(parentId)) {
             return;
         }
-        // 公开删除入口可能不经过 EntityDataMutationService，因此必须自行取得
-        // 发布守卫。关系必须在守卫之后读取，并作为本层递归的冻结输入使用。
+        // 公开删除入口可由不同业务服务调用；调用方必须已开启事务，
+        // 且本层仍必须自行取得发布守卫。关系必须在守卫之后读取，
+        // 并作为本层递归的冻结输入使用。
         lockSelfRelationGuard(parentDefinition.getEntityCode());
         List<EntityRelation> guardedRelations =
                 loadRelations(parentDefinition);
@@ -404,8 +468,31 @@ public class EntityRelationRuntimeService {
                 new HashSet<>());
     }
 
-    private void saveRelationData(String parentId, List<EntityRelation> relations, Map<String, Object> relationData,
-                                  int depth, Set<String> path) {
+    private void saveRelationData(
+            String parentId,
+            List<EntityRelation> relations,
+            Map<String, Object> relationData,
+            EntityFormUniqueClaimService.PreparedUniqueClaims prepared,
+            int depth,
+            Set<String> path) {
+        if (formUniqueClaimService != null) {
+            formUniqueClaimService.verifyRelationPrepared(
+                    relationData,
+                    prepared);
+        } else if (prepared != null) {
+            throw new IllegalStateException(
+                    "可信子表单缺少唯一性协调服务");
+        }
+        if (formUniqueClaimService != null
+                && formUniqueClaimService.requiresRelationWrites(prepared)
+                && (relations == null
+                || relations.isEmpty()
+                || relationData == null
+                || relationData.isEmpty()
+                || depth > MAX_RELATION_DEPTH)) {
+            throw new IllegalStateException(
+                    "可信子表单写计划无法由当前关系定义完整执行");
+        }
         if (!StringUtils.hasText(parentId) || relations == null || relations.isEmpty()
                 || relationData == null || relationData.isEmpty() || depth > MAX_RELATION_DEPTH) {
             return;
@@ -432,6 +519,12 @@ public class EntityRelationRuntimeService {
 
             String pathKey = relation.getParentEntityCode() + ":" + dataKey;
             if (!path.add(pathKey)) {
+                if (formUniqueClaimService != null
+                        && formUniqueClaimService.containsTrustedChildren(
+                        relationValue)) {
+                    throw new IllegalStateException(
+                            "可信嵌套子表单不能因关系循环被静默跳过");
+                }
                 log.warn("关系存在循环，跳过: {}", pathKey);
                 continue;
             }
@@ -439,19 +532,105 @@ public class EntityRelationRuntimeService {
             EntityDefinition childDefinition = loadChildEntity(relation);
             if (childDefinition == null || !StringUtils.hasText(childDefinition.getEntityCode())
                     || !StringUtils.hasText(relation.getChildRefFieldCode())) {
+                if (formUniqueClaimService != null
+                        && formUniqueClaimService.containsTrustedChildren(
+                        relationValue)) {
+                    throw new IllegalStateException(
+                            "可信子表单关系定义不完整");
+                }
                 path.remove(pathKey);
                 continue;
             }
 
             ensureEntityTable(childDefinition);
             String childTableName = dynamicTableService.getTableName(childDefinition.getEntityCode());
-            // 不允许先判断“当前是否自关联”再决定加锁，否则首次发布可在判断
-            // 和子行锁之间生效。任何递归子写都无条件先锁定义/发布守卫；随后
-            // 冻结的关系会一直受定义共享锁保护，直到外层事务结束。
+            List<Map<String, Object>> existingRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
+            // 在解释子行 payload 前先冻结子实体关系。嵌套关系字段必须从当前行
+            // 的标量存储数据中分离，不能被后续 JSON 规范化吞掉私有 Marker/token。
             lockSelfRelationGuard(childDefinition.getEntityCode());
             List<EntityRelation> childRelations =
                     loadRelations(childDefinition);
-            List<Map<String, Object>> existingRows = findRowsByReference(childTableName, relation.getChildRefFieldCode(), parentId);
+            // 同层子表单必须在任何子业务行锁/写入前一次性准备并排序锁定
+            // 全部唯一值 gate，避免两事务各持一条新子行后反向等待 gate。
+            List<PendingChildWrite> pendingWrites = new ArrayList<>();
+            for (Map<String, Object> row : incomingRows) {
+                TrustedSubFormUniqueReference.Resolved trusted =
+                        TrustedSubFormUniqueReference.removePrepared(row);
+                List<FormUniqueMutationContext.Reference> formReferences =
+                        trusted.references();
+                if (!formReferences.isEmpty()
+                        && !StringUtils.hasText(trusted.entityCode())) {
+                    throw new IllegalStateException(
+                            "可信子表单缺少写前 gate 实体");
+                }
+                if (StringUtils.hasText(trusted.entityCode())
+                        && !childDefinition.getEntityCode().equals(
+                                trusted.entityCode())) {
+                    throw new IllegalStateException(
+                            "子表单写前 gate 实体与关系目标不一致");
+                }
+                if (!formReferences.isEmpty()
+                        && trusted.prepared() == null) {
+                    throw new IllegalStateException(
+                            "可信子表单缺少父业务写入前 gate 准备");
+                }
+                Map<String, Object> submitted = new LinkedHashMap<>(row);
+                submitted.put(relation.getChildRefFieldCode(), parentId);
+                submitted.put("update_by", UserContext.getUserId());
+                submitted.put("update_time", LocalDateTime.now());
+                submitted.put("deleted", 0);
+
+                String childId = stringValue(submitted.get("id"));
+                boolean isNewChild = !StringUtils.hasText(childId);
+                if (isNewChild) {
+                    childId = generateId();
+                    submitted.put("id", childId);
+                    submitted.put("create_by", UserContext.getUserId());
+                    submitted.put("create_time", LocalDateTime.now());
+                    Object existingCode = submitted.get("code");
+                    if (existingCode == null
+                            || existingCode.toString().trim().isEmpty()) {
+                        submitted.put("code", codeGeneratorService
+                                .generateCode(
+                                        childDefinition.getEntityCode()));
+                    }
+                }
+                // 保留完整 projected record 供唯一性递归复核；仅真正写当前子表
+                // 的 childData 可以做 JSON 存储转换，childRelationData 必须保持
+                // 原始 Map/List 及 JVM 私有 Marker/token 供下一层递归消费。
+                Map<String, Object> childRelationData =
+                        extractRelationData(
+                                submitted,
+                                childRelations);
+                Map<String, Object> childData = new LinkedHashMap<>(
+                        withoutRelationData(
+                                submitted,
+                                childRelations));
+                if (!formReferences.isEmpty()) {
+                    if (formUniqueClaimService == null) {
+                        throw new IllegalStateException(
+                                "可信子表单缺少唯一性协调服务");
+                    }
+                    // 父事务已完成 gate 与权威扫描；这里在任何子业务行锁/写入
+                    // 前，把父引用、生成 ID/code 等服务端补全字段纳入候选复核。
+                    formUniqueClaimService.verifyChildPrepared(
+                            childDefinition.getEntityCode(),
+                            childId,
+                            submitted,
+                            formReferences,
+                            trusted.prepared());
+                }
+                normalizeJsonValues(childData);
+                pendingWrites.add(new PendingChildWrite(
+                        childId,
+                        isNewChild,
+                        submitted,
+                        childData,
+                        childRelationData,
+                        formReferences,
+                        trusted.prepared()));
+            }
+
             // 聚合提交采用“传入集合替换当前集合”语义。先按稳定顺序锁定全部
             // 当前子记录，既避免两个并发提交互相覆盖，也形成不可伪造的归属集合。
             // 客户端携带的已有子 ID 只能来自该集合，不能借父表单把其他父记录
@@ -462,37 +641,17 @@ public class EntityRelationRuntimeService {
                     parentId,
                     existingRows);
             Set<String> activeIds = new HashSet<>();
-            for (Map<String, Object> row : incomingRows) {
-                Map<String, Object> childRelationData = extractRelationData(row, childRelations);
-                Map<String, Object> childData = withoutRelationData(row, childRelations);
-                childData.put(relation.getChildRefFieldCode(), parentId);
-                childData.put("update_by", UserContext.getUserId());
-                childData.put("update_time", LocalDateTime.now());
-                childData.put("deleted", 0);
-                normalizeJsonValues(childData);
-
-                String childId = stringValue(childData.get("id"));
-                boolean isNewChild = !StringUtils.hasText(childId);
+            for (PendingChildWrite pending : pendingWrites) {
+                String childId = pending.childId();
+                boolean isNewChild = pending.newChild();
+                Map<String, Object> childRelationData =
+                        pending.childRelationData();
+                Map<String, Object> childData = pending.childData();
                 if (!isNewChild && !ownedChildIds.contains(childId)) {
                     throw new BusinessConflictException(
                             "ENTITY_RELATION_CHILD_OWNERSHIP_CONFLICT",
                             "子记录 " + childId + " 不属于当前父记录，不能随聚合表单修改");
                 }
-                if (isNewChild) {
-                    childId = generateId();
-                    childData.put("id", childId);
-                    childData.put("create_by", UserContext.getUserId());
-                    childData.put("create_time", LocalDateTime.now());
-                }
-
-                // 新增子行未填写编码时，自动生成编码（与主表行为保持一致，未配置规则时会自动创建默认规则）
-                if (isNewChild) {
-                    Object existingCode = childData.get("code");
-                    if (existingCode == null || existingCode.toString().trim().isEmpty()) {
-                        childData.put("code", codeGeneratorService.generateCode(childDefinition.getEntityCode()));
-                    }
-                }
-
                 validateSelfRelationWrite(
                         childDefinition,
                         childId,
@@ -504,10 +663,24 @@ public class EntityRelationRuntimeService {
                     dynamicMapper.update(childTableName, childData);
                 }
                 activeIds.add(childId);
-                saveRelationData(childId, childRelations, childRelationData, depth + 1, path);
+                saveRelationData(
+                        childId,
+                        childRelations,
+                        childRelationData,
+                        pending.prepared(),
+                        depth + 1,
+                        path);
+                reconcileWrittenChild(
+                        childDefinition,
+                        childTableName,
+                        childId,
+                        pending.projectedRecord(),
+                        pending.formReferences(),
+                        pending.prepared());
             }
 
             deleteMissingRows(
+                    childDefinition.getEntityCode(),
                     childTableName,
                     existingRows,
                     activeIds);
@@ -624,6 +797,9 @@ public class EntityRelationRuntimeService {
                 } else {
                     dynamicMapper.deleteById(childTableName, childId);
                 }
+                releaseChildClaims(
+                        childDefinition.getEntityCode(),
+                        childId);
             }
             path.remove(pathKey);
         }
@@ -876,6 +1052,7 @@ public class EntityRelationRuntimeService {
     }
 
     private void deleteMissingRows(
+            String childEntityCode,
             String tableName,
             List<Map<String, Object>> existingRows,
             Set<String> activeIds) {
@@ -886,7 +1063,72 @@ public class EntityRelationRuntimeService {
             String id = stringValue(row.get("id"));
             if (StringUtils.hasText(id) && !activeIds.contains(id)) {
                 dynamicMapper.deleteById(tableName, id);
+                releaseChildClaims(childEntityCode, id);
             }
+        }
+    }
+
+    /**
+     * 从动态子表重读已落库的最终行，再执行发布子表单的唯一终检。
+     *
+     * <p>无可信表单标记时不解析任何规则，只清理该子记录曾经留下的
+     * 旧占位。终检异常会继续向外抛出，由父聚合写事务回滚子行及占位。</p>
+     */
+    private void reconcileWrittenChild(
+            EntityDefinition childDefinition,
+            String childTableName,
+            String childId,
+            Map<String, Object> projectedRecord,
+            List<FormUniqueMutationContext.Reference> formReferences,
+            PreparedUniqueClaims prepared) {
+        if (formUniqueClaimService == null) {
+            // 仅有显式 new 的遗留单测/嵌入式装配会缺失；Spring 主构造器必须注入。
+            return;
+        }
+        if (formReferences == null || formReferences.isEmpty()) {
+            formUniqueClaimService.releaseRecord(
+                    childDefinition.getEntityCode(),
+                    childId);
+            return;
+        }
+        Map<String, Object> stored = dynamicMapper.selectById(
+                childTableName,
+                childId);
+        if (stored == null) {
+            throw new IllegalStateException(
+                    "子表单唯一终检无法重读最终记录: "
+                            + childId);
+        }
+        Map<String, Object> finalRecord = new LinkedHashMap<>(
+                projectedRecord == null
+                        ? Map.of() : projectedRecord);
+        finalRecord.putAll(toChildFormRow(stored, childDefinition));
+        formUniqueClaimService.reconcileChildRecord(
+                childDefinition.getEntityCode(),
+                childId,
+                finalRecord,
+                formReferences,
+                prepared);
+    }
+
+    private record PendingChildWrite(
+            String childId,
+            boolean newChild,
+            Map<String, Object> projectedRecord,
+            Map<String, Object> childData,
+            Map<String, Object> childRelationData,
+            List<FormUniqueMutationContext.Reference> formReferences,
+            PreparedUniqueClaims prepared) {
+    }
+
+    /** 关系级联或集合替换删除子行时，同事务释放它的历史占位。 */
+    private void releaseChildClaims(
+            String childEntityCode,
+            String childId) {
+        if (formUniqueClaimService != null) {
+            formUniqueClaimService.releaseRecord(
+                    childEntityCode,
+                    childId);
         }
     }
 
@@ -910,9 +1152,20 @@ public class EntityRelationRuntimeService {
 
     private Map<String, Object> toChildFormRow(Map<String, Object> row, String entityCode) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
-        List<EntityField> fields = definition != null
-                ? fieldMapper.findByEntityId(definition.getId())
-                : List.of();
+        return toChildFormRow(row, definition);
+    }
+
+    /** 将存储列视角的动态行还原为表单字段编码视角。 */
+    private Map<String, Object> toChildFormRow(
+            Map<String, Object> row,
+            EntityDefinition definition) {
+        List<EntityField> fields = definition == null
+                ? List.of()
+                : definition.getFields() == null
+                        ? loadEntityFields(definition)
+                        : definition.getFields();
+        String entityCode = definition == null
+                ? null : definition.getEntityCode();
         EntityDataDTO childDto = recordMapper.toDto(row, entityCode, fields);
         Map<String, Object> data = new HashMap<>();
         if (childDto.getData() != null) {

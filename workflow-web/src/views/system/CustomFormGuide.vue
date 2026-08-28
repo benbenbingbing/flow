@@ -218,6 +218,10 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 const formRef = ref()
 
+function handleProjectNameBlur() {
+  return props.context?.formUniqueness?.onFieldBlur('projectName')
+}
+
 async function validate() {
   if (props.readonly || props.mode === 'view') return true
   return await formRef.value.validate()
@@ -249,6 +253,7 @@ defineExpose({ validate })
             <li>通过 `emit('update:modelValue', nextValue)` 更新业务字段对象。</li>
             <li>新增/编辑场景的整条记录、发起流程开关等信息在 `context.record` 中提供。</li>
             <li>读取 `linkageState.visibility / disabled / required / options / values`，不要另写一套联动引擎。</li>
+            <li>字段真实失焦时调用 `context.formUniqueness.onFieldBlur(fieldCode)`；复合控件可调用 `checkField(fieldCode, 'BLUR')`。错误映射从 `context.formUniqueness.errors` 读取。</li>
             <li>通过 `defineExpose({ validate })` 暴露异步校验；返回 `false` 时平台阻止提交。</li>
             <li>服务端仍需校验字段类型、唯一性和业务规则，不能只依赖组件校验。</li>
           </ul>
@@ -433,7 +438,7 @@ const contractRows = [
   { name: 'linkageState', meaning: '显隐、禁用、必填、选项和值联动结果' },
   { name: 'dataSourceRuntime', meaning: '受控执行 FORM_INIT、FIELD_OPTIONS、SUBFORM_ROWS 等绑定' },
   { name: 'config', meaning: '管理员按 configSchema 保存的组件参数' },
-  { name: 'context', meaning: '实体、整条记录、当前模式等运行时上下文' }
+  { name: 'context', meaning: '实体、整条记录、当前模式，以及 formUniqueness 唯一预检契约' }
 ]
 
 const modeRows = [

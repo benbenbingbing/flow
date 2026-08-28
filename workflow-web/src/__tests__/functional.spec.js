@@ -647,6 +647,22 @@ const apiExpectations = {
   'src/api/system/user.ts': ['getUserList', 'createUser', 'updateUser', 'deleteUser', 'resetPassword'],
   'src/api/system/role.ts': ['getRoleList', 'createRole', 'updateRole', 'deleteRole', 'getRoleUsers', 'saveRoleMenus'],
   'src/api/system/group.ts': ['getGroupList', 'createGroup', 'updateGroup', 'deleteGroup', 'saveGroupUsers'],
+  'src/api/system/position.ts': [
+    'getPositionPage',
+    'getEnabledPositions',
+    'createPosition',
+    'updatePosition',
+    'updatePositionStatus',
+    'deletePosition',
+    'getPositionAssignmentPage',
+    'updateOrganizationLeader',
+    'precheckPositionAssignments',
+    'batchAssignPositions',
+    'revokePositionAssignment',
+    'getProcessDesignPositionOptions',
+    'getOrganizationBusinessLevels',
+    'previewRelativePosition'
+  ],
   'src/api/system/dict.ts': ['getDictList', 'createDict', 'updateDict', 'deleteDict'],
   'src/api/system/audit.ts': ['getSystemAuditLogs', 'getSystemAuditLogDetail', 'exportSystemAuditLogs'],
   'src/api/system/openIntegration.js': [
@@ -666,6 +682,71 @@ for (const [file, names] of Object.entries(apiExpectations)) {
     assert.ok(source.includes(name), `${file} 缺少功能 API: ${name}`)
   }
 }
+
+const positionApiSource = readFileSync('src/api/system/position.ts', 'utf8')
+for (const route of [
+  '/system/position/page',
+  '/system/position/assignments/precheck',
+  '/system/position/assignments/batch',
+  '/system/org/${encodeURIComponent(unitId)}/leader',
+  '/process-design/position-options',
+  '/process-design/organization-business-levels',
+  '/process-design/relative-position-preview'
+]) {
+  assert.ok(positionApiSource.includes(route), `职务管理 API 路径错误: ${route}`)
+}
+assert.match(
+  positionApiSource,
+  /Idempotency-Key/,
+  '批量任命必须发送 Idempotency-Key 防止重复提交'
+)
+
+const positionPageSource = readFileSync('src/views/system/Position.vue', 'utf8')
+for (const marker of [
+  'system:position:manage',
+  'system:position:assign',
+  '批量任命',
+  '预检全部',
+  '原子提交',
+  '转任',
+  '撤销'
+]) {
+  assert.ok(positionPageSource.includes(marker), `职务管理页面缺少能力: ${marker}`)
+}
+const userManagementSource = readFileSync('src/views/system/User.vue', 'utf8')
+assert.match(userManagementSource, /positionCode[\s\S]*?职务任命/)
+const organizationManagementSource = readFileSync(
+  'src/views/system/Organization.vue',
+  'utf8'
+)
+const organizationApiSource = readFileSync(
+  'src/api/system/org.ts',
+  'utf8'
+)
+assert.match(
+  organizationManagementSource,
+  /UNIT_LEADER[\s\S]*?saveOrganizationLeader/,
+  '组织负责人必须通过 UNIT_LEADER 专用写接口'
+)
+assert.ok(
+  organizationManagementSource.includes('PositionAssignmentDialog'),
+  '组织管理必须提供锁定组织节点的职务任命快捷入口'
+)
+assert.ok(
+  organizationManagementSource.includes('getOrganizationBusinessLevelOptions')
+    && organizationApiSource.includes("'/system/org/business-level-options'")
+    && organizationManagementSource.includes('v-model="form.businessLevelCode"')
+    && organizationManagementSource.includes('不等同于系统计算的物理层级 level'),
+  '组织管理必须通过组织权限专用选项接口维护独立于物理层级的业务层级编码'
+)
+const organizationPayloadSource = organizationManagementSource.match(
+  /const organizationPayload = \{[\s\S]*?\n    \}/
+)?.[0] || ''
+assert.ok(
+  organizationPayloadSource.includes('businessLevelCode')
+    && !organizationPayloadSource.includes('leaderId'),
+  '组织元数据保存必须提交业务层级且不得继续直写 leaderId 兼容投影'
+)
 
 const entityListConfigApiSource = readFileSync(
   'src/api/entityListConfig.js',
@@ -761,8 +842,8 @@ const pageFeatureExpectations = {
   'src/views/system/User.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleResetPassword'],
   'src/views/system/Role.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleAssignMenu', 'handleSaveMenus', '确认绕过数据范围'],
   'src/views/system/Dict.vue': ['handleAddDict', 'handleEditDict', 'handleDeleteDict', 'handleAddItem', 'handleEditItem', 'handleDeleteItem'],
-  'src/views/system/OpenIntegration.vue': ['loadApplications', 'createApplication', 'selectedId'],
-  'src/views/system/open-integration/IntegrationApplicationPanel.vue': ['saveAccess', 'saveContracts', 'rotateCredential', 'revokeCredential'],
+  'src/views/system/OpenIntegration.vue': ['loadApplications', 'createApplication', 'selectedId', 'embed.launch', 'Application ID'],
+  'src/views/system/open-integration/IntegrationApplicationPanel.vue': ['saveAccess', 'saveContracts', 'rotateCredential', 'revokeCredential', 'embed.launch', 'copyApplicationId'],
   'src/views/system/open-integration/IntegrationWebhookPanel.vue': ['validateEndpoint', 'rotate', 'replay'],
   'src/views/system/open-integration/IntegrationSecretPanel.vue': ['openRotate', 'revoke', 'destroy'],
   'src/views/system/open-integration/IntegrationConnectorPanel.vue': ['openCreate', 'openEdit', 'save', 'openTest', 'runTest']

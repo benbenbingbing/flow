@@ -13,6 +13,24 @@
 {{- if and .Values.openApi.enabled (not (regexMatch "^[A-Za-z0-9._-]{1,64}$" .Values.openApi.keyId)) }}
 {{- fail "openApi.keyId is required when openApi is enabled" }}
 {{- end }}
+{{- if and .Values.embed.enabled (not .Values.openApi.enabled) }}
+{{- fail "openApi must be enabled before Embed Runtime can be enabled" }}
+{{- end }}
+{{- if and .Values.embed.enabled (not (regexMatch "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" .Values.embed.publicHost)) }}
+{{- fail "embed.publicHost must be a lowercase DNS host without a scheme, port, path, or wildcard" }}
+{{- end }}
+{{- if and .Values.embed.enabled (or (eq .Values.embed.tlsSecretName "") (not (regexMatch "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$" .Values.embed.tlsSecretName))) }}
+{{- fail "embed.tlsSecretName is required and must be a valid Kubernetes Secret name" }}
+{{- end }}
+{{- if and .Values.embed.enabled (eq (lower .Values.embed.publicHost) (trimSuffix "." (lower .Values.ingress.host))) }}
+{{- fail "embed.publicHost must differ from ingress.host so Embed and admin use different origins" }}
+{{- end }}
+{{- if and .Values.embed.enabled (or (hasKey .Values.embed.annotations "nginx.ingress.kubernetes.io/ssl-redirect") (hasKey .Values.embed.annotations "nginx.ingress.kubernetes.io/force-ssl-redirect")) }}
+{{- fail "embed.annotations cannot override the mandatory HTTPS redirect annotations" }}
+{{- end }}
+{{- if and .Values.embed.enabled (eq .Values.embed.contextKeySecretKey .Values.embed.hmacKeySecretKey) }}
+{{- fail "Embed context encryption and HMAC keys must use different Secret entries" }}
+{{- end }}
 {{- if and .Values.openApi.enabled (eq .Values.openApi.privateKeySecretKey .Values.openApi.publicKeySecretKey) }}
 {{- fail "openApi private and public keys must use different Secret keys" }}
 {{- end }}

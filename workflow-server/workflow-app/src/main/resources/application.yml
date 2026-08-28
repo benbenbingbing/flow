@@ -199,6 +199,38 @@ workflow:
         batch-size: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_BATCH_SIZE:100}
         lease-seconds: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_LEASE_SECONDS:30}
         delay-ms: ${WORKFLOW_OPEN_API_WEBHOOK_WORKER_DELAY_MS:1000}
+  embed:
+    enabled: ${WORKFLOW_EMBED_ENABLED:false}
+    public-base-url: ${WORKFLOW_EMBED_PUBLIC_BASE_URL:http://localhost:8080}
+    entry-asset-path: ${WORKFLOW_EMBED_ENTRY_ASSET_PATH:/embed-assets/embed-main.js}
+    entry-style-path: ${WORKFLOW_EMBED_ENTRY_STYLE_PATH:/embed-assets/embed-main.css}
+    launch-ttl-seconds: ${WORKFLOW_EMBED_LAUNCH_TTL_SECONDS:60}
+    session-idle-seconds: ${WORKFLOW_EMBED_SESSION_IDLE_SECONDS:300}
+    session-absolute-seconds: ${WORKFLOW_EMBED_SESSION_ABSOLUTE_SECONDS:1800}
+    secret-bytes: ${WORKFLOW_EMBED_SECRET_BYTES:32}
+    max-page-size: ${WORKFLOW_EMBED_MAX_PAGE_SIZE:100}
+    max-payload-bytes: ${WORKFLOW_EMBED_MAX_PAYLOAD_BYTES:1048576}
+    max-selection-size: ${WORKFLOW_EMBED_MAX_SELECTION_SIZE:100}
+    exchange-launch-limit-per-minute: ${WORKFLOW_EMBED_EXCHANGE_LAUNCH_LIMIT_PER_MINUTE:10}
+    exchange-address-limit-per-minute: ${WORKFLOW_EMBED_EXCHANGE_ADDRESS_LIMIT_PER_MINUTE:120}
+    runtime-session-limit-per-minute: ${WORKFLOW_EMBED_RUNTIME_SESSION_LIMIT_PER_MINUTE:120}
+    write-session-limit-per-minute: ${WORKFLOW_EMBED_WRITE_SESSION_LIMIT_PER_MINUTE:30}
+    heartbeat-session-limit-per-minute: ${WORKFLOW_EMBED_HEARTBEAT_SESSION_LIMIT_PER_MINUTE:12}
+    runtime-request-lease-seconds: ${WORKFLOW_EMBED_RUNTIME_REQUEST_LEASE_SECONDS:300}
+    session-expiry-scan-ms: ${WORKFLOW_EMBED_SESSION_EXPIRY_SCAN_MS:60000}
+    maintenance-scan-ms: ${WORKFLOW_EMBED_MAINTENANCE_SCAN_MS:60000}
+    maintenance-batch-size: ${WORKFLOW_EMBED_MAINTENANCE_BATCH_SIZE:200}
+    terminal-context-retention-seconds: ${WORKFLOW_EMBED_TERMINAL_CONTEXT_RETENTION_SECONDS:3600}
+    operation-receipt-retention-seconds: ${WORKFLOW_EMBED_OPERATION_RECEIPT_RETENTION_SECONDS:2592000}
+    terminal-session-retention-seconds: ${WORKFLOW_EMBED_TERMINAL_SESSION_RETENTION_SECONDS:7776000}
+    terminal-launch-retention-seconds: ${WORKFLOW_EMBED_TERMINAL_LAUNCH_RETENTION_SECONDS:7776000}
+    crypto:
+      context-key-base64: ${WORKFLOW_EMBED_CONTEXT_KEY_BASE64:}
+      context-key-version: ${WORKFLOW_EMBED_CONTEXT_KEY_VERSION:embed-context-v1}
+      accepted-context-key-versions: ${WORKFLOW_EMBED_ACCEPTED_CONTEXT_KEY_VERSIONS:}
+      hmac-key-base64: ${WORKFLOW_EMBED_HMAC_KEY_BASE64:}
+      hmac-key-version: ${WORKFLOW_EMBED_HMAC_KEY_VERSION:embed-hmac-v1}
+      accepted-hmac-key-versions: ${WORKFLOW_EMBED_ACCEPTED_HMAC_KEY_VERSIONS:}
   metrics:
     queue-refresh-ms: ${QUEUE_METRICS_REFRESH_MS:15000}
   http:

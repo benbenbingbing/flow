@@ -10,6 +10,7 @@ import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.form.application.PublishedFormUniquePrecheckService;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
@@ -51,7 +52,8 @@ class UiConfigurationWriteAccessControllerTest {
                 formService,
                 metadataService,
                 accessService,
-                mock(EntityActionCapabilityService.class));
+                mock(EntityActionCapabilityService.class),
+                mock(PublishedFormUniquePrecheckService.class));
 
         assertThrows(ForbiddenException.class, () -> controller.save(form));
 
@@ -73,7 +75,8 @@ class UiConfigurationWriteAccessControllerTest {
                 formService,
                 metadataService,
                 accessService,
-                mock(EntityActionCapabilityService.class));
+                mock(EntityActionCapabilityService.class),
+                mock(PublishedFormUniquePrecheckService.class));
 
         controller.save(form);
 

@@ -41,4 +41,22 @@ public interface SysDictItemMapper extends BaseMapper<SysDictItem> {
      */
     @Select("SELECT COUNT(*) FROM sys_dict_item WHERE parent_id = #{parentId} AND deleted = 0")
     int countChildren(@Param("parentId") String parentId);
+
+    @Select("""
+            SELECT * FROM sys_dict_item
+            WHERE dict_code = #{dictCode} AND item_code = #{itemCode}
+              AND status = '0' AND deleted = 0
+            LIMIT 1
+            """)
+    SysDictItem selectEnabledByCode(
+            @Param("dictCode") String dictCode,
+            @Param("itemCode") String itemCode);
+
+    @Select("""
+            SELECT * FROM sys_dict_item
+            WHERE dict_code = #{dictCode} AND status = '0' AND deleted = 0
+            ORDER BY sort, item_code
+            """)
+    List<SysDictItem> selectEnabledByDictCode(
+            @Param("dictCode") String dictCode);
 }

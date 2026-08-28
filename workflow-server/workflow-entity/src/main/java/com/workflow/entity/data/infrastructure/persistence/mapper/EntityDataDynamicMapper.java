@@ -93,6 +93,53 @@ public interface EntityDataDynamicMapper {
     List<Map<String, Object>> selectList(@Param("tableName") String tableName);
 
     /**
+     * 以 MySQL exclusive locking read 查询全量未删除记录。
+     *
+     * <p>仅供已持有唯一值 gate、尚未触碰业务行的权威写前终检使用；
+     * 独立 statement 并禁用缓存，保证 REPEATABLE READ 下读取当前已提交版本。</p>
+     */
+    @SelectProvider(
+            type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectListForUpdate")
+    @Options(
+            statementType = StatementType.PREPARED,
+            useCache = false,
+            flushCache = Options.FlushCachePolicy.TRUE)
+    List<Map<String, Object>> selectListForUpdate(
+            @Param("tableName") String tableName);
+
+    /**
+     * 按表单唯一值的文本规范化语义预筛候选，只返回可能冲突的记录。
+     * 条件唯一的结构化条件仍由应用层在候选结果上求值。
+     */
+    @SelectProvider(
+            type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectFormUniqueCandidates")
+    @Options(statementType = StatementType.PREPARED)
+    List<Map<String, Object>> selectFormUniqueCandidates(
+            @Param("tableName") String tableName,
+            @Param("columnName") String columnName,
+            @Param("normalizedValue") String normalizedValue,
+            @Param("excludeRecordId") String excludeRecordId);
+
+    /**
+     * 以 MySQL exclusive locking read 按文本规范化语义查询唯一值候选。
+     * 仅供 gate 后、业务写前的事务内权威终检使用。
+     */
+    @SelectProvider(
+            type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectFormUniqueCandidatesForUpdate")
+    @Options(
+            statementType = StatementType.PREPARED,
+            useCache = false,
+            flushCache = Options.FlushCachePolicy.TRUE)
+    List<Map<String, Object>> selectFormUniqueCandidatesForUpdate(
+            @Param("tableName") String tableName,
+            @Param("columnName") String columnName,
+            @Param("normalizedValue") String normalizedValue,
+            @Param("excludeRecordId") String excludeRecordId);
+
+    /**
      * 条件查询
      */
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByCondition")

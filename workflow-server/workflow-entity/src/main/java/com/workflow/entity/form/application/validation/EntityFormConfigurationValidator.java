@@ -4,6 +4,7 @@ import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
+import com.workflow.entity.form.application.FormUniqueRulePolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
@@ -60,6 +61,7 @@ public class EntityFormConfigurationValidator {
     private final PublishedFormConditionEvaluator conditionEvaluator;
     private final EntityFieldMapper entityFieldMapper;
     private final EntityFieldFileItemMapper fileItemMapper;
+    private final FormUniqueRulePolicy uniqueRulePolicy;
 
     /**
      * 校验表单整体配置。
@@ -112,6 +114,9 @@ public class EntityFormConfigurationValidator {
                 form.getFields(),
                 validEntityProperties(form, entityFields),
                 entityFields == null ? List.of() : entityFields);
+        uniqueRulePolicy.validatePublished(
+                form.getFields(),
+                persistentEntityProperties(entityFields));
     }
 
     /**
@@ -296,6 +301,8 @@ public class EntityFormConfigurationValidator {
         for (EntityFormField field : fields) {
             validateField(field, fieldCodes);
         }
+        // 字段整包保存时至少校验规则结构；发布时 validateForm 会再校验条件字段引用。
+        uniqueRulePolicy.validate(fields, Set.of());
         validateConditionalRequiredRules(fields, Set.of(), null);
     }
 
@@ -506,6 +513,25 @@ public class EntityFormConfigurationValidator {
                     .forEach(result::add);
         }
         return result;
+    }
+
+    /**
+     * 返回唯一性规则可绑定的真实存储字段。
+     *
+     * <p>不能复用 {@link #validEntityProperties(EntityForm, List)}：后者为
+     * 条件必填兼容表单级字段，而唯一终检需要查询动态实体表，虚拟表单字段
+     * 不具备可靠存储列。</p>
+     */
+    private Set<String> persistentEntityProperties(
+            List<EntityField> entityFields) {
+        if (entityFields == null || entityFields.isEmpty()) {
+            return Set.of();
+        }
+        return entityFields.stream()
+                .filter(field -> field != null
+                        && StringUtils.hasText(field.getFieldCode()))
+                .map(EntityField::getFieldCode)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private boolean booleanValue(Object value) {

@@ -8,7 +8,11 @@
             {{ statusLabel(application.status) }}
           </el-tag>
         </div>
-        <div class="client-id">{{ application.clientId }}</div>
+        <div class="application-identifier">
+          <span>Application ID：{{ application.id }}</span>
+          <el-button text size="small" @click="copyApplicationId">复制</el-button>
+        </div>
+        <div class="client-id">Client ID：{{ application.clientId }}</div>
       </div>
       <el-dropdown v-if="canManage || canRotate" trigger="click" @command="handleCommand">
         <el-button aria-label="应用操作">
@@ -210,6 +214,7 @@ import IntegrationConnectorPanel from './IntegrationConnectorPanel.vue'
 import IntegrationScenarioPanel from './IntegrationScenarioPanel.vue'
 
 const scopeOptions = [
+  'embed.launch',
   'process.definition.read',
   'process.instance.start',
   'process.instance.read',
@@ -268,6 +273,15 @@ function handleCommand(command) {
   if (command === 'status') toggleStatus()
   if (command === 'rotate') rotateCredential()
   if (command === 'revoke') revokeCredential()
+}
+
+async function copyApplicationId() {
+  try {
+    await navigator.clipboard.writeText(props.application.id)
+    ElMessage.success('Application ID 已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动选择 Application ID')
+  }
 }
 
 function openAccess() {
@@ -364,6 +378,7 @@ async function rotateCredential() {
   emit('secret-issued', {
     title: '新应用凭据',
     fields: [
+      { label: 'Application ID', value: issued.application.id },
       { label: 'Client ID', value: issued.application.clientId },
       { label: 'Client Secret', value: issued.clientSecret }
     ]
@@ -419,11 +434,24 @@ function formatTime(value) {
   letter-spacing: 0;
 }
 
-.client-id {
+.client-id,
+.application-identifier {
   margin-top: 5px;
   color: #737985;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+}
+
+.application-identifier {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.application-identifier :deep(.el-button) {
+  height: auto;
+  padding: 0 4px;
+  font-family: inherit;
 }
 
 .application-summary {

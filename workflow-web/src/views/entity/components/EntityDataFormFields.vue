@@ -8,6 +8,14 @@
     class="workflow-readiness-alert"
   />
   <div v-if="showCustomForm">
+    <el-alert
+      v-if="firstCustomUniqueError"
+      :title="firstCustomUniqueError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="custom-form-unique-error"
+    />
     <component
       ref="customFormRef"
       :is="getCustomFormComponent(defaultForm.customComponent)"
@@ -29,6 +37,8 @@
         record: formData,
         entityStatusMap,
         entityStatusOptions,
+        formUniqueErrors: customUniqueErrors,
+        formUniqueness: formUniquenessRuntime,
         releaseResolutionToken: defaultForm?.releaseResolutionToken
       }"
       :data-source-runtime="dataSourceRuntime"
@@ -99,7 +109,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, provide } from 'vue'
+import { ElMessage } from 'element-plus'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
@@ -107,6 +118,7 @@ import { LinkageEngine } from '@/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { parseJsonOptions } from '@/shared/list-runtime'
 import { entityDataApi } from '@/api/entity.js'
+import { precheckFormFieldUnique } from '@/api/entityForm'
 import { getItemTreeByDictCode } from '@/api/system/dict'
 import {
   buildRuntimeFieldRules,
@@ -116,6 +128,15 @@ import {
 } from '@/shared/form-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { isWorkflowReady } from '@/shared/entity-design'
+import {
+  createFormUniquePrecheckController,
+  resolveFormFieldUniqueness,
+  resolveFormUniqueRuntimeIdentity
+} from '@/shared/form-field-uniqueness'
+import {
+  createFormUniquePrecheckRuntime,
+  FORM_UNIQUE_PRECHECK_CONTEXT_KEY
+} from '@/shared/form-runtime/uniquePrecheckContext'
 import {
   buildEntityStatusMap,
   withEntityStatusFieldOptions,
@@ -478,6 +499,67 @@ const runtimeFormFields = computed(() =>
     })
 )
 
+const customUniqueErrors = ref<Record<string, string>>({})
+const firstCustomUniqueError = computed(() =>
+  String(Object.values(customUniqueErrors.value)[0] || '')
+)
+const customUniquePrecheckController = createFormUniquePrecheckController({
+  request: precheckFormFieldUnique,
+  getIdentity: () => resolveFormUniqueRuntimeIdentity(
+    props.defaultForm,
+    {
+      ...(props.runtimeContext || {}),
+      record: formData.value
+    }
+  ),
+  onErrorsChange: (errors: Record<string, string>) => {
+    customUniqueErrors.value = errors
+  }
+})
+const customUniquePrecheckContext = {
+  resolveRule: resolveFormFieldUniqueness,
+  check: (field: any, reason: string) => customUniquePrecheckController.check(
+    field,
+    formData.value.data || {},
+    { reason }
+  ),
+  errorFor: (fieldCode: string) =>
+    customUniqueErrors.value[String(fieldCode || '')] || ''
+}
+// 自定义整表单内部若复用标准字段渲染器，也应获得与内置表单相同的 BLUR 链路。
+provide(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, customUniquePrecheckContext)
+const formUniquenessRuntime = createFormUniquePrecheckRuntime({
+  controller: customUniquePrecheckController,
+  getFields: () => runtimeFormFields.value,
+  getRecord: () => formData.value.data || {},
+  getErrors: () => customUniqueErrors.value
+})
+
+watch(
+  () => formData.value.data,
+  data => {
+    if (!showCustomForm.value) return
+    customUniquePrecheckController.handleRecordChange(
+      runtimeFormFields.value,
+      data || {}
+    )
+  },
+  { deep: true, immediate: true }
+)
+
+watch(
+  () => [
+    props.defaultForm?.id,
+    props.defaultForm?.runtimeReleaseId || props.defaultForm?.formReleaseId,
+    props.defaultForm?.runtimeReleaseVersion
+      ?? props.defaultForm?.formReleaseVersion,
+    props.defaultForm?.releaseResolutionToken,
+    props.runtimeContext?.record?.id || props.runtimeContext?.recordId,
+    props.runtimeContext?.initializationKey
+  ],
+  () => customUniquePrecheckController.reset(formData.value.data || {})
+)
+
 watch(runtimeFormFields, () => {
   updateLinkageState()
 }, { immediate: true })
@@ -501,9 +583,24 @@ const renderFields = computed(() => {
 
 // 暴露校验方法
 async function validate() {
-  if (showCustomForm.value && customFormRef.value?.validate) {
-    const valid = await customFormRef.value.validate()
-    if (valid === false) return false
+  if (showCustomForm.value) {
+    // 自定义组件可能把上次唯一错误纳入自身 validate；先执行提交级新鲜预检，
+    // 避免旧冲突已解除后仍被组件提前拦截。
+    const uniqueResult = await customUniquePrecheckController.checkAll(
+      runtimeFormFields.value,
+      () => formData.value.data || {}
+    )
+    if (!uniqueResult.valid) {
+      ElMessage.error(
+        Object.values(customUniqueErrors.value)[0]
+          || '表单中存在重复字段值，请修改后重试'
+      )
+      return false
+    }
+    if (customFormRef.value?.validate) {
+      const valid = await customFormRef.value.validate()
+      if (valid === false) return false
+    }
   } else if (hasConfiguredForm.value && !showCustomForm.value) {
     const valid = await previewRef.value?.validate()
     if (!valid) return false

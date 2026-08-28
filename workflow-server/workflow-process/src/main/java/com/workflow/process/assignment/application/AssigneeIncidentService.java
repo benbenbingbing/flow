@@ -180,6 +180,9 @@ public class AssigneeIncidentService {
         if (!StringUtils.hasText(incident.resolverCode())) {
             throw new IllegalStateException("事件没有可重试的人员解析器");
         }
+        if (!StringUtils.hasText(incident.taskId())) {
+            return retryMultiInstanceNodeEntry(incident);
+        }
         Task task = requiredTask(incident);
         Map<String, Object> variables = runtimeService.getVariables(incident.processInstanceId());
         AssigneeResolutionResult resolution = resolutionService.resolveConfigured(
@@ -221,6 +224,84 @@ public class AssigneeIncidentService {
                     empty_reason_code = ?, empty_reason_message = ?, update_time = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """, retryCount, delay, resolution.reasonCode(), resolution.reasonMessage(), incident.id());
+        return Map.of("retryCount", retryCount, "nextDelaySeconds", delay);
+    }
+
+    /**
+     * 多实例节点进入失败时目标 Task 尚未存在。管理端重试只执行权威人员
+     * 重验；重验成功后转为 MANUAL_REQUIRED，由原办理人重新提交仍活跃的源任务。
+     * 直接代替用户完成源任务会跳过表单校验和业务副作用，因此明确禁止。
+     */
+    private Map<String, Object> retryMultiInstanceNodeEntry(
+            Incident incident) {
+        Map<String, Object> variables = runtimeService.getVariables(
+                incident.processInstanceId());
+        AssigneeResolutionResult resolution =
+                resolutionService.resolveConfigured(
+                        incident.resolverCode(),
+                        new PersonResolveRequest(
+                                1,
+                                text(variables.get("traceId")),
+                                "MULTI_INSTANCE_RETRY:" + incident.id(),
+                                PersonResolveUsage.MULTI_INSTANCE,
+                                incident.processConfigId(),
+                                incident.processDefinitionId(),
+                                incident.processInstanceId(),
+                                firstText(
+                                        variables.get("businessKey"),
+                                        variables.get("entityDataId")),
+                                incident.nodeId(),
+                                incident.nodeName(),
+                                null,
+                                text(variables.get("entityCode")),
+                                text(variables.get("entityDataId")),
+                                firstText(
+                                        variables.get("startUserId"),
+                                        variables.get("submitterId"),
+                                        variables.get("initiator")),
+                                null,
+                                variables,
+                                mapValue(variables.get("entityData")),
+                                readMap(incident.resolverExtraParamsJson())));
+        if (resolution.resolved()) {
+            jdbcTemplate.update("""
+                    UPDATE process_assignee_incident
+                    SET status = 'MANUAL_REQUIRED', next_retry_at = NULL,
+                        empty_reason_code = 'NODE_ENTRY_RETRY_READY',
+                        empty_reason_message = '人员已恢复，请重新提交前序任务',
+                        resolution_action = 'WAITING_SOURCE_TASK_RETRY',
+                        update_time = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """, incident.id());
+            return Map.of(
+                    "resolvedUsers", resolution.usernames(),
+                    "requiresSourceTaskRetry", true);
+        }
+        int retryCount = incident.retryCount() + 1;
+        if (retryCount >= incident.maxRetries()) {
+            jdbcTemplate.update("""
+                    UPDATE process_assignee_incident
+                    SET status = 'OPEN', retry_count = ?, next_retry_at = NULL,
+                        empty_reason_code = ?, empty_reason_message = ?,
+                        resolution_action = 'RETRY_EXHAUSTED', update_time = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """, retryCount, resolution.reasonCode(),
+                    resolution.reasonMessage(), incident.id());
+            return Map.of("retryCount", retryCount, "exhausted", true);
+        }
+        long delay = Math.max(5L, Math.round(
+                incident.initialDelaySeconds()
+                        * Math.pow(
+                        incident.backoffMultiplier(), retryCount)));
+        jdbcTemplate.update("""
+                UPDATE process_assignee_incident
+                SET status = 'RETRY_SCHEDULED', retry_count = ?,
+                    next_retry_at = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ? SECOND),
+                    empty_reason_code = ?, empty_reason_message = ?,
+                    update_time = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, retryCount, delay, resolution.reasonCode(),
+                resolution.reasonMessage(), incident.id());
         return Map.of("retryCount", retryCount, "nextDelaySeconds", delay);
     }
 

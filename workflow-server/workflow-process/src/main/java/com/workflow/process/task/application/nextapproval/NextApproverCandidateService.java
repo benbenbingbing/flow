@@ -18,6 +18,7 @@ import com.workflow.core.result.PageResult;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.assignment.relative.RelativeOrgPositionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.request.NextApproverOptionsRequest;
@@ -158,6 +159,16 @@ public class NextApproverCandidateService {
                 != NextApproverSelectionPolicy.SourceType.NODE_ASSIGNMENT) {
             return defaults;
         }
+        Map<String, Object> config = target.assigneeConfig();
+        int version = assignmentConfigVersion(config);
+        if (usesEntryTimeRelativeResolver(
+                config,
+                version,
+                LegacyMultiInstanceAssignmentParser.parse(config))) {
+            // 相对职务默认值本身刚由权威解析器产生，同一预览请求内
+            // 再解一次可能恰逢任职变更，反而造成默认显示自相矛盾。
+            return defaults;
+        }
         PersonResolveUsage usage = "MULTI_INSTANCE".equals(
                 target.selectionPolicy().assignmentMode())
                 ? PersonResolveUsage.MULTI_INSTANCE
@@ -193,7 +204,11 @@ public class NextApproverCandidateService {
             throw new IllegalArgumentException(
                     "不支持的 assignmentConfigVersion: " + version);
         }
-        if (preferPreparedMultiInstanceSnapshot) {
+        LegacyAssignment legacyAssignment =
+                LegacyMultiInstanceAssignmentParser.parse(config);
+        if (preferPreparedMultiInstanceSnapshot
+                && !usesEntryTimeRelativeResolver(
+                config, version, legacyAssignment)) {
             List<SysUser> prepared = preparedMultiInstanceUsers(
                     resolution, target);
             if (prepared != null) {
@@ -202,8 +217,6 @@ public class NextApproverCandidateService {
         }
         boolean multiInstance = "MULTI_INSTANCE".equals(
                 target.selectionPolicy().assignmentMode());
-        LegacyAssignment legacyAssignment =
-                LegacyMultiInstanceAssignmentParser.parse(config);
         boolean sourceUsesLegacyMultiInstance =
                 target.assignmentSourceTask()
                         .hasMultiInstanceLoopCharacteristics();
@@ -214,6 +227,28 @@ public class NextApproverCandidateService {
                     resolution, target, legacyAssignment);
         }
         return resolveBaseAssignmentUsers(resolution, target, config);
+    }
+
+    /**
+     * 相对组织职务以发起快照和当前任职状态为权威输入，下一审批人
+     * 预览不能被上一轮循环遗留的 collection 变量短路。实际进入节点
+     * 时仍由 collection handler 生成当轮稳定集合。
+     */
+    private boolean usesEntryTimeRelativeResolver(
+            Map<String, Object> config,
+            int version,
+            LegacyAssignment legacy) {
+        String type = normalizeAssignmentType(config.get("assigneeType"));
+        if ("resolver".equals(type)
+                && RelativeOrgPositionConfig.RESOLVER_CODE.equals(firstText(
+                config.get("resolverCode"),
+                config.get("interfaceName")))) {
+            return true;
+        }
+        return version < 2
+                && legacy.resolver()
+                && RelativeOrgPositionConfig.RESOLVER_CODE.equals(
+                legacy.resolverCode());
     }
 
     /**

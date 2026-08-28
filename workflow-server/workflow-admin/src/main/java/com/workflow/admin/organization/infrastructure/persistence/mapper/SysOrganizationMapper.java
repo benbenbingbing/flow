@@ -23,6 +23,26 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
      */
     @Select("SELECT * FROM sys_organization WHERE org_code = #{orgCode} AND deleted = 0 LIMIT 1")
     SysOrganization selectByCode(@Param("orgCode") String orgCode);
+
+    @Select("SELECT * FROM sys_organization WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    SysOrganization selectForUpdate(@Param("id") String id);
+
+    /**
+     * 任职批量事务按组织 ID 排序锁定稳定存在的组织行。
+     */
+    @Select("""
+            <script>
+            SELECT * FROM sys_organization
+            WHERE id IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+            </foreach>
+              AND deleted = 0
+            ORDER BY id
+            FOR UPDATE
+            </script>
+            """)
+    List<SysOrganization> selectForUpdateByIds(@Param("ids") List<String> ids);
     
     /**
      * 检查编码是否存在
@@ -88,6 +108,20 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
      */
     @Select("SELECT COUNT(*) FROM sys_user WHERE (org_id = #{orgId} OR dept_id = #{orgId}) AND deleted = 0")
     int countUsers(@Param("orgId") String orgId);
+
+    /**
+     * 仅由 UNIT_LEADER 任职服务单向维护旧负责人兼容投影。
+     */
+    @Update("""
+            UPDATE sys_organization
+            SET leader_id = #{leaderId}, leader_name = #{leaderName},
+                update_time = UTC_TIMESTAMP(6)
+            WHERE id = #{unitId} AND deleted = 0
+            """)
+    int updateLeaderProjection(
+            @Param("unitId") String unitId,
+            @Param("leaderId") String leaderId,
+            @Param("leaderName") String leaderName);
     
     /**
      * 根据path查询父级列表（用于快速获取所有父级）

@@ -14,6 +14,14 @@
     </div>
     
     <template v-if="form?.customComponent && hasCustomFormComponent(form.customComponent)">
+      <el-alert
+        v-if="firstUniqueError"
+        :title="firstUniqueError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="custom-form-unique-error"
+      />
       <component
         ref="customFormRef"
         :is="getCustomFormComponent(form.customComponent)"
@@ -87,9 +95,11 @@
           :label="field.fieldLabel || field.fieldName"
           :prop="getFieldKey(field)"
           :rules="getFieldRules(field)"
+          :error="uniqueErrorFor(field)"
           :required="isFieldRequired(field)"
         >
           <FormFieldRendererLinkage
+            :ref="instance => setFieldRendererRef(field, instance)"
             :field="field"
             v-model="formData[getFieldKey(field)]"
             :disabled="isFieldDisabled(field)"
@@ -120,7 +130,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, provide } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import FormNodeRenderer from './FormNodeRenderer.vue'
 import FormActionBar from './FormActionBar.vue'
@@ -130,6 +140,18 @@ import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
 import { slotFormActions } from '@/shared/form-actions'
+import { precheckFormFieldUnique } from '@/api/entityForm'
+import {
+  createFormUniquePrecheckController,
+  filterFormUniquenessFieldsForNodeScope,
+  resolveFormFieldUniqueness,
+  resolveFormUniqueRuntimeIdentity
+} from '@/shared/form-field-uniqueness'
+import {
+  appendFormUniqueBlurRule,
+  createFormUniquePrecheckRuntime,
+  FORM_UNIQUE_PRECHECK_CONTEXT_KEY
+} from '@/shared/form-runtime/uniquePrecheckContext'
 import {
   isFieldReadonlyForMode,
   isFieldVisibleForMode,
@@ -228,6 +250,7 @@ function applyRelatedContentPatch(patch) {
 const formRef = ref(null)
 const customFormRef = ref(null)
 const nodeFormRef = ref(null)
+const fieldRendererRefs = ref({})
 const formData = ref(props.modelValue || {})
 const linkageState = ref({
   visibility: {},
@@ -263,7 +286,9 @@ const runtimeContext = computed(() => ({
   form: props.form,
   readonly: props.readonly,
   entityCode: props.entityCode,
-  entityDefinition: props.entityDefinition
+  entityDefinition: props.entityDefinition,
+  formUniqueErrors: uniqueErrors.value,
+  formUniqueness: formUniquenessRuntime
 }))
 
 const runtimeReleaseId = computed(() =>
@@ -349,6 +374,76 @@ const processedFields = computed(() => {
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 })
 
+const uniquePrecheckFields = computed(() =>
+  hasNodeTree.value
+    ? filterFormUniquenessFieldsForNodeScope(
+        processedFields.value,
+        props.form?.nodes || [],
+        {
+          rootParentId: props.nodeRootParentId,
+          excludedNodeIds: props.excludedNodeIds
+        }
+      )
+    : processedFields.value
+)
+
+const uniqueErrors = ref({})
+const firstUniqueError = computed(() =>
+  Object.values(uniqueErrors.value)[0] || ''
+)
+const firstUniqueErrorFieldCode = computed(() =>
+  Object.keys(uniqueErrors.value)[0] || ''
+)
+const uniquePrecheckController = createFormUniquePrecheckController({
+  request: precheckFormFieldUnique,
+  getIdentity: () => resolveFormUniqueRuntimeIdentity(
+    props.form,
+    props.context
+  ),
+  onErrorsChange: errors => {
+    uniqueErrors.value = errors
+  }
+})
+const uniquePrecheckContext = {
+  resolveRule: resolveFormFieldUniqueness,
+  check: (field, reason) => uniquePrecheckController.check(
+    field,
+    formData.value,
+    { reason }
+  ),
+  errorFor: fieldCode => uniqueErrors.value[String(fieldCode || '')] || ''
+}
+provide(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, uniquePrecheckContext)
+const formUniquenessRuntime = createFormUniquePrecheckRuntime({
+  controller: uniquePrecheckController,
+  getFields: () => uniquePrecheckFields.value,
+  getRecord: () => formData.value,
+  getErrors: () => uniqueErrors.value
+})
+
+watch(
+  formData,
+  record => {
+    uniquePrecheckController.handleRecordChange(
+      uniquePrecheckFields.value,
+      record || {}
+    )
+  },
+  { deep: true, immediate: true }
+)
+
+watch(
+  () => [
+    props.form?.id,
+    props.form?.runtimeReleaseId || props.form?.formReleaseId,
+    props.form?.runtimeReleaseVersion ?? props.form?.formReleaseVersion,
+    props.form?.releaseResolutionToken,
+    props.context?.record?.id || props.context?.recordId,
+    props.context?.initializationKey
+  ],
+  () => uniquePrecheckController.reset(formData.value)
+)
+
 // 标签位置
 const labelPosition = computed(() => {
   switch (props.form?.layoutType) {
@@ -419,12 +514,48 @@ function isFieldRequired(field) {
 // 获取字段验证规则
 function getFieldRules(field) {
   const fieldKey = getFieldKey(field)
-  return buildRuntimeFieldRules(
+  const rules = buildRuntimeFieldRules(
     field,
     isFieldRequired(field),
     field.fieldLabel || field.fieldName,
     linkageState.value.attachmentItemRequired?.[fieldKey] || {}
   )
+  appendFormUniqueBlurRule(rules, field, uniquePrecheckContext)
+  const componentType = String(field.componentType || '').toUpperCase()
+  const fieldType = String(field.fieldType || '').toUpperCase()
+  if (componentType === 'SUB_FORM' || fieldType === 'SUB_FORM') {
+    rules.push({
+      validator: (_rule, _value, callback) => {
+        const renderer = fieldRendererRefs.value[fieldKey]
+        Promise.resolve(renderer?.validate?.()).then(valid => {
+          if (valid === false) {
+            callback(new Error(
+              `${field.fieldLabel || field.fieldName || '子表单'}存在未通过校验的数据`
+            ))
+          } else {
+            callback()
+          }
+        }).catch(error => callback(error))
+      },
+      // 只在整表提交校验时向下冒泡，避免子字段变化时重复执行预检。
+      trigger: 'submit'
+    })
+  }
+  return rules
+}
+
+function setFieldRendererRef(field, instance) {
+  const fieldKey = getFieldKey(field)
+  if (!fieldKey) return
+  if (instance) {
+    fieldRendererRefs.value[fieldKey] = instance
+  } else {
+    delete fieldRendererRefs.value[fieldKey]
+  }
+}
+
+function uniqueErrorFor(field) {
+  return uniquePrecheckContext.errorFor(getFieldKey(field))
 }
 
 function attachmentItemRequiredState(field) {
@@ -510,25 +641,37 @@ onMounted(() => {
 
 // 验证表单
 async function validate() {
-  if (customFormRef.value?.validate) {
-    return (await customFormRef.value.validate()) !== false
-  }
-  if (hasNodeTree.value) {
-    return (await nodeFormRef.value?.validate()) !== false
-  }
-  if (!formRef.value) return true
-  try {
-    await formRef.value.validate()
-    return true
-  } catch {
+  // 提交级查重必须先于 Element Form 的整表校验。后者也会执行 BLUR 规则；若先前
+  // 缓存过“重复”，先跑整表校验会被旧结果拦住，用户即使消除冲突也无法再次提交。
+  const uniqueResult = await uniquePrecheckController.checkAll(
+    uniquePrecheckFields.value,
+    () => formData.value
+  )
+  if (!uniqueResult.valid) {
+    await nodeFormRef.value?.revealValidationField?.(
+      firstUniqueErrorFieldCode.value
+    )
     return false
   }
+  if (customFormRef.value?.validate) {
+    if ((await customFormRef.value.validate()) === false) return false
+  } else if (hasNodeTree.value) {
+    if ((await nodeFormRef.value?.validate()) === false) return false
+  } else if (formRef.value) {
+    try {
+      await formRef.value.validate()
+    } catch {
+      return false
+    }
+  }
+  return true
 }
 
 // 暴露方法
 defineExpose({
   validate,
-  getData: () => formData.value
+  getData: () => formData.value,
+  getValidationError: () => firstUniqueError.value
 })
 </script>
 

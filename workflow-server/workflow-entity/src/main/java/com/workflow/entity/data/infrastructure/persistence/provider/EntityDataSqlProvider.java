@@ -106,6 +106,68 @@ public class EntityDataSqlProvider {
     }
 
     /**
+     * 为唯一性权威写前终检生成全量 exclusive locking read。
+     *
+     * <p>MySQL 的 {@code FOR UPDATE} 是 current read：即使调用方事务使用
+     * REPEATABLE READ，也会在 gate 等待结束后读取最新已提交版本。这里不用
+     * FOR SHARE，避免两个预写扫描随后更新各自记录时形成 S 到 X 的升级死锁。</p>
+     */
+    public String selectListForUpdate(
+            Map<String, Object> params) {
+        return selectList(params) + " FOR UPDATE";
+    }
+
+    /**
+     * 按唯一字段的 trim + ignore-case 语义预筛候选记录。
+     *
+     * <p>表名和列名都来自服务端发布元数据并经过标识符校验，比较值始终使用
+     * MyBatis 参数绑定。空字符串同时匹配数据库 NULL，保持 ignoreBlank=false
+     * 时的空值冲突语义。</p>
+     */
+    public String selectFormUniqueCandidates(
+            Map<String, Object> params) {
+        String tableName = tableName(params);
+        String columnName = requireIdentifier(
+                (String) params.get("columnName"),
+                "字段名");
+        String normalizedValue = (String) params.get(
+                "normalizedValue");
+        String excludeRecordId = (String) params.get(
+                "excludeRecordId");
+
+        StringBuilder sql = new StringBuilder()
+                .append("SELECT * FROM ")
+                .append(tableName)
+                .append(" WHERE deleted = 0");
+        if (normalizedValue == null
+                || normalizedValue.isEmpty()) {
+            sql.append(" AND (")
+                    .append(columnName)
+                    .append(" IS NULL OR TRIM(CAST(")
+                    .append(columnName)
+                    .append(" AS CHAR)) = '')");
+        } else {
+            sql.append(" AND LOWER(TRIM(CAST(")
+                    .append(columnName)
+                    .append(" AS CHAR))) = #{normalizedValue}");
+        }
+        if (excludeRecordId != null
+                && !excludeRecordId.isBlank()) {
+            sql.append(" AND id <> #{excludeRecordId}");
+        }
+        return sql.append(" ORDER BY create_time DESC").toString();
+    }
+
+    /**
+     * 为唯一性权威写前终检生成按值预筛的 exclusive locking read。
+     * 普通预检继续调用无锁版本，避免用户输入阶段占用行锁。
+     */
+    public String selectFormUniqueCandidatesForUpdate(
+            Map<String, Object> params) {
+        return selectFormUniqueCandidates(params) + " FOR UPDATE";
+    }
+
+    /**
      * 条件查询（支持 LIKE 模糊查询和 BETWEEN 范围查询）
      */
     public String selectByCondition(Map<String, Object> params) {

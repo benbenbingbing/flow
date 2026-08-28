@@ -1,6 +1,7 @@
 package com.workflow.admin.organization.application;
 
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
+import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
 
 import java.util.List;
 
@@ -27,6 +28,11 @@ public interface SysOrganizationService {
      * @return 启用中的组织部门平铺列表
      */
     List<SysOrganization> getEnabledList();
+
+    /**
+     * 返回组织编辑表单可用的业务层级，不要求额外的字典管理权限。
+     */
+    List<OrganizationBusinessLevelView> getBusinessLevelOptions();
     
     /**
      * 根据ID查询

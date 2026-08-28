@@ -5,6 +5,7 @@ import com.workflow.core.security.RequiresPermission;
 import com.workflow.core.result.Result;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.organization.application.SysOrganizationService;
+import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -44,6 +45,15 @@ public class SysOrganizationController {
     @GetMapping("/enabled")
     public Result<List<SysOrganization>> getEnabledList() {
         return Result.success(orgService.getEnabledList());
+    }
+
+    /**
+     * 组织编辑专用的业务层级选项；继承 organization:view，且不开放
+     * 其他系统字典读取能力。
+     */
+    @GetMapping("/business-level-options")
+    public Result<List<OrganizationBusinessLevelView>> getBusinessLevelOptions() {
+        return Result.success(orgService.getBusinessLevelOptions());
     }
     
     /**

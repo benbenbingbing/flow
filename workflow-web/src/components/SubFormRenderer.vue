@@ -51,9 +51,10 @@
                   <FormFieldRenderer
                     v-model="rowData[0][field.fieldKey]"
                     :field="field"
-                    @blur="validateField(rowData[0], field, 0)"
+                    @change="handleFieldChange(rowData[0], field, 0, $event)"
+                    @blur="handleFieldBlur(rowData[0], field, 0, $event)"
                   />
-                  <div v-if="getFieldError(0, field.fieldKey)" class="field-error">{{ getFieldError(0, field.fieldKey) }}</div>
+                  <div v-if="getFieldError(0, field)" class="field-error">{{ getFieldError(0, field) }}</div>
                 </template>
               </div>
             </div>
@@ -103,9 +104,10 @@
                   <FormFieldRenderer
                     v-model="row[field.fieldKey]"
                     :field="field"
-                    @blur="validateField(row, field, index)"
+                    @change="handleFieldChange(row, field, index, $event)"
+                    @blur="handleFieldBlur(row, field, index, $event)"
                   />
-                  <div v-if="getFieldError(index, field.fieldKey)" class="field-error">{{ getFieldError(index, field.fieldKey) }}</div>
+                  <div v-if="getFieldError(index, field)" class="field-error">{{ getFieldError(index, field) }}</div>
                 </template>
               </div>
             </div>
@@ -149,10 +151,11 @@
               <FormFieldRenderer
                 v-model="row[field.fieldKey]"
                 :field="field"
-                @blur="validateField(row, field, $index)"
+                @change="handleFieldChange(row, field, $index, $event)"
+                @blur="handleFieldBlur(row, field, $index, $event)"
               />
-              <div v-if="getFieldError($index, field.fieldKey)" class="field-error">
-                {{ getFieldError($index, field.fieldKey) }}
+              <div v-if="getFieldError($index, field)" class="field-error">
+                {{ getFieldError($index, field) }}
               </div>
             </template>
           </template>
@@ -224,10 +227,20 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false
+  },
+  externalFieldError: {
+    type: Function,
+    default: null
   }
 })
 
-const emit = defineEmits(['update:modelValue', 'change', 'validate'])
+const emit = defineEmits([
+  'update:modelValue',
+  'change',
+  'validate',
+  'field-change',
+  'field-blur'
+])
 
 const rowData = ref([])
 
@@ -491,9 +504,25 @@ function validateField(row, field, index) {
   return !error
 }
 
+/**
+ * 将 legacy fields-only 字段交互上报给宿主子表。唯一预检依赖子表
+ * 发布身份，不能在这个纯渲染组件中误用父表上下文。
+ */
+function handleFieldChange(row, field, index, event) {
+  emit('field-change', { row, field, index, event })
+}
+
+function handleFieldBlur(row, field, index, event) {
+  validateField(row, field, index)
+  emit('field-blur', { row, field, index, event })
+}
+
 // 获取字段错误
-function getFieldError(index, fieldKey) {
-  return fieldErrors.value[`${index}_${fieldKey}`]
+function getFieldError(index, field) {
+  const fieldKey = field?.fieldKey || field?.fieldCode || field?.id || ''
+  const localError = fieldErrors.value[`${index}_${fieldKey}`]
+  if (localError || !props.externalFieldError) return localError
+  return props.externalFieldError(index, field) || ''
 }
 
 // 清除行错误

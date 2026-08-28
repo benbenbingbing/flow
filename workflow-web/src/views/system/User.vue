@@ -51,6 +51,22 @@
           <el-option v-for="role in roleOptions" :key="role.id" :label="role.roleName" :value="role.id" />
         </el-select>
       </el-form-item>
+      <el-form-item v-if="canViewPosition" label="职务">
+        <el-select
+          v-model="queryParams.positionCode"
+          class="filter-select"
+          clearable
+          filterable
+          placeholder="全部职务"
+        >
+          <el-option
+            v-for="position in positionOptions"
+            :key="position.positionCode"
+            :label="position.positionName"
+            :value="position.positionCode"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item label="状态">
         <el-select v-model="queryParams.status" class="status-select" clearable placeholder="全部状态">
           <el-option label="启用" value="0" />
@@ -126,6 +142,27 @@
         </template>
       </el-table-column>
 
+      <el-table-column v-if="canViewPosition" label="当前任职" min-width="220">
+        <template #default="{ row }">
+          <div v-if="currentPositionAssignments(row).length" class="position-list">
+            <el-tooltip
+              v-for="assignment in currentPositionAssignments(row).slice(0, 2)"
+              :key="assignment.id || `${assignment.positionCode}-${assignment.organizationUnitId}`"
+              :content="positionAssignmentLabel(assignment)"
+              placement="top"
+            >
+              <el-tag size="small" type="success" effect="plain" class="position-tag">
+                {{ assignment.positionName || assignment.positionCode }}
+              </el-tag>
+            </el-tooltip>
+            <el-tag v-if="currentPositionAssignments(row).length > 2" size="small" type="info">
+              +{{ currentPositionAssignments(row).length - 2 }}
+            </el-tag>
+          </div>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
+
       <el-table-column prop="status" label="状态" width="90" align="center">
         <template #default="{ row }">
           <el-switch
@@ -143,13 +180,22 @@
 
       <el-table-column prop="createTime" label="创建时间" width="170" :formatter="formatDateColumn" />
 
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="285" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="handleEdit(row)">
             编辑
           </el-button>
           <el-button type="primary" link size="small" @click="handleResetPassword(row)">
             重置密码
+          </el-button>
+          <el-button
+            v-if="canAssignPosition"
+            type="primary"
+            link
+            size="small"
+            @click="openPositionAssignment(row)"
+          >
+            职务任命
           </el-button>
           <el-button
             type="danger"
@@ -317,11 +363,17 @@
       </template>
     </el-dialog>
 
+    <PositionAssignmentDialog
+      v-model="positionAssignmentVisible"
+      :locked-user="positionAssignmentUser"
+      @saved="handlePositionAssignmentSaved"
+    />
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import {
@@ -338,6 +390,18 @@ import {
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
 import { formatDateColumn } from '@/shared/list-runtime'
+import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
+import { getEnabledPositions } from '@/api/system/position'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
+const canViewPosition = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || userStore.permissions.includes('system:position:view')
+  || userStore.permissions.includes('system:position:assign'))
+const canAssignPosition = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || userStore.permissions.includes('system:position:assign'))
 
 const loading = ref(false)
 const loadError = ref('')
@@ -345,6 +409,7 @@ const userList = ref<any[]>([])
 const selectedUsers = ref<any[]>([])
 const total = ref(0)
 const roleOptions = ref<any[]>([])
+const positionOptions = ref<any[]>([])
 const orgOptions = ref<any[]>([])
 const deptOptions = ref<any[]>([])
 const queryParams = reactive({
@@ -352,6 +417,7 @@ const queryParams = reactive({
   orgId: '',
   deptId: '',
   roleId: '',
+  positionCode: '',
   status: '',
   pageNum: 1,
   pageSize: 20
@@ -359,6 +425,8 @@ const queryParams = reactive({
 const batchRoleDialogVisible = ref(false)
 const batchRoleIds = ref<string[]>([])
 const batchLoading = ref(false)
+const positionAssignmentVisible = ref(false)
+const positionAssignmentUser = ref<any>(null)
 // 对话框
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -402,6 +470,7 @@ const fetchUserList = async () => {
       orgId: queryParams.orgId || undefined,
       deptId: queryParams.deptId || undefined,
       roleId: queryParams.roleId || undefined,
+      positionCode: queryParams.positionCode || undefined,
       status: queryParams.status || undefined
     })
     userList.value = res?.records || []
@@ -427,6 +496,7 @@ const handleReset = () => {
     orgId: '',
     deptId: '',
     roleId: '',
+    positionCode: '',
     status: '',
     pageNum: 1
   })
@@ -445,6 +515,46 @@ const fetchRoleOptions = async () => {
   } catch (error) {
     console.error('获取角色列表失败', error)
   }
+}
+
+const fetchPositionOptions = async () => {
+  if (!canViewPosition.value) return
+  try {
+    const result = await getEnabledPositions()
+    positionOptions.value = Array.isArray(result)
+      ? result
+      : result?.records || result?.list || []
+  } catch (error) {
+    console.error('获取职务列表失败', error)
+  }
+}
+
+/** 兼容用户分页逐步上线期间的任职摘要字段命名。 */
+const currentPositionAssignments = (row: any) => {
+  const assignments = row?.currentPositionAssignments
+    || row?.positionAssignments
+    || row?.positions
+    || []
+  return Array.isArray(assignments) ? assignments : []
+}
+
+const positionAssignmentLabel = (assignment: any) => {
+  const position = assignment.positionName || assignment.positionCode || '未知职务'
+  const unit = assignment.organizationPath
+    || assignment.organizationUnitPath
+    || assignment.organizationUnitName
+    || assignment.orgName
+    || '未知组织节点'
+  return `${position} · ${unit}`
+}
+
+const openPositionAssignment = (row: any) => {
+  positionAssignmentUser.value = row
+  positionAssignmentVisible.value = true
+}
+
+const handlePositionAssignmentSaved = async () => {
+  await fetchUserList()
 }
 
 // 获取组织部门选项
@@ -651,6 +761,7 @@ const validateManagedPassword = (value: string) => {
 onMounted(() => {
   fetchUserList()
   fetchRoleOptions()
+  fetchPositionOptions()
   fetchOrgOptions()
 })
 </script>
@@ -711,6 +822,19 @@ onMounted(() => {
   align-items: center;
   gap: 4px;
   overflow: hidden;
+}
+
+.position-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.position-tag {
+  max-width: 95px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .role-tag {

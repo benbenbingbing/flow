@@ -1,18 +1,24 @@
 <template>
   <div class="sub-form-field">
     <SubFormRenderer
+      ref="subFormRendererRef"
       :model-value="fieldValue"
       :config="subFormConfig"
       :readonly="isDisabled"
       :disabled="isDisabled"
+      :external-field-error="resolveLegacyUniqueError"
       @update:model-value="handleSubFormUpdate"
+      @field-change="handleLegacyFieldChange"
+      @field-blur="handleLegacyFieldBlur"
     >
       <template v-if="hasNodeTree" #row="{ row, index }">
-        <FormNodeRenderer
+        <SubFormRowRuntime
+          :ref="instance => setRowRuntimeRef(index, instance)"
+          :form="childRuntimeForm"
           :nodes="runtimeNodes"
           :root-parent-id="runtimeRootParentId"
           :fields="runtimeFields"
-          :model-value="row"
+          :row="row"
           :readonly="isDisabled"
           :mode="context.mode || (isDisabled ? 'view' : 'edit')"
           :context="childRenderContext(row, index)"
@@ -25,12 +31,25 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import SubFormRenderer from '@/components/SubFormRenderer.vue'
-import FormNodeRenderer from '@/components/FormNodeRenderer.vue'
+import SubFormRowRuntime from './SubFormRowRuntime.vue'
 import { useFormField } from '../composables/useFormField.js'
-import { getEntityFields, getFormRuntimeRelease } from '@/api/entityForm'
+import {
+  getEntityFields,
+  getFormRuntimeRelease,
+  precheckFormFieldUnique
+} from '@/api/entityForm'
 import { safeParseConfig } from '@/shared/config-runtime'
+import {
+  createFormUniquePrecheckController,
+  resolveFormFieldKey,
+  resolveFormFieldUniqueness,
+  resolveFormUniqueRuntimeIdentity
+} from '@/shared/form-field-uniqueness'
+import {
+  resolveFormUniqueValidationTrigger
+} from '@/shared/form-runtime/uniquePrecheckContext'
 import {
   applySubFormFieldInitialization,
   buildSubFormParentContext,
@@ -53,6 +72,18 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 
 const { fieldValue, isDisabled, handleChange, parsedComponentProps } = useFormField(props, emit)
+const subFormRendererRef = ref(null)
+const rowRuntimeRefs = ref({})
+const legacyUniqueErrors = ref({})
+const legacyRowControllers = new Map()
+
+function setRowRuntimeRef(index, instance) {
+  if (instance) {
+    rowRuntimeRefs.value[index] = instance
+  } else {
+    delete rowRuntimeRefs.value[index]
+  }
+}
 
 // 子表单元数据
 const subFormMeta = computed(() => {
@@ -135,9 +166,10 @@ watch(
         externalFormFields.value = normalizeExternalFields(
           resolveSnapshotFields(snapshot)
         )
-        childFormDefinition.value = snapshot?.form || {
-          id: formId,
-          entityId: refEntityId
+        childFormDefinition.value = {
+          ...(snapshot?.form || {}),
+          id: snapshot?.form?.id || formId,
+          entityId: snapshot?.form?.entityId || refEntityId
         }
         childFormDefinition.value.runtimeReleaseId =
           release.id || releaseId || null
@@ -271,6 +303,7 @@ function normalizeExternalFields(fields) {
       options: f.options,
       optionsJson: f.optionsJson,
       componentProps: f.componentProps,
+      validationRules: f.validationRules,
       gridSpan: f.gridSpan || f.grid_span || 24,
       refEntityId: f.childEntityId || f.refEntityId,
       childEntityId: f.childEntityId || f.refEntityId,
@@ -321,6 +354,9 @@ const runtimeFields = computed(() => {
 })
 
 const hasNodeTree = computed(() => runtimeNodes.value.length > 0)
+const childRuntimeForm = computed(() =>
+  childFormDefinition.value || props.context?.form || {}
+)
 const parentContext = computed(() =>
   buildSubFormParentContext(props.context)
 )
@@ -547,6 +583,7 @@ function deriveNodeRuntimeFields(nodes, sourceFields) {
     ))
     .map(node => {
       const props = parseDocument(node.propsDocument || node.props)
+      const rules = parseDocument(node.rulesDocument || node.rules)
       const reference = node.bindingRef || props.fieldCode || props.fieldId
       const source = byReference.find(field =>
         String(field?.id) === String(node.id)
@@ -568,6 +605,10 @@ function deriveNodeRuntimeFields(nodes, sourceFields) {
         fieldType: props.fieldType || source.fieldType || 'SUB_FORM',
         componentType: props.componentType || source.componentType || 'sub_form',
         componentProps: props.componentProps || source.componentProps,
+        validationRules: JSON.stringify({
+          ...parseDocument(source.validationRules),
+          ...(rules.validation || rules || {})
+        }),
         dataSourceBindings: props.dataSourceBindings || source.dataSourceBindings,
         dataSourceBindingsDocument: node.dataSourceBindingsDocument
           || source.dataSourceBindingsDocument,
@@ -602,6 +643,33 @@ function replaceNestedRow(row, value) {
 function handleSubFormUpdate(value) {
   if (areSubFormValuesEqual(value, props.modelValue)) return
   handleChange(value)
+}
+
+/**
+ * 子表单校验必须显式向父表冒泡。legacy fields-only 先用每行独立 controller
+ * 强制刷新 SUBMIT 预检，再做常规校验；避免历史 BLUR 结果阻止新的
+ * 权威预检。node/REPEATER 路径则由每个 SubFormRowRuntime 完成同样流程。
+ */
+async function validate() {
+  if (!hasNodeTree.value) {
+    syncLegacyRowControllers()
+    const fields = legacyUniqueFields()
+    const uniqueResults = await Promise.all(
+      [...legacyRowControllers.values()].map(entry =>
+        entry.controller.checkAll(fields, () => entry.row || {})
+      )
+    )
+    if (uniqueResults.some(result => !result.valid)) return false
+    return (await subFormRendererRef.value?.validate?.()) !== false
+  }
+
+  const structuralValid = (await subFormRendererRef.value?.validate?.()) !== false
+  const rowResults = await Promise.all(
+    Object.values(rowRuntimeRefs.value)
+      .filter(Boolean)
+      .map(instance => instance.validate?.())
+  )
+  return structuralValid && rowResults.every(result => result !== false)
 }
 
 function mapFieldType(type) {
@@ -679,6 +747,189 @@ const subFormConfig = computed(() => {
     childRefFieldCode: subFormMeta.value.childRefFieldCode
   }
 })
+
+function legacyUniqueFields() {
+  if (hasNodeTree.value) return []
+  return (subFormConfig.value.fields || []).filter(field =>
+    resolveFormFieldUniqueness(field)?.precheck?.enabled === true
+  )
+}
+
+function legacyControllerScopeKey(fields, row) {
+  const form = childFormDefinition.value || {}
+  return JSON.stringify({
+    formId: form.id || '',
+    releaseId: form.runtimeReleaseId || form.formReleaseId || '',
+    releaseVersion:
+      form.runtimeReleaseVersion ?? form.formReleaseVersion ?? null,
+    releaseResolutionToken:
+      form.releaseResolutionToken
+      || props.context?.releaseResolutionToken
+      || '',
+    recordId: row?.id || '',
+    rules: fields.map(field => ({
+      fieldCode: resolveFormFieldKey(field),
+      rule: resolveFormFieldUniqueness(field)
+    }))
+  })
+}
+
+function syncLegacyUniqueErrors() {
+  const errors = {}
+  legacyRowControllers.forEach((entry, index) => {
+    Object.entries(entry.errors || {}).forEach(([fieldCode, message]) => {
+      if (message) errors[`${index}:${fieldCode}`] = message
+    })
+  })
+  legacyUniqueErrors.value = errors
+}
+
+/**
+ * 为 legacy fields-only 的每行创建独立 headless controller。getIdentity 每次从
+ * entry 读取当前行，保证防抖请求也携带子表发布身份和正确子记录。
+ */
+function createLegacyRowController(index, row) {
+  const entry = {
+    index,
+    row,
+    scopeKey: '',
+    errors: {},
+    controller: null
+  }
+  entry.controller = createFormUniquePrecheckController({
+    request: precheckFormFieldUnique,
+    getIdentity: () => {
+      const currentRow = entry.row || {}
+      const form = childFormDefinition.value || {}
+      return resolveFormUniqueRuntimeIdentity(
+        form,
+        {
+          ...childRenderContext(currentRow, entry.index),
+          form,
+          recordId: currentRow?.id || null,
+          record: {
+            id: currentRow?.id || null,
+            data: currentRow
+          }
+        }
+      )
+    },
+    onErrorsChange: errors => {
+      entry.errors = errors
+      syncLegacyUniqueErrors()
+    }
+  })
+  return entry
+}
+
+function ensureLegacyRowController(index, row, fields) {
+  let entry = legacyRowControllers.get(index)
+  if (!entry) {
+    entry = createLegacyRowController(index, row)
+    legacyRowControllers.set(index, entry)
+  }
+  entry.index = index
+  entry.row = row || {}
+  const scopeKey = legacyControllerScopeKey(fields, entry.row)
+  if (scopeKey !== entry.scopeKey) {
+    entry.scopeKey = scopeKey
+    entry.controller.reset(entry.row)
+  }
+  return entry
+}
+
+function clearLegacyRowControllers() {
+  legacyRowControllers.forEach(entry => entry.controller.reset())
+  legacyRowControllers.clear()
+  legacyUniqueErrors.value = {}
+}
+
+/**
+ * 同步子行数据到各自 controller。条件字段的程序回填不一定会触发
+ * 字段 change 事件，因此仍需要深度监听来覆盖条件联动和外部更新。
+ */
+function syncLegacyRowControllers() {
+  const fields = legacyUniqueFields()
+  if (!fields.length) {
+    clearLegacyRowControllers()
+    return
+  }
+  const rows = relationRows(fieldValue.value)
+  rows.forEach((row, index) => {
+    const entry = ensureLegacyRowController(index, row, fields)
+    entry.controller.handleRecordChange(fields, entry.row)
+  })
+  const staleIndexes = [...legacyRowControllers.keys()]
+  staleIndexes.forEach(index => {
+    if (index < rows.length) return
+    legacyRowControllers.get(index)?.controller.reset()
+    legacyRowControllers.delete(index)
+  })
+  syncLegacyUniqueErrors()
+}
+
+function resolveLegacyUniqueError(index, field) {
+  if (hasNodeTree.value) return ''
+  return legacyUniqueErrors.value[
+    `${index}:${resolveFormFieldKey(field || {})}`
+  ] || ''
+}
+
+function legacyControllerForEvent(payload) {
+  if (hasNodeTree.value || !payload?.field) return null
+  const fields = legacyUniqueFields()
+  if (!fields.length) return null
+  const index = Number(payload.index)
+  if (!Number.isInteger(index) || index < 0) return null
+  const entry = ensureLegacyRowController(index, payload.row || {}, fields)
+  // 先更新整行快照，使 CHANGE 规则和条件字段监听共用同一次变更。
+  entry.controller.handleRecordChange(fields, entry.row)
+  return entry
+}
+
+function handleLegacyFieldChange(payload) {
+  const entry = legacyControllerForEvent(payload)
+  if (!entry
+      || resolveFormUniqueValidationTrigger(payload.field) !== 'change') {
+    return
+  }
+  // EntitySelector/Radio/Switch 等没有稳定 blur 的控件，用 change
+  // 执行已配置的 BLUR 预检。
+  return entry.controller.check(
+    payload.field,
+    entry.row,
+    { reason: 'BLUR' }
+  )
+}
+
+function handleLegacyFieldBlur(payload) {
+  const entry = legacyControllerForEvent(payload)
+  if (!entry) return
+  return entry.controller.check(
+    payload.field,
+    entry.row,
+    { reason: 'BLUR' }
+  )
+}
+
+watch(
+  [
+    () => fieldValue.value,
+    () => subFormConfig.value.fields,
+    () => hasNodeTree.value,
+    () => childFormDefinition.value?.id,
+    () => childFormDefinition.value?.runtimeReleaseId,
+    () => childFormDefinition.value?.runtimeReleaseVersion,
+    () => childFormDefinition.value?.releaseResolutionToken,
+    () => props.context?.releaseResolutionToken
+  ],
+  syncLegacyRowControllers,
+  { deep: true, immediate: true, flush: 'post' }
+)
+
+onBeforeUnmount(clearLegacyRowControllers)
+
+defineExpose({ validate })
 </script>
 
 <style scoped>

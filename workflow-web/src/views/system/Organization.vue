@@ -61,6 +61,11 @@
             <el-tag v-else type="success">部门</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="业务层级" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ businessLevelLabel(row.businessLevelCode) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="leaderName" label="负责人" width="120" />
         <el-table-column prop="phone" label="联系电话" width="150" />
         <el-table-column prop="sortOrder" label="排序" width="80" />
@@ -70,13 +75,22 @@
             <el-tag v-else type="danger">禁用</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="275" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleAddChild(row)">
               新增下级
             </el-button>
             <el-button type="primary" link size="small" @click="handleEdit(row)">
               编辑
+            </el-button>
+            <el-button
+              v-if="canAssignPosition"
+              type="primary"
+              link
+              size="small"
+              @click="openPositionAssignment(row)"
+            >
+              职务任命
             </el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">
               删除
@@ -124,13 +138,49 @@
         <el-form-item label="名称" prop="orgName">
           <el-input v-model="form.orgName" placeholder="请输入名称" />
         </el-form-item>
+        <el-form-item label="业务层级">
+          <el-select
+            v-model="form.businessLevelCode"
+            clearable
+            filterable
+            placeholder="请选择业务层级（可选）"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in businessLevelOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+              :disabled="item.disabled"
+            />
+          </el-select>
+          <div class="field-help">业务层级用于流程按语义定位组织，不等同于系统计算的物理层级 level。</div>
+        </el-form-item>
         <el-form-item label="负责人">
-          <UserSelector
-            v-model="form.leaderId"
-            value-key="id"
-            placeholder="请选择负责人"
-            title="选择负责人"
-          />
+          <template v-if="isEdit">
+            <div class="leader-editor">
+              <UserSelector
+                v-model="form.leaderId"
+                value-key="id"
+                placeholder="清空表示撤销负责人"
+                title="选择负责人"
+                :disabled="!canAssignPosition || leaderSubmitting"
+              />
+              <el-button
+                type="primary"
+                plain
+                :loading="leaderSubmitting"
+                :disabled="!canAssignPosition || !leaderDirty"
+                @click="saveOrganizationLeader"
+              >
+                {{ form.leaderId ? '确认转任' : '确认撤销' }}
+              </el-button>
+            </div>
+            <div class="field-help">
+              负责人是内置 UNIT_LEADER 职务的独立快捷入口，必须在此单独确认；组织保存接口不再写 leaderId。
+            </div>
+          </template>
+          <div v-else class="field-help">请先创建组织节点，再通过负责人或职务任命入口维护 UNIT_LEADER。</div>
         </el-form-item>
         <el-form-item label="联系电话">
           <el-input v-model="form.phone" placeholder="请输入联系电话" />
@@ -156,11 +206,17 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm" :loading="submitLoading">
+        <el-button type="primary" @click="submitForm" :loading="submitLoading" :disabled="leaderDirty">
           {{ isEdit ? '保存组织部门' : form.type === 'org' ? '创建组织' : '创建部门' }}
         </el-button>
       </template>
     </el-dialog>
+
+    <PositionAssignmentDialog
+      v-model="positionAssignmentVisible"
+      :locked-unit="positionAssignmentUnit"
+      @saved="handlePositionAssignmentSaved"
+    />
   </div>
 </template>
 
@@ -171,6 +227,16 @@ import { Plus, OfficeBuilding, House } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
 import UserSelector from '@/components/UserSelector.vue'
+import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
+import { useUserStore } from '@/stores/user'
+import { updateOrganizationLeader } from '@/api/system/position'
+import { getOrganizationBusinessLevelOptions } from '@/api/system/org'
+import { createIdempotentSubmissionKeyTracker } from '@/shared/idempotent-submission'
+
+const userStore = useUserStore()
+const canAssignPosition = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || userStore.permissions.includes('system:position:assign'))
 
 const loading = ref(false)
 const loadError = ref('')
@@ -180,6 +246,14 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitLoading = ref(false)
 const formRef = ref(null)
+const positionAssignmentVisible = ref(false)
+const positionAssignmentUnit = ref(null)
+const businessLevelOptions = ref([])
+const originalLeaderId = ref('')
+const leaderSubmitting = ref(false)
+const leaderSubmissionKeyTracker = createIdempotentSubmissionKeyTracker()
+const leaderDirty = computed(() => isEdit.value
+  && String(form.leaderId || '') !== String(originalLeaderId.value || ''))
 
 const flatOrganizations = computed(() => {
   const result = []
@@ -219,6 +293,7 @@ const form = reactive({
   type: 'org',
   orgCode: '',
   orgName: '',
+  businessLevelCode: '',
   leaderId: '',
   phone: '',
   email: '',
@@ -272,6 +347,25 @@ async function loadOrgTree() {
   }
 }
 
+async function loadBusinessLevels() {
+  try {
+    const items = await getOrganizationBusinessLevelOptions()
+    businessLevelOptions.value = (items || []).map(item => ({
+      value: item.code,
+      label: item.name || item.code,
+      disabled: false
+    }))
+  } catch (error) {
+    businessLevelOptions.value = []
+    console.error('加载组织业务层级失败:', error)
+  }
+}
+
+function businessLevelLabel(code) {
+  if (!code) return '-'
+  return businessLevelOptions.value.find(item => item.value === code)?.label || code
+}
+
 function handleFilterChange() {
   loadOrgTree()
 }
@@ -296,7 +390,60 @@ function handleEdit(row) {
   isEdit.value = true
   resetForm()
   Object.assign(form, row)
+  originalLeaderId.value = String(row.leaderId || '')
   dialogVisible.value = true
+}
+
+function openPositionAssignment(row) {
+  positionAssignmentUnit.value = row
+  positionAssignmentVisible.value = true
+}
+
+async function handlePositionAssignmentSaved() {
+  await loadOrgTree()
+}
+
+/**
+ * 负责人维护调用任职领域专用入口，避免组织元数据接口与 UNIT_LEADER
+ * 同时成为权威来源；清空 userId 会撤销当前有效负责人任职。
+ */
+async function saveOrganizationLeader() {
+  if (!isEdit.value || !leaderDirty.value || !canAssignPosition.value) return
+  try {
+    const action = form.leaderId ? '转任负责人' : '撤销负责人'
+    const result = await ElMessageBox.prompt(
+      `请输入${action}原因，任职变化只影响尚未创建的后续审批任务。`,
+      action,
+      {
+        type: form.leaderId ? 'warning' : 'error',
+        inputType: 'textarea',
+        inputPlaceholder: `请输入${action}原因`,
+        inputValidator: value => Boolean(String(value || '').trim()) || '原因不能为空',
+        confirmButtonText: `确认${action}`,
+        cancelButtonText: '取消'
+      }
+    )
+    leaderSubmitting.value = true
+    const request = {
+      userId: form.leaderId || null,
+      reason: String(result.value).trim()
+    }
+    await updateOrganizationLeader(
+      form.id,
+      request,
+      leaderSubmissionKeyTracker.keyFor({ unitId: form.id, ...request })
+    )
+    leaderSubmissionKeyTracker.clear()
+    originalLeaderId.value = String(form.leaderId || '')
+    ElMessage.success(form.leaderId ? '负责人已转任' : '负责人已撤销')
+    await loadOrgTree()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('负责人任职维护失败:', error)
+    }
+  } finally {
+    leaderSubmitting.value = false
+  }
 }
 
 function handleTypeChange(type) {
@@ -314,11 +461,25 @@ async function submitForm() {
 
   submitLoading.value = true
   try {
+    // 只发送可编辑元数据；leaderId、物理 level/path 和 children 都是服务端投影。
+    const organizationPayload = {
+      parentId: form.parentId,
+      type: form.type,
+      orgCode: form.orgCode,
+      orgName: form.orgName,
+      businessLevelCode: form.businessLevelCode || '',
+      phone: form.phone,
+      email: form.email,
+      address: form.address,
+      sortOrder: form.sortOrder,
+      status: form.status,
+      description: form.description
+    }
     if (isEdit.value) {
-      await request.post(`/system/org/${form.id}/update`, form)
+      await request.post(`/system/org/${form.id}/update`, organizationPayload)
       ElMessage.success('更新成功')
     } else {
-      await request.post('/system/org', form)
+      await request.post('/system/org', organizationPayload)
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false
@@ -358,6 +519,7 @@ function resetForm() {
   form.type = 'org'
   form.orgCode = ''
   form.orgName = ''
+  form.businessLevelCode = ''
   form.leaderId = ''
   form.phone = ''
   form.email = ''
@@ -365,10 +527,12 @@ function resetForm() {
   form.sortOrder = 0
   form.status = '0'
   form.description = ''
+  originalLeaderId.value = ''
 }
 
 onMounted(() => {
   loadOrgTree()
+  loadBusinessLevels()
 })
 </script>
 
@@ -397,6 +561,13 @@ onMounted(() => {
 
 .org-path {
   margin-left: 25px;
+}
+
+.leader-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
 }
 
 @media (max-width: 760px) {

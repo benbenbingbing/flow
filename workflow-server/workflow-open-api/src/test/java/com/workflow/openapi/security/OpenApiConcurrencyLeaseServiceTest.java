@@ -13,9 +13,13 @@ import static org.mockito.Mockito.when;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApiRequestLeaseMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
+import java.lang.reflect.Method;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -96,5 +100,29 @@ class OpenApiConcurrencyLeaseServiceTest {
                                 .getName()
                                 .equals("deleteExpired"))
                         .count());
+    }
+
+    @Test
+    void legacyOpenApiLeaseQueriesStayInTheEmptyScope() throws Exception {
+        Method cleanup = IntegrationApiRequestLeaseMapper.class.getMethod(
+                "deleteExpiredForApplication", String.class, java.time.LocalDateTime.class);
+        Method count = IntegrationApiRequestLeaseMapper.class.getMethod(
+                "countActive", String.class, java.time.LocalDateTime.class);
+        Method insert = IntegrationApiRequestLeaseMapper.class.getMethod(
+                "insert", String.class, String.class, java.time.LocalDateTime.class,
+                java.time.LocalDateTime.class);
+
+        assertEquals(true, sql(cleanup.getAnnotation(Delete.class).value())
+                .contains("scope_key = ''"));
+        assertEquals(true, sql(count.getAnnotation(Select.class).value())
+                .contains("scope_key = ''"));
+        assertEquals(true, sql(insert.getAnnotation(Insert.class).value())
+                .contains("application_id, scope_key"));
+        assertEquals(true, sql(insert.getAnnotation(Insert.class).value())
+                .contains("#{applicationId}, ''"));
+    }
+
+    private static String sql(String[] fragments) {
+        return String.join(" ", fragments).replaceAll("\\s+", " ").trim();
     }
 }

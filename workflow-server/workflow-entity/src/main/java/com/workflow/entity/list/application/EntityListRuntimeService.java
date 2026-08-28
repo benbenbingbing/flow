@@ -56,6 +56,8 @@ public class EntityListRuntimeService {
     private static final Set<String> SCENES = Set.of(
             "MENU", "PAGE", "DIALOG", "DRAWER",
             "EMBEDDED", "FORM_PICKER", "SUB_TABLE");
+    private static final Set<String> EMBED_SAFE_LIST_FIELD_SOURCES = Set.of(
+            "ENTITY_FIELD", "REFERENCE");
 
     private final EntityDataListConfigService dataListService;
     private final EntityDataDynamicService dynamicService;
@@ -135,6 +137,34 @@ public class EntityListRuntimeService {
                 releaseVersion,
                 releaseResolutionToken,
                 compositionContext);
+        return schemaResolved(entityCode, listKey, requestedScene, config);
+    }
+
+    /**
+     * 按服务端已经认证并固定的发布坐标解析列表 Schema。
+     *
+     * <p>该入口仅供 Embed 等可信适配器使用，不能映射为允许浏览器提交 releaseId 的接口。
+     * 它绕过的是“历史版本必须带浏览器解析令牌”的传输约束，不绕过列表访问权限、发布快照
+     * 完整性或系统实体权限。</p>
+     */
+    @Transactional(readOnly = true)
+    public EntityListSchemaDTO schemaPinned(
+            String entityCode,
+            String listKey,
+            String releaseId,
+            int releaseVersion) {
+        return schemaResolved(
+                entityCode,
+                listKey,
+                "EMBEDDED",
+                requirePinnedList(entityCode, listKey, releaseId, releaseVersion));
+    }
+
+    private EntityListSchemaDTO schemaResolved(
+            String entityCode,
+            String listKey,
+            String requestedScene,
+            EntityListConfig config) {
         String scene = validateScene(config, requestedScene);
         requireListAccess(config);
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode)
@@ -251,6 +281,55 @@ public class EntityListRuntimeService {
                 safeRequest.getReleaseVersion(),
                 safeRequest.getReleaseResolutionToken(),
                 compositionContext);
+        return queryResolved(
+                entityCode,
+                listKey,
+                safeRequest,
+                compositionContext,
+                config,
+                Map.of(),
+                false);
+    }
+
+    /**
+     * 查询服务端固定的列表发布版本，并合并服务端解析出的 Embed Context 固定条件。
+     *
+     * <p>客户端条件先按发布列表校验；列表固定条件、Embed Context 条件和 Flow 数据范围均由
+     * 服务端追加，客户端不能覆盖。默认排序仍由已发布列表决定。</p>
+     */
+    @Transactional(readOnly = true)
+    public Object queryPinned(
+            String entityCode,
+            String listKey,
+            String releaseId,
+            int releaseVersion,
+            long pageNum,
+            long pageSize,
+            Map<String, Object> clientFilters,
+            Map<String, Object> trustedContextFilters) {
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setPageNum(pageNum);
+        request.setPageSize(pageSize);
+        request.setScene("EMBEDDED");
+        request.setFilters(clientFilters == null ? Map.of() : clientFilters);
+        return queryResolved(
+                entityCode,
+                listKey,
+                request,
+                null,
+                requirePinnedList(entityCode, listKey, releaseId, releaseVersion),
+                trustedContextFilters == null ? Map.of() : trustedContextFilters,
+                true);
+    }
+
+    private Object queryResolved(
+            String entityCode,
+            String listKey,
+            EntityListQueryRequest safeRequest,
+            UiViewCompositionTokenService.Claims compositionContext,
+            EntityListConfig config,
+            Map<String, Object> trustedContextFilters,
+            boolean bypassPublishedUiEvents) {
         String scene = validateScene(
                 config,
                 safeRequest.getScene());
@@ -258,9 +337,20 @@ public class EntityListRuntimeService {
         Map<String, Object> filters = validateUserFilters(
                 config,
                 safeRequest.getFilters());
-        mergeTrusted(filters, readObject(config.getFixedFilterConfig(), "列表固定条件"));
+        Map<String, Object> publishedFixedFilters = readObject(
+                config.getFixedFilterConfig(), "列表固定条件");
+        if (bypassPublishedUiEvents
+                && hasTrustedFilterConflict(filters, publishedFixedFilters)) {
+            return emptyPage(safeRequest);
+        }
+        mergeTrusted(filters, publishedFixedFilters);
         mergeTrusted(filters, resolveContextFilters(
                 entityCode, listKey, scene, safeRequest.getContext()));
+        // Embed Context 来自已认证 Session 和不可变 Release 绑定，不接受浏览器覆盖。
+        if (hasTrustedFilterConflict(filters, trustedContextFilters)) {
+            return emptyPage(safeRequest);
+        }
+        mergeTrusted(filters, trustedContextFilters);
         if (compositionContext != null) {
             mergeTrusted(
                     filters,
@@ -299,7 +389,7 @@ public class EntityListRuntimeService {
         eventInput.put("scene", scene);
         event.setInput(eventInput);
         Object result;
-        if (compositionContext == null) {
+        if (compositionContext == null && !bypassPublishedUiEvents) {
             result = uiEventRuntimeService.execute(
                     event,
                     input -> queryDefault(
@@ -966,6 +1056,77 @@ public class EntityListRuntimeService {
         return config;
     }
 
+    private EntityListConfig requirePinnedList(
+            String entityCode,
+            String listKey,
+            String releaseId,
+            int releaseVersion) {
+        if (!StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(listKey)
+                || !StringUtils.hasText(releaseId)
+                || releaseVersion < 1) {
+            throw new IllegalArgumentException("固定列表发布坐标不完整");
+        }
+        EntityDefinition definition = definitionMapper
+                .findByEntityCode(entityCode)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "实体不存在: " + entityCode));
+        EntityListConfig draft = listConfigMapper.findByEntityIdAndListKey(
+                definition.getId(), listKey);
+        EntityListConfig config = publishedRuntimeService.resolveViewCompositionConfig(
+                draft, releaseId, releaseVersion);
+        if (config == null
+                || !entityCode.equals(config.getEntityCode())
+                || !listKey.equals(config.getListKey())
+                || !Boolean.TRUE.equals(config.getPublishedSnapshot())
+                || !Boolean.TRUE.equals(config.getPinnedRelease())
+                || !releaseId.equals(config.getActiveReleaseId())
+                || !Integer.valueOf(releaseVersion).equals(config.getPublishedVersion())) {
+            throw new IllegalArgumentException("列表不存在或发布版本不匹配: " + listKey);
+        }
+        return requireEmbedSafePinnedList(config);
+    }
+
+    /**
+     * Embed 铆定列表只允许平台内建的静态查询与渲染链。
+     *
+     * <p>管理端发布器会拒绝这些扩展点，但运行时仍必须复验历史或被篡改的
+     * Release，不能让自定义 Provider、DataSource、组件或组合内容进入 iframe
+     * 权限边界。事件绑定不会被映射到 {@link EntityListConfig}，且 pinned 查询始终
+     * 跳过 UI Event；其余可执行坐标在此显式关闭。</p>
+     */
+    private EntityListConfig requireEmbedSafePinnedList(EntityListConfig config) {
+        if (StringUtils.hasText(config.getCustomComponent())
+                || StringUtils.hasText(config.getQueryProviderCode())
+                || StringUtils.hasText(config.getQueryDataSourceId())
+                || StringUtils.hasText(config.getQueryOperationCode())
+                || (config.getViewCompositions() != null
+                && !config.getViewCompositions().isEmpty())) {
+            throw new IllegalStateException(
+                    "Embed 固定列表发布版本包含不受信扩展");
+        }
+        List<EntityListField> fields = config.getRuntimeFields() == null
+                ? List.of() : config.getRuntimeFields();
+        for (EntityListField field : fields) {
+            if (field == null
+                    || StringUtils.hasText(field.getRenderComponent())
+                    || StringUtils.hasText(field.getTemplateId())
+                    || StringUtils.hasText(field.getDataSourceId())
+                    || StringUtils.hasText(field.getDataSourceOperationCode())) {
+                throw new IllegalStateException(
+                        "Embed 固定列表字段包含不受信扩展");
+            }
+            String source = field.getDataSourceType();
+            if (StringUtils.hasText(source)
+                    && !EMBED_SAFE_LIST_FIELD_SOURCES.contains(
+                    source.trim().toUpperCase(Locale.ROOT))) {
+                throw new IllegalStateException(
+                        "Embed 固定列表字段数据源不受信");
+            }
+        }
+        return config;
+    }
+
     private UiViewCompositionTokenService.Claims
             verifyViewCompositionContext(String token) {
         return StringUtils.hasText(token)
@@ -1121,6 +1282,34 @@ public class EntityListRuntimeService {
         if (trusted != null) {
             target.putAll(trusted);
         }
+    }
+
+    /**
+     * 同一字段上的 View 固定条件、Launch Context 和客户端条件按 AND 语义组合。
+     * 当前列表过滤模型无法表达同字段的两个不同等值条件，因此冲突时必须返回空集，不能让后
+     * 合并条件覆盖先前的租户/范围约束。
+     */
+    private boolean hasTrustedFilterConflict(
+            Map<String, Object> current,
+            Map<String, Object> trusted) {
+        if (trusted == null || trusted.isEmpty()) {
+            return false;
+        }
+        for (Map.Entry<String, Object> entry : trusted.entrySet()) {
+            if (current.containsKey(entry.getKey())
+                    && !Objects.equals(current.get(entry.getKey()), entry.getValue())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private PageResult<?> emptyPage(EntityListQueryRequest request) {
+        return new PageResult<>(
+                List.of(),
+                0,
+                Math.max(1, request.getPageNum()),
+                Math.max(1, Math.min(200, request.getPageSize())));
     }
 
     private Map<String, Object> readObject(String json, String label) {

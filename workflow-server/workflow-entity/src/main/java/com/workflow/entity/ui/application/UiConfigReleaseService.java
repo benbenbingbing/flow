@@ -3695,6 +3695,147 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 按提交阶段已经解析出的可信身份重新读取同一份表单有效快照。
+     *
+     * <p>热修复发布自身的 snapshot/patch 不是某个流程钉定版本应用补丁后的最终快照，
+     * 因此终检不能只凭 {@code effectiveReleaseId} 重新读取发布记录。存在
+     * {@code hotfixTargetId} 时，本方法校验基础发布、热修复发布、目标记录和内容哈希
+     * 的完整关联，并直接读取目标记录中已经固化的 effective snapshot。目标即使在
+     * 表单处理完成后被回滚，也仍按本次提交已经采用的目标快照完成事务终检，避免
+     * 同一次提交前后切换规则。</p>
+     *
+     * @param formId 表单ID
+     * @param releaseId 基础发布ID
+     * @param releaseVersion 基础发布版本
+     * @param effectiveReleaseId 实际生效发布ID；非热修复时等于基础发布ID
+     * @param effectiveContentHash 实际有效快照哈希
+     * @param hotfixTargetId 热修复目标ID；非热修复时为空
+     * @return 与提交处理阶段完全一致的已验证发布表单
+     */
+    public ResolvedEntityFormRelease resolveTrustedEffectiveFormRelease(
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String effectiveReleaseId,
+            String effectiveContentHash,
+            String hotfixTargetId) {
+        if (!StringUtils.hasText(formId)
+                || !StringUtils.hasText(releaseId)
+                || releaseVersion == null) {
+            throw new IllegalArgumentException(
+                    "可信表单发布身份不完整");
+        }
+        UiConfigRelease baseRelease = requireFormRelease(
+                formId,
+                releaseId,
+                releaseVersion,
+                "基础表单发布身份无效");
+        if (!StringUtils.hasText(hotfixTargetId)) {
+            String normalizedEffectiveReleaseId =
+                    StringUtils.hasText(effectiveReleaseId)
+                            ? effectiveReleaseId : releaseId;
+            if (!Objects.equals(
+                    releaseId,
+                    normalizedEffectiveReleaseId)) {
+                throw new IllegalArgumentException(
+                        "热修复有效发布身份缺少目标记录");
+            }
+            if (StringUtils.hasText(effectiveContentHash)
+                    && !Objects.equals(
+                            effectiveContentHash,
+                            baseRelease.getContentHash())) {
+                throw new IllegalArgumentException(
+                        "表单有效快照哈希与基础发布不一致");
+            }
+            return new ResolvedEntityFormRelease(
+                    runtimeForm(verifiedSnapshot(baseRelease)),
+                    releaseId,
+                    releaseVersion,
+                    true,
+                    releaseId,
+                    baseRelease.getContentHash(),
+                    null,
+                    UiRuntimePurpose.HISTORICAL);
+        }
+        if (!StringUtils.hasText(effectiveReleaseId)
+                || !StringUtils.hasText(effectiveContentHash)) {
+            throw new IllegalArgumentException(
+                    "热修复表单发布身份缺少有效发布或快照哈希");
+        }
+
+        UiConfigHotfixTarget target =
+                hotfixTargetMapper.selectById(hotfixTargetId);
+        if (target == null
+                || !FORM.equals(target.getConfigType())
+                || !Objects.equals(formId, target.getConfigId())
+                || !Objects.equals(
+                        releaseId,
+                        target.getPinnedReleaseId())
+                || !Objects.equals(
+                        releaseVersion,
+                        target.getPinnedReleaseVersion())
+                || !Objects.equals(
+                        effectiveReleaseId,
+                        target.getHotfixReleaseId())
+                || !Objects.equals(
+                        effectiveContentHash,
+                        target.getEffectiveContentHash())) {
+            throw new IllegalArgumentException(
+                    "热修复目标与可信表单发布身份不一致");
+        }
+        UiConfigRelease hotfixRelease = requireFormRelease(
+                formId,
+                effectiveReleaseId,
+                null,
+                "热修复表单发布身份无效");
+        if (!HOTFIX.equals(hotfixRelease.getReleaseMode())) {
+            throw new IllegalArgumentException(
+                    "有效发布不是表单热修复版本");
+        }
+        // 两条发布记录同样属于不可变审计链；即使最终规则来自 target，也要先验完整性。
+        verifiedSnapshot(baseRelease);
+        verifiedSnapshot(hotfixRelease);
+
+        // 不检查 target.status：提交处理后发生回滚不能改变同一事务终检所用规则。
+        Map<String, Object> effectiveSnapshot =
+                verifiedEffectiveTargetSnapshot(target);
+        EntityForm form = runtimeForm(effectiveSnapshot);
+        if (form == null
+                || !Objects.equals(formId, form.getId())) {
+            throw new IllegalArgumentException(
+                    "热修复有效快照不属于当前表单");
+        }
+        return new ResolvedEntityFormRelease(
+                form,
+                releaseId,
+                releaseVersion,
+                true,
+                effectiveReleaseId,
+                effectiveContentHash,
+                hotfixTargetId,
+                UiRuntimePurpose.HISTORICAL);
+    }
+
+    /** 校验发布记录确实属于指定表单和基础版本。 */
+    private UiConfigRelease requireFormRelease(
+            String formId,
+            String releaseId,
+            Integer expectedVersion,
+            String message) {
+        UiConfigRelease release = releaseMapper.selectById(releaseId);
+        if (release == null
+                || !FORM.equals(release.getConfigType())
+                || !Objects.equals(formId, release.getConfigId())
+                || expectedVersion != null
+                && !Objects.equals(
+                        expectedVersion,
+                        release.getVersion())) {
+            throw new IllegalArgumentException(message);
+        }
+        return release;
+    }
+
     private ResolvedEntityFormRelease resolvedRuntimeForm(
             UiConfigRelease release,
             boolean pinned) {

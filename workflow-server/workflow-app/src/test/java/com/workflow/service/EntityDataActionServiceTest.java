@@ -7,6 +7,8 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
+import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -40,6 +42,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -276,17 +279,22 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_CREATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyDefaultForm(
+                when(formSubmissionService.applyDefaultFormWithRelease(
                                 "asset",
                                 null,
                                 "create",
                                 dto.getData(),
                                 context)).thenReturn(
-                                                Map.of(
+                                                new PublishedFormSubmissionService.DefaultFormApplication(
+                                                        Map.of(
                                                                 "name",
                                                                 "Laptop",
                                                                 "normalized",
-                                                                true));
+                                                                true),
+                                                        null,
+                                                        null,
+                                                        null,
+                                                        null));
                 when(mutationPort.execute(
                                 any(EntityMutationCommand.class)))
                                 .thenReturn(mutationResult(
@@ -301,7 +309,7 @@ class EntityDataActionServiceTest {
                 service.create(dto);
 
                 verify(formSubmissionService, times(1))
-                                .applyDefaultForm(
+                                .applyDefaultFormWithRelease(
                                                 "asset",
                                                 null,
                                                 "create",
@@ -327,6 +335,90 @@ class EntityDataActionServiceTest {
                                 command.payload().get("data"));
         }
 
+        @Test
+        void defaultFormFallbackCarriesEffectiveReleaseAndTrustedChildMarker() {
+                FormUniqueMutationContext.Reference childReference =
+                                new FormUniqueMutationContext.Reference(
+                                                "child-form",
+                                                "child-release-1",
+                                                1,
+                                                "child-hotfix-2",
+                                                "child-hash-2",
+                                                "child-target-2");
+                Map<String, Object> child = new LinkedHashMap<>(
+                                Map.of("name", "明细A"));
+                TrustedSubFormUniqueReference.attach(
+                                child,
+                                "asset_detail",
+                                childReference);
+                Map<String, Object> processed = new LinkedHashMap<>();
+                processed.put("name", "Laptop");
+                processed.put("details", List.of(child));
+                EntityDataDTO dto = new EntityDataDTO();
+                dto.setEntityCode("asset");
+                dto.setData(Map.of("name", "Laptop"));
+                FormSubmissionExecutionContext context = context(
+                                "default-form-trace",
+                                "ENTITY_CREATE");
+                when(formSubmissionTraceService.current(
+                                eq("ENTITY_CREATE"),
+                                isNull(),
+                                anyMap())).thenReturn(context);
+                when(formSubmissionService.applyDefaultFormWithRelease(
+                                "asset",
+                                null,
+                                "create",
+                                Map.of("name", "Laptop"),
+                                context)).thenReturn(
+                                                new PublishedFormSubmissionService.DefaultFormApplication(
+                                                        processed,
+                                                        "default-form",
+                                                        "release-3",
+                                                        3,
+                                                        "hotfix-4",
+                                                        "hash-4",
+                                                        "target-4"));
+                when(mutationPort.execute(
+                                any(EntityMutationCommand.class)))
+                                .thenReturn(mutationResult(
+                                                "1",
+                                                EntityMutationOperationType.CREATE,
+                                                processed));
+
+                service.create(dto);
+
+                ArgumentCaptor<EntityMutationCommand> captor =
+                                ArgumentCaptor.forClass(
+                                                EntityMutationCommand.class);
+                verify(mutationPort).execute(captor.capture());
+                EntityMutationCommand command = captor.getValue();
+                assertEquals(
+                                "default-form",
+                                command.context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_ID));
+                assertEquals(
+                                "hotfix-4",
+                                command.context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_EFFECTIVE_RELEASE_ID));
+                assertEquals(
+                                "hash-4",
+                                command.context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_EFFECTIVE_CONTENT_HASH));
+                assertEquals(
+                                "target-4",
+                                command.context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_HOTFIX_TARGET_ID));
+                @SuppressWarnings("unchecked")
+                Map<String, Object> commandChild =
+                                (Map<String, Object>) ((List<?>) ((Map<?, ?>)
+                                                command.payload().get("data"))
+                                                .get("details")).get(0);
+                assertEquals(
+                                List.of(childReference),
+                                TrustedSubFormUniqueReference.remove(
+                                                commandChild));
+        }
+
         /**
          * 测试显式选择表单时按所选发布表单处理新增数据，而不是错误回退默认表单。
          */
@@ -335,6 +427,7 @@ class EntityDataActionServiceTest {
                 EntityDataDTO dto = new EntityDataDTO();
                 dto.setEntityCode("asset");
                 dto.setFormId("form-1");
+                dto.setFormReleaseResolutionToken("signed-form-token");
                 dto.setData(Map.of("name", "Laptop"));
                 EntityForm form = form("form-1", "entity-asset");
                 EntityDefinition asset = new EntityDefinition();
@@ -348,21 +441,27 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_CREATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyAuthorizedForm(
+                when(formSubmissionService.applyAuthorizedFormWithRelease(
                                 "form-1",
                                 null,
                                 null,
-                                null,
+                                "signed-form-token",
                                 "asset",
                                 null,
                                 "create",
                                 Map.of("name", "Laptop"),
                                 context)).thenReturn(
-                                                Map.of(
+                                                new PublishedFormSubmissionService.AuthorizedFormApplication(
+                                                        Map.of(
                                                                 "name",
                                                                 "Laptop",
-                                                                "fromSelectedForm",
-                                                                true));
+                                                        "fromSelectedForm",
+                                                                true),
+                                                        "release-pinned",
+                                                        7,
+                                                        "release-hotfix-8",
+                                                        "hash-target-8",
+                                                        "target-8"));
                 stubDefaultEventExecution();
                 when(mutationPort.execute(
                                 any(EntityMutationCommand.class)))
@@ -377,23 +476,50 @@ class EntityDataActionServiceTest {
 
                 service.create(dto);
 
-                verify(formSubmissionService).applyAuthorizedForm(
+                verify(formSubmissionService).applyAuthorizedFormWithRelease(
                                 "form-1",
                                 null,
                                 null,
-                                null,
+                                "signed-form-token",
                                 "asset",
                                 null,
                                 "create",
                                 Map.of("name", "Laptop"),
                                 context);
                 verify(formSubmissionService, never())
-                                .applyDefaultForm(
+                                .applyDefaultFormWithRelease(
                                                 anyString(),
                                                 isNull(),
                                                 anyString(),
                                                 anyMap(),
                                                 any());
+                ArgumentCaptor<EntityMutationCommand> commandCaptor =
+                                ArgumentCaptor.forClass(EntityMutationCommand.class);
+                verify(mutationPort).execute(commandCaptor.capture());
+                assertEquals(
+                                "release-pinned",
+                                commandCaptor.getValue().context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_RELEASE_ID));
+                assertEquals(
+                                7,
+                                commandCaptor.getValue().context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_RELEASE_VERSION));
+                assertEquals(
+                                "release-hotfix-8",
+                                commandCaptor.getValue().context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_EFFECTIVE_RELEASE_ID));
+                assertEquals(
+                                "hash-target-8",
+                                commandCaptor.getValue().context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_EFFECTIVE_CONTENT_HASH));
+                assertEquals(
+                                "target-8",
+                                commandCaptor.getValue().context().extraParams().get(
+                                                FormUniqueMutationContext.FORM_HOTFIX_TARGET_ID));
+                assertEquals(
+                                false,
+                                commandCaptor.getValue().context().extraParams().containsValue(
+                                                "signed-form-token"));
         }
 
         @Test
@@ -437,7 +563,7 @@ class EntityDataActionServiceTest {
                 Map<String, Object> trustedSubmission = Map.of(
                                 "displayName", "服务端来源值",
                                 "note", "保留值");
-                when(formSubmissionService.applyAuthorizedForm(
+                when(formSubmissionService.applyAuthorizedFormWithRelease(
                                 "form-1",
                                 "form-release-1",
                                 2,
@@ -446,7 +572,11 @@ class EntityDataActionServiceTest {
                                 null,
                                 "create",
                                 trustedSubmission,
-                                context)).thenReturn(trustedSubmission);
+                                context)).thenReturn(
+                                        new PublishedFormSubmissionService.AuthorizedFormApplication(
+                                                trustedSubmission,
+                                                "form-release-1",
+                                                2));
                 stubDefaultEventExecution();
                 when(mutationPort.execute(any(EntityMutationCommand.class)))
                                 .thenReturn(mutationResult(
@@ -466,7 +596,7 @@ class EntityDataActionServiceTest {
                                                 "form-release-1",
                                                 2,
                                                 "form-release-token");
-                verify(formSubmissionService).applyAuthorizedForm(
+                verify(formSubmissionService).applyAuthorizedFormWithRelease(
                                 "form-1",
                                 "form-release-1",
                                 2,
@@ -502,7 +632,7 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_UPDATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyDefaultForm(
+                when(formSubmissionService.applyDefaultFormWithRelease(
                                 "asset",
                                 "1",
                                 "edit",
@@ -512,11 +642,16 @@ class EntityDataActionServiceTest {
                                                 "amount",
                                                 12),
                                 context)).thenReturn(
-                                                Map.of(
+                                                new PublishedFormSubmissionService.DefaultFormApplication(
+                                                        Map.of(
                                                                 "name",
                                                                 "Laptop",
                                                                 "normalized",
-                                                                true));
+                                                                true),
+                                                        null,
+                                                        null,
+                                                        null,
+                                                        null));
                 when(mutationPort.execute(
                                 any(EntityMutationCommand.class)))
                                 .thenReturn(mutationResult(
@@ -550,7 +685,7 @@ class EntityDataActionServiceTest {
                                                 true));
 
                 verify(formSubmissionService, times(1))
-                                .applyDefaultForm(
+                                .applyDefaultFormWithRelease(
                                                 "asset",
                                                 "1",
                                                 "edit",
@@ -612,7 +747,7 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_UPDATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyAuthorizedForm(
+                when(formSubmissionService.applyAuthorizedFormWithRelease(
                                 "form-1",
                                 null,
                                 null,
@@ -622,11 +757,14 @@ class EntityDataActionServiceTest {
                                 "edit",
                                 Map.of("name", "Laptop"),
                                 context)).thenReturn(
-                                                Map.of(
+                                                new PublishedFormSubmissionService.AuthorizedFormApplication(
+                                                        Map.of(
                                                                 "name",
                                                                 "Laptop",
                                                                 "fromSelectedForm",
-                                                                true));
+                                                                true),
+                                                        null,
+                                                        null));
                 stubDefaultEventExecution();
                 when(mutationPort.execute(
                                 any(EntityMutationCommand.class)))
@@ -651,7 +789,7 @@ class EntityDataActionServiceTest {
                                                                 "name",
                                                                 "Laptop")));
 
-                verify(formSubmissionService).applyAuthorizedForm(
+                verify(formSubmissionService).applyAuthorizedFormWithRelease(
                                 "form-1",
                                 null,
                                 null,
@@ -662,7 +800,7 @@ class EntityDataActionServiceTest {
                                 Map.of("name", "Laptop"),
                                 context);
                 verify(formSubmissionService, never())
-                                .applyDefaultForm(
+                                .applyDefaultFormWithRelease(
                                                 anyString(),
                                                 anyString(),
                                                 anyString(),

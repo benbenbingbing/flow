@@ -2,6 +2,7 @@ package com.workflow.service.config;
 
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
+import com.workflow.entity.form.application.FormUniqueRulePolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -53,7 +54,11 @@ class EntityFormConfigurationValidatorTest {
                     new PublishedFormConditionEvaluator(
                             OBJECT_MAPPER),
                     entityFieldMapper,
-                    fileItemMapper);
+                    fileItemMapper,
+                    new FormUniqueRulePolicy(
+                            OBJECT_MAPPER,
+                            new PublishedFormConditionEvaluator(
+                                    OBJECT_MAPPER)));
 
     /** 测试接受结构化校验与模式访问：验证合法校验规则与多模式扩展配置通过校验 */
     @Test
@@ -218,6 +223,75 @@ class EntityFormConfigurationValidatorTest {
                         attachmentRuleForm("status")));
         assertTrue(fixedRequired.getMessage().contains(
                 "已是实体固定必填"));
+    }
+
+    @Test
+    void validatesConditionalUniquenessReferencesAtPublishBoundary() {
+        EntityField name = entityField(
+                "field-name",
+                "name",
+                EntityField.FieldType.STRING);
+        EntityField status = entityField(
+                "field-status",
+                "status",
+                EntityField.FieldType.SELECT);
+        when(entityFieldMapper.findByEntityId("entity-1"))
+                .thenReturn(List.of(name, status));
+        EntityForm form = new EntityForm();
+        form.setEntityId("entity-1");
+        form.setFormName("项目表单");
+        form.setFormKey("projectForm");
+        EntityFormField nameField = field();
+        nameField.setFieldCode("name");
+        nameField.setFieldName("项目名称");
+        nameField.setFieldType("STRING");
+        nameField.setValidationRules(writeJson(Map.of(
+                "uniqueness", Map.of(
+                        "version", 1,
+                        "mode", "CONDITIONAL",
+                        "condition", Map.of(
+                                "version", 1,
+                                "root", Map.of(
+                                        "type", "GROUP",
+                                        "logic", "AND",
+                                        "children", List.of(Map.of(
+                                                "type", "CONDITION",
+                                                "property", "missingStatus",
+                                                "operator", "==",
+                                                "value", "OPEN"))))))));
+        form.setFields(List.of(nameField));
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> validator.validateForm(form));
+
+        assertTrue(failure.getMessage().contains("引用字段不存在"));
+    }
+
+    @Test
+    void rejectsUniquenessBoundToVirtualFormFieldAtPublishBoundary() {
+        when(entityFieldMapper.findByEntityId("entity-1"))
+                .thenReturn(List.of(entityField(
+                        "field-status",
+                        "status",
+                        EntityField.FieldType.SELECT)));
+        EntityForm form = new EntityForm();
+        form.setEntityId("entity-1");
+        form.setFormName("虚拟字段表单");
+        form.setFormKey("virtualFieldForm");
+        EntityFormField virtualField = field();
+        virtualField.setFieldCode("calculatedName");
+        virtualField.setFieldName("计算名称");
+        virtualField.setFieldType("STRING");
+        virtualField.setValidationRules(
+                "{\"uniqueness\":{\"version\":1,\"mode\":\"GLOBAL\"}}");
+        form.setFields(List.of(virtualField));
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> validator.validateForm(form));
+
+        assertTrue(failure.getMessage().contains("持久化字段"));
     }
 
     private EntityForm attachmentRuleForm(String conditionProperty) {

@@ -16,10 +16,13 @@ import com.workflow.contracts.process.open.OpenProcessIdentityNotResolvedExcepti
 import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
 import com.workflow.contracts.identity.external.ExternalIdentityResolver;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
+import com.workflow.process.assignment.relative.InitiatorOrganizationSnapshotService;
+import com.workflow.process.assignment.relative.RelativeOrgPositionProcessInspector;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
 import java.time.Instant;
@@ -54,6 +57,7 @@ public class OpenProcessAdapter
     private static final String MESSAGE_EVENT_TYPE = "message";
     private static final Set<String> RESERVED_VARIABLES = Set.of(
             "initiator",
+            "startUserId",
             "submitterId",
             "submitterName",
             "entityCode",
@@ -69,7 +73,8 @@ public class OpenProcessAdapter
             "integrationExternalInitiatorId",
             "integrationExternalInitiatorNamespace",
             "integrationOutcomeMapping",
-            "integrationEventsDeferred");
+            "integrationEventsDeferred",
+            InitiatorOrganizationSnapshotService.VARIABLE_NAME);
 
     private final ProcessDefinitionConfigMapper processDefinitionMapper;
     private final ProcessVersionHistoryMapper processVersionMapper;
@@ -81,6 +86,13 @@ public class OpenProcessAdapter
     private final ProcessTaskService processTaskService;
     private final RepositoryService repositoryService;
     private final List<ExternalIdentityResolver> externalIdentityResolvers;
+
+    /** 兼容直接构造的旧测试；生产组件会注入快照服务。 */
+    @Autowired
+    private InitiatorOrganizationSnapshotService initiatorSnapshotService;
+
+    @Autowired
+    private RelativeOrgPositionProcessInspector relativePositionProcessInspector;
 
     @Autowired
     public OpenProcessAdapter(
@@ -163,7 +175,8 @@ public class OpenProcessAdapter
                         "Process definition is not published"));
 
         Map<String, Object> variables = new HashMap<>(
-                command.variables());
+                WorkflowReservedVariables.sanitize(
+                        command.variables()));
         RESERVED_VARIABLES.forEach(variables::remove);
         variables.put(
                 "integrationApplicationId",
@@ -207,6 +220,16 @@ public class OpenProcessAdapter
         ProcessDefinition deployed = resolveDeployedDefinition(
                 definition.getProcessKey(),
                 command.processDefinitionVersion());
+        if (relativePositionProcessInspector != null
+                && relativePositionProcessInspector
+                .requiresInitiatorOrganizationSnapshot(deployed.getId())) {
+            if (initiatorSnapshotService == null) {
+                throw new OpenProcessStateConflictException(
+                        "Relative organization snapshot service is unavailable");
+            }
+            initiatorSnapshotService.captureTrustedSnapshot(
+                    variables, resolvedInitiator);
+        }
         multiInstanceListener.prepareVariables(
                 deployed.getId(),
                 variables);
@@ -281,7 +304,8 @@ public class OpenProcessAdapter
                         command.processKey(),
                         command.businessKey(),
                         command.actor(),
-                        command.variables());
+                        WorkflowReservedVariables.sanitize(
+                                command.variables()));
         List<ExternalIdentityResolver> candidates =
                 externalIdentityResolvers.stream()
                         .filter(resolver -> resolver.supports(
@@ -417,7 +441,8 @@ public class OpenProcessAdapter
         runtimeService.messageEventReceived(
                 command.messageKey(),
                 subscriptions.get(0).getExecutionId(),
-                command.variables());
+                WorkflowReservedVariables.sanitizeRuntimeMutation(
+                        command.variables()));
         return new OpenMessageCorrelationResult(
                 command.processInstanceId(),
                 command.messageKey(),
@@ -449,7 +474,10 @@ public class OpenProcessAdapter
         }
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         variables.forEach((key, value) -> {
-            if (key != null && value != null) {
+            if (key != null
+                    && value != null
+                    && !WorkflowReservedVariables
+                    .isInternalVariable(key)) {
                 result.put(key, value);
             }
         });

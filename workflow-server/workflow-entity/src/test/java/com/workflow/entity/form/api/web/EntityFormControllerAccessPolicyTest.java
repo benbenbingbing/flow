@@ -2,6 +2,7 @@ package com.workflow.entity.form.api.web;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.application.EntityFormService;
+import com.workflow.entity.form.application.PublishedFormUniquePrecheckService;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
@@ -27,7 +28,8 @@ class EntityFormControllerAccessPolicyTest {
                 formService,
                 mock(UiConfigDraftMetadataService.class),
                 accessService,
-                capability);
+                capability,
+                mock(PublishedFormUniquePrecheckService.class));
         when(formService.requireEntityCode("entity-1"))
                 .thenReturn("ZDWREQ");
         when(formService.getEntityFields("entity-1"))

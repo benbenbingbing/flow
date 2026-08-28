@@ -42,12 +42,25 @@ connector_args="
   --set connector.http.previousMasterKeysSecretKey=integration-connector-previous-master-keys
   --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
 "
+embed_args="
+  --set ingress.enabled=true
+  --set-string ingress.host=admin.flow.example.com
+  --set embed.enabled=true
+  --set-string embed.publicHost=embed.flow.example.com
+  --set-string embed.tlsSecretName=flow-embed-tls
+"
 
 # shellcheck disable=SC2086
 helm lint "$repository_root/deploy/helm/flow" --strict $production_args
 helm lint "$repository_root/deploy/helm/flow" \
   --strict \
   --values "$repository_root/deploy/k3s/values.yaml"
+# shellcheck disable=SC2086
+helm lint "$repository_root/deploy/helm/flow" \
+  --strict \
+  $production_args \
+  $open_api_args \
+  $embed_args
 
 # shellcheck disable=SC2086
 helm template flow-production "$repository_root/deploy/helm/flow" \
@@ -81,6 +94,73 @@ helm template flow-connector "$repository_root/deploy/helm/flow" \
   $production_args \
   $connector_args \
   >"$temporary_directory/connector.yaml"
+
+# shellcheck disable=SC2086
+helm template flow-embed "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  $embed_args \
+  >"$temporary_directory/embed.yaml"
+
+if helm template flow-invalid-embed "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set ingress.enabled=true \
+  --set-string ingress.host=admin.flow.example.com \
+  --set embed.enabled=true \
+  --set-string embed.publicHost=admin.flow.example.com \
+  --set-string embed.tlsSecretName=flow-embed-tls \
+  >"$temporary_directory/invalid-embed-same-host.yaml" 2>/dev/null; then
+  printf 'Embed Runtime must reject an admin/embed same-host deployment\n' >&2
+  exit 1
+fi
+
+if helm template flow-invalid-embed "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set embed.enabled=true \
+  --set-string embed.publicHost=embed.flow.example.com \
+  >"$temporary_directory/invalid-embed-missing-tls.yaml" 2>/dev/null; then
+  printf 'Embed Runtime must require an HTTPS TLS Secret\n' >&2
+  exit 1
+fi
+
+if helm template flow-invalid-embed "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  $embed_args \
+  --set-string embed.hmacKeySecretKey=embed-context-key-base64 \
+  >"$temporary_directory/invalid-embed-reused-crypto-key.yaml" 2>/dev/null; then
+  printf 'Embed Runtime must use distinct context encryption and HMAC Secret entries\n' >&2
+  exit 1
+fi
+
+if helm template flow-invalid-embed "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  $open_api_args \
+  --set embed.enabled=true \
+  --set-string embed.publicHost=https://embed.flow.example.com \
+  --set-string embed.tlsSecretName=flow-embed-tls \
+  >"$temporary_directory/invalid-embed-http-boundary.yaml" 2>/dev/null; then
+  printf 'Embed Runtime publicHost must be an HTTPS-only host, not a URL or HTTP endpoint\n' >&2
+  exit 1
+fi
+
+if helm template flow-invalid-embed "$repository_root/deploy/helm/flow" \
+  --namespace flow-production \
+  $production_args \
+  --set embed.enabled=true \
+  --set-string embed.publicHost=embed.flow.example.com \
+  --set-string embed.tlsSecretName=flow-embed-tls \
+  >"$temporary_directory/invalid-embed-open-api-disabled.yaml" 2>/dev/null; then
+  printf 'Embed Runtime must require the Open API launch boundary\n' >&2
+  exit 1
+fi
 
 if helm template flow-connector "$repository_root/deploy/helm/flow" \
   --namespace flow-production \
@@ -199,6 +279,165 @@ monitoring_kind_count=$(awk '
 ' "$temporary_directory/monitoring.yaml")
 [ "$monitoring_kind_count" -eq 2 ]
 
+extract_manifest_document() {
+  manifest_file="$1"
+  resource_name="$2"
+  resource_kind="$3"
+  awk -v target="$resource_name" -v target_kind="$resource_kind" '
+    function emit_if_matched() {
+      if (name_matched && kind_matched) {
+        printf "%s", document
+        emitted = 1
+        exit
+      }
+    }
+    /^---$/ {
+      emit_if_matched()
+      document = ""
+      name_matched = 0
+      kind_matched = 0
+      next
+    }
+    {
+      document = document $0 ORS
+      if ($0 == "  name: " target) {
+        name_matched = 1
+      }
+      if ($0 == "kind: " target_kind) {
+        kind_matched = 1
+      }
+    }
+    END {
+      if (name_matched && kind_matched && !emitted) {
+        printf "%s", document
+      }
+    }
+  ' "$manifest_file"
+}
+
+assert_exact_line() {
+  manifest_file="$1"
+  expected_line="$2"
+  if ! grep -F -x "$expected_line" "$manifest_file" >/dev/null; then
+    printf 'expected line not found in %s: %s\n' "$manifest_file" "$expected_line" >&2
+    exit 1
+  fi
+}
+
+assert_env_value() {
+  manifest_file="$1"
+  variable_name="$2"
+  expected_value="$3"
+  if ! awk -v variable_name="$variable_name" -v expected_value="$expected_value" '
+    $1 == "-" && $2 == "name:" && $3 == variable_name {
+      if (getline <= 0 || $1 != "value:") {
+        exit 1
+      }
+      value = $2
+      gsub(/^"|"$/, "", value)
+      if (value == expected_value) {
+        found = 1
+      }
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$manifest_file"; then
+    printf 'expected environment value not found in %s: %s=%s\n' \
+      "$manifest_file" "$variable_name" "$expected_value" >&2
+    exit 1
+  fi
+}
+
+extract_manifest_document \
+  "$temporary_directory/embed.yaml" \
+  flow-embed-flow-embed \
+  Ingress \
+  >"$temporary_directory/embed-ingress.yaml"
+extract_manifest_document \
+  "$temporary_directory/embed.yaml" \
+  flow-embed-flow-web \
+  Service \
+  >"$temporary_directory/embed-web-resource.yaml"
+extract_manifest_document \
+  "$temporary_directory/embed.yaml" \
+  flow-embed-flow-web \
+  Deployment \
+  >"$temporary_directory/embed-web-deployment.yaml"
+extract_manifest_document \
+  "$temporary_directory/embed.yaml" \
+  flow-embed-flow-server \
+  Deployment \
+  >"$temporary_directory/embed-server-deployment.yaml"
+extract_manifest_document \
+  "$temporary_directory/production.yaml" \
+  flow-production-flow-web \
+  Service \
+  >"$temporary_directory/default-web-resource.yaml"
+extract_manifest_document \
+  "$temporary_directory/production.yaml" \
+  flow-production-flow-server \
+  Deployment \
+  >"$temporary_directory/default-server-deployment.yaml"
+
+embed_ingress_path_count=$(awk '$1 == "-" && $2 == "path:" { count++ } END { print count + 0 }' \
+  "$temporary_directory/embed-ingress.yaml")
+[ "$embed_ingress_path_count" -eq 3 ]
+assert_exact_line "$temporary_directory/embed-ingress.yaml" '    - host: "embed.flow.example.com"'
+assert_exact_line "$temporary_directory/embed-ingress.yaml" '      secretName: flow-embed-tls'
+assert_exact_line "$temporary_directory/embed-ingress.yaml" '    nginx.ingress.kubernetes.io/ssl-redirect: "true"'
+assert_exact_line "$temporary_directory/embed-ingress.yaml" '    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"'
+assert_exact_line "$temporary_directory/embed-ingress.yaml" '          - path: /embed/v1/launches/'
+assert_exact_line "$temporary_directory/embed-ingress.yaml" '          - path: /embed-assets/'
+assert_exact_line "$temporary_directory/embed-ingress.yaml" '          - path: /api/embed/v1/'
+embed_ingress_backend_count=$(awk '$1 == "name:" && $2 == "embed" { count++ } END { print count + 0 }' \
+  "$temporary_directory/embed-ingress.yaml")
+[ "$embed_ingress_backend_count" -eq 3 ]
+
+# 独立端口必须从 Ingress Service port 一直连接到 Nginx containerPort 8081。
+assert_exact_line "$temporary_directory/embed-web-resource.yaml" '    - name: embed'
+assert_exact_line "$temporary_directory/embed-web-resource.yaml" '      port: 8081'
+assert_exact_line "$temporary_directory/embed-web-resource.yaml" '      targetPort: embed'
+assert_exact_line "$temporary_directory/embed-web-deployment.yaml" '              containerPort: 8081'
+assert_env_value "$temporary_directory/embed-server-deployment.yaml" \
+  WORKFLOW_EMBED_ENABLED true
+assert_env_value "$temporary_directory/embed-server-deployment.yaml" \
+  WORKFLOW_EMBED_PUBLIC_BASE_URL https://embed.flow.example.com
+assert_exact_line "$temporary_directory/embed-server-deployment.yaml" \
+  '            - name: WORKFLOW_EMBED_CONTEXT_KEY_BASE64'
+assert_exact_line "$temporary_directory/embed-server-deployment.yaml" \
+  '                  key: embed-context-key-base64'
+assert_exact_line "$temporary_directory/embed-server-deployment.yaml" \
+  '            - name: WORKFLOW_EMBED_HMAC_KEY_BASE64'
+assert_exact_line "$temporary_directory/embed-server-deployment.yaml" \
+  '                  key: embed-hmac-key-base64'
+assert_env_value "$temporary_directory/default-server-deployment.yaml" \
+  WORKFLOW_EMBED_ENABLED false
+assert_env_value "$temporary_directory/default-server-deployment.yaml" \
+  WORKFLOW_EMBED_PUBLIC_BASE_URL https://embed.invalid
+if grep -F 'targetPort: embed' "$temporary_directory/production.yaml" >/dev/null; then
+  printf 'Embed Service port must stay unpublished while embed.enabled=false\n' >&2
+  exit 1
+fi
+
+embed_vhost_file="$temporary_directory/embed-nginx-vhost.conf"
+awk '/^# Embed Runtime 使用独立端口/ { capture = 1 } capture { print }' \
+  "$repository_root/workflow-web/nginx.conf" >"$embed_vhost_file"
+assert_exact_line "$embed_vhost_file" '    listen 8081;'
+assert_exact_line "$embed_vhost_file" '    if ($flow_forwarded_proto != "https") {'
+assert_exact_line "$embed_vhost_file" '    location ^~ /embed-assets/ {'
+assert_exact_line "$embed_vhost_file" '    location ^~ /api/embed/v1/ {'
+assert_exact_line "$embed_vhost_file" '    location / {'
+if grep -F 'location /api/ {' "$embed_vhost_file" >/dev/null \
+  || grep -F 'try_files $uri $uri/ /index.html;' "$embed_vhost_file" >/dev/null; then
+  printf 'Embed VHost must not expose ordinary API routes or an admin SPA fallback\n' >&2
+  exit 1
+fi
+assert_exact_line "$embed_vhost_file" \
+  '    location ~ "^/embed/v1/launches/lch_[A-Za-z0-9_-]{16,60}$" {'
+if ! grep -F "frame-ancestors 'none'" "$repository_root/workflow-web/nginx.conf" >/dev/null; then
+  printf 'Admin VHost must retain frame-ancestors none\n' >&2
+  exit 1
+fi
+
 kubeconform_image="ghcr.io/yannh/kubeconform@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c"
 
 container_proxy_value() {
@@ -298,6 +537,11 @@ run_kubeconform_file "$temporary_directory/connector.yaml" \
   -strict \
   -summary
 
+run_kubeconform_file "$temporary_directory/embed.yaml" \
+  -kubernetes-version 1.32.0 \
+  -strict \
+  -summary
+
 run_kubeconform_file "$temporary_directory/monitoring.yaml" \
   -kubernetes-version 1.32.0 \
   -strict \
@@ -345,4 +589,4 @@ WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD=TestBootstrap1234 \
     --file "$repository_root/deploy/compose.prod.yml" \
     config >"$temporary_directory/compose.yaml"
 
-printf 'production and local deployment manifests are valid\n'
+printf 'production, Embed, and local deployment manifests are valid\n'

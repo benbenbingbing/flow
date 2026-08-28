@@ -19,6 +19,7 @@ import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.RuntimeService;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -87,7 +89,7 @@ public class NodeFormSubmissionService {
         }
         FormSubmissionExecutionContext executionContext =
                 submissionExecutionContext(task, projection);
-        Map<String, Object> processedValues = applyBeforeSubmit(
+        AppliedFormSubmission applied = applyBeforeSubmit(
                 projection.published().nodeForms(),
                 projection.published().history().getId(),
                 task,
@@ -96,7 +98,9 @@ public class NodeFormSubmissionService {
                 projection.trustedValues(),
                 executionContext,
                 true);
-        return changedEditableValues(projection, processedValues);
+        return changedEditableValues(
+                projection,
+                applied.data());
     }
 
     /**
@@ -125,7 +129,7 @@ public class NodeFormSubmissionService {
         String entityDataId = projection.entityDataId();
         FormSubmissionExecutionContext executionContext =
                 submissionExecutionContext(task, projection);
-        Map<String, Object> processedValues =
+        AppliedFormSubmission applied =
                 applyBeforeSubmit(
                         projection.published().nodeForms(),
                         projection.published().history().getId(),
@@ -137,11 +141,17 @@ public class NodeFormSubmissionService {
                         false);
 
         Map<String, Object> editableValues =
-                changedEditableValues(projection, processedValues);
-        if (editableValues.isEmpty()) {
-            return;
-        }
-
+                changedEditableValues(
+                        projection,
+                        applied.data());
+        Map<String, Object> mutationExtraParams =
+                new LinkedHashMap<>();
+        mutationExtraParams.put(
+                "taskDefinitionKey",
+                task.getTaskDefinitionKey());
+        mutationExtraParams.putAll(
+                FormUniqueMutationContext.encodeReferences(
+                        applied.formReferences()));
         EntityMutationContext mutationContext =
                 EntityMutationContext.builder(
                                 EntityMutationSourceType.APPROVAL_TASK,
@@ -156,17 +166,31 @@ public class NodeFormSubmissionService {
                         .trace(
                                 executionContext.businessTraceKey(),
                                 executionContext.businessTraceKey())
-                        .extraParams(Map.of(
-                                "taskDefinitionKey",
-                                task.getTaskDefinitionKey()))
+                        .extraParams(mutationExtraParams)
                         .build();
+        if (editableValues.isEmpty()) {
+            // “字段变化后校验”只是前端预检触发策略；最终唯一
+            // 校验必须在每次实际表单提交时执行。这里使用受信
+            // no-op 路径，不改业务行、不生成伪版本。
+            if (!applied.formReferences().isEmpty()) {
+                entityMutationPort.reconcileFormUniqueness(
+                        entityCode,
+                        entityDataId,
+                        mutationContext);
+            }
+            return;
+        }
         entityMutationPort.execute(
                 EntityMutationCommand.update(
                         entityCode,
                         entityDataId,
                         Map.of("data", editableValues),
                         mutationContext));
-        runtimeService.setVariables(processInstanceId, editableValues);
+        runtimeService.setVariables(
+                processInstanceId,
+                com.workflow.process.instance.application
+                        .WorkflowReservedVariables.sanitizeRuntimeMutation(
+                        editableValues));
         Map<String, Object> mergedEntityData = new LinkedHashMap<>(
                 projection.trustedValues());
         mergedEntityData.putAll(editableValues);
@@ -229,7 +253,7 @@ public class NodeFormSubmissionService {
      * @param executionContext 表单提交上下文（用于追踪）
      * @return 处理后的字段值
      */
-    private Map<String, Object> applyBeforeSubmit(
+    private AppliedFormSubmission applyBeforeSubmit(
             List<ProcessNodeForm> nodeForms,
             String processVersionHistoryId,
             Task task,
@@ -250,7 +274,7 @@ public class NodeFormSubmissionService {
                     true);
         }
         try {
-            Map<String, Object> result = applyBeforeSubmitInternal(
+            AppliedFormSubmission result = applyBeforeSubmitInternal(
                     nodeForms,
                     processVersionHistoryId,
                     task,
@@ -270,7 +294,7 @@ public class NodeFormSubmissionService {
         }
     }
 
-    private Map<String, Object> applyBeforeSubmitInternal(
+    private AppliedFormSubmission applyBeforeSubmitInternal(
             List<ProcessNodeForm> nodeForms,
             String processVersionHistoryId,
             Task task,
@@ -281,6 +305,8 @@ public class NodeFormSubmissionService {
             boolean sideEffectFreePreview) {
         Map<String, Object> result =
                 new HashMap<>(submittedValues);
+        List<FormUniqueMutationContext.Reference> formReferences =
+                new ArrayList<>();
         if (!nodeForms.isEmpty()) {
             Set<String> appliedFormReleases =
                     new HashSet<>();
@@ -295,18 +321,8 @@ public class NodeFormSubmissionService {
                                 UiRuntimePurpose.ACTIVE_TASK,
                                 processVersionHistoryId,
                                 task.getTaskDefinitionKey());
-                result = sideEffectFreePreview
-                        ? formSubmissionService.previewSideEffectFreeForm(
-                                nodeForm.getFormId(),
-                                nodeForm.getFormReleaseId(),
-                                nodeForm.getFormReleaseVersion(),
-                                entityCode,
-                                entityDataId,
-                                "approve",
-                                result,
-                                executionContext,
-                                resolutionContext)
-                        : formSubmissionService.applyForm(
+                if (sideEffectFreePreview) {
+                    result = formSubmissionService.previewSideEffectFreeForm(
                                 nodeForm.getFormId(),
                                 nodeForm.getFormReleaseId(),
                                 nodeForm.getFormReleaseVersion(),
@@ -316,22 +332,51 @@ public class NodeFormSubmissionService {
                                 result,
                                 executionContext,
                                 resolutionContext);
+                } else {
+                    PublishedFormSubmissionService.AuthorizedFormApplication
+                            applied = formSubmissionService.applyFormWithRelease(
+                                nodeForm.getFormId(),
+                                nodeForm.getFormReleaseId(),
+                                nodeForm.getFormReleaseVersion(),
+                                entityCode,
+                                entityDataId,
+                                "approve",
+                                result,
+                                executionContext,
+                                resolutionContext);
+                    result = applied.data();
+                    formReferences.add(
+                            new FormUniqueMutationContext.Reference(
+                                    nodeForm.getFormId(),
+                                    applied.releaseId(),
+                                    applied.releaseVersion(),
+                                    applied.effectiveReleaseId(),
+                                    applied.effectiveContentHash(),
+                                    applied.hotfixTargetId()));
+                }
             }
-            return result;
+            return new AppliedFormSubmission(
+                    result,
+                    List.copyOf(formReferences));
         }
         var definition =
                 entityFormService.getEntityByCode(entityCode);
         if (definition == null) {
-            return result;
+            return new AppliedFormSubmission(
+                    result,
+                    List.of());
         }
         EntityForm form =
                 entityFormService.getDefaultForm(
                         definition.getId());
         if (form == null) {
-            return result;
+            return new AppliedFormSubmission(
+                    result,
+                    List.of());
         }
-        return sideEffectFreePreview
-                ? formSubmissionService.previewSideEffectFreeForm(
+        if (sideEffectFreePreview) {
+            return new AppliedFormSubmission(
+                    formSubmissionService.previewSideEffectFreeForm(
                         form.getId(),
                         null,
                         null,
@@ -340,8 +385,11 @@ public class NodeFormSubmissionService {
                         "approve",
                         result,
                         executionContext,
-                        null)
-                : formSubmissionService.applyForm(
+                        null),
+                    List.of());
+        }
+        PublishedFormSubmissionService.AuthorizedFormApplication
+                applied = formSubmissionService.applyFormWithRelease(
                         form.getId(),
                         null,
                         null,
@@ -351,6 +399,17 @@ public class NodeFormSubmissionService {
                         result,
                         executionContext,
                         null);
+        // 无显式节点绑定时，默认表单仍是本次实际应用的表单；
+        // 是否有唯一规则由事务终检按该精确发布快照解析。
+        return new AppliedFormSubmission(
+                applied.data(),
+                List.of(new FormUniqueMutationContext.Reference(
+                        form.getId(),
+                        applied.releaseId(),
+                        applied.releaseVersion(),
+                        applied.effectiveReleaseId(),
+                        applied.effectiveContentHash(),
+                        applied.hotfixTargetId())));
     }
 
     private void observeTask(
@@ -554,6 +613,12 @@ public class NodeFormSubmissionService {
             Set<String> editableFieldCodes,
             Map<String, Object> submittedEditableValues,
             Map<String, Object> trustedValues) {
+    }
+
+    /** 已应用表单处理后的数据，以及本次权威解析得到的发布身份。 */
+    private record AppliedFormSubmission(
+            Map<String, Object> data,
+            List<FormUniqueMutationContext.Reference> formReferences) {
     }
 
     private Map<String, Object> submissionAttributes(

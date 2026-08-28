@@ -13,3 +13,8 @@ spec:
     - name: http
       port: 80
       targetPort: http
+    {{- if .Values.embed.enabled }}
+    - name: embed
+      port: 8081
+      targetPort: embed
+    {{- end }}

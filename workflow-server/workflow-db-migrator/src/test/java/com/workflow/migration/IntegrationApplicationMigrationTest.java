@@ -16,6 +16,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,6 +101,21 @@ class IntegrationApplicationMigrationTest {
                                 "is_required"));
                 assertTrue(tableExists("auth_refresh_session"));
                 assertTrue(tableExists("ui_view_composition"));
+                assertTrue(tableExists("entity_form_unique_claim"));
+                assertTrue(tableExists(
+                                "entity_form_unique_value_gate"));
+                assertTrue(indexExists(
+                                "entity_form_unique_claim",
+                                "uk_form_unique_claim_record"));
+                assertTrue(columnExists(
+                                "entity_form_unique_claim",
+                                "effective_release_id"));
+                assertTrue(columnExists(
+                                "entity_form_unique_claim",
+                                "effective_content_hash"));
+                assertTrue(columnExists(
+                                "entity_form_unique_claim",
+                                "hotfix_target_id"));
                 assertTrue(columnExists(
                                 "system_operation_log",
                                 "operation_id"));
@@ -282,6 +299,144 @@ class IntegrationApplicationMigrationTest {
                 for (String table : webhookTables()) {
                         assertTrue(columnExists(table, "create_time"));
                         assertTrue(columnExists(table, "update_time"));
+                }
+        }
+
+        @Test
+        void formUniqueClaimUsesFormScopedAtomicKeys()
+                        throws Exception {
+                flyway().migrate();
+                execute("""
+                                INSERT INTO entity_form_unique_claim (
+                                  constraint_key, value_hash, entity_code,
+                                  form_id, rule_id, field_code,
+                                  normalized_value, record_id,
+                                  effective_release_id
+                                ) VALUES (
+                                  'FORM:form-a:release-a-1:uq_name',
+                                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                                  'project', 'form-a', 'uq_name', 'name',
+                                  'project-a', 'record-1', 'release-a-1'
+                                )
+                                """);
+
+                // 同一表单规则的相同规范化值必须由数据库原子拒绝。
+                assertThrows(SQLException.class, () -> execute("""
+                                INSERT INTO entity_form_unique_claim (
+                                  constraint_key, value_hash, entity_code,
+                                  form_id, rule_id, field_code,
+                                  normalized_value, record_id,
+                                  effective_release_id
+                                ) VALUES (
+                                  'FORM:form-a:release-a-1:uq_name',
+                                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                                  'project', 'form-a', 'uq_name', 'name',
+                                  'project-a', 'record-2', 'release-a-1'
+                                )
+                                """));
+
+                // 不同表单拥有独立命名空间，不会继承 form-a 的规则。
+                execute("""
+                                INSERT INTO entity_form_unique_claim (
+                                  constraint_key, value_hash, entity_code,
+                                  form_id, rule_id, field_code,
+                                  normalized_value, record_id,
+                                  effective_release_id
+                                ) VALUES (
+                                  'FORM:form-b:release-b-1:uq_name',
+                                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                                  'project', 'form-b', 'uq_name', 'name',
+                                  'project-a', 'record-2', 'release-b-1'
+                                )
+                                """);
+
+                // 同一表单的新有效发布版拥有独立规则空间，旧条件占位不会造成假冲突。
+                execute("""
+                                INSERT INTO entity_form_unique_claim (
+                                  constraint_key, value_hash, entity_code,
+                                  form_id, rule_id, field_code,
+                                  normalized_value, record_id,
+                                  effective_release_id
+                                ) VALUES (
+                                  'FORM:form-a:release-a-2:uq_name',
+                                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                                  'project', 'form-a', 'uq_name', 'name',
+                                  'project-a', 'record-3', 'release-a-2'
+                                )
+                                """);
+        }
+
+        @Test
+        void formUniqueValueGateSerializesDifferentFormsAndReleases()
+                        throws Exception {
+                flyway().migrate();
+                String insertGate = """
+                                INSERT IGNORE INTO entity_form_unique_value_gate (
+                                  scope_key, value_hash
+                                ) VALUES (
+                                  'ENTITY:project:name',
+                                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+                                )
+                                """;
+                String lockGate = """
+                                SELECT value_hash
+                                  FROM entity_form_unique_value_gate
+                                 WHERE scope_key = 'ENTITY:project:name'
+                                   AND value_hash =
+                                     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+                                 FOR UPDATE
+                                """;
+                ExecutorService executor =
+                                Executors.newSingleThreadExecutor();
+                try (Connection first = MYSQL.createConnection("")) {
+                        first.setTransactionIsolation(
+                                        Connection.TRANSACTION_READ_COMMITTED);
+                        first.setAutoCommit(false);
+                        try (Statement statement = first.createStatement()) {
+                                statement.executeUpdate(insertGate);
+                                try (ResultSet locked = statement.executeQuery(
+                                                lockGate)) {
+                                        assertTrue(locked.next());
+                                }
+                        }
+
+                        CountDownLatch secondStarted =
+                                        new CountDownLatch(1);
+                        Future<Boolean> second = executor.submit(() -> {
+                                try (Connection connection =
+                                                     MYSQL.createConnection("")) {
+                                        connection.setTransactionIsolation(
+                                                        Connection.TRANSACTION_READ_COMMITTED);
+                                        connection.setAutoCommit(false);
+                                        secondStarted.countDown();
+                                        try (Statement statement =
+                                                             connection.createStatement()) {
+                                                // 模拟另一表单/effective release 写入同一实体字段和值：
+                                                // INSERT IGNORE 必须等待前一事务释放稳定 gate 行。
+                                                statement.executeUpdate(insertGate);
+                                                try (ResultSet locked =
+                                                                     statement.executeQuery(
+                                                                             lockGate)) {
+                                                        assertTrue(locked.next());
+                                                }
+                                        }
+                                        connection.commit();
+                                        return true;
+                                }
+                        });
+                        assertTrue(secondStarted.await(
+                                        5, TimeUnit.SECONDS));
+                        assertThrows(
+                                        TimeoutException.class,
+                                        () -> second.get(
+                                                        250,
+                                                        TimeUnit.MILLISECONDS));
+
+                        first.commit();
+                        assertTrue(second.get(
+                                        5, TimeUnit.SECONDS));
+                } finally {
+                        executor.shutdownNow();
                 }
         }
 

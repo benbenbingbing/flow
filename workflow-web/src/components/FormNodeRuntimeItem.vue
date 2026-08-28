@@ -123,10 +123,12 @@
     :label="node.props.label || runtimeField.fieldLabel || runtimeField.fieldName"
     :prop="fieldKey"
     :rules="fieldRules"
+    :error="uniquePrecheckContext?.errorFor?.(fieldKey) || ''"
     :required="required"
     class="node-field"
   >
     <FormFieldRendererLinkage
+      ref="fieldRendererRef"
       :field="runtimeField"
       :model-value="modelValue[fieldKey]"
       :disabled="disabled"
@@ -170,7 +172,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, ref, watch } from 'vue'
+import { computed, defineComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
@@ -189,6 +191,14 @@ import {
   migrateFormNodeConfig,
   resolveFormNodeDescriptor
 } from '@/utils/formNodeRegistry'
+import {
+  appendFormUniqueBlurRule,
+  FORM_UNIQUE_PRECHECK_CONTEXT_KEY
+} from '@/shared/form-runtime/uniquePrecheckContext'
+import {
+  findFormNodeContainingValidationField,
+  formNodeSubtreeContainsValidationField
+} from '@/shared/form-runtime/validationReveal'
 
 defineOptions({ name: 'FormNodeRuntimeItem' })
 
@@ -203,10 +213,13 @@ const props = defineProps({
   dataSourceRuntime: { type: Object, default: null },
   childrenFor: { type: Function, required: true },
   layoutType: { type: String, default: 'vertical' },
+  revealFieldCode: { type: String, default: '' },
   actionSlots: { type: Object, default: () => ({}) }
 })
 
 const emit = defineEmits(['update:modelValue'])
+const uniquePrecheckContext = inject(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, null)
+const fieldRendererRef = ref(null)
 const runtimeForm = computed(() => props.context?.form || {})
 const runtimeReleaseId = computed(() =>
   runtimeForm.value.runtimeReleaseId
@@ -328,6 +341,32 @@ watch(
       : [props.node.id]
   },
   { immediate: true }
+)
+
+// 定位目标随递归节点树向下传递：每一层 Tab/Collapse 只负责打开
+// 自己包含目标字段的分支，从而支持任意层级嵌套且不影响普通必填校验。
+watch(
+  () => props.revealFieldCode,
+  fieldCode => {
+    if (!fieldCode) return
+    if (props.node.nodeType === 'TAB_SET') {
+      const targetTab = findFormNodeContainingValidationField(
+        visibleTabs.value,
+        props.childrenFor,
+        fieldCode
+      )
+      if (targetTab) activeTab.value = targetTab.id
+    }
+    if (props.node.nodeType === 'COLLAPSE'
+        && formNodeSubtreeContainsValidationField(
+          props.node,
+          props.childrenFor,
+          fieldCode
+        )) {
+      activeCollapseNames.value = [props.node.id]
+    }
+  },
+  { immediate: true, flush: 'post' }
 )
 
 function updateCollapseNames(value) {
@@ -460,12 +499,33 @@ const attachmentItemRequiredState = computed(() =>
 const fieldRules = computed(() => {
   const field = runtimeField.value
   if (!field) return []
-  return buildRuntimeFieldRules(
+  const rules = buildRuntimeFieldRules(
     field,
     required.value,
     props.node.props.label || field.fieldLabel || field.fieldName,
     attachmentItemRequiredState.value
   )
+  appendFormUniqueBlurRule(rules, field, uniquePrecheckContext)
+  const componentType = String(field.componentType || '').toUpperCase()
+  const fieldType = String(field.fieldType || '').toUpperCase()
+  if (componentType === 'SUB_FORM' || fieldType === 'SUB_FORM') {
+    rules.push({
+      validator: (_rule, _value, callback) => {
+        Promise.resolve(fieldRendererRef.value?.validate?.()).then(valid => {
+          if (valid === false) {
+            callback(new Error(
+              `${field.fieldLabel || field.fieldName || '子表单'}存在未通过校验的数据`
+            ))
+          } else {
+            callback()
+          }
+        }).catch(error => callback(error))
+      },
+      // 自定义 trigger 避免输入变化时整表校验；Form.validate() 仍会执行该规则。
+      trigger: 'submit'
+    })
+  }
+  return rules
 })
 
 function updateField(value) {
@@ -487,6 +547,7 @@ function childProps(child) {
     dataSourceRuntime: props.dataSourceRuntime,
     childrenFor: props.childrenFor,
     layoutType: props.layoutType,
+    revealFieldCode: props.revealFieldCode,
     actionSlots: props.actionSlots
   }
 }

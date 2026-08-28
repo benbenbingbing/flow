@@ -145,7 +145,10 @@ class OpenProcessAdapterTest {
                 Map.of(
                         "title", "Release",
                         "initiator", "admin",
-                        "entityDataId", "private-record"),
+                        "entityDataId", "private-record",
+                        "_wfNextApproverOverrides_", Map.of(
+                                "approve", Map.of(
+                                        "usernames", List.of("attacker")))),
                 actor()));
 
         ArgumentCaptor<Map<String, Object>> variables =
@@ -161,6 +164,8 @@ class OpenProcessAdapterTest {
         assertEquals("Release", variables.getValue().get("title"));
         assertFalse(variables.getValue().containsKey("initiator"));
         assertFalse(variables.getValue().containsKey("entityDataId"));
+        assertFalse(variables.getValue().containsKey(
+                "_wfNextApproverOverrides_"));
         assertEquals(
                 "application-01",
                 variables.getValue().get("integrationApplicationId"));
@@ -344,6 +349,69 @@ class OpenProcessAdapterTest {
                                 "continue",
                                 Map.of(),
                                 actor())));
+    }
+
+    @Test
+    void messageCorrelationCannotOverwritePlatformInternalVariables() {
+        ProcessInstance active = mock(ProcessInstance.class);
+        when(active.getId()).thenReturn("process-instance-01");
+        when(active.getProcessDefinitionKey())
+                .thenReturn("change_process");
+        ProcessInstanceQuery processQuery =
+                mock(ProcessInstanceQuery.class, RETURNS_SELF);
+        when(runtimeService.createProcessInstanceQuery())
+                .thenReturn(processQuery);
+        when(processQuery.singleResult()).thenReturn(active);
+        when(runtimeService.getVariables("process-instance-01"))
+                .thenReturn(Map.of());
+        EventSubscription subscription = mock(EventSubscription.class);
+        when(subscription.getExecutionId()).thenReturn("execution-01");
+        EventSubscriptionQuery subscriptionQuery =
+                mock(EventSubscriptionQuery.class, RETURNS_SELF);
+        when(runtimeService.createEventSubscriptionQuery())
+                .thenReturn(subscriptionQuery);
+        when(subscriptionQuery.listPage(0, 2))
+                .thenReturn(List.of(subscription));
+
+        adapter.correlate(new OpenMessageCorrelationCommand(
+                "process-instance-01",
+                "continue",
+                Map.of(
+                        "businessField", "kept",
+                        "_wfNextApproverOverrides_", "forged",
+                        "_wfFutureInternal", "forged"),
+                actor()));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> variables =
+                ArgumentCaptor.forClass(Map.class);
+        verify(runtimeService).messageEventReceived(
+                eq("continue"), eq("execution-01"), variables.capture());
+        assertEquals(Map.of("businessField", "kept"),
+                variables.getValue());
+    }
+
+    @Test
+    void openViewHidesTheWholePlatformInternalNamespace() {
+        ProcessInstance active = mock(ProcessInstance.class);
+        when(active.getId()).thenReturn("process-instance-01");
+        when(active.getProcessDefinitionKey())
+                .thenReturn("change_process");
+        ProcessInstanceQuery processQuery =
+                mock(ProcessInstanceQuery.class, RETURNS_SELF);
+        when(runtimeService.createProcessInstanceQuery())
+                .thenReturn(processQuery);
+        when(processQuery.singleResult()).thenReturn(active);
+        when(runtimeService.getVariables("process-instance-01"))
+                .thenReturn(Map.of(
+                        "businessField", "visible",
+                        "_wfNextApproverOverrides_", "internal",
+                        "_wfFutureInternal", "internal"));
+
+        var view = adapter.get("process-instance-01", actor());
+
+        assertEquals(Map.of("businessField", "visible"),
+                view.variables());
     }
 
     private ProcessDefinitionConfig definition() {

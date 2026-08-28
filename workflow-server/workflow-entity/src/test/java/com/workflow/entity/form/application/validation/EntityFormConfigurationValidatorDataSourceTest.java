@@ -5,6 +5,7 @@ import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
+import com.workflow.entity.form.application.FormUniqueRulePolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
@@ -29,7 +30,11 @@ class EntityFormConfigurationValidatorDataSourceTest {
                             new JsonDocumentCodec(OBJECT_MAPPER)),
                     new PublishedFormConditionEvaluator(OBJECT_MAPPER),
                     mock(EntityFieldMapper.class),
-                    mock(EntityFieldFileItemMapper.class));
+                    mock(EntityFieldFileItemMapper.class),
+                    new FormUniqueRulePolicy(
+                            OBJECT_MAPPER,
+                            new PublishedFormConditionEvaluator(
+                                    OBJECT_MAPPER)));
 
     /** 同一生命周期位置的多个数据源步骤不能写入相同输出目标。 */
     @Test

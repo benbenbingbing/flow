@@ -8,6 +8,8 @@ import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
 import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
 import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
+import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidator;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
@@ -61,6 +63,11 @@ public class ProcessBpmnPublishSanitizer {
 
     @Autowired
     private PersonResolverRuntimeService personResolverRuntimeService;
+
+    /** 解析器自身拥有 extraParams 语义，发布器只负责路由校验请求。 */
+    @Autowired(required = false)
+    private List<PersonResolverConfigurationValidator>
+            personResolverConfigurationValidators = List.of();
 
     @Autowired
     public ProcessBpmnPublishSanitizer(
@@ -117,10 +124,146 @@ public class ProcessBpmnPublishSanitizer {
         result = fixConfiguredReceiveTasks(result);
         result = fixConfiguredUserTaskSlas(result);
         result = validateNextApproverSelections(result);
+        result = installRelativePositionCollectionHandlers(result);
         result = fixScriptTasks(result);
         BpmnExecutableContentValidator.validate(result);
 
         return result;
+    }
+
+    /**
+     * 为相对职务多实例节点写入 Flowable collection handler。
+     *
+     * <p>该 handler 在引擎真正读取 collection 时解析任职人，这一时点早于
+     * ACTIVITY_STARTED，因而既能使用节点激活时的当前任职，也能在创建 0 个
+     * 实例之前对空结果失败关闭。</p>
+     */
+    private String installRelativePositionCollectionHandlers(
+            String bpmnXml) {
+        try {
+            Document document = parseXml(bpmnXml);
+            Map<String, Element> allElements = new LinkedHashMap<>();
+            NodeList everyElement = document.getElementsByTagNameNS("*", "*");
+            for (int index = 0; index < everyElement.getLength(); index++) {
+                Element element = (Element) everyElement.item(index);
+                if (StringUtils.hasText(element.getAttribute("id"))) {
+                    allElements.putIfAbsent(
+                            element.getAttribute("id"), element);
+                }
+            }
+            Map<String, PublishedAssignmentNode> userTasks =
+                    new LinkedHashMap<>();
+            for (Element element : elementsByLocalName(document, "userTask")) {
+                String id = element.getAttribute("id");
+                if (StringUtils.hasText(id)) {
+                    userTasks.put(id, new PublishedAssignmentNode(
+                            id,
+                            element,
+                            readMergedAssignmentConfig(element),
+                            hasMultiInstanceLoop(element)));
+                }
+            }
+
+            boolean changed = false;
+            for (PublishedAssignmentNode current : userTasks.values()) {
+                if (!current.multiInstance()) {
+                    continue;
+                }
+                PublishedAssignmentNode terminal =
+                        NodeAssignmentReferenceResolver.isNodeReference(
+                                current.assigneeConfig())
+                                ? resolvePublishedReference(
+                                current, userTasks, allElements)
+                                : current;
+                if (!usesRelativePositionResolver(
+                        terminal.assigneeConfig())) {
+                    continue;
+                }
+                Element loop = firstDescendant(
+                        current.element(),
+                        "multiInstanceLoopCharacteristics");
+                if (loop == null) {
+                    throw nextApproverConfigError(
+                            current.id(), "多实例循环配置缺失");
+                }
+                installCollectionHandler(document, loop);
+                changed = true;
+            }
+            return changed ? writeXml(document) : bpmnXml;
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "relativeOrgPosition 多实例 handler 无法写入 BPMN",
+                    exception);
+        }
+    }
+
+    private boolean usesRelativePositionResolver(
+            Map<String, Object> config) {
+        LegacyAssignment legacy =
+                LegacyMultiInstanceAssignmentParser.parse(config);
+        if (legacy.effective() && legacy.resolver()) {
+            return com.workflow.process.assignment.relative
+                    .RelativeOrgPositionConfig.RESOLVER_CODE
+                    .equals(legacy.resolverCode());
+        }
+        String type = String.valueOf(config.getOrDefault(
+                "assigneeType", "")).trim().toLowerCase(Locale.ROOT);
+        if (!"interface".equals(type) && !"resolver".equals(type)) {
+            return false;
+        }
+        String resolverCode = String.valueOf(config.getOrDefault(
+                "resolverCode",
+                config.getOrDefault("interfaceName", ""))).trim();
+        return com.workflow.process.assignment.relative
+                .RelativeOrgPositionConfig.RESOLVER_CODE
+                .equals(resolverCode);
+    }
+
+    private Element firstDescendant(Element parent, String localName) {
+        NodeList elements = parent.getElementsByTagNameNS("*", localName);
+        return elements.getLength() == 0
+                ? null : (Element) elements.item(0);
+    }
+
+    private void installCollectionHandler(
+            Document document,
+            Element loop) {
+        Element extensionElements = null;
+        for (Node child = loop.getFirstChild();
+                child != null;
+                child = child.getNextSibling()) {
+            if (child instanceof Element element
+                    && "extensionElements".equals(element.getLocalName())) {
+                extensionElements = element;
+                break;
+            }
+        }
+        if (extensionElements == null) {
+            extensionElements = document.createElementNS(
+                    "http://www.omg.org/spec/BPMN/20100524/MODEL",
+                    "extensionElements");
+            loop.insertBefore(extensionElements, loop.getFirstChild());
+        }
+        List<Node> previousHandlers = new ArrayList<>();
+        for (Node child = extensionElements.getFirstChild();
+                child != null;
+                child = child.getNextSibling()) {
+            if (child instanceof Element element
+                    && FLOWABLE_NAMESPACE.equals(element.getNamespaceURI())
+                    && "collection".equals(element.getLocalName())) {
+                previousHandlers.add(child);
+            }
+        }
+        previousHandlers.forEach(extensionElements::removeChild);
+        Element handler = document.createElementNS(
+                FLOWABLE_NAMESPACE, "flowable:collection");
+        handler.setAttributeNS(
+                FLOWABLE_NAMESPACE,
+                "flowable:delegateExpression",
+                "${relativeOrgPositionCollectionHandler}");
+        extensionElements.appendChild(handler);
     }
 
     /**
@@ -147,6 +290,19 @@ public class ProcessBpmnPublishSanitizer {
                         if (unifiedMultiInstance) {
                             validateEnumerableNodeAssignment(
                                     element, assigneeConfig);
+                        } else {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> values =
+                                    objectMapper.convertValue(
+                                            assigneeConfig, Map.class);
+                            if (usesRelativePositionResolver(values)) {
+                                // 相对职务即使没有“下一审批人”配置，也必须在
+                                // 发布边界校验静态职务、层级与分配模式。
+                                validateNodeAssignmentResolver(
+                                        element.id(),
+                                        assigneeConfig,
+                                        false);
+                            }
                         }
                         return element;
                     }
@@ -294,6 +450,13 @@ public class ProcessBpmnPublishSanitizer {
                                     "RESOLVER 不可用: "
                                             + exception.getMessage());
                         }
+                        validateResolverConfiguration(
+                                element.id(),
+                                resolverCode,
+                                PersonResolveUsage.CANDIDATE,
+                                "CANDIDATE",
+                                false,
+                                normalized.extraParams());
                     } else if ("NODE_ASSIGNMENT".equals(type)) {
                         // 隐藏配置是设计器默认占位，不得反向要求旧节点已经配置
                         // 可枚举办理人；真正启用展示/改选时才执行安全校验。
@@ -550,6 +713,13 @@ public class ProcessBpmnPublishSanitizer {
                     legacy.resolverCode(),
                     PersonResolveUsage.MULTI_INSTANCE,
                     "历史多实例人员解析器");
+            validateResolverConfiguration(
+                    element.id(),
+                    legacy.resolverCode(),
+                    PersonResolveUsage.MULTI_INSTANCE,
+                    "MULTI_INSTANCE",
+                    true,
+                    legacy.resolverExtraParams());
             return true;
         }
         if (legacy.containsExpression()) {
@@ -657,6 +827,74 @@ public class ProcessBpmnPublishSanitizer {
                 resolverCode,
                 usage,
                 "NODE_ASSIGNMENT 人员解析器");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extraParams = assigneeConfig.path("extraParams")
+                .isObject()
+                ? objectMapper.convertValue(
+                        assigneeConfig.path("extraParams"), Map.class)
+                : Map.of();
+        validateResolverConfiguration(
+                nodeId,
+                resolverCode,
+                usage,
+                assigneeConfig.path("assignmentMode")
+                        .asText(multiInstance ? "MULTI_INSTANCE" : "DIRECT"),
+                multiInstance,
+                extraParams);
+    }
+
+    /**
+     * 将解析器特有的配置交给对应 validator；相对职务属于安全关键内置解析器，
+     * 若实现未注册则必须阻断发布，不能仅依赖目录记录。
+     */
+    private void validateResolverConfiguration(
+            String nodeId,
+            String resolverCode,
+            PersonResolveUsage usage,
+            String assignmentMode,
+            boolean multiInstance,
+            Object rawExtraParams) {
+        PersonResolverConfigurationValidator validator =
+                personResolverConfigurationValidators == null
+                        ? null
+                        : personResolverConfigurationValidators.stream()
+                        .filter(value -> resolverCode.equals(
+                                value.resolverCode()))
+                        .findFirst()
+                        .orElse(null);
+        if (validator == null) {
+            if (com.workflow.process.assignment.relative
+                    .RelativeOrgPositionConfig.RESOLVER_CODE
+                    .equals(resolverCode)) {
+                throw nextApproverConfigError(
+                        nodeId,
+                        "relativeOrgPosition 配置校验器未注册");
+            }
+            return;
+        }
+        Map<String, Object> extraParams;
+        if (rawExtraParams == null) {
+            extraParams = Map.of();
+        } else if (rawExtraParams instanceof Map<?, ?> map) {
+            extraParams = new LinkedHashMap<>();
+            map.forEach((key, value) ->
+                    extraParams.put(String.valueOf(key), value));
+        } else {
+            throw nextApproverConfigError(
+                    nodeId, "resolver extraParams 必须是对象");
+        }
+        try {
+            validator.validate(
+                    new PersonResolverConfigurationValidationRequest(
+                            usage,
+                            assignmentMode,
+                            multiInstance,
+                            extraParams));
+        } catch (IllegalArgumentException exception) {
+            throw nextApproverConfigError(
+                    nodeId,
+                    "resolver 配置无效: " + exception.getMessage());
+        }
     }
 
     private void validateConfiguredResolver(

@@ -1,6 +1,7 @@
 package com.workflow.openapi.api.error;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.contracts.embed.EmbedBoundaryFailure;
 import com.workflow.openapi.api.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.response.OpenApiResponse;
 import com.workflow.openapi.web.OpenRequestTrace;
@@ -124,6 +125,37 @@ public class OpenApiExceptionHandler {
                         "INTEGRATION_TEMPORARILY_UNAVAILABLE",
                         null,
                         OpenRequestTrace.get(request)));
+    }
+
+    /**
+     * 保留 Embed 业务边界已经完成脱敏的状态码与错误码，同时避免 Open API 反向依赖
+     * workflow-embed 实现模块。
+     */
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<OpenApiResponse<Object>> handleBoundaryFailure(
+            RuntimeException exception,
+            HttpServletRequest request) {
+        if (!(exception instanceof EmbedBoundaryFailure failure)) {
+            return handleUnexpected(exception, request);
+        }
+        int status = failure.status();
+        if (status < 400 || status > 599) {
+            return handleUnexpected(exception, request);
+        }
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(status)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store");
+        if (failure.retryAfterSeconds() != null
+                && failure.retryAfterSeconds() > 0) {
+            response.header(
+                    HttpHeaders.RETRY_AFTER,
+                    String.valueOf(failure.retryAfterSeconds()));
+        }
+        return response.body(OpenApiResponse.error(
+                status,
+                exception.getMessage(),
+                failure.errorCode(),
+                null,
+                OpenRequestTrace.get(request)));
     }
 
     private ResponseEntity<OpenApiResponse<Object>> invalid(

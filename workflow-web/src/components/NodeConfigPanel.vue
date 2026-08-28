@@ -179,6 +179,7 @@
               <el-option label="固定人员" value="user" />
               <el-option label="用户组" value="group" />
               <el-option label="角色" value="role" />
+              <el-option label="相对组织职务" value="relative_position" />
               <el-option label="使用其他节点审批人" value="node_reference" />
               <el-option label="表达式" value="expression" :disabled="assigneeForm.isMultiInstance" />
               <el-option label="接口动态" value="interface" />
@@ -326,6 +327,249 @@
                 </el-option>
               </el-select>
             </el-form-item>
+          </template>
+
+          <!-- 相对组织职务是设计器语义类型，保存时投影为受控人员解析器。 -->
+          <template v-if="assigneeForm.assigneeType === 'relative_position'">
+            <el-alert
+              title="按流程发起人的组织快照定位职务任职人；任职变化只影响尚未创建的后续任务。"
+              type="info"
+              :closable="false"
+              show-icon
+              class="relative-position-notice"
+            />
+
+            <el-form-item label="职务" required>
+              <el-select
+                v-model="assigneeForm.relativePosition.positionCode"
+                filterable
+                clearable
+                placeholder="请选择启用职务"
+                style="width: 100%"
+                @change="onRelativePositionChanged"
+              >
+                <el-option
+                  v-for="position in availableRelativePositionOptions"
+                  :key="position.positionCode"
+                  :label="position.positionName"
+                  :value="position.positionCode"
+                >
+                  <span>{{ position.positionName }}</span>
+                  <span class="reference-node-id">{{ position.positionCode }}</span>
+                </el-option>
+              </el-select>
+              <div class="form-tip">流程仅保存稳定编码，不保存职务数据库 ID 或名称</div>
+            </el-form-item>
+
+            <el-form-item label="相对人员">
+              <el-input model-value="流程发起人" disabled />
+              <div class="form-tip">V1 固定使用发起人，运行时读取流程启动时冻结的组织快照</div>
+            </el-form-item>
+
+            <el-form-item label="组织锚点" required>
+              <el-radio-group
+                v-model="assigneeForm.relativePosition.anchor"
+                @change="onRelativePositionAnchorChanged"
+              >
+                <el-radio-button value="DEPARTMENT">发起人部门</el-radio-button>
+                <el-radio-button value="ORGANIZATION">发起人组织</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+
+            <el-form-item label="查找方式" required>
+              <el-select
+                v-model="assigneeForm.relativePosition.hierarchy.mode"
+                style="width: 100%"
+                @change="onRelativeHierarchyModeChanged"
+              >
+                <el-option label="当前单位" value="SELF" />
+                <el-option label="固定父级" value="FIXED_ANCESTOR" />
+                <el-option label="就近向上查找有任职人的单位" value="NEAREST_WITH_HOLDER" />
+                <el-option label="指定业务层级" value="BUSINESS_LEVEL" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item
+              v-if="assigneeForm.relativePosition.hierarchy.mode === 'FIXED_ANCESTOR'"
+              label="上溯层数"
+              required
+            >
+              <el-input-number
+                v-model="assigneeForm.relativePosition.hierarchy.ancestorHops"
+                :min="1"
+                :max="32"
+                controls-position="right"
+                style="width: 100%"
+                @change="onRelativePositionChanged"
+              />
+              <div class="form-tip">1 表示直接父节点，按原始组织树父子边计数</div>
+            </el-form-item>
+
+            <template v-if="assigneeForm.relativePosition.hierarchy.mode === 'NEAREST_WITH_HOLDER'">
+              <el-form-item label="起始层级" required>
+                <el-radio-group
+                  v-model="assigneeForm.relativePosition.hierarchy.startLevel"
+                  @change="onRelativePositionChanged"
+                >
+                  <el-radio-button :value="0">包含本级</el-radio-button>
+                  <el-radio-button :value="1">从直接父级</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label="最大上溯" required>
+                <el-input-number
+                  v-model="assigneeForm.relativePosition.hierarchy.maxHops"
+                  :min="1"
+                  :max="32"
+                  controls-position="right"
+                  style="width: 100%"
+                  @change="onRelativePositionChanged"
+                />
+                <div class="form-tip">命中第一个存在有效任职人的单位后立即停止</div>
+              </el-form-item>
+              <el-form-item label="单位类型" required>
+                <el-checkbox-group
+                  v-model="assigneeForm.relativePosition.hierarchy.eligibleUnitTypes"
+                  @change="onRelativePositionChanged"
+                >
+                  <el-checkbox value="dept">部门</el-checkbox>
+                  <el-checkbox value="org">组织</el-checkbox>
+                </el-checkbox-group>
+              </el-form-item>
+            </template>
+
+            <el-form-item
+              v-if="assigneeForm.relativePosition.hierarchy.mode === 'BUSINESS_LEVEL'"
+              label="业务层级"
+              required
+            >
+              <el-select
+                v-model="assigneeForm.relativePosition.hierarchy.businessLevelCode"
+                filterable
+                clearable
+                placeholder="请选择目标业务层级"
+                style="width: 100%"
+                @change="onRelativePositionChanged"
+              >
+                <el-option
+                  v-for="level in organizationBusinessLevels"
+                  :key="level.code"
+                  :label="level.name"
+                  :value="level.code"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="任务分配">
+              <el-radio-group
+                v-if="!assigneeForm.isMultiInstance"
+                v-model="assigneeForm.relativePosition.assignmentMode"
+                @change="onRelativeAssignmentModeChanged"
+              >
+                <el-radio-button value="DIRECT">直接办理人</el-radio-button>
+                <el-radio-button value="CANDIDATE">候选人</el-radio-button>
+              </el-radio-group>
+              <el-tag v-else type="success">由多人办理生成全部实例</el-tag>
+            </el-form-item>
+
+            <el-form-item label="多人命中">
+              <el-radio-group
+                v-if="!assigneeForm.isMultiInstance && assigneeForm.relativePosition.assignmentMode === 'DIRECT'"
+                v-model="assigneeForm.relativePosition.multipleMatchPolicy"
+                @change="onRelativePositionChanged"
+              >
+                <el-radio-button value="ERROR">直接报错</el-radio-button>
+                <el-radio-button value="PRIMARY_OR_ERROR">唯一主职，否则报错</el-radio-button>
+              </el-radio-group>
+              <el-tag v-else type="info">使用全部任职人</el-tag>
+            </el-form-item>
+
+            <el-alert
+              :title="relativePositionSummaryText"
+              type="success"
+              :closable="false"
+              show-icon
+              class="relative-position-summary"
+            />
+
+            <SettingsSection
+              title="配置试算"
+              description="选择一个样例用户，使用运行时同一解析器验证组织路径和任职人"
+            >
+              <el-form-item label="样例用户">
+                <UserSelector
+                  v-model="relativePositionSampleUserId"
+                  value-key="id"
+                  placeholder="请选择样例发起人"
+                  title="选择样例发起人"
+                  @change="clearRelativePositionPreview"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button
+                  type="primary"
+                  plain
+                  :loading="relativePositionPreviewLoading"
+                  @click="runRelativePositionPreview"
+                >
+                  试算审批人
+                </el-button>
+              </el-form-item>
+
+              <div v-if="relativePositionPreviewResult" class="relative-position-preview">
+                <el-alert
+                  :title="relativePositionPreviewTitle"
+                  :description="relativePositionPreviewResult.reasonMessage || relativePositionPreviewResult.warnings?.join('；') || ''"
+                  :type="relativePositionPreviewResult.holders?.length ? 'success' : 'warning'"
+                  :closable="false"
+                  show-icon
+                />
+                <el-descriptions :column="1" border size="small">
+                  <el-descriptions-item label="锚点单位">
+                    {{ previewUnitLabel(relativePositionPreviewResult.anchorUnit) }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="命中单位">
+                    {{ previewUnitLabel(relativePositionPreviewResult.matchedUnit) }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="任职人">
+                    <template v-if="relativePositionPreviewResult.holders?.length">
+                      <el-tag
+                        v-for="holder in relativePositionPreviewResult.holders"
+                        :key="holder.userId"
+                        size="small"
+                        class="relative-position-holder"
+                      >
+                        {{ holder.displayName || holder.username || holder.userId }}
+                      </el-tag>
+                    </template>
+                    <span v-else>-</span>
+                  </el-descriptions-item>
+                </el-descriptions>
+                <el-table
+                  v-if="relativePositionPreviewResult.scannedUnits?.length"
+                  :data="relativePositionPreviewResult.scannedUnits"
+                  border
+                  size="small"
+                  class="relative-position-trace"
+                >
+                  <el-table-column prop="depth" label="层数" width="58" />
+                  <el-table-column label="扫描单位" min-width="150">
+                    <template #default="{ row }">{{ previewUnitLabel(row) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="result" label="结果" min-width="110" />
+                </el-table>
+              </div>
+              <el-alert
+                v-else-if="relativePositionPreviewError"
+                :title="relativePositionPreviewError"
+                type="error"
+                :closable="false"
+                show-icon
+              >
+                <template #default>
+                  <el-button link type="primary" @click="runRelativePositionPreview">重试试算</el-button>
+                </template>
+              </el-alert>
+            </SettingsSection>
           </template>
           
           <!-- 表达式 -->
@@ -1566,17 +1810,23 @@ import {
   buildNodeScopedMultiInstanceApprovedCountVariable,
   buildMultiInstanceCompletionCondition,
   buildAssigneeConfig,
+  buildRelativeOrgPositionResolverConfig,
   normalizeMultiInstanceCompletionRate,
   normalizeMultiInstanceDecision,
   normalizeMultiInstanceNeedAllApprovers,
+  normalizeRelativeOrgPositionConfig,
   MULTI_INSTANCE_DECISION_COUNTERSIGN,
   buildUserTaskReferenceOptions,
   getProcessConditionFieldCode,
   getProcessConditionFieldType,
   MAX_NODE_REFERENCE_DEPTH,
   NODE_REFERENCE_ASSIGNEE_TYPE,
+  RELATIVE_ORG_POSITION_ASSIGNEE_TYPE,
+  RELATIVE_ORG_POSITION_RESOLVER_CODE,
   normalizeDesignerAssigneeConfig,
   normalizeNodeReferenceAssigneeConfig,
+  relativeOrgPositionSummary,
+  validateRelativeOrgPositionConfig,
   validateNodeReferenceChain
 } from '@/shared/process-config'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
@@ -1594,6 +1844,11 @@ import {
   validateNextApproverSelectionConfig
 } from '@/shared/next-approver'
 import { parseJsonConfig } from '@/utils/jsonConfig'
+import {
+  getOrganizationBusinessLevels,
+  getProcessDesignPositionOptions,
+  previewRelativePosition
+} from '@/api/system/position'
 import {
   buildFlowConditionExpression,
   createFlowConditionGroup,
@@ -1691,6 +1946,15 @@ const SERVICE_EXAMPLES = {
 // ========== 表单数据 ==========
 const basicForm = ref({ id: '', name: '', documentation: '' })
 const nextApproverConfigEditorRef = ref()
+
+function createRelativePositionForm(value = {}) {
+  const normalized = normalizeRelativeOrgPositionConfig(value)
+  return {
+    ...normalized,
+    hierarchy: { ...normalized.hierarchy }
+  }
+}
+
 const assigneeForm = ref({
   emptyAssigneeStrategy: {
     policy: 'INHERIT',
@@ -1716,11 +1980,12 @@ const assigneeForm = ref({
   multiInstanceCompletionRate: 100,
   multiInstanceNeedAllApprovers: false,
   completionCondition: '',
-  assigneeType: 'user', // user/group/role/node_reference/expression/interface
+  assigneeType: 'user', // user/group/role/relative_position/node_reference/expression/interface
   referencedNodeId: '',
   referencedNodeName: '',
   resolverCode: '',
   resolverDisplayName: '',
+  assignmentMode: '',
   extraParams: {},
   extraParamsText: '{}',
   interfaceType: 'resolver',
@@ -1733,6 +1998,7 @@ const assigneeForm = ref({
   legacyMultiInstanceConfig: null,
   legacyMultiInstanceMixed: false,
   assignmentConfigDirty: false,
+  relativePosition: createRelativePositionForm(),
   nextApproverSelection: createNextApproverSelectionConfig()
 })
 const referenceOptionsRevision = ref(0)
@@ -1794,6 +2060,44 @@ const canLeaveMultiInstanceAssignmentEmpty = computed(() =>
     assigneeForm.value.nextApproverSelection
   )
 )
+const relativePositionOptions = ref([])
+const organizationBusinessLevels = ref([])
+const relativePositionSampleUserId = ref('')
+const relativePositionPreviewLoading = ref(false)
+const relativePositionPreviewResult = ref(null)
+const relativePositionPreviewError = ref('')
+const availableRelativePositionOptions = computed(() => {
+  const unitType = assigneeForm.value.relativePosition?.anchor === 'ORGANIZATION'
+    ? 'ORG'
+    : 'DEPT'
+  return relativePositionOptions.value.filter(position =>
+    position.applicableUnitType === 'ANY'
+    || position.applicableUnitType === unitType)
+})
+const selectedRelativePosition = computed(() => relativePositionOptions.value.find(
+  option => option.positionCode === assigneeForm.value.relativePosition?.positionCode
+))
+const selectedOrganizationBusinessLevel = computed(() =>
+  organizationBusinessLevels.value.find(level =>
+    level.code === assigneeForm.value.relativePosition?.hierarchy?.businessLevelCode
+  )
+)
+const relativePositionSummaryText = computed(() => relativeOrgPositionSummary(
+  assigneeForm.value.relativePosition,
+  {
+    positionName: selectedRelativePosition.value?.positionName,
+    businessLevelName: selectedOrganizationBusinessLevel.value?.name,
+    isMultiInstance: assigneeForm.value.isMultiInstance
+  }
+))
+const relativePositionPreviewTitle = computed(() => {
+  const result = relativePositionPreviewResult.value
+  if (!result) return ''
+  const holders = Array.isArray(result.holders) ? result.holders : []
+  return holders.length
+    ? `试算成功：解析到 ${holders.length} 名任职人（${result.resultCode || 'RESOLVED'}）`
+    : `未解析到任职人（${result.resultCode || 'EMPTY'}）`
+})
 const serviceForm = ref({ implementationType: 'class', implementation: '', resultVariable: '' })
 
 // REST接口配置
@@ -2078,6 +2382,128 @@ async function loadRoles() {
   }
 }
 
+/** 流程设计辅助选项只依赖设计权限，不复用任职管理接口的写权限。 */
+async function loadRelativePositionDesignOptions() {
+  try {
+    const [positions, levels] = await Promise.all([
+      getProcessDesignPositionOptions(),
+      getOrganizationBusinessLevels()
+    ])
+    const positionItems = Array.isArray(positions)
+      ? positions
+      : positions?.records || positions?.list || []
+    relativePositionOptions.value = positionItems.map(item => ({
+      ...item,
+      positionCode: item.positionCode || item.code,
+      positionName: item.positionName || item.name || item.positionCode || item.code
+    })).filter(item => item.positionCode)
+
+    const levelItems = Array.isArray(levels)
+      ? levels
+      : levels?.records || levels?.list || []
+    organizationBusinessLevels.value = levelItems.map(item => ({
+      ...item,
+      code: item.code || item.businessLevelCode || item.dictValue,
+      name: item.name || item.businessLevelName || item.dictLabel || item.code
+    })).filter(item => item.code)
+  } catch (error) {
+    console.error('加载相对组织职务设计选项失败:', error)
+    relativePositionOptions.value = []
+    organizationBusinessLevels.value = []
+  }
+}
+
+function clearRelativePositionPreview() {
+  relativePositionPreviewResult.value = null
+  relativePositionPreviewError.value = ''
+}
+
+function onRelativePositionChanged() {
+  markAssignmentConfigDirty()
+  clearRelativePositionPreview()
+}
+
+function onRelativePositionAnchorChanged(anchor) {
+  assigneeForm.value.relativePosition.hierarchy.eligibleUnitTypes = [
+    anchor === 'ORGANIZATION' ? 'org' : 'dept'
+  ]
+  const selected = selectedRelativePosition.value
+  const unitType = anchor === 'ORGANIZATION' ? 'ORG' : 'DEPT'
+  if (selected && selected.applicableUnitType !== 'ANY'
+      && selected.applicableUnitType !== unitType) {
+    assigneeForm.value.relativePosition.positionCode = ''
+    ElMessage.warning('已清除不适用于该组织锚点的职务')
+  }
+  onRelativePositionChanged()
+}
+
+/** 切换查找模式时只初始化该模式字段，避免把上一个模式的参数持久化。 */
+function onRelativeHierarchyModeChanged(mode) {
+  const hierarchy = { mode }
+  if (mode === 'FIXED_ANCESTOR') {
+    hierarchy.ancestorHops = 1
+  } else if (mode === 'NEAREST_WITH_HOLDER') {
+    hierarchy.startLevel = 0
+    hierarchy.maxHops = 16
+    hierarchy.eligibleUnitTypes = [
+      assigneeForm.value.relativePosition.anchor === 'ORGANIZATION' ? 'org' : 'dept'
+    ]
+  } else if (mode === 'BUSINESS_LEVEL') {
+    hierarchy.businessLevelCode = ''
+  }
+  assigneeForm.value.relativePosition.hierarchy = hierarchy
+  onRelativePositionChanged()
+}
+
+function onRelativeAssignmentModeChanged(mode) {
+  assigneeForm.value.relativePosition.multipleMatchPolicy = mode === 'CANDIDATE'
+    ? 'ALL'
+    : 'PRIMARY_OR_ERROR'
+  onRelativePositionChanged()
+}
+
+function previewUnitLabel(unit) {
+  return unit?.name || unit?.orgName || unit?.displayPath || unit?.id || '-'
+}
+
+/** 试算使用与发布和运行时相同的 canonical extraParams。 */
+async function runRelativePositionPreview() {
+  if (!relativePositionSampleUserId.value) {
+    ElMessage.warning('请选择样例发起人')
+    return
+  }
+  const validation = validateRelativeOrgPositionConfig(
+    assigneeForm.value.relativePosition,
+    { isMultiInstance: assigneeForm.value.isMultiInstance }
+  )
+  if (!validation.valid) {
+    ElMessage.warning(validation.message)
+    return
+  }
+  relativePositionPreviewLoading.value = true
+  relativePositionPreviewResult.value = null
+  relativePositionPreviewError.value = ''
+  try {
+    const resolverConfig = buildRelativeOrgPositionResolverConfig({
+      ...assigneeForm.value.relativePosition,
+      assignmentMode: assigneeForm.value.isMultiInstance
+        ? 'CANDIDATE'
+        : assigneeForm.value.relativePosition.assignmentMode,
+      multipleMatchPolicy: assigneeForm.value.isMultiInstance
+        ? 'ALL'
+        : assigneeForm.value.relativePosition.multipleMatchPolicy
+    })
+    relativePositionPreviewResult.value = await previewRelativePosition({
+      sampleUserId: relativePositionSampleUserId.value,
+      config: resolverConfig.extraParams
+    })
+  } catch (error) {
+    relativePositionPreviewError.value = error?.message || '相对组织职务试算失败，请重试'
+  } finally {
+    relativePositionPreviewLoading.value = false
+  }
+}
+
 async function loadOrganizations() {
   try {
     const res = await request.get('/system/org/enabled')
@@ -2205,6 +2631,7 @@ const subProcessesLoading = ref(false)
 onMounted(() => {
   loadGroups()
   loadRoles()
+  loadRelativePositionDesignOptions()
   loadOrganizations()
   loadEntityFields()
   loadSubProcesses()
@@ -2401,6 +2828,15 @@ watch(() => props.element, async (newElement) => {
         multiInstanceConfig,
         Boolean(loop)
       )
+      const isRelativePositionAssignee =
+        assigneeConfig.assigneeType === 'interface'
+        && (assigneeConfig.resolverCode || assigneeConfig.interfaceName)
+          === RELATIVE_ORG_POSITION_RESOLVER_CODE
+      const relativePosition = createRelativePositionForm({
+        ...(assigneeConfig.extraParams || {}),
+        assignmentMode: assigneeConfig.assignmentMode
+          || (loop ? 'CANDIDATE' : 'DIRECT')
+      })
       
       // 处理候选人和候选组
       let candidateUsers = bo.get('candidateUsers') || bo.get('flowable:candidateUsers') || ''
@@ -2456,11 +2892,14 @@ watch(() => props.element, async (newElement) => {
         }),
         
         // 执行人类型和接口配置（从扩展属性）
-        assigneeType: assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
+        assigneeType: isRelativePositionAssignee
+          ? RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
+          : assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
         referencedNodeId: assigneeConfig.referencedNodeId || '',
         referencedNodeName: assigneeConfig.referencedNodeName || '',
         resolverCode: assigneeConfig.resolverCode || assigneeConfig.interfaceName || '',
         resolverDisplayName: assigneeConfig.resolverDisplayName || '',
+        assignmentMode: assigneeConfig.assignmentMode || '',
         extraParams: assigneeConfig.extraParams || {},
         extraParamsText: JSON.stringify(assigneeConfig.extraParams || parseLegacyParams(assigneeConfig.interfaceParams), null, 2),
         interfaceType: 'resolver',
@@ -2475,6 +2914,7 @@ watch(() => props.element, async (newElement) => {
         legacyMultiInstanceMixed:
           assigneeConfig.legacyMultiInstanceMixed === true,
         assignmentConfigDirty: false,
+        relativePosition,
         nextApproverSelection: createNextApproverSelectionConfig(
           assigneeConfig.nextApproverSelection
         )
@@ -2844,6 +3284,18 @@ function onMultiInstanceChange(enabled) {
   }
 
   markAssignmentConfigDirty()
+  if (assigneeForm.value.assigneeType === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
+    // 多实例由 BPMN loop 创建每人实例，解析结果必须完整保留，不能退化为挑选主职。
+    assigneeForm.value.relativePosition.assignmentMode = enabled
+      ? 'CANDIDATE'
+      : assigneeForm.value.relativePosition.assignmentMode
+    assigneeForm.value.relativePosition.multipleMatchPolicy = enabled
+      ? 'ALL'
+      : assigneeForm.value.relativePosition.assignmentMode === 'CANDIDATE'
+        ? 'ALL'
+        : 'PRIMARY_OR_ERROR'
+    clearRelativePositionPreview()
+  }
   if (assigneeForm.value.assigneeType === 'user') {
     if (enabled) {
       const users = normalizeUserKeys([
@@ -3125,9 +3577,22 @@ function onAssigneeTypeChange(type) {
   assigneeForm.value.candidateRoleIds = []
   assigneeForm.value.referencedNodeId = ''
   assigneeForm.value.referencedNodeName = ''
-  if (type !== 'interface') {
+  clearRelativePositionPreview()
+  if (type === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
+    assigneeForm.value.relativePosition = createRelativePositionForm({
+      assignmentMode: assigneeForm.value.isMultiInstance ? 'CANDIDATE' : 'DIRECT',
+      multipleMatchPolicy: assigneeForm.value.isMultiInstance ? 'ALL' : 'PRIMARY_OR_ERROR'
+    })
+    assigneeForm.value.resolverCode = RELATIVE_ORG_POSITION_RESOLVER_CODE
+    assigneeForm.value.resolverDisplayName = '相对组织职务'
+    assigneeForm.value.assignmentMode = assigneeForm.value.relativePosition.assignmentMode
+    assigneeForm.value.extraParams = {}
+    assigneeForm.value.extraParamsText = '{}'
+  } else if (type !== 'interface'
+      || assigneeForm.value.resolverCode === RELATIVE_ORG_POSITION_RESOLVER_CODE) {
     assigneeForm.value.resolverCode = ''
     assigneeForm.value.resolverDisplayName = ''
+    assigneeForm.value.assignmentMode = ''
     assigneeForm.value.extraParams = {}
     assigneeForm.value.extraParamsText = '{}'
   }
@@ -3439,25 +3904,51 @@ function markAssignmentConfigDirty() {
   assigneeForm.value.assignmentConfigDirty = true
 }
 
+/**
+ * 相对职务仅存在于设计器展示层；所有 BPMN 扩展属性都必须写回 v2 interface 契约，
+ * 从而让发布校验、普通任务和多实例继续走统一人员解析器。
+ */
+function projectedAssigneeFormForPersistence() {
+  if (assigneeForm.value.assigneeType !== RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
+    return assigneeForm.value
+  }
+  const resolverConfig = buildRelativeOrgPositionResolverConfig({
+    ...assigneeForm.value.relativePosition,
+    assignmentMode: assigneeForm.value.isMultiInstance
+      ? 'CANDIDATE'
+      : assigneeForm.value.relativePosition.assignmentMode,
+    multipleMatchPolicy: assigneeForm.value.isMultiInstance
+      ? 'ALL'
+      : assigneeForm.value.relativePosition.multipleMatchPolicy
+  })
+  return {
+    ...assigneeForm.value,
+    ...resolverConfig,
+    extraParamsText: JSON.stringify(resolverConfig.extraParams, null, 2)
+  }
+}
+
 function updateAssigneeInterface() {
-  const extraParams = parseJsonObject(
-    assigneeForm.value.extraParamsText,
-    '办理人接口 extraParams')
+  const projected = projectedAssigneeFormForPersistence()
+  const extraParams = projected.assigneeType === 'interface'
+    && projected.resolverCode === RELATIVE_ORG_POSITION_RESOLVER_CODE
+    ? projected.extraParams
+    : parseJsonObject(projected.extraParamsText, '办理人接口 extraParams')
   assigneeForm.value.extraParams = extraParams
-  assigneeForm.value.interfaceName = assigneeForm.value.resolverCode
+  assigneeForm.value.interfaceName = projected.resolverCode
   const interfaceConfig = {
     type: 'resolver',
     usage: assigneeForm.value.isMultiInstance
       ? 'MULTI_INSTANCE'
       : 'ASSIGNEE',
-    resolverCode: assigneeForm.value.resolverCode,
+    resolverCode: projected.resolverCode,
     extraParams
   }
   updateExtensionProperty('assigneeInterface', JSON.stringify(interfaceConfig))
 }
 
 function updateAssigneeConfig() {
-  const config = buildAssigneeConfig(assigneeForm.value)
+  const config = buildAssigneeConfig(projectedAssigneeFormForPersistence())
   // 使用 updateExtensionProperty 存储 JSON 字符串
   updateExtensionProperty('assigneeConfig', JSON.stringify(config))
 }
@@ -3648,6 +4139,22 @@ function applyConfigurationSection(section) {
             ElMessage.warning('多人办理不支持表达式人员来源，请改用固定人员、用户组、角色、其他节点审批人或人员接口')
             return false
           }
+        } else if (!preservingLegacy
+            && type === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
+          const validation = validateRelativeOrgPositionConfig(
+            assigneeForm.value.relativePosition,
+            { isMultiInstance: assigneeForm.value.isMultiInstance }
+          )
+          if (!validation.valid) {
+            ElMessage.warning(validation.message)
+            return false
+          }
+          const projected = projectedAssigneeFormForPersistence()
+          assigneeForm.value.resolverCode = projected.resolverCode
+          assigneeForm.value.resolverDisplayName = projected.resolverDisplayName
+          assigneeForm.value.assignmentMode = projected.assignmentMode
+          assigneeForm.value.extraParams = projected.extraParams
+          assigneeForm.value.extraParamsText = projected.extraParamsText
         } else if (!preservingLegacy && type === 'interface') {
           if (!assigneeForm.value.resolverCode) {
             ElMessage.warning(assigneeForm.value.isMultiInstance
@@ -3666,7 +4173,10 @@ function applyConfigurationSection(section) {
         }
 
         if (assigneeForm.value.isMultiInstance) {
-          if (type === 'interface' && !preservingLegacy) {
+          if ([
+            'interface',
+            RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
+          ].includes(type) && !preservingLegacy) {
             updateAssigneeInterface()
           } else if (!preservingLegacy) {
             updateExtensionProperty('assigneeInterface', null)
@@ -3695,14 +4205,20 @@ function applyConfigurationSection(section) {
           updates.assignee = null
           updates.candidateUsers = null
           updates.candidateGroups = null
-        } else if (type === 'interface') {
+        } else if ([
+          'interface',
+          RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
+        ].includes(type)) {
           updates.assignee = null
           updates.candidateUsers = null
           updates.candidateGroups = null
           updateAssigneeInterface()
         }
         modeling.updateProperties(toRaw(props.element), updates)
-        if (type !== 'interface') {
+        if (![
+          'interface',
+          RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
+        ].includes(type)) {
           updateExtensionProperty('assigneeInterface', null)
         }
         updateAssigneeConfig()
@@ -4219,6 +4735,11 @@ async function saveStatusConfig() {
 .assignee-reference-label { display: inline-flex; align-items: center; gap: 4px; }
 .assignee-reference-help { color: #909399; cursor: help; }
 .reference-node-id { float: right; margin-left: 12px; color: #909399; font-size: 12px; }
+.relative-position-notice,
+.relative-position-summary { margin-bottom: 12px; }
+.relative-position-preview { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.relative-position-holder + .relative-position-holder { margin-left: 6px; }
+.relative-position-trace { width: 100%; }
 :deep(.el-divider__text) { font-size: 12px; color: #909399; }
 .unit { margin-left: 8px; color: #606266; }
 .code-input :deep(textarea) { font-family: monospace; }

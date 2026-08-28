@@ -69,7 +69,7 @@ assert.deepEqual(
   assert.equal(existsSync(path.join(root, retiredFile)), false, `已下线实现不得恢复: ${retiredFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration', '/system/list-column-templates'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/position', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration', '/system/list-column-templates'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -77,6 +77,7 @@ assert.deepEqual(
 const documentationRoutes = {
   '/manual/entity': ['EntityManual.vue', '实体配置手册'],
   '/manual/open-integration': ['OpenIntegrationManual.vue', '开放集成手册'],
+  '/manual/embed-integration': ['EmbedIntegrationManual.vue', '嵌入集成手册'],
   '/manual/interface-service': ['InterfaceServiceManual.vue', '接口服务手册'],
   '/system/dev-guide': ['DevGuide.vue', '列表字段扩展'],
   '/system/list-field-guide': ['ListFieldExtensionGuide.vue', '列表字段扩展2'],
@@ -128,6 +129,27 @@ const interfaceServiceManualMigration = readFileSync(
   assert.ok(
     interfaceServiceManualMigration.includes(marker),
     `接口服务用户手册菜单迁移缺少配置: ${marker}`
+  )
+})
+
+const embedIntegrationManualMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V071__embed_integration_manual_menu.sql'
+  ),
+  'utf8'
+)
+;[
+  'user_manual_embed_integration_001',
+  '/manual/embed-integration',
+  'manual/EmbedIntegrationManual',
+  'user-manual:embed-integration:view',
+  'user_manual_interface_service_001',
+  'user_manual_dir_001'
+].forEach((marker) => {
+  assert.ok(
+    embedIntegrationManualMigration.includes(marker),
+    `嵌入集成用户手册菜单迁移缺少配置: ${marker}`
   )
 })
 
@@ -2045,6 +2067,21 @@ const configurationArchitectureExpectations = {
     'secret://integration/',
     'INTEGRATION_CONNECTOR',
     '$context.organizationId',
+    '上线检查清单'
+  ],
+  'src/data/user-manual/embedIntegration.js': [
+    '嵌入集成不是永久免登录 URL',
+    'embed.launch',
+    '/api/open/v1/embed-launches',
+    'SIGNED_JWT',
+    'flow-embed-launch',
+    'FlowEmbed.mount',
+    'launchCode',
+    'targetOrigin',
+    'selection.changed',
+    'form.saved',
+    'session.expired',
+    'RECORD_UPDATE',
     '上线检查清单'
   ],
   'src/data/user-manual/entity.js': [

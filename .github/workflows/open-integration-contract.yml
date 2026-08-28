@@ -45,7 +45,7 @@ jobs:
         working-directory: workflow-server
         run: >-
           mvn -B -ntp -pl workflow-app -am
-          -Dtest=OpenIntegrationContractTest
+          -Dtest=OpenIntegrationContractTest,EmbedOpenApiContractTest
           -Dsurefire.failIfNoSpecifiedTests=false test
 
       - name: 校验前端生产构建

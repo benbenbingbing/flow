@@ -27,6 +27,7 @@
         <module>workflow-process</module>
         <module>workflow-project</module>
         <module>workflow-open-api</module>
+        <module>workflow-embed</module>
         <module>workflow-integration</module>
         <module>workflow-migration</module>
         <module>workflow-devtools</module>
@@ -105,6 +106,11 @@
             <dependency>
                 <groupId>com.workflow</groupId>
                 <artifactId>workflow-open-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
+                <artifactId>workflow-embed</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

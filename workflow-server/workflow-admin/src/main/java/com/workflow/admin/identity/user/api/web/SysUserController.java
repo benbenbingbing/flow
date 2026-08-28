@@ -51,9 +51,11 @@ public class SysUserController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String orgId,
             @RequestParam(required = false) String deptId,
-            @RequestParam(required = false) String roleId) {
+            @RequestParam(required = false) String roleId,
+            @RequestParam(required = false) String positionCode) {
         return Result.success(userService.getUserPage(
-                pageNum, pageSize, keyword, status, orgId, deptId, roleId));
+                pageNum, pageSize, keyword, status, orgId, deptId, roleId,
+                positionCode));
     }
     
     /**

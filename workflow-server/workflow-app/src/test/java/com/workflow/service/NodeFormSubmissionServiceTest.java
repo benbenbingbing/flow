@@ -2,11 +2,13 @@ package com.workflow.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 
 import com.workflow.process.form.application.NodeFormSubmissionService;
 
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -170,7 +173,7 @@ class NodeFormSubmissionServiceTest {
                 eq("task:task-1"),
                 org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(executionContext);
-        when(submissionService.applyForm(
+        when(submissionService.applyFormWithRelease(
                 eq("form-1"), eq("release-3"), eq(3),
                 eq("expense"), eq("data-1"),
                 eq("approve"),
@@ -182,7 +185,14 @@ class NodeFormSubmissionServiceTest {
                     Map<String, Object> input = invocation.getArgument(6);
                     assertEquals(88, input.get("amount"));
                     assertEquals("kept", input.get("lockedNote"));
-                    return input;
+                    return new PublishedFormSubmissionService
+                            .AuthorizedFormApplication(
+                                    input,
+                                    "release-3",
+                                    3,
+                                    "hotfix-release-4",
+                                    "hash-target-4",
+                                    "target-4");
                 });
 
         Task task = task();
@@ -220,13 +230,27 @@ class NodeFormSubmissionServiceTest {
         assertEquals(
                 Map.of("data", Map.of("amount", 88)),
                 updateCaptor.getValue().payload());
+        assertEquals(
+                com.workflow.contracts.entity.mutation
+                        .EntityMutationSourceType.APPROVAL_TASK,
+                updateCaptor.getValue().context().sourceType());
+        assertEquals(
+                List.of(new FormUniqueMutationContext.Reference(
+                        "form-1",
+                        "release-3",
+                        3,
+                        "hotfix-release-4",
+                        "hash-target-4",
+                        "target-4")),
+                FormUniqueMutationContext.resolveAll(
+                        updateCaptor.getValue().context()));
         verify(runtimeService).setVariables("instance-1", Map.of("amount", 88));
         verify(runtimeService).setVariable(
                 "instance-1",
                 "entityData",
                 Map.of("amount", 88, "lockedNote", "kept"));
         verify(submissionService, times(1))
-                .applyForm(
+                .applyFormWithRelease(
                         eq("form-1"),
                         eq("release-3"),
                         eq(3),
@@ -237,6 +261,157 @@ class NodeFormSubmissionServiceTest {
                         eq(executionContext),
                         org.mockito.ArgumentMatchers.any(
                                 UiRuntimeResolutionContext.class));
+    }
+
+    /**
+     * 测试一个审批节点同时应用多个发布表单时，所有可信发布身份被一次性
+     * 写入同一个 APPROVAL_TASK 变更上下文，且不泄露短期解析 token。
+     */
+    @Test
+    void carriesEveryAppliedPublishedFormInOneApprovalMutation() {
+        RuntimeService runtimeService = mock(RuntimeService.class);
+        ProcessPublishedSnapshotService snapshotService =
+                mock(ProcessPublishedSnapshotService.class);
+        EntityFormRuntimeService runtimeFormService =
+                mock(EntityFormRuntimeService.class);
+        EntityMutationPort mutationPort =
+                mock(EntityMutationPort.class);
+        PublishedFormSubmissionService submissionService =
+                mock(PublishedFormSubmissionService.class);
+        FormSubmissionTraceService traceService =
+                mock(FormSubmissionTraceService.class);
+        NodeFormSubmissionService service =
+                new NodeFormSubmissionService(
+                        runtimeService,
+                        snapshotService,
+                        mock(EntityFormService.class),
+                        runtimeFormService,
+                        mutationPort,
+                        submissionService,
+                        traceService,
+                        new ObjectMapper());
+        FormSubmissionExecutionContext executionContext =
+                executionContext();
+        when(traceService.current(
+                eq("PROCESS_APPROVAL_SUBMIT"),
+                eq("task:task-1"),
+                org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(executionContext);
+
+        Task task = task();
+        when(runtimeService.getVariable(
+                "instance-1", "entityCode"))
+                .thenReturn("expense");
+        when(runtimeService.getVariable(
+                "instance-1", "entityDataId"))
+                .thenReturn("data-1");
+        when(runtimeService.getVariable(
+                "instance-1", "entityData"))
+                .thenReturn(Map.of(
+                        "amount", 10,
+                        "code", "OLD"));
+
+        ProcessNodeForm amountForm = nodeForm(
+                "form-amount", "release-amount-3", 3);
+        ProcessNodeForm codeForm = nodeForm(
+                "form-code", "release-code-5", 5);
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId(
+                "definition-1", "Task_Review"))
+                .thenReturn(published(List.of(
+                        amountForm,
+                        codeForm)));
+        EntityForm amountRuntimeForm = new EntityForm();
+        amountRuntimeForm.setFields(List.of(field("amount", 0)));
+        EntityForm codeRuntimeForm = new EntityForm();
+        codeRuntimeForm.setFields(List.of(field("code", 0)));
+        when(runtimeFormService.getByBinding(
+                amountForm,
+                "history-1",
+                UiRuntimePurpose.ACTIVE_TASK))
+                .thenReturn(amountRuntimeForm);
+        when(runtimeFormService.getByBinding(
+                codeForm,
+                "history-1",
+                UiRuntimePurpose.ACTIVE_TASK))
+                .thenReturn(codeRuntimeForm);
+        when(submissionService.applyFormWithRelease(
+                eq("form-amount"),
+                eq("release-amount-3"),
+                eq(3),
+                eq("expense"),
+                eq("data-1"),
+                eq("approve"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                eq(executionContext),
+                org.mockito.ArgumentMatchers.any(
+                        UiRuntimeResolutionContext.class)))
+                .thenAnswer(invocation ->
+                        new PublishedFormSubmissionService
+                                .AuthorizedFormApplication(
+                                        invocation.getArgument(6),
+                                        "release-amount-3",
+                                        3,
+                                        "hotfix-amount-4",
+                                        "hash-amount-4",
+                                        "target-amount-4"));
+        when(submissionService.applyFormWithRelease(
+                eq("form-code"),
+                eq("release-code-5"),
+                eq(5),
+                eq("expense"),
+                eq("data-1"),
+                eq("approve"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                eq(executionContext),
+                org.mockito.ArgumentMatchers.any(
+                        UiRuntimeResolutionContext.class)))
+                .thenAnswer(invocation ->
+                        new PublishedFormSubmissionService
+                                .AuthorizedFormApplication(
+                                        invocation.getArgument(6),
+                                        "release-code-5",
+                                        5,
+                                        "release-code-5"));
+
+        service.applyEditableData(task, Map.of(
+                "amount", 88,
+                "code", "P002"));
+
+        ArgumentCaptor<EntityMutationCommand> commandCaptor =
+                ArgumentCaptor.forClass(
+                        EntityMutationCommand.class);
+        verify(mutationPort, times(1)).execute(
+                commandCaptor.capture());
+        EntityMutationCommand command = commandCaptor.getValue();
+        assertEquals(
+                com.workflow.contracts.entity.mutation
+                        .EntityMutationSourceType.APPROVAL_TASK,
+                command.context().sourceType());
+        assertEquals(
+                Map.of("data", Map.of(
+                        "amount", 88,
+                        "code", "P002")),
+                command.payload());
+        assertEquals(
+                List.of(
+                        new FormUniqueMutationContext.Reference(
+                                "form-amount",
+                                "release-amount-3",
+                                3,
+                                "hotfix-amount-4",
+                                "hash-amount-4",
+                                "target-amount-4"),
+                        new FormUniqueMutationContext.Reference(
+                                "form-code",
+                                "release-code-5",
+                                5,
+                                "release-code-5")),
+                FormUniqueMutationContext.resolveAll(
+                        command.context()));
+        assertFalse(String.valueOf(
+                        command.context().extraParams())
+                .toLowerCase(java.util.Locale.ROOT)
+                .contains("token"));
     }
 
     /** 测试全局只读节点即使空提交也不写回，但仍执行发布表单校验。 */
@@ -276,28 +451,143 @@ class NodeFormSubmissionServiceTest {
         when(snapshotService.getNodeFormsContextByProcessDefinitionId(
                 "definition-1", "Task_Review"))
                 .thenReturn(published(nodeForm));
-        when(submissionService.applyForm(
+        when(submissionService.applyFormWithRelease(
                 eq("form-1"), eq("release-3"), eq(3),
                 eq("expense"), eq("data-1"), eq("approve"),
                 org.mockito.ArgumentMatchers.anyMap(),
                 eq(executionContext),
                 org.mockito.ArgumentMatchers.any(
                         UiRuntimeResolutionContext.class)))
-                .thenAnswer(invocation -> invocation.getArgument(6));
+                .thenAnswer(invocation ->
+                        new PublishedFormSubmissionService
+                                .AuthorizedFormApplication(
+                                        invocation.getArgument(6),
+                                        "release-3",
+                                        3,
+                                        "release-3"));
 
         service.applyEditableData(task, Map.of());
 
         verify(mutationPort, never()).execute(
                 org.mockito.ArgumentMatchers.any(
                         EntityMutationCommand.class));
+        ArgumentCaptor<EntityMutationContext> contextCaptor =
+                ArgumentCaptor.forClass(
+                        EntityMutationContext.class);
+        verify(mutationPort).reconcileFormUniqueness(
+                eq("expense"),
+                eq("data-1"),
+                contextCaptor.capture());
+        assertEquals(
+                List.of(new FormUniqueMutationContext.Reference(
+                        "form-1",
+                        "release-3",
+                        3,
+                        "release-3")),
+                FormUniqueMutationContext.resolveAll(
+                        contextCaptor.getValue()));
         verify(runtimeService, never()).setVariables(eq("instance-1"), org.mockito.ArgumentMatchers.anyMap());
-        verify(submissionService).applyForm(
+        verify(submissionService).applyFormWithRelease(
                 eq("form-1"), eq("release-3"), eq(3),
                 eq("expense"), eq("data-1"), eq("approve"),
                 org.mockito.ArgumentMatchers.anyMap(),
                 eq(executionContext),
                 org.mockito.ArgumentMatchers.any(
                         UiRuntimeResolutionContext.class));
+    }
+
+    @Test
+    void defaultFormCarriesResolvedReleaseIntoApprovalMutation() {
+        RuntimeService runtimeService = mock(RuntimeService.class);
+        ProcessPublishedSnapshotService snapshotService =
+                mock(ProcessPublishedSnapshotService.class);
+        EntityFormService formService = mock(EntityFormService.class);
+        EntityFormRuntimeService runtimeFormService =
+                mock(EntityFormRuntimeService.class);
+        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        PublishedFormSubmissionService submissionService =
+                mock(PublishedFormSubmissionService.class);
+        FormSubmissionTraceService traceService =
+                mock(FormSubmissionTraceService.class);
+        NodeFormSubmissionService service = new NodeFormSubmissionService(
+                runtimeService,
+                snapshotService,
+                formService,
+                runtimeFormService,
+                mutationPort,
+                submissionService,
+                traceService,
+                new ObjectMapper());
+        Task task = task();
+        FormSubmissionExecutionContext executionContext =
+                executionContext();
+        when(traceService.current(
+                eq("PROCESS_APPROVAL_SUBMIT"),
+                eq("task:task-1"),
+                org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(executionContext);
+        when(runtimeService.getVariable(
+                "instance-1", "entityCode"))
+                .thenReturn("expense");
+        when(runtimeService.getVariable(
+                "instance-1", "entityDataId"))
+                .thenReturn("data-1");
+        when(runtimeService.getVariable(
+                "instance-1", "entityData"))
+                .thenReturn(Map.of("amount", 10));
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId(
+                "definition-1", "Task_Review"))
+                .thenReturn(published(List.of()));
+        com.workflow.entity.definition.infrastructure.persistence.record
+                .EntityDefinition definition =
+                new com.workflow.entity.definition.infrastructure
+                        .persistence.record.EntityDefinition();
+        definition.setId("expense-definition");
+        definition.setEntityCode("expense");
+        EntityForm defaultForm = new EntityForm();
+        defaultForm.setId("default-form");
+        defaultForm.setFields(List.of(field("amount", 0)));
+        when(formService.getEntityByCode("expense"))
+                .thenReturn(definition);
+        when(formService.getDefaultForm("expense-definition"))
+                .thenReturn(defaultForm);
+        when(runtimeFormService.getDefaultForm(
+                "expense-definition"))
+                .thenReturn(defaultForm);
+        when(submissionService.applyFormWithRelease(
+                eq("default-form"),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                eq("expense"),
+                eq("data-1"),
+                eq("approve"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                eq(executionContext),
+                org.mockito.ArgumentMatchers.isNull()))
+                .thenAnswer(invocation ->
+                        new PublishedFormSubmissionService
+                                .AuthorizedFormApplication(
+                                        invocation.getArgument(6),
+                                        "release-7",
+                                        7,
+                                        "hotfix-8"));
+
+        service.applyEditableData(
+                task,
+                Map.of("amount", 88));
+
+        ArgumentCaptor<EntityMutationCommand> captor =
+                ArgumentCaptor.forClass(
+                        EntityMutationCommand.class);
+        verify(mutationPort).execute(captor.capture());
+        assertEquals(
+                List.of(new FormUniqueMutationContext.Reference(
+                        "default-form",
+                        "release-7",
+                        7,
+                        "hotfix-8")),
+                FormUniqueMutationContext.resolveAll(
+                        captor.getValue().context()));
     }
 
     /** 测试无法解析确切流程快照时 fail-closed：验证抛出 IllegalStateException 且不静默放行 */
@@ -370,7 +660,7 @@ class NodeFormSubmissionServiceTest {
                 eq("task:task-1"),
                 org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(executionContext);
-        when(submissionService.applyForm(
+        when(submissionService.applyFormWithRelease(
                 eq("form-1"), eq("release-3"), eq(3),
                 eq("expense"), eq("data-1"),
                 eq("approve"),
@@ -378,7 +668,13 @@ class NodeFormSubmissionServiceTest {
                 eq(executionContext),
                 org.mockito.ArgumentMatchers.any(
                         UiRuntimeResolutionContext.class)))
-                .thenAnswer(invocation -> invocation.getArgument(6));
+                .thenAnswer(invocation ->
+                        new PublishedFormSubmissionService
+                                .AuthorizedFormApplication(
+                                        invocation.getArgument(6),
+                                        "release-3",
+                                        3,
+                                        "release-3"));
 
         Task task = task();
         when(runtimeService.getVariable(
@@ -460,6 +756,19 @@ class NodeFormSubmissionServiceTest {
         return field;
     }
 
+    /** 构造绑定到审批节点的精确表单发布引用。 */
+    private ProcessNodeForm nodeForm(
+            String formId,
+            String releaseId,
+            int releaseVersion) {
+        ProcessNodeForm nodeForm = new ProcessNodeForm();
+        nodeForm.setFormId(formId);
+        nodeForm.setFormReleaseId(releaseId);
+        nodeForm.setFormReleaseVersion(releaseVersion);
+        nodeForm.setIsReadonly(0);
+        return nodeForm;
+    }
+
     private EntityFormNode node(
             String fieldCode,
             boolean readonly,
@@ -511,10 +820,15 @@ class NodeFormSubmissionServiceTest {
 
     private ProcessPublishedSnapshotService.PublishedNodeForms
             published(ProcessNodeForm nodeForm) {
+        return published(List.of(nodeForm));
+    }
+
+    private ProcessPublishedSnapshotService.PublishedNodeForms
+            published(List<ProcessNodeForm> nodeForms) {
         ProcessVersionHistory history = new ProcessVersionHistory();
         history.setId("history-1");
         return new ProcessPublishedSnapshotService.PublishedNodeForms(
                 history,
-                List.of(nodeForm));
+                nodeForms);
     }
 }

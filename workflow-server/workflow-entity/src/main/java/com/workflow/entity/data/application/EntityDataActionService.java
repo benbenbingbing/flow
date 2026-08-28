@@ -30,6 +30,7 @@ import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
 import com.workflow.entity.list.application.EntityListReleaseContext;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
@@ -351,16 +352,17 @@ public class EntityDataActionService {
                         dto.getFormReleaseVersion(),
                         dto.getFormReleaseResolutionToken()));
         if (origin == null) {
-            dto.setData(applySubmissionForm(
+            AppliedSubmissionForm applied = applySubmissionForm(
                     null,
                     dto.getEntityCode(),
                     null,
                     "create",
                     dto.getData(),
-                    executionContext));
+                    executionContext);
+            dto.setData(applied.data());
             return mutateCreate(
                     dto,
-                    origin,
+                    applied.origin(),
                     executionContext.businessTraceKey());
         }
         UiEventExecuteRequest event = event(
@@ -375,13 +377,14 @@ public class EntityDataActionService {
         Object value = eventRuntimeService.execute(
                 event,
                 input -> {
-                    dto.setData(applySubmissionForm(
+                    AppliedSubmissionForm applied = applySubmissionForm(
                             origin,
                             dto.getEntityCode(),
                             null,
                             "create",
                             map(input.get("data")),
-                            executionContext));
+                            executionContext);
+                    dto.setData(applied.data());
                     if (input.containsKey("startProcess")) {
                         dto.setStartProcess(
                                 Boolean.valueOf(String.valueOf(
@@ -389,7 +392,7 @@ public class EntityDataActionService {
                     }
                     return mutateCreate(
                             dto,
-                            origin,
+                            applied.origin(),
                             executionContext.businessTraceKey());
                 }).getData();
         return entityData(value, dto.getEntityCode(), null);
@@ -506,7 +509,7 @@ public class EntityDataActionService {
                             findAccessible(entityCode, id, config);
                     capabilityService.requireRowActionForConfig(
                             entityCode, config, "edit", row);
-                    Map<String, Object> safeData =
+                    AppliedSubmissionForm applied =
                             applySubmissionForm(
                                     origin,
                                     entityCode,
@@ -516,7 +519,7 @@ public class EntityDataActionService {
                                     executionContext);
                     Map<String, Object> updateRequest =
                             new LinkedHashMap<>();
-                    updateRequest.put("data", safeData);
+                    updateRequest.put("data", applied.data());
                     if (input.containsKey("startProcess")) {
                         updateRequest.put(
                                 "startProcess",
@@ -526,7 +529,7 @@ public class EntityDataActionService {
                             entityCode,
                             id,
                             updateRequest,
-                            origin,
+                            applied.origin(),
                             executionContext.businessTraceKey());
                 }).getData();
         return entityData(value, entityCode, id);
@@ -541,7 +544,7 @@ public class EntityDataActionService {
         EntityDataDTO row = findAccessible(entityCode, id, config);
         capabilityService.requireRowActionForConfig(
                 entityCode, config, "edit", row);
-        Map<String, Object> safeData =
+        AppliedSubmissionForm applied =
                 applySubmissionForm(
                         null,
                         entityCode,
@@ -550,7 +553,7 @@ public class EntityDataActionService {
                         extractSubmittedData(formData),
                         executionContext);
         Map<String, Object> updateRequest = new LinkedHashMap<>();
-        updateRequest.put("data", safeData);
+        updateRequest.put("data", applied.data());
         if (formData != null && formData.containsKey("startProcess")) {
             updateRequest.put(
                     "startProcess",
@@ -560,7 +563,9 @@ public class EntityDataActionService {
                 entityCode,
                 id,
                 updateRequest,
-                listEventOrigin(config),
+                applied.origin() == null
+                        ? listEventOrigin(config)
+                        : applied.origin(),
                 executionContext.businessTraceKey());
     }
 
@@ -570,7 +575,7 @@ public class EntityDataActionService {
      * <p>表单来源在 {@link #eventOrigin(String, String, String)} 中完成实体归属校验；
      * 没有表单来源时才回退实体默认表单，兼容未显式选择表单的调用方。</p>
      */
-    private Map<String, Object> applySubmissionForm(
+    private AppliedSubmissionForm applySubmissionForm(
             EventOrigin origin,
             String entityCode,
             String recordId,
@@ -579,7 +584,8 @@ public class EntityDataActionService {
             FormSubmissionExecutionContext executionContext) {
         if (origin != null
                 && "FORM".equals(origin.configType())) {
-            return formSubmissionService.applyAuthorizedForm(
+            PublishedFormSubmissionService.AuthorizedFormApplication applied =
+                    formSubmissionService.applyAuthorizedFormWithRelease(
                     origin.configId(),
                     origin.releaseId(),
                     origin.releaseVersion(),
@@ -589,13 +595,41 @@ public class EntityDataActionService {
                     mode,
                     submittedData,
                     executionContext);
+            // 授权 token 只用于本次解析；统一变更上下文保存正式发布身份，不能持久化 token。
+            return new AppliedSubmissionForm(
+                    applied.data(),
+                    new EventOrigin(
+                            "FORM",
+                            origin.configId(),
+                            applied.releaseId(),
+                            applied.releaseVersion(),
+                            applied.effectiveReleaseId(),
+                            applied.effectiveContentHash(),
+                            applied.hotfixTargetId(),
+                            null));
         }
-        return formSubmissionService.applyDefaultForm(
-                entityCode,
-                recordId,
-                mode,
-                submittedData,
-                executionContext);
+        PublishedFormSubmissionService.DefaultFormApplication applied =
+                formSubmissionService.applyDefaultFormWithRelease(
+                        entityCode,
+                        recordId,
+                        mode,
+                        submittedData,
+                        executionContext);
+        EventOrigin appliedOrigin = StringUtils.hasText(
+                applied.formId())
+                ? new EventOrigin(
+                        "FORM",
+                        applied.formId(),
+                        applied.releaseId(),
+                        applied.releaseVersion(),
+                        applied.effectiveReleaseId(),
+                        applied.effectiveContentHash(),
+                        applied.hotfixTargetId(),
+                        null)
+                : origin;
+        return new AppliedSubmissionForm(
+                applied.data(),
+                appliedOrigin);
     }
 
     /**
@@ -788,6 +822,13 @@ public class EntityDataActionService {
         Map<String, Object> createRequest = objectMapper.convertValue(
                 dto,
                 Map.class);
+        // PublishedSubFormSubmissionProcessor 在子行上附加的可信引用
+        // 是 JVM 内存类型。Jackson 转换外层 DTO 时会把它降级为摘要
+        // 占位字符串，因此必须用处理后的原始 data Map 覆盖回去。
+        // 该 Map 稍后仍会在关系 SQL 生成前移除内部字段。
+        if (dto.getData() != null) {
+            createRequest.put("data", dto.getData());
+        }
         LIST_RELEASE_CONTEXT_FIELDS.forEach(createRequest::remove);
         EntityMutationResult result = mutationPort.execute(
                 EntityMutationCommand.create(
@@ -898,6 +939,45 @@ public class EntityDataActionService {
                                 UserContext.getUsername());
         if (StringUtils.hasText(traceKey)) {
             builder.trace(traceKey, traceKey);
+        }
+        if (sourceType == EntityMutationSourceType.FORM
+                && origin != null) {
+            Map<String, Object> releaseIdentity =
+                    new LinkedHashMap<>();
+            releaseIdentity.put(
+                    FormUniqueMutationContext.FORM_ID,
+                    origin.configId());
+            if (StringUtils.hasText(origin.releaseId())) {
+                releaseIdentity.put(
+                        FormUniqueMutationContext.FORM_RELEASE_ID,
+                        origin.releaseId());
+            }
+            if (origin.releaseVersion() != null) {
+                releaseIdentity.put(
+                        FormUniqueMutationContext.FORM_RELEASE_VERSION,
+                        origin.releaseVersion());
+            }
+            if (StringUtils.hasText(
+                    origin.effectiveReleaseId())) {
+                releaseIdentity.put(
+                        FormUniqueMutationContext
+                                .FORM_EFFECTIVE_RELEASE_ID,
+                        origin.effectiveReleaseId());
+            }
+            if (StringUtils.hasText(
+                    origin.effectiveContentHash())) {
+                releaseIdentity.put(
+                        FormUniqueMutationContext
+                                .FORM_EFFECTIVE_CONTENT_HASH,
+                        origin.effectiveContentHash());
+            }
+            if (StringUtils.hasText(origin.hotfixTargetId())) {
+                releaseIdentity.put(
+                        FormUniqueMutationContext
+                                .FORM_HOTFIX_TARGET_ID,
+                        origin.hotfixTargetId());
+            }
+            builder.extraParams(releaseIdentity);
         }
         return builder.build();
     }
@@ -1034,6 +1114,9 @@ public class EntityDataActionService {
                             ? null : releaseContext.releaseId(),
                     releaseContext == null
                             ? null : releaseContext.releaseVersion(),
+                    null,
+                    null,
+                    null,
                     releaseContext == null
                             ? null
                             : releaseContext.releaseResolutionToken());
@@ -1052,6 +1135,9 @@ public class EntityDataActionService {
                                 ? null : releaseContext.releaseId(),
                         releaseContext == null
                                 ? null : releaseContext.releaseVersion(),
+                        null,
+                        null,
+                        null,
                         releaseContext == null
                                 ? null
                                 : releaseContext.releaseResolutionToken());
@@ -1067,6 +1153,9 @@ public class EntityDataActionService {
                         list.getId(),
                         list.getActiveReleaseId(),
                         list.getPublishedVersion(),
+                        null,
+                        null,
+                        null,
                         list.getReleaseResolutionToken());
     }
 
@@ -1193,6 +1282,15 @@ public class EntityDataActionService {
             String configId,
             String releaseId,
             Integer releaseVersion,
+            String effectiveReleaseId,
+            String effectiveContentHash,
+            String hotfixTargetId,
             String releaseResolutionToken) {
+    }
+
+    /** 应用表单后的安全数据及本次服务端实际采用的发布身份。 */
+    private record AppliedSubmissionForm(
+            Map<String, Object> data,
+            EventOrigin origin) {
     }
 }

@@ -103,6 +103,27 @@ public class PublishedFormSubmissionService {
             String mode,
             Map<String, Object> submittedData,
             FormSubmissionExecutionContext executionContext) {
+        return applyDefaultFormWithRelease(
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext).data();
+    }
+
+    /**
+     * 应用实体默认表单，并返回服务端本次实际解析的发布身份。
+     *
+     * <p>当实体未设置默认表单时，原样返回数据且 formId/release 均为
+     * null，调用方不得激活表单作用域规则。存在默认表单时，返回
+     * base/effective release，保证前置处理与事务终检读取同一快照。</p>
+     */
+    public DefaultFormApplication applyDefaultFormWithRelease(
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext) {
         EntityDefinition definition =
                 entityDefinitionMapper.findByEntityCode(entityCode)
                         .orElse(null);
@@ -112,15 +133,59 @@ public class PublishedFormSubmissionService {
         }
         EntityForm form =
                 formMapper.selectDefaultByEntityId(definition.getId());
-        return form == null
-                ? mutable(submittedData)
-                : applyForm(
-                        form.getId(),
-                        entityCode,
-                        recordId,
-                        mode,
-                        submittedData,
-                        executionContext);
+        if (form == null) {
+            return new DefaultFormApplication(
+                    mutable(submittedData),
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+        AuthorizedFormApplication applied = applyFormWithRelease(
+                form.getId(),
+                null,
+                null,
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext,
+                null);
+        return new DefaultFormApplication(
+                applied.data(),
+                form.getId(),
+                applied.releaseId(),
+                applied.releaseVersion(),
+                applied.effectiveReleaseId(),
+                applied.effectiveContentHash(),
+                applied.hotfixTargetId());
+    }
+
+    /** 服务端已应用的默认表单数据及其可选发布身份。 */
+    public record DefaultFormApplication(
+            Map<String, Object> data,
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String effectiveReleaseId,
+            String effectiveContentHash,
+            String hotfixTargetId) {
+
+        public DefaultFormApplication(
+                Map<String, Object> data,
+                String formId,
+                String releaseId,
+                Integer releaseVersion,
+                String effectiveReleaseId) {
+            this(
+                    data,
+                    formId,
+                    releaseId,
+                    releaseVersion,
+                    effectiveReleaseId,
+                    null,
+                    null);
+        }
     }
 
     /**
@@ -226,29 +291,126 @@ public class PublishedFormSubmissionService {
             String mode,
             Map<String, Object> submittedData,
             FormSubmissionExecutionContext executionContext) {
+        return applyAuthorizedFormWithRelease(
+                formId,
+                releaseId,
+                releaseVersion,
+                releaseResolutionToken,
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext).data();
+    }
+
+    /**
+     * 应用精确发布版并返回同一次授权解析得到的正式发布身份。
+     *
+     * <p>调用方必须把返回的 releaseId/version 传入统一变更上下文，保证事务终检
+     * 与表单默认值、BEFORE_SUBMIT 和必填校验使用同一份不可变发布快照。</p>
+     */
+    public AuthorizedFormApplication applyAuthorizedFormWithRelease(
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String releaseResolutionToken,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext) {
         ResolvedEntityFormRelease resolved =
                 releaseService.resolveAuthorizedRuntimeFormRelease(
                         formId,
                         releaseId,
                         releaseVersion,
                         releaseResolutionToken);
-        return applyResolvedForm(
-                resolved,
-                entityCode,
-                recordId,
-                mode,
-                submittedData,
-                executionContext,
-                null,
-                PublishedSubFormSubmissionProcessor.Context.root(),
-                0,
-                BindingExecutionMode.AUTHORITATIVE);
+        Map<String, Object> data = applyResolvedForm(
+                    resolved,
+                    entityCode,
+                    recordId,
+                    mode,
+                    submittedData,
+                    executionContext,
+                    null,
+                    PublishedSubFormSubmissionProcessor.Context.root(),
+                    0,
+                    BindingExecutionMode.AUTHORITATIVE);
+        return new AuthorizedFormApplication(
+                data,
+                resolved.releaseId(),
+                resolved.releaseVersion(),
+                resolved.effectiveReleaseId(),
+                resolved.effectiveContentHash(),
+                resolved.hotfixTargetId());
+    }
+
+    /** 服务端已应用的表单数据及其可信发布身份。 */
+    public record AuthorizedFormApplication(
+            Map<String, Object> data,
+            String releaseId,
+            Integer releaseVersion,
+            String effectiveReleaseId,
+            String effectiveContentHash,
+            String hotfixTargetId) {
+
+        public AuthorizedFormApplication(
+                Map<String, Object> data,
+                String releaseId,
+                Integer releaseVersion,
+                String effectiveReleaseId) {
+            this(
+                    data,
+                    releaseId,
+                    releaseVersion,
+                    effectiveReleaseId,
+                    null,
+                    null);
+        }
+
+        public AuthorizedFormApplication(
+                Map<String, Object> data,
+                String releaseId,
+                Integer releaseVersion) {
+            this(
+                    data,
+                    releaseId,
+                    releaseVersion,
+                    releaseId,
+                    null,
+                    null);
+        }
     }
 
     /**
      * 按服务端可信流程上下文应用指定发布版本表单的提交处理。
      */
     public Map<String, Object> applyForm(
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String entityCode,
+            String recordId,
+            String mode,
+            Map<String, Object> submittedData,
+            FormSubmissionExecutionContext executionContext,
+            UiRuntimeResolutionContext resolutionContext) {
+        return applyFormWithRelease(
+                formId,
+                releaseId,
+                releaseVersion,
+                entityCode,
+                recordId,
+                mode,
+                submittedData,
+                executionContext,
+                resolutionContext).data();
+    }
+
+    /**
+     * 按服务端可信流程上下文应用表单，并返回同一次解析实际采用的基础与有效发布身份。
+     */
+    public AuthorizedFormApplication applyFormWithRelease(
             String formId,
             String releaseId,
             Integer releaseVersion,
@@ -268,7 +430,7 @@ public class PublishedFormSubmissionService {
                         releaseId,
                         releaseVersion,
                         resolutionContext);
-        return applyResolvedForm(
+        Map<String, Object> data = applyResolvedForm(
                 resolved,
                 entityCode,
                 recordId,
@@ -279,6 +441,13 @@ public class PublishedFormSubmissionService {
                 PublishedSubFormSubmissionProcessor.Context.root(),
                 0,
                 BindingExecutionMode.AUTHORITATIVE);
+        return new AuthorizedFormApplication(
+                data,
+                resolved.releaseId(),
+                resolved.releaseVersion(),
+                resolved.effectiveReleaseId(),
+                resolved.effectiveContentHash(),
+                resolved.hotfixTargetId());
     }
 
     /**
@@ -444,6 +613,8 @@ public class PublishedFormSubmissionService {
                         resolutionContext,
                         nestedContext,
                         depth,
+                        executionMode
+                                == BindingExecutionMode.AUTHORITATIVE,
                         (childResolved,
                                 childEntityCode,
                                 childRecordId,

@@ -19,6 +19,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @RequiredArgsConstructor
 public class CorsConfig {
 
+    /**
+     * Embed Runtime 由专属 Spring Security 链建立身份，不能再进入普通用户拦截器。
+     * 管理端 /api/embed-management/** 故意不在此列表中，仍沿用普通 Flow 登录态。
+     */
+    static final String[] EMBED_RUNTIME_PATH_PATTERNS = {
+            "/api/embed/v1/launches/*/exchange",
+            "/api/embed/v1/runtime/**",
+            "/api/embed/v1/session",
+            "/api/embed/v1/session/**"
+    };
+
     private final AuthInterceptor authInterceptor;
     private final EndpointAuthorizationInterceptor
             endpointAuthorizationInterceptor;
@@ -58,11 +69,15 @@ public class CorsConfig {
                                 "/api/auth/login",
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
-                                "/api/open/**");
+                                "/api/open/**")
+                        .excludePathPatterns(
+                                EMBED_RUNTIME_PATH_PATTERNS);
                 // Every mapped API must then declare an explicit access policy.
                 registry.addInterceptor(endpointAuthorizationInterceptor)
                         .addPathPatterns("/api/**")
-                        .excludePathPatterns("/api/open/**");
+                        .excludePathPatterns("/api/open/**")
+                        .excludePathPatterns(
+                                EMBED_RUNTIME_PATH_PATTERNS);
             }
         };
     }

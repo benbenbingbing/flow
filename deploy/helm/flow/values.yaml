@@ -128,6 +128,14 @@ openApi:
     workerDelayMs: 1000
     metricsRefreshMs: 15000
 
+embed:
+  enabled: false
+  publicHost: ""
+  tlsSecretName: ""
+  contextKeySecretKey: embed-context-key-base64
+  hmacKeySecretKey: embed-hmac-key-base64
+  annotations: {}
+
 connector:
   http:
     enabled: false

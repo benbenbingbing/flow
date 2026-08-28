@@ -27,3 +27,54 @@ spec:
                 port:
                   name: http
 {{- end }}
+{{- if .Values.embed.enabled }}
+{{- if .Values.ingress.enabled }}
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "flow.fullname" . }}-embed
+  labels:
+    {{- include "flow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: embed
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  {{- with .Values.embed.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ required "ingress.className is required for Embed" .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ .Values.embed.publicHost | quote }}
+      secretName: {{ .Values.embed.tlsSecretName }}
+  rules:
+    - host: {{ .Values.embed.publicHost | quote }}
+      http:
+        paths:
+          # Ingress 只做可移植的前缀分流；Pod 内 Nginx 继续校验 lch_* 完整格式，
+          # 并对后台 SPA、普通 /api/** 和所有未知路径返回 404。
+          - path: /embed/v1/launches/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flow.fullname" . }}-web
+                port:
+                  name: embed
+          - path: /embed-assets/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flow.fullname" . }}-web
+                port:
+                  name: embed
+          - path: /api/embed/v1/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "flow.fullname" . }}-web
+                port:
+                  name: embed
+{{- end }}

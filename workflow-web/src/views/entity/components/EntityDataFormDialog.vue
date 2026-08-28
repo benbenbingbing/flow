@@ -613,21 +613,35 @@ const openEdit = async (row: any, options: any = {}) => {
 }
 
 async function validateRuntimeForms() {
-  const formRefs: Array<InstanceType<typeof EntityDataFormFields>> = []
+  const formRefs: Array<{
+    instance: InstanceType<typeof EntityDataFormFields>
+    tabName?: string
+  }> = []
   if (!showOuterTabs.value) {
-    if (formFieldsRef.value) formRefs.push(formFieldsRef.value)
+    if (formFieldsRef.value) {
+      formRefs.push({ instance: formFieldsRef.value })
+    }
   } else {
     if (showBasicTab.value && basicFormFieldsRef.value) {
-      formRefs.push(basicFormFieldsRef.value)
+      formRefs.push({
+        instance: basicFormFieldsRef.value,
+        tabName: 'basic'
+      })
     }
     runtimeNodeTabs.value.forEach(tab => {
       const formRef = nodeFormFieldsRefs.value[tab.name]
-      if (formRef) formRefs.push(formRef)
+      if (formRef) {
+        formRefs.push({ instance: formRef, tabName: tab.name })
+      }
     })
   }
 
   for (const formRef of formRefs) {
-    if ((await formRef.validate()) === false) return false
+    if ((await formRef.instance.validate()) === false) {
+      // 唯一性或普通字段错误可能位于未激活页签，切过去才能让用户看到就地提示。
+      if (formRef.tabName) activeTab.value = formRef.tabName
+      return false
+    }
   }
 
   await dataSourceRuntime.prevalidateBeforeSubmit({

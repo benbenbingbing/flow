@@ -3,14 +3,23 @@ import { readFileSync } from 'node:fs'
 import {
   ASSIGNMENT_CONFIG_VERSION,
   buildAssigneeConfig,
+  buildRelativeOrgPositionResolverConfig,
   buildUserTaskReferenceOptions,
   MAX_NODE_REFERENCE_DEPTH,
   NODE_REFERENCE_ASSIGNEE_TYPE,
+  RELATIVE_ORG_POSITION_RESOLVER_CODE,
   normalizeDesignerAssigneeConfig,
   normalizeNodeReferenceAssigneeConfig,
+  normalizeRelativeOrgPositionConfig,
+  relativeOrgPositionSummary,
+  validateRelativeOrgPositionConfig,
   validateNodeReferenceChain,
   wouldCreateNodeReferenceCycle
 } from '../process-config/index.js'
+import {
+  canonicalRequestFingerprint,
+  createIdempotentSubmissionKeyTracker
+} from '../idempotent-submission.js'
 
 const nodeConfigPanelSource = readFileSync(new URL(
   '../../components/NodeConfigPanel.vue',
@@ -572,6 +581,220 @@ assert.match(
   nodeConfigPanelSource,
   /function updateMultiInstance\(\)[\s\S]*?assignee: '\$\{'[\s\S]*?candidateGroups: undefined[\s\S]*?candidateUsers: undefined/,
   '多实例节点引用必须只保留元素变量 assignee，并清理旧候选属性'
+)
+
+const relativePositionCases = [
+  { mode: 'SELF' },
+  { mode: 'FIXED_ANCESTOR', ancestorHops: 2 },
+  {
+    mode: 'NEAREST_WITH_HOLDER',
+    startLevel: 0,
+    maxHops: 16,
+    eligibleUnitTypes: ['dept']
+  },
+  { mode: 'BUSINESS_LEVEL', businessLevelCode: 'FIRST_LEVEL_DEPT' }
+]
+for (const hierarchy of relativePositionCases) {
+  const validation = validateRelativeOrgPositionConfig({
+    schemaVersion: 1,
+    subject: 'PROCESS_INITIATOR',
+    anchor: 'DEPARTMENT',
+    positionCode: 'UNIT_LEADER',
+    hierarchy,
+    assignmentMode: 'DIRECT',
+    multipleMatchPolicy: 'PRIMARY_OR_ERROR'
+  })
+  assert.equal(validation.valid, true, `${hierarchy.mode} 应通过相对组织职务静态校验`)
+}
+
+const relativeResolver = buildRelativeOrgPositionResolverConfig({
+  schemaVersion: 1,
+  subject: 'PROCESS_INITIATOR',
+  anchor: 'DEPARTMENT',
+  positionCode: 'UNIT_LEADER',
+  hierarchy: {
+    mode: 'NEAREST_WITH_HOLDER',
+    startLevel: 0,
+    maxHops: 16,
+    eligibleUnitTypes: ['dept']
+  },
+  assignmentMode: 'CANDIDATE',
+  multipleMatchPolicy: 'ALL'
+})
+const persistedRelativePosition = buildAssigneeConfig({
+  ...relativeResolver,
+  nextApproverSelection: {}
+})
+assert.equal(persistedRelativePosition.assignmentConfigVersion, 2)
+assert.equal(persistedRelativePosition.assigneeType, 'interface')
+assert.equal(
+  persistedRelativePosition.resolverCode,
+  RELATIVE_ORG_POSITION_RESOLVER_CODE
+)
+assert.equal(persistedRelativePosition.assignmentMode, 'CANDIDATE')
+assert.deepEqual(persistedRelativePosition.extraParams, {
+  schemaVersion: 1,
+  subject: 'PROCESS_INITIATOR',
+  anchor: 'DEPARTMENT',
+  positionCode: 'UNIT_LEADER',
+  hierarchy: {
+    mode: 'NEAREST_WITH_HOLDER',
+    startLevel: 0,
+    maxHops: 16,
+    eligibleUnitTypes: ['dept']
+  },
+  multipleMatchPolicy: 'ALL'
+})
+assert.deepEqual(
+  normalizeRelativeOrgPositionConfig(persistedRelativePosition),
+  {
+    schemaVersion: 1,
+    subject: 'PROCESS_INITIATOR',
+    anchor: 'DEPARTMENT',
+    positionCode: 'UNIT_LEADER',
+    hierarchy: {
+      mode: 'NEAREST_WITH_HOLDER',
+      startLevel: 0,
+      maxHops: 16,
+      eligibleUnitTypes: ['dept']
+    },
+    assignmentMode: 'CANDIDATE',
+    multipleMatchPolicy: 'ALL'
+  },
+  '相对组织职务保存并重新加载后必须无损恢复设计器语义模型'
+)
+assert.equal(
+  validateRelativeOrgPositionConfig({
+    ...relativeResolver,
+    assignmentMode: 'DIRECT',
+    multipleMatchPolicy: 'ALL'
+  }).valid,
+  false,
+  '普通任务 DIRECT 不得使用 ALL 掩盖多人歧义'
+)
+assert.equal(
+  validateRelativeOrgPositionConfig({
+    ...relativeResolver,
+    assignmentMode: 'DIRECT',
+    extraParams: {
+      ...relativeResolver.extraParams,
+      multipleMatchPolicy: 'ERROR'
+    }
+  }).valid,
+  true,
+  '普通 DIRECT 可在多人命中时显式报错'
+)
+assert.equal(
+  validateRelativeOrgPositionConfig(relativeResolver).valid,
+  true,
+  '普通 CANDIDATE 必须允许 ALL'
+)
+assert.equal(
+  validateRelativeOrgPositionConfig({
+    ...relativeResolver,
+    extraParams: {
+      ...relativeResolver.extraParams,
+      hierarchy: {
+        mode: 'NEAREST_WITH_HOLDER',
+        startLevel: 3,
+        maxHops: 2,
+        eligibleUnitTypes: ['dept']
+      }
+    }
+  }).valid,
+  false,
+  '起始层级超过最大上溯层数时必须在设计器内立即拒绝'
+)
+assert.equal(
+  validateRelativeOrgPositionConfig(relativeResolver, {
+    isMultiInstance: true
+  }).valid,
+  true,
+  '多实例必须允许使用全部任职人'
+)
+assert.equal(
+  validateRelativeOrgPositionConfig({
+    ...relativeResolver,
+    extraParams: {
+      ...relativeResolver.extraParams,
+      multipleMatchPolicy: 'PRIMARY_OR_ERROR'
+    }
+  }, { isMultiInstance: true }).valid,
+  false,
+  '多实例不得只挑选主职而缩小参与人集合'
+)
+assert.match(
+  relativeOrgPositionSummary(relativeResolver, { positionName: '负责人' }),
+  /流程发起人的所属部门[\s\S]*最近有任职人的单位[\s\S]*负责人[\s\S]*候选人/,
+  '自然语言摘要必须包含主体、相对范围、职务和任务分配语义'
+)
+for (const marker of [
+  'label="相对组织职务" value="relative_position"',
+  'value="SELF"',
+  'value="FIXED_ANCESTOR"',
+  'value="NEAREST_WITH_HOLDER"',
+  'value="BUSINESS_LEVEL"',
+  'previewRelativePosition',
+  'projectedAssigneeFormForPersistence'
+]) {
+  assert.ok(nodeConfigPanelSource.includes(marker), `相对组织职务设计器缺少契约标记: ${marker}`)
+}
+assert.match(
+  nodeConfigPanelSource,
+  /assigneeConfig\.assigneeType === 'interface'[\s\S]*?RELATIVE_ORG_POSITION_RESOLVER_CODE[\s\S]*?RELATIVE_ORG_POSITION_ASSIGNEE_TYPE/,
+  '旧 interface/relativeOrgPosition 配置必须回显为一等语义 UI'
+)
+assert.ok(
+  nodeConfigPanelSource.includes('result.resultCode')
+    && nodeConfigPanelSource.includes('relativePositionPreviewResult.warnings'),
+  '权威试算必须展示 resultCode 和 warnings/失败原因'
+)
+
+let generatedIdempotencyKeys = 0
+const idempotencyTracker = createIdempotentSubmissionKeyTracker(
+  () => `test-key-${++generatedIdempotencyKeys}`
+)
+const firstAssignmentRequest = {
+  reason: '负责人调整',
+  atomic: true,
+  items: [{ organizationUnitId: 'dept-a', userId: 'user-a' }]
+}
+const firstKey = idempotencyTracker.keyFor(firstAssignmentRequest)
+assert.equal(
+  idempotencyTracker.keyFor({
+    items: [{ userId: 'user-a', organizationUnitId: 'dept-a' }],
+    atomic: true,
+    reason: '负责人调整'
+  }),
+  firstKey,
+  'canonical 内容相同的网络重试必须复用原 Idempotency-Key'
+)
+assert.equal(
+  canonicalRequestFingerprint(firstAssignmentRequest),
+  canonicalRequestFingerprint({
+    atomic: true,
+    items: [{ userId: 'user-a', organizationUnitId: 'dept-a' }],
+    reason: '负责人调整'
+  }),
+  '对象字段顺序不应改变幂等请求指纹'
+)
+assert.notEqual(
+  idempotencyTracker.keyFor({
+    ...firstAssignmentRequest,
+    reason: '负责人再次调整'
+  }),
+  firstKey,
+  '请求内容变化后必须生成新的幂等键'
+)
+const changedKey = idempotencyTracker.peek()
+idempotencyTracker.clear()
+assert.notEqual(
+  idempotencyTracker.keyFor({
+    ...firstAssignmentRequest,
+    reason: '负责人再次调整'
+  }),
+  changedKey,
+  '重新预检显式清理后必须进入新的幂等请求周期'
 )
 
 console.log('assignment config v2 contract tests passed')

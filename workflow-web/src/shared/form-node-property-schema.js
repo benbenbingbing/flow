@@ -1,5 +1,8 @@
 import { normalizeFormNodeType } from './form-node-hierarchy.js'
 import { normalizeFormNodeFieldType } from './form-field-component-policy.js'
+import {
+  normalizeFormFieldUniqueness
+} from './form-field-uniqueness.js'
 
 const FIELD_DATA_SOURCE_USAGES = Object.freeze([
   'FIELD_OPTIONS',
@@ -222,7 +225,7 @@ export function getFormFieldValidationCapabilities(value) {
   })
 }
 
-export function normalizeFormFieldValidation(fieldType, value) {
+export function normalizeFormFieldValidation(fieldType, value, fieldCode = '') {
   const capabilities = getFormFieldValidationCapabilities(fieldType)
   const normalized = parseObject(value)
   if (!capabilities.length) {
@@ -243,6 +246,12 @@ export function normalizeFormFieldValidation(fieldType, value) {
     delete normalized.pattern
   } else {
     normalized.pattern = String(normalized.pattern)
+  }
+  if (normalized.uniqueness) {
+    normalized.uniqueness = normalizeFormFieldUniqueness(
+      normalized.uniqueness,
+      fieldCode
+    )
   }
   return normalized
 }
@@ -587,7 +596,8 @@ export function buildFormNodePayload(
     const rules = {
       validation: normalizeFormFieldValidation(
         field.fieldType,
-        field.validationRules
+        field.validationRules,
+        field.fieldCode || field.bindingRef || field.nodeKey
       ),
       extension: parseObject(field.extensionConfig)
     }

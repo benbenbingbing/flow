@@ -146,6 +146,12 @@ const routes = [
         meta: { title: '开放集成手册' }
       },
       {
+        path: '/manual/embed-integration',
+        name: 'EmbedIntegrationManual',
+        component: () => import('@/views/manual/EmbedIntegrationManual.vue'),
+        meta: { title: '嵌入集成手册' }
+      },
+      {
         path: '/manual/interface-service',
         name: 'InterfaceServiceManual',
         component: () => import('@/views/manual/InterfaceServiceManual.vue'),
@@ -190,6 +196,15 @@ const routes = [
         meta: { title: '组织部门管理' }
       },
       {
+        path: '/system/position',
+        name: 'PositionManagement',
+        component: () => import('@/views/system/Position.vue'),
+        meta: {
+          title: '职务管理',
+          requiredPermissions: ['system:position:view']
+        }
+      },
+      {
         path: '/system/dict',
         name: 'DictManagement',
         component: () => import('@/views/system/Dict.vue'),
@@ -229,6 +244,21 @@ const routes = [
         meta: {
           title: '开放集成',
           requiredPermissions: ['system:integration:view']
+        }
+      },
+      {
+        path: '/system/embed-management',
+        name: 'EmbedManagement',
+        component: () => import('@/views/system/EmbedManagement.vue'),
+        meta: {
+          title: '嵌入集成',
+          requiredPermissions: [
+            'system:embed:view',
+            'system:embed:manage',
+            'system:embed:publish',
+            'system:embed:identity-manage',
+            'system:embed:session-revoke'
+          ]
         }
       },
       {

@@ -1,10 +1,11 @@
 # Flow 第三方 iframe 嵌入运行时详细设计
 
-> 状态：草案，待架构、安全、产品与接入方联合评审
+> 状态：V1 应用代码、维护任务、OpenAPI/SDK 漂移门禁、专用部署清单与 Chrome 跨域 E2E 已收口；待本机 MySQL 隔离迁移验证、跨浏览器/安全验收、生产实际部署与接入方联合评审
 > 文档版本：1.0
-> 日期：2026-08-26
+> 日期：2026-08-28
 > 适用范围：第三方平台通过 iframe 嵌入 Flow 已发布的实体列表、实体表单及受控相关操作
-> 实现状态：本文描述的是建议目标方案，除“现有能力”章节明确列出的内容外，均不代表当前已经实现
+> 实现状态：当前分支已实现 LIST/FORM 只读运行态与 RECORD_CREATE；RECORD_UPDATE、
+> ACTION_EXECUTE、PROCESS_START 在 V1 发布与运行时均保持关闭。生产上线门槛见第 17.6、22、24.5 节
 
 ## 0. 方案摘要
 
@@ -19,7 +20,7 @@
 | 如何限制暴露范围 | Embed View Release + Application Grant 固定实体、列表/表单 Release、字段、动作、Origin 和 Context |
 | 可复用什么 | OAuth、应用、限流、审计、用户目录、列表/表单/实体运行态、数据权限及主要展示组件 |
 | 必须新开发什么 | Embed 管理模型、身份绑定、Launch/Session、安全链、Facade、外部 DTO、Shell、SDK、动态 CSP |
-| 首批建议 | 先只读列表/选择/详情，再开放新建；编辑需先完成通用 `record_version` |
+| 当前 V1 | 已实现列表/选择/详情、只读表单、CREATE 联动只读重算和新建保存；编辑、动作、流程启动明确关闭 |
 
 第三方浏览器永远不获得 Client Secret、机器 Token 或普通 Flow 用户 Token，也不能自行传入
 `flowUserId/entityCode/listKey/formId/releaseId` 改变访问目标。
@@ -28,7 +29,8 @@
 
 Flow 的实体、表单、列表、流程、数据权限和 UI 发布能力已经具备较成熟的内部运行态。
 新的接入需求是：第三方业务平台在自己的页面中，通过 iframe 嵌入 Flow 的某个实体列表、
-新建表单、查看表单或编辑表单，并允许用户执行该嵌入资源明确授权的相关操作。
+新建表单或查看表单，并允许用户执行该嵌入资源明确授权的 V1 操作。编辑和通用动作属于后续
+版本，不是当前接入契约。
 
 该需求不是“公开匿名链接”，也不是“第三方前端直接调用任意实体 CRUD”。第三方页面中的
 实际操作人需要对应到一个 Flow 用户，最终仍由 Flow 的功能权限、数据权限、发布配置和动作
@@ -45,19 +47,21 @@ Flow 的实体、表单、列表、流程、数据权限和 UI 发布能力已�
 7. 接口具备稳定错误码、审计、限流、幂等、重放防护和版本兼容策略。
 8. 为后续 SDK、Webhook、附件、审批和 Headless API 扩展保留边界。
 
-### 1.2 首期业务范围
+### 1.2 V1 已实现范围与关闭边界
 
-首期建议按风险分阶段开放，完整设计覆盖后续接口，但上线能力以发布计划为准。
+当前分支已经交付 LIST/FORM 读取与 CREATE 写入链路。本文保留 UPDATE/ACTION/PROCESS 的目标
+接口契约用于后续设计，但它们不是 V1 可用接口，发布校验、Bootstrap/Schema 投影和运行时均
+必须 Fail Closed。
 
-| 能力 | 首期建议 | 说明 |
+| 能力 | 当前 V1 状态 | 说明 |
 | --- | --- | --- |
-| 列表 Schema 与查询 | 开放 | 仅已发布列表，分页、查询字段和固定过滤由服务端约束 |
-| 记录选择并回传宿主 | 开放 | 仅返回配置允许的字段，默认只返回记录 ID |
-| 新建表单与保存 | 阶段 2 开放 | 必须使用已发布表单和写请求幂等键 |
-| 查看记录与只读表单 | 阶段 1–2 开放 | 必须经过 Flow 数据范围与行级查看权限 |
-| 编辑记录 | 阶段 3 条件开放 | 必须先完成通用 `recordVersion` 乐观锁能力 |
-| 标准/自定义动作 | 条件开放 | 逐个动作发布白名单，禁止浏览器指定内部事件或服务编码 |
-| 启动流程 | 条件开放 | 仅允许表单发布配置中明确允许的 `saveAndStart` |
+| 列表 Schema 与查询 | 已实现，可配置开放 | 仅已发布列表，分页、查询字段和固定过滤由服务端约束 |
+| 记录选择并回传宿主 | 已实现，可配置开放 | 仅返回配置允许的字段，默认只返回记录 ID |
+| 新建表单与保存 | 已实现，可配置开放 | 使用已发布表单、强制上下文字段和写请求幂等键 |
+| 查看记录与只读表单 | 已实现，可配置开放 | 经过 Flow 数据范围与行级查看权限 |
+| 编辑记录 | V1 强制关闭 | 尚无通用 `recordVersion` 乐观锁能力，不注册 PATCH 运行时路由 |
+| 标准/自定义动作 | V1 强制关闭 | 尚无强类型 Embed Action Registry，不注册动作运行时路由 |
+| 启动流程 | V1 强制关闭 | `PROCESS_START` 发布校验拒绝，不允许 `saveAndStart` |
 | 删除、批量删除、导出 | 默认关闭 | 高风险能力，后续单独评审 |
 | 审批、附件、关联内容 | 后续阶段 | 需要独立授权、对象校验和安全验收 |
 | 匿名外部人员 | 不在 V1 | V1 要求映射到已存在且启用的 Flow 用户 |
@@ -281,7 +285,7 @@ workflow-web
 
 | 接口组 | 调用方 | 认证 | 用途 |
 | --- | --- | --- | --- |
-| 管理端 `/api/embed-management/**` | Flow 管理员浏览器 | 普通 Flow 用户 JWT + 权限码 | 配置、发布、授权、身份绑定、撤销会话 |
+| 管理端 `/api/embed-management/v1/**` | Flow 管理员浏览器 | 普通 Flow 用户 JWT + 权限码 | 配置、发布、授权、身份绑定、撤销会话 |
 | Launch `/api/open/v1/embed-launches` | 第三方后端 | OAuth Client Credentials 机器 Token | 验证应用和人员、创建一次性 Launch |
 | Runtime `/api/embed/v1/**` | Flow 域名内的 iframe | 一次性 code 或 Embed Session Token | 兑换会话、加载 Schema、查询、详情、提交和动作 |
 
@@ -303,7 +307,7 @@ Scope、来源网段、限流和并发策略。Embed 不重新创建一套 Clien
 一个 View 可以是：
 
 - `LIST`：以列表为入口，允许查询、选择以及受控打开表单；
-- `FORM`：以表单为入口，允许 CREATE、VIEW 或 EDIT 中的已发布模式。
+- `FORM`：以表单为入口，V1 只允许已发布的 CREATE 或 VIEW 模式。
 
 ### 5.3 Embed View Release
 
@@ -362,17 +366,18 @@ iframe 运行时会话。状态为 `ACTIVE`、`LOGGED_OUT`、`REVOKED` 或 `EXPI
 
 ### 5.9 能力枚举
 
-建议定义稳定的外部能力枚举：
+V1 定义以下稳定外部能力枚举；“可发布”仍表示管理员必须在 View 和 Grant 中显式开放，
+不是匿名默认授权：
 
-| 能力 | 含义 | 默认 |
+| 能力 | 含义 | 当前 V1 发布状态 |
 | --- | --- | --- |
-| `LIST_QUERY` | 加载列表 Schema 和分页查询 | 关闭，View 显式开放 |
-| `SELECTION_RETURN` | 将已授权选择结果返回宿主 | 关闭 |
-| `RECORD_VIEW` | 查看记录详情和只读表单 | 关闭 |
-| `RECORD_CREATE` | 新建并保存记录 | 关闭 |
-| `RECORD_UPDATE` | 编辑记录 | 关闭，需乐观锁 |
-| `ACTION_EXECUTE` | 执行发布动作白名单 | 关闭 |
-| `PROCESS_START` | 保存并发起流程 | 关闭 |
+| `LIST_QUERY` | 加载列表 Schema 和分页查询 | 已实现，可由 View/Grant 显式发布 |
+| `SELECTION_RETURN` | 将已授权选择结果返回宿主 | 已实现，可由 View/Grant 显式发布 |
+| `RECORD_VIEW` | 查看记录详情和只读表单 | 已实现，可由 View/Grant 显式发布 |
+| `RECORD_CREATE` | 新建并保存记录 | 已实现，可由 View/Grant 显式发布 |
+| `RECORD_UPDATE` | 编辑记录 | 强制关闭，需先建设通用乐观锁 |
+| `ACTION_EXECUTE` | 执行发布动作白名单 | 强制关闭，需先建设强类型 Registry |
+| `PROCESS_START` | 保存并发起流程 | 强制关闭，需单独完成流程动作契约 |
 | `RECORD_DELETE` | 删除单条记录 | V1 强制关闭 |
 | `BATCH_DELETE` | 批量删除 | V1 强制关闭 |
 | `EXPORT` | 导出 | V1 强制关闭 |
@@ -585,12 +590,20 @@ Namespace 下任意已绑定用户，应配合最小来源网段、强审计和�
 6. Action Key 存在于发布配置且进入强类型 Registry；发布器能完整生成第 11.4 节
    `ExternalActionDescriptor`，`transport/recordMode/selectionMode` 组合合法，Data/Input Schema
    默认 `additionalProperties=false`。未显式选择或无法安全映射的动作禁止发布。
-7. Context Schema 大小不超过 16 KiB、深度和属性数受限，禁止远程 `$ref`。
+7. Context Schema 大小不超过 16 KiB、深度和属性数受限，禁止远程 `$ref`；V1 不支持
+   `contextSchema.pattern`，配置中出现该关键字时以 `SCHEMA_PATTERN_NOT_SUPPORTED` 拒绝
+   校验或发布，历史/篡改快照在 Launch 时同样 Fail Closed。字符串约束使用 `enum`、
+   `minLength`、`maxLength` 等受控关键字。
 8. Context Binding 目标字段存在，固定过滤和强制字段不能被客户端覆盖。
 9. FOLLOW_ACTIVE 的兼容性影响经过预检；敏感场景建议 PINNED。
 10. V1 禁止 Embed View 使用全部自定义组件；后续开放时只能来自 Flow 内部可信注册表。
-11. 列表查询和表单数据源必须属于 Embed Provider Allowlist；V1 默认只允许内建动态实体、
-    字典和受数据范围保护的引用查询，拒绝任意 HTTP/SQL/UI Event Provider。
+11. V1 不开放动态表单数据源或 Lookup Provider：发布快照中存在任意表单/字段数据源绑定、
+    自定义组件或事件绑定时按不可信资源拒绝；`REFERENCE`、`MULTI_REFERENCE`、`LOOKUP`、
+    `MULTI_LOOKUP`、`USER`、`DEPT`、`ROLE`、`GROUP` 表单字段整体以
+    `UNTRUSTED_COMPONENT` 阻断发布；字段
+    `validationRules` 出现任意 `pattern` 同样阻断。当前 options 路由只分页不可变 Form Release
+    中超过 100 项的静态选项，Lookup 路由保持 Deferred/Fail Closed；禁止回退到任意 HTTP、SQL、
+    内部 Service/Operation 或 UI Event。
 
 ### 7.3 Application Grant
 
@@ -635,7 +648,7 @@ View 草稿修改不影响现有 Launch/Session；发布新 Release 后只影响
 
 ### 8.1 路径与版本
 
-- 管理端：`/api/embed-management/**`，内部契约，不对第三方承诺。
+- 管理端：`/api/embed-management/v1/**`，内部契约，不对第三方承诺。
 - 服务端 Launch：`/api/open/v1/embed-launches`，属于 Open API V1。
 - 浏览器运行时：`/api/embed/v1/**`，属于 Embed Runtime V1。
 - iframe 页面：`https://embed.flow.example.com/embed/v1/launches/{launchId}`。
@@ -657,8 +670,7 @@ View 草稿修改不影响现有 Launch/Session；发布新 Release 后只影响
 | `X-Trace-Id` | 全部外部 API | 可选，1–64 位 `[A-Za-z0-9._-]`；非法时服务端重新生成 |
 | `X-Request-Id` | 全部外部 API | 可选，同样限制为 1–64 位；响应总是返回 |
 | `Idempotency-Key` | Runtime 写操作 | 必填，1–128 个非空可打印 ASCII 字符 |
-| `If-Match` | 更新操作 | 启用编辑后必填，值为记录版本 ETag |
-| `X-Flow-Embed-Protocol` | Runtime | 固定 `1`，缺失时服务端仍按 V1，但建议 SDK 总是发送 |
+| `X-Flow-Embed-Protocol` | Exchange、Bootstrap 必填；SDK 对 Runtime 统一发送 | 固定 `1`；Exchange 或 Bootstrap 缺失/不为 `1` 时返回 400 |
 
 关键响应头：
 
@@ -667,8 +679,10 @@ View 草稿修改不影响现有 Launch/Session；发布新 Release 后只影响
 | `X-Trace-Id/X-Request-Id` | 全部 API | 返回服务端最终采用的关联 ID |
 | `Idempotent-Replay: true` | 写请求命中成功回执 | 本次没有再次执行业务，Body 已按当前权限投影 |
 | `Retry-After: <seconds>` | 409 处理中或 429/503 | 非负整数秒，客户端保留原幂等键并退避 |
-| `ETag: "rv-<version>"` | 已启用版本的详情/写响应 | 与后续 `If-Match` 配对 |
 | `Cache-Control: no-store` | 所有动态/凭据响应 | 中间层和浏览器不得缓存 |
+
+V1 的记录详情和创建响应固定 `recordVersion=null` 且不返回 ETag；未来更新接口使用的
+`If-Match/ETag` 契约只见第 11.9、16.4 节，不属于当前请求头或响应头。
 
 ### 8.4 响应 Envelope
 
@@ -714,8 +728,8 @@ Referrer-Policy: no-referrer
 ### 8.6 请求大小与分页
 
 - 默认请求体最大 1 MiB，Launch Context 单独限制 16 KiB。
-- 列表 `pageNum` 默认 1；`pageSize` 默认取 View 配置，最大 100。
-- 查询字段最多 50 个，数组条件最多 200 项，字符串条件默认最大 1,024 字符。
+- 列表 `pageNum` 默认 1；`pageSize` 默认取 View 配置并受 Bootstrap/Schema 的 `maxPageSize` 限制。
+- 列表过滤项最多 32 个，`IN` 值最多 100 项，字符串过滤值最大 2,048 字符。
 - 表单字段数量和嵌套深度沿用已发布表单校验，并额外限制总 JSON 大小。
 
 ### 8.7 幂等约定
@@ -723,10 +737,12 @@ Referrer-Policy: no-referrer
 - Launch 与 OAuth Token 一样属于短期凭据签发，不使用业务幂等响应缓存。调用方超时可重新
   创建一个新 Launch，旧 Launch 在 60 秒后过期；不得把 launchCode 写入现有明文
   `integration_idempotency_record.response_body`。
-- 记录创建、更新和动作执行必须携带 `Idempotency-Key`。
+- 当前 V1 的记录创建必须携带 `Idempotency-Key`；更新和动作尚未注册，未来启用时沿用该规则。
 - 沿用现有存储唯一范围 `Application + Operation + Idempotency-Key`。请求哈希使用稳定的
-  `actorScopeDigest + viewKey + target + operation + canonicalBody`，**不得包含 Session ID 或
-  View Release ID**，这样 iframe 丢失 Session 后可重新 Launch，并用原键安全查询首次结果。
+  `actorScopeDigest + viewKey + target + operation + canonicalBody`。RECORD_CREATE 的 canonical
+  target 固定为稳定业务坐标 `entityCode + formId`，明确排除 Session ID、Launch ID、View/Form/List
+  Release ID、Trace、Token 和时间戳；这样 iframe 丢失 Session 或发布版本变化后仍可在当前授权下
+  用原键安全查询首次最小回执。
 - 同一稳定 Actor/View/Operation/Key 使用相同请求体时返回首次业务结果；请求体不同，或同一
   Key 被其他 Actor/View 使用时返回 409 `EMBED_IDEMPOTENCY_KEY_REUSED`。
 - 重放前仍要校验新 Session、Flow 用户、View 授权及当前对象可见性，且按当前 Output Policy
@@ -772,16 +788,16 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
 
 | 方法与路径 | 权限 | 说明 |
 | --- | --- | --- |
-| `GET /api/embed-management/views` | `system:embed:view` | 分页查询 View |
-| `POST /api/embed-management/views` | `system:embed:manage` | 新建 View 和初始草稿 |
-| `GET /api/embed-management/views/{viewId}` | `system:embed:view` | 查看 View 摘要 |
-| `GET /api/embed-management/views/{viewId}/draft` | `system:embed:view` | 获取当前草稿 |
-| `PATCH /api/embed-management/views/{viewId}/draft` | `system:embed:manage` | 乐观锁更新草稿 |
-| `POST /api/embed-management/views/{viewId}/validate` | `system:embed:manage` | 发布前校验，不产生 Release |
-| `POST /api/embed-management/views/{viewId}/publish` | `system:embed:publish` | 发布不可变 Release |
-| `POST /api/embed-management/views/{viewId}/status` | `system:embed:manage` | 启用、禁用或退役 |
-| `GET /api/embed-management/views/{viewId}/releases` | `system:embed:view` | 查询发布历史 |
-| `GET /api/embed-management/views/{viewId}/releases/{revision}` | `system:embed:view` | 查看指定快照 |
+| `GET /api/embed-management/v1/views` | `system:embed:view` | 分页查询 View |
+| `POST /api/embed-management/v1/views` | `system:embed:manage` | 新建 View 和初始草稿 |
+| `GET /api/embed-management/v1/views/{viewId}` | `system:embed:view` | 查看 View 摘要 |
+| `GET /api/embed-management/v1/views/{viewId}/draft` | `system:embed:view` | 获取当前草稿 |
+| `PATCH /api/embed-management/v1/views/{viewId}/draft` | `system:embed:manage` | 乐观锁更新草稿 |
+| `POST /api/embed-management/v1/views/{viewId}/validate` | `system:embed:manage` | 发布前校验，不产生 Release |
+| `POST /api/embed-management/v1/views/{viewId}/publish` | `system:embed:publish` | 发布不可变 Release |
+| `POST /api/embed-management/v1/views/{viewId}/status` | `system:embed:manage` | 启用、禁用或退役 |
+| `GET /api/embed-management/v1/views/{viewId}/releases` | `system:embed:view` | 查询发布历史 |
+| `GET /api/embed-management/v1/views/{viewId}/releases/{revision}` | `system:embed:view` | 查看指定快照 |
 
 分页查询参数：
 
@@ -958,10 +974,10 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
 
 | 方法与路径 | 权限 | 说明 |
 | --- | --- | --- |
-| `GET /api/embed-management/views/{viewId}/grants` | `system:embed:view` | 查询 View 的应用授权 |
-| `PUT /api/embed-management/views/{viewId}/grants/{applicationId}` | `system:embed:manage` | 创建或更新授权 |
-| `POST /api/embed-management/views/{viewId}/grants/{applicationId}/status` | `system:embed:manage` | 启用或禁用 |
-| `POST /api/embed-management/views/{viewId}/grants/{applicationId}/revoke` | `system:embed:manage` | 永久撤销 |
+| `GET /api/embed-management/v1/views/{viewId}/grants` | `system:embed:view` | 查询 View 的应用授权 |
+| `PUT /api/embed-management/v1/views/{viewId}/grants/{applicationId}` | `system:embed:manage` | 创建或更新授权 |
+| `POST /api/embed-management/v1/views/{viewId}/grants/{applicationId}/status` | `system:embed:manage` | 启用或禁用 |
+| `POST /api/embed-management/v1/views/{viewId}/grants/{applicationId}/revoke` | `system:embed:manage` | 永久撤销 |
 
 Upsert 请求：
 
@@ -1005,12 +1021,13 @@ Upsert 请求：
 
 | 方法与路径 | 权限 | 说明 |
 | --- | --- | --- |
-| `GET /api/embed-management/identity-providers` | `system:embed:identity-manage` | 分页查询身份提供方 |
-| `POST /api/embed-management/identity-providers` | `system:embed:identity-manage` | 创建 |
-| `GET /api/embed-management/identity-providers/{providerId}` | `system:embed:identity-manage` | 查看脱敏配置 |
-| `PATCH /api/embed-management/identity-providers/{providerId}` | `system:embed:identity-manage` | 乐观锁更新 |
-| `POST /api/embed-management/identity-providers/{providerId}/status` | `system:embed:identity-manage` | 启用或禁用 |
-| `POST /api/embed-management/identity-providers/{providerId}/rotate-key` | `system:embed:identity-manage` | 轮换静态公钥 |
+| `GET /api/embed-management/v1/identity-providers` | `system:embed:identity-manage` | 分页查询身份提供方 |
+| `POST /api/embed-management/v1/identity-providers` | `system:embed:identity-manage` | 创建 |
+| `GET /api/embed-management/v1/identity-providers/{providerId}` | `system:embed:identity-manage` | 查看脱敏配置 |
+| `PATCH /api/embed-management/v1/identity-providers/{providerId}` | `system:embed:identity-manage` | 乐观锁更新 |
+| `POST /api/embed-management/v1/identity-providers/{providerId}/status` | `system:embed:identity-manage` | 启用或禁用 |
+| `POST /api/embed-management/v1/identity-providers/{providerId}/revoke` | `system:embed:identity-manage` | 永久撤销 |
+| `POST /api/embed-management/v1/identity-providers/{providerId}/rotate-key` | `system:embed:identity-manage` | 轮换静态公钥 |
 
 创建 `SIGNED_JWT` Provider 示例：
 
@@ -1048,11 +1065,11 @@ DNS/私网访问策略和缓存；不得读取断言 Header 中任意 `jku` 或 
 
 | 方法与路径 | 权限 | 说明 |
 | --- | --- | --- |
-| `GET /api/embed-management/identity-bindings` | `system:embed:identity-manage` | 按应用、Provider、Flow 用户、状态查询；只返回 Subject Hint |
-| `POST /api/embed-management/identity-bindings/lookup` | `system:embed:identity-manage` | Body 中提交外部 Subject 做精确脱敏查询 |
-| `POST /api/embed-management/identity-bindings` | `system:embed:identity-manage` | 创建精确绑定 |
-| `POST /api/embed-management/identity-bindings/{bindingId}/status` | `system:embed:identity-manage` | 启用或禁用 |
-| `POST /api/embed-management/identity-bindings/{bindingId}/revoke` | `system:embed:identity-manage` | 永久撤销 |
+| `GET /api/embed-management/v1/identity-bindings` | `system:embed:identity-manage` | 按应用、Provider、Flow 用户、状态查询；只返回 Subject Hint |
+| `POST /api/embed-management/v1/identity-bindings/lookup` | `system:embed:identity-manage` | Body 中提交外部 Subject 做精确脱敏查询 |
+| `POST /api/embed-management/v1/identity-bindings` | `system:embed:identity-manage` | 创建精确绑定 |
+| `POST /api/embed-management/v1/identity-bindings/{bindingId}/status` | `system:embed:identity-manage` | 启用或禁用 |
+| `POST /api/embed-management/v1/identity-bindings/{bindingId}/revoke` | `system:embed:identity-manage` | 永久撤销 |
 
 创建请求：
 
@@ -1090,12 +1107,12 @@ DNS/私网访问策略和缓存；不得读取断言 Header 中任意 `jku` 或 
 
 | 方法与路径 | 权限 | 说明 |
 | --- | --- | --- |
-| `GET /api/embed-management/launches` | `system:embed:view` | 按应用、View、状态和时间查询 Launch 摘要 |
-| `POST /api/embed-management/launches/{launchId}/revoke` | `system:embed:session-revoke` | 撤销尚未消费的 Launch |
-| `GET /api/embed-management/sessions` | `system:embed:view` | 查询活动/历史 Session |
-| `POST /api/embed-management/sessions/{sessionId}/revoke` | `system:embed:session-revoke` | 撤销单个 Session |
-| `POST /api/embed-management/views/{viewId}/sessions/revoke` | `system:embed:session-revoke` | 撤销 View 下所有活动 Session |
-| `POST /api/embed-management/applications/{applicationId}/sessions/revoke` | `system:embed:session-revoke` | 撤销应用下所有活动 Session |
+| `GET /api/embed-management/v1/launches` | `system:embed:view` | 按应用、View、状态和时间查询 Launch 摘要 |
+| `POST /api/embed-management/v1/launches/{launchId}/revoke` | `system:embed:session-revoke` | 撤销尚未消费的 Launch |
+| `GET /api/embed-management/v1/sessions` | `system:embed:view` | 查询活动/历史 Session |
+| `POST /api/embed-management/v1/sessions/{sessionId}/revoke` | `system:embed:session-revoke` | 撤销单个 Session |
+| `POST /api/embed-management/v1/views/{viewId}/sessions/revoke` | `system:embed:session-revoke` | 撤销 View 下所有活动 Session |
+| `POST /api/embed-management/v1/applications/{applicationId}/sessions/revoke` | `system:embed:session-revoke` | 撤销应用下所有活动 Session |
 
 查询接口不得返回 Token 哈希、Launch code 哈希、完整 Context 或原始外部 Subject。撤销请求：
 
@@ -1158,8 +1175,7 @@ X-Trace-Id: partner-20260826-001
     "assertion": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9..."
   },
   "entry": {
-    "mode": "LIST",
-    "recordId": null
+    "mode": "LIST"
   },
   "context": {
     "supplierId": "S-10086"
@@ -1182,8 +1198,8 @@ X-Trace-Id: partner-20260826-001
 | `subject.assertion` | string | 条件必填 | V1 短期签名 JWT，最大 16 KiB |
 | `subject.namespace` | string | 可信 ID 模式必填 | 必须在 Grant 允许范围 |
 | `subject.externalUserId` | string | 可信 ID 模式必填 | 1–128，不得直接传 Flow 用户 ID |
-| `entry.mode` | enum | 是 | `LIST/CREATE/VIEW/EDIT`，必须是 Release 允许入口 |
-| `entry.recordId` | string | VIEW/EDIT 必填 | 只作为候选记录，仍需 Flow 行级权限校验 |
+| `entry.mode` | enum | 是 | V1 仅 `LIST/CREATE/VIEW`，且必须是 Release 允许入口；`EDIT` 直接拒绝 |
+| `entry.recordId` | string | VIEW 必填 | 最长 64；只作为候选记录，Runtime 读取时仍需 Flow 数据范围和行级查看权限校验 |
 | `context` | object | 否 | 符合发布 JSON Schema，最大 16 KiB、最多 32 个属性 |
 | `ui.locale` | string | 否 | Release 允许的语言，默认 `zh-CN` |
 | `ui.theme` | string | 否 | `light/dark/system`，只影响展示 |
@@ -1242,9 +1258,11 @@ X-Trace-Id: partner-20260826-001
 4. `parentOrigin` 规范化后精确命中 Grant；
 5. 用户断言的 Issuer、Audience、算法、签名、有效期、`jti` 防重放通过；
 6. 外部主体精确绑定到一个已启用 Flow 用户；
-7. `entry.mode`、`recordId`、Context、Locale 和 Theme 符合 Release；
-8. 对 VIEW/EDIT 入口预校验记录存在及 Flow 用户数据范围；
-9. 计算 Capability 交集并固定所有 UI Release；
+7. `entry.mode` 只属于 `LIST/CREATE/VIEW` 且被 Release 发布；CREATE/LIST 禁止 `recordId`，
+   VIEW 必须携带候选 `recordId`；
+8. Context、Locale 和 Theme 符合 Release；VIEW 的记录存在性和数据范围在 Runtime 读取时统一
+   校验并以 404 防枚举，Launch 不建立第二套记录查询旁路；
+9. 计算 Release 与 Grant 的 Capability 交集，并再次剔除 V1 禁用能力；
 10. 事务写入 Launch、审计事件和一次性 `launchCodeDigest`。
 
 Launch 创建不使用普通业务幂等缓存。调用超时后第三方重新创建即可，旧 Launch 最长 60 秒
@@ -1252,8 +1270,6 @@ Launch 创建不使用普通业务幂等缓存。调用超时后第三方重新�
 保存 launchCode 明文。
 
 ## 11. iframe 页面与 Runtime API
-
-### 11.1 iframe 入口页
 
 ```http
 GET /embed/v1/launches/{launchId}
@@ -1407,7 +1423,8 @@ Authorization: Bearer <embed-session-token>
     "list": {
       "selection": {
         "mode": "SINGLE",
-        "valueField": "id"
+        "valueField": "id",
+        "returnableFields": ["code"]
       },
       "pagination": {
         "allowTotal": false,
@@ -1487,13 +1504,19 @@ Authorization: Bearer <embed-session-token>
 移除权限码、固定过滤器、内部 Provider、运行时上下文 Token、接口操作配置、脚本、未审核
 组件和未发布动作。
 
+`list.columns` 是 iframe 内的展示白名单，`list.selection.returnableFields` 是
+`selection.changed` 发给宿主系统的值字段白名单，两者不能混用。运行时只返回
+`fieldPolicy.returnable ∩ 实际发布展示列`；记录 `id` 作为选择对象的独立字段返回，
+不需要进入 `returnableFields`。前端必须从已规范化的行对象再次按该白名单投影，禁止把
+整行 `values` 直接发送给宿主。
+
 所有列表、表单和详情响应使用同一个 `ExternalActionDescriptor`，字段含义如下：
 
 | 字段 | 允许值/含义 |
 | --- | --- |
 | `key/label/placement` | 稳定动作 Key、展示文案、`TOOLBAR/ROW/FORM` |
 | `kind` | `NAVIGATION/MUTATION/SELECTION` |
-| `transport` | `LOCAL_FORM/LOCAL_SELECT/RECORD_CREATE/RECORD_UPDATE/ACTION_API` |
+| `transport` | V1 列表只投影 `LOCAL_FORM`，CREATE 表单只投影 `RECORD_CREATE`；`LOCAL_SELECT` 由列表选择协议处理，`RECORD_UPDATE/ACTION_API` 为后续保留值且当前不会下发 |
 | `recordMode` | `NONE/CURRENT/SELECTION`，决定是否携带当前记录或选择集 |
 | `selectionMode` | `NONE/SINGLE/MULTIPLE` |
 | `dataSchema` | 动作可接受的记录字段 Schema；无记录正文时为 null |
@@ -1502,10 +1525,10 @@ Authorization: Bearer <embed-session-token>
 | `idempotencyRequired` | 是否必须携带 `Idempotency-Key` |
 | `enabled/disabledReason` | 当前表单级可用状态；行级状态仍在每条记录的 `actions` Capability Map 中返回 |
 
-前端只按封闭 `transport` 选路由，不执行服务端下发 URL：`LOCAL_FORM` 调用本地表单解析，
-`LOCAL_SELECT` 只走 postMessage，`RECORD_CREATE/RECORD_UPDATE` 分别调用固定记录接口，
-`ACTION_API` 才调用 `POST /runtime/actions/{actionKey}`。未知枚举 Fail Closed，不能回退到内部
-Event、Provider 或任意 URL。
+前端只按封闭 `transport` 选路由，不执行服务端下发 URL：V1 的 `LOCAL_FORM` 只在 iframe 内
+完成 LIST→CREATE/VIEW→BACK 导航，`LOCAL_SELECT` 只走已投影的 `selection.changed`，
+`RECORD_CREATE` 只调用固定记录创建接口。`RECORD_UPDATE/ACTION_API` 当前不会由 Schema 返回，
+相应 HTTP 路由也未注册。未知枚举 Fail Closed，不能回退到内部 Event、Provider 或任意 URL。
 
 ### 11.5 列表查询
 
@@ -1521,15 +1544,21 @@ Content-Type: application/json
 {
   "pageNum": 1,
   "pageSize": 20,
-  "filters": {
-    "code": "WO-2026",
-    "status": "PROCESSING"
-  }
+  "filters": [
+    {"field": "code", "value": "WO-2026"},
+    {"field": "status", "value": "PROCESSING"}
+  ]
 }
 ```
 
 V1 不允许客户端传 `scene`、`releaseId`、`context`、`fixedFilters` 或任意排序表达式。排序
 使用已发布列表默认规则；如后续开放排序，只能基于 Schema 显式声明的字段和方向扩展。
+
+`filters` 是无操作符的强类型外部 DTO。`EQ/CONTAINS/GT/GTE/LT/LTE` 使用
+`{"field": ..., "value": ...}`，`IN` 使用 `values`，`BETWEEN` 使用同时包含
+`start/end` 的 `range`。客户端不得提交 `operator`，也不得提交 Entity 内部的
+`field_op/field_start/field_end` 键；服务端只按不可变发布 Schema 中该字段的 operator
+映射为内部条件。未发布字段、重复字段、值形状与发布 operator 不一致时统一拒绝请求。
 
 服务端按以下顺序组合条件：
 
@@ -1583,30 +1612,27 @@ Embed View 固定条件
 ```http
 GET /api/embed/v1/runtime/form?mode=CREATE
 GET /api/embed/v1/runtime/form?mode=VIEW&recordId=2080000000000000001
-GET /api/embed/v1/runtime/form?mode=EDIT&recordId=2080000000000000001
 Authorization: Bearer <embed-session-token>
 ```
 
-`mode` 必须属于 Session 的入口/能力集合。`recordId` 必须是 Launch 绑定记录，或来自同一
-Session 当前 View 可访问的数据；不能借此跨实体解析任意记录。
+V1 `mode` 只接受 `CREATE/VIEW`：CREATE 禁止 `recordId`，VIEW 必须有 `recordId`。FORM 入口
+必须与 Launch 固定模式一致；LIST 入口可以通过当前 External Schema 的 `LOCAL_FORM` 动作在
+iframe 内进入 CREATE 或 VIEW。`recordId` 只能来自 Launch 固定记录或当前已投影列表行，并仍
+通过固定 List Release、Flow 数据范围和行级查看能力校验；浏览器不能提交 form/entity/release。
 
-响应：
+CREATE 响应示例：
 
 ```json
 {
+  "code": 200,
+  "message": "ok",
+  "errorCode": null,
   "data": {
-    "mode": "EDIT",
-    "record": {
-      "id": "2080000000000000001",
-      "recordVersion": 17,
-      "values": {
-        "title": "设备维修",
-        "description": "..."
-      }
-    },
+    "mode": "CREATE",
+    "record": null,
     "form": {
-      "title": "编辑工单",
-      "layout": {},
+      "title": "新建工单",
+      "layout": {"type": "GRID"},
       "fields": [
         {
           "code": "category",
@@ -1617,32 +1643,22 @@ Session 当前 View 可访问的数据；不能借此跨实体解析任意记录
           "hidden": false,
           "defaultValue": null,
           "validation": {},
-          "options": null,
-          "optionSource": {
-            "mode": "RUNTIME",
-            "queryUrl": "/api/embed/v1/runtime/form/fields/category/options/query",
-            "dependencyPolicy": [
-              {"code": "siteId", "source": "CLIENT_WRITABLE"},
-              {"code": "supplierId", "source": "CONTEXT"}
-            ]
-          },
-          "layout": {
-            "span": 24
-          },
-          "fieldState": {
-            "visible": true,
-            "writable": true
-          }
+          "options": [{"label": "设备维修", "value": "EQUIPMENT_REPAIR", "disabled": false}],
+          "optionSource": null,
+          "lookupSource": null,
+          "layout": {"span": 24},
+          "fieldState": {"visible": true, "writable": true}
         }
       ],
+      "returnableFields": ["category"],
       "actions": [
         {
           "key": "save",
           "label": "保存",
           "placement": "FORM",
           "kind": "MUTATION",
-          "transport": "RECORD_UPDATE",
-          "recordMode": "CURRENT",
+          "transport": "RECORD_CREATE",
+          "recordMode": "NONE",
           "selectionMode": "NONE",
           "dataSchema": {
             "type": "object",
@@ -1653,24 +1669,59 @@ Session 当前 View 可访问的数据；不能借此跨实体解析任意记录
           },
           "inputSchema": null,
           "enabled": true,
-          "requiresRecordVersion": true,
+          "disabledReason": null,
+          "requiresRecordVersion": false,
           "idempotencyRequired": true
         }
       ]
     }
-  }
+  },
+  "traceId": "trace-..."
 }
 ```
 
 表单投影复用已发布表单解析和联动结果，但不返回设计态配置、内部组件实现名、任意脚本、
-任意远程数据源配置或完整事件执行信息。
-上例是 EDIT 模式，所以 `save.transport=RECORD_UPDATE`；CREATE 模式必须返回
-`RECORD_CREATE` 且 `requiresRecordVersion=false`，VIEW 模式不返回保存动作。客户端不能根据
-文案猜测路由。
+任意远程数据源配置或完整事件执行信息。CREATE 只可能返回内建 `save`，其
+`transport=RECORD_CREATE`、`requiresRecordVersion=false`、`idempotencyRequired=true`；VIEW
+不返回保存动作。任意字段 `validationRules.pattern` 在 Embed View 发布时阻断，历史或篡改快照
+在 Runtime 再次 Fail Closed；V1 仅执行受控长度、数值、格式和枚举校验。
 
-#### 11.6.1 动态选项查询
+#### 11.6.1 CREATE 联动只读重算
 
-字典、级联选择和动态数据源不能让前端回退到内部 `serviceId/operationCode`。新增：
+CREATE 表单的可见、可写、必填等状态可能依赖当前草稿。iframe 使用下面的专用只读接口把部分
+草稿交给服务端重算，不能在浏览器自行解释内部联动表达式：
+
+```http
+POST /api/embed/v1/runtime/form/evaluations
+Authorization: Bearer <embed-session-token>
+Content-Type: application/json
+```
+
+```json
+{
+  "data": {
+    "status": "CLOSED"
+  }
+}
+```
+
+请求顶层严格只允许 `data`，最多 100 个字段；禁止携带 entity、form、release、record、Flow 用户、
+Context 或任意 Provider 坐标。接口只允许 `CREATE + RECORD_CREATE`，`data` 可以是部分草稿，但键
+必须属于固定 Embed Release 的 `fieldPolicy.writable`，值只能使用当前字段类型允许的安全
+scalar/array 形状。服务端从 Session 恢复固定 entity/form/release/context，并在联动求值前以后端
+`FORCED_FORM_VALUE` 覆盖同名浏览器草稿。
+
+本接口不执行 required 或最终提交校验，不申请幂等 Claim，不写业务数据、不触发流程/动作，也不
+新增宿主 postMessage。成功以现有 `FormResult` 包络返回重算后的 CREATE 表单，`mode=CREATE`、
+`record=null`；最终保存仍必须调用第 11.8 节创建接口，由服务端基于最终有效值完整重算和校验。
+请求形状或字段非法返回 400 `INVALID_REQUEST`，入口/能力不允许返回 403
+`EMBED_OPERATION_NOT_ALLOWED`，固定快照损坏或运行依赖失败返回 503
+`EMBED_RUNTIME_UNAVAILABLE`。
+
+#### 11.6.2 大型静态选项分页
+
+当前 options 路由不是通用动态数据源代理。它只分页同一不可变 Form Release 内超过 100 项的
+静态选项：
 
 ```http
 POST /api/embed/v1/runtime/form/fields/{fieldCode}/options/query
@@ -1680,24 +1731,19 @@ Content-Type: application/json
 
 ```json
 {
+  "mode": "CREATE",
   "keyword": "维修",
-  "dependencies": {
-    "category": "EQUIPMENT"
-  },
+  "dependencies": {},
   "pageNum": 1,
   "pageSize": 50
 }
 ```
 
-`fieldCode` 必须是当前 Session 固定 Form Release 中可见且声明为动态选项的字段；
-`dependencies` 只能包含 Form Schema 的 `dependencyPolicy` 中标记为 `CLIENT_WRITABLE` 的字段，
-且该字段必须对当前模式可写；值按字段 Schema 重新校验。`CURRENT_RECORD_READONLY`、`CONTEXT`
-和 `CONSTANT` 来源由服务端从当前记录、可信 Context 或 Release 恢复，浏览器传入同名值直接
-拒绝而不是覆盖。服务端从 Release 恢复真实 Provider 并以当前 Flow UserContext 调用，不接受
-浏览器传 `provider/service/operation/url`。
-发布校验只接受 `EmbedDataSourceProviderRegistry` 中标记为
-`embedSafe=true + readOnly=true + usage=OPTION_QUERY` 的强类型 Provider，并固定输入/输出 Schema、
-超时和结果上限；V1 不允许任意 HTTP/数据库连接器或可能产生副作用的 UI Event 作为选项源。
+`mode` 必填且只允许 CREATE/VIEW；VIEW 必须同时提供当前导航记录的精确 `recordId`，CREATE
+禁止 `recordId`。这些值只描述 LIST Session 当前的本地表单状态，Facade 仍从 Session 恢复固定
+form/entity/release，并重新校验 entryModes、Capability、记录与 DataScope。当前静态实现的
+`dependencies` 必须为空。任何数据源绑定、`provider/service/operation/url`、HTTP/SQL 连接器或
+UI Event 在发布和运行时均拒绝，不允许回退到内部接口。
 
 响应：
 
@@ -1718,9 +1764,9 @@ Content-Type: application/json
 }
 ```
 
-#### 11.6.2 引用字段候选查询
+#### 11.6.3 引用字段候选查询
 
-引用实体需要列表式选择时新增：
+引用候选 HTTP 路由和封闭 DTO 已注册，以固定未来契约，但 **V1 不提供可用的 Lookup 查询能力**：
 
 ```http
 POST /api/embed/v1/runtime/form/fields/{fieldCode}/lookups/query
@@ -1728,34 +1774,25 @@ Authorization: Bearer <embed-session-token>
 Content-Type: application/json
 ```
 
-请求只允许 `keyword/pageNum/pageSize/Schema 公开的 filters`。Lookup 字段的 External Schema
-必须同步输出 `filterPolicy[{code, source, operators}]`；只有 `source=CLIENT_WRITABLE` 的 Filter
-可由浏览器提供，其余 `CURRENT_RECORD_READONLY/CONTEXT/CONSTANT` 值由服务端恢复且不可覆盖。
-服务端从 Form Release 恢复引用实体和候选列表，继续执行当前 Flow 用户的数据范围，并按字段
-自己的 Lookup Projection 输出：
-
 ```json
 {
-  "data": {
-    "items": [
-      {
-        "id": "2090000000000000001",
-        "label": "三号生产线",
-        "values": {
-          "code": "LINE-03"
-        }
-      }
-    ],
-    "hasMore": false,
-    "pageNum": 1,
-    "pageSize": 20
-  }
+  "mode": "VIEW",
+  "recordId": "2080000000000000001",
+  "keyword": "三号",
+  "filters": {},
+  "pageNum": 1,
+  "pageSize": 20
 }
 ```
 
-每页最大 50，默认不返回总数。选中 ID 在表单提交时再次做对象级校验，不能因为它曾出现在
-候选结果中就跳过授权。
-Lookup 同样只允许 Registry 中 `usage=LOOKUP_QUERY` 的只读强类型 Provider。
+`mode/recordId` 规则与 options 完全相同，且仍不是目标坐标。受支持的发布链会把
+`REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP` 表单字段整体标记为
+`UNTRUSTED_COMPONENT` 并阻断发布，表单 Schema 只会返回 `lookupSource=null`，不会发布可用的
+非空 Lookup Source；当前实体适配器也没有固定候选 List Release 和 Lookup External Projection。
+直接查询不可用字段时返回 403
+`EMBED_OPERATION_NOT_ALLOWED`；历史或绕过发布器的可写 Lookup 快照在表单解析阶段以 503
+`EMBED_RUNTIME_UNAVAILABLE` Fail Closed。本 OpenAPI 不声明 200 成功响应；未来只有在强类型
+只读 Registry、固定候选 Release、数据范围和输出投影全部实现后才能扩展。
 
 ### 11.7 获取记录详情
 
@@ -1767,14 +1804,16 @@ Authorization: Bearer <embed-session-token>
 返回当前 View 可见字段、字段状态和可执行动作。记录不存在与当前 Flow 用户无权访问统一返回
 404 `EMBED_RESOURCE_NOT_FOUND`。
 
-当记录版本能力可用时，响应同时返回 `ETag: "rv-17"`；版本不可用时不返回 ETag。
+当前 V1 动态实体尚无通用 `record_version`，因此 `recordVersion=null` 且不返回 ETag。未来只有
+第 16.4 节全链路完成后，非空版本才配套返回 `ETag: "rv-<version>"`。当前 Entity 表单 VIEW
+适配器没有对外动作来源，因而 `actions` 固定为空对象；不能根据内部表单按钮自行推导动作。
 
 ```json
 {
   "data": {
     "record": {
       "id": "2080000000000000001",
-      "recordVersion": 17,
+      "recordVersion": null,
       "values": {
         "code": "WO-20260826-001",
         "title": "设备维修",
@@ -1788,22 +1827,19 @@ Authorization: Bearer <embed-session-token>
     "fieldStates": {
       "title": {
         "visible": true,
-        "readOnly": false,
+        "readOnly": true,
         "required": true
       }
     },
-    "actions": {
-      "save": {
-        "visible": true,
-        "enabled": true,
-        "reason": null
-      }
-    }
+    "actions": {}
   }
 }
 ```
 
 ### 11.8 创建记录
+
+**当前状态：V1 已实现。** 该接口是 V1 唯一开放的记录写入口；是否可调用仍取决于
+View Release、Grant、Flow 用户权限、表单字段策略和幂等校验的交集。
 
 ```http
 POST /api/embed/v1/runtime/records
@@ -1827,6 +1863,11 @@ Content-Type: application/json
 浏览器只能提交 `fieldPolicy.writable` 中的字段。服务端忽略或拒绝未知字段，并在进入现有表单
 提交服务前注入 Launch Context 对应的强制字段。浏览器不能传实体、表单、Release、创建人、
 组织、权限、流程定义或内部运行时 Token。
+
+唯一性复用现有已发布表单提交语义，只保证**当前入口中适用且未忽略的已发布表单唯一规则**。
+没有唯一规则、规则被忽略或条件对当前数据不适用的其他写入口不共享该约束，因此不能把该机制
+表述为实体字段全局唯一；底层数据库或业务状态冲突仍统一映射为 409
+`EMBED_RECORD_CONFLICT`。
 
 成功返回 `201 Created`：
 
@@ -1855,13 +1896,17 @@ Location: /api/embed/v1/runtime/records/2080000000000000001
 }
 ```
 
-`recordVersion` 在通用版本能力上线前为 `null`；上线后返回实际初始版本（建议为 0），不能由
-第三方传入。版本非空时同时返回 `ETag: "rv-0"`，版本为空时不返回 ETag。
+V1 的 `recordVersion` 固定为 `null` 且响应不返回 ETag，第三方也不能传入版本。未来
+`record_version`/ETag 契约只见第 11.9、16.4 节，不能作为当前接入依据。
 
-创建并发起流程不通过布尔参数绕过授权；只有 Release 显式发布 `saveAndStart` 动作时，调用
-动作接口执行。
+创建并发起流程不通过布尔参数绕过授权；V1 没有 `saveAndStart` 或通用动作接口。后续版本只有
+在强类型动作契约独立实现并重新发布 Capability 后才能开放。
 
 ### 11.9 更新记录
+
+> **后续目标契约，V1 不可用。** 当前版本不注册该 PATCH 路由，发布校验拒绝
+> `RECORD_UPDATE`，Bootstrap/Schema 也不会投影编辑能力。以下请求/响应保留用于
+> `record_version` 全链路完成后的兼容设计，不能作为当前接入依据。
 
 ```http
 PATCH /api/embed/v1/runtime/records/{recordId}
@@ -1936,10 +1981,14 @@ ETag: "rv-18"
 
 - View 发布校验不得允许 `RECORD_UPDATE`；
 - Bootstrap/Schema 不返回更新能力；
-- 更新路由返回 403 `EMBED_OPERATION_NOT_ALLOWED`；
+- 当前版本不注册更新路由；未来注册后，在能力未开放时返回 403 `EMBED_OPERATION_NOT_ALLOWED`；
 - 不应先上线一个可能覆盖他人数据的临时实现。
 
 ### 11.10 执行动作
+
+> **后续目标契约，V1 不可用。** 当前版本不注册 Action 路由，发布校验同时拒绝
+> `ACTION_EXECUTE` 和 `PROCESS_START`；因此 `submit`、`saveAndStart` 等动作均不能由
+> Embed V1 调用。以下内容只定义未来启用前必须满足的接口边界。
 
 ```http
 POST /api/embed/v1/runtime/actions/{actionKey}
@@ -2157,10 +2206,13 @@ iframe 的 `ready` 只携带非敏感信息。父页面必须以
 {
   "protocol": "flow-embed/1",
   "type": "selection.changed",
+  "launchId": "lch_01K...",
   "channelId": "66f82f09-89ec-4a5a-b81b-f54f02d22262",
-  "messageId": "msg_01K...",
+  "messageId": "base64url-random-message-id",
   "requestId": null,
   "timestamp": "2026-08-26T08:32:00Z",
+  "childNonce": "base64url-child-nonce",
+  "parentNonce": "base64url-parent-nonce",
   "payload": {}
 }
 ```
@@ -2180,23 +2232,25 @@ Port、`protocol/channelId/childNonce/parentNonce/messageId` 和 Payload Schema�
 
 ### 12.5 iframe 发给宿主的事件
 
-| type | 何时触发 | 核心 Payload |
-| --- | --- | --- |
-| `ready` | Shell 已加载、尚未兑换 | `channelId, childNonce, supportedVersions` |
-| `initialized` | Session、Bootstrap、Schema 就绪 | `viewKey, surfaceType, capabilities` |
-| `resize` | 内容高度变化 | `height`，SDK 仍执行 min/max 限制 |
-| `selection.changed` | 列表选择变化 | `selection[{id, values}]`，字段受返回策略限制 |
-| `action.started` | 动作开始 | `actionKey, clientMutationId` |
-| `action.completed` | 动作完成 | `actionKey, receiptId, result` |
-| `form.saved` | 保存完成 | `receiptId, record{id, values}, clientMutationId` |
-| `navigation.request` | 请求在 iframe 内打开发布范围内页面 | `target, recordId` |
-| `close.requested` | 运行态建议宿主关闭 | `reason` |
-| `session.expired` | 会话过期或撤销 | `reason, relaunchRequired=true` |
-| `error` | 可展示/不可恢复错误 | `errorCode, message, traceId, recoverable` |
+| type | 当前状态 | 何时触发 | 核心 Payload |
+| --- | --- | --- | --- |
+| `ready` | 已实现，Window 握手 | Shell 已加载、尚未兑换 | `launchId, channelId, childNonce, supportedVersions` |
+| `init.ack` | 已实现，MessagePort 握手 | iframe 接受唯一 Port | `launchId, channelId, childNonce, parentNonce` |
+| `ack` | 已实现 | 接受宿主白名单命令 | `command` |
+| `initialized` | 已实现 | Session 与当前 Surface 就绪 | `viewKey, surfaceType, capabilities` |
+| `resize` | 已实现 | 内容高度变化 | `height`，SDK 仍执行 min/max 限制 |
+| `selection.changed` | 已实现 | 列表选择变化 | `selection[{id, values}]`，`values` 仅含 Schema 的 `selection.returnableFields` |
+| `form.saved` | 已实现，仅 RECORD_CREATE | 创建保存完成 | `receiptId, record{id, values}, clientMutationId` |
+| `session.expired` | 已实现 | 会话过期或撤销 | `reason, relaunchRequired=true` |
+| `error` | 已实现 | 可展示/不可恢复错误 | `errorCode, message, traceId, recoverable` |
+| `navigation.request` | **Deferred** | SDK 只有预留 Schema，当前 iframe Bridge 不发送 | 预留 `target, recordId` |
+| `action.started/action.completed` | **Deferred** | 当前没有 Action Runtime 来源 | 仅 SDK 预留 Schema |
+| `close.requested` | **Deferred** | 当前 iframe Bridge 不发送 | 仅 SDK 预留 Schema |
 
-`values/result` 只包含 Returnable 字段。postMessage 不是可靠业务消息总线；浏览器关闭时事件
-可能丢失。`navigation.request.target` 是封闭枚举
-`LIST/CREATE/VIEW/EDIT/BACK`，SDK 只把它作为事件通知，不得自动修改宿主 URL、跳转顶层窗口
+`values` 只包含 Returnable 字段；postMessage 不是可靠业务消息总线，浏览器关闭时事件可能丢失。
+当前 LIST→CREATE/VIEW→BACK 是 iframe 内部状态导航，不向宿主发送 `navigation.request`，也不新增
+可接受 form/entity/release/URL 的导航接口。SDK 预留的目标枚举也只允许
+`LIST/CREATE/VIEW/BACK`，V1 不包含 EDIT；未来启用事件时仍不得自动修改宿主 URL、跳转顶层窗口
 或打开任意 URL。
 
 ### 12.6 宿主发给 iframe 的命令
@@ -2311,13 +2365,19 @@ Flow 权限、组织、数据范围和行级动作继续生效。宿主前端没
 
 1. iframe 调用 Bootstrap 和 Schema。
 2. 列表查询由服务端注入 View 固定过滤、Context 和 Flow 数据范围。
-3. 用户点击行级“查看/编辑”时，前端只提交 `recordId + actionKey`。
-4. Facade 重新检查该行当前可见、行级动作可用、Release 允许此动作。
-5. Facade 用 Session 固定的 `formReleaseId` 调用表单解析服务。
+3. 用户点击 Schema 中 `transport=LOCAL_FORM` 的“查看”或“新建”时，前端只在本地选择
+   `VIEW + 已投影行 recordId` 或 `CREATE`；V1 没有 EDIT。
+4. Facade 以 Session 中的 `RECORD_VIEW/RECORD_CREATE`、entryModes 和固定 List Release 复验；
+   VIEW 同时执行当前 Flow 用户的数据范围与行级查看能力，不存在/无权统一 404。
+5. Facade 用 Session 固定的 `formReleaseId/formReleaseVersion` 调用表单解析服务，浏览器不传这些坐标。
 6. 表单字段状态由已发布表单联动规则、Flow 权限和 View 字段策略求交。
-7. 返回列表时保持同一 Session；切换到 View 未发布的其他实体或表单会被拒绝。
+7. `BACK` 恢复先前列表查询、分页和选择状态并保持同一 Session；不会发送宿主导航事件，切换到
+   View 未发布的其他实体或表单会被拒绝。
 
-### 13.4 创建、更新和动作
+### 13.4 创建，以及后续更新/动作
+
+当前 V1 只执行下图中的创建路径（`POST /runtime/records`）。图中的更新、动作和
+`recordVersion` 分支是后续目标事务模型；在 V1 发布与运行时均关闭。
 
 ```mermaid
 sequenceDiagram
@@ -2676,7 +2736,9 @@ Logout/Revoke/Expire 先只读取得 Grant/User，再在事务中按 `Counter ->
 行数为 1 时执行
 `active_count=active_count-1`。若异常漂移导致计数已为 0，则不减为负数，终止 Session 并写
 required 漂移审计/告警。重复 Logout、并发撤销和过期扫描均不得重复扣减。定时对账任务
-按未释放的 ACTIVE Session 修复极端故障漂移。现有 `integration_api_request_lease` 仍只负责
+按未释放的 ACTIVE Session 双向只读扫描并报告极端故障漂移；自动改写计数可能与在线
+Exchange/Termination 竞争，因此 V1 不自动修数，由运维确认后通过受控操作修复。现有
+`integration_api_request_lease` 仍只负责
 应用级请求并发，不承担 Grant/User 活跃会话数。
 应用/View/Grant 批量撤销也必须小批量调用同一个条件释放原语，不能只批量改 Session 状态而
 遗漏 Counter。
@@ -2898,7 +2960,7 @@ AND 请求幂等与并发条件
 | 点击劫持 | 每个 Launch 精确 `frame-ancestors` |
 | postMessage 劫持 | exact Origin/source/channel/nonces/MessagePort |
 | 重复提交 | 应用范围幂等键、请求摘要、fencing token |
-| 并发覆盖 | 通用 `record_version` 乐观锁 |
+| 并发覆盖 | V1 不开放更新；后续 UPDATE/ACTION 必须先完成通用 `record_version` 乐观锁 |
 | 配置停用后 Token 仍可用 | 每请求检查安全对象状态/版本并跨 Pod 失效缓存 |
 | 日志泄密 | 字段级脱敏、Token/Assertion/Context 禁记 |
 
@@ -2936,7 +2998,8 @@ Entity/Process Mapper、Spring MVC Request 或前端 DTO，外部模型通过 An
 8. 使用 Maven 依赖检查/ArchUnit 固化上述方向，禁止 `workflow-embed` 反向依赖
    `workflow-open-api`、`workflow-entity` 或 `workflow-process` 的基础设施包。
 
-建议契约：
+下面是边界契约的逻辑形态。当前 V1 只实现列表读取、表单解析、记录详情和记录创建；
+`update/execute` 属于第 16.4 节完成后的后续契约，不是当前可注入或可调用能力：
 
 ```java
 public interface EmbedLaunchIssuePort {
@@ -2965,6 +3028,8 @@ public interface EmbedRecordRuntimePort {
     EmbedMutationResult create(EmbedRuntimeActor actor,
                                EmbedRuntimeTarget target,
                                EmbedCreateCommand command);
+
+    // Deferred：V1 不注册对应 HTTP 路由，也不发布所需 Capability。
     EmbedMutationResult update(EmbedRuntimeActor actor,
                                EmbedRuntimeTarget target,
                                EmbedUpdateCommand command);
@@ -2992,8 +3057,8 @@ Launch、Exchange、授权求交和重放 Use Case 必须可用 In-Memory Port �
 | `EmbedSessionService` | embed | Token、超时、撤销、心跳 |
 | `EmbedSessionAuthenticationFilter` | embed | Runtime 认证、上下文建立/清理 |
 | `EmbedRuntimeFacade` | embed | 能力求交、调用 Adapter、外部 DTO 投影 |
-| `EmbedActionRegistry` | embed | actionKey 到强类型、审核过的 Handler 的封闭映射 |
-| `EmbedDataSourceProviderRegistry` | embed/entity adapter | 动态选项/Lookup 只读强类型 Provider 白名单 |
+| `EmbedActionRegistry` | embed | **Deferred**；后续把 actionKey 映射到强类型、审核过的 Handler，V1 不存在 Action API |
+| `EmbedDataSourceProviderRegistry` | embed/entity adapter | **Deferred**；V1 只有大型不可变静态 Options 分页，动态数据源和 Lookup Provider 均 Fail Closed |
 | `EmbedResponseProjector` | embed | 字段/动作/错误脱敏 |
 | `EmbedIdempotencyCoordinator` | embed | 对接现有 claim/fencing 能力 |
 | `EmbedOperationReceiptService` | embed | 同事务最小业务回执和 stale Worker 第二道去重 |
@@ -3016,7 +3081,7 @@ Launch、Exchange、授权求交和重放 Use Case 必须可用 In-Memory Port �
    从普通用户认证/Endpoint 权限
    拦截器排除，只进入专用 FilterChain 中的 `EmbedSessionAuthenticationFilter`；该 Filter
    在 Spring MVC 之前建立 Authentication。
-5. 管理端 `/api/embed-management/**` 不排除，继续使用普通 Flow JWT 和权限码。
+5. 管理端 `/api/embed-management/v1/**` 不排除，继续使用普通 Flow JWT 和权限码。
 6. 增加 `@EmbedApi` 或等效 Marker，并用集成测试/ArchUnit 保证 Runtime Controller 不会
    意外落到无认证链。
 
@@ -3107,8 +3172,8 @@ Expand 迁移/Schema Worker
   `View Fixed AND Context AND Data Scope AND Published List AND Client Filter` 求交；同字段
   等值冲突返回 match-none，范围取交集，不支持安全求交的组合直接拒绝；
 - 把允许的外部 Filter 编译为参数化查询，不透传 Release/Context Token；
-- 当前列表 `LIST_LOAD` 通用 UI Event 在 Embed 中默认禁用；只有 Provider Allowlist 中的
-  强类型数据源可执行，不能依靠响应投影弥补已经发生的任意内部 Event；
+- 当前列表 `LIST_LOAD` 通用 UI Event 和动态 Provider 在 Embed V1 中全部禁用；后续若建设
+  Provider Allowlist，也只能执行强类型只读来源，不能依靠响应投影弥补已经发生的任意内部 Event；
 - 调用后用 `EmbedResponseProjector` 只输出公开列和行级动作。
 
 表单 Adapter：
@@ -3117,10 +3182,10 @@ Expand 迁移/Schema Worker
   `EntityFormResolveService`、`EntityFormRuntimeAdapter` 的受信内部入口；
 - 使用 `PublishedFormSubmissionService` 完成默认值、校验和保存；
 - 拒绝设计态表单和动态传入 Form ID；
-- 自定义 UI Event 仅能由发布白名单中的内建动作间接触发。
+- V1 发布和运行时均拒绝自定义 UI Event，不存在“白名单动作间接触发任意 Event”的回退路径。
 
-如果 `EmbedReleaseResolver` 和受信内部入口尚未开发，V1 只能临时支持
-`FOLLOW_ACTIVE`，不能在文档宣称支持 `PINNED` 后把固定 Release ID 直接塞给现有普通接口。
+当前实现通过受信内部入口解析 Session 固定的 PINNED Release；解析器或精确版本不可用时必须
+503 Fail Closed，不允许降级为 `FOLLOW_ACTIVE`，也不允许把固定 Release ID 直接塞给现有普通接口。
 
 记录/动作 Adapter：
 
@@ -3143,9 +3208,14 @@ applicationId
 不可逆且跨 Session 稳定的 actorScopeDigest
 viewKey
 operation
-target type + recordId/actionKey
+stable target（CREATE 为 entityCode + formId；recordId/actionKey 仅后续操作使用）
 canonical request body
 ```
+
+当前 V1 的 `EMBED_RECORD_CREATE` 将上式 target 具体冻结为
+`targetType=ENTITY_FORM + {entityCode, formId}`。`formReleaseId/listReleaseId/viewReleaseId` 都不进入
+target 或 Hash，Session/Launch 也不进入；Release 变化后的安全性由重放前重新授权和按当前
+Output Policy 投影保证，而不是靠把短期发布坐标混入幂等身份。
 
 `actorScopeDigest` 使用域分离的
 `SHA-256("embed-actor-v1" + applicationId + providerId + bindingId + flowUserId)` 生成；输入都是
@@ -3201,8 +3271,9 @@ API 层幂等记录。可复用现有 `EntityMutationReceiptService` 的语义�
 
 - View Release 是不可变对象，可按 Release ID 长缓存。
 - Provider JWKS 按 `kid` 缓存，未知 `kid` 触发一次受控刷新，防止刷新风暴。
-- 动态选项/引用候选如缓存，Key 必须包含 `flowUserId + viewReleaseId + contextDigest +
-  fieldCode + dependencyHash`，不得跨用户共享未授权结果。
+- **后续能力**若为动态选项/引用候选增加缓存，Key 必须包含
+  `flowUserId + viewReleaseId + contextDigest + fieldCode + dependencyHash`，不得跨用户共享未授权
+  结果；V1 的静态 Options 直接读取不可变 Form Release，Lookup 不执行。
 - Session Token 摘要查找可缓存极短时间，但 Session 状态、到期和安全版本必须一起缓存。
 - Application/Grant/View/Provider/Binding/用户停用通过现有事件或新增本地 Cache Evict Topic 跨 Pod
   失效；没有可靠广播时最大缓存 TTL 不超过 5 秒。
@@ -3215,24 +3286,36 @@ API 层幂等记录。可复用现有 `EntityMutationReceiptService` 的语义�
 | Assertion Replay 清理 | 5 分钟 | 删除过安全窗口的数据 |
 | Launch 过期标记 | 1 分钟 | `ISSUED -> EXPIRED` |
 | Session 过期标记 | 1 分钟 | idle/absolute 到期，并按 `slot_released` 原子释放 Counter |
-| Session Counter 对账 | 10 分钟 | 按未释放 ACTIVE Session 修复极端漂移并告警 |
+| Session Counter 对账 | 10 分钟 | 双向只读扫描未释放 ACTIVE Session，发现漂移后聚合告警，不自动改写在线计数 |
 | Context 密文擦除 | 每小时 | 达保留期后擦除 |
 | Idempotency 清理 | 复用现有周期 | 保留处理中记录和 fencing 语义 |
 | Operation Receipt 清理 | Idempotency 清理之后 | 只删已无对应幂等重放窗口的回执 |
 | 摘要/密文 Key 迁移 | 轮换期间持续 | 小批量重算/重加密，统计旧 keyVersion 余量 |
 | 指标聚合 | 1–5 分钟 | 按应用/View 聚合，不带 Subject/Token |
 
+当前 V1 已实现 Assertion Replay 清理、Launch 过期标记、Session 过期回收、终态 Context
+擦除、Counter 双向只读对账、无幂等记录引用的 Operation Receipt 清理，以及按 FK 顺序清理
+终态 Session/Launch。所有扫描均使用有界批次和索引，每个数据库步骤以独立小事务执行；
+摘要/密文 Key 在线迁移与更丰富的指标聚合仍属于后续运维增强。
+
 ### 16.9 OpenAPI 契约产物
 
-实施时新增 `docs/api/embed-v1.yaml`，至少包含：
+当前已新增 `docs/api/embed-v1.yaml`（OpenAPI 3.1），包含：
 
-- Launch、Exchange、Bootstrap、Schema、Query、Form、Record、Action、Session；
+- OAuth/Launch、Entry HTML、Exchange、Session、Bootstrap、List Schema/Query、Form、CREATE 联动重算、
+  静态 Options、Fail-Closed Lookup、Record View/Create；
 - Bearer Security Scheme 的机器 Token 与 Embed Token 区分；
 - 所有 DTO、枚举、长度、格式、状态码、错误码和示例；
-- `Idempotency-Key`、`If-Match`、`Retry-After`、`Idempotent-Replay`；
+- `Idempotency-Key`、`Retry-After`、`Idempotent-Replay`，以及 V1 固定
+  `recordVersion=null`、不返回 ETag 的边界；
+- `flow-embed/1` 已实现握手/事件，以及 `navigation.request` 等 SDK 预留事件的 Deferred 标记；
+- 未注册的 Update/Action 路由不伪造进 `paths`；已注册的 Lookup 查询路由保留在 `paths` 但不声明
+  200，动态 Option/Lookup Provider 只在扩展元数据中标为 Deferred/Fail Closed；
 - 兼容性说明和 deprecation 规则。
 
-CI 应执行 OpenAPI lint、Breaking Change 检查和 SDK 类型生成校验，避免文档与实现漂移。
+CI 已执行 OpenAPI 解析、Breaking Change、Controller/DTO/响应实例与关键 Header 契约检查；
+SDK 公共类型由本文件的封闭协议 Schema 确定性生成，`test:embed` 会校验类型产物、运行时
+协议常量、Capability、命令和事件没有漂移。
 
 ## 17. 前端与部署实现设计
 
@@ -3324,8 +3407,10 @@ workflow-web/packages/embed-sdk/
 - `ExternalSchemaAdapter`：只做明确枚举的字段/列/查询类型映射；
 - `ExternalRecordAdapter`：把已投影 `values` 转为展示 ViewModel，不补回任何未公开字段；
 - `EmbedActionAdapter`：只保留 External DTO 中已授权的 `actionKey`；
-- `EmbedDataSourceRuntime`：只调用第 11.6.1/11.6.2 节 Facade，必须注入且禁止回退到内部
-  `serviceId/operationCode` 或普通字典接口；
+- `EmbedCreateEvaluationRuntime`：只调用第 11.6.1 节的 CREATE 只读重算接口，使用取消/序号避免
+  旧响应覆盖新草稿，不在前端执行内部联动表达式；
+- `EmbedDataSourceRuntime`：V1 只调用第 11.6.2 节的大型静态 Options Facade，必须注入且禁止
+  回退到内部 `serviceId/operationCode` 或普通字典接口；第 11.6.3 节 Lookup 在受支持发布链不可达；
 - 或新建更小的 `EmbedDataTable`，避免继承现有表格中的自定义动作、关联内容、子列表入口。
 
 这不是把 External DTO 原样传给现有组件的薄包装。Adapter 必须有“未知类型 Fail Closed”和
@@ -3377,6 +3462,11 @@ VHost/Ingress，入口路由不得继承或追加管理站点的 `frame-ancestor
 当前 Helm Ingress 如只支持单 Host，需要扩展为独立 Embed Host、TLS Secret 和 Entry/API
 路由；这是上线前置工作，不是运行时配置可以规避的问题。
 
+**当前交付状态：**应用侧动态 Entry CSP、Embed Shell 和 Runtime 路由已经实现；生产环境的
+独立 `embed.flow.example.com` VHost/Ingress、TLS、同源 API 反向代理及 CSP 实际响应尚需由
+部署环境完成并验证。专用 Embed Origin 是生产上线的硬门槛，在该门槛完成前必须保持
+`workflow.embed.enabled=false`，不能把管理站点 Host 当作生产 Embed Host 临时替代。
+
 如果 Embed Shell 与 Runtime API 不同源，只允许固定
 `https://embed.flow.example.com` 调用 Runtime CORS，绝不把合作方 Origin 加入 Runtime CORS。
 优先通过网关同源反代，减少 CORS 和 Cookie 混淆。
@@ -3419,25 +3509,29 @@ SDK 默认创建：
 | 接口 | 状态 | 认证 | 主要实现 |
 | --- | --- | --- | --- |
 | `POST /oauth2/token` | 现有复用 | Client Credentials | 现有 OAuth |
-| `POST /api/open/v1/embed-launches` | 新增 | Machine Bearer + `embed.launch` | Open API Controller + Embed Launch Port |
-| `GET /embed/v1/launches/{launchId}` | 新增 | Launch ID + 动态 CSP | Embed Entry Handler |
-| `POST /api/embed/v1/launches/{launchId}/exchange` | 新增 | 一次性 Launch code | Exchange Service |
-| `GET /api/embed/v1/runtime/bootstrap` | 新增 | Embed Bearer | Runtime Facade |
-| `GET /api/embed/v1/runtime/schema` | 新增 | Embed Bearer | 外部投影 + 列表/表单运行态 |
-| `POST /api/embed/v1/runtime/list/query` | 新增 Facade | Embed Bearer | 复用列表查询服务 |
-| `GET /api/embed/v1/runtime/form` | 新增 Facade | Embed Bearer | 复用表单解析服务 |
-| `POST /api/embed/v1/runtime/form/fields/{fieldCode}/options/query` | 新增 Facade | Embed Bearer | 服务端代理已发布动态选项 |
-| `POST /api/embed/v1/runtime/form/fields/{fieldCode}/lookups/query` | 新增 Facade | Embed Bearer | 受数据范围保护的引用候选 |
-| `GET /api/embed/v1/runtime/records/{recordId}` | 新增 Facade | Embed Bearer | 复用实体详情/权限 |
-| `POST /api/embed/v1/runtime/records` | 新增 Facade | Embed Bearer + 幂等 | 复用已发布表单提交 |
-| `PATCH /api/embed/v1/runtime/records/{recordId}` | 新增，条件上线 | Embed Bearer + 幂等 + ETag | 复用更新服务并新增乐观锁 |
-| `POST /api/embed/v1/runtime/actions/{actionKey}` | 新增，白名单开放 | Embed Bearer + 幂等 | 新强类型 Registry + 现有领域服务 |
-| `GET /api/embed/v1/session` | 新增 | Embed Bearer | Session Service |
-| `POST /api/embed/v1/session/heartbeat` | 新增 | Embed Bearer | Session Service |
-| `DELETE /api/embed/v1/session` | 新增 | Embed Bearer | Session Service |
+| `POST /api/open/v1/embed-launches` | V1 已实现 | Machine Bearer + `embed.launch` | Open API Controller + Embed Launch Port |
+| `GET /embed/v1/launches/{launchId}` | V1 已实现 | Launch ID + 动态 CSP | Embed Entry Handler |
+| `POST /api/embed/v1/launches/{launchId}/exchange` | V1 已实现 | 一次性 Launch code | Exchange Service |
+| `GET /api/embed/v1/session` | V1 已实现 | Embed Bearer | 非秘密 Session 状态 |
+| `POST /api/embed/v1/session/heartbeat` | V1 已实现 | Embed Bearer | 仅按服务端时间延长 idle 到期 |
+| `DELETE /api/embed/v1/session` | V1 已实现 | Embed Bearer | 幂等退出和 Session Slot 释放 |
+| `GET /api/embed/v1/runtime/bootstrap` | V1 已实现 | Embed Bearer | Runtime Facade |
+| `GET /api/embed/v1/runtime/schema` | V1 已实现（仅 LIST） | Embed Bearer | 列表 External Projection |
+| `POST /api/embed/v1/runtime/list/query` | V1 已实现 | Embed Bearer | 复用列表查询服务 |
+| `GET /api/embed/v1/runtime/form` | V1 已实现 | Embed Bearer | 复用表单解析服务 |
+| `POST /api/embed/v1/runtime/form/evaluations` | V1 已实现（仅 CREATE） | Embed Bearer | 部分草稿联动只读重算；不做最终校验、不写数据 |
+| `POST /api/embed/v1/runtime/form/fields/{fieldCode}/options/query` | V1 已实现（仅大型静态选项） | Embed Bearer | 分页不可变 Form Release 中超过 100 项的静态 options；动态绑定 Fail Closed |
+| `POST /api/embed/v1/runtime/form/fields/{fieldCode}/lookups/query` | 路由/DTO 已注册，V1 Deferred/Fail Closed | Embed Bearer | 引用类表单字段发布阻断；无固定候选 List Release/Projection，不声明 200 |
+| `GET /api/embed/v1/runtime/records/{recordId}` | V1 已实现 | Embed Bearer | 复用实体详情/权限 |
+| `POST /api/embed/v1/runtime/records` | V1 已实现 | Embed Bearer + 幂等 | 复用已发布表单提交 |
+| `PATCH /api/embed/v1/runtime/records/{recordId}` | V1 未注册、强制关闭 | 不适用 | 待通用 `record_version` 全链路完成后实现 |
+| `POST /api/embed/v1/runtime/actions/{actionKey}` | V1 未注册、强制关闭 | 不适用 | 待强类型 Registry 与动作事务契约完成后实现 |
+| `GET /api/embed/v1/session` | V1 已实现 | Embed Bearer | Session Service |
+| `POST /api/embed/v1/session/heartbeat` | V1 已实现 | Embed Bearer | Session Service |
+| `DELETE /api/embed/v1/session` | V1 已实现 | Embed Bearer | Session Service |
 
-管理端 `/api/embed-management/**` 全部新增，但继续复用普通 Flow 用户鉴权、权限码、统一响应和
-审计。
+V1 不提供独立 `PROCESS_START` 路由，也不允许通过创建请求布尔参数绕过关闭边界。管理端
+`/api/embed-management/v1/**` 已实现，并继续复用普通 Flow 用户鉴权、权限码、统一响应和审计。
 
 ### 18.2 后端能力矩阵
 
@@ -3497,8 +3591,6 @@ SDK 默认创建：
 | --- | --- | --- | --- |
 | 400 | `INVALID_REQUEST` | Header、字段、JSON 或格式非法 | 修正请求 |
 | 400 | `EMBED_CONTEXT_INVALID` | Context 不符合发布 Schema | 修正业务 Context |
-| 400 | `EMBED_FILTER_NOT_ALLOWED` | 查询字段或值未公开 | 依据 Schema 修正 |
-| 400 | `EMBED_ACTION_INPUT_INVALID` | 动作输入不符合 Schema | 显示字段错误 |
 | 401 | `INVALID_ACCESS_TOKEN` | 机器 Token 无效 | 后端重新取 Token |
 | 401 | `EMBED_LAUNCH_INVALID` | code 错误、已消费或绑定不匹配 | 重新 Launch |
 | 401 | `EMBED_SESSION_INVALID` | Embed Token 无效 | 清空并重新 Launch |
@@ -3513,16 +3605,16 @@ SDK 默认创建：
 | 403 | `FLOW_USER_DISABLED` | Flow 用户不可用 | 启用/更换用户 |
 | 403 | `EMBED_VIEW_DISABLED` | App/Grant/View/Binding 停用 | 联系管理员 |
 | 403 | `EMBED_SESSION_REVOKED` | Session 被撤销 | 视原因决定是否重开 |
+| 403 | `EMBED_ACCESS_DENIED` | Embed 安全链拒绝未匹配的访问 | 不尝试切换到内部接口 |
 | 403 | `EMBED_OPERATION_NOT_ALLOWED` | Capability/动作/入口未开放 | 不展示该操作 |
 | 404 | `EMBED_RESOURCE_NOT_FOUND` | 不存在或无行级权限 | 按不存在处理 |
 | 409 | `EMBED_CONFIGURATION_VERSION_CONFLICT` | 管理配置乐观锁冲突 | 重新加载后编辑 |
 | 409 | `EMBED_IDEMPOTENCY_KEY_REUSED` | 同 Key 不同请求/Actor/View | 使用正确业务请求号 |
 | 409 | `EMBED_REQUEST_IN_PROGRESS` | 相同写请求仍在处理 | 按 `Retry-After` 查询/重试 |
-| 409 | `RECORD_VERSION_CONFLICT` | 记录已被其他请求更新 | 重新加载并让用户确认 |
+| 409 | `EMBED_RECORD_CONFLICT` | 创建时唯一约束或业务状态冲突 | 刷新数据并修正提交内容 |
 | 410 | `EMBED_LAUNCH_EXPIRED` | 已确认的 Launch 已过期 | 重新 Launch |
 | 413 | `PAYLOAD_TOO_LARGE` | 超过请求或消息上限 | 缩小数据 |
 | 422 | `FORM_VALIDATION_FAILED` | 表单业务/字段校验失败 | 展示 `violations` |
-| 422 | `ACTION_PRECONDITION_FAILED` | 状态机或动作前置失败 | 刷新当前记录 |
 | 422 | `EMBED_VIEW_VALIDATION_FAILED` | 管理端 View 发布校验失败 | 修复 `violations` 后重试 |
 | 429 | `RATE_LIMIT_EXCEEDED` | 超过配额 | 按 `Retry-After` 退避 |
 | 429 | `EMBED_SESSION_LIMIT_EXCEEDED` | Grant/User 活跃会话已达上限 | 关闭旧页面或等待到期后重开 |
@@ -3532,6 +3624,10 @@ SDK 默认创建：
 为防枚举，Exchange 对“code 错误、已消费、channel 不匹配”等默认统一返回
 `EMBED_LAUNCH_INVALID`。只有客户端提供了正确 code 且服务端能安全确认仅为过期时，才可返回
 `EMBED_LAUNCH_EXPIRED`。
+
+V1 列表过滤字段/值/形状不合法统一使用 `INVALID_REQUEST`；V1 没有 Action API，也不会公开
+`EMBED_ACTION_INPUT_INVALID`、`RECORD_VERSION_CONFLICT` 或 `ACTION_PRECONDITION_FAILED`。这些
+后续能力的错误码必须在对应接口真正注册时重新冻结，不能由客户端提前依赖。
 
 ### 19.1.1 现有异常到 Embed 契约的映射
 
@@ -3621,8 +3717,8 @@ Context 或完整表单正文。
 | --- | --- |
 | `embed-launch-app:{applicationId}` | 60/min |
 | `embed-launch-address:{ipDigest}` | 30/min |
-| `embed-exchange-launch:{launchId}` | 5/min |
-| `embed-exchange-address:{ipDigest}` | 20/min |
+| `embed-exchange-launch:{launchId}` | 10/min |
+| `embed-exchange-address:{ipDigest}` | 120/min |
 | `embed-runtime-session:{sessionId}` | 120/min |
 | `embed-write-session:{sessionId}` | 30/min |
 | `embed-heartbeat-session:{sessionId}` | 12/min |
@@ -3675,9 +3771,13 @@ Context 或完整表单正文。
 4. 发现 Embed 全局风险：Feature Flag 禁止新 Launch，并在网关关闭 Runtime 写操作；
 5. 保留必要审计，擦除 Token/Context 密文，不执行破坏性数据库回滚。
 
-## 21. 分阶段开发计划
+## 21. 实施状态与后续开发计划
 
-### 21.1 阶段 0：评审与契约冻结
+当前分支已经完成原阶段 1 与阶段 2 的应用代码范围，即 LIST/FORM 读取、CREATE、管理端、
+Launch/Session、安全链、Shell 和 SDK。这里保留阶段划分用于说明依赖与后续边界；代码完成
+不等于可生产上线，独立 Embed Origin、隔离 MySQL 迁移、浏览器 E2E、安全与联合验收仍是门槛。
+
+### 21.1 阶段 0：设计基线已完成，生产评审待签字
 
 交付物：
 
@@ -3686,13 +3786,13 @@ Context 或完整表单正文。
 3. 确认默认身份模式为 `SIGNED_JWT`，可信外部 ID 仅作例外；
 4. 确认首期 Capability：建议只读列表、选择、详情、新建；
 5. 确认 `total` 默认是否返回，建议默认关闭、View 显式开启；
-6. 评审本文件及 `embed-v1.yaml`；
+6. 评审本文和已生成的 `docs/api/embed-v1.yaml` 接口级契约；
 7. 完成安全威胁建模和数据分级；
 8. 实施前重新确认 Flyway 最大版本号。
 
 退出条件：架构、安全、前端、后端、DBA、运维和至少一个接入方共同签字。
 
-### 21.2 阶段 1：只读列表 MVP
+### 21.2 阶段 1：只读列表 MVP（代码已实现）
 
 后端：
 
@@ -3712,21 +3812,24 @@ Context 或完整表单正文。
 - 独立域名/同源 API 代理、动态 CSP；
 - 管理端最小 View/Grant/Binding 页面。
 
-MVP 明确关闭：Create、Update、流程启动、自定义动作、附件、导出、删除。
+阶段 1 的原始边界关闭 Create、Update、流程启动、自定义动作、附件、导出和删除；当前分支已
+继续完成下一阶段的 Create，因此当前 V1 是“LIST/FORM 读取 + CREATE”，其余能力仍关闭。
 
-### 21.3 阶段 2：表单查看与新建
+### 21.3 阶段 2：表单查看与新建（代码已实现）
 
 - Embed Form External Schema；
 - 表单 Content 抽取和已发布字段渲染；
 - 详情/只读表单；
+- CREATE 部分草稿联动只读重算，服务端强制 Context 覆盖且不提前执行最终提交校验；
 - 新建表单、服务端强制 Context 字段；
 - 写请求幂等、fencing、required 审计；
 - 同事务 Operation Receipt 与固定 Replay Envelope；
-- `form.saved/action.completed` 事件；
-- 受审计的 `save` 内建动作；
-- 如业务需要，单独评审 `saveAndStart`。
+- `form.saved` 事件；`action.completed` 只保留协议 Schema，当前没有动作运行时来源；
+- 受审计的创建保存链路（仅 `POST /runtime/records`，不是通用 Action API）。
 
-### 21.4 阶段 3：编辑与有状态动作
+`saveAndStart` 未纳入当前 V1，不能以创建参数或未注册的动作接口调用。
+
+### 21.4 阶段 3：编辑与有状态动作（未实施，V1 强制关闭）
 
 前置：第 16.4 节 `record_version` 已对全部动态实体表和内部写入口完成 Expand、核验和兼容。
 
@@ -3737,7 +3840,7 @@ MVP 明确关闭：Create、Update、流程启动、自定义动作、附件、�
 - 多 Pod 并发和故障注入测试；
 - 开启 `RECORD_UPDATE/ACTION_EXECUTE/PROCESS_START` 发布校验。
 
-### 21.5 阶段 4：可选扩展
+### 21.5 阶段 4：可选扩展（未实施）
 
 - 签名 Webhook 的 Embed 业务事件；
 - 附件上传下载；
@@ -3751,20 +3854,23 @@ MVP 明确关闭：Create、Update、流程启动、自定义动作、附件、�
 
 ### 21.6 工作包和依赖
 
-| 工作包 | 主要依赖 | 可并行 | 首期必需 |
+| 工作包 | 主要依赖 | 可并行 | 当前状态 |
 | --- | --- | --- | --- |
-| DB 表和 Mapper | 契约冻结、迁移版本 | 后端骨架 | 是 |
-| View/Grant 管理 | DB | Identity、前端 Shell | 是 |
-| Identity/Assertion | Provider/Binding 表 | View 管理 | 是 |
-| Launch/Exchange/Session | Identity、Grant | Embed Shell | 是 |
-| Runtime Security Chain | Session | 外部 DTO 设计 | 是 |
-| List Adapter/Projection | Contracts、现有列表服务 | SDK | 是 |
-| Form Adapter/Projection | List 基础可复用 | 管理 UI | 阶段 2 |
-| Record Version | Schema Worker、全部写入口 | 阶段 1/2 | 阶段 3 |
-| SDK/Bridge | 消息契约 | 后端 Launch | 是 |
-| 动态 CSP/域名 | 网关和入口 Handler | SDK | 是 |
-| 审计/限流/指标 | Contracts、现有基础设施 | 各业务 API | 是 |
-| OpenAPI/接入示例 | 接口契约 | 实现过程持续 | 是 |
+| DB 表和 Mapper | 契约冻结、迁移版本 | 后端骨架 | 已实现；V062 已解决，仍待第 22.3 节本机独立空库全量验收 |
+| View/Grant 管理 | DB | Identity、前端 Shell | 已实现 |
+| Identity/Assertion | Provider/Binding 表 | View 管理 | 已实现 |
+| Launch/Exchange/Session | Identity、Grant | Embed Shell | 已实现 |
+| Runtime Security Chain | Session | 外部 DTO 设计 | 已实现 |
+| List Adapter/Projection | Contracts、现有列表服务 | SDK | 已实现 |
+| Form Adapter/Projection | List 基础可复用 | 管理 UI | 已实现，含 CREATE 联动只读重算 |
+| Options / Lookup | 固定 Form Release、只读 Provider 边界 | Form Adapter | Options 仅大型静态分页；动态数据源与 Lookup 执行 Deferred/Fail Closed |
+| Record Create | 表单提交、幂等、回执 | Form Adapter | 已实现 |
+| Record Version | Schema Worker、全部写入口 | LIST/FORM/CREATE | 未实施，阶段 3 前置 |
+| SDK/Bridge | 消息契约 | 后端 Launch | 已实现 |
+| 动态 CSP/应用入口 | 网关和入口 Handler | SDK | 已实现 |
+| 生产专用域名/VHost | TLS、Ingress、网关 | 应用验收 | 8081 专用 VHost/Helm 清单已实现；生产启用与 DNS/TLS 实验待验收 |
+| 审计/限流/指标 | Contracts、现有基础设施 | 各业务 API | 运行时审计、分级限流与低基数基础指标已实现；Histogram/Gauge 属后续增强 |
+| OpenAPI/接入示例 | 接口契约 | 实现过程持续 | OpenAPI 已与 Controller/DTO/响应实例收口，并确定性生成 SDK 类型 |
 
 ## 22. 测试与验收设计
 
@@ -3785,6 +3891,10 @@ MVP 明确关闭：Create、Update、流程启动、自定义动作、附件、�
 - Entity/List/Form 归属和发布状态；
 - 字段 Visible/Queryable/Writable/Returnable 子集；
 - Context Schema 禁止远程 `$ref`、深度/大小上限；
+- Context Schema 出现 `pattern` 时以 `SCHEMA_PATTERN_NOT_SUPPORTED` 拒绝；已发布表单字段的
+  `validationRules.pattern` 也按不可信资源阻断，历史/篡改快照运行时同样 Fail Closed；
+- `REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP` 表单字段以
+  `UNTRUSTED_COMPONENT` 阻断发布；历史或绕过发布器的可写 Lookup 快照运行时返回 503；
 - Action 白名单和 Capability 子集；
 - Immutable Release Canonical JSON/Hash 稳定。
 
@@ -3801,15 +3911,18 @@ Session：
 
 运行态：
 
-- Filter Map 只接受公开字段；
+- List Filter 只接受最多 32 项的 discriminated array；每项严格为 `value`、`values` 或 `range`
+  三种形状之一，浏览器提交 `operator/_op/_start/_end` 或重复字段均拒绝；
 - 固定 Context 不能被客户端覆盖；
+- CREATE 联动重算只接受 fixed writable 的部分草稿，forced Context 覆盖同名值；不执行 required、
+  不写记录、不申请幂等 Claim，旧异步响应不能覆盖较新的草稿；
 - 外部 DTO 不含权限码、Provider、内部 Token、脚本；
 - Row Action 是 View 与 Flow Capability 的交集；
 - 详情 404 防枚举；
 - 幂等 Hash 包含稳定 Actor/View/Target，明确排除 Session/Launch/Release；
 - 重新 Launch 后使用同一 Key 能查询首次结果，其他 Actor/View 不能重放；
 - HMAC/AEAD 密钥轮换期间新旧版本均可读，迁移完成后旧版本可安全下线；
-- `recordVersion` 更新和冲突。
+- `[阶段 3]` `recordVersion` 更新和冲突；不纳入当前 V1 通过门槛。
 
 ### 22.2 后端集成测试
 
@@ -3826,10 +3939,40 @@ Session：
 9. 旧 fencing token 不能完成新 Worker 已重新 Claim 的请求，且旧 Worker 的业务事务回滚。
 10. Application/Grant/View 禁用后，既有 Session 下次读写立即失败。
 11. 篡改 Entity/List/Form/Release/Context/Action 参数不能改变 Session 目标。
-12. 写业务事务失败时，业务数据、审计 Outbox 和幂等状态符合原子回滚/重试规则。
-13. 含非事务性外部副作用且未实现 Outbox/Effect Receipt 的动作在 V1 发布或执行时被拒绝。
+12. CREATE 联动重算在部分草稿、隐藏字段变化和 forced Context 覆盖下返回当前 FormResult，且
+    数据库、幂等记录、审计 Outbox 均无写入。
+13. 写业务事务失败时，业务数据、审计 Outbox 和幂等状态符合原子回滚/重试规则。
+14. 含非事务性外部副作用且未实现 Outbox/Effect Receipt 的动作在 V1 发布或执行时被拒绝。
 
 ### 22.3 数据库和迁移测试
+
+本项目开发环境使用 **macOS 本机 MySQL，不使用且禁止为本需求启动 Docker MySQL**。迁移验证
+只能指向专门创建、可清空的独立测试库（例如 `workflow_embed_test_embed_v1`），不得指向现有开发、
+业务或共享数据库。创建/删除操作也只能作用于已显式核对库名的该测试库。
+
+V062 的空库迁移问题已经处理完成，**不再是 Embed 阻塞项**。对本机既有 `workflow` 库的只读
+核对已确认 Flyway V062–V065 为 `success`，V066–V068 尚未在该库执行；该业务库只用于确认现状，
+不能充当 Embed 空库验收目标。隔离迁移测试已经尝试，但现有 `workflow` 与
+`workflow_schema` 账号只获准访问既有业务库，不能创建 `workflow_embed_test_*`。
+
+因此当前尚未完成的是一次真实的本机 MySQL 全量执行验收：应由 DBA/本机管理员预建独立空库，
+并对 schema 账号授予该库所需 DDL 权限；另一种选择是提供有效且具备建库/授权能力的专用账号，
+再按以下清单执行。该执行前置不允许通过借用既有数据库、启动 Docker 或执行 `flyway repair`
+绕过；现有单元/集成测试也不能替代真实空库验收。
+
+DBA 预建空库时使用显式复用模式；测试启动前会校验库名必须匹配
+`workflow_embed_test_*`，并确认库内不存在表、视图、存储过程、触发器或事件。测试结束只清理
+本次测试对象并保留空数据库，不要求应用账号拥有 `CREATE/DROP DATABASE`：
+
+```bash
+EMBED_LOCAL_MYSQL_TEST=true \
+EMBED_LOCAL_MYSQL_REUSE_EMPTY_DATABASE=true \
+EMBED_LOCAL_MYSQL_DATABASE=workflow_embed_test_embed_v1 \
+DB_HOST=127.0.0.1 DB_PORT=3306 \
+DB_USERNAME='<test-user>' DB_PASSWORD='<test-password>' \
+mvn -f workflow-server/pom.xml -pl workflow-db-migrator \
+  -Dtest=EmbedRuntimeLocalMySqlMigrationTest test
+```
 
 - 从空库按 V001 到最新依次迁移并启动；
 - 现有历史迁移 checksum 不变；
@@ -3846,16 +3989,19 @@ Session：
 
 ### 22.4 浏览器 E2E
 
-浏览器至少覆盖当前支持矩阵中的 Chrome、Edge、Firefox 和 Safari：
+当前已用真实 Chrome 和三个临时 HTTPS Origin 自动化覆盖下述核心链路，CI 在
+缺少 Chrome 时会强制失败而不是 skip。Edge、Firefox 和 Safari 仍属生产前的跨浏览器
+验收矩阵：
 
 1. 授权 Origin 成功嵌入；未授权 Origin 被 CSP 拦截。
 2. 全程禁用第三方 Cookie 仍可启动、查询和提交。
 3. 父/子 Origin、Window Source、Nonce 任一错误时忽略消息。
 4. Launch code 不出现在 Network URL、Referer、History、Storage 和前端日志。
 5. 列表加载、搜索、分页、选择和自动高度。
-6. 列表打开只读/新建表单，字段、联动和校验正确。
+6. 列表打开只读/新建表单；CREATE 草稿变化经服务端只读重算后字段状态正确，快速连续输入时
+   旧响应不会覆盖新草稿，最终保存仍执行完整校验。
 7. 断网重试创建只产生一个业务结果。
-8. 两个窗口编辑同一记录，后提交窗口收到 409 并正确刷新提示。
+8. `[阶段 3 未来验收，不纳入当前 V1]` 两个窗口编辑同一记录，后提交窗口收到 409 并正确刷新提示。
 9. Session 到期、被撤销、Flow 用户禁用后，页面提示重新打开而非跳登录。
 10. 键盘操作、焦点返回、ARIA、缩放和窄屏布局满足前端验收标准。
 
@@ -3895,62 +4041,86 @@ Session：
 | Context 固定 `supplierId=S1` | 浏览器尝试查询 S2 | 条件不能覆盖，S2 数据不可见 |
 | View 只回传 ID/Code | 选择记录 | postMessage 不含金额等字段 |
 | 相同创建请求发生网络重试 | 使用同一幂等键 | 只创建一次并重放同一业务回执，字段按当前权限重新投影 |
-| 记录版本已变化 | 提交旧版本 | 409，不覆盖最新数据 |
+| `[阶段 3 未来验收，不纳入当前 V1]` 记录版本已变化 | 提交旧版本 | 409，不覆盖最新数据 |
 | 管理员禁用 Binding | 已打开页面继续查询 | Session 拒绝并要求重新打开 |
 
 ## 23. Flyway、发布与回滚
 
 ### 23.1 当前迁移核查
 
-2026-08-26 的只读核查结果：
+2026-08-28 实施前再次核查结果：
 
 ```text
-main / HEAD 已跟踪的最高迁移：V060
-当前工作区实际存在的最高迁移：V065
-V061、V062、V063、V064、V065 是用户当前未跟踪文件，不属于本设计任务
+main / HEAD 已跟踪的最高迁移：V065
+当前工作区已有且尚未合并的用户迁移：V066__entity_form_unique_claim.sql
+本 Embed 实现新增：V067、V068
+当前工作区并行新增的非 Embed 迁移：V069、V070
+本 Embed 用户手册新增：V071
+当前工作区已占用的最高迁移版本：V071
 ```
 
 因此实施时：
 
-1. V001–V060 视为不可变，禁止修改、删除或重命名；
-2. 不占用、不修改、不删除当前工作区 V061–V065；
-3. 创建迁移前必须再次扫描主分支和工作区的最大版本；
-4. 若届时仍以 V065 为最高占用，建议从 V066 开始；
+1. V001–V065 视为不可变，禁止修改、删除或重命名；
+2. V066 属于用户已有且尚未合并的实体表单唯一性纵切，Embed 不占用其版本；本轮安全
+   收口在合并前将其 value gate 契约修正为 `ENTITY:{entityCode}:{fieldCode}`，使同时进入
+   唯一性校验的同实体字段请求使用同一门闩，claim 命名空间保持表单/快照级。该门闩只协调
+   当前入口中适用且未忽略的已发布表单规则，不把无规则、忽略或条件不适用的其他写入口升级为
+   实体字段全局唯一约束；
+3. Embed 使用连续且当前不冲突的 V067、V068；V069、V070 是并行的组织岗位功能迁移，不属于
+   Embed 迁移清单，Embed 不修改、不删除、不重命名这些文件；
+4. 当前工作区最大版本已占用至 V071，后续 Embed 或 `record_version` 迁移不得低于 V072；真正
+   创建文件前仍必须重新扫描生产迁移目录，并使用高于届时最大版本的版本号；
 5. 不修改 `V001__business_schema.sql`，不使用 `flyway repair` 掩盖历史变化。
 
-### 23.2 建议迁移拆分
+### 23.2 实际迁移拆分
 
-文件名是当前设计建议，实施前需按实际最大版本顺延：
+当前 Embed 实现使用：
 
-| 建议文件 | 内容 |
+| 文件 | 内容 |
 | --- | --- |
-| `V066__embed_views_identity_and_grants.sql` | View、Release、Provider、Binding、Grant、Origin、Assertion Replay、摘要/密文密钥版本 |
-| `V067__embed_launch_sessions_and_receipts.sql` | Launch、Session、`slot_released/slot_released_at`、Session Counter、Operation Receipt、明确 FK 方向、索引和状态 CHECK |
-| `V068__embed_runtime_record_version.sql` | 阶段 3 必需的记录版本元数据/保留字段能力；动态业务表由现有 Schema Worker 受控补列 |
+| `V067__embed_views_identity_and_grants.sql` | View、Release、Provider、Binding、Grant、Origin、Assertion Replay、摘要/密文密钥版本 |
+| `V068__embed_launch_sessions_and_receipts.sql` | Launch、Session、`slot_released/slot_released_at`、Session Counter、Operation Receipt、明确 FK 方向、索引和状态 CHECK；若运行态配额实现需要，也只允许增加向后兼容的 Lease 范围字段 |
 
 `record_version` 不能只在 Flyway 中列举少量动态表。新建动态表 DDL、Schema Worker、既有表
 Expand 和所有写 SQL 必须一起建设。任务持久化明确复用 V009/V012 已建立的
 `workflow_schema_change`（已有 `status/attempt/owner_id/lease_token/lease_until/next_attempt_at/
-last_error/active_hash`），不再新建一套任务表；V068 负责静态元数据和保留字段所需变更，实际
-动态表 DDL 仍进入该 fenced 队列。
+last_error/active_hash`），不再新建一套任务表；其静态元数据/保留字段若需 Flyway 变更，使用
+后续新版本迁移，实际动态表 DDL 仍进入该 fenced 队列。
+
+V062 的新库迁移问题已由项目侧处理，不再作为 Embed 验收阻塞项。对本机既有 `workflow` 库
+只读核对的结果是 V062–V065 已成功、V066–V068 尚未执行；不得在该库补跑 Embed 迁移来代替隔离
+验收。Embed 迁移契约测试会直接加载生产 `classpath:db/migration`，从空库完整执行当前全部迁移
+（截至本次核查为 V001–V071），并明确断言 V062–V071 均成功进入 Flyway History；其中 V069、
+V070 仅作为完整生产迁移链的一部分执行；V071 验证用户手册菜单。测试不使用独立高版本目录、
+`ignoreMigrationPatterns`、`repair`，也不修改任何已合并历史迁移。
+
+当前 `.env` root 凭据认证失败，`workflow_schema` 又只获准访问 `workflow.*`，因此必须先由 DBA
+预建符合 `workflow_embed_test_*` 命名规则的空库并对 schema 账号授权，或提供有效且具备建库
+权限的账号；禁止为规避权限问题启动 Docker 或复用现有业务库。
 
 ### 23.3 发布配置
 
 建议新增：
 
 ```yaml
-flow:
+workflow:
   embed:
     enabled: false
     public-base-url: https://embed.flow.example.com
-    launch-ttl: 60s
-    session-idle-timeout: 5m
-    session-absolute-timeout: 30m
-    heartbeat-min-interval: 30s
-    max-context-bytes: 16384
-    max-message-bytes: 65536
+    entry-asset-path: /embed-assets/embed-main.js
+    entry-style-path: /embed-assets/embed-main.css
+    launch-ttl-seconds: 60
+    session-idle-seconds: 300
+    session-absolute-seconds: 1800
     max-page-size: 100
-    trusted-external-id-enabled: false
+    max-payload-bytes: 1048576
+    max-selection-size: 100
+    crypto:
+      context-key-base64: ${WORKFLOW_EMBED_CONTEXT_KEY_BASE64}
+      context-key-version: embed-context-v1
+      hmac-key-base64: ${WORKFLOW_EMBED_HMAC_KEY_BASE64}
+      hmac-key-version: embed-hmac-v1
 ```
 
 敏感摘要/加密密钥不写入 YAML，使用现有 Secret/KMS 注入并带 `keyVersion`。
@@ -3958,7 +4128,7 @@ flow:
 ### 23.4 部署顺序
 
 1. 备份并验证迁移；执行 Expand 类型数据库变更。
-2. 部署后端模块和安全链，`flow.embed.enabled=false`。
+2. 部署后端模块和安全链，`workflow.embed.enabled=false`。
 3. 部署 Embed 静态资源、独立域名、动态 CSP 和网关路由。
 4. 部署管理端和 SDK。
 5. 创建测试 Provider/Binding/View/Grant，保持生产 Grant 禁用。
@@ -3978,13 +4148,24 @@ flow:
 
 ### 23.6 本设计任务的迁移变更
 
-本次只新增设计文档：
+当前实现分支的迁移变化：
 
 ```text
-新增迁移文件：无
-修改迁移文件：无
+新增迁移文件：
+  V066__entity_form_unique_claim.sql（用户已有未合并文件；本轮更新其 gate 契约）
+  V067__embed_views_identity_and_grants.sql
+  V068__embed_launch_sessions_and_receipts.sql
+  V071__embed_integration_manual_menu.sql
+修改已跟踪迁移文件：无
 删除迁移文件：无
 ```
+
+V066 不属于 Embed 表结构，但它参与当前完整迁移链和实体写入安全验收；由于尚未合并，可在不
+破坏历史 checksum 的前提下修正。若任何共享环境已执行旧内容，必须停止修改 V066，并改用新的
+更高版本迁移及非滚动升级方案。
+
+V069、V070 是共享工作区中并行开发的非 Embed 迁移，故不列入上面的 Embed 结构迁移清单；
+V071 只增加用户手册菜单及调整手册排序。后续 Embed/`record_version` 迁移不得占用 V071 或更低版本。
 
 ## 24. 第三方接入手册与上线检查
 
@@ -4023,7 +4204,7 @@ Flow 管理员需提供：
 5. 第三方后端接入 OAuth 和 Launch API。
 6. 第三方前端接入 SDK，不直接调用 Flow Runtime。
 7. 用正向用户、无权限用户、未绑定用户和禁用用户联调。
-8. 验证列表数据范围、表单字段、动作和回传字段。
+8. 验证列表查询、选择回传、记录查看、记录创建以及各场景的回传字段。
 9. 完成重放、并发、过期、撤销和未授权 Origin 测试。
 10. 双方确认审计 Trace 和应急联系人后上线。
 
@@ -4055,8 +4236,7 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
       "assertion": "<short_lived_signed_user_assertion>"
     },
     "entry": {
-      "mode": "LIST",
-      "recordId": null
+      "mode": "LIST"
     },
     "context": {
       "supplierId": "S-10086"
@@ -4083,7 +4263,7 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 | 列表为空 | View 固定 Context、Flow 数据范围、列表发布规则；不要先假定接口故障 |
 | 操作按钮缺失 | View Capability、Grant Ceiling、Flow 权限、行级能力四层交集 |
 | 创建重复 | Idempotency-Key 是否稳定、第三方是否超时后换 Key |
-| 编辑 403 | recordVersion 能力是否已完成并在 View 发布 |
+| 编辑配置或请求被拒绝 | 属于 V1 预期边界：发布阻断 `RECORD_UPDATE`，Launch/Form 只接受 CREATE/VIEW，PATCH 路由未注册 |
 | Session 突然失效 | 用户/Binding/Grant/View/Application 状态和绝对到期 |
 
 所有问题使用响应 `traceId` 关联，不要求第三方提供任何 Token 明文。
@@ -4091,11 +4271,12 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 ### 24.5 上线检查表
 
 - [ ] 生产 Application 使用独立 Client，不与测试共用；
+- [ ] 已部署并验证专用 Embed Origin/VHost/Ingress、TLS、同源 Runtime 代理和动态 CSP；未完成不得上线；
 - [ ] `embed.launch` 是该 Client 的最小必要 Scope；
 - [ ] 生产 Origin 精确且全部使用 HTTPS；
 - [ ] 默认使用签名用户断言，`aud/iss/kid` 正确；
 - [ ] 所有外部人员已精确绑定到已启用 Flow 用户；
-- [ ] View 固定字段、动作、Context、Returnable 策略已评审；
+- [ ] View 固定字段、四项 V1 Capability、Context、Returnable 策略已评审；
 - [ ] 生产首发使用 `PINNED` UI Release；
 - [ ] 删除、批量删除、导出、附件和任意脚本均关闭；
 - [ ] 未完成 recordVersion 时 `RECORD_UPDATE` 关闭；
@@ -4118,7 +4299,7 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 | 列表总数 | 默认不返回，View 显式开启 |
 | 首期能力 | 列表、选择、详情、新建 |
 | 编辑 | recordVersion 全链路完成后开放 |
-| 动作 | 仅逐个审核的内建 actionKey |
+| 动作 | V1 关闭；后续版本仅逐个审核的内建 actionKey |
 | Session 过期 | 宿主重新 Launch，不跳 Flow 登录 |
 | 非 Flow 外部人员 | V1 不支持 |
 | 可靠业务回调 | 后续建设签名 Webhook；V1 不把 postMessage 当可靠回调 |
@@ -4131,9 +4312,14 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 2. 短期签名人员断言精确映射到一个 Flow 用户；
 3. 一次性 Launch 建立不依赖 Cookie 的 iframe Session；
 4. 每个请求恢复真实 Flow `UserContext`，继续执行现有权限与数据范围；
-5. Embed View/Grant 再收窄到指定列表、表单、字段、动作、Origin 和 Context；
+5. Embed View/Grant 再收窄到指定列表、表单、字段、V1 Capability、Origin 和 Context；
 6. 专用 Facade 和外部 DTO 复用成熟运行态，同时隔离内部 Controller 和任意执行入口；
-7. 通过 CSP、postMessage、短 Token、幂等、乐观锁、审计和撤销形成完整安全闭环。
+7. 通过 CSP、postMessage、短 Token、幂等、审计和撤销形成 V1 安全闭环；乐观锁属于后续
+   UPDATE/ACTION 阶段前置。
 
-按阶段 1–3 实施，可以先安全交付只读列表，再增加新建表单，最后在通用乐观锁完成后开放编辑
-和有状态动作，既能利用现有平台成熟能力，也避免把普通用户会话和内部动态 API 暴露给第三方。
+当前分支已经实现 LIST/FORM 读取与 RECORD_CREATE 的前后端全链路；RECORD_UPDATE、
+ACTION_EXECUTE、PROCESS_START 明确关闭，本文相关章节只是后续目标契约。专用
+Embed VHost/Helm 清单和 Chrome 跨域 E2E 已实现；进入生产前还必须完成 macOS 本机 MySQL
+独立空测试库迁移验证、生产 DNS/TLS/Ingress 实际启用、Edge/Firefox/Safari 兼容性、
+安全验收和接入方联合验收。该边界既复用平台成熟运行态，也避免把普通用户会话、
+内部动态 API 或尚无并发保护的写操作暴露给第三方。

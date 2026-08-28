@@ -33,7 +33,7 @@
         <el-input
           v-model="keyword"
           clearable
-          placeholder="搜索名称或 Client ID"
+          placeholder="搜索名称、Application ID 或 Client ID"
           class="application-search"
         >
           <template #prefix>
@@ -197,6 +197,7 @@ import IntegrationApplicationPanel from './open-integration/IntegrationApplicati
 import OneTimeSecretDialog from './open-integration/OneTimeSecretDialog.vue'
 
 const scopeOptions = [
+  'embed.launch',
   'process.definition.read',
   'process.instance.start',
   'process.instance.read',
@@ -232,7 +233,7 @@ const filteredApplications = computed(() => {
   const term = keyword.value.trim().toLowerCase()
   if (!term) return applications.value
   return applications.value.filter(item =>
-    `${item.applicationName} ${item.clientId}`.toLowerCase().includes(term)
+    `${item.applicationName} ${item.id} ${item.clientId}`.toLowerCase().includes(term)
   )
 })
 
@@ -312,6 +313,7 @@ async function createApplication() {
     showSecret({
       title: '应用凭据',
       fields: [
+        { label: 'Application ID', value: issued.application.id },
         { label: 'Client ID', value: issued.application.clientId },
         { label: 'Client Secret', value: issued.clientSecret }
       ]

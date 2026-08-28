@@ -564,17 +564,49 @@ async function reloadExplicitFormDetail(row: any) {
   }
 }
 
-async function validateApprovalForms() {
-  const refs = [
-    ...(approvalShowBasicTab.value && basicInfoRef.value ? [basicInfoRef.value] : []),
+interface ApprovalFormValidationResult {
+  valid: boolean
+  tabName?: string
+  tabLabel?: string
+  message?: string
+}
+
+/**
+ * 逐页签校验并保留失败位置。唯一预检可能在非当前页签中失败，
+ * 若只返回 boolean，用户既看不到错误字段，也只能得到误导性的“必填项”提示。
+ */
+async function validateApprovalForms(): Promise<ApprovalFormValidationResult> {
+  const targets = [
+    ...(approvalShowBasicTab.value && basicInfoRef.value
+      ? [{ name: 'basic', label: '基本信息', formRef: basicInfoRef.value }]
+      : []),
     ...approvalNodeTabs.value
-      .map(tab => nodeTabRefs.value[tab.name])
-      .filter(Boolean)
+      .map(tab => ({
+        name: tab.name,
+        label: tab.label,
+        formRef: nodeTabRefs.value[tab.name]
+      }))
+      .filter(target => Boolean(target.formRef))
   ]
-  for (const formRef of refs) {
-    if ((await formRef.validate?.()) === false) return false
+  for (const target of targets) {
+    if ((await target.formRef.validate?.()) !== false) continue
+    activeDialogTab.value = target.name
+    await nextTick()
+    return {
+      valid: false,
+      tabName: target.name,
+      tabLabel: target.label,
+      message: String(
+        target.formRef.getValidationError?.() || ''
+      ).trim()
+    }
   }
-  return true
+  return { valid: true }
+}
+
+function approvalValidationMessage(result: ApprovalFormValidationResult) {
+  const detail = result.message || '请检查当前页签中的表单校验错误'
+  return result.tabLabel ? `${result.tabLabel}：${detail}` : detail
 }
 
 async function confirmAction(action: any) {
@@ -605,9 +637,12 @@ async function handleFormAction(action: any) {
       return
     }
     if (action.type !== 'custom') return
-    if (action.validateBeforeExecute && !(await validateApprovalForms())) {
-      ElMessage.warning('请先完成表单必填项')
-      return
+    if (action.validateBeforeExecute) {
+      const validation = await validateApprovalForms()
+      if (!validation.valid) {
+        ElMessage.warning(approvalValidationMessage(validation))
+        return
+      }
     }
     const result = await executeCustomFormAction(
       action,
@@ -759,9 +794,9 @@ const submitApprove = async () => {
   if (!currentTask.value?.taskId || approveSubmitLoading.value) return
   approveSubmitLoading.value = true
   try {
-    const valid = await validateApprovalForms()
-    if (valid === false) {
-      ElMessage.warning('请先完成表单必填项')
+    const validation = await validateApprovalForms()
+    if (!validation.valid) {
+      ElMessage.warning(approvalValidationMessage(validation))
       return
     }
     await dataSourceRuntime.prevalidateBeforeSubmit({

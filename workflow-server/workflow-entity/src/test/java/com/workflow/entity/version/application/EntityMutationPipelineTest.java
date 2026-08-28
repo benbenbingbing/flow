@@ -10,6 +10,8 @@ import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.entity.version.application.EntityMutationStepExecutor.ExecutionOutcome;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
+import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -131,6 +134,55 @@ class EntityMutationPipelineTest {
                         new EntityMutationBatchCommand(
                                 "batch-1", List.of(command), true)));
 
+        verify(transactionExecutor, never()).executeBatch(
+                org.mockito.ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void prepareManagedRoundTripCannotStripTrustedChildMarker() {
+        FormUniqueMutationContext.Reference reference =
+                new FormUniqueMutationContext.Reference(
+                        "child-form", "release-1", 1, "release-1");
+        Map<String, Object> child = new LinkedHashMap<>(
+                Map.of("name", "明细A"));
+        TrustedSubFormUniqueReference.attach(
+                child, "asset_line", reference);
+        EntityMutationCommand command = new EntityMutationCommand(
+                "operation-marker",
+                "asset",
+                "record-1",
+                EntityMutationOperationType.UPDATE,
+                Map.of("data", Map.of(
+                        "details", List.of(child))),
+                command().context());
+        EntityMutationCommand roundTripped =
+                new EntityMutationCommand(
+                        command.operationId(),
+                        command.entityCode(),
+                        command.recordId(),
+                        command.operationType(),
+                        Map.of("data", Map.of(
+                                "details", List.of(Map.of(
+                                        "name", "明细A")))),
+                        command.context());
+        when(stepExecutor.execute(
+                eq(command),
+                eq(EntityMutationPhase.PREPARE),
+                anyMap(),
+                anyMap())).thenReturn(
+                        new ExecutionOutcome(
+                                roundTripped,
+                                List.of()));
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> pipeline.execute(command));
+
+        assertEquals(
+                "实体变换剥离或新增了可信子表单标记",
+                exception.getMessage());
+        verify(transactionExecutor, never()).execute(
+                org.mockito.ArgumentMatchers.any());
         verify(transactionExecutor, never()).executeBatch(
                 org.mockito.ArgumentMatchers.anyList());
     }

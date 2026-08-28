@@ -1,6 +1,7 @@
 package com.workflow.admin.organization.infrastructure.persistence.record;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
@@ -37,6 +38,14 @@ public class SysOrganization {
      * 类型：org-组织，dept-部门
      */
     private String type;
+
+    /**
+     * 稳定业务层级编码；与物理树深度 level 相互独立。
+     * ALWAYS 允许管理员显式清空旧层级；负责人字段仍保持默认 NOT_NULL，
+     * 不会被普通组织保存误清空。
+     */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String businessLevelCode;
     
     /**
      * 父级ID（顶级为0）

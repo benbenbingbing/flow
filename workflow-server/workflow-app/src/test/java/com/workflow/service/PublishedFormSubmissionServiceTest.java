@@ -5,9 +5,12 @@ import com.workflow.entity.form.application.FormSubmissionPreviewDeferredExcepti
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.application.PublishedFormRequiredValidator;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
+import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -773,6 +776,7 @@ class PublishedFormSubmissionServiceTest {
                   "BEFORE_SUBMIT": {
                     "serviceId": "child-source",
                     "operationCode": "beforeSubmit",
+                    "sideEffectFree": true,
                     "inputMapping": {
                       "projectId": "params.projectId",
                       "sourceDeptId": "data.source_dept_id",
@@ -830,11 +834,15 @@ class PublishedFormSubmissionServiceTest {
                 "child-form",
                 "child-release",
                 1))
-                .thenReturn(resolution(
+                .thenReturn(new ResolvedEntityFormRelease(
                         childForm,
                         "child-release",
                         1,
-                        true));
+                        true,
+                        "child-hotfix",
+                        "child-effective-hash",
+                        "child-target",
+                        UiRuntimePurpose.HISTORICAL));
         EntityDefinition childDefinition =
                 new EntityDefinition();
         childDefinition.setId("child-entity");
@@ -858,18 +866,19 @@ class PublishedFormSubmissionServiceTest {
         Map<String, Object> second = new LinkedHashMap<>();
         second.put("name", "乙");
         second.put("source_dept_id", "manual-dept");
+        Map<String, Object> submitted = Map.of(
+                "project_id", "project-actual",
+                "dept_id", "dept-from-parent",
+                "params", Map.of(
+                        "projectId",
+                        "project-forged"),
+                "members", List.of(first, second));
         Map<String, Object> result = service.applyForm(
                 "parent-form",
                 "parent_entity",
                 "parent-record",
                 "edit",
-                Map.of(
-                        "project_id", "project-actual",
-                        "dept_id", "dept-from-parent",
-                        "params", Map.of(
-                                "projectId",
-                                "project-forged"),
-                        "members", List.of(first, second)),
+                submitted,
                 executionContext("trace-subform"));
 
         @SuppressWarnings("unchecked")
@@ -887,11 +896,49 @@ class PublishedFormSubmissionServiceTest {
         assertEquals(
                 "project-actual",
                 members.get(1).get("processedProject"));
+        FormUniqueMutationContext.Reference childReference =
+                new FormUniqueMutationContext.Reference(
+                        "child-form",
+                        "child-release",
+                        1,
+                        "child-hotfix",
+                        "child-effective-hash",
+                        "child-target");
+        assertEquals(
+                List.of(childReference),
+                TrustedSubFormUniqueReference
+                        .remove(members.get(0)));
+        assertEquals(
+                List.of(childReference),
+                TrustedSubFormUniqueReference
+                        .remove(members.get(1)));
+        Map<String, Object> preview =
+                service.previewSideEffectFreeForm(
+                        "parent-form",
+                        null,
+                        null,
+                        "parent_entity",
+                        "parent-record",
+                        "edit",
+                        submitted,
+                        executionContext(
+                                "trace-subform-preview"),
+                        null);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> previewMembers =
+                (List<Map<String, Object>>) preview.get(
+                        "members");
+        assertTrue(TrustedSubFormUniqueReference
+                .remove(previewMembers.get(0))
+                .isEmpty());
+        assertTrue(TrustedSubFormUniqueReference
+                .remove(previewMembers.get(1))
+                .isEmpty());
 
         ArgumentCaptor<UiDataSourceExecuteRequest> captor =
                 ArgumentCaptor.forClass(
                         UiDataSourceExecuteRequest.class);
-        verify(dataSourceService, times(2))
+        verify(dataSourceService, times(4))
                 .execute(
                         eq("child-source"),
                         captor.capture());

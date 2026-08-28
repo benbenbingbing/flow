@@ -189,15 +189,19 @@ public class ProcessRollbackService {
 
         try {
             // 4. 更新表单数据
-            if (formData != null && !formData.isEmpty()) {
-                runtimeService.setVariables(processInstanceId, formData);
+            Map<String, Object> safeFormData =
+                    WorkflowReservedVariables.sanitizeRuntimeMutation(
+                            formData);
+            if (!safeFormData.isEmpty()) {
+                runtimeService.setVariables(
+                        processInstanceId, safeFormData);
                 
                 // 更新实体数据
                 updateEntityData(
                         processInstanceId,
                         currentTask.getId(),
                         userId,
-                        formData);
+                        safeFormData);
             }
 
             // 5. 设置重新提交变量
