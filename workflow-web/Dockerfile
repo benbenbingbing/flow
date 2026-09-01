@@ -5,7 +5,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:44e36330f74d4f3a1d4e222acca9e23b401fb87811a7597024502bb759c4dd49
+FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:45ce1e2e699234253d1def7baa96218a5d00b498d1ba0cbb1a17b6bdf73d1351
 ENV SERVER_UPSTREAM=server:8080
 ENV NGINX_ENVSUBST_FILTER=SERVER_UPSTREAM
 COPY nginx.conf /etc/nginx/templates/default.conf.template
