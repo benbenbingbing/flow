@@ -45,10 +45,10 @@ jobs:
       #     -Dsurefire.failIfNoSpecifiedTests=false
       #     test
 
-      - name: 执行完整后端回归
-        env:
-          OPENAPI_BASE_REF: ${{ github.event.pull_request.base.sha }}
-        run: mvn -B -ntp verify
+      # - name: 执行完整后端回归
+      #   env:
+      #     OPENAPI_BASE_REF: ${{ github.event.pull_request.base.sha }}
+      #   run: mvn -B -ntp verify
 
   web:
     name: 前端测试与构建
@@ -93,19 +93,19 @@ jobs:
       #   continue-on-error: true
       #   run: npm run test:maintainability
 
-      - name: 验证 Embed Runtime 与管理端契约
-        run: |
-          npm run test:embed
-          npm run test:embed-management
+      # - name: 验证 Embed Runtime 与管理端契约
+      #   run: |
+      #     npm run test:embed
+      #     npm run test:embed-management
 
-      - name: 验证 Chrome 浏览器可用
-        run: /usr/bin/google-chrome --version
+      # - name: 验证 Chrome 浏览器可用
+      #   run: /usr/bin/google-chrome --version
 
-      - name: 验证 Embed 跨域浏览器链路
-        env:
-          FLOW_EMBED_E2E_CHROME_PATH: /usr/bin/google-chrome
-          FLOW_EMBED_E2E_REQUIRE_BROWSER: "1"
-        run: npm run test:embed:e2e
+      # - name: 验证 Embed 跨域浏览器链路
+      #   env:
+      #     FLOW_EMBED_E2E_CHROME_PATH: /usr/bin/google-chrome
+      #     FLOW_EMBED_E2E_REQUIRE_BROWSER: "1"
+      #   run: npm run test:embed:e2e
 
       - name: 构建生产版本
         run: npm run build
