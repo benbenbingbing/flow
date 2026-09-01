@@ -40,9 +40,9 @@
         <dependency>
             <groupId>com.nimbusds</groupId>
             <artifactId>nimbus-jose-jwt</artifactId>
-            <version>9.47</version>
+            <version>10.9.1</version>
             <exclusions>
-                <!-- Nimbus 9.47 的发布 JAR 已 shade 该注解包；运行时不需要外部副本。 -->
+                <!-- Nimbus 10.9.1 的发布 JAR 已 shade 该注解包；运行时不需要外部副本。 -->
                 <exclusion>
                     <groupId>com.github.stephenc.jcip</groupId>
                     <artifactId>jcip-annotations</artifactId>
