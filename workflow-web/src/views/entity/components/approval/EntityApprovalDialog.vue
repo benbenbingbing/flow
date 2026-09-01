@@ -1,5 +1,12 @@
 <template>
-  <el-dialog v-model="processDialogVisible" :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`" width="75%" class="entity-form-dialog entity-approval-dialog" top="3vh">
+  <el-dialog
+    v-model="processDialogVisible"
+    :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`"
+    width="75%"
+    class="entity-form-dialog entity-approval-dialog"
+    top="3vh"
+    @closed="emit('closed')"
+  >
     <div class="approval-dialog-body">
       <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
         <el-tab-pane v-if="approvalShowBasicTab" label="基本信息" name="basic">
@@ -146,6 +153,7 @@ import {
   normalizeNextApproverPreview
 } from '@/shared/next-approver'
 import { BUSINESS_TRACE_HEADER } from '@/shared/request'
+import { resolveActionableTaskId } from '@/utils/listButtonPermission'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -171,14 +179,18 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   success: []
+  closed: []
 }>()
 const userStore = useUserStore()
 const router = useRouter()
+const launchRuntimeContext = ref<Record<string, any>>({})
 const listReleaseContext = computed(() => ({
   releaseId: props.listReleaseId || undefined,
   releaseVersion: props.listReleaseVersion ?? undefined,
   releaseResolutionToken:
-    props.listReleaseResolutionToken || undefined
+    props.listReleaseResolutionToken || undefined,
+  viewCompositionTraversalToken:
+    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
 }))
 
 const processDialogVisible = ref(false)
@@ -199,7 +211,9 @@ const formReleaseContext = computed(() => ({
     ?? overrideForm.value?.formReleaseVersion
     ?? undefined,
   releaseResolutionToken:
-    overrideForm.value?.releaseResolutionToken || undefined
+    overrideForm.value?.releaseResolutionToken || undefined,
+  viewCompositionTraversalToken:
+    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
 }))
 const basicInfoRef = ref<any>()
 const nodeTabRefs = ref<Record<string, any>>({})
@@ -266,6 +280,7 @@ const effectiveEntityCode = computed(() =>
   )
 )
 const approvalRuntimeContext = computed(() => ({
+  ...launchRuntimeContext.value,
   entityCode: effectiveEntityCode.value,
   mode: approvalRuntimeMode.value,
   record: entityData.value,
@@ -381,7 +396,9 @@ async function loadFormActions() {
     workflowReady: isWorkflowReady(props.entityDefinition),
     hasProcessInstance: Boolean(currentTask.value?.processInstanceId),
     canApprove: !isViewMode.value && Boolean(currentTask.value?.taskId),
-    systemEntity: props.entityDefinition?.storageMode === 'SYSTEM'
+    systemEntity: props.entityDefinition?.storageMode === 'SYSTEM',
+    viewCompositionTraversalToken:
+      launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
   })
 }
 
@@ -418,19 +435,29 @@ watch(
 // 打开审批弹窗
 interface OpenApproveOptions {
   form?: any
+  context?: Record<string, any>
+  requireActionCapability?: boolean
 }
 
 const openApprove = async (
   row: any,
   options: OpenApproveOptions = {}
 ) => {
+  const actionableTaskId = resolveActionableTaskId(row, 'approve', {
+    requireActionCapability: options.requireActionCapability
+  })
+  if (!actionableTaskId) {
+    ElMessage.error('未获取到当前用户可办理的审批任务，请刷新列表后重试')
+    return false
+  }
   resetNextApproverPreview()
   // 每次打开审批任务都恢复完整审批信息，避免沿用上一次弹窗的折叠状态。
   approvalDecisionExpanded.value = true
   overrideForm.value = options.form || null
+  launchRuntimeContext.value = { ...(options.context || {}) }
   isViewMode.value = false
   currentTask.value = {
-    taskId: row.currentTaskId || row.taskId,
+    taskId: actionableTaskId,
     processInstanceId: row.processInstanceId,
     name: row.currentTaskName || row.name || '任务审批',
     startUserName: row.startUserName,
@@ -475,13 +502,15 @@ interface OpenViewOptions {
   defaultTab?: string
   startUserName?: string
   form?: any
+  context?: Record<string, any>
 }
 
 // 打开查看弹窗（只读模式）
 const openView = async (row: any, options: OpenViewOptions = {}) => {
   resetNextApproverPreview()
-  const { defaultTab, startUserName, form } = options
+  const { defaultTab, startUserName, form, context } = options
   overrideForm.value = form || null
+  launchRuntimeContext.value = { ...(context || {}) }
   isViewMode.value = true
   currentTask.value = {
     processInstanceId: row.processInstanceId,
@@ -508,7 +537,7 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
     })
     if (!loaded) {
       ElMessage.error('加载最新流程表单失败，请重试')
-      return
+      return false
     }
     await reloadExplicitFormDetail(row)
   } else {
@@ -522,23 +551,50 @@ const openView = async (row: any, options: OpenViewOptions = {}) => {
         formReleaseContext.value
       )
       entityData.value = normalizeEntityRecordForForm(detail)
-      const standaloneForm = overrideForm.value || props.defaultForm
-      if (standaloneForm?.fields?.length > 0 || standaloneForm?.nodes?.length > 0) {
-        formConfig.value = standaloneForm
-        formConfigs.value = [standaloneForm]
+      const discoveredProcessInstanceId = String(
+        entityData.value?.processInstanceId || ''
+      )
+      if (discoveredProcessInstanceId) {
+        // 调用方的列表投影可能未携带 processInstanceId；详情恢复后仍复用本组件
+        // 原有流程加载链，确保流程图与审批历史不会在 Embed/普通列表中静默丢失。
+        currentTask.value.processInstanceId = discoveredProcessInstanceId
+        const loaded = await loadProcessDetail(discoveredProcessInstanceId, {
+          startUserName: currentTask.value?.startUserName,
+          onLoad: (progressRes: any) => {
+            if (!currentTask.value) return
+            currentTask.value.processStatus = progressRes.status
+            if (progressRes.processName) {
+              currentTask.value.processName = progressRes.processName
+            }
+          }
+        })
+        if (!loaded) {
+          ElMessage.error('加载最新流程表单失败，请重试')
+          return false
+        }
+        await reloadExplicitFormDetail(row)
         activeDialogTab.value = firstApprovalFormTabName.value
       } else {
-        formConfig.value = null
-        formConfigs.value = []
-        activeDialogTab.value = 'basic'
+        const standaloneForm = overrideForm.value || props.defaultForm
+        if (standaloneForm?.fields?.length > 0 || standaloneForm?.nodes?.length > 0) {
+          formConfig.value = standaloneForm
+          formConfigs.value = [standaloneForm]
+          activeDialogTab.value = firstApprovalFormTabName.value
+        } else {
+          formConfig.value = null
+          formConfigs.value = []
+          activeDialogTab.value = 'basic'
+        }
       }
     } catch (e) {
       console.error('加载数据详情失败:', e)
       ElMessage.error('加载详情失败')
+      return false
     }
   }
   await loadFormActions()
   processDialogVisible.value = true
+  return true
 }
 
 async function reloadExplicitFormDetail(row: any) {
@@ -655,7 +711,9 @@ async function handleFormAction(action: any) {
         taskId: currentTask.value?.taskId || undefined,
         task: currentTask.value,
         formData: entityData.value,
-        processInstanceId: currentTask.value?.processInstanceId
+        processInstanceId: currentTask.value?.processInstanceId,
+        viewCompositionTraversalToken:
+          launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
       }
     )
     await applyFormEventResult(result)

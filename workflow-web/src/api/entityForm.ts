@@ -181,6 +181,7 @@ export interface FormFieldUniquePrecheckRequest {
   releaseId?: string
   releaseVersion?: number
   releaseResolutionToken?: string
+  viewCompositionTraversalToken?: string
   ruleId?: string
   fieldCode?: string
   recordId?: string

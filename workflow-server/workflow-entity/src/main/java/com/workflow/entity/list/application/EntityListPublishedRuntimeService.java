@@ -4,10 +4,16 @@ import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
+import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
+import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.contracts.embed.EmbedNativeListDependencySnapshotPort;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
@@ -21,8 +27,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 实体列表发布运行时解析服务，只允许使用已发布快照。
@@ -39,6 +47,8 @@ public class EntityListPublishedRuntimeService {
     private final JsonDocumentCodec codec;
     private final UiConfigReleaseMapper releaseMapper;
     private final ObjectMapper objectMapper;
+    private final EmbedNativeListDependencySnapshotPort
+            listDependencySnapshotPort;
 
     /**
      * 解析列表运行时配置，存在发布版本时用发布快照覆盖草稿。
@@ -215,7 +225,8 @@ public class EntityListPublishedRuntimeService {
         return authorizePinnedTargetForms(
                 config.getId(),
                 "TOOLBAR",
-                buttons);
+                buttons,
+                config.getReleaseResolutionToken());
     }
 
     /**
@@ -237,7 +248,8 @@ public class EntityListPublishedRuntimeService {
         return authorizePinnedTargetForms(
                 config.getId(),
                 "ROW_ACTION",
-                buttons);
+                buttons,
+                config.getReleaseResolutionToken());
     }
 
     /**
@@ -284,7 +296,8 @@ public class EntityListPublishedRuntimeService {
     private List<Map<String, Object>> authorizePinnedTargetForms(
             String listId,
             String buttonArea,
-            List<Map<String, Object>> buttons) {
+            List<Map<String, Object>> buttons,
+            String parentListResolutionToken) {
         if (buttons == null || buttons.isEmpty()) {
             return buttons == null ? List.of() : buttons;
         }
@@ -293,6 +306,16 @@ public class EntityListPublishedRuntimeService {
         int explicitFormCount = 0;
         int authorizedCount = 0;
         int incompleteCount = 0;
+        Instant embedSessionExpiresAt = null;
+        UiReleaseResolutionTokenService.EmbedListClaims embedClaims = null;
+        if (resolutionTokenService.isEmbedListToken(
+                parentListResolutionToken)) {
+            embedClaims =
+                    resolutionTokenService.verifyEmbedList(
+                            parentListResolutionToken);
+            embedSessionExpiresAt = Instant.ofEpochSecond(
+                    embedClaims.expiresAt());
+        }
         for (Map<String, Object> source : buttons) {
             Map<String, Object> button =
                     new java.util.LinkedHashMap<>(
@@ -312,21 +335,35 @@ public class EntityListPublishedRuntimeService {
                 if (StringUtils.hasText(formId)) {
                     incompleteCount++;
                 }
-                result.add(button);
-                continue;
+            } else {
+                // Embed LIST 中的显式按钮表单来自已校验的固定
+                // List Release。派生表单令牌继承根 elr1 的绝对到期
+                // 时间，既不会中途五分钟失效，也不能滚动延长 Session。
+                String token = embedSessionExpiresAt == null
+                        ? resolutionTokenService.issue(
+                                UiRuntimeResolutionContext.standalone(),
+                                formId,
+                                releaseId,
+                                releaseVersion,
+                                0)
+                        : resolutionTokenService.issue(
+                                UiRuntimeResolutionContext.standalone(),
+                                formId,
+                                releaseId,
+                                releaseVersion,
+                                0,
+                                embedSessionExpiresAt);
+                if (StringUtils.hasText(token)) {
+                    button.put(
+                            "targetFormReleaseResolutionToken",
+                            token);
+                    authorizedCount++;
+                }
             }
-            String token = resolutionTokenService.issue(
-                    UiRuntimeResolutionContext.standalone(),
-                    formId,
-                    releaseId,
-                    releaseVersion,
-                    0);
-            if (StringUtils.hasText(token)) {
-                button.put(
-                        "targetFormReleaseResolutionToken",
-                        token);
-                authorizedCount++;
-            }
+            authorizePinnedTargetList(
+                    button,
+                    embedClaims,
+                    embedSessionExpiresAt);
             result.add(button);
         }
         if (explicitFormCount > 0) {
@@ -340,6 +377,175 @@ public class EntityListPublishedRuntimeService {
                     incompleteCount);
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * 为固定 List Release 中的 open-list 目标派生同一 Session
+     * 的签名列表令牌。派生坐标全部来自已发布快照，浏览器
+     * 只能消费，不能把任意 entity/list/release 组合签名。
+     */
+    private void authorizePinnedTargetList(
+            Map<String, Object> button,
+            UiReleaseResolutionTokenService.EmbedListClaims parentClaims,
+            Instant sessionExpiresAt) {
+        if (parentClaims == null
+                || sessionExpiresAt == null
+                || !"open-list".equalsIgnoreCase(
+                        text(button.get("customMode")))) {
+            return;
+        }
+        button.remove("targetListReleaseResolutionToken");
+        button.remove("targetDefaultFormResolved");
+        button.remove("targetDefaultFormId");
+        button.remove("targetDefaultFormReleaseId");
+        button.remove("targetDefaultFormReleaseVersion");
+        button.remove("targetDefaultFormReleaseResolutionToken");
+        String entityCode = text(button.get("targetEntityCode"));
+        String listKey = text(button.get("targetListKey"));
+        String listId = text(button.get("targetListId"));
+        String releaseId = text(button.get("targetListReleaseId"));
+        Integer releaseVersion = integer(
+                button.get("targetListReleaseVersion"));
+        if (!StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(listKey)
+                || !StringUtils.hasText(listId)
+                || !StringUtils.hasText(releaseId)
+                || releaseVersion == null
+                || releaseVersion < 1) {
+            throw new BusinessConflictException(
+                    "LIST_TARGET_RELEASE_REQUIRED",
+                    "open-list 按钮缺少固定的目标列表发布坐标");
+        }
+        EmbedNativeListDependencyClosure closure = requireDependencyClosure(
+                parentClaims);
+        ListNode parentNode = requireListNode(
+                closure,
+                new ListCoordinate(
+                        parentClaims.entityCode(),
+                        null,
+                        parentClaims.listConfigId(),
+                        parentClaims.releaseId(),
+                        parentClaims.releaseVersion()),
+                false);
+        ListCoordinate target = parentNode.targets().stream()
+                .filter(candidate -> Objects.equals(
+                        entityCode, candidate.entityCode()))
+                .filter(candidate -> Objects.equals(
+                        listKey, candidate.listKey()))
+                .filter(candidate -> Objects.equals(
+                        listId, candidate.listConfigId()))
+                .filter(candidate -> Objects.equals(
+                        releaseId, candidate.listReleaseId()))
+                .filter(candidate -> releaseVersion
+                        == candidate.listReleaseVersion())
+                .findFirst()
+                .orElseThrow(() -> new BusinessForbiddenException(
+                        "EMBED_LIST_DEPENDENCY_COORDINATE_MISMATCH",
+                        "open-list 目标不属于当前 Session 固定依赖闭包"));
+        String token = resolutionTokenService.issueEmbedList(
+                target.entityCode(),
+                target.listConfigId(),
+                target.listReleaseId(),
+                target.listReleaseVersion(),
+                parentClaims.sessionId(),
+                parentClaims.viewId(),
+                parentClaims.viewReleaseId(),
+                parentClaims.dependencyClosureVersion(),
+                parentClaims.dependencyClosureHash(),
+                sessionExpiresAt);
+        if (!StringUtils.hasText(token)) {
+            throw new BusinessConflictException(
+                    "LIST_TARGET_RELEASE_TOKEN_FAILED",
+                    "open-list 目标列表固定令牌签发失败");
+        }
+        button.put("targetListReleaseResolutionToken", token);
+
+        // 默认表单只能来自 Launch-time closure。这里不再读取 ACTIVE；
+        // resolved=true + null 是权威“没有新增表单”，前端必须禁用回退。
+        ListNode targetNode = requireListNode(closure, target, true);
+        button.put(
+                "targetDefaultFormResolved",
+                targetNode.defaultFormResolved());
+        FormCoordinate defaultForm = targetNode.defaultForm();
+        if (defaultForm == null) {
+            return;
+        }
+        String formToken = resolutionTokenService.issue(
+                UiRuntimeResolutionContext.standalone(),
+                defaultForm.formId(),
+                defaultForm.formReleaseId(),
+                defaultForm.formReleaseVersion(),
+                0,
+                sessionExpiresAt);
+        if (!StringUtils.hasText(formToken)) {
+            throw new BusinessConflictException(
+                    "LIST_TARGET_DEFAULT_FORM_TOKEN_FAILED",
+                    "open-list 目标默认表单固定令牌签发失败");
+        }
+        button.put("targetDefaultFormId", defaultForm.formId());
+        button.put(
+                "targetDefaultFormReleaseId",
+                defaultForm.formReleaseId());
+        button.put(
+                "targetDefaultFormReleaseVersion",
+                defaultForm.formReleaseVersion());
+        button.put(
+                "targetDefaultFormReleaseResolutionToken",
+                formToken);
+    }
+
+    /** 按 elr1 的短引用从 immutable View Release 加载并校验闭包。 */
+    private EmbedNativeListDependencyClosure requireDependencyClosure(
+            UiReleaseResolutionTokenService.EmbedListClaims claims) {
+        if (listDependencySnapshotPort == null
+                || !StringUtils.hasText(claims.viewId())
+                || claims.dependencyClosureVersion()
+                != EmbedNativeListDependencyClosure.CURRENT_VERSION
+                || !StringUtils.hasText(
+                claims.dependencyClosureHash())) {
+            throw new BusinessForbiddenException(
+                    "EMBED_LIST_DEPENDENCY_CLOSURE_REQUIRED",
+                    "当前 Embed 列表令牌缺少依赖闭包引用");
+        }
+        try {
+            return listDependencySnapshotPort.read(
+                    new EmbedNativeListDependencySnapshotPort.Reference(
+                            claims.sessionId(),
+                            claims.viewId(),
+                            claims.viewReleaseId(),
+                            claims.dependencyClosureVersion(),
+                            claims.dependencyClosureHash()));
+        } catch (RuntimeException error) {
+            throw new BusinessForbiddenException(
+                    "EMBED_LIST_DEPENDENCY_CLOSURE_MISMATCH",
+                    "当前 Embed 列表依赖闭包无效");
+        }
+    }
+
+    private static ListNode requireListNode(
+            EmbedNativeListDependencyClosure closure,
+            ListCoordinate coordinate,
+            boolean requireExactListKey) {
+        return closure.nodes().stream()
+                .filter(node -> node != null && node.list() != null)
+                .filter(node -> Objects.equals(
+                        coordinate.entityCode(),
+                        node.list().entityCode()))
+                .filter(node -> !requireExactListKey
+                        || Objects.equals(
+                        coordinate.listKey(), node.list().listKey()))
+                .filter(node -> Objects.equals(
+                        coordinate.listConfigId(),
+                        node.list().listConfigId()))
+                .filter(node -> Objects.equals(
+                        coordinate.listReleaseId(),
+                        node.list().listReleaseId()))
+                .filter(node -> coordinate.listReleaseVersion()
+                        == node.list().listReleaseVersion())
+                .findFirst()
+                .orElseThrow(() -> new BusinessForbiddenException(
+                        "EMBED_LIST_DEPENDENCY_NODE_MISSING",
+                        "当前列表不属于 Embed Session 固定依赖闭包"));
     }
 
     private String text(Object value) {

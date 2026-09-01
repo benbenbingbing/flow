@@ -17,20 +17,71 @@ public final class EmbedRuntimeViews {
             View view,
             List<String> capabilities,
             Ui ui,
-            Limits limits) {
+            Limits limits,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Target target) {
+
+        /** 兼容 LIST Runtime 调用方；LIST 没有原生 FORM target。 */
+        public Bootstrap(
+                Session session,
+                Actor actor,
+                View view,
+                List<String> capabilities,
+                Ui ui,
+                Limits limits) {
+            this(session, actor, view, capabilities, ui, limits, null);
+        }
+    }
+
+    /**
+     * 供 iframe 原生 Flow 页面启动的只读固定目标。
+     *
+     * <p>所有值均由 Session + immutable Release 恢复；浏览器只能消费，后续 API
+     * 仍会在服务端重新比对。解析令牌仅授权同一发布快照及其声明的嵌套表单。</p>
+     */
+    public record Target(
+            String entityCode,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String formId,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String formReleaseId,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Integer formReleaseVersion,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String listKey,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String listReleaseId,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Integer listReleaseVersion,
+            String entryMode,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String recordId,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String processInstanceId,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            String formReleaseResolutionToken,
+            boolean defaultFormResolved,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            String listReleaseResolutionToken,
+            Map<String, Object> initialData,
+            Map<String, Object> parameters,
+            Map<String, Object> context) {
     }
 
     public record Session(String id, Instant expiresAt, Instant idleExpiresAt) {
     }
 
-    public record Actor(String displayName) {
+    /** 只用于 iframe 内存中的原生 UI 显隐，不是授权凭据。 */
+    public record Actor(
+            String username,
+            String nickname,
+            String displayName,
+            List<String> roles,
+            boolean isSuperAdmin,
+            List<String> permissions) {
+
+        /** 兼容 LIST 端的旧构造方式和单元测试。 */
+        public Actor(String displayName) {
+            this(displayName, displayName, displayName,
+                    List.of(), false, List.of());
+        }
     }
 
     public record View(
             String key,
             String name,
             String surfaceType,
-            long revision,
             String entryMode) {
     }
 
@@ -58,7 +109,7 @@ public final class EmbedRuntimeViews {
             List<ExternalActionDescriptor> actions) {
     }
 
-    public record SchemaView(String key, String surfaceType, long revision) {
+    public record SchemaView(String key, String surfaceType) {
     }
 
     public record Entity(String code, String name) {

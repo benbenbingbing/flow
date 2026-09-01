@@ -2,6 +2,7 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
@@ -48,23 +49,27 @@ public class UiConfigReleaseController {
     private final UiConfigurationAccessService accessService;
 
     /**
-     * 获取表单运行态发布快照（按 releaseId/version 或默认活跃版本）。GET /api/entity-forms/{id}/runtime-release
+     * 获取表单运行态发布快照（按 releaseId/version 或默认活跃版本）。GET /api/entity-forms/{formId}/runtime-release
      *
-     * @param id        表单ID
+     * @param formId    表单ID
      * @param releaseId 指定发布ID（可选）
      * @param version   指定版本号（可选）
      * @return 运行态发布快照
      */
-    @GetMapping("/entity-forms/{id}/runtime-release")
+    @GetMapping("/entity-forms/{formId}/runtime-release")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.FORM_RELEASE,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .FORM_RELEASE_PATH_QUERY)
     public Result<Object> formRuntimeRelease(
-            @PathVariable String id,
+            @PathVariable String formId,
             @RequestParam(required = false) String releaseId,
             @RequestParam(required = false) Integer version,
             @RequestParam(required = false)
             String releaseResolutionToken) {
         return Result.success(
                 releaseService.runtimeFormRelease(
-                        id,
+                        formId,
                         releaseId,
                         version,
                         releaseResolutionToken));

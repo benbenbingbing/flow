@@ -10,6 +10,7 @@ import {
 
 export const API_SUCCESS_CODES = new Set([0, 200, '0', '200'])
 export const BUSINESS_TRACE_HEADER = 'X-Business-Trace-Key'
+export const FLOW_EMBED_PROTOCOL_HEADER = 'X-Flow-Embed-Protocol'
 
 const API_BASE_URL =
   import.meta.env?.VITE_API_BASE_URL || '/api'
@@ -18,6 +19,30 @@ const NO_AUTH_RETRY = Symbol('NO_AUTH_RETRY')
 
 let authTerminationHandled = false
 let bootstrapPromise = null
+let embedDelegatedRequestContext = null
+
+/**
+ * 将通用 Flow API client 切换到 Embed 委托会话。
+ *
+ * 原生列表/表单运行时仍然调用与主应用完全相同的 API 模块；唯一差异集中在这里：
+ * token 只通过内存 getter 读取，请求不携带 Cookie，也绝不触发普通登录刷新或跳转。
+ * 这样以后注册的新字段组件无需再为 Embed 增加另一套请求适配。
+ */
+export function configureEmbedDelegatedRequest({ getAccessToken } = {}) {
+  if (typeof getAccessToken !== 'function') {
+    throw new TypeError('Embed 委托请求缺少 token getter')
+  }
+  embedDelegatedRequestContext = Object.freeze({ getAccessToken })
+}
+
+/** 清除 iframe 当前的委托会话；不会读取或修改任何浏览器认证存储。 */
+export function resetEmbedDelegatedRequest() {
+  embedDelegatedRequestContext = null
+}
+
+export function isEmbedDelegatedRequestEnabled() {
+  return Boolean(embedDelegatedRequestContext)
+}
 
 export function createBusinessTraceKey() {
   if (globalThis.crypto?.randomUUID) {
@@ -102,7 +127,7 @@ function createApiError(
 }
 
 function isAuthLifecycleRequest(config = {}) {
-  const url = String(config.url || '')
+  const url = String(config.url || '').split(/[?#]/, 1)[0]
   return [
     '/auth/login',
     '/auth/refresh',
@@ -142,6 +167,24 @@ function setAuthorizationHeader(config, token) {
   }
 }
 
+function setEmbedProtocolHeader(config, enabled) {
+  config.headers ||= {}
+  if (typeof config.headers.set === 'function') {
+    if (enabled) {
+      config.headers.set(FLOW_EMBED_PROTOCOL_HEADER, '1')
+    } else {
+      config.headers.delete?.(FLOW_EMBED_PROTOCOL_HEADER)
+    }
+    return
+  }
+  if (enabled) {
+    config.headers[FLOW_EMBED_PROTOCOL_HEADER] = '1'
+  } else {
+    delete config.headers[FLOW_EMBED_PROTOCOL_HEADER]
+    delete config.headers[FLOW_EMBED_PROTOCOL_HEADER.toLowerCase()]
+  }
+}
+
 function terminateAuthSession(
   message,
   {
@@ -178,6 +221,11 @@ const refreshClient = axios.create({
 })
 
 async function executeRefresh() {
+  if (embedDelegatedRequestContext) {
+    throw createApiError('Embed 会话不能刷新普通登录态', {
+      errorCode: 'EMBED_OPERATION_NOT_ALLOWED'
+    })
+  }
   let response
   try {
     response = await refreshClient.post('/auth/refresh')
@@ -224,6 +272,7 @@ export const refreshAuthSession =
  * 路由首次初始化时尝试通过 HttpOnly Cookie 恢复会话。
  */
 export function restoreAuthSession() {
+  if (embedDelegatedRequestContext) return Promise.resolve(false)
   if (!bootstrapPromise) {
     bootstrapPromise = refreshAuthSession()
       .then(() => true)
@@ -253,12 +302,43 @@ const request = axios.create({
 request.interceptors.request.use(
   async (config) => {
     ensureBusinessTraceHeader(config)
+    const trustedApiRequest = isTrustedApiRequest(config)
+
+    // Embed LIST/FORM 直接复用 Flow 原生 API/组件。认证差异只能存在于这个单点传输
+    // 边界，不能散落到日期、下拉框、自定义组件等各个实现中。
+    if (embedDelegatedRequestContext) {
+      config.skipAuthRefresh = true
+      config.withCredentials = false
+      if (!trustedApiRequest) {
+        setAuthorizationHeader(config, '')
+        setEmbedProtocolHeader(config, false)
+        return config
+      }
+      if (isAuthLifecycleRequest(config)) {
+        const error = createApiError('Embed 会话不能调用普通登录接口', {
+          errorCode: 'EMBED_OPERATION_NOT_ALLOWED'
+        })
+        error.config = config
+        throw error
+      }
+      const token = embedDelegatedRequestContext.getAccessToken()
+      if (!token) {
+        const error = createApiError('Embed 会话不可用', {
+          errorCode: 'EMBED_SESSION_MISSING'
+        }, 401)
+        error.config = config
+        throw error
+      }
+      setEmbedProtocolHeader(config, true)
+      setAuthorizationHeader(config, token)
+      return config
+    }
+
     const userStore = useUserStore()
     if (userStore.token && authTerminationHandled) {
       authTerminationHandled = false
     }
 
-    const trustedApiRequest = isTrustedApiRequest(config)
     if (!trustedApiRequest) {
       config.skipAuthRefresh = true
       config.withCredentials = false
@@ -422,6 +502,8 @@ request.interceptors.response.use(
     }
     if (
       response?.status === 428
+      && !config.skipAuthRefresh
+      && typeof window !== 'undefined'
       && window.location.pathname !== '/change-password'
     ) {
       window.location.href = '/change-password'
@@ -431,9 +513,11 @@ request.interceptors.response.use(
       ? getApiErrorMessage(response.data)
       : error.message || '网络错误'
     error.message = message
-    error.errorCode = response?.data?.errorCode
-    error.currentData = response?.data?.data
-    error.status = response?.status
+    // 请求拦截器（例如 Embed 委托模式）可能已经给出结构化错误；没有 HTTP
+    // response 时必须保留它，不能在统一响应出口覆写成 undefined。
+    error.errorCode = response?.data?.errorCode ?? error.errorCode
+    error.currentData = response?.data?.data ?? error.currentData
+    error.status = response?.status ?? error.status
     if (!config.silentError) {
       ElMessage.error(message)
     }

@@ -17,7 +17,6 @@ import com.workflow.embed.management.domain.EmbedManagementModel.ViewStatus;
 import com.workflow.embed.management.port.EmbedManagementRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,8 +75,11 @@ public class InMemoryEmbedManagementRepository implements EmbedManagementReposit
         }
         views.put(viewId, new ViewState(
                 current.id(), current.viewKey(), current.name(), current.description(),
-                current.surfaceType(), current.status(), draftJson,
-                current.draftRevision() + 1, current.publishedReleaseId(),
+                current.surfaceType(),
+                current.status() == ViewStatus.DRAFT
+                        ? ViewStatus.ACTIVE : current.status(),
+                draftJson,
+                current.draftRevision(), current.publishedReleaseId(),
                 current.publishedRevision(), current.lockVersion() + 1,
                 current.securityVersion(), current.createBy(), current.createTime(),
                 actorId, now));
@@ -93,26 +95,6 @@ public class InMemoryEmbedManagementRepository implements EmbedManagementReposit
     @Override
     public void insertRelease(ReleaseState release) {
         releases.computeIfAbsent(release.viewId(), ignored -> new ArrayList<>()).add(release);
-    }
-
-    @Override
-    public int markPublished(String viewId, long expectedVersion, String releaseId,
-                             String actorId, LocalDateTime now) {
-        ViewState current = views.get(viewId);
-        if (current == null || current.lockVersion() != expectedVersion
-                || current.status() == ViewStatus.RETIRED) {
-            return 0;
-        }
-        ReleaseState release = releases.get(viewId).stream()
-                .filter(item -> item.id().equals(releaseId)).findFirst().orElseThrow();
-        views.put(viewId, new ViewState(
-                current.id(), current.viewKey(), current.name(), current.description(),
-                current.surfaceType(), current.status() == ViewStatus.DRAFT
-                        ? ViewStatus.ACTIVE : current.status(),
-                current.draftConfigJson(), current.draftRevision(), releaseId,
-                release.revision(), current.lockVersion() + 1, current.securityVersion(),
-                current.createBy(), current.createTime(), actorId, now));
-        return 1;
     }
 
     @Override
@@ -133,15 +115,12 @@ public class InMemoryEmbedManagementRepository implements EmbedManagementReposit
     }
 
     @Override
-    public List<ReleaseState> findReleases(String viewId) {
+    public ReleaseState findReleaseByConfigHash(
+            String viewId, String configHash) {
         return releases.getOrDefault(viewId, List.of()).stream()
-                .sorted(Comparator.comparingLong(ReleaseState::revision).reversed()).toList();
-    }
-
-    @Override
-    public ReleaseState findRelease(String viewId, long revision) {
-        return releases.getOrDefault(viewId, List.of()).stream()
-                .filter(release -> release.revision() == revision).findFirst().orElse(null);
+                .filter(release -> release.configHash().equals(configHash))
+                .max(java.util.Comparator.comparingLong(ReleaseState::revision))
+                .orElse(null);
     }
 
     @Override
@@ -366,4 +345,5 @@ public class InMemoryEmbedManagementRepository implements EmbedManagementReposit
     private static String grantKey(String viewId, String applicationId) {
         return viewId + "\n" + applicationId;
     }
+
 }

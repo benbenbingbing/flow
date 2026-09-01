@@ -25,24 +25,17 @@ import java.util.regex.Pattern;
 import org.springframework.util.StringUtils;
 
 /**
- * 将 UI 配置的不可变发布文档投影为 Embed 发布校验资源。
+ * 从不可变 UI Release 恢复 Embed 发布所需的资源坐标和策略字段。
  *
- * <p>该适配器只读取 {@code ui_config_release.snapshot_document}，草稿表仅用于定位 Release 和
- * 确认实体仍处于已发布状态。这样 UI 草稿在发布后继续编辑，不会改变既有 Embed Release 的
- * 字段、动作或组件安全结论。</p>
+ * <p>FORM 只校验快照哈希、发布归属、字段绑定和敏感回传边界，不解析或限制
+ * componentType、componentProps、布局节点、选项、弹层或组件注册名。原生 iframe
+ * 直接消费 Flow Published Form，因此未来新增组件不会要求修改本解析器。</p>
  */
 final class PublishedUiResourceSnapshotParser {
 
-    private static final List<String> BASE_ACTIONS = List.of();
     private static final Set<String> SAFE_EXTERNAL_ACTIONS = Set.of(
-            "view", "create", "edit", "save", "select", "submit", "saveAndStart");
-    private static final Set<String> SAFE_LIST_FIELD_SOURCES = Set.of(
-            "ENTITY_FIELD", "REFERENCE");
-    private static final Set<String> DEFERRED_LOOKUP_FIELD_TYPES = Set.of(
-            "REFERENCE", "MULTI_REFERENCE", "LOOKUP", "MULTI_LOOKUP",
-            "USER", "DEPT", "ROLE", "GROUP");
-    // 与平台 SystemEntityFieldPolicy 使用同一保守命名规则；发布快照位于独立模块，
-    // 在此复制常量避免为一个安全谓词引入 entity 实现层依赖。
+            "view", "create", "edit", "save", "select", "submit",
+            "saveAndStart");
     private static final Pattern SENSITIVE_FIELD = Pattern.compile(
             "(?i)(^password$|password_hash|token_version|(^|_)(secret|token|private_key|credential|salt|otp|mfa_secret)(_|$))");
 
@@ -52,9 +45,7 @@ final class PublishedUiResourceSnapshotParser {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * 校验 Release 完整性并生成字段/动作白名单；快照损坏时 fail closed。
-     */
+    /** 校验固定 Release 完整性与归属，并生成管理/列表边界需要的最小资源快照。 */
     ResolvedResource parse(
             SurfaceType surfaceType,
             String entityCode,
@@ -64,27 +55,37 @@ final class PublishedUiResourceSnapshotParser {
             FormTargetRow formTarget,
             List<FieldRow> currentFields) {
         JsonNode listSnapshot = listTarget == null ? null
-                : verifiedSnapshot(listTarget.snapshotDocument(), listTarget.contentHash(), "LIST");
+                : verifiedSnapshot(listTarget.snapshotDocument(),
+                listTarget.contentHash(), "LIST");
         JsonNode formSnapshot = formTarget == null ? null
-                : verifiedSnapshot(formTarget.snapshotDocument(), formTarget.contentHash(), "FORM");
+                : verifiedSnapshot(formTarget.snapshotDocument(),
+                formTarget.contentHash(), "FORM");
         verifySnapshotOwnership(entityCode, listKey, formId,
                 listTarget, listSnapshot, formTarget, formSnapshot);
 
         Map<String, FieldRow> currentByCode = new LinkedHashMap<>();
-        for (FieldRow field : currentFields == null ? List.<FieldRow>of() : currentFields) {
+        for (FieldRow field : currentFields == null
+                ? List.<FieldRow>of() : currentFields) {
             if (StringUtils.hasText(field.fieldCode())) {
                 currentByCode.putIfAbsent(field.fieldCode(), field);
             }
         }
-
         LinkedHashMap<String, JsonNode> listFields = fields(
-                listSnapshot == null ? null : listSnapshot.path("list").path("fields"));
+                listSnapshot == null ? null
+                        : listSnapshot.path("list").path("fields"));
         LinkedHashMap<String, JsonNode> formFields = fields(
-                formSnapshot == null ? null : formSnapshot.path("legacyFields"));
+                formSnapshot == null ? null
+                        : formSnapshot.path("legacyFields"));
+
         LinkedHashSet<String> publishedFields = new LinkedHashSet<>();
-        publishedFields.addAll(listFields.keySet());
-        publishedFields.addAll(formFields.keySet());
-        publishedFields.retainAll(currentByCode.keySet());
+        if (surfaceType == SurfaceType.FORM) {
+            // 字段集合只服务 Context/returnable 校验；渲染仍读取完整 Form Release。
+            publishedFields.addAll(formFields.keySet());
+        } else {
+            publishedFields.addAll(listFields.keySet());
+            publishedFields.addAll(formFields.keySet());
+            publishedFields.retainAll(currentByCode.keySet());
+        }
 
         LinkedHashSet<String> queryable = new LinkedHashSet<>();
         if (surfaceType == SurfaceType.FORM) {
@@ -95,13 +96,17 @@ final class PublishedUiResourceSnapshotParser {
                     queryable.add(code);
                 }
             });
+            queryable.retainAll(currentByCode.keySet());
         }
-        queryable.retainAll(currentByCode.keySet());
 
         LinkedHashSet<String> writable = new LinkedHashSet<>();
         formFields.forEach((code, field) -> {
             FieldRow current = currentByCode.get(code);
-            if (current != null && current.editable() && !flag(field, "isReadonly", false)) {
+            boolean editable = surfaceType == SurfaceType.FORM
+                    ? !flag(field, "isReadonly", false)
+                    : current != null && current.editable()
+                    && !flag(field, "isReadonly", false);
+            if (editable) {
                 writable.add(code);
             }
         });
@@ -110,34 +115,36 @@ final class PublishedUiResourceSnapshotParser {
         for (String code : publishedFields) {
             FieldRow current = currentByCode.get(code);
             JsonNode formField = formFields.get(code);
-            String snapshotType = text(formField, "fieldType");
-            if (sensitive(code, current == null ? null : current.fieldType())
-                    || sensitive(code, snapshotType)) {
+            if (sensitive(code,
+                    current == null ? null : current.fieldType())
+                    || sensitive(code, text(formField, "fieldType"))) {
                 sensitive.add(code);
             }
         }
-        // 敏感字段不能成为浏览器可控过滤条件；否则即使不直接 return，也可能通过
-        // 相等/存在性查询形成凭据探测信道。
         queryable.removeAll(sensitive);
 
-        LinkedHashSet<String> actions = new LinkedHashSet<>(BASE_ACTIONS);
+        LinkedHashSet<String> actions = new LinkedHashSet<>();
         if (formTarget != null) {
             actions.add("view");
             actions.add("create");
             actions.add("save");
         }
         if (listSnapshot != null) {
-            collectActions(listSnapshot.path("list").path("toolbarConfig"), actions);
-            collectActions(listSnapshot.path("list").path("rowActionConfig"), actions);
+            collectActions(listSnapshot.path("list")
+                    .path("toolbarConfig"), actions);
+            collectActions(listSnapshot.path("list")
+                    .path("rowActionConfig"), actions);
         }
         if (formTarget == null) {
-            actions.removeAll(Set.of("create", "edit", "save", "submit", "saveAndStart"));
+            actions.removeAll(Set.of(
+                    "create", "edit", "save", "submit", "saveAndStart"));
         }
-        boolean trusted = trustedList(listSnapshot) && trustedForm(formSnapshot);
+
+        // LIST 与 FORM 都由 iframe 内 Flow 原生运行时消费完整发布快照。
+        // 本解析器只恢复坐标及 Context/returnable 策略元数据，不检查
+        // renderer、provider、event binding 或 view composition，因此后续新组件无需修改 Embed。
         return new ResolvedResource(
-                entityCode,
-                listKey,
-                formId,
+                entityCode, listKey, formId,
                 listTarget == null ? null : listTarget.releaseId(),
                 listTarget == null ? null : listTarget.releaseVersion(),
                 formTarget == null ? null : formTarget.releaseId(),
@@ -147,11 +154,15 @@ final class PublishedUiResourceSnapshotParser {
                 List.copyOf(writable),
                 List.copyOf(sensitive),
                 List.copyOf(actions),
-                trusted);
+                true);
     }
 
-    private JsonNode verifiedSnapshot(String document, String expectedHash, String type) {
-        if (!StringUtils.hasText(document) || !StringUtils.hasText(expectedHash)) {
+    private JsonNode verifiedSnapshot(
+            String document,
+            String expectedHash,
+            String type) {
+        if (!StringUtils.hasText(document)
+                || !StringUtils.hasText(expectedHash)) {
             throw corrupted(type);
         }
         try {
@@ -160,13 +171,15 @@ final class PublishedUiResourceSnapshotParser {
                     || !type.equals(text(parsed, "configType"))) {
                 throw corrupted(type);
             }
-            String canonical = objectMapper.writeValueAsString(canonicalize(parsed));
+            String canonical = objectMapper.writeValueAsString(
+                    canonicalize(parsed));
             if (!expectedHash.equals(sha256(canonical))) {
                 throw corrupted(type);
             }
             return parsed;
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException(type + " UI 发布快照不是合法 JSON", exception);
+            throw new IllegalStateException(
+                    type + " UI 发布快照不是合法 JSON", exception);
         }
     }
 
@@ -211,7 +224,9 @@ final class PublishedUiResourceSnapshotParser {
         return result;
     }
 
-    private static void collectActions(JsonNode array, Set<String> target) {
+    private static void collectActions(
+            JsonNode array,
+            Set<String> target) {
         if (!array.isArray()) {
             return;
         }
@@ -226,105 +241,10 @@ final class PublishedUiResourceSnapshotParser {
         }
     }
 
-    private static boolean trustedList(JsonNode snapshot) {
-        if (snapshot == null) {
-            return true;
-        }
-        JsonNode list = snapshot.path("list");
-        if (hasText(list, "customComponent")
-                || hasText(list, "queryProviderCode")
-                || hasText(list, "queryDataSourceId")
-                || hasText(list, "queryOperationCode")
-                || nonEmpty(snapshot.path("eventBindings"))
-                || nonEmpty(snapshot.path("viewCompositions"))) {
-            return false;
-        }
-        JsonNode fields = list.path("fields");
-        if (fields.isArray()) {
-            for (JsonNode field : fields) {
-                String source = text(field, "dataSourceType");
-                if (hasText(field, "renderComponent")
-                        || hasText(field, "templateId")
-                        || hasText(field, "dataSourceId")
-                        || hasText(field, "dataSourceOperationCode")
-                        || (StringUtils.hasText(source)
-                        && !SAFE_LIST_FIELD_SOURCES.contains(
-                                source.toUpperCase(Locale.ROOT)))) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private boolean trustedForm(JsonNode snapshot) {
-        if (snapshot == null) {
-            return true;
-        }
-        JsonNode form = snapshot.path("form");
-        if (hasText(form, "customComponent")
-                || unsafeDocument(text(form, "dataSourceBindingsDocument"))
-                || nonEmpty(snapshot.path("eventBindings"))
-                || nonEmpty(snapshot.path("viewCompositions"))) {
-            return false;
-        }
-        JsonNode nodes = snapshot.path("nodes");
-        if (nodes.isArray()) {
-            for (JsonNode node : nodes) {
-                if (hasText(node, "componentName")
-                        || hasText(node, "templateId")
-                        || unsafeDocument(text(node, "dataSourceBindingsDocument"))) {
-                    return false;
-                }
-            }
-        }
-        JsonNode legacyFields = snapshot.path("legacyFields");
-        if (legacyFields.isArray()) {
-            for (JsonNode field : legacyFields) {
-                String fieldType = text(field, "fieldType");
-                if (hasUnsupportedPattern(field.get("validationRules"))
-                        || StringUtils.hasText(fieldType)
-                        && DEFERRED_LOOKUP_FIELD_TYPES.contains(
-                                fieldType.toUpperCase(Locale.ROOT))) {
-                    // V1 尚未固定候选 List Release 与返回投影，引用字段不能以一个
-                    // 看似可用、运行时却只能拒绝的契约发布给外部系统。
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private boolean hasUnsupportedPattern(JsonNode validationRules) {
-        if (validationRules == null || validationRules.isNull()
-                || validationRules.isMissingNode()) {
-            return false;
-        }
-        try {
-            JsonNode rules = validationRules.isTextual()
-                    ? objectMapper.readTree(validationRules.textValue())
-                    : validationRules;
-            return rules == null || !rules.isObject() || rules.has("pattern");
-        } catch (JsonProcessingException error) {
-            return true;
-        }
-    }
-
-    private static boolean nonEmpty(JsonNode value) {
-        return value != null && ((value.isArray() || value.isObject()) && !value.isEmpty()
-                || (!value.isMissingNode() && !value.isNull()
-                && !value.isArray() && !value.isObject()));
-    }
-
-    private static boolean unsafeDocument(String value) {
-        if (!StringUtils.hasText(value)) {
-            return false;
-        }
-        String normalized = value.trim();
-        return !Set.of("{}", "[]", "null").contains(normalized);
-    }
-
-    private static boolean flag(JsonNode node, String field, boolean defaultValue) {
+    private static boolean flag(
+            JsonNode node,
+            String field,
+            boolean defaultValue) {
         if (node == null || !node.isObject() || !node.has(field)) {
             return defaultValue;
         }
@@ -344,16 +264,21 @@ final class PublishedUiResourceSnapshotParser {
     }
 
     private static String text(JsonNode node, String field) {
-        JsonNode value = node == null || !node.isObject() ? null : node.get(field);
-        return value != null && value.isTextual() && StringUtils.hasText(value.textValue())
+        JsonNode value = node == null || !node.isObject()
+                ? null : node.get(field);
+        return value != null && value.isTextual()
+                && StringUtils.hasText(value.textValue())
                 ? value.textValue().trim() : null;
     }
 
     private static boolean sensitive(String code, String type) {
-        String normalizedCode = code == null ? "" : code.toLowerCase(Locale.ROOT);
-        String normalizedType = type == null ? "" : type.toUpperCase(Locale.ROOT);
+        String normalizedCode = code == null
+                ? "" : code.toLowerCase(Locale.ROOT);
+        String normalizedType = type == null
+                ? "" : type.toUpperCase(Locale.ROOT);
         return SENSITIVE_FIELD.matcher(normalizedCode).find()
-                || Set.of("PASSWORD", "SECRET", "ENCRYPTED").contains(normalizedType);
+                || Set.of("PASSWORD", "SECRET", "ENCRYPTED")
+                .contains(normalizedType);
     }
 
     private JsonNode canonicalize(JsonNode node) {
@@ -362,7 +287,8 @@ final class PublishedUiResourceSnapshotParser {
             List<Map.Entry<String, JsonNode>> fields = new ArrayList<>();
             node.fields().forEachRemaining(fields::add);
             fields.sort(Comparator.comparing(Map.Entry::getKey));
-            fields.forEach(field -> result.set(field.getKey(), canonicalize(field.getValue())));
+            fields.forEach(field -> result.set(
+                    field.getKey(), canonicalize(field.getValue())));
             return result;
         }
         if (node.isArray()) {
@@ -379,11 +305,13 @@ final class PublishedUiResourceSnapshotParser {
                     MessageDigest.getInstance("SHA-256")
                             .digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("JVM 不支持 SHA-256", exception);
+            throw new IllegalStateException(
+                    "JVM 不支持 SHA-256", exception);
         }
     }
 
     private static IllegalStateException corrupted(String type) {
-        return new IllegalStateException(type + " UI 发布快照完整性或归属校验失败");
+        return new IllegalStateException(
+                type + " UI 发布快照完整性或归属校验失败");
     }
 }

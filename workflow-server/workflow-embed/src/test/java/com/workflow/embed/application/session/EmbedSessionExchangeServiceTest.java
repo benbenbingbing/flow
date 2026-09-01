@@ -88,7 +88,8 @@ class EmbedSessionExchangeServiceTest {
     }
 
     @Test
-    void stripsUnsupportedMutationAndProcessCapabilitiesAtExchangeBoundary() throws Exception {
+    void keepsGrantedActionButStripsUnsupportedMutationsAtExchangeBoundary()
+            throws Exception {
         Fixture fixture = new Fixture(candidate(
                 NOW.plusSeconds(60), 2, "LIST",
                 "[\"LIST_QUERY\",\"RECORD_VIEW\",\"RECORD_UPDATE\","
@@ -99,7 +100,8 @@ class EmbedSessionExchangeServiceTest {
         fixture.service.exchange(command(LAUNCH_CODE), CORRELATION);
 
         EmbedSessionExchangePlan plan = fixture.transaction.plans.get(0);
-        assertEquals(Set.of("LIST_QUERY", "RECORD_VIEW"),
+        assertEquals(Set.of(
+                        "LIST_QUERY", "RECORD_VIEW", "ACTION_EXECUTE"),
                 fixture.mapper.readValue(plan.capabilitySnapshotJson(), Set.class));
     }
 
@@ -232,7 +234,7 @@ class EmbedSessionExchangeServiceTest {
                 launch, "ISSUED", null, null, maxActive, 1200,
                 releaseCapabilities, grant.capabilityCeilingJson(),
                 new EmbedApplicationSnapshot("app-1", "ACTIVE", null, 3),
-                new EmbedViewSnapshot("view-1", "view-key", "LIST", "ACTIVE", "release-1", 6),
+                new EmbedViewSnapshot("view-1", "view-key", "LIST", "ACTIVE", 6),
                 grant,
                 new EmbedExternalIdentityBinding(
                         "binding-1", "app-1", "provider-1", "a".repeat(64),

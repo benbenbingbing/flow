@@ -5,9 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.embed.api.web.EmbedRecordCreateRequest;
-import com.workflow.embed.api.web.EmbedRuntimeFormViews;
-import com.workflow.embed.application.form.EmbedRuntimeFormFacade;
-import com.workflow.embed.application.form.EmbedRuntimeFormFacade.CreateAuthorization;
+import com.workflow.embed.api.web.EmbedRecordCreateViews;
+import com.workflow.embed.application.record.EmbedNativeRecordCreateAuthorizationService.Authorization;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;
 import com.workflow.embed.application.port.EmbedOperationReceiptPort;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -25,7 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-/** RECORD_CREATE 的授权、canonical 幂等和当前 Output Policy 重放用例。 */
+/** RECORD_CREATE 的原生授权、canonical 幂等和 ID-only 回执重放用例。 */
 @Service
 public class EmbedRecordCreateFacade {
 
@@ -35,7 +34,7 @@ public class EmbedRecordCreateFacade {
     private static final String RECEIPT_TARGET_TYPE = "RECORD";
     private static final String REPLAY_SCHEMA = "embed-idempotency-replay-v1";
 
-    private final EmbedRuntimeFormFacade formFacade;
+    private final EmbedNativeRecordCreateAuthorizationService authorizationService;
     private final EmbedCanonicalRequestHasher hasher;
     private final EmbedIdempotencyPort idempotencyPort;
     private final EmbedOperationReceiptPort receiptPort;
@@ -45,26 +44,26 @@ public class EmbedRecordCreateFacade {
 
     @Autowired
     public EmbedRecordCreateFacade(
-            EmbedRuntimeFormFacade formFacade,
+            EmbedNativeRecordCreateAuthorizationService authorizationService,
             EmbedCanonicalRequestHasher hasher,
             EmbedIdempotencyPort idempotencyPort,
             EmbedOperationReceiptPort receiptPort,
             EmbedRecordCreateTransactionService transactionService,
             ObjectMapper objectMapper) {
         this(
-                formFacade, hasher, idempotencyPort, receiptPort,
+                authorizationService, hasher, idempotencyPort, receiptPort,
                 transactionService, objectMapper, Clock.systemUTC());
     }
 
     EmbedRecordCreateFacade(
-            EmbedRuntimeFormFacade formFacade,
+            EmbedNativeRecordCreateAuthorizationService authorizationService,
             EmbedCanonicalRequestHasher hasher,
             EmbedIdempotencyPort idempotencyPort,
             EmbedOperationReceiptPort receiptPort,
             EmbedRecordCreateTransactionService transactionService,
             ObjectMapper objectMapper,
             Clock clock) {
-        this.formFacade = formFacade;
+        this.authorizationService = authorizationService;
         this.hasher = hasher;
         this.idempotencyPort = idempotencyPort;
         this.receiptPort = receiptPort;
@@ -81,8 +80,8 @@ public class EmbedRecordCreateFacade {
             String idempotencyKey,
             String traceId) {
         validateRequest(request, idempotencyKey);
-        CreateAuthorization authorization = formFacade.authorizeCreate(
-                request.getData());
+        Authorization authorization = authorizationService.authorize(
+                request.getData(), request.getActionKey());
         String actorScopeDigest = hasher.actorScopeDigest(
                 authorization.session());
         Map<String, Object> body = canonicalBody(request, authorization);
@@ -118,19 +117,22 @@ public class EmbedRecordCreateFacade {
                 throw externalFailure(error);
             }
         }
-        EmbedRuntimeFormViews.RecordView record =
-                formFacade.projectCreatedRecord(
-                        authorization, receipt.targetId());
         return new CreateOutcome(
-                new EmbedRuntimeFormViews.CreateResult(
-                        receipt.id(), record, List.of(),
+                new EmbedRecordCreateViews.CreateResult(
+                        receipt.id(), idOnlyRecord(receipt.targetId()), List.of(),
                         request.getClientMutationId()),
                 replay);
     }
 
+    /** 创建结果固定为 ID-only；记录详情继续由 Flow 原生页面按当前 DataScope 读取。 */
+    private static EmbedRecordCreateViews.CreatedRecord idOnlyRecord(
+            String recordId) {
+        return new EmbedRecordCreateViews.CreatedRecord(recordId, null);
+    }
+
     private EmbedOperationReceipt requireReplayReceipt(
             EmbedIdempotencyClaim claim,
-            CreateAuthorization authorization,
+            Authorization authorization,
             String actorScopeDigest) {
         if (!Objects.equals(
                 EmbedRecordCreateTransactionService.RESOURCE_TYPE,
@@ -181,9 +183,15 @@ public class EmbedRecordCreateFacade {
 
     private Map<String, Object> canonicalBody(
             EmbedRecordCreateRequest request,
-            CreateAuthorization authorization) {
+            Authorization authorization) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("data", authorization.clientData());
+        // 幂等语义必须绑定服务端最终求得的写入值和数据范围，而不是只绑定浏览器原始值。
+        // 这样同一用户在不同强制 Context 下复用同一个 Key 时会得到 409；Session/Release
+        // 坐标仍不进入摘要，因此相同业务语义可以跨 Launch 安全重放。
+        body.put("data", authorization.effectiveData());
+        body.put("contextFilters", authorization.contextFilters());
+        // save 与 saveAndStart 的业务副作用不同，必须属于不同幂等语义。
+        body.put("actionKey", authorization.actionKey());
         if (request.isClientMutationIdPresent()) {
             body.put("clientMutationId", request.getClientMutationId());
         }
@@ -194,7 +202,7 @@ public class EmbedRecordCreateFacade {
      * 幂等目标只含稳定业务坐标；Release/Session 变化后仍可在当前授权下重放首次结果。
      */
     private static Map<String, Object> canonicalTarget(
-            CreateAuthorization authorization) {
+            Authorization authorization) {
         Map<String, Object> target = new LinkedHashMap<>();
         target.put("entityCode", authorization.target().entityCode());
         target.put("formId", authorization.target().formId());
@@ -285,7 +293,7 @@ public class EmbedRecordCreateFacade {
     }
 
     public record CreateOutcome(
-            EmbedRuntimeFormViews.CreateResult result,
+            EmbedRecordCreateViews.CreateResult result,
             boolean replay) {
     }
 }

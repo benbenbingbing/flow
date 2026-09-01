@@ -111,9 +111,9 @@
           :refEntityNameMap="refEntityNameMap"
           :refresh="loadDataList"
           :viewConfig="viewConfig"
-          :showVersionAction="!selectionScene && !isSystemEntity && !embedded && canViewVersions"
+          :showVersionAction="!selectionScene && !isSystemEntity && canViewVersions"
           :show-pagination="!embedded || showPagination"
-          :max-height="embedded ? maxHeight : undefined"
+          :max-height="embedded && maxHeight > 0 ? maxHeight : undefined"
           :selection-mode="runtimeSelectionMode"
           :runtime-context="relatedContentRuntimeContext"
           :row-expand-compositions="rowExpandCompositions"
@@ -166,7 +166,7 @@
       :entityCode="entityCode"
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
-      :defaultForm="defaultForm"
+      :defaultForm="runtimeDefaultForm"
       :listKey="listConfig?.listKey"
       :list-release-id="listConfig?.releaseId"
       :list-release-version="listConfig?.publishedVersion"
@@ -177,7 +177,7 @@
     <EntityApprovalDialog
       ref="approvalDialogRef"
       :entityCode="entityCode"
-      :defaultForm="defaultForm"
+      :defaultForm="runtimeDefaultForm"
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
       :listKey="listConfig?.listKey"
@@ -267,6 +267,8 @@ const props = withDefaults(defineProps<{
   createContext?: Record<string, any>
   pageSize?: number
   maxHeight?: number
+  defaultForm?: Record<string, any> | null
+  allowDefaultFormResolve?: boolean
 }>(), {
   entityCode: '',
   listKey: '',
@@ -288,7 +290,9 @@ const props = withDefaults(defineProps<{
   createInitialData: () => ({}),
   createContext: () => ({}),
   pageSize: 10,
-  maxHeight: 420
+  maxHeight: 420,
+  defaultForm: null,
+  allowDefaultFormResolve: true
 })
 
 const {
@@ -302,6 +306,7 @@ const emit = defineEmits<{
   confirm: [rows: any[]]
   cancel: []
   'selection-action': [action: string, rows: any[]]
+  'selection-change': [rows: any[]]
 }>()
 const entityCode = computed(() =>
   props.entityCode
@@ -399,7 +404,9 @@ const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const queryForm = reactive<Record<string, any>>({})
-const defaultForm = ref<any>(null)
+const loadedDefaultForm = ref<any>(null)
+const runtimeDefaultForm = computed(() =>
+  props.defaultForm || loadedDefaultForm.value)
 const createFormLoading = ref(false)
 const dictOptionMap = ref<Record<string, any[]>>({})
 
@@ -506,8 +513,10 @@ const listFields = computed(() => {
 // 是否使用列表配置
 const useListConfig = computed(() => listConfigFields.value.length > 0)
 // 自定义列表组件名
+// embedded 只是布局模式，不是降级渲染模式。Embed 入口会注册与
+// Flow 主应用相同的扩展 registry，因此原生自定义列表也必须照常挂载。
 const customListComponent = computed(() =>
-  props.embedded ? '' : (listConfig.value?.customComponent || '')
+  listConfig.value?.customComponent || ''
 )
 
 const customListRuntime = computed(() => ({
@@ -717,10 +726,16 @@ const entityStatusMap = ref<Record<string, string>>(
 async function loadEntityStatusMap() {
   if (!entityCode.value) return
   try {
-    const list = await getEntityStatusList(entityCode.value)
+    const list = await getEntityStatusList(entityCode.value, {
+      viewCompositionTraversalToken:
+        viewCompositionTraversalToken.value || undefined
+    })
     entityStatusOptions.value = getEffectiveEntityStatusOptions(list || [])
     entityStatusMap.value = buildEntityStatusMap(entityStatusOptions.value)
   } catch (e) {
+    // 已签名的关联目标必须完整读取它自己的状态定义；
+    // 不能回退根实体默认值，否则会与 Flow 原生界面不一致。
+    if (viewCompositionTraversalToken.value) throw e
     entityStatusOptions.value = getEffectiveEntityStatusOptions()
     entityStatusMap.value = buildEntityStatusMap(entityStatusOptions.value)
   }
@@ -760,10 +775,13 @@ const loadEntityDefinition = async () => {
   refEntityNameMap.value = {}
   dictOptionMap.value = {}
   total.value = 0
-  defaultForm.value = null
+  loadedDefaultForm.value = null
   clearQueryForm()
   try {
-    const res = await entityApi.getByCode(entityCode.value)
+    const res = await entityApi.getByCode(entityCode.value, {
+      viewCompositionTraversalToken:
+        viewCompositionTraversalToken.value || undefined
+    })
     entityDefinition.value = res || {}
     entityFields.value = res?.fields || []
     await loadListConfig()
@@ -817,13 +835,27 @@ const loadListConfig = async () => {
 // 加载新增数据表单
 const loadDefaultForm = async (notifyOnError = false) => {
   if (!entityCode.value) return false
+  if (props.defaultForm) {
+    loadedDefaultForm.value = null
+    return true
+  }
+  // Embed Session 已在启动时完成默认表单解析；没有固定表单就代表该
+  // Session 不允许新增/编辑，不能再次查询当前 ACTIVE，否则旧会话会在
+  // 管理员发布新表单后发生版本漂移。普通 Flow 页面仍保留原有动态解析。
+  if (!props.allowDefaultFormResolve) {
+    loadedDefaultForm.value = null
+    if (notifyOnError) {
+      ElMessage.error('当前固定列表版本没有可用的默认表单')
+    }
+    return false
+  }
   try {
     const res = await getFormForNewData(entityCode.value, { silentError: true })
-    defaultForm.value = res || null
+    loadedDefaultForm.value = res || null
     return true
   } catch (e) {
     console.error('加载新增数据表单失败:', e)
-    defaultForm.value = null
+    loadedDefaultForm.value = null
     if (notifyOnError) {
       ElMessage.error(e?.message || '加载最新发布表单失败，请稍后重试')
     }
@@ -989,6 +1021,8 @@ const handleEventAction = async ({
       releaseId: listConfig.value.releaseId,
       releaseVersion: listConfig.value.publishedVersion,
       releaseResolutionToken: props.releaseResolutionToken,
+      viewCompositionTraversalToken:
+        viewCompositionTraversalToken.value || undefined,
       entityCode: entityCode.value,
       listKey: listConfig.value.listKey,
       targetType: 'BUTTON',
@@ -1066,7 +1100,7 @@ const handleCreate = async (button?: any) => {
         ...(props.createContext?.params || {})
       },
       context: {
-        ...(props.context || {}),
+        ...relatedContentRuntimeContext.value,
         ...(props.createContext || {})
       }
     })
@@ -1085,9 +1119,14 @@ const handleEdit = async (row: any, button?: any) => {
     } else {
       const loaded = await loadDefaultForm(true)
       if (!loaded) return
-      await nextTick()
     }
-    await formDialogRef.value?.openEdit(row, { form })
+    // 无论使用默认表单还是按钮固定表单，都等 props/context 完成同一轮更新后再打开；
+    // 这样关联子列表不会把上一次的发布快照或 traversal token 带进新弹窗。
+    await nextTick()
+    await formDialogRef.value?.openEdit(row, {
+      form,
+      context: relatedContentRuntimeContext.value
+    })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
   }
@@ -1097,7 +1136,10 @@ const handleEdit = async (row: any, button?: any) => {
 const handleView = async (row: any, button?: any) => {
   try {
     const form = await loadRuntimeButtonForm(button, 'ROW')
-    await approvalDialogRef.value?.openView(row, { form })
+    await approvalDialogRef.value?.openView(row, {
+      form,
+      context: relatedContentRuntimeContext.value
+    })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
   }
@@ -1107,7 +1149,13 @@ const handleView = async (row: any, button?: any) => {
 const handleApprove = async (row: any, button?: any) => {
   try {
     const form = await loadRuntimeButtonForm(button, 'ROW')
-    await approvalDialogRef.value?.openApprove(row, { form })
+    await approvalDialogRef.value?.openApprove(row, {
+      form,
+      context: relatedContentRuntimeContext.value,
+      // 实体列表的审批目标必须来自服务端动作能力；即便旧响应或自定义数据源
+      // 缺少 actionCapabilities，也不得回退到记录级 currentTaskId。
+      requireActionCapability: true
+    })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
   }
@@ -1219,6 +1267,26 @@ watch(
     if (entityDefinition.value?.id) loadDataList()
   }
 )
+
+watch(
+  () => selectedRows.value.map((row: any) => String(row?.id || '')).join('\u0000'),
+  () => {
+    // 这个事件只在 iframe 内交给 NativeEmbeddedListPage；跨域 Bridge
+    // 会在 controller 边界再裁剪为 id + 空 values，不会泄露原生整行。
+    emit('selection-change', [...selectedRows.value])
+  }
+)
+
+function focus() {
+  const control = globalThis.document?.querySelector?.(
+    '.entity-data-list button:not([disabled]), '
+      + '.entity-data-list input:not([disabled]), '
+      + '.entity-data-list [tabindex="0"]'
+  )
+  control?.focus?.()
+}
+
+defineExpose({ focus, reload: loadDataList })
 </script>
 <style scoped lang="scss">
 .entity-data-list {

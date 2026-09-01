@@ -24,7 +24,8 @@ export const EMBED_CAPABILITIES = Object.freeze([
   'LIST_QUERY',
   'SELECTION_RETURN',
   'RECORD_VIEW',
-  'RECORD_CREATE'
+  'RECORD_CREATE',
+  'ACTION_EXECUTE'
 ])
 
 const FIELD_TYPES = new Set(EMBED_FIELD_TYPES)
@@ -33,6 +34,7 @@ const CAPABILITIES = new Set(EMBED_CAPABILITIES)
 const FIELD_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,127}$/
 const RECORD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
 const ACTION_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/
+const RESOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 const MAX_FIELDS = 100
 const MAX_OPTIONS = 200
@@ -40,7 +42,7 @@ const MAX_ACTIONS = 100
 const MAX_RECORDS_PER_PAGE = 100
 // selection.changed 的值边界必须与 OpenAPI ClientValue 完全一致。
 const MAX_CLIENT_VALUE_ITEMS = 100
-const MAX_STRING_LENGTH = 2048
+const MAX_STRING_LENGTH = 100000
 const MAX_FILTER_STRING_LENGTH = 2048
 
 export class EmbedSchemaError extends Error {
@@ -264,16 +266,16 @@ export function normalizeEmbedListSchema(rawList = {}) {
   })
 }
 
-function normalizeView(rawView, { requireName = false } = {}) {
+function normalizeView(rawView, { requireName = false, requireRevision = true } = {}) {
   const source = isPlainRecord(rawView) ? rawView : {}
   const key = safeText(source.key, '', 256)
   const surfaceType = safeText(source.surfaceType, '', 16).toUpperCase()
   if (!key || /[/?#\\]/.test(key) || !['LIST', 'FORM'].includes(surfaceType)) {
     throw new EmbedSchemaError('Embed View 无效', 'EMBED_SCHEMA_VIEW_INVALID')
   }
-  const revision = Number(source.revision)
-  if (!Number.isSafeInteger(revision) || revision < 1) {
-    throw new EmbedSchemaError('Embed View revision 无效', 'EMBED_SCHEMA_VIEW_INVALID')
+  const revision = requireRevision ? Number(source.revision) : undefined
+  if (requireRevision && (!Number.isSafeInteger(revision) || revision < 1)) {
+    throw new EmbedSchemaError('Embed Schema revision 无效', 'EMBED_SCHEMA_VIEW_INVALID')
   }
   const entryMode = requireName
     ? safeText(source.entryMode, '', 16).toUpperCase()
@@ -285,7 +287,7 @@ function normalizeView(rawView, { requireName = false } = {}) {
     key,
     name: requireName ? safeText(source.name ?? key, key, 256) : undefined,
     surfaceType,
-    revision,
+    ...(requireRevision ? { revision } : {}),
     entryMode
   })
 }
@@ -293,6 +295,181 @@ function normalizeView(rawView, { requireName = false } = {}) {
 function normalizeDateTime(value) {
   const text = safeText(value, '', 64)
   return text && Number.isFinite(Date.parse(text)) ? text : ''
+}
+
+function normalizeResourceId(value, required = false) {
+  const id = safeText(value, '', 256)
+  if (!id) return required ? null : ''
+  return RESOURCE_ID_PATTERN.test(id) ? id : null
+}
+
+function normalizeReleaseVersion(value, required = false) {
+  if (value === null || value === undefined || value === '') {
+    return required ? null : undefined
+  }
+  const version = Number(value)
+  return Number.isSafeInteger(version) && version > 0 ? version : null
+}
+
+function normalizeOpaqueRuntimeCoordinate(value, maxLength = 4096) {
+  const text = safeText(value, '', maxLength)
+  return text && !/[\u0000-\u001F\u007F\s]/.test(text) ? text : ''
+}
+
+function normalizeNativeRuntimeContext(value) {
+  if (!isPlainRecord(value)
+    || Object.keys(value).some(key => DANGEROUS_KEYS.has(key))) {
+    return Object.freeze({})
+  }
+  // 内容已经由服务端从 Session 上下文和发布绑定恢复；这里只隔离顶层对象，
+  // 不按字段/组件重新投影，避免未来新增组件的合法结构被旧 Embed 客户端截断。
+  return Object.freeze({ ...value })
+}
+
+function normalizeRuntimeIdentityValues(values, maxItems = 1000) {
+  const result = []
+  for (const value of asArray(values).slice(0, maxItems)) {
+    const candidate = typeof value === 'string'
+      ? value
+      : value?.roleCode ?? value?.permissionCode ?? value?.code
+    const normalized = safeText(candidate, '', 256)
+    if (!normalized || result.includes(normalized)) continue
+    result.push(normalized)
+  }
+  return Object.freeze(result)
+}
+
+/**
+ * Bootstrap 只提供服务端从固定 Session 快照恢复出的原生 Flow 坐标。
+ * 坐标不是页面结构；iframe 随后通过 Flow 标准 runtime URL 读取同一份
+ * LIST/FORM 发布快照，因而新增字段、渲染器或数据源无需再修改 Embed。
+ */
+export function normalizeEmbedNativeRuntimeTarget(rawTarget, view) {
+  if (!isPlainRecord(rawTarget)) {
+    throw new EmbedSchemaError('Embed 原生运行时坐标缺失', 'EMBED_BOOTSTRAP_TARGET_INVALID')
+  }
+  const rawForm = isPlainRecord(rawTarget.form) ? rawTarget.form : rawTarget
+  const rawFormRelease = isPlainRecord(rawTarget.formRelease)
+    ? rawTarget.formRelease
+    : rawForm
+  const rawListRelease = isPlainRecord(rawTarget.listRelease)
+    ? rawTarget.listRelease
+    : rawTarget
+  const entityCode = normalizeCode(rawTarget.entityCode ?? rawForm.entityCode)
+  const listKey = normalizeResourceId(
+    rawTarget.listKey ?? rawListRelease.listKey,
+    view.surfaceType === 'LIST'
+  )
+  const listReleaseId = normalizeResourceId(
+    rawListRelease.listReleaseId ?? rawListRelease.releaseId,
+    view.surfaceType === 'LIST'
+  )
+  const listReleaseVersion = normalizeReleaseVersion(
+    rawListRelease.listReleaseVersion
+      ?? rawListRelease.releaseVersion
+      ?? rawListRelease.version,
+    view.surfaceType === 'LIST'
+  )
+  const listReleaseResolutionToken = normalizeOpaqueRuntimeCoordinate(
+    rawListRelease.listReleaseResolutionToken
+      ?? rawListRelease.releaseResolutionToken
+  )
+
+  if (!entityCode) {
+    throw new EmbedSchemaError('Embed 原生运行时实体坐标无效', 'EMBED_BOOTSTRAP_TARGET_INVALID')
+  }
+
+  if (view.surfaceType === 'LIST') {
+    // LIST 必须使用 Session 启动时固定的 exact Release；任何坐标
+    // 缺失都不允许退回当前 ACTIVE，避免已打开页面中途漂移。
+    if (!listKey || !listReleaseId || !listReleaseVersion
+      || !listReleaseResolutionToken) {
+      throw new EmbedSchemaError('Embed 原生列表坐标无效', 'EMBED_BOOTSTRAP_TARGET_INVALID')
+    }
+    return Object.freeze({
+      entityCode,
+      listKey,
+      listReleaseId,
+      listReleaseVersion,
+      listReleaseResolutionToken,
+      mode: 'LIST',
+      nativeRuntimeUrl: normalizeOpaqueRuntimeCoordinate(
+        rawTarget.nativeRuntimeUrl,
+        2048
+      ) || null,
+      initialData: normalizeNativeRuntimeContext(rawTarget.initialData),
+      parameters: normalizeNativeRuntimeContext(rawTarget.parameters),
+      runtimeContext: normalizeNativeRuntimeContext(
+        rawTarget.runtimeContext ?? rawTarget.context
+      ),
+      // true 表示服务端已在 Launch 时完成一次默认表单解析；即使结果为空，
+      // iframe 也不得再按当前 ACTIVE 动态回退。
+      defaultFormResolved: rawTarget.defaultFormResolved === true,
+      // 列表中的“新增/查看”仍使用启动时固定的默认表单。
+      formId: normalizeResourceId(rawForm.formId ?? rawForm.id) || null,
+      formReleaseId: normalizeResourceId(
+        rawFormRelease.formReleaseId ?? rawFormRelease.releaseId
+      ) || null,
+      formReleaseVersion: normalizeReleaseVersion(
+        rawFormRelease.formReleaseVersion
+          ?? rawFormRelease.releaseVersion
+          ?? rawFormRelease.version
+      ) || null,
+      formReleaseResolutionToken: normalizeOpaqueRuntimeCoordinate(
+        rawFormRelease.formReleaseResolutionToken
+          ?? rawFormRelease.releaseResolutionToken
+      ) || null
+    })
+  }
+
+  const formId = normalizeResourceId(rawForm.formId ?? rawForm.id, true)
+  const formReleaseId = normalizeResourceId(
+    rawFormRelease.formReleaseId ?? rawFormRelease.releaseId,
+    true
+  )
+  const formReleaseVersion = normalizeReleaseVersion(
+    rawFormRelease.formReleaseVersion ?? rawFormRelease.releaseVersion ?? rawFormRelease.version,
+    true
+  )
+  const formReleaseResolutionToken = normalizeOpaqueRuntimeCoordinate(
+    rawFormRelease.formReleaseResolutionToken
+      ?? rawFormRelease.releaseResolutionToken
+  )
+  const recordId = normalizeResourceId(rawTarget.recordId ?? rawForm.recordId)
+  // exact Release token 是历史发布快照读取凭据；缺失时不能退回当前 ACTIVE，
+  // 否则管理员后续发布表单会让既有第三方会话发生不可见漂移。
+  if (!formId || !formReleaseId || !formReleaseVersion
+    || !formReleaseResolutionToken
+    || (view.entryMode === 'VIEW' && !recordId)) {
+    throw new EmbedSchemaError('Embed 原生表单坐标无效', 'EMBED_BOOTSTRAP_TARGET_INVALID')
+  }
+
+  const target = {
+    entityCode,
+    formId,
+    formReleaseId,
+    formReleaseVersion,
+    formReleaseResolutionToken,
+    mode: view.entryMode,
+    recordId: recordId || null,
+    processInstanceId: normalizeResourceId(
+      rawTarget.processInstanceId ?? rawForm.processInstanceId
+    ) || null,
+    listKey: listKey || null,
+    listReleaseId: listReleaseId || null,
+    listReleaseVersion,
+    listReleaseResolutionToken: listReleaseResolutionToken || null,
+    nativeRuntimeUrl: normalizeOpaqueRuntimeCoordinate(
+      rawTarget.nativeRuntimeUrl ?? rawForm.nativeRuntimeUrl,
+      2048
+    ) || null,
+    initialData: normalizeNativeRuntimeContext(rawTarget.initialData),
+    parameters: normalizeNativeRuntimeContext(rawTarget.parameters),
+    runtimeContext: normalizeNativeRuntimeContext(
+      rawTarget.runtimeContext ?? rawTarget.context
+    )
+  }
+  return Object.freeze(target)
 }
 
 /** 将 Bootstrap DTO 投影为 Shell 所需的最小会话、视图和 UI 配置。 */
@@ -313,6 +490,10 @@ export function normalizeEmbedBootstrap(rawBootstrap = {}) {
     .map(value => safeText(value, '', 32).toUpperCase())
     .filter((value, index, values) => CAPABILITIES.has(value) && values.indexOf(value) === index)
 
+  const view = normalizeView(rawBootstrap.view, {
+    requireName: true,
+    requireRevision: false
+  })
   return Object.freeze({
     session: Object.freeze({
       id: safeText(session.id, '', 256),
@@ -320,9 +501,19 @@ export function normalizeEmbedBootstrap(rawBootstrap = {}) {
       idleExpiresAt
     }),
     actor: Object.freeze({
-      displayName: safeText(actor.displayName, '当前用户', 256)
+      displayName: safeText(
+        actor.displayName ?? actor.nickname ?? actor.username,
+        '当前用户',
+        256
+      ),
+      username: safeText(actor.username, '', 128),
+      nickname: safeText(actor.nickname ?? actor.displayName, '', 256),
+      roles: normalizeRuntimeIdentityValues(actor.roles, 200),
+      isSuperAdmin: actor.isSuperAdmin === true,
+      permissions: normalizeRuntimeIdentityValues(actor.permissions)
     }),
-    view: normalizeView(rawBootstrap.view, { requireName: true }),
+    view,
+    target: normalizeEmbedNativeRuntimeTarget(rawBootstrap.target, view),
     capabilities: Object.freeze(capabilities),
     ui: Object.freeze({
       locale: safeText(ui.locale, 'zh-CN', 32),

@@ -7,6 +7,7 @@ function source(relativePath) {
 
 const panel = source('../ApprovalDecisionPanel.vue')
 const dialog = source('../EntityApprovalDialog.vue')
+const entityDataList = source('../../../EntityDataList.vue')
 const section = source('../../../../../components/NextApproverSection.vue')
 const selector = source('../../../../../components/ControlledUserSelector.vue')
 const previewComposable = source(
@@ -47,6 +48,26 @@ assert.match(
   dialog,
   /openApprove[\s\S]*?approvalDecisionExpanded\.value\s*=\s*true/,
   '每次打开审批弹窗时必须默认展开审批信息'
+)
+assert.match(
+  dialog,
+  /openApprove[\s\S]*?resolveActionableTaskId\(row, 'approve',[\s\S]*?requireActionCapability:\s*options\.requireActionCapability[\s\S]*?if \(!actionableTaskId\)[\s\S]*?刷新列表后重试[\s\S]*?return false[\s\S]*?loadProcessDetail/,
+  '实体列表审批能力缺少服务端目标任务时必须在加载流程详情前失败关闭'
+)
+assert.match(
+  entityDataList,
+  /openApprove\(row,\s*\{[\s\S]*?requireActionCapability:\s*true[\s\S]*?\}\)/,
+  '实体列表审批必须显式要求服务端动作能力，不能回退记录级任务 ID'
+)
+assert.match(
+  dialog,
+  /currentTask\.value\s*=\s*\{[\s\S]*?taskId:\s*actionableTaskId/,
+  '审批弹窗必须使用服务端授权的 actionableTaskId'
+)
+assert.doesNotMatch(
+  dialog,
+  /taskId:\s*row\.currentTaskId\s*\|\|\s*row\.taskId/,
+  '审批弹窗不得使用记录级 currentTaskId 猜测当前用户的会签任务'
 )
 ;[
   ':aria-expanded="expanded"',

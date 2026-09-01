@@ -6,6 +6,7 @@ import {
   mergeResolvedFormActions,
   resolveLocalFormActions
 } from '@/shared/form-actions'
+import { isEmbedDelegatedRequestEnabled } from '@/shared/request'
 
 export async function resolveRuntimeFormActions(forms, context) {
   const sourceForms = (Array.isArray(forms) ? forms : [forms]).filter(Boolean)
@@ -25,12 +26,17 @@ export async function resolveRuntimeFormActions(forms, context) {
         listKey: context.listKey || undefined,
         mode: context.mode,
         recordId: context.recordId || undefined,
-        taskId: context.taskId || undefined
+        taskId: context.taskId || undefined,
+        viewCompositionTraversalToken:
+          context.viewCompositionTraversalToken || undefined
       })
       return Array.isArray(result)
         ? result
         : resolveLocalFormActions(form, context)
     } catch (error) {
+      // Embed 必须以映射 Flow 用户的服务端实时权限为准。若解析失败仍回退本地
+      // 默认按钮，会把“服务不可用”误显示成“用户有保存权限”，因此委托会话失败关闭。
+      if (isEmbedDelegatedRequestEnabled()) throw error
       console.warn('解析表单按钮失败，使用本地约定默认值:', error)
       return resolveLocalFormActions(form, context)
     }
@@ -54,6 +60,8 @@ export function executeCustomFormAction(action, forms, context) {
     releaseVersion: getReleaseVersion(ownerForm),
     releaseResolutionToken:
       ownerForm?.releaseResolutionToken || undefined,
+    viewCompositionTraversalToken:
+      context.viewCompositionTraversalToken || undefined,
     entityCode: context.entityCode,
     listKey: context.listKey || undefined,
     targetType: 'BUTTON',

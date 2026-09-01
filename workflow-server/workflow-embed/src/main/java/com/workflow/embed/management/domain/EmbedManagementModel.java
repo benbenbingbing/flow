@@ -61,7 +61,7 @@ public final class EmbedManagementModel {
             LocalDateTime updateTime) {
     }
 
-    /** 发布快照；记录一份 canonical 完整文档以及运行时高频字段。 */
+    /** Launch 内部 Runtime Snapshot；记录 canonical 完整文档以及运行时高频字段。 */
     public record ReleaseState(
             String id,
             String viewId,
@@ -228,9 +228,6 @@ public final class EmbedManagementModel {
     public record UpdateDraftCommand(long expectedVersion, JsonNode draft) {
     }
 
-    public record PublishViewCommand(long expectedVersion, String releaseNote) {
-    }
-
     public record ChangeStatusCommand(long expectedVersion, String status, String reason) {
     }
 
@@ -241,8 +238,6 @@ public final class EmbedManagementModel {
             boolean trustedSubjectAssertion,
             List<String> allowedOrigins,
             List<Capability> capabilityCeiling,
-            RevisionMode revisionMode,
-            Long pinnedRevision,
             int maxActiveSessionsPerUser,
             int maxSessionSeconds,
             int launchLimitPerMinute,

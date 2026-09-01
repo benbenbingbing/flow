@@ -227,7 +227,7 @@ public class EmbedSessionExchangeService {
         intersection.retainAll(ceiling);
         // 即使发布配置异常，也在兑换边界强制剔除 V1 明令禁止的高风险能力。
         intersection.removeAll(Set.of(
-                "RECORD_UPDATE", "ACTION_EXECUTE", "PROCESS_START",
+                "RECORD_UPDATE", "PROCESS_START",
                 "RECORD_DELETE", "BATCH_DELETE", "EXPORT",
                 "FILE_UPLOAD", "FILE_DOWNLOAD"));
         try {

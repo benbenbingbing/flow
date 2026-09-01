@@ -52,7 +52,7 @@ class EmbedRuntimeControllerTest {
                         Instant.parse("2026-08-27T09:30:00Z")),
                 new EmbedRuntimeViews.Actor("张三"),
                 new EmbedRuntimeViews.View(
-                        "orders", "工单", "LIST", 3, "LIST"),
+                        "orders", "工单", "LIST", "LIST"),
                 List.of("LIST_QUERY"),
                 new EmbedRuntimeViews.Ui(
                         "zh-CN", "light", true, true, true, 20, "AUTO"),
@@ -65,6 +65,7 @@ class EmbedRuntimeControllerTest {
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.errorCode").doesNotExist())
                 .andExpect(jsonPath("$.data.session.id").value("ems_1"))
+                .andExpect(jsonPath("$.data.view.revision").doesNotExist())
                 .andExpect(jsonPath("$.traceId").value("trace-1"));
     }
 

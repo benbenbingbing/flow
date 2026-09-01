@@ -26,10 +26,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Embed View 发布校验器。
+ * Embed View 当前配置与 Runtime Snapshot 校验器。
  *
- * <p>校验器同时生成 canonical 快照和摘要，发布事务必须重新调用本组件，不能复用之前预检的
- * 结果，从而避免校验后草稿或底层 UI Release 变化造成 TOCTOU。</p>
+ * <p>保存与每次 Launch 都重新解析 Flow 当前 ACTIVE 资源；Launch 使用生成的 canonical
+ * 快照和摘要，避免配置校验后底层 UI Release 变化造成 TOCTOU。</p>
  */
 @Component
 public class EmbedViewConfigurationValidator {
@@ -46,11 +46,14 @@ public class EmbedViewConfigurationValidator {
             "type", "enum", "properties", "required", "additionalProperties", "items",
             "minItems", "maxItems", "minLength", "maxLength", "pattern",
             "minimum", "maximum", "title", "description", "default", "examples");
+    private static final Set<String> FLOW_PUBLISHED_FIELD_POLICY_KEYS = Set.of(
+            "mode", "returnable");
+    private static final List<String> LEGACY_EXPLICIT_FIELD_ARRAY_KEYS = List.of(
+            "visible", "queryable", "writable");
     private static final Set<Capability> V1_BLOCKED = Set.of(
-            // V1 尚未具备通用 record_version、强类型 EmbedActionRegistry 与流程动作契约。
-            // 发布端必须 fail-closed，不能生成运行时无法安全执行的能力快照。
+            // V1 尚未具备通用 record_version、删除/导出边界与独立流程启动契约。
+            // ACTION_EXECUTE 只依赖 Flow 已发布动作与声明式端点，不放宽下列数据能力。
             Capability.RECORD_UPDATE,
-            Capability.ACTION_EXECUTE,
             Capability.PROCESS_START,
             Capability.RECORD_DELETE,
             Capability.BATCH_DELETE,
@@ -68,7 +71,7 @@ public class EmbedViewConfigurationValidator {
         this.repository = repository;
     }
 
-    /** 校验草稿并返回发布可直接持久化的解析结果。 */
+    /** 校验配置并返回 Runtime Snapshot 可直接持久化的解析结果。 */
     public ValidationResult validate(SurfaceType surfaceType, JsonNode draft) {
         List<Violation> violations = new ArrayList<>();
         if (draft == null || !draft.isObject()) {
@@ -115,13 +118,28 @@ public class EmbedViewConfigurationValidator {
             }
         }
         if (resolved != null) {
-            validateResolvedResource(draft, capabilities, resolved, violations);
+            validateResolvedResource(
+                    surfaceType, draft, capabilities, resolved, violations);
         }
         if (!violations.isEmpty()) {
             return invalid(violations);
         }
 
         ObjectNode snapshot = ((ObjectNode) draft).deepCopy();
+        JsonNode submittedFieldPolicy = snapshot.path("fieldPolicy");
+        ObjectNode normalizedFieldPolicy = objectMapper.createObjectNode();
+        // 原生 LIST/FORM 都不接受 Embed 重写字段可见性、可写性或组件。
+        // 只保留宿主回传白名单；旧 EXPLICIT 数组在下次 Launch 自动退场。
+        normalizedFieldPolicy.put("mode", "FLOW_PUBLISHED");
+        normalizedFieldPolicy.set(
+                "returnable",
+                submittedFieldPolicy.path("returnable").isArray()
+                        ? submittedFieldPolicy.path("returnable").deepCopy()
+                        : objectMapper.createArrayNode());
+        snapshot.set("fieldPolicy", normalizedFieldPolicy);
+        // 操作栏、顺序及显隐都来自同一 Flow 发布快照和映射用户实时权限。
+        // ACTION_EXECUTE 只是 Session 能力上限，actionPolicy 不再参与求交或覆盖。
+        snapshot.putObject("actionPolicy").putArray("allowed");
         snapshot.set("resolved", resolvedNode(resolved));
         JsonNode canonicalNode = canonicalize(snapshot);
         try {
@@ -130,7 +148,7 @@ public class EmbedViewConfigurationValidator {
             // 再做一次 UTF-8 字节检查，否则 validate=true 后会在 Release INSERT 撞数据库 CHECK。
             if (canonical.getBytes(StandardCharsets.UTF_8).length > MAX_DRAFT_BYTES) {
                 add(violations, "$", "DOCUMENT_TOO_LARGE",
-                        "包含 resolved 信息的发布快照最大为 256 KiB");
+                        "包含 resolved 信息的 Runtime Snapshot 最大为 256 KiB");
                 return invalid(violations);
             }
             return new ValidationResult(
@@ -141,36 +159,72 @@ public class EmbedViewConfigurationValidator {
                     canonical,
                     sha256(canonical));
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("无法序列化 Embed View 发布快照", exception);
+            throw new IllegalStateException("无法序列化 Embed View Runtime Snapshot", exception);
         }
     }
 
+    /**
+     * 校验当前可保存配置，并且无条件解析 Flow 当前最新 ACTIVE 发布版本。
+     *
+     * <p>产品不再让管理员选择 FOLLOW_ACTIVE/PINNED。旧配置中的 releasePolicy 和
+     * resolved 坐标会被丢弃，避免历史参数继续影响新的 Launch。</p>
+     */
+    public ValidationResult validateCurrentActive(
+            SurfaceType surfaceType, JsonNode currentConfig) {
+        if (currentConfig == null || !currentConfig.isObject()) {
+            return validate(surfaceType, currentConfig);
+        }
+        ObjectNode normalized = ((ObjectNode) currentConfig).deepCopy();
+        normalized.remove("resolved");
+        normalized.putObject("releasePolicy").put("strategy", "FOLLOW_ACTIVE");
+        return validate(surfaceType, normalized);
+    }
+
+    /** 保存时只保留稳定配置，不落库 ACTIVE release 坐标或历史发布策略。 */
+    public ObjectNode normalizedCurrentConfig(JsonNode currentConfig) {
+        if (currentConfig == null || !currentConfig.isObject()) {
+            throw new IllegalArgumentException("draft 必须是 JSON Object");
+        }
+        ObjectNode normalized = ((ObjectNode) currentConfig).deepCopy();
+        normalized.remove("resolved");
+        normalized.remove("releasePolicy");
+        return normalized;
+    }
+
     private void validateResolvedResource(
+            SurfaceType surfaceType,
             JsonNode draft,
             List<Capability> capabilities,
             ResolvedResource resource,
             List<Violation> violations) {
-        if (!resource.trustedComponentsOnly()) {
-            add(violations, "target", "UNTRUSTED_COMPONENT",
-                    "Embed V1 只允许平台可信内建组件");
-        }
+        // FORM 与 LIST 都直接运行 Flow 原生发布版。Embed 只固定资产坐标
+        // 和能力上限，不再按组件名、数据源或事件配置维护第二套白名单。
         Set<String> allFields = Set.copyOf(resource.fields());
-        Set<String> queryableFields = Set.copyOf(resource.queryableFields());
+        Set<String> publishedQueryableFields = Set.copyOf(
+                resource.queryableFields());
         Set<String> writableFields = Set.copyOf(resource.writableFields());
         Set<String> sensitiveFields = Set.copyOf(resource.sensitiveFields());
         JsonNode fieldPolicy = draft.path("fieldPolicy");
-        List<String> visible = stringArray(fieldPolicy.path("visible"),
-                "fieldPolicy.visible", violations);
-        List<String> queryable = stringArray(fieldPolicy.path("queryable"),
-                "fieldPolicy.queryable", violations);
-        List<String> writable = stringArray(fieldPolicy.path("writable"),
-                "fieldPolicy.writable", violations);
+        String fieldPolicyMode = text(fieldPolicy, "mode");
+        boolean flowPublished = "FLOW_PUBLISHED".equalsIgnoreCase(
+                fieldPolicyMode);
+        if (StringUtils.hasText(fieldPolicyMode)
+                && !Set.of("EXPLICIT", "FLOW_PUBLISHED").contains(
+                        fieldPolicyMode.toUpperCase(java.util.Locale.ROOT))) {
+            add(violations, "fieldPolicy.mode", "FIELD_POLICY_MODE_INVALID",
+                    "fieldPolicy.mode 只支持 EXPLICIT 或 FLOW_PUBLISHED");
+        }
+        if (surfaceType == SurfaceType.FORM && !flowPublished) {
+            // FORM 必须直接运行不可变的 Flow 发布表单，禁止再用 Embed 字段数组重写表单。
+            add(violations, "fieldPolicy.mode", "FLOW_PUBLISHED_FIELD_POLICY_REQUIRED",
+                    "FORM 嵌入必须直接引用 Flow 已发布表单，fieldPolicy.mode 必须为 FLOW_PUBLISHED");
+        }
+        if (surfaceType == SurfaceType.FORM && flowPublished) {
+            rejectLegacyFieldArrays(fieldPolicy, violations);
+        }
         List<String> returnable = stringArray(fieldPolicy.path("returnable"),
                 "fieldPolicy.returnable", violations);
-        subset(visible, allFields, "fieldPolicy.visible", "FIELD_NOT_FOUND", violations);
-        subset(queryable, queryableFields, "fieldPolicy.queryable", "FIELD_NOT_QUERYABLE", violations);
-        subset(writable, writableFields, "fieldPolicy.writable", "FIELD_NOT_WRITABLE", violations);
-        subset(returnable, new HashSet<>(visible), "fieldPolicy.returnable",
+        subset(returnable, allFields, "fieldPolicy.returnable",
                 "RETURNABLE_NOT_VISIBLE", violations);
         for (int index = 0; index < returnable.size(); index++) {
             if (sensitiveFields.contains(returnable.get(index))) {
@@ -179,26 +233,52 @@ public class EmbedViewConfigurationValidator {
             }
         }
 
-        Set<String> actions = Set.copyOf(resource.actionKeys());
-        List<String> allowedActions = stringArray(
-                draft.path("actionPolicy").path("allowed"),
-                "actionPolicy.allowed", violations);
-        subset(allowedActions, actions, "actionPolicy.allowed",
-                "ACTION_NOT_PUBLISHED", violations);
+        // FIXED_FILTER 是服务端上下文约束，不等同于把查询能力交给浏览器。即使
+        // FLOW_PUBLISHED 对外不接受 fieldPolicy.queryable，也必须以不可变 Form Release
+        // 解析出的 queryableFields 校验其目标，避免第三方配置重写 Flow 表单边界。
         validateContextBindings(draft.path("contextBindings"), draft.path("contextSchema"),
-                allFields, queryableFields, writableFields, violations);
+                allFields, publishedQueryableFields, writableFields, violations);
 
         if (capabilities.contains(Capability.LIST_QUERY)
                 && resource.listReleaseId() == null) {
             add(violations, "capabilities", "LIST_RELEASE_REQUIRED",
                     "LIST_QUERY 必须绑定已发布列表快照");
         }
-        if ((capabilities.contains(Capability.RECORD_VIEW)
+        if (surfaceType == SurfaceType.FORM
+                && (capabilities.contains(Capability.RECORD_VIEW)
                 || capabilities.contains(Capability.RECORD_CREATE)
                 || capabilities.contains(Capability.RECORD_UPDATE))
                 && resource.formReleaseId() == null) {
             add(violations, "capabilities", "FORM_RELEASE_REQUIRED",
                     "记录查看或写入能力必须绑定已发布表单快照");
+        }
+    }
+
+    /**
+     * Flow 发布表单模式只接受模式与回传边界，禁止任何字段或控件覆盖参数。
+     *
+     * <p>三个历史显式字段数组保留专门错误码，便于管理员识别旧配置；其余未知键统一
+     * Fail Closed，避免配置看似生效、运行时实际忽略而形成错误预期。</p>
+     */
+    private static void rejectLegacyFieldArrays(
+            JsonNode fieldPolicy,
+            List<Violation> violations) {
+        for (String key : LEGACY_EXPLICIT_FIELD_ARRAY_KEYS) {
+            if (fieldPolicy.has(key)) {
+                add(violations, "fieldPolicy." + key,
+                        "FIELD_POLICY_ARRAY_NOT_ALLOWED",
+                        "FLOW_PUBLISHED 模式不配置 " + key + " 数组");
+            }
+        }
+        Iterator<String> fields = fieldPolicy.fieldNames();
+        while (fields.hasNext()) {
+            String key = fields.next();
+            if (!FLOW_PUBLISHED_FIELD_POLICY_KEYS.contains(key)
+                    && !LEGACY_EXPLICIT_FIELD_ARRAY_KEYS.contains(key)) {
+                add(violations, "fieldPolicy." + key,
+                        "FIELD_POLICY_KEY_NOT_ALLOWED",
+                        "FLOW_PUBLISHED 模式仅允许 mode 和 returnable");
+            }
         }
     }
 
@@ -507,11 +587,13 @@ public class EmbedViewConfigurationValidator {
                             "Context Binding 来源必须在 contextSchema.required 中声明");
                 }
             }
-            if (!fields.contains(target)) {
-                add(violations, path + ".target", "FIELD_NOT_FOUND", "绑定目标字段不存在");
-            } else if ("FIXED_FILTER".equals(usage) && !queryable.contains(target)) {
+            if ("FIXED_FILTER".equals(usage) && !queryable.contains(target)) {
+                // queryable 是已发布资源对固定过滤的完整授权集合；不存在字段和敏感字段
+                // 均不在其中，统一 fail closed，避免通过差异错误码探测表单字段元数据。
                 add(violations, path + ".target", "FIELD_NOT_QUERYABLE",
                         "固定过滤目标必须是可查询字段");
+            } else if (!fields.contains(target)) {
+                add(violations, path + ".target", "FIELD_NOT_FOUND", "绑定目标字段不存在");
             } else if ("FORCED_FORM_VALUE".equals(usage) && !writable.contains(target)) {
                 add(violations, path + ".target", "FIELD_NOT_WRITABLE",
                         "表单强制值目标必须是可写字段");
@@ -558,7 +640,8 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
-    private JsonNode canonicalize(JsonNode node) {
+    /** 与配置校验使用同一字段排序规则，供 Launch 追加运行时闭包后重新规范化。 */
+    JsonNode canonicalize(JsonNode node) {
         if (node.isObject()) {
             ObjectNode result = objectMapper.createObjectNode();
             List<Map.Entry<String, JsonNode>> fields = new ArrayList<>();
@@ -646,7 +729,8 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
-    private static String sha256(String value) {
+    /** 计算 canonical Runtime Snapshot 的稳定摘要。 */
+    static String sha256(String value) {
         try {
             return java.util.HexFormat.of().formatHex(
                     MessageDigest.getInstance("SHA-256")

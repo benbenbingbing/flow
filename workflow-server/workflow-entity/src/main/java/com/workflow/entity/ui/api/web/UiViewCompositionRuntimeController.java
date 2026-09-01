@@ -2,6 +2,7 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionResolveResponse;
 import com.workflow.entity.ui.application.UiViewCompositionRuntimeService;
@@ -13,6 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** 关联内容运行时可信解析接口。 */
 @AuthenticatedApi(objectAuthorization = true)
+@EmbedDelegatedRuntimeApi(
+        value = EmbedDelegatedRuntimeApi.Scope.FORM_OWNER_RUNTIME,
+        targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FORM_OWNER_BODY)
 @RestController
 @RequestMapping("/api/ui-runtime/view-compositions")
 @RequiredArgsConstructor

@@ -93,6 +93,31 @@ class EmbedSessionAuthenticationServiceTest {
     }
 
     @Test
+    void revokesWhenLiveBindingNoLongerPointsToTheSameActorCoordinates() {
+        List<String[]> mismatches = List.of(
+                new String[]{"other-app", "provider-1", "user-1"},
+                new String[]{"app-1", "other-provider", "user-1"},
+                new String[]{"app-1", "provider-1", "other-user"});
+
+        for (String[] coordinates : mismatches) {
+            Fixture fixture = new Fixture();
+            fixture.persistence.snapshot = fixture.snapshot(
+                    "ACTIVE", NOW.plusSeconds(120), NOW.plusSeconds(600),
+                    3, NOW.minusSeconds(31),
+                    coordinates[0], coordinates[1], coordinates[2]);
+
+            EmbedException error = assertThrows(
+                    EmbedException.class,
+                    () -> fixture.service.authenticateAuthorization(
+                            "Bearer " + TOKEN, CORRELATION));
+
+            assertEquals(EmbedErrorCode.EMBED_SESSION_REVOKED,
+                    error.getErrorCode());
+            assertEquals("REVOKED", fixture.persistence.lastTerminalStatus);
+        }
+    }
+
+    @Test
     void heartbeatNeverExtendsPastAbsoluteExpiry() {
         Fixture fixture = new Fixture();
         fixture.persistence.snapshot = fixture.snapshot(
@@ -178,6 +203,21 @@ class EmbedSessionAuthenticationServiceTest {
                 Instant absoluteExpiry,
                 long currentApplicationVersion,
                 Instant lastSeen) {
+            return snapshot(
+                    status, idleExpiry, absoluteExpiry,
+                    currentApplicationVersion, lastSeen,
+                    "app-1", "provider-1", "user-1");
+        }
+
+        private EmbedSessionSecuritySnapshot snapshot(
+                String status,
+                Instant idleExpiry,
+                Instant absoluteExpiry,
+                long currentApplicationVersion,
+                Instant lastSeen,
+                String currentBindingApplicationId,
+                String currentBindingIdentityProviderId,
+                String currentBindingFlowUserId) {
             ProtectedContext context = protection.protectSession(
                     "app-1", "session-1", Map.of("supplierId", "S-1"));
             return new EmbedSessionSecuritySnapshot(
@@ -192,7 +232,10 @@ class EmbedSessionAuthenticationServiceTest {
                     "ACTIVE", null, 5,
                     "ACTIVE", 6,
                     "ACTIVE", 4,
-                    "ACTIVE", NOW.minusSeconds(60), null, 7,
+                    "ACTIVE", currentBindingApplicationId,
+                    currentBindingIdentityProviderId,
+                    currentBindingFlowUserId,
+                    NOW.minusSeconds(60), null, 7,
                     true, false, false);
         }
     }
@@ -249,6 +292,9 @@ class EmbedSessionAuthenticationServiceTest {
                     value.currentGrantSecurityVersion(), value.viewStatus(),
                     value.currentViewSecurityVersion(), value.providerStatus(),
                     value.currentProviderSecurityVersion(), value.bindingStatus(),
+                    value.currentBindingApplicationId(),
+                    value.currentBindingIdentityProviderId(),
+                    value.currentBindingFlowUserId(),
                     value.bindingEffectiveAt(), value.bindingExpiresAt(),
                     value.currentBindingVersion(), value.flowUserEnabled(),
                     value.flowUserDeleted(), value.flowUserPasswordResetRequired());

@@ -236,7 +236,7 @@ public class MyBatisEmbedSessionExchangeAdapter implements
                         instant(row.applicationExpiresAt()), row.currentApplicationVersion()),
                 new EmbedViewSnapshot(
                         row.viewId(), row.viewKey(), row.viewSurfaceType(), row.viewStatus(),
-                        row.publishedReleaseId(), row.currentViewSecurityVersion()),
+                        row.currentViewSecurityVersion()),
                 grant,
                 binding,
                 new EmbedFlowUser(

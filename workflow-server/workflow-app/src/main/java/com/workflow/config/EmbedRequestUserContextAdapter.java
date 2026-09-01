@@ -4,6 +4,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.embed.EmbedRequestUserContextPort;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 /**
  * 将已认证的 Embed Actor 桥接到现有业务服务使用的 {@link UserContext}。
@@ -20,6 +21,12 @@ public class EmbedRequestUserContextAdapter
             String flowUserId,
             String username,
             String embedSessionId) {
+        if (!StringUtils.hasText(flowUserId)
+                || !StringUtils.hasText(username)
+                || !StringUtils.hasText(embedSessionId)) {
+            throw new IllegalArgumentException(
+                    "Embed mapped Flow user context is incomplete");
+        }
         String previousUserId = UserContext.getUserId();
         String previousUsername = UserContext.getUsername();
         String previousSessionId = UserContext.getSessionId();

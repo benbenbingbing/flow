@@ -7,7 +7,13 @@ import com.workflow.admin.auth.application.AuthErrorCode;
 import com.workflow.admin.auth.application.AuthSessionException;
 import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.auth.application.AuthenticatedAccess;
+import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
+import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.security.RequiresPermission;
+import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -16,10 +22,13 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
+import org.springframework.web.method.HandlerMethod;
 
 /**
  * 认证拦截器单元测试。
@@ -222,6 +231,98 @@ class AuthInterceptorTest {
         assertEquals(
                 "认证服务暂不可用",
                 objectMapper.readTree(response.getContentAsString()).get("message").asText());
+    }
+
+    @Test
+    void embedProtocolHeaderAloneCannotBypassJwtAuthentication()
+            throws Exception {
+        when(authSessionService.authenticateAccess("opaque-embed-token"))
+                .thenThrow(new AuthSessionException(
+                        AuthErrorCode.ACCESS_INVALID,
+                        "登录凭证无效"));
+        AuthInterceptor interceptor = new AuthInterceptor(authSessionService);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/entity/code/order");
+        request.addHeader("Authorization", "Bearer opaque-embed-token");
+        request.addHeader("X-Flow-Embed-Protocol", "1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(request, response, new Object()));
+        assertEquals(401, response.getStatus());
+    }
+
+    @Test
+    void verifiedEmbedBridgeReusesMappedUserWithoutIssuingJwt()
+            throws Exception {
+        AuthSessionService isolated = mock(AuthSessionService.class);
+        AuthInterceptor interceptor = new AuthInterceptor(isolated);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/entity/code/order");
+        request.setAttribute(
+                EmbedDelegatedRequestContext.VERIFIED_ATTRIBUTE,
+                Boolean.TRUE);
+        request.setAttribute(
+                EmbedDelegatedRequestContext
+                        .AUTHENTICATED_SESSION_ATTRIBUTE,
+                new Object());
+        UserContext.setCurrentUser("user-1", "alice", "embed-session-1");
+
+        assertTrue(interceptor.preHandle(
+                request,
+                new MockHttpServletResponse(),
+                new Object()));
+        assertEquals("user-1", request.getAttribute("userId"));
+        assertEquals("alice", request.getAttribute("userName"));
+        assertEquals("embed-session-1", request.getAttribute("sessionId"));
+        verifyNoInteractions(isolated);
+    }
+
+    @Test
+    void verifiedEmbedMappedUserStillNeedsPlatformEndpointPermission()
+            throws Exception {
+        AuthSessionService isolated = mock(AuthSessionService.class);
+        AuthInterceptor authentication = new AuthInterceptor(isolated);
+        SysMenuMapper menuMapper = mock(SysMenuMapper.class);
+        CurrentUserRoleService roles = mock(
+                CurrentUserRoleService.class);
+        EndpointAuthorizationInterceptor authorization =
+                new EndpointAuthorizationInterceptor(menuMapper, roles);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "DELETE", "/api/entity-data/entity/order/record-1");
+        request.setAttribute(
+                EmbedDelegatedRequestContext.VERIFIED_ATTRIBUTE,
+                Boolean.TRUE);
+        request.setAttribute(
+                EmbedDelegatedRequestContext
+                        .AUTHENTICATED_SESSION_ATTRIBUTE,
+                new Object());
+        UserContext.setCurrentUser(
+                "user-1", "alice", "embed-session-1");
+        when(menuMapper.selectPermsByUserId("user-1"))
+                .thenReturn(java.util.Set.of());
+        HandlerMethod handler = new HandlerMethod(
+                new PermissionFixture(),
+                PermissionFixture.class.getDeclaredMethod(
+                        "deleteRecord"));
+
+        assertTrue(authentication.preHandle(
+                request,
+                new MockHttpServletResponse(),
+                handler));
+        assertThrows(
+                ForbiddenException.class,
+                () -> authorization.preHandle(
+                        request,
+                        new MockHttpServletResponse(),
+                        handler));
+        verifyNoInteractions(isolated);
+    }
+
+    private static final class PermissionFixture {
+
+        @RequiresPermission("entity:data:delete")
+        void deleteRecord() {
+        }
     }
 
 }

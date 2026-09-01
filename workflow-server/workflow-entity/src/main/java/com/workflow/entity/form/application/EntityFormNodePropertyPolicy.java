@@ -96,6 +96,10 @@ final class EntityFormNodePropertyPolicy {
 
     private static final Set<String> COMMON_CONTAINER_PROPS =
             Set.of("label");
+    private static final Set<String> CONTAINER_APPEARANCE_PROPS =
+            Set.of("showPadding", "showBorder");
+    private static final Set<String> CONTAINER_APPEARANCE_NODE_TYPES =
+            Set.of("SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE");
     private static final Set<String> FIELD_PROPS = Set.of(
             "fieldId", "fieldCode", "fieldName", "label", "fieldType",
             "componentType", "componentExtensionType",
@@ -112,9 +116,17 @@ final class EntityFormNodePropertyPolicy {
             buildAllowedProps();
     private static final Map<String, Set<String>> CONTAINER_CONFIG_KEYS =
             Map.of(
-                    "GRID", Set.of("gutter", "defaultSpan"),
-                    "TAB_SET", Set.of("tabPosition", "defaultActiveTabKey"),
-                    "COLLAPSE", Set.of("defaultExpanded", "accordion"),
+                    "SECTION", CONTAINER_APPEARANCE_PROPS,
+                    "GRID", union(
+                            CONTAINER_APPEARANCE_PROPS,
+                            Set.of("gutter", "defaultSpan")),
+                    "TAB_SET", union(
+                            CONTAINER_APPEARANCE_PROPS,
+                            Set.of("tabPosition", "defaultActiveTabKey")),
+                    "TAB", CONTAINER_APPEARANCE_PROPS,
+                    "COLLAPSE", union(
+                            CONTAINER_APPEARANCE_PROPS,
+                            Set.of("defaultExpanded", "accordion")),
                     "TEXT", Set.of("text", "textStyle"));
 
     private EntityFormNodePropertyPolicy() {
@@ -556,16 +568,25 @@ final class EntityFormNodePropertyPolicy {
 
     private static Map<String, Set<String>> buildAllowedProps() {
         Map<String, Set<String>> result = new LinkedHashMap<>();
-        result.put("SECTION", union(COMMON_CONTAINER_PROPS, Set.of()));
+        result.put("SECTION", union(
+                COMMON_CONTAINER_PROPS, CONTAINER_APPEARANCE_PROPS));
         result.put("GRID", union(
-                COMMON_CONTAINER_PROPS, Set.of("gutter", "defaultSpan")));
+                COMMON_CONTAINER_PROPS,
+                union(
+                        CONTAINER_APPEARANCE_PROPS,
+                        Set.of("gutter", "defaultSpan"))));
         result.put("TAB_SET", union(
                 COMMON_CONTAINER_PROPS,
-                Set.of("tabPosition", "defaultActiveTabKey")));
-        result.put("TAB", union(COMMON_CONTAINER_PROPS, Set.of()));
+                union(
+                        CONTAINER_APPEARANCE_PROPS,
+                        Set.of("tabPosition", "defaultActiveTabKey"))));
+        result.put("TAB", union(
+                COMMON_CONTAINER_PROPS, CONTAINER_APPEARANCE_PROPS));
         result.put("COLLAPSE", union(
                 COMMON_CONTAINER_PROPS,
-                Set.of("defaultExpanded", "accordion")));
+                union(
+                        CONTAINER_APPEARANCE_PROPS,
+                        Set.of("defaultExpanded", "accordion"))));
         result.put("TEXT", union(
                 COMMON_CONTAINER_PROPS,
                 Set.of("text", "textStyle")));
@@ -589,6 +610,10 @@ final class EntityFormNodePropertyPolicy {
             Map<String, Object> props) {
         requireText(props, "label", 500);
         requireEnum(props, "textStyle", Set.of("PLAIN", "SECTION_TITLE"));
+        // 外观开关是可选属性；缺省配置继续沿用历史展示，仅在显式传值时校验类型。
+        if (CONTAINER_APPEARANCE_NODE_TYPES.contains(nodeType)) {
+            validateContainerAppearanceProps(props);
+        }
         switch (nodeType) {
             case "GRID" -> {
                 requireIntegerRange(props, "gutter", 0, 48);
@@ -696,6 +721,9 @@ final class EntityFormNodePropertyPolicy {
                 objectMap(props.get("componentProps"));
         Map<String, Object> subFormConfig =
                 objectMap(componentProps.get("subFormConfig"));
+        validateContainerAppearanceProps(componentProps);
+        // 历史草稿可能将外观开关写入 subFormConfig；运行时仍兼容读取，因此也必须校验。
+        validateContainerAppearanceProps(subFormConfig);
         requireEnum(
                 subFormConfig,
                 "layout",
@@ -704,6 +732,12 @@ final class EntityFormNodePropertyPolicy {
         SubFormParameterContractPolicy.validateShape(
                 SubFormParameterContractPolicy.contract(
                         Map.of("componentProps", componentProps)));
+    }
+
+    private static void validateContainerAppearanceProps(
+            Map<String, Object> props) {
+        requireBoolean(props, "showPadding");
+        requireBoolean(props, "showBorder");
     }
 
     private static void moveUnsupportedValidation(

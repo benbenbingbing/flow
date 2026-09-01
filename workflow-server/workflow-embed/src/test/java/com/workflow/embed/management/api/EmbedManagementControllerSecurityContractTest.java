@@ -38,17 +38,12 @@ class EmbedManagementControllerSecurityContractTest {
     }
 
     @Test
-    void highRiskViewOperationsUseDedicatedPermissions() throws Exception {
-        RequiresPermission publish = EmbedViewManagementController.class
-                .getMethod("publish", String.class,
-                        EmbedManagementRequests.PublishViewRequest.class)
-                .getAnnotation(RequiresPermission.class);
+    void currentConfigurationSaveUsesManagementPermission() throws Exception {
         RequiresPermission update = EmbedViewManagementController.class
                 .getMethod("updateDraft", String.class,
                         EmbedManagementRequests.UpdateDraftRequest.class)
                 .getAnnotation(RequiresPermission.class);
 
-        assertEquals("system:embed:publish", publish.value()[0]);
         assertEquals("system:embed:manage", update.value()[0]);
     }
 

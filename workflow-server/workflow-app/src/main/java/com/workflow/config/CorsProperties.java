@@ -32,6 +32,7 @@ public class CorsProperties {
                     "Authorization",
                     "Content-Type",
                     "Idempotency-Key",
+                    "X-Flow-Embed-Protocol",
                     "X-Trace-Id",
                     "X-Business-Trace-Key"));
     /** 浏览器缓存预检结果的时间。 */

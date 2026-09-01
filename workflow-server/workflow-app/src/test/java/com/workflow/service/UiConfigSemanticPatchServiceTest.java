@@ -53,6 +53,34 @@ class UiConfigSemanticPatchServiceTest {
     }
 
     @Test
+    void classifiesContainerAppearanceChangesAsSafeAndAppliesThem() {
+        Map<String, Object> source = formSnapshot(containerNode(
+                true,
+                true));
+        Map<String, Object> target = formSnapshot(containerNode(
+                false,
+                false));
+
+        UiConfigSemanticPatchService.PatchAnalysis analysis =
+                service.build("FORM", source, target);
+        UiConfigSemanticPatchService.PatchApplication application =
+                service.apply(source, analysis.operations(), false);
+
+        assertEquals(
+                UiConfigSemanticPatchService.SAFE,
+                analysis.riskLevel());
+        assertEquals(2, analysis.operations().size());
+        assertTrue(analysis.operations().stream().allMatch(item ->
+                UiConfigSemanticPatchService.SAFE.equals(
+                        item.getRiskLevel())));
+        assertTrue(application.compatible());
+        assertEquals(false, nodeProps(application.snapshot())
+                .get("showPadding"));
+        assertEquals(false, nodeProps(application.snapshot())
+                .get("showBorder"));
+    }
+
+    @Test
     void classifiesReadonlyChangeAsReviewAndAppliesWithoutOverride() {
         Map<String, Object> source = formSnapshot(node(
                 null,
@@ -371,6 +399,25 @@ class UiConfigSemanticPatchServiceTest {
         node.put("propsDocument", codec.write(
                 props,
                 "测试节点属性"));
+        return node;
+    }
+
+    private Map<String, Object> containerNode(
+            boolean showPadding,
+            boolean showBorder) {
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("showPadding", showPadding);
+        props.put("showBorder", showBorder);
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("id", "section-1");
+        node.put("nodeKey", "section");
+        node.put("nodeType", "SECTION");
+        node.put("bindingType", "NONE");
+        node.put("bindingRef", null);
+        node.put("parentId", null);
+        node.put("propsDocument", codec.write(
+                props,
+                "测试容器节点属性"));
         return node;
     }
 

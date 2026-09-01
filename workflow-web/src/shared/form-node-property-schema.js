@@ -1,6 +1,10 @@
 import { normalizeFormNodeType } from './form-node-hierarchy.js'
 import { normalizeFormNodeFieldType } from './form-field-component-policy.js'
 import {
+  resolveFormContainerAppearance,
+  supportsFormContainerAppearance
+} from './form-container-appearance.js'
+import {
   normalizeFormFieldUniqueness
 } from './form-field-uniqueness.js'
 
@@ -38,7 +42,8 @@ const schema = ({
   binding = false,
   childForm = false,
   template = false,
-  gridSpan = false
+  gridSpan = false,
+  containerAppearance = false
 }) => Object.freeze({
   editable: Object.freeze(editable),
   configKeys: Object.freeze(configKeys),
@@ -49,27 +54,64 @@ const schema = ({
   binding,
   childForm,
   template,
-  gridSpan
+  gridSpan,
+  containerAppearance
 })
 
 export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
   SECTION: schema({
-    editable: ['label', 'parentId']
+    editable: ['label', 'parentId', 'showPadding', 'showBorder'],
+    configKeys: ['showPadding', 'showBorder'],
+    containerAppearance: true
   }),
   GRID: schema({
-    editable: ['parentId', 'gutter', 'defaultSpan'],
-    configKeys: ['gutter', 'defaultSpan']
+    editable: [
+      'parentId',
+      'gutter',
+      'defaultSpan',
+      'showPadding',
+      'showBorder'
+    ],
+    configKeys: ['gutter', 'defaultSpan', 'showPadding', 'showBorder'],
+    containerAppearance: true
   }),
   TAB_SET: schema({
-    editable: ['parentId', 'tabPosition', 'defaultActiveTabKey'],
-    configKeys: ['tabPosition', 'defaultActiveTabKey']
+    editable: [
+      'parentId',
+      'tabPosition',
+      'defaultActiveTabKey',
+      'showPadding',
+      'showBorder'
+    ],
+    configKeys: [
+      'tabPosition',
+      'defaultActiveTabKey',
+      'showPadding',
+      'showBorder'
+    ],
+    containerAppearance: true
   }),
   TAB: schema({
-    editable: ['label', 'parentId']
+    editable: ['label', 'parentId', 'showPadding', 'showBorder'],
+    configKeys: ['showPadding', 'showBorder'],
+    containerAppearance: true
   }),
   COLLAPSE: schema({
-    editable: ['label', 'parentId', 'defaultExpanded', 'accordion'],
-    configKeys: ['defaultExpanded', 'accordion']
+    editable: [
+      'label',
+      'parentId',
+      'defaultExpanded',
+      'accordion',
+      'showPadding',
+      'showBorder'
+    ],
+    configKeys: [
+      'defaultExpanded',
+      'accordion',
+      'showPadding',
+      'showBorder'
+    ],
+    containerAppearance: true
   }),
   TEXT: schema({
     editable: ['parentId', 'text', 'textStyle'],
@@ -107,36 +149,44 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
       'label',
       'parentId',
       'layout',
+      'showPadding',
+      'showBorder',
       'childFormRelease',
       'dataSource',
       'gridSpan',
       'template',
       'nodeExtension'
     ],
+    configKeys: ['showPadding', 'showBorder'],
     nodeExtension: true,
     dataSourceUsages: SUBFORM_DATA_SOURCE_USAGES,
     binding: true,
     childForm: true,
     template: true,
-    gridSpan: true
+    gridSpan: true,
+    containerAppearance: true
   }),
   REPEATER: schema({
     editable: [
       'label',
       'parentId',
       'layout',
+      'showPadding',
+      'showBorder',
       'childFormRelease',
       'dataSource',
       'gridSpan',
       'template',
       'nodeExtension'
     ],
+    configKeys: ['showPadding', 'showBorder'],
     nodeExtension: true,
     dataSourceUsages: SUBFORM_DATA_SOURCE_USAGES,
     binding: true,
     childForm: true,
     template: true,
-    gridSpan: true
+    gridSpan: true,
+    containerAppearance: true
   }),
   ACTION_SLOT: schema({
     editable: ['parentId']
@@ -275,8 +325,15 @@ export function extractFormNodeComponentConfig(value, propsValue) {
   const nodeSchema = getFormNodePropertySchema(nodeType)
   const props = parseObject(propsValue)
   const nested = parseObject(props.componentProps)
+  // 历史节点没有外观字段；读取时补齐旧版视觉，避免设计器再次保存后意外换样式。
+  const appearance = supportsFormContainerAppearance(nodeType)
+    ? resolveFormContainerAppearance(nodeType, props)
+    : {}
   if (nodeSchema.fieldProperties || nodeSchema.childForm) {
-    return nested
+    return {
+      ...nested,
+      ...appearance
+    }
   }
   if (nodeType === 'TEXT') {
     const text = props.text
@@ -286,7 +343,7 @@ export function extractFormNodeComponentConfig(value, propsValue) {
     const textStyle = props.textStyle ?? nested.textStyle
     return cleanObject({ text, textStyle })
   }
-  return nodeSchema.configKeys.reduce((result, key) => {
+  const config = nodeSchema.configKeys.reduce((result, key) => {
     if (props[key] !== undefined) {
       result[key] = props[key]
     } else if (nested[key] !== undefined) {
@@ -294,6 +351,10 @@ export function extractFormNodeComponentConfig(value, propsValue) {
     }
     return result
   }, {})
+  return {
+    ...config,
+    ...appearance
+  }
 }
 
 export function mergeFormNodeFieldMetadata(

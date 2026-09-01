@@ -2,7 +2,9 @@ package com.workflow.config;
 
 import com.workflow.admin.auth.infrastructure.AuthInterceptor;
 import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
+import com.workflow.embed.security.EmbedDelegatedRuntimeAuthorizationInterceptor;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -33,6 +35,8 @@ public class CorsConfig {
     private final AuthInterceptor authInterceptor;
     private final EndpointAuthorizationInterceptor
             endpointAuthorizationInterceptor;
+    private final ObjectProvider<EmbedDelegatedRuntimeAuthorizationInterceptor>
+            embedDelegatedRuntimeAuthorizationInterceptorProvider;
     private final CorsProperties corsProperties;
 
     /**
@@ -72,6 +76,21 @@ public class CorsConfig {
                                 "/api/open/**")
                         .excludePathPatterns(
                                 EMBED_RUNTIME_PATH_PATTERNS);
+                // Embed iframe 是隔离 Origin 上的原生 Flow 客户端。opaque
+                // Session 只负责建立 mapped UserContext，不再维护一份会随
+                // 新组件漂移的逐端点 Embed 白名单；下方平台统一权限与
+                // DataScope 仍按映射用户原样执行。
+                EmbedDelegatedRuntimeAuthorizationInterceptor delegated =
+                        embedDelegatedRuntimeAuthorizationInterceptorProvider
+                                .getIfAvailable();
+                if (delegated != null) {
+                    // 只有显式声明 target binding 的端点额外校验固定
+                    // Release；未声明的普通数据面端点不在此维护白名单。
+                    registry.addInterceptor(delegated)
+                            .addPathPatterns("/api/**")
+                            .excludePathPatterns(
+                                    EMBED_RUNTIME_PATH_PATTERNS);
+                }
                 // Every mapped API must then declare an explicit access policy.
                 registry.addInterceptor(endpointAuthorizationInterceptor)
                         .addPathPatterns("/api/**")

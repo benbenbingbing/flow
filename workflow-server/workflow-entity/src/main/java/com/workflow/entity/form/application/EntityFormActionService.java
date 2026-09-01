@@ -95,6 +95,41 @@ public class EntityFormActionService {
                 definition,
                 request.getRecordId(),
                 request.getListKey());
+        return resolveTrustedPublishedSnapshot(
+                source.form(), definition, mode, row);
+    }
+
+    /**
+     * 从调用方已经固定并校验过的 Published Form 快照解析标准操作栏。
+     *
+     * <p>该入口供同一服务进程内的受信任运行时适配器使用，避免再次按 ACTIVE 指针
+     * 解析表单而让历史会话漂移。{@code authorizedRow} 必须已经过当前 Flow 用户的
+     * 对象权限、DataScope 以及调用方固定上下文校验；本方法只复用平台统一的按钮
+     * 配置、权限和可用性规则求值。</p>
+     *
+     * @param publishedForm 当前会话固定的已发布表单快照
+     * @param definition 表单所属实体定义
+     * @param mode 标准表单模式
+     * @param authorizedRow 已鉴权记录；CREATE 可为空
+     * @return 与普通 Flow 表单相同的运行时按钮描述
+     */
+    public List<FormActionRuntimeDTO> resolveTrustedPublishedSnapshot(
+            EntityForm publishedForm,
+            EntityDefinition definition,
+            String mode,
+            EntityDataDTO authorizedRow) {
+        if (publishedForm == null || definition == null
+                || !Objects.equals(
+                        publishedForm.getEntityId(), definition.getId())) {
+            throw new IllegalArgumentException("发布表单与实体上下文不一致");
+        }
+        String normalizedMode = requireMode(mode);
+        RuntimeSource source = new RuntimeSource(
+                publishedForm,
+                readViewConfig(publishedForm.getViewConfig()),
+                publishedForm.getNodes() == null
+                        ? List.of() : publishedForm.getNodes(),
+                List.of());
         Map<String, Object> actionBar =
                 configPolicy.actionBar(source.viewConfig());
         Map<String, Object> overrides =
@@ -106,16 +141,16 @@ public class EntityFormActionService {
             result.add(toRuntime(
                     source.form().getId(),
                     applyOverride(
-                            defaultBuiltIn("close", mode),
+                            defaultBuiltIn("close", normalizedMode),
                             mapOrEmpty(overrides.get("close")),
-                            mode),
+                            normalizedMode),
                     EntityActionCapabilityDTO.allowed(),
                     false));
             log.info(
                     "表单操作栏解析完成: formId={}, entityCode={}, mode={}, buttonCount={}, visibleCount={}, enabledCount={}, systemEntity=true",
                     LogValue.safe(source.form().getId()),
                     LogValue.safe(definition.getEntityCode()),
-                    LogValue.safe(mode),
+                    LogValue.safe(normalizedMode),
                     result.size(),
                     visibleCount(result),
                     enabledCount(result));
@@ -125,22 +160,22 @@ public class EntityFormActionService {
         for (String key : List.of(
                 "close", "reset", "save",
                 "saveAndStart", "submitApproval")) {
-            if (!BUILT_IN_MODES.get(key).contains(mode)) {
+            if (!BUILT_IN_MODES.get(key).contains(normalizedMode)) {
                 continue;
             }
             Map<String, Object> button = applyOverride(
-                    defaultBuiltIn(key, mode),
+                    defaultBuiltIn(key, normalizedMode),
                     mapOrEmpty(overrides.get(key)),
-                    mode);
-            if (!enabledForMode(button, mode)) {
+                    normalizedMode);
+            if (!enabledForMode(button, normalizedMode)) {
                 continue;
             }
             EntityActionCapabilityDTO capability =
                     builtInCapability(
                             key,
                             definition,
-                            mode,
-                            row,
+                            normalizedMode,
+                            authorizedRow,
                             button);
             result.add(toRuntime(
                     source.form().getId(),
@@ -152,7 +187,7 @@ public class EntityFormActionService {
         for (Map<String, Object> button :
                 mapList(actionBar.get("customButtons"))) {
             if (Boolean.FALSE.equals(button.get("enabled"))
-                    || !modes(button).contains(mode)) {
+                    || !modes(button).contains(normalizedMode)) {
                 continue;
             }
             String permission = text(button.get("perm"));
@@ -161,7 +196,7 @@ public class EntityFormActionService {
                             definition.getEntityCode(),
                             permission,
                             readRule(button),
-                            row);
+                            authorizedRow);
             result.add(toRuntime(
                     source.form().getId(),
                     normalizeCustom(button),
@@ -175,7 +210,7 @@ public class EntityFormActionService {
                 "表单操作栏解析完成: formId={}, entityCode={}, mode={}, buttonCount={}, visibleCount={}, enabledCount={}, systemEntity=false",
                 LogValue.safe(source.form().getId()),
                 LogValue.safe(definition.getEntityCode()),
-                LogValue.safe(mode),
+                LogValue.safe(normalizedMode),
                 result.size(),
                 visibleCount(result),
                 enabledCount(result));

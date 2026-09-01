@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>合作方服务门户 · Flow 嵌入演示</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="合作方服务门户首页">
+      <span class="brand-mark">P</span>
+      <span>
+        <strong>合作方服务门户</strong>
+        <small>Partner Service Hub</small>
+      </span>
+    </a>
+    <nav aria-label="主导航">
+      <a href="#overview">工作台</a>
+      <a class="active" href="#flow-panel">需求协作</a>
+      <a href="#events">消息中心</a>
+    </nav>
+    <div class="user-chip">
+      <span class="avatar">李</span>
+      <span><strong>李四</strong><small>合作方账号</small></span>
+    </div>
+  </header>
+
+  <main>
+    <section id="overview" class="hero">
+      <div>
+        <p class="eyebrow">EXTERNAL SYSTEM · EMBED PREVIEW</p>
+        <h1>在第三方业务页面里直接办理 Flow 需求</h1>
+        <p class="hero-copy">
+          这整个蓝色门户代表“别的系统”；下方白色运行区由独立的 Flow Embed Origin 提供。
+          登录用户、View 和权限均由第三方后端在每次打开时安全确定。
+        </p>
+      </div>
+      <dl class="origin-card">
+        <div><dt>宿主系统</dt><dd id="host-origin">检查中…</dd></div>
+        <div><dt>Embed Origin</dt><dd id="embed-origin">检查中…</dd></div>
+        <div><dt>固定 View</dt><dd id="view-key">检查中…</dd></div>
+        <div><dt>人员映射</dt><dd id="subject-hint">检查中…</dd></div>
+      </dl>
+    </section>
+
+    <section id="flow-panel" class="workspace-card" aria-labelledby="workspace-title">
+      <div class="workspace-heading">
+        <div>
+          <p class="section-kicker">FLOW EMBED</p>
+          <h2 id="workspace-title">需求协作</h2>
+          <p>从当前合作方会话发起一次性 Launch，挂载后可直接新建或查看需求。</p>
+        </div>
+        <span id="connection-badge" class="status-badge idle">尚未挂载</span>
+      </div>
+
+      <aside class="projection-note" aria-label="Flow 原生页面说明">
+        <strong>Flow 原生页面运行时</strong>
+        <span>
+          此处直接加载 View 所选的 Flow 原生表单或列表页面，不会根据 Embed 参数重新绘制字段、按钮或弹出层。
+          每次新 Launch 使用目标最新 ACTIVE 版本，已打开 Session 不会中途切换；第三方始终使用稳定的
+          <code id="runtime-view-key">检查中…</code> 配置 Key。
+        </span>
+      </aside>
+
+      <div class="control-strip">
+        <label>
+          <span>入口模式</span>
+          <select id="entry-mode" aria-label="入口模式"></select>
+        </label>
+        <label id="record-field" hidden>
+          <span>记录 ID</span>
+          <input id="record-id" type="text" maxlength="128" placeholder="输入已授权的 Flow recordId">
+        </label>
+        <button id="launch-button" class="primary-button" type="button">创建 Launch 并打开</button>
+        <button id="destroy-button" class="secondary-button" type="button" disabled>关闭嵌入</button>
+      </div>
+
+      <div class="command-bar" aria-label="嵌入命令">
+        <span>宿主命令</span>
+        <button data-command="refresh" type="button" disabled>刷新</button>
+        <button data-command="focus" type="button" disabled>聚焦</button>
+        <button data-command="theme" type="button" disabled>切换明暗主题</button>
+      </div>
+
+      <div id="embed-empty" class="embed-empty">
+        <div class="empty-icon">↗</div>
+        <h3>准备查看真实嵌入效果</h3>
+        <p>点击“创建 Launch 并打开”。Client Secret 与人员签名私钥只在 3443 的 Node 后端使用。</p>
+      </div>
+      <div id="flow-embed-container" class="embed-container" aria-live="polite"></div>
+    </section>
+
+    <section id="events" class="event-card" aria-labelledby="event-title">
+      <div>
+        <p class="section-kicker">HOST EVENT LOG</p>
+        <h2 id="event-title">第三方系统收到的 SDK 事件</h2>
+        <p>这里只展示 SDK 已校验的事件，不展示 Client Secret、Token、JWT 或 Launch Code。</p>
+      </div>
+      <ol id="event-log" class="event-log" aria-live="polite">
+        <li class="muted">等待挂载…</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>

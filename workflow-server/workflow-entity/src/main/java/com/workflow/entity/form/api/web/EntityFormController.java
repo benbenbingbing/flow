@@ -1,6 +1,7 @@
 package com.workflow.entity.form.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.Result;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -153,11 +154,15 @@ public class EntityFormController {
      * 对当前用户获准使用的已发布表单字段执行唯一性提前检查。
      * 最终提交仍会在写事务内重新校验，调用方不能把 available 当作保存承诺。
      */
-    @PostMapping("/{id}/unique-precheck")
+    @PostMapping("/{formId}/unique-precheck")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.FORM_CONTEXT,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .FORM_UNIQUE_PRECHECK)
     public Result<FormUniquePrecheckResponse> uniquePrecheck(
-            @PathVariable String id,
+            @PathVariable String formId,
             @RequestBody FormUniquePrecheckRequest request) {
-        return Result.success(uniquePrecheckService.precheck(id, request));
+        return Result.success(uniquePrecheckService.precheck(formId, request));
     }
     
     /**

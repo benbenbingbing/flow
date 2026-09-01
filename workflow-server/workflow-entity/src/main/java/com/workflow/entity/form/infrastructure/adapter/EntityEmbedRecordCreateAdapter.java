@@ -1,17 +1,13 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.embed.EmbedRecordCreatePort;
-import com.workflow.contracts.embed.EmbedRuntimeFormPort;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -19,14 +15,11 @@ import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
-import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
-import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
@@ -50,21 +43,18 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
     private final EntityDefinitionMapper definitionMapper;
     private final PublishedFormSubmissionService formSubmissionService;
     private final EntityMutationPort mutationPort;
-    private final ObjectMapper objectMapper;
 
     public EntityEmbedRecordCreateAdapter(
             EntityActionCapabilityService capabilityService,
             UiConfigReleaseService releaseService,
             EntityDefinitionMapper definitionMapper,
             PublishedFormSubmissionService formSubmissionService,
-            EntityMutationPort mutationPort,
-            ObjectMapper objectMapper) {
+            EntityMutationPort mutationPort) {
         this.capabilityService = capabilityService;
         this.releaseService = releaseService;
         this.definitionMapper = definitionMapper;
         this.formSubmissionService = formSubmissionService;
         this.mutationPort = mutationPort;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -76,7 +66,7 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
             rollbackFor = Exception.class)
     public CreatedRecord create(CreateCommand command) {
         requireCommand(command);
-        EmbedRuntimeFormPort.Target target = command.target();
+        EmbedRecordCreatePort.Target target = command.target();
         capabilityService.requireStandardPermission(
                 target.entityCode(), EntityPermissionAction.CREATE);
 
@@ -85,7 +75,6 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
                 target.formReleaseVersion(),
                 UiRuntimeResolutionContext.historical(null, null));
         EntityForm form = requirePinnedForm(target, pinned);
-        rejectBeforeSubmitBindings(form);
 
         String traceKey = "embed_create_" + command.idempotencyRecordId();
         FormSubmissionExecutionContext submissionContext =
@@ -130,11 +119,15 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
                 .trace(traceKey, traceKey)
                 .extraParams(releaseIdentity)
                 .build();
+        Map<String, Object> mutationPayload = new LinkedHashMap<>();
+        mutationPayload.put("data", applied.data());
+        // 只能来自服务端已解析的 saveAndStart 按钮，不接受表单 data 中同名字段。
+        mutationPayload.put("startProcess", command.startProcess());
         EntityMutationResult result = mutationPort.execute(
                 new EntityMutationCommand(
                         traceKey, target.entityCode(), null,
                         EntityMutationOperationType.CREATE,
-                        Map.of("data", applied.data()), mutationContext));
+                        Map.copyOf(mutationPayload), mutationContext));
         if (result == null
                 || result.operationType() != EntityMutationOperationType.CREATE
                 || !Objects.equals(target.entityCode(), result.entityCode())
@@ -146,7 +139,7 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
     }
 
     private EntityForm requirePinnedForm(
-            EmbedRuntimeFormPort.Target target,
+            EmbedRecordCreatePort.Target target,
             ResolvedEntityFormRelease resolved) {
         EntityForm form = resolved == null ? null : resolved.form();
         if (form == null || !resolved.pinned()
@@ -166,51 +159,6 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
             throw new IllegalStateException("Embed 表单与动态实体目标不一致");
         }
         return form;
-    }
-
-    /**
-     * BEFORE_SUBMIT 可能调用不可回滚的 Provider；CREATE V1 在接入事务 Outbox 前一律拒绝。
-     */
-    private void rejectBeforeSubmitBindings(EntityForm form) {
-        if (hasBeforeSubmit(form.getDataSourceBindingsDocument())) {
-            throw new IllegalStateException(
-                    "Embed CREATE 不允许 BEFORE_SUBMIT 数据源绑定");
-        }
-        for (EntityFormNode node : form.getNodes() == null
-                ? List.<EntityFormNode>of() : form.getNodes()) {
-            if (hasBeforeSubmit(node.getDataSourceBindingsDocument())) {
-                throw new IllegalStateException(
-                        "Embed CREATE 不允许节点 BEFORE_SUBMIT 数据源绑定");
-            }
-        }
-        for (EntityFormField field : form.getFields() == null
-                ? List.<EntityFormField>of() : form.getFields()) {
-            if (field.getDataSourceBindings() != null
-                    && field.getDataSourceBindings().containsKey(
-                            UiDataSourceUsages.BEFORE_SUBMIT)) {
-                throw new IllegalStateException(
-                        "Embed CREATE 不允许字段 BEFORE_SUBMIT 数据源绑定");
-            }
-        }
-    }
-
-    private boolean hasBeforeSubmit(String document) {
-        if (!StringUtils.hasText(document)) {
-            return false;
-        }
-        try {
-            JsonNode value = objectMapper.readTree(document);
-            if (value == null || !value.isObject()) {
-                throw new IllegalStateException("发布表单数据源绑定格式无效");
-            }
-            return value.has(UiDataSourceUsages.BEFORE_SUBMIT)
-                    && !value.path(UiDataSourceUsages.BEFORE_SUBMIT).isNull();
-        } catch (IllegalStateException error) {
-            throw error;
-        } catch (Exception error) {
-            throw new IllegalStateException(
-                    "发布表单数据源绑定解析失败", error);
-        }
     }
 
     private static void requireCommand(CreateCommand command) {

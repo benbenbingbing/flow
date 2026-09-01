@@ -27,14 +27,15 @@ export const FLOW_EMBED_CAPABILITIES = Object.freeze([
   'LIST_QUERY',
   'SELECTION_RETURN',
   'RECORD_VIEW',
-  'RECORD_CREATE'
+  'RECORD_CREATE',
+  'ACTION_EXECUTE'
 ])
 
-export const MAX_MESSAGE_BYTES = 64 * 1024
+export const MAX_MESSAGE_BYTES = 256 * 1024
 
 /** selection.changed 的运行时约束；生成器会逐项核对 OpenAPI，防止静态类型掩盖边界漂移。 */
 export const FLOW_EMBED_SELECTION_CONSTRAINTS = Object.freeze({
-  scalarStringMaxLength: 2048,
+  scalarStringMaxLength: 100000,
   clientArrayMaxItems: 100,
   recordIdMaxLength: 128,
   recordIdPattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'

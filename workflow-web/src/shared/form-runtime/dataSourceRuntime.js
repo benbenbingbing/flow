@@ -122,6 +122,116 @@ function getRuntimeFormId(form) {
   return form?.id || form?.formId || form?.entityFormId || ''
 }
 
+function firstRuntimeText(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue
+    const normalized = String(value).trim()
+    if (normalized) return normalized
+  }
+  return ''
+}
+
+function firstRuntimeVersion(...values) {
+  for (const value of values) {
+    const normalized = Number(value)
+    if (Number.isInteger(normalized) && normalized > 0) return normalized
+  }
+  return undefined
+}
+
+/**
+ * 构造 FORM datasource 原生请求的固定目标信封。
+ *
+ * Release 坐标只有在 id/version/token 三项齐全时才透传：坐标本身来自浏览器内存，
+ * 不能作为授权依据；服务端只会相信 token 验签后恢复出的 exact target。缺少签名的
+ * 草稿或历史表单继续使用普通 Flow 登录权限，Embed 下的非根目标则会安全拒绝。
+ */
+export function buildFormDataSourceExecutionRequest({
+  options = {},
+  runtimeContext = {},
+  ownerId,
+  bindingCode,
+  targetType,
+  targetKey,
+  serviceId,
+  operationCode,
+  input
+}) {
+  const contextualForm = runtimeContext.form
+  const fallbackForm = options.getForm?.()
+  const releaseId = firstRuntimeText(
+    contextualForm?.runtimeReleaseId,
+    contextualForm?.formReleaseId,
+    runtimeContext.formReleaseId,
+    fallbackForm?.runtimeReleaseId,
+    fallbackForm?.formReleaseId,
+    runtimeContext.releaseId
+  )
+  const releaseVersion = firstRuntimeVersion(
+    contextualForm?.runtimeReleaseVersion,
+    contextualForm?.formReleaseVersion,
+    runtimeContext.formReleaseVersion,
+    fallbackForm?.runtimeReleaseVersion,
+    fallbackForm?.formReleaseVersion,
+    runtimeContext.releaseVersion
+  )
+  const releaseResolutionToken = firstRuntimeText(
+    contextualForm?.releaseResolutionToken,
+    contextualForm?.formReleaseResolutionToken,
+    runtimeContext.formReleaseResolutionToken,
+    fallbackForm?.releaseResolutionToken,
+    fallbackForm?.formReleaseResolutionToken,
+    runtimeContext.releaseResolutionToken
+  )
+  const entityCode = firstRuntimeText(
+    contextualForm?.entityCode,
+    runtimeContext.entityCode,
+    fallbackForm?.entityCode,
+    typeof options.entityCode === 'function'
+      ? options.entityCode()
+      : options.entityCode,
+    options.getEntityCode?.(),
+    options.getEntityDefinition?.()?.entityCode
+  )
+  const listKey = firstRuntimeText(
+    contextualForm?.listKey,
+    runtimeContext.listKey,
+    fallbackForm?.listKey,
+    options.getListKey?.()
+  )
+  const recordId = firstRuntimeText(
+    runtimeContext.recordId,
+    runtimeContext.record?.id,
+    options.getRecordId?.()
+  )
+  const traversalToken = firstRuntimeText(
+    runtimeContext.viewCompositionTraversalToken
+  )
+  const request = {
+    ownerType: 'FORM',
+    ownerId,
+    bindingCode,
+    targetType,
+    targetKey,
+    serviceId,
+    operationCode,
+    input
+  }
+
+  if (releaseId && releaseVersion && releaseResolutionToken) {
+    request.releaseId = releaseId
+    request.releaseVersion = releaseVersion
+    request.releaseResolutionToken = releaseResolutionToken
+  }
+  if (entityCode) request.entityCode = entityCode
+  if (listKey) request.listKey = listKey
+  if (recordId) request.recordId = recordId
+  if (traversalToken) {
+    request.viewCompositionTraversalToken = traversalToken
+  }
+  return request
+}
+
 export function createFormDataSourceRuntime(options) {
   const initialized = new Set()
 
@@ -133,10 +243,13 @@ export function createFormDataSourceRuntime(options) {
     const form = runtimeContext.form || options.getForm?.()
     return {
       mode: runtimeContext.mode
-        || runtimeContext.context?.mode
         || options.getMode?.()
         || 'view',
-      formId: runtimeContext.formId || getRuntimeFormId(form),
+      // 显式 runtime form 优先；只有嵌套运行时未携带 form 对象时才读取其 ownerId，
+      // 最后回退根 runtime form，避免把父表单误当成子表单 datasource owner。
+      formId: getRuntimeFormId(runtimeContext.form)
+        || runtimeContext.formId
+        || getRuntimeFormId(form),
       entityId: runtimeContext.entityId
         || form?.entityId
         || options.getEntityDefinition?.()?.id
@@ -158,14 +271,15 @@ export function createFormDataSourceRuntime(options) {
       )
     }
     const record = runtimeContext.record || currentRecord()
+    const runtimeTargetContext = baseContext(runtimeContext)
     const context = {
-      ...baseContext(runtimeContext),
+      ...runtimeTargetContext,
       ...normalized.context,
       ...runtimeContext.context
     }
     const rawInput = {
       recordId: runtimeContext.recordId ?? options.getRecordId?.(),
-      mode: context.mode,
+      mode: runtimeTargetContext.mode,
       fieldCode: runtimeContext.fieldCode
         || runtimeContext.input?.fieldCode
         || normalized.targetKey,
@@ -193,16 +307,19 @@ export function createFormDataSourceRuntime(options) {
     )
     const executeDataSource = options.executeDataSource
       || uiDataSourceApi.executeOperation
-    const response = await executeDataSource({
-      ownerType: 'FORM',
-      ownerId: context.formId,
+    const response = await executeDataSource(buildFormDataSourceExecutionRequest({
+      options,
+      runtimeContext,
+      // ownerId 只能来自当前 runtime form；绑定业务 Context 中的同名字段
+      // 仍可参与 datasource mapping，但不能改变 FORM_OWNER_BODY 安全信封。
+      ownerId: runtimeTargetContext.formId,
       bindingCode: usage,
       targetType: runtimeContext.targetType || normalized.targetType || 'OWNER',
       targetKey: runtimeContext.targetKey || normalized.targetKey || '',
       serviceId: normalized.serviceId,
       operationCode: normalized.operationCode,
       input
-    })
+    }))
     return applyMapping(
       normalized.outputMapping,
       { data: response?.data ?? response, response },
@@ -237,7 +354,6 @@ export function createFormDataSourceRuntime(options) {
     }) {
     const runtimeMode = String(
       initialRuntimeContext.mode
-      || initialRuntimeContext.context?.mode
       || options.getMode?.()
       || 'view'
     ).toLowerCase()

@@ -174,7 +174,9 @@ public class EntityEmbedRuntimeAdapter implements EmbedRuntimeEntityPort {
             capabilities.forEach((key, value) -> {
                 if (StringUtils.hasText(key) && value != null) {
                     result.put(key, new ActionCapability(
-                            value.isVisible(), value.isEnabled(), value.getReason()));
+                            value.isVisible(),
+                            value.isEnabled(),
+                            value.getReason()));
                 }
             });
         }

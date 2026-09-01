@@ -1,6 +1,7 @@
 package com.workflow.entity.data.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.Result;
@@ -27,6 +28,9 @@ import java.util.stream.Collectors;
  * 提供通用接口用于选择实体数据（支持用户实体和系统实体）
  */
 @AuthenticatedApi
+@EmbedDelegatedRuntimeApi(
+        value = EmbedDelegatedRuntimeApi.Scope.REFERENCE_READ,
+        targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.NONE)
 @RestController
 @RequestMapping("/api/entity-selector")
 @RequiredArgsConstructor

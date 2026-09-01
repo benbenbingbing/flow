@@ -362,6 +362,35 @@ public class UiDataSourceService {
 
         public Object executeBoundOperation(
                         UiInterfaceOperationExecuteRequest request) {
+                return executeBoundOperation(request, null, null, false);
+        }
+
+        /**
+         * 按服务端委托策略固定的历史 Form Release 执行原生数据源绑定。
+         *
+         * <p>该入口只供已经通过 Embed MVC 授权的控制器调用；发布坐标来自
+         * 服务端请求属性而不是公开 DTO，避免会话打开后 ACTIVE 切换导致行为漂移。</p>
+         */
+        public Object executeBoundOperationAtRelease(
+                        UiInterfaceOperationExecuteRequest request,
+                        String releaseId,
+                        Integer releaseVersion) {
+                if (!StringUtils.hasText(releaseId)
+                                || releaseVersion == null
+                                || releaseVersion < 1) {
+                        throw new BusinessForbiddenException(
+                                        "UI_DATA_SOURCE_PINNED_RELEASE_REQUIRED",
+                                        "Embed 原生数据源执行缺少服务端固定发布版本");
+                }
+                return executeBoundOperation(
+                                request, releaseId, releaseVersion, true);
+        }
+
+        private Object executeBoundOperation(
+                        UiInterfaceOperationExecuteRequest request,
+                        String releaseId,
+                        Integer releaseVersion,
+                        boolean pinned) {
                 if (request == null
                                 || !StringUtils.hasText(request.getOwnerType())
                                 || !StringUtils.hasText(request.getOwnerId())
@@ -396,6 +425,15 @@ public class UiDataSourceService {
                 internal.setInput(request.getInput() == null
                                 ? Map.of()
                                 : new LinkedHashMap<>(request.getInput()));
+                if (pinned) {
+                        // serverPinnedRelease 与内部执行种子只在此服务端分支设置，
+                        // 公开请求没有对应字段，不能自行选择历史快照。
+                        internal.setReleaseId(releaseId);
+                        internal.setReleaseVersion(releaseVersion);
+                        internal.setServerPinnedRelease(true);
+                        internal.setServerIdempotencyKey(
+                                        "embed-delegated-runtime");
+                }
                 return executeOperation(
                                 bindingPoint.serviceId(),
                                 bindingPoint.operationCode(),

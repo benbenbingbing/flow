@@ -26,10 +26,17 @@ const bootstrap = {
     key: 'supplier-work-orders',
     name: '供应商工单',
     surfaceType: 'LIST',
-    revision: 7,
     entryMode: 'LIST'
   },
   capabilities: ['LIST_QUERY', 'SELECTION_RETURN'],
+  target: {
+    entityCode: 'work_order',
+    listKey: 'supplier_work_orders',
+    listReleaseId: 'list-release-001',
+    listReleaseVersion: 7,
+    listReleaseResolutionToken: 'list_resolution_token_0123456789',
+    context: { source: 'partner' }
+  },
   ui: {
     locale: 'zh-CN',
     theme: 'light',
@@ -71,7 +78,16 @@ const schema = {
 function createBridgeHarness() {
   let options
   const sent = []
+  const waiters = []
   let state = 'idle'
+  function publish(message) {
+    sent.push(message)
+    for (const waiter of [...waiters]) {
+      if (!waiter.predicate(message)) continue
+      waiters.splice(waiters.indexOf(waiter), 1)
+      waiter.resolve(message)
+    }
+  }
   return {
     sent,
     factory(nextOptions) {
@@ -84,8 +100,8 @@ function createBridgeHarness() {
         getState() {
           return state
         },
-        send(type, payload) {
-          sent.push({ type, payload })
+        send(type, payload, options) {
+          publish({ type, payload, options })
         },
         destroy() {
           state = 'destroyed'
@@ -101,15 +117,30 @@ function createBridgeHarness() {
         channelId: 'channel-12345678'
       })
     },
-    command(type, payload = {}) {
+    command(type, payload = {}, requestId = 'request_00000000001') {
       return options.onMessage({
         type,
         payload,
         messageId: 'message_000000000001',
-        requestId: 'request_00000000001'
+        requestId
       })
+    },
+    waitForSent(predicate) {
+      const existing = sent.find(predicate)
+      if (existing) return Promise.resolve(existing)
+      return new Promise(resolve => waiters.push({ predicate, resolve }))
     }
   }
+}
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((nextResolve, nextReject) => {
+    resolve = nextResolve
+    reject = nextReject
+  })
+  return { promise, resolve, reject }
 }
 
 function createTimerHarness() {
@@ -137,6 +168,7 @@ function createTimerHarness() {
 
 const calls = []
 let runtimeQueryError = null
+let nativeListRefreshes = 0
 const api = {
   async exchange(launchId, request) {
     calls.push({ operation: 'exchange', launchId, request })
@@ -197,7 +229,11 @@ const controller = createEmbedRuntimeController({
   documentRef: { visibilityState: 'visible' },
   setTimeoutImpl: timers.setTimeoutImpl,
   clearTimeoutImpl: timers.clearTimeoutImpl,
-  now: () => new Date('2026-08-27T08:31:00.000Z')
+  now: () => new Date('2026-08-27T08:31:00.000Z'),
+  async onRefreshNativeList() {
+    nativeListRefreshes += 1
+    if (runtimeQueryError) throw runtimeQueryError
+  }
 })
 controller.subscribe(snapshot => states.push(`${snapshot.state}:${snapshot.phase}`))
 
@@ -205,11 +241,9 @@ assert.equal(controller.start(), CHILD_NONCE)
 assert.equal(controller.getSnapshot().state, EMBED_RUNTIME_STATES.WAITING_HANDSHAKE)
 await bridge.initialize()
 
-assert.deepEqual(calls.slice(0, 4).map(call => call.operation), [
+assert.deepEqual(calls.slice(0, 2).map(call => call.operation), [
   'exchange',
-  'bootstrap',
-  'schema',
-  'query'
+  'bootstrap'
 ])
 assert.deepEqual(calls[0].request, {
   launchCode: TEST_LAUNCH_CODE,
@@ -222,11 +256,11 @@ assert.deepEqual(calls[0].request, {
 assert.equal(Buffer.from(calls[0].request.parentNonce, 'base64url').length, 32)
 assert.equal(Buffer.from(calls[0].request.childNonce, 'base64url').length, 32)
 assert.equal(controller.getSnapshot().state, EMBED_RUNTIME_STATES.READY)
-assert.equal(controller.getSnapshot().page.items[0].values.secret, undefined)
+assert.equal(controller.getSnapshot().nativeListTarget.listKey, 'supplier_work_orders')
+assert.equal(controller.getSnapshot().nativeListTarget.listReleaseVersion, 7)
 assert.ok(states.includes('EXCHANGING:exchange'))
 assert.ok(states.includes('BOOTSTRAPPING:bootstrap'))
-assert.ok(states.includes('BOOTSTRAPPING:schema'))
-assert.ok(states.includes('BOOTSTRAPPING:query'))
+assert.ok(states.includes('BOOTSTRAPPING:native-list'))
 assert.ok(states.includes('READY:ready'))
 assert.equal(bridge.sent[0].type, 'initialized')
 
@@ -240,14 +274,17 @@ await controller.refreshList({
   pageNum: 2,
   pageSize: 20
 })
-assert.equal(controller.getSnapshot().page.pageNum, 2)
-assert.deepEqual(calls.at(-1).query.filters, [{ field: 'code', value: 'WO-2' }])
+assert.equal(nativeListRefreshes, 1)
 
-assert.equal(controller.emitSelection(controller.getSnapshot().page.items), true)
+assert.equal(controller.emitSelection([{
+  id: 'record-2',
+  code: 'WO-2',
+  supplierSecret: 'must-not-cross-origin'
+}]), true)
 assert.equal(bridge.sent.at(-1).type, 'selection.changed')
 assert.deepEqual(bridge.sent.at(-1).payload.selection, [{
   id: 'record-2',
-  values: { code: 'WO-2' }
+  values: {}
 }])
 
 const [heartbeatTimerId, heartbeatTimer] = timers.first()
@@ -262,18 +299,247 @@ runtimeQueryError = Object.assign(new Error('view revoked'), {
   status: 403
 })
 await controller.refreshList()
-assert.equal(controller.getSnapshot().state, EMBED_RUNTIME_STATES.FATAL_ERROR)
-assert.equal(controller.getSnapshot().error.category, 'RESOURCE')
-assert.equal(controller.getSnapshot().error.recoverable, false)
+assert.equal(controller.getSnapshot().state, EMBED_RUNTIME_STATES.READY)
+assert.equal(controller.getSnapshot().listError.category, 'RESOURCE')
+assert.equal(controller.getSnapshot().listError.recoverable, false)
 
 await controller.destroy()
 assert.equal(calls.at(-1).operation, 'logout')
 assert.equal(controller.getSnapshot().state, EMBED_RUNTIME_STATES.DESTROYED)
 
+// destroy ACK 必须严格晚于 DELETE Session 完成，重复命令复用同一注销。
+const delayedLogout = deferred()
+let delayedLogoutCalls = 0
+const delayedBridge = createBridgeHarness()
+const delayedController = createEmbedRuntimeController({
+  entryConfig,
+  api: {
+    ...api,
+    async logout() {
+      delayedLogoutCalls += 1
+      return delayedLogout.promise
+    }
+  },
+  bridgeFactory: delayedBridge.factory,
+  setTimeoutImpl() { return 1 },
+  clearTimeoutImpl() {}
+})
+delayedController.start()
+await delayedBridge.initialize()
+const delayedAck = delayedBridge.waitForSent(message => message.type === 'ack'
+  && message.payload.command === 'destroy')
+delayedBridge.command('destroy', {}, 'request_destroy_delayed_01')
+delayedBridge.command('destroy', {}, 'request_destroy_delayed_02')
+await Promise.resolve()
+assert.equal(delayedController.getSnapshot().state, EMBED_RUNTIME_STATES.DESTROYING)
+assert.equal(delayedLogoutCalls, 1)
+assert.equal(delayedBridge.sent.some(message => message.type === 'ack'
+  && message.payload.command === 'destroy'), false)
+delayedLogout.resolve()
+const completedDestroyAck = await delayedAck
+assert.equal(completedDestroyAck.options.requestId, 'request_destroy_delayed_01')
+await delayedBridge.waitForSent(message => message.type === 'ack'
+  && message.options.requestId === 'request_destroy_delayed_02')
+assert.equal(delayedController.getSnapshot().state, EMBED_RUNTIME_STATES.DESTROYED)
+
+// 直达 FORM 只消费 Bootstrap 的固定原生坐标；不能再读取 projected form/schema。
+const nativeTarget = Object.freeze({
+  entityCode: 'work_order',
+  formId: 'form-001',
+  formReleaseId: 'form-release-001',
+  formReleaseVersion: 3,
+  formReleaseResolutionToken: 'resolution_token_0123456789',
+  entryMode: 'CREATE',
+  recordId: null,
+  initialData: { supplierId: 'supplier-1' },
+  parameters: { source: 'partner' },
+  context: { permissions: ['entity:record:create'] }
+})
+const nativeBootstrap = {
+  ...bootstrap,
+  actor: {
+    displayName: '映射用户',
+    username: 'mapped-user',
+    nickname: '合作方用户',
+    roles: ['operator'],
+    permissions: ['entity:record:create'],
+    isSuperAdmin: false
+  },
+  view: {
+    key: 'supplier-work-order-create',
+    name: '新建工单',
+    surfaceType: 'FORM',
+    revision: 8,
+    entryMode: 'CREATE'
+  },
+  capabilities: ['RECORD_CREATE'],
+  target: nativeTarget
+}
+const nativeCalls = []
+const mappedActors = []
+let delegatedReady = 0
+let delegatedReset = 0
+const nativeBridge = createBridgeHarness()
+const nativeController = createEmbedRuntimeController({
+  entryConfig,
+  api: {
+    ...api,
+    async getBootstrap() {
+      nativeCalls.push('bootstrap')
+      return nativeBootstrap
+    },
+    async getSchema() {
+      throw new Error('direct FORM must not request schema')
+    },
+    async queryList() {
+      throw new Error('direct FORM must not query list')
+    },
+    async createRecord(body, options) {
+      nativeCalls.push({ operation: 'createRecord', body, options })
+      return {
+        receiptId: 'eor_0123456789abcdef',
+        record: { id: 'record-created', values: { supplierId: body.data.supplierId } },
+        clientMutationId: body.clientMutationId
+      }
+    }
+  },
+  bridgeFactory: nativeBridge.factory,
+  onDelegatedSessionReady() { delegatedReady += 1 },
+  onDelegatedSessionReset() { delegatedReset += 1 },
+  onRuntimeIdentityReady(actor) { mappedActors.push(actor) },
+  setTimeoutImpl() { return 1 },
+  clearTimeoutImpl() {}
+})
+nativeController.start()
+await nativeBridge.initialize()
+const nativeSnapshot = nativeController.getSnapshot()
+assert.equal(nativeSnapshot.state, EMBED_RUNTIME_STATES.READY)
+assert.equal(nativeSnapshot.navigation.surfaceType, 'FORM')
+assert.equal(nativeSnapshot.nativeFormTarget.formId, 'form-001')
+assert.equal(nativeSnapshot.nativeFormTarget.formReleaseId, 'form-release-001')
+assert.equal(nativeSnapshot.nativeFormTarget.formReleaseVersion, 3)
+assert.equal(nativeSnapshot.nativeFormTarget.mode, 'CREATE')
+assert.deepEqual(nativeSnapshot.nativeFormTarget.initialData, { supplierId: 'supplier-1' })
+assert.deepEqual(nativeSnapshot.nativeFormTarget.parameters, { source: 'partner' })
+assert.deepEqual(mappedActors[0].permissions, ['entity:record:create'])
+assert.equal(delegatedReady, 1)
+assert.deepEqual(nativeCalls, ['bootstrap'])
+
+await nativeController.submitNativeRecord({ supplierId: 'supplier-1' }, 'save')
+const createCall = nativeCalls.find(call => call?.operation === 'createRecord')
+assert.deepEqual(createCall.body.data, { supplierId: 'supplier-1' })
+assert.equal(createCall.body.actionKey, 'save')
+assert.match(createCall.options.idempotencyKey, /^emb_/)
+assert.equal(nativeBridge.sent.at(-1).type, 'form.saved')
+assert.equal(nativeBridge.sent.at(-1).payload.receiptId, 'eor_0123456789abcdef')
+nativeController.requestClose('native-flow-form-closed')
+assert.equal(nativeBridge.sent.at(-1).type, 'close.requested')
+await nativeController.destroy()
+assert.equal(delegatedReset, 1)
+
+// Logout 失败只发关联 ERROR，不发 ACK；第二次 destroy 可幂等重试。
+let retryLogoutCalls = 0
+const retryBridge = createBridgeHarness()
+const retryController = createEmbedRuntimeController({
+  entryConfig,
+  api: {
+    ...api,
+    async logout() {
+      retryLogoutCalls += 1
+      if (retryLogoutCalls === 1) {
+        throw Object.assign(new Error('offline'), { errorCode: 'EMBED_NETWORK_ERROR' })
+      }
+    }
+  },
+  bridgeFactory: retryBridge.factory,
+  setTimeoutImpl() { return 1 },
+  clearTimeoutImpl() {}
+})
+retryController.start()
+await retryBridge.initialize()
+retryBridge.command('destroy', {}, 'request_destroy_retry_001')
+const destroyError = await retryBridge.waitForSent(message => message.type === 'error'
+  && message.options?.requestId === 'request_destroy_retry_001')
+assert.equal(destroyError.payload.errorCode, 'EMBED_SESSION_RELEASE_UNCONFIRMED')
+assert.equal(retryBridge.sent.some(message => message.type === 'ack'
+  && message.options?.requestId === 'request_destroy_retry_001'), false)
+retryBridge.command('destroy', {}, 'request_destroy_retry_002')
+await retryBridge.waitForSent(message => message.type === 'ack'
+  && message.options.requestId === 'request_destroy_retry_002')
+assert.equal(retryLogoutCalls, 2)
+
+// Exchange 在途时的 destroy 必须等待 Token，随后 Logout，且不得继续 Bootstrap。
+const pendingExchange = deferred()
+const exchangeClosingCalls = []
+const exchangeClosingBridge = createBridgeHarness()
+const exchangeClosingController = createEmbedRuntimeController({
+  entryConfig,
+  api: {
+    ...api,
+    async exchange() {
+      exchangeClosingCalls.push('exchange')
+      return pendingExchange.promise
+    },
+    async getBootstrap() {
+      exchangeClosingCalls.push('bootstrap')
+      return bootstrap
+    },
+    async logout() {
+      exchangeClosingCalls.push('logout')
+    }
+  },
+  bridgeFactory: exchangeClosingBridge.factory,
+  setTimeoutImpl() { return 1 },
+  clearTimeoutImpl() {}
+})
+exchangeClosingController.start()
+const initialization = exchangeClosingBridge.initialize()
+await Promise.resolve()
+exchangeClosingBridge.command('destroy', {}, 'request_destroy_exchange_01')
+assert.equal(exchangeClosingController.getSnapshot().state, EMBED_RUNTIME_STATES.DESTROYING)
+pendingExchange.resolve({
+  accessToken: 'embed_token_exchange_closing_abcdefghijklmnopqrstuvwxyz',
+  tokenType: 'Bearer',
+  expiresAt: '2099-08-27T09:00:00.000Z',
+  idleExpiresAt: '2099-08-27T08:35:00.000Z',
+  heartbeatAfterSeconds: 60,
+  protocolVersion: 'flow-embed/1'
+})
+await exchangeClosingBridge.waitForSent(message => message.type === 'ack'
+  && message.options.requestId === 'request_destroy_exchange_01')
+await initialization
+assert.deepEqual(exchangeClosingCalls, ['exchange', 'logout'])
+assert.equal(exchangeClosingController.getSnapshot().state, EMBED_RUNTIME_STATES.DESTROYED)
+
+// Exchange 失败即使已经 settle，仍可能是“服务端提交、响应丢失”；
+// 没有 Token 时必须 fail closed，不得伪造 destroy ACK。
+const ambiguousBridge = createBridgeHarness()
+const ambiguousController = createEmbedRuntimeController({
+  entryConfig,
+  api: {
+    ...api,
+    async exchange() {
+      throw Object.assign(new Error('exchange response lost'), {
+        errorCode: 'EMBED_NETWORK_ERROR'
+      })
+    }
+  },
+  bridgeFactory: ambiguousBridge.factory,
+  setTimeoutImpl() { return 1 },
+  clearTimeoutImpl() {}
+})
+ambiguousController.start()
+await ambiguousBridge.initialize()
+ambiguousBridge.command('destroy', {}, 'request_destroy_ambiguous_1')
+await ambiguousBridge.waitForSent(message => message.type === 'error'
+  && message.options?.requestId === 'request_destroy_ambiguous_1')
+assert.equal(ambiguousBridge.sent.some(message => message.type === 'ack'
+  && message.options?.requestId === 'request_destroy_ambiguous_1'), false)
+
 const expiredBridge = createBridgeHarness()
 const expiredApi = {
   ...api,
-  async queryList() {
+  async getBootstrap() {
     const error = new Error('expired')
     error.errorCode = 'EMBED_SESSION_EXPIRED'
     error.status = 401

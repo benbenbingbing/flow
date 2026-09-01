@@ -2,6 +2,7 @@ package com.workflow.embed.management.infrastructure.persistence;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.entity.EntityNewDataFormRuntimePort;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingState;
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
@@ -38,11 +39,15 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
 
     private final EmbedManagementMapper mapper;
     private final PublishedUiResourceSnapshotParser snapshotParser;
+    private final EntityNewDataFormRuntimePort newDataFormRuntimePort;
 
     public MyBatisEmbedManagementRepository(
-            EmbedManagementMapper mapper, ObjectMapper objectMapper) {
+            EmbedManagementMapper mapper,
+            ObjectMapper objectMapper,
+            EntityNewDataFormRuntimePort newDataFormRuntimePort) {
         this.mapper = mapper;
         this.snapshotParser = new PublishedUiResourceSnapshotParser(objectMapper);
+        this.newDataFormRuntimePort = newDataFormRuntimePort;
     }
 
     @Override
@@ -93,25 +98,15 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
     }
 
     @Override
-    public int markPublished(String viewId, long expectedVersion, String releaseId,
-                             String actorId, LocalDateTime now) {
-        return mapper.markPublished(viewId, expectedVersion, releaseId, actorId, now);
-    }
-
-    @Override
     public int updateViewStatus(String viewId, long expectedVersion, String status,
                                 String actorId, LocalDateTime now) {
         return mapper.updateViewStatus(viewId, expectedVersion, status, actorId, now);
     }
 
     @Override
-    public List<ReleaseState> findReleases(String viewId) {
-        return mapper.findReleases(viewId).stream().map(this::release).toList();
-    }
-
-    @Override
-    public ReleaseState findRelease(String viewId, long revision) {
-        return release(mapper.findRelease(viewId, revision));
+    public ReleaseState findReleaseByConfigHash(
+            String viewId, String configHash) {
+        return release(mapper.findReleaseByConfigHash(viewId, configHash));
     }
 
     @Override
@@ -140,12 +135,38 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
         }
         String formId = firstText(target, "formId", "defaultFormId");
         FormTargetRow form = null;
+        if (surfaceType == SurfaceType.LIST
+                && !StringUtils.hasText(formId)
+                && "FOLLOW_ACTIVE".equals(strategy)) {
+            // 管理员只选实体和列表；每次 Launch 复用 Flow 原生
+            // new-data 解析（默认表单，无默认时回退流程首个可达用户任务）。
+            // 只将当次解析出的精确发布坐标写入 Runtime Snapshot，
+            // 后续 ACTIVE 变化不影响已打开 Session。
+            EntityNewDataFormRuntimePort.ResolvedForm resolvedForm =
+                    newDataFormRuntimePort.resolveForNewData(entityCode)
+                            .orElse(null);
+            if (resolvedForm != null) {
+                formId = resolvedForm.formId();
+                formReleaseId = resolvedForm.releaseId();
+                form = mapper.findFormTarget(
+                        entityCode, formId, formReleaseId);
+                if (form == null
+                        || !java.util.Objects.equals(
+                                form.releaseVersion(),
+                                resolvedForm.releaseVersion().longValue())) {
+                    return null;
+                }
+            }
+        }
         if (surfaceType == SurfaceType.FORM || StringUtils.hasText(formId)) {
             if (!StringUtils.hasText(formId)
                     || ("PINNED".equals(strategy) && !StringUtils.hasText(formReleaseId))) {
                 return null;
             }
-            form = mapper.findFormTarget(entityCode, formId, formReleaseId);
+            if (form == null) {
+                form = mapper.findFormTarget(
+                        entityCode, formId, formReleaseId);
+            }
             if (form == null) {
                 return null;
             }

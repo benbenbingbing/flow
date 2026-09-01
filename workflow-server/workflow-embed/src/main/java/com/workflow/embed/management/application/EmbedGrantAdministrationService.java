@@ -3,6 +3,7 @@ package com.workflow.embed.management.application;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.SystemAuditPort;
@@ -14,11 +15,11 @@ import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCom
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
 import com.workflow.embed.management.domain.EmbedManagementModel.ProviderState;
 import com.workflow.embed.management.domain.EmbedManagementModel.ProviderType;
-import com.workflow.embed.management.domain.EmbedManagementModel.ReleaseState;
 import com.workflow.embed.management.domain.EmbedManagementModel.RevisionMode;
 import com.workflow.embed.management.domain.EmbedManagementModel.SecurityStatus;
 import com.workflow.embed.management.domain.EmbedManagementModel.UpsertGrantCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewState;
+import com.workflow.embed.management.domain.EmbedManagementModel.ViewStatus;
 import com.workflow.embed.management.port.EmbedManagementRepository;
 import com.workflow.embed.management.security.ExactOriginPolicy;
 import java.time.Clock;
@@ -40,6 +41,7 @@ public class EmbedGrantAdministrationService {
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() { };
 
     private final EmbedManagementRepository repository;
+    private final EmbedViewConfigurationValidator validator;
     private final ExactOriginPolicy originPolicy;
     private final CurrentActorProvider actorProvider;
     private final SystemAuditPort auditPort;
@@ -49,22 +51,25 @@ public class EmbedGrantAdministrationService {
     @Autowired
     public EmbedGrantAdministrationService(
             EmbedManagementRepository repository,
+            EmbedViewConfigurationValidator validator,
             ExactOriginPolicy originPolicy,
             CurrentActorProvider actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
-        this(repository, originPolicy, actorProvider, auditPort, objectMapper,
+        this(repository, validator, originPolicy, actorProvider, auditPort, objectMapper,
                 Clock.systemUTC());
     }
 
     EmbedGrantAdministrationService(
             EmbedManagementRepository repository,
+            EmbedViewConfigurationValidator validator,
             ExactOriginPolicy originPolicy,
             CurrentActorProvider actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {
         this.repository = repository;
+        this.validator = validator;
         this.originPolicy = originPolicy;
         this.actorProvider = actorProvider;
         this.auditPort = auditPort;
@@ -88,8 +93,7 @@ public class EmbedGrantAdministrationService {
         if (command == null || command.identityProviderId() == null) {
             throw new IllegalArgumentException("Grant 请求和 identityProviderId 为必填");
         }
-        // 与 View publish 共用同一行锁，保证 FOLLOW_ACTIVE Grant 不会在发布兼容性预检
-        // 与 active 指针切换之间并发插入一份基于旧 Release 的授权。
+        // 与 View 配置保存共用行锁，避免授权校验与配置更新交叉导致能力上限错配。
         ViewState view = requireViewState(repository.lockView(viewId));
         if (!repository.applicationExistsAndEnabled(applicationId)) {
             throw new EmbedManagementException(422, "EMBED_APPLICATION_INVALID",
@@ -125,8 +129,9 @@ public class EmbedGrantAdministrationService {
                 provider.id(),
                 command.status() == null ? SecurityStatus.ACTIVE : command.status(),
                 command.trustedSubjectAssertion(),
-                command.revisionMode(),
-                command.pinnedRevision(),
+                // revision_mode/pinned_revision 仅为存量表结构兼容，不再参与运行时选择。
+                RevisionMode.FOLLOW_ACTIVE,
+                null,
                 writeCapabilities(command.capabilityCeiling()),
                 command.maxActiveSessionsPerUser(),
                 command.maxSessionSeconds(),
@@ -211,31 +216,29 @@ public class EmbedGrantAdministrationService {
         if (command.status() == SecurityStatus.REVOKED) {
             throw new IllegalArgumentException("创建或更新 Grant 时不能直接设为 REVOKED");
         }
-        if (command.revisionMode() == null) {
-            throw new IllegalArgumentException("revisionMode 为必填");
+        if (view.status() != ViewStatus.ACTIVE) {
+            throw new EmbedManagementException(422, "EMBED_VIEW_NOT_CONFIGURED",
+                    "Grant 必须引用已启用且有效保存的 View 配置");
         }
-        if ((command.revisionMode() == RevisionMode.PINNED)
-                != (command.pinnedRevision() != null)) {
-            throw new IllegalArgumentException(
-                    "PINNED 必须提供 pinnedRevision，FOLLOW_ACTIVE 不能提供 pinnedRevision");
+        var validation = validator.validateCurrentActive(
+                view.surfaceType(), readConfig(view.draftConfigJson()));
+        if (!validation.valid()) {
+            // Grant 创建时再次解析当前 ACTIVE，避免配置保存后底层资源失效造成授权闭环断裂。
+            throw new EmbedManagementException(
+                    422,
+                    "EMBED_VIEW_VALIDATION_FAILED",
+                    "Embed view validation failed",
+                    Map.of("violations", validation.violations()));
         }
-        ReleaseState release = command.revisionMode() == RevisionMode.PINNED
-                ? repository.findRelease(view.id(), command.pinnedRevision())
-                : view.publishedRevision() == null ? null
-                : repository.findRelease(view.id(), view.publishedRevision());
-        if (release == null) {
-            throw new EmbedManagementException(422, "EMBED_RELEASE_NOT_FOUND",
-                    "Grant 必须引用已经发布的 View Release");
-        }
-        Set<String> releaseCapabilities = new LinkedHashSet<>(
-                readStringList(release.capabilitiesJson()));
+        Set<String> configuredCapabilities = readViewCapabilities(
+                validation.canonicalConfig());
         List<Capability> requested = command.capabilityCeiling() == null
                 ? List.of() : command.capabilityCeiling();
         if (requested.isEmpty() || new LinkedHashSet<>(requested).size() != requested.size()
                 || requested.stream().map(Enum::name)
-                .anyMatch(capability -> !releaseCapabilities.contains(capability))) {
+                .anyMatch(capability -> !configuredCapabilities.contains(capability))) {
             throw new EmbedManagementException(422, "EMBED_GRANT_CAPABILITY_INVALID",
-                    "Grant Capability 必须是 View Release Capability 的非空子集");
+                    "Grant Capability 必须是 View 当前配置 Capability 的非空子集");
         }
         boolean trustedProvider = provider.type() == ProviderType.TRUSTED_EXTERNAL_ID;
         if (command.trustedSubjectAssertion() != trustedProvider) {
@@ -255,11 +258,23 @@ public class EmbedGrantAdministrationService {
         }
     }
 
-    private List<String> readStringList(String json) {
+    private Set<String> readViewCapabilities(String configJson) {
         try {
-            return objectMapper.readValue(json, STRING_LIST);
+            JsonNode capabilities = objectMapper.readTree(configJson).path("capabilities");
+            if (!capabilities.isArray()) {
+                throw new IllegalStateException("Embed View capabilities 数据损坏");
+            }
+            return new LinkedHashSet<>(objectMapper.convertValue(capabilities, STRING_LIST));
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Embed Release Capability JSON 数据损坏", exception);
+            throw new IllegalStateException("Embed View 配置 JSON 数据损坏", exception);
+        }
+    }
+
+    private JsonNode readConfig(String configJson) {
+        try {
+            return objectMapper.readTree(configJson);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Embed View 配置 JSON 数据损坏", exception);
         }
     }
 

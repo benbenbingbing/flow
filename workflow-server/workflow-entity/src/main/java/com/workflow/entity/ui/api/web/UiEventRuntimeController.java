@@ -1,8 +1,8 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 import com.workflow.core.result.Result;
-import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
  * UI 事件运行时接口。
  */
 @AuthenticatedApi(objectAuthorization = true)
+@EmbedDelegatedRuntimeApi(
+        value = EmbedDelegatedRuntimeApi.Scope.FORM_CONTEXT,
+        targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FORM_EVENT_BODY)
 @RestController
 @RequestMapping("/api/ui-runtime/events")
 @RequiredArgsConstructor

@@ -2,6 +2,7 @@ package com.workflow.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.workflow.admin.security.context.UserContext;
 import org.junit.jupiter.api.AfterEach;
@@ -37,6 +38,22 @@ class EmbedRequestUserContextAdapterTest {
         try (var ignored = adapter.open("user-1", "alice", "ems-1")) {
             assertEquals("user-1", UserContext.getUserId());
         }
+        assertEquals("admin-1", UserContext.getUserId());
+        assertEquals("admin", UserContext.getUsername());
+        assertEquals("auth-session-1", UserContext.getSessionId());
+    }
+
+    @Test
+    void rejectsIncompleteMappedActorBeforeChangingOuterContext() {
+        UserContext.setCurrentUser("admin-1", "admin", "auth-session-1");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> adapter.open("", "alice", "ems-1"));
+        assertThrows(IllegalArgumentException.class,
+                () -> adapter.open("user-1", " ", "ems-1"));
+        assertThrows(IllegalArgumentException.class,
+                () -> adapter.open("user-1", "alice", null));
+
         assertEquals("admin-1", UserContext.getUserId());
         assertEquals("admin", UserContext.getUsername());
         assertEquals("auth-session-1", UserContext.getSessionId());

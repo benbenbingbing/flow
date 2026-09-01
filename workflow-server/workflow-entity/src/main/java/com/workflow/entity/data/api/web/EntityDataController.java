@@ -1,6 +1,7 @@
 package com.workflow.entity.data.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.ApiResponse;
 import com.workflow.entity.data.api.request.EntityBatchDeleteRequest;
@@ -160,10 +161,14 @@ public class EntityDataController {
     /**
      * 加载详情并执行已发布的 DETAIL_LOAD 事件链。
      */
-    @PostMapping("/entity/{entityCode}/detail/{id}/load")
+    @PostMapping("/entity/{entityCode}/detail/{recordId}/load")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.RECORD_DETAIL,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .RECORD_DETAIL_PATH_QUERY)
     public ApiResponse<EntityDataDTO> loadById(
             @PathVariable String entityCode,
-            @PathVariable String id,
+            @PathVariable String recordId,
             @RequestParam(required = false) String listKey,
             @RequestParam(required = false) String formId,
             @RequestParam(required = false) String releaseId,
@@ -176,7 +181,7 @@ public class EntityDataController {
             String formReleaseResolutionToken) {
         return ApiResponse.success(entityDataActionService.getDetail(
                 entityCode,
-                id,
+                recordId,
                 listKey,
                 formId,
                 releaseContext(

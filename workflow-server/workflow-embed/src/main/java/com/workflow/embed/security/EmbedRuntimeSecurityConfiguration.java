@@ -21,6 +21,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Embed API 的独立安全链。
@@ -97,6 +98,75 @@ public class EmbedRuntimeSecurityConfiguration {
                                     objectMapper,
                                     properties.getMaxPayloadBytes()),
                             EmbedSessionAuthenticationFilter.class);
+        } else {
+            http.authorizeHttpRequests(authorize -> authorize
+                    .anyRequest().denyAll());
+        }
+        return http.build();
+    }
+
+    /**
+     * 带 Embed 协议头的普通 {@code /api/**} 请求进入独立委托链。
+     *
+     * <p>匹配任意协议值而不是只匹配 {@code 1}，确保错误版本也不会落入普通 JWT
+     * 链。opaque Bearer 必须先由 Embed filter 验证，之后 MVC 的 EndpointAuthorization
+     * 和 DataScope 仍按映射 Flow 用户执行。</p>
+     */
+    @Bean
+    @Order(4)
+    SecurityFilterChain embedDelegatedRuntimeSecurity(
+            HttpSecurity http,
+            ObjectMapper objectMapper,
+            EmbedProperties properties,
+            ObjectProvider<EmbedSessionAuthenticationFilter> filterProvider)
+            throws Exception {
+        RequestMatcher delegated = request -> {
+            String path = request.getRequestURI();
+            return path != null
+                    && path.startsWith("/api/")
+                    && !path.startsWith("/api/embed/")
+                    && request.getHeader(
+                            EmbedSessionAuthenticationFilter.PROTOCOL_HEADER)
+                            != null;
+        };
+        http
+                .securityMatcher(delegated)
+                .csrf(csrf -> csrf.disable())
+                .requestCache(cache -> cache.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(
+                        SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, error) ->
+                                writeDenied(objectMapper, request, response, 401,
+                                        "EMBED_SESSION_INVALID",
+                                        "Embed session is invalid"))
+                        .accessDeniedHandler((request, response, error) ->
+                                writeDenied(objectMapper, request, response, 403,
+                                        "EMBED_ACCESS_DENIED",
+                                        "Embed access is denied")));
+        if (properties.isEnabled()) {
+            EmbedSessionAuthenticationFilter filter =
+                    filterProvider.getIfAvailable();
+            if (filter == null) {
+                throw new IllegalStateException(
+                        "workflow.embed.enabled=true requires "
+                                + "EmbedSessionAuthenticationFilter");
+            }
+            http.authorizeHttpRequests(authorize -> authorize
+                            // opaque Embed Session 只是原生 UI 数据面身份，
+                            // 不得进入登录、Embed 管理或 Open API 控制面。
+                            .requestMatchers(
+                                    "/api/auth/**",
+                                    "/api/embed-management/**",
+                                    "/api/open/**",
+                                    "/api/integration-applications/**")
+                            .denyAll()
+                            .anyRequest().permitAll())
+                    .addFilterBefore(filter, AuthorizationFilter.class);
+            // 委托页面是 Flow 原生数据面，不能套用 Embed V1 投影 API
+            // 的 1 MiB JSON 上限，否则平台可保存的大富文本在嵌入页会
+            // 额外失败。文件与请求体大小继续由平台统一 Servlet/
+            // multipart 限制和业务校验约束。
         } else {
             http.authorizeHttpRequests(authorize -> authorize
                     .anyRequest().denyAll());

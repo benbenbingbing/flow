@@ -7,11 +7,12 @@ info:
     Flow Embed 的第三方服务端 Launch、iframe Entry、Session 和受限 Runtime 契约。
 
     V1 入口只支持 `LIST`、`CREATE`、`VIEW`；公开能力只支持
-    `LIST_QUERY`、`SELECTION_RETURN`、`RECORD_VIEW`、`RECORD_CREATE`。
+    `LIST_QUERY`、`SELECTION_RETURN`、`RECORD_VIEW`、`RECORD_CREATE`、
+    `ACTION_EXECUTE`。
     浏览器不能提交 entity、form、list、release、Flow 用户或任意 Provider 坐标。
 
-    本文只把已经注册的 HTTP 路由放入 `paths`。尚未实现的编辑、动作、动态数据源、
-    Lookup 候选执行和宿主导航事件列在 `x-flow-deferred`，不能据此调用不存在的接口。
+    本文只把已经注册的 HTTP 路由放入 `paths`。尚未实现的编辑、独立流程启动和
+    宿主导航事件列在 `x-flow-deferred`，不能据此调用不存在的接口。
   license:
     name: Proprietary
     identifier: LicenseRef-Proprietary
@@ -28,7 +29,7 @@ tags:
   - name: Runtime list
     description: Session 固定发布版本的外部列表投影和查询
   - name: Runtime form
-    description: Session 固定发布版本的 CREATE/VIEW 表单、CREATE 联动重算、选项和记录接口
+    description: 解析 Session 固定的 Flow 原生 Published Form 目标及受控创建回执
 
 x-flow-v1-boundary:
   entryModes:
@@ -40,6 +41,7 @@ x-flow-v1-boundary:
     - SELECTION_RETURN
     - RECORD_VIEW
     - RECORD_CREATE
+    - ACTION_EXECUTE
   browserForbiddenCoordinates:
     - flowUserId
     - entityCode
@@ -66,61 +68,24 @@ x-flow-v1-boundary:
       - token
       - timestamp
 
-x-flow-release-constraints:
-  regexPattern:
-    status: publish-blocked
-    contextSchema:
-      keyword: pattern
-      managementValidationCode: SCHEMA_PATTERN_NOT_SUPPORTED
-    formFieldValidationRules:
-      keyword: pattern
-      managementValidationCode: UNTRUSTED_COMPONENT
-    runtimeFallback: 历史或篡改快照 Fail Closed；V1 不执行调用方或管理员提供的任意正则
-  lookupLikeFormFields:
-    status: publish-blocked
-    fieldTypes:
-      - REFERENCE
-      - MULTI_REFERENCE
-      - LOOKUP
-      - MULTI_LOOKUP
-      - USER
-      - DEPT
-      - ROLE
-      - GROUP
-    managementValidationCode: UNTRUSTED_COMPONENT
-
 x-flow-deferred:
   - capability: RECORD_UPDATE
     status: not-registered
     wouldUse: PATCH /api/embed/v1/runtime/records/{recordId}
     reason: 通用 record_version 与所有写入口的乐观锁链路尚未完成
-  - capability: ACTION_EXECUTE / PROCESS_START
+  - capability: PROCESS_START
     status: not-registered
-    wouldUse: POST /api/embed/v1/runtime/actions/{actionKey}
-    reason: 强类型 Embed Action Registry 和动作事务契约尚未完成
-  - capability: dynamic-option-provider
-    status: fail-closed
-    reason: V1 options 路由只分页不可变 Form Release 中超过 100 项的静态选项；任意数据源绑定在发布和运行时均拒绝
-  - capability: lookup-query-provider
-    status: deferred-fail-closed
-    reason: >-
-      HTTP 路由和封闭 DTO 已注册，但受支持的发布链会以 UNTRUSTED_COMPONENT 阻断
-      REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP 字段；实体适配器也没有
-      固定候选列表版本与 External Projection。直接请求不可用字段返回 EMBED_OPERATION_NOT_ALLOWED，
-      历史或绕过发布器的可写 Lookup 快照在表单解析时返回 EMBED_RUNTIME_UNAVAILABLE。
+    wouldUse: POST /api/embed/v1/runtime/process-starts
+    reason: 独立流程启动入口尚未注册；原生 Published Form 按钮仍按映射 Flow 用户权限执行其标准动作
   - capability: navigation.request host event
     status: sdk-schema-only
     reason: SDK 已保留并校验类型，但当前 iframe Bridge 不发送该事件；LIST/CREATE/VIEW/BACK 导航仅在 iframe 内完成
   - capability: action.started / action.completed host events
     status: sdk-schema-only
-    reason: SDK 已保留并校验类型，但 V1 没有 Action Runtime，当前 iframe Bridge 不发送这些事件
-  - capability: close.requested host event
-    status: sdk-schema-only
-    reason: SDK 已保留并校验类型，但当前 iframe Bridge 不发送该事件
-
+    reason: SDK 已保留并校验类型；原生 Published Form 动作在 iframe 内执行，当前 Bridge 不向宿主发送这些事件
 x-flow-embed-message-protocol:
   protocol: flow-embed/1
-  maxMessageBytes: 65536
+  maxMessageBytes: 262144
   localNavigation:
     status: implemented
     targets:
@@ -188,7 +153,7 @@ x-flow-embed-message-protocol:
       payloadSchema:
         $ref: '#/components/schemas/ActionCompletedEventPayload'
     - type: close.requested
-      status: deferred
+      status: implemented
       payloadSchema:
         $ref: '#/components/schemas/CloseRequestedEventPayload'
   hostCommands:
@@ -590,15 +555,16 @@ paths:
         '503':
           $ref: '#/components/responses/RuntimeUnavailable'
 
-  /api/embed/v1/runtime/form:
+  /api/embed/v1/runtime/native-form-target:
     get:
       tags:
         - Runtime form
-      operationId: getEmbedForm
-      summary: 解析 CREATE 或 VIEW 表单
+      operationId: getEmbedNativeFormTarget
+      summary: 解析 Flow 原生 Published Form 固定目标
       description: |
-        FORM 入口只能使用 Launch 固定模式；LIST 入口可在同一 View 发布动作范围内本地导航到
-        CREATE/VIEW。目标表单和 Release 始终由 Session 固定。V1 不接受 EDIT。
+        仅供 iframe 内的 LIST→FORM 导航使用。浏览器只能声明 CREATE/VIEW 与 VIEW
+        recordId；实体、表单、Release、上下文和解析令牌全部由当前 Session 恢复。
+        响应不包含字段、组件、布局、选项或弹层配置，随后页面直接调用 Flow 标准 API。
       security:
         - embedBearer: []
       parameters:
@@ -610,185 +576,19 @@ paths:
         - name: recordId
           in: query
           required: false
-          description: VIEW 必填、CREATE 禁止；Launch 已固定记录时必须与固定值一致。
           schema:
             $ref: '#/components/schemas/RecordId'
         - $ref: '#/components/parameters/TraceId'
       responses:
         '200':
-          description: 当前模式的表单、字段状态、可回传字段和动作
+          description: 已按当前映射用户权限和 DataScope 授权的原生表单目标
           headers:
             Cache-Control:
               $ref: '#/components/headers/NoStore'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FormResultEnvelope'
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '401':
-          $ref: '#/components/responses/SessionInvalid'
-        '403':
-          $ref: '#/components/responses/OperationNotAllowed'
-        '404':
-          $ref: '#/components/responses/ResourceNotFound'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '503':
-          $ref: '#/components/responses/RuntimeUnavailable'
-
-  /api/embed/v1/runtime/form/evaluations:
-    post:
-      tags:
-        - Runtime form
-      operationId: evaluateEmbedCreateForm
-      summary: 只读重算 CREATE 表单联动状态
-      description: |
-        只接受固定 `fieldPolicy.writable` 中的部分 CREATE 草稿。服务端从已认证 Session 恢复
-        entity/form/release/context，并在重算前以后端强制 Context 值覆盖同名浏览器值。
-        本接口不执行 required 或最终提交校验，不申请幂等 Claim、不写业务数据，也不发送新的
-        宿主 postMessage 事件。VIEW 入口或缺少 `RECORD_CREATE` 能力时拒绝。
-      x-flow-side-effects: none
-      security:
-        - embedBearer: []
-      parameters:
-        - $ref: '#/components/parameters/TraceId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateFormEvaluationRequest'
-            example:
-              data:
-                status: CLOSED
-      responses:
-        '200':
-          description: 重算后的 CREATE FormResult；record 固定为 null
-          headers:
-            Cache-Control:
-              $ref: '#/components/headers/NoStore'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateFormEvaluationEnvelope'
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '401':
-          $ref: '#/components/responses/SessionInvalid'
-        '403':
-          $ref: '#/components/responses/OperationNotAllowed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '503':
-          $ref: '#/components/responses/RuntimeUnavailable'
-
-  /api/embed/v1/runtime/form/fields/{fieldCode}/options/query:
-    post:
-      tags:
-        - Runtime form
-      operationId: queryEmbedFormOptions
-      summary: 分页查询不可变发布快照中的大型静态选项
-      description: |
-        V1 只分页同一 Form Release 内超过 100 项的静态选项。任意 data source、Provider、
-        service、operation、URL 或带副作用事件均 Fail Closed。`mode/recordId` 只描述 LIST
-        Session 当前的本地表单导航状态；目标表单/实体/Release 仍由 Session 恢复。
-      x-flow-status: static-release-options-only
-      security:
-        - embedBearer: []
-      parameters:
-        - $ref: '#/components/parameters/FieldCode'
-        - $ref: '#/components/parameters/TraceId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OptionQueryRequest'
-      responses:
-        '200':
-          description: 大型静态选项分页；动态绑定不会进入此成功分支
-          headers:
-            Cache-Control:
-              $ref: '#/components/headers/NoStore'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OptionPageEnvelope'
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '401':
-          $ref: '#/components/responses/SessionInvalid'
-        '403':
-          $ref: '#/components/responses/OperationNotAllowed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-        '503':
-          $ref: '#/components/responses/RuntimeUnavailable'
-
-  /api/embed/v1/runtime/form/fields/{fieldCode}/lookups/query:
-    post:
-      tags:
-        - Runtime form
-      operationId: queryEmbedFormLookups
-      summary: 查询引用候选项（V1 Fail Closed）
-      description: |
-        路由和封闭请求 DTO 已注册，但当前受支持发布链会以 `UNTRUSTED_COMPONENT` 阻断
-        `REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP` 表单字段；实体适配器
-        也尚未固定候选列表版本与 External Projection。因此 V1 没有成功响应，不会回退到内部列表、
-        SQL、HTTP 或 UI Event。`mode/recordId` 只描述 LIST Session 当前本地表单状态，不是目标坐标。
-      x-flow-status: deferred-fail-closed
-      security:
-        - embedBearer: []
-      parameters:
-        - $ref: '#/components/parameters/FieldCode'
-        - $ref: '#/components/parameters/TraceId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LookupQueryRequest'
-      responses:
-        '400':
-          $ref: '#/components/responses/InvalidRequest'
-        '401':
-          $ref: '#/components/responses/SessionInvalid'
-        '403':
-          $ref: '#/components/responses/OperationNotAllowed'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
-        '503':
-          $ref: '#/components/responses/RuntimeUnavailable'
-        '429':
-          $ref: '#/components/responses/RateLimited'
-
-  /api/embed/v1/runtime/records/{recordId}:
-    get:
-      tags:
-        - Runtime form
-      operationId: getEmbedRecord
-      summary: 获取 VIEW 记录投影
-      description: 记录不存在与无当前 Flow 用户访问权限统一返回 404，避免 ID 枚举。
-      security:
-        - embedBearer: []
-      parameters:
-        - $ref: '#/components/parameters/RecordId'
-        - $ref: '#/components/parameters/TraceId'
-      responses:
-        '200':
-          description: 可见字段、字段状态和只读动作；当前 V1 recordVersion 为 null
-          headers:
-            Cache-Control:
-              $ref: '#/components/headers/NoStore'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RecordResultEnvelope'
+                $ref: '#/components/schemas/NativeFormTargetEnvelope'
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '401':
@@ -809,10 +609,9 @@ paths:
       operationId: createEmbedRecord
       summary: 幂等创建 Session 固定实体记录
       description: |
-        V1 唯一记录写入口。服务端在 Claim 前按最终有效值重新解析同一固定 Form Release，
-        执行字段可写性、联动可见性、必填、长度、数值、格式和静态枚举校验，再注入 Context 强制值。
-        唯一性只校验本次入口中适用且未忽略的已发布表单规则；没有规则、被忽略或条件不适用的
-        其他写入口不共享该约束，因此 V1 不承诺实体字段全局唯一。
+        受控的幂等记录写入口。Embed 只恢复固定目标、校验原生按钮、注入 Context
+        强制值并限制通用 JSON 资源复杂度；字段默认值、联动、必填、唯一性和组件值
+        合法性全部由同一固定 Form Release 的 Flow 标准提交链权威处理。
       security:
         - embedBearer: []
       parameters:
@@ -826,12 +625,10 @@ paths:
               $ref: '#/components/schemas/CreateRecordRequest'
       responses:
         '201':
-          description: 记录已创建，或同一请求的成功结果已按当前权限重新投影
+          description: 记录已创建，或同一请求返回原 ID-only 成功回执
           headers:
             Cache-Control:
               $ref: '#/components/headers/NoStore'
-            Location:
-              $ref: '#/components/headers/RecordLocation'
             Idempotent-Replay:
               $ref: '#/components/headers/IdempotentReplay'
           content:
@@ -886,18 +683,6 @@ components:
         type: string
         pattern: '^lch_[A-Za-z0-9_-]{16,60}$'
         maxLength: 64
-    FieldCode:
-      name: fieldCode
-      in: path
-      required: true
-      schema:
-        $ref: '#/components/schemas/FieldCode'
-    RecordId:
-      name: recordId
-      in: path
-      required: true
-      schema:
-        $ref: '#/components/schemas/RecordId'
     TraceId:
       name: X-Trace-Id
       in: header
@@ -930,19 +715,13 @@ components:
         type: string
         const: no-store
     IdempotentReplay:
-      description: true 表示本次未再次执行业务，而是按当前授权投影首次结果
+      description: true 表示本次未再次执行业务，而是返回首次 ID-only 回执
       required: true
       schema:
         type: string
         enum:
           - 'true'
           - 'false'
-    RecordLocation:
-      description: 新记录的 Runtime 相对地址
-      required: true
-      schema:
-        type: string
-        pattern: '^/api/embed/v1/runtime/records/[^/?#]+$'
     RetryAfter:
       description: 客户端保留原 Idempotency-Key 并在该秒数后退避重试
       schema:
@@ -1299,16 +1078,11 @@ components:
       required:
         - key
         - surfaceType
-        - revision
       properties:
         key:
           type: string
         surfaceType:
           $ref: '#/components/schemas/SurfaceType'
-        revision:
-          type: integer
-          format: int64
-          minimum: 1
       additionalProperties: false
     EmbedLaunchEnvelope:
       type: object
@@ -1474,6 +1248,11 @@ components:
           $ref: '#/components/schemas/BootstrapUi'
         limits:
           $ref: '#/components/schemas/BootstrapLimits'
+        target:
+          oneOf:
+            - $ref: '#/components/schemas/NativeFormTarget'
+            - type: 'null'
+          description: FORM 返回固定原生运行时目标；LIST 可省略，导航时通过 native-form-target 获取
       additionalProperties: false
     BootstrapSession:
       type: object
@@ -1494,10 +1273,29 @@ components:
     BootstrapActor:
       type: object
       required:
+        - username
+        - nickname
         - displayName
+        - roles
+        - isSuperAdmin
+        - permissions
       properties:
+        username:
+          type: string
+        nickname:
+          type: string
         displayName:
           type: string
+        roles:
+          type: array
+          items:
+            type: string
+        isSuperAdmin:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
       additionalProperties: false
     BootstrapView:
       type: object
@@ -1505,7 +1303,6 @@ components:
         - key
         - name
         - surfaceType
-        - revision
         - entryMode
       properties:
         key:
@@ -1514,10 +1311,6 @@ components:
           type: string
         surfaceType:
           $ref: '#/components/schemas/SurfaceType'
-        revision:
-          type: integer
-          format: int64
-          minimum: 1
         entryMode:
           $ref: '#/components/schemas/EntryMode'
       additionalProperties: false
@@ -1607,16 +1400,12 @@ components:
       required:
         - key
         - surfaceType
-        - revision
       properties:
         key:
           type: string
         surfaceType:
           type: string
           const: LIST
-        revision:
-          type: integer
-          format: int64
       additionalProperties: false
     SchemaEntity:
       type: object
@@ -1903,7 +1692,7 @@ components:
             - 'null'
           format: int64
           minimum: 0
-          description: 只有发布配置 allowTotal=true 时非空
+          description: 只有当前嵌入配置 allowTotal=true 时非空
       additionalProperties: false
     ListItem:
       type: object
@@ -1968,494 +1757,61 @@ components:
       enum:
         - CREATE
         - VIEW
-    FormResult:
-      type: object
-      required:
-        - mode
-        - record
-        - form
-      properties:
-        mode:
-          $ref: '#/components/schemas/FormMode'
-        record:
-          oneOf:
-            - $ref: '#/components/schemas/RecordView'
-            - type: 'null'
-          description: CREATE 为 null，VIEW 为当前已鉴权记录
-        form:
-          $ref: '#/components/schemas/FormView'
-      additionalProperties: false
-    FormView:
-      type: object
-      required:
-        - title
-        - layout
-        - fields
-        - returnableFields
-        - actions
-      properties:
-        title:
-          type: string
-        layout:
-          $ref: '#/components/schemas/FormLayout'
-        fields:
-          type: array
-          items:
-            $ref: '#/components/schemas/FormField'
-        returnableFields:
-          type: array
-          uniqueItems: true
-          items:
-            $ref: '#/components/schemas/FieldCode'
-        actions:
-          type: array
-          items:
-            $ref: '#/components/schemas/FormActionDescriptor'
-      additionalProperties: false
-    FormLayout:
-      type: object
-      required:
-        - type
-      properties:
-        type:
-          type: string
-      additionalProperties: false
-    FormField:
-      type: object
-      required:
-        - code
-        - label
-        - type
-        - required
-        - readOnly
-        - hidden
-        - defaultValue
-        - validation
-        - options
-        - optionSource
-        - lookupSource
-        - layout
-        - fieldState
-      properties:
-        code:
-          $ref: '#/components/schemas/FieldCode'
-        label:
-          type: string
-        type:
-          $ref: '#/components/schemas/ExternalFieldType'
-        required:
-          type: boolean
-        readOnly:
-          type: boolean
-        hidden:
-          type: boolean
-        defaultValue:
-          $ref: '#/components/schemas/ClientValue'
-        validation:
-          $ref: '#/components/schemas/FormValidationRules'
-        options:
-          type:
-            - array
-            - 'null'
-          items:
-            $ref: '#/components/schemas/FormOption'
-        optionSource:
-          oneOf:
-            - $ref: '#/components/schemas/OptionSource'
-            - type: 'null'
-        lookupSource:
-          type: 'null'
-          description: 当前 V1 不发布可用的非空 Lookup Source；已注册查询路由保持 Fail Closed
-        layout:
-          $ref: '#/components/schemas/FieldLayout'
-        fieldState:
-          $ref: '#/components/schemas/FieldState'
-      additionalProperties: false
-    FormValidationRules:
-      type: object
-      description: V1 不允许任意 pattern；发布和运行时均 Fail Closed
-      properties:
-        minLength:
-          type: integer
-          minimum: 0
-        maxLength:
-          type: integer
-          minimum: 0
-        minimum:
-          type: number
-        maximum:
-          type: number
-        format:
-          type: string
-          enum:
-            - EMAIL
-            - PHONE
-            - URL
-            - URI
-      additionalProperties: false
-    FormOption:
-      type: object
-      required:
-        - label
-        - value
-        - disabled
-      properties:
-        label:
-          type: string
-          maxLength: 200
-        value:
-          $ref: '#/components/schemas/ScalarValue'
-        disabled:
-          type: boolean
-      additionalProperties: false
-    OptionSource:
-      type: object
-      required:
-        - mode
-        - queryUrl
-        - dependencyPolicy
-      properties:
-        mode:
-          type: string
-          const: RUNTIME
-        queryUrl:
-          type: string
-          pattern: '^/api/embed/v1/runtime/form/fields/[A-Za-z][A-Za-z0-9_]{0,99}/options/query$'
-        dependencyPolicy:
-          type: array
-          maxItems: 0
-          description: 大型静态选项不依赖浏览器字段；动态依赖 V1 未开放
-          items:
-            $ref: '#/components/schemas/DependencyPolicy'
-      additionalProperties: false
-    DependencyPolicy:
-      type: object
-      required:
-        - code
-        - source
-      properties:
-        code:
-          $ref: '#/components/schemas/FieldCode'
-        source:
-          type: string
-          enum:
-            - CLIENT_WRITABLE
-            - CURRENT_RECORD_READONLY
-            - CONTEXT
-            - CONSTANT
-      additionalProperties: false
-    FieldLayout:
-      type: object
-      required:
-        - span
-      properties:
-        span:
-          type: integer
-          minimum: 1
-          maximum: 24
-      additionalProperties: false
-    FieldState:
-      type: object
-      required:
-        - visible
-        - writable
-      properties:
-        visible:
-          type: boolean
-        writable:
-          type: boolean
-      additionalProperties: false
-    FormActionDescriptor:
-      type: object
-      required:
-        - key
-        - label
-        - placement
-        - kind
-        - transport
-        - recordMode
-        - selectionMode
-        - dataSchema
-        - requiresRecordVersion
-        - inputSchema
-        - idempotencyRequired
-        - enabled
-        - disabledReason
-      properties:
-        key:
-          type: string
-          const: save
-        label:
-          type: string
-        placement:
-          type: string
-          const: FORM
-        kind:
-          type: string
-          const: MUTATION
-        transport:
-          type: string
-          const: RECORD_CREATE
-        recordMode:
-          type: string
-          const: NONE
-        selectionMode:
-          type: string
-          const: NONE
-        dataSchema:
-          type: object
-          description: 当前字段状态生成的封闭 JSON Schema
-          additionalProperties: true
-        requiresRecordVersion:
-          type: boolean
-          const: false
-        inputSchema:
-          type: 'null'
-        idempotencyRequired:
-          type: boolean
-          const: true
-        enabled:
-          type: boolean
-        disabledReason:
-          type:
-            - string
-            - 'null'
-      additionalProperties: false
-    FormResultEnvelope:
-      allOf:
-        - $ref: '#/components/schemas/SuccessEnvelopeBase'
-        - type: object
-          properties:
-            data:
-              $ref: '#/components/schemas/FormResult'
+        - LIST
 
-    CreateFormEvaluationRequest:
+    NativeFormTarget:
       type: object
+      description: Flow 原生 FORM/LIST 固定发布坐标；不包含字段或组件配置
       required:
-        - data
+        - entityCode
+        - entryMode
+        - defaultFormResolved
+        - initialData
+        - parameters
+        - context
       properties:
-        data:
-          type: object
-          maxProperties: 100
-          description: 允许部分草稿；键必须属于固定发布 fieldPolicy.writable
-          additionalProperties:
-            $ref: '#/components/schemas/ClientValue'
-      additionalProperties: false
-    CreateFormEvaluationResult:
-      allOf:
-        - $ref: '#/components/schemas/FormResult'
-        - type: object
-          properties:
-            mode:
-              type: string
-              const: CREATE
-            record:
-              type: 'null'
-    CreateFormEvaluationEnvelope:
-      allOf:
-        - $ref: '#/components/schemas/SuccessEnvelopeBase'
-        - type: object
-          properties:
-            data:
-              $ref: '#/components/schemas/CreateFormEvaluationResult'
-
-    OptionQueryRequest:
-      type: object
-      required:
-        - mode
-      properties:
-        mode:
+        entityCode: { type: string }
+        formId: { type: string }
+        formReleaseId: { type: string }
+        formReleaseVersion: { type: integer, minimum: 1 }
+        listKey: { type: string }
+        listReleaseId: { type: string }
+        listReleaseVersion: { type: integer, minimum: 1 }
+        listReleaseResolutionToken:
+          type: string
+          minLength: 32
+        entryMode:
           $ref: '#/components/schemas/FormMode'
         recordId:
           $ref: '#/components/schemas/RecordId'
-        keyword:
-          type:
-            - string
-            - 'null'
-          maxLength: 200
-        dependencies:
-          type: object
-          maxProperties: 0
-          description: 当前 V1 静态分页实现必须为空
-          additionalProperties:
-            $ref: '#/components/schemas/ClientValue'
-        pageNum:
-          type: integer
-          minimum: 1
-          default: 1
-        pageSize:
-          type: integer
-          minimum: 1
-          maximum: 50
-          default: 50
-      allOf:
-        - if:
-            properties:
-              mode:
-                const: VIEW
-          then:
-            required:
-              - recordId
-        - if:
-            properties:
-              mode:
-                const: CREATE
-          then:
-            not:
-              required:
-                - recordId
-      additionalProperties: false
-    LookupQueryRequest:
-      type: object
-      required:
-        - mode
-      properties:
-        mode:
-          $ref: '#/components/schemas/FormMode'
-        recordId:
+        processInstanceId:
           $ref: '#/components/schemas/RecordId'
-        keyword:
-          type:
-            - string
-            - 'null'
-          maxLength: 200
-        filters:
-          type: object
-          maxProperties: 32
-          additionalProperties:
-            $ref: '#/components/schemas/ClientValue'
-        pageNum:
-          type: integer
-          minimum: 1
-          default: 1
-        pageSize:
-          type: integer
-          minimum: 1
-          maximum: 50
-          default: 20
-      allOf:
-        - if:
-            properties:
-              mode:
-                const: VIEW
-          then:
-            required:
-              - recordId
-        - if:
-            properties:
-              mode:
-                const: CREATE
-          then:
-            not:
-              required:
-                - recordId
-      additionalProperties: false
-    OptionPage:
-      type: object
-      required:
-        - items
-        - hasMore
-        - pageNum
-        - pageSize
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/FormOption'
-        hasMore:
+        formReleaseResolutionToken:
+          type: string
+          minLength: 32
+        defaultFormResolved:
           type: boolean
-        pageNum:
-          type: integer
-          minimum: 1
-        pageSize:
-          type: integer
-          minimum: 1
-          maximum: 50
+          description: true 表示表单坐标已由 Flow 原生 new-data 规则权威解析；表单坐标缺失时表示确实无可用表单，不得回退实时 ACTIVE
+        initialData:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ScalarValue'
+        parameters:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ScalarValue'
+        context:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ScalarValue'
       additionalProperties: false
-    OptionPageEnvelope:
+    NativeFormTargetEnvelope:
       allOf:
         - $ref: '#/components/schemas/SuccessEnvelopeBase'
         - type: object
           properties:
             data:
-              $ref: '#/components/schemas/OptionPage'
-
-    RecordView:
-      type: object
-      required:
-        - id
-        - recordVersion
-        - values
-        - meta
-      properties:
-        id:
-          $ref: '#/components/schemas/RecordId'
-        recordVersion:
-          type: 'null'
-          description: 当前 V1 动态实体没有通用 record_version
-        values:
-          $ref: '#/components/schemas/ProjectedValues'
-        meta:
-          $ref: '#/components/schemas/RecordMeta'
-      additionalProperties: false
-    RecordMeta:
-      type: object
-      required:
-        - createdAt
-        - updatedAt
-      properties:
-        createdAt:
-          type:
-            - string
-            - 'null'
-          format: date-time
-        updatedAt:
-          type:
-            - string
-            - 'null'
-          format: date-time
-      additionalProperties: false
-    RecordFieldState:
-      type: object
-      required:
-        - visible
-        - readOnly
-        - required
-      properties:
-        visible:
-          type: boolean
-        readOnly:
-          type: boolean
-          const: true
-        required:
-          type: boolean
-      additionalProperties: false
-    RecordResult:
-      type: object
-      required:
-        - record
-        - fieldStates
-        - actions
-      properties:
-        record:
-          $ref: '#/components/schemas/RecordView'
-        fieldStates:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/RecordFieldState'
-        actions:
-          type: object
-          maxProperties: 0
-          description: 当前 V1 Entity 表单 VIEW 适配器固定返回空对象
-          additionalProperties: false
-      additionalProperties: false
-    RecordResultEnvelope:
-      allOf:
-        - $ref: '#/components/schemas/SuccessEnvelopeBase'
-        - type: object
-          properties:
-            data:
-              $ref: '#/components/schemas/RecordResult'
+              $ref: '#/components/schemas/NativeFormTarget'
 
     CreateRecordRequest:
       type: object
@@ -2464,9 +1820,9 @@ components:
       properties:
         data:
           type: object
-          maxProperties: 100
+          maxProperties: 500
           additionalProperties:
-            $ref: '#/components/schemas/ClientValue'
+            $ref: '#/components/schemas/NativeFormValue'
         clientMutationId:
           type:
             - string
@@ -2474,6 +1830,11 @@ components:
           minLength: 1
           maxLength: 128
           pattern: '^[\x20-\x7E]*[!-~][\x20-\x7E]*$'
+        actionKey:
+          type: string
+          enum: [save, saveAndStart]
+          default: save
+          description: 必须是当前同一 Published Form 对映射 Flow 用户可见且可用的创建按钮；省略时兼容为 save
       additionalProperties: false
     CreateResult:
       type: object
@@ -2487,7 +1848,7 @@ components:
           type: string
           pattern: '^eor_[A-Za-z0-9_-]{16,64}$'
         record:
-          $ref: '#/components/schemas/RecordView'
+          $ref: '#/components/schemas/CreatedRecord'
         effects:
           type: array
           maxItems: 0
@@ -2495,6 +1856,21 @@ components:
           type:
             - string
             - 'null'
+      additionalProperties: false
+    CreatedRecord:
+      type: object
+      required:
+        - id
+        - recordVersion
+      properties:
+        id:
+          $ref: '#/components/schemas/RecordId'
+        recordVersion:
+          type:
+            - integer
+            - 'null'
+          format: int64
+          minimum: 0
       additionalProperties: false
     CreateResultEnvelope:
       allOf:
@@ -2851,7 +2227,7 @@ components:
       additionalProperties: false
     ActionStartedEventPayload:
       type: object
-      description: 仅 SDK 预留 Schema；V1 没有 Action Runtime，当前 iframe Bridge 不发送
+      description: 仅 SDK 预留 Schema；原生表单动作在 iframe 内执行，当前 Bridge 不发送
       required:
         - actionKey
         - clientMutationId
@@ -2867,7 +2243,7 @@ components:
       additionalProperties: false
     ActionCompletedEventPayload:
       type: object
-      description: 仅 SDK 预留 Schema；V1 没有 Action Runtime，当前 iframe Bridge 不发送
+      description: 仅 SDK 预留 Schema；原生表单动作在 iframe 内执行，当前 Bridge 不发送
       required:
         - actionKey
         - receiptId
@@ -2884,7 +2260,7 @@ components:
       additionalProperties: false
     CloseRequestedEventPayload:
       type: object
-      description: 仅 SDK 预留 Schema；当前 iframe Bridge 不发送
+      description: 直接 FORM 的 Published close/取消按钮请求宿主关闭；宿主收到后应 await widget.destroy() 完成 Session Logout
       required:
         - reason
       properties:
@@ -2922,6 +2298,7 @@ components:
         - SELECTION_RETURN
         - RECORD_VIEW
         - RECORD_CREATE
+        - ACTION_EXECUTE
     ExternalFieldType:
       type: string
       enum:
@@ -2934,8 +2311,8 @@ components:
         - SELECT
         - MULTI_SELECT
       description: >-
-        成功发布的 V1 表单/列表投影类型。表单中的引用、Lookup 和主体选择类字段在发布时阻断，
-        因而不会出现在成功响应中。
+        LIST External Projection 的字段类型；FORM 不使用该枚举，直接运行 Flow
+        Published Form 的原生组件注册表。
     ListFilterOperator:
       type: string
       enum:
@@ -2970,7 +2347,7 @@ components:
     ScalarValue:
       oneOf:
         - type: string
-          maxLength: 2048
+          maxLength: 100000
         - type: number
         - type: boolean
         - type: 'null'
@@ -2988,8 +2365,20 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/ScalarValue'
+    NativeFormValue:
+      description: 通用 JSON 值；字段和组件语义由 Flow 标准提交链校验
+      oneOf:
+        - $ref: '#/components/schemas/ScalarValue'
+        - type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/NativeFormValue'
+        - type: object
+          maxProperties: 500
+          additionalProperties:
+            $ref: '#/components/schemas/NativeFormValue'
     ProjectedValues:
       type: object
-      maxProperties: 100
+      maxProperties: 300
       additionalProperties:
         $ref: '#/components/schemas/ClientValue'

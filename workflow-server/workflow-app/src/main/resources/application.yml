@@ -148,7 +148,7 @@ logging:
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:}
   allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}
-  allowed-headers: ${CORS_ALLOWED_HEADERS:Authorization,Content-Type,Idempotency-Key,X-Trace-Id,X-Business-Trace-Key}
+  allowed-headers: ${CORS_ALLOWED_HEADERS:Authorization,Content-Type,Idempotency-Key,X-Flow-Embed-Protocol,X-Trace-Id,X-Business-Trace-Key}
   allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
   max-age: ${CORS_MAX_AGE:1h}
 

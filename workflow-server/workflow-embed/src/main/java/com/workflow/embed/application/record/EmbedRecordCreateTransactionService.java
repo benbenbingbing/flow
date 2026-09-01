@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.EmbedRecordCreatePort;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit;
-import com.workflow.embed.application.form.EmbedRuntimeFormFacade.CreateAuthorization;
+import com.workflow.embed.application.record.EmbedNativeRecordCreateAuthorizationService.Authorization;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;
 import com.workflow.embed.application.port.EmbedOperationReceiptPort;
 import com.workflow.embed.domain.EmbedIdempotencyClaim;
@@ -51,7 +51,7 @@ public class EmbedRecordCreateTransactionService {
     @Transactional(rollbackFor = Exception.class)
     public BusinessResult create(
             EmbedIdempotencyClaim claim,
-            CreateAuthorization authorization,
+            Authorization authorization,
             String actorScopeDigest,
             Instant now,
             String traceId) {
@@ -62,7 +62,7 @@ public class EmbedRecordCreateTransactionService {
         EmbedRecordCreatePort.CreatedRecord created = recordCreatePort.create(
                 new EmbedRecordCreatePort.CreateCommand(
                         authorization.target(), authorization.effectiveData(),
-                        claim.id()));
+                        claim.id(), authorization.startProcess()));
         String receiptId = "eor_"
                 + UUID.randomUUID().toString().replace("-", "");
         String summary = json(Map.of(

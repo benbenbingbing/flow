@@ -20,6 +20,7 @@ import com.workflow.embed.application.port.EmbedFlowUserPort;
 import com.workflow.embed.application.port.EmbedIdGeneratorPort;
 import com.workflow.embed.application.port.EmbedLaunchConfigurationPort;
 import com.workflow.embed.application.port.EmbedLaunchStorePort;
+import com.workflow.embed.application.port.EmbedRuntimeSnapshotMaterializationPort;
 import com.workflow.embed.application.port.EmbedSecretGeneratorPort;
 import com.workflow.embed.application.port.EmbedSignedAssertionVerifierPort;
 import com.workflow.embed.application.port.EmbedSubjectDigestPort;
@@ -36,6 +37,7 @@ import com.workflow.embed.domain.EmbedExternalIdentityBinding;
 import com.workflow.embed.domain.EmbedFlowUser;
 import com.workflow.embed.domain.EmbedIdentityProviderSnapshot;
 import com.workflow.embed.domain.EmbedLaunchConfiguration;
+import com.workflow.embed.domain.EmbedReleaseSnapshot;
 import com.workflow.embed.domain.EmbedSubjectType;
 import com.workflow.embed.domain.PersistedEmbedLaunch;
 import com.workflow.embed.domain.ProtectedContext;
@@ -69,7 +71,8 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
     private static final Set<String> V1_ENTRY_MODES = Set.of(
             "LIST", "CREATE", "VIEW");
     private static final Set<String> V1_CAPABILITIES = Set.of(
-            "LIST_QUERY", "SELECTION_RETURN", "RECORD_VIEW", "RECORD_CREATE");
+            "LIST_QUERY", "SELECTION_RETURN", "RECORD_VIEW", "RECORD_CREATE",
+            "ACTION_EXECUTE");
 
     private final EmbedLaunchConfigurationPort configurationPort;
     private final EmbedExternalIdentityBindingPort bindingPort;
@@ -82,6 +85,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
     private final EmbedDigestPort digestPort;
     private final EmbedIdGeneratorPort idGenerator;
     private final EmbedLaunchStorePort launchStore;
+    private final EmbedRuntimeSnapshotMaterializationPort snapshotMaterializationPort;
     private final EmbedTrafficControlPort trafficControlPort;
     private final EmbedPublishedContextValidator contextValidator;
     private final EmbedProperties properties;
@@ -101,6 +105,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
             EmbedDigestPort digestPort,
             EmbedIdGeneratorPort idGenerator,
             EmbedLaunchStorePort launchStore,
+            EmbedRuntimeSnapshotMaterializationPort snapshotMaterializationPort,
             EmbedTrafficControlPort trafficControlPort,
             EmbedPublishedContextValidator contextValidator,
             EmbedProperties properties,
@@ -118,6 +123,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         this.digestPort = digestPort;
         this.idGenerator = idGenerator;
         this.launchStore = launchStore;
+        this.snapshotMaterializationPort = snapshotMaterializationPort;
         this.trafficControlPort = trafficControlPort;
         this.contextValidator = contextValidator;
         this.properties = properties;
@@ -163,20 +169,45 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         Instant now = clock.instant();
         validateTopLevel(command);
         String parentOrigin = EmbedOriginNormalizer.normalize(command.parentOrigin());
-        EmbedLaunchConfiguration configuration = configurationPort.find(
+        EmbedLaunchConfiguration preflight = configurationPort.find(
+                        actor.applicationId(), command.viewKey(), now)
+                .orElseThrow(() -> new EmbedException(
+                        403,
+                        EmbedErrorCode.EMBED_VIEW_NOT_GRANTED,
+                        "Embed view is not granted to this application"));
+        validateConfiguration(preflight, actor, parentOrigin, now);
+        // 任何内部 Runtime Snapshot 写入都必须先受 Grant Launch 配额约束，避免合法
+        // Application/Origin 使用无效身份请求放大快照解析和数据库写入成本。预读不加锁，
+        // 因此 REQUIRES_NEW 限流事务不会等待被挂起的外层事务自己持有的行锁。
+        trafficControlPort.consumeLaunch(actor.applicationId(), preflight.grant().id());
+
+        // 扣减配额后在签发事务内重新加锁读取，所有安全状态和 Origin 都以最新值为准。
+        EmbedLaunchConfiguration configuration = configurationPort.lockForUpdate(
                         actor.applicationId(), command.viewKey(), now)
                 .orElseThrow(() -> new EmbedException(
                         403,
                         EmbedErrorCode.EMBED_VIEW_NOT_GRANTED,
                         "Embed view is not granted to this application"));
         validateConfiguration(configuration, actor, parentOrigin, now);
-        // 入口模式只依赖已验证的不可变 Release，必须在配额和身份解析前拒绝；
-        // 否则一个 V1 明令关闭的 EDIT 请求仍会消耗配额或触发远程身份/JWKS 工作。
-        EntrySelection entry = validateEntry(configuration, command.entry());
-
-        // 只有已验证的 Application/Grant/View/Origin 才占用 Grant 配额；放在
-        // 外部身份解析和远程 JWKS 之前，避免合法来源用昂贵步骤绕过限流。
-        trafficControlPort.consumeLaunch(actor.applicationId(), configuration.grant().id());
+        if (!preflight.grant().id().equals(configuration.grant().id())) {
+            // 两次读取之间如果 Grant 被替换，不能把旧 Grant 配额充当新 Grant 配额。
+            throw new EmbedException(
+                    403,
+                    EmbedErrorCode.EMBED_VIEW_DISABLED,
+                    "Embed configuration changed; retry the request");
+        }
+        // 每个新 Launch 都在 View 行锁内解析 Flow 当前 ACTIVE 资源并物化内部快照。
+        // 该快照不会更新 published_release_id；后续 Session 只固定本次结果。
+        EmbedReleaseSnapshot runtimeSnapshot = snapshotMaterializationPort.materialize(
+                configuration.view().id(),
+                configuration.view().surfaceType(),
+                configuration.currentConfigJson(),
+                actor.applicationId(),
+                now);
+        validateRuntimeSnapshot(configuration, runtimeSnapshot);
+        // 入口模式只依赖本次 Launch 的不可变 Runtime Snapshot；物化后立即校验，避免无效入口
+        // 继续触发外部身份、JWKS 或用户映射工作。Launch 配额已在物化之前消费。
+        EntrySelection entry = validateEntry(runtimeSnapshot, command.entry());
 
         ResolvedSubject externalSubject = resolveSubject(
                 configuration, command.subject(), now);
@@ -215,8 +246,8 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
                         "Mapped Flow user is unavailable"));
 
         Map<String, Object> context = immutableContext(command.context());
-        contextValidator.validate(context, configuration.release().contextSchemaJson());
-        UiSelection ui = validateUi(configuration.release().uiConfigJson(), command.ui());
+        contextValidator.validate(context, runtimeSnapshot.contextSchemaJson());
+        UiSelection ui = validateUi(runtimeSnapshot.uiConfigJson(), command.ui());
 
         String launchId = idGenerator.nextLaunchId();
         String launchCode = secretGenerator.generate(properties.getSecretBytes());
@@ -228,7 +259,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
                 actor.applicationId(),
                 configuration.grant().id(),
                 configuration.view().id(),
-                configuration.release().id(),
+                runtimeSnapshot.id(),
                 configuration.grant().identityProvider().id(),
                 configuration.grant().identityProvider().securityVersion(),
                 configuration.application().version(),
@@ -260,8 +291,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
                 expiresAt,
                 new EmbedLaunchView(
                         configuration.view().viewKey(),
-                        configuration.view().surfaceType(),
-                        configuration.release().revision()),
+                        configuration.view().surfaceType()),
                 PROTOCOL_VERSION);
     }
 
@@ -291,20 +321,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         if (!configuration.application().isActiveAt(now)
                 || !configuration.view().isActive()
                 || !configuration.grant().isActiveAt(now)
-                || !configuration.grant().identityProvider().isActive()
-                || !configuration.release().surfaceType().equals(configuration.view().surfaceType())) {
-            throw new EmbedException(403, EmbedErrorCode.EMBED_VIEW_DISABLED,
-                    "Embed configuration is unavailable");
-        }
-        Set<String> entryModes = parseStringSet(
-                configuration.release().entryModesJson());
-        Set<String> capabilities = parseStringSet(
-                configuration.release().capabilitiesJson());
-        // 发布器已禁止 V1 未实现能力；Launch 边界仍需复验不可变快照，防止
-        // 历史数据、直接写库或旧版本发布器把 EDIT/动作能力带入浏览器会话。
-        if (entryModes.isEmpty()
-                || !V1_ENTRY_MODES.containsAll(entryModes)
-                || !V1_CAPABILITIES.containsAll(capabilities)) {
+                || !configuration.grant().identityProvider().isActive()) {
             throw new EmbedException(403, EmbedErrorCode.EMBED_VIEW_DISABLED,
                     "Embed configuration is unavailable");
         }
@@ -314,6 +331,27 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         if (!originAllowed) {
             throw new EmbedException(403, EmbedErrorCode.EMBED_ORIGIN_NOT_ALLOWED,
                     "Parent origin is not allowed");
+        }
+    }
+
+    /** 复验内部物化器输出，防止异常适配器把未开放能力带入 Session。 */
+    private void validateRuntimeSnapshot(
+            EmbedLaunchConfiguration configuration,
+            EmbedReleaseSnapshot runtimeSnapshot) {
+        if (runtimeSnapshot == null
+                || !configuration.view().surfaceType().equals(runtimeSnapshot.surfaceType())) {
+            throw new EmbedException(403, EmbedErrorCode.EMBED_VIEW_DISABLED,
+                    "Embed configuration is unavailable");
+        }
+        Set<String> entryModes = parseStringSet(
+                runtimeSnapshot.entryModesJson());
+        Set<String> capabilities = parseStringSet(
+                runtimeSnapshot.capabilitiesJson());
+        if (entryModes.isEmpty()
+                || !V1_ENTRY_MODES.containsAll(entryModes)
+                || !V1_CAPABILITIES.containsAll(capabilities)) {
+            throw new EmbedException(403, EmbedErrorCode.EMBED_VIEW_DISABLED,
+                    "Embed configuration is unavailable");
         }
     }
 
@@ -373,7 +411,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
     }
 
     private EntrySelection validateEntry(
-            EmbedLaunchConfiguration configuration,
+            EmbedReleaseSnapshot runtimeSnapshot,
             EmbedLaunchEntry requested) {
         EmbedEntryMode mode;
         try {
@@ -382,7 +420,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
             throw invalid("entry.mode is invalid");
         }
         if (!V1_ENTRY_MODES.contains(mode.name())
-                || !parseStringSet(configuration.release().entryModesJson())
+                || !parseStringSet(runtimeSnapshot.entryModesJson())
                         .contains(mode.name())) {
             throw new EmbedException(403, EmbedErrorCode.EMBED_OPERATION_NOT_ALLOWED,
                     "Entry mode is not published");

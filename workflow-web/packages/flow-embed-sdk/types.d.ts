@@ -2,13 +2,14 @@
 // Do not edit manually. Run: npm run generate:embed-sdk-types
 
 export const FLOW_EMBED_PROTOCOL: "flow-embed/1"
-export const MAX_MESSAGE_BYTES: 65536
+export const MAX_MESSAGE_BYTES: 262144
 
 export const FLOW_EMBED_CAPABILITIES: readonly [
   "LIST_QUERY",
   "SELECTION_RETURN",
   "RECORD_VIEW",
   "RECORD_CREATE",
+  "ACTION_EXECUTE",
 ]
 
 export const FLOW_EMBED_COMMANDS: Readonly<{
@@ -209,6 +210,7 @@ export interface FlowEmbedMountOptions {
   title?: string
   height?: FlowEmbedHeightOptions
   handshakeTimeoutMs?: number
+  destroyTimeoutMs?: number
   maxMessageBytes?: number
   maxSeenMessageIds?: number
   onEvent?: (event: FlowEmbedTypedEvent) => void
@@ -239,8 +241,8 @@ export class FlowEmbedWidget {
   on(type: '*', handler: (event: FlowEmbedTypedEvent) => void): () => void
   off<K extends FlowEmbedEventType>(type: K, handler: (event: FlowEmbedEventFor<K>) => void): void
   off(type: '*', handler: (event: FlowEmbedTypedEvent) => void): void
-  destroy(): void
-  getState(): 'waiting' | 'acknowledging' | 'connected' | 'failed' | 'destroyed'
+  destroy(): Promise<void>
+  getState(): 'waiting' | 'acknowledging' | 'connected' | 'destroying' | 'failed' | 'destroyed'
 }
 
 export function mount(options: FlowEmbedMountOptions): FlowEmbedWidget

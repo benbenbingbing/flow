@@ -47,6 +47,12 @@ public final class EmbedRequestGuardFilter extends OncePerRequestFilter {
         response.setHeader(CorrelationContext.BUSINESS_TRACE_HEADER, traceId);
         response.setHeader(CorrelationContext.REQUEST_ID_HEADER, requestId);
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+        if (isDelegatedMultipart(request)) {
+            // 原生上传继续使用平台统一 multipart 大小、文件权限和
+            // 存储策略；Embed JSON 的协议上限不能改变原生文件组件语义。
+            filterChain.doFilter(request, response);
+            return;
+        }
         if (request.getContentLengthLong() > maxBodyBytes) {
             writeTooLarge(response, traceId, requestId);
             return;
@@ -60,6 +66,19 @@ public final class EmbedRequestGuardFilter extends OncePerRequestFilter {
             response.reset();
             writeTooLarge(response, traceId, requestId);
         }
+    }
+
+    private static boolean isDelegatedMultipart(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String contentType = request.getContentType();
+        return path != null
+                && path.startsWith("/api/")
+                && !path.startsWith("/api/embed/")
+                && request.getHeader(
+                        EmbedSessionAuthenticationFilter.PROTOCOL_HEADER) != null
+                && contentType != null
+                && contentType.toLowerCase(java.util.Locale.ROOT)
+                        .startsWith(MediaType.MULTIPART_FORM_DATA_VALUE);
     }
 
     private void writeTooLarge(

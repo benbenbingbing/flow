@@ -2,13 +2,10 @@ package com.workflow.contracts.embed;
 
 import java.util.Objects;
 
-/**
- * Immutable view release information pinned to an issued launch.
- */
+/** Stable Embed view identity selected for an issued launch. */
 public record EmbedLaunchView(
         String key,
-        String surfaceType,
-        long revision) {
+        String surfaceType) {
 
     public EmbedLaunchView {
         Objects.requireNonNull(key, "key");

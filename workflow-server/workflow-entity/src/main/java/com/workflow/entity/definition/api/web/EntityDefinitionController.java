@@ -76,11 +76,12 @@ public class EntityDefinitionController {
      * 运行态列表/表单会按编码读取元数据，不能要求菜单管理权限 entity:definition:view。
      * 登录用户需具备该实体的设计查看权，或任一标准数据动作权限（如 entity:{code}:list）。
      */
-    @GetMapping("/code/{code}")
+    @GetMapping("/code/{entityCode}")
     @AuthenticatedApi(objectAuthorization = true)
-    public ApiResponse<EntityDefinitionDTO> getByCode(@PathVariable String code) {
-        actionCapabilityService.requireEntityMetadataAccess(code);
-        return ApiResponse.success(entityService.findByCode(code));
+    public ApiResponse<EntityDefinitionDTO> getByCode(
+            @PathVariable String entityCode) {
+        actionCapabilityService.requireEntityMetadataAccess(entityCode);
+        return ApiResponse.success(entityService.findByCode(entityCode));
     }
     
     /**

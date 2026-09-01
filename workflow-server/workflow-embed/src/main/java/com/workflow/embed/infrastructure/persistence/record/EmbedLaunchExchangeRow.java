@@ -50,7 +50,6 @@ public record EmbedLaunchExchangeRow(
         String viewKey,
         String viewSurfaceType,
         String viewStatus,
-        String publishedReleaseId,
         long currentViewSecurityVersion,
         String grantStatus,
         LocalDateTime grantExpiresAt,

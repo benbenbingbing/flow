@@ -283,6 +283,42 @@ class FormUniqueRulePolicyTest {
                         Set.of("name")));
     }
 
+    @Test
+    void publishBoundaryRejectsUnknownOrMalformedUniquenessKeys() {
+        for (String validation : List.of(
+                "{\"uniqueness\":{\"version\":1,\"mode\":\"GLOBAL\","
+                        + "\"future\":{}}}",
+                "{\"uniqueness\":{\"version\":1,\"mode\":\"GLOBAL\","
+                        + "\"precheck\":{\"debounceMs\":5001}}}",
+                "{\"uniqueness\":{\"version\":1,"
+                        + "\"mode\":\"CONDITIONAL\","
+                        + "\"condition\":{\"version\":1,\"future\":null,"
+                        + "\"root\":{\"type\":\"CONDITION\","
+                        + "\"property\":\"status\",\"operator\":\"==\","
+                        + "\"value\":\"OPEN\"}}}}",
+                "{\"uniqueness\":{\"version\":1,"
+                        + "\"mode\":\"CONDITIONAL\","
+                        + "\"condition\":{\"version\":1,\"root\":{"
+                        + "\"type\":\"GROUP\",\"logic\":\"AND\","
+                        + "\"future\":null,\"children\":[{"
+                        + "\"type\":\"CONDITION\","
+                        + "\"property\":\"status\",\"operator\":\"==\","
+                        + "\"value\":\"OPEN\"}]}}}}",
+                "{\"uniqueness\":{\"version\":1,"
+                        + "\"mode\":\"CONDITIONAL\","
+                        + "\"condition\":{\"version\":1,\"root\":{"
+                        + "\"type\":\"CONDITION\",\"property\":\"status\","
+                        + "\"operator\":\"==\",\"value\":\"OPEN\","
+                        + "\"future\":null}}}}")) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> policy.validatePublished(
+                            List.of(field("name", "项目名称", validation)),
+                            Set.of("name", "status")),
+                    validation);
+        }
+    }
+
     private String conditionalRule() {
         return """
                 {

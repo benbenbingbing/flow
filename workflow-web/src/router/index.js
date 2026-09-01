@@ -255,7 +255,6 @@ const routes = [
           requiredPermissions: [
             'system:embed:view',
             'system:embed:manage',
-            'system:embed:publish',
             'system:embed:identity-manage',
             'system:embed:session-revoke'
           ]

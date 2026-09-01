@@ -21,6 +21,7 @@ import com.workflow.embed.application.port.EmbedExternalIdentityBindingPort;
 import com.workflow.embed.application.port.EmbedFlowUserPort;
 import com.workflow.embed.application.port.EmbedLaunchConfigurationPort;
 import com.workflow.embed.application.port.EmbedLaunchStorePort;
+import com.workflow.embed.application.port.EmbedRuntimeSnapshotMaterializationPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeRequestClass;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
@@ -45,7 +46,9 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -80,6 +83,10 @@ class EmbedLaunchIssueServiceTest {
         assertEquals("flow-embed/1", issued.protocolVersion());
         assertEquals("https://embed.flow.test/embed/v1/launches/lch_test", issued.embedUrl());
         assertEquals(1, fixture.launchQuotaConsumes);
+        assertEquals(1, fixture.snapshotMaterializations);
+        assertEquals(
+                List.of("preflight", "quota", "lock", "snapshot"),
+                fixture.steps.subList(0, 4));
         verify(fixture.audit).launchIssued(
                 "lch_test", EmbedAuditCorrelation.of("trace-1", "request-1"));
         assertTrue(issued.toString().contains("<redacted>"));
@@ -128,6 +135,24 @@ class EmbedLaunchIssueServiceTest {
 
         assertEquals(EmbedErrorCode.RATE_LIMIT_EXCEEDED, error.getErrorCode());
         assertEquals(1, fixture.launchQuotaConsumes);
+        assertEquals(0, fixture.lockedConfigurationReads);
+        assertEquals(0, fixture.snapshotMaterializations);
+        assertEquals(0, fixture.bindingLookups);
+    }
+
+    @Test
+    void rejectsWhenGrantChangesBetweenQuotaPreflightAndLockedReload() {
+        Fixture fixture = new Fixture();
+        fixture.lockedGrantIdOverride = "grant-2";
+
+        EmbedException error = assertThrows(
+                EmbedException.class,
+                () -> fixture.service.issue(
+                        actor(), trustedCommand("https://portal.partner.example")));
+
+        assertEquals(EmbedErrorCode.EMBED_VIEW_DISABLED, error.getErrorCode());
+        assertEquals(List.of("preflight", "quota", "lock"), fixture.steps);
+        assertEquals(0, fixture.snapshotMaterializations);
         assertEquals(0, fixture.bindingLookups);
     }
 
@@ -146,16 +171,17 @@ class EmbedLaunchIssueServiceTest {
                 () -> fixture.service.issue(actor(), command));
 
         assertEquals(EmbedErrorCode.EMBED_OPERATION_NOT_ALLOWED, error.getErrorCode());
-        assertEquals(0, fixture.launchQuotaConsumes);
+        assertEquals(1, fixture.launchQuotaConsumes);
+        assertEquals(1, fixture.snapshotMaterializations);
         assertEquals(0, fixture.bindingLookups);
     }
 
     @Test
-    void rejectsLegacyReleaseThatPublishesUnsupportedV1Capabilities() {
+    void rejectsRuntimeSnapshotWithUnsupportedV1Capabilities() {
         Fixture fixture = new Fixture();
         fixture.configuration = configuration(
                 true, Set.of("https://portal.partner.example"),
-                "[\"LIST\"]", "[\"LIST_QUERY\",\"ACTION_EXECUTE\"]");
+                "[\"LIST\"]", "[\"LIST_QUERY\",\"PROCESS_START\"]");
 
         EmbedException error = assertThrows(
                 EmbedException.class,
@@ -163,8 +189,27 @@ class EmbedLaunchIssueServiceTest {
                         actor(), trustedCommand("https://portal.partner.example")));
 
         assertEquals(EmbedErrorCode.EMBED_VIEW_DISABLED, error.getErrorCode());
-        assertEquals(0, fixture.launchQuotaConsumes);
+        assertEquals(1, fixture.launchQuotaConsumes);
+        assertEquals(1, fixture.snapshotMaterializations);
         assertEquals(0, fixture.bindingLookups);
+    }
+
+    @Test
+    void acceptsActionExecutionCapabilityPublishedForFormLaunch() {
+        Fixture fixture = new Fixture();
+        fixture.configuration = formConfigurationWithActionExecution();
+        EmbedLaunchCommand command = new EmbedLaunchCommand(
+                "supplier-work-orders", "https://portal.partner.example",
+                "channel-1234567890", trustedSubject(),
+                new EmbedLaunchEntry("CREATE", null),
+                Map.of("supplierId", "S-10086"),
+                new EmbedLaunchUi("zh-CN", "light"));
+
+        EmbedLaunchIssued issued = fixture.service.issue(actor(), command);
+
+        assertNotNull(issued);
+        assertNotNull(fixture.launchStore.saved);
+        assertEquals("CREATE", fixture.launchStore.saved.entryMode());
     }
 
     @Test
@@ -273,18 +318,40 @@ class EmbedLaunchIssueServiceTest {
         return new EmbedLaunchConfiguration(
                 new EmbedApplicationSnapshot(APPLICATION_ID, "ACTIVE", null, 3),
                 new EmbedViewSnapshot(
-                        "view-1", "supplier-work-orders", "LIST", "ACTIVE", "release-1", 5),
-                new EmbedReleaseSnapshot(
-                        "release-1", 7, "LIST", entryModesJson,
-                        capabilitiesJson,
-                        "{\"type\":\"object\",\"additionalProperties\":false,"
-                                + "\"required\":[\"supplierId\"],\"properties\":{"
-                                + "\"supplierId\":{\"type\":\"string\",\"maxLength\":64}}}",
-                        "{}"),
+                        "view-1", "supplier-work-orders", "LIST", "ACTIVE", 5),
+                currentConfig(entryModesJson, capabilitiesJson),
                 new EmbedGrantSnapshot(
                         "grant-1", APPLICATION_ID, "view-1", "ACTIVE", trusted,
                         "[\"LIST_QUERY\"]", 2, 1800, 60, 600, 10,
                         null, 4, provider, origins));
+    }
+
+    private static EmbedLaunchConfiguration formConfigurationWithActionExecution() {
+        EmbedIdentityProviderSnapshot provider = provider("TRUSTED_EXTERNAL_ID");
+        return new EmbedLaunchConfiguration(
+                new EmbedApplicationSnapshot(APPLICATION_ID, "ACTIVE", null, 3),
+                new EmbedViewSnapshot(
+                        "view-1", "supplier-work-orders", "FORM", "ACTIVE", 5),
+                currentConfig("[\"CREATE\"]",
+                        "[\"RECORD_CREATE\",\"ACTION_EXECUTE\"]"),
+                new EmbedGrantSnapshot(
+                        "grant-1", APPLICATION_ID, "view-1", "ACTIVE", true,
+                        "[\"RECORD_CREATE\",\"ACTION_EXECUTE\"]", 2, 1800,
+                        60, 600, 10, null, 4, provider,
+                        Set.of("https://portal.partner.example")));
+    }
+
+    private static String currentConfig(String entryModesJson, String capabilitiesJson) {
+        return """
+                {
+                  "entryModes":%s,
+                  "capabilities":%s,
+                  "contextSchema":{"type":"object","additionalProperties":false,
+                    "required":["supplierId"],"properties":{
+                    "supplierId":{"type":"string","maxLength":64}}},
+                  "ui":{}
+                }
+                """.formatted(entryModesJson, capabilitiesJson);
     }
 
     private static EmbedIdentityProviderSnapshot provider(String type) {
@@ -317,6 +384,7 @@ class EmbedLaunchIssueServiceTest {
             EmbedExternalIdentityBindingPort,
             EmbedFlowUserPort,
             EmbedAssertionReplayPort,
+            EmbedRuntimeSnapshotMaterializationPort,
             EmbedTrafficControlPort {
 
         private final ObjectMapper mapper = new ObjectMapper();
@@ -329,6 +397,10 @@ class EmbedLaunchIssueServiceTest {
                 new EmbedFlowUser("flow-user-1", "alice", true, false, false));
         private int bindingLookups;
         private int launchQuotaConsumes;
+        private int lockedConfigurationReads;
+        private int snapshotMaterializations;
+        private String lockedGrantIdOverride;
+        private final List<String> steps = new ArrayList<>();
         private EmbedException launchQuotaFailure;
         private final EmbedLifecycleAudit audit = mock(EmbedLifecycleAudit.class);
         private final EmbedLaunchIssueService service;
@@ -350,7 +422,7 @@ class EmbedLaunchIssueServiceTest {
                     },
                     this, subjectDigest, protection(mapper), bytes -> LAUNCH_CODE,
                     new Sha256EmbedDigest(), new FixedIds(), launchStore,
-                    this,
+                    this, this,
                     new EmbedPublishedContextValidator(mapper), properties, mapper,
                     Clock.fixed(NOW, ZoneOffset.UTC), audit);
         }
@@ -358,7 +430,39 @@ class EmbedLaunchIssueServiceTest {
         @Override
         public Optional<EmbedLaunchConfiguration> find(
                 String applicationId, String viewKey, Instant now) {
+            steps.add("preflight");
             return Optional.ofNullable(configuration);
+        }
+
+        @Override
+        public Optional<EmbedLaunchConfiguration> lockForUpdate(
+                String applicationId, String viewKey, Instant now) {
+            steps.add("lock");
+            lockedConfigurationReads++;
+            if (configuration == null || lockedGrantIdOverride == null) {
+                return Optional.ofNullable(configuration);
+            }
+            EmbedGrantSnapshot grant = configuration.grant();
+            return Optional.of(new EmbedLaunchConfiguration(
+                    configuration.application(),
+                    configuration.view(),
+                    configuration.currentConfigJson(),
+                    new EmbedGrantSnapshot(
+                            lockedGrantIdOverride,
+                            grant.applicationId(),
+                            grant.viewId(),
+                            grant.status(),
+                            grant.trustedSubjectAssertion(),
+                            grant.capabilityCeilingJson(),
+                            grant.maxActiveSessionsPerUser(),
+                            grant.maxSessionSeconds(),
+                            grant.launchLimitPerMinute(),
+                            grant.runtimeLimitPerMinute(),
+                            grant.maxConcurrency(),
+                            grant.expiresAt(),
+                            grant.securityVersion(),
+                            grant.identityProvider(),
+                            grant.allowedOrigins())));
         }
 
         @Override
@@ -385,9 +489,34 @@ class EmbedLaunchIssueServiceTest {
 
         @Override
         public void consumeLaunch(String applicationId, String grantId) {
+            steps.add("quota");
             launchQuotaConsumes++;
             if (launchQuotaFailure != null) {
                 throw launchQuotaFailure;
+            }
+        }
+
+        @Override
+        public EmbedReleaseSnapshot materialize(
+                String viewId,
+                String surfaceType,
+                String currentConfigJson,
+                String materializedBy,
+                Instant now) {
+            steps.add("snapshot");
+            snapshotMaterializations++;
+            try {
+                var config = mapper.readTree(currentConfigJson);
+                return new EmbedReleaseSnapshot(
+                        "release-1",
+                        7,
+                        surfaceType,
+                        mapper.writeValueAsString(config.path("entryModes")),
+                        mapper.writeValueAsString(config.path("capabilities")),
+                        mapper.writeValueAsString(config.path("contextSchema")),
+                        mapper.writeValueAsString(config.path("ui")));
+            } catch (Exception error) {
+                throw new AssertionError(error);
             }
         }
 

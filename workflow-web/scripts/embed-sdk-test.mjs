@@ -40,12 +40,12 @@ const selectionPayload = (id, values) => ({ selection: [{ id, values }] })
 assert.equal(validateEventPayload(
   FLOW_EMBED_EVENTS.SELECTION_CHANGED,
   selectionPayload(maximumRecordId, {
-    description: 'x'.repeat(2048),
+    description: 'x'.repeat(100000),
     tags: Array.from({ length: 100 }, (_, index) => `tag-${index}`)
   })
 ), true)
 for (const invalidPayload of [
-  selectionPayload('record-1', { description: 'x'.repeat(2049) }),
+  selectionPayload('record-1', { description: 'x'.repeat(100001) }),
   selectionPayload('record-1', { tags: Array(101).fill('tag') }),
   selectionPayload('A'.repeat(129), {}),
   selectionPayload('record/1', {})
@@ -55,6 +55,15 @@ for (const invalidPayload of [
     false
   )
 }
+
+assert.equal(validateEventPayload(
+  FLOW_EMBED_EVENTS.INITIALIZED,
+  {
+    viewKey: 'supplier-work-orders',
+    surfaceType: 'FORM',
+    capabilities: ['RECORD_CREATE', 'ACTION_EXECUTE']
+  }
+), true)
 
 function createFakePort() {
   const listeners = new Set()
@@ -201,6 +210,18 @@ function eventMessage(init, overrides = {}) {
   }
 }
 
+async function acknowledgeDestroy(harness, init, promise, messageId) {
+  const command = harness.ports[0].port1.messages.at(-1)
+  assert.equal(command.type, FLOW_EMBED_COMMANDS.DESTROY)
+  harness.ports[0].port1.emit(eventMessage(init, {
+    type: FLOW_EMBED_EVENTS.ACK,
+    messageId,
+    requestId: command.requestId,
+    payload: { command: FLOW_EMBED_COMMANDS.DESTROY }
+  }))
+  await promise
+}
+
 // 所有公开凭据/URL 边界在创建 iframe 前校验。
 const base = {
   container: { appendChild() {} },
@@ -240,17 +261,29 @@ assert.equal(harness.widget.iframe.src.includes('launch_code'), false)
 assert.equal(new URL(harness.widget.iframe.src).search, '')
 assert.equal(new URL(harness.widget.iframe.src).hash, '')
 
-// 伪造 source、伪造 origin、错误协议及协议外字段均不能触发 init。
+// 浏览器、扩展和开发工具产生的无关 window.message 必须静默忽略，不能污染宿主日志。
+emitWindow(harness, { source: {}, origin: 'chrome-extension://example', data: { type: 'extension.event' } })
+emitWindow(harness, {
+  source: {},
+  origin: 'https://evil.example',
+  data: ready({ protocol: 'flow-embed/2', supportedVersions: ['flow-embed/2'] })
+})
+emitWindow(harness, {
+  source: {},
+  origin: 'https://evil.example',
+  data: ready({ launchId: 'lch_fedcba9876543210' })
+})
+assert.deepEqual(violations, [])
+
+// 只有声称属于当前握手的 ready 才做 fail-closed 来源与完整协议校验。
 emitWindow(harness, { source: {}, data: ready() })
 emitWindow(harness, { origin: 'https://evil.example', data: ready() })
-emitWindow(harness, { data: ready({ protocol: 'flow-embed/2', supportedVersions: ['flow-embed/2'] }) })
 emitWindow(harness, { data: ready({ extra: 'forbidden' }) })
 emitWindow(harness, { data: ready({ supportedVersions: [FLOW_EMBED_PROTOCOL, 'flow-embed/2'] }) })
 assert.equal(harness.iframeMessages.length, 0)
 assert.deepEqual(violations, [
   'FLOW_EMBED_READY_SOURCE_INVALID',
   'FLOW_EMBED_READY_SOURCE_INVALID',
-  'FLOW_EMBED_READY_INVALID',
   'FLOW_EMBED_READY_INVALID',
   'FLOW_EMBED_READY_INVALID'
 ])
@@ -367,12 +400,37 @@ heightHarness.ports[0].port1.emit(eventMessage(heightInit, {
   type: 'resize', messageId: 'message_000000000004', payload: { height: 5000 }
 }))
 assert.equal(heightHarness.widget.iframe.style.height, '1200px')
-heightHarness.widget.destroy()
+await acknowledgeDestroy(
+  heightHarness,
+  heightInit,
+  heightHarness.widget.destroy(),
+  'message_destroy_height_0001'
+)
 
-// 销毁清理 code、port、iframe、监听器；保存的旧 listener/port 也不能再分发消息。
+// destroy 必须保留 iframe/port 等待关联 ACK，重复调用不重复发命令。
 const oldIframe = harness.widget.iframe
 const port = harness.ports[0].port1
-harness.widget.destroy()
+const destroyPromise = harness.widget.destroy()
+assert.equal(harness.widget.destroy(), destroyPromise)
+assert.equal(harness.widget.getState(), 'destroying')
+assert.equal(port.closed, false)
+assert.equal(harness.container.children.includes(oldIframe), true)
+assert.equal(port.messages.filter(message => message.type === FLOW_EMBED_COMMANDS.DESTROY).length, 1)
+const destroyCommand = port.messages.at(-1)
+port.emit(eventMessage(transmittedInit.message, {
+  type: FLOW_EMBED_EVENTS.ACK,
+  messageId: 'message_destroy_wrong_001',
+  requestId: 'request_destroy_wrong_001',
+  payload: { command: FLOW_EMBED_COMMANDS.DESTROY }
+}))
+assert.equal(harness.widget.getState(), 'destroying', '不匹配 requestId 不得提前拆除 iframe')
+port.emit(eventMessage(transmittedInit.message, {
+  type: FLOW_EMBED_EVENTS.ACK,
+  messageId: 'message_destroy_match_001',
+  requestId: destroyCommand.requestId,
+  payload: { command: FLOW_EMBED_COMMANDS.DESTROY }
+}))
+await destroyPromise
 assert.equal(harness.widget.getState(), 'destroyed')
 assert.equal(harness.widget._launchCode, '')
 assert.equal(port.closed, true)
@@ -400,6 +458,60 @@ assert.equal(defaultNonceCalls, 1)
 assert.equal(defaultInit.parentNonce.length, 43)
 assert.equal(Buffer.from(defaultInit.parentNonce, 'base64url').length, 32)
 assert.equal(Buffer.from(defaultInit.childNonce, 'base64url').length, 32)
-defaultNonceHarness.widget.destroy()
+defaultNonceHarness.ports[0].port1.emit({
+  protocol: FLOW_EMBED_PROTOCOL,
+  type: 'init.ack',
+  launchId: 'lch_0123456789abcdef',
+  channelId: 'channel:12345678',
+  childNonce: CHILD_NONCE,
+  parentNonce: defaultInit.parentNonce
+})
+await acknowledgeDestroy(
+  defaultNonceHarness,
+  defaultInit,
+  defaultNonceHarness.widget.destroy(),
+  'message_destroy_nonce_001'
+)
+
+// init.ack 在途时 destroy 也要经 MessagePort 注销，不能直接拆 iframe 泄漏 Session。
+const acknowledgingHarness = createHarness()
+emitWindow(acknowledgingHarness, { data: ready() })
+const acknowledgingInit = acknowledgingHarness.iframeMessages[0].message
+const acknowledgingDestroy = acknowledgingHarness.widget.destroy()
+assert.equal(acknowledgingHarness.widget.getState(), 'destroying')
+acknowledgingHarness.ports[0].port1.emit({
+  protocol: FLOW_EMBED_PROTOCOL,
+  type: 'init.ack',
+  launchId: 'lch_0123456789abcdef',
+  channelId: 'channel:12345678',
+  childNonce: CHILD_NONCE,
+  parentNonce: acknowledgingInit.parentNonce
+})
+assert.equal(acknowledgingHarness.widget.getState(), 'destroying')
+await acknowledgeDestroy(
+  acknowledgingHarness,
+  acknowledgingInit,
+  acknowledgingDestroy,
+  'message_destroy_acknowledging_001'
+)
+
+// 子页没有确认时超时 fail-safe：本地资源必须清理，Promise 拒绝以阻止新 Launch。
+let destroyTimeoutCallback
+const timeoutHarness = createHarness({
+  destroyTimeoutMs: 1000,
+  setTimeoutImpl(callback) {
+    destroyTimeoutCallback = callback
+    return 91
+  },
+  clearTimeoutImpl() {}
+})
+const timeoutInit = connect(timeoutHarness)
+assert.ok(timeoutInit)
+const timedDestroy = timeoutHarness.widget.destroy()
+destroyTimeoutCallback()
+await assert.rejects(timedDestroy, error => error.errorCode === 'FLOW_EMBED_DESTROY_TIMEOUT')
+assert.equal(timeoutHarness.widget.getState(), 'destroyed')
+assert.equal(timeoutHarness.container.children.length, 0)
+assert.equal(timeoutHarness.widget.destroy(), timedDestroy)
 
 console.log('flow embed host SDK tests passed')

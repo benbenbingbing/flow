@@ -1,5 +1,12 @@
 <template>
-  <el-dialog v-model="dialogVisible" :title="dialogTitle" width="75%" class="entity-form-dialog" top="3vh">
+  <el-dialog
+    v-model="dialogVisible"
+    :title="dialogTitle"
+    width="75%"
+    class="entity-form-dialog"
+    top="3vh"
+    @closed="emit('closed')"
+  >
     <el-tabs v-if="showOuterTabs" v-model="activeTab" type="border-card" class="form-dialog-tabs">
       <el-tab-pane v-if="showBasicTab" label="基本信息" name="basic">
         <EntityDataFormFields
@@ -140,10 +147,12 @@ const props = defineProps<{
   listReleaseVersion?: number | null
   listReleaseResolutionToken?: string
   entityStatusOptions?: any[]
+  submitTransport?: (submission: any) => Promise<any>
 }>()
 
 const emit = defineEmits<{
-  success: []
+  success: [result?: any]
+  closed: []
 }>()
 
 const router = useRouter()
@@ -170,7 +179,9 @@ const listReleaseContext = computed(() => ({
   releaseId: props.listReleaseId || undefined,
   releaseVersion: props.listReleaseVersion ?? undefined,
   releaseResolutionToken:
-    props.listReleaseResolutionToken || undefined
+    props.listReleaseResolutionToken || undefined,
+  viewCompositionTraversalToken:
+    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
 }))
 const formReleaseContext = computed(() => ({
   releaseId:
@@ -182,7 +193,9 @@ const formReleaseContext = computed(() => ({
     ?? runtimeForm.value?.formReleaseVersion
     ?? undefined,
   releaseResolutionToken:
-    runtimeForm.value?.releaseResolutionToken || undefined
+    runtimeForm.value?.releaseResolutionToken || undefined,
+  viewCompositionTraversalToken:
+    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
 }))
 
 const formData = reactive({
@@ -305,7 +318,9 @@ async function loadFormActions() {
     recordId: formData.id || undefined,
     workflowReady: isWorkflowReady(props.entityDefinition),
     hasProcessInstance: hasProcessInfo.value,
-    systemEntity: props.entityDefinition?.storageMode === 'SYSTEM'
+    systemEntity: props.entityDefinition?.storageMode === 'SYSTEM',
+    viewCompositionTraversalToken:
+      launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
   })
 }
 
@@ -326,6 +341,8 @@ async function executeFormEvent(eventCode: string) {
       runtimeForm.value.releaseResolutionToken
       || launchRuntimeContext.value?.releaseResolutionToken
       || undefined,
+    viewCompositionTraversalToken:
+      launchRuntimeContext.value?.viewCompositionTraversalToken || undefined,
     entityCode: props.entityCode,
     listKey: props.listKey,
     targetType: 'OWNER',
@@ -460,7 +477,9 @@ async function handleFormAction(action: any) {
         mode: isEdit.value ? 'edit' : 'create',
         recordId: formData.id || undefined,
         formData: formData.data,
-        processInstanceId: processInstanceId.value || undefined
+        processInstanceId: processInstanceId.value || undefined,
+        viewCompositionTraversalToken:
+          launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
       }
     )
     await applyFormEventResult(result)
@@ -578,7 +597,7 @@ const openEdit = async (row: any, options: any = {}) => {
     runtimeForm.value?.id,
     listReleaseContext.value,
     formReleaseContext.value
-  ).catch(() => row)
+  )
   formData.id = detail.id
   formData.name = detail.name
   formData.data = normalizeEntityRecordForForm(detail)
@@ -675,14 +694,31 @@ const handleSubmit = async (startProcess = false) => {
       viewCompositionActionContextToken:
         launchRuntimeContext.value?.viewCompositionActionContextToken
         || undefined,
+      viewCompositionTraversalToken:
+        launchRuntimeContext.value?.viewCompositionTraversalToken
+        || undefined,
       id: formData.id,
       name: submittedData?.name || formData.name,
       data: submittedData,
       startProcess: formData.startProcess
     }
 
-    if (formData.id) {
-      await entityDataApi.update(
+    let result
+    if (props.submitTransport) {
+      // Embed 等受控宿主可替换“最终提交”传输，但字段渲染、校验、联动和按钮
+      // 始终走本组件的同一原生运行时，避免形成第二套逐组件兼容实现。
+      result = await props.submitTransport({
+        actionKey: formData.startProcess ? 'saveAndStart' : 'save',
+        data: submittedData,
+        entityCode: props.entityCode,
+        formId: runtimeForm.value?.id,
+        formReleaseId: formReleaseContext.value.releaseId,
+        formReleaseVersion: formReleaseContext.value.releaseVersion,
+        formReleaseResolutionToken:
+          formReleaseContext.value.releaseResolutionToken
+      })
+    } else if (formData.id) {
+      result = await entityDataApi.update(
         props.entityCode,
         formData.id,
         {
@@ -695,6 +731,9 @@ const handleSubmit = async (startProcess = false) => {
           viewCompositionActionContextToken:
             launchRuntimeContext.value?.viewCompositionActionContextToken
             || undefined,
+          viewCompositionTraversalToken:
+            launchRuntimeContext.value?.viewCompositionTraversalToken
+            || undefined,
           startProcess: formData.startProcess
         },
         formData.startProcess,
@@ -703,7 +742,7 @@ const handleSubmit = async (startProcess = false) => {
       )
       ElMessage.success('更新成功')
     } else {
-      await entityDataApi.save(
+      result = await entityDataApi.save(
         data,
         data.startProcess,
         listReleaseContext.value
@@ -712,7 +751,7 @@ const handleSubmit = async (startProcess = false) => {
     }
 
     dialogVisible.value = false
-    emit('success')
+    emit('success', result)
   } catch (error: any) {
     ElMessage.error(error.message || '操作失败')
   }

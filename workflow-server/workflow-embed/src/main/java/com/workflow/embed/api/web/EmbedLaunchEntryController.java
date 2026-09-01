@@ -23,9 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class EmbedLaunchEntryController {
 
     private static final String COMMON_CSP =
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
-                    + "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
-                    + "base-uri 'none'; form-action 'none'; ";
+            "default-src 'none'; script-src 'self'; script-src-elem 'self'; "
+                    + "script-src-attr 'none'; style-src 'self'; "
+                    + "style-src-elem 'self'; style-src-attr 'unsafe-inline'; "
+                    + "img-src 'self' data: blob: https:; "
+                    + "font-src 'self' data:; connect-src 'self'; "
+                    + "media-src 'self' blob:; worker-src 'self' blob:; "
+                    + "object-src 'none'; base-uri 'none'; form-action 'none'; ";
 
     private final EmbedLaunchEntryService service;
     private final EmbedProperties properties;

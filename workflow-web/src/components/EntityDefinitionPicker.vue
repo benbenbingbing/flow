@@ -8,7 +8,7 @@
     >
       <span v-if="selectedItems.length" class="trigger-content">
         <span class="trigger-primary">{{ triggerPrimaryText }}</span>
-        <span class="trigger-secondary">{{ triggerSecondaryText }}</span>
+        <span v-if="triggerSecondaryText" class="trigger-secondary">{{ triggerSecondaryText }}</span>
       </span>
       <span v-else class="trigger-placeholder">{{ placeholder }}</span>
       <span class="trigger-actions">
@@ -50,7 +50,7 @@
             <el-input
               v-model="keyword"
               clearable
-              placeholder="搜索实体名称或编码"
+              :placeholder="showCode ? '搜索实体名称或编码' : '搜索实体名称'"
               @keyup.enter="handleSearch"
             >
               <template #prefix><el-icon><Search /></el-icon></template>
@@ -109,8 +109,10 @@
             </el-table-column>
             <el-table-column label="实体" min-width="230">
               <template #default="{ row }">
-                <div class="primary-text">{{ row.entityName || row.entityCode }}</div>
-                <div class="secondary-text">{{ row.entityCode }}</div>
+                <div class="primary-text">
+                  {{ row.entityName || (showCode ? row.entityCode : '未命名实体') }}
+                </div>
+                <div v-if="showCode" class="secondary-text">{{ row.entityCode }}</div>
               </template>
             </el-table-column>
             <el-table-column label="生命周期" width="110">
@@ -169,8 +171,8 @@
                 :class="{ 'is-missing': item.missing }"
               >
                 <div>
-                  <strong>{{ item.entityName || item.entityCode }}</strong>
-                  <span>{{ item.entityCode || item.id }}</span>
+                  <strong>{{ item.entityName || (showCode ? item.entityCode : '未命名实体') }}</strong>
+                  <span v-if="showCode">{{ item.entityCode || item.id }}</span>
                 </div>
                 <el-button
                   circle
@@ -251,6 +253,10 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  showCode: {
+    type: Boolean,
+    default: true
+  },
   pageSize: {
     type: Number,
     default: 10
@@ -288,16 +294,17 @@ const singleSelectedValue = computed(() =>
 const triggerPrimaryText = computed(() => {
   if (props.multiple) return `已选 ${selectedItems.value.length} 个实体`
   return selectedItems.value[0]?.entityName
-    || selectedItems.value[0]?.entityCode
+    || (props.showCode ? selectedItems.value[0]?.entityCode : '')
     || '已选择实体'
 })
 const triggerSecondaryText = computed(() => {
   if (props.multiple) {
     return selectedItems.value
       .slice(0, 2)
-      .map(item => item.entityName || item.entityCode)
+      .map(item => item.entityName || (props.showCode ? item.entityCode : '未命名实体'))
       .join('、')
   }
+  if (!props.showCode) return ''
   return selectedItems.value[0]?.entityCode || selectedItems.value[0]?.id || ''
 })
 

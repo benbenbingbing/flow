@@ -35,15 +35,11 @@ public interface EmbedManagementRepository {
 
     void insertRelease(ReleaseState release);
 
-    int markPublished(String viewId, long expectedVersion, String releaseId,
-                      String actorId, LocalDateTime now);
-
     int updateViewStatus(String viewId, long expectedVersion, String status,
                          String actorId, LocalDateTime now);
 
-    List<ReleaseState> findReleases(String viewId);
-
-    ReleaseState findRelease(String viewId, long revision);
+    /** View 行锁内按完整 canonical hash 复用相同的内部 Runtime Snapshot。 */
+    ReleaseState findReleaseByConfigHash(String viewId, String configHash);
 
     ResolvedResource resolvePublishedResource(
             SurfaceType surfaceType, JsonNode target, JsonNode releasePolicy);

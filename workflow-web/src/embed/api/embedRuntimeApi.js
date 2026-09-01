@@ -10,14 +10,6 @@ const PROTOCOL_OPTIONS = Object.freeze({
   })
 })
 
-function normalizeSegment(value, label) {
-  const normalized = String(value || '').trim()
-  if (!normalized || normalized.length > 256 || /[/?#\\]/.test(normalized)) {
-    throw new TypeError(`${label} 无效`)
-  }
-  return encodeURIComponent(normalized)
-}
-
 function normalizeLaunchId(value) {
   const launchId = String(value || '').trim()
   if (!/^lch_[A-Za-z0-9_-]{16,60}$/.test(launchId)) {
@@ -32,10 +24,6 @@ function normalizeFormMode(value) {
     throw new TypeError('Embed form mode 无效')
   }
   return mode
-}
-
-function optionalSignalOptions(signal) {
-  return signal ? { ...PROTOCOL_OPTIONS, signal } : PROTOCOL_OPTIONS
 }
 
 function createRecordOptions(idempotencyKey, signal) {
@@ -55,25 +43,21 @@ function createRecordOptions(idempotencyKey, signal) {
 function normalizeCreateBody(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)
     || !input.data || typeof input.data !== 'object' || Array.isArray(input.data)
-    || Object.keys(input).some(key => !['data', 'clientMutationId'].includes(key))) {
+    || Object.keys(input).some(key => !['data', 'clientMutationId', 'actionKey'].includes(key))
+    || (Object.prototype.hasOwnProperty.call(input, 'actionKey')
+      && !['save', 'saveAndStart'].includes(input.actionKey))) {
     throw new TypeError('Embed 创建请求无效')
   }
-  // 只复制协议允许的两个字段，调用方即使污染对象原型也不能夹带目标坐标。
+  // 只复制协议允许的字段，调用方即使污染对象原型也不能夹带目标坐标或流程开关。
   return Object.freeze({
     data: Object.freeze({ ...input.data }),
     ...(Object.prototype.hasOwnProperty.call(input, 'clientMutationId')
       ? { clientMutationId: input.clientMutationId }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(input, 'actionKey')
+      ? { actionKey: input.actionKey }
       : {})
   })
-}
-
-function normalizeCreateEvaluationBody(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)
-    || !input.data || typeof input.data !== 'object' || Array.isArray(input.data)
-    || Object.keys(input).some(key => key !== 'data')) {
-    throw new TypeError('Embed CREATE 表单重算请求无效')
-  }
-  return Object.freeze({ data: Object.freeze({ ...input.data }) })
 }
 
 function normalizeLaunchCode(value) {
@@ -135,8 +119,8 @@ function exchangeBody(input = {}) {
 }
 
 /**
- * Embed runtime 只暴露经过审查的列表、表单和会话端点，不向组件透传通用 request。
- * 远程字段响应中的 queryUrl 也不会在这里执行，所有请求均重新构造为固定相对路由。
+ * Embed 控制面只负责握手、列表投影、原生表单坐标、创建收据和会话。
+ * FORM 字段本身走 Flow 标准 API，因此这里不再暴露逐字段/逐控件兼容端点。
  */
 export function createEmbedRuntimeApi(client = createEmbedRequest()) {
   if (!client || typeof client.get !== 'function' || typeof client.post !== 'function'
@@ -166,26 +150,15 @@ export function createEmbedRuntimeApi(client = createEmbedRequest()) {
       return client.post('/runtime/list/query', query, PROTOCOL_OPTIONS)
     },
 
-    getForm({ mode, recordId } = {}, { signal } = {}) {
+    getNativeFormTarget({ mode, recordId } = {}) {
       const params = new URLSearchParams({ mode: normalizeFormMode(mode) })
       if (recordId !== undefined && recordId !== null && String(recordId).trim()) {
         params.set('recordId', String(recordId).trim())
       }
-      return client.get(`/runtime/form?${params.toString()}`, optionalSignalOptions(signal))
-    },
-
-    /** 只读重算当前 Session 固定 CREATE 表单，不接受任何目标坐标。 */
-    evaluateCreate(input, { signal } = {}) {
-      return client.post(
-        '/runtime/form/evaluations',
-        normalizeCreateEvaluationBody(input),
-        optionalSignalOptions(signal)
+      return client.get(
+        `/runtime/native-form-target?${params.toString()}`,
+        PROTOCOL_OPTIONS
       )
-    },
-
-    getRecord(recordId, { signal } = {}) {
-      const id = normalizeSegment(recordId, 'Embed recordId')
-      return client.get(`/runtime/records/${id}`, optionalSignalOptions(signal))
     },
 
     /** RECORD_CREATE 的目标完全由 Bearer Session 恢复，浏览器只发送 data。 */
@@ -194,24 +167,6 @@ export function createEmbedRuntimeApi(client = createEmbedRequest()) {
         '/runtime/records',
         normalizeCreateBody(input),
         createRecordOptions(idempotencyKey, signal)
-      )
-    },
-
-    queryFormOptions(fieldCode, query, { signal } = {}) {
-      const field = normalizeSegment(fieldCode, 'Embed fieldCode')
-      return client.post(
-        `/runtime/form/fields/${field}/options/query`,
-        query,
-        optionalSignalOptions(signal)
-      )
-    },
-
-    queryFormLookups(fieldCode, query, { signal } = {}) {
-      const field = normalizeSegment(fieldCode, 'Embed fieldCode')
-      return client.post(
-        `/runtime/form/fields/${field}/lookups/query`,
-        query,
-        optionalSignalOptions(signal)
       )
     },
 

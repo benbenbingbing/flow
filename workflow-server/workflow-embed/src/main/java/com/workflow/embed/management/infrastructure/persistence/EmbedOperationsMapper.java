@@ -134,7 +134,7 @@ public interface EmbedOperationsMapper {
              WHERE view_id = #{viewId}
                AND status = 'ACTIVE'
                AND slot_released = 0
-               AND (#{afterSessionId} IS NULL OR id &gt; #{afterSessionId})
+               AND (#{afterSessionId} IS NULL OR id > #{afterSessionId})
              ORDER BY id
              LIMIT #{fetchLimit}
             """)
@@ -149,7 +149,7 @@ public interface EmbedOperationsMapper {
              WHERE application_id = #{applicationId}
                AND status = 'ACTIVE'
                AND slot_released = 0
-               AND (#{afterSessionId} IS NULL OR id &gt; #{afterSessionId})
+               AND (#{afterSessionId} IS NULL OR id > #{afterSessionId})
              ORDER BY id
              LIMIT #{fetchLimit}
             """)

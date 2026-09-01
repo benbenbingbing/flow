@@ -16,38 +16,27 @@
       <p>{{ loadingText }}</p>
     </section>
 
-    <EmbedListRuntime
+    <NativeEmbeddedListPage
       v-else-if="runtime.state === EMBED_RUNTIME_STATES.READY
-        && runtime.navigation.surfaceType === 'LIST'"
+        && runtime.navigation.surfaceType === 'LIST'
+        && runtime.nativeListTarget"
+      :key="`${runtime.nativeListTarget.listKey}:${runtime.nativeListTarget.listReleaseId}`"
+      ref="nativeListPageRef"
       :bootstrap="runtime.bootstrap"
-      :schema="runtime.schema"
-      :page="runtime.page"
-      :query-values="runtime.queryValues"
-      :selected-record-ids="runtime.selectedRecordIds"
-      :loading="runtime.listLoading"
-      :error="runtime.listError"
-      @query="refreshList"
-      @retry="refreshList()"
-      @selection-change="controller.emitSelection"
-      @open-create="controller.openListCreate"
-      @open-view="controller.openListView"
+      :target="runtime.nativeListTarget"
+      :controller="controller"
     />
 
-    <EmbedFormRuntime
+    <NativeEmbeddedFormPage
       v-else-if="runtime.state === EMBED_RUNTIME_STATES.READY
         && runtime.navigation.surfaceType === 'FORM'
-        && runtime.form"
+        && runtime.nativeFormTarget"
+      :key="`${runtime.nativeFormTarget.formId}:${runtime.nativeFormTarget.formReleaseId}:${runtime.navigation.mode}:${runtime.navigation.recordId || ''}`"
+      ref="nativeFormPageRef"
       :bootstrap="runtime.bootstrap"
-      :form="runtime.form"
+      :target="runtime.nativeFormTarget"
       :controller="controller"
       :can-back="runtime.navigation.canBack"
-      :loading="runtime.formLoading"
-      :error="runtime.formError"
-      :submitting="runtime.formSubmitting"
-      :submit-error="runtime.formSubmitError"
-      :submit-result="runtime.formSubmitResult"
-      @retry="controller.refreshForm"
-      @back="controller.backToList"
     />
 
     <section
@@ -82,6 +71,11 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, shallowRef, ref } from 'vue'
+import {
+  configureEmbedDelegatedRequest,
+  resetEmbedDelegatedRequest
+} from '@/shared/request'
+import { useUserStore } from '@/stores/user'
 import { createEmbedRequest } from './api/embedRequest.js'
 import { createEmbedRuntimeApi } from './api/embedRuntimeApi.js'
 import { createEmbedSession } from './session/embedSession.js'
@@ -90,8 +84,8 @@ import {
   createEmbedRuntimeController
 } from './runtime/embedRuntimeController.js'
 import EmbedErrorState from './runtime/EmbedErrorState.vue'
-import EmbedListRuntime from './runtime/EmbedListRuntime.vue'
-import EmbedFormRuntime from './runtime/EmbedFormRuntime.vue'
+import NativeEmbeddedListPage from './runtime/NativeEmbeddedListPage.vue'
+import NativeEmbeddedFormPage from './runtime/NativeEmbeddedFormPage.vue'
 
 const props = defineProps({
   entryConfig: {
@@ -101,7 +95,10 @@ const props = defineProps({
 })
 
 const shellElement = ref(null)
+const nativeListPageRef = ref(null)
+const nativeFormPageRef = ref(null)
 const session = createEmbedSession()
+const userStore = useUserStore()
 // Exchange 与后续 Runtime 请求必须共享同一个仅内存 Session；否则一次性 code
 // 已成功消费后，默认 HTTP client 仍会从另一个空 Session 读取 Token，无法安全重试。
 const api = createEmbedRuntimeApi(createEmbedRequest({ session }))
@@ -112,6 +109,8 @@ const runtime = shallowRef({
   schema: null,
   page: null,
   form: null,
+  nativeListTarget: null,
+  nativeFormTarget: null,
   navigation: Object.freeze({ surfaceType: null, mode: null, recordId: null, canBack: false }),
   selectedRecordIds: Object.freeze([]),
   queryValues: Object.freeze({}),
@@ -128,6 +127,14 @@ const runtime = shallowRef({
 })
 
 function focusFirstControl() {
+  if (nativeListPageRef.value) {
+    nativeListPageRef.value.focus?.()
+    return
+  }
+  if (nativeFormPageRef.value) {
+    nativeFormPageRef.value.focus?.()
+    return
+  }
   const control = shellElement.value?.querySelector?.(
     'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]'
   )
@@ -138,7 +145,21 @@ const controller = createEmbedRuntimeController({
   entryConfig: props.entryConfig,
   api,
   session,
-  onFocus: focusFirstControl
+  onFocus: focusFirstControl,
+  onDelegatedSessionReady(activeSession) {
+    configureEmbedDelegatedRequest({
+      getAccessToken: () => activeSession.getAccessToken({ required: false })
+    })
+  },
+  onDelegatedSessionReset() {
+    resetEmbedDelegatedRequest()
+    userStore.clearEphemeralRuntimeIdentity()
+  },
+  onRuntimeIdentityReady(actor) {
+    userStore.applyEphemeralRuntimeIdentity(actor)
+  },
+  onRefreshNativeList: () => nativeListPageRef.value?.reload?.(),
+  onRefreshNativeForm: () => nativeFormPageRef.value?.reload?.()
 })
 
 let unsubscribe
@@ -149,12 +170,13 @@ const isLoading = computed(() => [
   EMBED_RUNTIME_STATES.LOADING_ENTRY,
   EMBED_RUNTIME_STATES.WAITING_HANDSHAKE,
   EMBED_RUNTIME_STATES.EXCHANGING,
-  EMBED_RUNTIME_STATES.BOOTSTRAPPING
+  EMBED_RUNTIME_STATES.BOOTSTRAPPING,
+  EMBED_RUNTIME_STATES.DESTROYING
 ].includes(runtime.value.state) || (
   runtime.value.state === EMBED_RUNTIME_STATES.READY
     && runtime.value.navigation.surfaceType === 'FORM'
     && runtime.value.formLoading
-    && !runtime.value.form
+    && !runtime.value.nativeFormTarget
 ))
 
 const loadingText = computed(() => {
@@ -163,19 +185,21 @@ const loadingText = computed(() => {
     handshake: '正在等待宿主系统连接…',
     exchange: '正在建立安全会话…',
     bootstrap: '正在加载页面配置…',
-    schema: '正在加载列表结构…',
-    query: '正在查询数据…',
-    form: '正在加载表单…'
+    'native-list': '正在加载 Flow 列表…',
+    form: '正在加载表单…',
+    logout: '正在安全关闭…'
   }
   return labels[runtime.value.phase] || '正在加载…'
 })
 
-function refreshList(options) {
-  return controller.refreshList(options)
-}
-
 function reportHeight(entries) {
-  const height = Math.ceil(entries?.[0]?.contentRect?.height || shellElement.value?.scrollHeight || 0)
+  // Element Plus Dialog/Popper 会 Teleport 到 body；仅量 shell 会漏掉原生弹窗高度。
+  const height = Math.ceil(Math.max(
+    entries?.[0]?.contentRect?.height || 0,
+    shellElement.value?.scrollHeight || 0,
+    globalThis.document?.body?.scrollHeight || 0,
+    globalThis.document?.documentElement?.scrollHeight || 0
+  ))
   if (!height || resizeTimer !== undefined) return
   // 合并 ResizeObserver 抖动，消息频率最高约 10 次/秒。
   resizeTimer = globalThis.setTimeout(() => {
@@ -184,11 +208,18 @@ function reportHeight(entries) {
   }, 100)
 }
 
+function handlePageHide() {
+  // 页面卸载无法阻塞等待 Promise；Logout 请求自带 keepalive，
+  // 与 onBeforeUnmount 共用幂等 destroy Promise，不会重复注销。
+  controller.destroy().catch(() => {})
+}
+
 onMounted(() => {
   unsubscribe = controller.subscribe(value => {
     runtime.value = value
   })
   controller.start()
+  globalThis.addEventListener?.('pagehide', handlePageHide, { once: true })
   if (typeof globalThis.ResizeObserver === 'function') {
     resizeObserver = new globalThis.ResizeObserver(reportHeight)
     resizeObserver.observe(shellElement.value)
@@ -196,9 +227,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  globalThis.removeEventListener?.('pagehide', handlePageHide)
   unsubscribe?.()
   resizeObserver?.disconnect?.()
   if (resizeTimer !== undefined) globalThis.clearTimeout(resizeTimer)
+  // destroy 的 Logout 可能在 iframe 被移除后才返回，先同步清除隔离内存身份。
+  userStore.clearEphemeralRuntimeIdentity()
+  resetEmbedDelegatedRequest()
   controller.destroy().catch(() => {})
 })
 </script>

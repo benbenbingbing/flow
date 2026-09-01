@@ -2,7 +2,6 @@
   <div v-loading="loading" class="draft-panel">
     <div class="panel-toolbar">
       <div class="revision-info">
-        <el-tag effect="plain">Draft r{{ draftState.draftRevision || '-' }}</el-tag>
         <span>
           CAS 版本 {{ draftState.version ?? '-' }}
           <ConfigHelpLabel
@@ -21,24 +20,7 @@
           :loading="saving"
           @click="saveDraft"
         >
-          保存草稿
-        </el-button>
-        <el-button
-          v-if="canManage"
-          :disabled="dirty"
-          :loading="validating"
-          @click="validateSavedDraft"
-        >
-          校验已保存版本
-        </el-button>
-        <el-button
-          v-if="canPublish"
-          type="success"
-          :disabled="dirty"
-          :loading="publishing"
-          @click="publishDraft"
-        >
-          发布
+          保存配置
         </el-button>
       </div>
     </div>
@@ -50,14 +32,6 @@
       show-icon
       :closable="false"
       class="panel-alert"
-    />
-    <el-alert
-      v-else-if="validationPassed"
-      type="success"
-      title="已保存的草稿通过服务端发布校验"
-      show-icon
-      class="panel-alert"
-      @close="validationPassed = false"
     />
 
     <el-table
@@ -81,26 +55,65 @@
       <section class="form-section">
         <h4>目标与入口</h4>
         <div class="form-grid three-columns">
-          <el-form-item label="Entity Code" required>
+          <el-form-item label="实体" required>
             <template #label>
-              <ConfigHelpLabel label="Entity Code" help-key="embed.view.entityCode" />
+              <ConfigHelpLabel label="实体" help-key="embed.view.entityCode" />
             </template>
-            <el-input v-model="editor.entityCode" maxlength="100" />
+            <EntityDefinitionPicker
+              v-model="editor.entityCode"
+              value-key="entityCode"
+              :show-code="false"
+              placeholder="搜索并选择已发布实体"
+              title="选择嵌入目标实体"
+              :query="{ status: 'PUBLISHED' }"
+              @selected="handleEntitySelected"
+            />
           </el-form-item>
-          <el-form-item v-if="isList" label="List Key" required>
+          <el-form-item v-if="isList" label="列表" required>
             <template #label>
-              <ConfigHelpLabel label="List Key" help-key="embed.view.listKey" />
+              <ConfigHelpLabel label="列表" help-key="embed.view.listKey" />
             </template>
-            <el-input v-model="editor.listKey" maxlength="100" />
+            <el-select
+              v-model="editor.listKey"
+              filterable
+              :loading="targetOptionsLoading"
+              placeholder="选择该实体的已发布列表"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="item in activeLists"
+                :key="item.listKey"
+                :label="item.listName || '未命名列表'"
+                :value="item.listKey"
+              />
+            </el-select>
           </el-form-item>
-          <el-form-item label="Default Form ID" :required="!isList">
+          <el-form-item
+            v-if="!isList"
+            label="目标表单"
+            required
+          >
             <template #label>
               <ConfigHelpLabel
-                label="Default Form ID"
+                label="目标表单"
                 help-key="embed.view.defaultFormId"
               />
             </template>
-            <el-input v-model="editor.defaultFormId" maxlength="64" />
+            <el-select
+              v-model="editor.defaultFormId"
+              filterable
+              clearable
+              :loading="targetOptionsLoading"
+              placeholder="选择该实体的已发布表单"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="item in activeForms"
+                :key="item.id"
+                :label="item.formName || '未命名表单'"
+                :value="String(item.id)"
+              />
+            </el-select>
           </el-form-item>
         </div>
         <el-form-item label="Entry Modes">
@@ -118,46 +131,21 @@
           </el-checkbox-group>
         </el-form-item>
       </section>
-
-      <section class="form-section">
-        <h4>资源 Release 策略</h4>
-        <el-form-item label="Strategy">
-          <template #label>
-            <ConfigHelpLabel
-              label="Strategy"
-              help-key="embed.view.resourceReleaseStrategy"
-            />
-          </template>
-          <el-radio-group v-model="editor.releaseStrategy">
-            <el-radio value="PINNED">PINNED</el-radio>
-            <el-radio value="FOLLOW_ACTIVE">FOLLOW_ACTIVE</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <div v-if="editor.releaseStrategy === 'PINNED'" class="form-grid">
-          <el-form-item v-if="isList" label="List Release ID" required>
-            <template #label>
-              <ConfigHelpLabel
-                label="List Release ID"
-                help-key="embed.view.resourceReleaseId"
-              />
-            </template>
-            <el-input v-model="editor.listReleaseId" maxlength="64" />
-          </el-form-item>
-          <el-form-item
-            v-if="editor.defaultFormId"
-            label="Form Release ID"
-            required
-          >
-            <template #label>
-              <ConfigHelpLabel
-                label="Form Release ID"
-                help-key="embed.view.resourceReleaseId"
-              />
-            </template>
-            <el-input v-model="editor.formReleaseId" maxlength="64" />
-          </el-form-item>
-        </div>
-      </section>
+      <el-alert
+        v-if="targetOptionsError"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="panel-alert"
+        :title="targetOptionsError"
+      />
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        class="panel-alert"
+        title="这里只保存实体、表单或列表的稳定标识。每次新 Launch 使用目标资源最新 ACTIVE 版本；已打开 Session 固定启动时版本，不会中途漂移。"
+      />
 
       <section class="form-section">
         <h4>
@@ -179,38 +167,25 @@
 
       <section class="form-section">
         <h4>字段策略</h4>
-        <p class="section-help">每行一个字段代码，发布时会与已发布的 List / Form Release 做交叉校验。</p>
-        <div class="form-grid four-columns">
-          <el-form-item label="Visible">
-            <template #label>
-              <ConfigHelpLabel label="Visible" help-key="embed.view.visibleFields" />
-            </template>
-            <el-input
-              v-model="editor.visibleFieldsText"
-              type="textarea"
-              :rows="6"
+        <el-form-item label="字段来源">
+          <template #label>
+            <ConfigHelpLabel
+              label="字段来源"
+              help-key="embed.view.fieldPolicyMode"
             />
-          </el-form-item>
-          <el-form-item label="Queryable">
-            <template #label>
-              <ConfigHelpLabel label="Queryable" help-key="embed.view.queryableFields" />
-            </template>
-            <el-input
-              v-model="editor.queryableFieldsText"
-              type="textarea"
-              :rows="6"
-            />
-          </el-form-item>
-          <el-form-item label="Writable">
-            <template #label>
-              <ConfigHelpLabel label="Writable" help-key="embed.view.writableFields" />
-            </template>
-            <el-input
-              v-model="editor.writableFieldsText"
-              type="textarea"
-              :rows="6"
-            />
-          </el-form-item>
+          </template>
+          <el-tag type="success" effect="plain">
+            Flow 原生{{ isList ? '列表' : '表单' }}（新 Launch 取最新 ACTIVE）
+          </el-tag>
+        </el-form-item>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          class="field-policy-alert"
+          :title="`iframe 直接运行 Flow 原生${isList ? '列表' : '表单'}；字段、布局、渲染器、数据源、联动、按钮和弹窗都来自同一发布态页面。页内按钮显隐与可用状态完全取映射 Flow 用户的普通权限、对象权限和 DataScope；View/Grant 能力只约束嵌入入口与宿主 Bridge。`"
+        />
+        <div class="form-grid">
           <el-form-item label="Returnable">
             <template #label>
               <ConfigHelpLabel label="Returnable" help-key="embed.view.returnableFields" />
@@ -229,7 +204,9 @@
           <ConfigHelpLabel label="高级 JSON" help-key="embed.view.advancedJson" />
         </h4>
         <p class="section-help">
-          保留 contextSchema、contextBindings、actionPolicy 和 ui 等完整配置。
+          保留 contextSchema、contextBindings 和 ui 等完整配置；LIST 与 FORM
+          的字段和操作栏都直接跟随 Flow 原生页，旧 fieldPolicy/actionPolicy
+          投影覆盖会在保存时清理。
           保存时，上方基础字段会覆盖 JSON 中的同名路径。
         </p>
         <el-input
@@ -246,9 +223,13 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { embedManagementApi } from '@/api/system/embedManagement'
+import { entityApi } from '@/api/entity'
+import { entityListConfigApi } from '@/api/entityListConfig'
+import { getFormsByEntity } from '@/api/entityForm'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import { useUserStore } from '@/stores/user'
 import {
   EMBED_CAPABILITIES,
@@ -270,18 +251,21 @@ const emit = defineEmits(['refresh'])
 const userStore = useUserStore()
 const loading = ref(false)
 const saving = ref(false)
-const validating = ref(false)
-const publishing = ref(false)
+const targetOptionsLoading = ref(false)
+const targetOptionsError = ref('')
+const activeForms = ref([])
+const activeLists = ref([])
 const editor = ref(null)
 const savedDraftJson = ref('')
-const draftState = ref({ draftRevision: null, version: null })
+const draftState = ref({ version: null })
 const localError = ref('')
 const violations = ref([])
-const validationPassed = ref(false)
 
 const capabilities = EMBED_CAPABILITIES
-const blockedCapabilities = EMBED_V1_BLOCKED_CAPABILITIES
 const isList = computed(() => props.view.surfaceType === 'LIST')
+const blockedCapabilities = computed(() => [
+  ...EMBED_V1_BLOCKED_CAPABILITIES
+])
 const entryModeOptions = computed(() =>
   isList.value
     ? ['LIST', 'CREATE', 'VIEW']
@@ -290,10 +274,6 @@ const entryModeOptions = computed(() =>
 const canManage = computed(() =>
   props.view.status !== 'RETIRED'
   && permission(EMBED_PERMISSIONS.manage)
-)
-const canPublish = computed(() =>
-  props.view.status !== 'RETIRED'
-  && permission(EMBED_PERMISSIONS.publish)
 )
 const dirty = computed(() => {
   if (!editor.value || !savedDraftJson.value) return false
@@ -320,10 +300,10 @@ async function loadDraft() {
   loading.value = true
   localError.value = ''
   violations.value = []
-  validationPassed.value = false
   try {
     const result = await embedManagementApi.views.draft(props.view.id)
     applyDraft(result)
+    await loadTargetOptionsByCode(editor.value.entityCode)
   } catch (error) {
     localError.value = describeEmbedManagementError(error)
   } finally {
@@ -334,7 +314,6 @@ async function loadDraft() {
 function applyDraft(result) {
   const draft = result?.draft || {}
   draftState.value = {
-    draftRevision: result?.draftRevision,
     version: result?.version
   }
   editor.value = draftToEditor(draft, props.view.surfaceType)
@@ -362,73 +341,63 @@ async function saveDraft() {
       buildExpectedVersionPayload(draftState.value.version, { draft })
     )
     applyDraft(result)
-    ElMessage.success('草稿已保存')
+    ElMessage.success('配置已保存，新 Launch 将立即使用；已打开 Session 不受影响')
     emit('refresh')
   } catch (error) {
-    localError.value = describeEmbedManagementError(error)
+    violations.value = extractViolations(error)
+    localError.value = violations.value.length
+      ? '配置校验未通过，请按下表修复'
+      : describeEmbedManagementError(error)
   } finally {
     saving.value = false
   }
 }
 
-async function validateSavedDraft() {
-  validating.value = true
-  localError.value = ''
-  violations.value = []
-  validationPassed.value = false
+async function handleEntitySelected(entity) {
+  editor.value.entityCode = entity?.entityCode || ''
+  editor.value.listKey = ''
+  editor.value.defaultFormId = ''
+  await loadTargetOptions(entity?.id)
+}
+
+async function loadTargetOptionsByCode(entityCode) {
+  if (!entityCode) return loadTargetOptions(null)
   try {
-    await embedManagementApi.views.validate(
-      props.view.id,
-      buildExpectedVersionPayload(draftState.value.version)
-    )
-    validationPassed.value = true
-  } catch (error) {
-    violations.value = extractViolations(error)
-    localError.value = violations.value.length
-      ? '发布校验未通过，请按下表修复'
-      : describeEmbedManagementError(error)
-  } finally {
-    validating.value = false
+    const entity = await entityApi.getByCode(entityCode)
+    await loadTargetOptions(entity?.id)
+  } catch {
+    await loadTargetOptions(null)
   }
 }
 
-async function publishDraft() {
-  let releaseNote = ''
+async function loadTargetOptions(entityId) {
+  activeForms.value = []
+  activeLists.value = []
+  targetOptionsError.value = ''
+  if (!entityId) return
+  targetOptionsLoading.value = true
   try {
-    const result = await ElMessageBox.prompt(
-      '发布将生成不可变 Release，请填写发布说明（可选）。',
-      '发布 Embed View',
-      {
-        confirmButtonText: '确认发布',
-        cancelButtonText: '取消',
-        inputType: 'textarea',
-        inputValidator: value =>
-          !value || value.length <= 500 || '发布说明不能超过 500 字'
-      }
-    )
-    releaseNote = result.value || ''
-  } catch {
-    return
-  }
-  publishing.value = true
-  localError.value = ''
-  violations.value = []
-  try {
-    const result = await embedManagementApi.views.publish(
-      props.view.id,
-      buildExpectedVersionPayload(draftState.value.version, { releaseNote })
-    )
-    ElMessage.success(`已发布 Release r${result.revision}`)
-    await loadDraft()
-    emit('refresh')
+    const [forms, lists] = await Promise.all([
+      getFormsByEntity(String(entityId)),
+      entityListConfigApi.getByEntityId(entityId)
+    ])
+    activeForms.value = (forms || []).filter(hasActiveRelease)
+    activeLists.value = (lists || []).filter(hasActiveRelease)
+    const missing = isList.value
+      ? (!activeLists.value.length ? '该实体没有可用的 ACTIVE 列表发布版本。' : '')
+      : (!activeForms.value.length ? '该实体没有可用的 ACTIVE 表单发布版本。' : '')
+    targetOptionsError.value = missing
   } catch (error) {
-    violations.value = extractViolations(error)
-    localError.value = violations.value.length
-      ? '发布校验未通过，请按下表修复'
-      : describeEmbedManagementError(error)
+    targetOptionsError.value = `目标资源加载失败：${describeEmbedManagementError(error)}`
   } finally {
-    publishing.value = false
+    targetOptionsLoading.value = false
   }
+}
+
+function hasActiveRelease(item) {
+  return item?.status === 'ACTIVE'
+    || item?.status === 'PUBLISHED'
+    || Boolean(item?.activeReleaseId || item?.activeRevision || item?.publishedRevision)
 }
 </script>
 
@@ -478,6 +447,10 @@ async function publishDraft() {
   margin: -4px 0 12px;
   color: #909399;
   font-size: 12px;
+}
+
+.field-policy-alert {
+  margin-bottom: 14px;
 }
 
 .form-grid {

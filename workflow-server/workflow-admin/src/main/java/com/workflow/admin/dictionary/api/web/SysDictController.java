@@ -2,6 +2,7 @@ package com.workflow.admin.dictionary.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
@@ -164,6 +165,9 @@ public class SysDictController {
      */
     @GetMapping("/item/tree/code/{dictCode}")
     @AuthenticatedApi
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.REFERENCE_READ,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.NONE)
     public Result<List<SysDictItem>> getItemTreeByDictCode(@PathVariable String dictCode) {
         return Result.success(dictItemService.getItemTreeByDictCode(dictCode));
     }

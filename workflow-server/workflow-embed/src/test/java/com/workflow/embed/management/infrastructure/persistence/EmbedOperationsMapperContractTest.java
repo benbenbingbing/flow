@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Map;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,29 @@ class EmbedOperationsMapperContractTest {
                 .contains("slot_released = 0"));
     }
 
+    @Test
+    void nonScriptSessionCursorsReachJdbcAsComparisonOperators() {
+        Configuration configuration = new Configuration();
+        configuration.addMapper(EmbedOperationsMapper.class);
+        String namespace = EmbedOperationsMapper.class.getName() + ".";
+
+        String byView = normalize(configuration
+                .getMappedStatement(namespace + "findActiveSessionIdsByView")
+                .getBoundSql(Map.of(
+                        "viewId", "ev_1", "afterSessionId", "es_1", "fetchLimit", 2))
+                .getSql());
+        String byApplication = normalize(configuration
+                .getMappedStatement(namespace + "findActiveSessionIdsByApplication")
+                .getBoundSql(Map.of(
+                        "applicationId", "app_1", "afterSessionId", "es_1", "fetchLimit", 2))
+                .getSql());
+
+        for (String sql : new String[]{byView, byApplication}) {
+            assertTrue(sql.contains("id > ?"), sql);
+            assertFalse(sql.contains("&gt;"), sql);
+        }
+    }
+
     private static String selectSql(String methodName) {
         Method method = Arrays.stream(EmbedOperationsMapper.class.getDeclaredMethods())
                 .filter(candidate -> candidate.getName().equals(methodName))
@@ -61,5 +85,9 @@ class EmbedOperationsMapperContractTest {
                 .orElseThrow();
         return String.join(" ", method.getAnnotation(Select.class).value())
                 .replaceAll("\\s+", " ").trim();
+    }
+
+    private static String normalize(String sql) {
+        return sql.replaceAll("\\s+", " ").trim();
     }
 }

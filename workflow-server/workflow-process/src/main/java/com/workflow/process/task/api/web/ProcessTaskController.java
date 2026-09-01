@@ -1,6 +1,7 @@
 package com.workflow.process.task.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
@@ -285,6 +286,10 @@ public class ProcessTaskController {
      * 获取流程历史记录
      */
     @GetMapping("/history/{processInstanceId}")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.PROCESS_RECORD_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .PROCESS_INSTANCE_PATH)
     public Result<List<TaskVO>> getProcessHistory(@PathVariable String processInstanceId) {
         processInstanceAccessService.requireReadAccess(processInstanceId);
         return Result.success(taskActionService.getProcessHistory(processInstanceId));

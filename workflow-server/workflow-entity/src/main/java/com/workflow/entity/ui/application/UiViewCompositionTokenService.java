@@ -355,6 +355,16 @@ public class UiViewCompositionTokenService {
         return claims;
     }
 
+    /**
+     * 为服务端运行时适配器解析已验证的遍历声明。
+     *
+     * <p>调用方只能使用返回值收窄到令牌固定的下一跳；不得把声明中的坐标
+     * 当作设计态查询条件。签名、有效期和当前用户在返回前已经统一校验。</p>
+     */
+    public Claims verifyTraversalContext(String token) {
+        return verifyTraversal(token);
+    }
+
     private BusinessConflictException reentryBlocked() {
         return new BusinessConflictException(
                 "VIEW_COMPOSITION_RUNTIME_REENTRY_BLOCKED",

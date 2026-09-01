@@ -648,7 +648,7 @@ export default {
       id: 'entity-form-designer',
       index: '08',
       title: '表单设计器',
-      summary: '使用稳定节点 ID 的递归树覆盖容器、字段、子表、动作槽、校验、运行模式和实体引用。',
+      summary: '使用稳定节点 ID 的递归树覆盖容器外观、字段、子表、动作槽、校验、运行模式和实体引用。',
       topics: [
         {
           id: 'entity-form-designer-layout',
@@ -738,6 +738,7 @@ export default {
                 { field: '字段名称 / 节标题', meaning: '实体字段名称和绑定摘要只读；节标题可编辑。', defaultLimit: '实体字段不可在表单层改名。', effect: '节标题直接显示，普通字段保留实体语义。', publish: '改实体字段名称或关系时应回实体设计并新建节点。' },
                 { field: '显示标签', meaning: '当前表单中的标签文本。', defaultLimit: '默认实体字段名称。', effect: '只影响此表单显示。', publish: '适合按场景简化名称。' },
                 { field: '父容器', meaning: '将当前节点移动到根节点或兼容容器；TAB 显示为“所属 Tab 集合”。', defaultLimit: '候选项按父子类型过滤，并排除自身、后代、循环引用和移动后超过 8 层的目标；TAB 不允许根节点。', effect: '可把已有 FIELD、SECTION、GRID、TAB_SET、COLLAPSE、TEXT、SUB_FORM、REPEATER、ACTION_SLOT 移入指定 Tab 页或其他兼容容器，不需要删除重建。', publish: '保存当前节点后写入草稿；服务端再次校验整棵子树深度和父子类型。' },
+                { field: '容器内边距 / 边框线', meaning: '分别控制父容器是否保留内容留白、是否绘制业务边框和分隔线。', defaultLimit: '历史配置缺少开关时按节点类型恢复原视觉；GRID 默认无运行态边框和内边距，区块、Tab 集合、折叠面板和多行子表默认保留。', effect: '多层嵌套时可逐层关闭重复留白和线框；设计器的选中、悬停和拖拽提示始终保留，不会因关闭业务边框而失去操作入口。', publish: '作为节点 props 或子表 componentProps 随草稿和发布快照保存，预览与运行态使用同一解析规则。' },
                 { field: '组件类型', meaning: '选择与字段类型兼容的渲染组件。', defaultLimit: '按字段类型过滤可用组件。', effect: '改变输入交互，不改变实体字段数据库类型。', publish: '组件必须在目标环境注册。' },
                 { field: '必填', meaning: '当前表单场景要求填写。', defaultLimit: '从实体字段继承，可单独调整。', effect: '运行时表单校验。', publish: '不要与模式权限的不可编辑配置冲突。' },
                 { field: '只读', meaning: '字段显示但不可编辑。', defaultLimit: '默认关闭。', effect: '运行时禁用输入。', publish: '只读不等于隐藏，敏感数据仍可见。' },

@@ -27,6 +27,8 @@ const TRUSTED_CONTEXT_KEYS = new Set([
   'requestid',
   'releaseid',
   'releaseversion',
+  'releaseresolutiontoken',
+  'viewcompositiontraversaltoken',
   'publishedreleaseid'
 ])
 

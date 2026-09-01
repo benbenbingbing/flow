@@ -1,6 +1,7 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,10 +13,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.embed.EmbedRecordCreatePort;
-import com.workflow.contracts.embed.EmbedRuntimeFormPort;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPort;
@@ -28,6 +27,7 @@ import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
@@ -62,8 +62,7 @@ class EntityEmbedRecordCreateAdapterTest {
         mutationPort = mock(EntityMutationPort.class);
         adapter = new EntityEmbedRecordCreateAdapter(
                 capabilityService, releaseService, definitionMapper,
-                formSubmissionService, mutationPort,
-                new ObjectMapper().findAndRegisterModules());
+                formSubmissionService, mutationPort);
 
         form = new EntityForm();
         form.setId("form-1");
@@ -122,12 +121,93 @@ class EntityEmbedRecordCreateAdapterTest {
         EntityMutationCommand mutation = captured.getValue();
         assertEquals("embed_create_idem-1", mutation.operationId());
         assertEquals(EntityMutationOperationType.CREATE, mutation.operationType());
-        assertEquals(Map.of("data", Map.of("title", "applied-value")),
+        assertEquals(Map.of(
+                        "data", Map.of("title", "applied-value"),
+                        "startProcess", false),
                 mutation.payload());
         assertEquals("form-release-4", mutation.context().extraParams().get(
                 FormUniqueMutationContext.FORM_RELEASE_ID));
         assertEquals("hotfix-release-5", mutation.context().extraParams().get(
                 FormUniqueMutationContext.FORM_EFFECTIVE_RELEASE_ID));
+    }
+
+    @Test
+    void saveAndStartUsesServerTrustedTopLevelProcessFlag() {
+        adapter.create(new EmbedRecordCreatePort.CreateCommand(
+                command().target(), command().data(),
+                command().idempotencyRecordId(), true));
+
+        ArgumentCaptor<EntityMutationCommand> captured =
+                ArgumentCaptor.forClass(EntityMutationCommand.class);
+        verify(mutationPort).execute(captured.capture());
+        assertEquals(true, captured.getValue().payload().get("startProcess"));
+        assertFalse(((Map<?, ?>) captured.getValue().payload().get("data"))
+                .containsKey("startProcess"));
+    }
+
+    @Test
+    void uniquePublishedFormStillUsesPinnedReleaseForAuthoritativeMutation() {
+        EntityFormField unique = new EntityFormField();
+        unique.setFieldCode("title");
+        unique.setFieldType("STRING");
+        unique.setValidationRules("""
+                {"uniqueness":{"version":1,"ruleId":"uq_title",
+                 "mode":"GLOBAL","ignoreBlank":true,
+                 "precheck":{"enabled":true,"trigger":"BLUR",
+                   "debounceMs":500,"watchConditionFields":true}}}
+                """);
+        form.setFields(List.of(unique));
+
+        adapter.create(command());
+
+        verify(formSubmissionService).applyFormWithRelease(
+                eq("form-1"), eq("form-release-4"), eq(4),
+                eq("work_order"), isNull(), eq("create"),
+                eq(Map.of("title", "forced-value")),
+                any(FormSubmissionExecutionContext.class),
+                eq(UiRuntimeResolutionContext.historical(null, null)));
+        ArgumentCaptor<EntityMutationCommand> captured =
+                ArgumentCaptor.forClass(EntityMutationCommand.class);
+        verify(mutationPort).execute(captured.capture());
+        assertEquals("form-1", captured.getValue().context().extraParams().get(
+                FormUniqueMutationContext.FORM_ID));
+        assertEquals("form-release-4",
+                captured.getValue().context().extraParams().get(
+                        FormUniqueMutationContext.FORM_RELEASE_ID));
+        assertEquals(4, captured.getValue().context().extraParams().get(
+                FormUniqueMutationContext.FORM_RELEASE_VERSION));
+    }
+
+    @Test
+    void passesServerInjectedReadonlyDefaultIntoPinnedFormSubmission() {
+        Map<String, Object> submitted = Map.of(
+                "title", "forced-value", "status", "DRAFT");
+        when(formSubmissionService.applyFormWithRelease(
+                eq("form-1"), eq("form-release-4"), eq(4),
+                eq("work_order"), isNull(), eq("create"),
+                eq(submitted), any(FormSubmissionExecutionContext.class),
+                eq(UiRuntimeResolutionContext.historical(null, null))))
+                .thenReturn(new PublishedFormSubmissionService.AuthorizedFormApplication(
+                        submitted, "form-release-4", 4,
+                        "hotfix-release-5", "effective-hash", "target-1"));
+        when(mutationPort.execute(any())).thenReturn(new EntityMutationResult(
+                "embed_create_idem-1", "work_order", "record-1",
+                EntityMutationOperationType.CREATE, submitted, 1,
+                null, true, false));
+
+        EmbedRecordCreatePort.CreateCommand command =
+                new EmbedRecordCreatePort.CreateCommand(
+                        new EmbedRecordCreatePort.Target(
+                                "work_order", "form-1", "form-release-4", 4),
+                        submitted, "idem-1");
+
+        adapter.create(command);
+
+        verify(formSubmissionService).applyFormWithRelease(
+                eq("form-1"), eq("form-release-4"), eq(4),
+                eq("work_order"), isNull(), eq("create"),
+                eq(submitted), any(FormSubmissionExecutionContext.class),
+                eq(UiRuntimeResolutionContext.historical(null, null)));
     }
 
     @Test
@@ -157,13 +237,19 @@ class EntityEmbedRecordCreateAdapterTest {
     }
 
     @Test
-    void beforeSubmitBindingIsRejectedBeforeIrreversibleProviderCall() {
+    void beforeSubmitBindingUsesStandardPublishedSubmissionChain() {
         form.setDataSourceBindingsDocument(
                 "{\"BEFORE_SUBMIT\":{\"serviceId\":\"remote\"}}");
 
-        assertThrows(IllegalStateException.class, () -> adapter.create(command()));
+        adapter.create(command());
 
-        verifyNoSubmissionOrMutation();
+        verify(formSubmissionService).applyFormWithRelease(
+                eq("form-1"), eq("form-release-4"), eq(4),
+                eq("work_order"), isNull(), eq("create"),
+                eq(Map.of("title", "forced-value")),
+                any(FormSubmissionExecutionContext.class),
+                eq(UiRuntimeResolutionContext.historical(null, null)));
+        verify(mutationPort).execute(any());
     }
 
     @Test
@@ -184,9 +270,8 @@ class EntityEmbedRecordCreateAdapterTest {
 
     private static EmbedRecordCreatePort.CreateCommand command() {
         return new EmbedRecordCreatePort.CreateCommand(
-                new EmbedRuntimeFormPort.Target(
-                        "work_order", "form-1", "form-release-4", 4,
-                        null, null, null),
+                new EmbedRecordCreatePort.Target(
+                        "work_order", "form-1", "form-release-4", 4),
                 Map.of("title", "forced-value"), "idem-1");
     }
 }

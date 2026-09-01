@@ -116,25 +116,23 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'embed.view.surface':
     'LIST 是列表容器，可开放 LIST、VIEW、CREATE；FORM 是直接表单入口，只可开放 VIEW、CREATE。',
   'embed.view.entityCode':
-    '填写实体设计中的稳定 Entity Code，不是实体名称或数据库表名；目标列表和表单必须属于该实体。',
+    '从已发布实体中选择。页面显示实体名称，系统会在配置内部保存稳定引用；后续列表和表单只会从该实体下加载。',
   'embed.view.listKey':
-    '填写已发布实体列表的 List Key，不是列表名称或 Release ID；仅 LIST Surface 使用。',
+    '选择当前实体下已有 ACTIVE 版本的列表。页面显示列表名称，系统在内部保存稳定引用；仅 LIST 类型使用。',
   'embed.view.defaultFormId':
-    'LIST 中用于 VIEW / CREATE 跳转的默认表单；FORM 中就是直接嵌入的目标表单。填写 Form ID，不是 Form Release ID。',
+    '选择当前实体下已有 ACTIVE 版本的表单。LIST 中用于 VIEW / CREATE 打开记录，FORM 中就是直接嵌入的目标表单；无需填写 ID 或版本号。',
   'embed.view.entryModes':
     '决定 Launch API 允许进入哪些页面；勾选入口不会自动授予能力，还须开放对应 Capability。',
-  'embed.view.resourceReleaseStrategy':
-    '这里控制底层 List / Form 配置版本：PINNED 固定资源 Release ID；FOLLOW_ACTIVE 跟随其当前发布版。它不是 Grant 的 Embed View Revision Mode。',
-  'embed.view.resourceReleaseId':
-    '填写列表或表单发布记录的 Release ID，不是 Embed View 的 Revision 或 Release ID。',
   'embed.view.capabilities':
-    'View 能力白名单；运行时能力取 View、Grant Ceiling、Flow 用户权限和数据范围的交集。',
+    'View 与 Grant 能力用于约束嵌入入口和宿主 Bridge；iframe 内原生页的按钮显隐仍完全按映射 Flow 用户的普通权限、对象权限与 DataScope 计算。',
+  'embed.view.fieldPolicyMode':
+    'FORM 固定直接引用 Flow 已发布表单：iframe 使用同一发布态字段、布局、联动和内建控件，新 Launch 自动跟随新 Release；第三方的 viewKey 和启动接口不变，不能用 Embed 字段参数另做一份表单。',
   'embed.view.visibleFields':
-    'iframe 可展示的字段，字段必须存在于底层已发布资源，并仍受 Flow 用户字段权限约束。',
+    '仅 EXPLICIT 模式使用。iframe 可展示的字段必须存在于底层已发布资源，并仍受 Flow 用户权限约束。',
   'embed.view.queryableFields':
     'LIST 中可用于筛选的字段，必须由底层已发布列表声明为可查询。',
   'embed.view.writableFields':
-    'CREATE 可提交的字段，必须由底层已发布表单声明为可写；Context 强制值不能被浏览器覆盖。',
+    '仅 EXPLICIT 模式使用。CREATE 可提交的字段必须由底层已发布表单声明为可写；Context 强制值不能被浏览器覆盖。',
   'embed.view.returnableFields':
     '可经 selection.changed / form.saved 回传宿主的字段，必须是 Visible 子集，敏感字段禁止回传。',
   'embed.view.advancedJson':
@@ -169,10 +167,6 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '仅用于管理员识别 Binding 的脱敏前后缀，不是 Subject 原文或摘要，也不能用它做精确查找。',
   'embed.grant.identityProvider':
     '限定该 Application 访问 View 时使用的人员断言来源，必须与对应 Binding 的 Provider 一致。',
-  'embed.grant.revisionMode':
-    '这里选择 Embed View Release：FOLLOW_ACTIVE 跟随最新兼容发布，PINNED 固定 Pinned Revision；不同于草稿中的 List / Form Release 策略。',
-  'embed.grant.pinnedRevision':
-    '填写 Embed View 发布历史中的 Revision 数字，例如 r3 填 3；不是 Release ID 或 List / Form Release ID。',
   'embed.grant.trustedSubjectAssertion':
     '仅 TRUSTED_EXTERNAL_ID Provider 可启用，SIGNED_JWT 必须关闭。启用会扩大服务端信任边界，浏览器仍不得直接声明用户。',
   'embed.grant.allowedOrigins':
@@ -201,12 +195,6 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '该 Session 无论是否持续活动都会失效的绝对时间，与最后活动时间和空闲超时不同。',
   'embed.operations.bulkScope':
     '按 View 撤销只影响该嵌入视图；按 Application 撤销影响该接入应用的所有 View。撤销不可恢复，超过 200 条需继续下一批。',
-  'embed.release.revision':
-    'Embed View 每次发布递增的修订号。Grant 选择 PINNED 时的 Pinned Revision 填这个数字。',
-  'embed.release.id':
-    '每次 Embed View 发布生成的不可变快照 ID，主要用于运行时与审计；Grant PINNED 填的是 Revision，不是此 ID。',
-  'embed.release.configHash':
-    '服务端对不可变发布快照计算的 SHA-256 摘要，用于审计和比对配置，它不是密钥。',
   'workCalendar.scopeType':
     '部门绑定优先于组织绑定；同一范围命中多个日历时，使用优先级更高且处于生效日期内的绑定。'
 })

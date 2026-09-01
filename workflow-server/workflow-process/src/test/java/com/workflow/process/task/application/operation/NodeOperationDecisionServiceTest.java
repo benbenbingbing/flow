@@ -18,12 +18,14 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -116,6 +118,40 @@ class NodeOperationDecisionServiceTest {
                 null, Map.of(), now.minus(31, ChronoUnit.MINUTES), now);
         assertEquals("WITHDRAW_EXPIRED", service.simulate(
                 json, NodeOperationPolicy.Operation.WITHDRAW, expired).reasonCode());
+    }
+
+    @Test
+    void preservesNullRequestVariablesForOperationConditions() {
+        NodeOperationDecisionService service = simulationService(parser);
+        String json = """
+                {
+                  "version": 1,
+                  "operations": {
+                    "approve": {
+                      "condition": "request.reqSingleForm == null"
+                    }
+                  }
+                }
+                """;
+        LinkedHashMap<String, Object> requestVariables = new LinkedHashMap<>();
+        requestVariables.put("reqSingleForm", null);
+        Instant now = Instant.parse("2026-08-22T03:00:00Z");
+        NodeOperationDecisionService.SimulationContext context =
+                new NodeOperationDecisionService.SimulationContext(
+                        Map.of(), Set.of(), "operator", null, Set.of(), null,
+                        null, requestVariables, now.minus(10, ChronoUnit.MINUTES), now);
+
+        // 构造上下文后修改原始 Map，不应影响操作判断使用的请求变量快照。
+        requestVariables.put("reqSingleForm", Map.of("id", "late-change"));
+
+        NodeOperationDecisionService.ActionDecision decision = service.simulate(
+                json, NodeOperationPolicy.Operation.APPROVE, context);
+
+        assertTrue(decision.allowed());
+        assertTrue(context.requestVariables().containsKey("reqSingleForm"));
+        assertNull(context.requestVariables().get("reqSingleForm"));
+        assertThrows(UnsupportedOperationException.class,
+                () -> context.requestVariables().put("extra", "value"));
     }
 
     @Test

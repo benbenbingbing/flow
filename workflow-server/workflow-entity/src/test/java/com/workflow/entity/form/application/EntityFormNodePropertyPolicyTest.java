@@ -25,14 +25,29 @@ class EntityFormNodePropertyPolicyTest {
     @Test
     void propertyMatrixCoversAllTenNodeTypes() {
         Map<String, Map<String, Object>> validProps = Map.of(
-                "SECTION", Map.of("label", "区块"),
-                "GRID", Map.of("gutter", 16, "defaultSpan", 12),
-                "TAB_SET", Map.of("tabPosition", "left"),
-                "TAB", Map.of("label", "基本信息"),
+                "SECTION", Map.of(
+                        "label", "区块",
+                        "showPadding", false,
+                        "showBorder", true),
+                "GRID", Map.of(
+                        "gutter", 16,
+                        "defaultSpan", 12,
+                        "showPadding", true,
+                        "showBorder", false),
+                "TAB_SET", Map.of(
+                        "tabPosition", "left",
+                        "showPadding", false,
+                        "showBorder", false),
+                "TAB", Map.of(
+                        "label", "基本信息",
+                        "showPadding", true,
+                        "showBorder", true),
                 "COLLAPSE", Map.of(
                         "label", "高级设置",
                         "defaultExpanded", false,
-                        "accordion", true),
+                        "accordion", true,
+                        "showPadding", false,
+                        "showBorder", true),
                 "TEXT", Map.of(
                         "text", "审批意见",
                         "textStyle", "SECTION_TITLE"),
@@ -47,13 +62,17 @@ class EntityFormNodePropertyPolicyTest {
                         "fieldCode", "details",
                         "fieldType", "SUB_FORM",
                         "componentType", "sub_form",
-                        "componentProps", Map.of()),
+                        "componentProps", Map.of(
+                                "showPadding", false,
+                                "showBorder", true)),
                 "REPEATER", Map.of(
                         "fieldId", "r2",
                         "fieldCode", "items",
                         "fieldType", "SUB_FORM",
                         "componentType", "sub_form",
-                        "componentProps", Map.of()),
+                        "componentProps", Map.of(
+                                "showPadding", true,
+                                "showBorder", false)),
                 "ACTION_SLOT", Map.of("label", "底部动作"));
 
         assertEquals(
@@ -114,6 +133,78 @@ class EntityFormNodePropertyPolicyTest {
         assertEquals(false, normalized.active().get("defaultExpanded"));
         assertEquals(true, normalized.active().get("accordion"));
         assertFalse(normalized.active().containsKey("componentProps"));
+    }
+
+    /**
+     * 验证容器外观属性允许缺省，显式配置时只接受布尔值。
+     * 旧节点没有这两个键时仍可正常读取，由运行时沿用历史默认外观。
+     */
+    @Test
+    void containerAppearancePropertiesAreOptionalAndBoolean() {
+        Set.of("SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE")
+                .forEach(nodeType -> assertDoesNotThrow(() ->
+                        EntityFormNodePropertyPolicy.normalizeProps(
+                                nodeType, Map.of("label", "容器"), false)));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> EntityFormNodePropertyPolicy.normalizeProps(
+                        "SECTION",
+                        Map.of("showPadding", "false"),
+                        false));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> EntityFormNodePropertyPolicy.normalizeProps(
+                        "TAB_SET",
+                        Map.of("showBorder", 1),
+                        false));
+    }
+
+    /**
+     * 验证子表单外观属性在新版 componentProps 顶层和历史 subFormConfig 路径中均为可选布尔值。
+     */
+    @Test
+    void subFormAppearancePropertiesAreOptionalAndBoolean() {
+        Set.of("SUB_FORM", "REPEATER").forEach(nodeType -> {
+            assertDoesNotThrow(() ->
+                    EntityFormNodePropertyPolicy.normalizeProps(
+                            nodeType,
+                            Map.of("componentProps", Map.of()),
+                            false));
+            assertDoesNotThrow(() ->
+                    EntityFormNodePropertyPolicy.normalizeProps(
+                            nodeType,
+                            Map.of(
+                                    "componentProps",
+                                    Map.of(
+                                            "showPadding", false,
+                                            "showBorder", true,
+                                            "subFormConfig", Map.of(
+                                                    "showPadding", true,
+                                                    "showBorder", false))),
+                            false));
+        });
+
+        Set.of("showPadding", "showBorder").forEach(key -> {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> EntityFormNodePropertyPolicy.normalizeProps(
+                            "SUB_FORM",
+                            Map.of(
+                                    "componentProps",
+                                    Map.of(key, "false")),
+                            false));
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> EntityFormNodePropertyPolicy.normalizeProps(
+                            "REPEATER",
+                            Map.of(
+                                    "componentProps",
+                                    Map.of(
+                                            "subFormConfig",
+                                            Map.of(key, 1))),
+                            false));
+        });
     }
 
     /**

@@ -42,7 +42,7 @@ public interface EmbedSessionExchangeMapper {
                    a.expires_at AS application_expires_at,
                    a.version AS current_application_version,
                    v.view_key, v.surface_type AS view_surface_type,
-                   v.status AS view_status, v.published_release_id,
+                   v.status AS view_status,
                    v.security_version AS current_view_security_version,
                    g.status AS grant_status, g.expires_at AS grant_expires_at,
                    g.security_version AS current_grant_security_version,

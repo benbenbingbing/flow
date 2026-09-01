@@ -12,11 +12,10 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.EmbedRecordCreatePort;
-import com.workflow.contracts.embed.EmbedRuntimeFormPort;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit;
-import com.workflow.embed.application.form.EmbedRuntimeFormFacade.CreateAuthorization;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;
 import com.workflow.embed.application.port.EmbedOperationReceiptPort;
+import com.workflow.embed.application.record.EmbedNativeRecordCreateAuthorizationService.Authorization;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedIdempotencyClaim;
 import java.lang.reflect.Method;
@@ -108,7 +107,7 @@ class EmbedRecordCreateTransactionServiceTest {
     @Test
     void useCaseDeclaresRollbackForCheckedAndRuntimeFailures() throws Exception {
         Method method = EmbedRecordCreateTransactionService.class.getMethod(
-                "create", EmbedIdempotencyClaim.class, CreateAuthorization.class,
+                "create", EmbedIdempotencyClaim.class, Authorization.class,
                 String.class, Instant.class, String.class);
         Transactional transactional = method.getAnnotation(Transactional.class);
 
@@ -131,20 +130,19 @@ class EmbedRecordCreateTransactionServiceTest {
                 null, null, null, null);
     }
 
-    private static CreateAuthorization authorization() {
+    private static Authorization authorization() {
         AuthenticatedEmbedSession session = new AuthenticatedEmbedSession(
                 "session-1", "app-1", "grant-1", "provider-1", "binding-1",
                 "view-1", "release-1", "user-1", "zhangsan",
                 "https://portal.example.com", "channel-1234567890", "CREATE",
                 null, Map.of(), Set.of("RECORD_CREATE"),
                 NOW.plusSeconds(900), NOW.plusSeconds(3600));
-        EmbedRuntimeFormPort.Target target = new EmbedRuntimeFormPort.Target(
-                "work_order", "form-1", "form-release-1", 4,
-                null, null, null);
-        return new CreateAuthorization(
+        EmbedRecordCreatePort.Target target = new EmbedRecordCreatePort.Target(
+                "work_order", "form-1", "form-release-1", 4);
+        return new Authorization(
                 session, "view-key", target,
-                Map.of("title", "browser-value"),
                 Map.of("title", "secret-value"),
-                Map.of("title", "TEXT"), Map.of());
+                Map.of("tenant_id", "tenant-a"),
+                "save", false);
     }
 }

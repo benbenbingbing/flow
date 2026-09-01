@@ -51,8 +51,7 @@ class EmbedLaunchControllerTest {
                         Instant.parse("2026-08-27T08:31:00Z"),
                         new EmbedLaunchView(
                                 "supplier-work-orders",
-                                "LIST",
-                                7),
+                                "LIST"),
                         "flow-embed/1"));
 
         var response = controller.issue(
@@ -99,7 +98,8 @@ class EmbedLaunchControllerTest {
         OpenEmbedLaunchResponse data = response.getBody().data();
         assertThat(data.launchId()).isEqualTo("lch_01K");
         assertThat(data.launchCode()).isEqualTo("one-time-code");
-        assertThat(data.view().revision()).isEqualTo(7);
+        assertThat(data.view().key()).isEqualTo("supplier-work-orders");
+        assertThat(data.view().surfaceType()).isEqualTo("LIST");
         assertThat(response.getBody().traceId())
                 .isEqualTo("trace-embed-launch");
     }

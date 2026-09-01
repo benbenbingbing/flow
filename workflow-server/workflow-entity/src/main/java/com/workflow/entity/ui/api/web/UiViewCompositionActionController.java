@@ -2,6 +2,7 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionCapabilitiesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionLinkCandidatesRequest;
@@ -17,6 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** 已发布“关联内容”的权威业务动作入口。 */
 @AuthenticatedApi(objectAuthorization = true)
+@EmbedDelegatedRuntimeApi(
+        value = EmbedDelegatedRuntimeApi.Scope.SIGNED_RUNTIME_CONTEXT,
+        targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                .SIGNED_RUNTIME_CONTEXT)
 @RestController
 @RequestMapping("/api/ui-runtime/view-compositions/actions")
 @RequiredArgsConstructor
@@ -28,6 +33,10 @@ public class UiViewCompositionActionController {
      * 执行 SELECT、LINK 或 UNLINK。实体、字段和筛选条件只从签名发布上下文恢复。
      */
     @PostMapping
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.SIGNED_RUNTIME_CONTEXT,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .SIGNED_RUNTIME_CONTEXT)
     public Result<UiViewCompositionActionResponse> execute(
             @RequestBody UiViewCompositionActionRequest request) {
         return Result.success(actionService.execute(request));
@@ -47,6 +56,10 @@ public class UiViewCompositionActionController {
      * 请求不能携带实体、列表或任意筛选。
      */
     @PostMapping("/link-candidates")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.SIGNED_RUNTIME_CONTEXT,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .SIGNED_RUNTIME_CONTEXT)
     public Result<UiViewCompositionLinkCandidatesResponse> linkCandidates(
             @RequestBody UiViewCompositionLinkCandidatesRequest request) {
         return Result.success(actionService.linkCandidates(request));

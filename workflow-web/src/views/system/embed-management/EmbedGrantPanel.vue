@@ -39,15 +39,6 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column width="145">
-        <template #header>
-          <ConfigHelpLabel label="Release" help-key="embed.grant.revisionMode" />
-        </template>
-        <template #default="{ row }">
-          {{ row.revisionMode }}<br>
-          <small v-if="row.pinnedRevision">r{{ row.pinnedRevision }}</small>
-        </template>
-      </el-table-column>
       <el-table-column prop="version" width="76">
         <template #header>
           <ConfigHelpLabel label="CAS" help-key="embed.version.cas" />
@@ -101,6 +92,13 @@
         class="panel-alert"
       />
       <el-form label-position="top">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          class="panel-alert"
+          title="Grant 只授权应用、来源与能力；每次新 Launch 自动使用目标资源最新 ACTIVE 版本，已打开 Session 不会中途漂移。"
+        />
         <div class="form-grid">
           <el-form-item label="Application ID" required>
             <template #label>
@@ -125,42 +123,12 @@
             <el-input v-model="grantForm.identityProviderId" maxlength="64" />
           </el-form-item>
         </div>
-        <div class="form-grid three-columns">
+        <div class="form-grid">
           <el-form-item label="状态">
             <el-select v-model="grantForm.status" style="width: 100%">
               <el-option label="启用" value="ACTIVE" />
               <el-option label="停用" value="DISABLED" />
             </el-select>
-          </el-form-item>
-          <el-form-item label="Revision Mode">
-            <template #label>
-              <ConfigHelpLabel
-                label="Revision Mode"
-                help-key="embed.grant.revisionMode"
-              />
-            </template>
-            <el-select v-model="grantForm.revisionMode" style="width: 100%">
-              <el-option label="FOLLOW_ACTIVE" value="FOLLOW_ACTIVE" />
-              <el-option label="PINNED" value="PINNED" />
-            </el-select>
-          </el-form-item>
-          <el-form-item
-            v-if="grantForm.revisionMode === 'PINNED'"
-            label="Pinned Revision"
-            required
-          >
-            <template #label>
-              <ConfigHelpLabel
-                label="Pinned Revision"
-                help-key="embed.grant.pinnedRevision"
-              />
-            </template>
-            <el-input-number
-              v-model="grantForm.pinnedRevision"
-              :min="1"
-              controls-position="right"
-              style="width: 100%"
-            />
           </el-form-item>
         </div>
         <el-form-item>
@@ -327,7 +295,10 @@ const props = defineProps({
 
 const userStore = useUserStore()
 const capabilities = EMBED_CAPABILITIES
-const blockedCapabilities = EMBED_V1_BLOCKED_CAPABILITIES
+const blockedCapabilities = computed(() => [
+  ...EMBED_V1_BLOCKED_CAPABILITIES,
+  ...(props.view.surfaceType === 'LIST' ? ['ACTION_EXECUTE'] : [])
+])
 const grants = ref([])
 const loading = ref(false)
 const saving = ref(false)
@@ -353,8 +324,6 @@ function defaultGrantForm() {
     trustedSubjectAssertion: false,
     allowedOriginsText: '',
     capabilityCeiling: [],
-    revisionMode: 'FOLLOW_ACTIVE',
-    pinnedRevision: null,
     maxActiveSessionsPerUser: 3,
     maxSessionSeconds: 3600,
     launchLimitPerMinute: 60,
@@ -392,8 +361,6 @@ function openEdit(row) {
     capabilityCeiling: Array.isArray(row.capabilityCeiling)
       ? [...row.capabilityCeiling]
       : [],
-    revisionMode: row.revisionMode,
-    pinnedRevision: row.pinnedRevision,
     maxActiveSessionsPerUser: row.maxActiveSessionsPerUser,
     maxSessionSeconds: row.maxSessionSeconds,
     launchLimitPerMinute: row.launchLimitPerMinute,
@@ -417,9 +384,6 @@ function buildGrantPayload() {
   if (!grantForm.capabilityCeiling.length) {
     throw new Error('至少选择一项 Capability Ceiling')
   }
-  if (grantForm.revisionMode === 'PINNED' && !grantForm.pinnedRevision) {
-    throw new Error('PINNED 模式必须填写 Revision')
-  }
   return {
     expectedVersion: editingGrant.value?.version,
     status: grantForm.status,
@@ -427,10 +391,6 @@ function buildGrantPayload() {
     trustedSubjectAssertion: grantForm.trustedSubjectAssertion,
     allowedOrigins: normalizeExactOrigins(grantForm.allowedOriginsText),
     capabilityCeiling: [...grantForm.capabilityCeiling],
-    revisionMode: grantForm.revisionMode,
-    pinnedRevision: grantForm.revisionMode === 'PINNED'
-      ? grantForm.pinnedRevision
-      : null,
     maxActiveSessionsPerUser: grantForm.maxActiveSessionsPerUser,
     maxSessionSeconds: grantForm.maxSessionSeconds,
     launchLimitPerMinute: grantForm.launchLimitPerMinute,

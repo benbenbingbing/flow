@@ -14,6 +14,7 @@ export const EMBED_BRIDGE_MESSAGE_TYPES = Object.freeze({
   RESIZE: 'resize',
   SELECTION_CHANGED: 'selection.changed',
   FORM_SAVED: 'form.saved',
+  CLOSE_REQUESTED: 'close.requested',
   ERROR: 'error',
   SESSION_EXPIRED: 'session.expired',
   REFRESH: 'refresh',
@@ -34,9 +35,9 @@ const ERROR_CATEGORIES = new Set([
   'SESSION', 'IDENTITY', 'ORIGIN', 'RESOURCE', 'TRANSIENT', 'UNKNOWN'
 ])
 const V1_CAPABILITIES = new Set([
-  'LIST_QUERY', 'SELECTION_RETURN', 'RECORD_VIEW', 'RECORD_CREATE'
+  'LIST_QUERY', 'SELECTION_RETURN', 'RECORD_VIEW', 'RECORD_CREATE', 'ACTION_EXECUTE'
 ])
-const MAX_CLIENT_STRING_LENGTH = 2048
+const MAX_CLIENT_STRING_LENGTH = 100000
 const MAX_CLIENT_VALUE_ITEMS = 100
 const MAX_RECORD_ID_LENGTH = 128
 const DEFAULT_OUTBOUND_TYPES = new Set([
@@ -44,6 +45,7 @@ const DEFAULT_OUTBOUND_TYPES = new Set([
   EMBED_BRIDGE_MESSAGE_TYPES.INITIALIZED,
   EMBED_BRIDGE_MESSAGE_TYPES.SELECTION_CHANGED,
   EMBED_BRIDGE_MESSAGE_TYPES.FORM_SAVED,
+  EMBED_BRIDGE_MESSAGE_TYPES.CLOSE_REQUESTED,
   EMBED_BRIDGE_MESSAGE_TYPES.RESIZE,
   EMBED_BRIDGE_MESSAGE_TYPES.ERROR,
   EMBED_BRIDGE_MESSAGE_TYPES.SESSION_EXPIRED
@@ -222,6 +224,10 @@ function validateEventPayload(type, payload) {
       && isRecordProjection(payload.record)
       && CLIENT_MUTATION_ID_PATTERN.test(payload.clientMutationId)
   }
+  if (type === EMBED_BRIDGE_MESSAGE_TYPES.CLOSE_REQUESTED) {
+    return hasExactShape(payload, ['reason'])
+      && isSafeText(payload.reason, 128)
+  }
   if (type === EMBED_BRIDGE_MESSAGE_TYPES.ERROR) return validateErrorPayload(payload)
   if (type === EMBED_BRIDGE_MESSAGE_TYPES.SESSION_EXPIRED) {
     return hasExactShape(payload, ['reason', 'relaunchRequired'])
@@ -286,7 +292,7 @@ export class EmbedBridge {
     channelId,
     protocol = EMBED_BRIDGE_PROTOCOL,
     nonceFactory = createSecureNonce,
-    maxMessageBytes = 64 * 1024,
+    maxMessageBytes = 256 * 1024,
     maxSeenMessageIds = 256,
     handshakeTimeoutMs = 10000,
     setTimeoutImpl = globalThis.setTimeout,
@@ -322,7 +328,7 @@ export class EmbedBridge {
     this.protocol = String(protocol || EMBED_BRIDGE_PROTOCOL)
     this.nonceFactory = nonceFactory
     this.childNonce = this.createNonce()
-    this.maxMessageBytes = Math.max(1024, Math.min(Number(maxMessageBytes) || 16384, 65536))
+    this.maxMessageBytes = Math.max(1024, Math.min(Number(maxMessageBytes) || 16384, 262144))
     this.maxSeenMessageIds = Math.max(16, Math.min(Number(maxSeenMessageIds) || 256, 2048))
     this.handshakeTimeoutMs = Math.max(0, Number(handshakeTimeoutMs) || 0)
     // Window timer 不能以 EmbedBridge 实例作为接收者调用；真实 Chrome 会抛出

@@ -13,7 +13,6 @@ import com.workflow.embed.domain.EmbedFlowUser;
 import com.workflow.embed.domain.EmbedGrantSnapshot;
 import com.workflow.embed.domain.EmbedIdentityProviderSnapshot;
 import com.workflow.embed.domain.EmbedLaunchConfiguration;
-import com.workflow.embed.domain.EmbedReleaseSnapshot;
 import com.workflow.embed.domain.EmbedViewSnapshot;
 import com.workflow.embed.domain.PersistedEmbedLaunch;
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedLaunchPersistenceMapper;
@@ -52,36 +51,19 @@ public class MyBatisEmbedLaunchPersistenceAdapter implements
             String viewKey,
             Instant now) {
         try {
-            EmbedLaunchConfigurationRow row = mapper.findConfiguration(applicationId, viewKey);
-            if (row == null) {
-                return Optional.empty();
-            }
-            Set<String> origins = mapper.findAllowedOrigins(row.grantId());
-            EmbedIdentityProviderSnapshot provider = new EmbedIdentityProviderSnapshot(
-                    row.providerId(), row.providerType(), row.providerStatus(), row.providerIssuer(),
-                    row.subjectNamespace(), row.audiencesJson(), row.algorithmsJson(), row.jwksMode(),
-                    row.jwksJson(), row.jwksUrl(), row.clockSkewSeconds(),
-                    row.maxAssertionLifetimeSeconds(), row.providerKeyVersion(),
-                    row.providerSecurityVersion());
-            return Optional.of(new EmbedLaunchConfiguration(
-                    new EmbedApplicationSnapshot(
-                            row.applicationId(), row.applicationStatus(),
-                            instant(row.applicationExpiresAt()), row.applicationVersion()),
-                    new EmbedViewSnapshot(
-                            row.viewId(), row.viewKey(), row.viewSurfaceType(), row.viewStatus(),
-                            row.publishedReleaseId(), row.viewSecurityVersion()),
-                    new EmbedReleaseSnapshot(
-                            row.releaseId(), row.releaseRevision(), row.releaseSurfaceType(),
-                            row.entryModesJson(), row.releaseCapabilitiesJson(),
-                            row.contextSchemaJson(), row.uiConfigJson()),
-                    new EmbedGrantSnapshot(
-                            row.grantId(), row.applicationId(), row.viewId(), row.grantStatus(),
-                            row.trustedSubjectAssertion(), row.capabilityCeilingJson(),
-                            row.maxActiveSessionsPerUser(), row.maxSessionSeconds(),
-                            row.launchLimitPerMinute(), row.runtimeLimitPerMinute(),
-                            row.maxConcurrency(),
-                            instant(row.grantExpiresAt()), row.grantSecurityVersion(),
-                            provider, origins == null ? Set.of() : Set.copyOf(origins))));
+            return configuration(mapper.findConfiguration(applicationId, viewKey));
+        } catch (DataAccessException error) {
+            throw unavailable(error);
+        }
+    }
+
+    @Override
+    public Optional<EmbedLaunchConfiguration> lockForUpdate(
+            String applicationId,
+            String viewKey,
+            Instant now) {
+        try {
+            return configuration(mapper.lockConfiguration(applicationId, viewKey));
         } catch (DataAccessException error) {
             throw unavailable(error);
         }
@@ -161,6 +143,37 @@ public class MyBatisEmbedLaunchPersistenceAdapter implements
 
     private static Instant instant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
+    }
+
+    /** Maps both the preflight and locked reload through one fail-closed projection. */
+    private Optional<EmbedLaunchConfiguration> configuration(
+            EmbedLaunchConfigurationRow row) {
+        if (row == null) {
+            return Optional.empty();
+        }
+        Set<String> origins = mapper.findAllowedOrigins(row.grantId());
+        EmbedIdentityProviderSnapshot provider = new EmbedIdentityProviderSnapshot(
+                row.providerId(), row.providerType(), row.providerStatus(), row.providerIssuer(),
+                row.subjectNamespace(), row.audiencesJson(), row.algorithmsJson(), row.jwksMode(),
+                row.jwksJson(), row.jwksUrl(), row.clockSkewSeconds(),
+                row.maxAssertionLifetimeSeconds(), row.providerKeyVersion(),
+                row.providerSecurityVersion());
+        return Optional.of(new EmbedLaunchConfiguration(
+                new EmbedApplicationSnapshot(
+                        row.applicationId(), row.applicationStatus(),
+                        instant(row.applicationExpiresAt()), row.applicationVersion()),
+                new EmbedViewSnapshot(
+                        row.viewId(), row.viewKey(), row.viewSurfaceType(), row.viewStatus(),
+                        row.viewSecurityVersion()),
+                row.currentConfigJson(),
+                new EmbedGrantSnapshot(
+                        row.grantId(), row.applicationId(), row.viewId(), row.grantStatus(),
+                        row.trustedSubjectAssertion(), row.capabilityCeilingJson(),
+                        row.maxActiveSessionsPerUser(), row.maxSessionSeconds(),
+                        row.launchLimitPerMinute(), row.runtimeLimitPerMinute(),
+                        row.maxConcurrency(),
+                        instant(row.grantExpiresAt()), row.grantSecurityVersion(),
+                        provider, origins == null ? Set.of() : Set.copyOf(origins))));
     }
 
     private static LocalDateTime local(Instant value) {

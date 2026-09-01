@@ -12,7 +12,12 @@
     @update:model-value="$emit('update:modelValue', $event)"
   />
 
-  <el-card v-else-if="node.nodeType === 'SECTION'" shadow="never" class="node-section">
+  <el-card
+    v-else-if="node.nodeType === 'SECTION'"
+    shadow="never"
+    class="node-section"
+    :class="containerAppearanceClasses"
+  >
     <template #header>{{ node.props.label || node.props.title || node.nodeKey }}</template>
     <el-row :gutter="childGutter" class="node-child-row">
       <el-col v-for="child in children" :key="child.id" :span="childSpan(child)">
@@ -24,22 +29,27 @@
     </el-row>
   </el-card>
 
-  <el-row
+  <div
     v-else-if="node.nodeType === 'GRID'"
-    :gutter="Number(node.props.gutter || 16)"
-    class="node-grid"
+    class="node-grid-shell"
+    :class="containerAppearanceClasses"
   >
-    <el-col
-      v-for="child in children"
-      :key="child.id"
-      :span="Number(child.props.gridSpan || child.props.span || node.props.defaultSpan || 12)"
+    <el-row
+      :gutter="Number(node.props.gutter || 16)"
+      class="node-grid"
     >
-      <FormNodeRuntimeItem
-        v-bind="childProps(child)"
-        @update:model-value="$emit('update:modelValue', $event)"
-      />
-    </el-col>
-  </el-row>
+      <el-col
+        v-for="child in children"
+        :key="child.id"
+        :span="Number(child.props.gridSpan || child.props.span || node.props.defaultSpan || 12)"
+      >
+        <FormNodeRuntimeItem
+          v-bind="childProps(child)"
+          @update:model-value="$emit('update:modelValue', $event)"
+        />
+      </el-col>
+    </el-row>
+  </div>
 
   <el-tabs
     v-else-if="node.nodeType === 'TAB_SET'"
@@ -47,6 +57,7 @@
     type="border-card"
     :tab-position="node.props.tabPosition || 'top'"
     class="node-tabs"
+    :class="containerAppearanceClasses"
     @update:model-value="activeTab = $event"
   >
     <el-tab-pane
@@ -55,32 +66,34 @@
       :name="tabNode.id"
       :label="tabNode.props.label || tabNode.props.title || tabNode.nodeKey"
     >
-      <el-row :gutter="childGutter" class="node-child-row">
-        <el-col
-          v-for="child in childrenFor(tabNode.id)"
-          :key="child.id"
-          :span="childSpan(child)"
-        >
-          <FormNodeRuntimeItem
-            v-bind="childProps(child)"
-            @update:model-value="$emit('update:modelValue', $event)"
-          />
-        </el-col>
-      </el-row>
-      <RelatedContentRuntime
-        v-for="item in relatedContentsForNode(tabNode)"
-        :key="item.id || item.compositionKey"
-        :composition="item"
-        owner-type="FORM"
-        :owner-id="runtimeForm.id"
-        :release-id="runtimeReleaseId"
-        :release-version="runtimeReleaseVersion"
-        :source-record-id="sourceRecordId"
-        :host-readonly="readonly"
-        :traversal-context-token="runtimeTraversalContextToken"
-        :release-resolution-token="runtimeReleaseResolutionToken"
-        @source-patch="applyRelatedContentPatch"
-      />
+      <div class="node-tab-panel" :class="appearanceClassesFor(tabNode)">
+        <el-row :gutter="childGutter" class="node-child-row">
+          <el-col
+            v-for="child in childrenFor(tabNode.id)"
+            :key="child.id"
+            :span="childSpan(child)"
+          >
+            <FormNodeRuntimeItem
+              v-bind="childProps(child)"
+              @update:model-value="$emit('update:modelValue', $event)"
+            />
+          </el-col>
+        </el-row>
+        <RelatedContentRuntime
+          v-for="item in relatedContentsForNode(tabNode)"
+          :key="item.id || item.compositionKey"
+          :composition="item"
+          owner-type="FORM"
+          :owner-id="runtimeForm.id"
+          :release-id="runtimeReleaseId"
+          :release-version="runtimeReleaseVersion"
+          :source-record-id="sourceRecordId"
+          :host-readonly="readonly"
+          :traversal-context-token="runtimeTraversalContextToken"
+          :release-resolution-token="runtimeReleaseResolutionToken"
+          @source-patch="applyRelatedContentPatch"
+        />
+      </div>
     </el-tab-pane>
   </el-tabs>
 
@@ -89,6 +102,7 @@
     :model-value="collapseModelValue"
     :accordion="node.props.accordion === true"
     class="node-collapse"
+    :class="containerAppearanceClasses"
     @update:model-value="updateCollapseNames"
   >
     <el-collapse-item
@@ -144,7 +158,7 @@
     <component :is="actionSlotRenderer" />
   </div>
 
-  <div v-else class="node-container">
+  <div v-else class="node-container" :class="containerAppearanceClasses">
     <el-row :gutter="childGutter" class="node-child-row">
       <el-col v-for="child in children" :key="child.id" :span="childSpan(child)">
         <FormNodeRuntimeItem
@@ -199,6 +213,10 @@ import {
   findFormNodeContainingValidationField,
   formNodeSubtreeContainsValidationField
 } from '@/shared/form-runtime/validationReveal'
+import {
+  resolveFormContainerAppearance,
+  supportsFormContainerAppearance
+} from '@/shared/form-container-appearance'
 
 defineOptions({ name: 'FormNodeRuntimeItem' })
 
@@ -271,6 +289,9 @@ function applyRelatedContentPatch(patch) {
 }
 const children = computed(() => props.childrenFor(props.node.id))
 const childGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
+const containerAppearanceClasses = computed(() =>
+  appearanceClasses(props.node.nodeType, props.node.props)
+)
 const customDescriptor = computed(() =>
   isFormFieldExtensionNode(props.node)
     ? null
@@ -288,6 +309,21 @@ const sectionTitleField = computed(() => ({
     || props.node.props?.label
     || props.node.nodeKey
 }))
+
+function appearanceClasses(type, config) {
+  if (!supportsFormContainerAppearance(type)) return {}
+  const resolved = resolveFormContainerAppearance(type, config)
+  return {
+    'is-container-padded': resolved.showPadding === true,
+    'is-container-paddingless': resolved.showPadding !== true,
+    'is-container-bordered': resolved.showBorder === true,
+    'is-container-borderless': resolved.showBorder !== true
+  }
+}
+
+function appearanceClassesFor(targetNode) {
+  return appearanceClasses(targetNode?.nodeType, targetNode?.props)
+}
 const activeTab = ref('')
 const visibleTabs = computed(() => children.value.filter(tab => {
   if (tab?.props?.hidden === true) return false
@@ -409,6 +445,7 @@ const runtimeField = computed(() => {
     ...(linked || {}),
     ...fallback,
     id: props.node.id,
+    nodeType: props.node.nodeType,
     fieldId: nodeProps.fieldId ?? linked?.fieldId,
     fieldCode: nodeProps.fieldCode || linked?.fieldCode || props.node.nodeKey,
     fieldName: nodeProps.fieldName || linked?.fieldName || nodeProps.label || props.node.nodeKey,
@@ -574,7 +611,7 @@ function collectDescendants(parentId) {
 
 <style scoped>
 .node-section,
-.node-grid,
+.node-grid-shell,
 .node-tabs,
 .node-collapse,
 .node-text,
@@ -582,6 +619,67 @@ function collectDescendants(parentId) {
 .node-container {
   margin-bottom: 12px;
 }
+
+.node-grid {
+  margin-bottom: 0;
+}
+
+.node-grid-shell,
+.node-tab-panel,
+.node-container {
+  border: 0 solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+}
+
+.node-grid-shell.is-container-bordered,
+.node-tab-panel.is-container-bordered,
+.node-container.is-container-bordered {
+  border-width: 1px;
+}
+
+.node-grid-shell.is-container-padded,
+.node-tab-panel.is-container-padded,
+.node-container.is-container-padded {
+  padding: 12px;
+}
+
+.node-section.is-container-borderless {
+  border-width: 0;
+}
+
+.node-section.is-container-borderless :deep(.el-card__header) {
+  border-bottom-width: 0;
+}
+
+.node-section.is-container-paddingless :deep(.el-card__body) {
+  padding: 0;
+}
+
+.node-tabs.is-container-borderless {
+  border-width: 0;
+}
+
+.node-tabs.is-container-borderless :deep(.el-tabs__header) {
+  border-bottom-width: 0;
+}
+
+.node-tabs.is-container-paddingless :deep(.el-tabs__content) {
+  padding: 0;
+}
+
+.node-collapse.is-container-borderless {
+  border-top-width: 0;
+  border-bottom-width: 0;
+}
+
+.node-collapse.is-container-borderless :deep(.el-collapse-item__wrap) {
+  border-bottom-width: 0;
+}
+
+.node-collapse.is-container-paddingless :deep(.el-collapse-item__content) {
+  padding-bottom: 0;
+}
+
 .node-child-row :deep(.el-col) {
   margin-bottom: 12px;
 }

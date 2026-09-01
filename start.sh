@@ -60,7 +60,9 @@ load_environment() {
 
     export SERVER_PORT="${SERVER_PORT:-8080}"
     export WEB_PORT="${WEB_PORT:-3000}"
-    export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}}"
+    # 独立 Embed Origin 会直接访问 Flow 原生数据面，必须与管理端 Origin
+    # 一起进入精确 CORS 白名单；Grant 中的 3443 是父页面 Origin，不能替代 8443。
+    export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT},https://localhost:8443}"
     export DB_HOST="${DB_HOST:-localhost}"
     export DB_PORT="${DB_PORT:-3306}"
     export DB_NAME="${DB_NAME:-workflow}"

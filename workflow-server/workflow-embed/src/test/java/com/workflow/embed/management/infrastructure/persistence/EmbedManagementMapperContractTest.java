@@ -3,10 +3,14 @@ package com.workflow.embed.management.infrastructure.persistence;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Set;
+import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +26,7 @@ class EmbedManagementMapperContractTest {
         String namespace = EmbedManagementMapper.class.getName() + ".";
         assertTrue(configuration.hasStatement(namespace + "findViews"));
         assertTrue(configuration.hasStatement(namespace + "findListTarget"));
+        assertTrue(configuration.hasStatement(namespace + "findReleaseByConfigHash"));
         assertTrue(configuration.hasStatement(namespace + "findBindingByDigests"));
         assertTrue(configuration.hasStatement(namespace + "changeProviderStatus"));
     }
@@ -49,7 +54,7 @@ class EmbedManagementMapperContractTest {
     @Test
     void recordQueriesNeverDependOnPhysicalTableColumnOrder() {
         Set<String> recordQueries = Set.of(
-                "findReleases", "findRelease",
+                "findReleaseByConfigHash",
                 "findGrant", "lockGrant", "findGrants",
                 "findProviders", "findProvider", "lockProvider",
                 "findProviderByIssuerAndNamespace", "lockProviderByIssuerAndNamespace",
@@ -66,7 +71,9 @@ class EmbedManagementMapperContractTest {
 
     @Test
     void publishedResourceJoinsNormalizeLegacyCollationsExplicitly() {
-        for (String methodName : new String[]{"findListTarget", "findFormTarget"}) {
+        for (String methodName : new String[]{
+                "findListTarget",
+                "findFormTarget"}) {
             Method method = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
                     .filter(candidate -> candidate.getName().equals(methodName))
                     .findFirst()
@@ -77,5 +84,57 @@ class EmbedManagementMapperContractTest {
             // unicode_ci；跨列 JOIN 不显式统一会在 MySQL 8 报 Illegal mix of collations。
             assertTrue(sql.contains("COLLATE utf8mb4_unicode_ci"));
         }
+    }
+
+    @Test
+    void providerIssuerLookupUsesAnnotationSafeNullEquality() {
+        for (String methodName : new String[]{
+                "findProviderByIssuerAndNamespace",
+                "lockProviderByIssuerAndNamespace"}) {
+            Method method = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
+                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .findFirst()
+                    .orElseThrow();
+            String sql = String.join("\n", method.getAnnotation(Select.class).value());
+
+            // 注解 SQL 不会像 XML Mapper 一样解码 &lt;=&gt;；直接写实体会把无效文本
+            // 发送给 MySQL。显式展开 NULL 等价语义，兼容 SIGNED_JWT 与无 issuer 的受信模式。
+            assertFalse(sql.contains("&lt;"), methodName + " 不能包含 XML 实体");
+            assertTrue(sql.contains("issuer = #{issuer}"));
+            assertTrue(sql.contains("issuer IS NULL AND #{issuer} IS NULL"));
+        }
+    }
+
+    @Test
+    void annotatedSqlNeverContainsXmlComparisonEntities() {
+        Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
+                .forEach(method -> Arrays.stream(method.getDeclaredAnnotations())
+                        .map(EmbedManagementMapperContractTest::sqlFragments)
+                        .flatMap(Arrays::stream)
+                        .forEach(sql -> {
+                            // 只有显式 <script> 注解会经过 XMLLanguageDriver；普通注解中的
+                            // &lt;/&gt; 会原样进入 JDBC，并在真实 MySQL 查询时触发语法错误。
+                            if (sql.stripLeading().startsWith("<script>")) {
+                                return;
+                            }
+                            assertFalse(sql.contains("&lt;"), method.getName() + " 不能包含 &lt; 实体");
+                            assertFalse(sql.contains("&gt;"), method.getName() + " 不能包含 &gt; 实体");
+                        }));
+    }
+
+    private static String[] sqlFragments(Annotation annotation) {
+        if (annotation instanceof Select select) {
+            return select.value();
+        }
+        if (annotation instanceof Insert insert) {
+            return insert.value();
+        }
+        if (annotation instanceof Update update) {
+            return update.value();
+        }
+        if (annotation instanceof Delete delete) {
+            return delete.value();
+        }
+        return new String[0];
     }
 }

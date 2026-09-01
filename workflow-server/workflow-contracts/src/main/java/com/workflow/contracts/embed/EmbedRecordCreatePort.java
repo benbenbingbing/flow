@@ -5,9 +5,11 @@ import java.util.Map;
 /**
  * Embed 新建记录到实体域的强类型防腐层端口。
  *
- * <p>调用方只能传入由服务端 Session 和不可变 Embed Release 恢复的目标，以及已经完成
- * External Field Policy 求交和 Context 强制覆盖的数据。实现必须在同一外层业务事务中
- * 重查当前 Flow 用户 CREATE 权限、精确固定 Form Release，并通过统一实体变更管道写入。</p>
+ * <p>调用方只能传入由服务端 Session 和不可变 Embed Release 恢复的目标，以及
+ * 已完成通用 JSON 边界检查和 Context 强制覆盖的原生表单数据。字段、组件、
+ * 默认值、联动和 BEFORE_SUBMIT 语义只由固定 Published Form 的标准提交链解析。
+ * 实现必须在同一外层业务事务中重查当前 Flow 用户 CREATE 权限、精确固定
+ * Form Release，并通过统一实体变更管道写入。</p>
  */
 public interface EmbedRecordCreatePort {
 
@@ -21,12 +23,31 @@ public interface EmbedRecordCreatePort {
 
     /** 只包含实体域执行所需的可信参数。 */
     record CreateCommand(
-            EmbedRuntimeFormPort.Target target,
+            Target target,
             Map<String, Object> data,
-            String idempotencyRecordId) {
+            String idempotencyRecordId,
+            boolean startProcess) {
+
+        public CreateCommand(
+                Target target,
+                Map<String, Object> data,
+                String idempotencyRecordId) {
+            this(target, data, idempotencyRecordId, false);
+        }
     }
 
-    /** 实体写入的最小结果，字段值由 Embed 当前 Output Policy 重新读取和投影。 */
+    /** 创建链使用的最小固定坐标；不包含任何字段或组件投影。 */
+    record Target(
+            String entityCode,
+            String formId,
+            String formReleaseId,
+            int formReleaseVersion) {
+    }
+
+    /**
+     * 实体写入的最小结果；不携带字段或组件投影。外层只据此生成幂等回执，
+     * 原生页面后续读取仍走 Flow 标准 Published Form 运行时。
+     */
     record CreatedRecord(
             String recordId,
             Long recordVersion) {

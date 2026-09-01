@@ -88,24 +88,9 @@ export function createEmbedManagementApi(transport = request) {
       updateDraft(viewId, data) {
         return call('patch', `${viewPath(viewId)}/draft`, data)
       },
-      validate(viewId, data) {
-        return call('post', `${viewPath(viewId)}/validate`, data)
-      },
-      publish(viewId, data) {
-        return call('post', `${viewPath(viewId)}/publish`, data)
-      },
       changeStatus(viewId, data) {
         return call('post', `${viewPath(viewId)}/status`, data)
       },
-      releases(viewId) {
-        return call('get', `${viewPath(viewId)}/releases`)
-      },
-      release(viewId, revision) {
-        return call(
-          'get',
-          `${viewPath(viewId)}/releases/${id(revision)}`
-        )
-      }
     },
     grants: {
       list(viewId) {

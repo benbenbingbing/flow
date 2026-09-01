@@ -56,8 +56,6 @@ public class EntityListRuntimeService {
     private static final Set<String> SCENES = Set.of(
             "MENU", "PAGE", "DIALOG", "DRAWER",
             "EMBEDDED", "FORM_PICKER", "SUB_TABLE");
-    private static final Set<String> EMBED_SAFE_LIST_FIELD_SOURCES = Set.of(
-            "ENTITY_FIELD", "REFERENCE");
 
     private final EntityDataListConfigService dataListService;
     private final EntityDataDynamicService dynamicService;
@@ -1084,46 +1082,10 @@ public class EntityListRuntimeService {
                 || !Integer.valueOf(releaseVersion).equals(config.getPublishedVersion())) {
             throw new IllegalArgumentException("列表不存在或发布版本不匹配: " + listKey);
         }
-        return requireEmbedSafePinnedList(config);
-    }
-
-    /**
-     * Embed 铆定列表只允许平台内建的静态查询与渲染链。
-     *
-     * <p>管理端发布器会拒绝这些扩展点，但运行时仍必须复验历史或被篡改的
-     * Release，不能让自定义 Provider、DataSource、组件或组合内容进入 iframe
-     * 权限边界。事件绑定不会被映射到 {@link EntityListConfig}，且 pinned 查询始终
-     * 跳过 UI Event；其余可执行坐标在此显式关闭。</p>
-     */
-    private EntityListConfig requireEmbedSafePinnedList(EntityListConfig config) {
-        if (StringUtils.hasText(config.getCustomComponent())
-                || StringUtils.hasText(config.getQueryProviderCode())
-                || StringUtils.hasText(config.getQueryDataSourceId())
-                || StringUtils.hasText(config.getQueryOperationCode())
-                || (config.getViewCompositions() != null
-                && !config.getViewCompositions().isEmpty())) {
-            throw new IllegalStateException(
-                    "Embed 固定列表发布版本包含不受信扩展");
-        }
-        List<EntityListField> fields = config.getRuntimeFields() == null
-                ? List.of() : config.getRuntimeFields();
-        for (EntityListField field : fields) {
-            if (field == null
-                    || StringUtils.hasText(field.getRenderComponent())
-                    || StringUtils.hasText(field.getTemplateId())
-                    || StringUtils.hasText(field.getDataSourceId())
-                    || StringUtils.hasText(field.getDataSourceOperationCode())) {
-                throw new IllegalStateException(
-                        "Embed 固定列表字段包含不受信扩展");
-            }
-            String source = field.getDataSourceType();
-            if (StringUtils.hasText(source)
-                    && !EMBED_SAFE_LIST_FIELD_SOURCES.contains(
-                    source.trim().toUpperCase(Locale.ROOT))) {
-                throw new IllegalStateException(
-                        "Embed 固定列表字段数据源不受信");
-            }
-        }
+        // pinned 只负责锁定本次 Session 的不可变发布版本，不创建第二套
+        // “Embed 可兼容组件”白名单。自定义列渲染、Provider、DataSource、
+        // 组合内容和后续新增组件继续走 Flow 原生注册表、映射用户权限与
+        // DataScope；否则同一个 ACTIVE 列表在 Flow 与 iframe 中会产生两种语义。
         return config;
     }
 

@@ -3,15 +3,29 @@ import request from '@/utils/request'
 /**
  * 查询实体的状态列表
  */
-export function getEntityStatusList(entityCode) {
-  return request.get(`/entity-status/list/${entityCode}`)
+export function getEntityStatusList(entityCode, runtimeContext = {}) {
+  return request.get(`/entity-status/list/${entityCode}`, {
+    params: {
+      viewCompositionTraversalToken:
+        runtimeContext.viewCompositionTraversalToken || undefined
+    }
+  })
 }
 
 /**
  * 根据分类查询
  */
-export function getEntityStatusByCategory(entityCode, category) {
-  return request.get(`/entity-status/list/${entityCode}/${category}`)
+export function getEntityStatusByCategory(
+  entityCode,
+  category,
+  runtimeContext = {}
+) {
+  return request.get(`/entity-status/list/${entityCode}/${category}`, {
+    params: {
+      viewCompositionTraversalToken:
+        runtimeContext.viewCompositionTraversalToken || undefined
+    }
+  })
 }
 
 /**

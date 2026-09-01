@@ -35,8 +35,13 @@ export const entityApi = {
   /**
    * 根据编码获取实体定义
    */
-  getByCode(code) {
-    return request.get(`/entity/code/${code}`)
+  getByCode(code, runtimeContext = {}) {
+    return request.get(`/entity/code/${code}`, {
+      params: {
+        viewCompositionTraversalToken:
+          runtimeContext.viewCompositionTraversalToken || undefined
+      }
+    })
   },
 
   /**
@@ -158,7 +163,13 @@ export const entityDataApi = {
       formReleaseId: formReleaseContext.releaseId,
       formReleaseVersion: formReleaseContext.releaseVersion,
       formReleaseResolutionToken:
-        formReleaseContext.releaseResolutionToken
+        formReleaseContext.releaseResolutionToken,
+      // 关联内容的非根实体只能沿服务端签名的遍历链读取。
+      // 这是 Flow 共享详情 API 的可选上下文，不是 Embed 专用分支。
+      viewCompositionTraversalToken:
+        formReleaseContext.viewCompositionTraversalToken
+        || releaseContext.viewCompositionTraversalToken
+        || undefined
     }
     if (listKey) params.listKey = listKey
     if (formId) params.formId = formId

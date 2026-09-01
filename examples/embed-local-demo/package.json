@@ -1,0 +1,15 @@
+{
+  "name": "flow-embed-local-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node server.mjs --setup",
+    "start": "node server.mjs",
+    "check": "node server.mjs --check",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

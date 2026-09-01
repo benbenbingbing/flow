@@ -550,8 +550,7 @@ class OpenIntegrationSecurityIntegrationTest {
                             Instant.parse("2026-08-27T08:31:00Z"),
                             new EmbedLaunchView(
                                     "supplier-work-orders",
-                                    "LIST",
-                                    7),
+                                    "LIST"),
                             "flow-embed/1"));
             return port;
         }

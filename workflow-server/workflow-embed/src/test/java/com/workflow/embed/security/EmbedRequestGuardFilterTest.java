@@ -80,4 +80,34 @@ class EmbedRequestGuardFilterTest {
         assertFalse("unsafe trace value".equals(responseTrace));
         assertTrue(responseTrace.matches("[A-Za-z0-9._-]{1,64}"));
     }
+
+    @Test
+    void delegatedMultipartUsesPlatformUploadLimitInsteadOfEmbedJsonLimit()
+            throws Exception {
+        EmbedRequestGuardFilter filter = new EmbedRequestGuardFilter(
+                objectMapper, 8);
+        byte[] content = "native-multipart-file-body"
+                .getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/api/file/upload");
+        request.addHeader(
+                EmbedSessionAuthenticationFilter.PROTOCOL_HEADER, "1");
+        request.setContentType("multipart/form-data; boundary=native");
+        request.setContent(content);
+        AtomicBoolean invoked = new AtomicBoolean();
+
+        filter.doFilter(
+                request,
+                new MockHttpServletResponse(),
+                (downstream, response) -> {
+                    invoked.set(true);
+                    assertEquals(
+                            "native-multipart-file-body",
+                            new String(
+                                    downstream.getInputStream().readAllBytes(),
+                                    StandardCharsets.UTF_8));
+                });
+
+        assertTrue(invoked.get());
+    }
 }

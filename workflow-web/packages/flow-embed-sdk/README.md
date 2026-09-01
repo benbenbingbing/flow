@@ -17,7 +17,7 @@ const launch = await fetch('/partner-api/work-orders/flow-embed-launch', {
   body: JSON.stringify({ entry: { mode: 'LIST' }, channelId })
 }).then(response => response.json())
 
-const widget = FlowEmbed.mount({
+let widget = FlowEmbed.mount({
   container: document.querySelector('#flow-work-orders'),
   embedUrl: launch.embedUrl,
   launchId: launch.launchId,
@@ -25,6 +25,7 @@ const widget = FlowEmbed.mount({
   channelId,
   targetOrigin: 'https://embed.flow.example.com',
   height: { mode: 'auto', min: 480, max: 1200 },
+  destroyTimeoutMs: 20000,
   onEvent(event) {
     if (event.type === 'selection.changed') console.log(event.payload.selection)
     if (event.type === 'session.expired') requestANewLaunch()
@@ -35,12 +36,17 @@ const widget = FlowEmbed.mount({
 })
 
 widget.on('form.saved', event => updateHostRecord(event.payload))
+widget.on('close.requested', () => {
+  // Published Form 的关闭/取消只请求宿主关闭；等待 Logout 后才能重新 Launch。
+  void widget.destroy().catch(reportEmbedLifecycleFailure)
+})
 widget.refresh()
 widget.setTheme('dark')
 widget.setLocale('zh-CN')
 
-// 页面卸载或框架组件卸载时必须销毁。
-widget.destroy()
+// 重新打开前必须等待旧 Session 在 Flow 服务端完成注销。
+await widget.destroy()
+widget = await mountWithANewLaunch()
 ```
 
 `embedUrl` 必须是 HTTPS、Origin 必须与 `targetOrigin` 完全相等，且 path 必须精确为
@@ -50,6 +56,15 @@ iframe URL、浏览器历史、Referrer 或服务端访问日志中。SDK 在通
 
 V1 只允许 `refresh`、`set-theme`、`set-locale`、`focus`、`destroy` 五种命令。
 改变用户、业务 Context、View 或记录入口必须由第三方后端重新创建 Launch。
+
+`destroy()` 是幂等的异步完成语义：iframe 只有在 `DELETE /api/embed/v1/session`
+成功、服务端已释放活跃会话配额后才回传关联 ACK，SDK 随后才关闭
+MessagePort 并移除 iframe。重复调用会返回同一个 Promise，不会重复发送命令。
+
+如果 Logout 返回错误或超过 `destroyTimeoutMs`，SDK 会清理本地 iframe 并 reject；
+宿主不得在该 Promise reject 后立即创建新 Launch，应告知用户重试，并依赖 Flow
+的 idle/absolute timeout 作最终回收。整个宿主页面离开时浏览器无法等待 Promise；
+iframe 会在 `pagehide` 中使用 keepalive Logout 尽力注销，服务端超时回收仍必须保留。
 
 ## TypeScript 契约
 

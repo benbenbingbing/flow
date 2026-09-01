@@ -14,6 +14,17 @@ public class UiInterfaceOperationExecuteRequest {
     private String ownerType;
     /** 绑定所有者 ID。 */
     private String ownerId;
+    /**
+     * 原生 Embed 中由中央策略验证的精确 owner 发布坐标。
+     * 业务服务不相信这些字段，只使用拦截器写入的已验证目标。
+     */
+    private String releaseId;
+    private Integer releaseVersion;
+    private String releaseResolutionToken;
+    private String entityCode;
+    private String listKey;
+    private String recordId;
+    private String viewCompositionTraversalToken;
     /** 绑定位置编码，例如 FIELD_OPTIONS、LIST_COLUMN。 */
     private String bindingCode;
     /** 精确目标类型，例如 FIELD、COLUMN、BUTTON 或 OWNER。 */

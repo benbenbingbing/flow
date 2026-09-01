@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,9 +37,9 @@ public class EmbedRuntimeAudit {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EmbedRuntimeAudit.class);
     private static final String RECORDS_PATH = "/api/embed/v1/runtime/records";
-    private static final String RECORD_PATH_PREFIX = RECORDS_PATH + "/";
-    private static final Pattern SAFE_RECORD_ID = Pattern.compile(
-            "[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}");
+    private static final Pattern NATIVE_RECORD_DETAIL_PATH = Pattern.compile(
+            "^/api/entity-data/entity/[A-Za-z][A-Za-z0-9_]{0,99}"
+                    + "/detail/([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})/load$");
 
     private final SystemAuditPort auditPort;
     private final Clock clock;
@@ -111,9 +112,7 @@ public class EmbedRuntimeAudit {
                 : success ? "SUCCESS" : "FAILURE";
         String targetType = operation == Operation.LIST_QUERY
                 ? "EMBED_VIEW" : "RECORD";
-        String targetId = operation == Operation.RECORD_CREATE
-                ? createdRecordId(location).orElse(session.viewId())
-                : operation == Operation.RECORD_DETAIL
+        String targetId = operation == Operation.RECORD_DETAIL
                 ? requestOperation.recordId()
                 : session.viewId();
         recordBestEffort(operationName, () -> event(
@@ -163,8 +162,9 @@ public class EmbedRuntimeAudit {
     }
 
     /**
-     * 只识别本期需要审计的三类稳定路由；动态记录 ID 必须满足与表单 Facade
-     * 相同的安全字符约束，避免把任意 URL 片段写入审计。
+     * 只识别本期需要审计的三类稳定路由；详情审计跟随 Flow 原生加载端点，
+     * 不再保留旧 Embed record 投影路由。动态记录 ID 必须满足安全字符约束，
+     * 避免把任意 URL 片段写入审计。
      */
     public static Optional<RequestOperation> classify(
             String method,
@@ -176,13 +176,11 @@ public class EmbedRuntimeAudit {
         if ("POST".equalsIgnoreCase(method) && RECORDS_PATH.equals(requestUri)) {
             return Optional.of(new RequestOperation(Operation.RECORD_CREATE, null));
         }
-        if ("GET".equalsIgnoreCase(method)
-                && requestUri != null
-                && requestUri.startsWith(RECORD_PATH_PREFIX)) {
-            String recordId = requestUri.substring(RECORD_PATH_PREFIX.length());
-            if (SAFE_RECORD_ID.matcher(recordId).matches()) {
+        if ("POST".equalsIgnoreCase(method) && requestUri != null) {
+            Matcher detail = NATIVE_RECORD_DETAIL_PATH.matcher(requestUri);
+            if (detail.matches()) {
                 return Optional.of(new RequestOperation(
-                        Operation.RECORD_DETAIL, recordId));
+                        Operation.RECORD_DETAIL, detail.group(1)));
             }
         }
         return Optional.empty();
@@ -263,15 +261,6 @@ public class EmbedRuntimeAudit {
         }
     }
 
-    private static Optional<String> createdRecordId(String location) {
-        if (!StringUtils.hasText(location) || !location.startsWith(RECORD_PATH_PREFIX)) {
-            return Optional.empty();
-        }
-        String recordId = location.substring(RECORD_PATH_PREFIX.length());
-        return SAFE_RECORD_ID.matcher(recordId).matches()
-                ? Optional.of(recordId) : Optional.empty();
-    }
-
     /**
      * 封闭的运行时操作集合，同时作为审计和后续细分流控的稳定分类。
      */
@@ -286,8 +275,8 @@ public class EmbedRuntimeAudit {
                 "EMBED_RUNTIME_RECORD_DETAIL",
                 AuditAction.OTHER,
                 AuditRiskLevel.LOW,
-                "GET",
-                "/api/embed/v1/runtime/records/{recordId}"),
+                "POST",
+                "/api/entity-data/entity/{entityCode}/detail/{recordId}/load"),
         RECORD_CREATE(
                 "EMBED_RECORD_CREATE",
                 AuditAction.CREATE,

@@ -66,6 +66,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -80,6 +81,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -93,6 +95,35 @@ import static org.mockito.Mockito.when;
  * 发布激活时的完整性校验、节点结构校验、跨表单嵌套校验、模板兼容性校验等场景。
  */
 class UiConfigReleaseServiceTest {
+
+    @Test
+    void unchangedStandardFormPublishReusesRelease() {
+        TestContext context = context();
+        EntityForm draft = form();
+        draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1"))
+                .thenReturn(draft);
+        Map<String, Object> snapshot = context.service().draftSnapshot(
+                UiConfigReleaseService.FORM,
+                "form-1");
+        UiConfigRelease active = configRelease(
+                context.codec(),
+                "form-release-active",
+                UiConfigReleaseService.FORM,
+                "form-1",
+                snapshot);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM,
+                "form-1")).thenReturn(active);
+        UiConfigRelease reused = context.service().publish(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                (String) null);
+
+        assertEquals(active.getId(), reused.getId());
+        verify(context.releaseMapper(), never()).insert(
+                any(UiConfigRelease.class));
+    }
 
     @Test
     void standardPublishPreviewValidatesEveryViewCompositionDependency() {
@@ -224,6 +255,7 @@ class UiConfigReleaseServiceTest {
                 context.codec(),
                 "release-target",
                 formSnapshot(List.of()));
+        target.setPublishedBy("admin-1");
         when(context.releaseMapper().selectById("release-target"))
                 .thenReturn(target);
         when(context.releaseMapper().findActive(
@@ -231,7 +263,6 @@ class UiConfigReleaseServiceTest {
                 "form-1")).thenReturn(null);
         when(context.releaseMapper().update(any(), any()))
                 .thenReturn(1);
-
         context.service().activate(
                 UiConfigReleaseService.FORM,
                 "form-1",
@@ -1482,6 +1513,61 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void signedRuntimeReleaseKeepsParentTokenExpiryForDerivedContext() {
+        TestContext context = context();
+        UiConfigRelease pinned = release(
+                context.codec(),
+                "release-3",
+                formSnapshot(List.of()));
+        pinned.setVersion(3);
+        when(context.releaseMapper().selectById("release-3"))
+                .thenReturn(pinned);
+        long now = Instant.now().getEpochSecond();
+        long sessionExpiresAt = now + 1_800L;
+        UiRuntimeResolutionContext runtimeContext =
+                UiRuntimeResolutionContext.standalone();
+        when(context.resolutionTokenService().verify("session-bound-token"))
+                .thenReturn(new UiReleaseResolutionTokenService.Claims(
+                        runtimeContext.purpose(),
+                        null,
+                        null,
+                        "form-1",
+                        "release-3",
+                        3,
+                        0,
+                        "user-1",
+                        "session-1",
+                        "view-release-1",
+                        now,
+                        sessionExpiresAt));
+        when(context.resolutionTokenService().issue(
+                runtimeContext,
+                "form-1",
+                "release-3",
+                3,
+                1,
+                Instant.ofEpochSecond(sessionExpiresAt)))
+                .thenReturn("derived-session-bound-token");
+
+        Map<String, Object> result = context.service().runtimeFormRelease(
+                "form-1",
+                "release-3",
+                3,
+                "session-bound-token");
+
+        assertEquals(
+                "derived-session-bound-token",
+                result.get("releaseResolutionToken"));
+        verify(context.resolutionTokenService()).issue(
+                eq(runtimeContext),
+                eq("form-1"),
+                eq("release-3"),
+                eq(3),
+                eq(1),
+                eq(Instant.ofEpochSecond(sessionExpiresAt)));
+    }
+
+    @Test
     void activeTaskUsesEffectiveHotfixSnapshot() {
         TestContext context = context();
         UiConfigRelease pinned = release(
@@ -2713,6 +2799,8 @@ class UiConfigReleaseServiceTest {
                 2,
                 0,
                 "user-1",
+                null,
+                null,
                 1L,
                 Long.MAX_VALUE);
     }

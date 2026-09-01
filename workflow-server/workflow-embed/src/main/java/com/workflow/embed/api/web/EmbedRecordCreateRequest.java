@@ -12,7 +12,9 @@ import java.util.Map;
 public class EmbedRecordCreateRequest {
 
     @NotNull
-    @Size(max = 100)
+    // 这是通用 JSON 资源上限，不是字段或组件兼容白名单；字段语义由固定
+    // Published Form 的标准提交链权威校验。
+    @Size(max = 500)
     private Map<String, Object> data;
 
     @Size(max = 128)
@@ -20,6 +22,9 @@ public class EmbedRecordCreateRequest {
     private String clientMutationId;
 
     private boolean clientMutationIdPresent;
+
+    @Pattern(regexp = "save|saveAndStart")
+    private String actionKey;
 
     public Map<String, Object> getData() {
         return data;
@@ -41,6 +46,14 @@ public class EmbedRecordCreateRequest {
 
     public boolean isClientMutationIdPresent() {
         return clientMutationIdPresent;
+    }
+
+    public String getActionKey() {
+        return actionKey;
+    }
+
+    public void setActionKey(String actionKey) {
+        this.actionKey = actionKey;
     }
 
     /** 全部未知顶层字段直接拒绝，不能被全局 Jackson ignoreUnknown 设置吞掉。 */

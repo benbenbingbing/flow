@@ -138,11 +138,11 @@ interface EmbedManagementMapper {
     @Update("""
             UPDATE embed_view
                SET draft_config_json = #{draftJson},
-                   draft_revision = draft_revision + 1,
+                   status = CASE WHEN status = 'DRAFT' THEN 'ACTIVE' ELSE status END,
                    lock_version = lock_version + 1,
                    update_by = #{actorId}, update_time = #{now}
              WHERE id = #{viewId} AND lock_version = #{expectedVersion}
-               AND status &lt;&gt; 'RETIRED'
+               AND status <> 'RETIRED'
             """)
     int updateDraft(@Param("viewId") String viewId,
                     @Param("expectedVersion") long expectedVersion,
@@ -173,21 +173,6 @@ interface EmbedManagementMapper {
 
     @Update("""
             UPDATE embed_view
-               SET published_release_id = #{releaseId},
-                   status = CASE WHEN status = 'DRAFT' THEN 'ACTIVE' ELSE status END,
-                   lock_version = lock_version + 1,
-                   update_by = #{actorId}, update_time = #{now}
-             WHERE id = #{viewId} AND lock_version = #{expectedVersion}
-               AND status &lt;&gt; 'RETIRED'
-            """)
-    int markPublished(@Param("viewId") String viewId,
-                      @Param("expectedVersion") long expectedVersion,
-                      @Param("releaseId") String releaseId,
-                      @Param("actorId") String actorId,
-                      @Param("now") LocalDateTime now);
-
-    @Update("""
-            UPDATE embed_view
                SET status = #{status}, lock_version = lock_version + 1,
                    security_version = security_version + 1,
                    update_by = #{actorId}, update_time = #{now}
@@ -207,23 +192,13 @@ interface EmbedManagementMapper {
                    context_schema_json, context_bindings_json, ui_config_json,
                    config_json, config_hash, release_note, published_by, published_at
               FROM embed_view_release
-             WHERE view_id = #{viewId}
+             WHERE view_id = #{viewId} AND config_hash = #{configHash}
              ORDER BY revision DESC
-            """)
-    List<ReleaseRow> findReleases(@Param("viewId") String viewId);
-
-    @Select("""
-            SELECT id, view_id, revision, surface_type, entity_code, list_key,
-                   default_form_id, list_release_id, list_release_version,
-                   form_release_id, form_release_version, entry_modes_json,
-                   capabilities_json, field_policy_json, action_policy_json,
-                   context_schema_json, context_bindings_json, ui_config_json,
-                   config_json, config_hash, release_note, published_by, published_at
-              FROM embed_view_release
-             WHERE view_id = #{viewId} AND revision = #{revision}
              LIMIT 1
             """)
-    ReleaseRow findRelease(@Param("viewId") String viewId, @Param("revision") long revision);
+    ReleaseRow findReleaseByConfigHash(
+            @Param("viewId") String viewId,
+            @Param("configHash") String configHash);
 
     @Select("""
             SELECT l.id AS config_id, CAST(e.id AS CHAR) AS entity_id,
@@ -363,7 +338,7 @@ interface EmbedManagementMapper {
                    security_version = security_version + 1,
                    update_by = #{actorId}, update_time = #{now}
              WHERE id = #{row.id} AND lock_version = #{expectedVersion}
-               AND status &lt;&gt; 'REVOKED'
+               AND status <> 'REVOKED'
             """)
     int updateGrant(@Param("row") GrantRow row,
                     @Param("expectedVersion") long expectedVersion,
@@ -402,9 +377,9 @@ interface EmbedManagementMapper {
                           @Param("revoked") boolean revoked);
 
     @Select("""
-            SELECT COUNT(*) &gt; 0 FROM integration_application
+            SELECT COUNT(*) > 0 FROM integration_application
              WHERE id = #{applicationId} AND status = 'ACTIVE'
-               AND (expires_at IS NULL OR expires_at &gt; UTC_TIMESTAMP(6))
+               AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP(6))
             """)
     boolean applicationExistsAndEnabled(@Param("applicationId") String applicationId);
 
@@ -477,7 +452,8 @@ interface EmbedManagementMapper {
                    key_version, lock_version, security_version, create_by, create_time,
                    update_by, update_time, revoked_by, revoked_at
               FROM embed_identity_provider
-             WHERE issuer &lt;=&gt; #{issuer} AND subject_namespace = #{namespace}
+             WHERE ((issuer = #{issuer}) OR (issuer IS NULL AND #{issuer} IS NULL))
+               AND subject_namespace = #{namespace}
              LIMIT 1
             """)
     ProviderRow findProviderByIssuerAndNamespace(@Param("issuer") String issuer,
@@ -490,7 +466,8 @@ interface EmbedManagementMapper {
                    key_version, lock_version, security_version, create_by, create_time,
                    update_by, update_time, revoked_by, revoked_at
               FROM embed_identity_provider
-             WHERE issuer &lt;=&gt; #{issuer} AND subject_namespace = #{namespace}
+             WHERE ((issuer = #{issuer}) OR (issuer IS NULL AND #{issuer} IS NULL))
+               AND subject_namespace = #{namespace}
              LIMIT 1 FOR UPDATE
             """)
     ProviderRow lockProviderByIssuerAndNamespace(@Param("issuer") String issuer,
@@ -526,7 +503,7 @@ interface EmbedManagementMapper {
                    security_version = security_version + 1,
                    update_by = #{actorId}, update_time = #{now}
              WHERE id = #{row.id} AND lock_version = #{expectedVersion}
-               AND status &lt;&gt; 'REVOKED'
+               AND status <> 'REVOKED'
             """)
     int updateProvider(@Param("row") ProviderRow row,
                        @Param("expectedVersion") long expectedVersion,
@@ -556,7 +533,7 @@ interface EmbedManagementMapper {
                    security_version = security_version + 1,
                    update_by = #{actorId}, update_time = #{now}
              WHERE id = #{providerId} AND lock_version = #{expectedVersion}
-               AND status &lt;&gt; 'REVOKED' AND type = 'SIGNED_JWT'
+               AND status <> 'REVOKED' AND type = 'SIGNED_JWT'
                AND jwks_mode = 'STATIC_JWK_SET'
             """)
     int rotateProviderKey(@Param("providerId") String providerId,
@@ -684,7 +661,7 @@ interface EmbedManagementMapper {
                             @Param("revoked") boolean revoked);
 
     @Select("""
-            SELECT COUNT(*) &gt; 0 FROM sys_user
+            SELECT COUNT(*) > 0 FROM sys_user
              WHERE id = #{id} AND status = '0' AND deleted = 0
                AND password_reset_required = 0
             """)

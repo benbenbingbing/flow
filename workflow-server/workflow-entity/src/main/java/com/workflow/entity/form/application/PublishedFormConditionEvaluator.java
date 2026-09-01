@@ -22,6 +22,9 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class PublishedFormConditionEvaluator {
 
+    /** 对应浏览器 readProperty 返回的 undefined，不能与显式 null 混为一谈。 */
+    private static final Object MISSING = new Object();
+
     private static final Set<String> OPERATORS = Set.of(
             "==", "!=", ">", "<", ">=", "<=",
             "contains", "empty", "notEmpty");
@@ -36,24 +39,24 @@ public class PublishedFormConditionEvaluator {
 
     private final ObjectMapper objectMapper;
 
-    /** 优先求值结构化条件；配置不存在时返回 false。 */
+    /** 优先求值结构化条件；配置不存在或不完整时返回 false。 */
     public boolean evaluateStructured(
             Object configuration,
             Map<String, Object> record) {
-        Map<String, Object> config = objectMap(configuration);
-        Object root = config.get("root");
-        return root instanceof Map<?, ?> rootMap
-                && evaluateNode(stringMap(rootMap), safeRecord(record));
+        Map<String, Object> root = runtimeRoot(configuration);
+        return isRuntimeNodeComplete(root)
+                && evaluateNode(root, safeRecord(record));
     }
 
-    /** 结构化条件优先，缺失时回退历史表达式。 */
+    /** 结构化条件优先，不完整或不可解析时按浏览器语义回退历史表达式。 */
     public boolean evaluate(
             Object configuration,
             String legacyExpression,
             Map<String, Object> record,
             boolean defaultValue) {
-        if (!objectMap(configuration).isEmpty()) {
-            return evaluateStructured(configuration, record);
+        Map<String, Object> root = runtimeRoot(configuration);
+        if (isRuntimeNodeComplete(root)) {
+            return evaluateNode(root, safeRecord(record));
         }
         return StringUtils.hasText(legacyExpression)
                 ? evaluateLegacy(legacyExpression, record)
@@ -176,8 +179,7 @@ public class PublishedFormConditionEvaluator {
                     && compare(actual, expected) >= 0;
             case "<=" -> comparable(actual, expected)
                     && compare(actual, expected) <= 0;
-            case "contains" -> String.valueOf(actual == null ? "" : actual)
-                    .contains(String.valueOf(expected == null ? "" : expected));
+            case "contains" -> containsValue(actual, expected);
             default -> false;
         };
     }
@@ -218,8 +220,7 @@ public class PublishedFormConditionEvaluator {
             Object actual = path(record, contains.group(1));
             Object expected = coerceExpected(
                     decodeLiteral(contains.group(2)), actual);
-            return String.valueOf(actual == null ? "" : actual)
-                    .contains(String.valueOf(expected == null ? "" : expected));
+            return containsValue(actual, expected);
         }
         Matcher comparison = COMPARISON_PATTERN.matcher(source);
         if (!comparison.matches()) {
@@ -254,7 +255,13 @@ public class PublishedFormConditionEvaluator {
     }
 
     private boolean comparable(Object actual, Object expected) {
-        return actual != null && expected != null;
+        if (actual == MISSING || actual == null || expected == null) {
+            return false;
+        }
+        // 浏览器对数字字段使用 Number(expected)；无法转为数字时得到 NaN，
+        // 所有大小比较都必须为 false，不能继续退化成字符串字典序比较。
+        return !(actual instanceof Number)
+                || number(actual) != null && number(expected) != null;
     }
 
     private Object path(Map<String, Object> source, String path) {
@@ -262,7 +269,7 @@ public class PublishedFormConditionEvaluator {
         for (String key : String.valueOf(path).split("\\.")) {
             if (!(current instanceof Map<?, ?> map)
                     || !map.containsKey(key)) {
-                return null;
+                return MISSING;
             }
             current = map.get(key);
         }
@@ -304,6 +311,50 @@ public class PublishedFormConditionEvaluator {
         return String.valueOf(actual).compareTo(String.valueOf(expected));
     }
 
+    /**
+     * 复现浏览器 {@code String(actual ?? '').includes(String(expected ?? ''))}。
+     *
+     * <p>MULTI_SELECT/CHECKBOX 在浏览器中是数组；{@code String(array)} 使用逗号
+     * 连接元素，且 null/undefined 元素变成空片段。Java Collection.toString() 的
+     * 方括号和空格会改变 contains 结果，因此不能直接使用 String.valueOf。</p>
+     */
+    private boolean containsValue(Object actual, Object expected) {
+        return javascriptNullishString(actual)
+                .contains(javascriptNullishString(expected));
+    }
+
+    private String javascriptNullishString(Object value) {
+        if (value == MISSING || value == null) {
+            return "";
+        }
+        return javascriptString(value);
+    }
+
+    private String javascriptString(Object value) {
+        if (value instanceof Collection<?> values) {
+            return values.stream()
+                    .map(this::javascriptArrayElementString)
+                    .collect(java.util.stream.Collectors.joining(","));
+        }
+        if (value != null && value.getClass().isArray()) {
+            java.util.ArrayList<String> values = new java.util.ArrayList<>();
+            for (int index = 0; index < Array.getLength(value); index++) {
+                values.add(javascriptArrayElementString(
+                        Array.get(value, index)));
+            }
+            return String.join(",", values);
+        }
+        if (value instanceof Map<?, ?>) {
+            return "[object Object]";
+        }
+        return String.valueOf(value);
+    }
+
+    private String javascriptArrayElementString(Object value) {
+        return value == null || value == MISSING
+                ? "" : javascriptString(value);
+    }
+
     private BigDecimal number(Object value) {
         if (value == null || value instanceof Boolean) {
             return null;
@@ -316,7 +367,7 @@ public class PublishedFormConditionEvaluator {
     }
 
     private boolean isEmpty(Object value) {
-        if (value == null) {
+        if (value == MISSING || value == null) {
             return true;
         }
         if (value instanceof String text) {
@@ -329,6 +380,81 @@ public class PublishedFormConditionEvaluator {
             return map.isEmpty();
         }
         return value.getClass().isArray() && Array.getLength(value) == 0;
+    }
+
+    /**
+     * 将结构化条件规范化成浏览器 {@code parseFlowConditionConfig} 使用的运行时形状。
+     *
+     * <p>发布校验仍会严格拒绝未知类型、操作符和版本；这里保留浏览器的兼容归一化，
+     * 让历史快照在服务端鉴权/必填校验与页面联动中得到相同结果。</p>
+     */
+    private Map<String, Object> runtimeRoot(Object configuration) {
+        Object root = objectMap(configuration).get("root");
+        if (!(root instanceof Map<?, ?> rootMap)) {
+            return Map.of();
+        }
+        return normalizeRuntimeNode(rootMap);
+    }
+
+    /** 递归丢弃浏览器无法识别的节点，并规范化组逻辑、操作符和条件值。 */
+    private Map<String, Object> normalizeRuntimeNode(Object configured) {
+        if (!(configured instanceof Map<?, ?> configuredMap)) {
+            return Map.of();
+        }
+        Map<String, Object> node = stringMap(configuredMap);
+        String type = text(node.get("type"));
+        if ("GROUP".equals(type)) {
+            java.util.ArrayList<Map<String, Object>> children =
+                    new java.util.ArrayList<>();
+            if (node.get("children") instanceof List<?> configuredChildren) {
+                for (Object child : configuredChildren) {
+                    Map<String, Object> normalized =
+                            normalizeRuntimeNode(child);
+                    if (!normalized.isEmpty()) {
+                        children.add(normalized);
+                    }
+                }
+            }
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("type", "GROUP");
+            result.put("logic", "OR".equals(text(node.get("logic")))
+                    ? "OR" : "AND");
+            result.put("children", children);
+            return result;
+        }
+        String property = text(node.get("property"));
+        if (!"CONDITION".equals(type) && property.isEmpty()) {
+            return Map.of();
+        }
+        String operator = normalizeOperator(text(node.get("operator")));
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("type", "CONDITION");
+        result.put("property", property);
+        result.put("operator", OPERATORS.contains(operator)
+                ? operator : "==");
+        Object value = node.get("value");
+        result.put("value", value == null ? "" : String.valueOf(value));
+        return result;
+    }
+
+    /** 与浏览器 {@code isFlowConditionGroupComplete} 保持同一完整性判定。 */
+    private boolean isRuntimeNodeComplete(Map<String, Object> node) {
+        if ("GROUP".equals(text(node.get("type")))) {
+            if (!(node.get("children") instanceof List<?> children)
+                    || children.isEmpty()) {
+                return false;
+            }
+            return children.stream().allMatch(child ->
+                    child instanceof Map<?, ?> childMap
+                            && isRuntimeNodeComplete(stringMap(childMap)));
+        }
+        if (!"CONDITION".equals(text(node.get("type")))
+                || text(node.get("property")).isEmpty()) {
+            return false;
+        }
+        String operator = text(node.get("operator"));
+        return Set.of("empty", "notEmpty").contains(operator)
+                || !isEmpty(node.get("value"));
     }
 
     private Map<String, Object> objectMap(Object value) {

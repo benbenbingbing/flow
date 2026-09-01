@@ -1,6 +1,7 @@
 package com.workflow.storage.api.web;
 
 import com.workflow.core.security.RequiresPermission;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.Result;
 import com.workflow.contracts.audit.AuditAction;
@@ -46,6 +47,9 @@ public class FileController {
      */
     @PostMapping("/upload")
     @RequiresPermission("storage:file:write")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.FILE_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FILE_WRITE)
     @SystemAudit(
             module = AuditModule.STORAGE,
             action = AuditAction.UPLOAD,
@@ -123,6 +127,9 @@ public class FileController {
      */
     @PostMapping("/upload-image")
     @RequiresPermission("storage:file:write")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.FILE_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FILE_WRITE)
     public Result<Map<String, String>> uploadImage(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "maxWidth", defaultValue = "1920") int maxWidth,
@@ -180,6 +187,9 @@ public class FileController {
      * @param response HTTP 响应，用于写出文件流
      */
     @GetMapping("/preview")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.FILE_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FILE_READ)
     public void previewFile(@RequestParam("url") String fileUrl, HttpServletResponse response) {
         fileAccessService.requireRead(fileUrl);
         FileStorageStrategy strategy = storageFactory.getStrategy();

@@ -59,6 +59,7 @@ import {
   validateSubFormParameters
 } from '@/shared/subform-parameter-contract'
 import { areSubFormValuesEqual } from '@/shared/subform-value-sync'
+import { resolveFormContainerAppearance } from '@/shared/form-container-appearance'
 
 const props = defineProps({
   field: { type: Object, required: true },
@@ -711,6 +712,17 @@ const subFormConfig = computed(() => {
   const fields = externalFormFields.value.length > 0
     ? externalFormFields.value
     : getSubFieldsFromField(field)
+  const nodeType = String(field?.nodeType || 'SUB_FORM').toUpperCase()
+  // 新版外观字段位于 componentProps 顶层；合并旧 subFormConfig 仅用于兼容
+  // 已经将这两个开关写入子表单配置对象的历史草稿，且新版显式值优先。
+  const configuredAppearance = {
+    ...(parsedComponentProps.value.subFormConfig || {}),
+    ...parsedComponentProps.value
+  }
+  const appearance = resolveFormContainerAppearance(
+    nodeType,
+    configuredAppearance
+  )
 
   // 默认使用 form 布局（与设计器预览保持一致），优先读取字段配置
   let layout = 'form'
@@ -742,6 +754,9 @@ const subFormConfig = computed(() => {
     summaryFields: field?.summaryFields || [],
     layout: hasNodeTree.value ? 'form' : layout,
     layoutType: refFormLayoutType.value,
+    nodeType,
+    showPadding: appearance.showPadding,
+    showBorder: appearance.showBorder,
     repeatable,
     relationType: subFormMeta.value.relationType,
     childRefFieldCode: subFormMeta.value.childRefFieldCode

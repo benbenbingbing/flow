@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   assertRelatedContentResolveContract,
   buildRelatedContentResolveInput,
@@ -100,5 +101,25 @@ assert.equal(gate.isCurrent(staleRequest), false)
 assert.equal(gate.isCurrent(currentRequest), true)
 gate.invalidate()
 assert.equal(gate.isCurrent(currentRequest), false)
+
+const relatedRuntimeSource = readFileSync(
+  new URL('../../components/related-content/RelatedContentRuntime.vue', import.meta.url),
+  'utf8'
+)
+assert.match(
+  relatedRuntimeSource,
+  /entityApi\.getByCode\(value\.targetEntityCode, traversalRuntimeContext\)/,
+  '目标实体定义必须沿服务端签名的关联遍历链读取'
+)
+assert.match(
+  relatedRuntimeSource,
+  /getEntityStatusList\(value\.targetEntityCode, traversalRuntimeContext\)/,
+  '目标表单状态必须与目标实体共用同一签名遍历上下文'
+)
+assert.match(
+  relatedRuntimeSource,
+  /viewCompositionTraversalToken:\s*value\.traversalContextToken/,
+  '目标详情、子表单与原生动作必须继续透传遍历令牌'
+)
 
 console.log('related content runtime tests passed')

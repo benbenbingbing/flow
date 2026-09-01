@@ -104,7 +104,7 @@ public interface EmbedTrafficControlMapper {
     @Delete("""
             DELETE FROM integration_api_request_lease
              WHERE lease_id = #{leaseId}
-               AND scope_key &lt;&gt; ''
+               AND scope_key <> ''
             """)
     int releaseRuntimeLease(@Param("leaseId") String leaseId);
 }

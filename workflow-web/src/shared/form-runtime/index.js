@@ -168,6 +168,7 @@ export function isRuntimeFieldVisible(field, mode = 'view') {
 
 export { buildRuntimeFieldRules }
 export {
+  buildFormDataSourceExecutionRequest,
   createFormDataSourceRuntime,
   getClientBeforeSubmitBindings,
   isClientPrevalidationBinding,

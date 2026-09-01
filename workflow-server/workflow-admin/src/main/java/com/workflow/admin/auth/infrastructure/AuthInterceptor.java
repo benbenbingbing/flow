@@ -5,6 +5,7 @@ import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.auth.application.AuthenticatedAccess;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.Result;
+import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,6 +64,22 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (uri.equals("/api/auth/login")
                 || uri.equals("/api/auth/refresh")
                 || uri.equals("/api/auth/logout")) {
+            return true;
+        }
+
+        // Embed 委托只能信任服务端认证过滤器写入的 request attribute；协议头本身
+        // 绝不能跳过 JWT。UserContext 已由同一过滤器按映射 Flow 用户建立，后续
+        // EndpointAuthorizationInterceptor 与 DataScope 继续照常执行。
+        if (Boolean.TRUE.equals(request.getAttribute(
+                EmbedDelegatedRequestContext.VERIFIED_ATTRIBUTE))
+                && request.getAttribute(
+                        EmbedDelegatedRequestContext
+                                .AUTHENTICATED_SESSION_ATTRIBUTE) != null
+                && UserContext.getUserId() != null
+                && !UserContext.getUserId().isBlank()) {
+            request.setAttribute("userId", UserContext.getUserId());
+            request.setAttribute("userName", UserContext.getUsername());
+            request.setAttribute("sessionId", UserContext.getSessionId());
             return true;
         }
         

@@ -4,6 +4,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.EmbedRuntimeEntityPort;
+import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
+import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.EmbedNativeListRuntimePort;
+import com.workflow.contracts.embed.EmbedNativeActorRuntimePort;
 import com.workflow.contracts.embed.EmbedRuntimeEntityPort.Action;
 import com.workflow.contracts.embed.EmbedRuntimeEntityPort.Field;
 import com.workflow.core.error.ForbiddenException;
@@ -17,6 +22,7 @@ import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.domain.EmbedRuntimeReleaseSnapshot;
+import com.workflow.embed.domain.EmbedNativeFormTarget;
 import com.workflow.embed.security.EmbedContextHolder;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,6 +36,8 @@ import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Read-only Embed Runtime use case.
@@ -42,7 +50,7 @@ import org.springframework.util.StringUtils;
 public class EmbedRuntimeReadFacade {
 
     private static final Set<String> PUBLIC_CAPABILITIES = Set.of(
-            "LIST_QUERY", "SELECTION_RETURN", "RECORD_VIEW", "RECORD_CREATE");
+            "LIST_QUERY", "SELECTION_RETURN", "RECORD_VIEW", "RECORD_CREATE", "ACTION_EXECUTE");
     private static final int MAX_FILTERS = 32;
     private static final int MAX_FILTER_VALUES = 100;
 
@@ -50,7 +58,34 @@ public class EmbedRuntimeReadFacade {
     private final EmbedRuntimeEntityPort entityPort;
     private final EmbedProperties properties;
     private final ObjectMapper objectMapper;
+    private final EmbedNativeFormTargetResolver nativeTargetResolver;
+    private final EmbedNativeFormRuntimePort nativeFormRuntimePort;
+    private final EmbedNativeListRuntimePort nativeListRuntimePort;
+    private final EmbedNativeActorRuntimePort nativeActorRuntimePort;
+    private final boolean legacyProjectionTestMode;
 
+    @Autowired
+    public EmbedRuntimeReadFacade(
+            EmbedRuntimeReleasePort releasePort,
+            EmbedRuntimeEntityPort entityPort,
+            EmbedProperties properties,
+            ObjectMapper objectMapper,
+            ObjectProvider<EmbedNativeFormTargetResolver> targetResolverProvider,
+            ObjectProvider<EmbedNativeFormRuntimePort> nativeFormRuntimePortProvider,
+            ObjectProvider<EmbedNativeListRuntimePort> nativeListRuntimePortProvider,
+            ObjectProvider<EmbedNativeActorRuntimePort> nativeActorRuntimePortProvider) {
+        this.releasePort = releasePort;
+        this.entityPort = entityPort;
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.nativeTargetResolver = targetResolverProvider.getIfAvailable();
+        this.nativeFormRuntimePort = nativeFormRuntimePortProvider.getIfAvailable();
+        this.nativeListRuntimePort = nativeListRuntimePortProvider.getIfAvailable();
+        this.nativeActorRuntimePort = nativeActorRuntimePortProvider.getIfAvailable();
+        this.legacyProjectionTestMode = false;
+    }
+
+    /** 兼容纯 LIST 单元测试；生产 Spring Bean 使用上方完整构造器。 */
     public EmbedRuntimeReadFacade(
             EmbedRuntimeReleasePort releasePort,
             EmbedRuntimeEntityPort entityPort,
@@ -60,6 +95,11 @@ public class EmbedRuntimeReadFacade {
         this.entityPort = entityPort;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.nativeTargetResolver = null;
+        this.nativeFormRuntimePort = null;
+        this.nativeListRuntimePort = null;
+        this.nativeActorRuntimePort = null;
+        this.legacyProjectionTestMode = true;
     }
 
     public EmbedRuntimeViews.Bootstrap bootstrap() {
@@ -70,12 +110,11 @@ public class EmbedRuntimeReadFacade {
                         target.session().sessionId(),
                         target.session().absoluteExpiresAt(),
                         target.session().idleExpiresAt()),
-                new EmbedRuntimeViews.Actor(target.release().actorDisplayName()),
+                actor(target),
                 new EmbedRuntimeViews.View(
                         target.release().viewKey(),
                         target.release().viewName(),
                         target.release().surfaceType(),
-                        target.release().revision(),
                         target.session().entryMode()),
                 target.capabilities(),
                 new EmbedRuntimeViews.Ui(
@@ -86,7 +125,142 @@ public class EmbedRuntimeReadFacade {
                 new EmbedRuntimeViews.Limits(
                         ui.maxPageSize(),
                         properties.getMaxPayloadBytes(),
-                        properties.getMaxSelectionSize()));
+                        properties.getMaxSelectionSize()),
+                nativeTarget(target));
+    }
+
+    /** 原生页仅获取实时非敏感 UI 权限，请求授权仍以服务端为准。 */
+    private EmbedRuntimeViews.Actor actor(RuntimeTarget runtime) {
+        if (nativeActorRuntimePort == null) {
+            return new EmbedRuntimeViews.Actor(
+                    runtime.session().flowUsername(),
+                    normalized(
+                            runtime.release().actorDisplayName(),
+                            runtime.session().flowUsername()),
+                    normalized(
+                            runtime.release().actorDisplayName(),
+                            runtime.session().flowUsername()),
+                    List.of(), false, List.of());
+        }
+        EmbedNativeActorRuntimePort.ActorSnapshot actor =
+                nativeActorRuntimePort.resolve(
+                        runtime.session().flowUserId(),
+                        runtime.session().flowUsername(),
+                        runtime.release().actorDisplayName());
+        return new EmbedRuntimeViews.Actor(
+                actor.username(), actor.nickname(), actor.displayName(),
+                actor.roles(), actor.isSuperAdmin(), actor.permissions());
+    }
+
+    /** LIST/FORM 启动只下发原生运行时坐标，不下发字段投影。 */
+    private EmbedRuntimeViews.Target nativeTarget(RuntimeTarget runtime) {
+        boolean formSurface = "FORM".equals(runtime.release().surfaceType());
+        boolean listSurface = "LIST".equals(runtime.release().surfaceType());
+        if (!formSurface && !listSurface) {
+            return null;
+        }
+        if (legacyProjectionTestMode) {
+            return null;
+        }
+        if (nativeTargetResolver == null
+                || formSurface && nativeFormRuntimePort == null
+                || listSurface && nativeListRuntimePort == null) {
+            throw runtimeUnavailable(null);
+        }
+        EmbedNativeFormTarget target = formSurface
+                ? nativeTargetResolver.resolve(runtime.session())
+                : nativeTargetResolver.resolveRoot(runtime.session());
+        EmbedNativeListDependencyClosureCodec.Decoded listDependency =
+                listSurface
+                        ? EmbedNativeListDependencyClosureCodec.decode(
+                        objectMapper, runtime.release().configJson())
+                        : null;
+        ListNode rootListNode = listSurface
+                ? requireRootListNode(listDependency.closure(), target)
+                : null;
+        String formToken = null;
+        if (StringUtils.hasText(target.formId())
+                && StringUtils.hasText(target.formReleaseId())
+                && target.formReleaseVersion() != null) {
+            if (nativeFormRuntimePort == null) {
+                throw runtimeUnavailable(null);
+            }
+            formToken = nativeFormRuntimePort.issueReleaseResolutionToken(
+                    new EmbedNativeFormRuntimePort.Target(
+                            target.entityCode(), target.formId(),
+                            target.formReleaseId(), target.formReleaseVersion(),
+                            runtime.session().absoluteExpiresAt()));
+        }
+        String listToken = null;
+        if (StringUtils.hasText(target.listKey())
+                && StringUtils.hasText(target.listReleaseId())
+                && target.listReleaseVersion() != null) {
+            if (nativeListRuntimePort == null) {
+                throw runtimeUnavailable(null);
+            }
+            listToken = nativeListRuntimePort.issueReleaseResolutionToken(
+                    new EmbedNativeListRuntimePort.Target(
+                            target.entityCode(), target.listKey(),
+                            target.listReleaseId(), target.listReleaseVersion(),
+                            runtime.session().sessionId(),
+                            runtime.session().viewId(),
+                            runtime.session().viewReleaseId(),
+                            runtime.session().absoluteExpiresAt(),
+                            listDependency.closure().version(),
+                            listDependency.hash(),
+                            listDependency.closure()));
+        }
+        return new EmbedRuntimeViews.Target(
+                target.entityCode(), target.formId(),
+                target.formReleaseId(), target.formReleaseVersion(),
+                target.listKey(), target.listReleaseId(),
+                target.listReleaseVersion(), target.entryMode(),
+                target.recordId(), target.processInstanceId(), formToken,
+                formSurface || rootListNode.defaultFormResolved(), listToken,
+                target.initialData(),
+                target.parameters(), target.context());
+    }
+
+    /** 根 LIST 顶层坐标和默认表单必须与同一 canonical closure 节点完全一致。 */
+    private static ListNode requireRootListNode(
+            EmbedNativeListDependencyClosure closure,
+            EmbedNativeFormTarget target) {
+        if (closure == null
+                || closure.version()
+                != EmbedNativeListDependencyClosure.CURRENT_VERSION) {
+            throw runtimeUnavailable(null);
+        }
+        ListNode root = closure.nodes().stream()
+                .filter(node -> node != null && node.list() != null)
+                .filter(node -> Objects.equals(
+                        target.entityCode(), node.list().entityCode()))
+                .filter(node -> Objects.equals(
+                        target.listKey(), node.list().listKey()))
+                .filter(node -> Objects.equals(
+                        target.listReleaseId(),
+                        node.list().listReleaseId()))
+                .filter(node -> target.listReleaseVersion() != null
+                        && target.listReleaseVersion()
+                        == node.list().listReleaseVersion())
+                .findFirst()
+                .orElseThrow(() -> runtimeUnavailable(null));
+        EmbedNativeListDependencyClosure.FormCoordinate form =
+                root.defaultForm();
+        boolean targetHasForm = StringUtils.hasText(target.formId())
+                && StringUtils.hasText(target.formReleaseId())
+                && target.formReleaseVersion() != null;
+        boolean closureHasForm = form != null;
+        if (!root.defaultFormResolved()
+                || targetHasForm != closureHasForm
+                || closureHasForm
+                && (!Objects.equals(target.formId(), form.formId())
+                || !Objects.equals(
+                target.formReleaseId(), form.formReleaseId())
+                || target.formReleaseVersion()
+                != form.formReleaseVersion())) {
+            throw runtimeUnavailable(null);
+        }
+        return root;
     }
 
     public EmbedRuntimeViews.Schema schema() {
@@ -121,8 +295,7 @@ public class EmbedRuntimeReadFacade {
                 source.selection(), target.capabilities(), returnableFields);
         return new EmbedRuntimeViews.Schema(
                 new EmbedRuntimeViews.SchemaView(
-                        target.release().viewKey(), target.release().surfaceType(),
-                        target.release().revision()),
+                        target.release().viewKey(), target.release().surfaceType()),
                 new EmbedRuntimeViews.Entity(source.entityCode(), source.entityName()),
                 new EmbedRuntimeViews.ListSchema(
                         selection,
@@ -414,7 +587,9 @@ public class EmbedRuntimeReadFacade {
         row.actionCapabilities().forEach((key, value) -> {
             if (allowedActions.contains(key)) {
                 actions.put(key, new EmbedRuntimeViews.ItemActionCapability(
-                        value.visible(), value.enabled(), emptyToNull(value.reason())));
+                        value.visible(),
+                        value.enabled(),
+                        emptyToNull(value.reason())));
             }
         });
         return new EmbedRuntimeViews.ListItem(

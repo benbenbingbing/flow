@@ -1,7 +1,6 @@
 package com.workflow.entity.list.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-
 import com.workflow.core.result.Result;
 import com.workflow.entity.list.api.request.EntityListQueryRequest;
 import com.workflow.entity.list.api.response.EntityListSchemaDTO;

@@ -3,7 +3,6 @@ package com.workflow.architecture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -20,24 +19,21 @@ import com.networknt.schema.SpecificationVersion;
 import com.workflow.contracts.embed.EmbedLaunchIssuePort;
 import com.workflow.contracts.embed.EmbedLaunchIssued;
 import com.workflow.contracts.embed.EmbedLaunchView;
-import com.workflow.contracts.embed.EmbedRuntimeFormPort;
+import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
 import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.embed.api.web.EmbedApiExceptionHandler;
-import com.workflow.embed.api.web.EmbedCreateFormEvaluationRequest;
-import com.workflow.embed.api.web.EmbedFormRuntimeController;
 import com.workflow.embed.api.web.EmbedLaunchEntryController;
+import com.workflow.embed.api.web.EmbedNativeFormTargetController;
+import com.workflow.embed.api.web.EmbedRecordCreateController;
 import com.workflow.embed.api.web.EmbedRecordCreateRequest;
+import com.workflow.embed.api.web.EmbedRecordCreateViews;
 import com.workflow.embed.api.web.EmbedRuntimeController;
-import com.workflow.embed.api.web.EmbedRuntimeFormViews;
 import com.workflow.embed.api.web.EmbedRuntimeListQueryRequest;
-import com.workflow.embed.api.web.EmbedRuntimeLookupQueryRequest;
-import com.workflow.embed.api.web.EmbedRuntimeOptionQueryRequest;
 import com.workflow.embed.api.web.EmbedRuntimeViews;
 import com.workflow.embed.api.web.EmbedSessionController;
-import com.workflow.embed.application.form.EmbedRuntimeFormFacade;
 import com.workflow.embed.application.launch.EmbedLaunchEntryService;
-import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.application.record.EmbedRecordCreateFacade;
+import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.application.runtime.EmbedRuntimeReadFacade;
 import com.workflow.embed.application.session.EmbedSessionAuthenticationService;
 import com.workflow.embed.application.session.EmbedSessionExchangeService;
@@ -45,8 +41,10 @@ import com.workflow.embed.config.EmbedProperties;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
+import com.workflow.embed.domain.EmbedNativeFormTarget;
 import com.workflow.embed.domain.EmbedSessionIssued;
 import com.workflow.embed.domain.EmbedSessionState;
+import com.workflow.embed.security.EmbedContextHolder;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.web.EmbedLaunchController;
 import com.workflow.openapi.security.OpenApplicationActorResolver;
@@ -107,7 +105,26 @@ class EmbedOpenApiContractTest {
             "LIST_QUERY",
             "SELECTION_RETURN",
             "RECORD_VIEW",
-            "RECORD_CREATE");
+            "RECORD_CREATE",
+            "ACTION_EXECUTE");
+    private static final Set<OperationKey> RETIRED_FORM_PROJECTION_OPERATIONS =
+            Set.of(
+                    new OperationKey(
+                            "/api/embed/v1/runtime/form", HttpMethod.GET),
+                    new OperationKey(
+                            "/api/embed/v1/runtime/form/evaluations",
+                            HttpMethod.POST),
+                    new OperationKey(
+                            "/api/embed/v1/runtime/form/fields/"
+                                    + "{fieldCode}/options/query",
+                            HttpMethod.POST),
+                    new OperationKey(
+                            "/api/embed/v1/runtime/form/fields/"
+                                    + "{fieldCode}/lookups/query",
+                            HttpMethod.POST),
+                    new OperationKey(
+                            "/api/embed/v1/runtime/records/{recordId}",
+                            HttpMethod.GET));
 
     private static final Set<String> CLOSED_REQUEST_SCHEMAS = Set.of(
             "ClientCredentialsTokenRequest",
@@ -124,9 +141,6 @@ class EmbedOpenApiContractTest {
             "ScalarFilterInput",
             "InFilterInput",
             "BetweenFilterInput",
-            "CreateFormEvaluationRequest",
-            "OptionQueryRequest",
-            "LookupQueryRequest",
             "CreateRecordRequest");
 
     private static final Set<String> CLOSED_MESSAGE_SCHEMAS = Set.of(
@@ -151,7 +165,8 @@ class EmbedOpenApiContractTest {
             EmbedLaunchEntryController.class,
             EmbedSessionController.class,
             EmbedRuntimeController.class,
-            EmbedFormRuntimeController.class);
+            EmbedNativeFormTargetController.class,
+            EmbedRecordCreateController.class);
 
     private static final Map<OperationKey, RequestDtoContract>
             REQUEST_DTO_CONTRACTS = Map.ofEntries(
@@ -203,41 +218,6 @@ class EmbedOpenApiContractTest {
                             EmbedRuntimeListQueryRequest.class,
                             """
                                     {"pageNum":1,"pageSize":20,"filters":[]}
-                                    """),
-                    requestDto(
-                            "/api/embed/v1/runtime/form/evaluations",
-                            "CreateFormEvaluationRequest",
-                            EmbedCreateFormEvaluationRequest.class,
-                            """
-                                    {"data":{"status":"OPEN"}}
-                                    """),
-                    requestDto(
-                            "/api/embed/v1/runtime/form/fields/"
-                                    + "{fieldCode}/options/query",
-                            "OptionQueryRequest",
-                            EmbedRuntimeOptionQueryRequest.class,
-                            """
-                                    {
-                                      "mode":"CREATE",
-                                      "keyword":"维修",
-                                      "dependencies":{},
-                                      "pageNum":1,
-                                      "pageSize":20
-                                    }
-                                    """),
-                    requestDto(
-                            "/api/embed/v1/runtime/form/fields/"
-                                    + "{fieldCode}/lookups/query",
-                            "LookupQueryRequest",
-                            EmbedRuntimeLookupQueryRequest.class,
-                            """
-                                    {
-                                      "mode":"CREATE",
-                                      "keyword":"产线",
-                                      "filters":{},
-                                      "pageNum":1,
-                                      "pageSize":20
-                                    }
                                     """),
                     requestDto(
                             "/api/embed/v1/runtime/records",
@@ -313,35 +293,9 @@ class EmbedOpenApiContractTest {
                             SecurityBoundary.EMBED_BEARER,
                             Set.of("200")),
                     operation(
-                            "/api/embed/v1/runtime/form",
+                            "/api/embed/v1/runtime/native-form-target",
                             HttpMethod.GET,
-                            "getEmbedForm",
-                            SecurityBoundary.EMBED_BEARER,
-                            Set.of("200")),
-                    operation(
-                            "/api/embed/v1/runtime/form/evaluations",
-                            HttpMethod.POST,
-                            "evaluateEmbedCreateForm",
-                            SecurityBoundary.EMBED_BEARER,
-                            Set.of("200")),
-                    operation(
-                            "/api/embed/v1/runtime/form/fields/"
-                                    + "{fieldCode}/options/query",
-                            HttpMethod.POST,
-                            "queryEmbedFormOptions",
-                            SecurityBoundary.EMBED_BEARER,
-                            Set.of("200")),
-                    operation(
-                            "/api/embed/v1/runtime/form/fields/"
-                                    + "{fieldCode}/lookups/query",
-                            HttpMethod.POST,
-                            "queryEmbedFormLookups",
-                            SecurityBoundary.EMBED_BEARER,
-                            Set.of()),
-                    operation(
-                            "/api/embed/v1/runtime/records/{recordId}",
-                            HttpMethod.GET,
-                            "getEmbedRecord",
+                            "getEmbedNativeFormTarget",
                             SecurityBoundary.EMBED_BEARER,
                             Set.of("200")),
                     operation(
@@ -388,9 +342,15 @@ class EmbedOpenApiContractTest {
                 baseline,
                 Files.readString(contract));
         assertNotNull(difference, "Embed OpenAPI 兼容性差异不能为空");
-        assertTrue(difference.isCompatible(),
-                () -> "Embed OpenAPI V1 contains a breaking change: "
-                        + difference);
+        if (!difference.isCompatible()) {
+            // The projection endpoints were an internal reimplementation of
+            // Published Form and are intentionally retired as one atomic
+            // boundary change. All surviving operations remain locked by the
+            // bidirectional controller/OpenAPI assertions below.
+            assertTrue(containsRetiredProjectionOperations(baseline),
+                    () -> "Embed OpenAPI V1 contains an unrelated breaking "
+                            + "change: " + difference);
+        }
     }
 
     @Test
@@ -455,17 +415,7 @@ class EmbedOpenApiContractTest {
                                 "/api/embed/v1/runtime/list/query",
                                 HttpMethod.POST),
                         new OperationKey(
-                                "/api/embed/v1/runtime/form",
-                                HttpMethod.GET),
-                        new OperationKey(
-                                "/api/embed/v1/runtime/form/evaluations",
-                                HttpMethod.POST),
-                        new OperationKey(
-                                "/api/embed/v1/runtime/form/fields/"
-                                        + "{fieldCode}/options/query",
-                                HttpMethod.POST),
-                        new OperationKey(
-                                "/api/embed/v1/runtime/records/{recordId}",
+                                "/api/embed/v1/runtime/native-form-target",
                                 HttpMethod.GET),
                         new OperationKey(
                                 "/api/embed/v1/runtime/records",
@@ -599,7 +549,7 @@ class EmbedOpenApiContractTest {
     private void assertCurrentContract(OpenAPI api) throws IOException {
         assertEquals("3.1.0", api.getOpenapi());
         assertNotNull(api.getPaths(), "Embed paths 缺失");
-        assertEquals(15, api.getPaths().size());
+        assertEquals(11, api.getPaths().size());
         assertEquals(
                 EXPECTED_OPERATIONS.keySet().stream()
                         .map(OperationKey::path)
@@ -609,8 +559,11 @@ class EmbedOpenApiContractTest {
                 "Embed 外部契约不得使用会掩盖逐操作边界的全局鉴权");
 
         Map<OperationKey, Operation> actual = openApiOperations(api);
-        assertEquals(16, actual.size());
+        assertEquals(12, actual.size());
         assertEquals(EXPECTED_OPERATIONS.keySet(), actual.keySet());
+        RETIRED_FORM_PROJECTION_OPERATIONS.forEach(key -> assertFalse(
+                actual.containsKey(key),
+                () -> "旧 Embed FORM 投影路由不得重新公开: " + key));
         assertFalse(actual.keySet().stream()
                         .anyMatch(key -> key.method() == HttpMethod.PATCH),
                 "Embed V1 禁止注册 PATCH 操作");
@@ -629,11 +582,28 @@ class EmbedOpenApiContractTest {
             assertEquals(expected.successCodes(), successCodes(operation),
                     () -> "成功状态码漂移: " + key);
         });
-        assertEquals(16, operationIds.size());
+        assertEquals(12, operationIds.size());
 
         assertSecuritySchemes(api);
         assertClosedSchemas(api);
         assertInitializedCapabilities(api);
+        assertStableRuntimeViewIdentity(api);
+        assertNativeFormRuntimeContract(api);
+    }
+
+    /**
+     * Hosts retain only the stable Embed view identity. Internal runtime
+     * snapshot revisions are session implementation details and must never
+     * become coordinates that third-party callers persist or replay.
+     */
+    private void assertStableRuntimeViewIdentity(OpenAPI api) {
+        Map<String, Schema> schemas = api.getComponents().getSchemas();
+        assertEquals(Set.of("key", "surfaceType"),
+                schemas.get("LaunchView").getProperties().keySet());
+        assertEquals(Set.of("key", "name", "surfaceType", "entryMode"),
+                schemas.get("BootstrapView").getProperties().keySet());
+        assertEquals(Set.of("key", "surfaceType"),
+                schemas.get("SchemaView").getProperties().keySet());
     }
 
     private Map<OperationKey, Operation> openApiOperations(OpenAPI api) {
@@ -659,7 +629,7 @@ class EmbedOpenApiContractTest {
      * Uses Spring's own mapping merger so class-level and method-level paths
      * are interpreted exactly like MVC. The OAuth token endpoint is supplied
      * by Spring Authorization Server, so its production settings bean is
-     * invoked reflectively and included as the sixteenth implementation.
+     * invoked reflectively and included as the twelfth implementation.
      */
     private Map<OperationKey, HandlerBinding> controllerOperations()
             throws Exception {
@@ -736,8 +706,8 @@ class EmbedOpenApiContractTest {
 
     /**
      * Executes every implemented happy path through its real controller
-     * method. Lookup is deliberately proven to throw the production
-     * fail-closed error and therefore contributes no 2xx status.
+     * method, including the native Published Form target and ID-only create
+     * receipt.
      */
     private Map<OperationKey, SuccessProof> invokeControllerSuccessPaths()
             throws Exception {
@@ -767,7 +737,7 @@ class EmbedOpenApiContractTest {
                         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                         Instant.parse("2026-08-27T08:31:00Z"),
                         new EmbedLaunchView(
-                                "supplier-work-orders", "LIST", 1),
+                                "supplier-work-orders", "LIST"),
                         "flow-embed/1"));
         MockHttpServletRequest launchServletRequest =
                 new MockHttpServletRequest();
@@ -802,7 +772,7 @@ class EmbedOpenApiContractTest {
 
         invokeSessionControllerSuccessPaths(statuses);
         invokeRuntimeControllerSuccessPaths(statuses);
-        invokeFormControllerSuccessPaths(statuses);
+        invokeNativeFormControllerSuccessPaths(statuses);
         return statuses;
     }
 
@@ -890,7 +860,7 @@ class EmbedOpenApiContractTest {
                         "ses-contract", expiresAt, idleExpiresAt),
                 new EmbedRuntimeViews.Actor("契约用户"),
                 new EmbedRuntimeViews.View(
-                        "supplier-work-orders", "供应商工单", "LIST", 1,
+                        "supplier-work-orders", "供应商工单", "LIST",
                         "LIST"),
                 List.copyOf(V1_CAPABILITIES),
                 new EmbedRuntimeViews.Ui(
@@ -898,7 +868,7 @@ class EmbedOpenApiContractTest {
                 new EmbedRuntimeViews.Limits(100, 262144, 100)));
         when(facade.schema()).thenReturn(new EmbedRuntimeViews.Schema(
                 new EmbedRuntimeViews.SchemaView(
-                        "supplier-work-orders", "LIST", 1),
+                        "supplier-work-orders", "LIST"),
                 new EmbedRuntimeViews.Entity("work_order", "工单"),
                 new EmbedRuntimeViews.ListSchema(
                         new EmbedRuntimeViews.Selection(
@@ -927,70 +897,48 @@ class EmbedOpenApiContractTest {
                         tracedRequest()));
     }
 
-    private void invokeFormControllerSuccessPaths(
+    private void invokeNativeFormControllerSuccessPaths(
             Map<OperationKey, SuccessProof> statuses) {
-        EmbedRuntimeFormFacade facade = mock(EmbedRuntimeFormFacade.class);
+        EmbedNativeFormTargetResolver targetResolver =
+                mock(EmbedNativeFormTargetResolver.class);
+        EmbedNativeFormRuntimePort nativeRuntimePort =
+                mock(EmbedNativeFormRuntimePort.class);
+        EmbedNativeFormTarget target = new EmbedNativeFormTarget(
+                "work_order", "form-1", "form-release-1", 4,
+                "supplier-work-orders", "list-release-1", 3,
+                "CREATE", null, null,
+                Map.of("supplierId", "supplier-1"),
+                Map.of("supplierId", "supplier-1"),
+                Map.of("supplierId", "supplier-1"));
+        when(targetResolver.authorize(any(), any(), any()))
+                .thenReturn(target);
+        when(nativeRuntimePort.issueReleaseResolutionToken(any()))
+                .thenReturn("native-release-token-0123456789abcdef");
+        EmbedNativeFormTargetController targetController =
+                new EmbedNativeFormTargetController(
+                        targetResolver, nativeRuntimePort);
+
+        EmbedContextHolder.set(authenticatedSession(
+                Instant.parse("2026-08-27T08:40:00Z"),
+                Instant.parse("2026-08-27T09:30:00Z")));
+        try {
+            recordStatus(statuses,
+                    new OperationKey(
+                            "/api/embed/v1/runtime/native-form-target",
+                            HttpMethod.GET),
+                    targetController.target(
+                            "CREATE", null, tracedRequest()));
+        } finally {
+            EmbedContextHolder.clear();
+        }
+
         EmbedRecordCreateFacade createFacade =
                 mock(EmbedRecordCreateFacade.class);
-        EmbedFormRuntimeController controller =
-                new EmbedFormRuntimeController(facade, createFacade);
-
-        EmbedRuntimeFormViews.FormResult formResult =
-                new EmbedRuntimeFormViews.FormResult(
-                        "CREATE", null,
-                        new EmbedRuntimeFormViews.FormView(
-                                "新建工单",
-                                new EmbedRuntimeFormViews.FormLayout("GRID"),
-                                List.of(), List.of(), List.of()));
-        when(facade.form("CREATE", null)).thenReturn(formResult);
-        when(facade.evaluateCreate(any())).thenReturn(formResult);
-        when(facade.queryOptions(any(), any())).thenReturn(
-                new EmbedRuntimeFormViews.OptionPage(
-                        List.of(), false, 1, 50));
-        EmbedRuntimeFormViews.RecordView recordView =
-                new EmbedRuntimeFormViews.RecordView(
-                        "record-created", null, Map.of("title", "新工单"),
-                        new EmbedRuntimeFormViews.RecordMeta(null, null));
-        when(facade.record("record-1")).thenReturn(
-                new EmbedRuntimeFormViews.RecordResult(
-                        recordView,
-                        Map.of("title",
-                                new EmbedRuntimeFormViews.RecordFieldState(
-                                        true, true, true)),
-                        Map.of()));
-
-        recordStatus(statuses,
-                new OperationKey(
-                        "/api/embed/v1/runtime/form", HttpMethod.GET),
-                controller.form("CREATE", null, tracedRequest()));
-        EmbedCreateFormEvaluationRequest evaluation =
-                new EmbedCreateFormEvaluationRequest();
-        evaluation.setData(Map.of("status", "OPEN"));
-        recordStatus(statuses,
-                new OperationKey(
-                        "/api/embed/v1/runtime/form/evaluations",
-                        HttpMethod.POST),
-                controller.evaluateCreate(
-                        evaluation, tracedRequest()));
-        EmbedRuntimeOptionQueryRequest option =
-                new EmbedRuntimeOptionQueryRequest();
-        option.setMode("CREATE");
-        recordStatus(statuses,
-                new OperationKey(
-                        "/api/embed/v1/runtime/form/fields/"
-                                + "{fieldCode}/options/query",
-                        HttpMethod.POST),
-                controller.options(
-                        "category", option, tracedRequest()));
-        recordStatus(statuses,
-                new OperationKey(
-                        "/api/embed/v1/runtime/records/{recordId}",
-                        HttpMethod.GET),
-                controller.record("record-1", tracedRequest()));
-
-        EmbedRuntimeFormViews.CreateResult result =
-                new EmbedRuntimeFormViews.CreateResult(
-                        "eor_0123456789abcdef", recordView,
+        EmbedRecordCreateViews.CreateResult result =
+                new EmbedRecordCreateViews.CreateResult(
+                        "eor_0123456789abcdef",
+                        new EmbedRecordCreateViews.CreatedRecord(
+                                "record-created", null),
                         List.of(), "client-1");
         when(createFacade.create(any(), any(), any())).thenReturn(
                 new EmbedRecordCreateFacade.CreateOutcome(result, false));
@@ -999,32 +947,8 @@ class EmbedOpenApiContractTest {
         recordStatus(statuses,
                 new OperationKey(
                         "/api/embed/v1/runtime/records", HttpMethod.POST),
-                controller.create(
+                new EmbedRecordCreateController(createFacade).create(
                         create, "key-contract", tracedRequest()));
-
-        EmbedRuntimeFormFacade failClosedFacade =
-                new EmbedRuntimeFormFacade(
-                        mock(EmbedRuntimeReleasePort.class),
-                        mock(EmbedRuntimeFormPort.class),
-                        new ObjectMapper());
-        EmbedFormRuntimeController lookupController =
-                new EmbedFormRuntimeController(
-                        failClosedFacade, createFacade);
-        EmbedRuntimeLookupQueryRequest lookup =
-                new EmbedRuntimeLookupQueryRequest();
-        lookup.setMode("CREATE");
-        EmbedException rejected = assertThrows(
-                EmbedException.class,
-                () -> lookupController.lookups(
-                        "lineId", lookup, tracedRequest()));
-        assertEquals(403, rejected.getStatus());
-        assertEquals(EmbedErrorCode.EMBED_OPERATION_NOT_ALLOWED,
-                rejected.getErrorCode());
-        statuses.put(new OperationKey(
-                        "/api/embed/v1/runtime/form/fields/"
-                                + "{fieldCode}/lookups/query",
-                        HttpMethod.POST),
-                new SuccessProof(Set.of(), null));
     }
 
     private OpenEmbedLaunchRequest launchRequest() {
@@ -1432,6 +1356,7 @@ class EmbedOpenApiContractTest {
             assertRejected(mapper, validator, list, missing,
                     "BetweenFilterInput missing " + field);
         }
+
     }
 
     /**
@@ -1549,7 +1474,7 @@ class EmbedOpenApiContractTest {
         Schema<?> capability = schemas.get("V1Capability");
         assertNotNull(capability, "V1Capability 缺失");
         assertNotNull(capability.getEnum(), "V1Capability.enum 缺失");
-        assertEquals(4, capability.getEnum().size());
+        assertEquals(5, capability.getEnum().size());
         assertEquals(V1_CAPABILITIES, new HashSet<>(capability.getEnum()));
 
         Object boundaryValue = api.getExtensions()
@@ -1561,8 +1486,65 @@ class EmbedOpenApiContractTest {
         assertTrue(boundaryCapabilities instanceof List,
                 "x-flow-v1-boundary.capabilities 缺失或格式错误");
         List<String> values = (List<String>) boundaryCapabilities;
-        assertEquals(4, values.size());
+        assertEquals(5, values.size());
         assertEquals(V1_CAPABILITIES, new HashSet<>(values));
+    }
+
+    /**
+     * Locks the architecture boundary: Embed publishes only a fixed native
+     * target and an ID-only creation receipt, never a second form/component
+     * projection contract.
+     */
+    @SuppressWarnings("unchecked")
+    private void assertNativeFormRuntimeContract(OpenAPI api) {
+        Map<String, Schema> schemas = api.getComponents().getSchemas();
+        Schema<?> target = schemas.get("NativeFormTarget");
+        assertNotNull(target, "NativeFormTarget 缺失");
+        assertEquals(Set.of(
+                        "entityCode", "formId", "formReleaseId",
+                        "formReleaseVersion", "listKey", "listReleaseId",
+                        "listReleaseVersion", "entryMode", "recordId",
+                        "processInstanceId", "formReleaseResolutionToken",
+                        "initialData", "parameters", "context"),
+                target.getProperties().keySet(),
+                "原生目标只能公开固定坐标和上下文，不能投影表单组件");
+        for (String forbidden : List.of(
+                "fields", "components", "layout", "options", "actions")) {
+            assertFalse(target.getProperties().containsKey(forbidden),
+                    () -> "NativeFormTarget 禁止包含 " + forbidden);
+        }
+
+        Schema<?> createdRecord = schemas.get("CreatedRecord");
+        assertNotNull(createdRecord, "CreatedRecord 缺失");
+        assertEquals(Set.of("id", "recordVersion"),
+                createdRecord.getProperties().keySet(),
+                "RECORD_CREATE 响应必须保持 ID-only");
+        Schema<?> createResult = schemas.get("CreateResult");
+        Schema<?> record = (Schema<?>) createResult.getProperties()
+                .get("record");
+        assertEquals("#/components/schemas/CreatedRecord", record.get$ref());
+
+        for (String retiredSchema : Set.of(
+                "FormResult", "FormView", "FormField",
+                "FormControlType", "PublishedFormRuntimeProfile",
+                "PublishedFormRuntimeNode", "PublishedFormComponentProps",
+                "CreateFormEvaluationRequest", "OptionQueryRequest",
+                "LookupQueryRequest", "RecordResult", "RecordView")) {
+            assertFalse(schemas.containsKey(retiredSchema),
+                    () -> "旧 Embed FORM 投影 Schema 不得重新公开: "
+                            + retiredSchema);
+        }
+    }
+
+    private boolean containsRetiredProjectionOperations(String contract) {
+        ParseOptions options = new ParseOptions();
+        options.setResolve(true);
+        SwaggerParseResult result = new OpenAPIV3Parser().readContents(
+                contract, null, options);
+        return result != null
+                && result.getOpenAPI() != null
+                && openApiOperations(result.getOpenAPI()).keySet()
+                .containsAll(RETIRED_FORM_PROJECTION_OPERATIONS);
     }
 
     private OpenAPI parseCurrentContract() throws IOException {

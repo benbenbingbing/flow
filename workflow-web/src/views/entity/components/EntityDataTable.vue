@@ -214,6 +214,14 @@
       ref="entityListLauncherRef"
       :entity-code="openListState.targetEntityCode"
       :list-key="openListState.targetListKey"
+      :release-id="openListState.targetListReleaseId"
+      :release-version="openListState.targetListReleaseVersion"
+      :release-resolution-token="openListState.targetListReleaseResolutionToken"
+      :default-form-resolved="openListState.targetDefaultFormResolved"
+      :default-form-id="openListState.targetDefaultFormId"
+      :default-form-release-id="openListState.targetDefaultFormReleaseId"
+      :default-form-release-version="openListState.targetDefaultFormReleaseVersion"
+      :default-form-release-resolution-token="openListState.targetDefaultFormReleaseResolutionToken"
       :presentation="openListState.presentation"
       :selection-mode="openListState.selectionMode"
       :context="openListState.context"
@@ -509,6 +517,14 @@ const pendingOpenListAction = ref<{ button: any, row?: any } | null>(null)
 const openListState = reactive({
   targetEntityCode: '',
   targetListKey: '',
+  targetListReleaseId: '',
+  targetListReleaseVersion: null as number | null,
+  targetListReleaseResolutionToken: '',
+  targetDefaultFormResolved: false,
+  targetDefaultFormId: '',
+  targetDefaultFormReleaseId: '',
+  targetDefaultFormReleaseVersion: null as number | null,
+  targetDefaultFormReleaseResolutionToken: '',
   presentation: 'DIALOG' as 'DIALOG' | 'DRAWER',
   selectionMode: 'NONE' as 'NONE' | 'SINGLE' | 'MULTIPLE',
   title: '选择数据',
@@ -546,6 +562,32 @@ async function openConfiguredList(button: any, row?: any) {
   pendingOpenListAction.value = { button, row }
   openListState.targetEntityCode = button.targetEntityCode
   openListState.targetListKey = button.targetListKey
+  // Embed 根列表返回的 open-list 坐标已经绑定同一个 Session；原样
+  // 传给嵌套原生列表，禁止弹窗/抽屉再次解析当前 ACTIVE 而发生漂移。
+  openListState.targetListReleaseId = button.targetListReleaseId || ''
+  const targetListReleaseVersion = Number(button.targetListReleaseVersion)
+  openListState.targetListReleaseVersion = Number.isInteger(
+    targetListReleaseVersion
+  ) && targetListReleaseVersion > 0
+    ? targetListReleaseVersion
+    : null
+  openListState.targetListReleaseResolutionToken =
+    button.targetListReleaseResolutionToken || ''
+  openListState.targetDefaultFormResolved =
+    button.targetDefaultFormResolved === true
+  openListState.targetDefaultFormId = button.targetDefaultFormId || ''
+  openListState.targetDefaultFormReleaseId =
+    button.targetDefaultFormReleaseId || ''
+  const targetDefaultFormReleaseVersion = Number(
+    button.targetDefaultFormReleaseVersion
+  )
+  openListState.targetDefaultFormReleaseVersion = Number.isInteger(
+    targetDefaultFormReleaseVersion
+  ) && targetDefaultFormReleaseVersion > 0
+    ? targetDefaultFormReleaseVersion
+    : null
+  openListState.targetDefaultFormReleaseResolutionToken =
+    button.targetDefaultFormReleaseResolutionToken || ''
   openListState.presentation = button.presentation === 'DRAWER' ? 'DRAWER' : 'DIALOG'
   openListState.selectionMode = ['SINGLE', 'MULTIPLE'].includes(button.selectionMode)
     ? button.selectionMode

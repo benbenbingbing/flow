@@ -13,6 +13,7 @@ import {
 import {
   getBuiltInFormFieldSupportedTypes,
   getDefaultFormFieldComponentType,
+  isReservedFormFieldComponentName,
   isBuiltInFormFieldComponentCompatible,
   normalizeFormNodeFieldType
 } from '../form-field-component-policy.js'
@@ -31,24 +32,53 @@ const assertMissing = (value, keys, message) => {
 
 const expectedSchemas = {
   SECTION: {
-    editable: ['label', 'parentId'],
-    capabilities: {}
+    editable: ['label', 'parentId', 'showPadding', 'showBorder'],
+    capabilities: {
+      containerAppearance: true
+    }
   },
   GRID: {
-    editable: ['parentId', 'gutter', 'defaultSpan'],
-    capabilities: {}
+    editable: [
+      'parentId',
+      'gutter',
+      'defaultSpan',
+      'showPadding',
+      'showBorder'
+    ],
+    capabilities: {
+      containerAppearance: true
+    }
   },
   TAB_SET: {
-    editable: ['parentId', 'tabPosition', 'defaultActiveTabKey'],
-    capabilities: {}
+    editable: [
+      'parentId',
+      'tabPosition',
+      'defaultActiveTabKey',
+      'showPadding',
+      'showBorder'
+    ],
+    capabilities: {
+      containerAppearance: true
+    }
   },
   TAB: {
-    editable: ['label', 'parentId'],
-    capabilities: {}
+    editable: ['label', 'parentId', 'showPadding', 'showBorder'],
+    capabilities: {
+      containerAppearance: true
+    }
   },
   COLLAPSE: {
-    editable: ['label', 'parentId', 'defaultExpanded', 'accordion'],
-    capabilities: {}
+    editable: [
+      'label',
+      'parentId',
+      'defaultExpanded',
+      'accordion',
+      'showPadding',
+      'showBorder'
+    ],
+    capabilities: {
+      containerAppearance: true
+    }
   },
   TEXT: {
     editable: ['parentId', 'text', 'textStyle'],
@@ -88,6 +118,8 @@ const expectedSchemas = {
       'label',
       'parentId',
       'layout',
+      'showPadding',
+      'showBorder',
       'childFormRelease',
       'dataSource',
       'gridSpan',
@@ -101,7 +133,8 @@ const expectedSchemas = {
       binding: true,
       childForm: true,
       template: true,
-      gridSpan: true
+      gridSpan: true,
+      containerAppearance: true
     }
   },
   REPEATER: {
@@ -109,6 +142,8 @@ const expectedSchemas = {
       'label',
       'parentId',
       'layout',
+      'showPadding',
+      'showBorder',
       'childFormRelease',
       'dataSource',
       'gridSpan',
@@ -122,7 +157,8 @@ const expectedSchemas = {
       binding: true,
       childForm: true,
       template: true,
-      gridSpan: true
+      gridSpan: true,
+      containerAppearance: true
     }
   },
   ACTION_SLOT: {
@@ -148,6 +184,7 @@ Object.entries(expectedSchemas).forEach(([nodeType, expected]) => {
     childForm: false,
     template: false,
     gridSpan: false,
+    containerAppearance: false,
     ...expected.capabilities
   }).forEach(([capability, expectedValue]) => {
     assert.equal(actual[capability], expectedValue, `${nodeType}.${capability}`)
@@ -214,11 +251,26 @@ assert.deepEqual(
 )
 
 const structuralNodeCases = {
-  SECTION: {},
-  GRID: { gutter: 24, defaultSpan: 8 },
-  TAB_SET: { tabPosition: 'left', defaultActiveTabKey: 'tab-details' },
-  TAB: {},
-  COLLAPSE: { defaultExpanded: false, accordion: true },
+  SECTION: { showPadding: false, showBorder: false },
+  GRID: {
+    gutter: 24,
+    defaultSpan: 8,
+    showPadding: true,
+    showBorder: true
+  },
+  TAB_SET: {
+    tabPosition: 'left',
+    defaultActiveTabKey: 'tab-details',
+    showPadding: false,
+    showBorder: false
+  },
+  TAB: { showPadding: true, showBorder: true },
+  COLLAPSE: {
+    defaultExpanded: false,
+    accordion: true,
+    showPadding: false,
+    showBorder: false
+  },
   TEXT: { text: '只读说明' },
   ACTION_SLOT: {}
 }
@@ -271,6 +323,13 @@ Object.entries(structuralNodeCases).forEach(([nodeType, componentProps]) => {
     ['fieldId', 'fieldCode', 'fieldName', 'fieldType', 'componentType', 'componentProps'],
     `${nodeType} props`
   )
+  Object.entries(componentProps).forEach(([key, value]) => {
+    assert.deepEqual(
+      payload.props[key],
+      value,
+      `${nodeType} must serialize editable config ${key}`
+    )
+  })
 })
 
 const fieldPayload = buildFormNodePayload(
@@ -472,7 +531,9 @@ assert.deepEqual(fieldPayload.localOverrides, {
     },
     {
       componentProps: {
-        layout: 'table'
+        layout: 'table',
+        showPadding: false,
+        showBorder: false
       }
     }
   )
@@ -509,6 +570,11 @@ assert.deepEqual(fieldPayload.localOverrides, {
   assert.equal(payload.childFormId, 'child-form-1')
   assert.equal(payload.childFormReleaseId, 'child-release-3')
   assert.equal(payload.childFormReleaseVersion, 3)
+  assert.deepEqual(payload.props.componentProps, {
+    layout: 'table',
+    showPadding: false,
+    showBorder: false
+  })
   assert.equal(
     payload.bindingType,
     'RELATION',
@@ -646,7 +712,9 @@ assert.deepEqual(
   }),
   {
     gutter: 32,
-    defaultSpan: 6
+    defaultSpan: 6,
+    showPadding: false,
+    showBorder: false
   },
   'new top-level container config takes precedence'
 )
@@ -657,7 +725,9 @@ assert.deepEqual(
   ),
   {
     gutter: 16,
-    defaultSpan: 8
+    defaultSpan: 8,
+    showPadding: false,
+    showBorder: false
   },
   'legacy nested container config remains readable'
 )
@@ -671,9 +741,39 @@ assert.deepEqual(
   }),
   {
     defaultExpanded: false,
-    accordion: true
+    accordion: true,
+    showPadding: true,
+    showBorder: true
   },
   'explicit false in new container config must not fall back to legacy values'
+)
+assert.deepEqual(
+  extractFormNodeComponentConfig('SECTION', {
+    showPadding: false,
+    componentProps: {
+      showPadding: true,
+      showBorder: false
+    }
+  }),
+  {
+    showPadding: false,
+    showBorder: false
+  },
+  'appearance config uses top-level values first and legacy nested values second'
+)
+assert.deepEqual(
+  extractFormNodeComponentConfig('SUB_FORM', {
+    componentProps: {
+      layout: 'table',
+      showPadding: false
+    }
+  }),
+  {
+    layout: 'table',
+    showPadding: false,
+    showBorder: true
+  },
+  'child-form config gains legacy-compatible appearance defaults'
 )
 assert.deepEqual(
   extractFormNodeComponentConfig('TEXT', {
@@ -945,6 +1045,14 @@ assert.deepEqual(
   getBuiltInFormFieldSupportedTypes('rich_text'),
   ['TEXT', 'RICH_TEXT']
 )
+;['input', 'rich_text', 'select', 'string', 'boolean'].forEach(name => {
+  assert.equal(
+    isReservedFormFieldComponentName(name),
+    true,
+    `平台内建字段组件名称必须保留: ${name}`
+  )
+})
+assert.equal(isReservedFormFieldComponentName('project_rating'), false)
 assert.equal(
   normalizeFormNodeFieldType('RICH_TEXT', 'rich_text'),
   'TEXT',

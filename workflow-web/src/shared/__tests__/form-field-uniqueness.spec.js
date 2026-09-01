@@ -221,6 +221,7 @@ const controller = createFormUniquePrecheckController({
     releaseId: 'release-v2',
     releaseVersion: 2,
     releaseResolutionToken: 'signed-token',
+    viewCompositionTraversalToken: 'signed-traversal-token',
     recordId: 'record-1',
     published: true
   }),
@@ -237,6 +238,7 @@ assert.deepEqual(calls[0], {
     releaseId: 'release-v2',
     releaseVersion: 2,
     releaseResolutionToken: 'signed-token',
+    viewCompositionTraversalToken: 'signed-traversal-token',
     ruleId: 'uq_name',
     fieldCode: 'name',
     recordId: 'record-1',

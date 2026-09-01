@@ -1,6 +1,7 @@
 package com.workflow.process.instance.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
@@ -44,6 +45,10 @@ public class ProcessInstanceController {
      * @return 流程进度信息，包含已完成节点、当前活动节点、BPMN XML等
      */
     @GetMapping("/{processInstanceId}/progress")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.PROCESS_RECORD_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .PROCESS_INSTANCE_PATH)
     public ApiResponse<ProcessProgressDTO> getProcessProgress(
             @PathVariable String processInstanceId,
             @RequestParam(required = false) String taskId) {
@@ -67,9 +72,15 @@ public class ProcessInstanceController {
      * @param instanceId 流程实例ID
      * @return 流程详情信息
      */
-    @GetMapping("/{instanceId}/detail")
-    public Result<ProcessDetailVO> getProcessDetail(@PathVariable String instanceId) {
-        return Result.success(processInstanceService.getProcessDetail(instanceId));
+    @GetMapping("/{processInstanceId}/detail")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.PROCESS_RECORD_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .PROCESS_INSTANCE_PATH)
+    public Result<ProcessDetailVO> getProcessDetail(
+            @PathVariable String processInstanceId) {
+        return Result.success(
+                processInstanceService.getProcessDetail(processInstanceId));
     }
     
     /**
@@ -137,6 +148,10 @@ public class ProcessInstanceController {
      * @return BPMN XML字符串
      */
     @GetMapping("/{processInstanceId}/xml")
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.PROCESS_RECORD_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
+                    .PROCESS_INSTANCE_PATH)
     public Result<String> getProcessXml(@PathVariable String processInstanceId) {
         String xml = processInstanceService.getBpmnXmlByProcessInstanceId(processInstanceId);
         return Result.success(xml);

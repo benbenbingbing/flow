@@ -42,6 +42,9 @@ public record EmbedSessionSecuritySnapshot(
         String providerStatus,
         long currentProviderSecurityVersion,
         String bindingStatus,
+        String currentBindingApplicationId,
+        String currentBindingIdentityProviderId,
+        String currentBindingFlowUserId,
         Instant bindingEffectiveAt,
         Instant bindingExpiresAt,
         long currentBindingVersion,
@@ -62,6 +65,11 @@ public record EmbedSessionSecuritySnapshot(
                 && "ACTIVE".equals(providerStatus)
                 && currentProviderSecurityVersion == providerSecurityVersion
                 && "ACTIVE".equals(bindingStatus)
+                // Binding 是外部 Subject 到 Flow 用户的唯一身份根。即使底层数据被
+                // 非标准路径改写且遗漏版本递增，也不能让既有 Session 换人执行。
+                && applicationId.equals(currentBindingApplicationId)
+                && identityProviderId.equals(currentBindingIdentityProviderId)
+                && flowUserId.equals(currentBindingFlowUserId)
                 && !bindingEffectiveAt.isAfter(now)
                 && (bindingExpiresAt == null || bindingExpiresAt.isAfter(now))
                 && currentBindingVersion == bindingVersion

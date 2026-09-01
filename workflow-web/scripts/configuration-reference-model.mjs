@@ -964,6 +964,8 @@ const formNodeProperty = (
 export const STRUCTURED_CONFIGURATIONS = Object.freeze([
   formNodeProperty('label', '节点标签', '设置分组、页签、字段或折叠面板的显示名称。', '基本信息', '画布、预览和运行时显示该标签。'),
   formNodeProperty('parentId', '父容器', '设置节点所属的容器或表单根节点。', 'section-basic', '节点移动到目标容器，并受节点层级规则校验。'),
+  formNodeProperty('showPadding', '保留内边距', '控制父容器是否在内容与容器边缘之间保留默认留白。', false, '关闭后子节点贴合当前容器，减少多层嵌套产生的重复留白。', 'SECTION、GRID、TAB_SET、TAB、COLLAPSE、SUB_FORM、REPEATER'),
+  formNodeProperty('showBorder', '显示边框线', '控制父容器是否绘制业务边框和内容分隔线。', false, '关闭后隐藏当前容器的业务线框，但设计器选中和拖拽提示仍然可见。', 'SECTION、GRID、TAB_SET、TAB、COLLAPSE、SUB_FORM、REPEATER'),
   formNodeProperty('gutter', '栅格列间距', '设置 GRID 子列之间的像素间距。', 16, '栅格内相邻子节点保持 16px 间距。', 'GRID'),
   formNodeProperty('defaultSpan', '栅格默认跨度', '设置拖入 GRID 的子节点默认占用 24 栅格中的列数。', 12, '新拖入节点默认占半行宽度。', 'GRID'),
   formNodeProperty('tabPosition', '页签位置', '设置 TAB_SET 的页签导航位置。', 'top', '页签导航显示在内容顶部。', 'TAB_SET'),

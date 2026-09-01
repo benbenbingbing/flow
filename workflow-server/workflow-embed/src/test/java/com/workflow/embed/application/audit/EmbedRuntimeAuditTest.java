@@ -82,23 +82,25 @@ class EmbedRuntimeAuditTest {
         audit.recordCompletedBestEffort(
                 authenticated(),
                 new RequestOperation(Operation.RECORD_CREATE, null),
-                "trace-replay", 201, true,
-                "/api/embed/v1/runtime/records/record-1", 6L);
+                "trace-replay", 201, true, null, 6L);
         // 首次 201 已由业务事务写 required 审计，HTTP 完成阶段不得重复写。
         audit.recordCompletedBestEffort(
                 authenticated(),
                 new RequestOperation(Operation.RECORD_CREATE, null),
-                "trace-create", 201, false,
-                "/api/embed/v1/runtime/records/record-2", 7L);
+                "trace-create", 201, false, null, 7L);
 
         assertEquals(3, events.size());
         assertEquals("EMBED_RUNTIME_LIST_QUERY", events.get(0).operationName());
         assertEquals("EMBED_RUNTIME_RECORD_DETAIL", events.get(1).operationName());
         assertEquals(AuditResult.FAILURE, events.get(1).result());
+        assertEquals("POST", events.get(1).requestMethod());
+        assertEquals(
+                "/api/entity-data/entity/{entityCode}/detail/{recordId}/load",
+                events.get(1).requestPath());
         assertEquals("HTTP_404", events.get(1).errorCode());
         assertEquals("record-404", events.get(1).targetId());
         assertEquals("EMBED_RECORD_CREATE_REPLAY", events.get(2).operationName());
-        assertEquals("record-1", events.get(2).targetId());
+        assertEquals("view-1", events.get(2).targetId());
         assertFalse(events.get(0).required());
         assertFalse(events.get(1).required());
         assertFalse(events.get(2).required());
@@ -120,7 +122,7 @@ class EmbedRuntimeAuditTest {
     }
 
     @Test
-    void classifierAcceptsOnlyExactV1RoutesAndSafeRecordIds() {
+    void classifierUsesNativeDetailRouteAndRejectsRemovedProjectionRoute() {
         assertEquals(Operation.LIST_QUERY,
                 EmbedRuntimeAudit.classify(
                                 "POST", "/api/embed/v1/runtime/list/query")
@@ -130,15 +132,20 @@ class EmbedRuntimeAuditTest {
                                 "POST", "/api/embed/v1/runtime/records")
                         .orElseThrow().operation());
         RequestOperation detail = EmbedRuntimeAudit.classify(
-                        "GET", "/api/embed/v1/runtime/records/record-1")
+                        "POST",
+                        "/api/entity-data/entity/work_order/detail/record-1/load")
                 .orElseThrow();
         assertEquals(Operation.RECORD_DETAIL, detail.operation());
         assertEquals("record-1", detail.recordId());
 
         assertTrue(EmbedRuntimeAudit.classify(
-                "GET", "/api/embed/v1/runtime/records/record/child").isEmpty());
+                "GET", "/api/embed/v1/runtime/records/record-1").isEmpty());
         assertTrue(EmbedRuntimeAudit.classify(
                 "PATCH", "/api/embed/v1/runtime/records/record-1").isEmpty());
+        assertTrue(EmbedRuntimeAudit.classify(
+                "POST",
+                "/api/entity-data/entity/work-order/detail/record-1/load")
+                .isEmpty());
         assertTrue(EmbedRuntimeAudit.classify(
                 "POST", "/api/embed/v1/runtime/list/query/extra").isEmpty());
     }

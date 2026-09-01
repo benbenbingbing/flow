@@ -10,6 +10,8 @@ const source = {
   list_key: 'default',
   'ENTITY-CODE': 'expense',
   userId: 'forged-user',
+  releaseResolutionToken: 'signed-release-token',
+  viewCompositionTraversalToken: 'signed-traversal-token',
   mode: 'edit',
   scene: 'PAGE',
   params: {
@@ -35,6 +37,7 @@ assert.deepEqual(
     configId: 'list-1',
     entityCode: 'expense',
     listKey: 'default',
+    viewCompositionTraversalToken: 'signed-traversal-token',
     context: source
   }),
   {
@@ -42,6 +45,7 @@ assert.deepEqual(
     configId: 'list-1',
     entityCode: 'expense',
     listKey: 'default',
+    viewCompositionTraversalToken: 'signed-traversal-token',
     context: {
       mode: 'edit',
       scene: 'PAGE',

@@ -12,12 +12,8 @@ import com.workflow.contracts.identity.CurrentActorProvider;
 import com.workflow.embed.management.api.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;
-import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
 import com.workflow.embed.management.domain.EmbedManagementModel.Page;
-import com.workflow.embed.management.domain.EmbedManagementModel.PublishViewCommand;
-import com.workflow.embed.management.domain.EmbedManagementModel.ReleaseState;
-import com.workflow.embed.management.domain.EmbedManagementModel.RevisionMode;
-import com.workflow.embed.management.domain.EmbedManagementModel.SecurityStatus;
+import com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType;
 import com.workflow.embed.management.domain.EmbedManagementModel.UpdateDraftCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.ValidationResult;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewFilter;
@@ -28,10 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
@@ -39,7 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-/** Embed View 草稿、发布快照与安全状态的应用服务。 */
+/** Embed View 当前配置与安全状态的应用服务。 */
 @Service
 public class EmbedViewAdministrationService {
 
@@ -134,45 +127,17 @@ public class EmbedViewAdministrationService {
         if (command.draft() == null || !command.draft().isObject()) {
             throw new IllegalArgumentException("draft 必须是 JSON Object");
         }
-        LocalDateTime now = now();
-        String json = write(command.draft());
+        ObjectNode normalized = validator.normalizedCurrentConfig(command.draft());
+        String json = write(normalized);
         if (json.getBytes(StandardCharsets.UTF_8).length > MAX_DRAFT_BYTES) {
+            // 体积门禁不依赖外部资源解析，保证超大请求稳定返回 413 且不做额外查询。
             throw new EmbedManagementException(
                     413, "EMBED_DRAFT_TOO_LARGE", "draft 最大为 256 KiB");
         }
-        int updated = repository.updateDraft(
-                viewId, command.expectedVersion(), json, actor.userId(), now);
-        if (updated != 1) {
-            throw versionConflict(requireView(viewId));
-        }
-        ViewState result = requireView(viewId);
-        EmbedManagementSupport.audit(auditPort, actor, AuditAction.UPDATE,
-                "更新 Embed View 草稿", "EMBED_VIEW", viewId, current.viewKey(),
-                Map.of("draftRevision", current.draftRevision()),
-                Map.of("draftRevision", result.draftRevision()), now);
-        return result;
-    }
-
-    @Transactional(readOnly = true)
-    public ValidationResult validate(String viewId, long expectedVersion) {
-        ViewState view = requireMutableView(requireView(viewId));
-        requireVersion(view, expectedVersion);
-        return validator.validate(view.surfaceType(), read(view.draftConfigJson()));
-    }
-
-    /**
-     * 在同一事务内重新校验并创建不可变 Release。
-     *
-     * <p>锁定 View 后再解析底层已发布资源，保证 revision 分配、快照写入和 active 指针更新原子。</p>
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public ReleaseState publish(String viewId, PublishViewCommand command) {
-        CurrentActor actor = EmbedManagementSupport.requireActor(actorProvider);
-        ViewState view = requireMutableView(repository.lockView(viewId));
-        requireVersion(view, command.expectedVersion());
-        ValidationResult validation = validator.validate(
-                view.surfaceType(), read(view.draftConfigJson()));
+        ValidationResult validation = validator.validateCurrentActive(
+                current.surfaceType(), normalized);
         if (!validation.valid()) {
+            // 保存即生效，因此必须在写库前完整解析当前 ACTIVE 资源；422 保证零落库。
             throw new EmbedManagementException(
                     422,
                     "EMBED_VIEW_VALIDATION_FAILED",
@@ -180,92 +145,17 @@ public class EmbedViewAdministrationService {
                     Map.of("violations", validation.violations()));
         }
         LocalDateTime now = now();
-        long revision = repository.nextReleaseRevision(viewId);
-        JsonNode config = read(validation.canonicalConfig());
-        ReleaseState release = new ReleaseState(
-                "evr_" + IdWorker.getIdStr(),
-                viewId,
-                revision,
-                view.surfaceType(),
-                validation.resolved().entityCode(),
-                validation.resolved().listKey(),
-                validation.resolved().defaultFormId(),
-                validation.resolved().listReleaseId(),
-                validation.resolved().listReleaseVersion(),
-                validation.resolved().formReleaseId(),
-                validation.resolved().formReleaseVersion(),
-                write(config.path("entryModes")),
-                write(config.path("capabilities")),
-                write(config.path("fieldPolicy")),
-                write(config.path("actionPolicy")),
-                write(config.path("contextSchema")),
-                write(config.path("contextBindings")),
-                write(config.path("ui")),
-                validation.canonicalConfig(),
-                validation.configHash(),
-                trimToNull(command.releaseNote()),
-                actor.userId(),
-                now);
-        requireFollowActiveCompatible(view, release, now);
-        repository.insertRelease(release);
-        if (repository.markPublished(viewId, command.expectedVersion(), release.id(),
-                actor.userId(), now) != 1) {
+        int updated = repository.updateDraft(
+                viewId, command.expectedVersion(), json, actor.userId(), now);
+        if (updated != 1) {
             throw versionConflict(requireView(viewId));
         }
-        EmbedManagementSupport.audit(auditPort, actor, AuditAction.PUBLISH,
-                "发布 Embed View", "EMBED_VIEW_RELEASE", release.id(), view.viewKey(),
-                null, Map.of("revision", revision, "configHash", release.configHash()), now);
-        return release;
-    }
-
-    /**
-     * 防止 FOLLOW_ACTIVE Grant 在 active 指针切换后失去已承诺的能力或入口。
-     *
-     * <p>同时检查尚未撤销的 DISABLED Grant：它们可能稍后恢复，若仅检查 ACTIVE 会把不兼容
-     * 配置潜伏到启用时。Grant upsert 与 publish 共用 View 行锁，避免预检后的并发插入窗口。</p>
-     */
-    private void requireFollowActiveCompatible(
-            ViewState view, ReleaseState candidate, LocalDateTime now) {
-        List<GrantState> following = repository.findGrants(view.id()).stream()
-                .filter(grant -> grant.revisionMode() == RevisionMode.FOLLOW_ACTIVE)
-                .filter(grant -> grant.status() != SecurityStatus.REVOKED)
-                .filter(grant -> grant.expiresAt() == null || grant.expiresAt().isAfter(now))
-                .toList();
-        if (following.isEmpty()) {
-            return;
-        }
-
-        Set<String> candidateCapabilities = readStringSet(candidate.capabilitiesJson());
-        List<String> incompatibleApplications = following.stream()
-                .filter(grant -> !candidateCapabilities.containsAll(
-                        readStringSet(grant.capabilityCeilingJson())))
-                .map(GrantState::applicationId)
-                .distinct()
-                .toList();
-        if (!incompatibleApplications.isEmpty()) {
-            throw new EmbedManagementException(
-                    422,
-                    "EMBED_FOLLOW_ACTIVE_INCOMPATIBLE",
-                    "新 Release 会移除 FOLLOW_ACTIVE Grant 已授权的能力",
-                    Map.of("applicationIds", incompatibleApplications));
-        }
-
-        if (view.publishedRevision() != null) {
-            ReleaseState current = repository.findRelease(view.id(), view.publishedRevision());
-            if (current == null) {
-                throw new IllegalStateException("当前 Embed View Release 数据损坏");
-            }
-            Set<String> candidateEntries = readStringSet(candidate.entryModesJson());
-            Set<String> currentEntries = readStringSet(current.entryModesJson());
-            if (!candidateEntries.containsAll(currentEntries)) {
-                throw new EmbedManagementException(
-                        422,
-                        "EMBED_FOLLOW_ACTIVE_INCOMPATIBLE",
-                        "新 Release 会移除 FOLLOW_ACTIVE Grant 正在使用的入口模式",
-                        Map.of("removedEntryModes", currentEntries.stream()
-                                .filter(entry -> !candidateEntries.contains(entry)).toList()));
-            }
-        }
+        ViewState result = requireView(viewId);
+        EmbedManagementSupport.audit(auditPort, actor, AuditAction.UPDATE,
+                "保存 Embed View 当前配置", "EMBED_VIEW", viewId, current.viewKey(),
+                Map.of("status", current.status()),
+                Map.of("status", result.status()), now);
+        return result;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -295,22 +185,6 @@ public class EmbedViewAdministrationService {
         return new StatusChangeResult(result, affected);
     }
 
-    @Transactional(readOnly = true)
-    public List<ReleaseState> releases(String viewId) {
-        requireView(viewId);
-        return repository.findReleases(viewId);
-    }
-
-    @Transactional(readOnly = true)
-    public ReleaseState release(String viewId, long revision) {
-        requireView(viewId);
-        ReleaseState release = repository.findRelease(viewId, revision);
-        if (release == null) {
-            throw notFound("Embed View Release 不存在");
-        }
-        return release;
-    }
-
     private void validateCreate(CreateViewCommand command) {
         if (command == null || !StringUtils.hasText(command.viewKey())
                 || !VIEW_KEY.matcher(command.viewKey().trim()).matches()) {
@@ -335,20 +209,17 @@ public class EmbedViewAdministrationService {
         if (target == ViewStatus.DRAFT) {
             throw conflict("EMBED_VIEW_STATUS_INVALID", "View 不能回退为 DRAFT");
         }
-        // DRAFT 只允许通过 publish 原子进入 ACTIVE，或直接退役；允许先置为 DISABLED
-        // 会制造一个状态图中不存在、且仍可继续发布的半初始化 View。
-        if (current.status() == ViewStatus.DRAFT && target == ViewStatus.DISABLED) {
-            throw conflict("EMBED_VIEW_STATUS_INVALID", "草稿 View 不能直接禁用");
-        }
-        if (target == ViewStatus.ACTIVE && current.publishedReleaseId() == null) {
-            throw conflict("EMBED_VIEW_NOT_PUBLISHED", "尚未发布的 View 不能直接启用");
+        // DRAFT 只能由 updateDraft 的有效保存原子转为 ACTIVE，状态 API 不得绕过校验。
+        if (current.status() == ViewStatus.DRAFT
+                && (target == ViewStatus.ACTIVE || target == ViewStatus.DISABLED)) {
+            throw conflict("EMBED_VIEW_STATUS_INVALID", "草稿 View 必须先保存有效配置");
         }
     }
 
     private ViewState requireMutableView(ViewState view) {
         view = requireViewState(view);
         if (view.status() == ViewStatus.RETIRED) {
-            throw conflict("EMBED_VIEW_RETIRED", "已退役 View 不能修改或发布");
+            throw conflict("EMBED_VIEW_RETIRED", "已退役 View 不能修改");
         }
         return view;
     }
@@ -383,12 +254,11 @@ public class EmbedViewAdministrationService {
         draft.set("target", objectMapper.createObjectNode());
         draft.putArray("entryModes").add(type == com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType.LIST
                 ? "LIST" : "VIEW");
-        draft.set("releasePolicy", objectMapper.createObjectNode().put("strategy", "PINNED"));
         draft.putArray("capabilities");
         ObjectNode fields = draft.putObject("fieldPolicy");
-        fields.putArray("visible");
-        fields.putArray("queryable");
-        fields.putArray("writable");
+        // LIST/FORM 都直接运行 Flow 原生发布页；新建配置从一开始就只保存
+        // 跨域回传白名单，避免生成随后又要迁移的旧字段投影草稿。
+        fields.put("mode", "FLOW_PUBLISHED");
         fields.putArray("returnable");
         draft.putObject("actionPolicy").putArray("allowed");
         draft.putObject("contextSchema");
@@ -397,27 +267,11 @@ public class EmbedViewAdministrationService {
         return write(draft);
     }
 
-    private JsonNode read(String json) {
-        try {
-            return objectMapper.readTree(json);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Embed View JSON 数据损坏", exception);
-        }
-    }
-
     private String write(JsonNode node) {
         try {
             return objectMapper.writeValueAsString(node);
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("JSON 文档无法序列化", exception);
-        }
-    }
-
-    private Set<String> readStringSet(String json) {
-        try {
-            return new LinkedHashSet<>(List.of(objectMapper.readValue(json, String[].class)));
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Embed Release 字符串数组 JSON 数据损坏", exception);
         }
     }
 

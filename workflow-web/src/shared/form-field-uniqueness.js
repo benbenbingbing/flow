@@ -299,11 +299,16 @@ export function resolveFormUniqueRuntimeIdentity(form = {}, context = {}) {
   const recordId = String(
     context.record?.id || context.recordId || ''
   ).trim()
+  const viewCompositionTraversalToken = String(
+    context.viewCompositionTraversalToken || ''
+  ).trim()
   return {
     formId,
     releaseId: releaseId || undefined,
     releaseVersion: releaseVersion > 0 ? releaseVersion : undefined,
     releaseResolutionToken: releaseResolutionToken || undefined,
+    viewCompositionTraversalToken:
+      viewCompositionTraversalToken || undefined,
     recordId: recordId || undefined,
     // 设计器草稿也有 formId；必须存在发布身份才允许发运行时预检请求。
     published: Boolean(
@@ -317,6 +322,8 @@ export function buildFormUniquePrecheckPayload(field, rule, record, identity) {
     releaseId: identity.releaseId,
     releaseVersion: identity.releaseVersion,
     releaseResolutionToken: identity.releaseResolutionToken,
+    viewCompositionTraversalToken:
+      identity.viewCompositionTraversalToken,
     ruleId: rule.ruleId,
     fieldCode: resolveFormFieldKey(field),
     recordId: identity.recordId,

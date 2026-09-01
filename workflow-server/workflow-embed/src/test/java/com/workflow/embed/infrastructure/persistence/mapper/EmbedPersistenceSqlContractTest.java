@@ -45,6 +45,20 @@ class EmbedPersistenceSqlContractTest {
         assertTrue(configuration.contains("g.launch_limit_per_minute"));
         assertTrue(configuration.contains("g.runtime_limit_per_minute"));
         assertTrue(configuration.contains("g.max_concurrency"));
+        assertTrue(configuration.contains("v.draft_config_json AS current_config_json"));
+        assertFalse(configuration.contains("published_release_id"));
+        assertFalse(configuration.contains("revision_mode"));
+        assertFalse(configuration.contains("pinned_revision"));
+        assertFalse(configuration.contains("FOR UPDATE"),
+                "quota preflight must not retain locks before REQUIRES_NEW accounting");
+
+        String lockedConfiguration = sql(findByName(
+                EmbedLaunchPersistenceMapper.class, "lockConfiguration")
+                .getAnnotation(Select.class).value());
+        assertTrue(lockedConfiguration.contains("FOR UPDATE"),
+                "final Launch issuance must reload and lock its security configuration");
+        assertTrue(lockedConfiguration.contains(
+                "v.draft_config_json AS current_config_json"));
     }
 
     @Test
@@ -109,6 +123,21 @@ class EmbedPersistenceSqlContractTest {
         assertTrue(scan.contains("idle_expires_at <= #{now}"));
         assertTrue(scan.contains("absolute_expires_at <= #{now}"));
         assertTrue(scan.contains("LIMIT #{limit}"));
+    }
+
+    @Test
+    void runtimeAuthenticationReloadsAllLiveBindingActorCoordinates() {
+        for (String method : new String[]{"findByTokenDigest", "findById"}) {
+            String statement = sql(findByName(
+                    EmbedSessionPersistenceMapper.class, method)
+                    .getAnnotation(Select.class).value());
+            assertTrue(statement.contains(
+                    "b.application_id AS current_binding_application_id"));
+            assertTrue(statement.contains(
+                    "b.identity_provider_id AS current_binding_identity_provider_id"));
+            assertTrue(statement.contains(
+                    "b.flow_user_id AS current_binding_flow_user_id"));
+        }
     }
 
     @Test
@@ -225,6 +254,9 @@ class EmbedPersistenceSqlContractTest {
         String insert = sql(findByName(
                 EmbedTrafficControlMapper.class, "insertRuntimeLease")
                 .getAnnotation(Insert.class).value());
+        String release = sql(findByName(
+                EmbedTrafficControlMapper.class, "releaseRuntimeLease")
+                .getAnnotation(Delete.class).value());
 
         assertTrue(applicationLock.contains("FOR UPDATE"));
         assertTrue(lock.contains("application_id = #{applicationId}"));
@@ -234,6 +266,8 @@ class EmbedPersistenceSqlContractTest {
         assertTrue(active.contains("scope_key = #{scopeKey}"));
         assertTrue(cleanup.contains("scope_key = #{scopeKey}"));
         assertTrue(insert.contains("application_id, scope_key"));
+        assertTrue(release.contains("scope_key <> ''"));
+        assertFalse(release.contains("&lt;"));
     }
 
     @Test

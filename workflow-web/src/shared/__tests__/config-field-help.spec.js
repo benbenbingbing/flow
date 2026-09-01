@@ -23,7 +23,6 @@ const files = [
   'src/views/system/embed-management/EmbedProviderPanel.vue',
   'src/views/system/embed-management/EmbedBindingPanel.vue',
   'src/views/system/embed-management/EmbedOperationsWorkspace.vue',
-  'src/views/system/embed-management/EmbedReleasePanel.vue',
   'src/components/form-designer/FormNodeDataSettings.vue',
   'src/components/ui-config/FormDataSourceDialog.vue',
   'src/components/ui-config/ListColumnTemplateEditorDialog.vue',
@@ -63,12 +62,12 @@ for (const required of [
   'entityVersion.targetResolver',
   'entityVersion.applyStrategy',
   'embed.application.internalId',
-  'embed.view.resourceReleaseStrategy',
+  'embed.view.entityCode',
+  'embed.view.listKey',
+  'embed.view.defaultFormId',
   'embed.provider.type',
   'embed.binding.externalSubject',
-  'embed.grant.revisionMode',
-  'embed.operations.queryScope',
-  'embed.release.revision'
+  'embed.operations.queryScope'
 ]) {
   assert.ok(usedKeys.has(required), `关键复杂配置缺少问号帮助: ${required}`)
 }

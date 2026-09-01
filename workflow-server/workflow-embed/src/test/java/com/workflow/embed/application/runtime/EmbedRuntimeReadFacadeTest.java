@@ -5,14 +5,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.embed.EmbedNativeActorRuntimePort;
+import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.EmbedNativeListRuntimePort;
 import com.workflow.contracts.embed.EmbedRuntimeEntityPort;
 import com.workflow.embed.api.web.EmbedRuntimeListFilterRequest;
 import com.workflow.embed.api.web.EmbedRuntimeListQueryRequest;
 import com.workflow.embed.config.EmbedProperties;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedException;
+import com.workflow.embed.domain.EmbedNativeFormTarget;
 import com.workflow.embed.domain.EmbedRuntimeReleaseSnapshot;
 import com.workflow.embed.security.EmbedContextHolder;
 import java.time.Instant;
@@ -23,6 +30,7 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 class EmbedRuntimeReadFacadeTest {
 
@@ -171,6 +179,10 @@ class EmbedRuntimeReadFacadeTest {
 
     @Test
     void bootstrapReturnsOnlyPresentationActorAndStablePolicies() {
+        EmbedContextHolder.clear();
+        EmbedContextHolder.set(session(Set.of(
+                "LIST_QUERY", "RECORD_VIEW", "RECORD_CREATE", "ACTION_EXECUTE", "INTERNAL_PERMISSION")));
+
         var bootstrap = facade.bootstrap();
 
         assertEquals("供应商工单", bootstrap.view().name());
@@ -178,7 +190,78 @@ class EmbedRuntimeReadFacadeTest {
         assertEquals("dark", bootstrap.ui().theme());
         assertEquals(25, bootstrap.ui().pageSize());
         assertEquals(100, bootstrap.limits().maxPageSize());
+        assertTrue(bootstrap.capabilities().contains("ACTION_EXECUTE"));
         assertFalse(bootstrap.capabilities().contains("INTERNAL_PERMISSION"));
+    }
+
+    @Test
+    void nativeListBootstrapWithoutDefaultFormReturnsNullFormCoordinates()
+            throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper();
+        var closure = new com.workflow.contracts.embed
+                .EmbedNativeListDependencyClosure(
+                1,
+                List.of(new com.workflow.contracts.embed
+                        .EmbedNativeListDependencyClosure.ListNode(
+                        new com.workflow.contracts.embed
+                                .EmbedNativeListDependencyClosure.ListCoordinate(
+                                "work_order", "supplier_open", "list-1",
+                                "list-release-7", 7),
+                        true, null, List.of())));
+        var configNode = objectMapper.createObjectNode();
+        configNode.putArray("entryModes").add("LIST");
+        configNode.putObject("resolved");
+        var closureNode = objectMapper.valueToTree(closure);
+        configNode.set(
+                EmbedNativeListDependencyClosureCodec.CONFIG_FIELD,
+                closureNode);
+        configNode.put(
+                EmbedNativeListDependencyClosureCodec.HASH_FIELD,
+                EmbedNativeListDependencyClosureCodec.canonicalHash(
+                        objectMapper, closureNode));
+        EmbedRuntimeReleaseSnapshot release = new EmbedRuntimeReleaseSnapshot(
+                "release_1", "view_1", "supplier-work-orders", "供应商工单", 7,
+                "LIST", "work_order", "supplier_open", "list-release-7", 7,
+                null, null,
+                "[\"LIST_QUERY\"]",
+                "{\"mode\":\"FLOW_PUBLISHED\",\"returnable\":[]}",
+                "{\"allowed\":[]}", "[]",
+                "{\"showSearch\":true,\"showPagination\":true,"
+                        + "\"showToolbar\":true,\"pageSize\":25,"
+                        + "\"heightMode\":\"AUTO\"}",
+                objectMapper.writeValueAsString(configNode),
+                "张三", "zh-CN", "light");
+        EmbedNativeFormTargetResolver resolver = mock(
+                EmbedNativeFormTargetResolver.class);
+        when(resolver.resolveRoot(any())).thenReturn(
+                new EmbedNativeFormTarget(
+                        "work_order", null, null, null,
+                        "supplier_open", "list-release-7", 7,
+                        "LIST", null, null, Map.of(), Map.of(), Map.of()));
+        EmbedNativeListRuntimePort listRuntime = mock(
+                EmbedNativeListRuntimePort.class);
+        when(listRuntime.issueReleaseResolutionToken(any()))
+                .thenReturn("elr1.fixed.signature");
+        facade = new EmbedRuntimeReadFacade(
+                (sessionId, viewId, releaseId) -> release,
+                entityPort,
+                new EmbedProperties(),
+                objectMapper,
+                provider(resolver),
+                provider((EmbedNativeFormRuntimePort) null),
+                provider(listRuntime),
+                provider((EmbedNativeActorRuntimePort) null));
+
+        var target = facade.bootstrap().target();
+
+        assertNull(target.formId());
+        assertNull(target.formReleaseId());
+        assertNull(target.formReleaseVersion());
+        assertEquals("elr1.fixed.signature",
+                target.listReleaseResolutionToken());
+        String serialized = new ObjectMapper().findAndRegisterModules()
+                .writeValueAsString(target);
+        assertFalse(serialized.contains("formReleaseVersion"));
     }
 
     @Test
@@ -231,6 +314,13 @@ class EmbedRuntimeReadFacadeTest {
                 Instant.parse("2026-08-27T09:30:00Z"));
     }
 
+    @SuppressWarnings("unchecked")
+    private static <T> ObjectProvider<T> provider(T value) {
+        ObjectProvider<T> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(value);
+        return provider;
+    }
+
     private static EmbedRuntimeListFilterRequest valueFilter(String field, Object value) {
         EmbedRuntimeListFilterRequest filter = new EmbedRuntimeListFilterRequest();
         filter.setField(field);
@@ -265,7 +355,8 @@ class EmbedRuntimeReadFacadeTest {
                 "release_1", "view_1", "supplier-work-orders", "供应商工单", 7,
                 "LIST", "work_order", "supplier_open", "list-release-7", 7,
                 "form-release-4", 4,
-                "[\"LIST_QUERY\",\"SELECTION_RETURN\",\"RECORD_VIEW\",\"INTERNAL_PERMISSION\"]",
+                "[\"LIST_QUERY\",\"SELECTION_RETURN\",\"RECORD_VIEW\",\"ACTION_EXECUTE\","
+                        + "\"INTERNAL_PERMISSION\"]",
                 "{\"visible\":[\"title\"],\"queryable\":[\"title\"],"
                         + "\"writable\":[],\"returnable\":[\"title\"]}",
                 "{\"allowed\":[\"view\",\"delete\"]}",

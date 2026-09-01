@@ -338,8 +338,8 @@
                 v-if="hasNodeSpecificConfig"
                 v-show="activeNodeSettingsTab === 'basic'"
                 title="布局与层级"
-                description="栅格参数和容器展示方式"
-                :default-expanded="isTabNode || ['GRID', 'TAB_SET', 'COLLAPSE'].includes(selectedNodeType)"
+                description="栅格参数、父子层级和容器外观"
+                :default-expanded="canConfigureSelectedContainerAppearance || isTabNode || ['GRID', 'TAB_SET', 'COLLAPSE'].includes(selectedNodeType)"
               >
                 <template #summary>
                   <el-tag size="small" type="info">{{ selectedNodeTypeLabel }}</el-tag>
@@ -402,6 +402,32 @@
                     :model-value="selectedNodeConfig.accordion === true"
                     @update:model-value="updateSelectedNodeConfig('accordion', $event)"
                   />
+                </el-form-item>
+                <el-form-item
+                  v-if="canConfigureSelectedContainerAppearance"
+                  label="保留内边距"
+                >
+                  <el-switch
+                    aria-label="保留容器内边距"
+                    :model-value="selectedContainerAppearance.showPadding"
+                    @update:model-value="updateSelectedNodeConfig('showPadding', $event)"
+                  />
+                  <span class="field-help">
+                    关闭后子节点贴合当前容器，适合多层嵌套。
+                  </span>
+                </el-form-item>
+                <el-form-item
+                  v-if="canConfigureSelectedContainerAppearance"
+                  label="显示边框线"
+                >
+                  <el-switch
+                    aria-label="显示容器边框线"
+                    :model-value="selectedContainerAppearance.showBorder"
+                    @update:model-value="updateSelectedNodeConfig('showBorder', $event)"
+                  />
+                  <span class="field-help">
+                    关闭后仅隐藏业务边框，选中和拖拽提示仍保留。
+                  </span>
                 </el-form-item>
                 <div class="form-tip">
                   同级排序请在画布中调整，技术标识和节点类型不可直接修改。
@@ -1165,6 +1191,10 @@ import {
   resolveFormNodeBinding
 } from '@/shared/form-node-property-schema'
 import {
+  resolveFormContainerAppearance,
+  supportsFormContainerAppearance
+} from '@/shared/form-container-appearance'
+import {
   normalizeFormFieldUniqueness,
   supportsFormFieldUniqueness,
   validateFormFieldUniqueness
@@ -1739,6 +1769,16 @@ const canConfigureNodeExtension = computed(() =>
 )
 const selectedNodeConfig = computed(() =>
   safeParseConfig(selectedField.value?.componentProps)
+)
+const canConfigureSelectedContainerAppearance = computed(() =>
+  supportsFormContainerAppearance(selectedNodeType.value)
+)
+// 外观缺键时按节点类型回退到旧版视觉，避免打开历史表单后样式突变。
+const selectedContainerAppearance = computed(() =>
+  resolveFormContainerAppearance(
+    selectedNodeType.value,
+    selectedNodeConfig.value
+  )
 )
 const isSectionTitleNode = computed(() =>
   selectedNodeType.value === 'TEXT'

@@ -398,6 +398,7 @@ export interface FlowEmbedMountOptions {
   title?: string
   height?: FlowEmbedHeightOptions
   handshakeTimeoutMs?: number
+  destroyTimeoutMs?: number
   maxMessageBytes?: number
   maxSeenMessageIds?: number
   onEvent?: (event: FlowEmbedTypedEvent) => void
@@ -428,8 +429,8 @@ export class FlowEmbedWidget {
   on(type: '*', handler: (event: FlowEmbedTypedEvent) => void): () => void
   off<K extends FlowEmbedEventType>(type: K, handler: (event: FlowEmbedEventFor<K>) => void): void
   off(type: '*', handler: (event: FlowEmbedTypedEvent) => void): void
-  destroy(): void
-  getState(): 'waiting' | 'acknowledging' | 'connected' | 'failed' | 'destroyed'
+  destroy(): Promise<void>
+  getState(): 'waiting' | 'acknowledging' | 'connected' | 'destroying' | 'failed' | 'destroyed'
 }
 
 export function mount(options: FlowEmbedMountOptions): FlowEmbedWidget

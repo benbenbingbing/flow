@@ -225,6 +225,9 @@ public class MyBatisEmbedSessionPersistenceAdapter implements EmbedSessionPersis
                 row.currentGrantSecurityVersion(), row.viewStatus(),
                 row.currentViewSecurityVersion(), row.providerStatus(),
                 row.currentProviderSecurityVersion(), row.bindingStatus(),
+                row.currentBindingApplicationId(),
+                row.currentBindingIdentityProviderId(),
+                row.currentBindingFlowUserId(),
                 instant(row.bindingEffectiveAt()), instant(row.bindingExpiresAt()),
                 row.currentBindingVersion(), "0".equals(row.flowUserStatus()),
                 row.flowUserDeleted() != 0, row.flowUserPasswordResetRequired() != 0);

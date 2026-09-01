@@ -1,5 +1,5 @@
 <template>
-  <div class="sub-form-renderer">
+  <div class="sub-form-renderer" :class="containerAppearanceClasses">
     <div v-if="showHeader" class="sub-form-header">
       <span v-if="config.showHeaderTitle !== false" class="sub-form-title">
         {{ config.label || '明细' }}
@@ -119,7 +119,7 @@
     <template v-else>
       <el-table 
         :data="rowData" 
-        border 
+        :border="containerAppearance.showBorder"
         stripe
         size="small"
         class="sub-form-table"
@@ -199,6 +199,7 @@ import {
   areSubFormValuesEqual,
   cloneSubFormValue
 } from '@/shared/subform-value-sync'
+import { resolveFormContainerAppearance } from '@/shared/form-container-appearance'
 
 const props = defineProps({
   config: {
@@ -251,6 +252,20 @@ const canEdit = computed(() => !props.disabled && !props.readonly)
 const isOneToOne = computed(() => props.config.relationType === 'ONE_TO_ONE')
 
 const isRepeatable = computed(() => !isOneToOne.value && props.config.repeatable === true)
+
+const containerAppearance = computed(() =>
+  resolveFormContainerAppearance(
+    props.config.nodeType || (isRepeatable.value ? 'REPEATER' : 'SUB_FORM'),
+    props.config
+  )
+)
+
+const containerAppearanceClasses = computed(() => ({
+  'is-container-padded': containerAppearance.value.showPadding === true,
+  'is-container-paddingless': containerAppearance.value.showPadding !== true,
+  'is-container-bordered': containerAppearance.value.showBorder === true,
+  'is-container-borderless': containerAppearance.value.showBorder !== true
+}))
 
 const maxRows = computed(() => isRepeatable.value ? (props.config.maxRows || 100) : 1)
 
@@ -576,6 +591,14 @@ defineExpose({
   border-bottom: 1px solid #ebeef5;
 }
 
+.sub-form-renderer.is-container-paddingless .sub-form-header {
+  padding-bottom: 0;
+}
+
+.sub-form-renderer.is-container-borderless .sub-form-header {
+  border-bottom-color: transparent;
+}
+
 .sub-form-title {
   font-weight: 500;
   font-size: 14px;
@@ -608,8 +631,16 @@ defineExpose({
 }
 
 .relation-row {
+  padding: 0;
+  border-top: 0 solid #ebeef5;
+}
+
+.sub-form-renderer.is-container-padded .relation-row:not(.one-to-one-form) {
   padding: 12px 0;
-  border-top: 1px solid #ebeef5;
+}
+
+.sub-form-renderer.is-container-bordered .relation-row:not(.one-to-one-form) {
+  border-top-width: 1px;
 }
 
 .one-to-one-form {

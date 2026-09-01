@@ -28,14 +28,6 @@ public final class EmbedManagementRequests {
             @NotNull JsonNode draft) {
     }
 
-    public record VersionRequest(@NotNull Long expectedVersion) {
-    }
-
-    public record PublishViewRequest(
-            @NotNull Long expectedVersion,
-            @Size(max = 500) String releaseNote) {
-    }
-
     public record ChangeStatusRequest(
             @NotNull Long expectedVersion,
             String status,
@@ -49,8 +41,6 @@ public final class EmbedManagementRequests {
             Boolean trustedSubjectAssertion,
             @NotEmpty @Size(max = 20) List<String> allowedOrigins,
             @NotEmpty List<String> capabilityCeiling,
-            @NotBlank String revisionMode,
-            Long pinnedRevision,
             @NotNull @Min(1) @Max(10_000) Integer maxActiveSessionsPerUser,
             @NotNull @Min(60) @Max(86_400) Integer maxSessionSeconds,
             @NotNull @Min(1) @Max(10_000) Integer launchLimitPerMinute,

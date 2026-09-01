@@ -25,17 +25,19 @@ public record OpenEmbedLaunchResponse(
                 issued.expiresAt(),
                 new View(
                         issued.view().key(),
-                        issued.view().surfaceType(),
-                        issued.view().revision()),
+                        issued.view().surfaceType()),
                 issued.protocolVersion());
     }
 
     /**
-     * Pinned release metadata that is safe to expose to the host backend.
+     * Stable Embed view identity selected for this launch.
+     *
+     * <p>The internal runtime snapshot is deliberately not part of the host
+     * contract: a host stores the stable view key, while Flow resolves and
+     * pins the current snapshot for each newly issued launch.</p>
      */
     public record View(
             String key,
-            String surfaceType,
-            long revision) {
+            String surfaceType) {
     }
 }

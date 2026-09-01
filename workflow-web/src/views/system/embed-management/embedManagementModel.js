@@ -1,7 +1,6 @@
 export const EMBED_PERMISSIONS = Object.freeze({
   view: 'system:embed:view',
   manage: 'system:embed:manage',
-  publish: 'system:embed:publish',
   identityManage: 'system:embed:identity-manage',
   sessionRevoke: 'system:embed:session-revoke'
 })
@@ -10,12 +9,12 @@ export const EMBED_CAPABILITIES = Object.freeze([
   'LIST_QUERY',
   'SELECTION_RETURN',
   'RECORD_VIEW',
-  'RECORD_CREATE'
+  'RECORD_CREATE',
+  'ACTION_EXECUTE'
 ])
 
 export const EMBED_V1_BLOCKED_CAPABILITIES = Object.freeze([
   'RECORD_UPDATE',
-  'ACTION_EXECUTE',
   'PROCESS_START',
   'RECORD_DELETE',
   'BATCH_DELETE',
@@ -28,6 +27,10 @@ const PRIVATE_JWK_FIELDS = new Set([
   'd', 'p', 'q', 'dp', 'dq', 'qi', 'oth', 'k'
 ])
 const V1_CAPABILITY_SET = new Set(EMBED_CAPABILITIES)
+
+function capabilityAllowedForSurface(capability, surfaceType) {
+  return V1_CAPABILITY_SET.has(capability)
+}
 
 function v1EntryModes(surfaceType) {
   return new Set(surfaceType === 'LIST'
@@ -183,7 +186,6 @@ export function providerToEditor(provider = {}) {
 export function draftToEditor(draft = {}, surfaceType = 'LIST') {
   const source = cloneJson(draft)
   const target = source.target || {}
-  const releasePolicy = source.releasePolicy || {}
   const fieldPolicy = source.fieldPolicy || {}
   return {
     entityCode: target.entityCode || '',
@@ -192,12 +194,13 @@ export function draftToEditor(draft = {}, surfaceType = 'LIST') {
     entryModes: Array.isArray(source.entryModes)
       ? source.entryModes.filter(mode => v1EntryModes(surfaceType).has(mode))
       : [surfaceType === 'LIST' ? 'LIST' : 'VIEW'],
-    releaseStrategy: releasePolicy.strategy || 'PINNED',
-    listReleaseId: releasePolicy.listReleaseId || '',
-    formReleaseId: releasePolicy.formReleaseId || '',
     capabilities: Array.isArray(source.capabilities)
-      ? source.capabilities.filter(capability => V1_CAPABILITY_SET.has(capability))
+      ? source.capabilities.filter(capability =>
+          capabilityAllowedForSurface(capability, surfaceType))
       : [],
+    // LIST/FORM 都直接挂载 Flow 原生页；旧 EXPLICIT 草稿再次保存时
+    // 会迁移为发布态资源引用，不再由 Embed 参数改写字段。
+    fieldPolicyMode: 'FLOW_PUBLISHED',
     visibleFieldsText: toLineValues(fieldPolicy.visible),
     queryableFieldsText: toLineValues(fieldPolicy.queryable),
     writableFieldsText: toLineValues(fieldPolicy.writable),
@@ -220,7 +223,7 @@ export function editorToDraft(editor, surfaceType = 'LIST') {
   } else {
     delete draft.target.listKey
   }
-  if (editor.defaultFormId) {
+  if (surfaceType === 'FORM' && editor.defaultFormId) {
     draft.target.defaultFormId = String(editor.defaultFormId).trim()
     delete draft.target.formId
   } else {
@@ -230,35 +233,20 @@ export function editorToDraft(editor, surfaceType = 'LIST') {
   const allowedModes = v1EntryModes(surfaceType)
   draft.entryModes = [...(editor.entryModes || [])]
     .filter(mode => allowedModes.has(mode))
-  draft.releasePolicy = {
-    ...(draft.releasePolicy || {}),
-    strategy: editor.releaseStrategy
-  }
-  if (editor.releaseStrategy === 'PINNED') {
-    assignOrDelete(
-      draft.releasePolicy,
-      'listReleaseId',
-      surfaceType === 'LIST' ? editor.listReleaseId : ''
-    )
-    assignOrDelete(
-      draft.releasePolicy,
-      'formReleaseId',
-      editor.defaultFormId ? editor.formReleaseId : ''
-    )
-  } else {
-    delete draft.releasePolicy.listReleaseId
-    delete draft.releasePolicy.formReleaseId
-  }
+  // Embed 只保存资源稳定坐标；目标发布版本由每次 Launch 在服务端解析。
+  delete draft.releasePolicy
   draft.capabilities = [...(editor.capabilities || [])]
-    .filter(capability => V1_CAPABILITY_SET.has(capability))
+    .filter(capability => capabilityAllowedForSurface(capability, surfaceType))
+  const returnable = parseLineValues(editor.returnableFieldsText)
+  // 显示、查询、布局和可写状态由 Flow 已发布列表/表单及映射
+  // 用户权限决定；仅宿主事件回传字段继续显式维护。
   draft.fieldPolicy = {
-    ...(draft.fieldPolicy || {}),
-    visible: parseLineValues(editor.visibleFieldsText),
-    queryable: parseLineValues(editor.queryableFieldsText),
-    writable: parseLineValues(editor.writableFieldsText),
-    returnable: parseLineValues(editor.returnableFieldsText)
+    mode: 'FLOW_PUBLISHED',
+    returnable
   }
-  draft.actionPolicy ||= { allowed: [] }
+  // 原生 LIST/FORM 的按钮、顺序、文案和实时可用状态全部来自
+  // Flow 页面与 mapped user；清理旧投影 override，避免继续误导。
+  draft.actionPolicy = { allowed: [] }
   draft.contextSchema ||= {}
   draft.contextBindings ||= []
   draft.ui ||= {}

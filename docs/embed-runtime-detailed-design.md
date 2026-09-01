@@ -1,11 +1,13 @@
 # Flow 第三方 iframe 嵌入运行时详细设计
 
-> 状态：V1 应用代码、维护任务、OpenAPI/SDK 漂移门禁、专用部署清单与 Chrome 跨域 E2E 已收口；待本机 MySQL 隔离迁移验证、跨浏览器/安全验收、生产实际部署与接入方联合评审
-> 文档版本：1.0
-> 日期：2026-08-28
+> 状态：V1 Native LIST/FORM 单运行时架构已实现；仍需本机 MySQL 隔离迁移验证、跨浏览器/安全验收、生产部署与接入方联合评审
+> 文档版本：1.2
+> 日期：2026-09-01
 > 适用范围：第三方平台通过 iframe 嵌入 Flow 已发布的实体列表、实体表单及受控相关操作
-> 实现状态：当前分支已实现 LIST/FORM 只读运行态与 RECORD_CREATE；RECORD_UPDATE、
-> ACTION_EXECUTE、PROCESS_START 在 V1 发布与运行时均保持关闭。生产上线门槛见第 17.6、22、24.5 节
+> 实现状态：当前分支以 `NativeEmbeddedListPage` / `NativeEmbeddedFormPage` 直接运行 Flow
+> 原生列表与表单页面。Capability 只约束宿主直接入口和跨域 Bridge；页内新增、查看、编辑、
+> 按钮、弹框及数据请求均按映射 Flow 用户的原生权限与 DataScope 执行。宿主直接
+> RECORD_UPDATE 与独立 PROCESS_START 命令仍关闭。生产上线门槛见第 17.6、22、24.5 节
 
 ## 0. 方案摘要
 
@@ -17,10 +19,10 @@
 | iframe 中的人如何对应 Flow 用户 | 第三方短期签名人员断言，经精确 Identity Binding 映射到已存在的 `flowUserId` |
 | iframe 如何持续鉴权 | 一次性 Launch 兑换为短期、受限、仅内存的 Embed Session Token |
 | Flow 权限如何生效 | 每次 Runtime 请求恢复真实 `UserContext`，继续执行现有功能权限、数据权限和行级动作 |
-| 如何限制暴露范围 | Embed View Release + Application Grant 固定实体、列表/表单 Release、字段、动作、Origin 和 Context |
-| 可复用什么 | OAuth、应用、限流、审计、用户目录、列表/表单/实体运行态、数据权限及主要展示组件 |
-| 必须新开发什么 | Embed 管理模型、身份绑定、Launch/Session、安全链、Facade、外部 DTO、Shell、SDK、动态 CSP |
-| 当前 V1 | 已实现列表/选择/详情、只读表单、CREATE 联动只读重算和新建保存；编辑、动作、流程启动明确关闭 |
+| 如何限制暴露范围 | Embed 配置 + Application Grant 固定列表/表单稳定资源引用、直接入口、Bridge、Origin、Returnable 和 Context；页内字段、动作与数据不再由 Embed 重写 |
+| 可复用什么 | OAuth、应用、限流、审计、用户目录，以及 Flow 原生列表/表单页面、组件注册表、扩展点、请求与权限运行态 |
+| 必须新开发什么 | Embed 管理模型、身份绑定、Launch/Session、安全链、薄 Shell、请求委托、SDK 与动态 CSP；LIST/FORM 均不新建字段、列、组件或数据源渲染器 |
+| 当前 V1 | LIST/FORM 页面内部完整复用 Flow 原生运行时；宿主直接入口和跨域回传受控，宿主任意更新/动作/流程命令不开放 |
 
 第三方浏览器永远不获得 Client Secret、机器 Token 或普通 Flow 用户 Token，也不能自行传入
 `flowUserId/entityCode/listKey/formId/releaseId` 改变访问目标。
@@ -29,8 +31,8 @@
 
 Flow 的实体、表单、列表、流程、数据权限和 UI 发布能力已经具备较成熟的内部运行态。
 新的接入需求是：第三方业务平台在自己的页面中，通过 iframe 嵌入 Flow 的某个实体列表、
-新建表单或查看表单，并允许用户执行该嵌入资源明确授权的 V1 操作。编辑和通用动作属于后续
-版本，不是当前接入契约。
+新建表单或查看表单。iframe 内用户可执行哪些操作，与同一用户在 Flow 原生页面中的权限、
+记录/流程状态和 DataScope 一致；“后续版本”仅指宿主跨域直接发起通用更新或动作命令。
 
 该需求不是“公开匿名链接”，也不是“第三方前端直接调用任意实体 CRUD”。第三方页面中的
 实际操作人需要对应到一个 Flow 用户，最终仍由 Flow 的功能权限、数据权限、发布配置和动作
@@ -41,7 +43,7 @@ Flow 的实体、表单、列表、流程、数据权限和 UI 发布能力已�
 1. 为第三方平台提供稳定、版本化、可撤销的 iframe 嵌入协议。
 2. 将第三方应用身份、第三方人员身份、Flow 用户身份明确分离。
 3. 第三方用户精确映射到 Flow 用户，复用现有 `UserContext`、实体权限和数据范围。
-4. 第三方只能访问管理员预先发布并授权的列表、表单、字段和动作。
+4. 第三方只能从管理员保存的稳定列表/表单引用进入；页内字段和动作继续由 Flow 自身授权。
 5. iframe 不依赖第三方 Cookie，不复用普通 Flow 登录 JWT，不跳转 Flow 登录页。
 6. 复用现有已发布表单、列表和实体运行态，避免重新实现业务规则。
 7. 接口具备稳定错误码、审计、限流、幂等、重放防护和版本兼容策略。
@@ -50,19 +52,19 @@ Flow 的实体、表单、列表、流程、数据权限和 UI 发布能力已�
 ### 1.2 V1 已实现范围与关闭边界
 
 当前分支已经交付 LIST/FORM 读取与 CREATE 写入链路。本文保留 UPDATE/ACTION/PROCESS 的目标
-接口契约用于后续设计，但它们不是 V1 可用接口，发布校验、Bootstrap/Schema 投影和运行时均
-必须 Fail Closed。
+接口契约用于后续设计，但它们不是 V1 的宿主 Bridge 接口。这里的关闭不能用于隐藏或禁用
+iframe 内 Flow 原生页面本来允许的按钮。
 
 | 能力 | 当前 V1 状态 | 说明 |
 | --- | --- | --- |
-| 列表 Schema 与查询 | 已实现，可配置开放 | 仅已发布列表，分页、查询字段和固定过滤由服务端约束 |
+| 原生列表与查询 | 已实现 | `EntityDataList`、列表渲染器、数据源、筛选、按钮和弹框原样复用；数据按映射用户 DataScope |
 | 记录选择并回传宿主 | 已实现，可配置开放 | 仅返回配置允许的字段，默认只返回记录 ID |
-| 新建表单与保存 | 已实现，可配置开放 | 使用已发布表单、强制上下文字段和写请求幂等键 |
-| 查看记录与只读表单 | 已实现，可配置开放 | 经过 Flow 数据范围与行级查看权限 |
-| 编辑记录 | V1 强制关闭 | 尚无通用 `recordVersion` 乐观锁能力，不注册 PATCH 运行时路由 |
-| 标准/自定义动作 | V1 强制关闭 | 尚无强类型 Embed Action Registry，不注册动作运行时路由 |
-| 启动流程 | V1 强制关闭 | `PROCESS_START` 发布校验拒绝，不允许 `saveAndStart` |
-| 删除、批量删除、导出 | 默认关闭 | 高风险能力，后续单独评审 |
+| 页内新建、查看、编辑与保存 | 已实现为原生页面行为 | 是否显示、可用和执行成功均以映射用户的 Flow 权限、对象授权、记录状态和 DataScope 为准 |
+| 页内标准/自定义动作 | 复用 Flow 原生行为 | 不要求 View Capability/entryMode 白名单，也不维护 Embed Action Registry |
+| 宿主直接编辑记录 | V1 Bridge 强制关闭 | 关闭的是第三方跨域 PATCH 命令，不是原生 LIST/FORM 页内编辑按钮 |
+| 宿主直接执行任意动作 | V1 Bridge 强制关闭 | 关闭的是跨域通用命令，不是 iframe 内原生按钮 |
+| 启动流程 | 仅 Published Form 内建通道 | 独立 `PROCESS_START` Capability/路由关闭；`saveAndStart` 只能由同一固定表单对映射用户实际开放时，通过服务端派生的专用创建事务执行 |
+| 宿主直接删除、批量删除、导出 | Bridge 默认关闭 | 高风险跨域命令后续单独评审；不裁剪原生页内操作 |
 | 审批、附件、关联内容 | 后续阶段 | 需要独立授权、对象校验和安全验收 |
 | 匿名外部人员 | 不在 V1 | V1 要求映射到已存在且启用的 Flow 用户 |
 
@@ -78,13 +80,20 @@ Flow 的实体、表单、列表、流程、数据权限和 UI 发布能力已�
 
 ## 2. 核心设计决策
 
-### 2.1 iframe 是 V1 的运行载体
+### 2.1 iframe 是 V1 的运行载体，LIST 与 FORM 都是原生 Flow 页面
 
-V1 使用独立 Embed Shell 承载 Flow 自己的列表和表单渲染器，第三方通过一个轻量 SDK
-创建 iframe 并处理 `postMessage`。这样可以隔离 CSS、JavaScript、路由和依赖版本，且
-Flow 发布新表单或列表配置时，不需要第三方重新打包前端。
+第三方始终通过稳定入口 `/embed/v1/launches/{launchId}` 创建 iframe，并由轻量 SDK 处理
+`postMessage`。入口中的 Embed Shell 只负责 Launch 兑换、Session 生命周期、宿主桥接和错误态；
+LIST 进入 `NativeEmbeddedListPage` 并直接挂载 `EntityDataList`；FORM 进入
+`NativeEmbeddedFormPage`，实际挂载 Flow 原生 `EntityDataFormDialog` /
+`EntityApprovalDialog`。两者都使用完整组件注册表、扩展点、样式和请求链。
 
-直接输出 Vue 组件库或 Headless Schema API 可以作为后续能力，但不作为首期交付。
+这不是“把列表或表单配置投影后再在 Embed 中重画一次”。列渲染器、日期选择器、下拉弹层、
+富文本、联动、确认框和后续新增组件都由 Flow 原生代码产生。只要新组件已经进入 Flow 原生
+Registry，Embed 无需增加字段类型、组件或 datasource 白名单；Flow 激活新版本后，第三方的 `viewKey`、SDK 和 URL
+规则保持不变。
+
+直接输出 Vue 组件库或 Headless Schema API 可以作为后续能力，但不作为首期 FORM 方案。
 
 ### 2.2 应用认证与人员认证分离
 
@@ -92,7 +101,10 @@ Flow 发布新表单或列表配置时，不需要第三方重新打包前端。
 - 用户签名断言只证明“第三方当前登录人员是谁”。
 - Flow 身份绑定决定“这个外部人员对应哪个 Flow 用户”。
 - Flow 用户权限和数据范围决定“该人员在 Flow 中本来能做什么”。
-- Embed View 和 Application Grant 进一步决定“本次嵌入最多允许做什么”。
+- Embed 配置和 Application Grant 决定“允许从哪个直接入口进入、哪些值/命令可跨域”。
+
+它们不参与 iframe 内原生按钮塑形，也不替代 Flow 用户权限。页内请求只按映射用户的既有
+权限、对象授权、记录/流程状态和 DataScope 执行。
 
 Client Credentials 不能单独证明当前人员身份。iframe、query 参数或宿主 JavaScript
 声明的 `flowUserId` 不可信。
@@ -101,9 +113,11 @@ Client Credentials 不能单独证明当前人员身份。iframe、query 参数�
 
 Embed Session 采用 256-bit 随机不透明 Bearer Token，数据库只保存 Token 哈希。该 Token：
 
-- 仅由 `/api/embed/v1/**` 的专用认证过滤器接受；
-- 不能访问普通 `/api/**` 管理或运行态接口；
-- 绑定应用、Embed View Release、Flow 用户、外部主体、父页面 Origin、目标 UI 发布版本、
+- 仅由 `/api/embed/v1/**` 的专用认证过滤器，或带
+  `X-Flow-Embed-Protocol: 1` 的原生请求委托分支接受；
+- 只能访问 Embed 控制面和显式声明 `@EmbedDelegatedRuntimeApi` 安全契约的 Flow 原生端点；
+  不能访问管理端、Open API 或未声明的普通 `/api/**`；
+- 绑定应用、Embed 配置、Flow 用户、外部主体、父页面 Origin、Launch 时解析的目标 UI 运行快照、
   上下文快照和能力快照；
 - 仅保存在 iframe 内存，不写入 Cookie、`localStorage` 或 `sessionStorage`；
 - 默认空闲 5 分钟、绝对 30 分钟，可按应用在安全范围内配置；
@@ -112,36 +126,58 @@ Embed Session 采用 256-bit 随机不透明 Bearer Token，数据库只保存 T
 不直接复用普通 `AuthSessionService.createSession`，因为当前普通 JWT 没有独立 Audience、
 Token 类型、Embed View、Origin 和动作能力绑定，发给 iframe 后会扩大接口访问面。
 
-### 2.4 专用 Facade，不直接开放现有 Controller
+### 2.4 Session 请求委托，不复制 LIST/FORM API
 
-浏览器只访问 `/api/embed/v1/**`。Facade 从 Embed Session 中恢复真实的实体、列表、表单、
-发布版本和上下文，再调用现有应用服务。浏览器请求中不接受任意目标配置 ID。
+浏览器先访问 `/api/embed/v1/**` 完成 Exchange、Session 和 Bootstrap。Bootstrap 只返回
+Session 固定的目标坐标与模式，不返回可供 Embed 自行重画页面的字段或列投影。LIST 与 FORM
+随后使用同一 Embed Session，通过受控请求委托进入 Flow 原生 API；委托层恢复映射用户的真实
+`UserContext` 和固定目标，禁止浏览器改写 `flowUserId/entityCode/listKey/formId/releaseId`。
+
+因此 LIST 活跃路径不得挂载 `EmbedListRuntime` 投影，FORM 活跃路径不得调用
+`/api/embed/v1/runtime/form*`，也不得导入
+`normalizeEmbedForm`、`TrustedPublishedFormRuntime`、`TrustedFormFieldRenderer` 或另一套字段注册表。
+`selection.changed` / `form.saved` 的 Returnable 过滤发生在 Bridge 边界，不能反向裁剪 iframe
+内的列表行、字段或原生 API 响应。
 
 专用 Facade 同时执行两层授权：
 
 ```text
-Embed 应用/视图/动作白名单授权
-                 ∩
-Flow 用户现有功能权限、数据权限、行级动作和发布规则
+直接入口/Bridge：Embed 配置 ∩ Grant
+iframe 页内：映射 Flow 用户现有权限、对象授权、DataScope、记录/流程状态
 ```
 
 任何一层拒绝，操作即拒绝。
 
-### 2.5 运行时固定到不可变发布快照
+### 2.5 稳定 URL 与不可变会话快照
 
-Embed View 自身采用草稿和发布版本。每次 Launch 必须绑定一个不可变 Embed View Release。
-该 Release 可配置：
+Embed 配置没有独立发布步骤或可选择的版本策略。管理员保存配置时持久化实体、列表和表单的
+稳定资源引用；每个新 Launch 都从这些引用解析目标资源当前最新 ACTIVE 发布版，并立即物化为
+该 Session 的不可变运行快照。已经打开的 Session 始终继续使用启动时快照，不会因管理端保存
+配置或 Flow 资源激活新版本而在填写过程中漂移。
 
-- `PINNED`：固定到指定表单/列表 UI Release；
-- `FOLLOW_ACTIVE`：Launch 时解析当前 ACTIVE UI Release，但创建会话后仍固定到该版本。
+浏览器不能提交 `releaseId` 或 `releaseVersion` 来切换目标版本；这些精确版本坐标只存在于
+服务端 Session 运行快照中。
 
-浏览器不能提交 `releaseId` 或 `releaseVersion` 来切换目标版本。已有会话不会因为后台新发布
-配置而在操作中途漂移。
+LIST 与 FORM 的内部 canonical 配置均使用 `fieldPolicy.mode=FLOW_PUBLISHED`，且 `fieldPolicy` 只允许
+`mode` 与 `returnable`。这里的 `FLOW_PUBLISHED` 表示“跳转到 Session 固定的 Flow 原生发布
+页面”，不是字段兼容协议，也不是管理员需要手动设置的选项。LIST/FORM 均不接受
+Visible/Queryable/Writable、组件参数、datasource 参数、按钮参数或 Runtime URL 重写。
+`returnable` 只作为跨 iframe 回传宿主的显式上限；Context、映射 Flow 用户权限、DataScope
+和固定 Release 校验继续在服务端执行。
+
+LIST/FORM 不定义控件、渲染器或 datasource 白名单，也不维护 `cspSafe` 组件分支。它们直接运行
+同一版本的 Flow 原生页面，因此内建组件、自定义扩展、弹出框和数据源的支持范围与 Flow
+平台一致。安全边界放在“受控管理配置 + Session 固定目标 + 原生服务端权限校验 + 独立 Origin
+CSP”，而不是在 Embed 端逐字段过滤或替换控件。第三方不能注入组件、脚本、HTML 或 URL；
+能够进入表单的配置只能来自 Flow 自己的发布链。
+
+Flow 激活新的 List/Form Release 后，下一次 Launch 在同一稳定 `viewKey` 与 URL
+规则下解析最新 ACTIVE；已经打开的 Session 继续固定旧运行快照，避免填写中途漂移。
 
 ### 2.6 外部上下文只能缩小访问范围
 
 第三方可在 Launch 时传入业务上下文，例如 `supplierId`、`projectId`。上下文必须通过
-Embed View 发布的 JSON Schema 校验，并由服务端映射为：
+Embed 配置保存的 JSON Schema 校验，并由服务端映射为：
 
 - 服务端固定过滤；
 - 表单默认值；
@@ -165,6 +201,23 @@ Embed View 发布的 JSON Schema 校验，并由服务端映射为：
 同一主版本只能增加可选字段、能力或事件，不能删除字段、改变既有字段含义、改变认证方式
 或复用既有错误码表达不同语义。破坏性变更使用 `/v2` 和 `flow-embed/2`。
 
+### 2.8 LIST/FORM 单运行时架构不变量
+
+以下条件属于架构门禁，而不是某几个字段的验收项：
+
+1. Flow 管理端在配置内部保存 entity/list/form 的稳定资源引用；宿主只使用稳定 `viewKey`、
+   Launch 响应的 `embedUrl` 和固定版本 SDK，不提交资源或版本坐标。
+2. LIST 统一进入 `NativeEmbeddedListPage` 并挂载原生 `EntityDataList`；直接 FORM 与
+   LIST 页内打开的表单统一进入原生表单组件，不能保留任一 Embed 页面投影分支。
+3. 活跃模块图中不存在 `EmbedListRuntime`、`EmbedFormRuntime`、`normalizeEmbedForm`、
+   `TrustedPublishedFormRuntime`、`TrustedFormFieldRenderer` 或 Embed 专用字段 Registry。
+4. Flow 主应用与 Embed 入口调用同一个 `registerApplicationExtensions`，并由同一个
+   `formFieldComponentMap` / 扩展 Registry 解析组件。
+5. 新字段组件只要完成 Flow 注册、发布与权限接入，就能在新 Launch 中出现；不得要求修改
+   `src/embed/**` 的 switch/case、Alias 或 Stub。
+6. LIST/FORM 网络请求不走 Embed 专用字段/列 Schema；内部原生 target/API 是 Session 受控实现
+   细节，不是宿主协议，也不能由宿主指定。
+
 ## 3. 当前能力与差距分析
 
 ### 3.1 可复用的现有能力
@@ -179,14 +232,14 @@ Embed View 发布的 JSON Schema 校验，并由服务端映射为：
 | 系统审计 | `SystemAuditPort`、`SystemAuditEvent` | 复用，模块归类为 `INTEGRATION` |
 | Flow 用户目录 | `IdentityDirectoryPort`、`SysUserService` | 精确解析和校验映射后的 Flow 用户 |
 | 当前用户上下文 | `UserContext` | Embed 过滤器建立并在请求后清理 |
-| 列表 Schema/查询 | `EntityListRuntimeService`、`EntityListPublishedRuntimeService` | 通过新跨模块端口和 Adapter 复用 |
-| 表单解析 | `EntityFormResolveService`、`EntityFormRuntimeAdapter` | 通过 Embed Facade 复用 |
-| 已发布表单提交 | `PublishedFormSubmissionService` | 复用表单规则、默认值与提交校验 |
+| 列表页面/查询 | `EntityDataList.vue`、`EntityListRuntimeService`、`EntityListPublishedRuntimeService` | iframe 直接挂载同一原生页面，并通过受控请求委托复用同一 API |
+| 表单页面与弹层 | `EntityDataFormDialog.vue`、`EntityApprovalDialog.vue`、完整字段/自定义组件 Registry | FORM 直接挂载原生组件树，不复制、裁剪或替换控件 |
+| 表单解析、联动与提交 | 原生表单 API、`EntityFormResolveService`、`PublishedFormSubmissionService` | Embed Session 请求委托恢复同一 Flow 用户与固定 Release 后原样复用 |
 | 实体详情和 CRUD | `EntityDataActionService` | 复用权限、数据范围、行级动作与审计 |
 | 功能/行/按钮能力 | `EntityActionCapabilityService` | 作为 Flow 用户授权层继续执行 |
 | 数据范围 | `DataPermissionEngine`、`EntityDataDynamicService` | 继续以映射后的 Flow 用户执行 |
-| 列表前端渲染 | `EntityDataList.vue` 及查询区、表格组件 | 抽取展示层、替换内部 API 客户端后复用 |
-| 表单字段、联动、动作条 | `EntityDataFormFields.vue`、`FormPreviewLinkage.vue`、`FormActionBar.vue` | 抽取运行时内容并注入 Embed Client 后复用 |
+| 列表前端渲染 | `EntityDataList.vue` 及查询区、表格、工具栏、弹框 | 直接挂载原组件；只调整 iframe 外壳与 Bridge，不抽取 Embed 专用展示层 |
+| 表单字段、联动、动作条 | Flow 原生表单页面及其传递依赖 | 不抽取 Embed 专用副本；直接复用同一组件、API 和权限链 |
 
 ### 3.2 当前不能直接用于第三方 iframe 的部分
 
@@ -227,17 +280,19 @@ flowchart LR
     HostBackend -->|"Client Credentials"| OAuth["Flow OAuth /oauth2/token"]
     HostBackend -->|"机器 Token + 用户断言"| Launch["/api/open/v1/embed-launches"]
     Launch --> Identity["外部主体校验与 Flow 用户映射"]
-    Launch --> ViewRelease["Embed View Release 与 UI Release 解析"]
+    Launch --> ViewSnapshot["配置稳定引用解析最新 ACTIVE 并固定运行快照"]
     Launch --> Ticket["一次性 Launch"]
     HostWeb -->|"iframe + postMessage"| Shell["Embed Shell"]
     Shell -->|"一次性兑换"| Exchange["/api/embed/v1/launches/{launchId}/exchange"]
     Exchange --> Session["Embed Session"]
-    Shell -->|"短期 Bearer"| Facade["/api/embed/v1/runtime/**"]
-    Facade --> Auth["EmbedSessionFilter + UserContext + EmbedContext"]
-    Auth --> Ports["Embed Runtime Contracts"]
-    Ports --> ListRuntime["现有列表运行态"]
-    Ports --> FormRuntime["现有表单运行态"]
-    Ports --> DataRuntime["现有实体与动作运行态"]
+    Shell -->|"短期 Bearer"| Bootstrap["Bootstrap：固定目标坐标"]
+    Bootstrap --> Auth["EmbedSessionFilter + UserContext + EmbedContext"]
+    Auth --> NativeList["NativeEmbeddedListPage"]
+    NativeList --> EntityDataList["EntityDataList / 原生列表 API"]
+    Shell --> NativeForm["NativeEmbeddedFormPage"]
+    NativeForm --> NativeDialogs["EntityDataFormDialog / EntityApprovalDialog"]
+    NativeDialogs --> DelegatedRequest["Embed Session 请求委托"]
+    DelegatedRequest --> NativeRuntime["Flow 原生表单 API / 权限 / DataScope"]
     Shell -->|"flow-embed/1"| HostWeb
 ```
 
@@ -250,17 +305,17 @@ workflow-open-api
   └─ 复用机器 OAuth、应用策略；新增窄的 Embed Launch Controller
 
 workflow-embed（新增）
-  ├─ Embed View/Release/Grant 管理
+  ├─ Embed 配置/Grant 管理与 Session 运行快照
   ├─ 外部身份提供方与身份绑定
   ├─ Launch 与 Session 生命周期
-  ├─ Embed 认证过滤器和运行时 Facade
+  ├─ Embed 认证过滤器、Bootstrap、LIST/FORM 原生请求委托
   ├─ EmbedContext、限流、幂等和审计
   └─ 管理端 API
 
 workflow-contracts（新增契约）
   ├─ EmbedLaunchIssuePort
-  ├─ EmbedListRuntimePort
-  ├─ EmbedFormRuntimePort
+  ├─ LIST/FORM 固定目标与不可变依赖快照读取契约
+  ├─ 原生请求委托契约（不定义字段、组件或 datasource 投影契约）
   ├─ EmbedRecordRuntimePort
   └─ ExternalSubjectResolver / EmbedActor
 
@@ -272,8 +327,10 @@ workflow-admin
 
 workflow-web
   ├─ 管理端 Embed 配置页面
-  ├─ 独立 Embed Shell
-  ├─ Embed List/Form Runtime
+  ├─ 独立 Embed Shell 与 NativeEmbeddedListPage（薄壳）
+  ├─ 原生 EntityDataList 与完整列表渲染器/扩展 Registry
+  ├─ NativeEmbeddedFormPage（薄壳）
+  ├─ 原生 EntityDataFormDialog / EntityApprovalDialog 与完整 Registry
   └─ framework-agnostic iframe SDK
 ```
 
@@ -285,12 +342,14 @@ workflow-web
 
 | 接口组 | 调用方 | 认证 | 用途 |
 | --- | --- | --- | --- |
-| 管理端 `/api/embed-management/v1/**` | Flow 管理员浏览器 | 普通 Flow 用户 JWT + 权限码 | 配置、发布、授权、身份绑定、撤销会话 |
+| 管理端 `/api/embed-management/v1/**` | Flow 管理员浏览器 | 普通 Flow 用户 JWT + 权限码 | 配置保存、授权、身份绑定、撤销会话 |
 | Launch `/api/open/v1/embed-launches` | 第三方后端 | OAuth Client Credentials 机器 Token | 验证应用和人员、创建一次性 Launch |
-| Runtime `/api/embed/v1/**` | Flow 域名内的 iframe | 一次性 code 或 Embed Session Token | 兑换会话、加载 Schema、查询、详情、提交和动作 |
+| Runtime `/api/embed/v1/**` | Flow 域名内的 iframe | 一次性 code 或 Embed Session Token | Exchange、Bootstrap、Bridge 与 Session 生命周期 |
+| 原生 LIST/FORM API 委托 | Flow 域名内的 iframe | Embed Session Token + `X-Flow-Embed-Protocol: 1` | 校验 Session 固定目标后恢复映射用户，复用原生页面、请求、组件、按钮、数据源、权限与 DataScope；Capability 不用于裁剪页内功能 |
 
-第三方宿主页面不直接跨域调用 Runtime API。iframe 由 Flow Embed 域名加载，并同源访问
-`/api/embed/v1/**`，因此不需要为合作方页面开放泛化 CORS。
+第三方宿主页面不直接跨域调用任何 Runtime API。iframe 由 Flow Embed 域名加载，并同源访问
+`/api/embed/v1/**` 控制面及显式声明安全契约的原生 LIST/FORM API，因此不需要为合作方页面开放泛化 CORS，
+也不得把整个 `/api/**` 暴露给 Embed Token。
 
 ## 5. 领域模型与术语
 
@@ -301,18 +360,20 @@ Scope、来源网段、限流和并发策略。Embed 不重新创建一套 Clien
 
 ### 5.2 Embed View
 
-管理员可编辑的嵌入资源草稿。第三方通过稳定 `viewKey` 引用，而不是直接引用实体编码、
-列表 Key 或表单 ID。
+管理员可编辑并直接保存的嵌入配置。管理端选择目标后在内部持久化实体、列表和表单的稳定
+资源引用；第三方只通过稳定 `viewKey` 引用。
 
 一个 View 可以是：
 
-- `LIST`：以列表为入口，允许查询、选择以及受控打开表单；
-- `FORM`：以表单为入口，V1 只允许已发布的 CREATE 或 VIEW 模式。
+- `LIST`：管理端只选择实体和列表；iframe 内直接运行该列表的 Flow 原生页面；
+- `FORM`：以 CREATE 或 VIEW 作为第三方直接入口，页面本身仍运行 Flow 原生表单。
 
-### 5.3 Embed View Release
+### 5.3 Session 运行快照
 
-Embed View 的不可变发布快照，包含目标实体、表单/列表、允许模式、动作、字段策略、上下文
-Schema、上下文绑定、返回字段、UI 配置和 Release 策略。Launch 必须绑定具体 Release。
+Embed 配置没有独立发布对象。第一次有效保存即启用。每次新 Launch 读取已保存配置，并将稳定
+目标引用解析为当前最新 ACTIVE 列表/表单版本，再连同直接入口、Bridge、上下文绑定和 UI
+配置固定到 Session 运行快照。该快照只服务当前 Session，不作为管理员可选择或回滚的产品版本；
+页内字段、按钮、组件和 datasource 不进入 Embed 投影策略。
 
 ### 5.4 Application Grant
 
@@ -347,8 +408,8 @@ Namespace。V1 支持：
 
 ### 5.7 Embed Launch
 
-一次性、短期启动凭据，默认 60 秒有效。绑定应用、View Release、Flow 用户、外部主体、
-父页面 Origin、上下文快照和 UI Release。Launch code 仅返回一次，数据库只保存哈希。
+一次性、短期启动凭据，默认 60 秒有效。绑定应用、Embed 配置、Flow 用户、外部主体、
+父页面 Origin、上下文和新 Launch 解析出的 UI 运行快照。Launch code 仅返回一次，数据库只保存哈希。
 
 状态：`ISSUED -> CONSUMED`，或 `ISSUED -> EXPIRED/REVOKED`。并发兑换只能有一个成功。
 
@@ -356,7 +417,7 @@ Namespace。V1 支持：
 
 iframe 运行时会话。状态为 `ACTIVE`、`LOGGED_OUT`、`REVOKED` 或 `EXPIRED`。Session 保存：
 
-- Application、Grant、View、View Release；
+- Application、Grant、Embed 配置及 Session 运行快照；
 - Flow 用户及外部主体；
 - 父页面 Origin 和 postMessage channel；
 - 上下文和能力快照；
@@ -366,24 +427,25 @@ iframe 运行时会话。状态为 `ACTIVE`、`LOGGED_OUT`、`REVOKED` 或 `EXPI
 
 ### 5.9 能力枚举
 
-V1 定义以下稳定外部能力枚举；“可发布”仍表示管理员必须在 View 和 Grant 中显式开放，
-不是匿名默认授权：
+V1 定义以下稳定外部能力枚举。Capability 只控制第三方直接入口或跨 iframe Bridge，不是
+原生 LIST/FORM 页内按钮白名单；页内操作始终按映射用户的 Flow 权限、对象授权、记录状态与
+DataScope 判断：
 
-| 能力 | 含义 | 当前 V1 发布状态 |
+| 能力 | 含义 | 当前 V1 配置状态 |
 | --- | --- | --- |
-| `LIST_QUERY` | 加载列表 Schema 和分页查询 | 已实现，可由 View/Grant 显式发布 |
-| `SELECTION_RETURN` | 将已授权选择结果返回宿主 | 已实现，可由 View/Grant 显式发布 |
-| `RECORD_VIEW` | 查看记录详情和只读表单 | 已实现，可由 View/Grant 显式发布 |
-| `RECORD_CREATE` | 新建并保存记录 | 已实现，可由 View/Grant 显式发布 |
-| `RECORD_UPDATE` | 编辑记录 | 强制关闭，需先建设通用乐观锁 |
-| `ACTION_EXECUTE` | 执行发布动作白名单 | 强制关闭，需先建设强类型 Registry |
-| `PROCESS_START` | 保存并发起流程 | 强制关闭，需单独完成流程动作契约 |
-| `RECORD_DELETE` | 删除单条记录 | V1 强制关闭 |
-| `BATCH_DELETE` | 批量删除 | V1 强制关闭 |
-| `EXPORT` | 导出 | V1 强制关闭 |
-| `FILE_UPLOAD` / `FILE_DOWNLOAD` | 附件操作 | V1 强制关闭 |
+| `LIST_QUERY` | 允许宿主从 LIST 入口启动 | 已实现；不控制列表页内查询控件或按钮 |
+| `SELECTION_RETURN` | 将经过 Returnable 过滤的选择结果返回宿主 | 已实现，仅作用于 Bridge |
+| `RECORD_VIEW` | 允许宿主从 VIEW 入口启动 | 已实现；不控制列表页内查看按钮或内部导航 |
+| `RECORD_CREATE` | 允许宿主从 CREATE 入口启动 | 已实现；不控制列表页内新建按钮和原生保存 |
+| `RECORD_UPDATE` | 宿主直接编辑记录 | Bridge 强制关闭；不影响原生页面内编辑 |
+| `ACTION_EXECUTE` | 宿主跨域执行任意动作的保留能力 | 通用 Bridge 命令未开放；不控制原生列表/表单按钮 |
+| `PROCESS_START` | 通用流程启动 Capability | 强制关闭；同一 Published Form 的内建 `saveAndStart` 不授予该 Capability，而是走受信任 `RECORD_CREATE_AND_START` 专用事务链 |
+| `RECORD_DELETE` | 宿主直接删除单条记录 | Bridge 强制关闭；不影响原生页面内按 Flow 权限开放的操作 |
+| `BATCH_DELETE` | 宿主直接批量删除 | Bridge 强制关闭；不影响原生页面内按 Flow 权限开放的操作 |
+| `EXPORT` | 宿主直接导出 | Bridge 强制关闭；不影响原生页面内按 Flow 权限开放的操作 |
+| `FILE_UPLOAD` / `FILE_DOWNLOAD` | 宿主直接调用通用文件 API | Bridge 强制关闭；原生页面内附件组件仍按映射用户和 Flow 存储权限运行 |
 
-配置能力只是上限，不替代 Flow 用户权限。
+配置能力只是直接入口和 Bridge 的上限，不替代 Flow 用户权限，也不参与页内按钮显隐。
 
 ## 6. 身份映射与鉴权详细设计
 
@@ -396,8 +458,8 @@ sequenceDiagram
     participant O as Flow OAuth/Open API
     participant I as Flow 身份映射
     participant W as Embed Shell
-    participant E as Embed Runtime API
-    participant R as 实体/表单运行态
+    participant E as Embed Session / Bootstrap
+    participant R as Flow 原生表单与实体运行态
 
     U->>H: 已在第三方系统登录
     H->>O: Client Credentials 获取机器 Token
@@ -410,11 +472,11 @@ sequenceDiagram
     H-->>U: 创建 iframe
     W->>E: 使用 launchCode 原子兑换
     E-->>W: Embed Session Token + Bootstrap
-    W->>E: Bearer Embed Token 请求
+    W->>E: Bearer Embed Token 请求 Bootstrap/原生 API
     E->>E: 校验 Session，建立 EmbedContext
     E->>E: UserContext.setCurrentUser(flowUserId)
-    E->>R: 调用现有运行态服务
-    R-->>E: 数据/Schema/动作结果
+    E->>R: Session 固定目标 + 映射 UserContext 调用原生服务
+    R-->>E: 原生 LIST/FORM、权限与动作结果
     E->>E: finally 清理上下文
     E-->>W: 受控响应
 ```
@@ -467,7 +529,8 @@ Namespace 下任意已绑定用户，应配合最小来源网段、强审计和�
 
 ### 6.4 Embed Session 认证过滤器
 
-新增 `EmbedSessionAuthenticationFilter`，仅匹配 `/api/embed/v1/runtime/**` 和 Session 管理接口：
+新增 `EmbedSessionAuthenticationFilter`，匹配 `/api/embed/v1/**`，并对第 11.6.1 节由端点声明
+安全契约的原生 LIST/FORM API 在出现 `X-Flow-Embed-Protocol: 1` 时进入受控委托分支：
 
 1. 读取 `Authorization: Bearer <opaqueToken>`。
 2. 对 256-bit 随机 Token 计算 SHA-256 后查询 `embed_session`，明文 Token 从不落库。
@@ -476,98 +539,69 @@ Namespace 下任意已绑定用户，应配合最小来源网段、强审计和�
    LOGGED_OUT 仅返回幂等 204，不建立业务 UserContext；其他终态按对应过期/撤销错误返回。
 4. 检查 Application、Grant、View、Identity Provider、Identity Binding 和 Flow 用户仍有效，
    且各安全版本与 Session 快照一致。
-5. 检查请求目标属于 Session 绑定 View，拒绝跨 View、跨应用访问。
+5. 检查请求目标属于 Session 绑定 View；原生 API 的 entity/form/release/record 坐标必须命中
+   Session 固定目标，拒绝把 Embed Token 当作普通 Flow Token访问其它 API。
 6. 创建 `EmbedContext`，包含 application/view/release/origin/externalSubject/context/capabilities。
 7. 调用 `UserContext.setCurrentUser(flowUserId, username, sessionId)`。
-8. 执行后续 Facade 和现有运行态服务。
+8. LIST/FORM 均执行原生 EndpointAuthorization/Application Service，不经过字段、列或动作投影 Facade。
 9. 在 `finally` 中清理 `UserContext`、`EmbedContextHolder` 和日志 MDC。
 10. 最多每 30 秒更新一次 `last_seen_at`，避免每个查询都写数据库。
 
-需要在 `CorsConfig` 中把 `/api/embed/v1/**` 从普通 `AuthInterceptor` 和普通
-`EndpointAuthorizationInterceptor` 的默认链路排除，改由专用过滤器和 `@EmbedApi` 策略处理。
-不能简单标注 `@PublicApi`。
+`/api/embed/v1/**` 由专用策略处理；原生 LIST/FORM API 委托则必须在恢复映射 UserContext 后继续
+执行普通 `EndpointAuthorizationInterceptor` 和 DataScope，不能标注 `@PublicApi`，也不能因
+存在 Embed Token 跳过原权限链。
 
 ### 6.5 权限决策顺序
 
-每个 Runtime 操作按以下顺序 Fail Closed：
+权限判断分成“直接入口/Bridge”和“iframe 页内原生请求”两类，均 Fail Closed：
 
 1. Session 有效；
 2. Application/Grant/View/Identity Provider/Identity Binding/Flow 用户有效；
-3. View Release 允许该能力和 entry mode；
-4. 请求字段、查询字段、返回字段和 actionKey 在发布白名单；
+3. 只有宿主直接启动 LIST/CREATE/VIEW 或调用 Bridge 时，才检查 Session 固定的 Capability、
+   entry mode 与 Grant Ceiling；
+4. iframe 页内原生请求只校验 Session 固定目标与依赖闭包，不能再要求 View Capability 或
+   entry mode；列表、表单、字段、按钮和组件由原生发布页与映射 Flow 用户权限决定；
 5. 上下文固定条件已应用且不可覆盖；
 6. Flow 用户拥有实体标准权限；
 7. Flow 数据范围允许访问目标行；
-8. 已发布列表按钮/表单动作允许；
+8. Flow 原生列表按钮/表单动作解析结果允许；
 9. 记录状态允许操作；
 10. 写请求幂等和乐观锁通过。
 
 记录不存在和无权访问统一返回 404 `EMBED_RESOURCE_NOT_FOUND`，避免 IDOR 枚举。
 
-## 7. Embed View 配置与发布模型
+## 7. Embed 配置与运行快照模型
 
 ### 7.1 推荐配置示例
 
 ```json
 {
-  "viewKey": "supplier-work-orders",
-  "name": "供应商工单",
+  "viewKey": "req-list",
+  "name": "需求列表",
   "surfaceType": "LIST",
   "target": {
-    "entityCode": "work_order",
-    "listKey": "supplier_open",
-    "defaultFormId": "form-work-order-external"
+    "entityCode": "ZDWREQ",
+    "listKey": "list001"
   },
-  "entryModes": ["LIST", "CREATE", "VIEW"],
-  "releasePolicy": {
-    "strategy": "PINNED",
-    "listReleaseId": "list-release-12",
-    "formReleaseId": "form-release-8"
-  },
+  "entryModes": ["LIST"],
   "capabilities": [
     "LIST_QUERY",
-    "SELECTION_RETURN",
-    "RECORD_VIEW",
-    "RECORD_CREATE"
+    "SELECTION_RETURN"
   ],
   "fieldPolicy": {
-    "visible": ["id", "code", "title", "status", "amount"],
-    "queryable": ["code", "status"],
-    "writable": ["title", "amount", "description"],
-    "returnable": ["id", "code", "title"]
+    "mode": "FLOW_PUBLISHED",
+    "returnable": ["id"]
   },
   "queryPolicy": {
     "allowTotal": false,
     "maxPageSize": 100
   },
-  "actionPolicy": {
-    "allowed": ["view", "create", "save"],
-    "requireConfirmation": []
-  },
   "contextSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["supplierId"],
-    "properties": {
-      "supplierId": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64
-      }
-    }
+    "properties": {}
   },
-  "contextBindings": [
-    {
-      "source": "supplierId",
-      "target": "supplier_id",
-      "usage": "FIXED_FILTER"
-    },
-    {
-      "source": "supplierId",
-      "target": "supplier_id",
-      "usage": "FORCED_FORM_VALUE"
-    }
-  ],
+  "contextBindings": [],
   "ui": {
     "showSearch": true,
     "showPagination": true,
@@ -578,32 +612,36 @@ Namespace 下任意已绑定用户，应配合最小来源网段、强审计和�
 }
 ```
 
-### 7.2 发布校验
+上例是服务端 canonical 快照示意，不是要求管理员手填编码的表单。管理页面中 LIST 只需先选
+“实体”，再从该实体下拉列表选择“列表”；示例使用稳定资源 `req-list / ZDWREQ / list001`，
+不填写任何不存在的 Application、Provider、Binding 或 Grant ID。
 
-发布 Embed View 前必须校验：
+`fieldPolicy.mode=FLOW_PUBLISHED` 表示运行 Flow 原生发布页面。LIST/FORM 都不接受
+`actionPolicy`、`visible/queryable/writable`、组件参数或 datasource 白名单；原生操作栏、列、
+字段、弹框和数据源继续与映射用户在 Flow 中的结果一致。`returnable` 只限制 Bridge 回传宿主的值。
 
-1. View Key 全局唯一且发布后不可变。
-2. 实体存在且状态为已发布。
-3. List/Form 均存在已发布 Release，且属于目标实体。
-4. 字段白名单均存在于已发布快照；Writable 必须是表单可写字段。
-5. Returnable 是 Visible 的子集，并排除敏感字段。
-6. Action Key 存在于发布配置且进入强类型 Registry；发布器能完整生成第 11.4 节
-   `ExternalActionDescriptor`，`transport/recordMode/selectionMode` 组合合法，Data/Input Schema
-   默认 `additionalProperties=false`。未显式选择或无法安全映射的动作禁止发布。
+### 7.2 保存校验
+
+保存 Embed 配置时必须同步校验，不存在单独发布步骤：
+
+1. View Key 全局唯一，创建后不可变。
+2. 实体存在；LIST 仅保存实体与该实体所属列表的稳定资源引用，不要求手填编码、Release 或默认表单。
+3. 目标 List/Form 存在 ACTIVE Release。每次新 Launch 重新解析最新 ACTIVE；已经打开的
+   Session 固定启动时版本。
+4. LIST/FORM 出现 `visible/queryable/writable`、`actionPolicy`、组件或 datasource 覆盖时拒绝保存，
+   防止历史投影配置继续改变原生页面。
+5. Returnable 字段必须属于目标资源且排除不允许跨 iframe 回传的敏感字段；它只裁剪 Bridge
+   消息，不裁剪 iframe 内的原生 API 响应或页面显示。
+6. 列表和表单按钮不做 Embed Action Key 白名单校验；名称、顺序、显隐、禁用原因与执行结果
+   由原生页面和映射用户权限决定。
 7. Context Schema 大小不超过 16 KiB、深度和属性数受限，禁止远程 `$ref`；V1 不支持
    `contextSchema.pattern`，配置中出现该关键字时以 `SCHEMA_PATTERN_NOT_SUPPORTED` 拒绝
-   校验或发布，历史/篡改快照在 Launch 时同样 Fail Closed。字符串约束使用 `enum`、
+   保存；历史兼容数据或篡改快照在 Launch 时同样 Fail Closed。字符串约束使用 `enum`、
    `minLength`、`maxLength` 等受控关键字。
 8. Context Binding 目标字段存在，固定过滤和强制字段不能被客户端覆盖。
-9. FOLLOW_ACTIVE 的兼容性影响经过预检；敏感场景建议 PINNED。
-10. V1 禁止 Embed View 使用全部自定义组件；后续开放时只能来自 Flow 内部可信注册表。
-11. V1 不开放动态表单数据源或 Lookup Provider：发布快照中存在任意表单/字段数据源绑定、
-    自定义组件或事件绑定时按不可信资源拒绝；`REFERENCE`、`MULTI_REFERENCE`、`LOOKUP`、
-    `MULTI_LOOKUP`、`USER`、`DEPT`、`ROLE`、`GROUP` 表单字段整体以
-    `UNTRUSTED_COMPONENT` 阻断发布；字段
-    `validationRules` 出现任意 `pattern` 同样阻断。当前 options 路由只分页不可变 Form Release
-    中超过 100 项的静态选项，Lookup 路由保持 Deferred/Fail Closed；禁止回退到任意 HTTP、SQL、
-    内部 Service/Operation 或 UI Event。
+9. LIST 与 FORM 目标都必须能解析当前 ACTIVE Release；不存在 ACTIVE 时保存失败。
+10. LIST/FORM 的内建和自定义组件、数据源、Lookup、弹框与事件绑定沿用 Flow 原生注册/发布
+    治理；Embed 不维护兼容白名单，后续 Flow 新组件无需修改 Embed 框架。
 
 ### 7.3 Application Grant
 
@@ -634,14 +672,14 @@ fragment、通配子域或混合大小写绕过。
 ### 7.4 配置生命周期
 
 ```text
-View: DRAFT -> ACTIVE <-> DISABLED -> RETIRED
-View Release: PUBLISHED（不可变）
+View: ACTIVE <-> DISABLED -> RETIRED（首次有效保存即 ACTIVE）
+Session 运行快照：Launch 时创建，Session 生命周期内不可变
 Grant: ACTIVE <-> DISABLED -> REVOKED；到期后按 EXPIRED 处理
 Identity Provider: ACTIVE <-> DISABLED -> REVOKED
 Identity Binding: ACTIVE <-> DISABLED -> REVOKED
 ```
 
-View 草稿修改不影响现有 Launch/Session；发布新 Release 后只影响新的 Launch。禁用 View、Grant、
+保存 View 配置只影响后续新 Launch，已打开 Session 固定原运行快照。禁用 View、Grant、
 应用或身份绑定默认立即阻止新 Launch，并使现有 Session 在下一个请求失效。
 
 ## 8. 接口通用约定
@@ -762,7 +800,7 @@ listReleaseId, formReleaseId, releaseVersion, fixedFilter,
 allowedActions, dataScope, eventCode, serviceId, operationCode
 ```
 
-这些参数一律从 Embed Session 和 View Release 恢复。若响应中为渲染需要返回某些标识，
+这些参数一律从 Embed Session 运行快照恢复。若响应中为渲染需要返回某些标识，
 服务端后续仍必须忽略客户端回传值并以 Session 快照为准。
 
 ## 9. 管理端接口设计
@@ -775,13 +813,12 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
 
 | 权限码 | 用途 |
 | --- | --- |
-| `system:embed:view` | 查看 View、Release、Grant 和运行状态 |
+| `system:embed:view` | 查看 View、Grant 和运行状态 |
 | `system:embed:manage` | 创建和修改 View、Grant、Origin |
-| `system:embed:publish` | 校验并发布不可变 View Release |
 | `system:embed:identity-manage` | 管理 Identity Provider 和身份绑定 |
 | `system:embed:session-revoke` | 查询并撤销 Launch/Session |
 
-发布、身份映射、Origin 变更和会话撤销属于高风险管理操作，除接口权限外还应进入现有系统
+配置保存、身份映射、Origin 变更和会话撤销属于高风险管理操作，除接口权限外还应进入现有系统
 审计；是否增加二次确认由管理端产品策略决定。
 
 ### 9.2 Embed View 接口
@@ -789,22 +826,18 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
 | 方法与路径 | 权限 | 说明 |
 | --- | --- | --- |
 | `GET /api/embed-management/v1/views` | `system:embed:view` | 分页查询 View |
-| `POST /api/embed-management/v1/views` | `system:embed:manage` | 新建 View 和初始草稿 |
+| `POST /api/embed-management/v1/views` | `system:embed:manage` | 新建 View；首次有效配置保存后启用 |
 | `GET /api/embed-management/v1/views/{viewId}` | `system:embed:view` | 查看 View 摘要 |
 | `GET /api/embed-management/v1/views/{viewId}/draft` | `system:embed:view` | 获取当前草稿 |
 | `PATCH /api/embed-management/v1/views/{viewId}/draft` | `system:embed:manage` | 乐观锁更新草稿 |
-| `POST /api/embed-management/v1/views/{viewId}/validate` | `system:embed:manage` | 发布前校验，不产生 Release |
-| `POST /api/embed-management/v1/views/{viewId}/publish` | `system:embed:publish` | 发布不可变 Release |
 | `POST /api/embed-management/v1/views/{viewId}/status` | `system:embed:manage` | 启用、禁用或退役 |
-| `GET /api/embed-management/v1/views/{viewId}/releases` | `system:embed:view` | 查询发布历史 |
-| `GET /api/embed-management/v1/views/{viewId}/releases/{revision}` | `system:embed:view` | 查看指定快照 |
 
 分页查询参数：
 
 | 参数 | 类型 | 必填 | 规则 |
 | --- | --- | --- | --- |
 | `keyword` | string | 否 | 匹配 `viewKey` 或名称，最大 100 字符 |
-| `status` | string | 否 | `DRAFT/ACTIVE/DISABLED/RETIRED` |
+| `status` | string | 否 | `ACTIVE/DISABLED/RETIRED`；`DRAFT` 仅为未完成历史数据兼容状态 |
 | `surfaceType` | string | 否 | `LIST/FORM` |
 | `applicationId` | string | 否 | 查询已授权给某应用的 View |
 | `pageNum` | integer | 否 | 默认 1 |
@@ -814,7 +847,7 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
 
 ```json
 {
-  "viewKey": "supplier-work-orders",
+  "viewKey": "req-list",
   "name": "供应商工单",
   "surfaceType": "LIST",
   "description": "供供应商门户查询和新建工单"
@@ -829,9 +862,8 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
   "viewKey": "supplier-work-orders",
   "name": "供应商工单",
   "surfaceType": "LIST",
-  "status": "DRAFT",
+  "status": "ACTIVE",
   "draftRevision": 1,
-  "publishedRevision": null,
   "version": 1
 }
 ```
@@ -843,34 +875,21 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
   "expectedVersion": 1,
   "draft": {
     "target": {
-      "entityCode": "work_order",
-      "listKey": "supplier_open",
-      "defaultFormId": "form-work-order-external"
+      "entityCode": "ZDWREQ",
+      "listKey": "list001"
     },
-    "entryModes": ["LIST", "CREATE", "VIEW"],
-    "releasePolicy": {
-      "strategy": "PINNED",
-      "listReleaseId": "list-release-12",
-      "formReleaseId": "form-release-8"
-    },
+    "entryModes": ["LIST"],
     "capabilities": [
       "LIST_QUERY",
-      "SELECTION_RETURN",
-      "RECORD_VIEW",
-      "RECORD_CREATE"
+      "SELECTION_RETURN"
     ],
     "fieldPolicy": {
-      "visible": ["id", "code", "title", "status"],
-      "queryable": ["code", "status"],
-      "writable": ["title", "description"],
-      "returnable": ["id", "code", "title"]
+      "mode": "FLOW_PUBLISHED",
+      "returnable": ["id"]
     },
     "queryPolicy": {
       "allowTotal": false,
       "maxPageSize": 100
-    },
-    "actionPolicy": {
-      "allowed": ["view", "create", "save"]
     },
     "contextSchema": {},
     "contextBindings": [],
@@ -888,33 +907,8 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
 `expectedVersion` 与 View 当前 `version` 不一致时返回 409
 `EMBED_CONFIGURATION_VERSION_CONFLICT`，响应返回当前版本号，但不自动覆盖。
 
-校验接口请求：
-
-```json
-{
-  "expectedVersion": 2
-}
-```
-
-成功时：
-
-```json
-{
-  "data": {
-    "valid": true,
-    "resolved": {
-      "entityCode": "work_order",
-      "listReleaseId": "list-release-12",
-      "listReleaseVersion": 12,
-      "formReleaseId": "form-release-8",
-      "formReleaseVersion": 8
-    },
-    "warnings": []
-  }
-}
-```
-
-校验失败返回 422 `EMBED_VIEW_VALIDATION_FAILED`，`data.violations` 最多返回 100 项：
+保存操作同步解析稳定资源引用并执行完整校验。校验失败返回 422
+`EMBED_VIEW_VALIDATION_FAILED`，`data.violations` 最多返回 100 项：
 
 ```json
 {
@@ -931,29 +925,6 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
     ]
   },
   "traceId": "trace-..."
-}
-```
-
-发布请求：
-
-```json
-{
-  "expectedVersion": 2,
-  "releaseNote": "供应商门户首发"
-}
-```
-
-发布事务必须重新执行完整校验，而不是信任先前 `validate` 的结果。返回：
-
-```json
-{
-  "data": {
-    "viewId": "ev_01K...",
-    "revision": 1,
-    "releaseId": "evr_01K...",
-    "configHash": "64-char-lowercase-sha256",
-    "publishedAt": "2026-08-26T08:00:00Z"
-  }
 }
 ```
 
@@ -996,8 +967,6 @@ Upsert 请求：
     "RECORD_VIEW",
     "RECORD_CREATE"
   ],
-  "revisionMode": "FOLLOW_ACTIVE",
-  "pinnedRevision": null,
   "maxActiveSessionsPerUser": 3,
   "maxSessionSeconds": 1800,
   "launchLimitPerMinute": 60,
@@ -1011,9 +980,8 @@ Upsert 请求：
 
 1. `expectedVersion=null` 仅可用于首次创建；已有 Grant 时必须传当前版本。
 2. `allowedOrigins` 至少一个、最多 20 个，只接受精确 Origin。
-3. Grant 的 Capability 必须是 View Release Capability 的子集。
-4. `revisionMode` 只允许 `FOLLOW_ACTIVE/PINNED`；为 `PINNED` 时
-   `pinnedRevision` 必填且必须是已发布快照。
+3. Grant 的 Capability 必须是 Embed 配置 Capability 的子集。
+4. Grant 不选择配置或资源版本；每个新 Launch 都解析最新 ACTIVE，Session 固定启动快照。
 5. 所有配额只能收窄全局安全上限，不能通过 Grant 关闭平台硬限制。
 6. `REVOKED` 为终态；需要重新合作时创建新的 Grant，而不是恢复旧授权。
 
@@ -1191,17 +1159,17 @@ X-Trace-Id: partner-20260826-001
 
 | 字段 | 类型 | 必填 | 约束 |
 | --- | --- | --- | --- |
-| `viewKey` | string | 是 | 1–100，必须已发布并授权给当前应用 |
+| `viewKey` | string | 是 | 1–100，必须已完成有效保存、处于 ACTIVE 且已授权给当前应用；Embed 配置没有发布步骤 |
 | `parentOrigin` | string | 是 | 精确 `scheme://host[:port]`，必须命中 Grant |
 | `channelId` | UUID/string | 是 | 16–128 个安全字符，由宿主每次启动随机生成 |
 | `subject.type` | enum | 是 | V1 为 `SIGNED_JWT/TRUSTED_EXTERNAL_ID`；OIDC 值留待后续版本 |
 | `subject.assertion` | string | 条件必填 | V1 短期签名 JWT，最大 16 KiB |
 | `subject.namespace` | string | 可信 ID 模式必填 | 必须在 Grant 允许范围 |
 | `subject.externalUserId` | string | 可信 ID 模式必填 | 1–128，不得直接传 Flow 用户 ID |
-| `entry.mode` | enum | 是 | V1 仅 `LIST/CREATE/VIEW`，且必须是 Release 允许入口；`EDIT` 直接拒绝 |
+| `entry.mode` | enum | 是 | V1 仅 `LIST/CREATE/VIEW`，且必须是配置允许的宿主直接入口；不限制 LIST 页内原生导航 |
 | `entry.recordId` | string | VIEW 必填 | 最长 64；只作为候选记录，Runtime 读取时仍需 Flow 数据范围和行级查看权限校验 |
-| `context` | object | 否 | 符合发布 JSON Schema，最大 16 KiB、最多 32 个属性 |
-| `ui.locale` | string | 否 | Release 允许的语言，默认 `zh-CN` |
+| `context` | object | 否 | 符合保存的 JSON Schema，最大 16 KiB、最多 32 个属性 |
+| `ui.locale` | string | 否 | 目标 Flow 资源支持的语言，默认 `zh-CN` |
 | `ui.theme` | string | 否 | `light/dark/system`，只影响展示 |
 
 `TRUSTED_EXTERNAL_ID` 请求示例：
@@ -1399,512 +1367,133 @@ X-Flow-Embed-Protocol: 1
 `actor` 只返回渲染所需最小信息。不得返回 Application Secret、内部权限码、固定过滤表达式、
 数据范围、Provider/JWK、Token 哈希、发布解析 Token 或未公开字段。
 
-### 11.4 获取外部投影 Schema
+### 11.4 LIST 原生页面与 Bridge 投影边界
+
+LIST 不再提供 `/api/embed/v1/runtime/schema` 或 `/api/embed/v1/runtime/list/query` 作为页面
+渲染数据源，也不生成 `ExternalActionDescriptor`。`NativeEmbeddedListPage` 直接挂载
+`EntityDataList`，由它读取 Session 固定的 exact List Release，并调用 Flow 原生列表 Schema、
+查询、筛选、排序、按钮和数据源 API。这样列顺序、富渲染器、弹框、新建/查看/编辑入口以及
+后续新增组件都天然与 Flow 原页面一致。
+
+“原生页面”不代表宿主可取得整行数据。只有用户选择记录且配置开放 `SELECTION_RETURN` 时，
+Bridge 才从原生选择结果构造最小 `selection.changed` 消息；服务端与前端都按
+`fieldPolicy.returnable` 再过滤一次，默认只回传记录 ID，禁止把整行对象、内部权限、数据源
+参数、运行时 Token 或未声明敏感字段发送给宿主。
+
+### 11.5 LIST 查询与权限
+
+列表查询沿用 Flow 原生请求格式和服务。受控委托层只允许请求命中 Session 固定列表及其
+Launch-time immutable dependency closure，随后恢复映射用户并执行原有
+EndpointAuthorization、对象授权、列表规则与 DataScope。客户端不能把 Embed Token 用于其它
+实体、列表或任意 Release，也不能通过 query/body 改写 Session 固定坐标。
+
+筛选条件、排序、分页、列显示和总数策略均来自固定 List Release 与原生页面；Embed 不再维护
+Queryable、Visible、列表动作或 datasource 白名单。页内工具栏和行按钮只按映射用户在 Flow
+原系统中的权限、记录状态与 DataScope 显示，View/Grant Capability 不参与求交。
+
+### 11.6 FORM 原生页面与受控请求委托
+
+FORM 不再提供 `GET /api/embed/v1/runtime/form*` 字段投影接口。直接 FORM 的 Bootstrap 向
+`NativeEmbeddedFormPage` 提供 Session 固定目标；LIST→CREATE/VIEW 由 Shell 内部调用
+`GET /api/embed/v1/runtime/native-form-target?mode=...&recordId=...`，服务端再从同一 Session 和
+Session 不可变运行快照派生目标。两者都只返回 `entityCode/formId/formReleaseId`、版本、发布解析
+Token、入口模式以及 VIEW 固定记录 ID。这是 iframe 内部实现接口，不是宿主/第三方契约；宿主
+不能调用、保存或通过 Launch/消息修改这些坐标。
+
+薄页面直接挂载 Flow 原生 `EntityDataFormDialog` / `EntityApprovalDialog`。因此字段、布局、
+日期/日期时间选择器、Select/MultiSelect Popper、Radio、Checkbox、Switch、富文本、级联、
+校验提示、确认框、操作栏、自定义扩展和未来组件都来自同一原生组件树与 Registry。FORM
+路径不得导入 `normalizeEmbedForm`、`TrustedPublishedFormRuntime`、
+`TrustedFormFieldRenderer`，不得维护 `cspSafe` 控件分支或第二份字段映射表。
+
+#### 11.6.1 原生 API 认证委托
+
+原生页面发出的请求统一携带：
 
 ```http
-GET /api/embed/v1/runtime/schema
-Authorization: Bearer <embed-session-token>
+Authorization: Bearer <opaque-embed-session-token>
+X-Flow-Embed-Protocol: 1
 ```
 
-列表响应示例：
+服务端先验证 Embed Session、Origin 绑定和固定 LIST/FORM Release，再恢复 Binding
+映射的 Flow `UserContext`。之后继续经过普通 EndpointAuthorization、字段权限、DataScope、
+行级能力和业务校验。请求委托不是一个“允许调用任意内部 API”的代理：未声明
+`@EmbedDelegatedRuntimeApi` 的端点默认拒绝；已声明端点按 `TargetBinding` 校验 URI
+template/body/query 中的 entity/list/form/release/record 与 Session 固定目标或依赖闭包一致。
+页内标准请求不要求 View Capability/entryMode；Capability 只在直接入口或 Bridge 端点检查。
+中央策略不维护组件类型、datasource、URL 或 eventCode 清单。
 
-```json
-{
-  "data": {
-    "view": {
-      "key": "supplier-work-orders",
-      "surfaceType": "LIST",
-      "revision": 7
-    },
-    "entity": {
-      "code": "work_order",
-      "name": "工单"
-    },
-    "list": {
-      "selection": {
-        "mode": "SINGLE",
-        "valueField": "id",
-        "returnableFields": ["code"]
-      },
-      "pagination": {
-        "allowTotal": false,
-        "maxPageSize": 100
-      },
-      "columns": [
-        {
-          "code": "code",
-          "label": "工单号",
-          "type": "TEXT",
-          "width": 180,
-          "sortable": false
-        },
-        {
-          "code": "status",
-          "label": "状态",
-          "type": "SELECT",
-          "width": 120,
-          "sortable": false,
-          "options": [
-            {"label": "处理中", "value": "PROCESSING"}
-          ]
-        }
-      ],
-      "filters": [
-        {
-          "code": "code",
-          "label": "工单号",
-          "type": "TEXT",
-          "operator": "CONTAINS"
-        },
-        {
-          "code": "status",
-          "label": "状态",
-          "type": "SELECT",
-          "operator": "EQ",
-          "options": [
-            {"label": "处理中", "value": "PROCESSING"}
-          ]
-        }
-      ]
-    },
-    "form": null,
-    "actions": [
-      {
-        "key": "view",
-        "label": "查看",
-        "placement": "ROW",
-        "kind": "NAVIGATION",
-        "transport": "LOCAL_FORM",
-        "recordMode": "CURRENT",
-        "selectionMode": "NONE",
-        "dataSchema": null,
-        "requiresRecordVersion": false,
-        "inputSchema": null,
-        "idempotencyRequired": false
-      },
-      {
-        "key": "create",
-        "label": "新建",
-        "placement": "TOOLBAR",
-        "kind": "NAVIGATION",
-        "transport": "LOCAL_FORM",
-        "recordMode": "NONE",
-        "selectionMode": "NONE",
-        "dataSchema": null,
-        "requiresRecordVersion": false,
-        "inputSchema": null,
-        "idempotencyRequired": false
-      }
-    ]
-  }
-}
-```
+当前原生页面使用的主要端点包括：
 
-该 DTO 是新建的 External Projection，不能直接序列化现有 `EntityListSchemaDTO`。投影层必须
-移除权限码、固定过滤器、内部 Provider、运行时上下文 Token、接口操作配置、脚本、未审核
-组件和未发布动作。
+| 用途 | 原生端点 | Embed 约束 |
+| --- | --- | --- |
+| 实体元数据 | `GET /api/entity/code/{entityCode}` | `entityCode` 必须等于 Session 固定目标 |
+| 固定表单 Release | `GET /api/entity-forms/{formId}/runtime-release` | `releaseId/version/releaseResolutionToken` 必须来自 Bootstrap |
+| 操作栏 | `POST /api/ui-runtime/form-actions/resolve` | 按映射用户、模式、记录/流程状态实时解析 |
+| 字典树 | `GET /api/system/dict/item/tree/code/{dictCode}` | 使用原生字段声明的数据源与原权限检查 |
+| 唯一性预检 | `POST /api/entity-form/{formId}/unique-precheck` | 固定 Form，结果只作交互提示，最终提交再次校验 |
+| 记录详情 | `POST /api/entity-data/entity/{entityCode}/detail/{recordId}/load` | VIEW 固定记录并再次执行 DataScope |
+| 创建与回执 | `POST /api/embed/v1/runtime/records` | 保留 Embed 幂等、receipt 和 Returnable 回投边界 |
 
-`list.columns` 是 iframe 内的展示白名单，`list.selection.returnableFields` 是
-`selection.changed` 发给宿主系统的值字段白名单，两者不能混用。运行时只返回
-`fieldPolicy.returnable ∩ 实际发布展示列`；记录 `id` 作为选择对象的独立字段返回，
-不需要进入 `returnableFields`。前端必须从已规范化的行对象再次按该白名单投影，禁止把
-整行 `values` 直接发送给宿主。
+新增组件复用已有 Flow API 时无需修改 Embed。只有组件新增后端端点时，该端点需要声明标准
+TargetBinding 并继续经过普通 Flow 权限链；这属于原生端点的安全契约，不是 Embed 组件兼容
+或中央 URL/eventCode 登记，也不能要求管理员给新组件增加 Capability。
 
-所有列表、表单和详情响应使用同一个 `ExternalActionDescriptor`，字段含义如下：
+#### 11.6.2 按钮、弹层与权限的一致性
 
-| 字段 | 允许值/含义 |
-| --- | --- |
-| `key/label/placement` | 稳定动作 Key、展示文案、`TOOLBAR/ROW/FORM` |
-| `kind` | `NAVIGATION/MUTATION/SELECTION` |
-| `transport` | V1 列表只投影 `LOCAL_FORM`，CREATE 表单只投影 `RECORD_CREATE`；`LOCAL_SELECT` 由列表选择协议处理，`RECORD_UPDATE/ACTION_API` 为后续保留值且当前不会下发 |
-| `recordMode` | `NONE/CURRENT/SELECTION`，决定是否携带当前记录或选择集 |
-| `selectionMode` | `NONE/SINGLE/MULTIPLE` |
-| `dataSchema` | 动作可接受的记录字段 Schema；无记录正文时为 null |
-| `inputSchema` | 动作额外输入 Schema；无额外输入时为 null |
-| `requiresRecordVersion` | 是否必须携带 `expectedRecordVersion` |
-| `idempotencyRequired` | 是否必须携带 `Idempotency-Key` |
-| `enabled/disabledReason` | 当前表单级可用状态；行级状态仍在每条记录的 `actions` Capability Map 中返回 |
+操作按钮不从 Embed `actionPolicy` 生成。`POST /api/ui-runtime/form-actions/resolve` 在每次
+需要时以映射 Flow 用户执行，名称、图标、样式、顺序、显隐、禁用原因、确认框、当前记录/
+流程状态和 availabilityRule 均与 Flow 原生运行页一致。Application Grant 和 Capability 只
+收窄第三方直接入口或跨域 Bridge，不会授予、隐藏或禁用页内按钮。标准按钮与自定义按钮均
+不要求 `ACTION_EXECUTE`；它们只按映射用户的端点权限、对象权限、DataScope 与业务规则显示和执行。
 
-前端只按封闭 `transport` 选路由，不执行服务端下发 URL：V1 的 `LOCAL_FORM` 只在 iframe 内
-完成 LIST→CREATE/VIEW→BACK 导航，`LOCAL_SELECT` 只走已投影的 `selection.changed`，
-`RECORD_CREATE` 只调用固定记录创建接口。`RECORD_UPDATE/ACTION_API` 当前不会由 Schema 返回，
-相应 HTTP 路由也未注册。未知枚举 Fail Closed，不能回退到内部 Event、Provider 或任意 URL。
+Element Plus Popper、日期面板和对话框 Teleport 到 iframe 自己的 `document.body`。
+Entry CSP 必须允许 Flow 原生组件运行所必需的样式属性，同时保持 `script-src` 不允许
+第三方 inline script/unsafe-eval；表单配置仍只能来自 Flow 可信发布链。不得以 CSP 为理由
+替换为 native input、自制 Select 或精简富文本。
 
-### 11.5 列表查询
+#### 11.6.3 最新 ACTIVE 与未来组件
 
-```http
-POST /api/embed/v1/runtime/list/query
-Authorization: Bearer <embed-session-token>
-Content-Type: application/json
-```
+每个新 Launch 都从配置保存的稳定资源引用解析当前最新 ACTIVE List/Form Release，
+并固定到新 Session；已打开 Session 不热切换。Flow 新增字段、注册新组件或
+更新弹层实现后，只需按正常流程激活目标资源并更新前端版本，新 Launch 即从同一原生 Registry 加载，
+第三方的 `viewKey`、Launch Body、SDK 代码和 Embed URL 规则全部保持不变。
 
-请求：
-
-```json
-{
-  "pageNum": 1,
-  "pageSize": 20,
-  "filters": [
-    {"field": "code", "value": "WO-2026"},
-    {"field": "status", "value": "PROCESSING"}
-  ]
-}
-```
-
-V1 不允许客户端传 `scene`、`releaseId`、`context`、`fixedFilters` 或任意排序表达式。排序
-使用已发布列表默认规则；如后续开放排序，只能基于 Schema 显式声明的字段和方向扩展。
-
-`filters` 是无操作符的强类型外部 DTO。`EQ/CONTAINS/GT/GTE/LT/LTE` 使用
-`{"field": ..., "value": ...}`，`IN` 使用 `values`，`BETWEEN` 使用同时包含
-`start/end` 的 `range`。客户端不得提交 `operator`，也不得提交 Entity 内部的
-`field_op/field_start/field_end` 键；服务端只按不可变发布 Schema 中该字段的 operator
-映射为内部条件。未发布字段、重复字段、值形状与发布 operator 不一致时统一拒绝请求。
-
-服务端按以下顺序组合条件：
-
-```text
-Embed View 固定条件
-  AND Launch Context 绑定条件
-  AND Flow 用户数据范围
-  AND 已发布列表规则
-  AND 客户端允许的查询字段
-```
-
-客户端过滤条件只能进一步缩小结果，不能覆盖前四类条件。返回：
-
-```json
-{
-  "data": {
-    "items": [
-      {
-        "id": "2080000000000000001",
-        "recordVersion": null,
-        "values": {
-          "code": "WO-20260826-001",
-          "title": "设备维修",
-          "status": "PROCESSING"
-        },
-        "meta": {
-          "updatedAt": "2026-08-26T08:20:00Z"
-        },
-        "actions": {
-          "view": {
-            "visible": true,
-            "enabled": true,
-            "reason": null
-          }
-        }
-      }
-    ],
-    "hasMore": false,
-    "pageNum": 1,
-    "pageSize": 20
-  }
-}
-```
-
-只有 `fieldPolicy.visible` 字段可进入 `values`；行级 Action Capability 由现有能力服务计算后
-再与 Release 白名单求交。默认只返回 `hasMore`；只有 View 显式设置
-`queryPolicy.allowTotal=true` 时才额外返回 `total`，以避免敏感总量侧信道。
-
-### 11.6 解析表单
-
-```http
-GET /api/embed/v1/runtime/form?mode=CREATE
-GET /api/embed/v1/runtime/form?mode=VIEW&recordId=2080000000000000001
-Authorization: Bearer <embed-session-token>
-```
-
-V1 `mode` 只接受 `CREATE/VIEW`：CREATE 禁止 `recordId`，VIEW 必须有 `recordId`。FORM 入口
-必须与 Launch 固定模式一致；LIST 入口可以通过当前 External Schema 的 `LOCAL_FORM` 动作在
-iframe 内进入 CREATE 或 VIEW。`recordId` 只能来自 Launch 固定记录或当前已投影列表行，并仍
-通过固定 List Release、Flow 数据范围和行级查看能力校验；浏览器不能提交 form/entity/release。
-
-CREATE 响应示例：
-
-```json
-{
-  "code": 200,
-  "message": "ok",
-  "errorCode": null,
-  "data": {
-    "mode": "CREATE",
-    "record": null,
-    "form": {
-      "title": "新建工单",
-      "layout": {"type": "GRID"},
-      "fields": [
-        {
-          "code": "category",
-          "label": "工单类型",
-          "type": "SELECT",
-          "required": true,
-          "readOnly": false,
-          "hidden": false,
-          "defaultValue": null,
-          "validation": {},
-          "options": [{"label": "设备维修", "value": "EQUIPMENT_REPAIR", "disabled": false}],
-          "optionSource": null,
-          "lookupSource": null,
-          "layout": {"span": 24},
-          "fieldState": {"visible": true, "writable": true}
-        }
-      ],
-      "returnableFields": ["category"],
-      "actions": [
-        {
-          "key": "save",
-          "label": "保存",
-          "placement": "FORM",
-          "kind": "MUTATION",
-          "transport": "RECORD_CREATE",
-          "recordMode": "NONE",
-          "selectionMode": "NONE",
-          "dataSchema": {
-            "type": "object",
-            "properties": {
-              "category": {"type": "string", "maxLength": 64}
-            },
-            "additionalProperties": false
-          },
-          "inputSchema": null,
-          "enabled": true,
-          "disabledReason": null,
-          "requiresRecordVersion": false,
-          "idempotencyRequired": true
-        }
-      ]
-    }
-  },
-  "traceId": "trace-..."
-}
-```
-
-表单投影复用已发布表单解析和联动结果，但不返回设计态配置、内部组件实现名、任意脚本、
-任意远程数据源配置或完整事件执行信息。CREATE 只可能返回内建 `save`，其
-`transport=RECORD_CREATE`、`requiresRecordVersion=false`、`idempotencyRequired=true`；VIEW
-不返回保存动作。任意字段 `validationRules.pattern` 在 Embed View 发布时阻断，历史或篡改快照
-在 Runtime 再次 Fail Closed；V1 仅执行受控长度、数值、格式和枚举校验。
-
-#### 11.6.1 CREATE 联动只读重算
-
-CREATE 表单的可见、可写、必填等状态可能依赖当前草稿。iframe 使用下面的专用只读接口把部分
-草稿交给服务端重算，不能在浏览器自行解释内部联动表达式：
-
-```http
-POST /api/embed/v1/runtime/form/evaluations
-Authorization: Bearer <embed-session-token>
-Content-Type: application/json
-```
-
-```json
-{
-  "data": {
-    "status": "CLOSED"
-  }
-}
-```
-
-请求顶层严格只允许 `data`，最多 100 个字段；禁止携带 entity、form、release、record、Flow 用户、
-Context 或任意 Provider 坐标。接口只允许 `CREATE + RECORD_CREATE`，`data` 可以是部分草稿，但键
-必须属于固定 Embed Release 的 `fieldPolicy.writable`，值只能使用当前字段类型允许的安全
-scalar/array 形状。服务端从 Session 恢复固定 entity/form/release/context，并在联动求值前以后端
-`FORCED_FORM_VALUE` 覆盖同名浏览器草稿。
-
-本接口不执行 required 或最终提交校验，不申请幂等 Claim，不写业务数据、不触发流程/动作，也不
-新增宿主 postMessage。成功以现有 `FormResult` 包络返回重算后的 CREATE 表单，`mode=CREATE`、
-`record=null`；最终保存仍必须调用第 11.8 节创建接口，由服务端基于最终有效值完整重算和校验。
-请求形状或字段非法返回 400 `INVALID_REQUEST`，入口/能力不允许返回 403
-`EMBED_OPERATION_NOT_ALLOWED`，固定快照损坏或运行依赖失败返回 503
-`EMBED_RUNTIME_UNAVAILABLE`。
-
-#### 11.6.2 大型静态选项分页
-
-当前 options 路由不是通用动态数据源代理。它只分页同一不可变 Form Release 内超过 100 项的
-静态选项：
-
-```http
-POST /api/embed/v1/runtime/form/fields/{fieldCode}/options/query
-Authorization: Bearer <embed-session-token>
-Content-Type: application/json
-```
-
-```json
-{
-  "mode": "CREATE",
-  "keyword": "维修",
-  "dependencies": {},
-  "pageNum": 1,
-  "pageSize": 50
-}
-```
-
-`mode` 必填且只允许 CREATE/VIEW；VIEW 必须同时提供当前导航记录的精确 `recordId`，CREATE
-禁止 `recordId`。这些值只描述 LIST Session 当前的本地表单状态，Facade 仍从 Session 恢复固定
-form/entity/release，并重新校验 entryModes、Capability、记录与 DataScope。当前静态实现的
-`dependencies` 必须为空。任何数据源绑定、`provider/service/operation/url`、HTTP/SQL 连接器或
-UI Event 在发布和运行时均拒绝，不允许回退到内部接口。
-
-响应：
-
-```json
-{
-  "data": {
-    "items": [
-      {
-        "label": "设备维修",
-        "value": "EQUIPMENT_REPAIR",
-        "disabled": false
-      }
-    ],
-    "hasMore": false,
-    "pageNum": 1,
-    "pageSize": 50
-  }
-}
-```
-
-#### 11.6.3 引用字段候选查询
-
-引用候选 HTTP 路由和封闭 DTO 已注册，以固定未来契约，但 **V1 不提供可用的 Lookup 查询能力**：
-
-```http
-POST /api/embed/v1/runtime/form/fields/{fieldCode}/lookups/query
-Authorization: Bearer <embed-session-token>
-Content-Type: application/json
-```
-
-```json
-{
-  "mode": "VIEW",
-  "recordId": "2080000000000000001",
-  "keyword": "三号",
-  "filters": {},
-  "pageNum": 1,
-  "pageSize": 20
-}
-```
-
-`mode/recordId` 规则与 options 完全相同，且仍不是目标坐标。受支持的发布链会把
-`REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP` 表单字段整体标记为
-`UNTRUSTED_COMPONENT` 并阻断发布，表单 Schema 只会返回 `lookupSource=null`，不会发布可用的
-非空 Lookup Source；当前实体适配器也没有固定候选 List Release 和 Lookup External Projection。
-直接查询不可用字段时返回 403
-`EMBED_OPERATION_NOT_ALLOWED`；历史或绕过发布器的可写 Lookup 快照在表单解析阶段以 503
-`EMBED_RUNTIME_UNAVAILABLE` Fail Closed。本 OpenAPI 不声明 200 成功响应；未来只有在强类型
-只读 Registry、固定候选 Release、数据范围和输出投影全部实现后才能扩展。
+架构验收必须包含“未来组件 canary”：在 Flow 原生 Registry 登记测试组件，不改任何
+`src/embed/**` 字段分支，即可在 iframe 中渲染并走原生权限/API；若必须修改 Embed
+渲染器才能出现，说明实现重新引入了双运行时，应阻断发布。
 
 ### 11.7 获取记录详情
 
-```http
-GET /api/embed/v1/runtime/records/{recordId}
-Authorization: Bearer <embed-session-token>
-```
-
-返回当前 View 可见字段、字段状态和可执行动作。记录不存在与当前 Flow 用户无权访问统一返回
-404 `EMBED_RESOURCE_NOT_FOUND`。
-
-当前 V1 动态实体尚无通用 `record_version`，因此 `recordVersion=null` 且不返回 ETag。未来只有
-第 16.4 节全链路完成后，非空版本才配套返回 `ETag: "rv-<version>"`。当前 Entity 表单 VIEW
-适配器没有对外动作来源，因而 `actions` 固定为空对象；不能根据内部表单按钮自行推导动作。
-
-```json
-{
-  "data": {
-    "record": {
-      "id": "2080000000000000001",
-      "recordVersion": null,
-      "values": {
-        "code": "WO-20260826-001",
-        "title": "设备维修",
-        "status": "PROCESSING"
-      },
-      "meta": {
-        "createdAt": "2026-08-25T08:20:00Z",
-        "updatedAt": "2026-08-26T08:20:00Z"
-      }
-    },
-    "fieldStates": {
-      "title": {
-        "visible": true,
-        "readOnly": true,
-        "required": true
-      }
-    },
-    "actions": {}
-  }
-}
-```
+FORM VIEW 使用上节原生详情端点，不再通过 Embed DTO 重画表单。记录不存在与映射 Flow 用户
+无权访问应保持原生安全语义，且不能借 Embed 探测越权记录。LIST 为选择回传保留自己的最小
+External Record DTO；该投影边界不得反向裁剪 FORM 页面。
 
 ### 11.8 创建记录
 
-**当前状态：V1 已实现。** 该接口是 V1 唯一开放的记录写入口；是否可调用仍取决于
-View Release、Grant、Flow 用户权限、表单字段策略和幂等校验的交集。
+原生表单收集完整发布态值并执行同一客户端校验、联动和按钮确认；最终 CREATE 暂保留：
 
 ```http
 POST /api/embed/v1/runtime/records
-Authorization: Bearer <embed-session-token>
-Idempotency-Key: partner-order-create-20260826-001
+Authorization: Bearer <opaque-embed-session-token>
+X-Flow-Embed-Protocol: 1
+Idempotency-Key: <stable-key-for-this-submit>
 Content-Type: application/json
 ```
 
-请求：
+该端点只承担 Session 固定目标校验、Context 强制值、幂等/fencing、最小 receipt 与
+`form.saved` Returnable 回投，不再按 Embed 字段类型白名单投影输入。服务端仍以固定
+Published Form 和映射用户重新执行字段权限、必填、唯一性、业务规则及保存/保存并发起权限。
+浏览器不能提交 entity、form、release、创建人、组织、权限、流程定义或 `startProcess`。
 
-```json
-{
-  "data": {
-    "title": "设备维修",
-    "description": "三号生产线设备异常"
-  },
-  "clientMutationId": "host-request-10001"
-}
-```
-
-浏览器只能提交 `fieldPolicy.writable` 中的字段。服务端忽略或拒绝未知字段，并在进入现有表单
-提交服务前注入 Launch Context 对应的强制字段。浏览器不能传实体、表单、Release、创建人、
-组织、权限、流程定义或内部运行时 Token。
-
-唯一性复用现有已发布表单提交语义，只保证**当前入口中适用且未忽略的已发布表单唯一规则**。
-没有唯一规则、规则被忽略或条件对当前数据不适用的其他写入口不共享该约束，因此不能把该机制
-表述为实体字段全局唯一；底层数据库或业务状态冲突仍统一映射为 409
-`EMBED_RECORD_CONFLICT`。
-
-成功返回 `201 Created`：
-
-```http
-Location: /api/embed/v1/runtime/records/2080000000000000001
-```
-
-```json
-{
-  "data": {
-    "receiptId": "eor_01K...",
-    "record": {
-      "id": "2080000000000000001",
-      "recordVersion": null,
-      "values": {
-        "code": "WO-20260826-001",
-        "title": "设备维修"
-      },
-      "meta": {
-        "createdAt": "2026-08-26T08:30:00Z"
-      }
-    },
-    "effects": [],
-    "clientMutationId": "host-request-10001"
-  }
-}
-```
-
-V1 的 `recordVersion` 固定为 `null` 且响应不返回 ETag，第三方也不能传入版本。未来
-`record_version`/ETag 契约只见第 11.9、16.4 节，不能作为当前接入依据。
-
-创建并发起流程不通过布尔参数绕过授权；V1 没有 `saveAndStart` 或通用动作接口。后续版本只有
-在强类型动作契约独立实现并重新发布 Capability 后才能开放。
+`actionKey` 只允许当前原生操作栏实际开放的 `save/saveAndStart`。同一
+Idempotency-Key 下切换动作或业务内容返回 409；重放只返回当前权限允许的最小回执，不会再次
+创建记录或启动流程。
 
 ### 11.9 更新记录
+### 11.9 更新记录
 
-> **后续目标契约，V1 不可用。** 当前版本不注册该 PATCH 路由，发布校验拒绝
+> **后续目标契约，V1 不可用。** 当前版本不注册该 PATCH 路由，Embed 配置保存校验拒绝
 > `RECORD_UPDATE`，Bootstrap/Schema 也不会投影编辑能力。以下请求/响应保留用于
 > `record_version` 全链路完成后的兼容设计，不能作为当前接入依据。
 
@@ -1979,80 +1568,30 @@ ETag: "rv-18"
 
 当前动态实体表没有通用 `record_version`，因此完成第 16.4 节的乐观锁建设前：
 
-- View 发布校验不得允许 `RECORD_UPDATE`；
+- Embed 配置保存校验不得允许 `RECORD_UPDATE`；
 - Bootstrap/Schema 不返回更新能力；
 - 当前版本不注册更新路由；未来注册后，在能力未开放时返回 403 `EMBED_OPERATION_NOT_ALLOWED`；
 - 不应先上线一个可能覆盖他人数据的临时实现。
 
 ### 11.10 执行动作
 
-> **后续目标契约，V1 不可用。** 当前版本不注册 Action 路由，发布校验同时拒绝
-> `ACTION_EXECUTE` 和 `PROCESS_START`；因此 `submit`、`saveAndStart` 等动作均不能由
-> Embed V1 调用。以下内容只定义未来启用前必须满足的接口边界。
+V1 不建立 `/api/embed/v1/runtime/actions/*` 或 Embed Action Registry。原生表单先调用
+`form-actions/resolve` 获取与 Flow 页面相同的按钮，再直接调用按钮本来使用的 Flow
+`ui-runtime` 端点。这样按钮名称、顺序、显隐、确认框、弹层、事件链和未来扩展都由 Flow
+发布运行态负责，Embed 不按 `actionKey/eventCode` 重写动作。
 
-```http
-POST /api/embed/v1/runtime/actions/{actionKey}
-Authorization: Bearer <embed-session-token>
-Idempotency-Key: partner-order-submit-2080000000000000001-v17
-Content-Type: application/json
-```
+iframe 页内动作授权必须同时满足：
 
-请求：
+1. 目标 Handler 已声明受控请求委托契约；
+2. TargetBinding 能把请求坐标固定到当前 Session 的 List/Form Release、依赖闭包和记录；
+3. 映射 Flow 用户通过原端点的 EndpointAuthorization、对象权限、DataScope 和业务规则；
+4. 未声明端点、坐标不匹配、任意脚本或任意 URL 一律默认拒绝。
 
-```json
-{
-  "recordId": "2080000000000000001",
-  "expectedRecordVersion": 17,
-  "input": {
-    "comment": "确认提交"
-  },
-  "confirmation": {
-    "confirmed": true
-  },
-  "clientMutationId": "host-request-10003"
-}
-```
-
-规则：
-
-1. `actionKey` 必须来自当前 View Release，且对应 Descriptor 的 `transport=ACTION_API`；不能
-   接受 `eventCode/serviceId/operationCode`。
-2. `recordId`、`data`、`selection` 和 `input` 是否允许由动作的
-   `recordMode/selectionMode/dataSchema/inputSchema` 决定；未声明的 Payload 字段必须拒绝，
-   不能静默忽略。
-3. 列表批量动作逐条执行数据范围校验，V1 建议选择上限 100。
-4. 需要记录版本的动作必须传 `expectedRecordVersion`；通用乐观锁未完成前不发布此类动作。
-5. `view/select` 是 iframe 内交互，不调用动作 API；普通 `save` 只走
-   `POST/PATCH /runtime/records`，避免两套保存契约。
-6. V1 动作 API 只映射显式强类型 Handler，例如 `saveAndStart/submit`；`saveAndStart` 可按
-   发布 Schema 接受 `data`，并在一个事务中保存和启动流程。
-7. 任意脚本、任意连接器、导出、删除和批量删除默认拒绝。
-
-同步成功：
-
-```json
-{
-  "data": {
-    "receiptId": "eor_01K...",
-    "action": {
-      "key": "submit",
-      "status": "COMPLETED"
-    },
-    "record": null,
-    "changedRecords": [
-      {
-        "recordId": "2080000000000000001"
-      }
-    ],
-    "effects": [],
-    "clientMutationId": "host-request-10003"
-  }
-}
-```
-
-V1 不开放异步动作，不返回 `202/asyncOperation`；动作必须在受控超时内同步完成。后续只有在
-增加受 Session/View 授权的 Operation Status API、持久化状态机和签名 Webhook 后，才能开放
-异步动作。postMessage 只用于当前页面交互提示，不是可靠结果通知。
+按钮解析与执行都不读取 View/Grant 的 `ACTION_EXECUTE`。该 Capability 只为未来宿主跨域直接
+执行动作预留，不能导致原生按钮“可见但点击 403”，也不能让第三方 Application 获得映射用户
+原本没有的按钮。
+Published Form 内建 `saveAndStart` 继续走第 11.8 节的专用创建事务，不等同于开放独立
+`PROCESS_START`。
 
 ### 11.11 心跳、查询会话与退出
 
@@ -2219,7 +1758,8 @@ iframe 的 `ready` 只携带非敏感信息。父页面必须以
 
 要求：
 
-- 单条消息默认最大 64 KiB；
+- 单条消息最大 256 KiB；字段字符串仍限 100,000 字符，并受消息总字节上限二次约束，
+  以支持经 Returnable 审核的富文本而不允许无界 Payload；
 - `messageId` 每个 channel 唯一，用于去重和诊断；
 - 命令使用 `requestId`，iframe 以 `ack` 或 `error` 回应；
 - 未知可选事件可忽略，未知命令必须返回 `UNSUPPORTED_MESSAGE_TYPE`；
@@ -2244,8 +1784,8 @@ Port、`protocol/channelId/childNonce/parentNonce/messageId` 和 Payload Schema�
 | `session.expired` | 已实现 | 会话过期或撤销 | `reason, relaunchRequired=true` |
 | `error` | 已实现 | 可展示/不可恢复错误 | `errorCode, message, traceId, recoverable` |
 | `navigation.request` | **Deferred** | SDK 只有预留 Schema，当前 iframe Bridge 不发送 | 预留 `target, recordId` |
-| `action.started/action.completed` | **Deferred** | 当前没有 Action Runtime 来源 | 仅 SDK 预留 Schema |
-| `close.requested` | **Deferred** | 当前 iframe Bridge 不发送 | 仅 SDK 预留 Schema |
+| `action.started/action.completed` | **Deferred** | 当前没有通用 Action Runtime 来源 | 仅 SDK 预留 Schema；内建保存仍以 `form.saved` 完成 |
+| `close.requested` | 已实现 | 直接 FORM 的 Published close/取消按钮请求宿主关闭 | `reason`；宿主必须 `await widget.destroy()` 完成 Logout 后才能重新 Launch |
 
 `values` 只包含 Returnable 字段；postMessage 不是可靠业务消息总线，浏览器关闭时事件可能丢失。
 当前 LIST→CREATE/VIEW→BACK 是 iframe 内部状态导航，不向宿主发送 `navigation.request`，也不新增
@@ -2284,29 +1824,26 @@ Origin/nonce 握手；宿主仍需响应 `ready` 并证明自己是登记 Origin
 
 ## 13. 全流程对接时序
 
-### 13.1 管理配置与发布
+### 13.1 管理配置保存
 
 ```mermaid
 sequenceDiagram
     participant A as Flow 管理员
     participant M as Embed 管理 API
-    participant L as 列表/表单发布服务
+    participant L as 列表/表单 ACTIVE 解析服务
     participant D as 数据库
     participant S as 系统审计
 
-    A->>M: 创建 Embed View 草稿
-    M->>D: 保存 draft_config + lock_version
+    A->>M: 创建 Embed View
+    M->>D: 保存配置 + lock_version
     A->>M: 配置 Provider、身份绑定、Grant、Origin
     M->>D: 保存安全配置
-    A->>M: validate(expectedVersion)
-    M->>L: 解析实体、列表、表单及 FOLLOW_ACTIVE/PINNED Release
-    L-->>M: 发布快照与字段/动作能力
-    M-->>A: violations / warnings
-    A->>M: publish(expectedVersion)
-    M->>L: 事务内重新解析和校验
-    M->>D: 写 immutable Embed View Release
-    M->>S: 记录发布审计
-    M-->>A: releaseId + revision + configHash
+    A->>M: save(expectedVersion, config)
+    M->>L: 同步校验稳定资源引用及当前 ACTIVE 可解析性
+    L-->>M: ACTIVE 目标、Context/Bridge 策略或 violations
+    M->>D: CAS 保存配置；首次有效保存启用
+    M->>S: 记录配置变更审计
+    M-->>A: 当前配置 + version
 ```
 
 配置顺序建议：
@@ -2314,9 +1851,9 @@ sequenceDiagram
 1. 创建/确认现有 Integration Application，并授予 `embed.launch` Scope；
 2. 创建 Identity Provider；
 3. 批量或逐个建立外部人员到 Flow 用户的精确绑定；
-4. 创建 Embed View，选择已发布列表和表单；
-5. 配置字段、动作、Context、返回字段和 UI 策略；
-6. 校验并发布 View Release；
+4. 创建 Embed View：LIST 只选择实体和该实体下当前有 ACTIVE 版本的列表；FORM 选择目标表单；
+5. 配置直接入口、Bridge、Context、Returnable 和 UI 策略；不配置页内字段、组件或动作白名单；
+6. 保存 View 配置，服务端同步校验；
 7. 给 Application 配置 Grant 和精确 Origin；
 8. 使用测试用户完成联调，通过后启用生产 Grant。
 
@@ -2348,13 +1885,12 @@ sequenceDiagram
     P->>F: MessageChannel 传递一次性 code
     F->>R: exchange
     R-->>F: 受限 Embed Session Token
-    F->>R: bootstrap/schema/query
+    F->>R: bootstrap；LIST/FORM 调原生 API
     R->>R: 恢复 EmbedContext
     R->>R: 设置 UserContext(flowUserId)
-    R->>E: 调用现有运行态
+    R->>E: 调用 Flow 原生 LIST/FORM 运行态
     E-->>R: 按 Flow 用户权限和数据范围返回
-    R->>R: 再执行 View 字段/动作投影
-    R-->>F: 外部 DTO
+    R-->>F: 原生 LIST/FORM 响应；仅 Bridge 事件另做 Returnable 过滤
 ```
 
 这回答了“iframe 启动后如何对应 Flow 用户”：映射在第三方后端创建 Launch 时已经完成，Session
@@ -2363,16 +1899,19 @@ Flow 权限、组织、数据范围和行级动作继续生效。宿主前端没
 
 ### 13.3 列表进入表单
 
-1. iframe 调用 Bootstrap 和 Schema。
-2. 列表查询由服务端注入 View 固定过滤、Context 和 Flow 数据范围。
-3. 用户点击 Schema 中 `transport=LOCAL_FORM` 的“查看”或“新建”时，前端只在本地选择
-   `VIEW + 已投影行 recordId` 或 `CREATE`；V1 没有 EDIT。
-4. Facade 以 Session 中的 `RECORD_VIEW/RECORD_CREATE`、entryModes 和固定 List Release 复验；
-   VIEW 同时执行当前 Flow 用户的数据范围与行级查看能力，不存在/无权统一 404。
-5. Facade 用 Session 固定的 `formReleaseId/formReleaseVersion` 调用表单解析服务，浏览器不传这些坐标。
-6. 表单字段状态由已发布表单联动规则、Flow 权限和 View 字段策略求交。
+1. iframe 调用 Bootstrap，`NativeEmbeddedListPage` 挂载原生 `EntityDataList`。
+2. 列表查询、筛选、分页、列渲染、Context 和 DataScope 沿用 Flow 原生服务。
+3. 用户点击原生“查看”“新建”或“编辑”按钮时，原生列表解析固定依赖闭包中的目标表单；
+   不读取 Embed Schema、动作投影或组件白名单。
+4. Session 服务校验固定 List/Form Release、记录与依赖闭包；页内导航不要求
+   `RECORD_VIEW/RECORD_CREATE` 或 entryModes，能否操作完全由映射用户原生权限与 DataScope 决定。
+5. Shell 切换到 `NativeEmbeddedFormPage`；页面从 Bootstrap 取得固定
+   `formReleaseId/formReleaseVersion/releaseResolutionToken`，宿主和第三方请求不传这些坐标。
+6. 原生 `EntityDataFormDialog` / `EntityApprovalDialog` 通过请求委托调用 Flow 原生 API；字段、
+   弹层、按钮与状态由固定 Form Release、映射 Flow 用户权限、DataScope、记录/流程状态和 Context
+   共同决定。Embed 不存在 EXPLICIT 字段策略，`returnable` 仅约束跨域回传。
 7. `BACK` 恢复先前列表查询、分页和选择状态并保持同一 Session；不会发送宿主导航事件，切换到
-   View 未发布的其他实体或表单会被拒绝。
+   Session 依赖闭包之外的实体或表单会被拒绝。
 
 ### 13.4 创建，以及后续更新/动作
 
@@ -2389,7 +1928,7 @@ sequenceDiagram
     participant A as 审计 Outbox
 
     F->>R: 写请求 + Idempotency-Key
-    R->>R: 校验 Session、Capability、字段和动作
+    R->>R: 校验 Session 固定目标与幂等边界
     R->>I: claim(application + actor + view + operation + key)
     alt 首次获得执行权
         R->>P: 以 Flow UserContext 校验表单和数据范围
@@ -2428,7 +1967,7 @@ sequenceDiagram
 | 禁用 Identity Provider/Binding | 拒绝 | 兑换拒绝 | 下次请求拒绝 |
 | 禁用/删除 Flow 用户 | 拒绝 | 兑换拒绝 | 下次请求拒绝 |
 | 撤销单 Session | 不影响 | 不影响 | 该 Session 立即拒绝 |
-| 发布新 Release | 使用新版本 | 保持原快照 | 保持原快照 |
+| Flow 目标资源激活新版本 | 新 Launch 解析新版本 | 保持原快照 | 保持原快照 |
 
 认证过滤器每次请求检查 Session 及关联安全对象的状态/版本，因此安全停用不依赖 Token 自然
 过期。可对只读高频查询使用最长 5 秒本地缓存，但停用事件必须跨 Pod 主动失效缓存；写请求
@@ -2490,14 +2029,14 @@ Launch AAD 固定为 `embed-launch-v1|applicationId|launchId`，Session AAD 固�
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | varchar(64) PK | View ID |
-| `view_key` | varchar(100) | 外部稳定 Key，全局唯一，发布后不可改 |
+| `view_key` | varchar(100) | 外部稳定 Key，全局唯一，创建后不可改 |
 | `name` | varchar(128) | 展示名称 |
 | `description` | varchar(500) | 说明 |
 | `surface_type` | varchar(16) | `LIST/FORM` |
 | `status` | varchar(16) | `DRAFT/ACTIVE/DISABLED/RETIRED` |
-| `draft_config_json` | longtext | 当前草稿完整配置 |
-| `draft_revision` | bigint | 草稿递增版本 |
-| `published_release_id` | varchar(64) null | 当前发布 Release |
+| `draft_config_json` | longtext | 兼容字段名；实际保存当前有效配置，不代表待发布草稿 |
+| `draft_revision` | bigint | 兼容字段名；配置 CAS 递增版本 |
+| `published_release_id` | varchar(64) null | 兼容内部指针；不向管理端提供发布、选版或历史能力 |
 | `lock_version` | bigint | 管理操作乐观锁 |
 | `security_version` | bigint | 启停/退役等使既有 Session 失效的安全版本 |
 | `create_by/create_time/update_by/update_time` | 现有审计类型 | 审计字段 |
@@ -2510,13 +2049,17 @@ Launch AAD 固定为 `embed-launch-v1|applicationId|launchId`，Session AAD 固�
 - `lock_version > 0`；
 - `RETIRED` 不能回退到其他状态。
 
-### 14.4 `embed_view_release`
+### 14.4 `embed_view_release`（内部运行快照兼容表）
+
+该表名与部分审计列沿用早期迁移，属于内部数据库兼容实现，不是 Embed 配置的发布对象、
+版本历史或管理员可选版本。新 Launch 按保存的稳定资源引用解析最新 ACTIVE 后，可将解析结果
+物化到此表并由 Session 固定引用。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | varchar(64) PK | Release ID |
 | `view_id` | varchar(64) FK | 所属 View |
-| `revision` | bigint | View 内递增发布号 |
+| `revision` | bigint | 内部快照序号，不是产品发布版本 |
 | `surface_type` | varchar(16) | 快照目标类型 |
 | `entity_code` | varchar(100) | 固定实体 |
 | `list_key` | varchar(100) null | LIST 目标 |
@@ -2525,16 +2068,16 @@ Launch AAD 固定为 `embed-launch-v1|applicationId|launchId`，Session AAD 固�
 | `form_release_id/version` | varchar/bigint null | 固定表单发布快照 |
 | `entry_modes_json` | longtext | 允许入口 |
 | `capabilities_json` | longtext | 能力上限 |
-| `field_policy_json` | longtext | 字段可见、查询、写入、回传策略 |
-| `action_policy_json` | longtext | 动作白名单和输入 Schema |
+| `field_policy_json` | longtext | 兼容字段；canonical 仅允许 `FLOW_PUBLISHED` 与 Bridge Returnable，不保存页面字段投影 |
+| `action_policy_json` | longtext | 历史兼容字段；canonical 必须为空，不得作为页内动作白名单 |
 | `context_schema_json` | longtext | Launch Context Schema |
 | `context_bindings_json` | longtext | 固定过滤/强制字段映射 |
 | `ui_config_json` | longtext | 受控 UI 设置 |
 | `config_json` | longtext | Canonical 完整快照 |
 | `config_hash` | char(64) | Canonical JSON SHA-256 |
-| `release_note/published_by/published_at` | 审计类型 | 发布信息 |
+| `release_note/published_by/published_at` | 审计类型 | 兼容审计列；不得暴露为产品版本管理能力 |
 
-`UNIQUE(view_id, revision)`；发布后除生命周期审计字段外不可更新。目标类型、List/Form 字段组合
+`UNIQUE(view_id, revision)`；Session 引用后快照不可更新。目标类型、List/Form 字段组合
 用 CHECK 和应用层同时校验。
 
 ### 14.5 `embed_application_grant` 与 `embed_allowed_origin`
@@ -2549,7 +2092,7 @@ Grant 主要字段：
 | `identity_provider_id` | 本 Grant 使用的人员身份来源 |
 | `status` | `ACTIVE/DISABLED/REVOKED` |
 | `trusted_subject_assertion` | 是否允许可信外部 ID |
-| `revision_mode/pinned_revision` | `FOLLOW_ACTIVE/PINNED` 与固定版本 |
+| `revision_mode/pinned_revision` | 兼容列；产品不提供版本策略，写入统一的当前 ACTIVE 语义且不得由调用方选择 |
 | `capability_ceiling_json` | 应用侧能力上限 |
 | `max_active_sessions_per_user` | 单人会话数 |
 | `max_session_seconds` | 绝对时长 |
@@ -2700,8 +2243,8 @@ Provider 可复用，但 Grant 必须显式引用。
 `slot_released` 使用 `tinyint NOT NULL DEFAULT 0`，并以 CHECK 保证 ACTIVE 时为 0、值为 0 时
 `slot_released_at IS NULL`、值为 1 时 `slot_released_at IS NOT NULL`。
 
-`lock_version` 只解决管理端并发编辑，`security_version` 用于撤销，二者不能混用。View 发布
-新 Release 不递增 `view_security_version`，因此旧 Session 仍固定原快照；View 启停/退役、
+`lock_version` 只解决管理端并发编辑，`security_version` 用于撤销，二者不能混用。保存配置或
+Flow 目标激活新版本不递增 `view_security_version`，因此旧 Session 仍固定原快照；View 启停/退役、
 Grant 的 Origin/Provider/Capability/状态变化、Provider 信任配置变化和 Binding 映射变化必须
 递增相应安全版本。Integration Application V1 可使用现有 `version`，这意味着任何应用配置
 变更都会使既有 Embed Session 失效，行为保守但明确。
@@ -2791,11 +2334,10 @@ V1 不在 `response_body` 保存表单值，也不需要在该明文 JSON 内嵌
 ```mermaid
 stateDiagram-v2
     state "Embed View" as V {
-        [*] --> DRAFT
-        DRAFT --> ACTIVE: publish
+        [*] --> ACTIVE: first valid save
+        ACTIVE --> ACTIVE: valid save (new Launch only)
         ACTIVE --> DISABLED: disable
         DISABLED --> ACTIVE: enable
-        DRAFT --> RETIRED: retire
         ACTIVE --> RETIRED: retire
         DISABLED --> RETIRED: retire
     }
@@ -2877,13 +2419,13 @@ FK 方向、兑换插入顺序以及 Session/Launch 分批清理顺序。
 
 | 输入来源 | 信任程度 | 处理 |
 | --- | --- | --- |
-| Flow 管理员发布配置 | 受权限控制，但仍需校验 | 发布时解析并生成不可变快照 |
+| Flow 管理员保存配置 | 受权限控制，但仍需校验 | 保存稳定资源引用；每次新 Launch 解析最新 ACTIVE 并生成 Session 快照 |
 | 第三方机器 Token | 只证明应用 | 不能推导人员身份或 Flow 权限 |
 | 已验签人员断言 | 只证明外部 Subject | 必须再查 Identity Binding |
 | 第三方后端 Context | 有条件可信 | 仅限 Schema 字段，只能收窄范围 |
 | 宿主浏览器/postMessage | 不可信 | Origin、source、nonce、channel、Schema 全校验 |
 | iframe Runtime 请求 | 不可信 | 目标和能力全部从 Session 恢复 |
-| Flow 已发布列表/表单 | 业务可信输入 | 对外仍需字段、动作和组件投影 |
+| Flow 已发布列表/表单 | 业务可信输入 | LIST 做最小回传投影；FORM 走原生发布/权限链，不把配置交给宿主 |
 
 最终授权必须同时满足：
 
@@ -2891,7 +2433,7 @@ FK 方向、兑换插入顺序以及 Session/Launch 分批清理顺序。
 有效应用
 AND 有效 Grant/Origin/Provider/Binding
 AND 有效 Flow 用户
-AND 有效 Embed View Release/Capability
+AND 有效 Embed 配置运行快照/Capability
 AND Flow 功能权限
 AND Flow 数据范围与行级能力
 AND 记录状态/表单规则
@@ -2923,15 +2465,22 @@ AND 请求幂等与并发条件
    禁止为方便使用宽泛 `*`。
 7. Embed 页面不能在顶层窗口中静默运行敏感动作；检测 `window.top===window.self` 时展示安全
    错误或只允许经产品批准的顶层调试模式。
+8. Flow 原生 Element Plus Popper/Dialog 会写入动态定位样式，因此 Entry 使用
+   `style-src-elem 'self'; style-src-attr 'unsafe-inline'`；`script-src 'self'` 和
+   `script-src-attr 'none'` 仍保持严格，不能扩大为 inline script 或 `unsafe-eval`。样式属性能力
+   只服务于 Flow 自有组件，第三方仍无法通过 Launch/Context/postMessage 注入 HTML。
 
 ### 15.4 XSS 与组件扩展
 
-- 表单富文本按现有可信 Sanitizer 再过滤；普通文本默认转义。
-- V1 不允许运行发布配置中的任意 JavaScript、`eval`、动态模块 URL 或合作方远程组件。
-- V1 强制拒绝全部自定义表单、列表、节点、单元格和关联内容组件；现有注册表尚无 Embed
-  安全标记。后续若开放，必须新增跨注册表的 `embedSafe=true` 元数据、输入/输出审计和
-  运行时强制校验。
-- 外部 Schema 只包含声明式数据，不暴露内部 Provider、模板表达式或服务调用配置。
+- FORM 富文本、HTML 清洗、URL/图片策略和普通文本转义复用 Flow 原生读写链，不能在 Embed
+  端另建一个内容子集后产生不同显示或保存结果。
+- 不允许运行合作方经 Launch、query、Context 或 postMessage 注入的 JavaScript、`eval`、动态模块
+  URL、HTML 或远程组件；第三方只能使用管理员已保存且 Grant 已授权的 View。
+- Flow 平台自己登记的内建/自定义字段组件继续通过同一 Registry 与发布治理运行，Embed 不再
+  维护第二份 `embedSafe` 字段白名单。组件安全审查应在 Flow 注册/发布边界完成，一次生效于
+  原生运行页和 iframe；新增字段组件不需要修改 Embed。
+- LIST/FORM 页面不下发 External 字段/列 Schema；只有 Bridge 事件生成经过 Returnable 过滤的
+  最小 DTO，不暴露内部 Provider、模板表达式或服务调用配置。
 - postMessage Payload 反序列化后拒绝 `__proto__`、`constructor`、`prototype` 等危险键。
 
 ### 15.5 数据越权与侧信道
@@ -2998,8 +2547,9 @@ Entity/Process Mapper、Spring MVC Request 或前端 DTO，外部模型通过 An
 8. 使用 Maven 依赖检查/ArchUnit 固化上述方向，禁止 `workflow-embed` 反向依赖
    `workflow-open-api`、`workflow-entity` 或 `workflow-process` 的基础设施包。
 
-下面是边界契约的逻辑形态。当前 V1 只实现列表读取、表单解析、记录详情和记录创建；
-`update/execute` 属于第 16.4 节完成后的后续契约，不是当前可注入或可调用能力：
+下面是边界契约的逻辑形态。LIST/FORM 都只需要读取 Session 固定目标/依赖闭包并授权原生请求，
+不定义字段、列、组件、datasource 或动作 DTO。`update/execute` 属于第 16.4 节完成后的宿主
+Bridge 契约，不是当前可注入或可调用能力：
 
 ```java
 public interface EmbedLaunchIssuePort {
@@ -3007,18 +2557,11 @@ public interface EmbedLaunchIssuePort {
                             EmbedLaunchCommand command);
 }
 
-public interface EmbedListRuntimePort {
-    EmbedListSchema resolveSchema(EmbedRuntimeActor actor,
-                                  EmbedRuntimeTarget target);
-    EmbedPage query(EmbedRuntimeActor actor,
-                    EmbedRuntimeTarget target,
-                    EmbedListQuery query);
-}
-
-public interface EmbedFormRuntimePort {
-    EmbedFormView resolve(EmbedRuntimeActor actor,
-                          EmbedRuntimeTarget target,
-                          EmbedFormCommand command);
+public interface EmbedNativeTargetRequestPort {
+    EmbedNativeTarget resolveTarget(EmbedRuntimeActor actor);
+    void authorizeNativeRequest(EmbedRuntimeActor actor,
+                                EmbedNativeTarget target,
+                                NativeRequestDescriptor request);
 }
 
 public interface EmbedRecordRuntimePort {
@@ -3051,7 +2594,7 @@ Launch、Exchange、授权求交和重放 Use Case 必须可用 In-Memory Port �
 | `EmbedLaunchService` | embed | Grant、Origin、断言、用户映射、Release 解析、签发 |
 | `ExternalSubjectVerificationService` | embed | V1 JWT/可信 ID 校验与防重放；OIDC 为后续扩展 |
 | `ExternalIdentityBindingService` | embed | 精确映射 Flow 用户 |
-| `EmbedViewAdministrationService` | embed | 草稿、校验、发布、状态 |
+| `EmbedViewAdministrationService` | embed | 配置 CAS 保存、同步校验、状态 |
 | `EmbedGrantAdministrationService` | embed | 应用授权和 Origin |
 | `EmbedLaunchExchangeController` | embed | 一次性交换 |
 | `EmbedSessionService` | embed | Token、超时、撤销、心跳 |
@@ -3154,24 +2697,22 @@ Expand 迁移/Schema Worker
 -> 所有表补列并核验
 -> 部署兼容读写代码
 -> 内部前端开始传版本
--> 启用 Embed RECORD_UPDATE 发布校验
+-> 启用 Embed RECORD_UPDATE 直接入口/Bridge 保存校验
 -> 后续版本收紧所有写入口
 ```
 
 ### 16.5 运行态 Adapter 与复用边界
 
-列表 Adapter：
+LIST/FORM 目标与请求委托：
 
-- 新增仅供服务端 Embed Adapter 调用的 `EmbedReleaseResolver`，基于不可变
-  `embed_view_release` 解析固定 Entity/List/Form Release；当前普通解析器在没有签名上下文
-  Token 时只允许 ACTIVE Release，不能通过伪造普通 UI Token 来加载 PINNED 版本；
-- 用 Resolver 得到的固定目标调用
-  `EntityListPublishedRuntimeService/EntityListRuntimeService` 的受信内部入口；
-- 服务端构造 `scene=EMBEDDED`、固定 Filter 和 Context；
-- 不把多个条件简单 `Map.putAll`。新增 `EmbedFilterPlan`/谓词 AST，按
-  `View Fixed AND Context AND Data Scope AND Published List AND Client Filter` 求交；同字段
-  等值冲突返回 match-none，范围取交集，不支持安全求交的组合直接拒绝；
-- 把允许的外部 Filter 编译为参数化查询，不透传 Release/Context Token；
+- 每次 Launch 由服务端从配置的稳定资源引用解析当前最新 ACTIVE，并把 exact List/Form Release
+  及 open-list 依赖闭包固定到 Session 不可变运行快照；浏览器不能传入或替换这些坐标；
+- `NativeEmbeddedListPage` / `NativeEmbeddedFormPage` 直接调用
+  `EntityListPublishedRuntimeService`、原生表单与实体服务，不经过字段、列、动作或 datasource
+  投影 Adapter；
+- 请求委托恢复映射 `UserContext`，继续执行原生 EndpointAuthorization、对象授权、列表规则、
+  DataScope 和业务校验；Embed Context 只能增加固定目标与 Context 条件，不能扩大权限；
+- Returnable 投影只在 `selection.changed` / `form.saved` Bridge 边界执行，不得用于裁剪页面数据。
 - 当前列表 `LIST_LOAD` 通用 UI Event 和动态 Provider 在 Embed V1 中全部禁用；后续若建设
   Provider Allowlist，也只能执行强类型只读来源，不能依靠响应投影弥补已经发生的任意内部 Event；
 - 调用后用 `EmbedResponseProjector` 只输出公开列和行级动作。
@@ -3182,10 +2723,11 @@ Expand 迁移/Schema Worker
   `EntityFormResolveService`、`EntityFormRuntimeAdapter` 的受信内部入口；
 - 使用 `PublishedFormSubmissionService` 完成默认值、校验和保存；
 - 拒绝设计态表单和动态传入 Form ID；
-- V1 发布和运行时均拒绝自定义 UI Event，不存在“白名单动作间接触发任意 Event”的回退路径。
+- 自定义 UI Event 只有在 View/Grant 含 `ACTION_EXECUTE`、目标 Handler 显式声明相同能力、
+  TargetBinding 匹配固定 Form Release 且普通 Flow 权限链通过时才能执行；中央策略不按 eventCode 放行。
 
-当前实现通过受信内部入口解析 Session 固定的 PINNED Release；解析器或精确版本不可用时必须
-503 Fail Closed，不允许降级为 `FOLLOW_ACTIVE`，也不允许把固定 Release ID 直接塞给现有普通接口。
+当前实现通过受信内部入口解析 Session 固定的精确 Release；解析器或精确版本不可用时必须
+503 Fail Closed，不允许回退到当时最新 ACTIVE，也不允许把固定 Release ID 直接塞给现有普通接口。
 
 记录/动作 Adapter：
 
@@ -3220,7 +2762,7 @@ Output Policy 投影保证，而不是靠把短期发布坐标混入幂等身份
 `actorScopeDigest` 使用域分离的
 `SHA-256("embed-actor-v1" + applicationId + providerId + bindingId + flowUserId)` 生成；输入都是
 Flow 内部稳定 ID，不含外部 Subject/用户名等 PII，也不受 Session 或本地 HMAC 密钥轮换影响。
-Session ID、Launch ID、View Release ID、Trace ID、Token 和时间戳都不得进入请求哈希；否则
+Session ID、Launch ID、配置运行快照 ID、Trace ID、Token 和时间戳都不得进入请求哈希；否则
 页面刷新/重新 Launch 后无法用原键查询首次结果。Release 变化不允许再次执行业务，而是在
 当前 Release 仍授权该操作时返回并重新投影首次最小回执。
 `EmbedIdempotencyCoordinator` 把上述稳定范围与已通过 External Schema 校验的 Command 包装后
@@ -3269,7 +2811,7 @@ API 层幂等记录。可复用现有 `EntityMutationReceiptService` 的语义�
 
 ### 16.7 缓存和撤销
 
-- View Release 是不可变对象，可按 Release ID 长缓存。
+- Session 配置运行快照是不可变对象，可按内部快照 ID 缓存到 Session 到期。
 - Provider JWKS 按 `kid` 缓存，未知 `kid` 触发一次受控刷新，防止刷新风暴。
 - **后续能力**若为动态选项/引用候选增加缓存，Key 必须包含
   `flowUserId + viewReleaseId + contextDigest + fieldCode + dependencyHash`，不得跨用户共享未授权
@@ -3302,15 +2844,15 @@ API 层幂等记录。可复用现有 `EntityMutationReceiptService` 的语义�
 
 当前已新增 `docs/api/embed-v1.yaml`（OpenAPI 3.1），包含：
 
-- OAuth/Launch、Entry HTML、Exchange、Session、Bootstrap、List Schema/Query、Form、CREATE 联动重算、
-  静态 Options、Fail-Closed Lookup、Record View/Create；
+- OAuth/Launch、Entry HTML、Exchange、Session、Bootstrap、LIST Schema/Query、原生 FORM 固定目标
+  与请求委托、Record Create receipt；
 - Bearer Security Scheme 的机器 Token 与 Embed Token 区分；
 - 所有 DTO、枚举、长度、格式、状态码、错误码和示例；
 - `Idempotency-Key`、`Retry-After`、`Idempotent-Replay`，以及 V1 固定
   `recordVersion=null`、不返回 ETag 的边界；
 - `flow-embed/1` 已实现握手/事件，以及 `navigation.request` 等 SDK 预留事件的 Deferred 标记；
-- 未注册的 Update/Action 路由不伪造进 `paths`；已注册的 Lookup 查询路由保留在 `paths` 但不声明
-  200，动态 Option/Lookup Provider 只在扩展元数据中标为 Deferred/Fail Closed；
+- 未注册的旧 `/runtime/form*` 与 Update 路由不伪造进 `paths`；FORM 原生端点声明是 Flow
+  内部安全边界，不允许宿主从 OpenAPI 任意选择目标 URL；
 - 兼容性说明和 deprecation 规则。
 
 CI 已执行 OpenAPI 解析、Breaking Change、Controller/DTO/响应实例与关键 Header 契约检查；
@@ -3346,75 +2888,61 @@ SDK 公共类型由本文件的封闭协议 Schema 确定性生成，`test:embed
    `embedRuntime` 后直接放行并 `return`，再执行任何 `restoreAuthSession`/登录跳转逻辑；
 3. 增加 E2E，确认无普通 Flow Cookie/Token 时入口绝不访问 `/auth/refresh`、不跳 `/login`。
 
-### 17.2 独立请求客户端
+### 17.2 同一请求客户端的 Embed Session 委托
 
-新增 `embedRequest`，与现有 `shared/request` 分离：
+Exchange/Bootstrap 使用不带 Cookie、Token 仅驻留内存的 `embedRequest`。LIST/FORM
+为了运行原生组件树，复用 Flow `shared/request`，但在 `NativeEmbeddedListPage` /
+`NativeEmbeddedFormPage` 的受控
+生命周期内安装 delegated-auth hook：
 
-| 行为 | 普通客户端 | Embed 客户端 |
+| 行为 | 普通 Flow 页面 | Native Embed LIST/FORM |
 | --- | --- | --- |
-| Token | 普通 Flow JWT | 内存 Embed Token |
-| Cookie | `withCredentials=true` | 固定 `fetch(..., {credentials: 'omit'})` |
-| 401 | 调 `/auth/refresh` 或去登录 | 清空内存并通知宿主重新 Launch |
-| Base URL | 后台 API | `/api/embed/v1` |
-| 可信参数 | 内部页面提供 | 只来自 Bootstrap/Session |
-| 存储 | 现有 Session 策略 | 禁止 local/session storage |
+| Token | 普通 Flow JWT | 内存 opaque Embed Session Token |
+| Header | 普通 Authorization | `Authorization: Bearer <Embed token>` + `X-Flow-Embed-Protocol: 1` |
+| Cookie | 现有登录策略 | 不依赖 Cookie，不触发 Refresh |
+| 401 | 普通刷新/登录流程 | 清理 Embed Session 并通知宿主重新 Launch |
+| 目标 | 当前登录用户可访问的原生 API | 仅显式声明安全契约的端点，且请求坐标必须命中 Session 固定目标 |
+| 存储 | 现有 Session 策略 | Embed Token 禁止 local/session storage |
 
-Embed 客户端不得用 Axios 默认同源行为代替 `credentials: 'omit'`。Embed 组件不得直接 import
-普通 `request`；建议通过 ESLint Boundary/路径 Alias 和单元测试约束。服务端 Embed Filter
-忽略 Cookie 和普通 Flow JWT，Embed 响应不得设置登录/Refresh Cookie。
+hook 必须在原生 LIST/FORM 挂载前设置，并在卸载/销毁时恢复，防止污染同页面其它请求。它只替换
+认证与失效处理，不改写 API 响应、字段 Schema、组件 Props 或权限结果。架构测试应断言原生
+组件仍导入同一个 `shared/request`，且 delegated hook 存在；不得为每个原生 API 再写一份
+Embed wrapper。
 
-### 17.3 组件拆分与复用
+### 17.3 LIST/FORM 单运行时复用
 
 建议目录：
 
 ```text
 workflow-web/src/embed/
   EmbedShell.vue
-  EmbedRuntimeHost.vue
-  api/embedRequest.ts
-  api/runtimeApi.ts
-  bridge/embedBridge.ts
-  session/embedSessionStore.ts
-  runtime/EmbedListRuntime.vue
-  runtime/EmbedFormRuntime.vue
+  api/embedRequest.js
+  bridge/embedBridge.js
+  session/embedSession.js
+  runtime/NativeEmbeddedListPage.vue
+  runtime/NativeEmbeddedFormPage.vue
   runtime/EmbedErrorState.vue
-  projection/embedSchemaTypes.ts
-
-workflow-web/packages/embed-sdk/
-  src/index.ts
-  src/bridge.ts
-  src/types.ts
 ```
+
 
 复用策略：
 
-| 现有前端能力 | 处理 |
+| 能力 | 当前处理 |
 | --- | --- |
-| `EntityDataList.vue` 的 embedded 布局和展示开关 | 抽取展示状态/容器逻辑，不原样复用其 API 和路由依赖 |
-| `EntityDataSearchForm.vue` | 抽取纯展示能力，通过 `ExternalSchemaAdapter` 映射字段 |
-| `EntityDataTable.vue`、选择 composable | 只复用安全的纯展示/选择部分；不得直接接 External DTO |
-| `EntityDataFormFields.vue` | 复用字段渲染，注入 Embed data source/runtime |
-| `FormPreviewLinkage.vue` | 复用已审核声明式联动 |
-| `FormActionBar.vue` | 复用展示，点击只调用 Embed actionKey |
-| `EntityDataFormDialog.vue` | 不直接复用；它绑定 Element Dialog 和内部 API，应抽取 Form Content |
-| 普通路由/菜单/权限 Store | 不使用 |
-| 通用 UI Event/远程组件 | V1 不使用 |
+| LIST 展示/选择 | `NativeEmbeddedListPage` 直接挂载 `EntityDataList`；仅 selection.changed 在 Bridge 边界做最小回传 |
+| FORM 容器 | `NativeEmbeddedFormPage` 直接挂载 `EntityDataFormDialog` / `EntityApprovalDialog` |
+| 字段与布局 | 使用 Flow 完整 form node/field/custom component Registry；无 Embed componentMap |
+| 日期、下拉与弹窗 | 使用原生 Element Plus/平台组件及 Teleport/Popper；无 native input 或自制 popup 分支 |
+| 联动、数据源、唯一预检 | 使用原生组件与原生 API；认证由 delegated hook 接管 |
+| 操作栏与权限 | 使用原生 `form-actions/resolve`，映射用户的权限/DataScope/状态规则原样执行 |
+| 保存结果 | 保留 Embed 幂等 receipt 与 Returnable postMessage 边界 |
+| 菜单与后台 Layout | 不挂载；iframe 只呈现原生业务内容 |
+| 宿主通信 | Shell/Bridge 继续负责 `initialized/resize/form.saved/close.requested` |
 
-现有查询组件使用 `fieldCode/fieldName/fieldType/queryType`，External Schema 使用
-`code/label/type/operator`；现有表格读取扁平字段或 `row.data`，External Record 使用
-`row.values`。因此必须新增：
-
-- `ExternalSchemaAdapter`：只做明确枚举的字段/列/查询类型映射；
-- `ExternalRecordAdapter`：把已投影 `values` 转为展示 ViewModel，不补回任何未公开字段；
-- `EmbedActionAdapter`：只保留 External DTO 中已授权的 `actionKey`；
-- `EmbedCreateEvaluationRuntime`：只调用第 11.6.1 节的 CREATE 只读重算接口，使用取消/序号避免
-  旧响应覆盖新草稿，不在前端执行内部联动表达式；
-- `EmbedDataSourceRuntime`：V1 只调用第 11.6.2 节的大型静态 Options Facade，必须注入且禁止
-  回退到内部 `serviceId/operationCode` 或普通字典接口；第 11.6.3 节 Lookup 在受支持发布链不可达；
-- 或新建更小的 `EmbedDataTable`，避免继承现有表格中的自定义动作、关联内容、子列表入口。
-
-这不是把 External DTO 原样传给现有组件的薄包装。Adapter 必须有“未知类型 Fail Closed”和
-敏感字段不出现的单元测试。
+禁止存在 LIST/FORM 专用 `EmbedListRuntime`、`normalizeEmbedForm`、`TrustedPublishedFormRuntime`、
+`TrustedFormFieldRenderer`、`cspSafe` 或 Vite Registry Stub/Alias。Vite Embed 构建必须
+打包原生表单完整传递依赖；若普通 Flow 新注册一个字段组件，Embed 构建应通过同一 Registry
+自动包含，不增加任何 Embed switch/case。
 
 ### 17.4 页面状态机
 
@@ -3449,7 +2977,7 @@ LOADING_ENTRY
 
 ```text
 admin.flow.example.com   管理后台，frame-ancestors 'none'
-embed.flow.example.com   Embed Shell + 同源 /api/embed/v1 反向代理
+embed.flow.example.com   Embed Shell + 同源 Embed 控制面/原生委托 API 反向代理
 api.flow.example.com     可选的服务端 Open API/OAuth
 ```
 
@@ -3518,19 +3046,19 @@ SDK 默认创建：
 | `GET /api/embed/v1/runtime/bootstrap` | V1 已实现 | Embed Bearer | Runtime Facade |
 | `GET /api/embed/v1/runtime/schema` | V1 已实现（仅 LIST） | Embed Bearer | 列表 External Projection |
 | `POST /api/embed/v1/runtime/list/query` | V1 已实现 | Embed Bearer | 复用列表查询服务 |
-| `GET /api/embed/v1/runtime/form` | V1 已实现 | Embed Bearer | 复用表单解析服务 |
-| `POST /api/embed/v1/runtime/form/evaluations` | V1 已实现（仅 CREATE） | Embed Bearer | 部分草稿联动只读重算；不做最终校验、不写数据 |
-| `POST /api/embed/v1/runtime/form/fields/{fieldCode}/options/query` | V1 已实现（仅大型静态选项） | Embed Bearer | 分页不可变 Form Release 中超过 100 项的静态 options；动态绑定 Fail Closed |
-| `POST /api/embed/v1/runtime/form/fields/{fieldCode}/lookups/query` | 路由/DTO 已注册，V1 Deferred/Fail Closed | Embed Bearer | 引用类表单字段发布阻断；无固定候选 List Release/Projection，不声明 200 |
-| `GET /api/embed/v1/runtime/records/{recordId}` | V1 已实现 | Embed Bearer | 复用实体详情/权限 |
+| `GET /api/embed/v1/runtime/native-form-target` | V1 已实现（Shell 内部） | Embed Bearer | 从 Session 派生 LIST→CREATE/VIEW 的原生固定目标；不是宿主 API |
+| `/api/embed/v1/runtime/form*` | 已移除/禁止调用 | 不适用 | FORM 不再提供字段投影、联动、options 或 lookup 代理 |
+| 原生 LIST/FORM API 委托（见 11.6.1） | V1 已实现 | Embed Bearer + `X-Flow-Embed-Protocol: 1` | 校验固定目标后恢复映射 UserContext，执行原生 EndpointAuthorization/DataScope；不以 Capability 裁剪页内功能 |
 | `POST /api/embed/v1/runtime/records` | V1 已实现 | Embed Bearer + 幂等 | 复用已发布表单提交 |
 | `PATCH /api/embed/v1/runtime/records/{recordId}` | V1 未注册、强制关闭 | 不适用 | 待通用 `record_version` 全链路完成后实现 |
-| `POST /api/embed/v1/runtime/actions/{actionKey}` | V1 未注册、强制关闭 | 不适用 | 待强类型 Registry 与动作事务契约完成后实现 |
+| `/api/embed/v1/runtime/actions/*` | 未注册/禁止调用 | 不适用 | 页内动作直接复用 Flow 原生端点且不要求 ACTION_EXECUTE；不建设宿主任意动作 Bridge |
 | `GET /api/embed/v1/session` | V1 已实现 | Embed Bearer | Session Service |
 | `POST /api/embed/v1/session/heartbeat` | V1 已实现 | Embed Bearer | Session Service |
 | `DELETE /api/embed/v1/session` | V1 已实现 | Embed Bearer | Session Service |
 
-V1 不提供独立 `PROCESS_START` 路由，也不允许通过创建请求布尔参数绕过关闭边界。管理端
+V1 不提供独立 `PROCESS_START` 路由，也不允许浏览器通过创建请求布尔参数绕过权限。
+Published Form 内建 `saveAndStart` 只提交封闭 `actionKey`，服务端重新解析按钮后在专用
+`RECORD_CREATE_AND_START` 事务命令中派生流程开关。管理端
 `/api/embed-management/v1/**` 已实现，并继续复用普通 Flow 用户鉴权、权限码、统一响应和审计。
 
 ### 18.2 后端能力矩阵
@@ -3543,28 +3071,27 @@ V1 不提供独立 `PROCESS_START` 路由，也不允许通过创建请求布尔
 | 用户目录 | `IdentityDirectoryPort`、SysUser | 校验 Embed 使用限制 | 无 |
 | 外部人员映射 | 现有 Resolver 思想 | 抽象通用 `ExternalSubjectResolver` | V1 Provider、Binding、JWT 校验、防重放；OIDC 后续建设 |
 | 普通用户上下文 | `UserContext` | 支持安全建立/清理和显式 Actor | `EmbedContext` |
-| 列表发布和查询 | `EntityListRuntimeService` 等 | 新 Adapter、`EMBEDDED` 固定场景 | 外部 Schema/结果投影 |
-| 表单发布和解析 | `EntityFormResolveService` 等 | 新 Adapter、固定 Release | Embed Form Facade |
-| 表单提交 | `PublishedFormSubmissionService` | 字段强制值、幂等协调 | 外部写 DTO |
-| 实体权限/数据范围 | `EntityDataActionService`、`DataPermissionEngine` | Actor-aware Adapter | Capability 求交 |
-| 行级动作 | `EntityActionCapabilityService` 只复用授权判断 | `exposeToEmbed`/白名单语义 | 强类型 `EmbedActionRegistry`、事务 Handler 和外部结果投影 |
+| 列表发布和查询 | `EntityListRuntimeService`、`EntityListPublishedRuntimeService` | Session 固定 Release/依赖闭包与请求委托 | 无外部 Schema/结果投影 |
+| 表单发布、解析与原生交互 | 原生表单 API、`EntityDataFormDialog` 所依赖服务 | Embed Session 请求委托、固定目标校验 | 无字段投影 Facade |
+| 表单提交 | `PublishedFormSubmissionService` | 固定目标/Context、幂等协调 | 最小 receipt 与 Returnable 回投 DTO |
+| 实体权限/数据范围 | `EntityDataActionService`、`DataPermissionEngine` | 恢复映射 UserContext | Capability 仅用于直接入口/Bridge |
+| 原生列表/表单动作 | 原生按钮解析、UI Event/Interface Operation 端点 | TargetBinding、恢复映射用户 | 无 Embed Action Registry、Capability 按钮求交或动作重写层 |
 | 审计 | `SystemAuditPort`、Outbox | 新事件类型和字段映射 | Embed 安全审计编排 |
 | 幂等 | `integration_idempotency_record`、fencing | Actor/View 请求哈希、敏感响应处理 | Embed Coordinator |
 | 更新并发 | 暂无可靠通用能力 | 动态 DDL/读写链路 | `record_version` 全链路 |
 | Session | 普通 Session 不适用 | 无 | Launch、Embed Session、专用 Filter |
-| 配置发布 | 可参考现有 UI Release 模式 | 无 | Embed View/Release/Grant 管理 |
+| 配置管理 | 现有表单组件与 CAS 模式 | 保存时同步校验 | Embed View/Grant 管理与 Launch 快照解析 |
 
 ### 18.3 前端能力矩阵
 
 | 能力 | 复用现有 | 需要扩展/抽取 | 全新开发 |
 | --- | --- | --- | --- |
-| 列表展示 | `EntityDataList.vue` 内部展示逻辑 | API Adapter、状态与布局拆分 | `EmbedListRuntime.vue` |
-| 搜索与表格 | 只复用安全的纯展示/选择逻辑 | `ExternalSchemaAdapter/ExternalRecordAdapter` | 必要时新建 `EmbedDataTable`，不是薄包装 |
-| 表单字段 | `EntityDataFormFields.vue` | 数据源和运行态注入 | `EmbedFormRuntime.vue` |
-| 联动 | `FormPreviewLinkage.vue` | 仅允许审核过的声明式联动 | Embed 安全适配 |
-| 动作条 | `FormActionBar.vue` | 只发 actionKey | Action Bridge |
-| 表单容器 | Dialog 不能直接复用 | 抽取 Form Content | iframe 全页容器 |
-| 请求/认证 | 普通 Request 不适用 | 无 | `embedRequest`、内存 Session Store |
+| 列表展示 | 完整 `EntityDataList.vue`、渲染器和扩展 Registry | `NativeEmbeddedListPage` 薄壳隐藏后台 Layout | 无第二套 List Runtime |
+| 搜索与表格 | Flow 原生列表搜索、分页、表格、数据源和弹层 | Session 请求委托 | 无 ExternalSchemaAdapter/EmbedDataTable |
+| FORM 字段/联动/弹层/扩展 | 完整 Flow 原生表单 Registry 与组件树 | 无字段级适配 | 无 |
+| 动作条与确认框 | 原生 `form-actions/resolve` 与 Dialog | close/save 结果桥接 | 无按钮投影层 |
+| 表单容器 | `EntityDataFormDialog` / `EntityApprovalDialog` | `NativeEmbeddedFormPage` 薄壳隐藏后台 Layout | 无第二套 Form Runtime |
+| 请求/认证 | 原生 `shared/request` | 生命周期受控 delegated-auth hook | Exchange/Bootstrap 用 `embedRequest`、内存 Session Store |
 | 路由 | Vue Router 基础可复用 | 无 | 优先独立 `embed-main/router` 与 Embed Shell |
 | 宿主通信 | 无 | 无 | SDK、MessageChannel、协议类型 |
 | CSP/部署 | Nginx 基础可复用 | 分域、动态入口 Header | Embed Entry Handler |
@@ -3615,7 +3142,7 @@ V1 不提供独立 `PROCESS_START` 路由，也不允许通过创建请求布尔
 | 410 | `EMBED_LAUNCH_EXPIRED` | 已确认的 Launch 已过期 | 重新 Launch |
 | 413 | `PAYLOAD_TOO_LARGE` | 超过请求或消息上限 | 缩小数据 |
 | 422 | `FORM_VALIDATION_FAILED` | 表单业务/字段校验失败 | 展示 `violations` |
-| 422 | `EMBED_VIEW_VALIDATION_FAILED` | 管理端 View 发布校验失败 | 修复 `violations` 后重试 |
+| 422 | `EMBED_VIEW_VALIDATION_FAILED` | 管理端 View 保存校验失败 | 修复 `violations` 后重试 |
 | 429 | `RATE_LIMIT_EXCEEDED` | 超过配额 | 按 `Retry-After` 退避 |
 | 429 | `EMBED_SESSION_LIMIT_EXCEEDED` | Grant/User 活跃会话已达上限 | 关闭旧页面或等待到期后重开 |
 | 503 | `EMBED_RUNTIME_UNAVAILABLE` | 依赖或运行态暂不可用 | 保持幂等键重试 |
@@ -3689,7 +3216,7 @@ OAuth/Open API 安全链在进入 Launch Controller 前产生的稳定错误继�
 
 | 类别 | 事件 |
 | --- | --- |
-| 管理 | View 创建/修改/校验/发布/启停/退役 |
+| 管理 | View 创建/保存/同步校验/启停/退役 |
 | 授权 | Grant、Origin、Provider、Binding 创建/变更/撤销 |
 | Launch | 创建、拒绝、兑换成功/失败、重复消费、过期、撤销 |
 | Session | 建立、心跳异常、过期、退出、撤销 |
@@ -3766,7 +3293,7 @@ Context 或完整表单正文。
 支持按 `traceId/applicationId/viewId/sessionId/recordId` 查询关联日志和审计。应急流程：
 
 1. 发现单用户问题：撤销 Binding/Session；
-2. 发现单 View 配置问题：禁用 View 或回切 Grant 的 pinned revision；
+2. 发现单 View 配置问题：禁用 View、修正并保存配置，再创建新 Launch 验证；
 3. 发现单合作方泄露：禁用 Application、轮换 Client Secret、撤销全部 Session；
 4. 发现 Embed 全局风险：Feature Flag 禁止新 Launch，并在网关关闭 Runtime 写操作；
 5. 保留必要审计，擦除 Token/Context 密文，不执行破坏性数据库回滚。
@@ -3784,66 +3311,68 @@ Launch/Session、安全链、Shell 和 SDK。这里保留阶段划分用于说�
 1. 确认独立 Embed 域名、网关拓扑和生产 Origin；
 2. 确认 V1 只支持已存在 Flow 用户；
 3. 确认默认身份模式为 `SIGNED_JWT`，可信外部 ID 仅作例外；
-4. 确认首期 Capability：建议只读列表、选择、详情、新建；
-5. 确认 `total` 默认是否返回，建议默认关闭、View 显式开启；
+4. 确认直接入口/Bridge Capability；页内按钮不纳入 Capability 评审；
+5. 确认原生 LIST/FORM 按映射用户权限和 DataScope 运行；
 6. 评审本文和已生成的 `docs/api/embed-v1.yaml` 接口级契约；
 7. 完成安全威胁建模和数据分级；
 8. 实施前重新确认 Flyway 最大版本号。
 
 退出条件：架构、安全、前端、后端、DBA、运维和至少一个接入方共同签字。
 
-### 21.2 阶段 1：只读列表 MVP（代码已实现）
+### 21.2 阶段 1：原生列表入口（代码已实现）
 
 后端：
 
-- Embed View/Release/Grant/Origin/Provider/Binding 管理能力；
+- Embed View/Grant/Origin/Provider/Binding 管理与内部 Session 快照能力；
 - `embed.launch` Scope 与 Launch API；
 - JWT 验签、防重放、Flow 用户映射；
 - Launch/Session 表、原子 Exchange 和专用认证 Filter；
-- Bootstrap、外部 List Schema、Query、Detail；
-- Capability/字段投影、审计、限流、清理任务；
+- Bootstrap、固定 List Release/依赖闭包与原生请求委托；
+- 直接入口/Bridge Capability、审计、限流、清理任务；
 - 管理端最小 API 和会话撤销。
 
 前端/部署：
 
 - 独立 Embed Route/Shell 和 `embedRequest`；
-- 列表展示、搜索、分页、单选/多选回传；
+- `NativeEmbeddedListPage` 直接挂载 `EntityDataList`，搜索、分页、渲染器、按钮和弹层完全复用；
+- 单选/多选只在 Bridge 回传时按 Returnable 投影；
 - SDK、MessageChannel、自动高度和错误态；
 - 独立域名/同源 API 代理、动态 CSP；
 - 管理端最小 View/Grant/Binding 页面。
 
-阶段 1 的原始边界关闭 Create、Update、流程启动、自定义动作、附件、导出和删除；当前分支已
-继续完成下一阶段的 Create，因此当前 V1 是“LIST/FORM 读取 + CREATE”，其余能力仍关闭。
+阶段 1 所谓关闭项只针对宿主跨域直接命令；iframe 内新增、查看、编辑、自定义动作、附件、
+导出和删除是否出现及执行，均沿用映射用户在 Flow 原页面中的权限、状态和 DataScope。
 
 ### 21.3 阶段 2：表单查看与新建（代码已实现）
 
-- Embed Form External Schema；
-- 表单 Content 抽取和已发布字段渲染；
-- 详情/只读表单；
-- CREATE 部分草稿联动只读重算，服务端强制 Context 覆盖且不提前执行最终提交校验；
-- 新建表单、服务端强制 Context 字段；
+- `NativeEmbeddedFormPage` 薄壳直接挂载 Flow 原生 `EntityDataFormDialog` / `EntityApprovalDialog`；
+- 完整字段/自定义组件 Registry、布局、联动、数据源、日期/下拉 Popper、富文本和确认框；
+- Embed Bearer 请求委托恢复映射 UserContext，继续执行原生 EndpointAuthorization、字段权限和 DataScope；
+- Bootstrap 只下发 Session 固定目标，FORM 不下发 External 字段 Schema，不调用 `/runtime/form*`；
+- 原生详情/只读表单、新建表单与服务端强制 Context 字段；
 - 写请求幂等、fencing、required 审计；
 - 同事务 Operation Receipt 与固定 Replay Envelope；
 - `form.saved` 事件；`action.completed` 只保留协议 Schema，当前没有动作运行时来源；
-- 受审计的创建保存链路（仅 `POST /runtime/records`，不是通用 Action API）。
+- 直接 FORM 的 Published `close` 通过 `close.requested` 请求宿主安全销毁；
+- 受审计的创建保存链路（`save/saveAndStart` 均使用 `POST /runtime/records`，不是通用 Action API）；
+- `saveAndStart` 只能由同一固定 Published Form 对映射用户实际开放时，通过服务端可信
+  `RECORD_CREATE_AND_START` 事务执行，浏览器不能直接提交 `startProcess`。
 
-`saveAndStart` 未纳入当前 V1，不能以创建参数或未注册的动作接口调用。
-
-### 21.4 阶段 3：编辑与有状态动作（未实施，V1 强制关闭）
+### 21.4 阶段 3：记录编辑与独立流程动作（未实施，V1 强制关闭）
 
 前置：第 16.4 节 `record_version` 已对全部动态实体表和内部写入口完成 Expand、核验和兼容。
 
 - 编辑表单、`If-Match`、版本冲突 UX；
 - 更新接口；
-- 审核过的 `submit/saveAndStart` 等动作；
+- 记录更新后触发的 `submitApproval` 等需要乐观锁的动作；
 - 批量动作逐条权限校验；
 - 多 Pod 并发和故障注入测试；
-- 开启 `RECORD_UPDATE/ACTION_EXECUTE/PROCESS_START` 发布校验。
+- 开启宿主 `RECORD_UPDATE/PROCESS_START` Bridge 保存校验；页内动作不要求 `ACTION_EXECUTE`。
 
 ### 21.5 阶段 4：可选扩展（未实施）
 
 - 签名 Webhook 的 Embed 业务事件；
-- 附件上传下载；
+- 宿主级文件回传/下载 API；FORM 内原生附件组件已随表单运行；
 - 审批任务和关联内容；
 - OIDC Discovery/更丰富的企业 SSO；
 - Headless Runtime API；
@@ -3860,10 +3389,10 @@ Launch/Session、安全链、Shell 和 SDK。这里保留阶段划分用于说�
 | View/Grant 管理 | DB | Identity、前端 Shell | 已实现 |
 | Identity/Assertion | Provider/Binding 表 | View 管理 | 已实现 |
 | Launch/Exchange/Session | Identity、Grant | Embed Shell | 已实现 |
-| Runtime Security Chain | Session | 外部 DTO 设计 | 已实现 |
-| List Adapter/Projection | Contracts、现有列表服务 | SDK | 已实现 |
-| Form Adapter/Projection | List 基础可复用 | 管理 UI | 已实现，含 CREATE 联动只读重算 |
-| Options / Lookup | 固定 Form Release、只读 Provider 边界 | Form Adapter | Options 仅大型静态分页；动态数据源与 Lookup 执行 Deferred/Fail Closed |
+| Runtime Security Chain | Session | 原生请求委托 | 已实现 |
+| Native LIST 请求委托 | Session 固定目标、依赖闭包、原生 API/Registry | SDK | 已实现；无列、动作或 datasource Projection |
+| Native FORM 请求委托 | Session 固定目标、原生 API/Registry | 管理 UI | 已实现；无字段 Projection/兼容层 |
+| Options / Lookup / 弹层 | Flow 原生组件、数据源与权限链 | TargetBinding | 无字段类型适配；新增组件不改 Embed，也不增加 Capability |
 | Record Create | 表单提交、幂等、回执 | Form Adapter | 已实现 |
 | Record Version | Schema Worker、全部写入口 | LIST/FORM/CREATE | 未实施，阶段 3 前置 |
 | SDK/Bridge | 消息契约 | 后端 Launch | 已实现 |
@@ -3888,14 +3417,15 @@ Launch/Session、安全链、Shell 和 SDK。这里保留阶段划分用于说�
 配置：
 
 - View 草稿乐观锁；
-- Entity/List/Form 归属和发布状态；
-- 字段 Visible/Queryable/Writable/Returnable 子集；
+- Entity/List/Form 归属和 ACTIVE 状态；首次有效保存即启用，不存在 Embed 发布动作；
+- LIST 只保存实体+列表；拒绝 Visible/Queryable/Writable、actionPolicy、组件与 datasource 覆盖；
+- Returnable 字段有效性与敏感字段排除，只影响 Bridge；
 - Context Schema 禁止远程 `$ref`、深度/大小上限；
 - Context Schema 出现 `pattern` 时以 `SCHEMA_PATTERN_NOT_SUPPORTED` 拒绝；已发布表单字段的
   `validationRules.pattern` 也按不可信资源阻断，历史/篡改快照运行时同样 Fail Closed；
-- `REFERENCE/MULTI_REFERENCE/LOOKUP/MULTI_LOOKUP/USER/DEPT/ROLE/GROUP` 表单字段以
-  `UNTRUSTED_COMPONENT` 阻断发布；历史或绕过发布器的可写 Lookup 快照运行时返回 503；
-- Action 白名单和 Capability 子集；
+- LIST/FORM 快照不解析或筛选 `componentType/componentProps/layout/options/popup/registry`；
+  页面由固定 Flow Release 原样运行，新增组件不能触发 Embed 兼容或保存门禁；
+- Capability 交集只约束直接入口/Bridge；原生页内按钮不参与交集；
 - Immutable Release Canonical JSON/Hash 稳定。
 
 Session：
@@ -3911,13 +3441,14 @@ Session：
 
 运行态：
 
-- List Filter 只接受最多 32 项的 discriminated array；每项严格为 `value`、`values` 或 `range`
-  三种形状之一，浏览器提交 `operator/_op/_start/_end` 或重复字段均拒绝；
+- Native LIST 使用原生 Schema、筛选、排序、数据源、渲染器与按钮，不调用 External List Projection；
+- 同一 Session 切换 ACTIVE 后仍固定启动时 Release；新 Launch 解析新 ACTIVE；
 - 固定 Context 不能被客户端覆盖；
 - CREATE 联动重算只接受 fixed writable 的部分草稿，forced Context 覆盖同名值；不执行 required、
   不写记录、不申请幂等 Claim，旧异步响应不能覆盖较新的草稿；
-- 外部 DTO 不含权限码、Provider、内部 Token、脚本；
-- Row Action 是 View 与 Flow Capability 的交集；
+- Bridge DTO 不含权限码、Provider、内部 Token、脚本或非 Returnable 行字段；
+- 两名映射用户看到的原生行/工具栏按钮分别与其 Flow 页面一致，增删 View/Grant
+  `ACTION_EXECUTE` 不改变页内按钮；
 - 详情 404 防枚举；
 - 幂等 Hash 包含稳定 Actor/View/Target，明确排除 Session/Launch/Release；
 - 重新 Launch 后使用同一 Key 能查询首次结果，其他 Actor/View 不能重放；
@@ -3927,8 +3458,9 @@ Session：
 ### 22.2 后端集成测试
 
 1. 机器 Token 能调用 Launch，普通用户 Token、Embed Token 均不能。
-2. Embed Token 只能访问 `/api/embed/v1/**`，不能访问 `/api/open/**`、
-   `/api/entity-data/**`、`/api/entity-lists/**` 或管理端。
+2. Embed Token 能访问 `/api/embed/v1/**` 控制面和显式声明安全契约的原生 LIST/FORM API；对
+   `/api/open/**`、管理端、未声明端点或不匹配 Session 固定坐标的请求一律拒绝。页内标准请求
+   不因缺少 View Capability/entryMode 被拒绝；直接入口和 Bridge 缺少 Capability 仍拒绝。
 3. `/api/embed/v1/**` 必须命中专用 Filter，不能因 `@PublicApi` 或拦截器顺序裸奔。
 4. View、Grant、Origin、Binding、用户任一无效都拒绝 Launch/Runtime。
 5. 两个事务/两个 Pod 同时兑换一个 Launch，恰好一个成功。
@@ -3998,8 +3530,8 @@ mvn -f workflow-server/pom.xml -pl workflow-db-migrator \
 3. 父/子 Origin、Window Source、Nonce 任一错误时忽略消息。
 4. Launch code 不出现在 Network URL、Referer、History、Storage 和前端日志。
 5. 列表加载、搜索、分页、选择和自动高度。
-6. 列表打开只读/新建表单；CREATE 草稿变化经服务端只读重算后字段状态正确，快速连续输入时
-   旧响应不会覆盖新草稿，最终保存仍执行完整校验。
+6. 直接 FORM 与列表打开的 VIEW/CREATE 都挂载 Flow 原生 Dialog；日期/下拉 Popper、富文本、
+   自定义组件、联动、数据源、确认框和权限按钮与同用户原生页面一致，网络中无 `/runtime/form*`。
 7. 断网重试创建只产生一个业务结果。
 8. `[阶段 3 未来验收，不纳入当前 V1]` 两个窗口编辑同一记录，后提交窗口收到 409 并正确刷新提示。
 9. Session 到期、被撤销、Flow 用户禁用后，页面提示重新打开而非跳登录。
@@ -4040,7 +3572,7 @@ mvn -f workflow-server/pom.xml -pl workflow-db-migrator \
 | Application 只授权 View A | 请求 View B Launch | 403 `EMBED_VIEW_NOT_GRANTED` |
 | Context 固定 `supplierId=S1` | 浏览器尝试查询 S2 | 条件不能覆盖，S2 数据不可见 |
 | View 只回传 ID/Code | 选择记录 | postMessage 不含金额等字段 |
-| 相同创建请求发生网络重试 | 使用同一幂等键 | 只创建一次并重放同一业务回执，字段按当前权限重新投影 |
+| 相同创建请求发生网络重试 | 使用同一幂等键 | 只创建一次并重放当前权限允许的最小业务回执 |
 | `[阶段 3 未来验收，不纳入当前 V1]` 记录版本已变化 | 提交旧版本 | 409，不覆盖最新数据 |
 | 管理员禁用 Binding | 已打开页面继续查询 | Session 拒绝并要求重新打开 |
 
@@ -4099,7 +3631,7 @@ V070 仅作为完整生产迁移链的一部分执行；V071 验证用户手册�
 预建符合 `workflow_embed_test_*` 命名规则的空库并对 schema 账号授权，或提供有效且具备建库
 权限的账号；禁止为规避权限问题启动 Docker 或复用现有业务库。
 
-### 23.3 发布配置
+### 23.3 部署配置
 
 建议新增：
 
@@ -4142,7 +3674,7 @@ workflow:
 - 功能回滚：关闭新 Launch Feature Flag，禁用 Grant/View，撤销活动 Session；
 - 网关回滚：保留管理后台 CSP `none`，停止 Embed 入口和 Runtime 路由；
 - 应用回滚：回滚到前一兼容版本，但数据库 Expand 表/列保留；
-- 配置回滚：Grant 可 Pin 回上一 View Release；已发布 Release 不修改；
+- 配置纠错：保存修正后的稳定资源引用并创建新 Launch；已有 Session 可按风险选择保留或撤销；
 - 数据库不做破坏性 Down Migration，不删除新表/列，不执行 `flyway repair`；
 - 已发生的业务创建/动作按业务补偿处理，不能靠数据库回滚抹除审计。
 
@@ -4200,7 +3732,7 @@ Flow 管理员需提供：
 1. 管理员创建 Integration Application，交换 Client Secret。
 2. 双方登记 JWT Provider、公钥和生产 Origin。
 3. 管理员建立或导入 Identity Binding。
-4. 管理员发布 Embed View 并授权 Application。
+4. 管理员保存 Embed View 配置并授权 Application。
 5. 第三方后端接入 OAuth 和 Launch API。
 6. 第三方前端接入 SDK，不直接调用 Flow Runtime。
 7. 用正向用户、无权限用户、未绑定用户和禁用用户联调。
@@ -4260,8 +3792,8 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 | iframe 浏览器拒绝加载 | Entry 响应 CSP `frame-ancestors` 和实际 Parent Origin |
 | iframe 跳到登录 | Route 是否跳过 `restoreAuthSession`、是否误用普通 Request |
 | Exchange 401 | 60 秒 TTL、一次性消费、channel/nonces、code 是否被日志/刷新消耗 |
-| 列表为空 | View 固定 Context、Flow 数据范围、列表发布规则；不要先假定接口故障 |
-| 操作按钮缺失 | View Capability、Grant Ceiling、Flow 权限、行级能力四层交集 |
+| 列表为空 | 固定 Context、映射用户 DataScope、列表规则与当前 Session 固定 ACTIVE 版本；不要用字段白名单修补 |
+| 操作按钮缺失 | 对比同一映射用户在 Flow 原页面的对象权限、记录/流程状态和 DataScope；View/Grant Capability 不塑形页内按钮 |
 | 创建重复 | Idempotency-Key 是否稳定、第三方是否超时后换 Key |
 | 编辑配置或请求被拒绝 | 属于 V1 预期边界：发布阻断 `RECORD_UPDATE`，Launch/Form 只接受 CREATE/VIEW，PATCH 路由未注册 |
 | Session 突然失效 | 用户/Binding/Grant/View/Application 状态和绝对到期 |
@@ -4276,9 +3808,10 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 - [ ] 生产 Origin 精确且全部使用 HTTPS；
 - [ ] 默认使用签名用户断言，`aud/iss/kid` 正确；
 - [ ] 所有外部人员已精确绑定到已启用 Flow 用户；
-- [ ] View 固定字段、四项 V1 Capability、Context、Returnable 策略已评审；
-- [ ] 生产首发使用 `PINNED` UI Release；
-- [ ] 删除、批量删除、导出、附件和任意脚本均关闭；
+- [ ] LIST 仅配置实体+列表；Context、直接入口/Bridge Capability 与 Returnable 策略已评审；
+- [ ] 已验证原生列、富文本、下拉、日期、弹框、数据源和按钮不经过 Embed 白名单；
+- [ ] 已确认新 Launch 解析目标最新 ACTIVE，已打开 Session 固定启动时运行快照；
+- [ ] 宿主直接删除、批量删除、导出、文件和任意动作 Bridge 均关闭；原生页内功能按映射用户验收；
 - [ ] 未完成 recordVersion 时 `RECORD_UPDATE` 关闭；
 - [ ] CSP、postMessage、Token Storage、无第三方 Cookie E2E 通过；
 - [ ] 限流、并发、Session 时长符合容量评估；
@@ -4295,11 +3828,11 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 | Launch 传递 | SDK + MessageChannel；fragment 仅兼容 |
 | Launch TTL | 60 秒 |
 | Session | idle 5 分钟、absolute 30 分钟、不可刷新 |
-| UI Release | 首批 `PINNED` |
-| 列表总数 | 默认不返回，View 显式开启 |
-| 首期能力 | 列表、选择、详情、新建 |
-| 编辑 | recordVersion 全链路完成后开放 |
-| 动作 | V1 关闭；后续版本仅逐个审核的内建 actionKey |
+| UI 版本行为 | 新 Launch 取最新 ACTIVE；Session 固定启动快照 |
+| 列表总数 | 与固定 Flow 原生列表版本及映射用户权限一致 |
+| 页内能力 | 与映射用户在 Flow 原生 LIST/FORM 页面的权限、状态与 DataScope 一致 |
+| 宿主直接编辑 | Bridge 在 recordVersion 全链路完成后再评审 |
+| 宿主直接动作 | 通用 Bridge 命令关闭；不影响 iframe 内原生按钮 |
 | Session 过期 | 宿主重新 Launch，不跳 Flow 登录 |
 | 非 Flow 外部人员 | V1 不支持 |
 | 可靠业务回调 | 后续建设签名 Webhook；V1 不把 postMessage 当可靠回调 |
@@ -4312,13 +3845,16 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 2. 短期签名人员断言精确映射到一个 Flow 用户；
 3. 一次性 Launch 建立不依赖 Cookie 的 iframe Session；
 4. 每个请求恢复真实 Flow `UserContext`，继续执行现有权限与数据范围；
-5. Embed View/Grant 再收窄到指定列表、表单、字段、V1 Capability、Origin 和 Context；
-6. 专用 Facade 和外部 DTO 复用成熟运行态，同时隔离内部 Controller 和任意执行入口；
+5. Embed View/Grant 固定列表/表单、直接入口、Bridge、Origin、Context 和跨域 Returnable；
+   Capability 不裁剪页内按钮；
+6. LIST/FORM 都通过薄壳直接运行 Flow 原生组件、Registry、API 与权限链，不维护字段、列、动作、
+   datasource 投影或逐组件兼容层；
 7. 通过 CSP、postMessage、短 Token、幂等、审计和撤销形成 V1 安全闭环；乐观锁属于后续
    UPDATE/ACTION 阶段前置。
 
-当前分支已经实现 LIST/FORM 读取与 RECORD_CREATE 的前后端全链路；RECORD_UPDATE、
-ACTION_EXECUTE、PROCESS_START 明确关闭，本文相关章节只是后续目标契约。专用
+当前分支已经实现原生 LIST/FORM 页面请求委托、RECORD_CREATE，以及同一 Published Form 内建 `saveAndStart` 的
+`RECORD_CREATE_AND_START` 前后端全链路；RECORD_UPDATE 与独立 PROCESS_START 路由明确关闭。
+专用
 Embed VHost/Helm 清单和 Chrome 跨域 E2E 已实现；进入生产前还必须完成 macOS 本机 MySQL
 独立空测试库迁移验证、生产 DNS/TLS/Ingress 实际启用、Edge/Firefox/Safari 兼容性、
 安全验收和接入方联合验收。该边界既复用平台成熟运行态，也避免把普通用户会话、

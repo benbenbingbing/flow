@@ -139,6 +139,13 @@ await runtimeApi.exchange('lch_0123456789abcdef', {
 await runtimeApi.getBootstrap()
 await runtimeApi.getSchema()
 await runtimeApi.queryList({ pageNum: 1, pageSize: 20, filters: [] })
+await runtimeApi.getNativeFormTarget({ mode: 'CREATE' })
+await runtimeApi.getNativeFormTarget({ mode: 'VIEW', recordId: 'record:001' })
+await runtimeApi.createRecord({
+  data: { title: '原生表单提交' },
+  clientMutationId: 'client-mutation-001',
+  actionKey: 'save'
+}, { idempotencyKey: 'embed-idempotency-001' })
 await runtimeApi.getSession()
 await runtimeApi.heartbeat({
   visible: true,
@@ -151,6 +158,9 @@ assert.deepEqual(runtimeCalls.map(call => `${call.method} ${call.path}`), [
   'GET /runtime/bootstrap',
   'GET /runtime/schema',
   'POST /runtime/list/query',
+  'GET /runtime/native-form-target?mode=CREATE',
+  'GET /runtime/native-form-target?mode=VIEW&recordId=record%3A001',
+  'POST /runtime/records',
   'GET /session',
   'POST /session/heartbeat',
   'DELETE /session'
@@ -168,7 +178,13 @@ assert.equal(Buffer.from(runtimeCalls[0].body.childNonce, 'base64url').length, 3
 assert.equal(runtimeCalls[0].options.auth, false)
 assert.equal(runtimeCalls[0].options.headers['X-Flow-Embed-Protocol'], '1')
 assert.equal(runtimeCalls[3].options.headers['X-Flow-Embed-Protocol'], '1')
-assert.equal(runtimeCalls[6].options.keepalive, true)
+assert.deepEqual(runtimeCalls[6].body, {
+  data: { title: '原生表单提交' },
+  clientMutationId: 'client-mutation-001',
+  actionKey: 'save'
+})
+assert.equal(runtimeCalls[6].options.headers['Idempotency-Key'], 'embed-idempotency-001')
+assert.equal(runtimeCalls[9].options.keepalive, true)
 
 assert.throws(
   () => runtimeApi.exchange('lch_too_short', {

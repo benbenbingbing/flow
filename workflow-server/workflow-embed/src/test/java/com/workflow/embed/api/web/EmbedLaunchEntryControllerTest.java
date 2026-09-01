@@ -36,8 +36,18 @@ class EmbedLaunchEntryControllerTest {
                 "lch_0123456789abcdef0123456789abcdef");
 
         assertEquals(200, response.getStatusCode().value());
-        assertTrue(response.getHeaders().getFirst("Content-Security-Policy")
-                .endsWith("frame-ancestors https://portal.partner.example"));
+        String csp = response.getHeaders().getFirst("Content-Security-Policy");
+        assertTrue(csp.startsWith("default-src 'none'"));
+        assertTrue(csp.contains("script-src 'self'"));
+        assertTrue(csp.contains("script-src-attr 'none'"));
+        assertTrue(csp.contains("style-src-elem 'self'"));
+        // Element Plus Popper、日期面板和对话框使用动态 style attribute 定位；
+        // 仅开放样式属性，脚本仍禁止 inline/eval。
+        assertTrue(csp.contains("style-src-attr 'unsafe-inline'"));
+        assertTrue(csp.contains("img-src 'self' data: blob: https:"));
+        assertTrue(csp.endsWith(
+                "frame-ancestors https://portal.partner.example"));
+        assertFalse(csp.contains("unsafe-eval"));
         assertEquals("no-store", response.getHeaders().getCacheControl());
         String html = response.getBody();
         assertFalse(html.contains("launchCode"));

@@ -4,18 +4,18 @@
       <el-input
         v-model="filters.keyword"
         clearable
-        placeholder="搜索 View Key 或名称"
+        placeholder="搜索配置 Key 或名称"
         class="keyword-input"
         @keyup.enter="search"
       >
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
-      <el-select v-model="filters.surfaceType" clearable placeholder="Surface">
+      <el-select v-model="filters.surfaceType" clearable placeholder="类型">
         <el-option label="LIST" value="LIST" />
         <el-option label="FORM" value="FORM" />
       </el-select>
       <el-select v-model="filters.status" clearable placeholder="状态">
-        <el-option label="草稿" value="DRAFT" />
+        <el-option label="待配置" value="DRAFT" />
         <el-option label="启用" value="ACTIVE" />
         <el-option label="停用" value="DISABLED" />
         <el-option label="已退役" value="RETIRED" />
@@ -30,7 +30,7 @@
       <span class="filter-spacer" />
       <el-button v-if="canManage" type="primary" @click="openCreate">
         <el-icon><Plus /></el-icon>
-        新建 View
+        新建配置
       </el-button>
     </div>
 
@@ -44,9 +44,9 @@
     />
 
     <el-table v-loading="loading" :data="views" border stripe>
-      <el-table-column prop="viewKey" label="View Key" min-width="170" />
+      <el-table-column prop="viewKey" label="配置 Key" min-width="170" />
       <el-table-column prop="name" label="名称" min-width="150" />
-      <el-table-column label="Surface" width="100">
+      <el-table-column label="类型" width="100">
         <template #default="{ row }">
           <el-tag effect="plain">{{ row.surfaceType }}</el-tag>
         </template>
@@ -56,12 +56,6 @@
           <el-tag :type="statusType(row.status)" effect="plain">
             {{ statusLabel(row.status) }}
           </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="Revision" width="130">
-        <template #default="{ row }">
-          Draft r{{ row.draftRevision }} /
-          {{ row.publishedRevision ? `Published r${row.publishedRevision}` : '未发布' }}
         </template>
       </el-table-column>
       <el-table-column prop="version" width="76">
@@ -120,7 +114,7 @@
 
     <el-dialog
       v-model="createVisible"
-      title="新建 Embed View"
+      title="新建嵌入配置"
       width="min(620px, 94vw)"
       append-to-body
       destroy-on-close
@@ -140,9 +134,9 @@
         :rules="createRules"
         label-position="top"
       >
-        <el-form-item label="View Key" prop="viewKey">
+        <el-form-item label="配置 Key" prop="viewKey">
           <template #label>
-            <ConfigHelpLabel label="View Key" help-key="embed.view.key" />
+            <ConfigHelpLabel label="配置 Key" help-key="embed.view.key" />
           </template>
           <el-input v-model="createForm.viewKey" maxlength="100" />
         </el-form-item>
@@ -150,9 +144,9 @@
           <el-form-item label="名称" prop="name">
             <el-input v-model="createForm.name" maxlength="128" />
           </el-form-item>
-          <el-form-item label="Surface" prop="surfaceType">
+          <el-form-item label="类型" prop="surfaceType">
             <template #label>
-              <ConfigHelpLabel label="Surface" help-key="embed.view.surface" />
+              <ConfigHelpLabel label="类型" help-key="embed.view.surface" />
             </template>
             <el-select v-model="createForm.surfaceType" style="width: 100%">
               <el-option label="LIST" value="LIST" />
@@ -180,21 +174,18 @@
 
     <el-drawer
       v-model="detailVisible"
-      :title="selectedView ? `${selectedView.name} (${selectedView.viewKey})` : 'Embed View'"
+      :title="selectedView ? `${selectedView.name} (${selectedView.viewKey})` : '嵌入配置'"
       size="min(1120px, 98vw)"
       append-to-body
       destroy-on-close
     >
       <template v-if="selectedView">
-        <el-descriptions :column="4" border size="small" class="view-summary">
-          <el-descriptions-item label="Surface">
+        <el-descriptions :column="3" border size="small" class="view-summary">
+          <el-descriptions-item label="类型">
             {{ selectedView.surfaceType }}
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             {{ statusLabel(selectedView.status) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="Published">
-            {{ selectedView.publishedRevision ? `r${selectedView.publishedRevision}` : '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="CAS">
             <template #label>
@@ -204,7 +195,7 @@
           </el-descriptions-item>
         </el-descriptions>
         <el-tabs v-model="detailTab">
-          <el-tab-pane label="草稿配置" name="draft">
+          <el-tab-pane label="集成配置" name="draft">
             <EmbedViewDraftPanel
               :view="selectedView"
               @refresh="refreshSelectedView"
@@ -212,9 +203,6 @@
           </el-tab-pane>
           <el-tab-pane label="Application Grants" name="grants">
             <EmbedGrantPanel :view="selectedView" />
-          </el-tab-pane>
-          <el-tab-pane label="Release 历史" name="releases">
-            <EmbedReleasePanel :view="selectedView" />
           </el-tab-pane>
         </el-tabs>
       </template>
@@ -231,7 +219,6 @@ import { embedManagementApi } from '@/api/system/embedManagement'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import { useUserStore } from '@/stores/user'
 import EmbedGrantPanel from './EmbedGrantPanel.vue'
-import EmbedReleasePanel from './EmbedReleasePanel.vue'
 import EmbedViewDraftPanel from './EmbedViewDraftPanel.vue'
 import {
   EMBED_PERMISSIONS,
@@ -341,7 +328,7 @@ async function createView() {
       description: createForm.description.trim() || null
     })
     createVisible.value = false
-    ElMessage.success('Embed View 已创建')
+    ElMessage.success('嵌入配置已创建')
     await loadViews()
     openDetail(result)
   } catch (error) {
@@ -374,7 +361,7 @@ async function changeStatus(row, status) {
       status === 'RETIRED'
         ? '退役为终态，不能恢复，请填写原因。'
         : `请填写${action}原因。`,
-      `${action} Embed View`,
+      `${action}嵌入配置`,
       {
         type: status === 'RETIRED' ? 'warning' : 'info',
         inputValidator: value => Boolean(value?.trim()) || `请填写${action}原因`,
@@ -411,7 +398,7 @@ function statusType(status) {
 
 function statusLabel(status) {
   return {
-    DRAFT: '草稿', ACTIVE: '启用', DISABLED: '停用', RETIRED: '已退役'
+    DRAFT: '待配置', ACTIVE: '启用', DISABLED: '停用', RETIRED: '已退役'
   }[status] || status
 }
 

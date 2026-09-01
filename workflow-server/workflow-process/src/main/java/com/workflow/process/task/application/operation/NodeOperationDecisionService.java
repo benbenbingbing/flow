@@ -19,12 +19,14 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -311,10 +313,24 @@ public class NodeOperationDecisionService {
                 ? context.currentUserId()
                 : UserContext.getUserId();
         result.put("currentUser", Map.of("id", safe(currentUserId)));
-        result.put("request", context.requestVariables() == null
-                ? Map.of()
-                : Map.copyOf(context.requestVariables()));
+        result.put("request", context.requestVariables());
         return Map.copyOf(result);
+    }
+
+    /**
+     * 创建请求变量的只读快照，同时保留可选表单字段的 null 值。
+     *
+     * <p>{@link Map#copyOf(Map)} 会拒绝 null 值，但空的一对一子表等合法业务数据会以 null 表示；
+     * 这里仍拒绝空变量名，并保持与原实现一致的防御性浅拷贝语义。</p>
+     */
+    private static Map<String, Object> immutableRequestVariables(Map<String, Object> variables) {
+        if (variables == null || variables.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> snapshot = new LinkedHashMap<>(variables.size());
+        variables.forEach((key, value) -> snapshot.put(
+                Objects.requireNonNull(key, "请求变量名不能为空"), value));
+        return Collections.unmodifiableMap(snapshot);
     }
 
     private boolean hasPermission(String permissionCode, Set<String> override) {
@@ -383,7 +399,7 @@ public class NodeOperationDecisionService {
 
         public CheckContext {
             targetUserIds = targetUserIds == null ? Set.of() : Set.copyOf(targetUserIds);
-            requestVariables = requestVariables == null ? Map.of() : Map.copyOf(requestVariables);
+            requestVariables = immutableRequestVariables(requestVariables);
             permissions = permissions == null ? null : Set.copyOf(permissions);
         }
 
@@ -435,7 +451,7 @@ public class NodeOperationDecisionService {
             variables = variables == null ? Map.of() : Map.copyOf(variables);
             permissions = permissions == null ? Set.of() : Set.copyOf(permissions);
             targetUserIds = targetUserIds == null ? Set.of() : Set.copyOf(targetUserIds);
-            requestVariables = requestVariables == null ? Map.of() : Map.copyOf(requestVariables);
+            requestVariables = immutableRequestVariables(requestVariables);
             now = now == null ? Instant.now() : now;
         }
 

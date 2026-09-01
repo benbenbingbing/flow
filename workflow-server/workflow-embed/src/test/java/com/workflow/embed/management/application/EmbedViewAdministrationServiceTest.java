@@ -1,7 +1,7 @@
 package com.workflow.embed.management.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,12 +10,7 @@ import com.workflow.contracts.identity.CurrentActor;
 import com.workflow.embed.management.api.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;
-import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
-import com.workflow.embed.management.domain.EmbedManagementModel.PublishViewCommand;
-import com.workflow.embed.management.domain.EmbedManagementModel.ReleaseState;
 import com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResource;
-import com.workflow.embed.management.domain.EmbedManagementModel.RevisionMode;
-import com.workflow.embed.management.domain.EmbedManagementModel.SecurityStatus;
 import com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType;
 import com.workflow.embed.management.domain.EmbedManagementModel.UpdateDraftCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewState;
@@ -23,7 +18,6 @@ import com.workflow.embed.management.domain.EmbedManagementModel.ViewStatus;
 import com.workflow.embed.management.support.InMemoryEmbedManagementRepository;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,11 +57,32 @@ class EmbedViewAdministrationServiceTest {
                 new UpdateDraftCommand(1L, objectMapper.readTree(validDraft())));
 
         assertEquals(2L, updated.lockVersion());
-        assertEquals(2L, updated.draftRevision());
+        assertEquals(1L, updated.draftRevision());
         EmbedManagementException conflict = assertThrows(EmbedManagementException.class,
                 () -> service.updateDraft(created.id(),
                         new UpdateDraftCommand(1L, objectMapper.createObjectNode())));
         assertEquals("EMBED_CONFIGURATION_VERSION_CONFLICT", conflict.errorCode());
+    }
+
+    @Test
+    void formAndListDraftsDefaultToNativeFlowPublishedFields()
+            throws Exception {
+        ViewState form = service.create(new CreateViewCommand(
+                "supplier-form", "供应商表单", SurfaceType.FORM, null));
+        ViewState list = service.create(new CreateViewCommand(
+                "supplier-list", "供应商列表", SurfaceType.LIST, null));
+
+        var formPolicy = objectMapper.readTree(form.draftConfigJson())
+                .path("fieldPolicy");
+        var listPolicy = objectMapper.readTree(list.draftConfigJson())
+                .path("fieldPolicy");
+        assertEquals("FLOW_PUBLISHED", formPolicy.path("mode").asText());
+        assertFalse(formPolicy.has("visible"));
+        assertFalse(formPolicy.has("writable"));
+        assertEquals("FLOW_PUBLISHED", listPolicy.path("mode").asText());
+        assertFalse(listPolicy.has("visible"));
+        assertFalse(listPolicy.has("writable"));
+        assertEquals(0, listPolicy.path("returnable").size());
     }
 
     @Test
@@ -87,42 +102,66 @@ class EmbedViewAdministrationServiceTest {
     }
 
     @Test
-    void publishCreatesImmutableRevisionsWithoutChangingSecurityVersion() throws Exception {
+    void firstValidSaveActivatesAndStoresOnlyStableResourceIdentity() throws Exception {
         ViewState created = service.create(new CreateViewCommand(
                 "supplier-orders", "供应商工单", SurfaceType.LIST, null));
-        ViewState draft = service.updateDraft(created.id(),
+
+        ViewState saved = service.updateDraft(created.id(),
                 new UpdateDraftCommand(1L, objectMapper.readTree(validDraft())));
+        var stored = objectMapper.readTree(saved.draftConfigJson());
 
-        ReleaseState first = service.publish(created.id(),
-                new PublishViewCommand(draft.lockVersion(), "v1"));
-        ViewState afterFirst = service.get(created.id());
-        ViewState draftAgain = service.updateDraft(created.id(),
-                new UpdateDraftCommand(afterFirst.lockVersion(),
+        assertEquals(ViewStatus.ACTIVE, saved.status());
+        assertEquals("supplier_open", stored.path("target").path("listKey").asText());
+        assertFalse(stored.has("releasePolicy"));
+        assertFalse(stored.has("resolved"));
+        assertEquals(1L, saved.securityVersion());
+    }
+
+    @Test
+    void invalidSaveReturns422WithoutWritingAnything() throws Exception {
+        ViewState created = service.create(new CreateViewCommand(
+                "supplier-orders", "供应商工单", SurfaceType.LIST, null));
+        repository.resolvedResource = null;
+
+        EmbedManagementException failure = assertThrows(
+                EmbedManagementException.class,
+                () -> service.updateDraft(created.id(),
+                        new UpdateDraftCommand(1L, objectMapper.readTree(validDraft()))));
+
+        assertEquals(422, failure.status());
+        assertEquals("EMBED_VIEW_VALIDATION_FAILED", failure.errorCode());
+        assertEquals(1L, service.get(created.id()).lockVersion());
+        assertEquals(ViewStatus.DRAFT, service.get(created.id()).status());
+    }
+
+    @Test
+    void validSaveKeepsDisabledViewDisabled() throws Exception {
+        ViewState created = service.create(new CreateViewCommand(
+                "supplier-orders", "供应商工单", SurfaceType.LIST, null));
+        ViewState active = service.updateDraft(created.id(),
+                new UpdateDraftCommand(1L, objectMapper.readTree(validDraft())));
+        ViewState disabled = service.changeStatus(created.id(),
+                new ChangeStatusCommand(active.lockVersion(), "DISABLED", "维护")).view();
+
+        ViewState saved = service.updateDraft(created.id(),
+                new UpdateDraftCommand(disabled.lockVersion(),
                         objectMapper.readTree(validDraft())));
-        ReleaseState second = service.publish(created.id(),
-                new PublishViewCommand(draftAgain.lockVersion(), "v2"));
 
-        assertEquals(1L, first.revision());
-        assertEquals(2L, second.revision());
-        assertNotEquals(first.id(), second.id());
-        assertEquals(first.configJson(), service.release(created.id(), 1L).configJson());
-        assertEquals(1L, service.get(created.id()).securityVersion());
-        assertEquals(ViewStatus.ACTIVE, service.get(created.id()).status());
+        assertEquals(ViewStatus.DISABLED, saved.status());
     }
 
     @Test
     void securityStatusIncrementsRevocationVersionAndRetiredIsTerminal() throws Exception {
         ViewState created = service.create(new CreateViewCommand(
                 "supplier-orders", "供应商工单", SurfaceType.LIST, null));
-        ViewState draft = service.updateDraft(created.id(),
+        ViewState active = service.updateDraft(created.id(),
                 new UpdateDraftCommand(1L, objectMapper.readTree(validDraft())));
-        service.publish(created.id(), new PublishViewCommand(draft.lockVersion(), "v1"));
         repository.activeSessions = 4;
 
         var disabled = service.changeStatus(created.id(),
-                new ChangeStatusCommand(3L, "DISABLED", "维护"));
+                new ChangeStatusCommand(active.lockVersion(), "DISABLED", "维护"));
         var retired = service.changeStatus(created.id(),
-                new ChangeStatusCommand(4L, "RETIRED", "下线"));
+                new ChangeStatusCommand(disabled.view().lockVersion(), "RETIRED", "下线"));
 
         assertEquals(4L, disabled.affectedActiveSessions());
         assertEquals(2L, disabled.view().securityVersion());
@@ -130,54 +169,24 @@ class EmbedViewAdministrationServiceTest {
         assertEquals(3L, retired.view().securityVersion());
         assertThrows(EmbedManagementException.class,
                 () -> service.changeStatus(created.id(),
-                        new ChangeStatusCommand(5L, "ACTIVE", "恢复")));
+                        new ChangeStatusCommand(retired.view().lockVersion(), "ACTIVE", "恢复")));
     }
 
     @Test
-    void draftCannotEnterNonexistentDisabledState() {
+    void draftCannotBypassValidationThroughStatusApi() {
         ViewState created = service.create(new CreateViewCommand(
                 "supplier-orders", "供应商工单", SurfaceType.LIST, null));
 
-        EmbedManagementException exception = assertThrows(EmbedManagementException.class,
+        EmbedManagementException active = assertThrows(EmbedManagementException.class,
+                () -> service.changeStatus(created.id(),
+                        new ChangeStatusCommand(1L, "ACTIVE", "绕过保存")));
+        EmbedManagementException disabled = assertThrows(EmbedManagementException.class,
                 () -> service.changeStatus(created.id(),
                         new ChangeStatusCommand(1L, "DISABLED", "尚未发布")));
 
-        assertEquals("EMBED_VIEW_STATUS_INVALID", exception.errorCode());
+        assertEquals("EMBED_VIEW_STATUS_INVALID", active.errorCode());
+        assertEquals("EMBED_VIEW_STATUS_INVALID", disabled.errorCode());
         assertEquals(ViewStatus.DRAFT, service.get(created.id()).status());
-    }
-
-    @Test
-    void publishRejectsBreakingFollowActiveGrantCapabilitiesOrEntries() throws Exception {
-        ViewState created = service.create(new CreateViewCommand(
-                "supplier-orders", "供应商工单", SurfaceType.LIST, null));
-        ViewState draft = service.updateDraft(created.id(),
-                new UpdateDraftCommand(1L, objectMapper.readTree(validDraft())));
-        service.publish(created.id(), new PublishViewCommand(draft.lockVersion(), "v1"));
-        ViewState published = service.get(created.id());
-        LocalDateTime now = LocalDateTime.of(2026, 8, 27, 1, 0);
-        GrantState grant = new GrantState(
-                "grant-1", "app-1", created.id(), "provider-1",
-                SecurityStatus.ACTIVE, false, RevisionMode.FOLLOW_ACTIVE, null,
-                "[\"RECORD_VIEW\"]", 3, 1_800, 60, 120, 20, null,
-                1, 1, List.of("https://portal.example"),
-                "admin", now, "admin", now, null, null);
-        repository.grants.put(created.id() + ":app-1", grant);
-
-        var incompatible = (com.fasterxml.jackson.databind.node.ObjectNode)
-                objectMapper.readTree(validDraft());
-        ((com.fasterxml.jackson.databind.node.ArrayNode) incompatible.path("entryModes"))
-                .removeAll().add("LIST");
-        ((com.fasterxml.jackson.databind.node.ArrayNode) incompatible.path("capabilities"))
-                .removeAll().add("LIST_QUERY");
-        ViewState nextDraft = service.updateDraft(created.id(),
-                new UpdateDraftCommand(published.lockVersion(), incompatible));
-
-        EmbedManagementException exception = assertThrows(EmbedManagementException.class,
-                () -> service.publish(created.id(),
-                        new PublishViewCommand(nextDraft.lockVersion(), "breaking")));
-
-        assertEquals("EMBED_FOLLOW_ACTIVE_INCOMPATIBLE", exception.errorCode());
-        assertEquals(1, repository.releases.get(created.id()).size());
     }
 
     private static String validDraft() {
@@ -196,4 +205,5 @@ class EmbedViewAdministrationServiceTest {
                 }
                 """;
     }
+
 }

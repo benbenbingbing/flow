@@ -344,15 +344,19 @@ const entityDataTableSource = readFileSync(
   path.join(root, 'src/views/entity/components/EntityDataTable.vue'),
   'utf8'
 )
+const entityListLauncherSource = readFileSync(
+  path.join(root, 'src/components/EntityListLauncher.vue'),
+  'utf8'
+)
 assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/, '动态实体列表应支持自定义列表组件')
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
 assert.match(entityDataList, /selectionScene[\s\S]*toolbarButtons[\s\S]*return \[\]/s, '选择型列表应隐藏业务工具栏动作')
 assert.ok(
-  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity && !embedded && canViewVersions"')
+  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity && canViewVersions"')
     && entityDataList.includes("userStore.permissions.includes('entity:version:record:view')")
     && entityDataList.includes("userStore.permissions.includes(entityViewPermission.value)")
     && entityDataList.includes('if (!canViewVersions.value) return'),
-  '平台系统表及缺少版本查看或实体查看权限的列表不得显示数据版本入口'
+  '平台系统表及缺少版本查看或实体查看权限的列表不得显示数据版本入口；Embed 与主站按同一用户权限显示'
 )
 assert.ok(
   entityDataList.includes('props.embedded && !props.showToolbar')
@@ -382,8 +386,8 @@ assert.match(
 )
 assert.match(
   entityDataList,
-  /const handleEdit = async[\s\S]*button\?\.targetFormId[\s\S]*loadRuntimeButtonForm\(button, 'ROW'\)[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*openEdit\(row, \{ form \}\)/,
-  '编辑实体数据时，未显式指定表单的按钮应重新加载最新发布表单，避免嵌入子列表沿用过期 release'
+  /const handleEdit = async[\s\S]*button\?\.targetFormId[\s\S]*loadRuntimeButtonForm\(button, 'ROW'\)[\s\S]*await loadDefaultForm\(true\)[\s\S]*await nextTick\(\)[\s\S]*openEdit\(row, \{[\s\S]*form,[\s\S]*context: relatedContentRuntimeContext\.value[\s\S]*\}\)/,
+  '编辑实体数据时，未显式指定表单的按钮应重新加载最新发布表单，并把已签名关联上下文传给原生弹窗'
 )
 assert.ok(
   entityDataList.includes("getFormForNewData(entityCode.value, { silentError: true })")
@@ -456,6 +460,24 @@ const listButtonConfig = readFileSync(path.join(root, 'src/components/ListButton
 ;['open-list', 'targetEntityCode', 'targetListKey', 'relationKey'].forEach((marker) => {
   assert.ok(listButtonConfig.includes(marker), `列表按钮缺少打开列表配置: ${marker}`)
 })
+
+;[
+  'targetListReleaseId',
+  'targetListReleaseVersion',
+  'targetListReleaseResolutionToken',
+  'targetDefaultFormResolved',
+  'targetDefaultFormReleaseResolutionToken'
+].forEach((marker) => {
+  assert.ok(
+    entityDataTableSource.includes(marker),
+    `列表 open-list 必须透传固定发布坐标：${marker}`
+  )
+})
+assert.ok(entityListLauncherSource.includes(':release-id="releaseId"'))
+assert.ok(entityListLauncherSource.includes(':release-version="releaseVersion"'))
+assert.ok(entityListLauncherSource.includes(
+  ':release-resolution-token="releaseResolutionToken"'
+))
 const entitySelector = readFileSync(path.join(root, 'src/components/EntitySelector.vue'), 'utf8')
 ;['FORM_PICKER', 'runtimeEntityCode', 'listKey'].forEach((marker) => {
   assert.ok(entitySelector.includes(marker), `实体选择器缺少统一列表能力: ${marker}`)
@@ -2081,6 +2103,10 @@ const configurationArchitectureExpectations = {
     'selection.changed',
     'form.saved',
     'session.expired',
+    '为什么后台预览和嵌入效果不同？',
+    'FLOW_PUBLISHED',
+    '同一套 Flow 表单运行时',
+    'await widget.destroy()',
     'RECORD_UPDATE',
     '上线检查清单'
   ],

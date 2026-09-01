@@ -23,17 +23,31 @@ const bootstrap = normalizeEmbedBootstrap({
   },
   actor: {
     displayName: '张三',
+    username: 'zhangsan',
+    nickname: '小张',
+    roles: ['operator', { roleCode: 'reviewer' }, 'operator'],
+    permissions: ['entity:record:view', { permissionCode: 'form:save' }],
+    isSuperAdmin: true,
     permissionCodes: ['admin']
   },
   view: {
     key: 'supplier-work-orders',
     name: '供应商工单',
     surfaceType: 'LIST',
-    revision: 7,
     entryMode: 'LIST',
     fixedFilters: [{ code: 'supplierId' }]
   },
-  capabilities: ['LIST_QUERY', 'SELECTION_RETURN', 'INTERNAL_ADMIN', 'LIST_QUERY'],
+  capabilities: [
+    'LIST_QUERY', 'SELECTION_RETURN', 'ACTION_EXECUTE', 'INTERNAL_ADMIN', 'LIST_QUERY'
+  ],
+  target: {
+    entityCode: 'work_order',
+    listKey: 'supplier_work_orders',
+    listReleaseId: 'list-release-007',
+    listReleaseVersion: 7,
+    listReleaseResolutionToken: 'list_resolution_token_0123456789',
+    context: { source: 'partner' }
+  },
   ui: {
     locale: 'zh-CN',
     theme: 'light',
@@ -51,11 +65,36 @@ const bootstrap = normalizeEmbedBootstrap({
   provider: { serviceId: 'internal-service' }
 })
 
-assert.deepEqual(bootstrap.capabilities, ['LIST_QUERY', 'SELECTION_RETURN'])
-assert.deepEqual(bootstrap.actor, { displayName: '张三' })
+assert.deepEqual(bootstrap.capabilities, ['LIST_QUERY', 'SELECTION_RETURN', 'ACTION_EXECUTE'])
+assert.deepEqual(bootstrap.actor, {
+  displayName: '张三',
+  username: 'zhangsan',
+  nickname: '小张',
+  roles: ['operator', 'reviewer'],
+  isSuperAdmin: true,
+  permissions: ['entity:record:view', 'form:save']
+})
 assert.equal(JSON.stringify(bootstrap).includes('permissionCodes'), false)
 assert.equal(JSON.stringify(bootstrap).includes('fixedFilters'), false)
 assert.equal(JSON.stringify(bootstrap).includes('provider'), false)
+assert.equal('revision' in bootstrap.view, false)
+assert.deepEqual(bootstrap.target, {
+  entityCode: 'work_order',
+  listKey: 'supplier_work_orders',
+  listReleaseId: 'list-release-007',
+  listReleaseVersion: 7,
+  listReleaseResolutionToken: 'list_resolution_token_0123456789',
+  mode: 'LIST',
+  nativeRuntimeUrl: null,
+  initialData: {},
+  parameters: {},
+  runtimeContext: { source: 'partner' },
+  defaultFormResolved: false,
+  formId: null,
+  formReleaseId: null,
+  formReleaseVersion: null,
+  formReleaseResolutionToken: null
+})
 
 const rawSchema = {
   view: {
@@ -280,12 +319,12 @@ const boundarySelection = projectEmbedSelection([{
   id: maximumRecordId,
   recordVersion: null,
   values: {
-    description: 'x'.repeat(2049),
+    description: 'x'.repeat(100001),
     tags: Array.from({ length: 101 }, (_, index) => `tag-${index}`)
   }
 }], selectionBoundarySchema)
 assert.equal(boundarySelection[0].id, maximumRecordId)
-assert.equal(boundarySelection[0].values.description.length, 2048)
+assert.equal(boundarySelection[0].values.description.length, 100000)
 assert.equal(boundarySelection[0].values.tags.length, 100)
 assert.equal(projectEmbedRecord({
   id: 'A'.repeat(129), recordVersion: null, values: {}

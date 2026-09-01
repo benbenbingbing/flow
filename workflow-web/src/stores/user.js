@@ -5,8 +5,18 @@ const TOKEN_STORAGE_KEY = 'auth.accessToken'
 const TOKEN_EXPIRES_STORAGE_KEY = 'auth.tokenExpiresAt'
 const AUTH_SYNC_STORAGE_KEY = 'auth.session.sync'
 const AUTH_CHANNEL_NAME = 'flow-auth-session'
+let ephemeralUserStoreRuntime = false
+
+/**
+ * Embed 独立入口在任何 store 实例化之前调用。该开关单向生效，确保 iframe 中
+ * 即使复用普通 userStore，也不会读取、删除或写入管理端认证存储。
+ */
+export function enableEphemeralUserStoreRuntime() {
+  ephemeralUserStoreRuntime = true
+}
 
 function sessionStorageValue(key) {
+  if (ephemeralUserStoreRuntime) return ''
   try {
     return globalThis.sessionStorage?.getItem(key) || ''
   } catch {
@@ -15,6 +25,7 @@ function sessionStorageValue(key) {
 }
 
 function writeSessionStorage(key, value) {
+  if (ephemeralUserStoreRuntime) return
   try {
     if (value) {
       globalThis.sessionStorage?.setItem(key, value)
@@ -27,6 +38,7 @@ function writeSessionStorage(key, value) {
 }
 
 function removeLegacyAccessToken() {
+  if (ephemeralUserStoreRuntime) return
   try {
     globalThis.localStorage?.removeItem('token')
   } catch {
@@ -56,14 +68,17 @@ export const useUserStore = defineStore('user', () => {
   const userInfo = ref(null)
   /** 当前用户的实时权限码集合。 */
   const permissions = ref([])
+  /** Embed 原生运行时的只读映射身份，仅存在于 iframe 当前 Pinia 内存。 */
+  const ephemeralRuntimeIdentity = ref(false)
+  const ephemeralRuntimeIsSuperAdmin = ref(false)
 
   // Getters
-  const isLoggedIn = computed(() => !!token.value)
+  const isLoggedIn = computed(() => !!token.value || ephemeralRuntimeIdentity.value)
   const username = computed(() => userInfo.value?.username || '')
   const nickname = computed(() => userInfo.value?.nickname || userInfo.value?.username || '')
   const avatar = computed(() => userInfo.value?.avatar || '')
   const roles = computed(() => userInfo.value?.roles || [])
-  const isSuperAdmin = computed(() => roles.value.some(role => {
+  const isSuperAdmin = computed(() => ephemeralRuntimeIsSuperAdmin.value || roles.value.some(role => {
     const code = typeof role === 'string' ? role : role?.roleCode
     return code === 'super_admin'
   }))
@@ -73,6 +88,8 @@ export const useUserStore = defineStore('user', () => {
    * 保存后端签发的完整登录会话结果。
    */
   function applySession(session) {
+    ephemeralRuntimeIdentity.value = false
+    ephemeralRuntimeIsSuperAdmin.value = false
     token.value = session?.token || ''
     tokenExpiresAt.value = session?.tokenExpiresAt || ''
     writeSessionStorage(TOKEN_STORAGE_KEY, token.value)
@@ -87,6 +104,8 @@ export const useUserStore = defineStore('user', () => {
    * 兼容只更新 Access Token 的内部调用。
    */
   function setToken(newToken, expiresAt = '') {
+    ephemeralRuntimeIdentity.value = false
+    ephemeralRuntimeIsSuperAdmin.value = false
     token.value = newToken || ''
     tokenExpiresAt.value = expiresAt || ''
     writeSessionStorage(TOKEN_STORAGE_KEY, token.value)
@@ -100,7 +119,10 @@ export const useUserStore = defineStore('user', () => {
    * 设置用户信息
    */
   function setUserInfo(info) {
+    ephemeralRuntimeIdentity.value = false
+    ephemeralRuntimeIsSuperAdmin.value = false
     userInfo.value = sanitizeUserInfo(info)
+    if (ephemeralUserStoreRuntime) return
     if (userInfo.value) {
       localStorage.setItem(
         'userInfo',
@@ -115,14 +137,48 @@ export const useUserStore = defineStore('user', () => {
    * 设置权限码集合
    */
   function setPermissions(perms) {
+    ephemeralRuntimeIdentity.value = false
     permissions.value = perms || []
+    if (ephemeralUserStoreRuntime) return
     localStorage.setItem('permissions', JSON.stringify(permissions.value))
+  }
+
+  /**
+   * 初始化 Embed 映射用户。该方法刻意不调用普通登录 action，也不访问任何
+   * Web Storage；opaque Embed token 仍只归共享 request transport 持有。
+   */
+  function applyEphemeralRuntimeIdentity(identity = {}) {
+    token.value = ''
+    tokenExpiresAt.value = ''
+    userInfo.value = sanitizeUserInfo({
+      username: identity.username || '',
+      nickname: identity.nickname || identity.displayName || identity.username || '',
+      displayName: identity.displayName || identity.nickname || identity.username || '',
+      roles: Array.isArray(identity.roles) ? [...identity.roles] : []
+    })
+    permissions.value = Array.isArray(identity.permissions)
+      ? [...identity.permissions]
+      : []
+    ephemeralRuntimeIsSuperAdmin.value = identity.isSuperAdmin === true
+    ephemeralRuntimeIdentity.value = true
+  }
+
+  /** 只清理由上一个方法建立的内存身份，绝不破坏普通管理端登录存储。 */
+  function clearEphemeralRuntimeIdentity() {
+    if (!ephemeralRuntimeIdentity.value) return
+    token.value = ''
+    tokenExpiresAt.value = ''
+    userInfo.value = null
+    permissions.value = []
+    ephemeralRuntimeIsSuperAdmin.value = false
+    ephemeralRuntimeIdentity.value = false
   }
 
   /**
    * 从 localStorage 恢复非敏感用户信息和权限。
    */
   function restoreUserInfo() {
+    if (ephemeralUserStoreRuntime) return
     const stored = localStorage.getItem('userInfo')
     if (stored) {
       try {
@@ -156,6 +212,9 @@ export const useUserStore = defineStore('user', () => {
     tokenExpiresAt.value = ''
     userInfo.value = null
     permissions.value = []
+    ephemeralRuntimeIdentity.value = false
+    ephemeralRuntimeIsSuperAdmin.value = false
+    if (ephemeralUserStoreRuntime) return
     writeSessionStorage(TOKEN_STORAGE_KEY, '')
     writeSessionStorage(TOKEN_EXPIRES_STORAGE_KEY, '')
     localStorage.removeItem('token')
@@ -188,7 +247,8 @@ export const useUserStore = defineStore('user', () => {
 
   let authChannel = null
   if (
-    typeof window !== 'undefined'
+    !ephemeralUserStoreRuntime
+    && typeof window !== 'undefined'
     && typeof window.BroadcastChannel === 'function'
   ) {
     authChannel = new window.BroadcastChannel(
@@ -200,7 +260,7 @@ export const useUserStore = defineStore('user', () => {
     )
   }
 
-  if (typeof window !== 'undefined') {
+  if (!ephemeralUserStoreRuntime && typeof window !== 'undefined') {
     window.addEventListener('storage', (event) => {
       if (
         event.key === AUTH_SYNC_STORAGE_KEY
@@ -212,6 +272,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   function publishSessionTermination(reason) {
+    if (ephemeralUserStoreRuntime) return
     const message = {
       type: 'SESSION_TERMINATED',
       reason,
@@ -239,7 +300,10 @@ export const useUserStore = defineStore('user', () => {
     avatar,
     roles,
     isSuperAdmin,
+    ephemeralRuntimeIdentity,
     applySession,
+    applyEphemeralRuntimeIdentity,
+    clearEphemeralRuntimeIdentity,
     setToken,
     setUserInfo,
     setPermissions,

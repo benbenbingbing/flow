@@ -88,6 +88,7 @@ export class FlowEmbedWidget {
     this.maxMessageBytes = normalizeLimit(options.maxMessageBytes, MAX_MESSAGE_BYTES, 1024, MAX_MESSAGE_BYTES)
     this.maxSeenMessageIds = normalizeLimit(options.maxSeenMessageIds, 256, 16, 2048)
     this.handshakeTimeoutMs = normalizeLimit(options.handshakeTimeoutMs, 10000, 0, 120000)
+    this.destroyTimeoutMs = normalizeLimit(options.destroyTimeoutMs, 20000, 1000, 120000)
     this.nonceFactory = options.nonceFactory || (() => createSecureNonce(options.cryptoRef))
     this.messageChannelFactory = options.messageChannelFactory || (() => new globalThis.MessageChannel())
     const setTimeoutImpl = options.setTimeoutImpl || globalThis.setTimeout
@@ -109,6 +110,12 @@ export class FlowEmbedWidget {
     this.childNonce = ''
     this.port = null
     this.timeoutId = undefined
+    this.destroyTimeoutId = undefined
+    this.destroyPromise = null
+    this.destroyRequestId = ''
+    this.resolveDestroy = null
+    this.rejectDestroy = null
+    this.destroyStartedFrom = ''
     this._launchCode = options.launchCode
     this.handleWindowMessage = this.handleWindowMessage.bind(this)
     this.handlePortMessage = this.handlePortMessage.bind(this)
@@ -158,10 +165,18 @@ export class FlowEmbedWidget {
   /** Window 通道仅用于 ready/init；建立 MessagePort 后不再接收 Window 业务消息。 */
   handleWindowMessage(event) {
     if (this.state !== 'waiting') return false
+    const data = event?.data
+    // 页面、浏览器扩展和开发工具都会共享 window.message。只有明确声称属于当前
+    // 握手的 ready 才进入安全校验，避免把无关消息误报为来源攻击。
+    const isReadyCandidate = isPlainRecord(data)
+      && data.protocol === this.protocol
+      && data.type === READY
+      && data.launchId === this.launchId
+      && data.channelId === this.channelId
+    if (!isReadyCandidate) return false
     if (event?.source !== this.iframe?.contentWindow || event?.origin !== this.targetOrigin) {
       return this.violation('ready 来源不受信任', 'FLOW_EMBED_READY_SOURCE_INVALID')
     }
-    const data = event?.data
     if (!this.validateBase(data) || !hasExactFields(data, READY_FIELDS)
       || data.type !== READY || !isNonce(data.childNonce)
       || !Array.isArray(data.supportedVersions) || data.supportedVersions.length !== 1
@@ -217,7 +232,13 @@ export class FlowEmbedWidget {
     if (this.state === 'destroyed' || this.state === 'failed') return false
     const data = event?.data
     if (this.state === 'acknowledging') return this.handleInitAck(data)
-    if (this.state !== 'connected') return false
+    // destroy 可以在 init.ack 尚在途时发出。该 ack 仍需完整校验，但不能把
+    // Widget 从 destroying 恢复成 connected，也不能对宿主再发 connected 事件。
+    if (this.state === 'destroying' && this.destroyStartedFrom === 'acknowledging'
+      && data?.type === INIT_ACK) {
+      return this.handleInitAck(data, { preserveDestroying: true })
+    }
+    if (this.state !== 'connected' && this.state !== 'destroying') return false
     if (!this.validateAuthenticatedPortMessage(data)) {
       return this.violation('Embed 事件无效', 'FLOW_EMBED_EVENT_INVALID')
     }
@@ -229,6 +250,9 @@ export class FlowEmbedWidget {
     }
 
     this.rememberMessageId(data.messageId)
+    if (this.state === 'destroying') {
+      return this.handleDestroyResponse(data)
+    }
     if (data.type === FLOW_EMBED_EVENTS.RESIZE && this.height.mode === 'auto') {
       const height = Math.min(Math.max(data.payload.height, this.height.min), this.height.max)
       this.iframe.style.height = `${height}px`
@@ -237,14 +261,15 @@ export class FlowEmbedWidget {
     return true
   }
 
-  handleInitAck(data) {
+  handleInitAck(data, { preserveDestroying = false } = {}) {
     if (!this.validateBase(data) || !hasExactFields(data, INIT_ACK_FIELDS)
       || data.type !== INIT_ACK
       || data.childNonce !== this.childNonce || data.parentNonce !== this.parentNonce) {
       return this.violation('init.ack 无效', 'FLOW_EMBED_INIT_ACK_INVALID')
     }
-    this.state = 'connected'
+    this.state = preserveDestroying ? 'destroying' : 'connected'
     this.clearHandshakeTimeout()
+    if (preserveDestroying) return true
     this.emit('connected', Object.freeze({
       protocol: this.protocol,
       type: 'connected',
@@ -300,6 +325,14 @@ export class FlowEmbedWidget {
   sendCommand(type, payload = {}) {
     if (this.state !== 'connected' || !this.port) {
       throw new FlowEmbedError('Embed 尚未连接', 'FLOW_EMBED_NOT_CONNECTED')
+    }
+    return this.postCommand(type, payload)
+  }
+
+  /** 已建立 MessagePort 后的底层发送原语；destroy 可在 init.ack 在途时使用。 */
+  postCommand(type, payload = {}) {
+    if (!this.port) {
+      throw new FlowEmbedError('Embed 安全通道不可用', 'FLOW_EMBED_NOT_CONNECTED')
     }
     if (!validateCommandPayload(type, payload)) {
       throw new FlowEmbedError('Embed 命令或 payload 未授权', 'FLOW_EMBED_COMMAND_FORBIDDEN')
@@ -362,6 +395,13 @@ export class FlowEmbedWidget {
 
   fail(error) {
     if (this.state === 'failed' || this.state === 'destroyed') return
+    if (this.state === 'destroying') {
+      this.failDestroy(error instanceof Error ? error : new FlowEmbedError(
+        'Flow Embed 销毁通道失败',
+        'FLOW_EMBED_DESTROY_FAILED'
+      ))
+      return
+    }
     this.state = 'failed'
     this.cleanup(true)
     this.emit('error', Object.freeze({
@@ -380,6 +420,7 @@ export class FlowEmbedWidget {
 
   cleanup(removeIframe = true) {
     this.clearHandshakeTimeout()
+    this.clearDestroyTimeout()
     this.windowRef.removeEventListener?.('message', this.handleWindowMessage)
     this.unbindPort(this.port)
     this.port?.close?.()
@@ -394,17 +435,108 @@ export class FlowEmbedWidget {
     }
   }
 
-  destroy() {
-    if (this.state === 'destroyed') return
-    if (this.state === 'connected') {
-      try { this.sendCommand(FLOW_EMBED_COMMANDS.DESTROY) } catch { /* 注销为 best effort。 */ }
+  clearDestroyTimeout() {
+    if (this.destroyTimeoutId !== undefined && typeof this.clearTimeoutImpl === 'function') {
+      this.clearTimeoutImpl(this.destroyTimeoutId)
     }
+    this.destroyTimeoutId = undefined
+  }
+
+  handleDestroyResponse(data) {
+    if (!this.destroyRequestId || data.requestId !== this.destroyRequestId) return true
+    if (data.type === FLOW_EMBED_EVENTS.ACK
+      && data.payload.command === FLOW_EMBED_COMMANDS.DESTROY) {
+      this.emit(data.type, Object.freeze({ ...data, payload: data.payload }))
+      this.finishDestroy()
+      return true
+    }
+    if (data.type === FLOW_EMBED_EVENTS.ERROR) {
+      this.emit(data.type, Object.freeze({ ...data, payload: data.payload }))
+      const error = new FlowEmbedError(
+        data.payload.message || 'Flow Embed 会话注销失败',
+        data.payload.errorCode || 'FLOW_EMBED_DESTROY_FAILED'
+      )
+      error.traceId = data.payload.traceId ?? null
+      this.failDestroy(error)
+      return true
+    }
+    return true
+  }
+
+  finishDestroy() {
+    if (this.state === 'destroyed') return
+    const resolve = this.resolveDestroy
     this.state = 'destroyed'
     this.cleanup(true)
     this.listeners.clear()
     this.onEventHandler = undefined
     this.onViolationHandler = undefined
     this.iframe = null
+    this.destroyRequestId = ''
+    this.resolveDestroy = null
+    this.rejectDestroy = null
+    resolve?.()
+  }
+
+  failDestroy(error) {
+    if (this.state === 'destroyed') return
+    const reject = this.rejectDestroy
+    this.state = 'destroyed'
+    this.cleanup(true)
+    this.listeners.clear()
+    this.onEventHandler = undefined
+    this.onViolationHandler = undefined
+    this.iframe = null
+    this.destroyRequestId = ''
+    this.resolveDestroy = null
+    this.rejectDestroy = null
+    reject?.(error)
+  }
+
+  /**
+   * 请求 iframe 先完成服务端 Session Logout，收到关联 ACK 后再拆除 DOM。
+   * 返回值可重入：重复调用复用同一 Promise，不会重复发送 destroy。
+   */
+  destroy() {
+    if (this.destroyPromise) return this.destroyPromise
+
+    // ready/init 尚未发生时 launchCode 从未交给 iframe，不可能已建立 Session。
+    if (!['connected', 'acknowledging'].includes(this.state) || !this.port) {
+      this.destroyPromise = Promise.resolve()
+      this.state = 'destroyed'
+      this.cleanup(true)
+      this.listeners.clear()
+      this.onEventHandler = undefined
+      this.onViolationHandler = undefined
+      this.iframe = null
+      return this.destroyPromise
+    }
+
+    this.destroyStartedFrom = this.state
+    this.destroyPromise = new Promise((resolve, reject) => {
+      this.resolveDestroy = resolve
+      this.rejectDestroy = reject
+    })
+    try {
+      this.destroyRequestId = this.postCommand(FLOW_EMBED_COMMANDS.DESTROY)
+      this.state = 'destroying'
+      this.clearHandshakeTimeout()
+      if (typeof this.setTimeoutImpl === 'function') {
+        this.destroyTimeoutId = this.setTimeoutImpl(() => {
+          this.failDestroy(new FlowEmbedError(
+            'Flow Embed 会话注销确认超时',
+            'FLOW_EMBED_DESTROY_TIMEOUT'
+          ))
+        }, this.destroyTimeoutMs)
+      }
+    } catch (cause) {
+      this.failDestroy(new FlowEmbedError(
+        '无法发起 Flow Embed 会话注销',
+        'FLOW_EMBED_DESTROY_FAILED',
+        cause
+      ))
+    }
+    return this.destroyPromise
   }
 
   getState() { return this.state }

@@ -6,7 +6,6 @@ public record EmbedViewSnapshot(
         String viewKey,
         String surfaceType,
         String status,
-        String publishedReleaseId,
         long securityVersion) {
 
     public boolean isActive() {

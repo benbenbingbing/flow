@@ -23,6 +23,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditEventIds;
 import com.workflow.contracts.audit.AuditModule;
@@ -81,6 +82,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -408,7 +410,9 @@ public class UiConfigReleaseService {
                                 formId,
                                 authorized.releaseId(),
                                 authorized.releaseVersion(),
-                                claims.depth() + 1));
+                                claims.depth() + 1,
+                                Instant.ofEpochSecond(
+                                        claims.expiresAt())));
                 return result;
             }
             log.info(
@@ -462,7 +466,9 @@ public class UiConfigReleaseService {
                             formId,
                             child.releaseId(),
                             child.releaseVersion(),
-                            claims.depth() + 1));
+                            claims.depth() + 1,
+                            Instant.ofEpochSecond(
+                                    claims.expiresAt())));
             log.info(
                     "子表单运行时快照解析完成: parentFormId={}, parentReleaseId={}, childFormId={}, childReleaseId={}, childVersion={}, effectiveReleaseId={}, hotfixApplied={}, depth={}",
                     LogValue.safe(claims.parentFormId()),
@@ -3994,6 +4000,46 @@ public class UiConfigReleaseService {
             EntityListConfigDTO list = runtimeList(
                     snapshot,
                     listConfigId);
+            if (resolutionTokenService.isEmbedListToken(
+                    releaseResolutionToken)) {
+                UiReleaseResolutionTokenService.EmbedListClaims claims =
+                        resolutionTokenService.verifyEmbedList(
+                                releaseResolutionToken);
+                EmbedDelegatedRequestContext.SessionCoordinates current =
+                        EmbedDelegatedRequestContext.currentSession()
+                                .orElse(null);
+                if (!Objects.equals(
+                        claims.listConfigId(), listConfigId)
+                        || !Objects.equals(claims.releaseId(), releaseId)
+                        || !Objects.equals(
+                        claims.releaseVersion(), expectedVersion)
+                        || !Objects.equals(
+                        claims.entityCode(), list.getEntityCode())
+                        || current == null
+                        || !Objects.equals(
+                                claims.sessionId(),
+                                current.sessionId())
+                        || !Objects.equals(
+                                claims.viewReleaseId(),
+                                current.viewReleaseId())) {
+                    throw new BusinessForbiddenException(
+                            "EMBED_LIST_RELEASE_CONTEXT_MISMATCH",
+                            "Embed 列表发布版本与当前会话固定坐标不一致");
+                }
+                log.info(
+                        "Embed 列表固定发布快照解析完成: entityCode={}, listId={}, listKey={}, releaseId={}, releaseVersion={}, source=EMBED_SESSION",
+                        LogValue.safe(claims.entityCode()),
+                        LogValue.safe(listConfigId),
+                        LogValue.safe(list.getListKey()),
+                        LogValue.safe(release.getId()),
+                        release.getVersion());
+                return new ResolvedEntityListRelease(
+                        list,
+                        release.getId(),
+                        release.getVersion(),
+                        true,
+                        snapshot);
+            }
             UiReleaseResolutionTokenService.Claims claims =
                     resolutionTokenService.verify(
                             releaseResolutionToken);
@@ -4075,6 +4121,33 @@ public class UiConfigReleaseService {
                 release.getId(),
                 release.getVersion(),
                 false,
+                snapshot);
+    }
+
+    /**
+     * 使用服务端已认证的坐标解析精确 LIST Release。
+     *
+     * <p>只供 Embed 等内部适配器在签发浏览器令牌前使用；公开 Controller
+     * 不得把该方法映射为任意历史版本读取接口。</p>
+     */
+    public ResolvedEntityListRelease resolveServerPinnedRuntimeListRelease(
+            String listConfigId,
+            String releaseId,
+            Integer expectedVersion) {
+        if (!StringUtils.hasText(listConfigId)
+                || !StringUtils.hasText(releaseId)
+                || expectedVersion == null || expectedVersion < 1) {
+            throw new IllegalArgumentException("列表固定发布坐标不完整");
+        }
+        UiConfigRelease release = requireListRelease(
+                listConfigId, releaseId, expectedVersion);
+        Map<String, Object> snapshot = verifiedSnapshot(release);
+        EntityListConfigDTO list = runtimeList(snapshot, listConfigId);
+        return new ResolvedEntityListRelease(
+                list,
+                release.getId(),
+                release.getVersion(),
+                true,
                 snapshot);
     }
 
@@ -4561,26 +4634,81 @@ public class UiConfigReleaseService {
             if (!StringUtils.hasText(targetFormId)) {
                 button.remove("targetFormReleaseId");
                 button.remove("targetFormReleaseVersion");
-                pinned.add(button);
-                continue;
+            } else {
+                validateTargetFormButtonSemantics(button, position);
+                EntityForm form = requireTargetListForm(list, targetFormId);
+                UiConfigRelease release =
+                        releaseMapper.findActive(FORM, targetFormId);
+                if (release == null
+                        || !Objects.equals(
+                                form.getActiveReleaseId(),
+                                release.getId())) {
+                    throw new IllegalArgumentException(
+                            "列表按钮目标表单没有可用的激活发布版本: "
+                                    + targetFormId);
+                }
+                button.put("targetFormReleaseId", release.getId());
+                button.put(
+                        "targetFormReleaseVersion",
+                        release.getVersion());
             }
-            validateTargetFormButtonSemantics(button, position);
-            EntityForm form = requireTargetListForm(list, targetFormId);
-            UiConfigRelease release =
-                    releaseMapper.findActive(FORM, targetFormId);
-            if (release == null
-                    || !Objects.equals(
-                            form.getActiveReleaseId(),
-                            release.getId())) {
-                throw new IllegalArgumentException(
-                        "列表按钮目标表单没有可用的激活发布版本: "
-                                + targetFormId);
-            }
-            button.put("targetFormReleaseId", release.getId());
-            button.put("targetFormReleaseVersion", release.getVersion());
+            pinOpenListTargetRelease(button, position);
             pinned.add(button);
         }
         return pinned;
+    }
+
+    /**
+     * 把 open-list 按钮当时指向的 ACTIVE List Release 写入宿主
+     * 列表快照。列表标识仍用于导航展示，运行时不得再用它
+     * 重新查 ACTIVE。
+     */
+    private void pinOpenListTargetRelease(
+            Map<String, Object> button,
+            String position) {
+        if (!"open-list".equalsIgnoreCase(
+                text(button.get("customMode")))) {
+            button.remove("targetListId");
+            button.remove("targetListReleaseId");
+            button.remove("targetListReleaseVersion");
+            return;
+        }
+        String entityCode = text(button.get("targetEntityCode"));
+        String listKey = text(button.get("targetListKey"));
+        if (!StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(listKey)) {
+            throw new IllegalArgumentException(
+                    position + " open-list 按钮必须配置目标实体和列表");
+        }
+        EntityListConfig target =
+                listConfigMapper.findByEntityCodeAndListKey(
+                        entityCode, listKey);
+        if (target == null) {
+            throw new IllegalArgumentException(
+                    "open-list 目标列表不存在: "
+                            + entityCode + "/" + listKey);
+        }
+        UiConfigRelease release = releaseMapper.findActive(
+                LIST, target.getId());
+        if (release == null
+                || !Objects.equals(
+                        target.getActiveReleaseId(), release.getId())) {
+            throw new IllegalArgumentException(
+                    "open-list 目标列表没有可用的激活发布版本: "
+                            + entityCode + "/" + listKey);
+        }
+        EntityListConfigDTO published = runtimeList(
+                verifiedSnapshot(release), target.getId());
+        if (!Objects.equals(entityCode, published.getEntityCode())
+                || !Objects.equals(listKey, published.getListKey())
+                || !supportsEmbeddedScene(published)) {
+            throw new IllegalArgumentException(
+                    "open-list 目标列表发布快照不允许嵌入: "
+                            + entityCode + "/" + listKey);
+        }
+        button.put("targetListId", target.getId());
+        button.put("targetListReleaseId", release.getId());
+        button.put("targetListReleaseVersion", release.getVersion());
     }
 
     private void validatePinnedListTargetForms(EntityListConfigDTO list) {
@@ -4601,29 +4729,77 @@ public class UiConfigReleaseService {
         for (Map<String, Object> button :
                 buttons == null ? List.<Map<String, Object>>of() : buttons) {
             String targetFormId = text(button.get("targetFormId"));
-            if (!StringUtils.hasText(targetFormId)) {
-                continue;
+            if (StringUtils.hasText(targetFormId)) {
+                validateTargetFormButtonSemantics(button, position);
+                requireTargetListForm(list, targetFormId);
+                String releaseId = text(button.get("targetFormReleaseId"));
+                Integer releaseVersion =
+                        nullableInteger(button.get("targetFormReleaseVersion"));
+                if (!StringUtils.hasText(releaseId)
+                        || releaseVersion == null) {
+                    throw new IllegalArgumentException(
+                            "列表按钮目标表单未固定发布版本: "
+                                    + targetFormId);
+                }
+                UiConfigRelease release = releaseMapper.selectById(releaseId);
+                if (release == null
+                        || !FORM.equals(release.getConfigType())
+                        || !Objects.equals(
+                                targetFormId, release.getConfigId())
+                        || !Objects.equals(
+                                releaseVersion, release.getVersion())) {
+                    throw new IllegalArgumentException(
+                            "列表按钮目标表单发布版本不存在或不匹配: "
+                                    + targetFormId);
+                }
             }
-            validateTargetFormButtonSemantics(button, position);
-            requireTargetListForm(list, targetFormId);
-            String releaseId = text(button.get("targetFormReleaseId"));
-            Integer releaseVersion =
-                    nullableInteger(button.get("targetFormReleaseVersion"));
-            if (!StringUtils.hasText(releaseId)
-                    || releaseVersion == null) {
-                throw new IllegalArgumentException(
-                        "列表按钮目标表单未固定发布版本: "
-                                + targetFormId);
-            }
-            UiConfigRelease release = releaseMapper.selectById(releaseId);
-            if (release == null
-                    || !FORM.equals(release.getConfigType())
-                    || !Objects.equals(targetFormId, release.getConfigId())
-                    || !Objects.equals(releaseVersion, release.getVersion())) {
-                throw new IllegalArgumentException(
-                        "列表按钮目标表单发布版本不存在或不匹配: "
-                                + targetFormId);
-            }
+            validatePinnedOpenListTarget(button, position);
+        }
+    }
+
+    /** 验证 open-list 快照中的目标列表精确坐标与归属。 */
+    private void validatePinnedOpenListTarget(
+            Map<String, Object> button,
+            String position) {
+        if (!"open-list".equalsIgnoreCase(
+                text(button.get("customMode")))) {
+            return;
+        }
+        String entityCode = text(button.get("targetEntityCode"));
+        String listKey = text(button.get("targetListKey"));
+        String listId = text(button.get("targetListId"));
+        String releaseId = text(button.get("targetListReleaseId"));
+        Integer releaseVersion = nullableInteger(
+                button.get("targetListReleaseVersion"));
+        if (!StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(listKey)
+                || !StringUtils.hasText(listId)
+                || !StringUtils.hasText(releaseId)
+                || releaseVersion == null
+                || releaseVersion < 1) {
+            throw new IllegalArgumentException(
+                    position + " open-list 按钮未固定目标列表发布版本");
+        }
+        EntityListConfig target =
+                listConfigMapper.findByEntityCodeAndListKey(
+                        entityCode, listKey);
+        UiConfigRelease release = releaseMapper.selectById(releaseId);
+        if (target == null
+                || !Objects.equals(listId, target.getId())
+                || release == null
+                || !LIST.equals(release.getConfigType())
+                || !Objects.equals(listId, release.getConfigId())
+                || !Objects.equals(releaseVersion, release.getVersion())) {
+            throw new IllegalArgumentException(
+                    position + " open-list 目标列表发布坐标不存在或不匹配");
+        }
+        EntityListConfigDTO published = runtimeList(
+                verifiedSnapshot(release), listId);
+        if (!Objects.equals(entityCode, published.getEntityCode())
+                || !Objects.equals(listKey, published.getListKey())
+                || !supportsEmbeddedScene(published)) {
+            throw new IllegalArgumentException(
+                    position + " open-list 目标列表发布快照归属不一致");
         }
     }
 

@@ -43,7 +43,12 @@
       </el-button-group>
     </div>
 
-    <el-card v-if="nodeType === 'SECTION'" shadow="never" class="design-section">
+    <el-card
+      v-if="nodeType === 'SECTION'"
+      shadow="never"
+      class="design-section"
+      :class="containerAppearanceClasses"
+    >
       <template #header>{{ nodeLabelValue }}</template>
       <FormNodeDraggableList
         :items="children"
@@ -71,7 +76,11 @@
       </FormNodeDraggableList>
     </el-card>
 
-    <div v-else-if="nodeType === 'GRID'" class="design-container-shell design-grid-shell">
+    <div
+      v-else-if="nodeType === 'GRID'"
+      class="design-container-shell design-grid-shell"
+      :class="containerAppearanceClasses"
+    >
       <div
         class="design-container-caption"
         role="button"
@@ -115,7 +124,11 @@
       </FormNodeDraggableList>
     </div>
 
-    <div v-else-if="nodeType === 'TAB_SET'" class="design-container-shell design-tab-set-shell">
+    <div
+      v-else-if="nodeType === 'TAB_SET'"
+      class="design-container-shell design-tab-set-shell"
+      :class="containerAppearanceClasses"
+    >
       <div
         class="design-container-caption"
         role="button"
@@ -184,77 +197,84 @@
           :label="nodeLabelFor(tabNode)"
           :name="tabNode.id"
         >
-          <div
-            class="tab-node-toolbar"
-            :class="{ active: selectedNodeId === tabNode.id }"
-            @click.stop
-            @dblclick.stop
-          >
-            <button
-              type="button"
-              class="tab-node-title"
-              @click="$emit('select', tabNode)"
-              @dblclick.stop="openTabNodeProperties(tabNode)"
+          <div class="design-tab-panel" :class="appearanceClassesFor(tabNode)">
+            <div
+              class="tab-node-toolbar"
+              :class="{ active: selectedNodeId === tabNode.id }"
+              @click.stop
+              @dblclick.stop
             >
-              <span>Tab 页</span>
-              <strong>{{ nodeLabelFor(tabNode) }}</strong>
-            </button>
-            <el-button-group size="small">
-              <el-button
-                aria-label="左移 Tab 页"
-                :disabled="index === 0"
-                @click="$emit('move', { node: tabNode, direction: -1 })"
+              <button
+                type="button"
+                class="tab-node-title"
+                @click="$emit('select', tabNode)"
+                @dblclick.stop="openTabNodeProperties(tabNode)"
               >
-                <el-icon><ArrowLeft /></el-icon>
-              </el-button>
-              <el-button
-                aria-label="右移 Tab 页"
-                :disabled="index === children.length - 1"
-                @click="$emit('move', { node: tabNode, direction: 1 })"
-              >
-                <el-icon><ArrowRight /></el-icon>
-              </el-button>
-              <el-button
-                type="danger"
-                aria-label="删除 Tab 页"
-                @click="$emit('remove', tabNode)"
-              >
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </el-button-group>
+                <span>Tab 页</span>
+                <strong>{{ nodeLabelFor(tabNode) }}</strong>
+              </button>
+              <el-button-group size="small">
+                <el-button
+                  aria-label="左移 Tab 页"
+                  :disabled="index === 0"
+                  @click="$emit('move', { node: tabNode, direction: -1 })"
+                >
+                  <el-icon><ArrowLeft /></el-icon>
+                </el-button>
+                <el-button
+                  aria-label="右移 Tab 页"
+                  :disabled="index === children.length - 1"
+                  @click="$emit('move', { node: tabNode, direction: 1 })"
+                >
+                  <el-icon><ArrowRight /></el-icon>
+                </el-button>
+                <el-button
+                  type="danger"
+                  aria-label="删除 Tab 页"
+                  @click="$emit('remove', tabNode)"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </el-button-group>
+            </div>
+            <FormNodeDraggableList
+              :items="childrenFor(tabNode.id)"
+              :parent-id="tabNode.id"
+              :can-drop="canDropNode"
+              :disabled="dragDisabled"
+              zone-class="design-node-children tab-node-children"
+              @drop="$emit('drop', $event)"
+            >
+              <template #item="{ element: child, index: childIndex }">
+                <FormNodeDesignItem
+                  v-bind="childItemProps(child, childIndex, 'TAB')"
+                  @select="$emit('select', $event)"
+                  @open-properties="$emit('open-properties', $event)"
+                  @move="$emit('move', $event)"
+                  @remove="$emit('remove', $event)"
+                  @drop="$emit('drop', $event)"
+                />
+              </template>
+              <template #footer>
+                <div
+                  v-if="!childrenFor(tabNode.id).length"
+                  class="design-container-empty"
+                >
+                  拖拽节点到此 Tab 页
+                </div>
+              </template>
+            </FormNodeDraggableList>
           </div>
-          <FormNodeDraggableList
-            :items="childrenFor(tabNode.id)"
-            :parent-id="tabNode.id"
-            :can-drop="canDropNode"
-            :disabled="dragDisabled"
-            zone-class="design-node-children tab-node-children"
-            @drop="$emit('drop', $event)"
-          >
-            <template #item="{ element: child, index: childIndex }">
-              <FormNodeDesignItem
-                v-bind="childItemProps(child, childIndex, 'TAB')"
-                @select="$emit('select', $event)"
-                @open-properties="$emit('open-properties', $event)"
-                @move="$emit('move', $event)"
-                @remove="$emit('remove', $event)"
-                @drop="$emit('drop', $event)"
-              />
-            </template>
-            <template #footer>
-              <div
-                v-if="!childrenFor(tabNode.id).length"
-                class="design-container-empty"
-              >
-                拖拽节点到此 Tab 页
-              </div>
-            </template>
-          </FormNodeDraggableList>
         </el-tab-pane>
       </el-tabs>
     </div>
 
-    <el-collapse v-else-if="nodeType === 'COLLAPSE'" model-value="design-collapse" class="design-collapse">
+    <el-collapse
+      v-else-if="nodeType === 'COLLAPSE'"
+      model-value="design-collapse"
+      class="design-collapse"
+      :class="containerAppearanceClasses"
+    >
       <el-collapse-item
         :name="node.id"
         :title="nodeLabelValue"
@@ -297,7 +317,11 @@
       {{ nodeConfig.text || nodeConfig.content || nodeLabelValue }}
     </div>
 
-    <div v-else-if="nodeType === 'TAB'" class="design-orphan-tab">
+    <div
+      v-else-if="nodeType === 'TAB'"
+      class="design-orphan-tab"
+      :class="containerAppearanceClasses"
+    >
       <strong>Tab 页 · {{ nodeLabelValue }}</strong>
       <span>请选择所属 Tab 集合</span>
     </div>
@@ -318,6 +342,7 @@
       <div
         v-if="nestedFieldContainer"
         class="nested-field-children"
+        :class="containerAppearanceClasses"
       >
         <div class="design-container-caption">
           <strong>内嵌节点</strong>
@@ -387,6 +412,10 @@ import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { safeParseConfig } from '@/shared/config-runtime'
+import {
+  resolveFormContainerAppearance,
+  supportsFormContainerAppearance
+} from '@/shared/form-container-appearance'
 
 defineOptions({ name: 'FormNodeDesignItem' })
 
@@ -416,6 +445,9 @@ const nodeType = computed(() =>
   String(props.node.nodeType || props.legacyNodeType(props.node) || 'FIELD').toUpperCase()
 )
 const nodeConfig = computed(() => safeParseConfig(props.node.componentProps))
+const containerAppearanceClasses = computed(() =>
+  appearanceClasses(nodeType.value, nodeConfig.value)
+)
 const isSectionTitleText = computed(() =>
   String(nodeConfig.value.textStyle || '').toUpperCase() === 'SECTION_TITLE'
 )
@@ -455,6 +487,31 @@ watch(
 
 function nodeLabelFor(node) {
   return props.nodeLabel(node.id)
+}
+
+/**
+ * 业务边框与内边距只作用于容器内容；最外层节点的 hover/active 描边
+ * 始终保留，确保无边框容器在设计画布中仍可被发现和选中。
+ */
+function appearanceClasses(type, config) {
+  if (!supportsFormContainerAppearance(type)) return {}
+  const resolved = resolveFormContainerAppearance(type, config)
+  return {
+    'is-container-padded': resolved.showPadding === true,
+    'is-container-paddingless': resolved.showPadding !== true,
+    'is-container-bordered': resolved.showBorder === true,
+    'is-container-borderless': resolved.showBorder !== true
+  }
+}
+
+function appearanceClassesFor(targetNode) {
+  const type = String(
+    targetNode?.nodeType || props.legacyNodeType(targetNode) || 'FIELD'
+  ).toUpperCase()
+  return appearanceClasses(
+    type,
+    safeParseConfig(targetNode?.componentProps)
+  )
 }
 
 function nodeSpanFor(node, fallback) {
@@ -565,6 +622,34 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
   background: var(--el-fill-color-extra-light);
 }
 
+/*
+ * 容器业务外观可以隐藏，但节点最外层的 hover/active 描边继续由
+ * .form-node-design-item 提供，避免无边框容器失去设计态可操作边界。
+ */
+.design-container-shell.is-container-paddingless,
+.nested-field-children.is-container-paddingless,
+.design-orphan-tab.is-container-paddingless {
+  padding: 0;
+}
+
+.design-container-shell.is-container-borderless,
+.nested-field-children.is-container-borderless,
+.design-orphan-tab.is-container-borderless {
+  border-width: 0;
+}
+
+.design-section.is-container-borderless {
+  border-width: 0;
+}
+
+.design-section.is-container-borderless :deep(.el-card__header) {
+  border-bottom-width: 0;
+}
+
+.design-section.is-container-paddingless :deep(.el-card__body) {
+  padding: 0;
+}
+
 .design-container-caption {
   display: flex;
   align-items: center;
@@ -588,6 +673,14 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
 
 .design-tab-set-shell {
   background: color-mix(in srgb, var(--el-color-primary) 4%, white);
+}
+
+.design-tab-set-shell.is-container-borderless .design-tabs {
+  border-width: 0;
+}
+
+.design-tab-set-shell.is-container-paddingless .design-tabs :deep(.el-tabs__content) {
+  padding: 0;
 }
 
 .design-container-empty {
@@ -634,6 +727,19 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
 
 .nested-field-children .design-container-caption {
   padding-right: 2px;
+}
+
+.design-tab-panel {
+  border: 0 dashed var(--el-border-color);
+  border-radius: 5px;
+}
+
+.design-tab-panel.is-container-bordered {
+  border-width: 1px;
+}
+
+.design-tab-panel.is-container-padded {
+  padding: 10px;
 }
 
 .design-text {
@@ -764,6 +870,19 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
 
 .design-tabs :deep(.el-tabs__header) {
   display: none;
+}
+
+.design-collapse.is-container-borderless {
+  border-top-width: 0;
+  border-bottom-width: 0;
+}
+
+.design-collapse.is-container-borderless :deep(.el-collapse-item__wrap) {
+  border-bottom-width: 0;
+}
+
+.design-collapse.is-container-paddingless :deep(.el-collapse-item__content) {
+  padding-bottom: 0;
 }
 
 .tab-node-toolbar {

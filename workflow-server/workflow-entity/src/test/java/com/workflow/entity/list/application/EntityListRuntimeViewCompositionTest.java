@@ -591,55 +591,71 @@ class EntityListRuntimeViewCompositionTest {
     }
 
     @Test
-    void embedPinnedSchemaRejectsCustomComponentBeforeEnhancerRuns() {
+    void embedPinnedSchemaUsesPublishedCustomComponentWithoutEmbedWhitelist() {
         EntityListConfig published = publishedList();
         published.setCustomComponent("partner-widget");
         configurePinnedList(published);
         EntityListSchemaProvider provider = mock(EntityListSchemaProvider.class);
         when(provider.getCode()).thenReturn("partner-widget");
+        when(provider.enhance(any(), anyMap()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
         schemaProviders.add(provider);
 
-        assertThrows(IllegalStateException.class, () -> service.schemaPinned(
-                "target_entity", "default", "target-release", 3));
+        var schema = service.schemaPinned(
+                "target_entity", "default", "target-release", 3);
 
-        verify(provider, never()).enhance(any(), anyMap());
-        verify(publishedRuntimeService, never()).resolveFields(any(), anyList());
+        assertEquals("partner-widget", schema.getCustomComponent());
+        verify(provider).enhance(any(), anyMap());
+        verify(publishedRuntimeService).resolveFields(any(), anyList());
     }
 
     @Test
-    void embedPinnedQueryRejectsCustomProviderBeforeProviderRuns() {
+    void embedPinnedQueryUsesPublishedProviderWithMappedUserDataScope() {
         EntityListConfig published = publishedList();
         published.setQueryProviderCode("partner-query");
         configurePinnedList(published);
-        EntityListDataProvider provider = mock(EntityListDataProvider.class);
-        when(provider.getCode()).thenReturn("partner-query");
+        EntityListDataProvider provider = provider(
+                "partner-query",
+                Map.of(
+                        "records", List.of(Map.of("id", "record-1")),
+                        "total", 1));
         dataProviders.add(provider);
+        stubProviderPermission();
 
-        assertThrows(IllegalStateException.class, () -> service.queryPinned(
+        PageResult<?> result = (PageResult<?>) service.queryPinned(
                 "target_entity", "default", "target-release", 3,
-                1, 20, Map.of(), Map.of()));
+                1, 20, Map.of(), Map.of());
 
-        verify(provider, never()).query(any(), any(), anyMap());
+        assertEquals(1, result.getTotal());
+        verify(provider).query(any(), any(), anyMap());
         verify(dataListService, never()).findPageWithResolvedConfig(
                 any(), any(), any(), anyMap(), anyLong(), anyLong());
     }
 
     @Test
-    void embedPinnedQueryRejectsDataSourceAndUnsafeFieldBeforeExecution() {
+    void embedPinnedQueryUsesPublishedDataSourceAndFieldExtension() {
         EntityListConfig published = publishedList();
         published.setQueryDataSourceId("external-source");
         published.setQueryOperationCode("search");
         EntityListField field = new EntityListField();
         field.setFieldCode("amount");
         field.setDataSourceType("CUSTOM_PROVIDER");
+        field.setRenderComponent("native-rich-column");
         published.setRuntimeFields(List.of(field));
         configurePinnedList(published);
+        when(uiDataSourceService.executeOperation(
+                eq("external-source"), eq("search"), any()))
+                .thenReturn(Map.of(
+                        "records", List.of(Map.of("id", "record-1")),
+                        "total", 1));
 
-        assertThrows(IllegalStateException.class, () -> service.queryPinned(
+        PageResult<?> result = (PageResult<?>) service.queryPinned(
                 "target_entity", "default", "target-release", 3,
-                1, 20, Map.of(), Map.of()));
+                1, 20, Map.of(), Map.of());
 
-        verify(uiDataSourceService, never()).executeOperation(any(), any(), any());
+        assertEquals(1, result.getTotal());
+        verify(uiDataSourceService).executeOperation(
+                eq("external-source"), eq("search"), any());
         verify(dataListService, never()).findPageWithResolvedConfig(
                 any(), any(), any(), anyMap(), anyLong(), anyLong());
     }

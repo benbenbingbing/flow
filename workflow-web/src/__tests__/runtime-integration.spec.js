@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   applyRuntimeFieldDefaults,
   assertUniqueFormDataSourceOutputTargets,
+  buildFormDataSourceExecutionRequest,
   collectRuntimeFormFieldCodes,
   createFormDataSourceRuntime,
   filterRuntimeFormSubmissionData,
@@ -33,7 +34,8 @@ import {
   getActionCapabilityReason,
   getSelectionActionState,
   hasButtonPermission,
-  isActionVisible
+  isActionVisible,
+  resolveActionableTaskId
 } from '@/utils/listButtonPermission.js'
 import {
   applySchemaDefaults,
@@ -313,6 +315,50 @@ assert.deepEqual(getSelectionActionState([], 'batchDelete'), {
 assert.equal(getSelectionActionState([allowedActionRow], 'delete').enabled, true)
 assert.equal(getSelectionActionState([allowedActionRow, hiddenActionRow], 'delete').enabled, false)
 
+assert.equal(
+  resolveActionableTaskId({
+    currentTaskId: 'task-assigned-to-another-user',
+    actionCapabilities: {
+      approve: {
+        visible: true,
+        enabled: true,
+        actionableTaskId: 'task-assigned-to-current-user'
+      }
+    }
+  }, 'approve'),
+  'task-assigned-to-current-user'
+)
+assert.equal(
+  resolveActionableTaskId({
+    currentTaskId: 'task-assigned-to-another-user',
+    actionCapabilities: {
+      approve: { visible: true, enabled: true }
+    }
+  }, 'approve'),
+  '',
+  '服务端已返回审批能力时，缺少 actionableTaskId 必须失败关闭，不能回退全局 currentTaskId'
+)
+assert.equal(
+  resolveActionableTaskId({
+    taskId: 'workbench-task',
+    currentTaskId: 'legacy-current-task'
+  }, 'approve'),
+  'workbench-task'
+)
+assert.equal(
+  resolveActionableTaskId({ currentTaskId: 'legacy-current-task' }, 'approve'),
+  'legacy-current-task'
+)
+assert.equal(
+  resolveActionableTaskId(
+    { currentTaskId: 'task-assigned-to-another-user' },
+    'approve',
+    { requireActionCapability: true }
+  ),
+  '',
+  '实体列表要求审批能力时，整个 actionCapabilities 缺失也不能回退全局 currentTaskId'
+)
+
 assert.deepEqual(toPageParams({ currentPage: 3, size: 20 }), { pageNum: 3, pageSize: 20 })
 assert.deepEqual(normalizePageResult({ records: [{ id: 1 }], total: 1, current: 2, size: 10 }).list, [{ id: 1 }])
 assert.deepEqual(normalizeApiResponse({ code: 0, data: { rows: [{ id: 2 }], count: 1 } }).list, [{ id: 2 }])
@@ -401,10 +447,143 @@ await assert.rejects(
 )
 assert.equal(browserExecutions.length, 1)
 
+const signedChildViewDataSourceRequest = buildFormDataSourceExecutionRequest({
+  options: {
+    entityCode: 'root-entity',
+    getListKey: () => 'root-list',
+    getRecordId: () => 'record-from-options',
+    getForm: () => ({
+      id: 'root-form',
+      runtimeReleaseId: 'root-release',
+      runtimeReleaseVersion: 1,
+      releaseResolutionToken: 'signed-root-release'
+    })
+  },
+  runtimeContext: {
+    mode: 'view',
+    form: {
+      id: 'child-form',
+      entityCode: 'child-entity',
+      listKey: 'child-list',
+      runtimeReleaseId: 'child-release',
+      runtimeReleaseVersion: 7,
+      releaseResolutionToken: 'signed-child-release'
+    },
+    recordId: 'child-record',
+    viewCompositionTraversalToken: 'signed-traversal',
+    // 业务 context/input 中的同名值不属于安全信封，不能覆盖当前 runtime form。
+    context: {
+      releaseId: 'forged-context-release',
+      releaseResolutionToken: 'forged-context-token'
+    },
+    input: {
+      entityCode: 'forged-input-entity'
+    }
+  },
+  ownerId: 'child-form',
+  bindingCode: 'FIELD_OPTIONS',
+  targetType: 'FIELD',
+  targetKey: 'priority',
+  serviceId: 'priority-source',
+  operationCode: 'load-options',
+  input: { fieldCode: 'priority', mode: 'view' }
+})
+assert.deepEqual(signedChildViewDataSourceRequest, {
+  ownerType: 'FORM',
+  ownerId: 'child-form',
+  bindingCode: 'FIELD_OPTIONS',
+  targetType: 'FIELD',
+  targetKey: 'priority',
+  serviceId: 'priority-source',
+  operationCode: 'load-options',
+  input: { fieldCode: 'priority', mode: 'view' },
+  releaseId: 'child-release',
+  releaseVersion: 7,
+  releaseResolutionToken: 'signed-child-release',
+  entityCode: 'child-entity',
+  listKey: 'child-list',
+  recordId: 'child-record',
+  viewCompositionTraversalToken: 'signed-traversal'
+})
+
+const unsignedDataSourceRequest = buildFormDataSourceExecutionRequest({
+  options: {
+    entityCode: 'expense',
+    getListKey: () => 'expense-list',
+    getForm: () => ({
+      id: 'draft-form',
+      runtimeReleaseId: 'unsigned-release',
+      runtimeReleaseVersion: 3
+    })
+  },
+  runtimeContext: {
+    context: {
+      releaseResolutionToken: 'forged-nested-token',
+      recordId: 'forged-nested-record'
+    }
+  },
+  ownerId: 'draft-form',
+  bindingCode: 'FORM_INIT',
+  targetType: 'OWNER',
+  targetKey: '',
+  serviceId: 'draft-source',
+  operationCode: 'initialize',
+  input: {}
+})
+assert.equal(unsignedDataSourceRequest.releaseId, undefined)
+assert.equal(unsignedDataSourceRequest.releaseVersion, undefined)
+assert.equal(unsignedDataSourceRequest.releaseResolutionToken, undefined)
+assert.equal(unsignedDataSourceRequest.recordId, undefined)
+assert.equal(unsignedDataSourceRequest.entityCode, 'expense')
+assert.equal(unsignedDataSourceRequest.listKey, 'expense-list')
+
+const contextBoundDataSourceRequest = buildFormDataSourceExecutionRequest({
+  options: {
+    entityCode: 'root-entity',
+    getListKey: () => 'root-list',
+    getForm: () => ({
+      id: 'root-form',
+      runtimeReleaseId: 'root-release',
+      runtimeReleaseVersion: 2,
+      releaseResolutionToken: 'signed-root-release'
+    })
+  },
+  runtimeContext: {
+    formId: 'context-child-form',
+    formReleaseId: 'context-child-release',
+    formReleaseVersion: 9,
+    formReleaseResolutionToken: 'signed-context-child-release',
+    entityCode: 'context-child-entity',
+    listKey: 'context-child-list',
+    recordId: 'context-child-record'
+  },
+  ownerId: 'context-child-form',
+  bindingCode: 'AFTER_LOAD',
+  targetType: 'OWNER',
+  targetKey: '',
+  serviceId: 'context-child-source',
+  operationCode: 'load',
+  input: { mode: 'edit' }
+})
+assert.equal(contextBoundDataSourceRequest.releaseId, 'context-child-release')
+assert.equal(contextBoundDataSourceRequest.releaseVersion, 9)
+assert.equal(
+  contextBoundDataSourceRequest.releaseResolutionToken,
+  'signed-context-child-release'
+)
+assert.equal(contextBoundDataSourceRequest.entityCode, 'context-child-entity')
+assert.equal(contextBoundDataSourceRequest.listKey, 'context-child-list')
+assert.equal(contextBoundDataSourceRequest.recordId, 'context-child-record')
+
 const initializationExecutions = []
 const initializedRecord = {}
 const initializationForm = {
   formId: 'form-1',
+  entityCode: 'expense',
+  listKey: 'expense-list',
+  runtimeReleaseId: 'form-release-1',
+  runtimeReleaseVersion: 5,
+  releaseResolutionToken: 'signed-form-release-1',
   dataSourceBindingsDocument: JSON.stringify({
     FORM_INIT: {
       serviceId: 'form-init-source',
@@ -429,7 +608,13 @@ const initializationRuntime = createFormDataSourceRuntime({
   }
 })
 await initializationRuntime.initialize({
-  form: initializationForm
+  form: initializationForm,
+  runtimeContext: {
+    context: {
+      formId: 'forged-business-owner',
+      mode: 'view'
+    }
+  }
 })
 assert.deepEqual(
   initializationExecutions.map(request => request.serviceId),
@@ -438,11 +623,38 @@ assert.deepEqual(
 assert.deepEqual(
   initializationExecutions.map(request => ({
     ownerType: request.ownerType,
-    ownerId: request.ownerId
+    ownerId: request.ownerId,
+    releaseId: request.releaseId,
+    releaseVersion: request.releaseVersion,
+    releaseResolutionToken: request.releaseResolutionToken,
+    entityCode: request.entityCode,
+    listKey: request.listKey,
+    recordId: request.recordId,
+    mode: request.input.mode
   })),
   [
-    { ownerType: 'FORM', ownerId: 'form-1' },
-    { ownerType: 'FORM', ownerId: 'form-1' }
+    {
+      ownerType: 'FORM',
+      ownerId: 'form-1',
+      releaseId: 'form-release-1',
+      releaseVersion: 5,
+      releaseResolutionToken: 'signed-form-release-1',
+      entityCode: 'expense',
+      listKey: 'expense-list',
+      recordId: undefined,
+      mode: 'create'
+    },
+    {
+      ownerType: 'FORM',
+      ownerId: 'form-1',
+      releaseId: 'form-release-1',
+      releaseVersion: 5,
+      releaseResolutionToken: 'signed-form-release-1',
+      entityCode: 'expense',
+      listKey: 'expense-list',
+      recordId: undefined,
+      mode: 'create'
+    }
   ]
 )
 assert.deepEqual(
@@ -550,6 +762,11 @@ const parentRecord = { parentOnly: true }
 const nestedForm = {
   id: 'child-form-1',
   entityId: 'child-entity-1',
+  entityCode: 'child-entity',
+  listKey: 'child-list',
+  runtimeReleaseId: 'child-form-release-1',
+  runtimeReleaseVersion: 4,
+  releaseResolutionToken: 'signed-child-form-release-1',
   dataSourceBindings: {
     FORM_INIT: {
       serviceId: 'child-form-init-source',
@@ -604,6 +821,16 @@ assert.equal(nestedInitializationExecutions.length, 2)
 assert.equal(nestedInitializationExecutions[0].ownerId, 'child-form-1')
 assert.equal(nestedInitializationExecutions[0].ownerType, 'FORM')
 assert.equal(nestedInitializationExecutions[0].input.recordId, 'parent-1:lines:0')
+assert.equal(nestedInitializationExecutions[0].input.mode, 'edit')
+assert.equal(nestedInitializationExecutions[0].releaseId, 'child-form-release-1')
+assert.equal(nestedInitializationExecutions[0].releaseVersion, 4)
+assert.equal(
+  nestedInitializationExecutions[0].releaseResolutionToken,
+  'signed-child-form-release-1'
+)
+assert.equal(nestedInitializationExecutions[0].entityCode, 'child-entity')
+assert.equal(nestedInitializationExecutions[0].listKey, 'child-list')
+assert.equal(nestedInitializationExecutions[0].recordId, 'parent-1:lines:0')
 
 assert.equal(formatDateValue('not-a-date'), '-')
 assert.notEqual(formatDateValue('2026-07-14T08:00:00Z'), '-')

@@ -160,18 +160,66 @@ const sourceDraft = {
 }
 const draftEditor = draftToEditor(sourceDraft, 'LIST')
 assert.deepEqual(draftEditor.entryModes, ['LIST'])
-assert.deepEqual(draftEditor.capabilities, ['LIST_QUERY'])
+assert.deepEqual(draftEditor.capabilities, ['LIST_QUERY', 'ACTION_EXECUTE'])
 draftEditor.entityCode = 'work_order'
-draftEditor.visibleFieldsText = 'id\ntitle'
 const serializedDraft = editorToDraft(draftEditor, 'LIST')
 assert.equal(serializedDraft.target.entityCode, 'work_order')
-assert.deepEqual(serializedDraft.fieldPolicy.visible, ['id', 'title'])
+assert.deepEqual(serializedDraft.fieldPolicy, {
+  mode: 'FLOW_PUBLISHED',
+  returnable: []
+})
 assert.deepEqual(serializedDraft.entryModes, ['LIST'])
-assert.deepEqual(serializedDraft.capabilities, ['LIST_QUERY'])
+assert.deepEqual(serializedDraft.capabilities, ['LIST_QUERY', 'ACTION_EXECUTE'])
+assert.deepEqual(serializedDraft.actionPolicy, { allowed: [] })
+assert.equal('releasePolicy' in serializedDraft, false)
 assert.deepEqual(
   serializedDraft.extensionField,
   { preserved: true },
   '结构化字段不应丢失高级 JSON 中的扩展配置'
+)
+
+const followFormEditor = draftToEditor({
+  target: { entityCode: 'ZDWREQ', defaultFormId: 'form-1' },
+  entryModes: ['CREATE', 'VIEW'],
+  releasePolicy: { strategy: 'FOLLOW_ACTIVE' },
+  capabilities: ['RECORD_CREATE', 'RECORD_VIEW', 'ACTION_EXECUTE'],
+  fieldPolicy: { mode: 'FLOW_PUBLISHED', returnable: ['code'] },
+  actionPolicy: { allowed: ['save'] },
+  contextSchema: {},
+  contextBindings: [],
+  ui: {}
+}, 'FORM')
+assert.equal(followFormEditor.fieldPolicyMode, 'FLOW_PUBLISHED')
+assert.deepEqual(
+  followFormEditor.capabilities,
+  ['RECORD_CREATE', 'RECORD_VIEW', 'ACTION_EXECUTE']
+)
+followFormEditor.visibleFieldsText = 'must_not_leak_into_follow_mode'
+const followFormDraft = editorToDraft(followFormEditor, 'FORM')
+assert.deepEqual(followFormDraft.fieldPolicy, {
+  mode: 'FLOW_PUBLISHED',
+  returnable: ['code']
+})
+assert.deepEqual(
+  followFormDraft.capabilities,
+  ['RECORD_CREATE', 'RECORD_VIEW', 'ACTION_EXECUTE']
+)
+assert.equal('releasePolicy' in followFormDraft, false)
+
+const legacyExplicitFormEditor = draftToEditor({
+  target: { entityCode: 'ZDWREQ', defaultFormId: 'form-1' },
+  fieldPolicy: {
+    mode: 'EXPLICIT',
+    visible: ['req_desc'],
+    writable: ['req_desc'],
+    returnable: []
+  }
+}, 'FORM')
+assert.equal(legacyExplicitFormEditor.fieldPolicyMode, 'FLOW_PUBLISHED')
+assert.deepEqual(
+  editorToDraft(legacyExplicitFormEditor, 'FORM').fieldPolicy,
+  { mode: 'FLOW_PUBLISHED', returnable: [] },
+  '旧 FORM 显式字段草稿再次保存时必须迁移为 Flow 发布表单引用'
 )
 
 assert.equal(
@@ -183,7 +231,6 @@ assert.equal(
   hasEmbedPermission([EMBED_PERMISSIONS.manage], EMBED_PERMISSIONS.manage),
   true
 )
-assert.equal(hasEmbedPermission(['*'], EMBED_PERMISSIONS.publish), true)
 
 const managementSource = fs.readFileSync(
   path.join(webRoot, 'views/system/EmbedManagement.vue'),
@@ -211,10 +258,6 @@ const bindingSource = fs.readFileSync(
 )
 const operationsSource = fs.readFileSync(
   path.join(webRoot, 'views/system/embed-management/EmbedOperationsWorkspace.vue'),
-  'utf8'
-)
-const releaseSource = fs.readFileSync(
-  path.join(webRoot, 'views/system/embed-management/EmbedReleasePanel.vue'),
   'utf8'
 )
 const routerSource = fs.readFileSync(path.join(webRoot, 'router/index.js'), 'utf8')
@@ -250,19 +293,43 @@ assert.match(operationsSource, /revokeViewSessions/)
 assert.match(operationsSource, /revokeApplicationSessions/)
 for (const [source, helpKey] of [
   [viewSource, 'embed.view.key'],
-  [draftSource, 'embed.view.resourceReleaseStrategy'],
-  [grantSource, 'embed.grant.revisionMode'],
+  [draftSource, 'embed.view.defaultFormId'],
   [runtimeSource, 'embed.provider.type'],
   [bindingSource, 'embed.binding.externalSubject'],
-  [operationsSource, 'embed.operations.queryScope'],
-  [releaseSource, 'embed.release.revision']
+  [operationsSource, 'embed.operations.queryScope']
 ]) {
   assert.match(source, new RegExp(`help-key="${helpKey.replaceAll('.', '\\.')}"`))
 }
+assert.match(draftSource, /每次新 Launch 使用目标资源最新 ACTIVE 版本/)
+assert.match(draftSource, /EntityDefinitionPicker/)
+assert.match(draftSource, /:show-code="false"/)
+for (const label of ['实体', '列表', '目标表单']) {
+  assert.match(draftSource, new RegExp(`ConfigHelpLabel[^>]+label="${label}"`))
+}
+assert.doesNotMatch(
+  draftSource,
+  /ConfigHelpLabel[^>]+label="(?:Entity Code|List Key|Form ID)"/,
+  '目标选择器只能显示业务名称标签，不能把内部 ID/Key 当作产品标签'
+)
+assert.match(draftSource, /:label="item\.listName \|\| '未命名列表'"/)
+assert.match(draftSource, /:label="item\.formName \|\| '未命名表单'"/)
+assert.doesNotMatch(draftSource, /label="(?:Visible|Queryable|Writable)"/)
+assert.match(draftSource, /Flow 原生\{\{ isList \? '列表' : '表单' \}\}/)
+assert.doesNotMatch(draftSource, /\['ACTION_EXECUTE'\]/)
+for (const alertTag of draftSource.matchAll(/<el-alert[\s\S]*?\/>/g)) {
+  assert.ok(
+    (alertTag[0].match(/\btype=/g) || []).length <= 1,
+    'el-alert 不能重复声明 type 属性'
+  )
+}
+assert.doesNotMatch(draftSource, /FOLLOW_ACTIVE|PINNED|Release ID|发布 Embed View|保存草稿/)
+assert.doesNotMatch(grantSource, /revisionMode|pinnedRevision|FOLLOW_ACTIVE|PINNED/)
+assert.doesNotMatch(viewSource, /Release 历史|publishedRevision|EmbedReleasePanel/)
 assert.doesNotMatch(operationsSource, /二选一/)
 assert.match(operationsSource, /Application ID（至少填一项）/)
 assert.match(operationsSource, /View ID（至少填一项）/)
 assert.match(routerSource, /path: '\/system\/embed-management'/)
+assert.doesNotMatch(routerSource, /system:embed:publish/)
 for (const permission of Object.values(EMBED_PERMISSIONS)) {
   assert.match(routerSource, new RegExp(permission.replaceAll(':', '\\:')))
 }

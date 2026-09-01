@@ -1,6 +1,7 @@
 package com.workflow.entity.data.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.Result;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
@@ -14,6 +15,9 @@ import java.util.List;
  * 实体字段附件项配置控制器
  */
 @AuthenticatedApi
+@EmbedDelegatedRuntimeApi(
+        value = EmbedDelegatedRuntimeApi.Scope.REFERENCE_READ,
+        targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.NONE)
 @RestController
 @RequestMapping("/api/entity-field-file-item")
 @RequiredArgsConstructor

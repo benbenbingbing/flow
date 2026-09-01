@@ -85,7 +85,7 @@ const bridge = createEmbedBridge({
   launchId: 'lch_0123456789abcdef',
   channelId: 'tenant:channel_001',
   nonceFactory: () => testNonce(++nonceSequence),
-  maxMessageBytes: 64 * 1024,
+  maxMessageBytes: 256 * 1024,
   handshakeTimeoutMs: 0,
   onInit: value => initMessages.push(value),
   onMessage: value => commands.push(value),
@@ -221,14 +221,14 @@ assert.doesNotThrow(() => bridge.send(
     selection: [{
       id: maximumRecordId,
       values: {
-        description: 'x'.repeat(2048),
+        description: 'x'.repeat(100000),
         tags: Array.from({ length: 100 }, (_, index) => `tag-${index}`)
       }
     }]
   }
 ))
 for (const invalidSelection of [
-  [{ id: 'record-1', values: { description: 'x'.repeat(2049) } }],
+  [{ id: 'record-1', values: { description: 'x'.repeat(100001) } }],
   [{ id: 'record-1', values: { tags: Array(101).fill('tag') } }],
   [{ id: 'A'.repeat(129), values: {} }],
   [{ id: 'record/1', values: {} }]
@@ -253,7 +253,9 @@ assert.doesNotThrow(() => bridge.send(
   {
     viewKey: 'supplier-work-orders',
     surfaceType: 'LIST',
-    capabilities: ['LIST_QUERY', 'SELECTION_RETURN', 'RECORD_VIEW', 'RECORD_CREATE']
+    capabilities: [
+      'LIST_QUERY', 'SELECTION_RETURN', 'RECORD_VIEW', 'RECORD_CREATE', 'ACTION_EXECUTE'
+    ]
   }
 ))
 assert.throws(

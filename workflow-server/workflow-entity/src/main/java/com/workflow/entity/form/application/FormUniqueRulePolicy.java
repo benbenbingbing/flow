@@ -69,6 +69,17 @@ public class FormUniqueRulePolicy {
             "SUB_LIST",
             "CASCADER",
             "SECTION");
+    private static final Set<String> UNIQUE_RULE_KEYS = Set.of(
+            "version", "enabled", "ruleId", "mode", "ignoreBlank",
+            "normalization", "condition", "message", "precheck");
+    private static final Set<String> UNIQUE_PRECHECK_KEYS = Set.of(
+            "enabled", "trigger", "debounceMs", "watchConditionFields");
+    private static final Set<String> UNIQUE_CONDITION_KEYS = Set.of(
+            "version", "root");
+    private static final Set<String> UNIQUE_CONDITION_GROUP_KEYS = Set.of(
+            "type", "logic", "children");
+    private static final Set<String> UNIQUE_CONDITION_LEAF_KEYS = Set.of(
+            "type", "property", "operator", "value");
 
     private final ObjectMapper objectMapper;
     private final PublishedFormConditionEvaluator conditionEvaluator;
@@ -365,6 +376,9 @@ public class FormUniqueRulePolicy {
         if (!(configured instanceof Map<?, ?> rawRule)) {
             throw invalid(field, "唯一性配置必须为对象");
         }
+        // 唯一性属于 Flow Published Form 的标准提交语义，与 Embed 渲染无关；
+        // 结构和值域由本领域策略自行校验，避免跨到 Embed 组件兼容契约。
+        requireOnlyKeys(rawRule, UNIQUE_RULE_KEYS, field, "唯一性配置");
         Map<String, Object> source = stringMap(rawRule);
         if (source.containsKey("enabled")
                 && !(source.get("enabled") instanceof Boolean)) {
@@ -434,14 +448,18 @@ public class FormUniqueRulePolicy {
         } catch (RuntimeException exception) {
             throw invalid(field, "不支持的唯一值规范化方式");
         }
-        Map<String, Object> condition = mapValue(
-                source.get("condition"));
+        Object configuredCondition = source.get("condition");
         if (mode == FormUniqueRule.Mode.CONDITIONAL) {
+            validateUniqueConditionStructure(configuredCondition, field);
             conditionEvaluator.validateStructured(
-                    source.get("condition"),
+                    configuredCondition,
                     validProperties,
                     fieldLabel(field) + "条件唯一：");
+        } else if (source.containsKey("condition")
+                && meaningful(configuredCondition)) {
+            throw invalid(field, "非条件唯一规则不能携带 condition");
         }
+        Map<String, Object> condition = mapValue(configuredCondition);
         String message = text(source.get("message"));
         if (message.length() > MAX_MESSAGE_LENGTH) {
             throw invalid(field, "唯一性错误提示不能超过 200 个字符");
@@ -479,6 +497,9 @@ public class FormUniqueRulePolicy {
         if (!(configured instanceof Map<?, ?> rawPrecheck)) {
             throw invalid(field, "唯一性 precheck 必须为对象");
         }
+        requireOnlyKeys(
+                rawPrecheck, UNIQUE_PRECHECK_KEYS, field,
+                "唯一性 precheck");
         Map<String, Object> source = stringMap(rawPrecheck);
         boolean enabled = booleanValue(
                 source.get("enabled"),
@@ -511,6 +532,68 @@ public class FormUniqueRulePolicy {
                 trigger,
                 debounceMs,
                 watchConditionFields);
+    }
+
+    /**
+     * 唯一性条件采用封闭的 Flow 条件配置结构，未知键必须在发布时拒绝。
+     *
+     * <p>这是唯一性业务规则的持久化契约，不是 Embed 组件或渲染兼容清单；
+     * 条件值域、字段引用和完整性仍由通用条件求值器统一校验。</p>
+     */
+    private void validateUniqueConditionStructure(
+            Object configured,
+            EntityFormField field) {
+        if (!(configured instanceof Map<?, ?> rawCondition)) {
+            throw invalid(field, "条件唯一 condition 必须为对象");
+        }
+        requireOnlyKeys(
+                rawCondition,
+                UNIQUE_CONDITION_KEYS,
+                field,
+                "条件唯一 condition");
+        Object root = rawCondition.get("root");
+        if (!(root instanceof Map<?, ?> rootNode)) {
+            throw invalid(field, "条件唯一 condition.root 必须为对象");
+        }
+        validateUniqueConditionNode(rootNode, field, 0);
+    }
+
+    /** 递归校验唯一性条件节点的封闭键集合，防止未知配置被运行时静默忽略。 */
+    private void validateUniqueConditionNode(
+            Map<?, ?> node,
+            EntityFormField field,
+            int depth) {
+        if (depth > 8) {
+            throw invalid(field, "条件唯一嵌套不能超过 8 层");
+        }
+        String type = text(node.get("type"));
+        if ("GROUP".equals(type)) {
+            requireOnlyKeys(
+                    node,
+                    UNIQUE_CONDITION_GROUP_KEYS,
+                    field,
+                    "条件唯一 GROUP 节点");
+            Object configuredChildren = node.get("children");
+            if (!(configuredChildren instanceof List<?> children)) {
+                // 通用求值器也会校验非空等语义；这里必须先保证递归结构可检查。
+                throw invalid(field, "条件唯一 GROUP.children 必须为数组");
+            }
+            for (Object child : children) {
+                if (!(child instanceof Map<?, ?> childNode)) {
+                    throw invalid(field, "条件唯一子节点必须为对象");
+                }
+                validateUniqueConditionNode(childNode, field, depth + 1);
+            }
+            return;
+        }
+        if ("CONDITION".equals(type)) {
+            requireOnlyKeys(
+                    node,
+                    UNIQUE_CONDITION_LEAF_KEYS,
+                    field,
+                    "条件唯一 CONDITION 节点");
+        }
+        // 未知 type 的语义错误由 PublishedFormConditionEvaluator 返回统一错误。
     }
 
     private boolean booleanValue(
@@ -581,6 +664,34 @@ public class FormUniqueRulePolicy {
         source.forEach((key, value) -> result.put(
                 String.valueOf(key), value));
         return result;
+    }
+
+    private void requireOnlyKeys(
+            Map<?, ?> source,
+            Set<String> allowed,
+            EntityFormField field,
+            String label) {
+        for (Object key : source.keySet()) {
+            if (!(key instanceof String text) || !allowed.contains(text)) {
+                throw invalid(field, label + "包含未知字段");
+            }
+        }
+    }
+
+    private boolean meaningful(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof String text) {
+            return !text.isBlank();
+        }
+        if (value instanceof Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
     }
 
     private int integer(Object value) {

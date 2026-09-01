@@ -14,7 +14,7 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface EmbedLaunchPersistenceMapper {
 
-    @Select("""
+    String CONFIGURATION_SQL = """
             SELECT a.id AS application_id,
                    a.status AS application_status,
                    a.expires_at AS application_expires_at,
@@ -23,15 +23,8 @@ public interface EmbedLaunchPersistenceMapper {
                    v.view_key,
                    v.surface_type AS view_surface_type,
                    v.status AS view_status,
-                   v.published_release_id,
+                   v.draft_config_json AS current_config_json,
                    v.security_version AS view_security_version,
-                   r.id AS release_id,
-                   r.revision AS release_revision,
-                   r.surface_type AS release_surface_type,
-                   r.entry_modes_json,
-                   r.capabilities_json AS release_capabilities_json,
-                   r.context_schema_json,
-                   r.ui_config_json,
                    g.id AS grant_id,
                    g.status AS grant_status,
                    g.trusted_subject_assertion,
@@ -65,16 +58,21 @@ public interface EmbedLaunchPersistenceMapper {
                AND g.view_id = v.id
               JOIN embed_identity_provider p
                 ON p.id = g.identity_provider_id
-              JOIN embed_view_release r
-                ON r.view_id = v.id
-               AND ((g.revision_mode = 'FOLLOW_ACTIVE'
-                     AND r.id = v.published_release_id)
-                 OR (g.revision_mode = 'PINNED'
-                     AND r.revision = g.pinned_revision))
              WHERE a.id = #{applicationId}
-             LIMIT 1
-            """)
+            """;
+
+    /**
+     * Non-locking preflight query. It must run before the independent quota transaction so the
+     * outer Launch transaction cannot suspend while retaining Application or Grant row locks.
+     */
+    @Select(CONFIGURATION_SQL)
     EmbedLaunchConfigurationRow findConfiguration(
+            @Param("applicationId") String applicationId,
+            @Param("viewKey") String viewKey);
+
+    /** Reloads and locks the exact configuration used for snapshot materialization and issuance. */
+    @Select(CONFIGURATION_SQL + "\n FOR UPDATE")
+    EmbedLaunchConfigurationRow lockConfiguration(
             @Param("applicationId") String applicationId,
             @Param("viewKey") String viewKey);
 

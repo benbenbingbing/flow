@@ -9,7 +9,6 @@ import com.workflow.embed.management.application.EmbedGrantAdministrationService
 import com.workflow.embed.management.domain.EmbedManagementModel.Capability;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
-import com.workflow.embed.management.domain.EmbedManagementModel.RevisionMode;
 import com.workflow.embed.management.domain.EmbedManagementModel.SecurityStatus;
 import com.workflow.embed.management.domain.EmbedManagementModel.UpsertGrantCommand;
 import jakarta.validation.Valid;
@@ -63,9 +62,6 @@ public class EmbedGrantManagementController {
                 Boolean.TRUE.equals(request.trustedSubjectAssertion()),
                 request.allowedOrigins(),
                 capabilities,
-                EmbedViewManagementController.enumRequired(
-                        RevisionMode.class, request.revisionMode()),
-                request.pinnedRevision(),
                 request.maxActiveSessionsPerUser(),
                 request.maxSessionSeconds(),
                 request.launchLimitPerMinute(),
@@ -105,8 +101,7 @@ public class EmbedGrantManagementController {
         return new EmbedManagementViews.GrantView(
                 value.id(), value.applicationId(), value.viewId(),
                 value.identityProviderId(), value.status().name(),
-                value.trustedSubjectAssertion(), value.revisionMode().name(),
-                value.pinnedRevision(), json(value.capabilityCeilingJson()),
+                value.trustedSubjectAssertion(), json(value.capabilityCeilingJson()),
                 value.allowedOrigins(), value.maxActiveSessionsPerUser(),
                 value.maxSessionSeconds(), value.launchLimitPerMinute(),
                 value.runtimeLimitPerMinute(), value.maxConcurrency(), value.expiresAt(),

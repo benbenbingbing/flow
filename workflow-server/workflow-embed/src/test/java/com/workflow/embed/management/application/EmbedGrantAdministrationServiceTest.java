@@ -12,10 +12,10 @@ import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
 import com.workflow.embed.management.domain.EmbedManagementModel.JwksMode;
 import com.workflow.embed.management.domain.EmbedManagementModel.ProviderState;
 import com.workflow.embed.management.domain.EmbedManagementModel.ProviderType;
-import com.workflow.embed.management.domain.EmbedManagementModel.ReleaseState;
-import com.workflow.embed.management.domain.EmbedManagementModel.RevisionMode;
+import com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResource;
 import com.workflow.embed.management.domain.EmbedManagementModel.SecurityStatus;
 import com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType;
+import com.workflow.embed.management.domain.EmbedManagementModel.UpdateDraftCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.UpsertGrantCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewState;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewStatus;
@@ -36,19 +36,28 @@ class EmbedGrantAdministrationServiceTest {
     private EmbedGrantAdministrationService service;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         LocalDateTime now = LocalDateTime.of(2026, 8, 27, 1, 0);
+        ObjectMapper objectMapper = new ObjectMapper();
         ViewState view = new ViewState(
                 "view-1", "supplier-orders", "供应商工单", null,
-                SurfaceType.LIST, ViewStatus.ACTIVE, "{}", 1,
-                "release-1", 1L, 1, 1, "admin", now, "admin", now);
+                SurfaceType.LIST, ViewStatus.DRAFT, "{}", 1,
+                null, null, 1, 1, "admin", now, "admin", now);
         repository.views.put(view.id(), view);
-        repository.releases.put(view.id(), new java.util.ArrayList<>(List.of(new ReleaseState(
-                "release-1", view.id(), 1, SurfaceType.LIST, "work_order",
-                "supplier_open", null, "list-release-1", 1L,
-                null, null, "[\"LIST\"]",
-                "[\"LIST_QUERY\",\"RECORD_VIEW\"]", "{}", "{}", "{}", "[]", "{}",
-                "{}", "hash", null, "admin", now))));
+        repository.resolvedResource = new ResolvedResource(
+                "work_order", "supplier_open", "form-1",
+                "list-release-1", 3L, "form-release-1", 5L,
+                List.of("id", "title"), List.of("id", "title"),
+                List.of(), List.of(), List.of("view"), true);
+        EmbedViewConfigurationValidator validator =
+                new EmbedViewConfigurationValidator(objectMapper, repository);
+        EmbedViewAdministrationService viewService = new EmbedViewAdministrationService(
+                repository, validator,
+                () -> new CurrentActor("admin", "admin"), event -> { },
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-08-27T01:00:00Z"), ZoneOffset.UTC));
+        viewService.updateDraft("view-1", new UpdateDraftCommand(
+                1L, objectMapper.readTree(validCurrentConfig())));
         ProviderState provider = new ProviderState(
                 "provider-1", "Partner", ProviderType.SIGNED_JWT,
                 SecurityStatus.ACTIVE, "https://id.partner.example", "partner",
@@ -57,14 +66,15 @@ class EmbedGrantAdministrationServiceTest {
                 30, 60, 1, 1, 1, "admin", now, "admin", now, null, null);
         repository.providers.put(provider.id(), provider);
         service = new EmbedGrantAdministrationService(
-                repository, new ExactOriginPolicy(),
+                repository, validator,
+                new ExactOriginPolicy(),
                 () -> new CurrentActor("admin", "admin"), event -> { },
-                new ObjectMapper(),
+                objectMapper,
                 Clock.fixed(Instant.parse("2026-08-27T01:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test
-    void createsGrantWithCanonicalExactOriginsAndCapabilitySubset() {
+    void createsFirstGrantWithoutAnyEmbedPublication() {
         GrantState grant = service.upsert("view-1", "app-1", command(
                 null,
                 List.of("HTTPS://Portal.Partner.Example:443",
@@ -74,10 +84,11 @@ class EmbedGrantAdministrationServiceTest {
         assertEquals(List.of("https://portal.partner.example"), grant.allowedOrigins());
         assertEquals(1L, grant.securityVersion());
         assertEquals(SecurityStatus.ACTIVE, grant.status());
+        assertEquals(0, repository.releases.getOrDefault("view-1", List.of()).size());
     }
 
     @Test
-    void rejectsCapabilityOutsidePublishedRelease() {
+    void rejectsCapabilityOutsideCurrentConfiguration() {
         EmbedManagementException exception = assertThrows(EmbedManagementException.class,
                 () -> service.upsert("view-1", "app-1", command(
                         null, List.of("https://portal.partner.example"),
@@ -99,7 +110,7 @@ class EmbedGrantAdministrationServiceTest {
         UpsertGrantCommand missingFlag = new UpsertGrantCommand(
                 null, SecurityStatus.ACTIVE, trusted.id(), false,
                 List.of("https://portal.partner.example"),
-                List.of(Capability.LIST_QUERY), RevisionMode.FOLLOW_ACTIVE, null,
+                List.of(Capability.LIST_QUERY),
                 3, 1_800, 60, 120, 20, null);
         EmbedManagementException trustedError = assertThrows(
                 EmbedManagementException.class,
@@ -109,7 +120,7 @@ class EmbedGrantAdministrationServiceTest {
         UpsertGrantCommand signedWithFlag = new UpsertGrantCommand(
                 null, SecurityStatus.ACTIVE, "provider-1", true,
                 List.of("https://portal.partner.example"),
-                List.of(Capability.LIST_QUERY), RevisionMode.FOLLOW_ACTIVE, null,
+                List.of(Capability.LIST_QUERY),
                 3, 1_800, 60, 120, 20, null);
         EmbedManagementException signedError = assertThrows(
                 EmbedManagementException.class,
@@ -137,7 +148,22 @@ class EmbedGrantAdministrationServiceTest {
             Long version, List<String> origins, List<Capability> capabilities) {
         return new UpsertGrantCommand(
                 version, SecurityStatus.ACTIVE, "provider-1", false,
-                origins, capabilities, RevisionMode.FOLLOW_ACTIVE, null,
+                origins, capabilities,
                 3, 1_800, 60, 120, 20, null);
+    }
+
+    private static String validCurrentConfig() {
+        return """
+                {
+                  "target":{"entityCode":"work_order","listKey":"supplier_open",
+                    "defaultFormId":"form-1"},
+                  "entryModes":["LIST","VIEW"],
+                  "capabilities":["LIST_QUERY","RECORD_VIEW"],
+                  "fieldPolicy":{"mode":"EXPLICIT","visible":["id","title"],
+                    "queryable":["title"],"writable":[],"returnable":["id"]},
+                  "actionPolicy":{"allowed":["view"]},
+                  "contextSchema":{},"contextBindings":[],"ui":{}
+                }
+                """;
     }
 }

@@ -4,15 +4,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.EmbedRequestUserContextPort;
+import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Outcome;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Reason;
@@ -27,12 +30,14 @@ import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeReques
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
+import com.workflow.embed.config.EmbedProperties;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -191,8 +196,6 @@ class EmbedSessionAuthenticationFilterTest {
                     (jakarta.servlet.http.HttpServletResponse) res;
             http.setStatus(201);
             http.setHeader("Idempotent-Replay", "true");
-            http.setHeader("Location",
-                    "/api/embed/v1/runtime/records/record-1");
         });
         verify(runtimeAudit).recordCompletedBestEffort(
                 eq(authenticated),
@@ -200,7 +203,7 @@ class EmbedSessionAuthenticationFilterTest {
                 eq("trace-replay"),
                 eq(201),
                 eq(true),
-                eq("/api/embed/v1/runtime/records/record-1"),
+                eq(null),
                 anyLong());
         verify(trafficControl).acquireRuntime(
                 "app-1", "grant-1", "session-1", RuntimeRequestClass.READ);
@@ -233,7 +236,9 @@ class EmbedSessionAuthenticationFilterTest {
                 mock(EmbedLifecycleMetrics.class),
                 runtimeAudit);
         MockHttpServletRequest request = request(
-                "GET", "/api/embed/v1/runtime/records/record-1", "trace-detail");
+                "POST",
+                "/api/entity-data/entity/work_order/detail/record-1/load",
+                "trace-detail");
 
         assertThrows(ServletException.class, () -> filter.doFilter(
                 request,
@@ -249,12 +254,275 @@ class EmbedSessionAuthenticationFilterTest {
                 anyLong());
     }
 
+    @Test
+    void delegatedMultipartIsNotParsedAsJsonAndRemainsReadable()
+            throws Exception {
+        EmbedSessionAuthenticationService service = mock(
+                EmbedSessionAuthenticationService.class);
+        when(service.authenticateAuthorization(
+                eq("Bearer " + TOKEN), any(EmbedAuditCorrelation.class)))
+                .thenReturn(authenticated());
+        EmbedTrafficControlPort trafficControl = mock(
+                EmbedTrafficControlPort.class);
+        when(trafficControl.acquireRuntime(
+                "app-1", "grant-1", "session-1",
+                RuntimeRequestClass.WRITE))
+                .thenReturn(new EmbedTrafficControlPort.RuntimeLease(
+                        "lease-upload"));
+        EmbedSessionAuthenticationFilter filter =
+                new EmbedSessionAuthenticationFilter(
+                        service,
+                        (id, name, session) -> () -> { },
+                        trafficControl,
+                        new ObjectMapper(),
+                        mock(EmbedLifecycleMetrics.class),
+                        mock(EmbedRuntimeAudit.class));
+        byte[] multipart = ("--boundary\r\n"
+                + "Content-Disposition: form-data; name=\"file\"; "
+                + "filename=\"sample.txt\"\r\n\r\n"
+                + "native-file-body\r\n--boundary--\r\n")
+                .getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/api/file/upload");
+        request.addHeader("Authorization", "Bearer " + TOKEN);
+        request.addHeader(
+                EmbedSessionAuthenticationFilter.PROTOCOL_HEADER, "1");
+        request.addHeader("Origin", "http://localhost:8080");
+        request.setContentType("multipart/form-data; boundary=boundary");
+        request.setContent(multipart);
+        AtomicBoolean invoked = new AtomicBoolean();
+
+        filter.doFilter(
+                request,
+                new MockHttpServletResponse(),
+                (downstream, response) -> {
+                    invoked.set(true);
+                    assertTrue(Boolean.TRUE.equals(
+                            downstream.getAttribute(
+                                    EmbedDelegatedRequestContext
+                                            .VERIFIED_ATTRIBUTE)));
+                    assertNull(downstream.getAttribute(
+                            EmbedDelegatedRequestContext
+                                    .JSON_BODY_ATTRIBUTE));
+                    assertEquals(
+                            new String(multipart, StandardCharsets.UTF_8),
+                            new String(
+                                    downstream.getInputStream().readAllBytes(),
+                                    StandardCharsets.UTF_8));
+                });
+
+        assertTrue(invoked.get());
+        verify(trafficControl).releaseRuntime(
+                new EmbedTrafficControlPort.RuntimeLease("lease-upload"));
+    }
+
+    @Test
+    void delegatedRequestRequiresExactIsolatedEmbedOrigin()
+            throws Exception {
+        EmbedSessionAuthenticationService service = mock(
+                EmbedSessionAuthenticationService.class);
+        EmbedSessionAuthenticationFilter filter =
+                new EmbedSessionAuthenticationFilter(
+                        service,
+                        (id, name, session) -> () -> { },
+                        mock(EmbedTrafficControlPort.class),
+                        new ObjectMapper(),
+                        mock(EmbedLifecycleMetrics.class),
+                        mock(EmbedRuntimeAudit.class));
+        for (String origin : new String[]{null, "https://portal.partner.example"}) {
+            MockHttpServletRequest request = new MockHttpServletRequest(
+                    "GET", "/api/entity/code/order");
+            request.addHeader("Authorization", "Bearer " + TOKEN);
+            request.addHeader(
+                    EmbedSessionAuthenticationFilter.PROTOCOL_HEADER,
+                    "1");
+            if (origin != null) {
+                request.addHeader("Origin", origin);
+            }
+            MockHttpServletResponse response =
+                    new MockHttpServletResponse();
+            AtomicBoolean invoked = new AtomicBoolean();
+
+            filter.doFilter(
+                    request,
+                    response,
+                    (downstream, result) -> invoked.set(true));
+
+            assertFalse(invoked.get());
+            assertEquals(403, response.getStatus());
+            assertEquals(
+                    "EMBED_ORIGIN_NOT_ALLOWED",
+                    new ObjectMapper().readTree(
+                            response.getContentAsByteArray())
+                            .path("errorCode").asText());
+        }
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void delegatedSameOriginReadMayOmitOriginWithFetchMetadata()
+            throws Exception {
+        EmbedSessionAuthenticationService service = mock(
+                EmbedSessionAuthenticationService.class);
+        when(service.authenticateAuthorization(
+                eq("Bearer " + TOKEN), any(EmbedAuditCorrelation.class)))
+                .thenReturn(authenticated());
+        EmbedTrafficControlPort trafficControl = mock(
+                EmbedTrafficControlPort.class);
+        EmbedTrafficControlPort.RuntimeLease lease =
+                new EmbedTrafficControlPort.RuntimeLease("lease-read");
+        when(trafficControl.acquireRuntime(
+                "app-1", "grant-1", "session-1",
+                RuntimeRequestClass.READ)).thenReturn(lease);
+        EmbedSessionAuthenticationFilter filter =
+                new EmbedSessionAuthenticationFilter(
+                        service,
+                        (id, name, session) -> () -> { },
+                        trafficControl,
+                        new ObjectMapper(),
+                        mock(EmbedLifecycleMetrics.class),
+                        mock(EmbedRuntimeAudit.class));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/entity/code/order");
+        request.addHeader("Authorization", "Bearer " + TOKEN);
+        request.addHeader(
+                EmbedSessionAuthenticationFilter.PROTOCOL_HEADER,
+                "1");
+        request.addHeader("Sec-Fetch-Site", "same-origin");
+        AtomicBoolean invoked = new AtomicBoolean();
+
+        filter.doFilter(
+                request,
+                new MockHttpServletResponse(),
+                (downstream, result) -> invoked.set(true));
+
+        assertTrue(invoked.get());
+        verify(trafficControl).releaseRuntime(lease);
+    }
+
+    @Test
+    void delegatedWriteAlwaysRequiresExactOriginEvenWhenFetchMetadataIsSameOrigin()
+            throws Exception {
+        EmbedSessionAuthenticationService service = mock(
+                EmbedSessionAuthenticationService.class);
+        EmbedSessionAuthenticationFilter filter =
+                new EmbedSessionAuthenticationFilter(
+                        service,
+                        (id, name, session) -> () -> { },
+                        mock(EmbedTrafficControlPort.class),
+                        new ObjectMapper(),
+                        mock(EmbedLifecycleMetrics.class),
+                        mock(EmbedRuntimeAudit.class));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/api/entity-data/save");
+        request.addHeader("Authorization", "Bearer " + TOKEN);
+        request.addHeader(
+                EmbedSessionAuthenticationFilter.PROTOCOL_HEADER,
+                "1");
+        request.addHeader("Sec-Fetch-Site", "same-origin");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(
+                request,
+                response,
+                (downstream, result) -> {
+                    throw new AssertionError(
+                            "write without Origin must not pass");
+                });
+
+        assertEquals(403, response.getStatus());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void configuredPublicBaseOriginIsCanonicalizedBeforeComparison()
+            throws Exception {
+        EmbedSessionAuthenticationService service = mock(
+                EmbedSessionAuthenticationService.class);
+        when(service.authenticateAuthorization(
+                eq("Bearer " + TOKEN), any(EmbedAuditCorrelation.class)))
+                .thenReturn(authenticated());
+        EmbedTrafficControlPort trafficControl = mock(
+                EmbedTrafficControlPort.class);
+        EmbedTrafficControlPort.RuntimeLease lease =
+                new EmbedTrafficControlPort.RuntimeLease("lease-read");
+        when(trafficControl.acquireRuntime(
+                "app-1", "grant-1", "session-1",
+                RuntimeRequestClass.READ)).thenReturn(lease);
+        EmbedProperties properties = new EmbedProperties();
+        properties.setPublicBaseUrl("HTTPS://Example.COM:443/");
+        EmbedSessionAuthenticationFilter filter =
+                new EmbedSessionAuthenticationFilter(
+                        service,
+                        (id, name, session) -> () -> { },
+                        trafficControl,
+                        new ObjectMapper(),
+                        mock(EmbedLifecycleMetrics.class),
+                        mock(EmbedRuntimeAudit.class),
+                        properties);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/entity/code/order");
+        request.addHeader("Authorization", "Bearer " + TOKEN);
+        request.addHeader(
+                EmbedSessionAuthenticationFilter.PROTOCOL_HEADER,
+                "1");
+        request.addHeader("Origin", "https://example.com");
+        AtomicBoolean invoked = new AtomicBoolean();
+
+        filter.doFilter(
+                request,
+                new MockHttpServletResponse(),
+                (downstream, result) -> invoked.set(true));
+
+        assertTrue(invoked.get());
+        verify(trafficControl).releaseRuntime(lease);
+    }
+
+    @Test
+    void delegatedRequestWithWrongProtocolFailsBeforeAuthentication()
+            throws Exception {
+        EmbedSessionAuthenticationService service = mock(
+                EmbedSessionAuthenticationService.class);
+        EmbedSessionAuthenticationFilter filter =
+                new EmbedSessionAuthenticationFilter(
+                        service,
+                        (id, name, session) -> () -> { },
+                        mock(EmbedTrafficControlPort.class),
+                        new ObjectMapper(),
+                        mock(EmbedLifecycleMetrics.class),
+                        mock(EmbedRuntimeAudit.class));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/entity/code/order");
+        request.addHeader("Authorization", "Bearer " + TOKEN);
+        request.addHeader(
+                EmbedSessionAuthenticationFilter.PROTOCOL_HEADER,
+                "2");
+        request.addHeader("Origin", "http://localhost:8080");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(
+                request,
+                response,
+                (downstream, result) -> {
+                    throw new AssertionError("wrong protocol must not pass");
+                });
+
+        assertEquals(400, response.getStatus());
+        assertEquals(
+                "INVALID_REQUEST",
+                new ObjectMapper().readTree(response.getContentAsByteArray())
+                        .path("errorCode").asText());
+        verifyNoInteractions(service);
+    }
+
     private static MockHttpServletRequest request(
             String method,
             String path,
             String traceId) {
         MockHttpServletRequest request = new MockHttpServletRequest(method, path);
         request.addHeader("Authorization", "Bearer " + TOKEN);
+        request.addHeader("X-Flow-Embed-Protocol", "1");
+        request.addHeader("Origin", "http://localhost:8080");
         request.addHeader("X-Trace-Id", traceId);
         request.addHeader("X-Request-Id", "request-" + traceId);
         return request;

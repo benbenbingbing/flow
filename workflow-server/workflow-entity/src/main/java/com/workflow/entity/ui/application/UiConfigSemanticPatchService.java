@@ -35,7 +35,7 @@ public class UiConfigSemanticPatchService {
             "width", "minWidth", "align", "fixed", "orderKey", "sortOrder",
             "pageSize", "emptyText", "title", "icon", "confirmText",
             "showOverflowTooltip", "defaultExpanded", "accordion",
-            "layoutType", "labelWidth");
+            "layoutType", "labelWidth", "showPadding", "showBorder");
     private static final Set<String> REVIEW_FIELDS = Set.of(
             "readonly", "isReadonly", "hidden", "isHidden", "defaultValue",
             "required", "isRequired", "validation", "validationRules",

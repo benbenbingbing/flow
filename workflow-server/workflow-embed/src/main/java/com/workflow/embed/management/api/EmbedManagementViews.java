@@ -12,27 +12,12 @@ public final class EmbedManagementViews {
 
     public record ViewSummary(
             String id, String viewKey, String name, String description,
-            String surfaceType, String status, long draftRevision,
-            Long publishedRevision, long version, long securityVersion,
+            String surfaceType, String status, long version, long securityVersion,
             LocalDateTime createTime, LocalDateTime updateTime) {
     }
 
     public record ViewDraft(
-            String viewId, long draftRevision, long version, JsonNode draft) {
-    }
-
-    public record ReleaseView(
-            String releaseId, String viewId, long revision, String surfaceType,
-            String entityCode, String listKey, String defaultFormId,
-            String listReleaseId, Long listReleaseVersion,
-            String formReleaseId, Long formReleaseVersion,
-            String configHash, String releaseNote, String publishedBy,
-            LocalDateTime publishedAt, JsonNode config) {
-    }
-
-    public record PublishResult(
-            String viewId, long revision, String releaseId,
-            String configHash, LocalDateTime publishedAt) {
+            String viewId, long version, JsonNode draft) {
     }
 
     public record StatusResult(ViewSummary view, long affectedActiveSessions) {
@@ -41,8 +26,7 @@ public final class EmbedManagementViews {
     public record GrantView(
             String id, String applicationId, String viewId,
             String identityProviderId, String status,
-            boolean trustedSubjectAssertion, String revisionMode,
-            Long pinnedRevision, JsonNode capabilityCeiling,
+            boolean trustedSubjectAssertion, JsonNode capabilityCeiling,
             List<String> allowedOrigins, int maxActiveSessionsPerUser,
             int maxSessionSeconds, int launchLimitPerMinute,
             int runtimeLimitPerMinute, int maxConcurrency,

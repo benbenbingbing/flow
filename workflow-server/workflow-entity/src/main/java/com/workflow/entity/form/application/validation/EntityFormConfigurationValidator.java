@@ -54,6 +54,12 @@ public class EntityFormConfigurationValidator {
     /** 附件项稳定标识格式 */
     private static final Pattern ATTACHMENT_ITEM_KEY =
             Pattern.compile("afi_[A-Za-z0-9_-]{1,60}");
+    /** 三类字段状态条件共享同一份结构化条件契约。 */
+    private static final List<Map.Entry<String, String>>
+            LINKAGE_CONDITION_LABELS = List.of(
+                    Map.entry("visibilityConditionConfig", "显示条件"),
+                    Map.entry("disabledConditionConfig", "禁用条件"),
+                    Map.entry("requiredConditionConfig", "必填条件"));
 
     private final StructuredConfigValidator structuredConfigValidator;
     private final EntityFormActionConfigPolicy formActionConfigPolicy;
@@ -110,7 +116,7 @@ public class EntityFormConfigurationValidator {
         validateFields(form.getFields());
         List<EntityField> entityFields = entityFieldMapper.findByEntityId(
                 form.getEntityId());
-        validateConditionalRequiredRules(
+        validateConditionalRules(
                 form.getFields(),
                 validEntityProperties(form, entityFields),
                 entityFields == null ? List.of() : entityFields);
@@ -303,7 +309,7 @@ public class EntityFormConfigurationValidator {
         }
         // 字段整包保存时至少校验规则结构；发布时 validateForm 会再校验条件字段引用。
         uniqueRulePolicy.validate(fields, Set.of());
-        validateConditionalRequiredRules(fields, Set.of(), null);
+        validateConditionalRules(fields, Set.of(), null);
     }
 
     /** 校验单个字段：编码格式、唯一性、组件标识、各类配置 JSON 合法性及栅格宽度 */
@@ -333,9 +339,12 @@ public class EntityFormConfigurationValidator {
     }
 
     /**
-     * 校验整字段逻辑必填和附件项逻辑必填，附件规则必须绑定发布快照中的稳定 itemKey。
+     * 统一校验显隐、禁用、必填条件及附件项逻辑必填。
+     *
+     * <p>浏览器会在结构化条件不完整时回退历史表达式，但新保存/发布的快照必须固定一份
+     * 完整结构化契约，避免服务端鉴权、提交校验与页面联动依赖不同分支。</p>
      */
-    private void validateConditionalRequiredRules(
+    private void validateConditionalRules(
             List<EntityFormField> fields,
             Set<String> validProperties,
             List<EntityField> currentEntityFields) {
@@ -349,13 +358,17 @@ public class EntityFormConfigurationValidator {
                             "字段组件配置");
             Map<String, Object> linkageRules = mapValue(
                     componentProps.get("linkageRules"));
-            Object requiredCondition =
-                    linkageRules.get("requiredConditionConfig");
-            if (requiredCondition != null) {
-                conditionEvaluator.validateStructured(
-                        requiredCondition,
-                        validProperties,
-                        fieldLabel(field) + "必填条件：");
+            for (Map.Entry<String, String> definition
+                    : LINKAGE_CONDITION_LABELS) {
+                Object condition = linkageRules.get(definition.getKey());
+                if (condition != null) {
+                    conditionEvaluator.validateStructured(
+                            condition,
+                            validProperties,
+                            fieldLabel(field)
+                                    + definition.getValue()
+                                    + "：");
+                }
             }
 
             Object configured = componentProps.containsKey(

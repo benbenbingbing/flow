@@ -165,6 +165,7 @@
       :entity-definition="targetEntity"
       :entity-fields="targetEntity.fields || []"
       :default-form="targetForm"
+      :entity-status-options="targetEntityStatusOptions"
       @success="handleTargetSaved"
     />
 
@@ -221,10 +222,15 @@ import {
 import { ElAlert, ElButton, ElEmpty, ElMessage, ElSkeleton } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { getFormRuntimeRelease } from '@/api/entityForm'
+import { getEntityStatusList } from '@/api/entityStatus'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { uiCompositionRuntimeApi } from '@/api/uiCompositionRuntime'
 import { normalizeRuntimeFormRelease } from '@/shared/list-button-form-runtime'
 import { normalizeEntityRecordForForm } from '@/shared/form-runtime'
+import {
+  buildEntityStatusMap,
+  getEffectiveEntityStatusOptions
+} from '@/shared/entity-status-runtime'
 import {
   assertRelatedContentResolveContract,
   buildRelatedContentResolveInput,
@@ -280,6 +286,7 @@ const candidateContext = ref(null)
 const targetEntity = ref(null)
 const targetForm = ref(null)
 const targetRecord = ref(null)
+const targetEntityStatusOptions = ref(getEffectiveEntityStatusOptions())
 const formDialogRef = ref(null)
 const resolvedContextFingerprint = ref('')
 const requestGate = createLatestRequestGate()
@@ -501,6 +508,7 @@ async function resolveComposition({ force = false } = {}) {
       targetEntity.value = targetState.entity
       targetForm.value = targetState.form
       targetRecord.value = targetState.record
+      targetEntityStatusOptions.value = targetState.statuses
     }
     return value
   } catch (error) {
@@ -538,20 +546,31 @@ async function loadActionCapabilities(value) {
 }
 
 async function loadTargetForm(value) {
-  const entity = await entityApi.getByCode(value.targetEntityCode)
-  const release = await getFormRuntimeRelease(
-    value.targetContentId,
-    value.targetReleaseId,
-    value.targetReleaseVersion,
-    value.targetReleaseResolutionToken
-  )
+  const traversalRuntimeContext = {
+    viewCompositionTraversalToken: value.traversalContextToken
+  }
+  const [entity, release, statuses] = await Promise.all([
+    entityApi.getByCode(value.targetEntityCode, traversalRuntimeContext),
+    getFormRuntimeRelease(
+      value.targetContentId,
+      value.targetReleaseId,
+      value.targetReleaseVersion,
+      value.targetReleaseResolutionToken
+    ),
+    getEntityStatusList(value.targetEntityCode, traversalRuntimeContext)
+  ])
   const form = normalizeRuntimeFormRelease(
     release,
     value.targetContentId,
     release.releaseResolutionToken || value.targetReleaseResolutionToken
   )
   if (!value.targetRecordId) {
-    return { entity, form, record: null }
+    return {
+      entity,
+      form,
+      record: null,
+      statuses: getEffectiveEntityStatusOptions(statuses)
+    }
   }
   const detail = await entityDataApi.getDetail(
     value.targetEntityCode,
@@ -564,13 +583,15 @@ async function loadTargetForm(value) {
       releaseVersion: value.targetReleaseVersion,
       releaseResolutionToken:
         form.releaseResolutionToken
-        || value.targetReleaseResolutionToken
+        || value.targetReleaseResolutionToken,
+      viewCompositionTraversalToken: value.traversalContextToken
     }
   )
   return {
     entity,
     form,
-    record: normalizeEntityRecordForForm(detail)
+    record: normalizeEntityRecordForForm(detail),
+    statuses: getEffectiveEntityStatusOptions(statuses)
   }
 }
 
@@ -594,6 +615,7 @@ function clearResolvedState() {
   targetEntity.value = null
   targetForm.value = null
   targetRecord.value = null
+  targetEntityStatusOptions.value = getEffectiveEntityStatusOptions()
   actionCapabilities.value = {}
   actionCapabilityError.value = ''
   actionFailure.value = null
@@ -896,7 +918,12 @@ const RuntimeBody = defineComponent({
           context: {
             compositionKey: resolved.value.compositionKey,
             targetReleaseId: resolved.value.targetReleaseId,
-            targetReleaseVersion: resolved.value.targetReleaseVersion
+            targetReleaseVersion: resolved.value.targetReleaseVersion,
+            entityStatusOptions: targetEntityStatusOptions.value,
+            entityStatusMap:
+              buildEntityStatusMap(targetEntityStatusOptions.value),
+            viewCompositionTraversalToken:
+              resolved.value.traversalContextToken
           },
           runtime: {
             refresh,
@@ -950,6 +977,9 @@ const RuntimeBody = defineComponent({
             },
             releaseResolutionToken:
               targetForm.value.releaseResolutionToken,
+            entityStatusOptions: targetEntityStatusOptions.value,
+            entityStatusMap:
+              buildEntityStatusMap(targetEntityStatusOptions.value),
             viewCompositionTraversalToken:
               resolved.value.traversalContextToken
           }

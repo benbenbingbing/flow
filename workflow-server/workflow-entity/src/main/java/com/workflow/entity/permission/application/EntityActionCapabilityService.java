@@ -34,6 +34,7 @@ public class EntityActionCapabilityService {
     private final EntityActionRuleEvaluator ruleEvaluator;
     private final EntityStatusMapper statusMapper;
     private final SysUserService userService;
+    private final CurrentProcessTaskAssigneeLookup assigneeLookup;
 
     /**
      * 强制要求当前用户拥有指定标准动作权限，否则抛出禁止访问异常。
@@ -355,12 +356,34 @@ public class EntityActionCapabilityService {
         }
         EntityActionRuleDTO rule = actionConfigService.readRule(button);
         if (ruleEvaluator.evaluate(rule, row, user, statusCategory)) {
+            if ("approve".equals(asString(button.get("key")))) {
+                String actionableTaskId = assigneeLookup
+                        .findActionableTaskId(row, user)
+                        .orElse(null);
+                if (!StringUtils.hasText(actionableTaskId)) {
+                    // current_task_assignee/current_task_id 是流程摘要，在会签或任务刚完成时
+                    // 可能指向兄弟任务或已经过期；审批入口必须绑定当前用户自己的 TODO。
+                    return unavailable(
+                            button,
+                            "当前用户没有可办理的审批任务");
+                }
+                return EntityActionCapabilityDTO.allowedForTask(
+                        actionableTaskId);
+            }
             return EntityActionCapabilityDTO.allowed();
         }
         String reason = rule != null && StringUtils.hasText(rule.getMessage())
                 ? rule.getMessage()
                 : "当前数据不满足操作条件";
-        return "DISABLE".equalsIgnoreCase(actionConfigService.unavailableBehavior(button))
+        return unavailable(button, reason);
+    }
+
+    /** 按发布按钮的不可用策略生成能力，且失败能力绝不携带任务 ID。 */
+    private EntityActionCapabilityDTO unavailable(
+            Map<String, Object> button,
+            String reason) {
+        return "DISABLE".equalsIgnoreCase(
+                actionConfigService.unavailableBehavior(button))
                 ? EntityActionCapabilityDTO.disabled(reason)
                 : EntityActionCapabilityDTO.hidden(reason);
     }
