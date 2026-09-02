@@ -169,6 +169,31 @@ class NodeAssignmentReferenceResolverTest {
     }
 
     @Test
+    void legacyMultiInstanceSourceIgnoresResidualBaseNodeReference() {
+        UserTask legacySource = task("legacy-source", """
+                {"assigneeType":"node_reference",
+                 "referencedNodeId":"stale-source",
+                 "multiInstanceUsernames":["alice"]}
+                """);
+        legacySource.setLoopCharacteristics(
+                new org.flowable.bpmn.model.MultiInstanceLoopCharacteristics());
+        UserTask staleSource = task("stale-source", """
+                {"assigneeType":"user","assigneeValue":"mallory"}
+                """);
+
+        var result = resolver.resolve(
+                model(legacySource, staleSource),
+                legacySource,
+                resolver.readAssigneeConfig(legacySource));
+
+        assertEquals(legacySource, result.sourceTask());
+        assertEquals(List.of("legacy-source"), result.chainNodeIds());
+        assertEquals("MULTI_INSTANCE",
+                NodeAssignmentReferenceResolver.assignmentMode(
+                        legacySource, legacySource, result.assigneeConfig()));
+    }
+
+    @Test
     void assignmentModeUsesCurrentLoopAndSourceCandidateSemantics() {
         UserTask current = task("current", "{}");
         UserTask bpmnCandidates = task("bpmn-candidates", "{}");

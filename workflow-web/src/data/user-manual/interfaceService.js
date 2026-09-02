@@ -354,9 +354,9 @@ export default {
               rows: [
                 { field: '接口服务', meaning: '当前正在调试的服务，只读显示。', when: '从服务列表点击“调试”。', how: '需要切换服务时关闭弹窗并从另一行进入。', effect: '只执行当前服务中的操作。' },
                 { field: '操作', meaning: '本次执行的具体操作。', when: '一个服务包含多个操作。', how: '选择操作名称和编码。', effect: '决定操作配置、Schema、READ/WRITE 语义和下游 operation。' },
-                { field: '业务上下文', meaning: '选择按表单还是列表权限执行。', when: '所有调试都必选。', how: '根据最终绑定页面选择 FORM 或 LIST。', effect: '平台据此解析实体、发布配置、权限和数据范围。' },
-                { field: '配置对象', meaning: '具体表单或列表 ID。', when: '所有调试都必选。', how: '选择最终计划使用该服务的对象。', effect: '不能使用不存在、无权或与服务范围不匹配的对象。' },
-                { field: '事件用途', meaning: '模拟运行时事件编码。', when: '验证 LIST_LOAD、DETAIL_LOAD、DATA_UPDATE 等不同用途。', how: '选择与未来事件绑定一致的编码。', effect: '用途进入审计、缓存键和执行授权。' },
+                { field: '业务上下文', meaning: '声明按表单、列表还是实体运行环境执行。', when: '所有调试都必选。', how: '由操作定义自动确定为 FORM、LIST 或 ENTITY。', effect: '平台据此解析实体、配置对象、权限和数据范围。' },
+                { field: '配置对象', meaning: '具体表单、列表或实体 ID。', when: '所有调试都必选。', how: '选择最终计划使用该服务的真实对象。', effect: '不能使用不存在、无权或与服务范围不匹配的对象。' },
+                { field: '调用用途', meaning: '模拟运行时的绑定位置或事件编码。', when: '验证 FIELD_OPTIONS、LIST_QUERY、DETAIL_LOAD、DATA_UPDATE 等不同用途。', how: '选择与未来绑定一致的编码；操作编码与调用用途可以不同。', effect: '调试时用途进入执行上下文和缓存键；正式运行时还用于匹配已发布绑定。' },
                 { field: '输入参数', meaning: '传给操作的 JSON 对象。', when: '验证查询条件、记录 ID 或业务字段。', how: '填写合法 JSON；字段应符合输入 Schema。', effect: '非法 JSON 或 Schema 不匹配时不会调用接口。' },
                 { field: '执行结果', meaning: '显示格式化后的返回值或错误信息。', when: '判断操作是否满足映射和分页要求。', how: '点击“执行调试”后查看。', effect: '结果只用于当前调试，不会自动保存为页面配置。' }
               ]

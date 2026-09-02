@@ -5,6 +5,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class EntityMultiValueRuntimeService {
     private final EntityDefinitionMapper definitionMapper;
     private final DynamicTableService dynamicTableService;
     private final EntityPhysicalTableResolver tableResolver;
+    private final SystemEntityFieldPolicy systemEntityFieldPolicy;
 
     /**
      * 从数据中抽取并移除配置为多值字段（多选、多引用、复选框）的取值。
@@ -177,8 +179,11 @@ public class EntityMultiValueRuntimeService {
                         + " ORDER BY record_id, field_code, sort_order",
                 recordIds.toArray());
         Map<String, EntityField> fields = new LinkedHashMap<>();
+        Map<String, String> targetEntityIds = new LinkedHashMap<>();
         for (EntityField field : multiValueFields(definition.getId())) {
             fields.put(field.getFieldCode(), field);
+            targetEntityIds.put(
+                    field.getFieldCode(), targetEntityId(field));
         }
         Map<String, Map<String, List<String>>> valuesByRecord = new LinkedHashMap<>();
         Map<String, Map<String, List<Map<String, Object>>>> optionsByRecord = new LinkedHashMap<>();
@@ -187,6 +192,14 @@ public class EntityMultiValueRuntimeService {
             String fieldCode = String.valueOf(row.get("field_code"));
             EntityField field = fields.get(fieldCode);
             if (field == null) {
+                continue;
+            }
+            String rowTargetEntityId = String.valueOf(
+                    row.get("target_entity_id"));
+            if (!targetEntityIds.get(fieldCode).equals(
+                    rowTargetEntityId)) {
+                // 字段发布后可能曾切换目标实体。旧侧表行不能按新目标解释，
+                // 否则主键碰撞会回填错误对象，并在未修改表单时污染新关系。
                 continue;
             }
             String targetId = String.valueOf(row.get("target_record_id"));
@@ -446,7 +459,7 @@ public class EntityMultiValueRuntimeService {
         } else {
             EntityDefinition target = definitionMapper.selectById(field.getRefEntityId());
             if (target != null) {
-                String tableName = tableResolver.resolve(target);
+                String tableName = resolveTargetTable(target);
                 String displayColumn = resolveDisplayColumn(field, target);
                 List<Map<String, Object>> targets = jdbcTemplate.queryForList(
                         "SELECT `" + displayColumn + "` AS display_name FROM " + tableName
@@ -503,7 +516,11 @@ public class EntityMultiValueRuntimeService {
     }
 
     private String resolveDisplayColumn(EntityField field, EntityDefinition target) {
-        String column = field.getRefFieldCode();
+        String column = target.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM
+                ? systemEntityFieldPolicy.displayField(
+                target.getEntityCode())
+                : field.getRefFieldCode();
         if (!StringUtils.hasText(column)) {
             Set<String> fieldCodes = fieldMapper.findByEntityId(target.getId()).stream()
                     .map(EntityField::getFieldCode)
@@ -519,6 +536,29 @@ public class EntityMultiValueRuntimeService {
             throw new IllegalArgumentException("目标显示字段不合法: " + column);
         }
         return toSnakeCase(column);
+    }
+
+    /**
+     * 系统实体不能走通用动态表解析器，但已登记的只读系统实体可以作为
+     * MULTI_REFERENCE 目标。这里仅接受目录中严格匹配的 sys_* 物理表，
+     * 避免为了用户多选关系放宽通用动态表安全边界。
+     */
+    private String resolveTargetTable(EntityDefinition target) {
+        if (target.getStorageMode()
+                != EntityDefinition.StorageMode.SYSTEM) {
+            return tableResolver.resolve(target);
+        }
+        String entityCode = text(target.getEntityCode());
+        String tableName = text(target.getPhysicalTableName());
+        if (!systemEntityFieldPolicy.isSupportedEntity(entityCode)
+                || !StringUtils.hasText(tableName)
+                || !tableName.equals(entityCode)
+                || !tableName.startsWith("sys_")
+                || !IDENTIFIER.matcher(tableName).matches()) {
+            throw new IllegalStateException(
+                    "多值关系目标系统实体目录登记不合法: " + entityCode);
+        }
+        return tableName;
     }
 
     private String buildLabelExists(
@@ -541,7 +581,7 @@ public class EntityMultiValueRuntimeService {
         if (target == null) {
             return "1=0";
         }
-        String targetTable = tableResolver.resolve(target);
+        String targetTable = resolveTargetTable(target);
         String displayColumn = resolveDisplayColumn(field, target);
         return "EXISTS (SELECT 1 FROM " + multiTable + " mv JOIN " + targetTable + " target"
                 + " ON target.id = mv.target_record_id"

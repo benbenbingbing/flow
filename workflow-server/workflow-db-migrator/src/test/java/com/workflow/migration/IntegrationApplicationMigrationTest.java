@@ -47,6 +47,27 @@ class IntegrationApplicationMigrationTest {
                 flyway.migrate();
 
                 assertSchemaIsCurrent(flyway);
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM information_schema.tables
+                                 WHERE table_schema = DATABASE()
+                                   AND table_type = 'BASE TABLE'
+                                   AND table_name <> 'flyway_schema_history'
+                                   AND NOT (table_collation
+                                        <=> 'utf8mb4_unicode_ci')
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM information_schema.columns
+                                 WHERE table_schema = DATABASE()
+                                   AND table_name <> 'flyway_schema_history'
+                                   AND character_set_name IS NOT NULL
+                                   AND (
+                                        character_set_name <> 'utf8mb4'
+                                        OR collation_name
+                                            <> 'utf8mb4_unicode_ci'
+                                   )
+                                """));
                 assertEquals(
                                 Set.of(
                                                 "integration_application",
@@ -300,6 +321,69 @@ class IntegrationApplicationMigrationTest {
                         assertTrue(columnExists(table, "create_time"));
                         assertTrue(columnExists(table, "update_time"));
                 }
+        }
+
+        @Test
+        void retainedNormalizerConvertsFlowableStyleTablesCreatedAfterV074()
+                        throws Exception {
+                flyway().migrate();
+                execute("""
+                                CREATE TABLE ACT_V074_PARENT (
+                                  ID_ varchar(64) NOT NULL,
+                                  NAME_ varchar(100) NOT NULL,
+                                  PRIMARY KEY (ID_),
+                                  UNIQUE KEY ACT_UNIQ_V074_NAME (NAME_)
+                                ) ENGINE=InnoDB
+                                  DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+                                """);
+                execute("""
+                                CREATE TABLE ACT_V074_CHILD (
+                                  ID_ varchar(64) NOT NULL,
+                                  PARENT_ID_ varchar(64) NOT NULL,
+                                  PRIMARY KEY (ID_),
+                                  CONSTRAINT ACT_FK_V074_PARENT
+                                    FOREIGN KEY (PARENT_ID_)
+                                    REFERENCES ACT_V074_PARENT (ID_)
+                                ) ENGINE=InnoDB
+                                  DEFAULT CHARSET=utf8 COLLATE=utf8_bin
+                                """);
+                execute("""
+                                INSERT INTO ACT_V074_PARENT (ID_, NAME_)
+                                VALUES ('parent-1', '流程父记录')
+                                """);
+                execute("""
+                                INSERT INTO ACT_V074_CHILD (ID_, PARENT_ID_)
+                                VALUES ('child-1', 'parent-1')
+                                """);
+
+                execute("CALL workflow_v074_unify_database_collation_v2()");
+
+                assertEquals("utf8mb4_unicode_ci",
+                                columnCollation("ACT_V074_PARENT", "ID_"));
+                assertEquals("utf8mb4_unicode_ci",
+                                columnCollation("ACT_V074_CHILD", "PARENT_ID_"));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ACT_V074_CHILD child_record
+                                  JOIN ACT_V074_PARENT parent_record
+                                    ON parent_record.ID_ = child_record.PARENT_ID_
+                                """));
+                assertThrows(SQLException.class, () -> execute("""
+                                INSERT INTO ACT_V074_CHILD (ID_, PARENT_ID_)
+                                VALUES ('child-orphan', 'missing-parent')
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM information_schema.columns
+                                 WHERE table_schema = DATABASE()
+                                   AND table_name <> 'flyway_schema_history'
+                                   AND character_set_name IS NOT NULL
+                                   AND (
+                                        character_set_name <> 'utf8mb4'
+                                        OR collation_name
+                                            <> 'utf8mb4_unicode_ci'
+                                   )
+                                """));
         }
 
         @Test

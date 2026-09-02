@@ -5,7 +5,15 @@
         <el-button @click="$router.back()">
           <el-icon><ArrowLeft /></el-icon>返回
         </el-button>
-        <span class="process-name">{{ progressData.processName || '流程进度' }}</span>
+        <RuntimeVersionDiagnostics
+          class="process-runtime-diagnostics"
+          :entries="processRuntimeDiagnosticEntries"
+          :copy-entries="processRuntimeDiagnosticCopyEntries"
+          copy-title="流程运行版本排障信息"
+          :reset-key="progressData.processInstanceId || processInstanceId"
+        >
+          <span class="process-name">{{ progressData.processName || '流程进度' }}</span>
+        </RuntimeVersionDiagnostics>
         <el-tag :type="getStatusType(progressData.status)" size="small">
           {{ getStatusText(progressData.status) }}
         </el-tag>
@@ -175,14 +183,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, toRaw } from 'vue'
+import { computed, ref, onMounted, nextTick, watch, toRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { processApi } from '@/api/process'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
+import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import { useUserStore } from '@/stores/user'
 import { ensureBpmnLayout, hasCompleteBpmnDi } from '@/utils/bpmnLayout'
+import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -199,6 +209,38 @@ const progressData = ref({
   nodeHistory: [],
   tasks: [],
   nodeAssigneeMap: {}
+})
+const progressRuntimeForm = computed(() =>
+  progressData.value?.formConfigs?.[0] || progressData.value?.formConfig || null
+)
+const processRuntimeDiagnosticEntries = computed(() => {
+  const form = progressRuntimeForm.value
+  const formVersion = form?.runtimeReleaseVersion ?? form?.formReleaseVersion
+  const hotfixSuffix = form?.hotfixApplied === true ? '（已应用热修复）' : ''
+  return [
+    {
+      label: '流程',
+      value: formatRuntimeCodeVersion(
+        progressData.value?.processKey,
+        progressData.value?.processVersion
+      )
+    },
+    {
+      label: '表单',
+      value: form
+        ? `${formatRuntimeCodeVersion(form.formKey, formVersion)}${hotfixSuffix}`
+        : '未记录运行表单'
+    }
+  ]
+})
+const processRuntimeDiagnosticCopyEntries = computed(() => {
+  return [
+    ...processRuntimeDiagnosticEntries.value,
+    {
+      label: '流程实例 ID',
+      value: progressData.value?.processInstanceId || processInstanceId
+    }
+  ]
 })
 
 // 提示框状态
@@ -672,6 +714,10 @@ onMounted(() => {
 .process-name {
   font-size: 16px;
   font-weight: 600;
+}
+
+.process-runtime-diagnostics {
+  min-width: 0;
 }
 
 .header-right {

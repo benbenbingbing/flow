@@ -6,6 +6,7 @@ const elements = {
   viewKey: document.querySelector('#view-key'),
   runtimeViewKey: document.querySelector('#runtime-view-key'),
   subjectHint: document.querySelector('#subject-hint'),
+  target: document.querySelector('#embed-target'),
   mode: document.querySelector('#entry-mode'),
   recordField: document.querySelector('#record-field'),
   recordId: document.querySelector('#record-id'),
@@ -32,6 +33,17 @@ function setStatus(text, kind = 'idle') {
 function setCommandsEnabled(enabled) {
   elements.destroy.disabled = !widget
   for (const button of elements.commands) button.disabled = !enabled
+}
+
+function setLaunchControlsDisabled(disabled) {
+  elements.target.disabled = disabled
+  elements.mode.disabled = disabled
+  elements.recordId.disabled = disabled
+  elements.launch.disabled = disabled
+}
+
+function selectedTarget() {
+  return config?.targets?.find(target => target.key === elements.target.value)
 }
 
 function safeEventSummary(event) {
@@ -68,6 +80,7 @@ function resetEmbedSurface() {
   elements.container.replaceChildren()
   elements.empty.hidden = false
   setCommandsEnabled(false)
+  if (config) elements.runtimeViewKey.textContent = selectedTarget()?.viewKey || '未配置'
 }
 
 /**
@@ -85,6 +98,9 @@ async function destroyWidget({ showIdleStatus = true } = {}) {
   }
 
   elements.launch.disabled = true
+  elements.target.disabled = true
+  elements.mode.disabled = true
+  elements.recordId.disabled = true
   elements.destroy.disabled = true
   for (const button of elements.commands) button.disabled = true
   setStatus('正在安全注销 Flow 会话…', 'loading')
@@ -102,7 +118,7 @@ async function destroyWidget({ showIdleStatus = true } = {}) {
       throw error
     } finally {
       if (destroyPromise === pendingDestroy) destroyPromise = undefined
-      if (!launchInProgress) elements.launch.disabled = false
+      if (!launchInProgress) setLaunchControlsDisabled(false)
     }
   })()
   destroyPromise = pendingDestroy
@@ -131,7 +147,17 @@ async function readJson(response) {
 async function launchEmbed() {
   if (launchInProgress || destroyPromise) return
   launchInProgress = true
-  elements.launch.disabled = true
+  setLaunchControlsDisabled(true)
+  const target = selectedTarget()
+  const mode = elements.mode.value
+  const intent = mode === 'VIEW'
+    ? {
+        targetKey: target?.key,
+        mode,
+        recordId: elements.recordId.value.trim(),
+        theme: darkTheme ? 'dark' : 'light'
+      }
+    : { targetKey: target?.key, mode, theme: darkTheme ? 'dark' : 'light' }
   try {
     try {
       // 重新打开必须先等旧 iframe 确认 Logout，否则会命中 Grant 的活动会话上限。
@@ -144,10 +170,6 @@ async function launchEmbed() {
     }
 
     setStatus('第三方后端签发中…', 'loading')
-    const mode = elements.mode.value
-    const intent = mode === 'VIEW'
-      ? { mode, recordId: elements.recordId.value.trim(), theme: darkTheme ? 'dark' : 'light' }
-      : { mode, theme: darkTheme ? 'dark' : 'light' }
     const response = await fetch('/partner-api/embed-launch', {
       method: 'POST',
       credentials: 'same-origin',
@@ -164,7 +186,7 @@ async function launchEmbed() {
       launchCode: launch.launchCode,
       channelId: launch.channelId,
       targetOrigin: config.embedOrigin,
-      title: mode === 'LIST' ? 'Flow 需求列表' : 'Flow 需求表单',
+      title: target?.surfaceType === 'LIST' ? 'Flow 需求列表' : 'Flow 需求表单',
       height: { mode: 'auto', min: 520, max: 1400, initial: 620 },
       onEvent(event) {
         addEvent(event.type, safeEventSummary(event))
@@ -172,7 +194,10 @@ async function launchEmbed() {
           setStatus('安全通道已连接', 'connected')
           setCommandsEnabled(true)
         }
-        if (event.type === 'initialized') setStatus('Flow 已加载', 'connected')
+        if (event.type === 'initialized') {
+          elements.runtimeViewKey.textContent = event.payload?.viewKey || target?.viewKey || '未知'
+          setStatus('Flow 已加载', 'connected')
+        }
         if (event.type === 'form.saved') setStatus('表单已保存', 'success')
         if (event.type === 'close.requested') {
           // Published Form 的“关闭/取消”只提出宿主关闭请求；真正释放 Session 仍必须
@@ -202,7 +227,7 @@ async function launchEmbed() {
     elements.empty.hidden = false
   } finally {
     launchInProgress = false
-    if (!destroyPromise) elements.launch.disabled = false
+    if (!destroyPromise) setLaunchControlsDisabled(false)
   }
 }
 
@@ -220,6 +245,25 @@ async function closeEmbed() {
 
 function updateEntryFields() {
   elements.recordField.hidden = elements.mode.value !== 'VIEW'
+  if (elements.recordField.hidden) elements.recordId.value = ''
+}
+
+/** 目标切换只重建该目标允许的入口；真实 View Key 仍由宿主后端白名单解析。 */
+function updateTargetFields() {
+  const target = selectedTarget()
+  elements.mode.replaceChildren()
+  for (const mode of target?.allowedEntryModes || []) {
+    const option = document.createElement('option')
+    option.value = mode
+    option.textContent = ({
+      CREATE: '新建表单（CREATE）',
+      VIEW: '查看记录（VIEW）',
+      LIST: '列表（LIST）'
+    })[mode] || mode
+    elements.mode.append(option)
+  }
+  if (!widget) elements.runtimeViewKey.textContent = target?.viewKey || '未配置'
+  updateEntryFields()
 }
 
 async function loadConfig() {
@@ -230,20 +274,19 @@ async function loadConfig() {
     }))
     elements.hostOrigin.textContent = config.hostOrigin
     elements.embedOrigin.textContent = config.embedOrigin
-    elements.viewKey.textContent = config.viewKey
-    elements.runtimeViewKey.textContent = config.viewKey
+    elements.viewKey.textContent = config.targets
+      .map(target => `${target.label}：${target.viewKey}`)
+      .join(' / ')
     elements.subjectHint.textContent = config.subjectHint
-    for (const mode of config.allowedEntryModes) {
+    for (const target of config.targets) {
       const option = document.createElement('option')
-      option.value = mode
-      option.textContent = ({
-        CREATE: '新建表单（CREATE）',
-        VIEW: '查看记录（VIEW）',
-        LIST: '列表（LIST）'
-      })[mode] || mode
-      elements.mode.append(option)
+      option.value = target.key
+      option.textContent = `${target.label}（${target.viewKey}）`
+      elements.target.append(option)
     }
-    updateEntryFields()
+    elements.target.value = config.defaultTargetKey
+    updateTargetFields()
+    setLaunchControlsDisabled(false)
   } catch (error) {
     const detail = publicError(error)
     addEvent('config.failed', detail)
@@ -252,6 +295,7 @@ async function loadConfig() {
   }
 }
 
+elements.target.addEventListener('change', updateTargetFields)
 elements.mode.addEventListener('change', updateEntryFields)
 elements.launch.addEventListener('click', launchEmbed)
 elements.destroy.addEventListener('click', closeEmbed)
@@ -278,4 +322,5 @@ window.addEventListener('pagehide', () => {
   pendingDestroy?.catch(() => {})
 }, { once: true })
 
+setLaunchControlsDisabled(true)
 loadConfig()

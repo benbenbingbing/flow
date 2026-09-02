@@ -18,14 +18,15 @@ import com.workflow.core.result.PageResult;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
 import com.workflow.process.assignment.relative.RelativeOrgPositionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.request.NextApproverOptionsRequest;
 import com.workflow.process.task.api.response.NextApproverCandidateDTO;
+import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import lombok.RequiredArgsConstructor;
 import org.flowable.bpmn.model.UserTask;
-import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.task.api.Task;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.repository.ProcessDefinition;
@@ -160,12 +161,8 @@ public class NextApproverCandidateService {
             return defaults;
         }
         Map<String, Object> config = target.assigneeConfig();
-        int version = assignmentConfigVersion(config);
-        if (usesEntryTimeRelativeResolver(
-                config,
-                version,
-                LegacyMultiInstanceAssignmentParser.parse(config))) {
-            // 相对职务默认值本身刚由权威解析器产生，同一预览请求内
+        if (usesEntryTimeDynamicResolver(target)) {
+            // 动态默认值本身刚由权威解析器产生，同一预览请求内
             // 再解一次可能恰逢任职变更，反而造成默认显示自相矛盾。
             return defaults;
         }
@@ -207,22 +204,18 @@ public class NextApproverCandidateService {
         LegacyAssignment legacyAssignment =
                 LegacyMultiInstanceAssignmentParser.parse(config);
         if (preferPreparedMultiInstanceSnapshot
-                && !usesEntryTimeRelativeResolver(
-                config, version, legacyAssignment)) {
+                && !usesEntryTimeDynamicResolver(target)) {
             List<SysUser> prepared = preparedMultiInstanceUsers(
                     resolution, target);
             if (prepared != null) {
                 return prepared;
             }
         }
-        boolean multiInstance = "MULTI_INSTANCE".equals(
-                target.selectionPolicy().assignmentMode());
-        boolean sourceUsesLegacyMultiInstance =
-                target.assignmentSourceTask()
-                        .hasMultiInstanceLoopCharacteristics();
-        if ((multiInstance || sourceUsesLegacyMultiInstance)
-                && version < 2
-                && legacyAssignment.effective()) {
+        if (LegacyMultiInstanceAssignmentParser
+                .usesLegacyMultiInstanceAssignment(
+                        config,
+                        target.assignmentSourceTask()
+                                .hasMultiInstanceLoopCharacteristics())) {
             return resolveLegacyMultiInstanceUsers(
                     resolution, target, legacyAssignment);
         }
@@ -230,25 +223,27 @@ public class NextApproverCandidateService {
     }
 
     /**
-     * 相对组织职务以发起快照和当前任职状态为权威输入，下一审批人
-     * 预览不能被上一轮循环遗留的 collection 变量短路。实际进入节点
-     * 时仍由 collection handler 生成当轮稳定集合。
+     * 节点进入期解析器以当前权威状态为输入，下一审批人预览不能被
+     * 上一轮循环遗留的 collection 变量短路。相对职务读取当前任职，
+     * 实体用户字段读取任一表单最新保存的实体记录；实际进入节点时
+     * 仍由 collection handler 生成当轮稳定集合。
      */
-    private boolean usesEntryTimeRelativeResolver(
-            Map<String, Object> config,
-            int version,
-            LegacyAssignment legacy) {
-        String type = normalizeAssignmentType(config.get("assigneeType"));
-        if ("resolver".equals(type)
-                && RelativeOrgPositionConfig.RESOLVER_CODE.equals(firstText(
-                config.get("resolverCode"),
-                config.get("interfaceName")))) {
-            return true;
-        }
-        return version < 2
-                && legacy.resolver()
-                && RelativeOrgPositionConfig.RESOLVER_CODE.equals(
-                legacy.resolverCode());
+    private boolean usesEntryTimeDynamicResolver(
+            NextApprovalTarget target) {
+        Map<String, Object> config = target.assigneeConfig();
+        return isEntryTimeDynamicResolver(
+                LegacyMultiInstanceAssignmentParser
+                        .effectiveResolver(
+                                config,
+                                target.assignmentSourceTask()
+                                        .hasMultiInstanceLoopCharacteristics())
+                        .resolverCode());
+    }
+
+    private boolean isEntryTimeDynamicResolver(String resolverCode) {
+        return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
+                || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
+                resolverCode);
     }
 
     /**
@@ -448,24 +443,8 @@ public class NextApproverCandidateService {
     }
 
     private String multiInstanceCollectionVariable(UserTask userTask) {
-        MultiInstanceLoopCharacteristics loop =
-                userTask.getLoopCharacteristics();
-        if (loop == null) {
-            return null;
-        }
-        String expression = StringUtils.hasText(loop.getInputDataItem())
-                ? loop.getInputDataItem()
-                : loop.getCollectionString();
-        if (!StringUtils.hasText(expression)) {
-            return null;
-        }
-        String value = expression.trim();
-        if ((value.startsWith("${") || value.startsWith("#{"))
-                && value.endsWith("}")) {
-            value = value.substring(2, value.length() - 1).trim();
-        }
-        return value.matches("[A-Za-z_][A-Za-z0-9_]*")
-                ? value : null;
+        return MultiInstanceVariableNames.resolveCollectionVariable(
+                userTask);
     }
 
     /**

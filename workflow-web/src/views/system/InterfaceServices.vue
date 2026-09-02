@@ -207,7 +207,6 @@
       :lists="lists"
       :entity-id="selectedEntityId"
       :entity-code="selectedEntity?.entityCode || ''"
-      :event-codes="eventCodes"
     />
   </div>
 </template>
@@ -222,7 +221,6 @@ import InterfaceServiceEditorDialog from '@/components/ui-config/InterfaceServic
 import InterfaceServiceTestDialog from '@/components/ui-config/InterfaceServiceTestDialog.vue'
 import {
   configurableEntities,
-  eventCodes,
   executionPolicy,
   serviceOperations,
   sourceTypeOptions

@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -88,19 +87,12 @@ public class RelativeOrgPositionProcessInspector {
             Map<String, Object> config =
                     LegacyMultiInstanceAssignmentParser.mergeConfigs(
                             primary, fallback);
-            var legacy = LegacyMultiInstanceAssignmentParser.parse(config);
-            if (legacy.effective() && legacy.resolver()) {
-                return RelativeOrgPositionConfig.RESOLVER_CODE.equals(
-                        legacy.resolverCode());
-            }
-            String type = String.valueOf(config.getOrDefault(
-                    "assigneeType", "")).trim().toLowerCase(Locale.ROOT);
-            String resolverCode = String.valueOf(config.getOrDefault(
-                    "resolverCode",
-                    config.getOrDefault("interfaceName", ""))).trim();
-            return ("interface".equals(type) || "resolver".equals(type))
-                    && RelativeOrgPositionConfig.RESOLVER_CODE.equals(
-                    resolverCode);
+            return RelativeOrgPositionConfig.RESOLVER_CODE.equals(
+                    LegacyMultiInstanceAssignmentParser
+                            .effectiveResolver(
+                                    config,
+                                    task.hasMultiInstanceLoopCharacteristics())
+                            .resolverCode());
         } catch (Exception exception) {
             // 已部署文档损坏时仍对 resolver 稳定编码做保守检测。
             // 可疑相对职务流程宁可多捕获一份快照，也不得因 JSON

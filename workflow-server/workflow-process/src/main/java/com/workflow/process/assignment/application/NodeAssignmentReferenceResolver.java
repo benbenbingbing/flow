@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -68,7 +69,9 @@ public class NodeAssignmentReferenceResolver {
                         "审批人节点引用形成环: " + String.join(" -> ", chain));
             }
             chain.add(nodeId);
-            if (!isNodeReference(config)) {
+            if (!isEffectiveNodeReference(
+                    config,
+                    task.hasMultiInstanceLoopCharacteristics())) {
                 return new ResolvedAssignment(
                         task,
                         config,
@@ -126,6 +129,18 @@ public class NodeAssignmentReferenceResolver {
         return "nodereference".equals(normalized);
     }
 
+    /**
+     * 节点引用与历史多实例来源共存时遵循统一 legacy-first 规则。
+     */
+    public static boolean isEffectiveNodeReference(
+            Map<String, Object> config,
+            boolean multiInstanceSource) {
+        return !LegacyMultiInstanceAssignmentParser
+                .usesLegacyMultiInstanceAssignment(
+                        config, multiInstanceSource)
+                && isNodeReference(config);
+    }
+
     /** canonical 字段优先，历史 sourceNodeId 仅作读取兼容。 */
     public static String referencedNodeId(Map<String, Object> config) {
         return firstText(
@@ -141,10 +156,40 @@ public class NodeAssignmentReferenceResolver {
             UserTask currentTask,
             UserTask sourceTask,
             Map<String, Object> sourceConfig) {
-        if (currentTask.hasMultiInstanceLoopCharacteristics()) {
+        return assignmentMode(
+                currentTask.hasMultiInstanceLoopCharacteristics(),
+                sourceTask.hasMultiInstanceLoopCharacteristics(),
+                sourceTask.getAssignee(),
+                sourceTask.getCandidateUsers(),
+                sourceTask.getCandidateGroups(),
+                sourceConfig);
+    }
+
+    /**
+     * DOM 发布校验与 Flowable 运行时共用的分配模式投影。
+     */
+    public static String assignmentMode(
+            boolean currentMultiInstance,
+            boolean sourceMultiInstance,
+            String sourceAssignee,
+            Collection<String> sourceCandidateUsers,
+            Collection<String> sourceCandidateGroups,
+            Map<String, Object> sourceConfig) {
+        if (currentMultiInstance) {
             return "MULTI_INSTANCE";
         }
-        if (literalAssignee(sourceTask.getAssignee())) {
+        LegacyMultiInstanceAssignmentParser.LegacyAssignment legacy =
+                LegacyMultiInstanceAssignmentParser.parse(
+                        sourceConfig == null ? Map.of() : sourceConfig);
+        if (LegacyMultiInstanceAssignmentParser
+                .usesLegacyMultiInstanceAssignment(
+                        sourceConfig, sourceMultiInstance)) {
+            return legacy.userKeys().isEmpty()
+                    && (!legacy.groupKeys().isEmpty()
+                    || !legacy.roleKeys().isEmpty())
+                    ? "CANDIDATE" : "DIRECT";
+        }
+        if (literalAssignee(sourceAssignee)) {
             return "DIRECT";
         }
         String configured = firstText(
@@ -163,8 +208,8 @@ public class NodeAssignmentReferenceResolver {
                         "不支持的审批分配模式: " + configured);
             }
         }
-        if (hasValues(sourceTask.getCandidateUsers())
-                || hasValues(sourceTask.getCandidateGroups())) {
+        if (hasValues(sourceCandidateUsers)
+                || hasValues(sourceCandidateGroups)) {
             return "CANDIDATE";
         }
         String assigneeType = text(sourceConfig == null
@@ -177,15 +222,6 @@ public class NodeAssignmentReferenceResolver {
                     || "group".equals(normalizedType)) {
                 return "CANDIDATE";
             }
-        }
-        LegacyMultiInstanceAssignmentParser.LegacyAssignment legacy =
-                LegacyMultiInstanceAssignmentParser.parse(
-                        sourceConfig == null ? Map.of() : sourceConfig);
-        if (legacy.effective()
-                && legacy.userKeys().isEmpty()
-                && (!legacy.groupKeys().isEmpty()
-                || !legacy.roleKeys().isEmpty())) {
-            return "CANDIDATE";
         }
         return "DIRECT";
     }
@@ -252,7 +288,7 @@ public class NodeAssignmentReferenceResolver {
                 && !value.contains("#{");
     }
 
-    private static boolean hasValues(List<String> values) {
+    private static boolean hasValues(Collection<String> values) {
         return values != null
                 && values.stream().anyMatch(StringUtils::hasText);
     }

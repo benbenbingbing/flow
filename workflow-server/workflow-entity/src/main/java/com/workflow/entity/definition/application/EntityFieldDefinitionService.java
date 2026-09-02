@@ -55,7 +55,7 @@ public class EntityFieldDefinitionService {
         EntityDefinition entity = requireDynamicEntity(entityId);
         validateSingleField(entityId, null, dto);
         EntityField saved = createDefinition(entityId, dto);
-        entityMapper.updateById(entity);
+        entityMapper.touchUpdateTime(entityId);
         return convertToDTOWithRelation(entity, saved);
     }
 
@@ -81,7 +81,7 @@ public class EntityFieldDefinitionService {
         }
         validateSingleField(entityId, current, dto);
         updateDefinition(current, dto);
-        entityMapper.updateById(entity);
+        entityMapper.touchUpdateTime(entityId);
         return convertToDTOWithRelation(entity, current);
     }
 
@@ -103,6 +103,7 @@ public class EntityFieldDefinitionService {
     public void updateDefinition(
             EntityField existingField,
             EntityFieldDTO fieldDTO) {
+        assertPublishedStructureUnchanged(existingField, fieldDTO);
         boolean structureLocked =
                 Boolean.TRUE.equals(existingField.getIsSystem())
                         || Boolean.TRUE.equals(existingField.getIsPublished());
@@ -164,10 +165,10 @@ public class EntityFieldDefinitionService {
     }
 
     private EntityDefinition requireDynamicEntity(String entityId) {
-        EntityDefinition entity = entityMapper.selectById(entityId);
-        if (entity == null) {
-            throw new RuntimeException("实体不存在: " + entityId);
-        }
+        // 字段增删改与实体发布统一持有实体独占锁，防止发布快照与字段写入交错。
+        EntityDefinition entity = entityMapper.findByIdForUpdate(entityId)
+                .orElseThrow(() -> new RuntimeException(
+                        "实体不存在: " + entityId));
         EntityDefinition.StorageMode storageMode =
                 entity.getStorageMode() == null
                         ? EntityDefinition.StorageMode.DYNAMIC
@@ -220,10 +221,20 @@ public class EntityFieldDefinitionService {
         if (current == null) {
             return;
         }
-        boolean structureLocked =
-                Boolean.TRUE.equals(current.getIsSystem())
-                        || Boolean.TRUE.equals(current.getIsPublished());
-        if (structureLocked
+    }
+
+    /**
+     * 所有字段更新入口共用的已发布结构约束。
+     *
+     * <p>必须放在 {@link #updateDefinition(EntityField, EntityFieldDTO)}
+     * 内部，避免实体批量保存绕过单字段接口的校验。</p>
+     */
+    private void assertPublishedStructureUnchanged(
+            EntityField current,
+            EntityFieldDTO dto) {
+        boolean locked = Boolean.TRUE.equals(current.getIsSystem())
+                || Boolean.TRUE.equals(current.getIsPublished());
+        if (locked
                 && !Objects.equals(
                         current.getFieldCode(),
                         dto.getFieldCode())) {
@@ -231,12 +242,53 @@ public class EntityFieldDefinitionService {
                     "ENTITY_FIELD_CODE_LOCKED",
                     "系统字段或已发布字段不能修改字段编码");
         }
-        if (structureLocked
+        if (locked
                 && current.getFieldType() != dto.getFieldType()) {
             throw new BusinessConflictException(
                     "ENTITY_FIELD_TYPE_LOCKED",
                     "系统字段或已发布字段不能修改字段类型");
         }
+        if (locked
+                && isReferenceTargetField(current.getFieldType())
+                && (!Objects.equals(
+                current.getRefEntityId(), requestedRefEntityId(dto))
+                || !Objects.equals(
+                current.getRefEntityType(), requestedRefEntityType(dto))
+                || !Objects.equals(
+                current.getRefFieldCode(), requestedRefFieldCode(dto)))) {
+            // 已发布流程会把实体字段坐标固化到人员解析器配置。允许字段
+            // 在原地切换目标实体会让既有部署读取另一类记录，必须新增字段
+            // 和新流程版本完成演进，而不能破坏已发布语义。
+            throw new BusinessConflictException(
+                    "ENTITY_FIELD_REFERENCE_LOCKED",
+                    "系统字段或已发布用户/关系字段不能修改关联实体及关联字段");
+        }
+    }
+
+    private boolean isReferenceTargetField(
+            EntityField.FieldType fieldType) {
+        return fieldType == EntityField.FieldType.USER
+                || fieldType == EntityField.FieldType.REFERENCE
+                || fieldType == EntityField.FieldType.MULTI_REFERENCE;
+    }
+
+    private String requestedRefEntityId(EntityFieldDTO dto) {
+        return firstText(dto.getChildEntityId(), dto.getRefEntityId());
+    }
+
+    private EntityField.RefEntityType requestedRefEntityType(
+            EntityFieldDTO dto) {
+        if (StringUtils.isNotBlank(dto.getRefEntityType())) {
+            return EntityField.RefEntityType.valueOf(
+                    dto.getRefEntityType());
+        }
+        return isRelationField(dto)
+                ? EntityField.RefEntityType.CUSTOM : null;
+    }
+
+    private String requestedRefFieldCode(EntityFieldDTO dto) {
+        return firstText(
+                dto.getChildRefFieldCode(), dto.getRefFieldCode());
     }
 
     private EntityFieldDTO convertToDTOWithRelation(

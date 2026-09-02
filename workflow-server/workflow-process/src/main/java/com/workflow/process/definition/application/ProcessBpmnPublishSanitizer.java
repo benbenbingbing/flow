@@ -14,8 +14,10 @@ import com.workflow.process.assignment.application.LegacyMultiInstanceAssignment
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
+import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.task.application.nextapproval.NextApproverSelectionNormalizer;
 import com.workflow.process.task.application.nextapproval.NextApproverSelectionNormalizer.NormalizedSelection;
+import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -97,6 +99,18 @@ public class ProcessBpmnPublishSanitizer {
      * @throws IllegalArgumentException 当配置化任务缺少必要配置（如发送任务缺少渠道、业务规则任务缺少决策表Key）时抛出
      */
     public String sanitize(String bpmnXml, String processKey) {
+        return sanitize(bpmnXml, processKey, null);
+    }
+
+    /**
+     * 带流程配置身份执行发布净化，使人员解析器可校验流程绑定实体。
+     *
+     * @param processConfigId 流程配置 ID；轻量测试或无绑定上下文时可为空
+     */
+    public String sanitize(
+            String bpmnXml,
+            String processKey,
+            String processConfigId) {
         String result = bpmnXml;
 
         result = removeDuplicateCamundaAssignments(result);
@@ -123,8 +137,8 @@ public class ProcessBpmnPublishSanitizer {
         result = fixConfiguredCallActivities(result);
         result = fixConfiguredReceiveTasks(result);
         result = fixConfiguredUserTaskSlas(result);
-        result = validateNextApproverSelections(result);
-        result = installRelativePositionCollectionHandlers(result);
+        result = validateNextApproverSelections(result, processConfigId);
+        result = installEntryDynamicResolverCollectionHandlers(result);
         result = fixScriptTasks(result);
         BpmnExecutableContentValidator.validate(result);
 
@@ -132,13 +146,13 @@ public class ProcessBpmnPublishSanitizer {
     }
 
     /**
-     * 为相对职务多实例节点写入 Flowable collection handler。
+     * 为必须在节点进入时取最新人员的多实例解析器写入 collection handler。
      *
-     * <p>该 handler 在引擎真正读取 collection 时解析任职人，这一时点早于
-     * ACTIVITY_STARTED，因而既能使用节点激活时的当前任职，也能在创建 0 个
-     * 实例之前对空结果失败关闭。</p>
+     * <p>该 handler 在引擎真正读取 collection 时解析人员，这一时点早于
+     * ACTIVITY_STARTED。相对职务由此读取当前任职，实体用户字段则读取此前
+     * 任一表单刚保存的权威实体记录；两者都能在创建 0 个实例前失败关闭。</p>
      */
-    private String installRelativePositionCollectionHandlers(
+    private String installEntryDynamicResolverCollectionHandlers(
             String bpmnXml) {
         try {
             Document document = parseXml(bpmnXml);
@@ -170,13 +184,16 @@ public class ProcessBpmnPublishSanitizer {
                     continue;
                 }
                 PublishedAssignmentNode terminal =
-                        NodeAssignmentReferenceResolver.isNodeReference(
-                                current.assigneeConfig())
+                        NodeAssignmentReferenceResolver
+                                .isEffectiveNodeReference(
+                                        current.assigneeConfig(),
+                                        current.multiInstance())
                                 ? resolvePublishedReference(
                                 current, userTasks, allElements)
                                 : current;
-                if (!usesRelativePositionResolver(
-                        terminal.assigneeConfig())) {
+                if (!usesEntryDynamicResolver(
+                        terminal.assigneeConfig(),
+                        terminal.multiInstance())) {
                     continue;
                 }
                 Element loop = firstDescendant(
@@ -186,7 +203,8 @@ public class ProcessBpmnPublishSanitizer {
                     throw nextApproverConfigError(
                             current.id(), "多实例循环配置缺失");
                 }
-                installCollectionHandler(document, loop);
+                installCollectionHandler(
+                        document, current.element(), loop);
                 changed = true;
             }
             return changed ? writeXml(document) : bpmnXml;
@@ -194,31 +212,39 @@ public class ProcessBpmnPublishSanitizer {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalArgumentException(
-                    "relativeOrgPosition 多实例 handler 无法写入 BPMN",
+                    "动态人员解析器多实例 handler 无法写入 BPMN",
                     exception);
         }
     }
 
-    private boolean usesRelativePositionResolver(
-            Map<String, Object> config) {
-        LegacyAssignment legacy =
-                LegacyMultiInstanceAssignmentParser.parse(config);
-        if (legacy.effective() && legacy.resolver()) {
-            return com.workflow.process.assignment.relative
-                    .RelativeOrgPositionConfig.RESOLVER_CODE
-                    .equals(legacy.resolverCode());
-        }
-        String type = String.valueOf(config.getOrDefault(
-                "assigneeType", "")).trim().toLowerCase(Locale.ROOT);
-        if (!"interface".equals(type) && !"resolver".equals(type)) {
-            return false;
-        }
-        String resolverCode = String.valueOf(config.getOrDefault(
-                "resolverCode",
-                config.getOrDefault("interfaceName", ""))).trim();
+    /** 仅这些内置解析器要求等到节点进入时读取可变的权威业务状态。 */
+    private boolean usesEntryDynamicResolver(
+            Map<String, Object> config,
+            boolean multiInstanceSource) {
+        String resolverCode = configuredPersonResolverCode(
+                config, multiInstanceSource);
         return com.workflow.process.assignment.relative
                 .RelativeOrgPositionConfig.RESOLVER_CODE
+                .equals(resolverCode)
+                || com.workflow.process.assignment.entity
+                .EntityUserReferenceFieldConfig.RESOLVER_CODE
                 .equals(resolverCode);
+    }
+
+    private String configuredPersonResolverCode(
+            Map<String, Object> config,
+            boolean multiInstanceSource) {
+        return LegacyMultiInstanceAssignmentParser
+                .effectiveResolver(config, multiInstanceSource)
+                .resolverCode();
+    }
+
+    /** 判断基础办理人配置是否声明了受控人员解析器。 */
+    private boolean usesPersonResolver(
+            Map<String, Object> config,
+            boolean multiInstanceSource) {
+        return StringUtils.hasText(configuredPersonResolverCode(
+                config, multiInstanceSource));
     }
 
     private Element firstDescendant(Element parent, String localName) {
@@ -229,7 +255,47 @@ public class ProcessBpmnPublishSanitizer {
 
     private void installCollectionHandler(
             Document document,
+            Element userTask,
             Element loop) {
+        String rawCollection = loop.getAttributeNS(
+                FLOWABLE_NAMESPACE, "collection");
+        if (!StringUtils.hasText(rawCollection)) {
+            rawCollection = loop.getAttribute("flowable:collection");
+        }
+        if (!StringUtils.hasText(rawCollection)) {
+            rawCollection = loop.getAttribute("collection");
+        }
+        String preservedCollectionVariable = readFlowableProperty(
+                userTask,
+                MultiInstanceVariableNames.ENTRY_DYNAMIC_COLLECTION_PROPERTY);
+        if (MultiInstanceVariableNames.ENTRY_DYNAMIC_COLLECTION_LITERAL
+                .equals(rawCollection)
+                && StringUtils.hasText(preservedCollectionVariable)) {
+            // 二次发布净化时 loop 已是安全字面量，必须保留首轮记录的
+            // 业务变量名，不能把内部 seed 反写成审计/覆盖变量。
+            rawCollection = preservedCollectionVariable;
+        }
+        String collectionVariable = simpleCollectionVariable(
+                rawCollection);
+        if (!StringUtils.hasText(collectionVariable)) {
+            throw nextApproverConfigError(
+                    userTask.getAttribute("id"),
+                    "节点进入期动态解析器的多实例 collection 必须是简单流程变量");
+        }
+        upsertFlowableProperty(
+                document,
+                userTask,
+                MultiInstanceVariableNames.ENTRY_DYNAMIC_COLLECTION_PROPERTY,
+                collectionVariable);
+        // Flowable 7.2 会先求值 collection、随后才调用 handler。改成无需
+        // 变量的安全字面量，使主流程、嵌入流程和 CallActivity 子流程都能进入
+        // handler；原业务变量名已保存到节点扩展属性供覆盖和审计使用。
+        loop.removeAttribute("collection");
+        loop.setAttributeNS(
+                FLOWABLE_NAMESPACE,
+                "flowable:collection",
+                MultiInstanceVariableNames.ENTRY_DYNAMIC_COLLECTION_LITERAL);
+
         Element extensionElements = null;
         for (Node child = loop.getFirstChild();
                 child != null;
@@ -266,10 +332,100 @@ public class ProcessBpmnPublishSanitizer {
         extensionElements.appendChild(handler);
     }
 
+    /** 在用户任务扩展属性中保存平台生成的动态 collection 契约。 */
+    private void upsertFlowableProperty(
+            Document document,
+            Element task,
+            String name,
+            String value) {
+        Element extensionElements = null;
+        for (Node child = task.getFirstChild();
+                child != null;
+                child = child.getNextSibling()) {
+            if (child instanceof Element element
+                    && "extensionElements".equals(
+                    element.getLocalName())) {
+                extensionElements = element;
+                break;
+            }
+        }
+        if (extensionElements == null) {
+            extensionElements = createBpmnElement(
+                    document,
+                    task.getNamespaceURI(),
+                    task.getPrefix(),
+                    "extensionElements");
+            task.insertBefore(extensionElements, task.getFirstChild());
+        }
+        Element properties = null;
+        for (Node child = extensionElements.getFirstChild();
+                child != null;
+                child = child.getNextSibling()) {
+            if (child instanceof Element element
+                    && FLOWABLE_NAMESPACE.equals(
+                    element.getNamespaceURI())
+                    && "properties".equals(element.getLocalName())) {
+                properties = element;
+                break;
+            }
+        }
+        if (properties == null) {
+            properties = document.createElementNS(
+                    FLOWABLE_NAMESPACE, "flowable:properties");
+            extensionElements.appendChild(properties);
+        }
+        for (Node child = properties.getFirstChild();
+                child != null;
+                child = child.getNextSibling()) {
+            if (child instanceof Element property
+                    && FLOWABLE_NAMESPACE.equals(
+                    property.getNamespaceURI())
+                    && "property".equals(property.getLocalName())
+                    && name.equals(property.getAttribute("name"))) {
+                property.setAttribute("value", value);
+                return;
+            }
+        }
+        Element property = document.createElementNS(
+                FLOWABLE_NAMESPACE, "flowable:property");
+        property.setAttribute("name", name);
+        property.setAttribute("value", value);
+        properties.appendChild(property);
+    }
+
+    private String readFlowableProperty(
+            Element task,
+            String name) {
+        NodeList properties = task.getElementsByTagNameNS(
+                FLOWABLE_NAMESPACE, "property");
+        for (int index = 0; index < properties.getLength(); index++) {
+            Element property = (Element) properties.item(index);
+            if (name.equals(property.getAttribute("name"))) {
+                return property.getAttribute("value");
+            }
+        }
+        return null;
+    }
+
+    private String simpleCollectionVariable(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        if ((value.startsWith("${") || value.startsWith("#{"))
+                && value.endsWith("}")) {
+            value = value.substring(2, value.length() - 1).trim();
+        }
+        return value.matches("[A-Za-z_][A-Za-z0-9_]*")
+                ? value : null;
+    }
+
     /**
      * 发布时校验下一节点审批人展示/修改配置，防止无效策略进入不可变部署。
      */
-    private String validateNextApproverSelections(String bpmnXml) {
+    private String validateNextApproverSelections(
+            String bpmnXml,
+            String processConfigId) {
         String validated = rewriteConfiguredElements(
                 bpmnXml,
                 "userTask",
@@ -279,30 +435,31 @@ public class ProcessBpmnPublishSanitizer {
                             element, assigneeConfig);
                     validateAssignmentConfigVersion(
                             element.id(), assigneeConfig);
-                    boolean unifiedMultiInstance =
-                            isUnifiedMultiInstance(
-                                    element, assigneeConfig);
+                    boolean multiInstance = element.content()
+                            .toLowerCase(Locale.ROOT)
+                            .contains("multiinstanceloopcharacteristics");
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> baseAssignment =
+                            objectMapper.convertValue(
+                                    assigneeConfig, Map.class);
+                    if (!multiInstance
+                            && usesPersonResolver(
+                            baseAssignment, false)) {
+                        // 普通任务即使隐藏“下一审批人”区域，也会在运行时使用
+                        // 基础 resolver；所有受控解析器都必须经过发布校验。
+                        validateNodeAssignmentResolver(
+                                element.id(), assigneeConfig, false,
+                                processConfigId);
+                    }
                     var selection = assigneeConfig.path(
                             "nextApproverSelection");
                     if (selection.isMissingNode() || selection.isNull()) {
                         // 隐藏的 v2 多实例没有前序人工覆盖入口，基础配置必须
                         // 能直接生成参与人，防止空 collection 跳过审批。
-                        if (unifiedMultiInstance) {
+                        if (multiInstance) {
                             validateEnumerableNodeAssignment(
-                                    element, assigneeConfig);
-                        } else {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> values =
-                                    objectMapper.convertValue(
-                                            assigneeConfig, Map.class);
-                            if (usesRelativePositionResolver(values)) {
-                                // 相对职务即使没有“下一审批人”配置，也必须在
-                                // 发布边界校验静态职务、层级与分配模式。
-                                validateNodeAssignmentResolver(
-                                        element.id(),
-                                        assigneeConfig,
-                                        false);
-                            }
+                                    element, assigneeConfig,
+                                    processConfigId);
                         }
                         return element;
                     }
@@ -352,9 +509,10 @@ public class ProcessBpmnPublishSanitizer {
                                     element.id(),
                                     "展示或修改下一审批人时必须配置 source");
                         }
-                        if (unifiedMultiInstance) {
+                        if (multiInstance) {
                             validateEnumerableNodeAssignment(
-                                    element, assigneeConfig);
+                                    element, assigneeConfig,
+                                    processConfigId);
                         }
                         return element;
                     }
@@ -365,10 +523,15 @@ public class ProcessBpmnPublishSanitizer {
                             && editable
                             && ("SCOPE".equals(type)
                             || "RESOLVER".equals(type));
-                    if (unifiedMultiInstance
+                    if (multiInstance
                             && !independentEditableSource) {
                         validateEnumerableNodeAssignment(
-                                element, assigneeConfig);
+                                element, assigneeConfig,
+                                processConfigId);
+                    } else if (multiInstance) {
+                        validateEffectiveMultiInstanceResolver(
+                                element, assigneeConfig,
+                                processConfigId);
                     }
                     if ("SCOPE".equals(type)) {
                         var rules = objectMapper.valueToTree(
@@ -456,15 +619,16 @@ public class ProcessBpmnPublishSanitizer {
                                 PersonResolveUsage.CANDIDATE,
                                 "CANDIDATE",
                                 false,
+                                processConfigId,
                                 normalized.extraParams());
                     } else if ("NODE_ASSIGNMENT".equals(type)) {
                         // 隐藏配置是设计器默认占位，不得反向要求旧节点已经配置
                         // 可枚举办理人；真正启用展示/改选时才执行安全校验。
                         if ((visible || editable)
-                                && !isUnifiedMultiInstance(
-                                element, assigneeConfig)) {
+                                && !multiInstance) {
                             validateEnumerableNodeAssignment(
-                                    element, assigneeConfig);
+                                    element, assigneeConfig,
+                                    processConfigId);
                         }
                     } else {
                         throw nextApproverConfigError(
@@ -474,7 +638,7 @@ public class ProcessBpmnPublishSanitizer {
                     return element;
                 });
         validateEditableMultiInstanceCollections(validated);
-        validateNodeAssignmentReferences(validated);
+        validateNodeAssignmentReferences(validated, processConfigId);
         return validated;
     }
 
@@ -539,7 +703,8 @@ public class ProcessBpmnPublishSanitizer {
      */
     private void validateEnumerableNodeAssignment(
             ConfiguredElement element,
-            com.fasterxml.jackson.databind.JsonNode assigneeConfig) {
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig,
+            String processConfigId) {
         boolean multiInstance = element.content()
                 .toLowerCase(Locale.ROOT)
                 .contains("multiinstanceloopcharacteristics");
@@ -548,11 +713,16 @@ public class ProcessBpmnPublishSanitizer {
                 assigneeConfig,
                 multiInstance,
                 !multiInstance,
-                !multiInstance);
+                !multiInstance,
+                processConfigId,
+                multiInstance,
+                multiInstance ? "MULTI_INSTANCE" : null);
     }
 
     /**
      * @param outputMultiInstance 输出模式来自引用者
+     * @param sourceMultiInstance 真正提供规则的 UserTask 是否为多实例
+     * @param outputAssignmentMode 引用者运行时实际 direct/candidate/MI 模式
      * @param allowBpmnFallback 是否允许使用规则源的 BPMN 字面量属性
      * @param inspectBpmnExpressions 是否检查规则源的 BPMN 动态表达式
      */
@@ -561,12 +731,28 @@ public class ProcessBpmnPublishSanitizer {
             com.fasterxml.jackson.databind.JsonNode assigneeConfig,
             boolean outputMultiInstance,
             boolean allowBpmnFallback,
-            boolean inspectBpmnExpressions) {
-        if (outputMultiInstance
+            boolean inspectBpmnExpressions,
+            String processConfigId,
+            boolean sourceMultiInstance,
+            String outputAssignmentMode) {
+        String effectiveOutputMode = StringUtils.hasText(
+                outputAssignmentMode)
+                ? outputAssignmentMode
+                : assigneeConfig.path("assignmentMode")
+                .asText(outputMultiInstance
+                        ? "MULTI_INSTANCE" : "DIRECT");
+        if (sourceMultiInstance
                 && assigneeConfig.path("assignmentConfigVersion")
                 .asInt(0) != 2
                 && validateLegacyMultiInstanceAssignment(
-                element, assigneeConfig)) {
+                element,
+                assigneeConfig,
+                processConfigId,
+                outputMultiInstance
+                        ? PersonResolveUsage.MULTI_INSTANCE
+                        : PersonResolveUsage.ASSIGNEE,
+                effectiveOutputMode,
+                outputMultiInstance)) {
             return;
         }
         String rawType = assigneeConfig.path("assigneeType")
@@ -636,7 +822,8 @@ public class ProcessBpmnPublishSanitizer {
                 }
             }
             case "resolver" -> validateNodeAssignmentResolver(
-                    element.id(), assigneeConfig, outputMultiInstance);
+                    element.id(), assigneeConfig, outputMultiInstance,
+                    processConfigId, effectiveOutputMode);
             case "node_reference", "nodereference" -> {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> values = objectMapper.convertValue(
@@ -690,7 +877,11 @@ public class ProcessBpmnPublishSanitizer {
     @SuppressWarnings("unchecked")
     private boolean validateLegacyMultiInstanceAssignment(
             ConfiguredElement element,
-            com.fasterxml.jackson.databind.JsonNode config) {
+            com.fasterxml.jackson.databind.JsonNode config,
+            String processConfigId,
+            PersonResolveUsage usage,
+            String assignmentMode,
+            boolean outputMultiInstance) {
         Map<String, Object> values = objectMapper.convertValue(
                 config, Map.class);
         LegacyAssignment legacy =
@@ -711,14 +902,15 @@ public class ProcessBpmnPublishSanitizer {
             validateConfiguredResolver(
                     element.id(),
                     legacy.resolverCode(),
-                    PersonResolveUsage.MULTI_INSTANCE,
+                    usage,
                     "历史多实例人员解析器");
             validateResolverConfiguration(
                     element.id(),
                     legacy.resolverCode(),
-                    PersonResolveUsage.MULTI_INSTANCE,
-                    "MULTI_INSTANCE",
-                    true,
+                    usage,
+                    assignmentMode,
+                    outputMultiInstance,
+                    processConfigId,
                     legacy.resolverExtraParams());
             return true;
         }
@@ -728,6 +920,40 @@ public class ProcessBpmnPublishSanitizer {
                     "历史多实例人员配置包含无法安全枚举的表达式");
         }
         return true;
+    }
+
+    /**
+     * 可编辑独立范围允许没有默认人员，但已配置的默认 resolver 仍必须
+     * 按真实 legacy/v2 来源完成目录、用途和静态参数校验。
+     */
+    @SuppressWarnings("unchecked")
+    private void validateEffectiveMultiInstanceResolver(
+            ConfiguredElement element,
+            com.fasterxml.jackson.databind.JsonNode config,
+            String processConfigId) {
+        Map<String, Object> values = objectMapper.convertValue(
+                config, Map.class);
+        if (LegacyMultiInstanceAssignmentParser
+                .usesLegacyMultiInstanceAssignment(values, true)) {
+            LegacyAssignment legacy =
+                    LegacyMultiInstanceAssignmentParser.parse(values);
+            if (legacy.resolver()) {
+                validateLegacyMultiInstanceAssignment(
+                        element,
+                        config,
+                        processConfigId,
+                        PersonResolveUsage.MULTI_INSTANCE,
+                        "MULTI_INSTANCE",
+                        true);
+            }
+            return;
+        }
+        var effective = LegacyMultiInstanceAssignmentParser
+                .effectiveResolver(values, true);
+        if (effective.configured()) {
+            validateNodeAssignmentResolver(
+                    element.id(), config, true, processConfigId);
+        }
     }
 
     private boolean hasLiteralBpmnAssignment(
@@ -797,19 +1023,25 @@ public class ProcessBpmnPublishSanitizer {
                 && (value.contains("${") || value.contains("#{"));
     }
 
-    private boolean isUnifiedMultiInstance(
-            ConfiguredElement element,
-            com.fasterxml.jackson.databind.JsonNode assigneeConfig) {
-        return assigneeConfig.path("assignmentConfigVersion").asInt(0) == 2
-                && element.content()
-                .toLowerCase(Locale.ROOT)
-                .contains("multiinstanceloopcharacteristics");
+    private void validateNodeAssignmentResolver(
+            String nodeId,
+            com.fasterxml.jackson.databind.JsonNode assigneeConfig,
+            boolean multiInstance,
+            String processConfigId) {
+        validateNodeAssignmentResolver(
+                nodeId,
+                assigneeConfig,
+                multiInstance,
+                processConfigId,
+                null);
     }
 
     private void validateNodeAssignmentResolver(
             String nodeId,
             com.fasterxml.jackson.databind.JsonNode assigneeConfig,
-            boolean multiInstance) {
+            boolean multiInstance,
+            String processConfigId,
+            String assignmentModeOverride) {
         String resolverCode = assigneeConfig.path("resolverCode")
                 .asText(assigneeConfig.path("interfaceName").asText(""))
                 .trim();
@@ -837,9 +1069,13 @@ public class ProcessBpmnPublishSanitizer {
                 nodeId,
                 resolverCode,
                 usage,
-                assigneeConfig.path("assignmentMode")
-                        .asText(multiInstance ? "MULTI_INSTANCE" : "DIRECT"),
+                StringUtils.hasText(assignmentModeOverride)
+                        ? assignmentModeOverride
+                        : assigneeConfig.path("assignmentMode")
+                        .asText(multiInstance
+                                ? "MULTI_INSTANCE" : "DIRECT"),
                 multiInstance,
+                processConfigId,
                 extraParams);
     }
 
@@ -853,6 +1089,7 @@ public class ProcessBpmnPublishSanitizer {
             PersonResolveUsage usage,
             String assignmentMode,
             boolean multiInstance,
+            String processConfigId,
             Object rawExtraParams) {
         PersonResolverConfigurationValidator validator =
                 personResolverConfigurationValidators == null
@@ -865,10 +1102,13 @@ public class ProcessBpmnPublishSanitizer {
         if (validator == null) {
             if (com.workflow.process.assignment.relative
                     .RelativeOrgPositionConfig.RESOLVER_CODE
+                    .equals(resolverCode)
+                    || com.workflow.process.assignment.entity
+                    .EntityUserReferenceFieldConfig.RESOLVER_CODE
                     .equals(resolverCode)) {
                 throw nextApproverConfigError(
                         nodeId,
-                        "relativeOrgPosition 配置校验器未注册");
+                        resolverCode + " 配置校验器未注册");
             }
             return;
         }
@@ -889,6 +1129,7 @@ public class ProcessBpmnPublishSanitizer {
                             usage,
                             assignmentMode,
                             multiInstance,
+                            processConfigId,
                             extraParams));
         } catch (IllegalArgumentException exception) {
             throw nextApproverConfigError(
@@ -1013,6 +1254,18 @@ public class ProcessBpmnPublishSanitizer {
                 collectionVariable = collectionVariable.substring(
                         2, collectionVariable.length() - 1).trim();
             }
+            if (MultiInstanceVariableNames.ENTRY_DYNAMIC_COLLECTION_LITERAL
+                    .equals(collectionVariable)) {
+                // 二次净化时所有动态节点的 loop 都使用同一安全 seed，
+                // collection 所有权仍必须按各任务保存的原业务变量判断。
+                String preserved = readPropertyValue(
+                        content,
+                        MultiInstanceVariableNames
+                                .ENTRY_DYNAMIC_COLLECTION_PROPERTY);
+                if (StringUtils.hasText(preserved)) {
+                    collectionVariable = preserved.trim();
+                }
+            }
             if (!collectionVariable.matches(
                     "[A-Za-z_][A-Za-z0-9_]*")) {
                 if (editable) {
@@ -1022,6 +1275,22 @@ public class ProcessBpmnPublishSanitizer {
                                     + collection);
                 }
                 continue;
+            }
+            boolean generatedCollection = collectionVariable.equals(
+                    MultiInstanceVariableNames.buildCollectionVariableName(
+                            nodeId))
+                    || MultiInstanceVariableNames.LEGACY_COLLECTION_VARIABLE
+                    .equals(collectionVariable);
+            if ((!generatedCollection
+                    && WorkflowReservedVariables
+                    .isProtectedContextVariable(collectionVariable))
+                    || MultiInstanceVariableNames
+                    .ENTRY_DYNAMIC_COLLECTION_LITERAL
+                    .equals(collectionVariable)) {
+                throw nextApproverConfigError(
+                        nodeId,
+                        "多实例 collection 不能覆盖平台保留流程变量: "
+                                + collectionVariable);
             }
             String previous = owners.putIfAbsent(
                     collectionVariable, nodeId);
@@ -1047,7 +1316,9 @@ public class ProcessBpmnPublishSanitizer {
      * 对整张发布模型执行 node_reference 图校验，并按引用者的输出模式校验
      * 终端人员规则。引用目标的多实例属性不得改变当前节点的 resolver usage。
      */
-    private void validateNodeAssignmentReferences(String bpmnXml) {
+    private void validateNodeAssignmentReferences(
+            String bpmnXml,
+            String processConfigId) {
         final Document document;
         try {
             document = parseXml(bpmnXml);
@@ -1080,8 +1351,10 @@ public class ProcessBpmnPublishSanitizer {
         }
 
         for (PublishedAssignmentNode current : userTasks.values()) {
-            if (!NodeAssignmentReferenceResolver.isNodeReference(
-                    current.assigneeConfig())) {
+            if (!NodeAssignmentReferenceResolver
+                    .isEffectiveNodeReference(
+                            current.assigneeConfig(),
+                            current.multiInstance())) {
                 continue;
             }
             PublishedAssignmentNode terminal = resolvePublishedReference(
@@ -1098,7 +1371,10 @@ public class ProcessBpmnPublishSanitizer {
                             terminal.assigneeConfig()),
                     current.multiInstance(),
                     true,
-                    true);
+                    true,
+                    processConfigId,
+                    terminal.multiInstance(),
+                    publishedAssignmentMode(current, terminal));
         }
     }
 
@@ -1120,8 +1396,10 @@ public class ProcessBpmnPublishSanitizer {
                                 + String.join(" -> ", chain));
             }
             chain.add(node.id());
-            if (!NodeAssignmentReferenceResolver.isNodeReference(
-                    node.assigneeConfig())) {
+            if (!NodeAssignmentReferenceResolver
+                    .isEffectiveNodeReference(
+                            node.assigneeConfig(),
+                            node.multiInstance())) {
                 return node;
             }
             if (depth
@@ -1191,6 +1469,30 @@ public class ProcessBpmnPublishSanitizer {
         return userTask.getElementsByTagNameNS(
                 "*", "multiInstanceLoopCharacteristics")
                 .getLength() > 0;
+    }
+
+    private String publishedAssignmentMode(
+            PublishedAssignmentNode current,
+            PublishedAssignmentNode terminal) {
+        return NodeAssignmentReferenceResolver.assignmentMode(
+                current.multiInstance(),
+                terminal.multiInstance(),
+                flowableAttribute(terminal.element(), "assignee"),
+                attributeValues(flowableAttribute(
+                        terminal.element(), "candidateUsers")),
+                attributeValues(flowableAttribute(
+                        terminal.element(), "candidateGroups")),
+                terminal.assigneeConfig());
+    }
+
+    private List<String> attributeValues(String value) {
+        if (!StringUtils.hasText(value)) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .toList();
     }
 
     /**

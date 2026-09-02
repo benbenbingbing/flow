@@ -835,6 +835,12 @@ public class EntityFormService {
         EntityDefinition entity = entityMapper.selectById(entityId);
         List<EntityField> fields = fieldMapper.findByEntityId(entityId);
         fields.forEach(field -> {
+            if (StringUtils.hasText(field.getRefEntityId())) {
+                EntityDefinition target = entityMapper.selectById(
+                        field.getRefEntityId());
+                field.setRefEntityCode(target == null
+                        ? null : target.getEntityCode());
+            }
             field.setUiConfigurable(
                     systemEntityFieldPolicy.isUiConfigurable(entity, field));
             field.setRuntimeReadable(

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 
-import { configurableEntities } from '../interfaceServiceModel.js'
+import {
+  configurableEntities,
+  defaultInterfaceServiceDebugUsage,
+  interfaceServiceUsageOptions,
+  isInterfaceServiceUsageCompatible
+} from '../interfaceServiceModel.js'
 import {
   eventGroupsForScope,
   eventsForScope
@@ -18,6 +23,67 @@ assert.deepEqual(
 )
 assert.equal(entities.length, 3)
 assert.deepEqual(configurableEntities(null), [])
+
+assert.equal(
+  interfaceServiceUsageOptions.some(option => option.value === 'FIELD_OPTIONS'),
+  true
+)
+assert.equal(
+  defaultInterfaceServiceDebugUsage({
+    code: 'FIELD_OPTIONS',
+    kind: 'READ',
+    contextType: 'FORM'
+  }),
+  'FIELD_OPTIONS'
+)
+assert.equal(
+  defaultInterfaceServiceDebugUsage({
+    code: 'CUSTOM_LIST_READ',
+    kind: 'READ',
+    contextType: 'LIST'
+  }),
+  'LIST_LOAD'
+)
+assert.equal(
+  defaultInterfaceServiceDebugUsage({
+    code: 'CUSTOM_WRITE',
+    kind: 'WRITE',
+    contextType: 'ENTITY'
+  }),
+  'DATA_UPDATE'
+)
+assert.equal(
+  isInterfaceServiceUsageCompatible({
+    code: 'FIELD_OPTIONS',
+    kind: 'WRITE',
+    contextType: 'FORM'
+  }, 'FIELD_OPTIONS'),
+  false
+)
+assert.equal(
+  defaultInterfaceServiceDebugUsage({
+    code: 'FIELD_OPTIONS',
+    kind: 'WRITE',
+    contextType: 'FORM'
+  }),
+  'DATA_UPDATE'
+)
+assert.equal(
+  defaultInterfaceServiceDebugUsage({
+    code: 'DATA_UPDATE',
+    kind: 'READ',
+    contextType: 'FORM'
+  }),
+  'DETAIL_LOAD'
+)
+assert.equal(
+  defaultInterfaceServiceDebugUsage({
+    code: 'LIST_LOAD',
+    kind: 'READ',
+    contextType: 'FORM'
+  }),
+  'DETAIL_LOAD'
+)
 
 assert.deepEqual(
   eventGroupsForScope('FORM', 'OWNER').map(group => group.label),

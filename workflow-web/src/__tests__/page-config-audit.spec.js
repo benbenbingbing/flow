@@ -1838,6 +1838,101 @@ assert.ok(
   nodeConfigPanel.includes('多人办理直接复用本区审批人配置'),
   '多人办理应明确复用统一审批人配置'
 )
+assert.match(
+  nodeConfigPanel,
+  /label="实体用户关系字段" value="entity_user_reference"/,
+  '审批人指定方式必须提供稳定的实体用户关系语义类型'
+)
+assert.match(
+  nodeConfigPanel,
+  /const entityUserReferenceFieldOptions = computed\(\(\) =>\s*entityFields\.value\.filter\(isEntityUserReferenceField\)/,
+  '审批人字段候选项必须从流程绑定实体的全部字段筛选'
+)
+assert.match(
+  nodeConfigPanel,
+  /request\.get\(\s*`\/entity-form\/entity\/\$\{requestedEntityId\}\/fields`/,
+  '实体用户关系选择必须使用完整实体字段接口'
+)
+assert.match(
+  nodeConfigPanel,
+  /const requestedEntityId = String\(boundEntity\.value\?\.id[\s\S]*?const requestedProcessId = String\(props\.processId[\s\S]*?boundEntity\.value\?\.id[\s\S]*?!== requestedEntityId[\s\S]*?props\.processId[\s\S]*?!== requestedProcessId/,
+  '实体字段异步响应必须校验请求时的实体与流程身份，丢弃过期响应'
+)
+assert.match(
+  nodeConfigPanel,
+  /watch\(\(\) => props\.processId[\s\S]*?resetEntityFormsState\(\)[\s\S]*?entityFields\.value = \[\][\s\S]*?loadEntityForms\(\)/,
+  '流程切换必须先清理旧实体绑定，再加载新实体字段'
+)
+assert.match(
+  nodeConfigPanel,
+  /watch\(\(\) => boundEntity\.value[\s\S]*?newVal\?\.id[\s\S]*?await loadEntityFields\(\)/,
+  '绑定实体异步就绪后必须重新加载全部字段，避免节点初次打开为空'
+)
+assert.doesNotMatch(
+  nodeConfigPanel,
+  /selectedFormFields\.value\.filter\(isEntityUserReferenceField\)/,
+  '审批人字段不得被限制在当前节点表单的字段快照中'
+)
+assert.match(
+  nodeConfigPanel,
+  /const isEntityUserReferenceAssignee[\s\S]*?ENTITY_USER_REFERENCE_RESOLVER_CODE[\s\S]*?assigneeType: isEntityUserReferenceAssignee[\s\S]*?ENTITY_USER_REFERENCE_ASSIGNEE_TYPE/,
+  '已保存的内置字段解析器必须恢复为设计器的正式语义类型'
+)
+assert.match(
+  nodeConfigPanel,
+  /function projectedAssigneeFormForPersistence\(\)[\s\S]*?ENTITY_USER_REFERENCE_ASSIGNEE_TYPE[\s\S]*?buildEntityUserReferenceResolverConfig/,
+  '实体用户关系语义类型必须投影为受控 v2 人员解析器'
+)
+
+const ordinaryAssignmentStart = nodeConfigPanel.indexOf(
+  'const updates = { loopCharacteristics: undefined }'
+)
+assert.ok(ordinaryAssignmentStart >= 0, '应找到普通任务审批人属性投影分支')
+const ordinaryAssignmentEnd = nodeConfigPanel.indexOf(
+  'updateAssigneeConfig()',
+  ordinaryAssignmentStart
+)
+assert.ok(ordinaryAssignmentEnd > ordinaryAssignmentStart, '普通任务审批人投影必须保存 v2 配置')
+const ordinaryAssignmentSource = nodeConfigPanel.slice(
+  ordinaryAssignmentStart,
+  ordinaryAssignmentEnd + 'updateAssigneeConfig()'.length
+)
+for (const marker of [
+  'ENTITY_USER_REFERENCE_ASSIGNEE_TYPE',
+  'updates.assignee = null',
+  'updates.candidateUsers = null',
+  'updates.candidateGroups = null',
+  'updateAssigneeInterface()'
+]) {
+  assert.ok(
+    ordinaryAssignmentSource.includes(marker),
+    `普通任务实体用户关系保存缺少契约: ${marker}`
+  )
+}
+
+const multiInstanceAssignmentStart = nodeConfigPanel.lastIndexOf(
+  'if (assigneeForm.value.isMultiInstance)',
+  ordinaryAssignmentStart
+)
+assert.ok(
+  multiInstanceAssignmentStart >= 0,
+  '应找到多人办理审批人保存分支'
+)
+const multiInstanceAssignmentSource = nodeConfigPanel.slice(
+  multiInstanceAssignmentStart,
+  ordinaryAssignmentStart
+)
+for (const marker of [
+  'ENTITY_USER_REFERENCE_ASSIGNEE_TYPE',
+  'updateAssigneeInterface()',
+  'updateAssigneeConfig()',
+  'updateMultiInstance()'
+]) {
+  assert.ok(
+    multiInstanceAssignmentSource.includes(marker),
+    `多人办理实体用户关系保存缺少契约: ${marker}`
+  )
+}
 ;['ENTITY_NOT_BOUND_MESSAGE', 'isEntityNotBoundError', 'entityFormsLoadingPromise', 'silentError: true'].forEach((marker) => {
   assert.ok(nodeConfigPanel.includes(marker), `流程未绑定实体时缺少预期状态去重或静默处理: ${marker}`)
 })

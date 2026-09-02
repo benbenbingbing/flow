@@ -434,6 +434,45 @@ class NextApproverNodeAssignmentCandidateTest {
     }
 
     @Test
+    void multiInstanceReferenceToOrdinarySourceIgnoresStaleLegacyFields() {
+        Fixture fixture = fixture("base-user", "legacy-user");
+        UserTask current = new UserTask();
+        current.setId("joint-reference");
+        current.setLoopCharacteristics(
+                new MultiInstanceLoopCharacteristics());
+        UserTask ordinarySource = new UserTask();
+        ordinarySource.setId("ordinary-source");
+        Map<String, Object> config = Map.of(
+                "assigneeType", "resolver",
+                "resolverCode", "baseResolver",
+                "collectionSource", "resolver",
+                "collectionResolverCode", "legacyResolver");
+        NextApprovalTarget target = new NextApprovalTarget(
+                current,
+                config,
+                policy("MULTI_INSTANCE"),
+                ordinarySource);
+        NextApprovalResolution resolution = resolution(target, Map.of());
+        when(fixture.resolverRuntimeService().resolveUsernames(
+                eq("baseResolver"), any()))
+                .thenReturn(List.of("base-user"));
+        when(fixture.resolverRuntimeService().resolveUsernames(
+                eq("legacyResolver"), any()))
+                .thenReturn(List.of("legacy-user"));
+
+        List<SysUser> allowed = fixture.service().resolveAllowed(
+                resolution,
+                target,
+                PersonResolveUsage.CANDIDATE);
+
+        assertEquals(
+                List.of("base-user"),
+                allowed.stream().map(SysUser::getUsername).toList());
+        verify(fixture.resolverRuntimeService(), never())
+                .resolveUsernames(eq("legacyResolver"), any());
+    }
+
+    @Test
     void legacyIdAndMixedFieldsDriveDefaultsAndCompletionScope() {
         Fixture fixture = fixture(
                 "mixed-user",

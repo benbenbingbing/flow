@@ -10,6 +10,7 @@ import com.workflow.process.assignment.application.LegacyMultiInstanceAssignment
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
+import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
 import com.workflow.process.assignment.relative.RelativeOrgPositionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
@@ -140,8 +141,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             boolean visible = false;
             boolean editable = false;
             try {
-                String varName = collectionVariable(
-                        activity.getLoopCharacteristics());
+                String varName = MultiInstanceVariableNames
+                        .resolveCollectionVariable(activity);
                 if (!StringUtils.hasText(varName)) {
                     continue;
                 }
@@ -177,11 +178,15 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 }
                 EffectiveAssignment effective = effectiveAssignment(
                         model, activity, assigneeConfig);
-                if (usesRelativePositionResolver(
-                        effective.assigneeConfig())) {
-                    // 相对职务的任职人必须在节点激活时解析。发布器已为该节点
-                    // 写入 collection handler，启动阶段仅移除调用方可能伪造的同名集合。
-                    variables.remove(varName);
+                if (usesEntryDynamicResolver(
+                        effective.assigneeConfig(),
+                        effective.sourceActivity()
+                                .hasMultiInstanceLoopCharacteristics())) {
+                    // 可变权威来源必须在节点进入时解析。发布器已写入 collection
+                    // handler。Flowable 会先计算原 collection EL，之后才调用
+                    // handler，因此这里必须用可信空集合覆盖调用方伪造值：既
+                    // 保证 EL 可计算，又不在后续表单保存前冻结实体用户字段。
+                    variables.put(varName, List.of());
                     continue;
                 }
                 List<String> userIds = resolvePublishedUsers(
@@ -191,7 +196,9 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                         effective.assigneeConfig(),
                         variables,
                         null,
-                        processDefinitionId);
+                        processDefinitionId,
+                        effective.sourceActivity()
+                                .hasMultiInstanceLoopCharacteristics());
                 if (!userIds.isEmpty()) {
                     variables.put(varName, userIds);
                     log.info(
@@ -358,8 +365,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                         "下一审批人可修改时必须同时允许展示",
                         null);
             }
-            String varName = collectionVariable(
-                    deployedActivity.getLoopCharacteristics());
+            String varName = MultiInstanceVariableNames
+                    .resolveCollectionVariable(deployedActivity);
             if (varName == null) {
                 if (required) {
                     throw required(
@@ -443,7 +450,9 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                     effective.assigneeConfig(),
                     variables,
                     processInstanceId,
-                    processDefinitionId);
+                    processDefinitionId,
+                    effective.sourceActivity()
+                            .hasMultiInstanceLoopCharacteristics());
             if (userIds.isEmpty()) {
                 if (required) {
                     throw required(
@@ -594,8 +603,10 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             Activity currentActivity,
             Map<String, Object> currentConfig) throws Exception {
         if (!(currentActivity instanceof UserTask currentTask)
-                || !NodeAssignmentReferenceResolver.isNodeReference(
-                currentConfig)) {
+                || !NodeAssignmentReferenceResolver
+                .isEffectiveNodeReference(
+                        currentConfig,
+                        currentTask.hasMultiInstanceLoopCharacteristics())) {
             return new EffectiveAssignment(
                     currentActivity, currentConfig);
         }
@@ -613,18 +624,16 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 && !value.contains("#{");
     }
 
-    private boolean usesRelativePositionResolver(
-            Map<String, Object> config) {
-        LegacyMultiInstanceAssignmentParser.LegacyAssignment legacy =
-                LegacyMultiInstanceAssignmentParser.parse(config);
-        if (legacy.effective() && legacy.resolver()) {
-            return RelativeOrgPositionConfig.RESOLVER_CODE.equals(
-                    legacy.resolverCode());
-        }
-        String type = normalizeAssignmentType(config.get("assigneeType"));
-        return "resolver".equals(type)
-                && RelativeOrgPositionConfig.RESOLVER_CODE.equals(firstText(
-                config.get("resolverCode"), config.get("interfaceName")));
+    /** 判断是否必须推迟到节点进入时读取权威业务状态。 */
+    private boolean usesEntryDynamicResolver(
+            Map<String, Object> config,
+            boolean multiInstanceSource) {
+        String resolverCode = LegacyMultiInstanceAssignmentParser
+                .effectiveResolver(config, multiInstanceSource)
+                .resolverCode();
+        return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
+                || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
+                resolverCode);
     }
 
     private String normalizeAssignmentType(Object raw) {
@@ -688,27 +697,6 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
 
     private String nullSafe(String value) {
         return value == null ? "" : value;
-    }
-
-    private String collectionVariable(
-            MultiInstanceLoopCharacteristics loop) {
-        if (loop == null) {
-            return null;
-        }
-        String expression = loop.getInputDataItem();
-        if (expression == null || expression.isBlank()) {
-            expression = loop.getCollectionString();
-        }
-        if (expression == null || expression.isBlank()) {
-            return null;
-        }
-        String value = expression.trim();
-        if ((value.startsWith("${") || value.startsWith("#{"))
-                && value.endsWith("}")) {
-            value = value.substring(2, value.length() - 1).trim();
-        }
-        return value.matches("[A-Za-z_][A-Za-z0-9_]*")
-                ? value : null;
     }
 
     /**
@@ -802,7 +790,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
             Map<String, Object> assigneeConfig,
             Map<String, Object> variables,
             String processInstanceId,
-            String processDefinitionId) {
+            String processDefinitionId,
+            boolean multiInstanceSource) {
         int assignmentVersion = requireSupportedAssignmentConfigVersion(
                 assigneeConfig);
         return assignmentResolver().resolve(
@@ -813,7 +802,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 variables,
                 processInstanceId,
                 processDefinitionId,
-                assignmentVersion);
+                assignmentVersion,
+                multiInstanceSource);
     }
 
     /**

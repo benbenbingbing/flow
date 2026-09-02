@@ -2,10 +2,16 @@
   <el-dialog
     v-model="visible"
     :title="`${configLabel}发布版本`"
-    width="920px"
+    width="1200px"
+    class="ui-config-release-history-dialog"
     append-to-body
   >
-    <el-table v-loading="loading" :data="releases" size="small">
+    <el-table
+      v-loading="loading"
+      :data="releases"
+      size="small"
+      class="release-history-table"
+    >
       <el-table-column type="expand">
         <template #default="{ row }">
           <el-descriptions :column="2" border size="small" class="technical-details">
@@ -18,20 +24,24 @@
           </el-descriptions>
         </template>
       </el-table-column>
-      <el-table-column prop="version" label="版本" width="80" />
-      <el-table-column prop="releaseMode" label="方式" width="100">
+      <el-table-column prop="version" label="版本" width="70" />
+      <el-table-column prop="releaseMode" label="方式" width="90">
         <template #default="{ row }">
           {{ row.releaseMode === 'HOTFIX' ? '兼容热修复' : '普通发布' }}
         </template>
       </el-table-column>
-      <el-table-column prop="riskLevel" label="风险" width="90" />
-      <el-table-column prop="description" label="版本说明" min-width="180">
+      <el-table-column prop="riskLevel" label="风险" width="80" />
+      <el-table-column prop="description" label="版本说明" min-width="150">
         <template #default="{ row }">{{ row.description || '未填写' }}</template>
       </el-table-column>
-      <el-table-column prop="publishedBy" label="发布人" width="120" />
-      <el-table-column prop="publishedAt" label="发布时间" width="180" />
-      <el-table-column prop="status" label="状态" width="100" />
-      <el-table-column label="操作" width="230">
+      <el-table-column label="发布人" min-width="160">
+        <template #default="{ row }">{{ formatPublisher(row) }}</template>
+      </el-table-column>
+      <el-table-column label="发布时间" min-width="160">
+        <template #default="{ row }">{{ formatPublishedAt(row.publishedAt) }}</template>
+      </el-table-column>
+      <el-table-column prop="status" label="状态" width="80" />
+      <el-table-column label="操作" min-width="180">
         <template #default="{ row }">
           <el-button
             v-if="row.releaseMode !== 'HOTFIX'"
@@ -109,6 +119,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import dayjs from 'dayjs'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   activateFormRelease,
@@ -145,6 +156,22 @@ const canRollbackHotfix = computed(() =>
   userStore.isSuperAdmin
   || userStore.permissions.includes('entity:ui-config:hotfix:rollback')
 )
+
+/**
+ * 发布记录保存的是人员 ID；摘要接口补齐姓名和登录名后统一按人员可读格式展示。
+ * 保留 ID 回退，避免历史用户被删除时整列空白。
+ */
+function formatPublisher(release) {
+  const name = String(release?.publishedByName || '').trim()
+  const username = String(release?.publishedByUsername || '').trim()
+  if (name && username) return `${name}（${username}）`
+  return name || username || release?.publishedBy || '-'
+}
+
+/** 将后端 LocalDateTime/ISO 时间统一展示到秒。 */
+function formatPublishedAt(value) {
+  return value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'
+}
 
 async function load() {
   const pagePromise = props.configType === 'FORM'
@@ -294,8 +321,17 @@ defineExpose({ open })
 </script>
 
 <style scoped>
+:global(.ui-config-release-history-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
 .technical-details {
   margin: 8px 16px;
+}
+
+.release-history-table :deep(.cell) {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .history-pagination {

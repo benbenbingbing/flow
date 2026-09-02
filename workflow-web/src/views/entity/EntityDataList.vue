@@ -14,6 +14,16 @@
     <el-empty v-else-if="!entityCode" description="未配置实体编码" />
     <el-empty v-else-if="!entityDefinition.id" description="实体不存在或未发布" />
     <template v-else>
+      <RuntimeVersionDiagnostics
+        v-if="showPageRuntimeDiagnostics"
+        class="list-runtime-diagnostics"
+        :entries="listRuntimeDiagnosticEntries"
+        :copy-entries="listRuntimeDiagnosticCopyEntries"
+        copy-title="列表运行版本排障信息"
+        :reset-key="listRuntimeDiagnosticResetKey"
+      >
+        <h2 class="entity-data-list__title">{{ listPageTitle }}</h2>
+      </RuntimeVersionDiagnostics>
       <PageState
         v-if="dataError"
         type="stale"
@@ -236,6 +246,8 @@ import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vu
 import { useEntityDataSelectionState } from './composables/useEntityDataSelectionState'
 import PageState from '@/components/PageState.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
+import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
+import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -415,6 +427,27 @@ const approvalDialogRef = ref<InstanceType<typeof EntityApprovalDialog>>()
 const versionDrawerRef = ref<InstanceType<typeof EntityRecordVersionDrawer>>()
 // 计算属性
 const entityName = computed(() => entityDefinition.value?.entityName)
+const showPageRuntimeDiagnostics = computed(() =>
+  !props.embedded && runtimeScene.value === 'PAGE'
+)
+const listPageTitle = computed(() =>
+  listConfig.value?.listName || entityName.value || '业务列表'
+)
+const listRuntimeDiagnosticEntries = computed(() => [{
+  label: '列表',
+  value: formatRuntimeCodeVersion(
+    listConfig.value?.listKey,
+    listConfig.value?.publishedVersion
+  )
+}])
+const listRuntimeDiagnosticCopyEntries = computed(() => [
+  ...listRuntimeDiagnosticEntries.value
+])
+const listRuntimeDiagnosticResetKey = computed(() => [
+  listConfig.value?.listKey || '',
+  listConfig.value?.publishedVersion ?? '',
+  listConfig.value?.releaseId || ''
+].join(':'))
 const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')
 const entityViewPermission = computed(() =>
   `entity:${String(entityCode.value || '').trim().toLowerCase()}:view`)
@@ -1298,6 +1331,20 @@ defineExpose({ focus, reload: loadDataList })
   
   .loading-container {
     padding: 10px;
+  }
+  .list-runtime-diagnostics {
+    margin: 2px 4px 10px;
+  }
+  .entity-data-list__title {
+    max-width: min(720px, 80vw);
+    overflow: hidden;
+    margin: 0;
+    color: var(--el-text-color-primary);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 28px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .master-detail-hint {
     margin-bottom: 12px;

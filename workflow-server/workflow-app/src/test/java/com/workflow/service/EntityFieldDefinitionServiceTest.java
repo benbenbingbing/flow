@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -101,7 +103,8 @@ class EntityFieldDefinitionServiceTest {
         fieldDTO.setIsRequired(true);
         fieldDTO.setSortOrder(2);
 
-        when(entityMapper.selectById("1")).thenReturn(entity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(entity));
         when(fieldMapper.findByIdString("f1")).thenReturn(existingField);
         when(fieldMapper.findByEntityId("1"))
                 .thenReturn(List.of(existingField));
@@ -118,7 +121,11 @@ class EntityFieldDefinitionServiceTest {
         verify(fieldMapper, never()).deleteById(anyString());
         // 字段与关系已解耦，单字段更新不能隐式删除独立关系配置。
         verify(relationMapper, never()).deleteByParentField(anyString(), anyString());
-        verify(entityMapper).updateById(entity);
+        verify(entityMapper).touchUpdateTime("1");
+        var orderedWrites = inOrder(entityMapper, fieldMapper);
+        orderedWrites.verify(entityMapper).findByIdForUpdate("1");
+        orderedWrites.verify(fieldMapper).findByIdString("f1");
+        verify(entityMapper, never()).updateById(any(EntityDefinition.class));
     }
 
     @Test
@@ -131,7 +138,8 @@ class EntityFieldDefinitionServiceTest {
         fieldDTO.setFieldPrecision(2);
         fieldDTO.setSortOrder(3);
 
-        when(entityMapper.selectById("1")).thenReturn(entity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(entity));
         when(fieldMapper.findByEntityId("1"))
                 .thenReturn(List.of(existingField));
         when(fieldMapper.insert(any(EntityField.class)))
@@ -149,7 +157,11 @@ class EntityFieldDefinitionServiceTest {
         assertFalse(Boolean.TRUE.equals(result.getIsPublished()));
         verify(fieldMapper).insert(any(EntityField.class));
         verify(fieldMapper, never()).deleteByEntityId(anyString());
-        verify(entityMapper).updateById(entity);
+        verify(entityMapper).touchUpdateTime("1");
+        var orderedWrites = inOrder(entityMapper, fieldMapper);
+        orderedWrites.verify(entityMapper).findByIdForUpdate("1");
+        orderedWrites.verify(fieldMapper).findByEntityId("1");
+        verify(entityMapper, never()).updateById(any(EntityDefinition.class));
     }
 
     @Test
@@ -170,7 +182,8 @@ class EntityFieldDefinitionServiceTest {
         fieldDTO.setIsUnique(true);
         fieldDTO.setValidateRules("{\"minLength\":2,\"maxLength\":500}");
 
-        when(entityMapper.selectById("1")).thenReturn(entity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(entity));
         when(fieldMapper.findByIdString("f1")).thenReturn(existingField);
         when(fieldMapper.findByEntityId("1"))
                 .thenReturn(List.of(existingField));
@@ -193,7 +206,8 @@ class EntityFieldDefinitionServiceTest {
     void systemFieldRejectsCodeAndTypeChanges() {
         existingField.setIsSystem(true);
         existingField.setIsPublished(true);
-        when(entityMapper.selectById("1")).thenReturn(entity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(entity));
         when(fieldMapper.findByIdString("f1")).thenReturn(existingField);
         when(fieldMapper.findByEntityId("1"))
                 .thenReturn(List.of(existingField));
@@ -221,6 +235,146 @@ class EntityFieldDefinitionServiceTest {
                         "f1",
                         changedType));
         assertEquals("ENTITY_FIELD_TYPE_LOCKED", typeError.getErrorCode());
+    }
+
+    @Test
+    void publishedReferenceFieldRejectsChangingItsTargetEntity() {
+        existingField.setIsPublished(true);
+        existingField.setFieldCode("approver");
+        existingField.setFieldType(EntityField.FieldType.REFERENCE);
+        existingField.setRefEntityId("entity-user");
+        existingField.setRefEntityType(EntityField.RefEntityType.CUSTOM);
+        existingField.setRefFieldCode("nickname");
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(entity));
+        when(fieldMapper.findByIdString("f1")).thenReturn(existingField);
+        when(fieldMapper.findByEntityId("1"))
+                .thenReturn(List.of(existingField));
+        EntityFieldDTO fieldDTO = fieldDto(
+                "approver",
+                "审批人",
+                EntityField.FieldType.REFERENCE);
+        fieldDTO.setRefEntityId("entity-project");
+        fieldDTO.setRefEntityType("CUSTOM");
+        fieldDTO.setRefFieldCode("name");
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> fieldService.updateField(
+                        "1", "f1", fieldDTO));
+
+        assertEquals(
+                "ENTITY_FIELD_REFERENCE_LOCKED",
+                error.getErrorCode());
+        verify(fieldMapper, never()).updateById(any(EntityField.class));
+    }
+
+    @Test
+    void coreDefinitionUpdateAlsoRejectsPublishedReferenceTargetChange() {
+        existingField.setIsPublished(true);
+        existingField.setFieldCode("reviewers");
+        existingField.setFieldType(EntityField.FieldType.MULTI_REFERENCE);
+        existingField.setRefEntityId("entity-user");
+        existingField.setRefEntityType(EntityField.RefEntityType.CUSTOM);
+        existingField.setRefFieldCode("nickname");
+        EntityFieldDTO fieldDTO = fieldDto(
+                "reviewers",
+                "审批人",
+                EntityField.FieldType.MULTI_REFERENCE);
+        fieldDTO.setRefEntityId("entity-project");
+        fieldDTO.setRefEntityType("CUSTOM");
+        fieldDTO.setRefFieldCode("name");
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> fieldService.updateDefinition(
+                        existingField, fieldDTO));
+
+        assertEquals(
+                "ENTITY_FIELD_REFERENCE_LOCKED",
+                error.getErrorCode());
+        verify(fieldMapper, never()).updateById(any(EntityField.class));
+    }
+
+    @Test
+    void publishedUserFieldRejectsReferenceMetadataChangesFromSingleFieldEntry() {
+        existingField.setIsPublished(true);
+        existingField.setFieldCode("approver");
+        existingField.setFieldType(EntityField.FieldType.USER);
+        existingField.setRefEntityId("entity-user");
+        existingField.setRefEntityType(EntityField.RefEntityType.USER);
+        existingField.setRefFieldCode("username");
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(entity));
+        when(fieldMapper.findByIdString("f1")).thenReturn(existingField);
+
+        List<EntityFieldDTO> changedRequests = List.of(
+                userFieldDto("entity-other", "USER", "username"),
+                userFieldDto("entity-user", "CUSTOM", "username"),
+                userFieldDto("entity-user", "USER", "nickname"));
+
+        for (EntityFieldDTO request : changedRequests) {
+            BusinessConflictException error = assertThrows(
+                    BusinessConflictException.class,
+                    () -> fieldService.updateField(
+                            "1", "f1", request));
+            assertEquals(
+                    "ENTITY_FIELD_REFERENCE_LOCKED",
+                    error.getErrorCode());
+        }
+        verify(fieldMapper, never()).updateById(any(EntityField.class));
+    }
+
+    @Test
+    void systemUserFieldDirectUpdateRejectsReferenceMetadataChange() {
+        existingField.setIsSystem(true);
+        existingField.setFieldCode("approver");
+        existingField.setFieldType(EntityField.FieldType.USER);
+        existingField.setRefEntityType(EntityField.RefEntityType.USER);
+        EntityFieldDTO fieldDTO = userFieldDto(
+                "entity-user", "USER", "username");
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> fieldService.updateDefinition(
+                        existingField, fieldDTO));
+
+        assertEquals(
+                "ENTITY_FIELD_REFERENCE_LOCKED",
+                error.getErrorCode());
+        verify(fieldMapper, never()).updateById(any(EntityField.class));
+    }
+
+    @Test
+    void draftUserFieldStillAllowsReferenceMetadataChange() {
+        existingField.setFieldCode("approver");
+        existingField.setFieldType(EntityField.FieldType.USER);
+        existingField.setRefEntityType(EntityField.RefEntityType.USER);
+        EntityFieldDTO fieldDTO = userFieldDto(
+                "entity-user", "USER", "username");
+
+        fieldService.updateDefinition(existingField, fieldDTO);
+
+        assertEquals("entity-user", existingField.getRefEntityId());
+        assertEquals(
+                EntityField.RefEntityType.USER,
+                existingField.getRefEntityType());
+        assertEquals("username", existingField.getRefFieldCode());
+        verify(fieldMapper).updateById(existingField);
+    }
+
+    private EntityFieldDTO userFieldDto(
+            String refEntityId,
+            String refEntityType,
+            String refFieldCode) {
+        EntityFieldDTO dto = fieldDto(
+                "approver",
+                "审批人",
+                EntityField.FieldType.USER);
+        dto.setRefEntityId(refEntityId);
+        dto.setRefEntityType(refEntityType);
+        dto.setRefFieldCode(refFieldCode);
+        return dto;
     }
 
     private EntityFieldDTO fieldDto(

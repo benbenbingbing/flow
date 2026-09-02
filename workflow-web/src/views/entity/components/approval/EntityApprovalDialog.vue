@@ -1,12 +1,32 @@
 <template>
   <el-dialog
     v-model="processDialogVisible"
-    :title="`${currentTask?.name || '任务审批'}${currentTask?.processStatus ? '（' + getProcessStatusText(currentTask?.processStatus) + '）' : ''}`"
     width="75%"
     class="entity-form-dialog entity-approval-dialog"
     top="3vh"
-    @closed="emit('closed')"
+    :close-on-click-modal="false"
+    @closed="handleDialogClosed"
   >
+    <template #header="{ titleId, titleClass }">
+      <RuntimeVersionDiagnostics
+        v-if="isViewMode"
+        ref="runtimeDiagnosticsRef"
+        :entries="viewRuntimeDiagnosticEntries"
+        :copy-entries="viewRuntimeDiagnosticCopyEntries"
+        copy-title="业务数据运行版本排障信息"
+        :reset-key="viewRuntimeDiagnosticResetKey"
+      >
+        <span
+          :id="titleId"
+          :class="[titleClass, 'approval-dialog-title']"
+        >{{ approvalDialogTitle }}</span>
+      </RuntimeVersionDiagnostics>
+      <span
+        v-else
+        :id="titleId"
+        :class="[titleClass, 'approval-dialog-title']"
+      >{{ approvalDialogTitle }}</span>
+    </template>
     <div class="approval-dialog-body">
       <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
         <el-tab-pane v-if="approvalShowBasicTab" label="基本信息" name="basic">
@@ -134,6 +154,7 @@ import EntityApprovalHistory from './EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
 import ApprovalDecisionPanel from './ApprovalDecisionPanel.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
+import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import {
   resolveApprovalEntityCode,
   resolveApprovalFormConfig
@@ -154,6 +175,7 @@ import {
 } from '@/shared/next-approver'
 import { BUSINESS_TRACE_HEADER } from '@/shared/request'
 import { resolveActionableTaskId } from '@/utils/listButtonPermission'
+import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -201,6 +223,7 @@ const actionLoadingKey = ref('')
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
 const overrideForm = ref<any>(null)
+const runtimeDiagnosticsRef = ref<InstanceType<typeof RuntimeVersionDiagnostics>>()
 const formReleaseContext = computed(() => ({
   releaseId:
     overrideForm.value?.runtimeReleaseId
@@ -234,9 +257,16 @@ const {
   formConfig,
   formConfigs,
   approvalConfig,
+  processRuntimeMetadata,
   getProcessStatusText,
   loadProcessDetail
 } = useProcessDetail()
+
+const approvalDialogTitle = computed(() => {
+  const status = currentTask.value?.processStatus
+  const statusText = status ? `（${getProcessStatusText(status)}）` : ''
+  return `${currentTask.value?.name || '任务审批'}${statusText}`
+})
 
 // 计算属性：获取当前有效的审批配置
 const effectiveApprovalConfig = computed(() => {
@@ -308,6 +338,52 @@ const approvalNormalForm = computed(() => {
     fields
   }
 })
+const resolvedDiagnosticForm = computed(() =>
+  approvalNormalForm.value || effectiveFormConfig.value
+)
+const viewRuntimeDiagnosticEntries = computed(() => {
+  const process = processRuntimeMetadata.value || {}
+  const form = resolvedDiagnosticForm.value
+  const processValue = process.processInstanceId
+    ? formatRuntimeCodeVersion(process.processKey, process.processVersion)
+    : '未关联流程'
+  const formVersion = form?.runtimeReleaseVersion ?? form?.formReleaseVersion
+  const hotfixSuffix = form?.hotfixApplied === true ? '（已应用热修复）' : ''
+  const formValue = form
+    ? `${formatRuntimeCodeVersion(form.formKey, formVersion)}${hotfixSuffix}`
+    : '未记录运行表单'
+  return [
+    ...(process.processInstanceId
+      ? [{ label: '流程', value: processValue }]
+      : []),
+    { label: '表单', value: formValue }
+  ]
+})
+const viewRuntimeDiagnosticCopyEntries = computed(() => {
+  const process = processRuntimeMetadata.value || {}
+  return [
+    ...(props.listKey
+      ? [{ label: '列表', value: formatRuntimeCodeVersion(
+        props.listKey,
+        props.listReleaseVersion
+      ) }]
+      : []),
+    ...viewRuntimeDiagnosticEntries.value,
+    { label: '记录 ID', value: entityData.value?.id },
+    { label: '流程实例 ID', value: process.processInstanceId }
+  ]
+})
+const viewRuntimeDiagnosticResetKey = computed(() => [
+  processDialogVisible.value ? 'open' : 'closed',
+  entityData.value?.id || '',
+  processRuntimeMetadata.value?.processInstanceId || ''
+].join(':'))
+
+function handleDialogClosed() {
+  runtimeDiagnosticsRef.value?.reset()
+  processRuntimeMetadata.value = {}
+  emit('closed')
+}
 const approvalTabLayout = computed(() =>
   resolveRuntimeFormTabLayout(approvalNormalForm.value)
 )
@@ -507,6 +583,9 @@ interface OpenViewOptions {
 
 // 打开查看弹窗（只读模式）
 const openView = async (row: any, options: OpenViewOptions = {}) => {
+  runtimeDiagnosticsRef.value?.reset()
+  // 无流程的独立数据不会调用进度接口，必须先清空上一次实例坐标，避免诊断信息串行污染。
+  processRuntimeMetadata.value = {}
   resetNextApproverPreview()
   const { defaultTab, startUserName, form, context } = options
   overrideForm.value = form || null
@@ -964,6 +1043,18 @@ defineExpose({
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.approval-dialog-title {
+  display: inline-block;
+  max-width: min(720px, 72vw);
+  overflow: hidden;
+  color: var(--el-text-color-primary);
+  font-size: var(--el-dialog-title-font-size);
+  line-height: var(--el-dialog-font-line-height);
+  text-overflow: ellipsis;
+  vertical-align: top;
+  white-space: nowrap;
 }
 
 .approval-tabs {

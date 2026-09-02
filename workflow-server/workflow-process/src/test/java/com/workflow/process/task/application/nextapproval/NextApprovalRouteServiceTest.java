@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -101,6 +102,141 @@ class NextApprovalRouteServiceTest {
                         .map(target -> target.userTask().getId())
                         .toList());
         assertNotNull(resolution.scopeKey());
+    }
+
+    @Test
+    void currentFormEntityUserFieldUpdateDefersUntilAfterPersistence() {
+        org.flowable.bpmn.model.Process process = process();
+        UserTask current = node(new UserTask(), "current-review");
+        UserTask next = node(new UserTask(), "manager-review");
+        add(process, current, next);
+        connect(process, current, next, "to-manager", null);
+        when(repositoryService.getBpmnModel("definition-7"))
+                .thenReturn(model(process));
+        when(nodeFormSubmissionService.projectEditableData(
+                any(Task.class), anyMap()))
+                .thenReturn(Map.of(
+                        "reviewers", List.of("new-user")));
+        NextApprovalTarget base = target(next);
+        when(policyReader.read(
+                eq("definition-7"),
+                eq(next),
+                any(BpmnModel.class)))
+                .thenReturn(new NextApprovalTarget(
+                        next,
+                        Map.of(
+                                "assignmentConfigVersion", 2,
+                                "assigneeType", "interface",
+                                "resolverCode", "entityUserReferenceField",
+                                "extraParams", Map.of(
+                                        "schemaVersion", 1,
+                                        "entityCode", "purchase_order",
+                                        "fieldCode", "reviewers")),
+                        base.selectionPolicy()));
+
+        NextApprovalResolution resolution = service.resolve(
+                task, request("approve", 2000), true);
+
+        assertEquals(
+                NextApprovalPreviewStatus.DEFERRED,
+                resolution.status());
+        assertEquals(List.of(), resolution.targets());
+        assertEquals(
+                "当前提交会更新下一节点审批人字段，保存后由流程重新解析",
+                resolution.message());
+    }
+
+    @Test
+    void legacyCollectionEntityUserFieldDefersUntilAfterPersistence() {
+        org.flowable.bpmn.model.Process process = process();
+        UserTask current = node(new UserTask(), "current-review");
+        UserTask next = node(new UserTask(), "joint-review");
+        next.setLoopCharacteristics(new MultiInstanceLoopCharacteristics());
+        add(process, current, next);
+        connect(process, current, next, "to-joint-review", null);
+        when(repositoryService.getBpmnModel("definition-7"))
+                .thenReturn(model(process));
+        when(nodeFormSubmissionService.projectEditableData(
+                any(Task.class), anyMap()))
+                .thenReturn(Map.of("reviewers", List.of("new-user")));
+        NextApprovalTarget base = target(next);
+        when(policyReader.read(
+                eq("definition-7"),
+                eq(next),
+                any(BpmnModel.class)))
+                .thenReturn(new NextApprovalTarget(
+                        next,
+                        Map.of(
+                                "collectionSource", "resolver",
+                                "collectionResolverCode",
+                                "entityUserReferenceField",
+                                "collectionExtraParams", Map.of(
+                                        "schemaVersion", 1,
+                                        "entityCode", "purchase_order",
+                                        "fieldCode", "reviewers")),
+                        base.selectionPolicy()));
+
+        NextApprovalResolution resolution = service.resolve(
+                task, request("approve", 2000), true);
+
+        assertEquals(
+                NextApprovalPreviewStatus.DEFERRED,
+                resolution.status());
+        assertEquals(List.of(), resolution.targets());
+        assertEquals(
+                "当前提交会更新下一节点审批人字段，保存后由流程重新解析",
+                resolution.message());
+    }
+
+    @Test
+    void currentFormUpdateAlsoDefersForSelectionPolicyResolver() {
+        org.flowable.bpmn.model.Process process = process();
+        UserTask current = node(new UserTask(), "current-review");
+        UserTask next = node(new UserTask(), "manager-review");
+        add(process, current, next);
+        connect(process, current, next, "to-manager", null);
+        when(repositoryService.getBpmnModel("definition-7"))
+                .thenReturn(model(process));
+        when(nodeFormSubmissionService.projectEditableData(
+                any(Task.class), anyMap()))
+                .thenReturn(Map.of("reviewers", List.of("new-user")));
+        NextApproverSelectionPolicy resolverPolicy =
+                new NextApproverSelectionPolicy(
+                        true,
+                        1,
+                        true,
+                        true,
+                        "DIRECT",
+                        false,
+                        NextApproverSelectionPolicy.SourceType.RESOLVER,
+                        List.of(),
+                        "entityUserReferenceField",
+                        Map.of(
+                                "schemaVersion", 1,
+                                "entityCode", "purchase_order",
+                                "fieldCode", "reviewers"),
+                        "policy-manager-review");
+        when(policyReader.read(
+                eq("definition-7"),
+                eq(next),
+                any(BpmnModel.class)))
+                .thenReturn(new NextApprovalTarget(
+                        next,
+                        Map.of(
+                                "assignmentConfigVersion", 2,
+                                "assigneeType", "user",
+                                "assigneeValue", "fallback"),
+                        resolverPolicy));
+
+        NextApprovalResolution resolution = service.resolve(
+                task, request("approve", 2000), true);
+
+        assertEquals(NextApprovalPreviewStatus.DEFERRED,
+                resolution.status());
+        assertEquals(List.of(), resolution.targets());
+        assertEquals(
+                "当前提交会更新下一节点审批人字段，保存后由流程重新解析",
+                resolution.message());
     }
 
     @Test

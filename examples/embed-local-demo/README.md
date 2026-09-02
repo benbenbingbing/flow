@@ -15,18 +15,20 @@
 Keychain。Client Secret、机器 Token、人员 JWT、私钥和 Launch Code 都不会写入日志或前端
 Storage。
 
-## 一、推荐的 LIST 本地示例
+## 一、默认的 LIST + FORM 本地示例
 
-本手册统一使用稳定的 `req-list / ZDWREQ / list001` 示例。内部 ID 都必须从当前环境创建后
-复制，下面不会提供一个看似可用、实际不存在的 Grant ID：
+Demo 默认提供两个受控目标：`req-list / ZDWREQ / list001` 列表和
+`zdwreq-form-demo` 表单。内部 ID 都必须从当前环境创建后复制，下面不会提供一个看似可用、
+实际不存在的 Grant ID：
 
 | 对象 | 示例值 |
 | --- | --- |
 | Application | 当前环境创建的“嵌入联调示例”；Scope 仅 `embed.launch` |
 | Provider | 当前环境创建的 SIGNED_JWT Provider；Issuer `https://id.embed-demo.local` |
 | 外部人员 | `sub=demo-lisi-001`，绑定到当前环境中已启用且具备目标权限的 Flow 用户 |
-| 嵌入配置 | `req-list` / `LIST`；目标区域只选择实体 `ZDWREQ` 和列表 `list001` |
-| Grant | 当前环境为 `req-list` 创建；Allowed Origin 为 `https://localhost:3443` |
+| 列表嵌入配置 | `req-list` / `LIST`；目标区域只选择实体 `ZDWREQ` 和列表 `list001` |
+| 表单嵌入配置 | `zdwreq-form-demo` / `FORM`；目标区域选择需要演示的 ACTIVE 表单 |
+| Grant | 当前环境分别为两个配置创建；Allowed Origin 均为 `https://localhost:3443` |
 | 宿主 Origin | `https://localhost:3443` |
 | Embed Origin | `https://localhost:8443` |
 
@@ -74,9 +76,9 @@ Open API RSA、人员断言 RSA、Embed Context AES 和 Embed Subject HMAC。
 
 然后在 Flow 管理端确认：
 
-1. Application、Provider、Binding、Grant 均为 `ACTIVE`；`req-list` 已第一次有效保存，
-   `ZDWREQ/list001` 存在 ACTIVE 版本；
-2. 当前环境为 `req-list` 创建的 Grant，其 Origin 精确等于 `https://localhost:3443`；
+1. Application、Provider、Binding、Grant 均为 `ACTIVE`；`req-list` 和 `zdwreq-form-demo`
+   均已第一次有效保存，目标列表与表单存在 ACTIVE 版本；
+2. 当前环境为两个嵌入配置创建的 Grant，其 Origin 均精确等于 `https://localhost:3443`；
 3. 部署和密钥就绪后，将该 Grant 从 `DISABLED` 改为 `ACTIVE`；
 4. 重启 Flow Server，使上面的启用开关和密钥配置生效。
 
@@ -106,21 +108,19 @@ npm run setup
 npm run check
 ```
 
-固定使用 LIST 示例启动两个 HTTPS 服务：
+启动同时支持 LIST 与 FORM 的两个 HTTPS 服务：
 
 ```bash
-FLOW_DEMO_VIEW_KEY=req-list \
-FLOW_DEMO_ALLOWED_ENTRY_MODES=LIST \
 npm start
 ```
 
-打开 [https://localhost:3443](https://localhost:3443)，选择“列表（LIST）”，点击
-“创建 Launch 并打开”。页面顶部和导航属于模拟第三方系统，白色列表运行区来自独立的
-Flow Embed Origin。
+打开 [https://localhost:3443](https://localhost:3443)，先选择“需求列表”或“需求表单”，再选择
+该目标允许的入口并点击“创建 Launch 并打开”。页面顶部和导航属于模拟第三方系统，白色运行区
+来自独立的 Flow Embed Origin。
 
-使用 LIST 启动命令时，页面只提供“列表（LIST）”入口。点击“创建 Launch 并打开”后，
-白色运行区直接挂载 Flow 的最新 ACTIVE 列表；列、筛选、渲染器、工具栏、行按钮，以及
-按钮打开的表单和弹框都来自 Flow 原生页面，并按映射用户权限与 DataScope 显示。
+“需求列表”只提供 LIST；“需求表单”提供 CREATE 和 VIEW，其中 VIEW 才需要填写 Flow
+`recordId`。切换目标重新打开时，Demo 会先等待旧 Session 安全注销，再为所选目标创建新
+Launch。浏览器只提交 `targetKey=list/form`，真实 `viewKey` 由 Demo 后端白名单映射。
 
 本地证书未加入系统信任库时，浏览器第一次会显示证书警告。只在本地开发中确认该
 localhost 证书即可。如果 iframe 因 8443 的证书尚未确认而空白，可单独打开
@@ -130,13 +130,13 @@ localhost 证书即可。如果 iframe 因 8443 的证书尚未确认而空白�
 ## 四、实际对接流程
 
 1. 浏览器请求第三方同源接口 `POST https://localhost:3443/partner-api/embed-launch`，只传
-   `mode`、可选 `recordId` 和主题；
+   受控 `targetKey`、`mode`、可选 `recordId` 和主题；
 2. 3443 Node 后端从本地安全文件读取 OAuth 凭据，调用
    `POST http://127.0.0.1:8080/oauth2/token`，Scope 固定为 `embed.launch`；
 3. Node 后端用人员断言私钥签发 60 秒 RS256 JWT，固定
    `iss/aud/sub/kid`，每次生成新的 `jti`；
-4. Node 后端调用 `POST /api/open/v1/embed-launches`，View 固定为环境变量中的
-   `req-list`，`parentOrigin` 固定为 3443，Context 固定为空对象；
+4. Node 后端把 `list/form` 映射为环境变量中的固定 View Key，再调用
+   `POST /api/open/v1/embed-launches`；`parentOrigin` 固定为 3443，Context 固定为空对象；
 5. 浏览器拿到一次性 Launch 后调用 `FlowEmbed.mount()`；SDK 创建 8443 iframe，通过
    `ready/init/init.ack` 严格握手，把 Launch Code 只交给对应 iframe；
 6. iframe 通过 8443 同源代理兑换短期 Session：Exchange、Bootstrap、LIST 与 Session 生命周期
@@ -152,8 +152,9 @@ localhost 证书即可。如果 iframe 因 8443 的证书尚未确认而空白�
    Logout 并返回 ACK 后才移除容器。注销失败时不会继续创建新 Launch，也不会通过提高
    Grant 的活动会话上限掩盖问题。
 
-浏览器无法覆盖 `viewKey`、人员、`parentOrigin`、`context` 或 `channelId`。CREATE/LIST 必须
-完全省略 `recordId`；VIEW 必须携带第三方后端已授权的合法 `recordId`。
+浏览器无法覆盖 `viewKey`、人员、`parentOrigin`、`context` 或 `channelId`，也不能提交目标
+白名单以外的 `targetKey`。CREATE/LIST 必须完全省略 `recordId`；VIEW 必须携带第三方后端已
+授权的合法 `recordId`。
 
 ## 五、可选配置
 
@@ -164,8 +165,10 @@ localhost 证书即可。如果 iframe 因 8443 的证书尚未确认而空白�
 | `FLOW_DEMO_FLOW_BASE_URL` | `http://127.0.0.1:8080` | Flow Server Origin |
 | `FLOW_DEMO_HOST_ORIGIN` | `https://localhost:3443` | 第三方宿主精确 Origin |
 | `FLOW_DEMO_EMBED_ORIGIN` | `https://localhost:8443` | 独立 Embed Origin |
-| `FLOW_DEMO_VIEW_KEY` | 代码回退值为 `zdwreq-form-demo`；本手册命令显式设为 `req-list` | 后端固定 View Key；浏览器不能覆盖 |
-| `FLOW_DEMO_ALLOWED_ENTRY_MODES` | 代码回退值为 `CREATE,VIEW`；本手册命令显式设为 `LIST` | 浏览器可选择的受控直接入口意图 |
+| `FLOW_DEMO_LIST_VIEW_KEY` | `req-list` | LIST 目标固定 View Key |
+| `FLOW_DEMO_FORM_VIEW_KEY` | `zdwreq-form-demo` | FORM 目标固定 View Key |
+| `FLOW_DEMO_VIEW_KEY` | 空 | 兼容旧单目标启动；设置后切换为单目标模式 |
+| `FLOW_DEMO_ALLOWED_ENTRY_MODES` | 空 | 与旧 `FLOW_DEMO_VIEW_KEY` 配套，兼容旧单目标入口模式 |
 | `FLOW_DEMO_OAUTH_CREDENTIALS_FILE` | `.codex-artifacts/embed-demo/oauth-credentials.json` | OAuth 凭据 JSON |
 | `FLOW_DEMO_ASSERTION_PRIVATE_KEY_FILE` | `.codex-artifacts/embed-demo/assertion-private.pem` | 人员断言 RSA 私钥 |
 | `FLOW_DEMO_ASSERTION_ISSUER` | `https://id.embed-demo.local` | Provider issuer |
@@ -203,6 +206,6 @@ npm test
 npm run check
 ```
 
-`npm test` 验证双 Origin 默认值、封闭的浏览器启动参数、CREATE/VIEW 形状、RS256 JWT 签名
-及敏感信息不落浏览器 Storage/日志。`npm run check` 再验证当前机器上的真实资源、秘密文件
-权限和密钥可用性。
+`npm test` 验证双 Origin、LIST/FORM 目标白名单、封闭的浏览器启动参数、入口形状、RS256 JWT
+签名及敏感信息不落浏览器 Storage/日志。`npm run check` 再验证当前机器上的真实资源、秘密
+文件权限和密钥可用性。

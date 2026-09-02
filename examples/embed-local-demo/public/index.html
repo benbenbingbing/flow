@@ -40,7 +40,7 @@
       <dl class="origin-card">
         <div><dt>宿主系统</dt><dd id="host-origin">检查中…</dd></div>
         <div><dt>Embed Origin</dt><dd id="embed-origin">检查中…</dd></div>
-        <div><dt>固定 View</dt><dd id="view-key">检查中…</dd></div>
+        <div><dt>可选 View</dt><dd id="view-key">检查中…</dd></div>
         <div><dt>人员映射</dt><dd id="subject-hint">检查中…</dd></div>
       </dl>
     </section>
@@ -50,7 +50,7 @@
         <div>
           <p class="section-kicker">FLOW EMBED</p>
           <h2 id="workspace-title">需求协作</h2>
-          <p>从当前合作方会话发起一次性 Launch，挂载后可直接新建或查看需求。</p>
+          <p>从当前合作方会话发起一次性 Launch，可切换查看原生列表、新建表单或查看记录。</p>
         </div>
         <span id="connection-badge" class="status-badge idle">尚未挂载</span>
       </div>
@@ -59,12 +59,16 @@
         <strong>Flow 原生页面运行时</strong>
         <span>
           此处直接加载 View 所选的 Flow 原生表单或列表页面，不会根据 Embed 参数重新绘制字段、按钮或弹出层。
-          每次新 Launch 使用目标最新 ACTIVE 版本，已打开 Session 不会中途切换；第三方始终使用稳定的
-          <code id="runtime-view-key">检查中…</code> 配置 Key。
+          每次新 Launch 使用目标最新 ACTIVE 版本，已打开 Session 不会中途切换；当前待打开或正在运行的配置 Key 为
+          <code id="runtime-view-key">检查中…</code>。
         </span>
       </aside>
 
       <div class="control-strip">
+        <label>
+          <span>目标页面</span>
+          <select id="embed-target" aria-label="目标页面"></select>
+        </label>
         <label>
           <span>入口模式</span>
           <select id="entry-mode" aria-label="入口模式"></select>

@@ -155,7 +155,8 @@ class ProcessDefinitionNodeSyncServiceTest {
         EntityFlowStatusService entityFlowStatusService = mock(EntityFlowStatusService.class);
         EntityDefinition entity = new EntityDefinition();
         entity.setEntityCode("expense");
-        when(entityDefinitionMapper.findByProcessDefinitionId("process-1")).thenReturn(Optional.of(entity));
+        when(entityDefinitionMapper.findAllByProcessDefinitionId("process-1"))
+                .thenReturn(List.of(entity));
         ProcessDefinitionNodeSyncService service = service(null, null, null, null, entityFlowStatusService,
                 entityDefinitionMapper, null, null);
 
@@ -582,7 +583,8 @@ class ProcessDefinitionNodeSyncServiceTest {
         EntityFlowStatusService entityFlowStatusService = mock(EntityFlowStatusService.class);
         EntityDefinition entity = new EntityDefinition();
         entity.setEntityCode("expense");
-        when(entityDefinitionMapper.findByProcessDefinitionId("process-1")).thenReturn(Optional.of(entity));
+        when(entityDefinitionMapper.findAllByProcessDefinitionId("process-1"))
+                .thenReturn(List.of(entity));
         ProcessDefinitionNodeSyncService service = service(null, null, null, null, entityFlowStatusService,
                 entityDefinitionMapper, null, null);
 

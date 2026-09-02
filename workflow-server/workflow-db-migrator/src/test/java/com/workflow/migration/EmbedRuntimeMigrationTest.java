@@ -112,14 +112,15 @@ abstract class AbstractEmbedRuntimeMigrationTest {
         assertTrue(indexExists(
                 "integration_api_request_lease", "idx_integration_api_lease_scope"));
         assertEquals(
-                "utf8mb4_bin",
+                "utf8mb4_unicode_ci",
                 columnCollation("integration_api_request_lease", "scope_key"));
         assertEquals(
                 "",
                 columnDefault("integration_api_request_lease", "scope_key"));
 
-        // integration_application uses a binary ID; every physical FK child must match it.
+        // V074 统一排序规则后，父列及所有实体外键子列必须继续严格匹配。
         String applicationIdCollation = columnCollation("integration_application", "id");
+        assertEquals("utf8mb4_unicode_ci", applicationIdCollation);
         for (String table : Set.of(
                 "embed_application_grant",
                 "embed_external_identity_binding",
@@ -129,8 +130,9 @@ abstract class AbstractEmbedRuntimeMigrationTest {
             assertEquals(applicationIdCollation, columnCollation(table, "application_id"));
         }
 
-        // sys_user.id inherits utf8mb4_0900_ai_ci, unlike integration IDs.
+        // 旧库中继承 0900 的 sys_user.id 也必须被 V074 收敛到统一规则。
         String flowUserIdCollation = columnCollation("sys_user", "id");
+        assertEquals("utf8mb4_unicode_ci", flowUserIdCollation);
         for (String table : Set.of(
                 "embed_external_identity_binding",
                 "embed_launch",
@@ -1505,7 +1507,7 @@ abstract class AbstractEmbedRuntimeMigrationTest {
         assertEquals(0, flyway.info().pending().length);
         // 该契约执行完整生产迁移链；并行功能占用的新版本也必须进入历史，
         // 否则把最高版本固定在 Embed 自身的 V068 会掩盖真实 classpath 漂移。
-        assertEquals("71", flyway.info().current().getVersion().getVersion());
+        assertEquals("74", flyway.info().current().getVersion().getVersion());
         try (Connection connection = connection();
              Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery("""

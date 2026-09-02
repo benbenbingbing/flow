@@ -47,6 +47,7 @@ public class ProcessInstanceControllerTest {
         testProgress = new ProcessProgressDTO();
         testProgress.setProcessInstanceId("proc-inst-1");
         testProgress.setProcessDefinitionId("proc-def-1");
+        testProgress.setProcessVersion(7);
         testProgress.setProcessKey("leave_process");
         testProgress.setProcessName("请假流程");
         testProgress.setStatus("RUNNING");
@@ -87,6 +88,7 @@ public class ProcessInstanceControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.processInstanceId").value("proc-inst-1"))
                 .andExpect(jsonPath("$.data.processKey").value("leave_process"))
+                .andExpect(jsonPath("$.data.processVersion").value(7))
                 .andExpect(jsonPath("$.data.status").value("RUNNING"))
                 .andExpect(jsonPath("$.data.completedNodes[0]").value("StartEvent_1"))
                 .andExpect(jsonPath("$.data.activeNodes[0]").value("Task_1"))

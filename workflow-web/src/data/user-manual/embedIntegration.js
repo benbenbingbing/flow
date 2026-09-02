@@ -214,11 +214,11 @@ const localListLaunchBody = `{
 const localEmbedDemoCommands = `# 1. 启动 Flow（.env 中 START_LOCAL_MYSQL=false，不会启动 Docker）
 ./start.sh start
 
-# 2. 启动第三方宿主与独立 Embed HTTPS Origin；固定使用手册中的 LIST 示例
+# 2. 启动第三方宿主与独立 Embed HTTPS Origin；页面可切换 LIST 与 FORM 示例
 cd examples/embed-local-demo
 npm run setup
 npm run check
-FLOW_DEMO_VIEW_KEY=req-list FLOW_DEMO_ALLOWED_ENTRY_MODES=LIST npm start
+npm start
 
 # 3. 浏览器访问
 # https://localhost:3443`
@@ -561,7 +561,8 @@ export default {
               items: [
                 { title: '先确认 Embed 证书', text: '首次使用自签名证书时，先打开 https://localhost:8443/embed-assets/embed-main.css，在浏览器高级选项中仅对本机 localhost 继续访问。' },
                 { title: '再打开第三方门户', text: '访问 https://localhost:3443；若再次出现证书提示，同样只对本机 localhost 确认。页面顶部蓝色区域就是模拟的外部系统。' },
-                { title: '创建真实 Launch', text: '入口选择“列表（LIST）”，点击“创建 Launch 并打开”。状态应依次变为“等待安全握手”“安全通道已连接”“Flow 已加载”。' },
+                { title: '创建 LIST Launch', text: '目标页面选择“需求列表（req-list）”，入口选择“列表（LIST）”，点击“创建 Launch 并打开”。状态应依次变为“等待安全握手”“安全通道已连接”“Flow 已加载”。' },
+                { title: '切换 FORM Launch', text: '关闭列表或直接选择“需求表单（zdwreq-form-demo）”后重新打开；Demo 会先安全注销旧 Session。CREATE 不传记录 ID，VIEW 必须填写映射用户有权查看的 Flow recordId。' },
                 { title: '观察边界', text: '白色区域是 Flow 原生 list001 页面：列、筛选、按钮和数据源应与同一用户在 Flow 中一致；从原生按钮打开表单后，可继续核对日期面板、下拉 Popper、富文本和确认框。下方日志不会显示 Client Secret、JWT、Token 或 Launch Code。' },
                 { title: '结束联调', text: '点击“关闭嵌入”并等待安全注销完成；正常关闭会自动释放活跃 Session 名额。只有关闭失败时，才按页面 traceId 进入“嵌入集成 → Launch / Session 运维”检查或撤销 Session。停止演示服务可在 npm start 终端按 Ctrl+C。' }
               ]

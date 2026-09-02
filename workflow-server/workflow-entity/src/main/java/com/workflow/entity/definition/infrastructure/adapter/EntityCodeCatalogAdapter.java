@@ -1,11 +1,14 @@
 package com.workflow.entity.definition.infrastructure.adapter;
 
 import com.workflow.contracts.entity.EntityCodeCatalogPort;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -41,8 +44,15 @@ public class EntityCodeCatalogAdapter implements EntityCodeCatalogPort {
         if (processDefinitionId == null || processDefinitionId.isBlank()) {
             return null;
         }
-        return entityDefinitionMapper.findByProcessDefinitionId(processDefinitionId)
-                .map(entity -> entity.getEntityCode())
-                .orElse(null);
+        List<EntityDefinition> bindings = entityDefinitionMapper
+                .findAllByProcessDefinitionId(processDefinitionId);
+        if (bindings.size() > 1) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_BINDING_AMBIGUOUS",
+                    "流程绑定了多个实体，请先修复历史绑定数据: "
+                            + processDefinitionId);
+        }
+        return bindings.isEmpty()
+                ? null : bindings.get(0).getEntityCode();
     }
 }

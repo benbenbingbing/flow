@@ -3,6 +3,8 @@ package com.workflow.process.task.application.nextapproval;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.workflow.entity.form.application.FormSubmissionPreviewDeferredException;
+import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.task.application.MultiInstanceOutcomeService;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
@@ -148,6 +150,7 @@ public class NextApprovalRouteService {
 
         Map<String, Object> variables = new LinkedHashMap<>(
                 runtimeService.getVariables(task.getProcessInstanceId()));
+        Set<String> submittedEditableFields = Set.of();
         if (includeSubmittedForm && request != null) {
             final Map<String, Object> editable;
             try {
@@ -171,6 +174,7 @@ public class NextApprovalRouteService {
                         List.of(),
                         variables);
             }
+            submittedEditableFields = Set.copyOf(editable.keySet());
             variables.putAll(editable);
             Map<String, Object> entityData = mapValue(
                     variables.get("entityData"));
@@ -260,6 +264,23 @@ public class NextApprovalRouteService {
                     List.of(),
                     variables);
         }
+        Set<String> projectedSubmittedFields = submittedEditableFields;
+        boolean submittedFieldAffectsAssignee =
+                !projectedSubmittedFields.isEmpty()
+                        && targets.stream().anyMatch(target ->
+                        readsSubmittedEntityUserField(
+                                target, projectedSubmittedFields));
+        if (submittedFieldAffectsAssignee) {
+            // 实体解析器只信任持久化记录。当前表单尚未落库时不能展示旧人，
+            // 正式提交保存后由任务监听器/collection handler 重新权威解析。
+            return result(
+                    task,
+                    NextApprovalPreviewStatus.DEFERRED,
+                    "当前提交会更新下一节点审批人字段，保存后由流程重新解析",
+                    null,
+                    List.of(),
+                    variables);
+        }
         String scopeKey = groupScopeKey(
                 processDefinitionId,
                 currentTask.getId(),
@@ -290,6 +311,52 @@ public class NextApprovalRouteService {
                 || (userTask.getCandidateGroups() != null
                 && userTask.getCandidateGroups().stream()
                 .anyMatch(this::dynamicExpression));
+    }
+
+    private boolean readsSubmittedEntityUserField(
+            NextApprovalTarget target,
+            Set<String> submittedEditableFields) {
+        Map<String, Object> config = target.assigneeConfig();
+        var effectiveResolver = LegacyMultiInstanceAssignmentParser
+                .effectiveResolver(
+                        config,
+                        target.assignmentSourceTask()
+                                .hasMultiInstanceLoopCharacteristics());
+        if (readsSubmittedEntityUserField(
+                effectiveResolver.resolverCode(),
+                effectiveResolver.extraParams(),
+                submittedEditableFields)) {
+            return true;
+        }
+        NextApproverSelectionPolicy policy = target.selectionPolicy();
+        return policy.sourceType()
+                == NextApproverSelectionPolicy.SourceType.RESOLVER
+                && readsSubmittedEntityUserField(
+                policy.resolverCode(),
+                policy.extraParams(),
+                submittedEditableFields);
+    }
+
+    /** 判断一个实体用户字段解析器是否读取本次尚未落库的字段。 */
+    private boolean readsSubmittedEntityUserField(
+            String resolverCode,
+            Map<String, Object> extraParams,
+            Set<String> submittedEditableFields) {
+        if (!EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
+                resolverCode)) {
+            return false;
+        }
+        String fieldCode = String.valueOf(extraParams.getOrDefault(
+                "fieldCode", "")).trim();
+        return StringUtils.hasText(fieldCode)
+                && submittedEditableFields.stream().anyMatch(value ->
+                sameFieldCode(value, fieldCode));
+    }
+
+    private boolean sameFieldCode(String left, String right) {
+        return left.equals(right)
+                || left.replace("_", "").equalsIgnoreCase(
+                right.replace("_", ""));
     }
 
     private boolean dynamicExpression(String value) {

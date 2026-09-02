@@ -31,6 +31,14 @@ public final class WorkflowReservedVariables {
             "skipNodeEnabled",
             InitiatorOrganizationSnapshotService.VARIABLE_NAME);
 
+    private static final Set<String> ENGINE_CONTEXT_VARIABLES = Set.of(
+            "businessKey",
+            "traceId",
+            "nrOfInstances",
+            "nrOfActiveInstances",
+            "nrOfCompletedInstances",
+            "loopCounter");
+
     /**
      * 复制调用方变量并移除平台保留键，避免修改请求对象自身。
      */
@@ -64,5 +72,15 @@ public final class WorkflowReservedVariables {
     public static boolean isInternalVariable(String variableName) {
         return variableName != null
                 && variableName.startsWith(INTERNAL_PREFIX);
+    }
+
+    /**
+     * 判断流程模型是否不得把变量名复用为多实例 collection 等业务输出。
+     */
+    public static boolean isProtectedContextVariable(String variableName) {
+        return variableName != null
+                && (TRUSTED_START_VARIABLES.contains(variableName)
+                || ENGINE_CONTEXT_VARIABLES.contains(variableName)
+                || isInternalVariable(variableName));
     }
 }

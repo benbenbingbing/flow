@@ -15,6 +15,7 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
+import com.workflow.contracts.process.ProcessBindingState;
 import com.workflow.contracts.process.ProcessCatalogPort;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
@@ -33,10 +34,14 @@ import com.workflow.entity.version.application.EntityVersionConfigurationService
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Arrays;
+import java.math.BigInteger;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -190,6 +195,10 @@ public class EntityDefinitionService {
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CREATE, operation = "创建实体定义", risk = AuditRiskLevel.HIGH, targetType = "ENTITY_DEFINITION", captureArguments = true, captureResult = true)
     public EntityDefinitionDTO save(EntityDefinitionDTO dto) {
+        if (StringUtils.isNotBlank(dto.getProcessDefinitionId())) {
+            throw new IllegalArgumentException(
+                    "新建实体不能直接指定流程，请创建后通过流程绑定接口操作");
+        }
         // 校验实体编码唯一性（不区分大小写）
         validateEntityCodeUnique(dto.getEntityCode());
 
@@ -432,15 +441,19 @@ public class EntityDefinitionService {
         validateFieldCodeUnique(dto.getFields());
         fieldValidationRuleService.validateAndNormalizeAll(dto.getFields());
 
-        EntityDefinition existing = entityMapper.selectById(id);
-        if (existing == null) {
+        EntityDefinition snapshot = entityMapper.selectById(id);
+        if (snapshot == null) {
             throw new RuntimeException("实体不存在: " + id);
         }
+        // 普通编辑也锁定实体行，并只写非绑定列，不能让较早读取的 DTO
+        // 覆盖同时发生的流程绑定/解绑结果。
+        EntityDefinition existing = lockEntityWithExpectedBinding(
+                id, snapshot.getProcessDefinitionId());
         if (storageMode(existing) == EntityDefinition.StorageMode.SYSTEM) {
             validateSystemEntityUpdate(existing, dto);
             existing.setEntityName(dto.getEntityName());
             existing.setDescription(dto.getDescription());
-            entityMapper.updateById(existing);
+            entityMapper.updateMutableColumns(existing);
             return convertToDTO(existing);
         }
 
@@ -466,11 +479,13 @@ public class EntityDefinitionService {
                 ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
                 : dto.getTeamVisibilityLevel());
         if (dto.getProcessDefinitionId() != null
-                && !java.util.Objects.equals(dto.getProcessDefinitionId(), existing.getProcessDefinitionId())) {
+                && !Objects.equals(
+                        canonicalProcessId(dto.getProcessDefinitionId()),
+                        canonicalProcessId(existing.getProcessDefinitionId()))) {
             throw new IllegalArgumentException("请通过流程绑定接口修改实体绑定流程");
         }
 
-        entityMapper.updateById(existing);
+        entityMapper.updateMutableColumns(existing);
         if (currentMode == EntityDefinition.LifecycleMode.STANDALONE
                 && requestedMode == EntityDefinition.LifecycleMode.WORKFLOW) {
             ensureWorkflowSystemFields(existing.getId());
@@ -544,18 +559,36 @@ public class EntityDefinitionService {
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.DELETE, operation = "删除实体定义", risk = AuditRiskLevel.CRITICAL, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0)
     public void delete(String id) {
-        EntityDefinition entity = entityMapper.selectById(id);
-        if (entity != null && storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
+        EntityDefinition snapshot = entityMapper.selectById(id);
+        if (snapshot != null && storageMode(snapshot) == EntityDefinition.StorageMode.SYSTEM) {
             throw new BusinessConflictException(
                     "ENTITY_SYSTEM_DEFINITION_PROTECTED",
                     "平台系统实体由系统目录自动维护，不能删除");
         }
+        if (snapshot == null) {
+            relationMapper.deleteByParentEntityId(id);
+            fieldMapper.deleteByEntityId(id);
+            entityMapper.deleteById(id);
+            return;
+        }
+
+        String processId = snapshot.getProcessDefinitionId();
+        String canonicalProcessId = canonicalProcessId(processId);
+        Map<String, ProcessBindingState> processStates =
+                lockProcessBindingStates(canonicalProcessId);
+        EntityDefinition entity = lockEntityWithExpectedBinding(
+                id, processId);
+        if (storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
+            throw new BusinessConflictException(
+                    "ENTITY_SYSTEM_DEFINITION_PROTECTED",
+                    "平台系统实体由系统目录自动维护，不能删除");
+        }
+        requireBindingMutable(
+                canonicalProcessId, processStates, "删除实体");
         relationMapper.deleteByParentEntityId(id);
         fieldMapper.deleteByEntityId(id);
         entityMapper.deleteById(id);
-        if (entity != null) {
-            entityPermissionCatalogService.disableEntityPermissions(entity.getEntityCode());
-        }
+        entityPermissionCatalogService.disableEntityPermissions(entity.getEntityCode());
     }
 
     /**
@@ -727,28 +760,83 @@ public class EntityDefinitionService {
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "绑定实体流程", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO bindWorkflow(String entityId, String processId) {
-        EntityDefinition entity = entityMapper.selectById(entityId);
-        if (entity == null) {
-            throw new RuntimeException("实体不存在: " + entityId);
-        }
-        assertDynamicEntity(entity);
         if (!StringUtils.isNotBlank(processId)) {
             throw new IllegalArgumentException("流程定义ID不能为空");
         }
-        ProcessCatalogItem process = getProcessItem(processId);
-        if (process == null) {
+        EntityDefinition snapshot = entityMapper.selectById(entityId);
+        if (snapshot == null) {
+            throw new RuntimeException("实体不存在: " + entityId);
+        }
+        assertDynamicEntity(snapshot);
+
+        String oldProcessId = snapshot.getProcessDefinitionId();
+        String canonicalOldProcessId = canonicalProcessId(oldProcessId);
+        String requestedProcessId = canonicalProcessId(processId);
+        Map<String, ProcessBindingState> processStates =
+                lockProcessBindingStates(
+                        canonicalOldProcessId, requestedProcessId);
+        ProcessBindingState targetState = processStates.get(
+                requestedProcessId);
+        if (targetState == null || !targetState.available()) {
             throw new BusinessConflictException(
                     "ENTITY_WORKFLOW_PROCESS_MISSING",
                     "绑定流程不存在: " + processId);
         }
-        EntityDefinition boundEntity = entityMapper.findByProcessDefinitionId(processId).orElse(null);
+        EntityDefinition entity = lockEntityWithExpectedBinding(
+                entityId, oldProcessId);
+        assertDynamicEntity(entity);
+
+        String canonicalTargetProcessId = targetState.process().id();
+        if (!StringUtils.isNotBlank(canonicalTargetProcessId)) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_PROCESS_MISSING",
+                    "绑定流程缺少有效主键: " + processId);
+        }
+        ProcessBindingState oldState = StringUtils.isNotBlank(
+                canonicalOldProcessId)
+                ? processStates.get(canonicalOldProcessId)
+                : null;
+        if (oldState != null) {
+            canonicalOldProcessId = oldState.process().id();
+        }
+
+        // 使用目录返回的数据库主键消除 01/1 等 VARCHAR 数字别名；同一
+        // 流程的重复绑定保持幂等，也可顺手修复历史非规范存储值。
+        if (Objects.equals(
+                canonicalOldProcessId, canonicalTargetProcessId)) {
+            if (!Objects.equals(
+                    oldProcessId, canonicalTargetProcessId)) {
+                entity.setProcessDefinitionId(canonicalTargetProcessId);
+                updateBindingWithUniqueConflictMapping(entity);
+                updateLatestPublishedBinding(
+                        entityId, canonicalTargetProcessId);
+            }
+            return convertToDTO(
+                    entity,
+                    targetState.process().processName(),
+                    targetState.process());
+        }
+        requireBindingMutable(
+                canonicalOldProcessId,
+                processStates,
+                "切换实体绑定流程");
+        if (targetState.hasPublishedVersion()) {
+            throw publishedBindingConflict("绑定已发布流程");
+        }
+
+        List<EntityDefinition> targetBindings = entityMapper
+                .findAllByProcessDefinitionIdForUpdate(
+                        canonicalTargetProcessId);
+        requireUnambiguousBinding(
+                canonicalTargetProcessId, targetBindings);
+        EntityDefinition boundEntity = targetBindings.isEmpty()
+                ? null : targetBindings.get(0);
         if (boundEntity != null && !entityId.equals(boundEntity.getId())) {
             throw new BusinessConflictException(
                     "ENTITY_WORKFLOW_ALREADY_BOUND",
                     "该流程已绑定实体: " + boundEntity.getEntityName());
         }
 
-        String oldProcessId = entity.getProcessDefinitionId();
         if (oldProcessId != null && !oldProcessId.equals(processId)) {
             long processDataCount = countProcessInstances(entity);
             if (processDataCount > 0) {
@@ -758,31 +846,43 @@ public class EntityDefinitionService {
             }
         }
 
-        entity.setProcessDefinitionId(processId);
+        entity.setProcessDefinitionId(canonicalTargetProcessId);
         entity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
         entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
-        entityMapper.updateById(entity);
+        updateBindingWithUniqueConflictMapping(entity);
         ensureWorkflowSystemFields(entity.getId());
         entityPermissionCatalogService.synchronizeEntity(entity);
 
-        updateLatestPublishedBinding(entityId, processId);
+        updateLatestPublishedBinding(
+                entityId, canonicalTargetProcessId);
 
+        ProcessCatalogItem process = targetState.process();
         return convertToDTO(entity, process.processName(), process);
     }
 
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "解除实体流程绑定", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureResult = true)
     public EntityDefinitionDTO unbindWorkflow(String entityId) {
-        EntityDefinition entity = entityMapper.selectById(entityId);
-        if (entity == null) {
+        EntityDefinition snapshot = entityMapper.selectById(entityId);
+        if (snapshot == null) {
             throw new RuntimeException("实体不存在: " + entityId);
         }
-        assertDynamicEntity(entity);
-        if (lifecycleMode(entity) != EntityDefinition.LifecycleMode.WORKFLOW) {
+        assertDynamicEntity(snapshot);
+        if (lifecycleMode(snapshot) != EntityDefinition.LifecycleMode.WORKFLOW) {
             throw new BusinessConflictException(
                     "ENTITY_WORKFLOW_NOT_SUPPORTED",
                     "独立业务实体没有流程绑定");
         }
+        String processId = snapshot.getProcessDefinitionId();
+        String canonicalProcessId = canonicalProcessId(processId);
+        Map<String, ProcessBindingState> processStates =
+                lockProcessBindingStates(canonicalProcessId);
+        EntityDefinition entity = lockEntityWithExpectedBinding(
+                entityId, processId);
+        requireBindingMutable(
+                canonicalProcessId,
+                processStates,
+                "解除实体流程绑定");
         long processDataCount = countProcessInstances(entity);
         if (processDataCount > 0) {
             throw new BusinessConflictException(
@@ -795,6 +895,97 @@ public class EntityDefinitionService {
         return convertToDTO(entity);
     }
 
+    /**
+     * 按流程 ID 排序并锁定绑定状态，和流程发布共用同一门闩。
+     *
+     * <p>换绑同时涉及旧、新两个流程。稳定锁序既关闭发布校验后的竞态窗口，
+     * 也避免两个反向换绑事务互相等待。</p>
+     */
+    private Map<String, ProcessBindingState> lockProcessBindingStates(
+            String... processIds) {
+        List<String> orderedIds = Arrays.stream(processIds)
+                .filter(StringUtils::isNotBlank)
+                .map(this::canonicalProcessId)
+                .distinct()
+                .sorted()
+                .toList();
+        if (orderedIds.isEmpty()) {
+            return Map.of();
+        }
+        return processCatalogPort.lockBindingStates(orderedIds);
+    }
+
+    /**
+     * 将 BIGINT 流程主键规范为十进制字符串；非数字仅保留给隔离测试或
+     * 历史损坏状态，生产目录会拒绝它而不是发起模糊数值查询。
+     */
+    private String canonicalProcessId(String processId) {
+        if (!StringUtils.isNotBlank(processId)) {
+            return null;
+        }
+        String value = processId.trim();
+        try {
+            BigInteger numeric = new BigInteger(value);
+            return numeric.signum() > 0 ? numeric.toString() : value;
+        } catch (NumberFormatException exception) {
+            return value;
+        }
+    }
+
+    /** 锁定实体并拒绝基于过期绑定快照继续写入。 */
+    private EntityDefinition lockEntityWithExpectedBinding(
+            String entityId,
+            String expectedProcessId) {
+        EntityDefinition locked = entityMapper.findByIdForUpdate(entityId)
+                .orElseThrow(() -> new RuntimeException(
+                        "实体不存在: " + entityId));
+        if (!Objects.equals(
+                expectedProcessId, locked.getProcessDefinitionId())) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_BINDING_CHANGED",
+                    "实体流程绑定已被其他请求修改，请刷新后重试");
+        }
+        return locked;
+    }
+
+    /** 已发布流程版本引用的实体关联必须保持不变。 */
+    private void requireBindingMutable(
+            String processId,
+            Map<String, ProcessBindingState> processStates,
+            String operation) {
+        if (!StringUtils.isNotBlank(processId)) {
+            return;
+        }
+        ProcessBindingState state = processStates.get(processId);
+        if (state == null) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_BINDING_STATE_UNAVAILABLE",
+                    "绑定流程状态不可用，无法安全" + operation);
+        }
+        if (state.hasPublishedVersion()) {
+            throw publishedBindingConflict(operation);
+        }
+    }
+
+    private BusinessConflictException publishedBindingConflict(
+            String operation) {
+        return new BusinessConflictException(
+                "ENTITY_WORKFLOW_BINDING_PUBLISHED",
+                operation + "失败：流程已发布，实体关联已成为版本运行契约");
+    }
+
+    /** 将数据库唯一约束竞态统一映射为稳定的业务冲突。 */
+    private void updateBindingWithUniqueConflictMapping(
+            EntityDefinition entity) {
+        try {
+            entityMapper.updateById(entity);
+        } catch (DuplicateKeyException exception) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_ALREADY_BOUND",
+                    "该流程已被其他实体绑定");
+        }
+    }
+
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "更新实体生命周期模式", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO updateLifecycleMode(
@@ -803,10 +994,12 @@ public class EntityDefinitionService {
         if (requestedMode == null) {
             throw new IllegalArgumentException("实体类型不能为空");
         }
-        EntityDefinition entity = entityMapper.selectById(entityId);
-        if (entity == null) {
+        EntityDefinition snapshot = entityMapper.selectById(entityId);
+        if (snapshot == null) {
             throw new RuntimeException("实体不存在: " + entityId);
         }
+        EntityDefinition entity = lockEntityWithExpectedBinding(
+                entityId, snapshot.getProcessDefinitionId());
         assertDynamicEntity(entity);
         EntityDefinition.LifecycleMode currentMode = lifecycleMode(entity);
         if (currentMode == EntityDefinition.LifecycleMode.WORKFLOW
@@ -819,7 +1012,7 @@ public class EntityDefinitionService {
             return convertToDTO(entity);
         }
         entity.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
-        entityMapper.updateById(entity);
+        entityMapper.updateMutableColumns(entity);
         ensureWorkflowSystemFields(entity.getId());
         entityPermissionCatalogService.synchronizeEntity(entity);
         return convertToDTO(entity);
@@ -830,8 +1023,14 @@ public class EntityDefinitionService {
      */
     @Transactional(readOnly = true)
     public EntityDefinitionDTO findByProcessDefinitionId(String processDefinitionId) {
-        EntityDefinition entity = entityMapper.findByProcessDefinitionId(processDefinitionId)
-                .orElseThrow(() -> new RuntimeException("该流程未绑定实体"));
+        List<EntityDefinition> bindings = entityMapper
+                .findAllByProcessDefinitionId(
+                        canonicalProcessId(processDefinitionId));
+        requireUnambiguousBinding(processDefinitionId, bindings);
+        if (bindings.isEmpty()) {
+            throw new RuntimeException("该流程未绑定实体");
+        }
+        EntityDefinition entity = bindings.get(0);
         // 加载字段
         List<EntityField> fields = fieldMapper.findByEntityId(entity.getId());
         entity.setFields(fields);
@@ -841,6 +1040,18 @@ public class EntityDefinitionService {
                 ? getProcessName(entity.getProcessDefinitionId())
                 : process.processName();
         return convertToDTO(entity, processName, process);
+    }
+
+    /** 历史重复绑定必须明确报错，不能按数据库返回顺序选择审批实体。 */
+    private void requireUnambiguousBinding(
+            String processDefinitionId,
+            List<EntityDefinition> bindings) {
+        if (bindings != null && bindings.size() > 1) {
+            throw new BusinessConflictException(
+                    "ENTITY_WORKFLOW_BINDING_AMBIGUOUS",
+                    "流程绑定了多个实体，请先修复历史绑定数据: "
+                            + processDefinitionId);
+        }
     }
 
     private boolean isRelationField(EntityFieldDTO fieldDTO) {

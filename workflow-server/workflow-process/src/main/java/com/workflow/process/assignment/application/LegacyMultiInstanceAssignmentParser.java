@@ -158,6 +158,70 @@ public final class LegacyMultiInstanceAssignmentParser {
         return result;
     }
 
+    /**
+     * 按运行时实际优先级读取人员解析器编码。
+     *
+     * <p>v2 只读取基础办理人配置；无 v2 标记时，只要存在有效的历史
+     * 多实例来源，就必须完全以历史来源为准。尤其是历史静态人员不能因
+     * 残留的基础 resolver 字段被误判为动态解析器。</p>
+     *
+     * @param config 节点办理人配置
+     * @return 生效的 resolver 编码；当前来源不是 resolver 时返回空串
+     */
+    public static String effectiveResolverCode(Map<String, ?> config) {
+        return effectiveResolver(config, true).resolverCode();
+    }
+
+    /**
+     * 按规则源是否真实为多实例，读取运行时实际生效的解析器及参数。
+     *
+     * <p>历史 multiInstance* 字段只属于多实例规则源；普通任务即使残留
+     * 这些字段，运行时仍读取基础 assigneeType。将节点上下文纳入统一投影，
+     * 避免发布器、预览和运行时分别猜测 legacy 是否生效。</p>
+     *
+     * @param config 人员配置
+     * @param multiInstanceSource 规则源 UserTask 是否真实包含多实例循环
+     * @return 生效解析器投影；静态来源或非解析器来源返回空编码
+     */
+    public static EffectiveResolver effectiveResolver(
+            Map<String, ?> config,
+            boolean multiInstanceSource) {
+        Map<String, ?> source = config == null ? Map.of() : config;
+        if (usesLegacyMultiInstanceAssignment(
+                source, multiInstanceSource)) {
+            LegacyAssignment legacy = parse(source);
+            return legacy.resolver()
+                    ? new EffectiveResolver(
+                    nullToEmpty(legacy.resolverCode()),
+                    legacy.resolverExtraParams(),
+                    true)
+                    : EffectiveResolver.legacyStatic();
+        }
+        String type = nullToEmpty(firstText(source.get("assigneeType")))
+                .toLowerCase(java.util.Locale.ROOT);
+        if (!"interface".equals(type) && !"resolver".equals(type)) {
+            return EffectiveResolver.baseStatic();
+        }
+        return new EffectiveResolver(
+                nullToEmpty(firstText(
+                        source.get("resolverCode"),
+                        source.get("interfaceName"))),
+                mapValue(source.get("extraParams")),
+                false);
+    }
+
+    /**
+     * 历史独立多实例来源仅在真实多实例 UserTask 上具有运行时优先级。
+     */
+    public static boolean usesLegacyMultiInstanceAssignment(
+            Map<String, ?> config,
+            boolean multiInstanceSource) {
+        Map<String, ?> source = config == null ? Map.of() : config;
+        return multiInstanceSource
+                && !isVersionTwo(source.get("assignmentConfigVersion"))
+                && parse(source).effective();
+    }
+
     private static void putIfNotEmpty(
             Map<String, Object> target,
             String key,
@@ -249,6 +313,10 @@ public final class LegacyMultiInstanceAssignmentParser {
         return value == null ? null : String.valueOf(value).trim();
     }
 
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
     /**
      * 规范化后的旧人员来源。仅存在空白历史字段时 {@link #effective()} 为
      * false，调用方应回退到基础办理人配置，避免空透传字段改变部署语义。
@@ -291,6 +359,25 @@ public final class LegacyMultiInstanceAssignmentParser {
         private boolean containsExpression(Collection<String> values) {
             return values.stream().anyMatch(value -> value.contains("${")
                     || value.contains("#{"));
+        }
+    }
+
+    /** 运行时生效的 resolver 坐标及来源代际。 */
+    public record EffectiveResolver(
+            String resolverCode,
+            Map<String, Object> extraParams,
+            boolean legacy) {
+
+        private static EffectiveResolver legacyStatic() {
+            return new EffectiveResolver("", Map.of(), true);
+        }
+
+        private static EffectiveResolver baseStatic() {
+            return new EffectiveResolver("", Map.of(), false);
+        }
+
+        public boolean configured() {
+            return StringUtils.hasText(resolverCode);
         }
     }
 }

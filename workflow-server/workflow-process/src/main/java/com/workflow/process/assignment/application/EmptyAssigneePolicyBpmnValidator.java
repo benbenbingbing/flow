@@ -45,11 +45,21 @@ public class EmptyAssigneePolicyBpmnValidator {
             String nodeId = task.getAttribute("id");
             Map<String, Object> assigneeConfig = readMap(
                     property(task, "assigneeConfig"), nodeId);
+            Map<String, Object> multiInstanceConfig = readMap(
+                    property(task, "multiInstanceConfig"), nodeId);
+            Map<String, Object> effectiveConfig =
+                    LegacyMultiInstanceAssignmentParser.mergeConfigs(
+                            assigneeConfig, multiInstanceConfig);
             EmptyAssigneePolicy policy;
             try {
-                policy = policyResolver.resolve(processDefault, assigneeConfig);
+                policy = policyResolver.resolve(
+                        processDefault, effectiveConfig);
                 validateFallbackIdentity(policy, nodeId);
-                validateStaticAssignment(task, assigneeConfig, policy, nodeId);
+                validateStaticAssignment(
+                        task,
+                        effectiveConfig,
+                        policy,
+                        nodeId);
             } catch (RuntimeException error) {
                 throw new IllegalArgumentException(
                         "EMPTY_ASSIGNEE_POLICY_INVALID [" + nodeId + "]: "
@@ -86,6 +96,30 @@ public class EmptyAssigneePolicyBpmnValidator {
         if (policy.strategy() != EmptyAssigneePolicy.Strategy.BLOCK_PUBLISH) {
             return;
         }
+        boolean multiInstance = task.getElementsByTagNameNS(
+                "*", "multiInstanceLoopCharacteristics")
+                .getLength() > 0;
+        LegacyMultiInstanceAssignmentParser.LegacyAssignment legacy =
+                LegacyMultiInstanceAssignmentParser.parse(config);
+        if (LegacyMultiInstanceAssignmentParser
+                .usesLegacyMultiInstanceAssignment(
+                        config, multiInstance)) {
+            if (legacy.resolver()) {
+                // 动态解析器的目录、用途及参数由发布 sanitizer 校验。
+                return;
+            }
+            List<PersonPrincipal> principals = new ArrayList<>();
+            legacy.userKeys().forEach(value ->
+                    principals.add(PersonPrincipal.user(value)));
+            legacy.groupKeys().forEach(value ->
+                    principals.add(new PersonPrincipal(
+                            PersonPrincipalType.GROUP, value)));
+            legacy.roleKeys().forEach(value ->
+                    principals.add(new PersonPrincipal(
+                            PersonPrincipalType.ROLE, value)));
+            requireResolvedStatic(principals, nodeId);
+            return;
+        }
         String type = text(config.get("assigneeType"));
         if (SetLike.dynamic(type)) {
             return;
@@ -100,8 +134,15 @@ public class EmptyAssigneePolicyBpmnValidator {
         addUsers(principals, attribute(task, "assignee"));
         addUsers(principals, attribute(task, "candidateUsers"));
         addGroups(principals, attribute(task, "candidateGroups"), false);
-        AssigneeResolutionResult result = resolutionService.resolvePrincipals(
-                principals, "STATIC_ASSIGNEE_EMPTY");
+        requireResolvedStatic(principals, nodeId);
+    }
+
+    private void requireResolvedStatic(
+            List<PersonPrincipal> principals,
+            String nodeId) {
+        AssigneeResolutionResult result = resolutionService
+                .resolvePrincipals(
+                        principals, "STATIC_ASSIGNEE_EMPTY");
         if (!result.resolved()) {
             throw new IllegalArgumentException(
                     nodeId + " 使用 BLOCK_PUBLISH，但静态配置无法解析到有效办理人");

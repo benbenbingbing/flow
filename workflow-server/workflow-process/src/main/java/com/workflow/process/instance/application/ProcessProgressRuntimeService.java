@@ -116,6 +116,11 @@ public class ProcessProgressRuntimeService {
             historicInstance = historyService.createHistoricProcessInstanceQuery()
                     .processInstanceId(processInstanceId)
                     .singleResult();
+            if (historicInstance != null) {
+                // 已结束实例的定义 ID 以历史实例为准，避免无活动历史时丢失版本诊断信息。
+                progress.setProcessDefinitionId(
+                        historicInstance.getProcessDefinitionId());
+            }
             startUserId = historicInstance != null ? historicInstance.getStartUserId() : null;
             if (historicInstance != null && historicInstance.getDeleteReason() != null
                     && (historicInstance.getDeleteReason().contains("终止")
@@ -144,6 +149,7 @@ public class ProcessProgressRuntimeService {
                     .singleResult();
             if (processDefinition != null) {
                 progress.setProcessKey(processDefinition.getKey());
+                progress.setProcessVersion(processDefinition.getVersion());
                 // 获取 BPMN XML（从 Flowable 获取完整的 XML，包含 DI 图形信息）
                 try {
                     org.flowable.engine.repository.Model model = repositoryService.getModel(processDefinition.getId());
@@ -952,7 +958,7 @@ public class ProcessProgressRuntimeService {
      *
      * @param entityForm       实体表单
      * @param readonlyOverride 节点级只读覆盖，为 null 表示不强制只读
-     * @param nodeForm         节点表单绑定，用于补充发布版本ID/版本号，可为 null
+     * @param nodeForm         节点表单绑定，其发布版本优先于表单运行时版本，可为 null
      * @return 进度表单配置 DTO
      */
     private ProcessProgressDTO.FormConfigDTO buildProgressFormConfig(
@@ -964,6 +970,11 @@ public class ProcessProgressRuntimeService {
         if (nodeForm != null) {
             formConfig.setFormReleaseId(nodeForm.getFormReleaseId());
             formConfig.setFormReleaseVersion(nodeForm.getFormReleaseVersion());
+        } else {
+            // 默认表单没有流程节点钉版，诊断信息应反映本次实际解析的发布版本。
+            formConfig.setFormReleaseId(entityForm.getRuntimeReleaseId());
+            formConfig.setFormReleaseVersion(
+                    entityForm.getRuntimeReleaseVersion());
         }
         formConfig.setFormName(entityForm.getFormName());
         formConfig.setFormKey(entityForm.getFormKey());

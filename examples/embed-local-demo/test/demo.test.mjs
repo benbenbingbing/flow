@@ -10,6 +10,8 @@ import {
   buildConfig,
   isApprovedEmbedProxyRequest,
   normalizeLaunchIntent,
+  normalizeLaunchRequest,
+  validateLaunchDocument,
   signUserAssertion
 } from '../server.mjs'
 
@@ -25,7 +27,35 @@ test('默认使用隔离的 3443 宿主与 8443 Embed Origin', () => {
   assert.equal(config.hostOrigin, 'https://localhost:3443')
   assert.equal(config.embedOrigin, 'https://localhost:8443')
   assert.equal(config.flowBaseUrl, 'http://127.0.0.1:8080')
-  assert.deepEqual(config.allowedEntryModes, ['CREATE', 'VIEW'])
+  assert.deepEqual(config.targets.map(target => ({
+    key: target.key,
+    viewKey: target.viewKey,
+    surfaceType: target.surfaceType,
+    allowedEntryModes: target.allowedEntryModes
+  })), [
+    { key: 'list', viewKey: 'req-list', surfaceType: 'LIST', allowedEntryModes: ['LIST'] },
+    {
+      key: 'form',
+      viewKey: 'zdwreq-form-demo',
+      surfaceType: 'FORM',
+      allowedEntryModes: ['CREATE', 'VIEW']
+    }
+  ])
+})
+
+test('旧单 View 环境变量仍保持原启动命令语义', () => {
+  const config = buildConfig({
+    FLOW_DEMO_VIEW_KEY: 'legacy-list',
+    FLOW_DEMO_ALLOWED_ENTRY_MODES: 'LIST'
+  })
+  assert.deepEqual(config.targets.map(target => ({
+    key: target.key,
+    viewKey: target.viewKey,
+    surfaceType: target.surfaceType,
+    allowedEntryModes: target.allowedEntryModes
+  })), [
+    { key: 'default', viewKey: 'legacy-list', surfaceType: 'LIST', allowedEntryModes: ['LIST'] }
+  ])
 })
 
 test('拒绝让宿主和 Embed 共用 Origin', () => {
@@ -55,13 +85,73 @@ test('CREATE 必须完全省略 recordId，VIEW 必须携带安全 recordId', ()
 })
 
 test('浏览器不能覆盖 View、人员、Origin 或 Context 坐标', () => {
+  const targets = buildConfig({}).targets
   for (const forbidden of ['viewKey', 'subject', 'parentOrigin', 'context', 'channelId']) {
     assert.throws(
-      () => normalizeLaunchIntent({ mode: 'CREATE', [forbidden]: 'forbidden' }),
+      () => normalizeLaunchRequest({
+        targetKey: 'form',
+        mode: 'CREATE',
+        [forbidden]: 'forbidden'
+      }, targets),
       error => error instanceof FlowRemoteError
         && error.errorCode === 'FLOW_DEMO_REQUEST_INVALID'
     )
   }
+})
+
+test('目标白名单分别约束 LIST 与 FORM 入口', () => {
+  const targets = buildConfig({}).targets
+  const listRequest = normalizeLaunchRequest({
+    targetKey: 'list',
+    mode: 'LIST',
+    theme: 'light'
+  }, targets)
+  assert.equal(listRequest.target.viewKey, 'req-list')
+  assert.deepEqual(listRequest.intent, { mode: 'LIST', theme: 'light' })
+
+  const formRequest = normalizeLaunchRequest({
+    targetKey: 'form',
+    mode: 'VIEW',
+    recordId: 'record-1001',
+    theme: 'dark'
+  }, targets)
+  assert.equal(formRequest.target.viewKey, 'zdwreq-form-demo')
+  assert.equal(formRequest.intent.recordId, 'record-1001')
+
+  for (const request of [
+    { targetKey: 'list', mode: 'CREATE' },
+    { targetKey: 'form', mode: 'LIST' },
+    { targetKey: 'unknown', mode: 'LIST' },
+    { targetKey: ' LIST ', mode: 'LIST' }
+  ]) {
+    assert.throws(
+      () => normalizeLaunchRequest(request, targets),
+      error => error instanceof FlowRemoteError
+        && ['FLOW_DEMO_ENTRY_NOT_ALLOWED', 'FLOW_DEMO_TARGET_NOT_ALLOWED']
+          .includes(error.errorCode)
+    )
+  }
+})
+
+test('Flow Launch 回包必须匹配后端选定的 View 与页面类型', () => {
+  const target = buildConfig({}).targets[0]
+  const response = {
+    status: 201,
+    body: Buffer.from(JSON.stringify({
+      code: 201,
+      data: {
+        launchId: `lch_${'a'.repeat(16)}`,
+        launchCode: 'b'.repeat(43),
+        view: { key: target.viewKey, surfaceType: target.surfaceType }
+      }
+    }))
+  }
+  assert.equal(validateLaunchDocument(response, target).view.key, 'req-list')
+  assert.throws(
+    () => validateLaunchDocument(response, { ...target, viewKey: 'other-list' }),
+    error => error instanceof FlowRemoteError
+      && error.errorCode === 'FLOW_DEMO_LAUNCH_TARGET_MISMATCH'
+  )
 })
 
 test('RS256 人员断言包含固定身份坐标、60 秒有效期和唯一 jti', () => {
@@ -104,7 +194,8 @@ test('示例源码不把敏感凭据写入浏览器 storage、URL 或日志', ()
   assert.match(hostHtml, /不会根据 Embed 参数重新绘制字段/)
   assert.match(hostHtml, /Flow 原生页面运行时/)
   assert.doesNotMatch(hostHtml, /Flow 原生表单运行时|zdwreq-form-demo/)
-  assert.match(browserSource, /runtimeViewKey\.textContent = config\.viewKey/)
+  assert.match(browserSource, /targetKey: target\?\.key/)
+  assert.match(browserSource, /runtimeViewKey\.textContent = event\.payload\?\.viewKey/)
   const topbarRule = hostStyles.match(/\.topbar\s*\{[\s\S]*?\}/)?.[0] || ''
   assert.match(topbarRule, /position:\s*relative/)
   assert.doesNotMatch(topbarRule, /position:\s*(?:sticky|fixed)/)

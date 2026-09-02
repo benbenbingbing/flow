@@ -5,6 +5,7 @@
     width="75%"
     class="entity-form-dialog"
     top="3vh"
+    :close-on-click-modal="false"
     @closed="emit('closed')"
   >
     <el-tabs v-if="showOuterTabs" v-model="activeTab" type="border-card" class="form-dialog-tabs">

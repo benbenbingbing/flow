@@ -36,6 +36,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,6 +80,42 @@ class MultiInstanceCollectionListenerSecurityTest {
         assertEquals(List.of("active"), variables.get("reviewers"));
         verify(repositoryService).getBpmnModel("definition-v1");
         verify(repositoryService, never()).getBpmnModel("definition-v2");
+    }
+
+    @Test
+    void startupDoesNotFreezeEntityUserFieldBeforeNodeEntry() {
+        MultiInstanceCollectionListener listener =
+                new MultiInstanceCollectionListener();
+        RepositoryService repositoryService =
+                mock(RepositoryService.class);
+        PersonResolverRuntimeService resolverRuntimeService =
+                mock(PersonResolverRuntimeService.class);
+        ReflectionTestUtils.setField(
+                listener, "repositoryService", repositoryService);
+        ReflectionTestUtils.setField(
+                listener,
+                "personResolverRuntimeService",
+                resolverRuntimeService);
+        ReflectionTestUtils.setField(
+                listener, "objectMapper", new ObjectMapper());
+        when(repositoryService.getBpmnModel("definition-v1"))
+                .thenReturn(modelWithConfigDocument("""
+                        {"assignmentConfigVersion":2,
+                         "assigneeType":"interface",
+                         "resolverCode":"entityUserReferenceField",
+                         "assignmentMode":"CANDIDATE",
+                         "extraParams":{"schemaVersion":1,
+                         "entityCode":"purchase_order",
+                         "fieldCode":"reviewers"}}
+                        """));
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("reviewers", List.of("stale-user"));
+
+        listener.prepareVariables("definition-v1", variables);
+
+        assertEquals(List.of(), variables.get("reviewers"));
+        verify(resolverRuntimeService, never()).resolveUsernames(
+                eq("entityUserReferenceField"), any());
     }
 
     @Test
@@ -154,7 +191,8 @@ class MultiInstanceCollectionListenerSecurityTest {
                         List.of("enabled-role", "disabled-role")),
                 Map.of(),
                 "instance-1",
-                "definition-1");
+                "definition-1",
+                true);
 
         assertEquals(
                 List.of("active", "group-user", "role-user"),
@@ -235,7 +273,8 @@ class MultiInstanceCollectionListenerSecurityTest {
                                 "mixed-user,ROLE_AUDITOR")),
                 Map.of(),
                 "instance-1",
-                "definition-1");
+                "definition-1",
+                true);
 
         assertEquals(
                 List.of(
@@ -327,7 +366,8 @@ class MultiInstanceCollectionListenerSecurityTest {
                                 "legacyResolver")),
                 Map.of(),
                 "instance-v2",
-                "definition-v2");
+                "definition-v2",
+                true);
 
         assertEquals(
                 List.of("owner", "candidate"),
@@ -372,7 +412,8 @@ class MultiInstanceCollectionListenerSecurityTest {
                         "collectionResolverCode", "miResolver"),
                 Map.of(),
                 "instance-1",
-                "definition-1");
+                "definition-1",
+                true);
 
         assertEquals(List.of("active"), result);
     }

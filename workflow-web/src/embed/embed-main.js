@@ -7,6 +7,7 @@ import 'element-plus/dist/index.css'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import EmbedApp from './EmbedApp.vue'
 import { registerApplicationExtensions } from '@/extensions/register'
+import { configureElementPlusPopupDefaults } from '@/shared/element-plus-defaults'
 import { enableEphemeralUserStoreRuntime } from '@/stores/user'
 
 const EmptyEmbedRoute = defineComponent({
@@ -31,6 +32,7 @@ function createEmbedMemoryRouter() {
 export function mountEmbedApp(target = '#app') {
   // 必须早于 Shell/useUserStore 实例化，彻底隔离管理端 session/local storage。
   enableEphemeralUserStoreRuntime()
+  configureElementPlusPopupDefaults()
   registerApplicationExtensions({
     enableDemo: import.meta.env.DEV
       || import.meta.env.VITE_ENABLE_DEMO_EXTENSIONS === 'true'

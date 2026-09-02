@@ -150,6 +150,10 @@ public class EntityField {
      */
     @TableField("ref_entity_id")
     private String refEntityId;
+
+    /** 关联实体编码，仅用于接口返回和设计器判定目标类型。 */
+    @TableField(exist = false)
+    private String refEntityCode;
     
     /**
      * 引用实体类型（区分用户实体和系统实体）

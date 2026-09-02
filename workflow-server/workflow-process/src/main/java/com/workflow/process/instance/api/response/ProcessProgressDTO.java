@@ -22,6 +22,11 @@ public class ProcessProgressDTO {
      * 流程定义ID
      */
     private String processDefinitionId;
+
+    /**
+     * 该实例实际使用的 Flowable 流程定义版本号，不代表当前最新版本。
+     */
+    private Integer processVersion;
     
     /**
      * 流程标识

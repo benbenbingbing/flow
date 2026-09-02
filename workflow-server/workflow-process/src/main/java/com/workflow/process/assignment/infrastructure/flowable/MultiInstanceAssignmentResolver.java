@@ -48,6 +48,7 @@ class MultiInstanceAssignmentResolver {
      * 解析目标节点的启用本地用户名，并保持配置或解析器首次出现顺序。
      *
      * @param assignmentVersion 缺省历史配置为 1，统一基础配置为 2
+     * @param multiInstanceSource 生效规则源是否真实为多实例 UserTask
      */
     List<String> resolve(
             String processConfigId,
@@ -57,7 +58,8 @@ class MultiInstanceAssignmentResolver {
             Map<String, Object> variables,
             String processInstanceId,
             String processDefinitionId,
-            int assignmentVersion) {
+            int assignmentVersion,
+            boolean multiInstanceSource) {
         // v2 显式切换到基础办理人。残留的历史字段不得再次并入，否则
         // 设计器所见配置与实际会签参与人会发生漂移。
         if (assignmentVersion == 2) {
@@ -72,7 +74,9 @@ class MultiInstanceAssignmentResolver {
         }
         LegacyAssignment legacy =
                 LegacyMultiInstanceAssignmentParser.parse(config);
-        if (!legacy.effective()) {
+        if (!LegacyMultiInstanceAssignmentParser
+                .usesLegacyMultiInstanceAssignment(
+                        config, multiInstanceSource)) {
             return resolveBaseAssignment(
                     processConfigId,
                     nodeId,

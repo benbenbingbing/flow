@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_SELF;
@@ -68,7 +69,8 @@ class RelativeOrgPositionCollectionHandlerTest {
     void parallelAndSequentialCallbacksReuseOneStableCycleSnapshot() {
         mockDeployedResolution();
         when(assignmentResolver.resolve(
-                any(), any(), any(), any(), any(), any(), any(), anyInt()))
+                any(), any(), any(), any(), any(), any(), any(), anyInt(),
+                anyBoolean()))
                 .thenReturn(List.of("alice", "bob"), List.of("changed"));
         DelegateExecution root = cycleExecution("root-1", null, true);
         DelegateExecution child = cycleExecution("child-1", root, false);
@@ -84,14 +86,16 @@ class RelativeOrgPositionCollectionHandlerTest {
         assertEquals(countCollection, parallelElementCollection);
         assertEquals(countCollection, sequentialNextCollection);
         verify(assignmentResolver, times(1)).resolve(
-                any(), any(), any(), any(), any(), any(), any(), anyInt());
+                any(), any(), any(), any(), any(), any(), any(), anyInt(),
+                anyBoolean());
     }
 
     @Test
     void aFreshMultiInstanceRootRecalculatesOnLoopReentry() {
         mockDeployedResolution();
         when(assignmentResolver.resolve(
-                any(), any(), any(), any(), any(), any(), any(), anyInt()))
+                any(), any(), any(), any(), any(), any(), any(), anyInt(),
+                anyBoolean()))
                 .thenReturn(List.of("alice"), List.of("new-leader"));
         DelegateExecution firstCycle = cycleExecution(
                 "root-first", null, true);
@@ -106,7 +110,88 @@ class RelativeOrgPositionCollectionHandlerTest {
                 handler.resolveCollection(null, secondCycle));
 
         verify(assignmentResolver, times(2)).resolve(
-                any(), any(), any(), any(), any(), any(), any(), anyInt());
+                any(), any(), any(), any(), any(), any(), any(), anyInt(),
+                anyBoolean());
+    }
+
+    @Test
+    void entityUserFieldReReadsLatestUsersForEachNodeEntryCycle() {
+        task = entityUserReferenceTask();
+        mockDeployedResolution();
+        when(assignmentResolver.resolve(
+                any(), any(), any(), any(), any(), any(), any(), anyInt(),
+                anyBoolean()))
+                .thenReturn(
+                        List.of("saved-by-current-form"),
+                        List.of("updated-by-other-form"));
+        DelegateExecution firstCycle = cycleExecution(
+                "entity-root-first", null, true);
+        DelegateExecution secondCycle = cycleExecution(
+                "entity-root-second", null, true);
+
+        assertEquals(
+                List.of("saved-by-current-form"),
+                handler.resolveCollection(null, firstCycle));
+        assertEquals(
+                List.of("updated-by-other-form"),
+                handler.resolveCollection(null, secondCycle));
+        verify(assignmentResolver, times(2)).resolve(
+                any(), any(), any(), any(), any(), any(), any(), anyInt(),
+                anyBoolean());
+    }
+
+    @Test
+    void legacyDynamicResolverUsesLegacyAssignmentVersionAtNodeEntry() {
+        task = legacyEntityUserReferenceTask();
+        mockDeployedResolution();
+        when(assignmentResolver.resolve(
+                any(), any(), any(), any(), any(), any(), any(), eq(1),
+                anyBoolean()))
+                .thenReturn(List.of("legacy-user"));
+
+        assertEquals(
+                List.of("legacy-user"),
+                handler.resolveCollection(
+                        null,
+                        cycleExecution("legacy-root", null, true)));
+
+        verify(assignmentResolver).resolve(
+                any(),
+                eq("approve"),
+                any(),
+                any(),
+                any(),
+                eq("instance-1"),
+                eq("definition-1"),
+                eq(1),
+                eq(true));
+    }
+
+    @Test
+    void unversionedBaseResolverUsesLegacyAssignmentVersionAtNodeEntry() {
+        task = unversionedBaseEntityUserReferenceTask();
+        mockDeployedResolution();
+        when(assignmentResolver.resolve(
+                any(), any(), any(), any(), any(), any(), any(), eq(1),
+                anyBoolean()))
+                .thenReturn(List.of("base-legacy-user"));
+
+        assertEquals(
+                List.of("base-legacy-user"),
+                handler.resolveCollection(
+                        null,
+                        cycleExecution("base-legacy-root", null, true)));
+
+        verify(assignmentResolver).resolve(
+                any(),
+                eq("approve"),
+                any(),
+                any(),
+                any(),
+                eq("instance-1"),
+                eq("definition-1"),
+                eq(1),
+                eq(true));
     }
 
     @Test
@@ -189,6 +274,67 @@ class RelativeOrgPositionCollectionHandlerTest {
     }
 
     private UserTask relativeTask() {
+        return dynamicResolverTask("""
+                {
+                  "assignmentConfigVersion": 2,
+                  "assigneeType": "interface",
+                  "resolverCode": "relativeOrgPosition",
+                  "extraParams": {
+                    "schemaVersion": 1,
+                    "subject": "PROCESS_INITIATOR",
+                    "anchor": "DEPARTMENT",
+                    "positionCode": "UNIT_LEADER",
+                    "hierarchy": {"mode": "SELF"},
+                    "multipleMatchPolicy": "ALL"
+                  }
+                }
+                """);
+    }
+
+    private UserTask entityUserReferenceTask() {
+        return dynamicResolverTask("""
+                {
+                  "assignmentConfigVersion": 2,
+                  "assigneeType": "interface",
+                  "resolverCode": "entityUserReferenceField",
+                  "extraParams": {
+                    "schemaVersion": 1,
+                    "entityCode": "purchase_order",
+                    "fieldCode": "reviewers"
+                  }
+                }
+                """);
+    }
+
+    private UserTask legacyEntityUserReferenceTask() {
+        return dynamicResolverTask("""
+                {
+                  "collectionSource": "resolver",
+                  "collectionResolverCode": "entityUserReferenceField",
+                  "collectionExtraParams": {
+                    "schemaVersion": 1,
+                    "entityCode": "purchase_order",
+                    "fieldCode": "reviewers"
+                  }
+                }
+                """);
+    }
+
+    private UserTask unversionedBaseEntityUserReferenceTask() {
+        return dynamicResolverTask("""
+                {
+                  "assigneeType": "interface",
+                  "resolverCode": "entityUserReferenceField",
+                  "extraParams": {
+                    "schemaVersion": 1,
+                    "entityCode": "purchase_order",
+                    "fieldCode": "reviewers"
+                  }
+                }
+                """);
+    }
+
+    private UserTask dynamicResolverTask(String assigneeConfig) {
         UserTask userTask = new UserTask();
         userTask.setId("approve");
         userTask.setName("审批");
@@ -203,21 +349,7 @@ class RelativeOrgPositionCollectionHandlerTest {
         property.addAttribute(new ExtensionAttribute(
                 "name", "assigneeConfig"));
         property.addAttribute(new ExtensionAttribute(
-                "value", """
-                        {
-                          "assignmentConfigVersion": 2,
-                          "assigneeType": "interface",
-                          "resolverCode": "relativeOrgPosition",
-                          "extraParams": {
-                            "schemaVersion": 1,
-                            "subject": "PROCESS_INITIATOR",
-                            "anchor": "DEPARTMENT",
-                            "positionCode": "UNIT_LEADER",
-                            "hierarchy": {"mode": "SELF"},
-                            "multipleMatchPolicy": "ALL"
-                          }
-                        }
-                        """));
+                "value", assigneeConfig));
         properties.addChildElement(property);
         userTask.addExtensionElement(properties);
         return userTask;

@@ -10,9 +10,9 @@ import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOpera
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.request.NextApproverSelectionRequest;
+import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import lombok.RequiredArgsConstructor;
 import org.flowable.bpmn.model.Activity;
-import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.engine.RuntimeService;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
@@ -411,24 +411,8 @@ public class NextApproverOverrideService {
     }
 
     private String multiInstanceCollectionVariable(Activity activity) {
-        MultiInstanceLoopCharacteristics loop =
-                activity.getLoopCharacteristics();
-        if (loop == null) {
-            return null;
-        }
-        String expression = StringUtils.hasText(loop.getInputDataItem())
-                ? loop.getInputDataItem()
-                : loop.getCollectionString();
-        if (!StringUtils.hasText(expression)) {
-            return null;
-        }
-        String value = expression.trim();
-        if ((value.startsWith("${") || value.startsWith("#{"))
-                && value.endsWith("}")) {
-            value = value.substring(2, value.length() - 1).trim();
-        }
-        return value.matches("[A-Za-z_][A-Za-z0-9_]*")
-                ? value : null;
+        return MultiInstanceVariableNames.resolveCollectionVariable(
+                activity);
     }
 
     private Map<String, Object> currentOverrides(

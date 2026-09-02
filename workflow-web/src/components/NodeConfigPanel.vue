@@ -179,6 +179,7 @@
               <el-option label="固定人员" value="user" />
               <el-option label="用户组" value="group" />
               <el-option label="角色" value="role" />
+              <el-option label="实体用户关系字段" value="entity_user_reference" />
               <el-option label="相对组织职务" value="relative_position" />
               <el-option label="使用其他节点审批人" value="node_reference" />
               <el-option label="表达式" value="expression" :disabled="assigneeForm.isMultiInstance" />
@@ -326,6 +327,54 @@
                   <span v-if="option.nodeName" class="reference-node-id">{{ option.nodeId }}</span>
                 </el-option>
               </el-select>
+            </el-form-item>
+          </template>
+
+          <!-- 实体字段是设计器语义类型，保存时投影为受控人员解析器。 -->
+          <template v-if="assigneeForm.assigneeType === 'entity_user_reference'">
+            <el-alert
+              title="运行时读取流程绑定实体的最新记录值，不依赖该字段是否出现在当前节点表单中。"
+              type="info"
+              :closable="false"
+              show-icon
+              class="relative-position-notice"
+            />
+
+            <el-form-item label="用户字段" required>
+              <el-select
+                v-model="assigneeForm.entityUserReference.fieldCode"
+                filterable
+                clearable
+                placeholder="请选择已发布的用户单选或多选关系字段"
+                no-data-text="绑定实体中没有可用的用户关系字段"
+                style="width: 100%"
+                @change="onEntityUserReferenceFieldChanged"
+              >
+                <el-option
+                  v-for="field in entityUserReferenceFieldOptions"
+                  :key="field.fieldCode"
+                  :label="`${field.fieldName || field.fieldCode} (${field.fieldCode})`"
+                  :value="field.fieldCode"
+                >
+                  <span>{{ field.fieldName || field.fieldCode }}</span>
+                  <span class="reference-node-id">
+                    {{ field.fieldCode }} · {{ field.fieldType === 'MULTI_REFERENCE' ? '多选用户' : '单选用户' }}
+                  </span>
+                </el-option>
+              </el-select>
+              <div class="form-tip">
+                候选项来自绑定实体的全部已发布字段；当前表单或其他表单保存该字段后都能参与解析
+              </div>
+            </el-form-item>
+
+            <el-form-item label="分配方式">
+              <el-tag v-if="assigneeForm.isMultiInstance" type="success">
+                字段中的全部用户分别生成任务
+              </el-tag>
+              <el-tag v-else-if="selectedEntityUserReferenceField?.fieldType === 'MULTI_REFERENCE'" type="info">
+                字段中的全部用户作为候选人
+              </el-tag>
+              <el-tag v-else type="info">字段中的用户直接办理</el-tag>
             </el-form-item>
           </template>
 
@@ -1810,6 +1859,7 @@ import {
   buildNodeScopedMultiInstanceApprovedCountVariable,
   buildMultiInstanceCompletionCondition,
   buildAssigneeConfig,
+  buildEntityUserReferenceResolverConfig,
   buildRelativeOrgPositionResolverConfig,
   normalizeMultiInstanceCompletionRate,
   normalizeMultiInstanceDecision,
@@ -1821,10 +1871,15 @@ import {
   getProcessConditionFieldType,
   MAX_NODE_REFERENCE_DEPTH,
   NODE_REFERENCE_ASSIGNEE_TYPE,
+  ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
+  ENTITY_USER_REFERENCE_RESOLVER_CODE,
+  ENTITY_USER_REFERENCE_RESOLVER_DISPLAY_NAME,
   RELATIVE_ORG_POSITION_ASSIGNEE_TYPE,
   RELATIVE_ORG_POSITION_RESOLVER_CODE,
   normalizeDesignerAssigneeConfig,
+  normalizeEntityUserReferenceConfig,
   normalizeNodeReferenceAssigneeConfig,
+  isEntityUserReferenceField,
   relativeOrgPositionSummary,
   validateRelativeOrgPositionConfig,
   validateNodeReferenceChain
@@ -1980,7 +2035,7 @@ const assigneeForm = ref({
   multiInstanceCompletionRate: 100,
   multiInstanceNeedAllApprovers: false,
   completionCondition: '',
-  assigneeType: 'user', // user/group/role/relative_position/node_reference/expression/interface
+  assigneeType: 'user', // user/group/role/entity_user_reference/relative_position/node_reference/expression/interface
   referencedNodeId: '',
   referencedNodeName: '',
   resolverCode: '',
@@ -1998,6 +2053,7 @@ const assigneeForm = ref({
   legacyMultiInstanceConfig: null,
   legacyMultiInstanceMixed: false,
   assignmentConfigDirty: false,
+  entityUserReference: normalizeEntityUserReferenceConfig(),
   relativePosition: createRelativePositionForm(),
   nextApproverSelection: createNextApproverSelectionConfig()
 })
@@ -2125,6 +2181,13 @@ const conditionParseWarning = ref('')
 
 // 实体字段列表
 const entityFields = ref([])
+const entityUserReferenceFieldOptions = computed(() =>
+  entityFields.value.filter(isEntityUserReferenceField)
+)
+const selectedEntityUserReferenceField = computed(() =>
+  entityUserReferenceFieldOptions.value.find(field =>
+    field.fieldCode === assigneeForm.value.entityUserReference?.fieldCode)
+)
 
 // 连线状态配置表单
 const statusForm = ref({
@@ -2640,10 +2703,12 @@ onMounted(() => {
 
 // 监听 processId 变化，当流程ID传入后加载实体表单
 watch(() => props.processId, (newProcessId) => {
+  // 流程切换先清空旧绑定；实体字段统一等新 boundEntity 到达后再加载。
+  resetEntityFormsState()
+  entityFields.value = []
   if (newProcessId) {
     console.log('processId 变化，重新加载实体表单:', newProcessId)
     loadEntityForms()
-    loadEntityFields()
     loadSubProcesses()
   }
 }, { immediate: true })
@@ -2829,9 +2894,16 @@ watch(() => props.element, async (newElement) => {
         Boolean(loop)
       )
       const isRelativePositionAssignee =
-        assigneeConfig.assigneeType === 'interface'
+        ['interface', 'resolver'].includes(assigneeConfig.assigneeType)
         && (assigneeConfig.resolverCode || assigneeConfig.interfaceName)
           === RELATIVE_ORG_POSITION_RESOLVER_CODE
+      const isEntityUserReferenceAssignee =
+        ['interface', 'resolver'].includes(assigneeConfig.assigneeType)
+        && (assigneeConfig.resolverCode || assigneeConfig.interfaceName)
+          === ENTITY_USER_REFERENCE_RESOLVER_CODE
+      const entityUserReference = normalizeEntityUserReferenceConfig(
+        assigneeConfig
+      )
       const relativePosition = createRelativePositionForm({
         ...(assigneeConfig.extraParams || {}),
         assignmentMode: assigneeConfig.assignmentMode
@@ -2892,9 +2964,11 @@ watch(() => props.element, async (newElement) => {
         }),
         
         // 执行人类型和接口配置（从扩展属性）
-        assigneeType: isRelativePositionAssignee
-          ? RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
-          : assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
+        assigneeType: isEntityUserReferenceAssignee
+          ? ENTITY_USER_REFERENCE_ASSIGNEE_TYPE
+          : isRelativePositionAssignee
+            ? RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
+            : assigneeConfig.assigneeType || (assignee ? 'user' : candidateGroups ? 'group' : 'user'),
         referencedNodeId: assigneeConfig.referencedNodeId || '',
         referencedNodeName: assigneeConfig.referencedNodeName || '',
         resolverCode: assigneeConfig.resolverCode || assigneeConfig.interfaceName || '',
@@ -2914,6 +2988,7 @@ watch(() => props.element, async (newElement) => {
         legacyMultiInstanceMixed:
           assigneeConfig.legacyMultiInstanceMixed === true,
         assignmentConfigDirty: false,
+        entityUserReference,
         relativePosition,
         nextApproverSelection: createNextApproverSelectionConfig(
           assigneeConfig.nextApproverSelection
@@ -3296,6 +3371,12 @@ function onMultiInstanceChange(enabled) {
         : 'PRIMARY_OR_ERROR'
     clearRelativePositionPreview()
   }
+  if (assigneeForm.value.assigneeType === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
+    assigneeForm.value.assignmentMode = enabled
+      || selectedEntityUserReferenceField.value?.fieldType === 'MULTI_REFERENCE'
+      ? 'CANDIDATE'
+      : 'DIRECT'
+  }
   if (assigneeForm.value.assigneeType === 'user') {
     if (enabled) {
       const users = normalizeUserKeys([
@@ -3479,14 +3560,31 @@ function resetConditionGroups() {
 
 // 加载实体字段
 async function loadEntityFields() {
-  if (!boundEntity.value?.id) return
+  const requestedEntityId = String(boundEntity.value?.id || '').trim()
+  const requestedProcessId = String(props.processId || '').trim()
+  if (!requestedEntityId) {
+    entityFields.value = []
+    return
+  }
   try {
-    const res = await request.get(`/entity-form/entity/${boundEntity.value.id}/fields`)
+    const res = await request.get(
+      `/entity-form/entity/${requestedEntityId}/fields`
+    )
+    // 快速切换流程或实体时，过期响应不得覆盖当前实体的候选字段。
+    if (String(boundEntity.value?.id || '').trim() !== requestedEntityId
+        || String(props.processId || '').trim() !== requestedProcessId) {
+      return
+    }
     if (res && Array.isArray(res)) {
       entityFields.value = res
     }
   } catch (e) {
+    if (String(boundEntity.value?.id || '').trim() !== requestedEntityId
+        || String(props.processId || '').trim() !== requestedProcessId) {
+      return
+    }
     console.error('加载实体字段失败:', e)
+    entityFields.value = []
   }
 }
 
@@ -3578,7 +3676,17 @@ function onAssigneeTypeChange(type) {
   assigneeForm.value.referencedNodeId = ''
   assigneeForm.value.referencedNodeName = ''
   clearRelativePositionPreview()
-  if (type === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
+  if (type === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
+    assigneeForm.value.entityUserReference = normalizeEntityUserReferenceConfig({
+      entityCode: boundEntity.value?.entityCode || ''
+    })
+    assigneeForm.value.resolverCode = ENTITY_USER_REFERENCE_RESOLVER_CODE
+    assigneeForm.value.resolverDisplayName = ENTITY_USER_REFERENCE_RESOLVER_DISPLAY_NAME
+    assigneeForm.value.assignmentMode = assigneeForm.value.isMultiInstance
+      ? 'CANDIDATE' : 'DIRECT'
+    assigneeForm.value.extraParams = {}
+    assigneeForm.value.extraParamsText = '{}'
+  } else if (type === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
     assigneeForm.value.relativePosition = createRelativePositionForm({
       assignmentMode: assigneeForm.value.isMultiInstance ? 'CANDIDATE' : 'DIRECT',
       multipleMatchPolicy: assigneeForm.value.isMultiInstance ? 'ALL' : 'PRIMARY_OR_ERROR'
@@ -3589,13 +3697,27 @@ function onAssigneeTypeChange(type) {
     assigneeForm.value.extraParams = {}
     assigneeForm.value.extraParamsText = '{}'
   } else if (type !== 'interface'
-      || assigneeForm.value.resolverCode === RELATIVE_ORG_POSITION_RESOLVER_CODE) {
+      || [
+        RELATIVE_ORG_POSITION_RESOLVER_CODE,
+        ENTITY_USER_REFERENCE_RESOLVER_CODE
+      ].includes(assigneeForm.value.resolverCode)) {
     assigneeForm.value.resolverCode = ''
     assigneeForm.value.resolverDisplayName = ''
     assigneeForm.value.assignmentMode = ''
     assigneeForm.value.extraParams = {}
     assigneeForm.value.extraParamsText = '{}'
   }
+}
+
+/** 字段切换后刷新分配语义；保存时仍会用完整实体字段元数据复核。 */
+function onEntityUserReferenceFieldChanged() {
+  assigneeForm.value.entityUserReference.entityCode =
+    boundEntity.value?.entityCode || ''
+  assigneeForm.value.assignmentMode = assigneeForm.value.isMultiInstance
+    || selectedEntityUserReferenceField.value?.fieldType === 'MULTI_REFERENCE'
+    ? 'CANDIDATE'
+    : 'DIRECT'
+  markAssignmentConfigDirty()
 }
 
 /** 读取画布中各 UserTask 已保存的节点引用关系，供设计期基础环检测。 */
@@ -3905,10 +4027,23 @@ function markAssignmentConfigDirty() {
 }
 
 /**
- * 相对职务仅存在于设计器展示层；所有 BPMN 扩展属性都必须写回 v2 interface 契约，
- * 从而让发布校验、普通任务和多实例继续走统一人员解析器。
+ * 内置语义类型仅存在于设计器展示层；BPMN 统一写回 v2 interface 契约，
+ * 让发布校验、普通任务和多实例都经过同一人员解析器边界。
  */
 function projectedAssigneeFormForPersistence() {
+  if (assigneeForm.value.assigneeType === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
+    const resolverConfig = buildEntityUserReferenceResolverConfig({
+      ...assigneeForm.value.entityUserReference,
+      entityCode: boundEntity.value?.entityCode || '',
+      fieldType: selectedEntityUserReferenceField.value?.fieldType,
+      isMultiInstance: assigneeForm.value.isMultiInstance
+    })
+    return {
+      ...assigneeForm.value,
+      ...resolverConfig,
+      extraParamsText: JSON.stringify(resolverConfig.extraParams, null, 2)
+    }
+  }
   if (assigneeForm.value.assigneeType !== RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
     return assigneeForm.value
   }
@@ -3931,7 +4066,10 @@ function projectedAssigneeFormForPersistence() {
 function updateAssigneeInterface() {
   const projected = projectedAssigneeFormForPersistence()
   const extraParams = projected.assigneeType === 'interface'
-    && projected.resolverCode === RELATIVE_ORG_POSITION_RESOLVER_CODE
+    && [
+      RELATIVE_ORG_POSITION_RESOLVER_CODE,
+      ENTITY_USER_REFERENCE_RESOLVER_CODE
+    ].includes(projected.resolverCode)
     ? projected.extraParams
     : parseJsonObject(projected.extraParamsText, '办理人接口 extraParams')
   assigneeForm.value.extraParams = extraParams
@@ -4140,6 +4278,24 @@ function applyConfigurationSection(section) {
             return false
           }
         } else if (!preservingLegacy
+            && type === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
+          if (!boundEntity.value?.entityCode) {
+            ElMessage.warning('当前流程尚未绑定实体，无法配置实体用户关系字段')
+            return false
+          }
+          if (!selectedEntityUserReferenceField.value) {
+            ElMessage.warning('请选择仍然存在且已发布的用户单选或多选关系字段')
+            return false
+          }
+          const projected = projectedAssigneeFormForPersistence()
+          assigneeForm.value.entityUserReference.entityCode =
+            boundEntity.value.entityCode
+          assigneeForm.value.resolverCode = projected.resolverCode
+          assigneeForm.value.resolverDisplayName = projected.resolverDisplayName
+          assigneeForm.value.assignmentMode = projected.assignmentMode
+          assigneeForm.value.extraParams = projected.extraParams
+          assigneeForm.value.extraParamsText = projected.extraParamsText
+        } else if (!preservingLegacy
             && type === RELATIVE_ORG_POSITION_ASSIGNEE_TYPE) {
           const validation = validateRelativeOrgPositionConfig(
             assigneeForm.value.relativePosition,
@@ -4175,6 +4331,7 @@ function applyConfigurationSection(section) {
         if (assigneeForm.value.isMultiInstance) {
           if ([
             'interface',
+            ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
             RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
           ].includes(type) && !preservingLegacy) {
             updateAssigneeInterface()
@@ -4207,6 +4364,7 @@ function applyConfigurationSection(section) {
           updates.candidateGroups = null
         } else if ([
           'interface',
+          ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
           RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
         ].includes(type)) {
           updates.assignee = null
@@ -4217,6 +4375,7 @@ function applyConfigurationSection(section) {
         modeling.updateProperties(toRaw(props.element), updates)
         if (![
           'interface',
+          ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
           RELATIVE_ORG_POSITION_ASSIGNEE_TYPE
         ].includes(type)) {
           updateExtensionProperty('assigneeInterface', null)
@@ -4584,10 +4743,15 @@ async function loadEntityStatusList() {
 
 // 监听 boundEntity 变化，当流程绑定实体后加载状态列表和实体字段
 watch(() => boundEntity.value, async (newVal) => {
-  if (newVal?.entityCode && isSequenceFlow.value) {
-    console.log('流程已绑定实体，加载状态列表和实体字段:', newVal.entityCode)
+  if (!newVal?.id) {
+    entityFields.value = []
+    return
+  }
+  // 办理人字段来自绑定实体完整字段集，不能等待当前节点表单完成加载。
+  await loadEntityFields()
+  if (newVal.entityCode && isSequenceFlow.value) {
+    console.log('流程已绑定实体，加载状态列表:', newVal.entityCode)
     await loadEntityStatusList()
-    await loadEntityFields()
   }
 }, { immediate: true })
 

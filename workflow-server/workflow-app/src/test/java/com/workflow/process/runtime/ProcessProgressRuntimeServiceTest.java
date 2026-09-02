@@ -27,6 +27,8 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.history.HistoricActivityInstance;
 import org.flowable.engine.history.HistoricActivityInstanceQuery;
+import org.flowable.engine.history.HistoricProcessInstance;
+import org.flowable.engine.history.HistoricProcessInstanceQuery;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.repository.ProcessDefinitionQuery;
 import org.flowable.engine.runtime.Execution;
@@ -86,6 +88,7 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals("pi-1", progress.getProcessInstanceId());
         assertEquals("RUNNING", progress.getStatus());
         assertEquals("pd-1", progress.getProcessDefinitionId());
+        assertEquals(7, progress.getProcessVersion());
         assertEquals("expense_flow", progress.getProcessKey());
         assertEquals("expense_flow", progress.getProcessName());
         assertEquals(List.of("task-1"), progress.getActiveNodes());
@@ -95,6 +98,26 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals("管理员", progress.getNodeHistory().get(1).getAssigneeName());
         assertEquals("task-1-runtime", progress.getTasks().get(0).getTaskId());
         assertEquals("管理员", progress.getNodeAssigneeMap().get("task-1").getAssigneeName());
+    }
+
+    /**
+     * 已结束流程应从历史实例定位定义，并返回当时的实际版本。
+     */
+    @Test
+    void getProcessProgressBuildsCompletedProcessVersion() {
+        Fixture fixture = new Fixture();
+        ProcessProgressRuntimeService service = fixture.service();
+        fixture.completedInstance();
+        fixture.processDefinition();
+        fixture.emptyRuntimeHistory();
+        fixture.noOperationLogs();
+
+        ProcessProgressDTO progress = service.getProcessProgress("pi-1");
+
+        assertEquals("COMPLETED", progress.getStatus());
+        assertEquals("pd-1", progress.getProcessDefinitionId());
+        assertEquals("expense_flow", progress.getProcessKey());
+        assertEquals(7, progress.getProcessVersion());
     }
 
     /**
@@ -123,6 +146,9 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals(1, progress.getFormConfigs().size());
         assertEquals("form-1", progress.getFormConfig().getFormId());
         assertEquals("审批表单", progress.getFormConfig().getFormName());
+        assertEquals("approval-form", progress.getFormConfig().getFormKey());
+        assertEquals("release-2", progress.getFormConfig().getFormReleaseId());
+        assertEquals(2, progress.getFormConfig().getFormReleaseVersion());
         assertEquals(
                 "hotfix-3",
                 progress.getFormConfig().getEffectiveFormReleaseId());
@@ -158,6 +184,34 @@ class ProcessProgressRuntimeServiceTest {
                 .getNodeFormsContextByProcessDefinitionId(
                         "pd-1",
                         "task-1");
+    }
+
+    /**
+     * 节点未绑定表单时，默认表单应返回本次实际解析的发布版本。
+     */
+    @Test
+    void getProcessProgressUsesResolvedDefaultFormReleaseVersion() {
+        Fixture fixture = new Fixture();
+        ProcessProgressRuntimeService service = fixture.service();
+        fixture.runningInstance();
+        fixture.processDefinition();
+        fixture.history();
+        fixture.activeExecution();
+        fixture.activeTask();
+        fixture.noOperationLogs();
+        fixture.entityVariables();
+        fixture.entityDefinition();
+        fixture.entityData();
+        fixture.noPublishedNodeForms();
+        fixture.resolvedDefaultForm();
+
+        ProcessProgressDTO progress = service.getProcessProgress("pi-1");
+
+        assertEquals("default-form", progress.getFormConfig().getFormKey());
+        assertEquals(
+                "default-release-4",
+                progress.getFormConfig().getFormReleaseId());
+        assertEquals(4, progress.getFormConfig().getFormReleaseVersion());
     }
 
     @Test
@@ -253,6 +307,8 @@ class ProcessProgressRuntimeServiceTest {
         final ProcessInstanceQuery processInstanceQuery = mock(ProcessInstanceQuery.class);
         final ProcessDefinitionQuery processDefinitionQuery = mock(ProcessDefinitionQuery.class);
         final HistoricActivityInstanceQuery activityQuery = mock(HistoricActivityInstanceQuery.class);
+        final HistoricProcessInstanceQuery historicProcessQuery =
+                mock(HistoricProcessInstanceQuery.class);
         final ExecutionQuery executionQuery = mock(ExecutionQuery.class);
         final TaskQuery taskQuery = mock(TaskQuery.class);
         final HistoricTaskInstanceQuery historicTaskQuery = mock(HistoricTaskInstanceQuery.class);
@@ -268,6 +324,10 @@ class ProcessProgressRuntimeServiceTest {
             when(activityQuery.processInstanceId("pi-1")).thenReturn(activityQuery);
             when(activityQuery.orderByHistoricActivityInstanceStartTime()).thenReturn(activityQuery);
             when(activityQuery.asc()).thenReturn(activityQuery);
+            when(historyService.createHistoricProcessInstanceQuery())
+                    .thenReturn(historicProcessQuery);
+            when(historicProcessQuery.processInstanceId("pi-1"))
+                    .thenReturn(historicProcessQuery);
             when(runtimeService.createExecutionQuery()).thenReturn(executionQuery);
             when(executionQuery.processInstanceId("pi-1")).thenReturn(executionQuery);
             when(taskService.createTaskQuery()).thenReturn(taskQuery);
@@ -281,6 +341,8 @@ class ProcessProgressRuntimeServiceTest {
             when(variableQuery.processInstanceId("pi-1")).thenReturn(variableQuery);
             when(variableQuery.variableName("action")).thenReturn(variableQuery);
             when(variableQuery.variableName("actionLabel")).thenReturn(variableQuery);
+            when(variableQuery.variableName(any(String.class)))
+                    .thenReturn(variableQuery);
             when(variableQuery.list()).thenReturn(List.of());
             when(variableQuery.singleResult()).thenReturn(null);
             when(taskService.getTaskComments("hist-task-1")).thenReturn(List.of());
@@ -294,11 +356,29 @@ class ProcessProgressRuntimeServiceTest {
             when(processInstanceQuery.singleResult()).thenReturn(processInstance);
         }
 
+        /** 设置已结束流程实例，定义 ID 只从历史实例提供 */
+        void completedInstance() {
+            HistoricProcessInstance historicInstance =
+                    mock(HistoricProcessInstance.class);
+            when(historicInstance.getProcessDefinitionId())
+                    .thenReturn("pd-1");
+            when(historicProcessQuery.singleResult())
+                    .thenReturn(historicInstance);
+        }
+
+        /** 设置无活动、无任务的历史记录，覆盖空流程的版本诊断场景 */
+        void emptyRuntimeHistory() {
+            when(activityQuery.list()).thenReturn(List.of());
+            when(historicTaskQuery.list()).thenReturn(List.of());
+            when(taskQuery.list()).thenReturn(List.of());
+        }
+
         /** 设置流程定义桩数据，含 Key 与名称 */
         void processDefinition() {
             ProcessDefinition processDefinition = mock(ProcessDefinition.class);
             when(processDefinition.getKey()).thenReturn("expense_flow");
             when(processDefinition.getName()).thenReturn("expense_flow");
+            when(processDefinition.getVersion()).thenReturn(7);
             when(processDefinitionQuery.singleResult()).thenReturn(processDefinition);
         }
 
@@ -419,6 +499,9 @@ class ProcessProgressRuntimeServiceTest {
             form.setFormName("审批表单");
             form.setFormKey("approval-form");
             form.setLayoutType("vertical");
+            // 节点钉定版本必须优先，不能被解析后表单对象上的坐标覆盖。
+            form.setRuntimeReleaseId("runtime-release-99");
+            form.setRuntimeReleaseVersion(99);
             form.setEffectiveReleaseId("hotfix-3");
             form.setHotfixApplied(true);
             form.setReleaseResolutionToken("resolution-token");
@@ -445,6 +528,31 @@ class ProcessProgressRuntimeServiceTest {
                     nodeForm,
                     "history-1",
                     UiRuntimePurpose.ACTIVE_TASK))
+                    .thenReturn(form);
+        }
+
+        /** 设置当前节点在流程发布快照中未绑定表单 */
+        void noPublishedNodeForms() {
+            ProcessVersionHistory history = new ProcessVersionHistory();
+            history.setId("history-1");
+            when(snapshotService.getNodeFormsContextByProcessDefinitionId(
+                    "pd-1",
+                    "task-1"))
+                    .thenReturn(
+                            new ProcessPublishedSnapshotService.PublishedNodeForms(
+                                    history,
+                                    List.of()));
+        }
+
+        /** 设置带实际发布坐标的默认运行时表单 */
+        void resolvedDefaultForm() {
+            EntityForm form = new EntityForm();
+            form.setId("form-default");
+            form.setFormName("默认表单");
+            form.setFormKey("default-form");
+            form.setRuntimeReleaseId("default-release-4");
+            form.setRuntimeReleaseVersion(4);
+            when(entityFormRuntimeService.getDefaultForm("entity-1"))
                     .thenReturn(form);
         }
 

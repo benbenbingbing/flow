@@ -84,7 +84,31 @@ public final class DatabaseMigrator {
         configure(appConfiguration, jdbcUrl, username, password);
         AppEngine appEngine = appConfiguration.buildAppEngine();
         appEngine.close();
+
+        System.out.println(
+                "Normalizing database character set and collation");
+        normalizeDatabaseCollation(jdbcUrl, username, password);
         System.out.println("Database migrations completed");
+    }
+
+    /**
+     * Flowable 的 MySQL 建表脚本显式使用 utf8/utf8_bin，因此必须在四个引擎
+     * 完成 schema 更新并关闭后，再复用 V074 安装的过程收敛新增表。
+     */
+    private static void normalizeDatabaseCollation(
+            String jdbcUrl,
+            String username,
+            String password) {
+        try (Connection connection = DriverManager.getConnection(
+                jdbcUrl, username, password);
+             var statement = connection.prepareCall(
+                     "{call workflow_v074_unify_database_collation_v2()}")) {
+            statement.execute();
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "数据库字符集与排序规则统一失败",
+                    exception);
+        }
     }
 
     private static void verifyBusinessMigrationPreconditions(

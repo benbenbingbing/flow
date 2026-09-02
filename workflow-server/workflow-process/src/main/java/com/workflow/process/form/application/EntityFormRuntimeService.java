@@ -212,6 +212,18 @@ public class EntityFormRuntimeService {
      */
     public EntityForm getDefaultForm(String entityId) {
         EntityForm form = formMapper.selectDefaultByEntityId(entityId);
-        return form == null ? null : releaseService.resolveRuntimeForm(form.getId());
+        if (form == null) {
+            return null;
+        }
+        ResolvedEntityFormRelease resolved =
+                releaseService.resolveRuntimeFormRelease(form.getId());
+        EntityForm runtimeForm = resolved.form();
+        if (runtimeForm != null) {
+            // 默认表单未经过流程节点钉版，仍需保留实际解析的发布坐标供查看端诊断。
+            runtimeForm.setRuntimeReleaseId(resolved.releaseId());
+            runtimeForm.setRuntimeReleaseVersion(
+                    resolved.releaseVersion());
+        }
+        return runtimeForm;
     }
 }

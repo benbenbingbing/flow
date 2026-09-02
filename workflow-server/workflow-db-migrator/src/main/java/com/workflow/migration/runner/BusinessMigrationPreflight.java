@@ -79,6 +79,133 @@ public final class BusinessMigrationPreflight {
                     connection, "process_person_resolver_definition")) {
             verifyPositionMenuMigrationPrerequisites(connection);
         }
+        if (!migrationApplied(connection, "072")
+                && tableExists(
+                connection, "process_person_resolver_definition")) {
+            verifyEntityUserReferenceResolverPrerequisites(connection);
+        }
+        if (!migrationApplied(connection, "073")
+                && tableExists(connection, "entity_definition")) {
+            verifyEntityWorkflowBindingIndexPrerequisites(connection);
+        }
+    }
+
+    /** 在 V072 seed 前拒绝固定 ID 或 resolver_code 被其他语义占用。 */
+    private static void verifyEntityUserReferenceResolverPrerequisites(
+            Connection connection) throws SQLException {
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`, `resolver_code`, COUNT(*)
+                FROM `process_person_resolver_definition`
+                WHERE `id` = 'person_resolver_entity_user_reference_001'
+                   OR `resolver_code` = 'entityUserReferenceField'
+                GROUP BY `id`, `resolver_code`
+                LIMIT 10
+                """,
+                2,
+                "V072 实体用户关系字段解析器固定 ID 或编码已被占用",
+                "请先核对解析器目录和 Flyway 历史，禁止覆盖现有解析器定义");
+    }
+
+    /** 在 V073 建 canonical 普通索引前拒绝无法安全解释的历史绑定。 */
+    private static void verifyEntityWorkflowBindingIndexPrerequisites(
+            Connection connection) throws SQLException {
+        List<String> partialArtifacts = new ArrayList<>();
+        if (columnExists(
+                connection,
+                "entity_definition",
+                "active_process_definition_key")) {
+            partialArtifacts.add(
+                    "entity_definition.active_process_definition_key");
+        }
+        if (indexExists(
+                connection,
+                "entity_definition",
+                "idx_entity_definition_process_binding")) {
+            partialArtifacts.add(
+                    "entity_definition.idx_entity_definition_process_binding");
+        }
+        failIfSamples(
+                partialArtifacts,
+                "V073 检测到目标字段或索引已存在的异常迁移状态",
+                "请先核对数据库与 Flyway 历史并制定显式恢复方案");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT entity_definition.`id`,
+                       entity_definition.`process_definition_id`, 1
+                FROM `entity_definition` entity_definition
+                WHERE COALESCE(entity_definition.`deleted`, 0) = 0
+                  AND entity_definition.`process_definition_id` IS NOT NULL
+                  AND TRIM(entity_definition.`process_definition_id`) <> ''
+                  AND (
+                    TRIM(entity_definition.`process_definition_id`)
+                      NOT REGEXP '^[0-9]+$'
+                    OR NULLIF(TRIM(LEADING '0' FROM
+                         TRIM(entity_definition.`process_definition_id`)), '')
+                         IS NULL
+                    OR CHAR_LENGTH(TRIM(LEADING '0' FROM
+                         TRIM(entity_definition.`process_definition_id`))) > 19
+                    OR (
+                      CHAR_LENGTH(TRIM(LEADING '0' FROM
+                        TRIM(entity_definition.`process_definition_id`))) = 19
+                      AND TRIM(LEADING '0' FROM
+                        TRIM(entity_definition.`process_definition_id`))
+                          > '9223372036854775807'
+                    )
+                  )
+                LIMIT 10
+                """,
+                2,
+                "V073 检测到不能规范为正 BIGINT 的流程绑定",
+                "请先修复非法 process_definition_id，禁止静默改写损坏值");
+        if (!tableExists(connection, "process_definition_config")) {
+            throw new IllegalStateException(
+                    "V073 缺少 process_definition_config，不能验证实体流程绑定");
+        }
+        // 上一项已保证绑定值可安全转换为正 BIGINT。这里按数值关联，既保留
+        // 01/1 的别名语义，也避免 CAST AS CHAR 继承连接排序规则后与列排序规则冲突。
+        requireNoConflicts(
+                connection,
+                """
+                SELECT entity_definition.`id`,
+                       entity_definition.`process_definition_id`, 1
+                FROM `entity_definition` entity_definition
+                LEFT JOIN `process_definition_config` process_config
+                  ON process_config.`id` = CAST(
+                       TRIM(entity_definition.`process_definition_id`)
+                       AS UNSIGNED)
+                 AND COALESCE(process_config.`deleted`, 0) = 0
+                WHERE COALESCE(entity_definition.`deleted`, 0) = 0
+                  AND entity_definition.`process_definition_id` IS NOT NULL
+                  AND TRIM(entity_definition.`process_definition_id`) <> ''
+                  AND process_config.`id` IS NULL
+                LIMIT 10
+                """,
+                2,
+                "V073 检测到不存在流程定义的活动实体绑定",
+                "请先恢复对应流程定义或解除经确认无效的实体绑定");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT process_config.`id`, COUNT(*)
+                FROM `entity_definition` entity_definition
+                JOIN `process_definition_config` process_config
+                  ON process_config.`id` = CAST(
+                       TRIM(entity_definition.`process_definition_id`)
+                       AS UNSIGNED)
+                 AND COALESCE(process_config.`deleted`, 0) = 0
+                WHERE COALESCE(entity_definition.`deleted`, 0) = 0
+                  AND entity_definition.`process_definition_id` IS NOT NULL
+                  AND TRIM(entity_definition.`process_definition_id`) <> ''
+                GROUP BY process_config.`id`
+                HAVING COUNT(*) > 1
+                LIMIT 10
+                """,
+                1,
+                "V073 检测到一个流程绑定多个活动实体",
+                "请先人工确认并保留唯一实体绑定；本次 expand 不自动猜测保留项");
     }
 
     /**
@@ -498,6 +625,27 @@ public final class BusinessMigrationPreflight {
                 tableName,
                 columnName)) {
             return columns.next();
+        }
+    }
+
+    private static boolean indexExists(
+            Connection connection,
+            String tableName,
+            String indexName) throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        try (ResultSet indexes = metadata.getIndexInfo(
+                connection.getCatalog(),
+                null,
+                tableName,
+                false,
+                false)) {
+            while (indexes.next()) {
+                if (indexName.equalsIgnoreCase(
+                        indexes.getString("INDEX_NAME"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

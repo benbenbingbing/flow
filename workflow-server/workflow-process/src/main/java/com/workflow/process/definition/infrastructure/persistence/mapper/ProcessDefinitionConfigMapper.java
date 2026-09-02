@@ -56,6 +56,17 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
             @Param("id") String id);
 
     /**
+     * 锁定流程配置的绑定门闩，包括已逻辑删除的配置。
+     *
+     * <p>已发布版本在配置删除后仍可能运行，因此实体绑定保护不能因 deleted=1
+     * 跳过同一行锁。</p>
+     */
+    @Select("SELECT * FROM process_definition_config "
+            + "WHERE id = #{id} FOR UPDATE")
+    ProcessDefinitionConfig selectAnyByIdForBindingUpdate(
+            @Param("id") String id);
+
+    /**
      * 根据流程标识查询（排除已删除）
      */
     @Select("SELECT * FROM process_definition_config WHERE process_key = #{processKey} AND deleted = 0")
@@ -102,7 +113,8 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
      */
     @Select("SELECT p.* FROM process_definition_config p " +
             "WHERE p.deleted = 0 " +
-            "AND p.id NOT IN (SELECT e.process_definition_id FROM entity_definition e WHERE e.process_definition_id IS NOT NULL) " +
+            "AND NOT EXISTS (SELECT 1 FROM entity_definition e " +
+            "WHERE e.active_process_definition_key = p.id) " +
             "ORDER BY p.update_time DESC")
     List<ProcessDefinitionConfig> findAllUnbound();
 }

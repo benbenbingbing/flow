@@ -117,7 +117,10 @@ public class ProcessDefinitionPreflightService {
                 if (nodeOperationPolicyBpmnValidator != null) {
                     nodeOperationPolicyBpmnValidator.validate(bpmnXml);
                 }
-                bpmnPublishSanitizer.sanitize(bpmnXml, config.getProcessKey());
+                bpmnPublishSanitizer.sanitize(
+                        bpmnXml,
+                        config.getProcessKey(),
+                        config.getId());
             } catch (RuntimeException exception) {
                 addIssue(issues, stableCode(exception, "BPMN_EXECUTABLE_INVALID"),
                         Severity.BLOCKER, elementIdFrom(exception), null,

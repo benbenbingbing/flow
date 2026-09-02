@@ -23,5 +23,9 @@ public class UiConfigReleaseSummaryDTO {
     private String rolloutScope;
     private String rolloutStatus;
     private String publishedBy;
+    /** 发布人姓名（人员目录中的昵称）。 */
+    private String publishedByName;
+    /** 发布人登录名（人员目录中的 username）。 */
+    private String publishedByUsername;
     private LocalDateTime publishedAt;
 }

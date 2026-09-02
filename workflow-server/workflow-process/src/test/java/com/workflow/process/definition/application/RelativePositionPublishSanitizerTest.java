@@ -42,6 +42,10 @@ class RelativePositionPublishSanitizerTest {
 
         assertTrue(output.contains(
                 "${relativeOrgPositionCollectionHandler}"));
+        assertTrue(output.contains(
+                "flowable:collection=\"__wfEntryDynamicCollectionSeed\""));
+        assertTrue(output.contains(
+                "name=\"entryDynamicCollectionVariable\" value=\"reviewers\""));
         ArgumentCaptor<PersonResolverConfigurationValidationRequest> request =
                 ArgumentCaptor.forClass(
                         PersonResolverConfigurationValidationRequest.class);

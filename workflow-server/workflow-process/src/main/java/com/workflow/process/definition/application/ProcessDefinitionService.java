@@ -14,6 +14,7 @@ import com.workflow.process.definition.infrastructure.persistence.record.Process
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.action.FlowActionDesignPort;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -61,6 +62,8 @@ public class ProcessDefinitionService {
     private final FlowActionDesignPort flowActionDesignPort;
     private final MigrationAssetHandler migrationAssetHandler;
     private final ProcessDefinitionPreflightService preflightService;
+    /** 绑定实体目录，用于让流程删除与实体绑定共用同一行锁门闩。 */
+    private final EntityCodeCatalogPort entityCodeCatalogPort;
     
     /**
      * 查询所有启用的流程定义。
@@ -354,9 +357,18 @@ public class ProcessDefinitionService {
             targetType = "PROCESS_DEFINITION",
             targetIdArg = 0)
     public void delete(String id) {
-        ProcessDefinitionConfig config = processMapper.selectById(id);
+        ProcessDefinitionConfig config = processMapper.selectByIdForUpdate(id);
         if (config == null) {
             throw new RuntimeException("Process not found: " + id);
+        }
+        String boundEntityCode = entityCodeCatalogPort
+                .findEntityCodeByProcessDefinitionId(config.getId());
+        if (org.springframework.util.StringUtils.hasText(
+                boundEntityCode)) {
+            throw new BusinessConflictException(
+                    "PROCESS_ENTITY_BINDING_IN_USE",
+                    "流程已绑定实体 " + boundEntityCode
+                            + "，请先按实体绑定策略处理关联");
         }
         
         // 逻辑删除流程定义
@@ -484,7 +496,10 @@ public class ProcessDefinitionService {
         
         nodeSyncService.syncStatusMappingsFromBpmn(id, config.getProcessKey(), designBpmnXml);
         
-        String runtimeBpmnXml = bpmnPublishSanitizer.sanitize(designBpmnXml, config.getProcessKey());
+        String runtimeBpmnXml = bpmnPublishSanitizer.sanitize(
+                designBpmnXml,
+                config.getProcessKey(),
+                config.getId());
 
         // 清理历史版本中平台注入的顺序流动作监听器；运行时已由统一事件监听器接管
         runtimeBpmnXml = flowActionDesignPort.prepareBpmnForPublish(id, runtimeBpmnXml);

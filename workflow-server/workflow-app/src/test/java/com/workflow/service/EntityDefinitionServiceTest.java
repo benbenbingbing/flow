@@ -16,7 +16,9 @@ import com.workflow.entity.version.application.EntityVersionConfigurationService
 
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
+import com.workflow.contracts.process.ProcessBindingState;
 import com.workflow.contracts.process.ProcessCatalogPort;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -38,10 +40,12 @@ import org.mockito.InjectMocks;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -175,6 +179,23 @@ public class EntityDefinitionServiceTest {
                     }
                     return result;
                 });
+        lenient().when(processCatalogPort.lockBindingStates(anyCollection()))
+                .thenAnswer(invocation -> {
+                    java.util.Collection<String> ids = invocation.getArgument(0);
+                    java.util.Map<String, ProcessBindingState> result =
+                            new java.util.LinkedHashMap<>();
+                    if (ids.contains("proc-1")) {
+                        result.put("proc-1", bindingState(
+                                "proc-1", "test_process", "测试流程", false));
+                    }
+                    if (ids.contains("proc-2")) {
+                        result.put("proc-2", bindingState(
+                                "proc-2", "next_process", "新流程", false));
+                    }
+                    return result;
+                });
+        lenient().when(entityMapper.findByIdForUpdate("1"))
+                .thenAnswer(invocation -> Optional.of(testEntity));
         lenient().when(physicalTableNaming.generate(anyString()))
                 .thenAnswer(invocation -> "biz_" + invocation.getArgument(0));
         lenient().when(fieldOptionService.findOptions(anyString()))
@@ -353,7 +374,7 @@ public class EntityDefinitionServiceTest {
         assertTrue(Boolean.TRUE.equals(departmentField.getEditable()));
     }
 
-    /** 测试更新实体：验证更新成功并触发 selectById 与 updateById */
+    /** 普通更新只写可编辑列，不能通过旧实体快照覆盖流程绑定。 */
     @Test
     void testUpdate() {
         EntityDefinitionDTO dto = new EntityDefinitionDTO();
@@ -361,13 +382,42 @@ public class EntityDefinitionServiceTest {
         dto.setDescription("更新后的描述");
 
         when(entityMapper.selectById("1")).thenReturn(testEntity);
-        when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
+        when(entityMapper.updateMutableColumns(any(EntityDefinition.class)))
+                .thenReturn(1);
 
         EntityDefinitionDTO result = entityService.update("1", dto);
 
         assertNotNull(result);
         verify(entityMapper, times(1)).selectById("1");
-        verify(entityMapper, times(1)).updateById(any(EntityDefinition.class));
+        verify(entityMapper, times(1))
+                .updateMutableColumns(any(EntityDefinition.class));
+        verify(entityMapper, never()).updateById(any(EntityDefinition.class));
+    }
+
+    /** 行锁中发现绑定已变化时，普通编辑必须拒绝继续，不能回写旧绑定。 */
+    @Test
+    void genericUpdateCannotOverwriteConcurrentBindingChange() {
+        EntityDefinition changed = new EntityDefinition();
+        changed.setId("1");
+        changed.setEntityCode("test_entity");
+        changed.setEntityName("测试实体");
+        changed.setProcessDefinitionId("proc-2");
+        changed.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        changed.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(changed));
+
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityName("并发更新");
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> entityService.update("1", dto));
+
+        assertEquals("ENTITY_WORKFLOW_BINDING_CHANGED", exception.getErrorCode());
+        verify(entityMapper, never())
+                .updateMutableColumns(any(EntityDefinition.class));
     }
 
     /** 已存在字段更新时应持久化验证规则，而不是只在新字段创建时保存。 */
@@ -397,6 +447,49 @@ public class EntityDefinitionServiceTest {
                 fieldDTO);
     }
 
+    /** 批量实体更新必须复用字段结构锁，不能吞掉已发布 USER 引用元数据冲突。 */
+    @Test
+    void testBatchUpdatePropagatesPublishedUserReferenceLock() {
+        testEntity.setStatus(EntityDefinition.Status.PUBLISHED);
+        EntityField approverField = new EntityField();
+        approverField.setId("field-approver");
+        approverField.setEntityId("1");
+        approverField.setFieldCode("approver");
+        approverField.setFieldName("审批人");
+        approverField.setFieldType(EntityField.FieldType.USER);
+        approverField.setIsPublished(true);
+        approverField.setRefEntityType(EntityField.RefEntityType.USER);
+
+        EntityFieldDTO approverDTO = new EntityFieldDTO();
+        approverDTO.setFieldCode("approver");
+        approverDTO.setFieldName("审批人");
+        approverDTO.setFieldType(EntityField.FieldType.USER);
+        approverDTO.setRefEntityId("entity-user");
+        approverDTO.setRefEntityType("USER");
+        approverDTO.setRefFieldCode("username");
+        EntityDefinitionDTO dto = new EntityDefinitionDTO();
+        dto.setEntityName("测试实体");
+        dto.setFields(List.of(approverDTO));
+
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(fieldMapper.findByEntityId("1"))
+                .thenReturn(List.of(approverField));
+        BusinessConflictException locked =
+                new BusinessConflictException(
+                        "ENTITY_FIELD_REFERENCE_LOCKED",
+                        "已发布 USER 字段引用元数据不可修改");
+        doThrow(locked).when(fieldDefinitionService)
+                .updateDefinition(approverField, approverDTO);
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> entityService.update("1", dto));
+
+        assertSame(locked, error);
+        verify(fieldDefinitionService).updateDefinition(
+                approverField, approverDTO);
+    }
+
     /** 测试批量字段更新不再隐式同步子表单关系，关系必须通过独立关系接口维护。 */
     @Test
     void testUpdateDoesNotSyncLegacySubFormRelation() {
@@ -424,7 +517,6 @@ public class EntityDefinitionServiceTest {
 
         when(entityMapper.selectById("1")).thenReturn(testEntity);
         when(fieldMapper.findByEntityId("1")).thenReturn(List.of(detailField));
-        when(entityMapper.updateById(any(EntityDefinition.class))).thenReturn(1);
 
         entityService.update("1", dto);
 
@@ -591,6 +683,115 @@ public class EntityDefinitionServiceTest {
         assertEquals("proc-2", captor.getValue().getProcessDefinitionId());
     }
 
+    /** 已发布流程的实体绑定属于版本运行契约，即使尚无实例也不能换绑。 */
+    @Test
+    void publishedProcessBindingCannotBeChangedWithoutInstances() {
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(processCatalogPort.lockBindingStates(anyCollection()))
+                .thenReturn(Map.of(
+                        "proc-1", bindingState(
+                                "proc-1", "test_process", "测试流程", true),
+                        "proc-2", bindingState(
+                                "proc-2", "next_process", "新流程", false)));
+
+        var exception = assertThrows(
+                com.workflow.core.error.BusinessConflictException.class,
+                () -> entityService.bindWorkflow("1", "proc-2"));
+
+        assertEquals("ENTITY_WORKFLOW_BINDING_PUBLISHED", exception.getErrorCode());
+        verify(entityMapper, never()).updateById(any(EntityDefinition.class));
+    }
+
+    /** 已发布流程的实体绑定不能因为实例数为零而被解除。 */
+    @Test
+    void publishedProcessBindingCannotBeUnboundWithoutInstances() {
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(processCatalogPort.lockBindingStates(anyCollection()))
+                .thenReturn(Map.of(
+                        "proc-1", bindingState(
+                                "proc-1", "test_process", "测试流程", true)));
+
+        var exception = assertThrows(
+                com.workflow.core.error.BusinessConflictException.class,
+                () -> entityService.unbindWorkflow("1"));
+
+        assertEquals("ENTITY_WORKFLOW_BINDING_PUBLISHED", exception.getErrorCode());
+        verify(entityMapper, never()).updateById(any(EntityDefinition.class));
+    }
+
+    /** 已发布流程仍依赖实体元数据，删除实体必须被阻断。 */
+    @Test
+    void publishedProcessBindingPreventsEntityDeletion() {
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(processCatalogPort.lockBindingStates(anyCollection()))
+                .thenReturn(Map.of(
+                        "proc-1", bindingState(
+                                "proc-1", "test_process", "测试流程", true)));
+
+        var exception = assertThrows(
+                com.workflow.core.error.BusinessConflictException.class,
+                () -> entityService.delete("1"));
+
+        assertEquals("ENTITY_WORKFLOW_BINDING_PUBLISHED", exception.getErrorCode());
+        verify(entityMapper, never()).deleteById("1");
+    }
+
+    /** 唯一索引捕获并发绑定竞态后应返回稳定业务错误，而不是数据库异常。 */
+    @Test
+    void concurrentDuplicateBindingMapsToBusinessConflict() {
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(entityMapper.updateById(any(EntityDefinition.class)))
+                .thenThrow(new DuplicateKeyException("duplicate process binding"));
+
+        var exception = assertThrows(
+                com.workflow.core.error.BusinessConflictException.class,
+                () -> entityService.bindWorkflow("1", "proc-2"));
+
+        assertEquals("ENTITY_WORKFLOW_ALREADY_BOUND", exception.getErrorCode());
+    }
+
+    /** expand 阶段若发现历史重复绑定，不能按查询顺序任选审批实体。 */
+    @Test
+    void ambiguousHistoricalBindingFailsClosed() {
+        EntityDefinition other = new EntityDefinition();
+        other.setId("2");
+        other.setEntityCode("other_entity");
+        other.setEntityName("其他实体");
+        other.setProcessDefinitionId("proc-2");
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(entityMapper.findAllByProcessDefinitionIdForUpdate("proc-2"))
+                .thenReturn(List.of(testEntity, other));
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> entityService.bindWorkflow("1", "proc-2"));
+
+        assertEquals("ENTITY_WORKFLOW_BINDING_AMBIGUOUS",
+                exception.getErrorCode());
+        verify(entityMapper, never()).updateById(any(EntityDefinition.class));
+    }
+
+    /** 获得行锁后发现绑定已改变时，必须让调用方刷新而不能覆盖新值。 */
+    @Test
+    void staleBindingSnapshotCannotOverwriteConcurrentChange() {
+        EntityDefinition changed = new EntityDefinition();
+        changed.setId("1");
+        changed.setEntityCode("test_entity");
+        changed.setEntityName("测试实体");
+        changed.setProcessDefinitionId("proc-2");
+        changed.setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
+        changed.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(entityMapper.selectById("1")).thenReturn(testEntity);
+        when(entityMapper.findByIdForUpdate("1"))
+                .thenReturn(Optional.of(changed));
+
+        var exception = assertThrows(
+                com.workflow.core.error.BusinessConflictException.class,
+                () -> entityService.unbindWorkflow("1"));
+
+        assertEquals("ENTITY_WORKFLOW_BINDING_CHANGED", exception.getErrorCode());
+    }
+
     /** 测试新建实体默认为独立生命周期与动态存储：验证生命周期、存储模式与流程绑定状态默认值 */
     @Test
     void standaloneIsDefaultForNewEntity() {
@@ -618,5 +819,17 @@ public class EntityDefinitionServiceTest {
                         EntityDefinition.LifecycleMode.STANDALONE));
 
         assertEquals("ENTITY_LIFECYCLE_DOWNGRADE_FORBIDDEN", exception.getErrorCode());
+    }
+
+    private ProcessBindingState bindingState(
+            String id,
+            String key,
+            String name,
+            boolean published) {
+        return new ProcessBindingState(
+                new ProcessCatalogItem(
+                        id, key, name, published ? "PUBLISHED" : "DRAFT"),
+                true,
+                published);
     }
 }

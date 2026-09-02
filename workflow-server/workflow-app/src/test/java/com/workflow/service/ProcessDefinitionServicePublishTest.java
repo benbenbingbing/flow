@@ -3,6 +3,7 @@ package com.workflow.service;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 
 import com.workflow.contracts.action.FlowActionDesignPort;
+import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.contracts.migration.MigrationAssetHandler;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
@@ -48,6 +49,8 @@ class ProcessDefinitionServicePublishTest {
                 mock(MigrationAssetHandler.class);
         ProcessDefinitionPreflightService preflightService =
                 mock(ProcessDefinitionPreflightService.class);
+        EntityCodeCatalogPort entityCodeCatalogPort =
+                mock(EntityCodeCatalogPort.class);
         ProcessDefinitionService service = new ProcessDefinitionService(
                 processMapper,
                 versionHistoryMapper,
@@ -57,7 +60,8 @@ class ProcessDefinitionServicePublishTest {
                 sanitizer,
                 actionDesignPort,
                 migrationAssetHandler,
-                preflightService);
+                preflightService,
+                entityCodeCatalogPort);
 
         String designXml = "<bpmn:scriptTask id=\"script\" />";
         String sanitizedXml = "<bpmn:serviceTask id=\"script\" />";
@@ -72,7 +76,8 @@ class ProcessDefinitionServicePublishTest {
         when(processMapper.selectById("process-1"))
                 .thenReturn(config);
         when(historyService.nextVersion("process-1")).thenReturn(2);
-        when(sanitizer.sanitize(designXml, "expense_flow"))
+        when(sanitizer.sanitize(
+                designXml, "expense_flow", "process-1"))
                 .thenReturn(sanitizedXml);
         when(actionDesignPort.prepareBpmnForPublish(
                 "process-1",
@@ -100,6 +105,8 @@ class ProcessDefinitionServicePublishTest {
         service.publish("process-1", "脚本节点版本");
 
         verify(processMapper).selectByIdForUpdate("process-1");
+        verify(sanitizer).sanitize(
+                designXml, "expense_flow", "process-1");
         verify(deploymentService).deploy(config, deployedXml, 2);
         verify(historyService).recordPublish(
                 config,

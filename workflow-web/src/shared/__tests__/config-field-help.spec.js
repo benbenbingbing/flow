@@ -15,6 +15,7 @@ const files = [
   'src/components/FlowActionConfigPanel.vue',
   'src/components/ui-config/EventBindingEditor.vue',
   'src/components/ui-config/InterfaceServiceEditorDialog.vue',
+  'src/components/ui-config/InterfaceServiceTestDialog.vue',
   'src/views/system/components/EntityVersionConfigDialogs.vue',
   'src/views/system/WorkCalendarManagement.vue',
   'src/views/system/embed-management/EmbedViewWorkspace.vue',
@@ -57,6 +58,13 @@ for (const required of [
   'uiEvent.inheritanceMode',
   'uiDataSource.service',
   'interfaceService.backendImplementation',
+  'interfaceService.debugService',
+  'interfaceService.debugOperation',
+  'interfaceService.debugBusinessContext',
+  'interfaceService.debugConfigObject',
+  'interfaceService.debugUsage',
+  'interfaceService.debugInput',
+  'interfaceService.debugResult',
   'entityList.dataSourceType',
   'entityVersion.stepImplementation',
   'entityVersion.targetResolver',
@@ -70,6 +78,44 @@ for (const required of [
   'embed.operations.queryScope'
 ]) {
   assert.ok(usedKeys.has(required), `关键复杂配置缺少问号帮助: ${required}`)
+}
+
+const interfaceServiceTestDialogSource = readFileSync(
+  path.join(root, 'src/components/ui-config/InterfaceServiceTestDialog.vue'),
+  'utf8'
+)
+const debugHelpFields = Object.freeze({
+  '接口服务': 'interfaceService.debugService',
+  '操作': 'interfaceService.debugOperation',
+  '业务上下文': 'interfaceService.debugBusinessContext',
+  '配置对象': 'interfaceService.debugConfigObject',
+  '调用用途': 'interfaceService.debugUsage',
+  '输入参数': 'interfaceService.debugInput',
+  '执行结果': 'interfaceService.debugResult'
+})
+const debugHelpTags = interfaceServiceTestDialogSource.match(
+  /<ConfigHelpLabel\b[^>]*\/>/g
+) || []
+
+assert.equal(debugHelpTags.length, Object.keys(debugHelpFields).length,
+  '调试接口操作的每个字段都应提供一个问号帮助')
+const groupedDebugFormItems = interfaceServiceTestDialogSource.match(
+  /<el-form-item\b[^>]*\bfor=""/g
+) || []
+assert.equal(groupedDebugFormItems.length, Object.keys(debugHelpFields).length,
+  '带问号帮助的调试字段应使用 ARIA group，避免把帮助按钮嵌入原生 label')
+for (const [label, key] of Object.entries(debugHelpFields)) {
+  const tag = debugHelpTags.find(item =>
+    item.includes(`label="${label}"`) && item.includes(`help-key="${key}"`))
+  assert.ok(tag, `调试接口操作字段缺少问号帮助: ${label}`)
+  for (const section of ['含义：', '使用方法：', '适用场景：']) {
+    assert.ok(CONFIG_FIELD_HELP[key].includes(section),
+      `${label}帮助缺少“${section}”说明`)
+  }
+}
+for (const label of Object.keys(debugHelpFields).filter(item => item !== '执行结果')) {
+  assert.ok(interfaceServiceTestDialogSource.includes(`aria-label="${label}"`),
+    `调试接口操作控件缺少无障碍名称: ${label}`)
 }
 
 console.log(`config field help audit passed: ${usedKeys.size} usages, ${Object.keys(CONFIG_FIELD_HELP).length} definitions`)

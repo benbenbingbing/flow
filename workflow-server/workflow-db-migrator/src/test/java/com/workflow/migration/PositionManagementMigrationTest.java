@@ -365,6 +365,71 @@ class PositionManagementMigrationTest {
         assertTrue(exception.getMessage().contains("超过 32 层"));
     }
 
+    @Test
+    void v072PreflightRejectsOccupiedResolverIdOrCode()
+            throws Exception {
+        flywayThrough71().migrate();
+
+        insertResolver(
+                "person_resolver_entity_user_reference_001",
+                "foreignResolver");
+        assertTrue(verifyFails().getMessage().contains(
+                "V072 实体用户关系字段解析器固定 ID 或编码已被占用"));
+        execute("""
+                DELETE FROM process_person_resolver_definition
+                WHERE id = 'person_resolver_entity_user_reference_001'
+                """);
+
+        insertResolver(
+                "foreign-entity-user-resolver",
+                "entityUserReferenceField");
+        assertTrue(verifyFails().getMessage().contains(
+                "V072 实体用户关系字段解析器固定 ID 或编码已被占用"));
+    }
+
+    @Test
+    void v073SupportsLegacyBindingColumnWithDifferentCollation()
+            throws Exception {
+        flywayThrough72().migrate();
+        execute("""
+                ALTER TABLE entity_definition
+                  MODIFY process_definition_id varchar(64)
+                    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+                    DEFAULT NULL
+                """);
+        execute("""
+                INSERT INTO process_definition_config (
+                  id, process_key, process_name, deleted
+                ) VALUES (
+                  730000000000000001,
+                  'collation_test_process', '排序规则兼容测试流程', 0
+                )
+                """);
+        execute("""
+                INSERT INTO entity_definition (
+                  entity_code, entity_name, process_definition_id, deleted
+                ) VALUES (
+                  'collation_test_entity', '排序规则兼容测试实体',
+                  '00730000000000000001', 0
+                )
+                """);
+
+        // 模拟旧库字段与 MySQL 8 默认连接使用不同排序规则的升级场景。
+        try (Connection connection = MYSQL.createConnection("");
+             Statement statement = connection.createStatement()) {
+            statement.execute("SET collation_connection = 'utf8mb4_0900_ai_ci'");
+            assertDoesNotThrow(() -> BusinessMigrationPreflight.verify(connection));
+        }
+
+        flyway().migrate();
+
+        assertEquals(1, countRows("""
+                SELECT COUNT(*) FROM entity_definition
+                WHERE entity_code = 'collation_test_entity'
+                  AND active_process_definition_key = 730000000000000001
+                """));
+    }
+
     private IllegalStateException verifyFails() throws Exception {
         try (Connection connection = MYSQL.createConnection("")) {
             return assertThrows(
@@ -479,6 +544,30 @@ class PositionManagementMigrationTest {
                         MYSQL.getPassword())
                 .locations("classpath:db/migration")
                 .target(MigrationVersion.fromVersion("69"))
+                .cleanDisabled(false)
+                .load();
+    }
+
+    private Flyway flywayThrough71() {
+        return Flyway.configure()
+                .dataSource(
+                        MYSQL.getJdbcUrl(),
+                        MYSQL.getUsername(),
+                        MYSQL.getPassword())
+                .locations("classpath:db/migration")
+                .target(MigrationVersion.fromVersion("71"))
+                .cleanDisabled(false)
+                .load();
+    }
+
+    private Flyway flywayThrough72() {
+        return Flyway.configure()
+                .dataSource(
+                        MYSQL.getJdbcUrl(),
+                        MYSQL.getUsername(),
+                        MYSQL.getPassword())
+                .locations("classpath:db/migration")
+                .target(MigrationVersion.fromVersion("72"))
                 .cleanDisabled(false)
                 .load();
     }

@@ -3,12 +3,17 @@ import { readFileSync } from 'node:fs'
 import {
   ASSIGNMENT_CONFIG_VERSION,
   buildAssigneeConfig,
+  buildEntityUserReferenceResolverConfig,
   buildRelativeOrgPositionResolverConfig,
   buildUserTaskReferenceOptions,
+  ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
+  ENTITY_USER_REFERENCE_RESOLVER_CODE,
+  isEntityUserReferenceField,
   MAX_NODE_REFERENCE_DEPTH,
   NODE_REFERENCE_ASSIGNEE_TYPE,
   RELATIVE_ORG_POSITION_RESOLVER_CODE,
   normalizeDesignerAssigneeConfig,
+  normalizeEntityUserReferenceConfig,
   normalizeNodeReferenceAssigneeConfig,
   normalizeRelativeOrgPositionConfig,
   relativeOrgPositionSummary,
@@ -104,6 +109,174 @@ assert.equal(
   orSignConfig.multiInstanceCompletionRate,
   1,
   '通过率 0 必须抬到最小值 1'
+)
+
+const entityUserReferenceFieldCases = [
+  [
+    { fieldType: 'USER', isPublished: true },
+    true,
+    '原生 USER 字段应可作为单用户来源'
+  ],
+  [
+    { fieldType: 'REFERENCE', refEntityType: 'USER', isPublished: true },
+    true,
+    'refEntityType=USER 的单选关系应可作为单用户来源'
+  ],
+  [
+    {
+      fieldType: 'MULTI_REFERENCE',
+      refEntityType: 'CUSTOM',
+      refEntityCode: 'sys_user',
+      isPublished: true
+    },
+    true,
+    '指向 sys_user 的多选实体关系应可作为多用户来源'
+  ],
+  [
+    {
+      fieldType: 'REFERENCE',
+      refEntityType: 'CUSTOM',
+      refEntityCode: 'customer',
+      isPublished: true
+    },
+    false,
+    '指向普通业务实体的关系字段不得成为审批人来源'
+  ],
+  [
+    {
+      fieldType: 'REFERENCE',
+      refEntityType: 'USER',
+      refEntityId: 'customer-entity-id',
+      refEntityCode: 'customer',
+      isPublished: true
+    },
+    false,
+    '现代关系必须以 refEntityId 对应的真实目标为准，不能信任冲突的历史类型'
+  ],
+  [
+    {
+      fieldType: 'MULTI_REFERENCE',
+      refEntityType: 'USER',
+      refEntityId: 'dangling-entity-id',
+      isPublished: true
+    },
+    false,
+    '目标实体缺失的现代关系不能回退成用户关系'
+  ],
+  [
+    { fieldType: 'USER', isPublished: false },
+    false,
+    '尚未发布的 USER 字段不得成为审批人来源'
+  ],
+  [
+    { fieldType: 'USER' },
+    false,
+    '发布状态缺失的历史字段必须由后端确认后才能成为审批人来源'
+  ],
+  [
+    { fieldType: 'DEPT', refEntityType: 'USER', isPublished: true },
+    false,
+    '非用户关系字段不得仅凭 refEntityType 混入候选项'
+  ]
+]
+for (const [field, expected, message] of entityUserReferenceFieldCases) {
+  assert.equal(isEntityUserReferenceField(field), expected, message)
+}
+
+const singleEntityUserReference = buildEntityUserReferenceResolverConfig({
+  entityCode: 'leave_request',
+  fieldCode: 'owner_id',
+  fieldType: 'REFERENCE'
+})
+assert.deepEqual(singleEntityUserReference, {
+  assigneeType: 'interface',
+  resolverCode: ENTITY_USER_REFERENCE_RESOLVER_CODE,
+  resolverDisplayName: '实体用户关系字段',
+  assignmentMode: 'DIRECT',
+  extraParams: {
+    schemaVersion: 1,
+    entityCode: 'leave_request',
+    fieldCode: 'owner_id'
+  }
+}, '单选用户关系应投影为 DIRECT 内置人员解析器')
+
+const multiEntityUserReference = buildEntityUserReferenceResolverConfig({
+  entityCode: 'leave_request',
+  fieldCode: 'reviewer_ids',
+  fieldType: 'MULTI_REFERENCE'
+})
+assert.equal(multiEntityUserReference.assigneeType, 'interface')
+assert.equal(
+  multiEntityUserReference.assignmentMode,
+  'CANDIDATE',
+  '普通任务的多选用户关系应投影为候选人集合'
+)
+assert.deepEqual(multiEntityUserReference.extraParams, {
+  schemaVersion: 1,
+  entityCode: 'leave_request',
+  fieldCode: 'reviewer_ids'
+})
+assert.equal(
+  buildEntityUserReferenceResolverConfig({
+    entityCode: 'leave_request',
+    fieldCode: 'owner_id',
+    fieldType: 'REFERENCE',
+    isMultiInstance: true
+  }).assignmentMode,
+  'CANDIDATE',
+  '多人办理必须保留字段中的全部用户'
+)
+
+const persistedEntityUserReference = buildAssigneeConfig({
+  ...multiEntityUserReference,
+  nextApproverSelection: {}
+})
+assert.equal(persistedEntityUserReference.assignmentConfigVersion, 2)
+assert.equal(persistedEntityUserReference.assigneeType, 'interface')
+assert.equal(
+  persistedEntityUserReference.resolverCode,
+  ENTITY_USER_REFERENCE_RESOLVER_CODE
+)
+assert.equal(persistedEntityUserReference.assignmentMode, 'CANDIDATE')
+const loadedEntityUserReference = normalizeDesignerAssigneeConfig(
+  persistedEntityUserReference,
+  {},
+  false
+)
+assert.deepEqual(
+  normalizeEntityUserReferenceConfig(loadedEntityUserReference),
+  {
+    schemaVersion: 1,
+    entityCode: 'leave_request',
+    fieldCode: 'reviewer_ids'
+  },
+  '实体用户关系的 v2 配置必须能在 load-save 后无损恢复字段坐标'
+)
+const persistedEntityUserReferenceAgain = buildAssigneeConfig(
+  loadedEntityUserReference
+)
+for (const key of [
+  'assignmentConfigVersion',
+  'assigneeType',
+  'resolverCode',
+  'resolverDisplayName',
+  'assignmentMode'
+]) {
+  assert.equal(
+    persistedEntityUserReferenceAgain[key],
+    persistedEntityUserReference[key],
+    `实体用户关系 v2 load-save 不得改变 ${key}`
+  )
+}
+assert.deepEqual(
+  persistedEntityUserReferenceAgain.extraParams,
+  persistedEntityUserReference.extraParams,
+  '实体用户关系 v2 load-save 不得丢失 extraParams'
+)
+assert.equal(
+  ENTITY_USER_REFERENCE_ASSIGNEE_TYPE,
+  'entity_user_reference',
+  '设计器语义类型必须使用稳定编码'
 )
 
 for (const [legacyType, legacyFields] of [
@@ -741,8 +914,13 @@ for (const marker of [
 }
 assert.match(
   nodeConfigPanelSource,
-  /assigneeConfig\.assigneeType === 'interface'[\s\S]*?RELATIVE_ORG_POSITION_RESOLVER_CODE[\s\S]*?RELATIVE_ORG_POSITION_ASSIGNEE_TYPE/,
-  '旧 interface/relativeOrgPosition 配置必须回显为一等语义 UI'
+  /\['interface', 'resolver'\]\.includes\(assigneeConfig\.assigneeType\)[\s\S]*?RELATIVE_ORG_POSITION_RESOLVER_CODE[\s\S]*?RELATIVE_ORG_POSITION_ASSIGNEE_TYPE/,
+  '旧 interface/resolver + relativeOrgPosition 配置必须回显为一等语义 UI'
+)
+assert.match(
+  nodeConfigPanelSource,
+  /\['interface', 'resolver'\]\.includes\(assigneeConfig\.assigneeType\)[\s\S]*?ENTITY_USER_REFERENCE_RESOLVER_CODE[\s\S]*?ENTITY_USER_REFERENCE_ASSIGNEE_TYPE/,
+  '旧 interface/resolver + entityUserReferenceField 配置必须回显为一等语义 UI'
 )
 assert.ok(
   nodeConfigPanelSource.includes('result.resultCode')

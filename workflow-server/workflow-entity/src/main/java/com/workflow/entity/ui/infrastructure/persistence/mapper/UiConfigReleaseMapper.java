@@ -31,27 +31,34 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
             @Param("configType") String configType,
             @Param("configId") String configId);
 
-    @Select("SELECT id, config_type, config_id, version, content_hash, "
-            + "status, description, release_mode, base_release_id, "
-            + "risk_level, rollout_scope, published_by, published_at, "
-            + "CASE WHEN release_mode <> 'HOTFIX' THEN NULL "
+    /**
+     * 分页查询发布历史摘要，并关联人员目录回显发布人的姓名与登录名。
+     * 发布记录仅保存人员 ID，历史页不能将该内部 ID 直接暴露为发布人名称。
+     */
+    @Select("SELECT r.id, r.config_type, r.config_id, r.version, r.content_hash, "
+            + "r.status, r.description, r.release_mode, r.base_release_id, "
+            + "r.risk_level, r.rollout_scope, r.published_by, "
+            + "u.nickname AS published_by_name, "
+            + "u.username AS published_by_username, r.published_at, "
+            + "CASE WHEN r.release_mode <> 'HOTFIX' THEN NULL "
             + "WHEN EXISTS (SELECT 1 FROM ui_config_hotfix_target t "
-            + "WHERE t.hotfix_release_id = ui_config_release.id "
+            + "WHERE t.hotfix_release_id = r.id "
             + "AND t.status = 'ACTIVE') THEN 'ACTIVE' "
             + "WHEN EXISTS (SELECT 1 FROM ui_config_hotfix_target t "
-            + "WHERE t.hotfix_release_id = ui_config_release.id "
+            + "WHERE t.hotfix_release_id = r.id "
             + "AND t.status = 'SUPERSEDED') THEN 'SUPERSEDED' "
             + "WHEN EXISTS (SELECT 1 FROM ui_config_hotfix_target t "
-            + "WHERE t.hotfix_release_id = ui_config_release.id "
+            + "WHERE t.hotfix_release_id = r.id "
             + "AND t.status = 'ROLLED_BACK') "
             + "OR EXISTS (SELECT 1 FROM ui_config_release_audit a "
-            + "WHERE a.release_id = ui_config_release.id "
+            + "WHERE a.release_id = r.id "
             + "AND a.operation = 'ROLLBACK_HOTFIX') THEN 'ROLLED_BACK' "
-            + "WHEN status = 'ACTIVE' THEN 'ACTIVE' "
+            + "WHEN r.status = 'ACTIVE' THEN 'ACTIVE' "
             + "ELSE 'SUPERSEDED' END AS rollout_status "
-            + "FROM ui_config_release "
-            + "WHERE config_type = #{configType} AND config_id = #{configId} "
-            + "ORDER BY version DESC LIMIT #{offset}, #{pageSize}")
+            + "FROM ui_config_release r "
+            + "LEFT JOIN sys_user u ON u.id = r.published_by AND u.deleted = 0 "
+            + "WHERE r.config_type = #{configType} AND r.config_id = #{configId} "
+            + "ORDER BY r.version DESC LIMIT #{offset}, #{pageSize}")
     List<UiConfigReleaseSummaryDTO> findReleaseSummaries(
             @Param("configType") String configType,
             @Param("configId") String configId,

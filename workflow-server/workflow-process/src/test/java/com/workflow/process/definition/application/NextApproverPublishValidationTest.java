@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 class NextApproverPublishValidationTest {
@@ -306,7 +307,9 @@ class NextApproverPublishValidationTest {
                 {"type":"ALL_USERS","values":[]}]}}}
                 """;
         String hidden = """
-                {"nextApproverSelection":{"version":1,
+                {"assignmentConfigVersion":2,
+                "assigneeType":"user","assigneeValue":"alice",
+                "nextApproverSelection":{"version":1,
                 "visible":false,"editable":false,
                 "source":{"type":"SCOPE","rules":[]}}}
                 """;
@@ -657,7 +660,7 @@ class NextApproverPublishValidationTest {
                         + userTask("source", source, "")),
                 "runtime_process"));
 
-        verify(resolverRuntimeService).requireConfigured(
+        verify(resolverRuntimeService, times(2)).requireConfigured(
                 "sharedResolver", PersonResolveUsage.ASSIGNEE);
         verify(resolverRuntimeService).requireConfigured(
                 "sharedResolver", PersonResolveUsage.MULTI_INSTANCE);

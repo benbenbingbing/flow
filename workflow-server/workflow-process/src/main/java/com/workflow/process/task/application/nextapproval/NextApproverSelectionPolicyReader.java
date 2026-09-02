@@ -178,8 +178,9 @@ public class NextApproverSelectionPolicyReader {
             UserTask userTask,
             Map<String, Object> currentConfig) {
         if (bpmnModel == null) {
-            if (NodeAssignmentReferenceResolver.isNodeReference(
-                    currentConfig)) {
+            if (NodeAssignmentReferenceResolver.isEffectiveNodeReference(
+                    currentConfig,
+                    userTask.hasMultiInstanceLoopCharacteristics())) {
                 throw invalid(userTask,
                         "解析 node_reference 必须提供已部署 BpmnModel");
             }

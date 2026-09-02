@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;
+import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.bpmn.model.UserTask;
 import org.flowable.engine.RepositoryService;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,27 @@ class RelativeOrgPositionProcessInspectorTest {
 
         assertTrue(inspector.requiresInitiatorOrganizationSnapshot(
                 "damaged"));
+    }
+
+    @Test
+    void legacyStaticAssignmentIgnoresStaleBaseRelativeResolver() {
+        RepositoryService repository = mock(RepositoryService.class);
+        RelativeOrgPositionProcessInspector inspector =
+                new RelativeOrgPositionProcessInspector(
+                        repository, new ObjectMapper());
+        UserTask legacyTask = task(
+                        "legacyReview",
+                        "{\"multiInstanceUsernames\":[\"alice\"],"
+                                + "\"assigneeType\":\"interface\","
+                                + "\"resolverCode\":"
+                                + "\"relativeOrgPosition\"}");
+        legacyTask.setLoopCharacteristics(
+                new MultiInstanceLoopCharacteristics());
+        when(repository.getBpmnModel("legacy-static"))
+                .thenReturn(model(legacyTask));
+
+        assertFalse(inspector.requiresInitiatorOrganizationSnapshot(
+                "legacy-static"));
     }
 
     private BpmnModel model(UserTask task) {

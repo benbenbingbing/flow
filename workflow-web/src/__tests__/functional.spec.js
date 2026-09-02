@@ -732,6 +732,15 @@ assert.ok(
   organizationManagementSource.includes('PositionAssignmentDialog'),
   '组织管理必须提供锁定组织节点的职务任命快捷入口'
 )
+assert.match(
+  organizationManagementSource,
+  /<el-tooltip[\s\S]*?:content="row\.displayPath"[\s\S]*?<span class="org-name">\{\{ row\.orgName \}\}<\/span>[\s\S]*?<\/el-tooltip>/,
+  '组织名称悬停时必须展示完整组织层级'
+)
+assert.ok(
+  !organizationManagementSource.includes('<div class="org-path">'),
+  '组织层级不得继续占用列表行内空间'
+)
 assert.ok(
   organizationManagementSource.includes('getOrganizationBusinessLevelOptions')
     && organizationApiSource.includes("'/system/org/business-level-options'")

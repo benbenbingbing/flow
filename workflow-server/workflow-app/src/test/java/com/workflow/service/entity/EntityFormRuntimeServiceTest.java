@@ -3,6 +3,8 @@ package com.workflow.service.entity;
 import com.workflow.process.form.application.EntityFormRuntimeService;
 
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -12,11 +14,43 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class EntityFormRuntimeServiceTest {
+
+    /**
+     * 默认表单解析应将实际发布坐标保留在运行时表单对象上。
+     */
+    @Test
+    void defaultFormCarriesResolvedReleaseCoordinates() {
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        EntityFormMapper formMapper = mock(EntityFormMapper.class);
+        EntityFormRuntimeService service = new EntityFormRuntimeService(
+                releaseService,
+                formMapper,
+                mock(UiReleaseResolutionTokenService.class));
+        EntityForm defaultForm = new EntityForm();
+        defaultForm.setId("form-1");
+        EntityForm runtimeForm = new EntityForm();
+        runtimeForm.setId("form-1");
+        when(formMapper.selectDefaultByEntityId("entity-1"))
+                .thenReturn(defaultForm);
+        when(releaseService.resolveRuntimeFormRelease("form-1"))
+                .thenReturn(new ResolvedEntityFormRelease(
+                        runtimeForm,
+                        "release-4",
+                        4));
+
+        EntityForm result = service.getDefaultForm("entity-1");
+
+        assertSame(runtimeForm, result);
+        assertEquals("release-4", result.getRuntimeReleaseId());
+        assertEquals(4, result.getRuntimeReleaseVersion());
+    }
 
     @Test
     void newDataAcceptsBindingPinnedToCurrentActiveRelease() {

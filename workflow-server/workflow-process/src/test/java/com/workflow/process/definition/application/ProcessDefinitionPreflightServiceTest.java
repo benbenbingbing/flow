@@ -67,7 +67,8 @@ class ProcessDefinitionPreflightServiceTest {
         when(processInstanceQuery.processDefinitionKey("expense_flow")).thenReturn(processInstanceQuery);
         when(processInstanceQuery.active()).thenReturn(processInstanceQuery);
         when(processInstanceQuery.count()).thenReturn(3L);
-        lenient().when(sanitizer.sanitize(anyString(), anyString()))
+        lenient().when(sanitizer.sanitize(
+                anyString(), anyString(), anyString()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -111,7 +112,10 @@ class ProcessDefinitionPreflightServiceTest {
         doThrow(new IllegalArgumentException(
                 "BPMN_EXECUTABLE_PROCESS_AMBIGUOUS: 多流程协作图必须且只能包含一个主流程"))
                 .when(sanitizer)
-                .sanitize(process.getBpmnXml(), process.getProcessKey());
+                .sanitize(
+                        process.getBpmnXml(),
+                        process.getProcessKey(),
+                        process.getId());
 
         ProcessPublishPreviewDTO preview = service.preview(process);
 
@@ -129,7 +133,10 @@ class ProcessDefinitionPreflightServiceTest {
                 "BPMN_DATA_OBJECT_NAME_MISSING: 数据对象必须配置名称, "
                         + "element=DataObjectReference_1"))
                 .when(sanitizer)
-                .sanitize(process.getBpmnXml(), process.getProcessKey());
+                .sanitize(
+                        process.getBpmnXml(),
+                        process.getProcessKey(),
+                        process.getId());
 
         ProcessPublishPreviewDTO preview = service.preview(process);
 

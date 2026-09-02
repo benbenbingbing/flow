@@ -6,6 +6,9 @@ export const NODE_REFERENCE_ASSIGNEE_TYPE = 'node_reference'
 export const RELATIVE_ORG_POSITION_ASSIGNEE_TYPE = 'relative_position'
 export const RELATIVE_ORG_POSITION_RESOLVER_CODE = 'relativeOrgPosition'
 export const RELATIVE_ORG_POSITION_RESOLVER_DISPLAY_NAME = '相对组织职务'
+export const ENTITY_USER_REFERENCE_ASSIGNEE_TYPE = 'entity_user_reference'
+export const ENTITY_USER_REFERENCE_RESOLVER_CODE = 'entityUserReferenceField'
+export const ENTITY_USER_REFERENCE_RESOLVER_DISPLAY_NAME = '实体用户关系字段'
 export const MAX_NODE_REFERENCE_DEPTH = 16
 export const MULTI_INSTANCE_DECISION_COUNTERSIGN = 'countersign'
 export const MULTI_INSTANCE_DECISION_ORSIGN = 'orsign'
@@ -25,6 +28,64 @@ const RELATIVE_POSITION_MATCH_POLICIES = new Set([
   'PRIMARY_OR_ERROR',
   'ALL'
 ])
+
+/** 判断实体字段是否是可作为人员来源的已发布用户单选或多选关系。 */
+export function isEntityUserReferenceField(field = {}) {
+  const fieldType = String(field.fieldType || '').trim().toUpperCase()
+  if (!['USER', 'REFERENCE', 'MULTI_REFERENCE'].includes(fieldType)) {
+    return false
+  }
+  const published = field.isPublished === true
+    || field.isPublished === 1
+    || String(field.isPublished || '').trim().toLowerCase() === 'true'
+  if (!published) {
+    return false
+  }
+  if (fieldType === 'USER') return true
+  const targetEntityCode = String(field.refEntityCode || '').trim().toLowerCase()
+  const targetEntityId = String(field.refEntityId || '').trim()
+  // 现代关系存在 refEntityId 时必须以服务端回填的真实目标为准；目标
+  // 缺失或不是 sys_user 都不能回退到可能过期的 refEntityType。
+  if (targetEntityId) return targetEntityCode === 'sys_user'
+  if (targetEntityCode) return targetEntityCode === 'sys_user'
+  return String(field.refEntityType || '').trim().toUpperCase() === 'USER'
+}
+
+/** 将解析器 extraParams 或完整 assigneeConfig 恢复为设计器字段坐标。 */
+export function normalizeEntityUserReferenceConfig(value = {}) {
+  const source = configObject(value)
+  const params = Object.keys(configObject(source.extraParams)).length
+    ? configObject(source.extraParams)
+    : source
+  return {
+    schemaVersion: Number(params.schemaVersion || 1),
+    entityCode: String(params.entityCode || '').trim(),
+    fieldCode: String(params.fieldCode || '').trim()
+  }
+}
+
+/**
+ * 把设计器的实体用户字段语义类型投影到统一的内置人员解析器契约。
+ * 多选字段在普通任务中作为候选人，多人办理时由 collection 为每人建任务。
+ */
+export function buildEntityUserReferenceResolverConfig(value = {}) {
+  const config = normalizeEntityUserReferenceConfig(value)
+  const fieldType = String(value.fieldType || '').trim().toUpperCase()
+  const multiInstance = value.isMultiInstance === true
+  return {
+    assigneeType: 'interface',
+    resolverCode: ENTITY_USER_REFERENCE_RESOLVER_CODE,
+    resolverDisplayName: ENTITY_USER_REFERENCE_RESOLVER_DISPLAY_NAME,
+    assignmentMode: multiInstance || fieldType === 'MULTI_REFERENCE'
+      ? 'CANDIDATE'
+      : 'DIRECT',
+    extraParams: {
+      schemaVersion: 1,
+      entityCode: config.entityCode,
+      fieldCode: config.fieldCode
+    }
+  }
+}
 
 function finiteNumberOr(value, fallback) {
   const parsed = Number(value)

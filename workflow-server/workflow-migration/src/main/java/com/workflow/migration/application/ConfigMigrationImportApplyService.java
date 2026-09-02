@@ -173,6 +173,7 @@ public class ConfigMigrationImportApplyService {
     private final UiViewCompositionService viewCompositionService;
     private final DictCacheService dictCacheService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
+    private final ConfigMigrationProcessLockCoordinator processLockCoordinator;
     private final ConfigMigrationAssetService assetService;
     private final ConfigMigrationMenuImporter menuImporter;
     private final ConfigMigrationPackageCodec packageCodec;
@@ -240,6 +241,11 @@ public class ConfigMigrationImportApplyService {
                 importId,
                 actionableItems.size(),
                 items.size() - actionableItems.size());
+
+        // 普通实体绑定统一采用“流程行 -> 实体行”锁序。迁移也必须在任何
+        // entity_definition 写入前先锁流程、再锁并校验实体，避免反向死锁
+        // 和过期绑定写入。
+        processLockCoordinator.lockAffectedExistingProcesses(actionableItems);
 
         List<ConfigImportItem> dictionaries = itemsOfType(
                 actionableItems,
@@ -681,10 +687,11 @@ public class ConfigMigrationImportApplyService {
         List<ConfigImportItem> dictionaryRollbacks =
                 new ArrayList<>();
         List<ProcessContext> processContexts = new ArrayList<>();
+        List<RollbackItemPlan> rollbackPlans = new ArrayList<>();
         for (ConfigImportItem item : items) {
             ConfigMigrationAsset previous = previousAsset(item);
             if (previous == null) {
-                disableNewAsset(item);
+                rollbackPlans.add(new RollbackItemPlan(item, null));
                 continue;
             }
             if (!ConfigMigrationAssetService.COMPLETE.equals(previous.getSnapshotCompleteness())) {
@@ -702,6 +709,20 @@ public class ConfigMigrationImportApplyService {
             markRemovedViewCompositionsForRollback(
                     rollbackSnapshot, importedSnapshot);
             rollbackItem.setSnapshotJson(writeJson(rollbackSnapshot));
+            rollbackPlans.add(new RollbackItemPlan(item, rollbackItem));
+        }
+
+        // 回滚必须使用“上一版本恢复快照”而非本次导入快照计算目标流程。
+        // 先完成纯计划并统一取得 P→E 锁，之后才允许停用或恢复任何实体。
+        processLockCoordinator.lockAffectedExistingProcesses(
+                rollbackLockItems(rollbackPlans));
+        for (RollbackItemPlan plan : rollbackPlans) {
+            ConfigImportItem item = plan.originalItem();
+            ConfigImportItem rollbackItem = plan.rollbackItem();
+            if (rollbackItem == null) {
+                disableNewAsset(item);
+                continue;
+            }
             if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
                 entityRollbacks.add(new EntityRollbackContext(
                         prepareEntity(rollbackItem, true),
@@ -814,6 +835,19 @@ public class ConfigMigrationImportApplyService {
         importPackage.setPublishedAt(LocalDateTime.now());
         importPackageMapper.updateById(importPackage);
         return publishResult(importPackage, items);
+    }
+
+    /**
+     * 为回滚锁计划选择真实将要应用的条目；新增资产没有历史快照，使用原条目
+     * 以锁定其当前实体绑定后再执行停用。
+     */
+    static List<ConfigImportItem> rollbackLockItems(
+            List<RollbackItemPlan> plans) {
+        return plans.stream()
+                .map(plan -> plan.rollbackItem() == null
+                        ? plan.originalItem()
+                        : plan.rollbackItem())
+                .toList();
     }
 
     private SystemEntityUiContext prepareSystemEntityUi(
@@ -987,14 +1021,30 @@ public class ConfigMigrationImportApplyService {
             entity = entityMapper.findByEntityCode(entityCode)
                     .orElseThrow(() -> new IllegalStateException("实体创建失败: " + entityCode));
         } else if (applyDefinition) {
-            entity.setEntityName(text(definition.get("entityName"), entity.getEntityName()));
-            entity.setDescription(text(definition.get("description"), entity.getDescription()));
             if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
                 throw new IllegalStateException("配置迁移不能覆盖平台系统实体: " + entityCode);
             }
-            entity.setLifecycleMode(lifecycleMode(definition));
-            entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
-            entityMapper.updateById(entity);
+            String entityName = text(
+                    definition.get("entityName"), entity.getEntityName());
+            String description = text(
+                    definition.get("description"), entity.getDescription());
+            entityMapper.update(
+                    null,
+                    new UpdateWrapper<EntityDefinition>()
+                            .eq("id", entity.getId())
+                            .set("entity_name", entityName)
+                            .set("description", description));
+            entity.setEntityName(entityName);
+            entity.setDescription(description);
+            EntityDefinition.LifecycleMode requestedLifecycle =
+                    lifecycleMode(definition);
+            if (requestedLifecycle != entity.getLifecycleMode()) {
+                // 生命周期变更复用领域服务，禁止迁移包绕过 WORKFLOW
+                // 降级与系统字段初始化规则。
+                entityService.updateLifecycleMode(
+                        entity.getId(), requestedLifecycle);
+                entity.setLifecycleMode(requestedLifecycle);
+            }
             permissionCatalogService.synchronizeEntity(entity);
         } else if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
             throw new IllegalStateException("配置迁移不能覆盖平台系统实体: " + entityCode);
@@ -2117,8 +2167,12 @@ public class ConfigMigrationImportApplyService {
                 continue;
             }
             if (!StringUtils.hasText(context.processKey())) {
-                context.entity().setProcessDefinitionId(null);
-                entityMapper.updateById(context.entity());
+                if (StringUtils.hasText(
+                        context.entity().getProcessDefinitionId())) {
+                    entityService.unbindWorkflow(
+                            context.entity().getId());
+                    context.entity().setProcessDefinitionId(null);
+                }
                 continue;
             }
             String targetKey = mappedKey("PROCESS", context.processKey());
@@ -2127,10 +2181,14 @@ public class ConfigMigrationImportApplyService {
                 process = processMapper.findByProcessKey(targetKey)
                         .orElseThrow(() -> new IllegalStateException("绑定流程不存在: " + targetKey));
             }
-            context.entity().setProcessDefinitionId(process.getId());
-            context.entity().setLifecycleMode(EntityDefinition.LifecycleMode.WORKFLOW);
-            context.entity().setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
-            entityMapper.updateById(context.entity());
+            EntityDefinitionDTO binding = entityService.bindWorkflow(
+                    context.entity().getId(), process.getId());
+            context.entity().setProcessDefinitionId(
+                    binding.getProcessDefinitionId());
+            context.entity().setLifecycleMode(
+                    EntityDefinition.LifecycleMode.WORKFLOW);
+            context.entity().setStorageMode(
+                    EntityDefinition.StorageMode.DYNAMIC);
         }
     }
 
@@ -2344,10 +2402,13 @@ public class ConfigMigrationImportApplyService {
      */
     private void disableNewAsset(ConfigImportItem item) {
         if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
-            EntityDefinition entity = entityMapper.findByEntityCode(item.getBusinessKey()).orElse(null);
+            // 回滚只持有实体锁并窄更新状态；这里不得再获取流程锁，以保持 P→E 的统一锁序。
+            EntityDefinition entity = entityMapper.findByEntityCodeForUpdate(
+                    item.getBusinessKey()).orElse(null);
             if (entity != null) {
-                entity.setStatus(EntityDefinition.Status.DISABLED);
-                entityMapper.updateById(entity);
+                entityMapper.updateStatus(
+                        entity.getId(),
+                        EntityDefinition.Status.DISABLED);
                 permissionCatalogService.disableEntityPermissions(entity.getEntityCode());
             }
             return;
@@ -2858,6 +2919,12 @@ public class ConfigMigrationImportApplyService {
     private record EntityRollbackContext(
             EntityContext context,
             ConfigImportItem originalItem) {
+    }
+
+    /** 原导入条目及由上一版本快照生成的实际回滚条目；后者为空表示停用新增资产。 */
+    record RollbackItemPlan(
+            ConfigImportItem originalItem,
+            ConfigImportItem rollbackItem) {
     }
 
     /** 系统实体UI应用上下文，只允许写入表单、列表及其只读依赖配置。 */

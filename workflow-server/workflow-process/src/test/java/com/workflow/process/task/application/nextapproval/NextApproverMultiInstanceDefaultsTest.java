@@ -14,6 +14,8 @@ import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.bpmn.model.UserTask;
 import org.flowable.task.api.Task;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -92,7 +94,77 @@ class NextApproverMultiInstanceDefaultsTest {
     }
 
     @Test
-    void relativePositionNeverUsesAStaleCollectionFromAnEarlierLoopCycle() {
+    void legacyStaticSnapshotWinsWhenBaseResolverIsOnlyStaleMetadata() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        when(userMapper.selectByUsername("prepared-user"))
+                .thenReturn(user("user-prepared", "prepared-user"));
+        when(userMapper.selectByUsername("legacy-user"))
+                .thenReturn(user("user-legacy", "legacy-user"));
+        PersonResolverRuntimeService resolverRuntimeService =
+                mock(PersonResolverRuntimeService.class);
+        NextApproverCandidateService service =
+                new NextApproverCandidateService(
+                        mock(NextApprovalRouteService.class),
+                        resolverRuntimeService,
+                        userMapper,
+                        mock(SysRoleMapper.class),
+                        mock(SysUserRoleMapper.class),
+                        mock(SysGroupMapper.class),
+                        mock(SysUserGroupMapper.class),
+                        mock(SysOrganizationMapper.class));
+        UserTask userTask = new UserTask();
+        userTask.setId("legacy-review");
+        MultiInstanceLoopCharacteristics loop =
+                new MultiInstanceLoopCharacteristics();
+        loop.setInputDataItem("${reviewers}");
+        userTask.setLoopCharacteristics(loop);
+        NextApproverSelectionPolicy policy =
+                new NextApproverSelectionPolicy(
+                        true,
+                        1,
+                        true,
+                        true,
+                        "MULTI_INSTANCE",
+                        true,
+                        NextApproverSelectionPolicy.SourceType.SCOPE,
+                        List.of(new NextApproverSelectionPolicy.Scope(
+                                NextApproverSelectionPolicy.ScopeType.ALL_USERS,
+                                List.of(),
+                                false)),
+                        null,
+                        Map.of(),
+                        "policy-legacy");
+        NextApprovalTarget target = new NextApprovalTarget(
+                userTask,
+                Map.of(
+                        "multiInstanceUsernames", List.of("legacy-user"),
+                        "assigneeType", "interface",
+                        "resolverCode", "entityUserReferenceField"),
+                policy);
+        NextApprovalResolution resolution = new NextApprovalResolution(
+                mock(Task.class),
+                NextApprovalPreviewStatus.READY,
+                null,
+                "scope-legacy",
+                List.of(target),
+                Map.of("reviewers", List.of("prepared-user")));
+
+        List<NextApproverCandidateDTO> defaults =
+                service.defaultAssignees(resolution, target);
+
+        assertEquals(List.of("prepared-user"), defaults.stream()
+                .map(NextApproverCandidateDTO::getUsername)
+                .toList());
+        verifyNoInteractions(resolverRuntimeService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "relativeOrgPosition",
+            "entityUserReferenceField"
+    })
+    void entryTimeResolverNeverUsesAStaleCollectionFromAnEarlierLoopCycle(
+            String resolverCode) {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         when(userMapper.selectByUsername("old-leader"))
                 .thenReturn(user("user-old", "old-leader"));
@@ -101,7 +173,7 @@ class NextApproverMultiInstanceDefaultsTest {
         PersonResolverRuntimeService resolverRuntimeService =
                 mock(PersonResolverRuntimeService.class);
         when(resolverRuntimeService.resolveUsernames(
-                eq("relativeOrgPosition"), any()))
+                eq(resolverCode), any()))
                 .thenReturn(List.of("current-leader"));
         NextApproverCandidateService service =
                 new NextApproverCandidateService(
@@ -137,7 +209,7 @@ class NextApproverMultiInstanceDefaultsTest {
                 Map.of(
                         "assignmentConfigVersion", 2,
                         "assigneeType", "interface",
-                        "resolverCode", "relativeOrgPosition",
+                        "resolverCode", resolverCode,
                         "extraParams", Map.of(
                                 "schemaVersion", 1)),
                 policy);
@@ -160,7 +232,7 @@ class NextApproverMultiInstanceDefaultsTest {
                 .map(NextApproverCandidateDTO::getUsername)
                 .toList());
         org.mockito.Mockito.verify(resolverRuntimeService)
-                .resolveUsernames(eq("relativeOrgPosition"), any());
+                .resolveUsernames(eq(resolverCode), any());
     }
 
     @Test

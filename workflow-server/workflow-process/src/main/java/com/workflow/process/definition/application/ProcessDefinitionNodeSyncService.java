@@ -320,11 +320,15 @@ public class ProcessDefinitionNodeSyncService {
     }
 
     private String getEntityCodeByProcessId(String processConfigId) {
-        EntityDefinition entityDef = entityDefinitionMapper.findByProcessDefinitionId(processConfigId).orElse(null);
-        if (entityDef != null) {
-            return entityDef.getEntityCode();
+        List<EntityDefinition> bindings = entityDefinitionMapper
+                .findAllByProcessDefinitionId(processConfigId);
+        if (bindings.size() > 1) {
+            throw new IllegalStateException(
+                    "流程绑定了多个实体，不能同步节点配置: "
+                            + processConfigId);
         }
-        return null;
+        return bindings.isEmpty()
+                ? null : bindings.get(0).getEntityCode();
     }
 
     private int parseNodesByType(String processConfigId, String bpmnXml, String tagName, NodeConfig.NodeType nodeType) {
@@ -446,6 +450,9 @@ public class ProcessDefinitionNodeSyncService {
                             ? Map.of()
                             : objectMapper.readValue(
                             multiInstanceConfigJson, Map.class);
+            boolean multiInstance = content.toLowerCase(
+                    java.util.Locale.ROOT)
+                    .contains("multiinstanceloopcharacteristics");
             if (!assigneeConfig.isEmpty()) {
                 mergeConfigJson(
                         nodeConfigId,
@@ -473,7 +480,9 @@ public class ProcessDefinitionNodeSyncService {
                 LegacyAssignment legacy =
                         LegacyMultiInstanceAssignmentParser.parse(
                                 effectiveConfig);
-                if (legacy.effective()) {
+                if (LegacyMultiInstanceAssignmentParser
+                        .usesLegacyMultiInstanceAssignment(
+                                effectiveConfig, multiInstance)) {
                     if (!legacy.resolver()) {
                         for (String user : legacy.userKeys()) {
                             priority = saveUserAssignee(

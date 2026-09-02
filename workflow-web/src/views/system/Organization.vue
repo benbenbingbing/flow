@@ -50,8 +50,14 @@
           <template #default="{ row }">
             <el-icon v-if="row.type === 'org'"><OfficeBuilding /></el-icon>
             <el-icon v-else><House /></el-icon>
-            <span style="margin-left: 5px">{{ row.orgName }}</span>
-            <div class="org-path">{{ row.displayPath }}</div>
+            <el-tooltip
+              :content="row.displayPath"
+              placement="top-start"
+              :show-after="200"
+              :popper-style="{ maxWidth: '480px' }"
+            >
+              <span class="org-name">{{ row.orgName }}</span>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column prop="orgCode" label="编码" width="150" />
@@ -552,15 +558,14 @@ onMounted(() => {
   margin-bottom: 14px;
 }
 
-.org-path,
 .field-help {
   margin-top: 4px;
   color: #909399;
   font-size: 12px;
 }
 
-.org-path {
-  margin-left: 25px;
+.org-name {
+  margin-left: 5px;
 }
 
 .leader-editor {

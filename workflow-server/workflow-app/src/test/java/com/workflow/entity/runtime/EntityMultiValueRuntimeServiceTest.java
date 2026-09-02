@@ -2,6 +2,7 @@ package com.workflow.entity.runtime;
 
 import com.workflow.entity.data.application.EntityMultiValueRuntimeService;
 
+import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -43,12 +44,14 @@ class EntityMultiValueRuntimeServiceTest {
         EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
         DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
+        SystemEntityFieldPolicy systemEntityFieldPolicy = mock(SystemEntityFieldPolicy.class);
         EntityMultiValueRuntimeService service = new EntityMultiValueRuntimeService(
                 jdbcTemplate,
                 fieldMapper,
                 definitionMapper,
                 dynamicTableService,
-                tableResolver);
+                tableResolver,
+                systemEntityFieldPolicy);
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("expense-id");
@@ -93,12 +96,14 @@ class EntityMultiValueRuntimeServiceTest {
         EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
         DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
+        SystemEntityFieldPolicy systemEntityFieldPolicy = mock(SystemEntityFieldPolicy.class);
         EntityMultiValueRuntimeService service = new EntityMultiValueRuntimeService(
                 jdbcTemplate,
                 fieldMapper,
                 definitionMapper,
                 dynamicTableService,
-                tableResolver);
+                tableResolver,
+                systemEntityFieldPolicy);
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("expense-id");

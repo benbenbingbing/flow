@@ -16,6 +16,17 @@ import java.util.Optional;
 public interface ProcessVersionHistoryMapper extends BaseMapper<ProcessVersionHistory> {
 
     /**
+     * 查询流程配置是否曾产生过任一发布版本。
+     *
+     * <p>逻辑删除只隐藏目录记录，不会撤销 Flowable 部署或历史实例，因此
+     * deleted 版本仍然构成实体绑定的不可变运行契约。</p>
+     */
+    @Select("SELECT COUNT(*) FROM process_version_history "
+            + "WHERE process_config_id = #{processConfigId}")
+    long countPublishedVersions(
+            @Param("processConfigId") String processConfigId);
+
+    /**
      * 根据流程定义ID查询版本历史列表（排除已删除）
      */
     @Select("SELECT * FROM process_version_history WHERE process_config_id = #{processConfigId} AND deleted = 0 ORDER BY version DESC")

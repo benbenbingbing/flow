@@ -21,6 +21,7 @@ export function useProcessDetail() {
   const formConfig = ref(null)
   const formConfigs = ref([])
   const approvalConfig = ref(null)
+  const processRuntimeMetadata = ref({})
 
   // 获取流程状态显示文本
   function getProcessStatusText(status) {
@@ -56,12 +57,19 @@ export function useProcessDetail() {
     formConfig.value = null
     formConfigs.value = []
     approvalConfig.value = null
+    processRuntimeMetadata.value = {}
     try {
       const progressRes = await request.get(
         `/process-instance/${instanceId}/progress`,
         { params: taskId ? { taskId } : undefined }
       )
       if (progressRes) {
+        // 这些坐标描述实例实际运行的不可变流程版本，诊断展示不得从当前草稿或最新发布反推。
+        processRuntimeMetadata.value = {
+          processInstanceId: progressRes.processInstanceId || instanceId,
+          processKey: progressRes.processKey || '',
+          processVersion: progressRes.processVersion ?? null
+        }
         bpmnXml.value = progressRes.bpmnXml || ''
         progressData.value = {
           completedNodes: progressRes.completedNodes || [],
@@ -151,6 +159,7 @@ export function useProcessDetail() {
     formConfig,
     formConfigs,
     approvalConfig,
+    processRuntimeMetadata,
     getProcessStatusText,
     loadProcessDetail
   }

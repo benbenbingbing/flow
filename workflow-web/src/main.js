@@ -8,10 +8,12 @@ import App from './App.vue'
 import router from './router'
 import { useUserStore } from './stores/user'
 import { registerApplicationExtensions } from './extensions/register'
+import { configureElementPlusPopupDefaults } from './shared/element-plus-defaults'
 
 registerApplicationExtensions({
   enableDemo: import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_EXTENSIONS === 'true'
 })
+configureElementPlusPopupDefaults()
 
 const app = createApp(App)
 

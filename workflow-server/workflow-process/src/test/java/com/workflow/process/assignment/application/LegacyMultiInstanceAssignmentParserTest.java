@@ -97,4 +97,50 @@ class LegacyMultiInstanceAssignmentParserTest {
         assertFalse(versionTwo.containsKey("multiInstanceUsers"));
         assertEquals("owner", versionTwo.get("assigneeValue"));
     }
+
+    @Test
+    void effectiveResolverCodeKeepsLegacyStaticSourceAheadOfStaleBaseResolver() {
+        Map<String, Object> mixedLegacy = Map.of(
+                "multiInstanceUsernames", List.of("alice"),
+                "assigneeType", "interface",
+                "resolverCode", "entityUserReferenceField");
+
+        assertEquals(
+                "",
+                LegacyMultiInstanceAssignmentParser
+                        .effectiveResolverCode(mixedLegacy));
+        assertEquals(
+                "entityUserReferenceField",
+                LegacyMultiInstanceAssignmentParser.effectiveResolverCode(
+                        Map.of(
+                                "assignmentConfigVersion", 2,
+                                "multiInstanceUsernames", List.of("alice"),
+                                "assigneeType", "interface",
+                                "resolverCode",
+                                "entityUserReferenceField")));
+    }
+
+    @Test
+    void legacyFieldsOnlyOverrideBaseResolverOnActualMultiInstanceSource() {
+        Map<String, Object> config = Map.of(
+                "collectionSource", "resolver",
+                "collectionResolverCode", "legacyResolver",
+                "collectionExtraParams", Map.of("fieldCode", "legacyField"),
+                "assigneeType", "resolver",
+                "resolverCode", "baseResolver",
+                "extraParams", Map.of("fieldCode", "baseField"));
+
+        var multiInstance = LegacyMultiInstanceAssignmentParser
+                .effectiveResolver(config, true);
+        var ordinary = LegacyMultiInstanceAssignmentParser
+                .effectiveResolver(config, false);
+
+        assertEquals("legacyResolver", multiInstance.resolverCode());
+        assertEquals("legacyField",
+                multiInstance.extraParams().get("fieldCode"));
+        assertTrue(multiInstance.legacy());
+        assertEquals("baseResolver", ordinary.resolverCode());
+        assertEquals("baseField", ordinary.extraParams().get("fieldCode"));
+        assertFalse(ordinary.legacy());
+    }
 }

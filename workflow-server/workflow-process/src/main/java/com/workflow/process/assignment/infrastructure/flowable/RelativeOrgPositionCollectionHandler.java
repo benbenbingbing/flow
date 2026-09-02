@@ -10,15 +10,16 @@ import com.workflow.process.assignment.application.EmptyAssigneePolicyResolver;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
+import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
 import com.workflow.process.assignment.relative.RelativeOrgPositionConfig;
 import com.workflow.process.assignment.domain.AssigneeResolutionResult;
 import com.workflow.process.assignment.domain.EmptyAssigneePolicy;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;
+import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.FlowElement;
-import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.bpmn.model.UserTask;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.DelegateExecution;
@@ -37,11 +38,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Flowable 读取多实例 collection 时动态解析相对组织职务。
+ * Flowable 读取多实例 collection 时动态解析节点进入期人员来源。
  *
  * <p>仅由发布器写入的平台受控 delegateExpression 调用。该时点在引擎创建
- * 多实例执行之前；返回空人员时直接抛出结构化失败，保证不会以 0 实例
- * 静默通过审批。</p>
+ * 多实例执行之前；相对职务与实体用户关系字段都在这里读取最新权威状态。
+ * 返回空人员时直接抛出结构化失败，保证不会以 0 实例静默通过审批。
+ * Bean 名保留历史名称，以兼容既有已部署 BPMN。</p>
  */
 @Component("relativeOrgPositionCollectionHandler")
 public class RelativeOrgPositionCollectionHandler
@@ -146,7 +148,10 @@ public class RelativeOrgPositionCollectionHandler
         ResolvedAssignment effective = referenceResolver.resolve(
                 model, currentTask, config);
         Map<String, Object> effectiveConfig = effective.assigneeConfig();
-        requireRelativePositionResolver(effectiveConfig);
+        boolean sourceMultiInstance = effective.sourceTask()
+                .hasMultiInstanceLoopCharacteristics();
+        String resolverCode = requireEntryDynamicResolver(
+                effectiveConfig, sourceMultiInstance);
         List<String> users = stableUsers(assignmentResolver.resolve(
                 publishedProcessConfigId(execution.getProcessDefinitionId()),
                 currentTask.getId(),
@@ -155,11 +160,10 @@ public class RelativeOrgPositionCollectionHandler
                 execution.getVariables(),
                 execution.getProcessInstanceId(),
                 execution.getProcessDefinitionId(),
-                requireVersionTwo(effectiveConfig)));
+                assignmentVersion(effectiveConfig),
+                sourceMultiInstance));
         if (users.isEmpty()) {
-            throw new PersonResolutionException(
-                    "POSITION_NO_ACTIVE_HOLDER",
-                    "相对组织职务多实例没有可用参与人");
+            throw noAvailableUsers(resolverCode);
         }
         storeResolvedCollection(execution, cycleRoot, currentTask, users);
         markNodeEntryRecovered(execution, currentTask);
@@ -183,6 +187,11 @@ public class RelativeOrgPositionCollectionHandler
         BpmnModel model = repositoryService.getBpmnModel(
                 execution.getProcessDefinitionId());
         Map<String, Object> config = deployedAssignmentConfig(task);
+        Map<String, Object> incidentConfig = effectiveConfigOrSelf(
+                model, task, config);
+        String resolverCode = configuredDynamicResolverCode(
+                incidentConfig,
+                effectiveSourceIsMultiInstance(model, task, config));
         EmptyAssigneePolicy policy = emptyPolicyResolver.resolve(
                 model, config);
         List<String> fallbackUsers = switch (policy.strategy()) {
@@ -223,8 +232,9 @@ public class RelativeOrgPositionCollectionHandler
                 waiting ? "RETRY_SCHEDULED" : "OPEN",
                 failure.reasonCode(),
                 failure.getMessage(),
-                RelativeOrgPositionConfig.RESOLVER_CODE,
-                mapValue(config.get("extraParams")),
+                StringUtils.hasText(resolverCode)
+                        ? resolverCode : "entryDynamicPersonResolver",
+                mapValue(incidentConfig.get("extraParams")),
                 policy.fallbackUser(),
                 policy.fallbackGroup(),
                 policy.responsibilityOwner(),
@@ -295,26 +305,89 @@ public class RelativeOrgPositionCollectionHandler
         }
     }
 
-    private void requireRelativePositionResolver(
-            Map<String, Object> config) {
-        String resolverCode = firstText(
-                config.get("resolverCode"),
-                config.get("interfaceName"));
-        if (!RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)) {
+    /** collection handler 只能运行发布器明确允许的节点进入期解析器。 */
+    private String requireEntryDynamicResolver(
+            Map<String, Object> config,
+            boolean multiInstanceSource) {
+        String resolverCode = configuredDynamicResolverCode(
+                config, multiInstanceSource);
+        if (!StringUtils.hasText(resolverCode)) {
             throw new PersonResolutionException(
                     "ORG_SNAPSHOT_INVALID",
-                    "相对职务 collection handler 绑定了非目标 resolver");
+                    "动态人员 collection handler 绑定了非目标 resolver");
+        }
+        return resolverCode;
+    }
+
+    private String configuredDynamicResolverCode(
+            Map<String, Object> config,
+            boolean multiInstanceSource) {
+        return supportedDynamicResolver(
+                LegacyMultiInstanceAssignmentParser
+                        .effectiveResolver(config, multiInstanceSource)
+                        .resolverCode());
+    }
+
+    private String supportedDynamicResolver(String resolverCode) {
+        return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
+                || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
+                resolverCode)
+                ? resolverCode : "";
+    }
+
+    /** incident 也记录节点引用最终指向的解析器和参数。 */
+    private Map<String, Object> effectiveConfigOrSelf(
+            BpmnModel model,
+            UserTask task,
+            Map<String, Object> config) {
+        try {
+            return referenceResolver.resolve(model, task, config)
+                    .assigneeConfig();
+        } catch (RuntimeException ignored) {
+            // 原异常仍是节点进入失败的权威原因；incident 至少保留当前节点配置。
+            return config;
         }
     }
 
-    private int requireVersionTwo(Map<String, Object> config) {
+    private boolean effectiveSourceIsMultiInstance(
+            BpmnModel model,
+            UserTask task,
+            Map<String, Object> config) {
+        try {
+            return referenceResolver.resolve(model, task, config)
+                    .sourceTask()
+                    .hasMultiInstanceLoopCharacteristics();
+        } catch (RuntimeException ignored) {
+            return task.hasMultiInstanceLoopCharacteristics();
+        }
+    }
+
+    private PersonResolutionException noAvailableUsers(
+            String resolverCode) {
+        if (EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
+                resolverCode)) {
+            return new PersonResolutionException(
+                    "ENTITY_USER_REFERENCE_EMPTY",
+                    "实体用户关系字段多实例没有可用参与人");
+        }
+        return new PersonResolutionException(
+                "POSITION_NO_ACTIVE_HOLDER",
+                "相对组织职务多实例没有可用参与人");
+    }
+
+    private int assignmentVersion(Map<String, Object> config) {
         Object value = config.get("assignmentConfigVersion");
         if (value instanceof Number number && number.intValue() == 2) {
             return 2;
         }
+        if (value == null) {
+            // 无版本配置按历史 v1 运行。既支持 collectionResolverCode，
+            // 也支持更早期仅使用基础 resolver 的多实例部署。
+            return 1;
+        }
         throw new PersonResolutionException(
                 "ORG_SNAPSHOT_INVALID",
-                "relativeOrgPosition 多实例必须使用 assignmentConfigVersion=2");
+                "节点进入期动态解析器多实例缺少受支持的人员配置版本");
     }
 
     private String publishedProcessConfigId(String processDefinitionId) {
@@ -347,9 +420,8 @@ public class RelativeOrgPositionCollectionHandler
         cycleRoot.setVariableLocal(
                 CYCLE_CACHE_VARIABLE,
                 Map.copyOf(cache));
-        MultiInstanceLoopCharacteristics loop =
-                task.getLoopCharacteristics();
-        String variableName = collectionVariable(loop);
+        String variableName = MultiInstanceVariableNames
+                .resolveCollectionVariable(task);
         if (StringUtils.hasText(variableName)) {
             // 写入当前解析结果供审计与 ACTIVITY_STARTED 兼容监听器读取。
             // 下次循环会创建新 MI root，因而不会命中本轮 local 快照。
@@ -433,24 +505,6 @@ public class RelativeOrgPositionCollectionHandler
             UserTask task) {
         incidentRecorder.resolveOpenNodeEntry(
                 execution.getProcessInstanceId(), task.getId());
-    }
-
-    private String collectionVariable(MultiInstanceLoopCharacteristics loop) {
-        if (loop == null) {
-            return null;
-        }
-        String raw = StringUtils.hasText(loop.getInputDataItem())
-                ? loop.getInputDataItem() : loop.getCollectionString();
-        if (!StringUtils.hasText(raw)) {
-            return null;
-        }
-        String value = raw.trim();
-        if ((value.startsWith("${") || value.startsWith("#{"))
-                && value.endsWith("}")) {
-            value = value.substring(2, value.length() - 1).trim();
-        }
-        return value.matches("[A-Za-z_][A-Za-z0-9_]*")
-                ? value : null;
     }
 
     private List<String> stableUsers(Collection<String> values) {

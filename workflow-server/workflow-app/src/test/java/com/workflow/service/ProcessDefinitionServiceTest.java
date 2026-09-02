@@ -6,6 +6,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.FormFieldConfi
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.definition.application.ProcessDefinitionService;
+import com.workflow.contracts.entity.EntityCodeCatalogPort;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 
@@ -69,6 +70,9 @@ public class ProcessDefinitionServiceTest {
 
     @Mock
     private ProcessDefinitionPreflightService preflightService;
+
+    @Mock
+    private EntityCodeCatalogPort entityCodeCatalogPort;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -335,12 +339,30 @@ public class ProcessDefinitionServiceTest {
      */
     @Test
     void testDelete() {
-        when(processMapper.selectById("1")).thenReturn(testProcess);
+        when(processMapper.selectByIdForUpdate("1"))
+                .thenReturn(testProcess);
         when(processMapper.updateById(any(ProcessDefinitionConfig.class))).thenReturn(1);
 
         processService.delete("1");
 
         verify(processMapper, times(1)).updateById(any(ProcessDefinitionConfig.class));
+    }
+
+    /** 删除流程与实体绑定共用行锁，已绑定流程不得留下悬空实体关联。 */
+    @Test
+    void boundProcessCannotBeDeleted() {
+        when(processMapper.selectByIdForUpdate("1"))
+                .thenReturn(testProcess);
+        when(entityCodeCatalogPort.findEntityCodeByProcessDefinitionId("1"))
+                .thenReturn("leave_request");
+
+        var exception = assertThrows(
+                com.workflow.core.error.BusinessConflictException.class,
+                () -> processService.delete("1"));
+
+        assertEquals("PROCESS_ENTITY_BINDING_IN_USE", exception.getErrorCode());
+        verify(processMapper, never()).updateById(
+                any(ProcessDefinitionConfig.class));
     }
 
     /**

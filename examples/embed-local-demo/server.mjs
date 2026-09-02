@@ -22,6 +22,7 @@ const MAX_HOST_REQUEST_BYTES = 16 * 1024
 const MAX_FLOW_RESPONSE_BYTES = 2 * 1024 * 1024
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
 const SAFE_RECORD_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
+const SAFE_VIEW_KEY = /^[A-Za-z][A-Za-z0-9._-]{0,99}$/
 const SDK_FILENAMES = new Set(['index.js', 'FlowEmbedWidget.js', 'protocol.js'])
 const EMBED_CONTROL_PROXY_PREFIXES = [
   '/embed/v1/launches/',
@@ -136,6 +137,63 @@ function parseAllowedEntryModes(value) {
   return Object.freeze(unique)
 }
 
+function normalizeViewKey(value, label) {
+  const normalized = requiredText(value, label)
+  if (!SAFE_VIEW_KEY.test(normalized)) {
+    throw new DemoConfigurationError(`${label} 格式无效`)
+  }
+  return normalized
+}
+
+function createDemoTarget(key, label, surfaceType, viewKey, allowedEntryModes) {
+  return Object.freeze({
+    key,
+    label,
+    surfaceType,
+    viewKey: normalizeViewKey(viewKey, `${label} View Key`),
+    allowedEntryModes: Object.freeze([...allowedEntryModes])
+  })
+}
+
+/**
+ * 默认同时开放仓库内的 LIST 与 FORM 示例；若继续传旧单 View 环境变量，则保持原启动命令语义。
+ * 浏览器只能选择这里生成的 target key，不能用请求参数覆盖真实 View Key。
+ */
+function buildDemoTargets(env) {
+  const legacyViewKey = String(env.FLOW_DEMO_VIEW_KEY || '').trim()
+  const legacyEntryModes = String(env.FLOW_DEMO_ALLOWED_ENTRY_MODES || '').trim()
+  if (legacyViewKey || legacyEntryModes) {
+    const modes = parseAllowedEntryModes(legacyEntryModes || 'CREATE,VIEW')
+    const listOnly = modes.length === 1 && modes[0] === 'LIST'
+    return Object.freeze([
+      createDemoTarget(
+        'default',
+        listOnly ? '需求列表' : '需求表单',
+        listOnly ? 'LIST' : 'FORM',
+        legacyViewKey || (listOnly ? 'req-list' : 'zdwreq-form-demo'),
+        modes
+      )
+    ])
+  }
+
+  return Object.freeze([
+    createDemoTarget(
+      'list',
+      '需求列表',
+      'LIST',
+      env.FLOW_DEMO_LIST_VIEW_KEY || 'req-list',
+      ['LIST']
+    ),
+    createDemoTarget(
+      'form',
+      '需求表单',
+      'FORM',
+      env.FLOW_DEMO_FORM_VIEW_KEY || 'zdwreq-form-demo',
+      ['CREATE', 'VIEW']
+    )
+  ])
+}
+
 /**
  * 读取不含秘密值的示例配置。实际 Client Secret 和人员断言私钥由启动阶段单独加载，
  * 不进入浏览器配置，也不会被打印到日志。
@@ -193,8 +251,7 @@ export function buildConfig(env = process.env) {
     assertionKeyId: String(
       env.FLOW_DEMO_ASSERTION_KEY_ID || 'embed-demo-rs256-20260828'
     ).trim(),
-    viewKey: String(env.FLOW_DEMO_VIEW_KEY || 'zdwreq-form-demo').trim(),
-    allowedEntryModes: parseAllowedEntryModes(env.FLOW_DEMO_ALLOWED_ENTRY_MODES),
+    targets: buildDemoTargets(env),
     tlsCertificateFile: resolveConfiguredPath(
       env.FLOW_DEMO_TLS_CERT_FILE,
       'examples/embed-local-demo/.runtime/localhost-cert.pem'
@@ -342,6 +399,42 @@ export function normalizeLaunchIntent(value, allowedEntryModes = ['CREATE', 'VIE
   })
 }
 
+/** 从后端固定目标白名单解析浏览器意图，绝不接受浏览器直接提交 View Key。 */
+export function normalizeLaunchRequest(value, targets) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new FlowRemoteError('启动参数必须是 JSON 对象', {
+      status: 400,
+      errorCode: 'FLOW_DEMO_REQUEST_INVALID'
+    })
+  }
+  const allowedKeys = new Set(['targetKey', 'mode', 'recordId', 'theme'])
+  if (Object.keys(value).some(key => !allowedKeys.has(key))) {
+    throw new FlowRemoteError('启动参数包含未开放字段', {
+      status: 400,
+      errorCode: 'FLOW_DEMO_REQUEST_INVALID'
+    })
+  }
+
+  const configuredTargets = Array.isArray(targets) ? targets : []
+  const requestedTargetKey = String(value.targetKey || '').trim()
+  const target = requestedTargetKey
+    ? configuredTargets.find(candidate => candidate.key === requestedTargetKey)
+    : configuredTargets.length === 1 ? configuredTargets[0] : undefined
+  if (!target) {
+    throw new FlowRemoteError('目标页面未被本示例授权', {
+      status: 400,
+      errorCode: 'FLOW_DEMO_TARGET_NOT_ALLOWED'
+    })
+  }
+
+  const { targetKey: ignoredTargetKey, ...rawIntent } = value
+  void ignoredTargetKey
+  return Object.freeze({
+    target,
+    intent: normalizeLaunchIntent(rawIntent, target.allowedEntryModes)
+  })
+}
+
 function parseJsonBuffer(buffer, label) {
   try {
     return JSON.parse(buffer.toString('utf8'))
@@ -447,7 +540,7 @@ async function issueMachineToken(config, secrets) {
   return document.access_token
 }
 
-function validateLaunchDocument(response) {
+export function validateLaunchDocument(response, target) {
   const document = parseJsonBuffer(response.body, 'Embed Launch endpoint')
   const data = document?.data
   if (response.status !== 201 || document?.code !== 201 || !data
@@ -462,12 +555,19 @@ function validateLaunchDocument(response) {
       }
     )
   }
+  if (String(data.view?.key || '') !== target.viewKey
+    || String(data.view?.surfaceType || '').toUpperCase() !== target.surfaceType) {
+    throw new FlowRemoteError('Flow 返回的嵌入目标与宿主授权目标不一致', {
+      errorCode: 'FLOW_DEMO_LAUNCH_TARGET_MISMATCH',
+      traceId: document?.traceId
+    })
+  }
   return data
 }
 
 /** 第三方后端完整执行 OAuth + 人员断言 + 一次性 Launch，浏览器看不到机器凭据。 */
 export async function createEmbedLaunch(config, secrets, rawIntent) {
-  const intent = normalizeLaunchIntent(rawIntent, config.allowedEntryModes)
+  const { target, intent } = normalizeLaunchRequest(rawIntent, config.targets)
   const accessToken = await issueMachineToken(config, secrets)
   const assertion = signUserAssertion({
     privateKey: secrets.assertionPrivateKey,
@@ -481,7 +581,7 @@ export async function createEmbedLaunch(config, secrets, rawIntent) {
     ? { mode: intent.mode, recordId: intent.recordId }
     : { mode: intent.mode }
   const body = JSON.stringify({
-    viewKey: config.viewKey,
+    viewKey: target.viewKey,
     parentOrigin: config.hostOrigin,
     channelId,
     subject: { type: 'SIGNED_JWT', assertion },
@@ -504,7 +604,7 @@ export async function createEmbedLaunch(config, secrets, rawIntent) {
       body
     }
   )
-  const launch = validateLaunchDocument(response)
+  const launch = validateLaunchDocument(response, target)
   let returnedOrigin
   try {
     returnedOrigin = new URL(launch.embedUrl).origin
@@ -527,6 +627,7 @@ export async function createEmbedLaunch(config, secrets, rawIntent) {
     view: launch.view,
     protocolVersion: launch.protocolVersion,
     channelId,
+    targetKey: target.key,
     targetOrigin: config.embedOrigin
   })
 }
@@ -737,8 +838,8 @@ function createHostHandler(config, secrets) {
       sendJson(response, 200, {
         hostOrigin: config.hostOrigin,
         embedOrigin: config.embedOrigin,
-        viewKey: config.viewKey,
-        allowedEntryModes: config.allowedEntryModes,
+        targets: config.targets,
+        defaultTargetKey: config.targets[0].key,
         subjectHint
       })
       return
@@ -947,8 +1048,7 @@ export function checkDemo(config = buildConfig(), secrets = loadSecrets(config))
   return Object.freeze({
     hostOrigin: config.hostOrigin,
     embedOrigin: config.embedOrigin,
-    viewKey: config.viewKey,
-    allowedEntryModes: config.allowedEntryModes
+    targets: config.targets
   })
 }
 
@@ -967,7 +1067,8 @@ async function main() {
     const checked = checkDemo(config, secrets)
     console.log(
       `配置检查通过：host=${checked.hostOrigin}，embed=${checked.embedOrigin}，`
-        + `viewKey=${checked.viewKey}，entry=${checked.allowedEntryModes.join('/')}`
+        + `targets=${checked.targets.map(target => `${target.key}:${target.viewKey}`
+          + `[${target.allowedEntryModes.join('/')}]`).join(',')}`
     )
     return
   }
