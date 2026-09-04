@@ -1,14 +1,23 @@
 <template>
   <el-container class="layout-container">
-    <el-aside width="200px" class="sidebar desktop-sidebar">
-      <div class="logo">
+    <el-aside
+      :width="desktopSidebarWidth"
+      class="sidebar desktop-sidebar"
+      :class="{
+        'is-collapsed': sidebarCollapsed,
+        'is-resizing': sidebarResizing
+      }"
+    >
+      <div class="logo" :title="sidebarCollapsed ? '流程配置系统' : undefined">
         <el-icon size="24"><Connection /></el-icon>
-        <span>流程配置系统</span>
+        <span v-if="!sidebarCollapsed">流程配置系统</span>
       </div>
       <el-menu
         :default-active="activeMenuPath"
+        :collapse="sidebarCollapsed"
+        :collapse-transition="false"
         router
-        class="menu"
+        class="menu desktop-menu"
         background-color="#304156"
         text-color="#bfcbd9"
         active-text-color="#409EFF"
@@ -19,6 +28,21 @@
           :menu="menu"
         />
       </el-menu>
+      <div
+        v-show="!sidebarCollapsed"
+        class="sidebar-resizer"
+        role="separator"
+        aria-label="调整左侧菜单宽度"
+        aria-orientation="vertical"
+        :aria-valuemin="SIDEBAR_MIN_WIDTH"
+        :aria-valuemax="SIDEBAR_MAX_WIDTH"
+        :aria-valuenow="sidebarWidth"
+        tabindex="0"
+        title="拖拽调整宽度，双击恢复默认宽度"
+        @pointerdown="startSidebarResize"
+        @keydown="handleSidebarResizeKeydown"
+        @dblclick="resetSidebarWidth"
+      />
     </el-aside>
     <el-container class="content-container">
       <el-header class="header">
@@ -31,6 +55,20 @@
             @click="mobileMenuVisible = true"
           >
             <el-icon size="22"><Menu /></el-icon>
+          </el-button>
+          <el-button
+            class="desktop-sidebar-toggle"
+            text
+            circle
+            :aria-label="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+            :aria-expanded="!sidebarCollapsed"
+            :title="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+            @click="toggleSidebar"
+          >
+            <el-icon size="20">
+              <Expand v-if="sidebarCollapsed" />
+              <Fold v-else />
+            </el-icon>
           </el-button>
           <el-breadcrumb separator="/" class="breadcrumb" v-if="breadcrumb.length > 0">
             <el-breadcrumb-item
@@ -99,7 +137,7 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Menu, Connection, ArrowDown } from '@element-plus/icons-vue'
+import { Menu, Connection, ArrowDown, Expand, Fold } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getPermissions, logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
@@ -112,11 +150,34 @@ import {
   buildBreadcrumb,
   getActiveMenuPath
 } from '@/utils/breadcrumb'
+import {
+  SIDEBAR_COLLAPSED_STORAGE_KEY,
+  SIDEBAR_COLLAPSED_WIDTH,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  SIDEBAR_RESIZE_STEP,
+  SIDEBAR_WIDTH_STORAGE_KEY,
+  calculateSidebarWidth,
+  normalizeSidebarWidth,
+  persistSidebarLayout,
+  readSidebarLayout
+} from '@/utils/sidebarLayout'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const mobileMenuVisible = ref(false)
+const initialSidebarLayout = readSidebarLayout()
+const sidebarWidth = ref(initialSidebarLayout.width)
+const sidebarCollapsed = ref(initialSidebarLayout.collapsed)
+const sidebarResizing = ref(false)
+
+const desktopSidebarWidth = computed(() => {
+  return `${sidebarCollapsed.value ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth.value}px`
+})
+
+let sidebarResizeSession = null
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
@@ -125,6 +186,94 @@ const menuTree = ref([])
 
 const activeMenuPath = computed(() => getActiveMenuPath(route))
 const breadcrumb = computed(() => buildBreadcrumb(menuTree.value, route))
+
+const saveSidebarLayout = () => {
+  persistSidebarLayout({
+    width: sidebarWidth.value,
+    collapsed: sidebarCollapsed.value
+  })
+}
+
+/**
+ * 清理一次侧栏拖拽会话，确保鼠标释放到浏览器外或组件卸载后不会残留全局状态。
+ */
+const stopSidebarResize = () => {
+  sidebarResizeSession = null
+  sidebarResizing.value = false
+  document.body.classList.remove('sidebar-resizing')
+  window.removeEventListener('pointermove', handleSidebarResize)
+  window.removeEventListener('pointerup', finishSidebarResize)
+  window.removeEventListener('pointercancel', finishSidebarResize)
+}
+
+const handleSidebarResize = event => {
+  if (!sidebarResizeSession || event.pointerId !== sidebarResizeSession.pointerId) return
+
+  sidebarWidth.value = calculateSidebarWidth(
+    sidebarResizeSession.startWidth,
+    sidebarResizeSession.startPointerX,
+    event.clientX
+  )
+}
+
+const finishSidebarResize = event => {
+  if (!sidebarResizeSession || event.pointerId !== sidebarResizeSession.pointerId) return
+  saveSidebarLayout()
+  stopSidebarResize()
+}
+
+/**
+ * 从拖拽起点而非上一帧宽度计算位移，避免连续 pointermove 事件产生累计误差。
+ */
+const startSidebarResize = event => {
+  if (event.button !== 0 || sidebarCollapsed.value) return
+
+  event.preventDefault()
+  event.currentTarget.setPointerCapture?.(event.pointerId)
+  sidebarResizeSession = {
+    pointerId: event.pointerId,
+    startPointerX: event.clientX,
+    startWidth: sidebarWidth.value
+  }
+  sidebarResizing.value = true
+  document.body.classList.add('sidebar-resizing')
+  window.addEventListener('pointermove', handleSidebarResize)
+  window.addEventListener('pointerup', finishSidebarResize)
+  window.addEventListener('pointercancel', finishSidebarResize)
+}
+
+/**
+ * 为无法使用指针拖拽的用户提供等价的键盘调宽能力。
+ */
+const handleSidebarResizeKeydown = event => {
+  let nextWidth
+  if (event.key === 'ArrowLeft') {
+    nextWidth = sidebarWidth.value - SIDEBAR_RESIZE_STEP
+  } else if (event.key === 'ArrowRight') {
+    nextWidth = sidebarWidth.value + SIDEBAR_RESIZE_STEP
+  } else if (event.key === 'Home') {
+    nextWidth = SIDEBAR_MIN_WIDTH
+  } else if (event.key === 'End') {
+    nextWidth = SIDEBAR_MAX_WIDTH
+  } else {
+    return
+  }
+
+  event.preventDefault()
+  sidebarWidth.value = normalizeSidebarWidth(nextWidth)
+  saveSidebarLayout()
+}
+
+const resetSidebarWidth = () => {
+  sidebarWidth.value = SIDEBAR_DEFAULT_WIDTH
+  saveSidebarLayout()
+}
+
+const toggleSidebar = () => {
+  if (sidebarResizing.value) stopSidebarResize()
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  saveSidebarLayout()
+}
 
 // 收集所有被禁用菜单的路径（用于路由守卫拦截）
 const collectDisabledPaths = (menus) => {
@@ -171,21 +320,30 @@ const loadMenus = async () => {
   }
 }
 
-const handleMenuStorageChange = event => {
+const handleStorageChange = event => {
   if (event.key === SIDEBAR_MENU_REVISION_KEY) {
     loadMenus()
+  } else if (
+    event.key === SIDEBAR_WIDTH_STORAGE_KEY ||
+    event.key === SIDEBAR_COLLAPSED_STORAGE_KEY
+  ) {
+    // 多标签页共享同一份布局偏好，避免切换页面时侧栏状态突然跳回旧值。
+    const savedLayout = readSidebarLayout()
+    sidebarWidth.value = savedLayout.width
+    sidebarCollapsed.value = savedLayout.collapsed
   }
 }
 
 onMounted(() => {
   loadMenus()
   window.addEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
-  window.addEventListener('storage', handleMenuStorageChange)
+  window.addEventListener('storage', handleStorageChange)
 })
 
 onBeforeUnmount(() => {
+  stopSidebarResize()
   window.removeEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
-  window.removeEventListener('storage', handleMenuStorageChange)
+  window.removeEventListener('storage', handleStorageChange)
 })
 
 watch(() => route.fullPath, () => {
@@ -235,6 +393,14 @@ async function handleCommand(command) {
 
 .sidebar {
   background-color: #304156;
+  position: relative;
+  flex-shrink: 0;
+  overflow: visible;
+  transition: width 0.18s ease;
+}
+
+.sidebar.is-resizing {
+  transition: none;
 }
 
 .logo {
@@ -252,12 +418,62 @@ async function handleCommand(command) {
   margin-right: 10px;
 }
 
+.sidebar.is-collapsed .logo .el-icon {
+  margin-right: 0;
+}
+
 .menu {
   border-right: none;
 }
 
+.desktop-menu {
+  width: 100%;
+  height: calc(100vh - 60px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.sidebar-resizer {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.sidebar-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background-color: #409eff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-resizer:hover::before,
+.sidebar-resizer:focus-visible::before,
+.sidebar.is-resizing .sidebar-resizer::before {
+  opacity: 1;
+}
+
+:global(body.sidebar-resizing) {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .mobile-menu-button {
   display: none;
+}
+
+.desktop-sidebar-toggle {
+  flex-shrink: 0;
 }
 
 .header {
@@ -281,7 +497,7 @@ async function handleCommand(command) {
 .breadcrumb {
   min-width: 0;
   overflow: hidden;
-  margin-left: 20px;
+  margin-left: 12px;
 }
 
 .header-right {
@@ -339,6 +555,10 @@ async function handleCommand(command) {
   .mobile-menu-button {
     display: inline-flex;
     margin-right: 4px;
+  }
+
+  .desktop-sidebar-toggle {
+    display: none;
   }
 
   .breadcrumb {

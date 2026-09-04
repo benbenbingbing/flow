@@ -1,5 +1,9 @@
 <template>
-  <el-sub-menu v-if="hasChildren" :index="menu.path || menu.id">
+  <el-sub-menu
+    v-if="hasChildren"
+    :index="menu.path || menu.id"
+    :aria-label="menu.menuName"
+  >
     <template #title>
       <el-icon v-if="menuIcon"><component :is="menuIcon" /></el-icon>
       <span>{{ menu.menuName }}</span>
@@ -10,7 +14,7 @@
       :menu="child"
     />
   </el-sub-menu>
-  <el-menu-item v-else :index="menu.path">
+  <el-menu-item v-else :index="menu.path" :aria-label="menu.menuName">
     <el-icon v-if="menuIcon"><component :is="menuIcon" /></el-icon>
     <span>{{ menu.menuName }}</span>
   </el-menu-item>
