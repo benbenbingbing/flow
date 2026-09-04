@@ -332,14 +332,31 @@ function apiData(pathname) {
     { id: 'm-home', title: '首页', menuName: '首页', path: '/home', icon: 'HomeFilled', status: '0', visible: '0' },
     { id: 'm-process', title: '流程管理', menuName: '流程管理', path: '/process', icon: 'Share', status: '0', visible: '0' },
     { id: 'm-entity', title: '实体管理', menuName: '实体管理', path: '/entity', icon: 'Box', status: '0', visible: '0' },
+    { id: 'm-config', title: '配置管理', menuName: '配置管理', path: '/config', icon: 'Box', status: '0', visible: '0', children: [
+      { id: 'm-group', title: '流程用户组', menuName: '流程用户组', path: '/config/process-user-groups', status: '0', visible: '0' },
+      { id: 'm-list-column-template', title: '列表列模板', menuName: '列表列模板', path: '/config/list-column-templates', status: '0', visible: '0' }
+    ] },
     { id: 'm-system', title: '系统管理', menuName: '系统管理', path: '/system', icon: 'Setting', status: '0', visible: '0', children: [
       { id: 'm-menu', title: '菜单管理', menuName: '菜单管理', path: '/system/menu', status: '0', visible: '0' },
       { id: 'm-user', title: '用户管理', menuName: '用户管理', path: '/system/user', status: '0', visible: '0' },
       { id: 'm-role', title: '角色管理', menuName: '角色管理', path: '/system/role', status: '0', visible: '0' },
-      { id: 'm-group', title: '用户组管理', menuName: '用户组管理', path: '/system/group', status: '0', visible: '0' },
       { id: 'm-org', title: '组织部门管理', menuName: '组织部门管理', path: '/system/org', status: '0', visible: '0' },
       { id: 'm-dict', title: '字典设置', menuName: '字典设置', path: '/system/dict', status: '0', visible: '0' },
-      { id: 'm-extensions', title: '扩展管理', menuName: '扩展管理', path: '/system/extensions', status: '0', visible: '0' }
+      { id: 'm-work-calendar', title: '工作日历', menuName: '工作日历', path: '/system/work-calendars', status: '0', visible: '0' },
+      { id: 'm-sla', title: 'SLA管理', menuName: 'SLA管理', path: '/system/sla', status: '0', visible: '0', children: [
+        { id: 'm-sla-policy', title: 'SLA策略', menuName: 'SLA策略', path: '/system/sla/policies', status: '0', visible: '0' },
+        { id: 'm-sla-monitor', title: 'SLA监控', menuName: 'SLA监控', path: '/system/sla/monitor', status: '0', visible: '0' }
+      ] }
+    ] },
+    { id: 'm-dev', title: '定制开发', menuName: '定制开发', path: '/dev', icon: 'Document', status: '0', visible: '0', children: [
+      { id: 'm-dev-manual', title: '开发手册', menuName: '开发手册', path: '/dev/manual', status: '0', visible: '0', children: [
+        { id: 'm-dev-guide', title: '列表字段扩展', menuName: '列表字段扩展', path: '/dev/manual/list-field-extension', status: '0', visible: '0' },
+        { id: 'm-list-field-guide-v2', title: '列表字段扩展2', menuName: '列表字段扩展2', path: '/dev/manual/list-field-extension-v2', status: '0', visible: '0' },
+        { id: 'm-custom-list-guide', title: '自定义列表组件', menuName: '自定义列表组件', path: '/dev/manual/custom-list', status: '0', visible: '0' },
+        { id: 'm-custom-form-guide', title: '自定义表单组件', menuName: '自定义表单组件', path: '/dev/manual/custom-form', status: '0', visible: '0' },
+        { id: 'm-flow-action-guide', title: '流程动作', menuName: '流程动作', path: '/dev/manual/flow-actions', status: '0', visible: '0' }
+      ] },
+      { id: 'm-extensions', title: '扩展管理', menuName: '扩展管理', path: '/dev/extensions', status: '0', visible: '0' }
     ] }
   ]
 
@@ -452,13 +469,13 @@ const expectedRouteText = new Map([
   ['/system/menu', ['菜单管理']],
   ['/system/user', ['用户管理']],
   ['/system/role', ['角色管理']],
-  ['/system/group', ['用户组管理']],
+  ['/config/process-user-groups', ['流程用户组']],
   ['/system/org', ['组织部门管理']],
   ['/system/dict', ['字典设置']],
-  ['/system/extensions', ['扩展类型', '流程动作', '通知业务负责人']],
-  ['/system/dev-guide', ['表单与列表配置扩展']],
-  ['/system/custom-list-guide', ['自定义列表组件']],
-  ['/system/custom-form-guide', ['自定义表单组件']]
+  ['/dev/extensions', ['扩展类型', '流程动作', '通知业务负责人']],
+  ['/dev/manual/list-field-extension', ['表单与列表配置扩展']],
+  ['/dev/manual/custom-list', ['自定义列表组件']],
+  ['/dev/manual/custom-form', ['自定义表单组件']]
 ])
 
 const interactionPlans = new Map([
@@ -502,13 +519,13 @@ const interactionPlans = new Map([
   ['/system/menu', [{ click: '创建顶级菜单', expect: ['菜单名称'] }]],
   ['/system/user', [{ click: '新增用户', expect: ['用户名'] }]],
   ['/system/role', [{ click: '新增角色', expect: ['角色名称'] }]],
-  ['/system/group', [{ click: '新增用户组', expect: ['组名称'] }]],
+  ['/config/process-user-groups', [{ click: '新增用户组', expect: ['组名称'] }]],
   ['/system/dict', [{ click: '新增字典', expect: ['字典名称'] }]],
-  ['/system/extensions', [{ click: '展开', expect: ['目录状态'] }]]
+  ['/dev/extensions', [{ click: '展开', expect: ['目录状态'] }]]
 ])
 
 const unexpectedRouteText = new Map([
-  ['/system/extensions', ['实体引用单选', '富文本', '下拉单选', '分组标题']]
+  ['/dev/extensions', ['实体引用单选', '富文本', '下拉单选', '分组标题']]
 ])
 
 async function runInteractionPlan(client, routePath) {

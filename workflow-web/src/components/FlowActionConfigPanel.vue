@@ -705,7 +705,7 @@ function handlerLabel(action) {
 
 function openExtensionManagement() {
   router.push({
-    path: '/system/extensions',
+    path: '/dev/extensions',
     query: { type: 'FLOW_ACTION' }
   })
 }

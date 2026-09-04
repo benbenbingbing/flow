@@ -15,14 +15,18 @@
     <el-empty v-else-if="!entityDefinition.id" description="实体不存在或未发布" />
     <template v-else>
       <RuntimeVersionDiagnostics
-        v-if="showPageRuntimeDiagnostics"
-        class="list-runtime-diagnostics"
+        v-if="showPageRuntimeDiagnostics && (dataError || usesCustomListComponent)"
+        class="list-runtime-diagnostics list-runtime-diagnostics--fallback"
         :entries="listRuntimeDiagnosticEntries"
         :copy-entries="listRuntimeDiagnosticCopyEntries"
         copy-title="列表运行版本排障信息"
         :reset-key="listRuntimeDiagnosticResetKey"
       >
-        <h2 class="entity-data-list__title">{{ listPageTitle }}</h2>
+        <!-- 错误态或自定义列表没有默认 tbar，保留无标题的隐藏排障入口。 -->
+        <span
+          class="list-runtime-diagnostics__trigger"
+          aria-hidden="true"
+        />
       </RuntimeVersionDiagnostics>
       <PageState
         v-if="dataError"
@@ -57,7 +61,7 @@
         />
       </template>
       <component
-        v-if="!dataError && customListComponent && hasCustomListComponent(customListComponent)"
+        v-if="!dataError && usesCustomListComponent"
         :is="getCustomListComponent(customListComponent)"
         :entityCode="entityCode"
         :entityDefinition="entityDefinition"
@@ -145,7 +149,23 @@
           @event-action="handleEventAction"
           @size-change="handleSizeChange"
           @page-change="handlePageChange"
-        />
+        >
+          <template v-if="showPageRuntimeDiagnostics" #toolbar-leading>
+            <RuntimeVersionDiagnostics
+              class="list-runtime-diagnostics"
+              :entries="listRuntimeDiagnosticEntries"
+              :copy-entries="listRuntimeDiagnosticCopyEntries"
+              copy-title="列表运行版本排障信息"
+              :reset-key="listRuntimeDiagnosticResetKey"
+            >
+              <!-- 复用 tbar 左侧空白区作为隐藏入口，避免为排障能力额外展示列表标题。 -->
+              <span
+                class="list-runtime-diagnostics__trigger"
+                aria-hidden="true"
+              />
+            </RuntimeVersionDiagnostics>
+          </template>
+        </EntityDataTable>
       </template>
       <div v-if="selectionScene" class="selection-footer">
         <span>已选择 {{ selectedRows.length }} 条</span>
@@ -430,9 +450,6 @@ const entityName = computed(() => entityDefinition.value?.entityName)
 const showPageRuntimeDiagnostics = computed(() =>
   !props.embedded && runtimeScene.value === 'PAGE'
 )
-const listPageTitle = computed(() =>
-  listConfig.value?.listName || entityName.value || '业务列表'
-)
 const listRuntimeDiagnosticEntries = computed(() => [{
   label: '列表',
   value: formatRuntimeCodeVersion(
@@ -551,6 +568,9 @@ const useListConfig = computed(() => listConfigFields.value.length > 0)
 const customListComponent = computed(() =>
   listConfig.value?.customComponent || ''
 )
+const usesCustomListComponent = computed(() => Boolean(
+  customListComponent.value && hasCustomListComponent(customListComponent.value)
+))
 
 const customListRuntime = computed(() => ({
   version: 2,
@@ -1333,18 +1353,18 @@ defineExpose({ focus, reload: loadDataList })
     padding: 10px;
   }
   .list-runtime-diagnostics {
-    margin: 2px 4px 10px;
+    flex: 1 1 auto;
+    min-width: 32px;
   }
-  .entity-data-list__title {
-    max-width: min(720px, 80vw);
-    overflow: hidden;
-    margin: 0;
-    color: var(--el-text-color-primary);
-    font-size: 18px;
-    font-weight: 600;
-    line-height: 28px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .list-runtime-diagnostics :deep(.runtime-version-diagnostics__trigger) {
+    width: 100%;
+  }
+  .list-runtime-diagnostics__trigger {
+    display: block;
+    min-height: 32px;
+  }
+  .list-runtime-diagnostics--fallback {
+    margin: 0 4px 8px;
   }
   .master-detail-hint {
     margin-bottom: 12px;

@@ -1,6 +1,8 @@
 <template>
   <el-card>
     <div class="table-toolbar">
+      <!-- 左侧扩展位与业务按钮分离，避免排障入口接收按钮点击事件。 -->
+      <slot name="toolbar-leading" />
       <template v-for="btn in toolbarButtons" :key="btn.key">
         <component
           v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
@@ -91,28 +93,34 @@
           :min-width="field.width > 0 ? undefined : (getColumnConfig(field).minWidth || 100)"
           :show-overflow-tooltip="getColumnConfig(field).showOverflowTooltip !== false">
           <template #default="{ row }">
-            <!-- 自定义渲染组件 -->
-            <ListCellRenderer
-              v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
-              :row="row"
-              :field="field"
-              :context="{
-                entityCode,
-                entityDefinition,
-                entityStatusMap,
-                getStatusText,
-                refresh,
-                refEntityNameMap
-              }"
-            />
-            <!-- 状态字段特殊渲染 -->
-            <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-            <!-- 日期字段格式化 -->
-            <span v-else-if="isDateFieldCode(field.fieldCode)">
-              {{ formatDate(row[field.fieldCode]) }}
-            </span>
-            <!-- 默认显示 -->
-            <span v-else>{{ getFieldDisplayValue(row, field) }}</span>
+            <ListQuickCopyCell
+              :enabled="getColumnConfig(field).quickCopy === true"
+              :value="getFieldDisplayValue(row, field)"
+              :field-name="field.fieldName"
+            >
+              <!-- 自定义渲染组件 -->
+              <ListCellRenderer
+                v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
+                :row="row"
+                :field="field"
+                :context="{
+                  entityCode,
+                  entityDefinition,
+                  entityStatusMap,
+                  getStatusText,
+                  refresh,
+                  refEntityNameMap
+                }"
+              />
+              <!-- 状态字段特殊渲染 -->
+              <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+              <!-- 日期字段格式化 -->
+              <span v-else-if="isDateFieldCode(field.fieldCode)">
+                {{ formatDate(row[field.fieldCode]) }}
+              </span>
+              <!-- 默认显示 -->
+              <span v-else>{{ getFieldDisplayValue(row, field) }}</span>
+            </ListQuickCopyCell>
           </template>
         </el-table-column>
       </template>
@@ -238,6 +246,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
+import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import EntityListLauncher from '@/components/EntityListLauncher.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButtonComponentRegistry'
@@ -670,6 +679,7 @@ const getToolbarReason = (btn: any) => {
 <style scoped lang="scss">
 .table-toolbar {
   display: flex;
+  align-items: flex-start;
   justify-content: flex-end;
   margin-bottom: 8px;
 }

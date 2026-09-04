@@ -739,10 +739,10 @@ const DEFAULT_LOCATION_BY_AREA = Object.freeze({
   '流程条件': '流程配置-流程-设计-连线条件',
   '审批选项': '流程配置-流程-设计-用户任务-审批设置',
   '流程动作': '流程配置-流程-设计-节点属性-流程动作',
-  '流程动作扩展定义': '系统管理-扩展管理-流程动作处理器',
+  '流程动作扩展定义': '定制开发-扩展管理-流程动作处理器',
   '事件绑定': '流程配置-流程-设计-事件绑定',
-  '任务 SLA': '流程配置-任务 SLA-策略管理',
-  '工作日历': '流程配置-工作日历'
+  '任务 SLA': '系统管理-SLA管理-SLA策略',
+  '工作日历': '系统管理-工作日历'
 })
 
 const locationRule = (file, pattern, location) => Object.freeze({
@@ -838,12 +838,12 @@ const LOCATION_RULES = Object.freeze([
 
   locationRule('src/components/FlowActionConfigPanel.vue', '.*', '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作'),
   locationRule('src/components/ui-config/EventBindingEditor.vue', '.*', '流程配置-流程-设计-事件绑定-新增/编辑'),
-  locationRule('src/views/process/TaskSlaPolicyManagement.vue', '^form\\.', '流程配置-任务 SLA-策略管理-新建/编辑策略'),
-  locationRule('src/views/process/TaskSlaPolicyManagement.vue', '^row\\.', '流程配置-任务 SLA-策略管理-升级动作'),
-  locationRule('src/views/system/WorkCalendarManagement.vue', '^form\\.|^effectiveRange$', '流程配置-工作日历-新建/编辑日历'),
-  locationRule('src/views/system/WorkCalendarManagement.vue', '^row\\.(dayOfWeek|start|end)$', '流程配置-工作日历-每周工作时段'),
-  locationRule('src/views/system/WorkCalendarManagement.vue', '^row\\.(date|type|name|periodText)$', '流程配置-工作日历-日期例外'),
-  locationRule('src/views/system/WorkCalendarManagement.vue', '^row\\.(scopeType|scopeKey|priority|effectiveFrom|effectiveTo)$', '流程配置-工作日历-绑定范围')
+  locationRule('src/views/process/TaskSlaPolicyManagement.vue', '^form\\.', '系统管理-SLA管理-SLA策略-新建/编辑策略'),
+  locationRule('src/views/process/TaskSlaPolicyManagement.vue', '^row\\.', '系统管理-SLA管理-SLA策略-升级动作'),
+  locationRule('src/views/system/WorkCalendarManagement.vue', '^form\\.|^effectiveRange$', '系统管理-工作日历-新建/编辑日历'),
+  locationRule('src/views/system/WorkCalendarManagement.vue', '^row\\.(dayOfWeek|start|end)$', '系统管理-工作日历-每周工作时段'),
+  locationRule('src/views/system/WorkCalendarManagement.vue', '^row\\.(date|type|name|periodText)$', '系统管理-工作日历-日期例外'),
+  locationRule('src/views/system/WorkCalendarManagement.vue', '^row\\.(scopeType|scopeKey|priority|effectiveFrom|effectiveTo)$', '系统管理-工作日历-绑定范围')
 ])
 
 export function configurationLocation({ domain, area, file, binding }) {
@@ -887,11 +887,11 @@ const ENUM_LOCATION_BY_AREA = Object.freeze({
   '数据版本步骤类型': '实体配置-实体变更策略-处理步骤',
   '数据版本目标解析方式': '实体配置-实体变更策略-变更目标',
   '数据版本目标应用策略': '实体配置-实体变更策略-变更目标',
-  'SLA 时间口径': '流程配置-任务 SLA-策略管理-新建/编辑策略',
-  'SLA 指标': '流程配置-任务 SLA-策略管理-升级动作',
-  'SLA 升级触发点': '流程配置-任务 SLA-策略管理-升级动作',
-  'SLA 升级动作': '流程配置-任务 SLA-策略管理-升级动作',
-  '工作日历作用域': '流程配置-工作日历-绑定范围'
+  'SLA 时间口径': '系统管理-SLA管理-SLA策略-新建/编辑策略',
+  'SLA 指标': '系统管理-SLA管理-SLA策略-升级动作',
+  'SLA 升级触发点': '系统管理-SLA管理-SLA策略-升级动作',
+  'SLA 升级动作': '系统管理-SLA管理-SLA策略-升级动作',
+  '工作日历作用域': '系统管理-工作日历-绑定范围'
 })
 
 export function configurationEnumLocation(group) {

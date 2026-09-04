@@ -51,13 +51,13 @@ const routes = [
   ['11-real-process-design', `/process/design/${fixture.processId}`, [processName, '全局动作', '查看 XML', '保存草稿']],
   ['12-user', '/system/user', ['用户管理', '新增用户']],
   ['13-role', '/system/role', ['角色管理', '新增角色']],
-  ['14-group', '/system/group', ['用户组管理', '新增用户组']],
+  ['14-group', '/config/process-user-groups', ['流程用户组', '新增用户组']],
   ['15-org', '/system/org', ['组织部门管理', '新增']],
   ['16-menu', '/system/menu', ['菜单管理', '创建顶级菜单']],
   ['17-dict', '/system/dict', ['字典设置', '字典类型']],
-  ['18-dev-guide', '/system/dev-guide', ['表单与列表配置扩展']],
-  ['19-custom-list-guide', '/system/custom-list-guide', ['自定义列表组件']],
-  ['20-custom-form-guide', '/system/custom-form-guide', ['自定义表单组件']]
+  ['18-dev-guide', '/dev/manual/list-field-extension', ['表单与列表配置扩展']],
+  ['19-custom-list-guide', '/dev/manual/custom-list', ['自定义列表组件']],
+  ['20-custom-form-guide', '/dev/manual/custom-form', ['自定义表单组件']]
 ]
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)) }

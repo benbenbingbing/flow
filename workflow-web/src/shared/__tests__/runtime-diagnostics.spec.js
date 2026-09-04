@@ -69,6 +69,7 @@ function source(relativePath) {
 }
 
 const listPage = source('../../views/entity/EntityDataList.vue')
+const entityDataTable = source('../../views/entity/components/EntityDataTable.vue')
 assert.match(
   listPage,
   /!props\.embedded\s*&&\s*runtimeScene\.value === 'PAGE'/,
@@ -78,6 +79,31 @@ assert.match(
   listPage,
   /listConfig\.value\?\.listKey[\s\S]*listConfig\.value\?\.publishedVersion/,
   '列表诊断必须使用服务端实际解析的列表编码与发布版本'
+)
+assert.doesNotMatch(
+  listPage,
+  /entity-data-list__title|listPageTitle/,
+  '顶层列表不得为排障入口额外展示列表标题'
+)
+assert.match(
+  listPage,
+  /#toolbar-leading[\s\S]*<RuntimeVersionDiagnostics[\s\S]*list-runtime-diagnostics__trigger/,
+  '列表排障入口应放在默认列表 tbar 的左侧扩展位'
+)
+assert.match(
+  listPage,
+  /showPageRuntimeDiagnostics && \(dataError \|\| usesCustomListComponent\)/,
+  '数据错误态和自定义列表仍应保留无标题的排障入口'
+)
+assert.match(
+  entityDataTable,
+  /<div class="table-toolbar">[\s\S]*?<slot name="toolbar-leading"\s*\/>\s*<template v-for="btn in toolbarButtons"/,
+  '默认列表 tbar 的排障扩展位应与业务按钮保持兄弟关系'
+)
+assert.match(
+  listPage,
+  /\.list-runtime-diagnostics\s*\{[\s\S]*?min-width:\s*32px/,
+  '窄视口下仍应保留可触发排障信息的最小命中区域'
 )
 
 const approvalDialog = source(

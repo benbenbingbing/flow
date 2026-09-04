@@ -95,6 +95,36 @@ final result: passed
 
 ---
 
+# 列快捷复制验收
+
+## Evidence
+
+- Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-6b7c13f6-1be2-4423-b6ab-dd64f03c3bb5.png`
+- Target state: `字段高级配置 → 常用 → 列展示`，以及开启配置后的实体数据列表单元格。
+- Browser state: 使用实际 `SettingsSection`、Element Plus 控件与 `ListQuickCopyCell` 的本地验收页，覆盖窄窗口响应式显示。
+
+## Findings
+
+- 未发现 P0、P1、P2 视觉或交互问题。
+- `快捷复制` 位于列宽、对齐之后，沿用现有 110px 标签宽度和“是 / 否”开关样式。
+- 复制按钮使用项目既有 Element Plus 图标，位于当前单元格内容之后；内容区域可收缩，按钮保持可点击。
+- 关闭快捷复制时按钮不渲染；开启后按钮带有字段级无障碍名称。
+- 复制内容优先取用户实际看到的渲染文本，可覆盖状态标签、自定义单元格和格式化显示；无可见文本时使用展示值兜底。
+
+## Interaction And Automated Verification
+
+- 浏览器验证：关闭开关后按钮消失；开启后出现 `复制需求名称`；点击后出现 `需求名称已复制` 成功提示。
+- `npm run build:admin`: passed.
+- `npm run build:embed`: passed.
+- `npm run test:integration`: passed.
+- 快捷复制、列模板和扩展指南定向测试：passed.
+- `git diff --check`: passed.
+- 全量审计仍被工作区中与本需求无关的既有失败阻断，未归因到本次改动。
+
+final result: passed
+
+---
+
 # 表单与列表设计器撤销未发布草稿验收
 
 ## Evidence

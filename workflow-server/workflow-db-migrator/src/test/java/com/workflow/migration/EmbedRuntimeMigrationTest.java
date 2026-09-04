@@ -1507,7 +1507,7 @@ abstract class AbstractEmbedRuntimeMigrationTest {
         assertEquals(0, flyway.info().pending().length);
         // 该契约执行完整生产迁移链；并行功能占用的新版本也必须进入历史，
         // 否则把最高版本固定在 Embed 自身的 V068 会掩盖真实 classpath 漂移。
-        assertEquals("74", flyway.info().current().getVersion().getVersion());
+        assertEquals("76", flyway.info().current().getVersion().getVersion());
         try (Connection connection = connection();
              Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery("""

@@ -1,7 +1,7 @@
 <template>
   <div class="group-management">
     <div class="page-header">
-      <h2>用户组管理</h2>
+      <h2>流程用户组</h2>
       <el-button type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         新增用户组

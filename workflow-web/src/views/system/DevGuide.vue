@@ -155,7 +155,7 @@ Content-Type: application/json
             <el-descriptions-item label="renderConfig">单元格组件参数，不再与数据源参数混用。</el-descriptions-item>
             <el-descriptions-item label="queryType">支持 EQ、NE、LIKE、NOT_LIKE、GT、GE、LT、LE、BETWEEN、IN、NOT_IN、EMPTY、NOT_EMPTY。</el-descriptions-item>
             <el-descriptions-item label="queryConfig">查询组件、占位提示和默认值。</el-descriptions-item>
-            <el-descriptions-item label="columnConfig">固定位置、最小宽度、溢出提示等列展示配置。</el-descriptions-item>
+            <el-descriptions-item label="columnConfig">快捷复制、固定位置、最小宽度、溢出提示等列展示配置。</el-descriptions-item>
           </el-descriptions>
           <div class="tips">
             <p>查询字段不要求同时显示在列表中。虚拟查询字段会先完成扩展值计算，再由后端结构化条件过滤，不会把虚拟字段拼进实体 SQL。</p>

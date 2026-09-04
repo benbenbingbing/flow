@@ -230,6 +230,14 @@
               <el-form-item label="溢出提示">
                 <el-switch v-model="form.columnConfig.showOverflowTooltip" />
               </el-form-item>
+              <el-form-item label="快捷复制">
+                <el-switch
+                  v-model="form.columnConfig.quickCopy"
+                  inline-prompt
+                  active-text="是"
+                  inactive-text="否"
+                />
+              </el-form-item>
             </div>
           </section>
 
@@ -287,11 +295,17 @@
               </el-form-item>
               <div class="preview-cell">
                 <span>单元格预览</span>
-                <ListCellRenderer
+                <ListQuickCopyCell
+                  :enabled="form.columnConfig.quickCopy === true"
                   :value="form.sampleValue"
-                  :row="previewRow"
-                  :field="previewField"
-                />
+                  field-name="模板预览"
+                >
+                  <ListCellRenderer
+                    :value="form.sampleValue"
+                    :row="previewRow"
+                    :field="previewField"
+                  />
+                </ListQuickCopyCell>
               </div>
             </div>
           </section>
@@ -315,6 +329,7 @@ import { ElInput, ElMessage } from 'element-plus'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
+import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import ObjectMappingEditor from '@/components/ui-config/ObjectMappingEditor.vue'
 import { uiComponentTemplateApi } from '@/api/uiConfig'
 import { applySchemaDefaults } from '@/shared/config-runtime'

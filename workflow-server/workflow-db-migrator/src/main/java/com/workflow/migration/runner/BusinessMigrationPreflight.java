@@ -88,6 +88,15 @@ public final class BusinessMigrationPreflight {
                 && tableExists(connection, "entity_definition")) {
             verifyEntityWorkflowBindingIndexPrerequisites(connection);
         }
+        if (!migrationApplied(connection, "075")
+                && tableExists(connection, "sys_menu")) {
+            verifyNavigationMenuMigrationPrerequisites(connection);
+        }
+        if (migrationApplied(connection, "075")
+                && !migrationApplied(connection, "076")
+                && tableExists(connection, "sys_menu")) {
+            verifyNavigationMenuRouteMigrationPrerequisites(connection);
+        }
     }
 
     /** 在 V072 seed 前拒绝固定 ID 或 resolver_code 被其他语义占用。 */
@@ -433,6 +442,546 @@ public final class BusinessMigrationPreflight {
                 2,
                 "V070 相对组织职务解析器固定 ID 或编码已被占用",
                 "请先核对解析器目录和 Flyway 历史，禁止覆盖现有解析器定义");
+    }
+
+    /**
+     * 在 V075 重组导航前校验稳定父目录和菜单 ID，避免把页面挂到被其他
+     * 业务占用或已停用的目录，并提前检查紧随其后的 V076 目标路由冲突。
+     */
+    private static void verifyNavigationMenuMigrationPrerequisites(
+            Connection connection) throws SQLException {
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`,
+                       CONCAT_WS(':', `parent_id`, `menu_name`, `menu_type`,
+                                 `status`, `visible`, `deleted`) AS semantics,
+                       COUNT(*)
+                FROM `sys_menu`
+                WHERE `id` = '300'
+                  AND NOT (
+                    COALESCE(`parent_id`, '') = '0'
+                    AND COALESCE(`menu_name`, '') = '配置管理'
+                    AND COALESCE(`menu_type`, '') = 'M'
+                    AND COALESCE(`path`, '') IN ('/entity', '/config')
+                    AND COALESCE(TRIM(`perm`), '') = ''
+                    AND COALESCE(`status`, '') = '0'
+                    AND COALESCE(`visible`, '') = '0'
+                    AND COALESCE(`deleted`, -1) = 0
+                  )
+                GROUP BY `id`, `parent_id`, `menu_name`, `menu_type`, `path`,
+                         `status`, `visible`, `deleted`
+                LIMIT 10
+                """,
+                2,
+                "V075 既有配置管理父目录 300 语义错误或已停用",
+                "请先恢复为启用的配置管理目录；迁移不会覆盖既有菜单内容");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`,
+                       CONCAT_WS(':', `parent_id`, `menu_name`, `menu_type`,
+                                 `status`, `visible`, `deleted`) AS semantics,
+                       COUNT(*)
+                FROM `sys_menu`
+                WHERE `id` = '400'
+                  AND NOT (
+                    COALESCE(`parent_id`, '') = '0'
+                    AND COALESCE(`menu_name`, '') = '系统管理'
+                    AND COALESCE(`menu_type`, '') = 'M'
+                    AND COALESCE(TRIM(`perm`), '') = ''
+                    AND COALESCE(`status`, '') = '0'
+                    AND COALESCE(`visible`, '') = '0'
+                    AND COALESCE(`deleted`, -1) = 0
+                  )
+                GROUP BY `id`, `parent_id`, `menu_name`, `menu_type`,
+                         `status`, `visible`, `deleted`
+                LIMIT 10
+                """,
+                2,
+                "V075 既有系统管理父目录 400 语义错误或已停用",
+                "请先恢复为启用的系统管理目录；迁移不会覆盖既有菜单内容");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`,
+                       CONCAT_WS(':', `parent_id`, `menu_name`, `menu_type`,
+                                 COALESCE(`path`, ''), `status`, `visible`,
+                                 `deleted`) AS semantics,
+                       COUNT(*)
+                FROM `sys_menu`
+                WHERE (
+                    `id` = 'dev_guide_dir'
+                    AND NOT (
+                      COALESCE(`parent_id`, '') = '0'
+                      AND COALESCE(`menu_name`, '') = '定制开发'
+                      AND COALESCE(`menu_type`, '') = 'M'
+                      AND COALESCE(`path`, '') = '/dev'
+                      AND COALESCE(`status`, '') = '0'
+                      AND COALESCE(`visible`, '') = '0'
+                      AND COALESCE(`deleted`, -1) = 0
+                    )
+                  ) OR (
+                    `id` = 'flow_setting_menu_001'
+                    AND NOT (
+                      COALESCE(`parent_id`, '') = 'dev_guide_dir'
+                      AND COALESCE(`menu_name`, '') IN ('流程配置', '开发手册')
+                      AND COALESCE(`menu_type`, '') = 'M'
+                      AND COALESCE(`path`, '') IN ('', '/dev/manual')
+                      AND COALESCE(`status`, '') = '0'
+                      AND COALESCE(`visible`, '') = '0'
+                      AND COALESCE(`deleted`, -1) = 0
+                    )
+                  )
+                GROUP BY `id`, `parent_id`, `menu_name`, `menu_type`, `path`,
+                         `status`, `visible`, `deleted`
+                LIMIT 10
+                """,
+                2,
+                "V075 定制开发或开发手册目录语义错误",
+                "请先恢复启用的定制开发/流程配置目录，禁止将指南迁入冲突资源");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT expected.`id`, 'missing', 1
+                FROM (
+                  SELECT 'dev_guide_dir' AS `id`
+                  UNION ALL SELECT 'flow_setting_menu_001'
+                ) expected
+                LEFT JOIN `sys_menu` menu_record
+                  ON menu_record.`id` = expected.`id`
+                WHERE menu_record.`id` IS NULL
+                LIMIT 10
+                """,
+                2,
+                "V075 缺少定制开发稳定目录",
+                "请先核对 V001 迁移和菜单数据，禁止生成悬空父子关系");
+        // V070 尚未执行时会自行补建系统管理目录，预检不能提前阻断跨版本升级。
+        if (migrationApplied(connection, "070")) {
+            requireNoConflicts(
+                    connection,
+                    """
+                    SELECT '400', 'missing', 1
+                    WHERE NOT EXISTS (
+                      SELECT 1 FROM `sys_menu` WHERE `id` = '400'
+                    )
+                    """,
+                    2,
+                    "V075 缺少系统管理稳定目录",
+                    "请先核对 V070 迁移和菜单数据，禁止生成悬空父子关系");
+        }
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`,
+                       CONCAT_WS(':', COALESCE(`path`, ''), `menu_name`,
+                                 `menu_type`, `deleted`) AS semantics,
+                       COUNT(*)
+                FROM `sys_menu`
+                WHERE `id` = '403'
+                  AND NOT (
+                    (
+                      COALESCE(`path`, '') = '/system/group'
+                      OR (
+                        COALESCE(`path`, '') =
+                            '/config/process-user-groups'
+                        AND COALESCE(`parent_id`, '') = '300'
+                        AND COALESCE(`menu_name`, '') = '流程用户组'
+                      )
+                    )
+                    AND COALESCE(`menu_type`, '') = 'C'
+                    AND COALESCE(`status`, '') = '0'
+                    AND COALESCE(`visible`, '') = '0'
+                    AND COALESCE(`deleted`, -1) = 0
+                  )
+                GROUP BY `id`, `path`, `menu_name`, `menu_type`, `deleted`
+                LIMIT 10
+                """,
+                2,
+                "V075 流程用户组固定 ID 403 已被其他资源占用",
+                "请先恢复历史用户组菜单或迁移冲突资源，禁止覆盖现有导航");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`, COALESCE(`path`, ''), COUNT(*)
+                FROM `sys_menu`
+                WHERE `path` = '/config/process-user-groups'
+                  AND `id` <> '403'
+                  AND COALESCE(`deleted`, 0) = 0
+                GROUP BY `id`, `path`
+                LIMIT 10
+                """,
+                2,
+                "V076 流程用户组路径已被其他菜单占用",
+                "请先合并重复入口或恢复稳定菜单 403");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT menu_record.`id`,
+                       CONCAT_WS(':', menu_record.`parent_id`,
+                                 menu_record.`menu_name`,
+                                 menu_record.`menu_type`,
+                                 COALESCE(menu_record.`path`, ''),
+                                 menu_record.`status`, menu_record.`visible`,
+                                 menu_record.`deleted`) AS semantics,
+                       COUNT(*)
+                FROM `sys_menu` menu_record
+                JOIN (
+                  SELECT 'dev_guide_list' AS `id`,
+                         '列表字段扩展' AS `menu_name`,
+                         '/system/dev-guide' AS `legacy_path`,
+                         '/dev/manual/list-field-extension' AS `target_path`
+                  UNION ALL SELECT 'list_field_guide_v2_001',
+                                   '列表字段扩展2',
+                                   '/system/list-field-guide',
+                                   '/dev/manual/list-field-extension-v2'
+                  UNION ALL SELECT 'custom_list_guide',
+                                   '自定义列表组件',
+                                   '/system/custom-list-guide',
+                                   '/dev/manual/custom-list'
+                  UNION ALL SELECT 'custom_form_guide',
+                                   '自定义表单组件',
+                                   '/system/custom-form-guide',
+                                   '/dev/manual/custom-form'
+                  UNION ALL SELECT 'flow_action_guide_menu_001',
+                                   '流程动作',
+                                   '/system/flow-action-guide',
+                                   '/dev/manual/flow-actions'
+                ) expected ON expected.`id` = menu_record.`id`
+                WHERE NOT (
+                  COALESCE(menu_record.`parent_id`, '') IN (
+                    'dev_guide_dir', 'flow_setting_menu_001'
+                  )
+                  AND COALESCE(menu_record.`menu_name`, '') =
+                      expected.`menu_name`
+                  AND COALESCE(menu_record.`menu_type`, '') = 'C'
+                  AND COALESCE(menu_record.`path`, '') IN (
+                    expected.`legacy_path`, expected.`target_path`
+                  )
+                  AND COALESCE(menu_record.`status`, '') = '0'
+                  AND COALESCE(menu_record.`visible`, '') = '0'
+                  AND COALESCE(menu_record.`deleted`, -1) = 0
+                )
+                GROUP BY menu_record.`id`, menu_record.`parent_id`,
+                         menu_record.`menu_name`, menu_record.`menu_type`,
+                         menu_record.`path`, menu_record.`status`,
+                         menu_record.`visible`, menu_record.`deleted`
+                LIMIT 10
+                """,
+                2,
+                "V075 开发手册固定 ID 已被其他资源占用",
+                "请先恢复历史开发指南或迁移冲突资源，禁止覆盖现有导航");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT menu_record.`id`, COALESCE(menu_record.`path`, ''),
+                       COUNT(*)
+                FROM `sys_menu` menu_record
+                JOIN (
+                  SELECT 'dev_guide_list' AS `id`,
+                         '/dev/manual/list-field-extension' AS `target_path`
+                  UNION ALL SELECT 'list_field_guide_v2_001',
+                                   '/dev/manual/list-field-extension-v2'
+                  UNION ALL SELECT 'custom_list_guide',
+                                   '/dev/manual/custom-list'
+                  UNION ALL SELECT 'custom_form_guide',
+                                   '/dev/manual/custom-form'
+                  UNION ALL SELECT 'flow_action_guide_menu_001',
+                                   '/dev/manual/flow-actions'
+                ) expected ON expected.`target_path` = menu_record.`path`
+                WHERE menu_record.`id` <> expected.`id`
+                  AND COALESCE(menu_record.`deleted`, 0) = 0
+                GROUP BY menu_record.`id`, menu_record.`path`
+                LIMIT 10
+                """,
+                2,
+                "V076 开发手册路径已被其他菜单占用",
+                "请先合并重复入口或恢复历史稳定菜单");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT menu_record.`id`,
+                       CONCAT_WS(':', menu_record.`menu_name`,
+                                 menu_record.`menu_type`,
+                                 COALESCE(menu_record.`path`, ''),
+                                 menu_record.`status`, menu_record.`visible`,
+                                 menu_record.`deleted`) AS semantics,
+                       COUNT(*)
+                FROM `sys_menu` menu_record
+                JOIN (
+                  SELECT 'list_column_template_menu_001' AS `id`,
+                         '列表列模板' AS `menu_name`,
+                         '/system/list-column-templates' AS `legacy_path`,
+                         '/config/list-column-templates' AS `target_path`
+                  UNION ALL SELECT 'extension_management_menu_001',
+                                   '扩展管理', '/system/extensions',
+                                   '/dev/extensions'
+                  UNION ALL SELECT 'work_calendar_menu_001',
+                                   '工作日历', '/system/work-calendars',
+                                   '/system/work-calendars'
+                  UNION ALL SELECT 'task_sla_policy_menu_001',
+                                   'SLA策略', '/process/sla-policies',
+                                   '/system/sla/policies'
+                  UNION ALL SELECT 'task_sla_monitor_menu_001',
+                                   'SLA监控', '/process/sla-monitor',
+                                   '/system/sla/monitor'
+                ) expected ON expected.`id` = menu_record.`id`
+                WHERE NOT (
+                  COALESCE(menu_record.`menu_name`, '') =
+                      expected.`menu_name`
+                  AND COALESCE(menu_record.`menu_type`, '') = 'C'
+                  AND COALESCE(menu_record.`path`, '') IN (
+                    expected.`legacy_path`, expected.`target_path`
+                  )
+                  AND COALESCE(menu_record.`status`, '') = '0'
+                  AND COALESCE(menu_record.`visible`, '') = '0'
+                  AND COALESCE(menu_record.`deleted`, -1) = 0
+                )
+                GROUP BY menu_record.`id`, menu_record.`menu_name`,
+                         menu_record.`menu_type`, menu_record.`path`,
+                         menu_record.`status`, menu_record.`visible`,
+                         menu_record.`deleted`
+                LIMIT 10
+                """,
+                2,
+                "V075 待重组功能菜单语义错误或已停用",
+                "请先恢复历史固定菜单，迁移不会用条件更新覆盖冲突资源");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT menu_record.`id`, COALESCE(menu_record.`path`, ''),
+                       COUNT(*)
+                FROM `sys_menu` menu_record
+                JOIN (
+                  SELECT '300' AS `id`, '/config' AS `target_path`
+                  UNION ALL SELECT 'flow_setting_menu_001', '/dev/manual'
+                  UNION ALL SELECT 'list_column_template_menu_001',
+                                   '/config/list-column-templates'
+                  UNION ALL SELECT 'extension_management_menu_001',
+                                   '/dev/extensions'
+                  UNION ALL SELECT 'work_calendar_menu_001',
+                                   '/system/work-calendars'
+                  UNION ALL SELECT 'task_sla_policy_menu_001',
+                                   '/system/sla/policies'
+                  UNION ALL SELECT 'task_sla_monitor_menu_001',
+                                   '/system/sla/monitor'
+                  UNION ALL SELECT 'sla_management_dir_001',
+                                   '/system/sla'
+                ) expected ON expected.`target_path` = menu_record.`path`
+                WHERE menu_record.`id` <> expected.`id`
+                  AND COALESCE(menu_record.`deleted`, 0) = 0
+                GROUP BY menu_record.`id`, menu_record.`path`
+                LIMIT 10
+                """,
+                2,
+                "V076 目标模块路径已被其他菜单占用",
+                "请先合并重复入口或调整冲突菜单，再统一页面路由");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT expected.`id`, 'missing', 1
+                FROM (
+                  SELECT 'extension_management_menu_001' AS `id`
+                  UNION ALL SELECT 'flow_action_guide_menu_001'
+                ) expected
+                LEFT JOIN `sys_menu` menu_record
+                  ON menu_record.`id` = expected.`id`
+                WHERE menu_record.`id` IS NULL
+                LIMIT 10
+                """,
+                2,
+                "V075 缺少 V001 内置导航",
+                "请先核对历史基线，禁止让扩展管理或流程动作静默缺失");
+        if (migrationApplied(connection, "019")) {
+            requireNoConflicts(
+                    connection,
+                    """
+                    SELECT expected.`id`, 'missing', 1
+                    FROM (
+                      SELECT 'work_calendar_menu_001' AS `id`
+                      UNION ALL SELECT 'task_sla_policy_menu_001'
+                      UNION ALL SELECT 'task_sla_monitor_menu_001'
+                    ) expected
+                    LEFT JOIN `sys_menu` menu_record
+                      ON menu_record.`id` = expected.`id`
+                    WHERE menu_record.`id` IS NULL
+                    LIMIT 10
+                    """,
+                    2,
+                    "V075 缺少 V019 工作日历或 SLA 导航",
+                    "请先恢复历史固定菜单，禁止创建空的 SLA 管理目录");
+        }
+        if (migrationApplied(connection, "030")) {
+            requireNoConflicts(
+                    connection,
+                    """
+                    SELECT 'list_column_template_menu_001', 'missing', 1
+                    WHERE NOT EXISTS (
+                      SELECT 1 FROM `sys_menu`
+                      WHERE `id` = 'list_column_template_menu_001'
+                    )
+                    """,
+                    2,
+                    "V075 缺少 V030 列表列模板导航",
+                    "请先恢复历史固定菜单，禁止静默跳过配置管理入口");
+        }
+        if (migrationApplied(connection, "047")) {
+            requireNoConflicts(
+                    connection,
+                    """
+                    SELECT 'list_field_guide_v2_001', 'missing', 1
+                    WHERE NOT EXISTS (
+                      SELECT 1 FROM `sys_menu`
+                      WHERE `id` = 'list_field_guide_v2_001'
+                    )
+                    """,
+                    2,
+                    "V075 缺少 V047 列表字段扩展2导航",
+                    "请先恢复历史固定菜单，禁止静默丢失开发手册入口");
+        }
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`, COALESCE(`menu_name`, ''), COUNT(*)
+                FROM `sys_menu`
+                WHERE `id` = 'sla_management_dir_001'
+                GROUP BY `id`, `menu_name`
+                LIMIT 10
+                """,
+                2,
+                "V075 SLA 管理目录固定 ID 已被占用或存在部分迁移",
+                "请先核对 Flyway 历史和冲突菜单，禁止覆盖既有资源");
+    }
+
+    /**
+     * 在已执行 V075 的数据库上校验稳定菜单语义和 V076 目标路径。
+     * 路由迁移只允许把已完成层级重组的内置菜单从旧地址切换到模块化地址。
+     */
+    private static void verifyNavigationMenuRouteMigrationPrerequisites(
+            Connection connection) throws SQLException {
+        requireNoConflicts(
+                connection,
+                """
+                SELECT expected.`id`,
+                       CASE
+                         WHEN menu_record.`id` IS NULL THEN 'missing'
+                         ELSE CONCAT_WS(':', menu_record.`parent_id`,
+                           menu_record.`menu_name`, menu_record.`menu_type`,
+                           COALESCE(menu_record.`path`, ''),
+                           menu_record.`status`, menu_record.`visible`,
+                           menu_record.`deleted`)
+                       END AS semantics,
+                       1
+                FROM (
+                  SELECT '300' AS `id`, '0' AS `parent_id`,
+                         '配置管理' AS `menu_name`, 'M' AS `menu_type`,
+                         '/entity' AS `legacy_path`, '/config' AS `target_path`
+                  UNION ALL SELECT '403', '300', '流程用户组', 'C',
+                                   '/system/group',
+                                   '/config/process-user-groups'
+                  UNION ALL SELECT 'list_column_template_menu_001', '300',
+                                   '列表列模板', 'C',
+                                   '/system/list-column-templates',
+                                   '/config/list-column-templates'
+                  UNION ALL SELECT 'flow_setting_menu_001', 'dev_guide_dir',
+                                   '开发手册', 'M', '', '/dev/manual'
+                  UNION ALL SELECT 'dev_guide_list',
+                                   'flow_setting_menu_001',
+                                   '列表字段扩展', 'C', '/system/dev-guide',
+                                   '/dev/manual/list-field-extension'
+                  UNION ALL SELECT 'list_field_guide_v2_001',
+                                   'flow_setting_menu_001',
+                                   '列表字段扩展2', 'C',
+                                   '/system/list-field-guide',
+                                   '/dev/manual/list-field-extension-v2'
+                  UNION ALL SELECT 'custom_list_guide',
+                                   'flow_setting_menu_001',
+                                   '自定义列表组件', 'C',
+                                   '/system/custom-list-guide',
+                                   '/dev/manual/custom-list'
+                  UNION ALL SELECT 'custom_form_guide',
+                                   'flow_setting_menu_001',
+                                   '自定义表单组件', 'C',
+                                   '/system/custom-form-guide',
+                                   '/dev/manual/custom-form'
+                  UNION ALL SELECT 'flow_action_guide_menu_001',
+                                   'flow_setting_menu_001', '流程动作', 'C',
+                                   '/system/flow-action-guide',
+                                   '/dev/manual/flow-actions'
+                  UNION ALL SELECT 'extension_management_menu_001',
+                                   'dev_guide_dir', '扩展管理', 'C',
+                                   '/system/extensions', '/dev/extensions'
+                  UNION ALL SELECT 'sla_management_dir_001', '400',
+                                   'SLA管理', 'M', '', '/system/sla'
+                  UNION ALL SELECT 'task_sla_policy_menu_001',
+                                   'sla_management_dir_001', 'SLA策略', 'C',
+                                   '/process/sla-policies',
+                                   '/system/sla/policies'
+                  UNION ALL SELECT 'task_sla_monitor_menu_001',
+                                   'sla_management_dir_001', 'SLA监控', 'C',
+                                   '/process/sla-monitor',
+                                   '/system/sla/monitor'
+                ) expected
+                LEFT JOIN `sys_menu` menu_record
+                  ON menu_record.`id` = expected.`id`
+                WHERE menu_record.`id` IS NULL
+                   OR NOT (
+                     COALESCE(menu_record.`parent_id`, '') =
+                         expected.`parent_id`
+                     AND COALESCE(menu_record.`menu_name`, '') =
+                         expected.`menu_name`
+                     AND COALESCE(menu_record.`menu_type`, '') =
+                         expected.`menu_type`
+                     AND COALESCE(menu_record.`path`, '') IN (
+                       expected.`legacy_path`, expected.`target_path`
+                     )
+                     AND COALESCE(menu_record.`status`, '') = '0'
+                     AND COALESCE(menu_record.`visible`, '') = '0'
+                     AND COALESCE(menu_record.`deleted`, -1) = 0
+                   )
+                LIMIT 10
+                """,
+                2,
+                "V076 路由迁移目标菜单缺失、语义错误或已停用",
+                "请先恢复 V075 完成后的菜单层级，禁止按固定 ID 覆盖冲突资源");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT menu_record.`id`, COALESCE(menu_record.`path`, ''),
+                       COUNT(*)
+                FROM `sys_menu` menu_record
+                JOIN (
+                  SELECT '300' AS `id`, '/config' AS `target_path`
+                  UNION ALL SELECT '403', '/config/process-user-groups'
+                  UNION ALL SELECT 'list_column_template_menu_001',
+                                   '/config/list-column-templates'
+                  UNION ALL SELECT 'flow_setting_menu_001', '/dev/manual'
+                  UNION ALL SELECT 'dev_guide_list',
+                                   '/dev/manual/list-field-extension'
+                  UNION ALL SELECT 'list_field_guide_v2_001',
+                                   '/dev/manual/list-field-extension-v2'
+                  UNION ALL SELECT 'custom_list_guide',
+                                   '/dev/manual/custom-list'
+                  UNION ALL SELECT 'custom_form_guide',
+                                   '/dev/manual/custom-form'
+                  UNION ALL SELECT 'flow_action_guide_menu_001',
+                                   '/dev/manual/flow-actions'
+                  UNION ALL SELECT 'extension_management_menu_001',
+                                   '/dev/extensions'
+                  UNION ALL SELECT 'sla_management_dir_001', '/system/sla'
+                  UNION ALL SELECT 'task_sla_policy_menu_001',
+                                   '/system/sla/policies'
+                  UNION ALL SELECT 'task_sla_monitor_menu_001',
+                                   '/system/sla/monitor'
+                ) expected ON expected.`target_path` = menu_record.`path`
+                WHERE menu_record.`id` <> expected.`id`
+                  AND COALESCE(menu_record.`deleted`, 0) = 0
+                GROUP BY menu_record.`id`, menu_record.`path`
+                LIMIT 10
+                """,
+                2,
+                "V076 目标模块路径已被其他菜单占用",
+                "请先合并重复入口或调整冲突菜单，再统一页面路由");
     }
 
     /**

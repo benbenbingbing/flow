@@ -8,11 +8,11 @@
 
 | 类 | 接口 | 前端/接口入口 | 稳定标识 |
 | --- | --- | --- | --- |
-| `ProjectCustomFlowActionHandler` | `FlowActionHandler` | 系统管理 -> 扩展管理 -> 流程动作 | Bean `projectCustomFlowActionHandler` |
-| `ProjectCustomTypedFlowActionHandler` | `TypedFlowActionHandler` | 系统管理 -> 扩展管理 -> 流程动作 | Bean `projectCustomTypedFlowActionHandler` |
+| `ProjectCustomFlowActionHandler` | `FlowActionHandler` | 定制开发 -> 扩展管理 -> 流程动作 | Bean `projectCustomFlowActionHandler` |
+| `ProjectCustomTypedFlowActionHandler` | `TypedFlowActionHandler` | 定制开发 -> 扩展管理 -> 流程动作 | Bean `projectCustomTypedFlowActionHandler` |
 | `ProjectExtensionAcceptanceFlowActionHandler` | `FlowActionHandler` | 项目扩展验收流程的流程/节点/连线动作 | Bean `projectExtensionAcceptanceFlowActionHandler` |
 | `ProjectCustomFlowActionTriggerProvider` | `FlowActionTriggerProvider` | 流程动作触发时机 | `PROJECT_CUSTOM_MANUAL_EVENT` |
-| `ProjectCustomPersonResolver` | `PersonResolver` | 系统管理 -> 扩展管理 -> 人员接口 | `projectCustomPersonResolver` |
+| `ProjectCustomPersonResolver` | `PersonResolver` | 定制开发 -> 扩展管理 -> 人员接口 | `projectCustomPersonResolver` |
 | `ProjectCustomUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，ENTITY 作用范围/复合上下文 | `PROJECT_CUSTOM_UI_DATA_SOURCE` |
 | `ProjectCustomEntityUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，ENTITY 作用范围/字段数据 | `PROJECT_CUSTOM_UI_ENTITY` |
 | `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，FORM 作用范围 | `PROJECT_CUSTOM_UI_FORM` |

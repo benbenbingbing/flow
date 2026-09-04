@@ -69,7 +69,7 @@ assert.deepEqual(
   assert.equal(existsSync(path.join(root, retiredFile)), false, `已下线实现不得恢复: ${retiredFile}`)
 })
 
-;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/system/group', '/system/org', '/system/position', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration', '/system/list-column-templates'].forEach((routePath) => {
+;['/home', '/process', '/entity', '/system/menu', '/system/user', '/system/role', '/config/process-user-groups', '/system/org', '/system/position', '/system/dict', '/system/audit-logs', '/system/config-migration', '/system/open-integration', '/config/list-column-templates', '/system/sla/policies', '/system/sla/monitor'].forEach((routePath) => {
   const routePattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,500}meta:\\s*\\{\\s*title:\\s*'[^']+'`)
   assert.match(routerSource, routePattern, `核心页面缺少标题: ${routePath}`)
 })
@@ -79,10 +79,11 @@ const documentationRoutes = {
   '/manual/open-integration': ['OpenIntegrationManual.vue', '开放集成手册'],
   '/manual/embed-integration': ['EmbedIntegrationManual.vue', '嵌入集成手册'],
   '/manual/interface-service': ['InterfaceServiceManual.vue', '接口服务手册'],
-  '/system/dev-guide': ['DevGuide.vue', '列表字段扩展'],
-  '/system/list-field-guide': ['ListFieldExtensionGuide.vue', '列表字段扩展2'],
-  '/system/custom-list-guide': ['CustomListGuide.vue', '自定义列表组件'],
-  '/system/custom-form-guide': ['CustomFormGuide.vue', '自定义表单组件']
+  '/dev/manual/list-field-extension': ['DevGuide.vue', '列表字段扩展'],
+  '/dev/manual/list-field-extension-v2': ['ListFieldExtensionGuide.vue', '列表字段扩展2'],
+  '/dev/manual/custom-list': ['CustomListGuide.vue', '自定义列表组件'],
+  '/dev/manual/custom-form': ['CustomFormGuide.vue', '自定义表单组件'],
+  '/dev/manual/flow-actions': ['FlowActionGuide.vue', '流程动作']
 }
 for (const [routePath, markers] of Object.entries(documentationRoutes)) {
   const routeBlockPattern = new RegExp(`path:\\s*'${routePath.replaceAll('/', '\\/')}'[\\s\\S]{0,350}`)
@@ -174,6 +175,20 @@ const listColumnTemplateSemanticsMigration = readFileSync(
   ),
   'utf8'
 )
+const navigationMenuMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V075__reorganize_navigation_menus.sql'
+  ),
+  'utf8'
+)
+const navigationMenuRouteMigration = readFileSync(
+  path.join(
+    backendRoot,
+    'workflow-db-migrator/src/main/resources/db/migration/V076__align_navigation_menu_routes.sql'
+  ),
+  'utf8'
+)
 ;[
   'list_column_template_menu_001',
   '/system/list-column-templates',
@@ -192,7 +207,7 @@ const listColumnTemplateSemanticsMigration = readFileSync(
 ].forEach((marker) => {
   assert.ok(
     listColumnTemplateParentMigration.includes(marker),
-    `列表列模板必须归入系统管理菜单: ${marker}`
+    `列表列模板历史迁移缺少系统管理归属: ${marker}`
   )
 })
 ;[
@@ -204,6 +219,62 @@ const listColumnTemplateSemanticsMigration = readFileSync(
     `列表列模板菜单说明必须采用初始化语义: ${marker}`
   )
 })
+;[
+  "'300','0','配置管理'",
+  "'403','300','流程用户组'",
+  "`id` = 'list_column_template_menu_001'",
+  "`menu_name` = '开发手册'",
+  "`parent_id` = 'flow_setting_menu_001'",
+  "`id` = 'extension_management_menu_001'",
+  "`id` = 'work_calendar_menu_001'",
+  "'sla_management_dir_001','400','SLA管理'",
+  "'task_sla_policy_menu_001', 'task_sla_monitor_menu_001'"
+].forEach((marker) => {
+  assert.ok(
+    navigationMenuMigration.includes(marker),
+    `V075 菜单重组迁移缺少配置: ${marker}`
+  )
+})
+;[
+  "`path` = '/config'",
+  "`path` = '/config/process-user-groups'",
+  "`path` = '/config/list-column-templates'",
+  "`path` = '/dev/manual'",
+  "'/dev/manual/flow-actions'",
+  "`path` = '/dev/extensions'",
+  "`path` = '/system/sla'",
+  "'/system/sla/policies'",
+  "'/system/sla/monitor'",
+  "'migration-v076'"
+].forEach((marker) => {
+  assert.ok(
+    navigationMenuRouteMigration.includes(marker),
+    `V076 菜单路由迁移缺少配置: ${marker}`
+  )
+})
+;[
+  "{ path: '/system/group', redirect: '/config/process-user-groups' }",
+  "{ path: '/system/list-column-templates', redirect: '/config/list-column-templates' }",
+  "{ path: '/system/extensions', redirect: '/dev/extensions' }",
+  "{ path: '/system/flow-action-guide', redirect: '/dev/manual/flow-actions' }",
+  "{ path: '/process/sla-policies', redirect: '/system/sla/policies' }",
+  "{ path: '/process/sla-monitor', redirect: '/system/sla/monitor' }"
+].forEach((marker) => {
+  assert.ok(routerSource.includes(marker), `旧菜单地址必须重定向到模块化路由: ${marker}`)
+})
+
+assert.ok(
+  routerSource.includes("meta: { title: '流程用户组' }"),
+  '流程用户组路由标题必须与菜单名称一致'
+)
+const groupManagementSource = readFileSync(
+  path.join(root, 'src/views/system/Group.vue'),
+  'utf8'
+)
+assert.ok(
+  groupManagementSource.includes('<h2>流程用户组</h2>'),
+  '流程用户组页面标题必须与菜单名称一致'
+)
 
 const listColumnTemplatePage = readFileSync(
   path.join(root, 'src/views/system/ListColumnTemplateManagement.vue'),
@@ -2187,23 +2258,30 @@ const configurationArchitectureExpectations = {
     '上线检查清单'
   ],
   'src/data/user-manual/embedIntegration.js': [
-    '嵌入集成不是永久免登录 URL',
+    '嵌入方前端需要做什么',
+    'FlowEmbed.mount',
+    'targetOrigin',
+    'await widget.destroy()',
+    'selection.changed',
+    'form.saved',
+    'session.expired',
+    '嵌入方后端需要做什么',
+    '@PostMapping',
+    'RestClient',
     'embed.launch',
     '/api/open/v1/embed-launches',
     'SIGNED_JWT',
     'flow-embed-launch',
-    'FlowEmbed.mount',
     'launchCode',
-    'targetOrigin',
-    'selection.changed',
-    'form.saved',
-    'session.expired',
-    '为什么后台预览和嵌入效果不同？',
-    'FLOW_PUBLISHED',
-    '同一套 Flow 表单运行时',
-    'await widget.destroy()',
-    'RECORD_UPDATE',
-    '上线检查清单'
+    'Cache-Control',
+    'Flow 系统需要怎么配置',
+    'Integration Application',
+    'Identity Provider',
+    'Identity Binding',
+    'Application Grant',
+    'LIST_QUERY',
+    'RECORD_CREATE',
+    'RECORD_VIEW'
   ],
   'src/data/user-manual/entity.js': [
     '稳定节点 ID',
@@ -2557,14 +2635,19 @@ const extensionManagementSource = readFileSync(
   'utf8'
 )
 ;[
-  "path: '/system/extensions'",
+  "path: '/dev/extensions'",
   "requiredPermissions: ['system:extension:list']"
 ].forEach((marker) => {
   assert.ok(
     routerSource.includes(marker),
-    `扩展管理必须作为系统管理路由并受权限控制: ${marker}`
+    `扩展管理必须保留稳定路由并受权限控制: ${marker}`
   )
 })
+assert.ok(
+  navigationMenuMigration.includes("`parent_id` = 'dev_guide_dir'")
+    && navigationMenuMigration.includes("`id` = 'extension_management_menu_001'"),
+  '扩展管理菜单必须归入定制开发'
+)
 ;[
   'normalizeRouteType(route.query.type)',
   'searchExpanded',

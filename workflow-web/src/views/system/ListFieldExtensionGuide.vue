@@ -292,7 +292,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
     "renderComponent": "RiskProgressCell",
     "renderConfig": "{\"warningAt\":40,\"dangerAt\":70,\"showText\":true,\"showLevel\":true}",
     "queryConfig": "{\"componentType\":\"number\",\"placeholder\":\"最低风险\",\"defaultValue\":\"\"}",
-    "columnConfig": "{\"fixed\":\"\",\"minWidth\":180,\"showOverflowTooltip\":true}",
+    "columnConfig": "{\"fixed\":\"\",\"minWidth\":180,\"showOverflowTooltip\":true,\"quickCopy\":true}",
     "revision": 3
   },
   "row": {
@@ -454,7 +454,7 @@ function reloadList() {
   "dataSourceConfig": { "customerField": "customerId", "labelPrefix": "等级" },
   "renderConfig": { "warningAt": 40, "dangerAt": 70, "showText": true, "showLevel": true, "dangerText": "高风险" },
   "queryConfig": { "componentType": "number", "placeholder": "最低风险", "defaultValue": "" },
-  "columnConfig": { "fixed": "left", "minWidth": 180, "showOverflowTooltip": true }
+  "columnConfig": { "fixed": "left", "minWidth": 180, "showOverflowTooltip": true, "quickCopy": true }
 }</code></pre>
           </CodeCard>
           <p>查询方式本身不在 <code>queryConfig</code> 里，在列字段 <code>queryType</code>。设计器可选：<code>EQ NE LIKE NOT_LIKE GT GE LT LE BETWEEN IN NOT_IN EMPTY NOT_EMPTY</code>。内存过滤里 <code>CONTAINS</code> 等于 <code>LIKE</code>，<code>GTE</code> 等于 <code>GE</code>，请求里也可以带 <code>riskScore_op=GE</code>、<code>riskScore_start</code> / <code>riskScore_end</code>。</p>
@@ -604,7 +604,7 @@ const jsonBagRows = [
   { bag: 'dataSourceConfig', who: '数据来源表单', shape: 'Provider 的 configSchema。如 { customerField, labelPrefix }' },
   { bag: 'renderConfig', who: '单元格参数表单', shape: '组件的 configSchema。如 { warningAt, dangerAt, showText, showLevel }' },
   { bag: 'queryConfig', who: '查询项', shape: '{ componentType, placeholder, defaultValue }。查询方式在 queryType' },
-  { bag: 'columnConfig', who: '高级列布局', shape: '{ fixed: left|right|空, minWidth, showOverflowTooltip }。列宽/对齐在 width、align' }
+  { bag: 'columnConfig', who: '列展示与高级列布局', shape: '{ fixed: left|right|空, minWidth, showOverflowTooltip, quickCopy }。列宽/对齐在 width、align' }
 ]
 
 const providerFullRows = [

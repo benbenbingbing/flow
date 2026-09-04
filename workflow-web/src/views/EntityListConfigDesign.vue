@@ -639,17 +639,23 @@
               "
             >
               <template #default="{ row }">
-                <ListCellRenderer
-                  v-if="
-                    field.renderComponent
-                    || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')
-                  "
-                  :row="row"
-                  :field="field"
-                />
-                <span v-else>
-                  {{ row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-' }}
-                </span>
+                <ListQuickCopyCell
+                  :enabled="safeParseConfig(field.columnConfig).quickCopy === true"
+                  :value="row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-'"
+                  :field-name="field.fieldName"
+                >
+                  <ListCellRenderer
+                    v-if="
+                      field.renderComponent
+                      || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')
+                    "
+                    :row="row"
+                    :field="field"
+                  />
+                  <span v-else>
+                    {{ row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-' }}
+                  </span>
+                </ListQuickCopyCell>
               </template>
             </el-table-column>
           </el-table>
@@ -753,6 +759,15 @@
                   <el-option label="居中" value="center" />
                   <el-option label="右对齐" value="right" />
                 </el-select>
+              </el-form-item>
+              <el-form-item label="快捷复制">
+                <el-switch
+                  v-model="editingColumnConfig.quickCopy"
+                  :disabled="!editingField.showInList"
+                  inline-prompt
+                  active-text="是"
+                  inactive-text="否"
+                />
               </el-form-item>
             </el-form>
           </SettingsSection>
@@ -977,6 +992,7 @@ import { entityApi } from '@/api/entity'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
+import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
 import EntityDataSearchForm from '@/views/entity/components/EntityDataSearchForm.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
@@ -1886,6 +1902,7 @@ function syncFieldConfigEditors(field) {
     fixed: '',
     minWidth: 100,
     showOverflowTooltip: true,
+    quickCopy: false,
     ...safeParseConfig(field.columnConfig)
   }
 }
@@ -2274,6 +2291,9 @@ function fieldConfigSummary(field) {
     if (Number(field.width) > 0) parts.push(`${field.width}px`)
     if (field.align && field.align !== 'left') {
       parts.push(field.align === 'center' ? '居中' : '右对齐')
+    }
+    if (safeParseConfig(field.columnConfig).quickCopy === true) {
+      parts.push('快捷复制')
     }
   }
   if (isVirtualField(field)) {

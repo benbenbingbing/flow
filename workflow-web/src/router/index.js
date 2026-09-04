@@ -5,6 +5,20 @@ import { getPermissions } from '@/api/auth'
 import { restoreAuthSession } from '@/shared/request'
 import Layout from '@/views/Layout.vue'
 
+// 页面采用菜单模块前缀；旧地址只负责重定向，避免历史书签直接失效。
+const legacyMenuRouteRedirects = [
+  { path: '/system/group', redirect: '/config/process-user-groups' },
+  { path: '/system/list-column-templates', redirect: '/config/list-column-templates' },
+  { path: '/system/extensions', redirect: '/dev/extensions' },
+  { path: '/system/dev-guide', redirect: '/dev/manual/list-field-extension' },
+  { path: '/system/list-field-guide', redirect: '/dev/manual/list-field-extension-v2' },
+  { path: '/system/custom-list-guide', redirect: '/dev/manual/custom-list' },
+  { path: '/system/custom-form-guide', redirect: '/dev/manual/custom-form' },
+  { path: '/system/flow-action-guide', redirect: '/dev/manual/flow-actions' },
+  { path: '/process/sla-policies', redirect: '/system/sla/policies' },
+  { path: '/process/sla-monitor', redirect: '/system/sla/monitor' }
+]
+
 /**
  * 路由配置
  */
@@ -47,24 +61,6 @@ const routes = [
         name: 'ProcessDesign',
         component: () => import('@/views/ProcessDesign.vue'),
         meta: { title: '流程设计', activeMenu: '/process' }
-      },
-      {
-        path: '/process/sla-policies',
-        name: 'TaskSlaPolicyManagement',
-        component: () => import('@/views/process/TaskSlaPolicyManagement.vue'),
-        meta: {
-          title: 'SLA策略',
-          requiredPermissions: ['process:sla-policy:view']
-        }
-      },
-      {
-        path: '/process/sla-monitor',
-        name: 'TaskSlaMonitor',
-        component: () => import('@/views/process/TaskSlaMonitor.vue'),
-        meta: {
-          title: 'SLA监控',
-          requiredPermissions: ['process:sla:monitor']
-        }
       },
       // 实体管理
       {
@@ -164,7 +160,11 @@ const routes = [
         component: () => import('@/views/ProcessProgress.vue'),
         meta: { title: '流程进度', activeMenu: '/process' }
       },
-      // 系统管理
+      // 配置与系统后台页面；侧栏中的实际分组由后端 sys_menu 菜单树决定。
+      {
+        path: '/config',
+        redirect: '/config/process-user-groups'
+      },
       {
         path: '/system/menu',
         name: 'MenuManagement',
@@ -184,10 +184,10 @@ const routes = [
         meta: { title: '角色管理' }
       },
       {
-        path: '/system/group',
+        path: '/config/process-user-groups',
         name: 'GroupManagement',
         component: () => import('@/views/system/Group.vue'),
-        meta: { title: '用户组管理' }
+        meta: { title: '流程用户组' }
       },
       {
         path: '/system/org',
@@ -220,6 +220,28 @@ const routes = [
         }
       },
       {
+        path: '/system/sla',
+        redirect: '/system/sla/policies'
+      },
+      {
+        path: '/system/sla/policies',
+        name: 'TaskSlaPolicyManagement',
+        component: () => import('@/views/process/TaskSlaPolicyManagement.vue'),
+        meta: {
+          title: 'SLA策略',
+          requiredPermissions: ['process:sla-policy:view']
+        }
+      },
+      {
+        path: '/system/sla/monitor',
+        name: 'TaskSlaMonitor',
+        component: () => import('@/views/process/TaskSlaMonitor.vue'),
+        meta: {
+          title: 'SLA监控',
+          requiredPermissions: ['process:sla:monitor']
+        }
+      },
+      {
         path: '/system/audit-logs',
         name: 'SystemAudit',
         component: () => import('@/views/system/SystemAudit.vue'),
@@ -229,7 +251,7 @@ const routes = [
         }
       },
       {
-        path: '/system/extensions',
+        path: '/dev/extensions',
         name: 'ExtensionManagement',
         component: () => import('@/views/system/ExtensionManagement.vue'),
         meta: {
@@ -270,7 +292,7 @@ const routes = [
         }
       },
       {
-        path: '/system/list-column-templates',
+        path: '/config/list-column-templates',
         name: 'ListColumnTemplateManagement',
         component: () => import('@/views/system/ListColumnTemplateManagement.vue'),
         meta: {
@@ -325,35 +347,44 @@ const routes = [
         }
       },
       {
-        path: '/system/dev-guide',
+        path: '/dev',
+        redirect: '/dev/manual/list-field-extension'
+      },
+      {
+        path: '/dev/manual',
+        redirect: '/dev/manual/list-field-extension'
+      },
+      {
+        path: '/dev/manual/list-field-extension',
         name: 'DevGuide',
         component: () => import('@/views/system/DevGuide.vue'),
         meta: { title: '列表字段扩展', developerOnly: true }
       },
       {
-        path: '/system/list-field-guide',
+        path: '/dev/manual/list-field-extension-v2',
         name: 'ListFieldExtensionGuide',
         component: () => import('@/views/system/ListFieldExtensionGuide.vue'),
         meta: { title: '列表字段扩展2', developerOnly: true }
       },
       {
-        path: '/system/custom-list-guide',
+        path: '/dev/manual/custom-list',
         name: 'CustomListGuide',
         component: () => import('@/views/system/CustomListGuide.vue'),
         meta: { title: '自定义列表组件', developerOnly: true }
       },
       {
-        path: '/system/custom-form-guide',
+        path: '/dev/manual/custom-form',
         name: 'CustomFormGuide',
         component: () => import('@/views/system/CustomFormGuide.vue'),
         meta: { title: '自定义表单组件', developerOnly: true }
       },
       {
-        path: '/system/flow-action-guide',
+        path: '/dev/manual/flow-actions',
         name: 'FlowActionGuide',
         component: () => import('@/views/system/FlowActionGuide.vue'),
         meta: { title: '流程动作', developerOnly: true }
-      }
+      },
+      ...legacyMenuRouteRedirects
     ]
   },
   // 未知地址保留原路径并给出明确反馈，避免静默跳转造成误解。

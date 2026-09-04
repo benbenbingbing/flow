@@ -29,7 +29,8 @@ const DEFAULT_FIELD_CONFIG = Object.freeze({
   columnConfig: JSON.stringify({
     fixed: '',
     minWidth: 100,
-    showOverflowTooltip: true
+    showOverflowTooltip: true,
+    quickCopy: false
   }),
   renderConfig: JSON.stringify({
     emptyText: '-'
@@ -77,6 +78,7 @@ export function createListColumnTemplateEditor(seed = {}) {
       fixed: '',
       minWidth: 100,
       showOverflowTooltip: true,
+      quickCopy: false,
       ...parseObjectConfig(field.columnConfig)
     },
     renderConfig,
@@ -183,6 +185,7 @@ export function describeListColumnTemplate(editor) {
     parts.push('不显示')
   }
   if (editor.isQuery) parts.push(`查询 ${editor.queryType || 'EQ'}`)
+  if (editor.columnConfig?.quickCopy === true) parts.push('快捷复制')
   if (editor.renderComponent) parts.push(editor.renderComponent)
   if (editor.dataSourceType && editor.dataSourceType !== 'ENTITY_FIELD') {
     parts.push(editor.dataSourceType)

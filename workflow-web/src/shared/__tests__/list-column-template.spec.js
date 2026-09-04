@@ -33,6 +33,7 @@ const editor = createListColumnTemplateEditor({
 })
 
 assert.equal(editor.renderConfig.labelMap.ACTIVE, '启用')
+assert.equal(editor.columnConfig.quickCopy, false)
 
 const snapshot = buildListColumnTemplateSnapshot(editor)
 assert.equal(snapshot.metadata.sampleValue, 'ACTIVE')
@@ -45,6 +46,14 @@ assert.deepEqual(
   JSON.parse(snapshot.field.renderConfig).statusMap,
   { ACTIVE: 'success' }
 )
+
+const quickCopyEditor = createListColumnTemplateEditor({
+  field: {
+    columnConfig: JSON.stringify({ quickCopy: true })
+  }
+})
+const quickCopySnapshot = buildListColumnTemplateSnapshot(quickCopyEditor)
+assert.equal(JSON.parse(quickCopySnapshot.field.columnConfig).quickCopy, true)
 
 const parsed = parseListColumnTemplateSnapshot(JSON.stringify(snapshot))
 assert.equal(parsed.field.renderComponent, 'StatusBadge')
