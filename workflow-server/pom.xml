@@ -25,7 +25,7 @@
         <module>workflow-db-migrator</module>
         <module>workflow-entity</module>
         <module>workflow-process</module>
-        <module>workflow-project</module>
+        <module>biz-project</module>
         <module>workflow-open-api</module>
         <module>workflow-embed</module>
         <module>workflow-integration</module>
@@ -100,7 +100,7 @@
             </dependency>
             <dependency>
                 <groupId>com.workflow</groupId>
-                <artifactId>workflow-project</artifactId>
+                <artifactId>biz-project</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -86,7 +86,7 @@ class ArchitectureBoundaryTest {
             noClasses()
                     .that().resideInAnyPackage(
                             "com.workflow.process..",
-                            "com.workflow.project..",
+                            "com.workflow.biz.project..",
                             "com.workflow.admin..")
                     .should().dependOnClassesThat()
                     .haveNameMatching(

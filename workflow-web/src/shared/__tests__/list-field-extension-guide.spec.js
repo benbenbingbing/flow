@@ -40,7 +40,7 @@ const enrichService = readFileSync(
   'utf8'
 )
 const projectProvider = readFileSync(
-  join(backendRoot, 'workflow-project/src/main/java/com/workflow/project/custom/ProjectCustomListFieldDataProvider.java'),
+  join(backendRoot, 'biz-project/src/main/java/com/workflow/biz/project/custom/ProjectCustomListFieldDataProvider.java'),
   'utf8'
 )
 const controller = readFileSync(

@@ -25,7 +25,7 @@
 
 ## 执行前提
 
-1. 后端必须使用当前工作区代码重新启动，确保 `workflow-project` 中新增的 Spring Bean
+1. 后端必须使用当前工作区代码重新启动，确保 `biz-project` 中新增的 Spring Bean
    已进入运行时。
 2. 本机 Flyway 仅按要求处理 V001 历史校验值。其他迁移校验问题需要单独确认，不能由
    本脚本绕过。
@@ -42,14 +42,14 @@
 ```bash
 TEST_USERNAME='<管理员账号>' \
 TEST_PASSWORD='<当前密码>' \
-node workflow-server/workflow-project/tools/real-project-extension-acceptance.mjs
+node workflow-server/biz-project/tools/real-project-extension-acceptance.mjs
 ```
 
 使用一次性令牌文件：
 
 ```bash
 TEST_TOKEN_FILE='/private/tmp/project-extension-acceptance.token' \
-node workflow-server/workflow-project/tools/real-project-extension-acceptance.mjs
+node workflow-server/biz-project/tools/real-project-extension-acceptance.mjs
 ```
 
 使用一次性凭据文件时，文件内容为：
@@ -65,7 +65,7 @@ node workflow-server/workflow-project/tools/real-project-extension-acceptance.mj
 
 ```bash
 TEST_CREDENTIAL_FILE='/private/tmp/project-extension-acceptance.credentials.json' \
-node workflow-server/workflow-project/tools/real-project-extension-acceptance.mjs
+node workflow-server/biz-project/tools/real-project-extension-acceptance.mjs
 ```
 
 接口地址不是默认的 `http://127.0.0.1:8080/api` 时，再增加：
@@ -195,7 +195,7 @@ npm run build
 
 ```bash
 cd workflow-server
-mvn -pl workflow-project -am \
+mvn -pl biz-project -am \
   -Dtest=ProjectCustomBackendExtensionsTest,ProjectExtensionAcceptanceFlowActionHandlerTest,OutboxProcessorTest \
   -Dsurefire.failIfNoSpecifiedTests=false test
 ```

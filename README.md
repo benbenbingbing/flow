@@ -19,7 +19,7 @@ Flow 是一个面向企业内部业务的流程配置平台。它将实体建模
 - 带签名的 `.wfpack` 配置导入、差异分析、发布与回滚
 - 系统操作审计、健康检查、Prometheus 指标和部署告警规则
 
-`workflow-project` 提供了一组软件项目研发管理配置和少量跨实体扩展，用于验证平台在
+`biz-project` 提供了一组软件项目研发管理配置和少量跨实体扩展，用于验证平台在
 真实业务流程中的组合能力。它不是平台内核的一部分。
 
 ## 技术基线
@@ -78,7 +78,7 @@ docs/                  领域设计、数据库、测试和历史资料
 | `workflow-db-migrator` | Flyway、Flowable 建表迁移和 DDL 队列 Worker |
 | `workflow-entity` | 实体、表单、列表、数据权限、发布和运行态数据 |
 | `workflow-process` | 流程定义、部署、实例、任务、抄送和状态同步 |
-| `workflow-project` | 软件项目研发管理配置和领域扩展 |
+| `biz-project` | 软件项目研发管理配置和领域扩展 |
 | `workflow-integration` | Outbox、受控 HTTP 调用和通知集成 |
 | `workflow-migration` | 配置包、差异分析、环境映射和发布 |
 | `workflow-devtools` | 仅用于测试和开发的辅助实现 |
@@ -287,7 +287,7 @@ Environment `阿里云flow` 管理。
 - [管理与审计模块](workflow-server/workflow-admin/README.md)
 - [实体模块](workflow-server/workflow-entity/README.md)
 - [流程模块](workflow-server/workflow-process/README.md)
-- [软件项目研发管理配置](workflow-server/workflow-project/README.md)
+- [软件项目研发管理配置](workflow-server/biz-project/README.md)
 
 `docs/` 中同时存在当前设计资料和历史验收记录；`docs/archive/` 明确为历史实现。
 涉及启动、迁移和生产运维时，以代码、Helm Chart、`deploy/runbooks/` 和 CI 配置为准。

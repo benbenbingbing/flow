@@ -668,6 +668,6 @@ Provider 负责：专业算法、复杂领域规则、受控外部能力
 - `workflow-server/workflow-process/src/main/java/com/workflow/process/instance/application/ProcessRollbackService.java`
 - `workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiEventRuntimeService.java`
 - `workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/DataPermissionEngine.java`
-- `workflow-server/workflow-project/src/main/resources/project-config/assets/entities/project_member_change_request-v1.json`
-- `workflow-server/workflow-project/src/main/resources/project-config/assets/processes/project_member_change_process-v1.json`
-- `workflow-server/workflow-project/src/main/java/com/workflow/project/service/ProjectMemberChangeService.java`
+- `workflow-server/biz-project/src/main/resources/project-config/assets/entities/project_member_change_request-v1.json`
+- `workflow-server/biz-project/src/main/resources/project-config/assets/processes/project_member_change_process-v1.json`
+- `workflow-server/biz-project/src/main/java/com/workflow/biz/project/service/ProjectMemberChangeService.java`

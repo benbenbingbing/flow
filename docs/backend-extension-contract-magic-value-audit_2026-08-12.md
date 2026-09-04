@@ -2,7 +2,7 @@
 
 > 盘点日期：2026-08-12  
 > 盘点范围：`workflow-contracts` 及其在 `workflow-entity`、`workflow-process`、
-> `workflow-admin`、`workflow-project`、`workflow-devtools`、
+> `workflow-admin`、`biz-project`、`workflow-devtools`、
 > `workflow-integration`、`workflow-open-api` 中的扩展契约消费者  
 > 本阶段交付：仅文档，不修改代码
 
@@ -178,7 +178,7 @@ Map 到 Java 类型的转换，无需新建通用 Schema 或泛型 Provider 框�
 
 **已有正确示例**
 
-- `workflow-project/.../custom/ProjectCustomTypedFlowActionHandler.java:22-90`
+- `biz-project/.../custom/ProjectCustomTypedFlowActionHandler.java:22-90`
 - `workflow-devtools/.../action/DemoTypedActionHandler.java`
 
 这些实现已经避免在执行阶段用字符串读取参数。它们的 `extraParamSchema()` 仍需显式
@@ -219,7 +219,7 @@ Map 到 Java 类型的转换，无需新建通用 Schema 或泛型 Provider 框�
 
 - `workflow-contracts/.../action/FlowActionTriggerTiming.java:12-92`
 - `workflow-contracts/.../action/FlowActionHandler.java:21-25`
-- `workflow-project/.../custom/ProjectCustomFlowActionTriggerProvider.java:23-42`
+- `biz-project/.../custom/ProjectCustomFlowActionTriggerProvider.java:23-42`
 
 **建议**
 
@@ -243,8 +243,8 @@ Map 到 Java 类型的转换，无需新建通用 Schema 或泛型 Provider 框�
 
 **位置**
 
-- `workflow-project/.../custom/ProjectCustomPersonResolver.java:34-53`
-- `workflow-project/.../custom/ProjectCustomPersonResolver.java:60-78`
+- `biz-project/.../custom/ProjectCustomPersonResolver.java:34-53`
+- `biz-project/.../custom/ProjectCustomPersonResolver.java:60-78`
 - `workflow-contracts/.../identity/resolver/PersonResolveRequest.java:11-38`
 
 旧知会兼容解析器还使用：
@@ -252,7 +252,7 @@ Map 到 Java 类型的转换，无需新建通用 Schema 或泛型 Provider 框�
 - `userKeys`
 - `fallbackToOperator`
 
-位置：`workflow-project/.../custom/ProjectCustomCcRecipientResolver.java:35-57`。
+位置：`biz-project/.../custom/ProjectCustomCcRecipientResolver.java:35-57`。
 
 **是否封闭**
 
@@ -289,7 +289,7 @@ Map 到 Java 类型的转换，无需新建通用 Schema 或泛型 Provider 框�
 - `workflow-entity/.../ui/application/UiAvailableOperationService.java:33-43`
 - `workflow-entity/.../ui/application/UiEventBindingService.java:49-65`
 - `workflow-entity/.../ui/application/UiEventRuntimeService.java:41-45`
-- `workflow-project/.../custom/ProjectCustomUiDataSourceProvider.java:100-136`
+- `biz-project/.../custom/ProjectCustomUiDataSourceProvider.java:100-136`
 
 **是否封闭**
 
@@ -319,10 +319,10 @@ UI Provider 的输入 Map 中存在以下常见字段：
 **代表位置**
 
 - `workflow-entity/.../list/application/EntityListRuntimeService.java:296-320`
-- `workflow-project/.../custom/ProjectCustomUiDataSourceProviderSupport.java:81-95`
-- `workflow-project/.../custom/ProjectCustomUiDataSourceProviderSupport.java:198-217`
-- `workflow-project/.../custom/ProjectCustomEntityUiDataSourceProvider.java:87-124`
-- `workflow-project/.../custom/ProjectCustomListUiDataSourceProvider.java:95-128`
+- `biz-project/.../custom/ProjectCustomUiDataSourceProviderSupport.java:81-95`
+- `biz-project/.../custom/ProjectCustomUiDataSourceProviderSupport.java:198-217`
+- `biz-project/.../custom/ProjectCustomEntityUiDataSourceProvider.java:87-124`
+- `biz-project/.../custom/ProjectCustomListUiDataSourceProvider.java:95-128`
 
 **建议**
 
@@ -344,8 +344,8 @@ UI Provider 的输入 Map 中存在以下常见字段：
 
 **位置**
 
-- `workflow-project/.../custom/ProjectCustomUiDataSourceProviderSupport.java:236-310`
-- `workflow-project/.../custom/ProjectCustomEntityUiDataSourceProvider.java:146-188`
+- `biz-project/.../custom/ProjectCustomUiDataSourceProviderSupport.java:236-310`
+- `biz-project/.../custom/ProjectCustomEntityUiDataSourceProvider.java:146-188`
 
 这些结构可能同时受到前端运行时、接口服务 output Schema 和历史配置影响。
 仅凭当前示例不足以证明应统一为后端 DTO。
@@ -372,10 +372,10 @@ project 示例 Provider 在 `configurationSchema()` 与执行代码中重复使�
 
 **位置**
 
-- `workflow-project/.../custom/ProjectCustomUiDataSourceProvider.java:49-71, 80-136`
-- `workflow-project/.../custom/ProjectCustomEntityUiDataSourceProvider.java:45-65, 87-159`
-- `workflow-project/.../custom/ProjectCustomFormUiDataSourceProvider.java:54-74, 95-174`
-- `workflow-project/.../custom/ProjectCustomListUiDataSourceProvider.java:55-75, 95-169`
+- `biz-project/.../custom/ProjectCustomUiDataSourceProvider.java:49-71, 80-136`
+- `biz-project/.../custom/ProjectCustomEntityUiDataSourceProvider.java:45-65, 87-159`
+- `biz-project/.../custom/ProjectCustomFormUiDataSourceProvider.java:54-74, 95-174`
+- `biz-project/.../custom/ProjectCustomListUiDataSourceProvider.java:55-75, 95-169`
 
 **建议**
 
@@ -402,7 +402,7 @@ project 示例 Provider 在 `configurationSchema()` 与执行代码中重复使�
 
 - `workflow-contracts/.../entity/list/EntityListDataProvider.java:24-35`
 - `workflow-entity/.../list/application/EntityListRuntimeService.java:326-351`
-- `workflow-project/.../custom/ProjectCustomEntityListDataProvider.java:42-54`
+- `biz-project/.../custom/ProjectCustomEntityListDataProvider.java:42-54`
 
 **是否封闭**
 
@@ -458,8 +458,8 @@ project 示例 Provider 在 `configurationSchema()` 与执行代码中重复使�
 
 **位置**
 
-- `workflow-project/.../custom/ProjectCustomMutationStepProvider.java:45-102`
-- `workflow-project/.../custom/ProjectCustomChangeTargetResolver.java:39-88`
+- `biz-project/.../custom/ProjectCustomMutationStepProvider.java:45-102`
+- `biz-project/.../custom/ProjectCustomChangeTargetResolver.java:39-88`
 - `workflow-contracts/.../entity/mutation/EntityMutationStepContext.java:8-13`
 - `workflow-contracts/.../entity/mutation/EntityChangeTargetContext.java:8-14`
 

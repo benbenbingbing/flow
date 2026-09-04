@@ -13,7 +13,7 @@ const indexSource = readFileSync(
 const bootstrapSource = readFileSync(
   path.join(
     repositoryDir,
-    'workflow-server/workflow-project/tools/'
+    'workflow-server/biz-project/tools/'
       + 'real-project-extension-acceptance.mjs'
   ),
   'utf8'
