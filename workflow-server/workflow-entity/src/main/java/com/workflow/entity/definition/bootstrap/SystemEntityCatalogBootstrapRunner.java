@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.bootstrap;
 
-import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
 import com.workflow.entity.definition.application.SystemEntityCatalogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -2,7 +2,7 @@ package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

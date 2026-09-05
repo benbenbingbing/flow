@@ -3,7 +3,7 @@ package com.workflow.admin.audit.application;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.core.logging.LogValue;
 import com.workflow.outbox.api.OutboxPublisher;
 import lombok.RequiredArgsConstructor;

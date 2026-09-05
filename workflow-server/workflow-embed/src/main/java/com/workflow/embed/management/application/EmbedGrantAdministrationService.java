@@ -6,9 +6,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.embed.management.api.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.Capability;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
@@ -43,7 +43,7 @@ public class EmbedGrantAdministrationService {
     private final EmbedManagementRepository repository;
     private final EmbedViewConfigurationValidator validator;
     private final ExactOriginPolicy originPolicy;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final SystemAuditPort auditPort;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -53,7 +53,7 @@ public class EmbedGrantAdministrationService {
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
             ExactOriginPolicy originPolicy,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
         this(repository, validator, originPolicy, actorProvider, auditPort, objectMapper,
@@ -64,7 +64,7 @@ public class EmbedGrantAdministrationService {
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
             ExactOriginPolicy originPolicy,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {

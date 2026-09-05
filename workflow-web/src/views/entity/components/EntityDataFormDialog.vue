@@ -1,13 +1,26 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="dialogTitle"
     width="75%"
     class="entity-form-dialog"
     top="3vh"
     :close-on-click-modal="false"
-    @closed="emit('closed')"
+    @closed="handleDialogClosed"
   >
+    <template #header="{ titleId, titleClass }">
+      <RuntimeVersionDiagnostics
+        ref="runtimeDiagnosticsRef"
+        :entries="dialogRuntimeDiagnosticEntries"
+        :copy-entries="dialogRuntimeDiagnosticCopyEntries"
+        copy-title="业务表单运行版本排障信息"
+        :reset-key="dialogRuntimeDiagnosticResetKey"
+      >
+        <span
+          :id="titleId"
+          :class="[titleClass, 'form-dialog-title']"
+        >{{ dialogTitle }}</span>
+      </RuntimeVersionDiagnostics>
+    </template>
     <el-tabs v-if="showOuterTabs" v-model="activeTab" type="border-card" class="form-dialog-tabs">
       <el-tab-pane v-if="showBasicTab" label="基本信息" name="basic">
         <EntityDataFormFields
@@ -131,12 +144,14 @@ import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './approval/EntityApprovalDiagram.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
+import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import {
   executeCustomFormAction,
   resolveRuntimeFormActions
 } from '@/shared/form-action-runtime'
 import { footerFormActions } from '@/shared/form-actions'
 import { isWorkflowReady } from '@/shared/entity-design'
+import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 
 const props = defineProps<{
   entityCode: string
@@ -166,6 +181,7 @@ const actionLoadingKey = ref('')
 const formFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
 const basicFormFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
 const nodeFormFieldsRefs = ref<Record<string, InstanceType<typeof EntityDataFormFields>>>({})
+const runtimeDiagnosticsRef = ref<InstanceType<typeof RuntimeVersionDiagnostics>>()
 const isEdit = ref(false)
 const activeTab = ref('form')
 const processInstanceId = ref('')
@@ -234,8 +250,77 @@ const {
   bpmnXml,
   progressData,
   processHistory,
+  processRuntimeMetadata,
   loadProcessDetail
 } = useProcessDetail()
+
+/**
+ * 排障信息必须描述当前真正渲染的表单；编辑已有流程数据时，再补充实例钉定的流程版本。
+ */
+const dialogRuntimeDiagnosticEntries = computed(() => {
+  const process = processRuntimeMetadata.value || {}
+  const diagnosticProcessInstanceId =
+    process.processInstanceId || processInstanceId.value
+  const form = runtimeForm.value
+  const formVersion = form?.runtimeReleaseVersion ?? form?.formReleaseVersion
+  const hotfixSuffix = form?.hotfixApplied === true ? '（已应用热修复）' : ''
+  return [
+    ...(diagnosticProcessInstanceId
+      ? [{
+          label: '流程',
+          value: formatRuntimeCodeVersion(
+            process.processKey,
+            process.processVersion
+          )
+        }]
+      : []),
+    {
+      label: '表单',
+      value: form
+        ? `${formatRuntimeCodeVersion(form.formKey, formVersion)}${hotfixSuffix}`
+        : '未记录运行表单'
+    }
+  ]
+})
+const dialogRuntimeDiagnosticCopyEntries = computed(() => [
+  ...(props.listKey
+    ? [{
+        label: '列表',
+        value: formatRuntimeCodeVersion(
+          props.listKey,
+          props.listReleaseVersion
+        )
+      }]
+    : []),
+  { label: '操作模式', value: isEdit.value ? '编辑' : '新增' },
+  ...dialogRuntimeDiagnosticEntries.value,
+  { label: '记录 ID', value: formData.id },
+  {
+    label: '流程实例 ID',
+    value: processRuntimeMetadata.value?.processInstanceId
+      || processInstanceId.value
+  }
+])
+const dialogRuntimeDiagnosticResetKey = computed(() => {
+  const form = runtimeForm.value
+  return [
+    dialogVisible.value ? 'open' : 'closed',
+    isEdit.value ? 'edit' : 'create',
+    launchRuntimeContext.value?.initializationKey || '',
+    formData.id || '',
+    processRuntimeMetadata.value?.processInstanceId
+      || processInstanceId.value
+      || '',
+    form?.runtimeReleaseId || form?.formReleaseId || '',
+    form?.runtimeReleaseVersion ?? form?.formReleaseVersion ?? ''
+  ].join(':')
+})
+
+function handleDialogClosed() {
+  runtimeDiagnosticsRef.value?.reset()
+  processRuntimeMetadata.value = {}
+  emit('closed')
+}
 
 const runtimeTabLayout = computed(() => resolveRuntimeFormTabLayout(runtimeForm.value))
 const runtimeNodeTabs = computed(() => runtimeTabLayout.value.tabs)
@@ -539,6 +624,8 @@ async function handleReset() {
 
 // 新增
 const openCreate = async (options: any = {}) => {
+  runtimeDiagnosticsRef.value?.reset()
+  processRuntimeMetadata.value = {}
   activeForm.value = options?.form || null
   isEdit.value = false
   processInstanceId.value = ''
@@ -584,6 +671,11 @@ const openCreate = async (options: any = {}) => {
 
 // 编辑
 const openEdit = async (row: any, options: any = {}) => {
+  runtimeDiagnosticsRef.value?.reset()
+  processRuntimeMetadata.value = {}
+  processInstanceId.value = ''
+  currentProcessStatus.value = ''
+  currentProcessName.value = ''
   activeForm.value = options?.form || null
   isEdit.value = true
   launchRuntimeContext.value = {
@@ -786,6 +878,18 @@ function applyCreateInitialData(initialData: Record<string, any>) {
 </script>
 
 <style scoped lang="scss">
+.form-dialog-title {
+  display: inline-block;
+  max-width: min(720px, 72vw);
+  overflow: hidden;
+  color: var(--el-text-color-primary);
+  font-size: var(--el-dialog-title-font-size);
+  line-height: var(--el-dialog-font-line-height);
+  text-overflow: ellipsis;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
 .entity-form-dialog {
   margin-top: 15px !important;
   margin-bottom: 15px !important;

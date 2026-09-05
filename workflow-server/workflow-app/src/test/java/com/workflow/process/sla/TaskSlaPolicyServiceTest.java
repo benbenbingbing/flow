@@ -1,7 +1,7 @@
 package com.workflow.process.sla;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.process.sla.policy.api.request.TaskSlaPolicySaveRequest;
 import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
 import com.workflow.process.sla.policy.infrastructure.persistence.mapper.TaskSlaEscalationStepMapper;

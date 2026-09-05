@@ -6,9 +6,9 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.openapi.api.request.ReplayWebhookDeliveryRequest;
@@ -30,7 +30,7 @@ public class WebhookDeliveryAdministrationService {
 
     private final IntegrationApplicationMapper applicationMapper;
     private final WebhookDeliveryMapper deliveryMapper;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final SystemAuditPort auditPort;
     private final Clock clock;
 
@@ -38,7 +38,7 @@ public class WebhookDeliveryAdministrationService {
     public WebhookDeliveryAdministrationService(
             IntegrationApplicationMapper applicationMapper,
             WebhookDeliveryMapper deliveryMapper,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort) {
         this(
                 applicationMapper,
@@ -51,7 +51,7 @@ public class WebhookDeliveryAdministrationService {
     WebhookDeliveryAdministrationService(
             IntegrationApplicationMapper applicationMapper,
             WebhookDeliveryMapper deliveryMapper,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             Clock clock) {
         this.applicationMapper = applicationMapper;

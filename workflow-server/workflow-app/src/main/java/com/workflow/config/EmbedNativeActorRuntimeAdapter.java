@@ -6,7 +6,7 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.record.S
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.EmbedNativeActorRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeActorRuntimePort;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;

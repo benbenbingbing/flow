@@ -2,7 +2,8 @@ package com.workflow.embed.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.workflow.contracts.embed.EmbedRequestUserContextPort;
+import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort.Scope;
+import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
 import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
@@ -201,7 +202,7 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
             EmbedContextHolder.set(session);
             MDC.put("embedSessionId", session.sessionId());
             MDC.put("embedApplicationId", session.applicationId());
-            try (EmbedRequestUserContextPort.Scope ignored = userContextPort.open(
+            try (Scope ignored = userContextPort.open(
                     session.flowUserId(), session.flowUsername(), session.sessionId());
                  EmbedDelegatedRequestContext.Scope ignoredEmbed =
                          EmbedDelegatedRequestContext.openSession(

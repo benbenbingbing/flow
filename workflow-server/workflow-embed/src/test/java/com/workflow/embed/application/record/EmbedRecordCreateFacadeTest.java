@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedRecordCreatePort;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
 import com.workflow.embed.api.web.EmbedRecordCreateRequest;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;
 import com.workflow.embed.application.port.EmbedOperationReceiptPort;
@@ -71,7 +71,7 @@ class EmbedRecordCreateFacadeTest {
                 claim, authorization, "actor-digest", NOW, "trace-1"))
                 .thenReturn(new EmbedRecordCreateTransactionService.BusinessResult(
                         receipt,
-                        new EmbedRecordCreatePort.CreatedRecord("record-1", null)));
+                        new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreatedRecord("record-1", null)));
 
         var outcome = facade().create(request(), "idem-key", "trace-1");
 
@@ -147,7 +147,7 @@ class EmbedRecordCreateFacadeTest {
                 NOW.plusSeconds(900), NOW.plusSeconds(3600));
         return new Authorization(
                 session, "view-key",
-                new EmbedRecordCreatePort.Target(
+                new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.Target(
                         "work_order", "form-1", "form-release-1", 4),
                 Map.of("title", "browser-value", "owner", "forced-value"),
                 Map.of("tenant", "tenant-a"),

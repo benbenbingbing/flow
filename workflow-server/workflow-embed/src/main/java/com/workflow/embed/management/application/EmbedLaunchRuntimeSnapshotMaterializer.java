@@ -9,8 +9,10 @@ import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.embed.EmbedNativeListDependencyRuntimePort;
-import com.workflow.contracts.entity.EntityNewDataFormRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort.ResolvedList;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
+import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
+import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
 import com.workflow.embed.application.port.EmbedRuntimeSnapshotMaterializationPort;
 import com.workflow.embed.application.runtime.EmbedNativeListDependencyClosureCodec;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -218,7 +220,7 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
                     || nodes.size() >= MAX_LIST_DEPENDENCY_NODES) {
                 throw unavailableConfiguration();
             }
-            EmbedNativeListDependencyRuntimePort.ResolvedList resolved =
+            ResolvedList resolved =
                     listDependencyPort.resolveExact(item.coordinate());
             requireSameCoordinate(item.coordinate(), resolved.list());
             List<ListCoordinate> targets = resolved.openListTargets().stream()
@@ -273,7 +275,7 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
     }
 
     private ResolvedDefaultForm resolveDefaultForm(String entityCode) {
-        EntityNewDataFormRuntimePort.ResolvedForm resolved =
+        ResolvedForm resolved =
                 newDataFormRuntimePort.resolveForNewData(entityCode)
                         .orElse(null);
         if (resolved == null) {

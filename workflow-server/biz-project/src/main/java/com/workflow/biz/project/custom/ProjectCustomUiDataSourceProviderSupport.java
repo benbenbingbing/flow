@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.ui.UiDataSourceProvider;
+import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.core.logging.LogValue;

@@ -9,9 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.webhook.delivery.WebhookHttpClient;
@@ -41,7 +41,7 @@ class WebhookValidationServiceTest {
         endpointMapper = mock(WebhookEndpointMapper.class);
         httpClient = mock(WebhookHttpClient.class);
         auditPort = mock(SystemAuditPort.class);
-        CurrentActorProvider actorProvider =
+        CurrentActorPort actorProvider =
                 () -> new CurrentActor("admin-01", "Admin");
         service = new WebhookValidationService(
                 applicationMapper,

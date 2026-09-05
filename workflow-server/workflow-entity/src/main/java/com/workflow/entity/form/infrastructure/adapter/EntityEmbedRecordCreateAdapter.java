@@ -1,11 +1,11 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.EmbedRecordCreatePort;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;

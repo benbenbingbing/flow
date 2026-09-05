@@ -9,7 +9,7 @@ import com.workflow.process.task.application.nextapproval.NextApproverOverrideSe
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;

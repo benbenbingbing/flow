@@ -2,7 +2,7 @@ package com.workflow.process.action.application;
 
 import com.workflow.contracts.action.FlowActionScopeType;
 import com.workflow.contracts.action.FlowActionTimingOption;
-import com.workflow.contracts.action.FlowActionTriggerProvider;
+import com.workflow.contracts.process.action.spi.FlowActionTriggerProvider;
 import com.workflow.contracts.action.FlowActionTriggerTiming;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

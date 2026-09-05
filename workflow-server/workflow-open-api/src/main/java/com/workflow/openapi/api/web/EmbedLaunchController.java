@@ -1,7 +1,7 @@
 package com.workflow.openapi.api.web;
 
 import com.workflow.contracts.embed.EmbedApplicationActor;
-import com.workflow.contracts.embed.EmbedLaunchIssuePort;
+import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
 import com.workflow.openapi.api.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.response.OpenApiResponse;

@@ -14,7 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit.Operator;
@@ -52,7 +52,7 @@ class EmbedOperationsAdministrationServiceTest {
         repository = mock(EmbedOperationsRepository.class);
         terminationService = mock(EmbedSessionTerminationService.class);
         audit = mock(EmbedLifecycleAudit.class);
-        CurrentActorProvider actorProvider = () -> new CurrentActor("admin-1", "alice");
+        CurrentActorPort actorProvider = () -> new CurrentActor("admin-1", "alice");
         service = new EmbedOperationsAdministrationService(
                 repository, terminationService, actorProvider, audit,
                 Clock.fixed(NOW, ZoneOffset.UTC));

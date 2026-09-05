@@ -3,7 +3,7 @@ package com.workflow.process.definition.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.action.FlowActionDesignPort;
+import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;

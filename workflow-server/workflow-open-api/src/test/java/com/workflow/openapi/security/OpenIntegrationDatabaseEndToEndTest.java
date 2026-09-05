@@ -14,12 +14,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
-import com.workflow.contracts.process.open.OpenProcessCatalogPort;
-import com.workflow.contracts.process.open.OpenProcessRuntimePort;
-import com.workflow.contracts.process.open.OpenProcessEventPort;
+import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.contracts.process.open.port.OpenProcessCatalogPort;
+import com.workflow.contracts.process.open.port.OpenProcessRuntimePort;
+import com.workflow.contracts.process.open.port.OpenProcessEventPort;
 import com.workflow.contracts.process.open.OpenProcessView;
 import com.workflow.openapi.api.error.OpenApiExceptionHandler;
 import com.workflow.openapi.api.request.IntegrationProcessContractRequest;
@@ -1012,7 +1012,7 @@ class OpenIntegrationDatabaseEndToEndTest {
     static class TestBeans {
 
         @Bean
-        CurrentActorProvider currentActorProvider() {
+        CurrentActorPort currentActorProvider() {
             return () -> new CurrentActor(
                     "integration-e2e-admin",
                     "Integration E2E Admin");

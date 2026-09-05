@@ -1,6 +1,6 @@
 package com.workflow.process.definition.application;
 
-import com.workflow.contracts.action.FlowActionDesignPort;
+import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.process.assignment.application.EmptyAssigneePolicyBpmnValidator;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;

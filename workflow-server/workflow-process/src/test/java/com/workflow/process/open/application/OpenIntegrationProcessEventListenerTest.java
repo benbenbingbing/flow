@@ -8,7 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.contracts.process.open.OpenProcessEvent;
-import com.workflow.contracts.process.open.OpenProcessEventPort;
+import com.workflow.contracts.process.open.port.OpenProcessEventPort;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;

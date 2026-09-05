@@ -1,7 +1,7 @@
 package com.workflow.biz.project.contracts.action;
 
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionRuntimeAccess;
+import com.workflow.contracts.process.action.port.FlowActionRuntimeAccess;
 import com.workflow.contracts.action.FlowActionTraceFields;
 
 import org.junit.jupiter.api.Test;

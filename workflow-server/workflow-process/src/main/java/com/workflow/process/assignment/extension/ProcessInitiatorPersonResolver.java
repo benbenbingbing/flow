@@ -3,7 +3,7 @@ package com.workflow.process.assignment.extension;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

@@ -1,7 +1,7 @@
 package com.workflow.process.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.outbox.api.OutboxEvent;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.status.application.ProcessStatusSyncOutboxHandler;

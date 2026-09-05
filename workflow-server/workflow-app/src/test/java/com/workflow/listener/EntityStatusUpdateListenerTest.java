@@ -2,7 +2,7 @@ package com.workflow.listener;
 
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
 
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;

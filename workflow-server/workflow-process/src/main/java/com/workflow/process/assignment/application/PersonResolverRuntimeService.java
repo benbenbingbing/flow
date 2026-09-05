@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.contracts.identity.resolver.PersonPrincipal;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;

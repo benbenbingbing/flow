@@ -1,7 +1,7 @@
 package com.workflow.devtools.demo.action;
 
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import org.springframework.stereotype.Component;
 
 /**

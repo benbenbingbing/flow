@@ -1,7 +1,7 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.contracts.entity.EntityUserReferencePort;
-import com.workflow.contracts.entity.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.contracts.entity.port.EntityUserReferencePort;
+import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;

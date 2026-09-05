@@ -6,7 +6,7 @@ import com.workflow.admin.extension.catalog.api.response.ExtensionCatalogItem;
 import com.workflow.admin.extension.person.api.response.PersonResolverOption;
 import com.workflow.admin.extension.person.application.PersonResolverCatalogService;
 import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogPort;
+import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.core.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

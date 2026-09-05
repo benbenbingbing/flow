@@ -13,7 +13,7 @@ import com.workflow.process.instance.infrastructure.persistence.mapper.EntityPro
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
-import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
+import com.workflow.contracts.entity.mutation.port.EntityChangeTargetPort;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;

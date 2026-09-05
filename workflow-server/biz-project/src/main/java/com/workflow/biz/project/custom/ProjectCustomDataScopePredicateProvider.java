@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.entity.list.DataScopePredicateProvider;
+import com.workflow.contracts.entity.list.spi.DataScopePredicateProvider;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

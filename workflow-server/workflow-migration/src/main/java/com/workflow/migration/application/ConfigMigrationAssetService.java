@@ -10,7 +10,7 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.migration.api.request.ConfigMigrationAssetQuery;
 import com.workflow.migration.api.request.ConfigMigrationMarkRequest;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;

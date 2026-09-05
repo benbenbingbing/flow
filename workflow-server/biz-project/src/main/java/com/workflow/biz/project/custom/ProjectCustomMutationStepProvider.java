@@ -3,7 +3,7 @@ package com.workflow.biz.project.custom;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationStepContext;
-import com.workflow.contracts.entity.mutation.EntityMutationStepProvider;
+import com.workflow.contracts.entity.mutation.spi.EntityMutationStepProvider;
 import com.workflow.contracts.entity.mutation.EntityMutationStepResult;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;

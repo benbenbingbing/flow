@@ -16,7 +16,7 @@ import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.EmbedRequestUserContextPort;
+import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;

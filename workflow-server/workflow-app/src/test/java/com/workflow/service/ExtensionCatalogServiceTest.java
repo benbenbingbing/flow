@@ -4,7 +4,7 @@ import com.workflow.admin.extension.action.application.FlowActionCatalogService;
 import com.workflow.admin.extension.catalog.application.ExtensionCatalogService;
 import com.workflow.admin.extension.person.application.PersonResolverCatalogService;
 import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogPort;
+import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

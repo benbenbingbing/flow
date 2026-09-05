@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.entity.EntityNewDataFormRuntimePort.ResolvedForm;
+import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
 import com.workflow.process.form.application.EntityFormResolveService;
 import java.util.Map;
 import org.junit.jupiter.api.Test;

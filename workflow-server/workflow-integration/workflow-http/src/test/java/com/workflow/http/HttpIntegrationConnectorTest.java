@@ -13,12 +13,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationConnectorConfigurationSnapshot;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.integration.IntegrationRuntimeContext;
-import com.workflow.contracts.integration.IntegrationSecretResolver;
+import com.workflow.contracts.integration.port.IntegrationSecretResolver;
 import com.workflow.contracts.ui.CommonInvocationContext;
 import com.workflow.contracts.ui.EntityDescriptor;
 import com.workflow.contracts.ui.FormInvocationContext;

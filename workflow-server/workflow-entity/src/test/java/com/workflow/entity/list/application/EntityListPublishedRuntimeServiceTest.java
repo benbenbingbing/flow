@@ -5,7 +5,7 @@ import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.embed.EmbedNativeListDependencySnapshotPort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;

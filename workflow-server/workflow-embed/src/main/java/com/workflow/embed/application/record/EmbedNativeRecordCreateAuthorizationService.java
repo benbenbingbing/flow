@@ -1,6 +1,7 @@
 package com.workflow.embed.application.record;
 
-import com.workflow.contracts.embed.EmbedRecordCreatePort;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.Target;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -55,8 +56,8 @@ public class EmbedNativeRecordCreateAuthorizationService {
         Map<String, Object> effective = new LinkedHashMap<>(clientData);
         effective.putAll(target.initialData() == null
                 ? Map.of() : target.initialData());
-        EmbedRecordCreatePort.Target createTarget =
-                new EmbedRecordCreatePort.Target(
+        Target createTarget =
+                new Target(
                         target.entityCode(), target.formId(),
                         target.formReleaseId(), target.formReleaseVersion());
         return new Authorization(
@@ -144,7 +145,7 @@ public class EmbedNativeRecordCreateAuthorizationService {
     public record Authorization(
             AuthenticatedEmbedSession session,
             String viewKey,
-            EmbedRecordCreatePort.Target target,
+            Target target,
             Map<String, Object> effectiveData,
             Map<String, Object> contextFilters,
             String actionKey,

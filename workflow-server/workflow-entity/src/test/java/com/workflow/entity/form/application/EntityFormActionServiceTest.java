@@ -16,7 +16,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.ProcessCatalogItem;
-import com.workflow.contracts.process.ProcessCatalogPort;
+import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;

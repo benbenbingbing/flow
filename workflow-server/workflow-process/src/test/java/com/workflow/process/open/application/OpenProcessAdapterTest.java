@@ -20,7 +20,7 @@ import com.workflow.contracts.process.open.OpenProcessStartCommand;
 import com.workflow.contracts.process.open.OpenProcessStateConflictException;
 import com.workflow.contracts.process.open.OpenProcessIdentityNotResolvedException;
 import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
-import com.workflow.contracts.identity.external.ExternalIdentityResolver;
+import com.workflow.contracts.process.open.spi.ExternalIdentityResolver;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;

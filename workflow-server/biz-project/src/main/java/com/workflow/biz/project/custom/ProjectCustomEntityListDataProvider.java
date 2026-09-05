@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.entity.list.EntityListDataProvider;
+import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.EntityListQueryFields;
 import com.workflow.contracts.entity.list.EntityListRuntimeContext;
 import com.workflow.core.logging.LogValue;

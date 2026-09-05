@@ -3,7 +3,7 @@ package com.workflow.entity.list.infrastructure.adapter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedRuntimeEntityPort;
+import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.api.response.EntityListSchemaDTO;

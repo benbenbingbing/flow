@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.http.HttpConnectorConfigurationCodec;
 import com.workflow.openapi.api.request.CreateIntegrationSecretRequest;
 import com.workflow.openapi.api.request.RevokeIntegrationSecretRequest;
@@ -256,7 +256,7 @@ class IntegrationSecretDatabaseEndToEndTest {
     static class TestBeans {
 
         @Bean
-        CurrentActorProvider currentActorProvider() {
+        CurrentActorPort currentActorProvider() {
             return () -> new CurrentActor(
                     "connector-e2e-admin",
                     "Connector E2E Admin");

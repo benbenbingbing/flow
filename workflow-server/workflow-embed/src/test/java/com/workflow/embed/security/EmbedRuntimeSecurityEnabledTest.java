@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.workflow.contracts.embed.EmbedRequestUserContextPort;
+import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit;

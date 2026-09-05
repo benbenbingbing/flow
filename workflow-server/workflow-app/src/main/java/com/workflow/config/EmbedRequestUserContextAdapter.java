@@ -1,7 +1,7 @@
 package com.workflow.config;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.EmbedRequestUserContextPort;
+import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

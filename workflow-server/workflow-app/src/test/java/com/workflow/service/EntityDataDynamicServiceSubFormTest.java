@@ -8,7 +8,7 @@ import com.workflow.entity.data.application.EntityDataMutationValidator;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
-import com.workflow.contracts.process.ProcessRuntimePort;
+import com.workflow.contracts.process.port.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartResult;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

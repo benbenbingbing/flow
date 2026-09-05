@@ -13,7 +13,7 @@ import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.auth.application.LoginThrottleService;
 import com.workflow.admin.auth.infrastructure.ClientAddressResolver;
 import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;

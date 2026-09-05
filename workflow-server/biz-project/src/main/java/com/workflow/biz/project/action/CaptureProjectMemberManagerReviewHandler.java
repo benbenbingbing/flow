@@ -1,7 +1,7 @@
 package com.workflow.biz.project.action;
 
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.biz.project.service.ProjectMemberChangeService;
 import org.springframework.stereotype.Component;

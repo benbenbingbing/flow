@@ -13,10 +13,10 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeProcessRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeTraversalRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedException;
@@ -144,7 +144,7 @@ class EmbedDelegatedRuntimePolicyTest {
         EmbedNativeProcessRuntimePort process = mock(
                 EmbedNativeProcessRuntimePort.class);
         when(process.findRecordTarget("process-1")).thenReturn(Optional.of(
-                new EmbedNativeProcessRuntimePort.RecordTarget(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort.RecordTarget(
                         "order", "record-1")));
         EmbedDelegatedRuntimePolicy policy = policy(process, null);
         MockHttpServletRequest request = get(
@@ -156,7 +156,7 @@ class EmbedDelegatedRuntimePolicyTest {
         verify(targetResolver).authorize(session, "VIEW", "record-1");
 
         when(process.findRecordTarget("process-2")).thenReturn(Optional.of(
-                new EmbedNativeProcessRuntimePort.RecordTarget(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort.RecordTarget(
                         "customer", "record-9")));
         MockHttpServletRequest escaped = get("/api/future/process/process-2");
         pathVariables(escaped, Map.of("processInstanceId", "process-2"));
@@ -174,7 +174,7 @@ class EmbedDelegatedRuntimePolicyTest {
         EmbedNativeTraversalRuntimePort traversal = mock(
                 EmbedNativeTraversalRuntimePort.class);
         when(traversal.resolve("signed-child")).thenReturn(
-                new EmbedNativeTraversalRuntimePort.TraversalTarget(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort.TraversalTarget(
                         "FORM", "form-1", "form-release-1", 3,
                         "record-1", "FORM", "child-form",
                         "child-release", 7, "child-record",
@@ -259,7 +259,7 @@ class EmbedDelegatedRuntimePolicyTest {
         assertEquals("child-release", target.formReleaseId());
         verify(formRuntimePort).verifyRuntimeReleaseRequest(
                 eq("signed-child-form"),
-                any(EmbedNativeFormRuntimePort.VerificationTarget.class));
+                any(com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget.class));
     }
 
     @Test
@@ -456,31 +456,31 @@ class EmbedDelegatedRuntimePolicyTest {
         when(listProvider.getIfAvailable()).thenReturn(listRuntimePort);
         when(formProvider.getIfAvailable()).thenReturn(formRuntimePort);
         when(formRuntimePort.verifyReleaseResolutionToken(
-                anyString(), any(EmbedNativeFormRuntimePort
+                anyString(), any(com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort
                         .VerificationTarget.class)))
                 .thenAnswer(invocation -> {
-                    EmbedNativeFormRuntimePort.VerificationTarget target =
+                    com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget target =
                             invocation.getArgument(1);
                     String entityCode = target.entityCode() == null
                             ? ("child-form".equals(target.formId())
                                     ? "customer" : root.entityCode())
                             : target.entityCode();
-                    return new EmbedNativeFormRuntimePort.VerifiedTarget(
+                    return new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget(
                             entityCode, target.formId(),
                             target.formReleaseId(),
                             target.formReleaseVersion());
                 });
         when(formRuntimePort.verifyRuntimeReleaseRequest(
-                anyString(), any(EmbedNativeFormRuntimePort
+                anyString(), any(com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort
                         .VerificationTarget.class)))
                 .thenAnswer(invocation -> {
-                    EmbedNativeFormRuntimePort.VerificationTarget target =
+                    com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget target =
                             invocation.getArgument(1);
                     String entityCode = target.entityCode() == null
                             ? ("child-form".equals(target.formId())
                                     ? "customer" : root.entityCode())
                             : target.entityCode();
-                    return new EmbedNativeFormRuntimePort.VerifiedTarget(
+                    return new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget(
                             entityCode, target.formId(),
                             target.formReleaseId(),
                             target.formReleaseVersion());

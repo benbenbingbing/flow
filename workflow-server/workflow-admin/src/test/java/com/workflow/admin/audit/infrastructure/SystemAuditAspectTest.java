@@ -7,7 +7,7 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 

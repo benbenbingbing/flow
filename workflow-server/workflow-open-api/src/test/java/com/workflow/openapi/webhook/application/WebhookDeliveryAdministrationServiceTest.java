@@ -9,9 +9,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.openapi.api.request.ReplayWebhookDeliveryRequest;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
@@ -34,7 +34,7 @@ class WebhookDeliveryAdministrationServiceTest {
     void setUp() {
         mapper = mock(WebhookDeliveryMapper.class);
         auditPort = mock(SystemAuditPort.class);
-        CurrentActorProvider actorProvider =
+        CurrentActorPort actorProvider =
                 () -> new CurrentActor("admin-01", "Admin");
         service = new WebhookDeliveryAdministrationService(
                 mock(IntegrationApplicationMapper.class),

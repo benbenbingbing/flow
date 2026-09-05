@@ -17,7 +17,7 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.admin.auth.api.request.ChangePasswordDTO;
 import com.workflow.admin.auth.api.request.LoginDTO;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;

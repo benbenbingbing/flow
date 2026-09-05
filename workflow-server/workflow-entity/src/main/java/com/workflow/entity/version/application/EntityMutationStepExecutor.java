@@ -7,7 +7,7 @@ import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationStepContext;
-import com.workflow.contracts.entity.mutation.EntityMutationStepProvider;
+import com.workflow.contracts.entity.mutation.spi.EntityMutationStepProvider;
 import com.workflow.contracts.entity.mutation.EntityMutationStepResult;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;

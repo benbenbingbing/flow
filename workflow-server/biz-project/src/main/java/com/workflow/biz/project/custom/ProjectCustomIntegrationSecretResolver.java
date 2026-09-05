@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.integration.IntegrationSecretResolver;
+import com.workflow.contracts.integration.port.IntegrationSecretResolver;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 

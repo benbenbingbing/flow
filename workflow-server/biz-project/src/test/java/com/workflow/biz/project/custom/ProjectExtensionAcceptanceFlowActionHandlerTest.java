@@ -2,7 +2,7 @@ package com.workflow.biz.project.custom;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionRuntimeAccess;
+import com.workflow.contracts.process.action.port.FlowActionRuntimeAccess;
 import com.workflow.biz.project.service.ProjectEntityMutationExecutor;
 import org.junit.jupiter.api.Test;
 

@@ -6,7 +6,7 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.action.FlowActionCatalogPort;
+import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
 import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.embed.EmbedNativeTraversalRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -53,7 +53,7 @@ class EntityEmbedNativeTraversalRuntimeAdapterTest {
                         tokenService, formMapper, listMapper,
                         definitionMapper);
 
-        EmbedNativeTraversalRuntimePort.TraversalTarget result =
+        com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort.TraversalTarget result =
                 adapter.resolve("signed-traversal");
 
         assertEquals("root-form", result.rootOwnerId());

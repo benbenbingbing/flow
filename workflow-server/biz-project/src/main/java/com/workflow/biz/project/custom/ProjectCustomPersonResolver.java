@@ -3,7 +3,7 @@ package com.workflow.biz.project.custom;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;

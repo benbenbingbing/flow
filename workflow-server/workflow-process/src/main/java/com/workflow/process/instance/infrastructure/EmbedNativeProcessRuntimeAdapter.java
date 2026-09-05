@@ -1,6 +1,6 @@
 package com.workflow.process.instance.infrastructure;
 
-import com.workflow.contracts.embed.EmbedNativeProcessRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort;
 import java.util.Optional;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RuntimeService;

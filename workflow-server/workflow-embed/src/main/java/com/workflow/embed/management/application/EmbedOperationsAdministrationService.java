@@ -1,7 +1,7 @@
 package com.workflow.embed.management.application;
 
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit.Operator;
@@ -55,14 +55,14 @@ public class EmbedOperationsAdministrationService {
 
     private final EmbedOperationsRepository repository;
     private final EmbedSessionTerminationService terminationService;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final EmbedLifecycleAudit lifecycleAudit;
     private final Clock clock;
 
     public EmbedOperationsAdministrationService(
             EmbedOperationsRepository repository,
             EmbedSessionTerminationService terminationService,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             EmbedLifecycleAudit lifecycleAudit,
             @Qualifier("embedClock") Clock clock) {
         this.repository = repository;

@@ -14,13 +14,13 @@ import com.workflow.process.definition.infrastructure.persistence.record.Process
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
-import com.workflow.contracts.action.FlowActionDesignPort;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
 import com.workflow.process.definition.application.ProcessFlowableDeploymentService;

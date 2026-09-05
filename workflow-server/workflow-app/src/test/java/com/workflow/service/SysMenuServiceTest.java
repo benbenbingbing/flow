@@ -3,7 +3,7 @@ package com.workflow.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.admin.authorization.menu.application.SysMenuService;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;

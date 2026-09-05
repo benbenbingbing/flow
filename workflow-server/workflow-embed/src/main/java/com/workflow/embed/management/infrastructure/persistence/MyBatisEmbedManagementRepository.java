@@ -2,7 +2,8 @@ package com.workflow.embed.management.infrastructure.persistence;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.EntityNewDataFormRuntimePort;
+import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
+import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingState;
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
@@ -142,7 +143,7 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
             // new-data 解析（默认表单，无默认时回退流程首个可达用户任务）。
             // 只将当次解析出的精确发布坐标写入 Runtime Snapshot，
             // 后续 ACTIVE 变化不影响已打开 Session。
-            EntityNewDataFormRuntimePort.ResolvedForm resolvedForm =
+            ResolvedForm resolvedForm =
                     newDataFormRuntimePort.resolveForNewData(entityCode)
                             .orElse(null);
             if (resolvedForm != null) {

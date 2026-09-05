@@ -2,7 +2,7 @@ package com.workflow.embed.application.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.EmbedNativeListDependencySnapshotPort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.EmbedRuntimeReleaseSnapshot;
 import java.util.Objects;

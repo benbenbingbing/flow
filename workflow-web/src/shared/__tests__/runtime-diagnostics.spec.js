@@ -109,10 +109,18 @@ assert.match(
 const approvalDialog = source(
   '../../views/entity/components/approval/EntityApprovalDialog.vue'
 )
+const formDialog = source(
+  '../../views/entity/components/EntityDataFormDialog.vue'
+)
 assert.match(
   approvalDialog,
-  /<RuntimeVersionDiagnostics[\s\S]*v-if="isViewMode"/,
-  '实体弹窗仅允许在查看模式提供隐藏诊断入口'
+  /<RuntimeVersionDiagnostics[\s\S]*approvalDialogTitle/,
+  '审批和查看模式应共用标题三击诊断入口'
+)
+assert.doesNotMatch(
+  approvalDialog.match(/<template #header[\s\S]*?<\/template>/)?.[0] || '',
+  /v-if="isViewMode"/,
+  '审批模式不得被排除在标题诊断入口之外'
 )
 assert.match(
   approvalDialog,
@@ -123,6 +131,47 @@ assert.match(
   approvalDialog,
   /hotfixApplied === true \? '（已应用热修复）'/,
   '兼容热修复只能作为基础版本的附加状态展示'
+)
+assert.match(
+  approvalDialog,
+  /openApprove[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*processRuntimeMetadata\.value = \{\}/,
+  '审批任务打开前必须清理上一个弹窗的诊断状态与流程坐标'
+)
+assert.match(
+  approvalDialog,
+  /isViewMode\.value \? 'view' : 'approve'[\s\S]*currentTask\.value\?\.taskId/,
+  '审批和查看模式或会签任务切换时必须重置诊断信息'
+)
+
+assert.match(
+  formDialog,
+  /<template #header[\s\S]*<RuntimeVersionDiagnostics[\s\S]*dialogTitle/,
+  '新增和编辑弹窗标题必须提供三击诊断入口'
+)
+assert.match(
+  formDialog,
+  /runtimeForm\.value[\s\S]*runtimeReleaseVersion\s*\?\?\s*form\?\.formReleaseVersion/,
+  '新增和编辑诊断必须使用当前实际渲染表单的发布版本'
+)
+assert.match(
+  formDialog,
+  /processRuntimeMetadata\.value[\s\S]*process\.processKey[\s\S]*process\.processVersion/,
+  '编辑已有流程数据时必须显示实例实际流程编码和版本'
+)
+assert.match(
+  formDialog,
+  /process\.processInstanceId \|\| processInstanceId\.value[\s\S]*process\.processKey[\s\S]*process\.processVersion/,
+  '进度接口失败时仍应保留详情已经确认的流程实例诊断'
+)
+assert.match(
+  formDialog,
+  /openCreate[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*processRuntimeMetadata\.value = \{\}/,
+  '新增弹窗打开前必须清理上一次编辑的流程诊断信息'
+)
+assert.match(
+  formDialog,
+  /openEdit[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*processRuntimeMetadata\.value = \{\}/,
+  '编辑弹窗切换记录前必须重置诊断状态'
 )
 
 const processProgress = source('../../views/ProcessProgress.vue')

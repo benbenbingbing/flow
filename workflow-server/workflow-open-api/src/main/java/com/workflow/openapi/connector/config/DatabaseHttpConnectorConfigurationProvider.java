@@ -4,7 +4,7 @@ import com.workflow.http.HttpConnectorConfiguration;
 import com.workflow.http.HttpConnectorConfigurationCodec;
 import com.workflow.http.HttpConnectorConfigurationProvider;
 import com.workflow.contracts.integration.IntegrationConnectorConfigurationSnapshot;
-import com.workflow.contracts.integration.IntegrationConnectorConfigurationSnapshotProvider;
+import com.workflow.contracts.integration.spi.IntegrationConnectorConfigurationSnapshotProvider;
 import org.springframework.stereotype.Component;
 
 @Component

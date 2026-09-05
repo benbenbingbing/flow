@@ -9,7 +9,7 @@ import com.workflow.admin.extension.person.api.response.PersonResolverOption;
 import com.workflow.admin.extension.person.infrastructure.persistence.mapper.PersonResolverDefinitionMapper;
 import com.workflow.admin.extension.person.infrastructure.persistence.record.PersonResolverDefinition;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationContext;

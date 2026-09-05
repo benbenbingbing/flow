@@ -1,7 +1,7 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
 import com.workflow.contracts.entity.mutation.EntityChangeTargetApplyCommand;
-import com.workflow.contracts.entity.mutation.EntityChangeTargetPort;
+import com.workflow.contracts.entity.mutation.port.EntityChangeTargetPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;

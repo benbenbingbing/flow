@@ -1,9 +1,9 @@
 package com.workflow.process.task.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.EntityRecordPort;
-import com.workflow.contracts.entity.EntityFormRuntimePort;
-import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
+import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.IdentityGroup;
 import com.workflow.contracts.identity.IdentityUser;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;

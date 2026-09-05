@@ -4,6 +4,16 @@
 明确按 Bean 名称、稳定编码、类型或 Spring 集合发现的扩展契约。示例统一使用
 `projectCustom`、`PROJECT_CUSTOM_` 或 `PROJECT:` 命名空间，避免与内置实现冲突。
 
+## 契约分包
+
+新建扩展应从所属能力的 canonical `spi` 包导入接口，例如流程动作使用
+`com.workflow.contracts.process.action.spi`，实体 UI 数据源使用
+`com.workflow.contracts.entity.ui.spi`。跨模块单一能力从对应 `port` 包导入。
+
+本目录中的示例直接实现 canonical `port`/`spi`，不通过旧接口建立间接继承关系。
+已钉定的 UI Provider 不得仅为换包而重新编译或改名：其默认制品摘要包含实现 class
+字节。需要调整已发布实现时，应新增版本并保留历史版本可执行。
+
 ## 可直接从现有目录配置
 
 | 类 | 接口 | 前端/接口入口 | 稳定标识 |
@@ -101,9 +111,8 @@ Spring Bean，方便后续补入口时直接验证：
 | `ProjectCustomIntegrationSecretResolver` | `IntegrationSecretResolver` | 对接 KMS/密钥中心；示例不返回伪密钥 |
 | `ProjectCustomHttpConnectorConfigurationProvider` | `HttpConnectorConfigurationProvider` | 从配置中心读取 HTTP Connector 配置；示例不返回伪配置 |
 | `ProjectCustomMigrationAssetHandler` | `MigrationAssetHandler` | 发布时登记配置迁移资产 |
-| `ProjectCustomMigrationAssetRecorder` | `MigrationAssetRecorder` | 旧版迁移资产端口兼容 |
 | `ProjectCustomBootstrapJobCoordinator` | `BootstrapJobCoordinator` | 多实例启动任务互斥 |
-| `ProjectCustomUiExtensionCatalogPort` | `UiExtensionCatalogPort` | 替换 UI 扩展目录读取来源 |
+| `ProjectCustomUiExtensionCatalogAdapter` | `UiExtensionCatalogPort` | 替换 UI 扩展目录读取来源 |
 
 ## 范围说明
 

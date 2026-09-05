@@ -14,10 +14,10 @@ import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.version.application.EntityVersionConfigurationService;
 
-import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessBindingState;
-import com.workflow.contracts.process.ProcessCatalogPort;
+import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;

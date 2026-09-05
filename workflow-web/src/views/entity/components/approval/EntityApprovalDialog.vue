@@ -9,23 +9,17 @@
   >
     <template #header="{ titleId, titleClass }">
       <RuntimeVersionDiagnostics
-        v-if="isViewMode"
         ref="runtimeDiagnosticsRef"
-        :entries="viewRuntimeDiagnosticEntries"
-        :copy-entries="viewRuntimeDiagnosticCopyEntries"
+        :entries="dialogRuntimeDiagnosticEntries"
+        :copy-entries="dialogRuntimeDiagnosticCopyEntries"
         copy-title="业务数据运行版本排障信息"
-        :reset-key="viewRuntimeDiagnosticResetKey"
+        :reset-key="dialogRuntimeDiagnosticResetKey"
       >
         <span
           :id="titleId"
           :class="[titleClass, 'approval-dialog-title']"
         >{{ approvalDialogTitle }}</span>
       </RuntimeVersionDiagnostics>
-      <span
-        v-else
-        :id="titleId"
-        :class="[titleClass, 'approval-dialog-title']"
-      >{{ approvalDialogTitle }}</span>
     </template>
     <div class="approval-dialog-body">
       <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
@@ -341,7 +335,7 @@ const approvalNormalForm = computed(() => {
 const resolvedDiagnosticForm = computed(() =>
   approvalNormalForm.value || effectiveFormConfig.value
 )
-const viewRuntimeDiagnosticEntries = computed(() => {
+const dialogRuntimeDiagnosticEntries = computed(() => {
   const process = processRuntimeMetadata.value || {}
   const form = resolvedDiagnosticForm.value
   const processValue = process.processInstanceId
@@ -359,7 +353,7 @@ const viewRuntimeDiagnosticEntries = computed(() => {
     { label: '表单', value: formValue }
   ]
 })
-const viewRuntimeDiagnosticCopyEntries = computed(() => {
+const dialogRuntimeDiagnosticCopyEntries = computed(() => {
   const process = processRuntimeMetadata.value || {}
   return [
     ...(props.listKey
@@ -368,15 +362,23 @@ const viewRuntimeDiagnosticCopyEntries = computed(() => {
         props.listReleaseVersion
       ) }]
       : []),
-    ...viewRuntimeDiagnosticEntries.value,
+    ...dialogRuntimeDiagnosticEntries.value,
     { label: '记录 ID', value: entityData.value?.id },
     { label: '流程实例 ID', value: process.processInstanceId }
   ]
 })
-const viewRuntimeDiagnosticResetKey = computed(() => [
+const dialogRuntimeDiagnosticResetKey = computed(() => [
   processDialogVisible.value ? 'open' : 'closed',
+  isViewMode.value ? 'view' : 'approve',
+  currentTask.value?.taskId || '',
   entityData.value?.id || '',
-  processRuntimeMetadata.value?.processInstanceId || ''
+  processRuntimeMetadata.value?.processInstanceId || '',
+  resolvedDiagnosticForm.value?.runtimeReleaseId
+    || resolvedDiagnosticForm.value?.formReleaseId
+    || '',
+  resolvedDiagnosticForm.value?.runtimeReleaseVersion
+    ?? resolvedDiagnosticForm.value?.formReleaseVersion
+    ?? ''
 ].join(':'))
 
 function handleDialogClosed() {
@@ -526,6 +528,9 @@ const openApprove = async (
     ElMessage.error('未获取到当前用户可办理的审批任务，请刷新列表后重试')
     return false
   }
+  runtimeDiagnosticsRef.value?.reset()
+  // 审批任务可能复用同一流程实例，仍需先清空上一个任务的诊断坐标。
+  processRuntimeMetadata.value = {}
   resetNextApproverPreview()
   // 每次打开审批任务都恢复完整审批信息，避免沿用上一次弹窗的折叠状态。
   approvalDecisionExpanded.value = true

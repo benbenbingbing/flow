@@ -1,7 +1,7 @@
 package com.workflow.entity.mutationpolicy.application;
 
-import com.workflow.contracts.entity.mutation.EntityChangeTargetResolver;
-import com.workflow.contracts.entity.mutation.EntityMutationStepProvider;
+import com.workflow.contracts.entity.mutation.spi.EntityMutationStepProvider;
+import com.workflow.contracts.entity.mutation.spi.EntityChangeTargetResolver;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.ui.application.UiDataSourceService;
 import com.workflow.entity.version.application.EntityMutationStepExecutor;

@@ -1,8 +1,8 @@
 package com.workflow.process.open.application;
 
-import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
-import com.workflow.contracts.identity.external.ExternalIdentityResolver;
+import com.workflow.contracts.process.open.spi.ExternalIdentityResolver;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

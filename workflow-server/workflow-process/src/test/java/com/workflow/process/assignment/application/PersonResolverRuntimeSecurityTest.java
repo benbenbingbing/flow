@@ -14,7 +14,7 @@ import com.workflow.contracts.identity.resolver.PersonPrincipalType;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
 import org.junit.jupiter.api.Test;
 
@@ -124,7 +124,8 @@ class PersonResolverRuntimeSecurityTest {
     }
 
     private PersonResolver resolver(List<PersonPrincipal> principals) {
-        return new PersonResolver() {
+        // 通过旧 SPI fixture 覆盖 canonical Runtime 对存量扩展的兼容性。
+        return new com.workflow.contracts.process.assignment.spi.PersonResolver() {
             @Override
             public PersonResolverDescriptor descriptor() {
                 return new PersonResolverDescriptor(

@@ -1,9 +1,9 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.IdentityUser;
 import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
-import com.workflow.contracts.identity.external.ExternalIdentityResolver;
+import com.workflow.contracts.process.open.spi.ExternalIdentityResolver;
 import com.workflow.core.logging.LogValue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.EmbedApplicationActor;
 import com.workflow.contracts.embed.EmbedLaunchCommand;
 import com.workflow.contracts.embed.EmbedLaunchEntry;
-import com.workflow.contracts.embed.EmbedLaunchIssuePort;
+import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
 import com.workflow.contracts.embed.EmbedLaunchIssued;
 import com.workflow.contracts.embed.EmbedLaunchSubject;
 import com.workflow.contracts.embed.EmbedLaunchUi;

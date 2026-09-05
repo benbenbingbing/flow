@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.user.bootstrap;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -78,7 +78,8 @@ class BootstrapAdministratorRunnerTest {
     private BootstrapAdministratorRunner runner(SysUserMapper mapper) {
         return new BootstrapAdministratorRunner(
                 mapper,
-                new BootstrapJobCoordinator() {
+                // 旧协调器实现仍应可注入新的 canonical 端口。
+                new com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator() {
                     @Override
                     public <T> Optional<T> executeOnce(
                             String jobName,

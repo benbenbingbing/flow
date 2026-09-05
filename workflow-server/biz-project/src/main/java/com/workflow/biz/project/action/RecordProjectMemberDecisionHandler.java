@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionExecutionMode;
 import com.workflow.contracts.action.FlowActionTriggerTiming;
-import com.workflow.contracts.action.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.biz.project.service.ProjectMemberChangeService;
 import org.springframework.stereotype.Component;

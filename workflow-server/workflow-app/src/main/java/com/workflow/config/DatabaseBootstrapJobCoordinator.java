@@ -1,6 +1,6 @@
 package com.workflow.config;
 
-import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;

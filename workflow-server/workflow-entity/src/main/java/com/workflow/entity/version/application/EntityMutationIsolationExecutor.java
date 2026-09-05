@@ -1,7 +1,7 @@
 package com.workflow.entity.version.application;
 
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

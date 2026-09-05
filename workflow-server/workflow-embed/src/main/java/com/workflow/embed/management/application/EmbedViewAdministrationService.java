@@ -6,9 +6,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.embed.management.api.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;
@@ -41,7 +41,7 @@ public class EmbedViewAdministrationService {
 
     private final EmbedManagementRepository repository;
     private final EmbedViewConfigurationValidator validator;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final SystemAuditPort auditPort;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -50,7 +50,7 @@ public class EmbedViewAdministrationService {
     public EmbedViewAdministrationService(
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
         this(repository, validator, actorProvider, auditPort, objectMapper,
@@ -60,7 +60,7 @@ public class EmbedViewAdministrationService {
     EmbedViewAdministrationService(
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {

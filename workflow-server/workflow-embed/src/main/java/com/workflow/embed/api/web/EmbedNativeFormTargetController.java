@@ -1,6 +1,7 @@
 package com.workflow.embed.api.web;
 
-import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.Target;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.EmbedNativeFormTarget;
@@ -44,7 +45,7 @@ public class EmbedNativeFormTargetController {
         EmbedNativeFormTarget fixed = targetResolver.authorize(
                 EmbedContextHolder.require(), mode, recordId);
         String token = nativeRuntimePort.issueReleaseResolutionToken(
-                new EmbedNativeFormRuntimePort.Target(
+                new Target(
                         fixed.entityCode(), fixed.formId(),
                         fixed.formReleaseId(), fixed.formReleaseVersion(),
                         EmbedContextHolder.require().absoluteExpiresAt()));

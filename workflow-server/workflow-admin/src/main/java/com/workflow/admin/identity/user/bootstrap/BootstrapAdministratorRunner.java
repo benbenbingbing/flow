@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.user.bootstrap;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

@@ -1,7 +1,7 @@
 package com.workflow.process.open.application;
 
 import com.workflow.contracts.process.open.OpenProcessEvent;
-import com.workflow.contracts.process.open.OpenProcessEventPort;
+import com.workflow.contracts.process.open.port.OpenProcessEventPort;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

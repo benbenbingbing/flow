@@ -2,7 +2,7 @@ package com.workflow.process.assignment.relative;
 
 import com.workflow.contracts.identity.position.InitiatorOrganizationSnapshot;
 import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.position.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
 import com.workflow.contracts.identity.position.OrganizationPositionErrorCode;
 import com.workflow.contracts.identity.position.OrganizationUnitSnapshot;
 import com.workflow.contracts.identity.position.OrganizationUnitStateView;

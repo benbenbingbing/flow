@@ -9,7 +9,7 @@ import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
 import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;

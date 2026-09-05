@@ -3,7 +3,7 @@ package com.workflow.process.action.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.contracts.action.FlowActionScopeType;
 import com.workflow.contracts.action.FlowActionTriggerTiming;
 import com.workflow.contracts.audit.AuditEventIds;

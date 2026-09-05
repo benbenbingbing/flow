@@ -2,7 +2,9 @@ package com.workflow.embed.application.record;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedRecordCreatePort;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreateCommand;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreatedRecord;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit;
 import com.workflow.embed.application.record.EmbedNativeRecordCreateAuthorizationService.Authorization;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;
@@ -59,8 +61,8 @@ public class EmbedRecordCreateTransactionService {
         if (claim == null || !claim.acquired() || authorization == null) {
             throw new IllegalArgumentException("Embed 创建事务参数无效");
         }
-        EmbedRecordCreatePort.CreatedRecord created = recordCreatePort.create(
-                new EmbedRecordCreatePort.CreateCommand(
+        CreatedRecord created = recordCreatePort.create(
+                new CreateCommand(
                         authorization.target(), authorization.effectiveData(),
                         claim.id(), authorization.startProcess()));
         String receiptId = "eor_"
@@ -115,6 +117,6 @@ public class EmbedRecordCreateTransactionService {
 
     public record BusinessResult(
             EmbedOperationReceipt receipt,
-            EmbedRecordCreatePort.CreatedRecord record) {
+            CreatedRecord record) {
     }
 }

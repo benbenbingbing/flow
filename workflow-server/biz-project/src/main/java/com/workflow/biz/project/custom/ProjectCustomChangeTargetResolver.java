@@ -2,7 +2,7 @@ package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.entity.mutation.EntityChangeTarget;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetContext;
-import com.workflow.contracts.entity.mutation.EntityChangeTargetResolver;
+import com.workflow.contracts.entity.mutation.spi.EntityChangeTargetResolver;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

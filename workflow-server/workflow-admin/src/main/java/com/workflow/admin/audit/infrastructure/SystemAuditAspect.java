@@ -7,7 +7,7 @@ import com.workflow.contracts.audit.OperationContext;
 import com.workflow.contracts.audit.OperationContextHolder;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.core.web.CorrelationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

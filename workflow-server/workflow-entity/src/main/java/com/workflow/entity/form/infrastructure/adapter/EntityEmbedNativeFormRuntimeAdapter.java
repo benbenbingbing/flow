@@ -1,6 +1,6 @@
 package com.workflow.entity.form.infrastructure.adapter;
 
-import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

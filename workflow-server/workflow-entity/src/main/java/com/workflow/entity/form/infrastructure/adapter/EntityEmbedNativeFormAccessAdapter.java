@@ -2,7 +2,7 @@ package com.workflow.entity.form.infrastructure.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedNativeFormAccessPort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;

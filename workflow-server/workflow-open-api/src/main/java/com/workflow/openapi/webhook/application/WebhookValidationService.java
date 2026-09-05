@@ -9,9 +9,9 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.openapi.api.response.WebhookValidationView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
@@ -38,7 +38,7 @@ public class WebhookValidationService {
     private final IntegrationApplicationMapper applicationMapper;
     private final WebhookEndpointMapper endpointMapper;
     private final WebhookHttpClient httpClient;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final SystemAuditPort auditPort;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -48,7 +48,7 @@ public class WebhookValidationService {
             IntegrationApplicationMapper applicationMapper,
             WebhookEndpointMapper endpointMapper,
             WebhookHttpClient httpClient,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
         this(
@@ -65,7 +65,7 @@ public class WebhookValidationService {
             IntegrationApplicationMapper applicationMapper,
             WebhookEndpointMapper endpointMapper,
             WebhookHttpClient httpClient,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {

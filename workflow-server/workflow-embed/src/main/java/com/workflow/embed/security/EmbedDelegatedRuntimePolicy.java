@@ -3,10 +3,15 @@ package com.workflow.embed.security;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
 import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeProcessRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeTraversalRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort.Target;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort.RecordTarget;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort.TraversalTarget;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -196,7 +201,7 @@ public class EmbedDelegatedRuntimePolicy {
             // 派生，并继续绑定当前 Session/View Release。
             listRuntimePort.verifyReleaseResolutionToken(
                     token,
-                    new EmbedNativeListRuntimePort.Target(
+                    new Target(
                             entityCode, listKey,
                             releaseId, releaseVersion,
                             session.sessionId(), session.viewId(),
@@ -320,10 +325,10 @@ public class EmbedDelegatedRuntimePolicy {
             throw denied();
         }
         try {
-            EmbedNativeFormRuntimePort.VerifiedTarget verified =
+            VerifiedTarget verified =
                     formRuntimePort.verifyRuntimeReleaseRequest(
                             token,
-                            new EmbedNativeFormRuntimePort.VerificationTarget(
+                            new VerificationTarget(
                                     null, formId, releaseId, releaseVersion,
                                     session.sessionId(),
                                     session.viewReleaseId(),
@@ -397,14 +402,14 @@ public class EmbedDelegatedRuntimePolicy {
             throw denied();
         }
         try {
-            EmbedNativeFormRuntimePort.VerificationTarget requested =
-                    new EmbedNativeFormRuntimePort.VerificationTarget(
+            VerificationTarget requested =
+                    new VerificationTarget(
                             entityCode, formId, formReleaseId,
                             formReleaseVersion,
                             session.sessionId(),
                             session.viewReleaseId(),
                             session.absoluteExpiresAt());
-            EmbedNativeFormRuntimePort.VerifiedTarget verified =
+            VerifiedTarget verified =
                     formRuntimePort.verifyReleaseResolutionToken(
                             formReleaseToken, requested);
             if (verified == null
@@ -473,7 +478,7 @@ public class EmbedDelegatedRuntimePolicy {
         }
         listRuntimePort.verifyReleaseResolutionToken(
                 releaseToken,
-                new EmbedNativeListRuntimePort.Target(
+                new Target(
                         entityCode, listKey, releaseId, releaseVersion,
                         session.sessionId(), session.viewId(),
                         session.viewReleaseId(),
@@ -653,7 +658,7 @@ public class EmbedDelegatedRuntimePolicy {
                 || !StringUtils.hasText(processInstanceId)) {
             throw denied();
         }
-        EmbedNativeProcessRuntimePort.RecordTarget mapped = processRuntimePort
+        RecordTarget mapped = processRuntimePort
                 .findRecordTarget(processInstanceId)
                 .orElseThrow(EmbedDelegatedRuntimePolicy::denied);
         if (!Objects.equals(root.entityCode(), mapped.entityCode())) {
@@ -683,7 +688,7 @@ public class EmbedDelegatedRuntimePolicy {
         if (traversalRuntimePort == null) {
             throw denied();
         }
-        EmbedNativeTraversalRuntimePort.TraversalTarget fixed =
+        TraversalTarget fixed =
                 traversalRuntimePort.resolve(token);
         if (!"FORM".equals(fixed.rootOwnerType())
                 || !Objects.equals(root.formId(), fixed.rootOwnerId())

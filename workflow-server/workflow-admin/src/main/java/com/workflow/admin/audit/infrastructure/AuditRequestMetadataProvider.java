@@ -1,7 +1,7 @@
 package com.workflow.admin.audit.infrastructure;
 
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
@@ -17,7 +17,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class AuditRequestMetadataProvider {
 
-    private final CurrentActorProvider currentActorProvider;
+    private final CurrentActorPort currentActorProvider;
 
     public AuditRequestMetadata current() {
         HttpServletRequest request = currentRequest();

@@ -1,6 +1,6 @@
 package com.workflow.entity.list.infrastructure.adapter;
 
-import com.workflow.contracts.embed.EmbedNativeListRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;

@@ -1,9 +1,9 @@
 package com.workflow.process.assignment.entity;
 
-import com.workflow.contracts.entity.EntityUserReferencePort;
-import com.workflow.contracts.entity.EntityUserReferencePort.UserReferenceField;
-import com.workflow.contracts.entity.EntityUserReferencePort.EntityUserReferenceException;
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
+import com.workflow.contracts.entity.port.EntityUserReferencePort;
+import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.contracts.entity.port.EntityUserReferencePort.UserReferenceField;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.contracts.identity.resolver.PersonPrincipalType;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;

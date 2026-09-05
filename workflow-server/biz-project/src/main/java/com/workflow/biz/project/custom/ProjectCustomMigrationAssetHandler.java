@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 

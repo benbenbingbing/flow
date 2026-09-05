@@ -2,10 +2,10 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.action.FlowActionCatalogPort;
+import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionTraceFields;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;

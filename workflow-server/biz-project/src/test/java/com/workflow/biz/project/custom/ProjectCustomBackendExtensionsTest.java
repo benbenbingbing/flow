@@ -3,46 +3,46 @@ package com.workflow.biz.project.custom;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionHandler;
-import com.workflow.contracts.action.FlowActionTriggerProvider;
-import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
+import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionTriggerProvider;
+import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
 import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.entity.list.DataScopePredicateProvider;
-import com.workflow.contracts.entity.list.EntityListActionProvider;
-import com.workflow.contracts.entity.list.EntityListContextResolver;
-import com.workflow.contracts.entity.list.EntityListDataProvider;
+import com.workflow.contracts.entity.list.spi.DataScopePredicateProvider;
+import com.workflow.contracts.entity.list.spi.EntityListActionProvider;
+import com.workflow.contracts.entity.list.spi.EntityListContextResolver;
+import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.EntityListRuntimeContext;
-import com.workflow.contracts.entity.list.EntityListSchemaProvider;
+import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
 import com.workflow.contracts.entity.mutation.EntityChangeTarget;
 import com.workflow.contracts.entity.mutation.EntityChangeTargetContext;
-import com.workflow.contracts.entity.mutation.EntityChangeTargetResolver;
+import com.workflow.contracts.entity.mutation.spi.EntityChangeTargetResolver;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.contracts.entity.mutation.EntityMutationStepContext;
-import com.workflow.contracts.entity.mutation.EntityMutationStepProvider;
+import com.workflow.contracts.entity.mutation.spi.EntityMutationStepProvider;
 import com.workflow.contracts.entity.mutation.EntityMutationStepResult;
-import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.IdentityUser;
 import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
-import com.workflow.contracts.identity.external.ExternalIdentityResolver;
+import com.workflow.contracts.process.open.spi.ExternalIdentityResolver;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolver;
-import com.workflow.contracts.integration.IntegrationConnector;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.integration.spi.IntegrationConnector;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
-import com.workflow.contracts.integration.IntegrationSecretResolver;
+import com.workflow.contracts.integration.port.IntegrationSecretResolver;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.contracts.ui.CommonInvocationContext;
 import com.workflow.contracts.ui.EntityDescriptor;
 import com.workflow.contracts.ui.FormInvocationContext;
 import com.workflow.contracts.ui.ListInvocationContext;
-import com.workflow.contracts.ui.UiDataSourceProvider;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogPort;
+import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
+import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.extension.ListFieldDataProvider;
@@ -83,7 +83,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings("deprecation")
 class ProjectCustomBackendExtensionsTest {
 
     private static final EntityDescriptor PROJECT_ENTITY =
@@ -219,11 +218,9 @@ class ProjectCustomBackendExtensionsTest {
         assertFalse(component(
                 ProjectCustomMigrationAssetHandler.class));
         assertFalse(component(
-                ProjectCustomMigrationAssetRecorder.class));
-        assertFalse(component(
                 ProjectCustomBootstrapJobCoordinator.class));
         assertFalse(component(
-                ProjectCustomUiExtensionCatalogPort.class));
+                ProjectCustomUiExtensionCatalogAdapter.class));
         assertFalse(component(
                 ProjectCustomHttpConnectorConfigurationProvider.class));
 
@@ -836,7 +833,7 @@ class ProjectCustomBackendExtensionsTest {
                                 1,
                                 () -> "done"));
         assertTrue(
-                new ProjectCustomUiExtensionCatalogPort()
+                new ProjectCustomUiExtensionCatalogAdapter()
                         .listCatalogItems()
                         .isEmpty());
 
@@ -863,11 +860,6 @@ class ProjectCustomBackendExtensionsTest {
         handler.recordTaskSlaPolicy(
                 "SLA-1",
                 request);
-        new ProjectCustomMigrationAssetRecorder()
-                .recordEntity(
-                        "ENTITY-1",
-                        "RELEASE-1",
-                        request);
     }
 
     private AnnotationConfigApplicationContext

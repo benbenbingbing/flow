@@ -14,7 +14,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedRequestUserContextPort;
+import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
 import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics.Outcome;

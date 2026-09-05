@@ -1,7 +1,7 @@
 package com.workflow.entity.list.infrastructure.adapter;
 
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;

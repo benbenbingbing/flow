@@ -1,6 +1,6 @@
 package com.workflow.process.form.infrastructure.adapter;
 
-import com.workflow.contracts.entity.EntityNewDataFormRuntimePort;
+import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
 import com.workflow.process.form.application.EntityFormResolveService;
 import java.util.Map;
 import java.util.Optional;

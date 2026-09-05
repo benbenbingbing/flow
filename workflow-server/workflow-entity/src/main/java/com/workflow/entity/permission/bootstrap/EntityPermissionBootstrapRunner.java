@@ -1,6 +1,6 @@
 package com.workflow.entity.permission.bootstrap;
 
-import com.workflow.contracts.bootstrap.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
 import com.workflow.entity.permission.application.EntityPermissionCatalogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenProcessEvent;
-import com.workflow.contracts.process.open.OpenProcessEventPort;
+import com.workflow.contracts.process.open.port.OpenProcessEventPort;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessBindingMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessBindingRecord;

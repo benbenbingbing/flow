@@ -8,7 +8,8 @@ import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.embed.EmbedNativeListDependencySnapshotPort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort.Reference;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -509,7 +510,7 @@ public class EntityListPublishedRuntimeService {
         }
         try {
             return listDependencySnapshotPort.read(
-                    new EmbedNativeListDependencySnapshotPort.Reference(
+                    new Reference(
                             claims.sessionId(),
                             claims.viewId(),
                             claims.viewReleaseId(),

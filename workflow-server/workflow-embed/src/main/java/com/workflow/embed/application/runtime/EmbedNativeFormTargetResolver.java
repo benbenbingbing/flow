@@ -2,7 +2,9 @@ package com.workflow.embed.application.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedNativeFormAccessPort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.OperationNotAllowedException;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -213,7 +215,7 @@ public class EmbedNativeFormTargetResolver {
             String actionKey) {
         try {
             accessPort.requireCreateAction(accessTarget(target), actionKey);
-        } catch (EmbedNativeFormAccessPort.OperationNotAllowedException error) {
+        } catch (OperationNotAllowedException error) {
             throw denied();
         } catch (RuntimeException error) {
             throw unavailable(error);
@@ -358,9 +360,9 @@ public class EmbedNativeFormTargetResolver {
         return Collections.unmodifiableMap(result);
     }
 
-    private static EmbedNativeFormAccessPort.Target accessTarget(
+    private static Target accessTarget(
             EmbedNativeFormTarget target) {
-        return new EmbedNativeFormAccessPort.Target(
+        return new Target(
                 target.entityCode(), target.formId(),
                 target.formReleaseId(), target.formReleaseVersion(),
                 target.listKey(), target.listReleaseId(),

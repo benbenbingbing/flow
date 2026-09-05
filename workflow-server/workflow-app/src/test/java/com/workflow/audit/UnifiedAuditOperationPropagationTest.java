@@ -2,12 +2,12 @@ package com.workflow.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.infrastructure.SystemAuditAspect;
-import com.workflow.contracts.action.FlowActionCatalogPort;
+import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;

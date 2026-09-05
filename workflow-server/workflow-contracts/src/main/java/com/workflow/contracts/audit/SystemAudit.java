@@ -1,5 +1,6 @@
 package com.workflow.contracts.audit;
 
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

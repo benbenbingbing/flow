@@ -9,7 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedNativeFormAccessPort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedException;
@@ -54,12 +54,12 @@ class EmbedNativeFormTargetResolverTest {
                 "session-1", "view-1", "view-release-1"))
                 .thenReturn(listRelease());
         when(accessPort.authorizeView(
-                new EmbedNativeFormAccessPort.Target(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
                         "work_order", "form-1", "form-release-4", 4,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of()))
                 .thenReturn(Optional.of(
-                        new EmbedNativeFormAccessPort.ViewAccess(
+                        new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.ViewAccess(
                                 "process-9")));
 
         EmbedNativeFormTarget target = resolver.authorize(
@@ -69,7 +69,7 @@ class EmbedNativeFormTargetResolverTest {
         assertEquals("record-9", target.recordId());
         assertEquals("process-9", target.processInstanceId());
         verify(accessPort).authorizeView(
-                new EmbedNativeFormAccessPort.Target(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
                         "work_order", "form-1", "form-release-4", 4,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of());
@@ -99,12 +99,12 @@ class EmbedNativeFormTargetResolverTest {
                 null, null, null, "VIEW", null, null,
                 Map.of(), Map.of(), Map.of());
         when(accessPort.authorizeView(
-                new EmbedNativeFormAccessPort.Target(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
                         "customer", "child-form", "child-release", 7,
                         null, null, null),
                 "child-record", Map.of()))
                 .thenReturn(Optional.of(
-                        new EmbedNativeFormAccessPort.ViewAccess(null)));
+                        new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.ViewAccess(null)));
 
         EmbedNativeFormTarget authorized = resolver.authorizePinnedForm(
                 session, child, "edit", "child-record");
@@ -125,12 +125,12 @@ class EmbedNativeFormTargetResolverTest {
                 "VIEW", null, null,
                 Map.of(), Map.of(), Map.of());
         when(accessPort.authorizeView(
-                new EmbedNativeFormAccessPort.Target(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
                         "work_order", "task-form", "task-release", 3,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of()))
                 .thenReturn(Optional.of(
-                        new EmbedNativeFormAccessPort.ViewAccess(
+                        new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.ViewAccess(
                                 "process-9")));
 
         EmbedNativeFormTarget authorized = resolver.authorizePinnedForm(
@@ -140,7 +140,7 @@ class EmbedNativeFormTargetResolverTest {
         assertEquals("record-9", authorized.recordId());
         assertEquals("process-9", authorized.processInstanceId());
         verify(accessPort).authorizeView(
-                new EmbedNativeFormAccessPort.Target(
+                new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
                         "work_order", "task-form", "task-release", 3,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of());

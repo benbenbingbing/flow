@@ -3,8 +3,8 @@ package com.workflow.process.runtime;
 import com.workflow.process.instance.application.ProcessTerminationService;
 
 import com.workflow.core.result.Result;
-import com.workflow.contracts.entity.EntityRecordPort;
-import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.entity.port.EntityRecordPort;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.application.ProcessTaskService;

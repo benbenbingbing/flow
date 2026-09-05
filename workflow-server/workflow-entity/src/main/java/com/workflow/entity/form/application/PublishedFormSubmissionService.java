@@ -7,7 +7,7 @@ import com.workflow.entity.ui.application.UiDataSourceService;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
-import com.workflow.contracts.ui.hotfix.UiHotfixObservationPort;
+import com.workflow.contracts.entity.ui.port.UiHotfixObservationPort;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;

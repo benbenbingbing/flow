@@ -14,15 +14,15 @@ import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.integration.IntegrationConnector;
+import com.workflow.contracts.integration.spi.IntegrationConnector;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.ui.CommonInvocationContext;
 import com.workflow.contracts.ui.EntityDescriptor;
 import com.workflow.contracts.ui.ListInvocationContext;
-import com.workflow.contracts.ui.UiDataSourceProvider;
+import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.ui.UiActionCommandPlan;
-import com.workflow.contracts.ui.UiActionCommandPlanProvider;
+import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
 import com.workflow.contracts.ui.UiActionMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
@@ -302,8 +302,9 @@ class UiDataSourceServiceTest {
 
     @Test
     void pinnedLocalWriteOnlyReturnsTypedCommandPlan() {
+        // 用存量 Provider fixture 验证新 SPI Registry 的兼容消费。
         UiActionCommandPlanProvider provider =
-                new UiActionCommandPlanProvider() {
+                new com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider() {
                     @Override
                     public String getCode() {
                         return "controlled-writer";

@@ -1,6 +1,6 @@
 package com.workflow.openapi.connector.secret;
 
-import com.workflow.contracts.integration.IntegrationSecretResolver;
+import com.workflow.contracts.integration.port.IntegrationSecretResolver;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.regex.Pattern;

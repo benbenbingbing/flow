@@ -3,7 +3,7 @@ package com.workflow.process.coordination.application;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionExecutionMode;
 import com.workflow.contracts.action.FlowActionFailurePolicy;
-import com.workflow.contracts.action.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Command;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Operation;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.TargetImpact;

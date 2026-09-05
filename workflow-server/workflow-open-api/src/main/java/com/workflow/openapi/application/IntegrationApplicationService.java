@@ -9,9 +9,9 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.openapi.api.request.CreateIntegrationApplicationRequest;
@@ -67,7 +67,7 @@ public class IntegrationApplicationService {
     private final IntegrationSecretGenerator secretGenerator;
     private final IntegrationSecretHasher secretHasher;
     private final IntegrationVariableSchemaService variableSchemaService;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final SystemAuditPort auditPort;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -81,7 +81,7 @@ public class IntegrationApplicationService {
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
             IntegrationVariableSchemaService variableSchemaService,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
         this(
@@ -106,7 +106,7 @@ public class IntegrationApplicationService {
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
             IntegrationVariableSchemaService variableSchemaService,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {

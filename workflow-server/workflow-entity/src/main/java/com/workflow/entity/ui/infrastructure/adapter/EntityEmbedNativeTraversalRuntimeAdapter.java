@@ -1,6 +1,6 @@
 package com.workflow.entity.ui.infrastructure.adapter;
 
-import com.workflow.contracts.embed.EmbedNativeTraversalRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

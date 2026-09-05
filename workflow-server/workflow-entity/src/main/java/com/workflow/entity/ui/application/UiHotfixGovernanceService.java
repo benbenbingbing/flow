@@ -7,7 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.ui.hotfix.UiHotfixObservationPort;
+import com.workflow.contracts.entity.ui.port.UiHotfixObservationPort;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
 import com.workflow.entity.ui.api.request.UiHotfixObservationMetricRequest;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;

@@ -8,7 +8,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;

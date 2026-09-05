@@ -5,7 +5,7 @@ import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
@@ -92,7 +92,8 @@ class PersonResolverRuntimeServiceTest {
             java.util.function.Function<
                     PersonResolveRequest,
                     PersonResolveResult> function) {
-        return new PersonResolver() {
+        // 验证旧 SPI 实现仍可作为新运行时接口的实现被接纳。
+        return new com.workflow.contracts.process.assignment.spi.PersonResolver() {
             @Override
             public PersonResolverDescriptor descriptor() {
                 return new PersonResolverDescriptor(

@@ -1,6 +1,6 @@
 package com.workflow.process.action.application;
 
-import com.workflow.contracts.action.FlowActionDesignPort;
+import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.process.action.application.FlowActionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

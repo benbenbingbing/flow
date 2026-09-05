@@ -3,7 +3,7 @@ package com.workflow.entity.form.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.ProcessCatalogItem;
-import com.workflow.contracts.process.ProcessCatalogPort;
+import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;

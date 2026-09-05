@@ -2,7 +2,7 @@ package com.workflow.process.assignment.api.web;
 
 import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
 import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.position.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
 import com.workflow.contracts.identity.position.PositionDefinitionView;
 import com.workflow.contracts.identity.resolver.PersonResolutionException;
 import com.workflow.core.result.ApiResponse;

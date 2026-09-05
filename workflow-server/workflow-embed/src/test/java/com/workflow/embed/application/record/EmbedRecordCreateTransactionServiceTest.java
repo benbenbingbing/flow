@@ -11,7 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedRecordCreatePort;
+import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;
 import com.workflow.embed.application.port.EmbedOperationReceiptPort;
@@ -37,7 +37,7 @@ class EmbedRecordCreateTransactionServiceTest {
         EmbedIdempotencyPort idempotencyPort = mock(EmbedIdempotencyPort.class);
         EmbedRuntimeAudit runtimeAudit = mock(EmbedRuntimeAudit.class);
         when(entityPort.create(any())).thenReturn(
-                new EmbedRecordCreatePort.CreatedRecord("record-1", 9L));
+                new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreatedRecord("record-1", 9L));
         EmbedRecordCreateTransactionService service = service(
                 entityPort, receiptPort, idempotencyPort, runtimeAudit);
         EmbedIdempotencyClaim claim = acquired();
@@ -71,7 +71,7 @@ class EmbedRecordCreateTransactionServiceTest {
         EmbedOperationReceiptPort receiptPort = mock(EmbedOperationReceiptPort.class);
         EmbedIdempotencyPort idempotencyPort = mock(EmbedIdempotencyPort.class);
         when(entityPort.create(any())).thenReturn(
-                new EmbedRecordCreatePort.CreatedRecord("record-1", null));
+                new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreatedRecord("record-1", null));
         org.mockito.Mockito.doThrow(new IllegalStateException("stale fence"))
                 .when(idempotencyPort).completeInBusinessTransaction(
                         any(), any(), any(), eq(201), any(), any());
@@ -93,7 +93,7 @@ class EmbedRecordCreateTransactionServiceTest {
         EmbedIdempotencyPort idempotencyPort = mock(EmbedIdempotencyPort.class);
         EmbedRuntimeAudit runtimeAudit = mock(EmbedRuntimeAudit.class);
         when(entityPort.create(any())).thenReturn(
-                new EmbedRecordCreatePort.CreatedRecord("record-1", null));
+                new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.CreatedRecord("record-1", null));
         org.mockito.Mockito.doThrow(new IllegalStateException("audit unavailable"))
                 .when(runtimeAudit).recordCreatedRequired(
                         any(), any(), any(), anyLong());
@@ -137,7 +137,7 @@ class EmbedRecordCreateTransactionServiceTest {
                 "https://portal.example.com", "channel-1234567890", "CREATE",
                 null, Map.of(), Set.of("RECORD_CREATE"),
                 NOW.plusSeconds(900), NOW.plusSeconds(3600));
-        EmbedRecordCreatePort.Target target = new EmbedRecordCreatePort.Target(
+        com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.Target target = new com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort.Target(
                 "work_order", "form-1", "form-release-1", 4);
         return new Authorization(
                 session, "view-key", target,

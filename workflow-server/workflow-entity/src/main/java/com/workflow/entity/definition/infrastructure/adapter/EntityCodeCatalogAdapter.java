@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.infrastructure.adapter;
 
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;

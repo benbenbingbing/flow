@@ -2,9 +2,9 @@ package com.workflow.service;
 
 import com.workflow.process.definition.application.ProcessDefinitionService;
 
-import com.workflow.contracts.action.FlowActionDesignPort;
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
-import com.workflow.contracts.migration.MigrationAssetHandler;
+import com.workflow.process.definition.application.port.FlowActionDesignPort;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;

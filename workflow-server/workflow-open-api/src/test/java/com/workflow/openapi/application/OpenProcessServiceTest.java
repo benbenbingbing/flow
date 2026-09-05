@@ -14,11 +14,11 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenApplicationActor;
-import com.workflow.contracts.process.open.OpenProcessCatalogPort;
+import com.workflow.contracts.process.open.port.OpenProcessCatalogPort;
 import com.workflow.contracts.process.open.OpenProcessDefinition;
 import com.workflow.contracts.process.open.OpenProcessEvent;
-import com.workflow.contracts.process.open.OpenProcessEventPort;
-import com.workflow.contracts.process.open.OpenProcessRuntimePort;
+import com.workflow.contracts.process.open.port.OpenProcessEventPort;
+import com.workflow.contracts.process.open.port.OpenProcessRuntimePort;
 import com.workflow.contracts.process.open.OpenProcessView;
 import com.workflow.contracts.process.open.OpenTaskView;
 import com.workflow.openapi.api.error.OpenApiException;

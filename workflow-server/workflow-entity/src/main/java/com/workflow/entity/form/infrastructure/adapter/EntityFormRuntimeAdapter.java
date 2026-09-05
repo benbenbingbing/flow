@@ -6,7 +6,7 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.entity.EntityFormBinding;
 import com.workflow.contracts.entity.EntityFormRuntimeContext;
-import com.workflow.contracts.entity.EntityFormRuntimePort;
+import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

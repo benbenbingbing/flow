@@ -3,7 +3,7 @@ package com.workflow.openapi.connector.config;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.integration.IntegrationRuntimeContext;
@@ -34,13 +34,13 @@ public class IntegrationConnectorTestService {
 
     private final IntegrationConnectorConfigMapper configMapper;
     private final HttpIntegrationConnector connector;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final ObjectMapper objectMapper;
 
     IntegrationConnectorTestService(
             IntegrationConnectorConfigMapper configMapper,
             HttpIntegrationConnector connector,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             ObjectMapper objectMapper) {
         this.configMapper = configMapper;
         this.connector = connector;

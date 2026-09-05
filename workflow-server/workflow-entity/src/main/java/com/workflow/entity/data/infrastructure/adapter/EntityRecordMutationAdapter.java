@@ -1,12 +1,12 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPort;
+import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.entity.mutation.EntityMutationSystemFields;
+import com.workflow.entity.data.application.EntityMutationSystemFields;
 import com.workflow.contracts.entity.mutation.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.version.application.EntityMutationIsolationExecutor;

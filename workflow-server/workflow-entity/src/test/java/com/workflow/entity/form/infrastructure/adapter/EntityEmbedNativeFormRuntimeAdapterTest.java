@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
-import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -79,7 +79,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                      EmbedDelegatedRequestContext.openSession(
                              "session-1", "view-release-1")) {
             String token = adapter.issueReleaseResolutionToken(
-                    new EmbedNativeFormRuntimePort.Target(
+                    new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.Target(
                             "work_order",
                             "form-1",
                             "form-release-3",
@@ -103,12 +103,12 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                     "view-release-1", claims.embedViewReleaseId());
             assertTrue(claims.expiresAt() - claims.issuedAt() > 300L);
             assertEquals(
-                    new EmbedNativeFormRuntimePort.VerifiedTarget(
+                    new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget(
                             "work_order", "form-1",
                             "form-release-3", 3),
                     adapter.verifyReleaseResolutionToken(
                             token,
-                            new EmbedNativeFormRuntimePort.VerificationTarget(
+                            new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "work_order", "form-1",
                                     "form-release-3", 3,
                                     "session-1", "view-release-1",
@@ -161,11 +161,11 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                             "version", 7));
 
             assertEquals(
-                    new EmbedNativeFormRuntimePort.VerifiedTarget(
+                    new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget(
                             "customer", "child-form", "child-release", 7),
                     adapter.verifyRuntimeReleaseRequest(
                             parentToken,
-                            new EmbedNativeFormRuntimePort.VerificationTarget(
+                            new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
                                     "child-release", 7,
                                     "session-1", "view-release-1", expiry)));
@@ -173,7 +173,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                     IllegalArgumentException.class,
                     () -> adapter.verifyReleaseResolutionToken(
                             parentToken,
-                            new EmbedNativeFormRuntimePort.VerificationTarget(
+                            new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
                                     "child-release", 7,
                                     "session-1", "view-release-1", expiry)),
@@ -182,7 +182,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                     IllegalArgumentException.class,
                     () -> adapter.verifyRuntimeReleaseRequest(
                             parentToken,
-                            new EmbedNativeFormRuntimePort.VerificationTarget(
+                            new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
                                     "child-release", 7,
                                     "session-1", "view-release-1",
@@ -192,7 +192,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                     IllegalArgumentException.class,
                     () -> adapter.verifyRuntimeReleaseRequest(
                             parentToken,
-                            new EmbedNativeFormRuntimePort.VerificationTarget(
+                            new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
                                     "child-release", 7,
                                     "session-2", "view-release-1", expiry)),
@@ -207,7 +207,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                     BusinessForbiddenException.class,
                     () -> adapter.verifyRuntimeReleaseRequest(
                             parentToken,
-                            new EmbedNativeFormRuntimePort.VerificationTarget(
+                            new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     null, "unreferenced-form",
                                     "unreferenced-release", 1,
                                     "session-1", "view-release-1", expiry)));

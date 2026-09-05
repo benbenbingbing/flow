@@ -11,11 +11,11 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.openapi.api.request.CreateIntegrationWorkflowScenarioRequest;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessGrantMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationWorkflowScenarioRevisionMapper;
@@ -35,7 +35,7 @@ class IntegrationWorkflowScenarioServiceTest {
     private IntegrationProcessGrantMapper grantMapper;
     private IntegrationApplicationMapper applicationMapper;
     private SystemAuditPort auditPort;
-    private CurrentActorProvider actorProvider;
+    private CurrentActorPort actorProvider;
     private IntegrationWorkflowScenarioService service;
 
     @BeforeEach
@@ -50,7 +50,7 @@ class IntegrationWorkflowScenarioServiceTest {
         application.setId("app-1");
         application.setStatus("ACTIVE");
         when(applicationMapper.selectById("app-1")).thenReturn(application);
-        actorProvider = mock(CurrentActorProvider.class);
+        actorProvider = mock(CurrentActorPort.class);
         when(actorProvider.current()).thenReturn(new CurrentActor("u-1", "admin"));
         when(grantMapper.findContract("app-1", "generic_process"))
                 .thenReturn(new com.workflow.openapi.infrastructure.persistence.record

@@ -9,9 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.http.HttpConnectorConfigurationCodec;
 import com.workflow.openapi.api.request.CreateIntegrationConnectorRequest;
@@ -40,7 +40,7 @@ class IntegrationConnectorAdministrationServiceTest {
         configMapper = mock(IntegrationConnectorConfigMapper.class);
         auditPort = mock(SystemAuditPort.class);
         objectMapper = new ObjectMapper();
-        CurrentActorProvider actorProvider =
+        CurrentActorPort actorProvider =
                 () -> new CurrentActor("admin-1", "Admin");
         service = new IntegrationConnectorAdministrationService(
                 applicationMapper,

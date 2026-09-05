@@ -6,7 +6,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.FormFieldConfi
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.definition.application.ProcessDefinitionService;
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 

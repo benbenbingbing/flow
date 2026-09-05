@@ -6,13 +6,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.openapi.api.request.CreateIntegrationWorkflowScenarioRequest;
@@ -73,7 +73,7 @@ public class IntegrationWorkflowScenarioService {
     private final IntegrationApplicationMapper applicationMapper;
     private final IntegrationProcessGrantMapper grantMapper;
     private final IntegrationVariableSchemaService schemaService;
-    private final CurrentActorProvider actorProvider;
+    private final CurrentActorPort actorProvider;
     private final SystemAuditPort auditPort;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -85,7 +85,7 @@ public class IntegrationWorkflowScenarioService {
             IntegrationApplicationMapper applicationMapper,
             IntegrationProcessGrantMapper grantMapper,
             IntegrationVariableSchemaService schemaService,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
         this(mapper, revisionMapper, applicationMapper, grantMapper, schemaService,
@@ -98,7 +98,7 @@ public class IntegrationWorkflowScenarioService {
             IntegrationApplicationMapper applicationMapper,
             IntegrationProcessGrantMapper grantMapper,
             IntegrationVariableSchemaService schemaService,
-            CurrentActorProvider actorProvider,
+            CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {

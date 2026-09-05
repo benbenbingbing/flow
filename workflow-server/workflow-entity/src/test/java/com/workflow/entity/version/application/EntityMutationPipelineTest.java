@@ -2,7 +2,7 @@ package com.workflow.entity.version.application;
 
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;

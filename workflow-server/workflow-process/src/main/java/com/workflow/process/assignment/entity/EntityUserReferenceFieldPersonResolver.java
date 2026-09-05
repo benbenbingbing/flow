@@ -1,15 +1,16 @@
 package com.workflow.process.assignment.entity;
 
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
-import com.workflow.contracts.entity.EntityUserReferencePort;
-import com.workflow.contracts.entity.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
+import com.workflow.contracts.entity.port.EntityUserReferencePort.UserReferenceField;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.contracts.entity.port.EntityUserReferencePort;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.contracts.identity.resolver.PersonResolutionException;
-import com.workflow.contracts.identity.resolver.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -96,7 +97,7 @@ public class EntityUserReferenceFieldPersonResolver
         }
         config.validateAssignmentMode(
                 request.assignmentMode(), request.multiInstance());
-        EntityUserReferencePort.UserReferenceField field =
+        UserReferenceField field =
                 referencePort.requireUserReferenceField(
                 config.entityCode(), config.fieldCode());
         if (request.usage() == PersonResolveUsage.ASSIGNEE) {

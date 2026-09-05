@@ -5,9 +5,9 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.core.error.ForbiddenException;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -19,7 +19,7 @@ final class EmbedManagementSupport {
     private EmbedManagementSupport() {
     }
 
-    static CurrentActor requireActor(CurrentActorProvider actorProvider) {
+    static CurrentActor requireActor(CurrentActorPort actorProvider) {
         CurrentActor actor = actorProvider.current();
         if (actor == null || !StringUtils.hasText(actor.userId())) {
             throw new ForbiddenException("用户未登录");

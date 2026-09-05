@@ -3,7 +3,7 @@ package com.workflow.process.action.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.action.FlowActionExecutionMode;
 import com.workflow.contracts.action.FlowActionFailurePolicy;
-import com.workflow.contracts.action.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.contracts.action.FlowActionScopeType;
 import com.workflow.contracts.action.FlowActionTimingOption;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;

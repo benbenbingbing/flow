@@ -3,14 +3,18 @@ package com.workflow.embed.application.runtime;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedRuntimeEntityPort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeActorRuntimePort.ActorSnapshot;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
 import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.embed.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeActorRuntimePort;
-import com.workflow.contracts.embed.EmbedRuntimeEntityPort.Action;
-import com.workflow.contracts.embed.EmbedRuntimeEntityPort.Field;
+import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Action;
+import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Field;
+import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.ListPage;
+import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.ListSchema;
+import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort.Row;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeActorRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
+import com.workflow.contracts.embed.runtime.port.EmbedRuntimeEntityPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.embed.api.web.EmbedRuntimeListFilterRequest;
 import com.workflow.embed.api.web.EmbedRuntimeListQueryRequest;
@@ -142,7 +146,7 @@ public class EmbedRuntimeReadFacade {
                             runtime.session().flowUsername()),
                     List.of(), false, List.of());
         }
-        EmbedNativeActorRuntimePort.ActorSnapshot actor =
+        ActorSnapshot actor =
                 nativeActorRuntimePort.resolve(
                         runtime.session().flowUserId(),
                         runtime.session().flowUsername(),
@@ -186,7 +190,7 @@ public class EmbedRuntimeReadFacade {
                 throw runtimeUnavailable(null);
             }
             formToken = nativeFormRuntimePort.issueReleaseResolutionToken(
-                    new EmbedNativeFormRuntimePort.Target(
+                    new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.Target(
                             target.entityCode(), target.formId(),
                             target.formReleaseId(), target.formReleaseVersion(),
                             runtime.session().absoluteExpiresAt()));
@@ -199,7 +203,7 @@ public class EmbedRuntimeReadFacade {
                 throw runtimeUnavailable(null);
             }
             listToken = nativeListRuntimePort.issueReleaseResolutionToken(
-                    new EmbedNativeListRuntimePort.Target(
+                    new com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort.Target(
                             target.entityCode(), target.listKey(),
                             target.listReleaseId(), target.listReleaseVersion(),
                             runtime.session().sessionId(),
@@ -265,7 +269,7 @@ public class EmbedRuntimeReadFacade {
 
     public EmbedRuntimeViews.Schema schema() {
         RuntimeTarget target = requireListTarget();
-        EmbedRuntimeEntityPort.ListSchema source = loadSchema(target.release());
+        ListSchema source = loadSchema(target.release());
         ProjectionPolicy policy = projectionPolicy(target.release());
         UiPolicy ui = uiPolicy(target.release());
         List<Field> visibleFields = source.fields().stream()
@@ -308,7 +312,7 @@ public class EmbedRuntimeReadFacade {
 
     public EmbedRuntimeViews.ListResult query(EmbedRuntimeListQueryRequest request) {
         RuntimeTarget target = requireListTarget();
-        EmbedRuntimeEntityPort.ListSchema source = loadSchema(target.release());
+        ListSchema source = loadSchema(target.release());
         ProjectionPolicy policy = projectionPolicy(target.release());
         UiPolicy ui = uiPolicy(target.release());
         int pageNum = request == null || request.getPageNum() == null
@@ -331,7 +335,7 @@ public class EmbedRuntimeReadFacade {
         Map<String, Object> contextFilters = contextFilters(
                 target.release(), target.session().context());
 
-        EmbedRuntimeEntityPort.ListPage page;
+        ListPage page;
         try {
             page = entityPort.queryList(
                     target.release().entityCode(),
@@ -395,7 +399,7 @@ public class EmbedRuntimeReadFacade {
         return new RuntimeTarget(session, release, capabilities);
     }
 
-    private EmbedRuntimeEntityPort.ListSchema loadSchema(EmbedRuntimeReleaseSnapshot release) {
+    private ListSchema loadSchema(EmbedRuntimeReleaseSnapshot release) {
         try {
             return entityPort.loadListSchema(
                     release.entityCode(), release.listKey(), release.listReleaseId(),
@@ -574,7 +578,7 @@ public class EmbedRuntimeReadFacade {
     }
 
     private EmbedRuntimeViews.ListItem listItem(
-            EmbedRuntimeEntityPort.Row row,
+            Row row,
             Set<String> visible,
             Set<String> allowedActions) {
         Map<String, Object> values = new LinkedHashMap<>();
@@ -601,7 +605,7 @@ public class EmbedRuntimeReadFacade {
     }
 
     private List<ExternalActionDescriptor> externalActions(
-            EmbedRuntimeEntityPort.ListSchema schema,
+            ListSchema schema,
             Set<String> allowed,
             Collection<String> capabilities) {
         Map<String, Action> source = new LinkedHashMap<>();

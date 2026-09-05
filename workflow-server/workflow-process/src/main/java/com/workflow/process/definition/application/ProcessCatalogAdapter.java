@@ -1,6 +1,6 @@
 package com.workflow.process.definition.application;
 
-import com.workflow.contracts.process.ProcessCatalogPort;
+import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.ProcessBindingState;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;

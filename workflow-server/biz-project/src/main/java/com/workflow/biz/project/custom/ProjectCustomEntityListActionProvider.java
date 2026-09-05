@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.entity.list.EntityListActionProvider;
+import com.workflow.contracts.entity.list.spi.EntityListActionProvider;
 import com.workflow.contracts.entity.list.EntityListRuntimeContext;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;

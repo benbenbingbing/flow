@@ -1,5 +1,7 @@
 package com.workflow.contracts.entity.list;
 
+import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
+
 /**
  * {@link EntityListDataProvider} 查询 Map 中的平台固定字段名。
  *

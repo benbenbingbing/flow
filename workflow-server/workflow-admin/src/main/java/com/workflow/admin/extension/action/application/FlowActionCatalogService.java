@@ -7,18 +7,19 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.action.FlowActionCatalogPort;
+import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.contracts.action.FlowActionDefinitionDescriptor;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
-import com.workflow.contracts.entity.EntityCodeCatalogPort;
+import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.admin.extension.action.api.request.FlowActionDefinitionRequest;
 import com.workflow.admin.extension.action.api.response.FlowActionHandlerOption;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinition;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinitionEntity;
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionMapper;
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionEntityMapper;
-import com.workflow.contracts.action.FlowActionHandler;
-import com.workflow.contracts.action.FlowActionVisibilityScope;
+import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
+import com.workflow.admin.extension.action.domain.model.FlowActionVisibilityScope;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
@@ -276,8 +277,8 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         option.setConfigured(configured);
         option.setAvailable(handler != null);
         if (handler != null) {
-            option.setTyped(handler instanceof com.workflow.contracts.action.TypedFlowActionHandler<?>);
-            if (handler instanceof com.workflow.contracts.action.TypedFlowActionHandler<?> typed) {
+            option.setTyped(handler instanceof TypedFlowActionHandler<?>);
+            if (handler instanceof TypedFlowActionHandler<?> typed) {
                 option.setParamType(typed.getParamType().getName());
             }
             option.setSupportedTriggerTimings(handler.supportedTriggerTimings());

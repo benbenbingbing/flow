@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogPort;
+import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;

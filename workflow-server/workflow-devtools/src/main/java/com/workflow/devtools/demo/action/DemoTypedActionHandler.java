@@ -1,7 +1,7 @@
 package com.workflow.devtools.demo.action;
 
 import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

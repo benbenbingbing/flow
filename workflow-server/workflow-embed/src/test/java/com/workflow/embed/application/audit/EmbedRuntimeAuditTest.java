@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.workflow.contracts.audit.AuditResult;
 import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.SystemAuditPort;
+import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit.Operation;
 import com.workflow.embed.application.audit.EmbedRuntimeAudit.RequestOperation;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;

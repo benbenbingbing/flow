@@ -15,7 +15,7 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.entity.EntityRecordPort;
+import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;

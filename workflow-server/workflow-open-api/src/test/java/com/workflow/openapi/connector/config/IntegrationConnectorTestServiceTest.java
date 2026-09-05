@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.CurrentActor;
-import com.workflow.contracts.identity.CurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.http.HttpIntegrationConnector;
@@ -30,7 +30,7 @@ class IntegrationConnectorTestServiceTest {
     void setUp() {
         mapper = mock(IntegrationConnectorConfigMapper.class);
         connector = mock(HttpIntegrationConnector.class);
-        CurrentActorProvider actorProvider =
+        CurrentActorPort actorProvider =
                 () -> new CurrentActor("admin-1", "Admin");
         service = new IntegrationConnectorTestService(
                 mapper,

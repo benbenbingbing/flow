@@ -3,7 +3,7 @@ package com.workflow.process.form.application;
 import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.entity.EntityFormBinding;
 import com.workflow.contracts.entity.EntityFormRuntimeContext;
-import com.workflow.contracts.entity.EntityFormRuntimePort;
+import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;

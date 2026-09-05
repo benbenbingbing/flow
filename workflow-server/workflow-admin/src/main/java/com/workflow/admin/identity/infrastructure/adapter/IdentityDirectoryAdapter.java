@@ -1,6 +1,6 @@
 package com.workflow.admin.identity.infrastructure.adapter;
 
-import com.workflow.contracts.identity.IdentityDirectoryPort;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.IdentityGroup;
 import com.workflow.contracts.identity.IdentityUser;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;

@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.entity.list.EntityListRuntimeContext;
-import com.workflow.contracts.entity.list.EntityListSchemaProvider;
+import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.integration.IntegrationConnector;
+import com.workflow.contracts.integration.spi.IntegrationConnector;
 import com.workflow.contracts.integration.IntegrationRequest;
 import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.core.logging.LogValue;

@@ -1,7 +1,7 @@
 package com.workflow.entity.mutationpolicy.application;
 
 import com.workflow.contracts.entity.mutation.EntityMutationPhase;
-import com.workflow.contracts.entity.mutation.EntityMutationStepProvider;
+import com.workflow.contracts.entity.mutation.spi.EntityMutationStepProvider;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.mutationpolicy.application.model.EntityMutationPolicyDocument;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
