@@ -2,23 +2,36 @@ package com.workflow.storage;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.workflow.contracts.entity.port.EntityFileUploadAuthorizationPort;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.RequiresPermission;
 import com.workflow.storage.api.web.FileController;
-import com.workflow.storage.application.StoredFileAccessService;
 import com.workflow.storage.application.FileStorageFactory;
 import com.workflow.storage.application.FileStorageStrategy;
 import com.workflow.storage.application.StoredFile;
+import com.workflow.storage.application.StoredFileAccessService;
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
 class FileControllerTest {
 
@@ -44,7 +57,7 @@ class FileControllerTest {
                         "hash",
                         response));
 
-        var result = new FileController(factory, accessService)
+        var result = new FileController(factory, accessService, List.of())
                 .uploadFile(file, "upload-01");
 
         assertEquals(200, result.getCode());
@@ -86,7 +99,7 @@ class FileControllerTest {
                         winner,
                         false));
 
-        var result = new FileController(factory, accessService)
+        var result = new FileController(factory, accessService, List.of())
                 .uploadFile(file, "upload-02");
 
         assertEquals(winner, result.getData());
@@ -111,7 +124,7 @@ class FileControllerTest {
                 new MockHttpServletResponse();
 
         StoredFileAccessService accessService = mock(StoredFileAccessService.class);
-        new FileController(factory, accessService).previewFile(
+        new FileController(factory, accessService, List.of()).previewFile(
                 "s3://files/key",
                 response);
 
@@ -137,7 +150,8 @@ class FileControllerTest {
         when(strategy.open("outage"))
                 .thenThrow(new IllegalStateException("S3 unavailable"));
         StoredFileAccessService accessService = mock(StoredFileAccessService.class);
-        FileController controller = new FileController(factory, accessService);
+        FileController controller = new FileController(
+                factory, accessService, List.of());
         MockHttpServletResponse missing =
                 new MockHttpServletResponse();
         MockHttpServletResponse outage =
@@ -148,5 +162,131 @@ class FileControllerTest {
 
         assertEquals(404, missing.getStatus());
         assertEquals(503, outage.getStatus());
+    }
+
+    @Test
+    void entityUploadAuthorizesBeforePreparingStorage() {
+        FileStorageFactory factory = mock(FileStorageFactory.class);
+        StoredFileAccessService accessService =
+                mock(StoredFileAccessService.class);
+        EntityFileUploadAuthorizationPort authorizer =
+                mock(EntityFileUploadAuthorizationPort.class);
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "report.txt",
+                "text/plain",
+                "content".getBytes(StandardCharsets.UTF_8));
+        Map<String, String> replay = Map.of(
+                "url", "s3://files/original.txt",
+                "filename", "original.txt");
+        when(accessService.prepareUpload("upload-entity-01", file))
+                .thenReturn(new StoredFileAccessService.UploadClaim(
+                        "user-1",
+                        "upload-entity-01",
+                        "hash",
+                        replay));
+
+        var result = new FileController(
+                factory, accessService, List.of(authorizer))
+                .uploadEntityFile(
+                        "ZDWREQ", "create", "attachment",
+                        file, "upload-entity-01");
+
+        assertEquals(200, result.getCode());
+        assertEquals(replay, result.getData());
+        var ordered = inOrder(authorizer, accessService);
+        ordered.verify(authorizer).requireUpload(
+                "ZDWREQ", "create", "attachment");
+        ordered.verify(accessService).prepareUpload(
+                "upload-entity-01", file);
+        verify(factory, never()).getStrategy();
+    }
+
+    @Test
+    void rejectedEntityUploadDoesNotTouchStorage() {
+        FileStorageFactory factory = mock(FileStorageFactory.class);
+        StoredFileAccessService accessService =
+                mock(StoredFileAccessService.class);
+        EntityFileUploadAuthorizationPort authorizer =
+                mock(EntityFileUploadAuthorizationPort.class);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "report.txt", "text/plain", new byte[] {1});
+        doThrow(new ForbiddenException("没有权限"))
+                .when(authorizer)
+                .requireUpload("ZDWREQ", "create", "attachment");
+        FileController controller = new FileController(
+                factory, accessService, List.of(authorizer));
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> controller.uploadEntityFile(
+                        "ZDWREQ", "create", "attachment",
+                        file, "upload-entity-02"));
+
+        verifyNoInteractions(factory, accessService);
+    }
+
+    @Test
+    void entityUploadFailsClosedWhenAuthorizerIsMissingOrAmbiguous() {
+        FileStorageFactory factory = mock(FileStorageFactory.class);
+        StoredFileAccessService accessService =
+                mock(StoredFileAccessService.class);
+        EntityFileUploadAuthorizationPort first =
+                mock(EntityFileUploadAuthorizationPort.class);
+        EntityFileUploadAuthorizationPort second =
+                mock(EntityFileUploadAuthorizationPort.class);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "report.txt", "text/plain", new byte[] {1});
+
+        FileController missing = new FileController(
+                factory, accessService, List.of());
+        assertThrows(
+                ForbiddenException.class,
+                () -> missing.uploadEntityFile(
+                        "ZDWREQ", "create", "attachment",
+                        file, "upload-entity-03"));
+
+        FileController ambiguous = new FileController(
+                factory, accessService, List.of(first, second));
+        assertThrows(
+                ForbiddenException.class,
+                () -> ambiguous.uploadEntityFile(
+                        "ZDWREQ", "create", "attachment",
+                        file, "upload-entity-04"));
+
+        verifyNoInteractions(factory, accessService, first, second);
+    }
+
+    @Test
+    void genericAndEntityUploadKeepDistinctAuthorizationContracts()
+            throws Exception {
+        RequiresPermission genericPermission = FileController.class
+                .getDeclaredMethod(
+                        "uploadFile", MultipartFile.class, String.class)
+                .getAnnotation(RequiresPermission.class);
+        AuthenticatedApi genericAuthentication = FileController.class
+                .getDeclaredMethod(
+                        "uploadFile", MultipartFile.class, String.class)
+                .getAnnotation(AuthenticatedApi.class);
+
+        assertNotNull(genericPermission);
+        assertArrayEquals(
+                new String[] {"storage:file:write"},
+                genericPermission.value());
+        assertNull(genericAuthentication);
+
+        var entityUpload = FileController.class.getDeclaredMethod(
+                "uploadEntityFile",
+                String.class,
+                String.class,
+                String.class,
+                MultipartFile.class,
+                String.class);
+        AuthenticatedApi entityAuthentication =
+                entityUpload.getAnnotation(AuthenticatedApi.class);
+
+        assertNotNull(entityAuthentication);
+        assertTrue(entityAuthentication.objectAuthorization());
+        assertNull(entityUpload.getAnnotation(RequiresPermission.class));
     }
 }

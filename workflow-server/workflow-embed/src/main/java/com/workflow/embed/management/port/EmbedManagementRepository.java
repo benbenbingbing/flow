@@ -1,5 +1,8 @@
 package com.workflow.embed.management.port;
 
+import com.workflow.embed.management.domain.EmbedManagementModel.ApplicationOption;
+import com.workflow.embed.management.domain.EmbedManagementModel.IdentityProviderOption;
+import com.workflow.embed.management.domain.EmbedManagementModel.OptionsFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingState;
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
@@ -61,6 +64,12 @@ public interface EmbedManagementRepository {
                           String actorId, LocalDateTime now, boolean revoked);
 
     boolean applicationExistsAndEnabled(String applicationId);
+
+    /** 按 ID、名称或 clientId 搜索最小应用选项；不读取凭据和授权配置。 */
+    Page<ApplicationOption> findApplicationOptions(OptionsFilter filter);
+
+    /** 按 ID 或名称搜索最小身份源选项；不读取 issuer、JWKS 等验证配置。 */
+    Page<IdentityProviderOption> findIdentityProviderOptions(OptionsFilter filter);
 
     Page<ProviderState> findProviders(ProviderFilter filter);
 

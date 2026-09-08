@@ -117,6 +117,8 @@ public class UiDataSourceService {
         private final SysDictItemService dictItemService;
         /** 草稿、发布绑定及数据权限执行授权服务。 */
         private final UiDataSourceExecutionAccessService executionAccessService;
+        /** 阻止删除仍被线上发布版本引用的接口服务。 */
+        private UiPublishedDataSourceReferenceGuard publishedReferenceGuard;
         /** 强类型 FORM/LIST/ENTITY 调用上下文工厂。 */
         private final UiInvocationContextFactory invocationContextFactory;
         /** 接口定义、输入输出 Schema 和执行策略校验器。 */
@@ -184,6 +186,16 @@ public class UiDataSourceService {
                 this.connectors = connectors;
                 this.codec = codec;
                 this.taskExecutor = taskExecutor;
+        }
+
+        /**
+         * 注入线上发布引用删除保护。使用 setter 保持既有构造 API 兼容，
+         * Spring 运行态仍将该保护作为必需依赖注入。
+         */
+        @Autowired
+        public void setPublishedReferenceGuard(
+                        UiPublishedDataSourceReferenceGuard value) {
+                this.publishedReferenceGuard = value;
         }
 
         /**
@@ -327,6 +339,14 @@ public class UiDataSourceService {
                         throw new IllegalArgumentException("数据源不存在");
                 }
                 requireRevision(expectedRevision, current);
+                // 软删除会让运行时立即拒绝该服务；必须先在同一事务内确认
+                // 所有实际生效发布快照均已解除引用。
+                if (publishedReferenceGuard == null) {
+                        throw new BusinessConflictException(
+                                        "UI_DATA_SOURCE_REFERENCE_GUARD_UNAVAILABLE",
+                                        "接口服务发布引用保护不可用，拒绝删除");
+                }
+                publishedReferenceGuard.requireNoExecutableReferences(id);
                 UpdateWrapper<UiDataSourceDefinition> wrapper = new UpdateWrapper<>();
                 wrapper.eq("id", id)
                                 .eq("revision", current.getRevision())

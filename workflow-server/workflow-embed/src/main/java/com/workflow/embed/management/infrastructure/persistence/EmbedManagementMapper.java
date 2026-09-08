@@ -1,5 +1,7 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
+import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.ApplicationOptionRow;
+import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.IdentityProviderOptionRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.BindingRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.FieldRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.FormTargetRow;
@@ -383,6 +385,85 @@ interface EmbedManagementMapper {
             """)
     boolean applicationExistsAndEnabled(@Param("applicationId") String applicationId);
 
+    /** 名称选项必须直接投影最小列，避免低权限查询加载应用凭据或身份源验证配置。 */
+    @Select("""
+            <script>
+            SELECT a.id, a.application_name AS name, a.client_id, a.status, a.expires_at,
+                   CASE WHEN a.status = 'ACTIVE'
+                              AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP(6))
+                              AND c.application_id IS NOT NULL
+                              AND s.application_id IS NOT NULL
+                        THEN TRUE ELSE FALSE END AS embed_launch_ready
+              FROM integration_application a
+              LEFT JOIN integration_application_credential c
+                ON c.application_id = a.id
+               AND c.status = 'ACTIVE'
+               AND (c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP(6))
+              LEFT JOIN integration_application_scope s
+                ON s.application_id = a.id
+               AND s.scope = 'embed.launch'
+             WHERE 1 = 1
+               <if test="keyword != null and keyword != ''">
+                 AND (a.id LIKE CONCAT('%', #{keyword}, '%')
+                      OR a.application_name LIKE CONCAT('%', #{keyword}, '%')
+                      OR a.client_id LIKE CONCAT('%', #{keyword}, '%'))
+               </if>
+               <if test="status != null and status != ''">AND a.status = #{status}</if>
+             ORDER BY CASE WHEN a.id = #{keyword} THEN 0 ELSE 1 END,
+                      a.application_name, a.id LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    List<ApplicationOptionRow> findApplicationOptions(
+            @Param("keyword") String keyword, @Param("status") String status,
+            @Param("limit") int limit, @Param("offset") int offset);
+
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM integration_application a
+             WHERE 1 = 1
+               <if test="keyword != null and keyword != ''">
+                 AND (a.id LIKE CONCAT('%', #{keyword}, '%')
+                      OR a.application_name LIKE CONCAT('%', #{keyword}, '%')
+                      OR a.client_id LIKE CONCAT('%', #{keyword}, '%'))
+               </if>
+               <if test="status != null and status != ''">AND a.status = #{status}</if>
+            </script>
+            """)
+    long countApplicationOptions(@Param("keyword") String keyword,
+                                 @Param("status") String status);
+
+    @Select("""
+            <script>
+            SELECT id, name, type, status
+              FROM embed_identity_provider
+             WHERE 1 = 1
+               <if test="keyword != null and keyword != ''">
+                 AND (id LIKE CONCAT('%', #{keyword}, '%')
+                      OR name LIKE CONCAT('%', #{keyword}, '%'))
+               </if>
+               <if test="status != null and status != ''">AND status = #{status}</if>
+             ORDER BY CASE WHEN id = #{keyword} THEN 0 ELSE 1 END,
+                      name, id LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    List<IdentityProviderOptionRow> findIdentityProviderOptions(
+            @Param("keyword") String keyword, @Param("status") String status,
+            @Param("limit") int limit, @Param("offset") int offset);
+
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM embed_identity_provider
+             WHERE 1 = 1
+               <if test="keyword != null and keyword != ''">
+                 AND (id LIKE CONCAT('%', #{keyword}, '%')
+                      OR name LIKE CONCAT('%', #{keyword}, '%'))
+               </if>
+               <if test="status != null and status != ''">AND status = #{status}</if>
+            </script>
+            """)
+    long countIdentityProviderOptions(@Param("keyword") String keyword,
+                                      @Param("status") String status);
+
     @Select("""
             <script>
             SELECT id, name, type, status, issuer, subject_namespace,
@@ -544,23 +625,28 @@ interface EmbedManagementMapper {
 
     @Select("""
             <script>
-            SELECT id, application_id, identity_provider_id, subject_digest,
-                   subject_digest_key_version, subject_hint, flow_user_id, status,
-                   binding_version, effective_at, expires_at, create_by, create_time,
-                   update_by, update_time, revoked_by, revoked_at
-              FROM embed_external_identity_binding
+            SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
+                   b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
+                   EXISTS (SELECT 1 FROM sys_user u
+                            WHERE u.id = b.flow_user_id AND u.status = '0'
+                              AND u.deleted = 0 AND u.password_reset_required = 0)
+                       AS flow_user_ready,
+                   b.status, b.binding_version, b.effective_at, b.expires_at,
+                   b.create_by, b.create_time, b.update_by, b.update_time,
+                   b.revoked_by, b.revoked_at
+              FROM embed_external_identity_binding b
              WHERE 1 = 1
                <if test="applicationId != null and applicationId != ''">
-                 AND application_id = #{applicationId}
+                 AND b.application_id = #{applicationId}
                </if>
                <if test="providerId != null and providerId != ''">
-                 AND identity_provider_id = #{providerId}
+                 AND b.identity_provider_id = #{providerId}
                </if>
                <if test="flowUserId != null and flowUserId != ''">
-                 AND flow_user_id = #{flowUserId}
+                 AND b.flow_user_id = #{flowUserId}
                </if>
-               <if test="status != null and status != ''">AND status = #{status}</if>
-             ORDER BY update_time DESC, id LIMIT #{limit} OFFSET #{offset}
+               <if test="status != null and status != ''">AND b.status = #{status}</if>
+             ORDER BY b.update_time DESC, b.id LIMIT #{limit} OFFSET #{offset}
             </script>
             """)
     List<BindingRow> findBindings(@Param("applicationId") String applicationId,
@@ -592,35 +678,47 @@ interface EmbedManagementMapper {
                        @Param("status") String status);
 
     @Select("""
-            SELECT id, application_id, identity_provider_id, subject_digest,
-                   subject_digest_key_version, subject_hint, flow_user_id, status,
-                   binding_version, effective_at, expires_at, create_by, create_time,
-                   update_by, update_time, revoked_by, revoked_at
-              FROM embed_external_identity_binding
-             WHERE id = #{id} LIMIT 1
+            SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
+                   b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
+                   EXISTS (SELECT 1 FROM sys_user u
+                            WHERE u.id = b.flow_user_id AND u.status = '0'
+                              AND u.deleted = 0 AND u.password_reset_required = 0)
+                       AS flow_user_ready,
+                   b.status, b.binding_version, b.effective_at, b.expires_at,
+                   b.create_by, b.create_time, b.update_by, b.update_time,
+                   b.revoked_by, b.revoked_at
+              FROM embed_external_identity_binding b
+             WHERE b.id = #{id} LIMIT 1
             """)
     BindingRow findBinding(@Param("id") String id);
 
     @Select("""
-            SELECT id, application_id, identity_provider_id, subject_digest,
-                   subject_digest_key_version, subject_hint, flow_user_id, status,
-                   binding_version, effective_at, expires_at, create_by, create_time,
-                   update_by, update_time, revoked_by, revoked_at
-              FROM embed_external_identity_binding
-             WHERE id = #{id} FOR UPDATE
+            SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
+                   b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
+                   FALSE AS flow_user_ready,
+                   b.status, b.binding_version, b.effective_at, b.expires_at,
+                   b.create_by, b.create_time, b.update_by, b.update_time,
+                   b.revoked_by, b.revoked_at
+              FROM embed_external_identity_binding b
+             WHERE b.id = #{id} FOR UPDATE
             """)
     BindingRow lockBinding(@Param("id") String id);
 
     @Select("""
             <script>
-            SELECT id, application_id, identity_provider_id, subject_digest,
-                   subject_digest_key_version, subject_hint, flow_user_id, status,
-                   binding_version, effective_at, expires_at, create_by, create_time,
-                   update_by, update_time, revoked_by, revoked_at
-              FROM embed_external_identity_binding
-             WHERE application_id = #{applicationId}
-               AND identity_provider_id = #{providerId}
-               AND subject_digest IN
+            SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
+                   b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
+                   EXISTS (SELECT 1 FROM sys_user u
+                            WHERE u.id = b.flow_user_id AND u.status = '0'
+                              AND u.deleted = 0 AND u.password_reset_required = 0)
+                       AS flow_user_ready,
+                   b.status, b.binding_version, b.effective_at, b.expires_at,
+                   b.create_by, b.create_time, b.update_by, b.update_time,
+                   b.revoked_by, b.revoked_at
+              FROM embed_external_identity_binding b
+             WHERE b.application_id = #{applicationId}
+               AND b.identity_provider_id = #{providerId}
+               AND b.subject_digest IN
                <foreach collection="digests" item="digest" open="(" separator="," close=")">
                  #{digest}
                </foreach>

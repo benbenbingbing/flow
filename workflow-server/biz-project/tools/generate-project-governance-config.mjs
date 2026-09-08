@@ -2928,7 +2928,6 @@ const commonNotification = (actionName, templateCode, sortOrder) => ({
   actionName,
   description: "流程完成后发送结果通知。",
   interfaceName: "sendNotificationHandler",
-  methodName: "execute",
   paramsJson: JSON.stringify({
     templateCode,
     notifyType: "in_app",
@@ -3196,7 +3195,6 @@ const validationAction = (
   actionName,
   description,
   interfaceName,
-  methodName: "execute",
   paramsJson: "{}",
   sortOrder,
   enabled: true,
@@ -3222,7 +3220,6 @@ const applyAction = (
   actionName,
   description,
   interfaceName,
-  methodName: "execute",
   paramsJson: "{}",
   sortOrder,
   enabled: true,
@@ -3794,7 +3791,6 @@ const memberChangeNodeAction = {
   actionName: "记录项目经理成员变更复核",
   description: "项目经理节点完成后写入复核时间和操作人。",
   interfaceName: "captureProjectMemberManagerReviewHandler",
-  methodName: "execute",
   paramsJson: "{}",
   sortOrder: 20,
   enabled: true,
@@ -3811,7 +3807,6 @@ const memberChangeTransitionAction = {
   actionName: "记录项目成员变更最终批准连线",
   description: "最终批准顺序流选中时记录来源、目标和决策编码。",
   interfaceName: "recordProjectMemberDecisionHandler",
-  methodName: "execute",
   paramsJson: JSON.stringify({ decision: "APPROVED" }),
   sortOrder: 30,
   enabled: true,
@@ -3832,7 +3827,6 @@ const memberChangeGlobalAuditAction = {
   actionName: "记录项目生命周期全局审计",
   description: "使用全局动作目录记录F07完成后的标准审计摘要。",
   interfaceName: "projectLifecycleAuditHandler",
-  methodName: "execute",
   paramsJson: JSON.stringify({
     auditCode: "F07_MEMBER_CHANGE",
     businessStage: "MEMBER_EFFECTIVE"

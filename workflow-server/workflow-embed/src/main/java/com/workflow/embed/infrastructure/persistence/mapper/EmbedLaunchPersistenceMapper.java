@@ -133,7 +133,7 @@ public interface EmbedLaunchPersistenceMapper {
               parent_origin, channel_id, entry_mode, record_id,
               context_ciphertext, context_cipher_key_version,
               context_digest, context_digest_key_version,
-              ui_locale, ui_theme, launch_code_digest, status,
+              ui_locale, ui_theme, ui_form_presentation, launch_code_digest, status,
               expires_at, trace_id, request_id, create_time, update_time
             ) VALUES (
               #{id}, #{applicationId}, #{grantId}, #{viewId}, #{viewReleaseId},
@@ -144,7 +144,7 @@ public interface EmbedLaunchPersistenceMapper {
               #{parentOrigin}, #{channelId}, #{entryMode}, #{recordId},
               #{contextCiphertext}, #{contextCipherKeyVersion},
               #{contextDigest}, #{contextDigestKeyVersion},
-              #{uiLocale}, #{uiTheme}, #{launchCodeDigest}, 'ISSUED',
+              #{uiLocale}, #{uiTheme}, #{uiFormPresentation}, #{launchCodeDigest}, 'ISSUED',
               #{expiresAt}, #{traceId}, #{requestId}, #{createTime}, #{createTime}
             )
             """)
@@ -174,6 +174,7 @@ public interface EmbedLaunchPersistenceMapper {
             @Param("contextDigestKeyVersion") String contextDigestKeyVersion,
             @Param("uiLocale") String uiLocale,
             @Param("uiTheme") String uiTheme,
+            @Param("uiFormPresentation") String uiFormPresentation,
             @Param("launchCodeDigest") String launchCodeDigest,
             @Param("expiresAt") LocalDateTime expiresAt,
             @Param("traceId") String traceId,

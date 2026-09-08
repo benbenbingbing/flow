@@ -207,7 +207,8 @@ public class MyBatisEmbedSessionExchangeAdapter implements
                 row.recordId(), new ProtectedContext(
                         row.contextCiphertext(), row.contextCipherKeyVersion(),
                         row.contextDigest(), row.contextDigestKeyVersion()),
-                row.uiLocale(), row.uiTheme(), row.launchCodeDigest(), instant(row.expiresAt()),
+                row.uiLocale(), row.uiTheme(), row.uiFormPresentation(),
+                row.launchCodeDigest(), instant(row.expiresAt()),
                 row.traceId(), row.requestId(), instant(row.createTime()));
         EmbedIdentityProviderSnapshot provider = new EmbedIdentityProviderSnapshot(
                 row.identityProviderId(), row.providerType(), row.providerStatus(),

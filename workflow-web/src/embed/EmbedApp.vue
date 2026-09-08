@@ -41,6 +41,7 @@ body,
 
 body {
   overflow-x: hidden;
-  background: #fff;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color);
 }
 </style>

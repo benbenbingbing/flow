@@ -56,6 +56,12 @@ export const uiDataSourceApi = {
   operations(id) {
     return request.get(`/ui-data-sources/${id}/operations`)
   },
+  /**
+   * 查询单个接口服务在事件执行链中的只读引用。
+   */
+  references(id) {
+    return request.get(`/ui-data-sources/${id}/references`)
+  },
   previewOperation(id, operationCode, data) {
     return request.post(
       `/ui-data-sources/${id}/operations/${operationCode}/preview`,

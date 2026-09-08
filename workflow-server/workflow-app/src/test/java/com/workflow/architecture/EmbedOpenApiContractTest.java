@@ -588,6 +588,7 @@ class EmbedOpenApiContractTest {
         assertClosedSchemas(api);
         assertInitializedCapabilities(api);
         assertStableRuntimeViewIdentity(api);
+        assertFormPresentationContract(api);
         assertNativeFormRuntimeContract(api);
     }
 
@@ -604,6 +605,21 @@ class EmbedOpenApiContractTest {
                 schemas.get("BootstrapView").getProperties().keySet());
         assertEquals(Set.of("key", "surfaceType"),
                 schemas.get("SchemaView").getProperties().keySet());
+    }
+
+    /** Launch accepts the optional selector and Bootstrap always returns the resolved value. */
+    @SuppressWarnings("unchecked")
+    private void assertFormPresentationContract(OpenAPI api) {
+        Map<String, Schema> schemas = api.getComponents().getSchemas();
+        Schema<?> launchUi = schemas.get("LaunchUi");
+        Schema<?> requested = (Schema<?>) launchUi.getProperties().get("formPresentation");
+        assertEquals(List.of("seamless", "dialog"), requested.getEnum());
+        assertEquals("seamless", requested.getDefault());
+
+        Schema<?> bootstrapUi = schemas.get("BootstrapUi");
+        assertTrue(bootstrapUi.getRequired().contains("formPresentation"));
+        Schema<?> resolved = (Schema<?>) bootstrapUi.getProperties().get("formPresentation");
+        assertEquals(List.of("seamless", "dialog"), resolved.getEnum());
     }
 
     private Map<OperationKey, Operation> openApiOperations(OpenAPI api) {
@@ -864,7 +880,7 @@ class EmbedOpenApiContractTest {
                         "LIST"),
                 List.copyOf(V1_CAPABILITIES),
                 new EmbedRuntimeViews.Ui(
-                        "zh-CN", "light", true, true, true, 20, "AUTO"),
+                        "zh-CN", "light", "seamless", true, true, true, 20, "AUTO"),
                 new EmbedRuntimeViews.Limits(100, 262144, 100)));
         when(facade.schema()).thenReturn(new EmbedRuntimeViews.Schema(
                 new EmbedRuntimeViews.SchemaView(
@@ -1503,9 +1519,10 @@ class EmbedOpenApiContractTest {
         assertEquals(Set.of(
                         "entityCode", "formId", "formReleaseId",
                         "formReleaseVersion", "listKey", "listReleaseId",
-                        "listReleaseVersion", "entryMode", "recordId",
+                        "listReleaseVersion", "listReleaseResolutionToken",
+                        "entryMode", "recordId",
                         "processInstanceId", "formReleaseResolutionToken",
-                        "initialData", "parameters", "context"),
+                        "defaultFormResolved", "initialData", "parameters", "context"),
                 target.getProperties().keySet(),
                 "原生目标只能公开固定坐标和上下文，不能投影表单组件");
         for (String forbidden : List.of(

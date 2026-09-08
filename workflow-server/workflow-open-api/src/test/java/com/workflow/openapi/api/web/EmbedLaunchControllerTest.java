@@ -66,7 +66,7 @@ class EmbedLaunchControllerTest {
                                 null),
                         new OpenEmbedLaunchRequest.Entry("LIST", null),
                         Map.of("supplierId", "S-10086"),
-                        new OpenEmbedLaunchRequest.Ui("zh-CN", "light")),
+                        new OpenEmbedLaunchRequest.Ui("zh-CN", "light", "dialog")),
                 authentication,
                 request);
 
@@ -90,6 +90,8 @@ class EmbedLaunchControllerTest {
                 .isEqualTo("signed-user-assertion");
         assertThat(commandCaptor.getValue().context())
                 .containsEntry("supplierId", "S-10086");
+        assertThat(commandCaptor.getValue().ui().formPresentation())
+                .isEqualTo("dialog");
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getHeaders().getCacheControl())
                 .isEqualTo("no-store");

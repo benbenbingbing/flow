@@ -158,7 +158,7 @@ public class EmbedDelegatedRuntimePolicy {
                 yield root;
             }
             case FILE_WRITE -> {
-                if (!matchesFileWrite(request)) {
+                if (!matchesFileWrite(request, root)) {
                     throw denied();
                 }
                 yield root;
@@ -641,12 +641,21 @@ public class EmbedDelegatedRuntimePolicy {
                 && StringUtils.hasText(text(body, "releaseResolutionToken"));
     }
 
-    private static boolean matchesFileWrite(HttpServletRequest request) {
+    private static boolean matchesFileWrite(
+            HttpServletRequest request,
+            EmbedNativeFormTarget root) {
         String contentType = request.getContentType();
+        String entityCode = uriVariable(request, "entityCode");
         return contentType != null
                 && contentType.toLowerCase(java.util.Locale.ROOT)
                         .startsWith("multipart/form-data")
-                && StringUtils.hasText(request.getHeader("Idempotency-Key"));
+                && StringUtils.hasText(request.getHeader("Idempotency-Key"))
+                // 实体字段上传必须与 Embed Session 固定的根实体一致；
+                // 通用文件入口没有 entityCode 路径变量，继续由存储权限控制。
+                && (!StringUtils.hasText(entityCode)
+                    || (StringUtils.hasText(root.entityCode())
+                        && root.entityCode().equalsIgnoreCase(
+                                entityCode.trim())));
     }
 
     private EmbedNativeFormTarget authorizeProcessRecord(

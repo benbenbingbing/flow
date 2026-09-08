@@ -86,6 +86,7 @@ import {
 import EmbedErrorState from './runtime/EmbedErrorState.vue'
 import NativeEmbeddedListPage from './runtime/NativeEmbeddedListPage.vue'
 import NativeEmbeddedFormPage from './runtime/NativeEmbeddedFormPage.vue'
+import { createEmbedAppearance } from './runtime/embedAppearance.js'
 
 const props = defineProps({
   entryConfig: {
@@ -98,6 +99,7 @@ const shellElement = ref(null)
 const nativeListPageRef = ref(null)
 const nativeFormPageRef = ref(null)
 const session = createEmbedSession()
+const appearance = createEmbedAppearance()
 const userStore = useUserStore()
 // Exchange 与后续 Runtime 请求必须共享同一个仅内存 Session；否则一次性 code
 // 已成功消费后，默认 HTTP client 仍会从另一个空 Session 读取 Token，无法安全重试。
@@ -158,9 +160,19 @@ const controller = createEmbedRuntimeController({
   onRuntimeIdentityReady(actor) {
     userStore.applyEphemeralRuntimeIdentity(actor)
   },
-  onRefreshNativeList: () => nativeListPageRef.value?.reload?.(),
-  onRefreshNativeForm: () => nativeFormPageRef.value?.reload?.()
+  onRefreshNativeList: () => refreshNativePage(nativeListPageRef.value),
+  onRefreshNativeForm: () => refreshNativePage(nativeFormPageRef.value)
 })
+
+/** Vue 页面尚未挂载时不能把可选调用的 undefined 当作已刷新。 */
+function refreshNativePage(page) {
+  if (typeof page?.reload !== 'function') {
+    throw Object.assign(new Error('页面尚未完成加载，请稍后重试'), {
+      errorCode: 'EMBED_RUNTIME_UNAVAILABLE', status: 503
+    })
+  }
+  return page.reload()
+}
 
 let unsubscribe
 let resizeObserver
@@ -216,6 +228,7 @@ function handlePageHide() {
 
 onMounted(() => {
   unsubscribe = controller.subscribe(value => {
+    appearance.apply(value)
     runtime.value = value
   })
   controller.start()
@@ -229,6 +242,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   globalThis.removeEventListener?.('pagehide', handlePageHide)
   unsubscribe?.()
+  appearance.dispose()
   resizeObserver?.disconnect?.()
   if (resizeTimer !== undefined) globalThis.clearTimeout(resizeTimer)
   // destroy 的 Logout 可能在 iframe 被移除后才返回，先同步清除隔离内存身份。
@@ -241,19 +255,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .embed-shell {
   min-height: 100%;
-  color-scheme: light;
-  background: #fff;
-}
-
-.embed-shell--dark {
-  color-scheme: dark;
-  filter: invert(.9) hue-rotate(180deg);
-  background: #101828;
-}
-
-.embed-shell--dark :deep(img),
-.embed-shell--dark :deep(video) {
-  filter: invert(1) hue-rotate(180deg);
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color);
 }
 
 .embed-shell__loading {
@@ -261,7 +264,7 @@ onBeforeUnmount(() => {
   justify-items: center;
   align-content: center;
   min-height: 320px;
-  color: #475467;
+  color: var(--el-text-color-regular);
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -272,7 +275,7 @@ onBeforeUnmount(() => {
   min-height: 320px;
   gap: 16px;
   padding: 32px;
-  color: #912018;
+  color: var(--el-color-danger);
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -285,22 +288,22 @@ onBeforeUnmount(() => {
   min-height: 36px;
   padding: 7px 14px;
   color: #fff;
-  border: 1px solid #175cd3;
+  border: 1px solid var(--el-color-primary);
   border-radius: 6px;
-  background: #175cd3;
+  background: var(--el-color-primary);
 }
 
 .embed-shell__navigation-error button.secondary {
-  color: #344054;
-  border-color: #d0d5dd;
-  background: #fff;
+  color: var(--el-text-color-regular);
+  border-color: var(--el-border-color);
+  background: var(--el-bg-color);
 }
 
 .embed-shell__spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid #d1e0ff;
-  border-top-color: #175cd3;
+  border: 3px solid var(--el-border-color-lighter);
+  border-top-color: var(--el-color-primary);
   border-radius: 50%;
   animation: embed-spin .8s linear infinite;
 }

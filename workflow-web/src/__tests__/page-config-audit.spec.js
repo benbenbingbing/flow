@@ -1707,10 +1707,27 @@ const processActionApi = readFileSync(path.join(root, 'src/api/processAction.js'
 ;['/process-actions', '/process-action-handlers', '/process-action-executions'].forEach((endpoint) => {
   assert.ok(processActionApi.includes(endpoint), `流程动作客户端缺少规范接口: ${endpoint}`)
 })
+assert.ok(
+  processActionApi.includes('findDraftActionsByBinding')
+    && processActionApi.includes('params: { scopeType, elementId }'),
+  '流程动作客户端应按 scopeType + elementId 查询草稿绑定'
+)
+;['findDraftActionsBySequenceFlow', 'findPublishedActionsBySequenceFlow', '/flow/${'].forEach((marker) => {
+  assert.equal(processActionApi.includes(marker), false, `流程动作客户端不应保留顺序流兼容查询: ${marker}`)
+})
 ;['/flow-actions', '/flow-action-handlers', '/flow-action-executions'].forEach((endpoint) => {
   assert.equal(processActionApi.includes(endpoint), false, `流程动作客户端不应继续使用旧接口: ${endpoint}`)
 })
 assert.equal(existsSync(path.join(root, 'src/api/flowAction.js')), false, '旧 flowAction API 文件应移除')
+
+;['methodName', 'sequenceFlowId'].forEach((marker) => {
+  assert.equal(flowActionPanel.includes(marker), false, `流程动作保存载荷不应再透传兼容字段: ${marker}`)
+})
+assert.doesNotMatch(
+  flowActionPanel,
+  /processActionApi\.saveAction\(\{\s*\.\.\.editingAction\.value/,
+  '流程动作保存载荷应使用字段白名单，不能透传服务端返回对象'
+)
 
 const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActionGuide.vue'), 'utf8')
 ;[
@@ -1725,6 +1742,9 @@ const flowActionGuide = readFileSync(path.join(root, 'src/views/system/FlowActio
   'sortOrder'
 ].forEach((field) => {
   assert.ok(flowActionGuide.includes(field), `流程动作指南缺少字段说明: ${field}`)
+})
+;['methodName', 'sequenceFlowId'].forEach((field) => {
+  assert.equal(flowActionGuide.includes(field), false, `流程动作指南不应继续展示已移除字段: ${field}`)
 })
 ;[
   'PROCESS_STARTED',
@@ -2597,6 +2617,10 @@ assert.equal(
   'openLinkedFormSettings',
   "route.query.settings",
   "route.query.section",
+  "route.query.targetType",
+  "route.query.targetKey",
+  'eventBindingDialogRef.value?.openField',
+  'eventBindingDialogRef.value?.openButton',
   'v-model:active-behavior-tab="activeFormBehaviorTab"'
 ].forEach((marker) => {
   assert.ok(
@@ -2607,6 +2631,19 @@ assert.equal(
 assert.ok(
   formSettingsDrawer.includes("'update:activeBehaviorTab'"),
   '表单设置抽屉必须允许外部定位初始化数据二级页签'
+)
+assert.ok(
+  formSettingsDrawer.includes('@changed="onEventBindingsChanged"')
+    && formDesigner.includes('onEventBindingsChanged: loadDiff'),
+  '表单事件主编辑入口保存后必须立即刷新草稿与发布差异'
+)
+assert.ok(
+  listDesigner.includes('openLinkedListEventBindings')
+    && listDesigner.includes("route.query.events")
+    && listDesigner.includes("route.query.targetType")
+    && listDesigner.includes('eventBindingDialogRef.value?.openButton')
+    && listDesigner.includes('openListEventBindings()'),
+  '列表设计器必须消费使用情况页的事件配置深链'
 )
 
 const processManualSource = readFileSync(

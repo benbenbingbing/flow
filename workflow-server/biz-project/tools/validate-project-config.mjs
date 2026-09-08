@@ -217,6 +217,15 @@ for (const process of processes) {
     );
   }
   for (const action of process.flowActions ?? []) {
+    // 流程动作绑定只允许 canonical 字段，避免生成资产重新引入已删除的兼容列。
+    assert(
+      !Object.hasOwn(action, "sequenceFlowId"),
+      `${process.businessKey}: 动作 ${action.actionName} 不得使用 sequenceFlowId`
+    );
+    assert(
+      !Object.hasOwn(action, "methodName"),
+      `${process.businessKey}: 动作 ${action.actionName} 不得使用 methodName`
+    );
     if (action.scopeType === "PROCESS") {
       assert(
         action.elementId == null || action.elementId === "",

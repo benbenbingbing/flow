@@ -9,6 +9,7 @@ import {
 import { isEmbedSessionFailure } from '../api/embedRequest.js'
 import { createEmbedSession } from '../session/embedSession.js'
 import { generateSecureHandshakeNonce } from '../security/secureNonce.js'
+import { resolveEmbedLocale } from './embedAppearance.js'
 import {
   buildEmbedListQuery,
   normalizeEmbedBootstrap,
@@ -402,6 +403,7 @@ export function createEmbedRuntimeController({
       const rawBootstrap = await api.getBootstrap()
       if (TERMINAL_STATES.has(current.state)) return
       const bootstrap = normalizeEmbedBootstrap(rawBootstrap)
+      const locale = resolveEmbedLocale(bootstrap.ui.locale)
       // 原生组件可能读取 userStore（例如超级管理员审计页签）；必须在公开 READY
       // 状态、挂载 Dialog 之前注入服务端映射身份，且仅写隔离 Pinia 内存。
       onRuntimeIdentityReady?.(bootstrap.actor)
@@ -413,7 +415,7 @@ export function createEmbedRuntimeController({
       update({
         bootstrap,
         theme: bootstrap.ui.theme,
-        locale: bootstrap.ui.locale,
+        locale,
         phase: 'schema'
       })
 
@@ -542,15 +544,17 @@ export function createEmbedRuntimeController({
   function handleBridgeMessage(message) {
     if (message.type === EMBED_BRIDGE_MESSAGE_TYPES.REFRESH) {
       refreshCurrent().then(() => {
-        if (current.state !== EMBED_RUNTIME_STATES.READY) return
-        const refreshError = current.navigation.surfaceType === EMBED_RUNTIME_SURFACES.FORM
-          ? current.formError : current.listError
+        const refreshError = current.error || (
+          current.navigation.surfaceType === EMBED_RUNTIME_SURFACES.FORM
+            ? current.formError : current.listError
+        )
         if (refreshError) {
           send(EMBED_BRIDGE_MESSAGE_TYPES.ERROR, refreshError, {
             requestId: message.requestId
           })
           return
         }
+        if (current.state !== EMBED_RUNTIME_STATES.READY) return
         send(EMBED_BRIDGE_MESSAGE_TYPES.ACK, { command: message.type }, {
           requestId: message.requestId
         })
@@ -565,10 +569,17 @@ export function createEmbedRuntimeController({
       return
     }
     if (message.type === EMBED_BRIDGE_MESSAGE_TYPES.SET_LOCALE) {
-      update({ locale: String(message.payload.locale) })
-      send(EMBED_BRIDGE_MESSAGE_TYPES.ACK, { command: message.type }, {
-        requestId: message.requestId
-      })
+      try {
+        // 原生业务界面目前只有中文资源；拒绝未支持的语言，避免假成功。
+        update({ locale: resolveEmbedLocale(message.payload.locale) })
+        send(EMBED_BRIDGE_MESSAGE_TYPES.ACK, { command: message.type }, {
+          requestId: message.requestId
+        })
+      } catch (error) {
+        send(EMBED_BRIDGE_MESSAGE_TYPES.ERROR, normalizeError(error, {
+          phase: 'locale', recoverable: false
+        }), { requestId: message.requestId })
+      }
       return
     }
     if (message.type === EMBED_BRIDGE_MESSAGE_TYPES.FOCUS) {
@@ -800,7 +811,36 @@ export function createEmbedRuntimeController({
   async function refreshForm() {
     if (current.state !== EMBED_RUNTIME_STATES.READY
       || current.navigation.surfaceType !== EMBED_RUNTIME_SURFACES.FORM) return null
-    if (current.nativeFormTarget) return onRefreshNativeForm?.() ?? null
+    if (current.nativeFormTarget) {
+      try {
+        update({ formLoading: true, formError: null })
+        const result = await onRefreshNativeForm?.()
+        if (TERMINAL_STATES.has(current.state)) return null
+        // 用户取消丢弃输入也属于“没有刷新”，不能向宿主发送成功 ACK。
+        if (result === false) {
+          throw Object.assign(new Error('刷新已取消，当前表单内容已保留'), {
+            errorCode: 'EMBED_OPERATION_NOT_ALLOWED'
+          })
+        }
+        update({ formLoading: false, formError: null, phase: 'ready' })
+        return true
+      } catch (error) {
+        if (TERMINAL_STATES.has(current.state)) return null
+        if (isEmbedSessionFailure(error) || session.isExpired?.()) {
+          expire(error)
+          return null
+        }
+        update({
+          formLoading: false,
+          formError: normalizeError(error, {
+            phase: 'native-form',
+            recoverable: error?.errorCode !== 'EMBED_OPERATION_NOT_ALLOWED'
+          }),
+          phase: 'ready'
+        })
+        return null
+      }
+    }
     if (current.navigation.canBack) {
       return openListForm(
         current.navigation.mode,

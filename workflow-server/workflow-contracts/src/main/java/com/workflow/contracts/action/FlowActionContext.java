@@ -20,12 +20,12 @@ import java.util.List;
 public class FlowActionContext {
 
     /**
-     * 当前 flow_action 记录 ID
+     * 当前 process_action 记录 ID
      */
     private String actionId;
 
     /**
-     * 当前 flow_action 动作名称
+     * 当前 process_action 动作名称
      */
     private String actionName;
 
@@ -43,11 +43,6 @@ public class FlowActionContext {
      * 实体数据 ID
      */
     private String entityDataId;
-
-    /**
-     * 触发该动作的顺序流元素 ID
-     */
-    private String sequenceFlowId;
 
     /**
      * 顺序流源节点 ID
@@ -130,6 +125,39 @@ public class FlowActionContext {
      * 内部查询辅助器，不对外序列化
      */
     private transient FlowActionRuntimeAccess runtimeAccess;
+
+    /**
+     * 兼容旧版扩展处理器读取顺序流 ID；实际值由规范的作用域与元素 ID 推导，
+     * 不再对应独立的持久化字段。
+     *
+     * @return 流程级返回历史占位值 {@code __PROCESS__}，其他作用域返回元素 ID
+     * @deprecated 新处理器应使用 {@link #getScopeType()} 与 {@link #getElementId()}
+     */
+    @Deprecated(forRemoval = true)
+    public String getSequenceFlowId() {
+        return FlowActionScopeType.PROCESS.name().equalsIgnoreCase(scopeType)
+                ? "__PROCESS__"
+                : elementId;
+    }
+
+    /**
+     * 兼容旧版扩展处理器构造上下文；只写入规范字段，不保留重复状态。
+     *
+     * @param sequenceFlowId 历史顺序流 ID 或流程级占位值
+     * @deprecated 新代码应设置 {@link #setScopeType(String)} 与 {@link #setElementId(String)}
+     */
+    @Deprecated(forRemoval = true)
+    public void setSequenceFlowId(String sequenceFlowId) {
+        if ("__PROCESS__".equals(sequenceFlowId)) {
+            scopeType = FlowActionScopeType.PROCESS.name();
+            elementId = null;
+            return;
+        }
+        if (scopeType == null || scopeType.isBlank()) {
+            scopeType = FlowActionScopeType.SEQUENCE_FLOW.name();
+        }
+        elementId = sequenceFlowId;
+    }
 
     /**
      * 获取流程变量快照；快照为空时回退到运行时查询。

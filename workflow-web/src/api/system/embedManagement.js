@@ -72,6 +72,24 @@ export function createEmbedManagementApi(transport = request) {
   }
 
   return {
+    options: {
+      applications(params = {}) {
+        return call(
+          'get',
+          `${BASE_PATH}/options/applications`,
+          null,
+          { params }
+        )
+      },
+      identityProviders(params = {}) {
+        return call(
+          'get',
+          `${BASE_PATH}/options/identity-providers`,
+          null,
+          { params }
+        )
+      }
+    },
     views: {
       page(params = {}) {
         return call('get', `${BASE_PATH}/views`, null, { params })
@@ -84,6 +102,9 @@ export function createEmbedManagementApi(transport = request) {
       },
       draft(viewId) {
         return call('get', `${viewPath(viewId)}/draft`)
+      },
+      validation(viewId) {
+        return call('get', `${viewPath(viewId)}/validation`)
       },
       updateDraft(viewId, data) {
         return call('patch', `${viewPath(viewId)}/draft`, data)

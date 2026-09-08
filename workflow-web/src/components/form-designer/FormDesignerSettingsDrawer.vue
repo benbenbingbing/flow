@@ -152,6 +152,7 @@
                 :owner-id="form.id || ''"
                 owner-label="表单"
                 :field-options="eventFieldOptions"
+                @changed="onEventBindingsChanged"
               />
             </el-tab-pane>
           </el-tabs>
@@ -197,7 +198,8 @@ const {
   formFields,
   formDataSourceBindingCount,
   eventFieldOptions,
-  openFormDataSourceConfig
+  openFormDataSourceConfig,
+  onEventBindingsChanged
 } = context
 
 const activeBehaviorTab = computed({

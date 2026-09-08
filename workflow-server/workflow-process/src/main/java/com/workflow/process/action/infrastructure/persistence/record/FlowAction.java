@@ -1,12 +1,13 @@
 package com.workflow.process.action.infrastructure.persistence.record;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableField;import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.annotation.TableField;import lombok.Data;
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
 import java.time.LocalDateTime;
-import com.baomidou.mybatisplus.annotation.TableField;
+
 /**
  * 流程动作配置
  * 用于流程、节点和顺序流上配置的接口动作
@@ -23,11 +24,6 @@ public class FlowAction {
      */
     private String processConfigId;
     
-    /**
-     * 顺序流ID（bpmn元素ID）
-     */
-    private String sequenceFlowId;
-
     /**
      * 作用域：PROCESS、NODE、SEQUENCE_FLOW
      */
@@ -77,11 +73,6 @@ public class FlowAction {
      * 接口地址（Spring Bean名称或完整类名）
      */
     private String interfaceName;
-    
-    /**
-     * 方法名
-     */
-    private String methodName;
     
     /**
      * 参数JSON（用于传递给接口的参数）

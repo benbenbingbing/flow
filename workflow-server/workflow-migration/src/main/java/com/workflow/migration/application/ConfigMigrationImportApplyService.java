@@ -2224,7 +2224,9 @@ public class ConfigMigrationImportApplyService {
                 flowActionMapper.logicDeleteById(draft.getId());
             }
             for (Map<String, Object> value : mapList(snapshot.get("flowActions"))) {
-                FlowAction action = convert(value, FlowAction.class);
+                FlowAction action = convert(
+                        normalizeFlowActionBinding(value),
+                        FlowAction.class);
                 action.setId(null);
                 action.setVersionId(null);
                 action.setProcessConfigId(process.getId());
@@ -2800,6 +2802,42 @@ public class ConfigMigrationImportApplyService {
         ObjectMapper tolerant = objectMapper.copy()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         return tolerant.convertValue(value, type);
+    }
+
+    /**
+     * 在配置包导入边界将历史动作绑定转换为规范字段，并立即丢弃旧键。
+     * 已提供的 scopeType/elementId 始终优先，避免历史值覆盖新配置。
+     */
+    static Map<String, Object> normalizeFlowActionBinding(
+            Map<String, Object> source) {
+        Map<String, Object> normalized = new LinkedHashMap<>(source);
+        String scopeType = normalized.get("scopeType") == null
+                ? null
+                : String.valueOf(normalized.get("scopeType")).trim();
+        String elementId = normalized.get("elementId") == null
+                ? null
+                : String.valueOf(normalized.get("elementId")).trim();
+        String legacyElementId = normalized.get("sequenceFlowId") == null
+                ? null
+                : String.valueOf(normalized.get("sequenceFlowId")).trim();
+
+        if (!StringUtils.hasText(scopeType)
+                && StringUtils.hasText(legacyElementId)) {
+            scopeType = "__PROCESS__".equals(legacyElementId)
+                    ? "PROCESS"
+                    : "SEQUENCE_FLOW";
+            normalized.put("scopeType", scopeType);
+        }
+        if ("PROCESS".equalsIgnoreCase(scopeType)) {
+            normalized.put("elementId", null);
+        } else if (!StringUtils.hasText(elementId)
+                && StringUtils.hasText(legacyElementId)
+                && !"__PROCESS__".equals(legacyElementId)) {
+            normalized.put("elementId", legacyElementId);
+        }
+        normalized.remove("sequenceFlowId");
+        normalized.remove("methodName");
+        return normalized;
     }
 
     private String text(Object value, String fallback) {

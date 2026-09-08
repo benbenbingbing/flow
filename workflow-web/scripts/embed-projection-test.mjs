@@ -4,6 +4,7 @@ import {
   EmbedSchemaError,
   buildEmbedListQuery,
   normalizeEmbedBootstrap,
+  normalizeEmbedFormPresentation,
   normalizeEmbedExternalSchema,
   projectEmbedPage,
   projectEmbedRecord,
@@ -55,6 +56,7 @@ const bootstrap = normalizeEmbedBootstrap({
     showPagination: true,
     showToolbar: true,
     pageSize: 20,
+    formPresentation: 'dialog',
     heightMode: 'AUTO'
   },
   limits: {
@@ -78,6 +80,31 @@ assert.equal(JSON.stringify(bootstrap).includes('permissionCodes'), false)
 assert.equal(JSON.stringify(bootstrap).includes('fixedFilters'), false)
 assert.equal(JSON.stringify(bootstrap).includes('provider'), false)
 assert.equal('revision' in bootstrap.view, false)
+assert.equal(bootstrap.ui.formPresentation, 'dialog')
+assert.equal(normalizeEmbedFormPresentation('SEAMLESS'), 'seamless')
+assert.equal(normalizeEmbedFormPresentation('dialog'), 'dialog')
+assert.equal(normalizeEmbedFormPresentation('DIALOG'), 'seamless')
+assert.equal(normalizeEmbedFormPresentation('unexpected'), 'seamless')
+assert.equal(normalizeEmbedBootstrap({
+  session: {
+    id: 'ems_default_presentation',
+    expiresAt: '2099-08-27T09:00:00.000Z',
+    idleExpiresAt: '2099-08-27T08:35:00.000Z'
+  },
+  view: {
+    key: 'default-presentation',
+    name: '默认展示',
+    surfaceType: 'LIST',
+    entryMode: 'LIST'
+  },
+  target: {
+    entityCode: 'work_order',
+    listKey: 'supplier_work_orders',
+    listReleaseId: 'list-release-007',
+    listReleaseVersion: 7,
+    listReleaseResolutionToken: 'list_resolution_token_0123456789'
+  }
+}).ui.formPresentation, 'seamless')
 assert.deepEqual(bootstrap.target, {
   entityCode: 'work_order',
   listKey: 'supplier_work_orders',

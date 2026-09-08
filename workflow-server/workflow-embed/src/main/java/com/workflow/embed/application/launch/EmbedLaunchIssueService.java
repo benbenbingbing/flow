@@ -277,6 +277,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
                 protectedContext,
                 ui.locale(),
                 ui.theme(),
+                ui.formPresentation(),
                 digestPort.sha256(launchCode),
                 expiresAt,
                 correlation.traceId(),
@@ -442,9 +443,12 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
                 || requested.locale().isBlank() ? "zh-CN" : requested.locale().trim();
         String theme = requested == null || requested.theme() == null
                 || requested.theme().isBlank() ? "light" : requested.theme().trim().toLowerCase(Locale.ROOT);
+        String formPresentation = requested == null || requested.formPresentation() == null
+                ? "seamless" : requested.formPresentation();
         if (locale.length() > 35 || !SAFE_LOCALE.matcher(locale).matches()
-                || !Set.of("light", "dark", "system").contains(theme)) {
-            throw invalid("ui locale or theme is invalid");
+                || !Set.of("light", "dark", "system").contains(theme)
+                || !Set.of("seamless", "dialog").contains(formPresentation)) {
+            throw invalid("ui locale, theme or formPresentation is invalid");
         }
         try {
             JsonNode uiConfig = objectMapper.readTree(uiConfigJson == null ? "{}" : uiConfigJson);
@@ -460,7 +464,7 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
             throw new EmbedException(503, EmbedErrorCode.EMBED_RUNTIME_UNAVAILABLE,
                     "Published Embed UI configuration is invalid");
         }
-        return new UiSelection(locale, theme);
+        return new UiSelection(locale, theme, formPresentation);
     }
 
     private Set<String> parseStringSet(String json) {
@@ -528,6 +532,6 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
     private record EntrySelection(EmbedEntryMode mode, String recordId) {
     }
 
-    private record UiSelection(String locale, String theme) {
+    private record UiSelection(String locale, String theme, String formPresentation) {
     }
 }

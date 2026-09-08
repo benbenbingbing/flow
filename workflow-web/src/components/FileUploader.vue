@@ -191,6 +191,10 @@ const props = defineProps({
   attachmentItemRequiredState: {
     type: Object,
     default: () => ({})
+  },
+  uploadContext: {
+    type: Object,
+    default: null
   }
 })
 
@@ -202,14 +206,19 @@ const pendingGroupIndex = ref(0)
 
 const uploadRequest = async ({ file, onProgress, onSuccess, onError }) => {
   try {
-    const response = await fileApi.upload(file, {
+    const options = {
+      // 组件负责展示最终错误，避免全局请求层与 el-upload 重复弹出两条消息。
+      silentError: true,
       onUploadProgress: (event) => {
         const percent = event.total
           ? Math.round((event.loaded / event.total) * 100)
           : 0
         onProgress({ percent })
       }
-    })
+    }
+    const response = props.uploadContext
+      ? await fileApi.uploadForEntity(file, props.uploadContext, options)
+      : await fileApi.upload(file, options)
     onSuccess({ code: 200, data: response })
   } catch (error) {
     onError(error)
@@ -478,7 +487,7 @@ const handleSuccess = (response, file, uploadFiles) => {
 
 const handleError = (error, file) => {
   console.error('上传失败:', error)
-  ElMessage.error('文件上传失败，请重试')
+  ElMessage.error(error?.message || '文件上传失败，请重试')
 }
 
 const handleExceed = () => {

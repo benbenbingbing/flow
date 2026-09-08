@@ -136,7 +136,7 @@ public class ProjectExtensionAcceptanceFlowActionHandler
         result.put("executedAt", executedAt);
 
         log.info(
-                "项目扩展验收流程动作开始: handler={}, actionId={}, actionName={}, stage={}, scopeType={}, triggerTiming={}, executionElementId={}, sequenceFlowId={}, sourceNodeId={}, targetNodeId={}, processInstanceId={}, entityCode={}, entityDataId={}, operatorId={}, writeBack={}",
+                "项目扩展验收流程动作开始: handler={}, actionId={}, actionName={}, stage={}, scopeType={}, triggerTiming={}, elementId={}, sourceNodeId={}, targetNodeId={}, processInstanceId={}, entityCode={}, entityDataId={}, operatorId={}, writeBack={}",
                 getClass().getSimpleName(),
                 LogValue.safe(context.getActionId()),
                 LogValue.safe(context.getActionName()),
@@ -144,7 +144,6 @@ public class ProjectExtensionAcceptanceFlowActionHandler
                 LogValue.safe(context.getScopeType()),
                 LogValue.safe(context.getTriggerTiming()),
                 LogValue.safe(context.getElementId()),
-                LogValue.safe(context.getSequenceFlowId()),
                 LogValue.safe(context.getSourceNodeId()),
                 LogValue.safe(context.getTargetNodeId()),
                 LogValue.safe(
@@ -180,7 +179,6 @@ public class ProjectExtensionAcceptanceFlowActionHandler
             patch.put("last_action_element",
                     firstText(
                             context.getElementId(),
-                            context.getSequenceFlowId(),
                             context.getTaskId(),
                             "PROCESS"));
             mutationExecutor.inSession(

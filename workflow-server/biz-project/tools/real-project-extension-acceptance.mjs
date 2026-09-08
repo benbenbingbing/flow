@@ -2782,8 +2782,6 @@ async function ensureProcess(forms, entity) {
       processConfigId: process.id,
       scopeType: plan.scopeType,
       elementId: plan.elementId,
-      sequenceFlowId:
-        plan.elementId || '__PROCESS__',
       triggerTiming: plan.triggerTiming,
       executionMode: plan.executionMode,
       failurePolicy: plan.failurePolicy,
@@ -2791,7 +2789,6 @@ async function ensureProcess(forms, entity) {
       description:
         '项目扩展验收真实动作',
       interfaceName: plan.interfaceName,
-      methodName: 'execute',
       paramsJson: json(plan.params),
       retryConfig: plan.retryConfig
         ? json(plan.retryConfig)

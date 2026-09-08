@@ -1,5 +1,6 @@
 package com.workflow.openapi.api.request;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,6 +28,28 @@ class OpenEmbedLaunchRequestValidationTest {
                             "TRUSTED_EXTERNAL_ID", null, "erp-prod", "user-1"),
                     new OpenEmbedLaunchRequest.Entry("VIEW", "record-1")))
                     .isEmpty());
+        }
+    }
+
+    @Test
+    void acceptsAndMapsSupportedFormPresentationValues() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+            for (String value : new String[] {"seamless", "dialog"}) {
+                OpenEmbedLaunchRequest request = request(value);
+                assertTrue(validator.validate(request).isEmpty(), value);
+                assertEquals(value, request.toCommand().ui().formPresentation());
+            }
+        }
+    }
+
+    @Test
+    void rejectsBlankOrUnsupportedFormPresentationValues() {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+            for (String value : new String[] {"", " ", "SEAMLESS", "drawer"}) {
+                assertFalse(validator.validate(request(value)).isEmpty(), value);
+            }
         }
     }
 
@@ -190,5 +213,17 @@ class OpenEmbedLaunchRequestValidationTest {
                 entry,
                 Map.of("supplierId", "S-10086"),
                 new OpenEmbedLaunchRequest.Ui("zh-CN", "light"));
+    }
+
+    private OpenEmbedLaunchRequest request(String formPresentation) {
+        return new OpenEmbedLaunchRequest(
+                "supplier-work-orders",
+                "https://portal.partner.example",
+                "66f82f09-89ec-4a5a-b81b-f54f02d22262",
+                new OpenEmbedLaunchRequest.Subject(
+                        "SIGNED_JWT", "signed.jwt.value", null, null),
+                new OpenEmbedLaunchRequest.Entry("LIST", null),
+                Map.of("supplierId", "S-10086"),
+                new OpenEmbedLaunchRequest.Ui("zh-CN", "light", formPresentation));
     }
 }

@@ -91,7 +91,8 @@ public class UiAvailableOperationService {
             for (Map<String, Object> operation : operations(definition)) {
                 String contextType = normalize(text(operation.get("contextType")));
                 String kind = normalize(text(operation.getOrDefault("kind", "READ")));
-                if (!owner.type().equals(contextType)) {
+                if (!allowedOperationContexts(
+                        owner, normalizedBinding).contains(contextType)) {
                     continue;
                 }
                 if (READ_BINDINGS.contains(normalizedBinding)
@@ -119,6 +120,22 @@ public class UiAvailableOperationService {
             }
         }
         return result;
+    }
+
+    /**
+     * 实体默认 UI 事件最终随 FORM/LIST 发布并以页面类型执行，因此按事件
+     * 消费域选择操作；真正的实体变更等非 UI 绑定仍要求 ENTITY 上下文。
+     */
+    private Set<String> allowedOperationContexts(
+            Owner owner,
+            String bindingCode) {
+        if (!"ENTITY".equals(owner.type())) {
+            return Set.of(owner.type());
+        }
+        Set<String> pageContexts =
+                UiEventBindingApplicability.contextsForEvent(bindingCode);
+        return pageContexts.isEmpty()
+                ? Set.of(owner.type()) : pageContexts;
     }
 
     private boolean isInvalidGlobalExtension(

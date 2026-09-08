@@ -41,7 +41,8 @@ final class ProjectMemberChangeTraceSupport {
         requireEntity(request, REQUEST);
         Map<String, Object> trace = new LinkedHashMap<>();
         trace.put("decision", decision == null || decision.isBlank() ? "UNKNOWN" : decision);
-        trace.put("sequenceFlowId", context.getSequenceFlowId());
+        // decision_trace 属于既有业务审计契约，仅替换取值来源，不改历史键名。
+        trace.put("sequenceFlowId", context.getElementId());
         trace.put("sourceNodeId", context.getSourceNodeId());
         trace.put("targetNodeId", context.getTargetNodeId());
         trace.put("operatorId", context.getOperatorId());

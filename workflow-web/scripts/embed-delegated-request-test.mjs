@@ -80,6 +80,34 @@ assert.equal(header(delegatedCalls[0], 'X-Flow-Embed-Protocol'), '1')
 assert.equal(delegatedCalls[0].withCredentials, false)
 assert.equal(delegatedCalls[0].skipAuthRefresh, true)
 
+// 原生 LIST/FORM 的失败继续交由 controller 回传；两种 Axios 响应出口都必须保留诊断关联。
+for (const rejectHttpResponse of [false, true]) {
+  await assert.rejects(
+    () => request.get('/entity/code/order', {
+      silentError: true,
+      adapter: async config => {
+        const response = {
+          data: {
+            code: 503,
+            errorCode: 'EMBED_RUNTIME_UNAVAILABLE',
+            message: '列表暂时不可用',
+            traceId: 'trace-native-list-failure'
+          },
+          status: 503,
+          config
+        }
+        if (rejectHttpResponse) {
+          throw Object.assign(new Error('HTTP 503'), { response, config })
+        }
+        return response
+      }
+    }),
+    error => error.errorCode === 'EMBED_RUNTIME_UNAVAILABLE'
+      && error.traceId === 'trace-native-list-failure'
+      && error.status === 503
+  )
+}
+
 // Embed 令牌和协议标记只能发往 Flow API origin；任意绝对外域 URL 都必须剥离。
 const externalCalls = []
 await request.get('https://untrusted.example/resource', {

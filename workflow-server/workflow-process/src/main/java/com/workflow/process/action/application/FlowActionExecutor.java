@@ -1,11 +1,8 @@
 package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.contracts.action.FlowActionScopeType;
-import com.workflow.contracts.action.FlowActionTriggerTiming;
 import com.workflow.contracts.audit.AuditEventIds;
 import com.workflow.contracts.audit.AuditSourcePointer;
 import com.workflow.contracts.audit.OperationContext;
@@ -16,60 +13,27 @@ import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.flowable.engine.delegate.DelegateExecution;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
  * 流程动作执行器。
  *
- * <p>统一组装流程动作上下文、解析参数，并调用已发布动作对应的 {@link FlowActionHandler}。
- * 历史顺序流监听器入口继续通过兼容方法复用该执行器。</p>
+ * <p>统一组装流程动作上下文、解析参数，并调用已发布动作对应的 {@link FlowActionHandler}。</p>
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class FlowActionExecutor {
 
-    private final FlowActionService flowActionService;
     private final ApplicationContext applicationContext;
     private final FlowActionRuntimeAdapter flowActionHelper;
     private final FlowActionExecutionService executionService;
     private final ObjectMapper objectMapper;
-
-    /**
-     * 执行指定顺序流上的所有启用动作。
-     *
-     * @param versionId      流程发布版本 ID
-     * @param sequenceFlowId 顺序流 ID
-     * @param execution      Flowable 执行上下文
-     */
-    public void executeActions(String versionId, String sequenceFlowId, DelegateExecution execution) {
-        log.info("[FlowActionExecutor] 开始执行顺序流动作, versionId={}, sequenceFlowId={}", versionId, sequenceFlowId);
-        List<FlowAction> actions = flowActionService.findPublishedActionsBySequenceFlow(versionId, sequenceFlowId);
-        log.info("[FlowActionExecutor] 查询到 {} 个已发布动作", actions == null ? 0 : actions.size());
-        if (actions == null || actions.isEmpty()) {
-            return;
-        }
-        for (FlowAction action : actions) {
-            if (!Boolean.TRUE.equals(action.getEnabled())) {
-                continue;
-            }
-            try {
-                FlowActionTriggerEvent event = fromLegacyExecution(versionId, sequenceFlowId, execution);
-                executeAction(action, event, java.util.UUID.randomUUID().toString());
-            } catch (Exception e) {
-                log.error("[FlowActionExecutor] 执行流程动作失败: actionId={}, actionName={}", action.getId(), action.getActionName(), e);
-                throw new RuntimeException("执行流程动作失败: " + action.getActionName(), e);
-            }
-        }
-    }
 
     /**
      * 执行单个流程动作（无既有执行记录）。
@@ -203,7 +167,6 @@ public class FlowActionExecutor {
         ctx.setProcessDefinitionId(event.getProcessDefinitionId());
         ctx.setEntityCode(event.getEntityCode());
         ctx.setEntityDataId(event.getEntityDataId());
-        ctx.setSequenceFlowId(action.getSequenceFlowId());
         ctx.setSourceNodeId(defaultString(event.getSourceNodeId()));
         ctx.setSourceNodeName(defaultString(event.getSourceNodeName()));
         ctx.setTargetNodeId(defaultString(event.getTargetNodeId()));
@@ -268,38 +231,6 @@ public class FlowActionExecutor {
             throw new IllegalArgumentException("流程动作参数配置非法", e);
         }
         return params;
-    }
-
-    /**
-     * 由历史顺序流执行上下文构造触发事件，用于兼容旧的 BPMN 监听器入口。
-     *
-     * @param versionId      流程发布版本 ID
-     * @param sequenceFlowId 顺序流 ID
-     * @param execution      Flowable 执行上下文
-     * @return 组装后的触发事件
-     */
-    private FlowActionTriggerEvent fromLegacyExecution(
-            String versionId,
-            String sequenceFlowId,
-            DelegateExecution execution) {
-        FlowActionTriggerEvent event = new FlowActionTriggerEvent();
-        event.setVersionId(versionId);
-        event.setProcessDefinitionId(execution.getProcessDefinitionId());
-        event.setProcessInstanceId(execution.getProcessInstanceId());
-        event.setExecutionId(execution.getId());
-        event.setScopeType(FlowActionScopeType.SEQUENCE_FLOW.name());
-        event.setElementId(sequenceFlowId);
-        event.setTriggerTiming(FlowActionTriggerTiming.TRANSITION_TAKEN.name());
-        event.setEntityCode((String) execution.getVariable("entityCode"));
-        event.setEntityDataId((String) execution.getVariable("entityDataId"));
-        event.setOperatorId(firstNonBlank(UserContext.getUserId(), UserContext.getUsername()));
-        event.setOperatorName(UserContext.getUsername());
-        event.setSourceNodeId(defaultString((String) execution.getVariable("_flowActionSourceNodeId_")));
-        event.setSourceNodeName(defaultString((String) execution.getVariable("_flowActionSourceNodeName_")));
-        event.setTargetNodeId(defaultString((String) execution.getVariable("_flowActionTargetNodeId_")));
-        event.setTargetNodeName(defaultString((String) execution.getVariable("_flowActionTargetNodeName_")));
-        event.setVariables(new LinkedHashMap<>(execution.getVariables()));
-        return event;
     }
 
     private String defaultString(String value) {

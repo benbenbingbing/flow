@@ -183,6 +183,204 @@ export function providerToEditor(provider = {}) {
   }
 }
 
+const CONTEXT_FIELD_TYPES = new Set(['', 'string', 'integer', 'number', 'boolean', 'object', 'array', 'null'])
+const CONTEXT_BINDING_SOURCE_TYPES = new Set(['string', 'integer', 'number', 'boolean'])
+const MAX_CONTEXT_FIELDS = 32
+
+/** 新行只描述现有 Schema 字段；id 由调用方提供，不进入保存后的 JSON。 */
+export function createContextField(name = '', id = '') {
+  return { id, originalName: null, name, type: 'string', required: false, title: '', description: '', rawSchema: {} }
+}
+
+/** 绑定使用字段稳定 id 跟踪来源，避免字段改名后按字符串误关联到另一个字段。 */
+export function createContextBinding(id = '') {
+  return {
+    id,
+    originalIndex: null,
+    sourceFieldId: '',
+    source: '',
+    target: '',
+    usage: 'FIXED_FILTER',
+    rawBinding: {}
+  }
+}
+
+function jsonCopy(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
+}
+
+function contextObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function contextControls(editor) {
+  return JSON.stringify({
+    additionalProperties: editor.additionalProperties,
+    fields: editor.fields.map(({ id, name, type, required, title, description }) => ({ id, name, type, required, title, description })),
+    bindings: editor.bindings.map(({ sourceFieldId, source, target, usage }) => ({ sourceFieldId, source, target, usage }))
+  })
+}
+
+/** 判断可视化上下文是否偏离载入基线，供覆盖式 JSON 重载前做防丢失确认。 */
+export function hasContextEditorChanges(editor) {
+  if (!editor) return false
+  return contextControls(editor) !== editor.baseline
+}
+
+/**
+ * 从现有上下文 JSON 建立可视化视图；保留原节点及未填写状态，不补默认值或丢弃嵌套 Schema。
+ * 不合法的历史节点也保留在原文中，未编辑时仍交由服务端给出准确的违规位置。
+ */
+export function contextToEditor(contextSchema = {}, contextBindings = []) {
+  const schema = contextObject(contextSchema) ? contextSchema : {}
+  const properties = contextObject(schema.properties) ? schema.properties : {}
+  const required = Array.isArray(schema.required) ? schema.required : []
+  const fields = Object.entries(properties).map(([name, raw], index) => ({
+    ...createContextField(name, `context-field-${index}`),
+    originalName: name,
+    type: typeof raw?.type === 'string' ? raw.type : '',
+    required: required.includes(name),
+    title: typeof raw?.title === 'string' ? raw.title : '',
+    description: typeof raw?.description === 'string' ? raw.description : '',
+    rawSchema: jsonCopy(raw)
+  }))
+  const fieldByOriginalName = new Map(fields.map(field => [field.originalName, field]))
+  const editor = {
+    rawSchema: jsonCopy(contextSchema),
+    rawBindings: jsonCopy(contextBindings),
+    additionalProperties: schema.additionalProperties === false ? 'deny'
+      : schema.additionalProperties === true ? 'allow' : 'unset',
+    fields,
+    bindings: (Array.isArray(contextBindings) ? contextBindings : []).map((raw, index) => {
+      const source = typeof raw?.source === 'string' ? raw.source : ''
+      return {
+        ...createContextBinding(`context-binding-${index}`),
+        originalIndex: index,
+        sourceFieldId: fieldByOriginalName.get(source)?.id || '',
+        source,
+        target: typeof raw?.target === 'string' ? raw.target : '',
+        usage: typeof raw?.usage === 'string' ? raw.usage : '',
+        rawBinding: jsonCopy(raw)
+      }
+    })
+  }
+  editor.baseline = contextControls(editor)
+  return editor
+}
+
+/**
+ * 将可视化改动合并回最新高级 JSON；双方同时改动受控字段时拒绝静默覆盖。
+ * 只更新顶层字段、必传及绑定，未知元数据从最新原文继承；字段改名同步引用。
+ */
+export function contextEditorToConfig(editor, baseConfig) {
+  const sourceSchema = baseConfig
+    ? (Object.hasOwn(baseConfig, 'contextSchema') ? baseConfig.contextSchema : {}) : editor.rawSchema
+  const sourceBindings = baseConfig
+    ? (Object.hasOwn(baseConfig, 'contextBindings') ? baseConfig.contextBindings : []) : editor.rawBindings
+  const latest = contextToEditor(sourceSchema, sourceBindings)
+  if (contextControls(editor) === editor.baseline) {
+    return { contextSchema: jsonCopy(sourceSchema), contextBindings: jsonCopy(sourceBindings) }
+  }
+  if (editor.baseline && contextControls(latest) !== editor.baseline) {
+    throw new Error('高级 JSON 与上下文表单均有修改，请先将高级 JSON 同步到上下文表单后再保存')
+  }
+  if (!contextObject(sourceSchema) || !Array.isArray(sourceBindings)) {
+    throw new Error('请先修正高级 JSON 中的 contextSchema Object 和 contextBindings 数组')
+  }
+  const schema = jsonCopy(sourceSchema)
+  const original = contextToEditor(editor.rawSchema, editor.rawBindings)
+  const originalFields = new Map(original.fields.map(field => [field.name, field]))
+  const latestProperties = contextObject(schema.properties) ? schema.properties : {}
+  const names = new Set()
+  const fieldsById = new Map()
+  const fieldsByCurrentName = new Map()
+  if (editor.fields.length > MAX_CONTEXT_FIELDS) {
+    throw new Error(`上下文字段最多允许 ${MAX_CONTEXT_FIELDS} 个`)
+  }
+  const properties = editor.fields.map(field => {
+    const name = String(field.name ?? '')
+    if (!name.trim()) throw new Error('上下文字段名称不能为空')
+    if (names.has(name)) throw new Error(`上下文字段“${name}”重复`)
+    names.add(name)
+    if (field.id) fieldsById.set(field.id, field)
+    fieldsByCurrentName.set(name, field)
+    const type = field.type === 'unset' ? '' : field.type
+    if (!CONTEXT_FIELD_TYPES.has(type)) throw new Error(`上下文字段“${name}”的类型不受支持`)
+    const previous = originalFields.get(field.originalName)
+    const raw = previous && Object.hasOwn(latestProperties, field.originalName)
+      ? latestProperties[field.originalName] : field.rawSchema
+    if (!contextObject(raw)) throw new Error(`上下文字段“${name}”的 Schema 必须是 Object`)
+    const node = jsonCopy(raw)
+    for (const key of ['type', 'title', 'description']) {
+      const value = key === 'type' ? type : String(field[key] ?? '')
+      if (previous && value === previous[key]) continue
+      if (value === '') delete node[key]
+      else node[key] = value
+    }
+    return [name, node]
+  })
+  // Object.fromEntries 使用自有数据属性，__proto__ 等字段名不会触发原型赋值。
+  if (editor.fields.length || Object.hasOwn(schema, 'properties')) schema.properties = Object.fromEntries(properties)
+  const requiredNames = new Set(editor.fields.filter(field => field.required).map(field => field.name))
+  const currentNameByOriginalName = new Map(
+    editor.fields
+      .filter(field => field.originalName)
+      .map(field => [field.originalName, field.name])
+  )
+  const required = (Array.isArray(schema.required) ? schema.required : [])
+    .map(name => currentNameByOriginalName.get(name) ?? name)
+    .filter(name => requiredNames.has(name))
+  for (const name of requiredNames) if (!required.includes(name)) required.push(name)
+  if (required.length || Object.hasOwn(schema, 'required')) schema.required = required
+  if (!['unset', 'allow', 'deny'].includes(editor.additionalProperties)) throw new Error('额外上下文字段规则无效')
+  if (editor.additionalProperties !== original.additionalProperties) {
+    if (editor.additionalProperties === 'unset') delete schema.additionalProperties
+    else schema.additionalProperties = editor.additionalProperties === 'allow'
+  }
+  const usageTargets = new Set()
+  const fixedFilterKeys = new Set()
+  const bindings = editor.bindings.map(binding => {
+    const previous = original.bindings.find(item => item.originalIndex === binding.originalIndex)
+    const raw = previous && sourceBindings[binding.originalIndex] !== undefined
+      ? sourceBindings[binding.originalIndex] : binding.rawBinding
+    if (!contextObject(raw)) throw new Error('上下文绑定必须是 Object')
+    // 新版编辑器优先按稳定 id 解析；无 id 的旧调用方仍可按当前名称保存。
+    const sourceField = binding.sourceFieldId
+      ? fieldsById.get(binding.sourceFieldId)
+      : (fieldsByCurrentName.get(binding.source)
+        || (previous ? editor.fields.find(field => field.originalName === previous.source) : null))
+    const source = sourceField?.name || binding.source
+    if (!sourceField || !names.has(source)) {
+      throw new Error(`绑定来源“${source}”未定义，请先移除绑定或选择其他字段`)
+    }
+    const sourceType = sourceField.type === 'unset' ? '' : sourceField.type
+    if (!sourceField.required) throw new Error(`绑定来源“${source}”必须设为必传`)
+    if (!CONTEXT_BINDING_SOURCE_TYPES.has(sourceType)) {
+      throw new Error(`绑定来源“${source}”必须使用 string、integer、number 或 boolean 类型`)
+    }
+    const target = String(binding.target ?? '')
+    const usage = String(binding.usage ?? '')
+    if (!target.trim()) throw new Error('上下文映射的 Flow 目标字段不能为空')
+    if (!['FIXED_FILTER', 'FORCED_FORM_VALUE'].includes(usage)) {
+      throw new Error('上下文映射用途无效')
+    }
+    const usageTargetKey = `${usage}\0${target}`
+    if (usageTargets.has(usageTargetKey)) {
+      throw new Error(`同一用途不能重复绑定目标字段“${target}”`)
+    }
+    usageTargets.add(usageTargetKey)
+    if (usage === 'FIXED_FILTER') {
+      if (fixedFilterKeys.has(target) || fixedFilterKeys.has(`${target}_op`)) {
+        throw new Error(`固定过滤目标“${target}”与其他过滤字段的编码键冲突`)
+      }
+      fixedFilterKeys.add(target)
+      fixedFilterKeys.add(`${target}_op`)
+    }
+    return { ...jsonCopy(raw), source, target, usage }
+  })
+  return { contextSchema: schema, contextBindings: bindings }
+}
+
 export function draftToEditor(draft = {}, surfaceType = 'LIST') {
   const source = cloneJson(draft)
   const target = source.target || {}
@@ -205,6 +403,7 @@ export function draftToEditor(draft = {}, surfaceType = 'LIST') {
     queryableFieldsText: toLineValues(fieldPolicy.queryable),
     writableFieldsText: toLineValues(fieldPolicy.writable),
     returnableFieldsText: toLineValues(fieldPolicy.returnable),
+    contextEditor: contextToEditor(source.contextSchema ?? {}, source.contextBindings ?? []),
     advancedJson: JSON.stringify(source, null, 2)
   }
 }
@@ -247,6 +446,8 @@ export function editorToDraft(editor, surfaceType = 'LIST') {
   // 原生 LIST/FORM 的按钮、顺序、文案和实时可用状态全部来自
   // Flow 页面与 mapped user；清理旧投影 override，避免继续误导。
   draft.actionPolicy = { allowed: [] }
+  // 旧调用方只有 advancedJson 时继续原有行为；未改可视化上下文时也保留 JSON 的新改动。
+  if (editor.contextEditor) Object.assign(draft, contextEditorToConfig(editor.contextEditor, draft))
   draft.contextSchema ||= {}
   draft.contextBindings ||= []
   draft.ui ||= {}

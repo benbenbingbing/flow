@@ -56,9 +56,9 @@ const displayMessage = computed(() => props.error?.message || '请返回宿主�
   align-content: center;
   min-height: 320px;
   padding: 40px 24px;
-  color: #253044;
+  color: var(--el-text-color-primary);
   text-align: center;
-  background: #fff;
+  background: var(--el-bg-color);
 }
 
 .embed-error-state__icon {
@@ -67,12 +67,12 @@ const displayMessage = computed(() => props.error?.message || '请返回宿主�
   width: 46px;
   height: 46px;
   margin-bottom: 14px;
-  color: #b42318;
+  color: var(--el-color-danger);
   font-size: 24px;
   font-weight: 700;
-  border: 1px solid #fecdca;
+  border: 1px solid var(--el-color-danger-light-7);
   border-radius: 50%;
-  background: #fef3f2;
+  background: var(--el-color-danger-light-9);
 }
 
 .embed-error-state h1 {
@@ -83,7 +83,7 @@ const displayMessage = computed(() => props.error?.message || '请返回宿主�
 .embed-error-state p {
   max-width: 560px;
   margin: 0;
-  color: #667085;
+  color: var(--el-text-color-secondary);
   line-height: 1.6;
 }
 
@@ -99,12 +99,12 @@ const displayMessage = computed(() => props.error?.message || '请返回宿主�
   color: #fff;
   border: 0;
   border-radius: 6px;
-  background: #175cd3;
+  background: var(--el-color-primary);
   cursor: pointer;
 }
 
 .embed-error-state__retry:focus-visible {
-  outline: 3px solid #84adff;
+  outline: 3px solid var(--el-color-primary-light-5);
   outline-offset: 2px;
 }
 </style>

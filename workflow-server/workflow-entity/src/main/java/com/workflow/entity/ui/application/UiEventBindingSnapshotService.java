@@ -12,12 +12,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 import java.time.LocalDateTime;
 
 /**
@@ -46,9 +46,11 @@ public class UiEventBindingSnapshotService {
                 .stream()
                 .filter(binding -> appliesToSnapshot(
                         binding,
+                        normalizedConfigType))
+                .map(binding -> snapshotValue(
+                        binding,
                         normalizedConfigType,
                         sourceCache))
-                .map(this::snapshotValue)
                 .toList();
     }
 
@@ -239,63 +241,21 @@ public class UiEventBindingSnapshotService {
     }
 
     /**
-     * 实体级事件会被表单和列表共同查询，因此按步骤引用的接口操作上下文筛选。
-     * FORM 操作只进入表单快照，LIST 操作只进入列表快照；配置自身的绑定不在这里
-     * 静默过滤，继续交给发布引用校验器严格报错。
+     * 实体级事件会被表单和列表共同查询，整条绑定先按事件消费域判断是否适用。
+     * 接口步骤的 FORM/LIST 投影由 snapshotValue 逐步完成，纯映射步骤因此能在
+     * 两类适用快照中保留；配置自身的绑定不做静默过滤。
      */
     private boolean appliesToSnapshot(
             UiEventBinding binding,
-            String configType,
-            Map<String, UiDataSourceDefinition> sourceCache) {
+            String configType) {
         if (!"ENTITY".equals(normalize(binding.getOwnerType()))) {
             return true;
         }
-        Set<String> contexts = referencedOperationContexts(
-                binding,
-                sourceCache);
-        if (contexts.isEmpty() || contexts.contains(configType)) {
-            return true;
+        if (!UiEventBindingApplicability.appliesTo(
+                normalize(binding.getEventCode()), configType)) {
+            return false;
         }
-        log.info(
-                "实体级UI事件绑定不适用于当前发布类型，跳过快照继承: bindingId={}, eventCode={}, publishType={}, operationContexts={}",
-                LogValue.safe(binding.getId()),
-                LogValue.safe(binding.getEventCode()),
-                LogValue.safe(configType),
-                contexts);
-        return false;
-    }
-
-    private Set<String> referencedOperationContexts(
-            UiEventBinding binding,
-            Map<String, UiDataSourceDefinition> sourceCache) {
-        if (!StringUtils.hasText(binding.getStepsDocument())) {
-            return Set.of();
-        }
-        Set<String> result = new LinkedHashSet<>();
-        for (Object item : codec.readArray(
-                binding.getStepsDocument(),
-                "UI事件绑定步骤")) {
-            if (!(item instanceof Map<?, ?> step)) {
-                continue;
-            }
-            String serviceId = text(step.get("serviceId"));
-            String operationCode = text(step.get("operationCode"));
-            if (!StringUtils.hasText(serviceId)
-                    || !StringUtils.hasText(operationCode)) {
-                continue;
-            }
-            UiDataSourceDefinition definition =
-                    sourceCache.computeIfAbsent(
-                            serviceId,
-                            dataSourceMapper::selectById);
-            String context = operationContext(
-                    definition,
-                    operationCode);
-            if (StringUtils.hasText(context)) {
-                result.add(context);
-            }
-        }
-        return result;
+        return true;
     }
 
     private String operationContext(
@@ -339,6 +299,55 @@ public class UiEventBindingSnapshotService {
                         : List.of());
         value.put("revision", binding.getRevision());
         return value;
+    }
+
+    /**
+     * 共享实体事件可以同时配置 FORM 与 LIST 操作；发布某一页面时只保留
+     * 与该页面上下文一致的接口步骤，纯映射步骤两边保留。否则另一上下文
+     * 的步骤会被发布引用校验器正确拒绝，导致共享默认事件无法发布。
+     */
+    private Map<String, Object> snapshotValue(
+            UiEventBinding binding,
+            String configType,
+            Map<String, UiDataSourceDefinition> sourceCache) {
+        Map<String, Object> value = snapshotValue(binding);
+        if (!"ENTITY".equals(normalize(binding.getOwnerType()))) {
+            return value;
+        }
+        List<Map<String, Object>> steps = new ArrayList<>();
+        if (value.get("steps") instanceof List<?> list) {
+            for (Object item : list) {
+                if (!(item instanceof Map<?, ?> step)
+                        || !appliesToConfig(
+                                step, configType, sourceCache)) {
+                    continue;
+                }
+                Map<String, Object> copy = new LinkedHashMap<>();
+                step.forEach((key, child) ->
+                        copy.put(String.valueOf(key), child));
+                steps.add(copy);
+            }
+        }
+        value.put("steps", steps);
+        return value;
+    }
+
+    private boolean appliesToConfig(
+            Map<?, ?> step,
+            String configType,
+            Map<String, UiDataSourceDefinition> sourceCache) {
+        String serviceId = text(step.get("serviceId"));
+        String operationCode = text(step.get("operationCode"));
+        if (!StringUtils.hasText(serviceId)) {
+            return true;
+        }
+        UiDataSourceDefinition definition = sourceCache.computeIfAbsent(
+                serviceId,
+                dataSourceMapper::selectById);
+        String context = operationContext(definition, operationCode);
+        // 缺失或损坏的引用继续进入快照，由发布校验器给出精确错误。
+        return !StringUtils.hasText(context)
+                || Objects.equals(configType, context);
     }
 
     private String text(Object value) {

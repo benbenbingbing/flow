@@ -2,8 +2,15 @@
   <el-dialog
     v-model="processDialogVisible"
     width="75%"
-    class="entity-form-dialog entity-approval-dialog"
+    :class="[
+      'entity-form-dialog',
+      'entity-approval-dialog',
+      { 'entity-form-dialog--seamless': seamlessPresentation }
+    ]"
     top="3vh"
+    :fullscreen="seamlessPresentation"
+    :modal="!seamlessPresentation"
+    :lock-scroll="!seamlessPresentation"
     :close-on-click-modal="false"
     @closed="handleDialogClosed"
   >
@@ -181,6 +188,7 @@ const props = withDefaults(defineProps<{
   listReleaseVersion?: number | null
   listReleaseResolutionToken?: string
   entityStatusOptions?: any[]
+  formPresentation?: 'seamless' | 'dialog'
 }>(), {
   entityCode: '',
   defaultForm: null,
@@ -190,7 +198,8 @@ const props = withDefaults(defineProps<{
   listReleaseId: '',
   listReleaseVersion: null,
   listReleaseResolutionToken: '',
-  entityStatusOptions: () => []
+  entityStatusOptions: () => [],
+  formPresentation: 'dialog'
 })
 
 const emit = defineEmits<{
@@ -210,6 +219,7 @@ const listReleaseContext = computed(() => ({
 }))
 
 const processDialogVisible = ref(false)
+const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
 const activeDialogTab = ref('basic')
 const approveSubmitLoading = ref(false)
 const formActions = ref<any[]>([])
@@ -1083,10 +1093,23 @@ defineExpose({
 }
 
 @media (max-width: 900px) {
-  :global(.el-dialog.entity-approval-dialog) {
+  :global(.el-dialog.entity-approval-dialog:not(.entity-form-dialog--seamless)) {
     --approval-dialog-margin: 12px;
     width: calc(100vw - 24px) !important;
   }
+}
+
+// Embed seamless 模式铺满 iframe，且不改变审批确认等二级弹窗的遮罩行为。
+:global(.el-dialog.entity-approval-dialog.entity-form-dialog--seamless) {
+  --approval-dialog-margin: 0px;
+  width: 100% !important;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0 !important;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 </style>

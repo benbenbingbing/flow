@@ -18,6 +18,37 @@ import java.util.List;
 public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
 
     /**
+     * 查询快照中可能引用指定接口服务的当前激活版本。
+     *
+     * <p>LIKE 只缩小候选集，调用方必须在完整性校验后解析快照并精确匹配
+     * serviceId。该查询使已从草稿删除、但仍在线上的 PUBLISHED_ONLY 引用
+     * 可以被管理端发现。</p>
+     */
+    @Select("SELECT * FROM ui_config_release "
+            + "WHERE status = 'ACTIVE' "
+            + "AND config_type IN ('FORM', 'LIST') "
+            + "AND snapshot_document IS NOT NULL "
+            + "AND (snapshot_document LIKE CONCAT('%', #{compactNeedle}, '%') "
+            + "OR snapshot_document LIKE CONCAT('%', #{spacedNeedle}, '%')) "
+            + "ORDER BY config_type, config_id, version DESC")
+    List<UiConfigRelease> findActiveReferenceCandidates(
+            @Param("compactNeedle") String compactNeedle,
+            @Param("spacedNeedle") String spacedNeedle);
+
+    /**
+     * 查询可能引用接口服务的全部 FORM/LIST 发布版本，供删除保护使用。
+     * 历史版本仍可能被签名运行上下文或 Embed 固定；LIKE 只按原始 ID 缩小
+     * 候选，以覆盖嵌套 JSON 字符串中的转义键，调用方仍须递归精确解析。
+     */
+    @Select("SELECT * FROM ui_config_release "
+            + "WHERE config_type IN ('FORM', 'LIST') "
+            + "AND snapshot_document IS NOT NULL "
+            + "AND snapshot_document LIKE CONCAT('%', #{serviceId}, '%') "
+            + "ORDER BY config_type, config_id, version DESC")
+    List<UiConfigRelease> findExecutableDataSourceReferenceCandidates(
+            @Param("serviceId") String serviceId);
+
+    /**
      * 根据配置类型与配置 ID 查询全部发布版本，按版本号降序排列。
      *
      * @param configType 配置类型

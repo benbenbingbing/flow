@@ -22,5 +22,6 @@ public record EmbedRuntimeReleaseSnapshot(
         String configJson,
         String actorDisplayName,
         String uiLocale,
-        String uiTheme) {
+        String uiTheme,
+        String uiFormPresentation) {
 }

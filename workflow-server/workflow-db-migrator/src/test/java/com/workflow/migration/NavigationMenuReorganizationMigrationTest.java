@@ -59,7 +59,7 @@ class NavigationMenuReorganizationMigrationTest {
         Flyway current = flyway();
         current.migrate();
 
-        assertEquals("76", current.info().current().getVersion().getVersion());
+        assertEquals("79", current.info().current().getVersion().getVersion());
         assertRequestedHierarchy();
         assertSuperAdminOwnsTargetMenus();
         assertEquals(5, countRows("""
@@ -99,7 +99,7 @@ class NavigationMenuReorganizationMigrationTest {
         Flyway current = flyway();
         current.migrate();
 
-        assertEquals("76", current.info().current().getVersion().getVersion());
+        assertEquals("79", current.info().current().getVersion().getVersion());
         assertRequestedHierarchy();
         assertSuperAdminOwnsTargetMenus();
         assertMenu(
@@ -133,7 +133,7 @@ class NavigationMenuReorganizationMigrationTest {
 
         Flyway current = flyway();
         current.migrate();
-        assertEquals("76", current.info().current().getVersion().getVersion());
+        assertEquals("79", current.info().current().getVersion().getVersion());
         assertRequestedHierarchy();
     }
 
@@ -152,7 +152,7 @@ class NavigationMenuReorganizationMigrationTest {
 
         Flyway current = flyway();
         current.migrate();
-        assertEquals("76", current.info().current().getVersion().getVersion());
+        assertEquals("79", current.info().current().getVersion().getVersion());
         assertRequestedHierarchy();
     }
 

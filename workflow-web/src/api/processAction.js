@@ -12,12 +12,8 @@ export const processActionApi = {
   },
 
   /**
-   * 查询顺序流下所有草稿动作
+   * 按作用域和 BPMN 元素查询草稿动作；流程级动作的 elementId 为空。
    */
-  findDraftActionsBySequenceFlow(processConfigId, sequenceFlowId) {
-    return request.get(`/process-actions/process/${processConfigId}/flow/${sequenceFlowId}`)
-  },
-
   findDraftActionsByBinding(processConfigId, scopeType, elementId) {
     return request.get(`/process-actions/process/${processConfigId}/binding`, {
       params: { scopeType, elementId }
@@ -35,13 +31,6 @@ export const processActionApi = {
    */
   findPublishedActions(versionId) {
     return request.get(`/process-actions/version/${versionId}`)
-  },
-
-  /**
-   * 查询版本下特定顺序流的动作
-   */
-  findPublishedActionsBySequenceFlow(versionId, sequenceFlowId) {
-    return request.get(`/process-actions/version/${versionId}/flow/${sequenceFlowId}`)
   },
 
   /**

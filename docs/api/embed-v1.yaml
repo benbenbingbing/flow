@@ -232,6 +232,7 @@ paths:
                   ui:
                     locale: zh-CN
                     theme: light
+                    formPresentation: seamless
       responses:
         '201':
           description: Launch 已签发
@@ -1044,6 +1045,13 @@ components:
             - light
             - dark
             - system
+        formPresentation:
+          type: string
+          description: 表单展示方式；seamless 铺满嵌入框，dialog 保留模态弹窗
+          default: seamless
+          enum:
+            - seamless
+            - dialog
       additionalProperties: false
     EmbedLaunch:
       type: object
@@ -1319,6 +1327,7 @@ components:
       required:
         - locale
         - theme
+        - formPresentation
         - showSearch
         - showPagination
         - showToolbar
@@ -1333,6 +1342,11 @@ components:
             - light
             - dark
             - system
+        formPresentation:
+          type: string
+          enum:
+            - seamless
+            - dialog
         showSearch:
           type: boolean
         showPagination:

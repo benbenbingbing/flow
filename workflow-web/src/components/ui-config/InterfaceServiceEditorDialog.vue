@@ -7,6 +7,15 @@
     destroy-on-close
     :close-on-click-modal="false"
   >
+    <el-alert
+      v-if="editor.id"
+      class="edit-risk-alert"
+      type="warning"
+      :closable="false"
+      show-icon
+      title="修改已引用服务会即时影响运行链"
+      description="作用范围、Provider、操作、Schema 或启停状态保存后会即时生效；请先在“事件使用情况”确认引用范围。"
+    />
     <el-form :model="editor" label-width="96px">
       <div class="form-grid">
         <el-form-item label="服务名称" required>
@@ -677,6 +686,10 @@ defineExpose({ openCreate, openEdit })
 .section-title {
   color: var(--el-text-color-primary);
   font-weight: 600;
+}
+
+.edit-risk-alert {
+  margin-bottom: 14px;
 }
 
 .secondary-text {

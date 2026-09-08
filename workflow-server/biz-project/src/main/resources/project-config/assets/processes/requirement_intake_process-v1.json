@@ -48,7 +48,6 @@
       "actionName": "发送需求决策通知",
       "description": "流程完成后发送需求决策结果通知。",
       "interfaceName": "sendNotificationHandler",
-      "methodName": "execute",
       "paramsJson": "{\"templateCode\":\"REQUIREMENT_DECISION_RESULT\",\"notifyType\":\"in_app\",\"receiverExpr\":\"${submitterId}\"}",
       "sortOrder": 10,
       "enabled": true,

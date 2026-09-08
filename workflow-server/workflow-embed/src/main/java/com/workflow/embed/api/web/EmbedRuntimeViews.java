@@ -88,6 +88,7 @@ public final class EmbedRuntimeViews {
     public record Ui(
             String locale,
             String theme,
+            String formPresentation,
             boolean showSearch,
             boolean showPagination,
             boolean showToolbar,

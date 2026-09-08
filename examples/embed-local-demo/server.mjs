@@ -23,6 +23,7 @@ const MAX_FLOW_RESPONSE_BYTES = 2 * 1024 * 1024
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
 const SAFE_RECORD_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
 const SAFE_VIEW_KEY = /^[A-Za-z][A-Za-z0-9._-]{0,99}$/
+const FORM_PRESENTATIONS = new Set(['seamless', 'dialog'])
 const SDK_FILENAMES = new Set(['index.js', 'FlowEmbedWidget.js', 'protocol.js'])
 const EMBED_CONTROL_PROXY_PREFIXES = [
   '/embed/v1/launches/',
@@ -357,7 +358,7 @@ export function normalizeLaunchIntent(value, allowedEntryModes = ['CREATE', 'VIE
       errorCode: 'FLOW_DEMO_REQUEST_INVALID'
     })
   }
-  const allowedKeys = new Set(['mode', 'recordId', 'theme'])
+  const allowedKeys = new Set(['mode', 'recordId', 'theme', 'formPresentation'])
   if (Object.keys(value).some(key => !allowedKeys.has(key))) {
     throw new FlowRemoteError('启动参数包含未开放字段', {
       status: 400,
@@ -392,10 +393,19 @@ export function normalizeLaunchIntent(value, allowedEntryModes = ['CREATE', 'VIE
       errorCode: 'FLOW_DEMO_THEME_INVALID'
     })
   }
+  // 缺失/null 沿用平台默认值；显式输入必须精确命中公开枚举，避免代理层悄悄改写客户端意图。
+  const formPresentation = value.formPresentation == null ? 'seamless' : value.formPresentation
+  if (typeof formPresentation !== 'string' || !FORM_PRESENTATIONS.has(formPresentation)) {
+    throw new FlowRemoteError('formPresentation 只支持 seamless、dialog', {
+      status: 400,
+      errorCode: 'FLOW_DEMO_FORM_PRESENTATION_INVALID'
+    })
+  }
   return Object.freeze({
     mode,
     ...(mode === 'VIEW' ? { recordId } : {}),
-    theme
+    theme,
+    formPresentation
   })
 }
 
@@ -407,7 +417,7 @@ export function normalizeLaunchRequest(value, targets) {
       errorCode: 'FLOW_DEMO_REQUEST_INVALID'
     })
   }
-  const allowedKeys = new Set(['targetKey', 'mode', 'recordId', 'theme'])
+  const allowedKeys = new Set(['targetKey', 'mode', 'recordId', 'theme', 'formPresentation'])
   if (Object.keys(value).some(key => !allowedKeys.has(key))) {
     throw new FlowRemoteError('启动参数包含未开放字段', {
       status: 400,
@@ -565,6 +575,29 @@ export function validateLaunchDocument(response, target) {
   return data
 }
 
+/**
+ * 组装发给 Flow 的 Launch 文档。target 与 intent 必须已通过本文件的白名单校验，浏览器原始
+ * 输入不能直接传入；展示偏好因此与 View、Origin、人员断言共享同一条可信后端边界。
+ */
+export function buildFlowLaunchPayload(config, target, intent, assertion, channelId) {
+  const entry = intent.mode === 'VIEW'
+    ? { mode: intent.mode, recordId: intent.recordId }
+    : { mode: intent.mode }
+  return {
+    viewKey: target.viewKey,
+    parentOrigin: config.hostOrigin,
+    channelId,
+    subject: { type: 'SIGNED_JWT', assertion },
+    entry,
+    context: {},
+    ui: {
+      locale: 'zh-CN',
+      theme: intent.theme,
+      formPresentation: intent.formPresentation
+    }
+  }
+}
+
 /** 第三方后端完整执行 OAuth + 人员断言 + 一次性 Launch，浏览器看不到机器凭据。 */
 export async function createEmbedLaunch(config, secrets, rawIntent) {
   const { target, intent } = normalizeLaunchRequest(rawIntent, config.targets)
@@ -577,18 +610,13 @@ export async function createEmbedLaunch(config, secrets, rawIntent) {
     keyId: config.assertionKeyId
   })
   const channelId = randomUUID()
-  const entry = intent.mode === 'VIEW'
-    ? { mode: intent.mode, recordId: intent.recordId }
-    : { mode: intent.mode }
-  const body = JSON.stringify({
-    viewKey: target.viewKey,
-    parentOrigin: config.hostOrigin,
-    channelId,
-    subject: { type: 'SIGNED_JWT', assertion },
-    entry,
-    context: {},
-    ui: { locale: 'zh-CN', theme: intent.theme }
-  })
+  const body = JSON.stringify(buildFlowLaunchPayload(
+    config,
+    target,
+    intent,
+    assertion,
+    channelId
+  ))
   const response = await requestBuffer(
     new URL('/api/open/v1/embed-launches', config.flowBaseUrl),
     {

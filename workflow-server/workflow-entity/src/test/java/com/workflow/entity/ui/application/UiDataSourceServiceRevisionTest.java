@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.contracts.integration.spi.IntegrationConnector;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
@@ -22,12 +23,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 class UiDataSourceServiceRevisionTest {
 
@@ -67,9 +71,41 @@ class UiDataSourceServiceRevisionTest {
         assertEquals("接口服务（已编辑）", saved.getSourceName());
     }
 
+    @Test
+    void deleteStopsBeforeMutationWhenActiveReleaseStillReferencesService() {
+        UiDataSourceDefinitionMapper mapper =
+                mock(UiDataSourceDefinitionMapper.class);
+        UiPublishedDataSourceReferenceGuard guard =
+                mock(UiPublishedDataSourceReferenceGuard.class);
+        UiDataSourceDefinition current = definition();
+        when(mapper.selectById(current.getId()))
+                .thenReturn(current);
+        doThrow(new BusinessConflictException(
+                "UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
+                "仍被线上版本引用"))
+                .when(guard).requireNoExecutableReferences(current.getId());
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> service(mapper, guard).delete(
+                        current.getId(), current.getRevision()));
+
+        assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
+                error.getErrorCode());
+        verify(mapper, never()).update(isNull(), any());
+    }
+
     private UiDataSourceService service(
             UiDataSourceDefinitionMapper mapper) {
-        return new UiDataSourceService(
+        return service(
+                mapper,
+                mock(UiPublishedDataSourceReferenceGuard.class));
+    }
+
+    private UiDataSourceService service(
+            UiDataSourceDefinitionMapper mapper,
+            UiPublishedDataSourceReferenceGuard guard) {
+        UiDataSourceService service = new UiDataSourceService(
                 mapper,
                 mock(EntityFormMapper.class),
                 mock(EntityListConfigMapper.class),
@@ -83,6 +119,8 @@ class UiDataSourceServiceRevisionTest {
                 List.<IntegrationConnector>of(),
                 new JsonDocumentCodec(new ObjectMapper()),
                 Runnable::run);
+        service.setPublishedReferenceGuard(guard);
+        return service;
     }
 
     private UiDataSourceDefinition definition() {

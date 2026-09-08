@@ -11,6 +11,7 @@ import com.workflow.core.result.ApiResponse;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.embed.management.application.EmbedViewAdministrationService;
+import com.workflow.embed.management.application.EmbedViewAdministrationService.CurrentValidation;
 import com.workflow.embed.management.application.EmbedViewAdministrationService.StatusChangeResult;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;
@@ -87,6 +88,16 @@ public class EmbedViewManagementController {
         ViewState view = service.get(viewId);
         return ApiResponse.success(new EmbedManagementViews.ViewDraft(
                 view.id(), view.lockVersion(), json(view.draftConfigJson())));
+    }
+
+    /** 返回与保存和 Launch 相同规则的当前校验结论，供只读接入向导展示。 */
+    @GetMapping("/{viewId}/validation")
+    public ApiResponse<EmbedManagementViews.ViewValidation> validateCurrentActive(
+            @PathVariable String viewId) {
+        CurrentValidation current = service.validateCurrentActive(viewId);
+        var validation = current.validation();
+        return ApiResponse.success(new EmbedManagementViews.ViewValidation(
+                current.viewStatus().name(), validation.valid(), validation.violations()));
     }
 
     @PatchMapping("/{viewId}/draft")

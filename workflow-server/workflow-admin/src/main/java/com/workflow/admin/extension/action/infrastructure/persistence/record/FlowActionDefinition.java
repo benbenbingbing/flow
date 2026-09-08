@@ -32,8 +32,6 @@ public class FlowActionDefinition {
     private String handlerName;
     /** 可见范围：GLOBAL、ENTITY */
     private String visibilityScope;
-    /** 可见实体编码 JSON（兼容旧数据；新数据走关系表） */
-    private String entityCodesJson;
     /** 是否启用 */
     private Boolean enabled;
     /** 创建人 */

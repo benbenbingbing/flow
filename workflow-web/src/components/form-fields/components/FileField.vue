@@ -67,6 +67,7 @@
       :disabled="isDisabled"
       :is-image="isImage"
       :attachment-item-required-state="attachmentItemRequiredState"
+      :upload-context="uploadContext"
       @update:modelValue="handleFileValueChange"
     />
   </div>
@@ -78,12 +79,14 @@ import { Document, View, Download } from '@element-plus/icons-vue'
 import FileUploader from '@/components/FileUploader.vue'
 import { useFormField } from '../composables/useFormField.js'
 import request from '@/utils/request'
+import { resolveEntityFileUploadContext } from '@/shared/entity-file-upload-context'
 
 const props = defineProps({
   field: { type: Object, required: true },
   modelValue: { type: [String, Array, Object], default: '' },
   disabled: { type: Boolean, default: false },
   options: { type: Array, default: null },
+  context: { type: Object, default: () => ({}) },
   attachmentItemRequiredState: { type: Object, default: () => ({}) }
 })
 
@@ -176,6 +179,11 @@ const enrichedField = computed(() => {
 
   return merged
 })
+
+// 上传上下文只保留后端鉴权所需的最小坐标，避免把整份表单数据带入请求。
+const uploadContext = computed(() =>
+  resolveEntityFileUploadContext(props.context, enrichedField.value)
+)
 
 // 判断字段值是否看起来像文件数据
 const isFileLikeValue = computed(() => {

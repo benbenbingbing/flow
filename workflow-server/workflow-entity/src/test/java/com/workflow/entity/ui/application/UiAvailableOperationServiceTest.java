@@ -248,6 +248,79 @@ class UiAvailableOperationServiceTest {
                         .toList());
     }
 
+    @Test
+    void entityDefaultFormEventSelectsFormRuntimeOperation() throws Exception {
+        when(sourceMapper.selectList(any())).thenReturn(List.of(
+                definition(
+                        "form-runtime",
+                        "ENTITY",
+                        "entity-a",
+                        "STATIC_OPTIONS",
+                        operation(
+                                "openForm",
+                                "FORM",
+                                "READ",
+                                Map.of("type", "object"))),
+                definition(
+                        "entity-runtime",
+                        "ENTITY",
+                        "entity-a",
+                        "STATIC_OPTIONS",
+                        operation(
+                                "openEntity",
+                                "ENTITY",
+                                "READ",
+                                Map.of("type", "object")))));
+
+        List<UiAvailableOperation> result = service.available(
+                "ENTITY",
+                "entity-a",
+                "FORM_OPEN");
+
+        assertEquals(
+                List.of("form-runtime"),
+                result.stream()
+                        .map(UiAvailableOperation::serviceId)
+                        .toList());
+    }
+
+    @Test
+    void sharedEntityEventOffersBothFormAndListRuntimeOperations()
+            throws Exception {
+        when(sourceMapper.selectList(any())).thenReturn(List.of(
+                definition(
+                        "form-runtime",
+                        "ENTITY",
+                        "entity-a",
+                        "STATIC_OPTIONS",
+                        operation(
+                                "loadFormDetail",
+                                "FORM",
+                                "READ",
+                                Map.of("type", "object"))),
+                definition(
+                        "list-runtime",
+                        "ENTITY",
+                        "entity-a",
+                        "STATIC_OPTIONS",
+                        operation(
+                                "loadListDetail",
+                                "LIST",
+                                "READ",
+                                Map.of("type", "object")))));
+
+        List<UiAvailableOperation> result = service.available(
+                "ENTITY",
+                "entity-a",
+                "DETAIL_LOAD");
+
+        assertEquals(
+                List.of("form-runtime", "list-runtime"),
+                result.stream()
+                        .map(UiAvailableOperation::serviceId)
+                        .toList());
+    }
+
     private EntityDefinition entity(
             String id,
             String code) {

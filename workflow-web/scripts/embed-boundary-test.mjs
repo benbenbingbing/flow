@@ -174,6 +174,8 @@ assert.match(nativePageSource, /target\.formId/)
 assert.match(nativePageSource, /target\.formReleaseId/)
 assert.match(nativePageSource, /target\.formReleaseVersion/)
 assert.match(nativePageSource, /target\.formReleaseResolutionToken/)
+assert.match(nativePageSource, /bootstrap\.ui\?\.formPresentation/)
+assert.match(nativePageSource, /:form-presentation="formPresentation"/)
 assertDoesNotContain(nativePageSource, [
   /normalizeEmbedForm/,
   /TrustedPublishedFormRuntime/,
@@ -184,7 +186,12 @@ assertDoesNotContain(nativePageSource, [
 
 assert.match(nativeListPageSource, /allow-default-form-resolve/)
 assert.match(nativeListPageSource, /target\.defaultFormResolved/)
+assert.match(nativeListPageSource, /bootstrap\.ui\?\.formPresentation/)
+assert.match(nativeListPageSource, /:form-presentation="formPresentation"/)
 assert.match(entityListSource, /allowDefaultFormResolve/)
+assert.match(entityListSource, /embedded\.value && props\.formPresentation === 'seamless'/,
+  '普通管理端列表不得启用 Embed seamless 表单容器')
+assert.match(entityListSource, /:form-presentation="embeddedFormPresentation"/)
 assert.match(entityListSource, /当前固定列表版本没有可用的默认表单/)
 for (const marker of [
   'targetListReleaseId',

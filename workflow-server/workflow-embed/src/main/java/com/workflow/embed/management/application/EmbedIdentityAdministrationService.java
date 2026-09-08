@@ -343,6 +343,7 @@ public class EmbedIdentityAdministrationService {
                 digest.keyVersion(),
                 subjectHint(subject),
                 command.flowUserId().trim(),
+                true,
                 SecurityStatus.ACTIVE,
                 1L,
                 effectiveAt,
@@ -372,7 +373,8 @@ public class EmbedIdentityAdministrationService {
             throw conflict("EMBED_BINDING_REVOKED", "已撤销 Binding 不能恢复");
         }
         if (current.status() == target) {
-            return current;
+            // 加锁查询不联查 sys_user，避免改变安全状态更新的锁顺序；只读回查补全实时就绪态。
+            return requireBinding(repository.findBinding(bindingId));
         }
         LocalDateTime now = now();
         if (repository.changeBindingStatus(bindingId, command.expectedVersion(), target.name(),

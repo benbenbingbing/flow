@@ -42,7 +42,9 @@ class SchemaRequiredTablesTest {
                     .toList();
         }
 
-        assertEquals(76, files.size());
+        assertFalse(files.isEmpty());
+        assertTrue(files.get(files.size() - 1).startsWith("V079__"),
+                "latest migration must be V079: " + files);
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -189,6 +191,29 @@ class SchemaRequiredTablesTest {
                 "CREATE TABLE `entity_mutation_policy_config`"));
         assertFalse(baseline.contains(
                 "CREATE TABLE `entity_record_version_dataset`"));
+    }
+
+    @Test
+    void externalSystemManagementLivesInForwardOnlyMigration()
+            throws Exception {
+        String baseline = Files.readString(BASELINE);
+        String externalSystems = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V079__external_system_management.sql"));
+
+        assertFalse(baseline.contains("CREATE TABLE `sys_external_system`"));
+        assertTrue(externalSystems.contains(
+                "CREATE TABLE `sys_external_system`"));
+        assertTrue(externalSystems.contains(
+                "CREATE TABLE `sys_external_system_parameter`"));
+        assertTrue(externalSystems.contains(
+                "UNIQUE KEY `uk_sys_external_system_code`"));
+        assertTrue(externalSystems.contains(
+                "UNIQUE KEY `uk_sys_external_system_parameter_active_name`"));
+        assertTrue(externalSystems.contains("`version` bigint NOT NULL"));
+        assertTrue(externalSystems.contains(
+                "'system:external-system:view'"));
+        assertTrue(externalSystems.contains(
+                "'system:external-system:manage'"));
     }
 
     @Test

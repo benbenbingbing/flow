@@ -49,6 +49,7 @@ const launches = Object.freeze({
     actorName: '原生编辑用户',
     surfaceType: 'FORM',
     entryMode: 'CREATE',
+    formPresentation: 'dialog',
     viewKey: stableViewKey
   }),
   listEditor: Object.freeze({
@@ -60,6 +61,7 @@ const launches = Object.freeze({
     actorName: '原生编辑用户',
     surfaceType: 'LIST',
     entryMode: 'LIST',
+    formPresentation: 'seamless',
     viewKey: 'native-work-order-list'
   }),
   directRestricted: Object.freeze({
@@ -315,7 +317,16 @@ function createBootstrap(session) {
           spec.entryMode,
           spec.entryMode === 'VIEW' ? recordId : null
         )
-      : null,
+      : {
+          ...nativeTarget(pinnedReleaseVersion, 'CREATE'),
+          mode: 'LIST',
+          defaultFormResolved: true,
+          listRelease: {
+            releaseId: `list_release_native_v${pinnedReleaseVersion}`,
+            version: pinnedReleaseVersion,
+            releaseResolutionToken: `rrt_native_list_v${pinnedReleaseVersion}_0123456789abcdef`
+          }
+        },
     capabilities: capabilities(spec),
     ui: {
       locale: 'zh-CN',
@@ -324,6 +335,9 @@ function createBootstrap(session) {
       showPagination: true,
       showToolbar: true,
       pageSize: 20,
+      ...(spec.formPresentation
+        ? { formPresentation: spec.formPresentation }
+        : {}),
       heightMode: 'AUTO'
     },
     limits: {
@@ -334,54 +348,38 @@ function createBootstrap(session) {
   }
 }
 
-function createListSchema() {
+/** 与正式 EntityDataList 相同的固定 LIST 发布快照，不再提供旧 Embed 投影 Schema。 */
+function createListSchema(version) {
   return {
-    view: {
-      key: launches.listEditor.viewKey,
-      surfaceType: 'LIST',
-      revision: 7
-    },
-    entity: { code: entityCode, name: '原生工单' },
-    list: {
-      selection: {
-        mode: 'SINGLE',
-        valueField: 'id',
-        returnableFields: ['code']
-      },
-      pagination: { allowTotal: false, maxPageSize: 100 },
-      columns: [
-        {
-          code: 'code', label: '工单号', type: 'TEXT',
-          width: 180, sortable: false
-        },
-        {
-          code: 'status', label: '状态', type: 'SELECT',
-          width: 120, sortable: false,
-          options: [{ label: '处理中', value: 'PROCESSING' }]
-        }
-      ],
-      filters: [
-        {
-          code: 'code', label: '工单号', type: 'TEXT',
-          operator: 'CONTAINS'
-        }
-      ]
-    },
-    form: null,
-    actions: [
+    id: 'list_native_work_order_config',
+    entityCode,
+    listKey,
+    listName: 'Flow 原生嵌入列表',
+    releaseId: `list_release_native_v${version}`,
+    publishedVersion: version,
+    selectionMode: 'SINGLE',
+    selectionConfig: { mode: 'SINGLE', valueField: 'id' },
+    viewConfig: { pagination: { pageSize: 20 } },
+    fields: [
       {
-        key: 'create', label: '新建', placement: 'TOOLBAR',
-        kind: 'NAVIGATION', transport: 'LOCAL_FORM',
-        recordMode: 'NONE', selectionMode: 'NONE',
-        requiresRecordVersion: false, idempotencyRequired: false,
-        enabled: true, disabledReason: null
+        fieldCode: 'code', fieldName: '工单号', fieldType: 'STRING',
+        showInList: true, isQuery: true, queryType: 'LIKE', width: 180
       },
       {
-        key: 'view', label: '查看', placement: 'ROW',
-        kind: 'NAVIGATION', transport: 'LOCAL_FORM',
-        recordMode: 'CURRENT', selectionMode: 'NONE',
-        requiresRecordVersion: false, idempotencyRequired: false,
-        enabled: true, disabledReason: null
+        fieldCode: 'status', fieldName: '状态', fieldType: 'STRING',
+        showInList: true, width: 120
+      }
+    ],
+    toolbarConfig: [
+      {
+        key: 'create', label: '新建', type: 'built-in',
+        enabled: true, buttonType: 'primary'
+      }
+    ],
+    rowActionConfig: [
+      {
+        key: 'view', label: '查看', type: 'built-in',
+        enabled: true, buttonType: 'primary', link: true
       }
     ]
   }
@@ -390,14 +388,15 @@ function createListSchema() {
 function listRecord() {
   return {
     id: recordId,
-    recordVersion: null,
-    values: {
+    dataNo: 'WO-NATIVE-001',
+    status: 'PROCESSING',
+    data: {
       code: 'WO-NATIVE-001',
       status: 'PROCESSING',
       serverOnlySecret: 'must-not-cross-list-boundary'
     },
-    meta: { updatedAt: '2026-08-31T08:20:00.000Z' },
-    actions: {
+    updatedAt: '2026-08-31T08:20:00.000Z',
+    actionCapabilities: {
       view: { visible: true, enabled: true, reason: null }
     }
   }
@@ -662,6 +661,8 @@ window.__flowHarness = {
   },
   snapshot,
   refresh() { return widget.refresh() },
+  setTheme(theme) { return widget.setTheme(theme) },
+  setLocale(locale) { return widget.setLocale(locale) },
   async destroy() {
     const currentWidget = widget
     try {
@@ -749,6 +750,7 @@ async function main() {
     requestLog: [],
     exchangeLog: [],
     releaseRequests: [],
+    listRequests: [],
     nativeTargetRequests: [],
     actionResolutions: [],
     logoutAcks: [],
@@ -904,20 +906,37 @@ async function main() {
           sendJson(response, 200, createBootstrap(session))
           return
         }
-        if (request.method === 'GET'
-            && url.pathname === '/api/embed/v1/runtime/schema') {
-          sendJson(response, 200, createListSchema())
-          return
-        }
-        if (request.method === 'POST'
-            && url.pathname === '/api/embed/v1/runtime/list/query') {
-          await readJsonBody(request)
+        if ((request.method === 'GET'
+              && url.pathname === `/api/entity-lists/${entityCode}/${listKey}/schema`)
+            || (request.method === 'POST'
+              && url.pathname === `/api/entity-lists/${entityCode}/${listKey}/query`)) {
+          const coordinates = request.method === 'GET'
+            ? Object.fromEntries(url.searchParams)
+            : await readJsonBody(request)
+          const version = session.pinnedReleaseVersion
+          state.listRequests.push({
+            launchKey: session.spec.key, method: request.method, ...coordinates
+          })
+          if (coordinates.releaseId !== `list_release_native_v${version}`
+              || Number(coordinates.releaseVersion) !== version
+              || coordinates.releaseResolutionToken
+                !== `rrt_native_list_v${version}_0123456789abcdef`) {
+            sendJson(response, 409, {
+              code: 409,
+              errorCode: 'EMBED_RELEASE_SIGNATURE_INVALID',
+              message: 'fixture LIST release coordinate mismatch'
+            })
+            return
+          }
+          if (request.method === 'GET') {
+            sendJson(response, 200, createListSchema(version))
+            return
+          }
           sendJson(response, 200, {
-            items: [listRecord()],
-            hasMore: false,
+            list: [listRecord()],
             pageNum: 1,
             pageSize: 20,
-            total: 999999,
+            total: 1,
             sql: 'must-not-cross-list-boundary'
           })
           return
@@ -1346,6 +1365,24 @@ async function main() {
       })()`
     )
     assert.match(nativeComponentSnapshot.dialogClass, /el-dialog/)
+    const defaultPresentation = await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const dialog = document.querySelector('.entity-data-form-dialog')
+      const rect = dialog.getBoundingClientRect()
+      return {
+        seamless: dialog.classList.contains('entity-form-dialog--seamless'),
+        hasMask: Boolean(dialog.closest('.el-overlay')),
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+        width: rect.width,
+        height: rect.height
+      }
+    })()`)
+    assert.equal(defaultPresentation.seamless, true,
+      '缺省 formPresentation 必须使用 seamless')
+    assert.equal(defaultPresentation.hasMask, false,
+      'seamless 根表单不得渲染黑色 overlay')
+    assert.ok(Math.abs(defaultPresentation.width - defaultPresentation.viewportWidth) <= 1)
+    assert.ok(Math.abs(defaultPresentation.height - defaultPresentation.viewportHeight) <= 1)
     assert.equal(nativeComponentSnapshot.dateCount, 2)
     assert.equal(nativeComponentSnapshot.selectCount, 2)
     assert.equal(nativeComponentSnapshot.switchCount, 1)
@@ -1493,12 +1530,47 @@ async function main() {
       '!document.querySelector(\'.el-message-box\')'
     ), '关闭原生确认弹框')
 
-    // 管理员激活 R2 后，已打开的 R1 Session 仍固定 R1；新 Launch 自动取得 R2。
+    // 宿主刷新不能静默丢弃输入；取消后不得重新加载，必须回传关联 ERROR。
+    const inputValues = `JSON.stringify([...document.querySelectorAll(
+      '.entity-data-form-dialog input'
+    )].map(input => input.value))`
+    const beforeRefreshValues = await cdp.frameEvaluate(state.embedOrigin, inputValues)
     const r1ReleaseCount = state.releaseRequests.filter(item =>
       item.launchKey === 'directEditorR1' && item.version === 1
     ).length
+    const cancelledRefreshId = await cdp.evaluate('window.__flowHarness.refresh()')
+    await waitFor(() => cdp.frameEvaluate(state.embedOrigin,
+      `document.querySelector('.el-message-box')?.textContent.includes('未保存')`
+    ), '刷新前确认未保存修改')
+    await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const box = document.querySelector('.el-message-box')
+      ;[...box.querySelectorAll('button')]
+        .find(item => item.textContent.trim() === '继续填写')?.click()
+    })()`)
+    await waitFor(async () => {
+      const snapshot = await cdp.evaluate('window.__flowHarness.snapshot()')
+      return snapshot.events.some(event => event.type === 'error'
+        && event.requestId === cancelledRefreshId)
+    }, '取消刷新回传关联错误')
+    assert.equal(await cdp.frameEvaluate(state.embedOrigin, inputValues), beforeRefreshValues)
+    assert.equal(state.releaseRequests.filter(item =>
+      item.launchKey === 'directEditorR1' && item.version === 1
+    ).length, r1ReleaseCount)
+    await waitFor(() => cdp.frameEvaluate(state.embedOrigin,
+      `!document.querySelector('.el-message-box')`
+    ), '取消刷新后保留表单')
+
+    // 管理员激活 R2 后，确认放弃输入的 R1 Session 仍固定 R1。
     state.activeReleaseVersion = 2
     await cdp.evaluate('window.__flowHarness.refresh()')
+    await waitFor(() => cdp.frameEvaluate(state.embedOrigin,
+      `document.querySelector('.el-message-box')?.textContent.includes('未保存')`
+    ), '再次刷新仍需确认未保存修改')
+    await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const box = document.querySelector('.el-message-box')
+      ;[...box.querySelectorAll('button')]
+        .find(item => item.textContent.trim() === '放弃修改')?.click()
+    })()`)
     await waitFor(() => state.releaseRequests.filter(item =>
       item.launchKey === 'directEditorR1' && item.version === 1
     ).length > r1ReleaseCount, '已打开会话继续读取固定 R1')
@@ -1509,6 +1581,37 @@ async function main() {
       )?.textContent.includes('R1')`
     ), 'R1 会话刷新后仍显示 R1')
     assert.equal(refreshedR1Title, true)
+
+    // 主题必须影响 Teleport 原生弹窗，不能靠整个页面反色伪造暗色。
+    await cdp.evaluate("window.__flowHarness.setTheme('dark')")
+    await waitFor(() => cdp.frameEvaluate(state.embedOrigin,
+      `document.documentElement.classList.contains('dark')`
+    ), '暗色主题应用到 iframe 根节点')
+    const themeState = await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const dialog = document.querySelector('.entity-data-form-dialog')
+      return {
+        filter: getComputedStyle(document.querySelector('.embed-shell')).filter,
+        background: getComputedStyle(dialog).backgroundColor,
+        colorScheme: getComputedStyle(document.documentElement).colorScheme
+      }
+    })()`)
+    assert.equal(themeState.filter, 'none')
+    assert.notEqual(themeState.background, 'rgb(255, 255, 255)')
+    assert.equal(themeState.colorScheme, 'dark')
+    await cdp.evaluate("window.__flowHarness.setTheme('light')")
+    await waitFor(() => cdp.frameEvaluate(state.embedOrigin,
+      `!document.documentElement.classList.contains('dark')`
+    ), '恢复浅色主题')
+
+    await cdp.evaluate("document.querySelector('#embed-root').style.width = '360px'")
+    const narrowDialog = await waitFor(() => cdp.frameEvaluate(state.embedOrigin, `(() => {
+      if (innerWidth > 360) return null
+      const rect = document.querySelector('.entity-data-form-dialog').getBoundingClientRect()
+      return { viewport: innerWidth, width: rect.width, left: rect.left, right: rect.right }
+    })()`), '窄容器表单布局')
+    assert.ok(narrowDialog.width >= narrowDialog.viewport - 24)
+    assert.ok(narrowDialog.left >= 0 && narrowDialog.right <= narrowDialog.viewport)
+    await cdp.evaluate("document.querySelector('#embed-root').style.width = ''")
     await destroyFixture('directEditorR1')
 
     // destroy ACK 后，同一映射用户的新 Launch 必须能立刻打开，且跟随新 ACTIVE R2。
@@ -1523,6 +1626,19 @@ async function main() {
       '新会话跟随 ACTIVE R2'
     )
     assert.match(directDialogR2.title, /Flow 原生需求表单 R2/)
+    const dialogPresentation = await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const dialog = document.querySelector('.entity-data-form-dialog')
+      return {
+        seamless: dialog.classList.contains('entity-form-dialog--seamless'),
+        hasMask: Boolean(dialog.closest('.el-overlay')),
+        width: dialog.getBoundingClientRect().width,
+        viewportWidth: innerWidth
+      }
+    })()`)
+    assert.equal(dialogPresentation.seamless, false)
+    assert.equal(dialogPresentation.hasMask, true,
+      '客户端指定 dialog 时必须保留原有遮罩')
+    assert.ok(dialogPresentation.width < dialogPresentation.viewportWidth)
     assert.deepEqual(
       stableLaunchUrlShape(directR1Url),
       stableLaunchUrlShape(directR2Url),
@@ -1544,22 +1660,23 @@ async function main() {
     )
     await destroyFixture('directEditorR2')
 
-    // LIST 保留投影列表，但 CREATE/VIEW 两条本地导航都进入同一 Flow 原生 Dialog。
+    // LIST 本体与 CREATE/VIEW 弹窗都由 Flow 原生组件读取 Session 固定的发布快照。
     const listMount = await mountFixture('listEditor', 'LIST 初始化')
     assert.equal(listMount.initialized.payload.surfaceType, 'LIST')
     await waitFor(() => cdp.frameEvaluate(
       state.embedOrigin,
-      `document.querySelector('#embed-list-title')?.textContent === 'Flow 原生嵌入列表'`
-    ), '原有 LIST 渲染')
+      `document.querySelector('.native-embedded-list .entity-data-list .el-table')
+        ?.innerText.includes('WO-NATIVE-001')`
+    ), 'Flow 原生 LIST 渲染')
     const listText = await cdp.frameEvaluate(
       state.embedOrigin,
-      `document.querySelector('.embed-list')?.innerText || ''`
+      `document.querySelector('.native-embedded-list .entity-data-list')?.innerText || ''`
     )
     assert.match(listText, /WO-NATIVE-001/)
     assert.equal(listText.includes('must-not-cross-list-boundary'), false)
 
     await cdp.frameEvaluate(state.embedOrigin, `(() => {
-      ;[...document.querySelectorAll('.embed-list button')]
+      ;[...document.querySelectorAll('.native-embedded-list .entity-data-list button')]
         .find(button => button.textContent.trim() === '新建')?.click()
     })()`)
     const listCreateDialog = await waitForDialog(
@@ -1567,6 +1684,13 @@ async function main() {
       'LIST → CREATE 原生 EntityDataFormDialog'
     )
     assert.match(listCreateDialog.title, /Flow 原生需求表单 R2/)
+    assert.equal(await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const dialog = document.querySelector(
+        '.entity-form-dialog:not(.entity-approval-dialog)'
+      )
+      return dialog.classList.contains('entity-form-dialog--seamless')
+        && !dialog.closest('.el-overlay')
+    })()`), true, 'LIST → CREATE 必须继承 seamless 展示')
     assert.equal(await cdp.frameEvaluate(
       state.embedOrigin,
       `document.querySelectorAll(
@@ -1580,17 +1704,31 @@ async function main() {
     })()`)
     await waitFor(() => cdp.frameEvaluate(
       state.embedOrigin,
-      'Boolean(document.querySelector(\'#embed-list-title\'))'
+      `Boolean(document.querySelector('.native-embedded-list .entity-data-list .el-table'))
+        && !document.querySelector('.entity-form-dialog:not(.entity-approval-dialog)')
+          ?.getClientRects().length`
     ), 'LIST → CREATE 取消返回列表')
 
-    await cdp.frameEvaluate(state.embedOrigin, `(() => {
-      ;[...document.querySelectorAll('.embed-list button')]
-        .find(button => button.textContent.trim() === '查看')?.click()
+    const clickedListRow = await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const table = document.querySelector('.native-embedded-list .el-table')
+      const button = [...table.querySelectorAll('.el-table__body button')]
+        .find(button => button.textContent.trim() === '查看')
+      const rowText = button?.closest('.el-table__row')?.innerText || ''
+      button?.click()
+      return { found: Boolean(button), rowText }
     })()`)
+    assert.equal(clickedListRow.found, true)
+    assert.match(clickedListRow.rowText, /WO-NATIVE-001/,
+      '查看必须点击真实数据行，不能误点原生列表筛选区的同名控件')
     await waitForDialog(
       '.entity-form-dialog.entity-approval-dialog',
       'LIST → VIEW 原生 EntityApprovalDialog'
-    )
+    ).catch(async error => {
+      const text = await cdp.frameEvaluate(state.embedOrigin, 'document.body.innerText')
+      throw new Error(`${error.message}；iframe=${text}；`
+        + `unhandled=${JSON.stringify(state.unhandledRequests)}；`
+        + `console=${JSON.stringify(consoleMessages.slice(-10))}`)
+    })
     const viewSnapshot = await cdp.frameEvaluate(state.embedOrigin, `(() => {
       const dialog = document.querySelector('.entity-form-dialog.entity-approval-dialog')
       const titleField = [...(dialog?.querySelectorAll('.node-field') || [])]
@@ -1606,6 +1744,11 @@ async function main() {
       }
     })()`)
     assert.equal(viewSnapshot.hasNativeDialog, true)
+    assert.equal(await cdp.frameEvaluate(state.embedOrigin, `(() => {
+      const dialog = document.querySelector('.entity-approval-dialog')
+      return dialog.classList.contains('entity-form-dialog--seamless')
+        && !dialog.closest('.el-overlay')
+    })()`), true, 'LIST → VIEW 必须继承 seamless 展示')
     assert.equal(viewSnapshot.titleValue, 'LIST 查看进入原生详情')
     assert.equal(viewSnapshot.canaryCount, 1)
     assert.deepEqual(viewSnapshot.buttons, ['关闭'])
@@ -1616,17 +1759,26 @@ async function main() {
     })()`)
     await waitFor(() => cdp.frameEvaluate(
       state.embedOrigin,
-      'Boolean(document.querySelector(\'#embed-list-title\'))'
+      `Boolean(document.querySelector('.native-embedded-list .entity-data-list .el-table'))
+        && !document.querySelector('.entity-form-dialog.entity-approval-dialog')
+          ?.getClientRects().length`
     ), 'LIST → VIEW 关闭返回列表')
     assert.deepEqual(
-      state.nativeTargetRequests
-        .filter(item => item.actorKey === 'editor')
-        .map(item => [item.mode, item.recordId, item.version]),
+      state.actionResolutions
+        .filter(item => item.launchKey === 'listEditor')
+        .map(item => [item.mode, item.recordId]),
       [
-        ['CREATE', null, 2],
-        ['VIEW', recordId, 2]
+        ['create', null],
+        ['view', recordId]
       ]
     )
+    assert.deepEqual(state.nativeTargetRequests, [],
+      '原生 LIST 弹窗必须使用自身固定表单，不能回到旧 Embed 导航投影链')
+    assert.deepEqual([...new Set(state.releaseRequests
+      .filter(item => item.launchKey === 'listEditor')
+      .map(item => item.version))], [2])
+    assert.ok(state.listRequests.some(item => item.method === 'GET'))
+    assert.ok(state.listRequests.some(item => item.method === 'POST'))
     await destroyFixture('listEditor')
 
     // 两个 Launch 的 Embed grant 相同，按钮差异只能来自映射 Flow 用户实时解析。
@@ -1681,8 +1833,13 @@ async function main() {
       [],
       '单一原生运行时不得调用旧 /api/embed/v1/runtime/form* 投影链'
     )
+    assert.deepEqual(state.requestLog.filter(item =>
+      ['/api/embed/v1/runtime/schema', '/api/embed/v1/runtime/list/query']
+        .includes(item.pathname)), [], 'LIST 必须直接复用原生 Schema 与 Query API')
     const requiredNativePaths = [
       `/api/entity/code/${entityCode}`,
+      `/api/entity-lists/${entityCode}/${listKey}/schema`,
+      `/api/entity-lists/${entityCode}/${listKey}/query`,
       `/api/entity-forms/${formId}/runtime-release`,
       '/api/ui-runtime/form-actions/resolve',
       `/api/entity-data/entity/${entityCode}/detail/${recordId}/load`
@@ -1695,6 +1852,7 @@ async function main() {
     }
     const nativeApiRequests = state.requestLog.filter(item =>
       item.pathname.startsWith('/api/entity/')
+        || item.pathname.startsWith('/api/entity-lists/')
         || item.pathname.startsWith('/api/entity-forms/')
         || item.pathname.startsWith('/api/entity-data/')
         || item.pathname.startsWith('/api/ui-runtime/')

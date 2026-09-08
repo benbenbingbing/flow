@@ -35,6 +35,8 @@ class EmbedPersistenceSqlContractTest {
         assertTrue(sql.contains("launch_code_digest"));
         assertTrue(sql.contains("context_ciphertext"));
         assertTrue(sql.contains("subject_digest"));
+        assertTrue(sql.contains("ui_form_presentation"));
+        assertTrue(sql.contains("#{uiFormPresentation}"));
         assertFalse(sql.contains("launch_code,"));
         assertFalse(sql.contains("external_user_id"));
         assertFalse(sql.contains("assertion"));
@@ -84,8 +86,17 @@ class EmbedPersistenceSqlContractTest {
         assertTrue(consume.contains("channel_id = #{channelId}"));
         assertTrue(consume.contains("parent_origin = #{parentOrigin}"));
         assertTrue(insert.contains("session_token_digest"));
+        assertTrue(insert.contains("ui_form_presentation"));
+        assertTrue(insert.contains("#{plan.candidate.launch.uiFormPresentation}"));
         assertFalse(insert.contains("access_token"));
         assertTrue(insert.contains("slot_released"));
+    }
+
+    @Test
+    void runtimeBootstrapReadsFormPresentationFromThePinnedSession() {
+        String sql = selectSqlByName(EmbedRuntimeReleaseMapper.class, "find");
+
+        assertTrue(sql.contains("s.ui_form_presentation"));
     }
 
     @Test

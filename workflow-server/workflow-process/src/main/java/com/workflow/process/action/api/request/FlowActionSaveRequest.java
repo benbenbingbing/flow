@@ -18,10 +18,8 @@ public class FlowActionSaveRequest {
     @NotBlank(message = "流程配置 ID 不能为空")
     private String processConfigId;
 
-    /** 顺序流 ID（兼容旧字段，新配置使用 elementId） */
-    private String sequenceFlowId;
-
     /** 作用域类型：PROCESS、NODE、SEQUENCE_FLOW */
+    @NotBlank(message = "动作作用域不能为空")
     private String scopeType;
 
     /** 绑定的 BPMN 元素 ID；流程级可空 */
@@ -47,8 +45,6 @@ public class FlowActionSaveRequest {
     @NotBlank(message = "处理器不能为空")
     private String interfaceName;
 
-    /** 方法名（默认 execute） */
-    private String methodName;
     /** 参数 JSON */
     private String paramsJson;
     /** 执行顺序（越小越先执行） */

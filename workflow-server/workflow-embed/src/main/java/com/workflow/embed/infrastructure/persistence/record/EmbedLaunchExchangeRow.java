@@ -29,6 +29,7 @@ public record EmbedLaunchExchangeRow(
         String contextDigestKeyVersion,
         String uiLocale,
         String uiTheme,
+        String uiFormPresentation,
         String launchCodeDigest,
         String launchStatus,
         LocalDateTime expiresAt,

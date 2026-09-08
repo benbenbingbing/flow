@@ -1,0 +1,13 @@
+package com.workflow.admin.externalsystem.api;
+
+/**
+ * 外部系统管理接口的稳定业务错误码。
+ */
+public enum ExternalSystemErrorCode {
+    EXTERNAL_SYSTEM_INVALID_REQUEST,
+    EXTERNAL_SYSTEM_NOT_FOUND,
+    EXTERNAL_SYSTEM_CODE_DUPLICATED,
+    EXTERNAL_SYSTEM_PARAMETER_NAME_DUPLICATED,
+    EXTERNAL_SYSTEM_VERSION_CONFLICT,
+    EXTERNAL_SYSTEM_NOT_AUTHENTICATED
+}

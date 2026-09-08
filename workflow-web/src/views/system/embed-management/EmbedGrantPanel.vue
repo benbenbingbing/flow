@@ -23,8 +23,18 @@
     />
 
     <el-table v-loading="loading" :data="grants" border>
-      <el-table-column prop="applicationId" label="Application ID" min-width="180" />
-      <el-table-column prop="identityProviderId" label="Identity Provider" min-width="180" />
+      <el-table-column label="接入应用" min-width="210">
+        <template #default="{ row }">
+          <div>{{ applicationLabel(row.applicationId) }}</div>
+          <small class="resource-id">{{ row.applicationId }}</small>
+        </template>
+      </el-table-column>
+      <el-table-column label="身份提供方" min-width="210">
+        <template #default="{ row }">
+          <div>{{ providerLabel(row.identityProviderId) }}</div>
+          <small class="resource-id">{{ row.identityProviderId }}</small>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="statusType(row.status)" effect="plain">
@@ -75,6 +85,7 @@
     </el-table>
 
     <el-dialog
+      v-if="canManage"
       v-model="editorVisible"
       :title="editingGrant ? '编辑 Grant' : '新建 Grant'"
       width="min(860px, 96vw)"
@@ -91,6 +102,14 @@
         :closable="false"
         class="panel-alert"
       />
+      <el-alert
+        v-if="optionError"
+        type="warning"
+        :title="optionError"
+        show-icon
+        :closable="false"
+        class="panel-alert"
+      />
       <el-form label-position="top">
         <el-alert
           type="info"
@@ -100,27 +119,57 @@
           title="Grant 只授权应用、来源与能力；每次新 Launch 自动使用目标资源最新 ACTIVE 版本，已打开 Session 不会中途漂移。"
         />
         <div class="form-grid">
-          <el-form-item label="Application ID" required>
+          <el-form-item label="接入应用" required>
             <template #label>
               <ConfigHelpLabel
-                label="Application ID"
+                label="接入应用"
                 help-key="embed.application.internalId"
               />
             </template>
-            <el-input
+            <el-select
               v-model="grantForm.applicationId"
+              filterable
+              remote
+              reserve-keyword
+              :remote-method="loadActiveApplicationOptions"
+              :loading="applicationOptionsLoading"
               :disabled="Boolean(editingGrant)"
-              maxlength="64"
-            />
+              placeholder="按应用名称搜索"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="application in selectableApplications"
+                :key="application.id"
+                :label="applicationOptionLabel(application)"
+                :value="application.id"
+              />
+            </el-select>
           </el-form-item>
-          <el-form-item label="Identity Provider ID" required>
+          <el-form-item label="身份提供方" required>
             <template #label>
               <ConfigHelpLabel
-                label="Identity Provider ID"
+                label="身份提供方"
                 help-key="embed.grant.identityProvider"
               />
             </template>
-            <el-input v-model="grantForm.identityProviderId" maxlength="64" />
+            <el-select
+              v-model="grantForm.identityProviderId"
+              filterable
+              remote
+              reserve-keyword
+              :remote-method="loadActiveProviderOptions"
+              :loading="providerOptionsLoading"
+              placeholder="按 Provider 名称搜索"
+              style="width: 100%"
+              @change="handleProviderChange"
+            >
+              <el-option
+                v-for="provider in selectableProviders"
+                :key="provider.id"
+                :label="providerOptionLabel(provider)"
+                :value="provider.id"
+              />
+            </el-select>
           </el-form-item>
         </div>
         <div class="form-grid">
@@ -263,7 +312,7 @@
       </el-form>
       <template #footer>
         <el-button @click="editorVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveGrant">
+        <el-button v-if="canManage" type="primary" :loading="saving" @click="saveGrant">
           保存
         </el-button>
       </template>
@@ -272,7 +321,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { embedManagementApi } from '@/api/system/embedManagement'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
@@ -292,6 +341,7 @@ import {
 const props = defineProps({
   view: { type: Object, required: true }
 })
+const emit = defineEmits(['changed'])
 
 const userStore = useUserStore()
 const capabilities = EMBED_CAPABILITIES
@@ -300,21 +350,49 @@ const blockedCapabilities = computed(() => [
   ...(props.view.surfaceType === 'LIST' ? ['ACTION_EXECUTE'] : [])
 ])
 const grants = ref([])
+const applicationOptions = ref([])
+const providerOptions = ref([])
+const applicationSearchOptions = ref([])
+const providerSearchOptions = ref([])
 const loading = ref(false)
 const saving = ref(false)
+const applicationOptionsLoading = ref(false)
+const providerOptionsLoading = ref(false)
 const loadError = ref('')
 const editorError = ref('')
+const optionError = ref('')
 const editorVisible = ref(false)
 const editingGrant = ref(null)
 const grantForm = reactive(defaultGrantForm())
+let applicationOptionsSequence = 0
+let providerOptionsSequence = 0
 
 const canManage = computed(() => hasEmbedPermission(
   userStore.permissions,
   EMBED_PERMISSIONS.manage,
   userStore.isSuperAdmin
 ))
+watch(canManage, allowed => {
+  if (!allowed) editorVisible.value = false
+})
+const selectableApplications = computed(() => mergeSelectedOption(
+  applicationSearchOptions.value.filter(optionAvailable),
+  editingGrant.value ? grantForm.applicationId : '',
+  applicationOptions.value,
+  { id: grantForm.applicationId, name: grantForm.applicationId }
+))
+const selectableProviders = computed(() => mergeSelectedOption(
+  providerSearchOptions.value.filter(optionAvailable),
+  editingGrant.value ? grantForm.identityProviderId : '',
+  providerOptions.value,
+  { id: grantForm.identityProviderId, name: grantForm.identityProviderId }
+))
 
 watch(() => props.view.id, loadGrants, { immediate: true })
+onMounted(() => Promise.all([
+  loadActiveApplicationOptions(),
+  loadActiveProviderOptions()
+]))
 
 function defaultGrantForm() {
   return {
@@ -338,6 +416,7 @@ async function loadGrants() {
   loadError.value = ''
   try {
     grants.value = await embedManagementApi.grants.list(props.view.id) || []
+    await loadGrantOptionLabels(grants.value)
   } catch (error) {
     loadError.value = describeEmbedManagementError(error)
   } finally {
@@ -346,11 +425,15 @@ async function loadGrants() {
 }
 
 function openCreate() {
+  if (!canManage.value) return
   clearEditor()
   editorVisible.value = true
+  loadActiveApplicationOptions()
+  loadActiveProviderOptions()
 }
 
 function openEdit(row) {
+  if (!canManage.value || row?.status === 'REVOKED') return
   editingGrant.value = row
   Object.assign(grantForm, {
     applicationId: row.applicationId,
@@ -369,6 +452,8 @@ function openEdit(row) {
     expiresAt: utcDate(row.expiresAt)
   })
   editorVisible.value = true
+  loadApplicationOptionById(row.applicationId)
+  loadProviderOptionById(row.identityProviderId)
 }
 
 function clearEditor() {
@@ -377,9 +462,138 @@ function clearEditor() {
   Object.assign(grantForm, defaultGrantForm())
 }
 
+/**
+ * 从接入向导进入时，直接定位该应用已有的 Grant；尚未创建则预填名称选择结果。
+ */
+async function configure(applicationId, identityProviderId = '') {
+  if (!canManage.value) return
+  await loadGrants()
+  const existing = grants.value.find(item => item.applicationId === applicationId)
+  if (existing) {
+    if (existing.status === 'REVOKED') return
+    openEdit(existing)
+    return
+  }
+  clearEditor()
+  grantForm.applicationId = applicationId || ''
+  grantForm.identityProviderId = identityProviderId || ''
+  editorVisible.value = true
+  await Promise.all([
+    applicationId ? loadActiveApplicationOptions(applicationId) : Promise.resolve(),
+    identityProviderId ? loadActiveProviderOptions(identityProviderId) : Promise.resolve()
+  ])
+}
+
+/** 创建态只查询 ACTIVE 应用；当前搜索结果与历史名称缓存分离，避免旧结果干扰远程筛选。 */
+async function loadActiveApplicationOptions(keyword = '') {
+  const sequence = ++applicationOptionsSequence
+  applicationOptionsLoading.value = true
+  optionError.value = ''
+  try {
+    const result = await embedManagementApi.options.applications({
+      keyword: String(keyword || '').trim() || undefined,
+      status: 'ACTIVE',
+      pageNum: 1,
+      pageSize: 100
+    })
+    if (sequence !== applicationOptionsSequence) return
+    const rows = result?.list || result?.records || []
+    applicationSearchOptions.value = rows
+    applicationOptions.value = mergeOptionRows(
+      applicationOptions.value,
+      rows
+    )
+  } catch (error) {
+    if (sequence !== applicationOptionsSequence) return
+    applicationSearchOptions.value = []
+    optionError.value = `接入应用加载失败：${describeEmbedManagementError(error)}`
+  } finally {
+    if (sequence === applicationOptionsSequence) applicationOptionsLoading.value = false
+  }
+}
+
+/** 创建态只查询 ACTIVE Provider；历史 Grant 的当前值由无状态精确查询补回。 */
+async function loadActiveProviderOptions(keyword = '') {
+  const sequence = ++providerOptionsSequence
+  providerOptionsLoading.value = true
+  optionError.value = ''
+  try {
+    const result = await embedManagementApi.options.identityProviders({
+      keyword: String(keyword || '').trim() || undefined,
+      status: 'ACTIVE',
+      pageNum: 1,
+      pageSize: 100
+    })
+    if (sequence !== providerOptionsSequence) return
+    const rows = result?.list || result?.records || []
+    providerSearchOptions.value = rows
+    providerOptions.value = mergeOptionRows(
+      providerOptions.value,
+      rows
+    )
+  } catch (error) {
+    if (sequence !== providerOptionsSequence) return
+    providerSearchOptions.value = []
+    optionError.value = `身份提供方加载失败：${describeEmbedManagementError(error)}`
+  } finally {
+    if (sequence === providerOptionsSequence) providerOptionsLoading.value = false
+  }
+}
+
+/**
+ * 表格与编辑器按稳定 ID 补拉名称，不施加 ACTIVE 条件，以便已停用或撤销的历史值仍可辨认。
+ */
+async function loadGrantOptionLabels(rows) {
+  const applicationIds = [...new Set(rows.map(row => row.applicationId).filter(Boolean))]
+  const providerIds = [...new Set(rows.map(row => row.identityProviderId).filter(Boolean))]
+  await Promise.all([
+    ...applicationIds.map(loadApplicationOptionById),
+    ...providerIds.map(loadProviderOptionById)
+  ])
+}
+
+async function loadApplicationOptionById(applicationId) {
+  try {
+    const result = await embedManagementApi.options.applications({
+      keyword: applicationId,
+      status: undefined,
+      pageNum: 1,
+      pageSize: 100
+    })
+    const option = (result?.list || result?.records || [])
+      .find(item => item.id === applicationId)
+    if (option) applicationOptions.value = mergeOptionRows(applicationOptions.value, [option])
+  } catch {
+    // 名称补拉失败不影响 Grant 管理，稳定 ID 仍保留在表格和编辑器中。
+  }
+}
+
+async function loadProviderOptionById(providerId) {
+  try {
+    const result = await embedManagementApi.options.identityProviders({
+      keyword: providerId,
+      status: undefined,
+      pageNum: 1,
+      pageSize: 100
+    })
+    const option = (result?.list || result?.records || [])
+      .find(item => item.id === providerId)
+    if (option) providerOptions.value = mergeOptionRows(providerOptions.value, [option])
+  } catch {
+    // 名称补拉失败不影响 Grant 管理，稳定 ID 仍保留在表格和编辑器中。
+  }
+}
+
+function handleProviderChange(providerId) {
+  const provider = providerOptions.value.find(item => item.id === providerId)
+  if (provider) {
+    grantForm.trustedSubjectAssertion = provider.type === 'TRUSTED_EXTERNAL_ID'
+  }
+}
+
 function buildGrantPayload() {
   if (!grantForm.applicationId.trim() || !grantForm.identityProviderId.trim()) {
-    throw new Error('Application ID 和 Identity Provider ID 为必填')
+    throw new Error('请选择接入应用和身份提供方')
   }
   if (!grantForm.capabilityCeiling.length) {
     throw new Error('至少选择一项 Capability Ceiling')
@@ -401,6 +615,7 @@ function buildGrantPayload() {
 }
 
 async function saveGrant() {
+  if (!canManage.value) return
   let payload
   try {
     payload = buildGrantPayload()
@@ -419,6 +634,7 @@ async function saveGrant() {
     ElMessage.success('Grant 已保存')
     editorVisible.value = false
     await loadGrants()
+    emit('changed')
   } catch (error) {
     editorError.value = describeEmbedManagementError(error)
   } finally {
@@ -439,6 +655,7 @@ async function toggleStatus(row) {
     )
     ElMessage.success(target === 'ACTIVE' ? 'Grant 已启用' : 'Grant 已停用')
     await loadGrants()
+    emit('changed')
   } catch (error) {
     ElMessage.error(describeEmbedManagementError(error))
   }
@@ -469,6 +686,7 @@ async function revoke(row) {
     )
     ElMessage.success('Grant 已撤销')
     await loadGrants()
+    emit('changed')
   } catch (error) {
     ElMessage.error(describeEmbedManagementError(error))
   }
@@ -486,6 +704,46 @@ function statusType(status) {
 function statusLabel(status) {
   return { ACTIVE: '启用', DISABLED: '停用', REVOKED: '已撤销' }[status] || status
 }
+
+function optionAvailable(option) {
+  if (option?.status !== 'ACTIVE') return false
+  return !option.expiresAt || new Date(option.expiresAt).getTime() > Date.now()
+}
+
+function mergeSelectedOption(options, selectedId, allOptions, fallback) {
+  if (!selectedId || options.some(option => option.id === selectedId)) return options
+  const known = allOptions.find(option => option.id === selectedId)
+  return [...options, known || fallback]
+}
+
+function mergeOptionRows(current, incoming) {
+  const byId = new Map([...current, ...incoming].map(item => [item.id, item]))
+  return [...byId.values()]
+}
+
+function applicationOptionLabel(application) {
+  const name = application?.name || application?.applicationName || application?.id
+  return application?.clientId
+    ? `${name}（${application.clientId}）`
+    : name
+}
+
+function providerOptionLabel(provider) {
+  const name = provider?.name || provider?.id
+  return provider?.type ? `${name}（${provider.type}）` : name
+}
+
+function applicationLabel(applicationId) {
+  const application = applicationOptions.value.find(item => item.id === applicationId)
+  return application?.name || application?.applicationName || '未加载应用名称'
+}
+
+function providerLabel(providerId) {
+  return providerOptions.value.find(item => item.id === providerId)?.name
+    || '未加载 Provider 名称'
+}
+
+defineExpose({ configure, refresh: loadGrants })
 </script>
 
 <style scoped>
@@ -522,6 +780,11 @@ function statusLabel(status) {
   overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
+}
+
+.resource-id {
+  color: #909399;
+  overflow-wrap: anywhere;
 }
 
 .form-grid {

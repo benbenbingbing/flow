@@ -7,7 +7,9 @@ import com.workflow.entity.ui.api.request.UiDataSourceDeleteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
 import com.workflow.entity.ui.api.response.UiAvailableOperation;
+import com.workflow.entity.ui.api.response.UiDataSourceReferenceDTO;
 import com.workflow.entity.ui.application.UiAvailableOperationService;
+import com.workflow.entity.ui.application.UiDataSourceReferenceService;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiDataSourceService;
@@ -36,6 +38,7 @@ public class UiDataSourceController {
 
     private final UiDataSourceService service;
     private final UiAvailableOperationService availableOperationService;
+    private final UiDataSourceReferenceService referenceService;
     private final UiConfigurationAccessService accessService;
 
     /**
@@ -111,7 +114,8 @@ public class UiDataSourceController {
     }
 
     /**
-     * 删除数据源定义（乐观锁校验）。POST /api/ui-data-sources/{id}/delete
+     * 删除数据源定义（乐观锁校验，存在仍可执行的发布引用时拒绝）。
+     * POST /api/ui-data-sources/{id}/delete
      *
      * @param id      数据源ID
      * @param request 删除请求，携带期望版本号
@@ -149,6 +153,21 @@ public class UiDataSourceController {
             @PathVariable String id) {
         accessService.requireGlobalConfigurationAccess();
         return Result.success(service.operations(id));
+    }
+
+    /**
+     * 查询一个接口服务在事件绑定草稿与激活发布版本中的使用位置及生效状态。
+     * GET /api/ui-data-sources/{id}/references
+     *
+     * @param id 接口服务ID
+     * @return 按“事件绑定 + 执行步骤”拆分的只读引用列表
+     */
+    @RequiresPermission("system:interface-service:list")
+    @GetMapping("/{id}/references")
+    public Result<List<UiDataSourceReferenceDTO>> references(
+            @PathVariable String id) {
+        accessService.requireGlobalConfigurationAccess();
+        return Result.success(referenceService.references(id));
     }
 
     @RequiresPermission("system:interface-service:test")

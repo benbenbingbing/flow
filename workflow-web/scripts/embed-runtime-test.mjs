@@ -3,10 +3,54 @@ import {
   EMBED_RUNTIME_STATES,
   createEmbedRuntimeController
 } from '../src/embed/runtime/embedRuntimeController.js'
+import { createRuntimeFormDiscardGuard } from '../src/shared/runtime-form-discard.js'
 
 const TEST_LAUNCH_CODE = 'A'.repeat(43)
 const PARENT_NONCE = Buffer.alloc(32, 201).toString('base64url')
 const CHILD_NONCE = Buffer.alloc(32, 151).toString('base64url')
+
+// 关闭/刷新取消必须保留输入；并发触发只显示一个确认框，安全清理不被阻止。
+{
+  const data = { title: '初始值' }
+  let enabled = true
+  let confirmations = 0
+  let settle
+  const guard = createRuntimeFormDiscardGuard({
+    readValue: () => data,
+    enabled: () => enabled,
+    confirm() {
+      confirmations += 1
+      return new Promise((resolve, reject) => { settle = { resolve, reject } })
+    }
+  })
+  guard.markSaved()
+  assert.equal(await guard.confirmDiscard(), true)
+  assert.equal(confirmations, 0)
+  data.title = '正在填写'
+  const first = guard.confirmDiscard()
+  assert.equal(first, guard.confirmDiscard())
+  await Promise.resolve()
+  assert.equal(confirmations, 1)
+  settle.reject(new Error('cancel'))
+  assert.equal(await first, false)
+  assert.equal(data.title, '正在填写')
+  assert.equal(guard.isDirty(), true)
+  const event = { preventDefault() { this.prevented = true } }
+  guard.beforeUnload(event)
+  assert.equal(event.prevented, true)
+  assert.equal(event.returnValue, '')
+  const next = guard.confirmDiscard()
+  await Promise.resolve()
+  settle.resolve()
+  assert.equal(await next, true)
+  assert.equal(guard.isDirty(), true, '批准丢弃不等于保存成功')
+  enabled = false
+  assert.equal(await guard.confirmDiscard(), true)
+  assert.equal(guard.isDirty(), false)
+  enabled = true
+  guard.markSaved()
+  assert.equal(guard.isDirty(), false)
+}
 
 const entryConfig = Object.freeze({
   launchId: 'lch_0123456789abcdef',
@@ -269,6 +313,15 @@ assert.equal(controller.getSnapshot().theme, 'dark')
 assert.equal(bridge.sent.at(-1).type, 'ack')
 assert.equal(bridge.sent.at(-1).payload.command, 'set-theme')
 
+bridge.command('set-locale', { locale: 'en-US' }, 'locale_unsupported_01')
+assert.equal(controller.getSnapshot().locale, 'zh-CN')
+assert.equal(bridge.sent.at(-1).type, 'error')
+assert.equal(bridge.sent.at(-1).payload.errorCode, 'EMBED_OPERATION_NOT_ALLOWED')
+assert.equal(bridge.sent.at(-1).options.requestId, 'locale_unsupported_01')
+bridge.command('set-locale', { locale: 'zh-cn' }, 'locale_supported_01')
+assert.equal(controller.getSnapshot().locale, 'zh-CN')
+assert.equal(bridge.sent.at(-1).type, 'ack')
+
 await controller.refreshList({
   queryValues: { code: 'WO-2', fixedFilters: { tenant: 'other' } },
   pageNum: 2,
@@ -379,6 +432,8 @@ const nativeCalls = []
 const mappedActors = []
 let delegatedReady = 0
 let delegatedReset = 0
+let nativeRefreshError = null
+let nativeRefreshResult = true
 const nativeBridge = createBridgeHarness()
 const nativeController = createEmbedRuntimeController({
   entryConfig,
@@ -407,6 +462,10 @@ const nativeController = createEmbedRuntimeController({
   onDelegatedSessionReady() { delegatedReady += 1 },
   onDelegatedSessionReset() { delegatedReset += 1 },
   onRuntimeIdentityReady(actor) { mappedActors.push(actor) },
+  async onRefreshNativeForm() {
+    if (nativeRefreshError) throw nativeRefreshError
+    return nativeRefreshResult
+  },
   setTimeoutImpl() { return 1 },
   clearTimeoutImpl() {}
 })
@@ -424,6 +483,34 @@ assert.deepEqual(nativeSnapshot.nativeFormTarget.parameters, { source: 'partner'
 assert.deepEqual(mappedActors[0].permissions, ['entity:record:create'])
 assert.equal(delegatedReady, 1)
 assert.deepEqual(nativeCalls, ['bootstrap'])
+
+nativeRefreshError = Object.assign(new Error('暂时不可用'), {
+  errorCode: 'EMBED_RUNTIME_UNAVAILABLE', status: 503, traceId: 'refresh-trace-001'
+})
+nativeBridge.command('refresh', {}, 'refresh_failure_01')
+const refreshFailure = await nativeBridge.waitForSent(message =>
+  message.type === 'error' && message.options?.requestId === 'refresh_failure_01')
+assert.equal(refreshFailure.payload.traceId, 'refresh-trace-001')
+assert.equal(refreshFailure.payload.recoverable, true)
+assert.equal(nativeController.getSnapshot().state, EMBED_RUNTIME_STATES.READY)
+assert.equal(nativeController.getSnapshot().formLoading, false)
+assert.equal(nativeBridge.sent.some(message =>
+  message.type === 'ack' && message.options?.requestId === 'refresh_failure_01'), false)
+
+nativeRefreshError = null
+nativeRefreshResult = false
+nativeBridge.command('refresh', {}, 'refresh_cancelled_01')
+const refreshCancelled = await nativeBridge.waitForSent(message =>
+  message.type === 'error' && message.options?.requestId === 'refresh_cancelled_01')
+assert.equal(refreshCancelled.payload.errorCode, 'EMBED_OPERATION_NOT_ALLOWED')
+assert.match(refreshCancelled.payload.message, /内容已保留/)
+assert.equal(nativeController.getSnapshot().nativeFormTarget.formId, 'form-001')
+
+nativeRefreshResult = true
+nativeBridge.command('refresh', {}, 'refresh_success_01')
+await nativeBridge.waitForSent(message =>
+  message.type === 'ack' && message.options?.requestId === 'refresh_success_01')
+assert.equal(nativeController.getSnapshot().formError, null)
 
 await nativeController.submitNativeRecord({ supplierId: 'supplier-1' }, 'save')
 const createCall = nativeCalls.find(call => call?.operation === 'createRecord')

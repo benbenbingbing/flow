@@ -20,14 +20,8 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     /**
      * 查询流程配置下所有草稿状态的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND status = 'DRAFT' AND deleted = 0 ORDER BY sequence_flow_id, sort_order")
+    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND status = 'DRAFT' AND deleted = 0 ORDER BY scope_type, element_id, trigger_timing, sort_order")
     List<FlowAction> findDraftActionsByProcessConfigId(@Param("processConfigId") String processConfigId);
-    
-    /**
-     * 查询顺序流下所有草稿状态的动作（排除已删除）
-     */
-    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'DRAFT' AND deleted = 0 ORDER BY sort_order")
-    List<FlowAction> findDraftActionsBySequenceFlowId(@Param("processConfigId") String processConfigId, @Param("sequenceFlowId") String sequenceFlowId);
 
     /**
      * 按作用域与元素绑定查询草稿动作。
@@ -52,14 +46,8 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     /**
      * 查询版本下所有已发布的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND status = 'PUBLISHED' AND deleted = 0 ORDER BY sequence_flow_id, sort_order")
+    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND status = 'PUBLISHED' AND deleted = 0 ORDER BY scope_type, element_id, trigger_timing, sort_order")
     List<FlowAction> findPublishedActionsByVersionId(@Param("versionId") String versionId);
-    
-    /**
-     * 查询版本下特定顺序流的动作（排除已删除）
-     */
-    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND sequence_flow_id = #{sequenceFlowId} AND status = 'PUBLISHED' AND deleted = 0 ORDER BY sort_order")
-    List<FlowAction> findPublishedActionsBySequenceFlowId(@Param("versionId") String versionId, @Param("sequenceFlowId") String sequenceFlowId);
 
     /**
      * 按版本、作用域、元素与触发时机查询已发布动作。

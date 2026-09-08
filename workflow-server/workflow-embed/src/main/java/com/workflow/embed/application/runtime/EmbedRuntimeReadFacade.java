@@ -124,6 +124,7 @@ public class EmbedRuntimeReadFacade {
                 new EmbedRuntimeViews.Ui(
                         normalized(target.release().uiLocale(), "zh-CN"),
                         normalized(target.release().uiTheme(), "light"),
+                        normalizedFormPresentation(target.release().uiFormPresentation()),
                         ui.showSearch(), ui.showPagination(), ui.showToolbar(),
                         ui.pageSize(), ui.heightMode()),
                 new EmbedRuntimeViews.Limits(
@@ -761,6 +762,11 @@ public class EmbedRuntimeReadFacade {
 
     private static String normalized(String value, String fallback) {
         return StringUtils.hasText(value) ? value.trim() : fallback;
+    }
+
+    /** Legacy/null snapshots use the V1 seamless default; constrained values pass through. */
+    private static String normalizedFormPresentation(String value) {
+        return "dialog".equals(value) ? "dialog" : "seamless";
     }
 
     private static EmbedException invalidRequest() {

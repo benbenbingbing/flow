@@ -202,6 +202,7 @@
       :list-release-version="listConfig?.publishedVersion"
       :list-release-resolution-token="releaseResolutionToken"
       :entity-status-options="entityStatusOptions"
+      :form-presentation="embeddedFormPresentation"
       @success="loadDataList"
     />
     <EntityApprovalDialog
@@ -215,6 +216,7 @@
       :list-release-version="listConfig?.publishedVersion"
       :list-release-resolution-token="releaseResolutionToken"
       :entity-status-options="entityStatusOptions"
+      :form-presentation="embeddedFormPresentation"
       @success="loadDataList"
     />
     <EntityRecordVersionDrawer
@@ -301,6 +303,7 @@ const props = withDefaults(defineProps<{
   maxHeight?: number
   defaultForm?: Record<string, any> | null
   allowDefaultFormResolve?: boolean
+  formPresentation?: 'seamless' | 'dialog'
 }>(), {
   entityCode: '',
   listKey: '',
@@ -324,7 +327,8 @@ const props = withDefaults(defineProps<{
   pageSize: 10,
   maxHeight: 420,
   defaultForm: null,
-  allowDefaultFormResolve: true
+  allowDefaultFormResolve: true,
+  formPresentation: 'dialog'
 })
 
 const {
@@ -333,6 +337,12 @@ const {
   showPagination,
   maxHeight
 } = toRefs(props)
+// 只有原生嵌入列表可以改变表单容器；后台列表始终保留既有 Dialog 展示。
+const embeddedFormPresentation = computed(() =>
+  embedded.value && props.formPresentation === 'seamless'
+    ? 'seamless'
+    : 'dialog'
+)
 
 const emit = defineEmits<{
   confirm: [rows: any[]]
@@ -814,8 +824,16 @@ const getStatusText = (status: string) => {
 const formatDate = (date: string) => {
   return formatDateValue(date)
 }
-// 加载实体定义
-const loadEntityDefinition = async () => {
+let entityLoadPromise: Promise<void> | null = null
+
+/** 记录当前初始化任务，供宿主刷新等待，避免在 exact LIST 配置尚未加载时查询。 */
+const loadEntityDefinition = (options: { throwOnError?: boolean } = {}) => {
+  entityLoadPromise = prepareEntityDefinition(options)
+  return entityLoadPromise
+}
+
+// 页面事件默认就地显示错误；宿主刷新需要原始错误以关联已有 error 事件。
+const prepareEntityDefinition = async (options: { throwOnError?: boolean } = {}) => {
   if (!entityCode.value) return
   loading.value = true
   loadError.value = ''
@@ -847,10 +865,11 @@ const loadEntityDefinition = async () => {
     queryFields.value.forEach((field: any) => {
       queryForm[field.fieldCode] = field.defaultValue ?? ''
     })
-    await loadDataList()
+    await loadDataList(options)
   } catch (error) {
     console.error('加载实体定义失败:', error)
     loadError.value = error?.message || '无法读取实体或列表配置，请检查发布状态后重试。'
+    if (options?.throwOnError === true) throw error
   } finally {
     loading.value = false
   }
@@ -882,7 +901,8 @@ const loadListConfig = async () => {
     console.error('加载列表配置失败:', e)
     listConfig.value = null
     listConfigFields.value = []
-    throw new Error(e?.message || '列表不存在、尚未发布，或当前账号没有访问权限。')
+    // 保留请求层的 errorCode、traceId 和 HTTP 状态，供嵌入宿主诊断与恢复判断。
+    throw e || new Error('列表不存在、尚未发布，或当前账号没有访问权限。')
   }
 }
 // 加载新增数据表单
@@ -915,8 +935,8 @@ const loadDefaultForm = async (notifyOnError = false) => {
     return false
   }
 }
-// 加载数据列表
-const loadDataList = async () => {
+/** 加载实际列表数据；throwOnError 仅供需要确认刷新结果的内部调用方使用。 */
+const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
   if (!entityCode.value) return
   tableLoading.value = true
   dataError.value = ''
@@ -952,6 +972,7 @@ const loadDataList = async () => {
   } catch (error) {
     console.error('加载数据列表失败:', error)
     dataError.value = error?.message || '无法读取列表数据；当前页面不会把错误显示成空列表。'
+    if (options?.throwOnError === true) throw error
   } finally {
     tableLoading.value = false
   }
@@ -1339,7 +1360,19 @@ function focus() {
   control?.focus?.()
 }
 
-defineExpose({ focus, reload: loadDataList })
+/**
+ * 等待初始化后刷新；首次实体/配置加载失败时重走初始化，避免仅查询数据却保留错误页。
+ * 普通父组件沿用就地提示，Embed 显式要求抛错后才能向宿主确认刷新成功。
+ */
+async function reload(options: { throwOnError?: boolean } = {}) {
+  await entityLoadPromise?.catch(() => {})
+  if (loadError.value || !entityDefinition.value?.id || !listConfig.value) {
+    return loadEntityDefinition(options)
+  }
+  return loadDataList(options)
+}
+
+defineExpose({ focus, reload })
 </script>
 <style scoped lang="scss">
 .entity-data-list {

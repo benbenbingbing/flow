@@ -481,29 +481,6 @@ JOIN sys_menu m
 JOIN tmp_cleanup_menu tm ON tm.id = m.id COLLATE utf8mb4_unicode_ci
 WHERE LOCATE(d.dict_code, COALESCE(m.query, '')) > 0;
 
--- 记录需要移除自定义实体可见范围的流程动作目录项。
-DROP TEMPORARY TABLE IF EXISTS tmp_cleanup_action_definition;
-CREATE TEMPORARY TABLE tmp_cleanup_action_definition (
-    id VARCHAR(64) NOT NULL,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-INSERT IGNORE INTO tmp_cleanup_action_definition (id)
-SELECT DISTINCT binding.action_definition_id
-FROM process_action_definition_entity binding
-JOIN tmp_cleanup_entity e
-  ON e.entity_code = binding.entity_code COLLATE utf8mb4_unicode_ci;
-
-INSERT IGNORE INTO tmp_cleanup_action_definition (id)
-SELECT DISTINCT d.id
-FROM process_action_definition d
-JOIN tmp_cleanup_entity e
-WHERE JSON_SEARCH(
-    IF(JSON_VALID(d.entity_codes_json), d.entity_codes_json, '[]'),
-    'one',
-    e.entity_code
-) IS NOT NULL;
-
 -- 配置迁移中的实体/流程资产和受影响发布包属于测试派生数据。
 DROP TEMPORARY TABLE IF EXISTS tmp_cleanup_migration_asset;
 CREATE TEMPORARY TABLE tmp_cleanup_migration_asset (
@@ -891,19 +868,6 @@ cleanup_main: BEGIN
     JOIN tmp_cleanup_entity e
       ON e.entity_code
          = binding.entity_code COLLATE utf8mb4_unicode_ci;
-
-    UPDATE process_action_definition definition
-    JOIN tmp_cleanup_action_definition affected
-      ON affected.id = definition.id COLLATE utf8mb4_unicode_ci
-    SET definition.entity_codes_json = COALESCE(
-        (
-            SELECT JSON_ARRAYAGG(binding.entity_code)
-            FROM process_action_definition_entity binding
-            WHERE binding.action_definition_id COLLATE utf8mb4_unicode_ci
-                  = definition.id COLLATE utf8mb4_unicode_ci
-        ),
-        JSON_ARRAY()
-    );
 
     -- 8. 清理自定义实体运行数据和状态历史。
     DELETE record

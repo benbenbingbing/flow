@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 
+// 使用情况是接口服务的同一 CI 边界，确保新模型不会变成游离测试。
+import './interfaceServiceUsageModel.spec.js'
+
 import {
   configurableEntities,
   defaultInterfaceServiceDebugUsage,

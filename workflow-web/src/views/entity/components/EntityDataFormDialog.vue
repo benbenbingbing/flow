@@ -2,9 +2,19 @@
   <el-dialog
     v-model="dialogVisible"
     width="75%"
-    class="entity-form-dialog"
+    :class="[
+      'entity-form-dialog',
+      'entity-data-form-dialog',
+      { 'entity-form-dialog--seamless': seamlessPresentation }
+    ]"
     top="3vh"
+    :fullscreen="seamlessPresentation"
+    :modal="!seamlessPresentation"
+    :lock-scroll="!seamlessPresentation"
     :close-on-click-modal="false"
+    :before-close="beforeDialogClose"
+    :inert="reloadPending || undefined"
+    :aria-busy="reloadPending ? 'true' : undefined"
     @closed="handleDialogClosed"
   >
     <template #header="{ titleId, titleClass }">
@@ -125,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
@@ -152,8 +162,10 @@ import {
 import { footerFormActions } from '@/shared/form-actions'
 import { isWorkflowReady } from '@/shared/entity-design'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
+import { isEmbedDelegatedRequestEnabled } from '@/shared/request'
+import { createRuntimeFormDiscardGuard } from '@/shared/runtime-form-discard'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   entityCode: string
   entityDefinition: any
   entityFields: any[]
@@ -164,7 +176,11 @@ const props = defineProps<{
   listReleaseResolutionToken?: string
   entityStatusOptions?: any[]
   submitTransport?: (submission: any) => Promise<any>
-}>()
+  reloadPending?: boolean
+  formPresentation?: 'seamless' | 'dialog'
+}>(), {
+  formPresentation: 'dialog'
+})
 
 const emit = defineEmits<{
   success: [result?: any]
@@ -175,6 +191,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const dialogVisible = ref(false)
+const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
 const dialogTitle = ref('')
 const formActions = ref<any[]>([])
 const actionLoadingKey = ref('')
@@ -221,6 +238,36 @@ const formData = reactive({
   data: {} as Record<string, any>,
   startProcess: false
 })
+
+// 只保护当前有效 Embed 会话中的业务输入；会话撤销/销毁不得被确认框阻挡。
+const discardGuard = createRuntimeFormDiscardGuard({
+  readValue: () => ({ name: formData.name, data: formData.data }),
+  enabled: () => dialogVisible.value && isEmbedDelegatedRequestEnabled(),
+  confirm: () => ElMessageBox.confirm(
+    '当前表单有未保存的修改，关闭或刷新后这些修改将丢失。',
+    '确认放弃修改？',
+    {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续填写',
+      closeOnClickModal: false,
+      closeOnPressEscape: false
+    }
+  )
+})
+
+/** 供原生关闭和 Embed 刷新共同检查；提交中的表单不能被重新初始化。 */
+async function confirmDiscardChanges() {
+  if (props.reloadPending || (isEmbedDelegatedRequestEnabled() && actionLoadingKey.value)) return false
+  return discardGuard.confirmDiscard()
+}
+
+async function beforeDialogClose(done: () => void) {
+  if (await confirmDiscardChanges()) done()
+}
+
+onMounted(() => globalThis.addEventListener?.('beforeunload', discardGuard.beforeUnload))
+onBeforeUnmount(() => globalThis.removeEventListener?.('beforeunload', discardGuard.beforeUnload))
 
 const hasProcessInfo = computed(() => !!processInstanceId.value)
 const canStartProcess = computed(() => !hasProcessInfo.value)
@@ -382,6 +429,7 @@ function captureResetSnapshot() {
     data: formData.data,
     startProcess: false
   }))
+  discardGuard.markSaved()
 }
 
 function restoreResetSnapshot() {
@@ -534,13 +582,13 @@ async function confirmAction(action: any) {
 async function handleFormAction(action: any) {
   if (!action || action.enabled === false || actionLoadingKey.value) return
   if (!(await confirmAction(action))) return
+  if (action.key === 'close') {
+    if (await confirmDiscardChanges()) dialogVisible.value = false
+    return
+  }
   const loadingKey = String(action.runtimeKey || action.key || '')
   actionLoadingKey.value = loadingKey
   try {
-    if (action.key === 'close') {
-      dialogVisible.value = false
-      return
-    }
     if (action.key === 'reset') {
       await handleReset()
       return
@@ -664,9 +712,11 @@ const openCreate = async (options: any = {}) => {
   captureResetSnapshot()
   await loadFormActions()
   dialogVisible.value = true
-  nextTick(() => {
-    refreshFormLinkage()
-  })
+  await nextTick()
+  refreshFormLinkage()
+  await nextTick()
+  // 原生控件初始化会补默认值；这些值应属于基线，不应被误认为用户输入。
+  discardGuard.markSaved()
 }
 
 // 编辑
@@ -719,9 +769,10 @@ const openEdit = async (row: any, options: any = {}) => {
   captureResetSnapshot()
   await loadFormActions()
   dialogVisible.value = true
-  nextTick(() => {
-    refreshFormLinkage()
-  })
+  await nextTick()
+  refreshFormLinkage()
+  await nextTick()
+  discardGuard.markSaved()
 }
 
 async function validateRuntimeForms() {
@@ -852,7 +903,8 @@ const handleSubmit = async (startProcess = false) => {
 
 defineExpose({
   openCreate,
-  openEdit
+  openEdit,
+  confirmDiscardChanges
 })
 
 function cloneRuntimeValue(value: any) {
@@ -920,5 +972,69 @@ function applyCreateInitialData(initialData: Record<string, any>) {
 }
 .form-dialog-tabs :deep(.el-tab-pane) {
   height: 100%;
+}
+
+// 窄 iframe 与手机采用同一断点；Dialog Teleport 到 body 后仍需要此全局选择器。
+@media (max-width: 900px) {
+  :global(.el-dialog.entity-data-form-dialog:not(.entity-form-dialog--seamless)) {
+    width: calc(100vw - 24px) !important;
+    margin: 12px auto !important;
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  :global(.entity-data-form-dialog .el-dialog__header),
+  :global(.entity-data-form-dialog .el-dialog__footer) {
+    flex: 0 0 auto;
+  }
+
+  :global(.entity-data-form-dialog .el-dialog__body) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :global(.entity-data-form-dialog .el-dialog__footer) {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    background: var(--el-bg-color);
+  }
+}
+
+// Embed seamless 模式只改变最外层表单容器；MessageBox、Popper 等二级浮层保持原样。
+:global(.el-dialog.entity-data-form-dialog.entity-form-dialog--seamless) {
+  box-sizing: border-box;
+  width: 100% !important;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:global(.entity-data-form-dialog.entity-form-dialog--seamless .el-dialog__header),
+:global(.entity-data-form-dialog.entity-form-dialog--seamless .el-dialog__footer) {
+  flex: 0 0 auto;
+}
+
+:global(.entity-data-form-dialog.entity-form-dialog--seamless .el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+:global(.entity-data-form-dialog.entity-form-dialog--seamless .el-dialog__footer) {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  background: var(--el-bg-color);
 }
 </style>

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.workflow.core.security.PublicApi;
 import com.workflow.core.security.RequiresPermission;
@@ -22,6 +23,7 @@ class EmbedManagementControllerSecurityContractTest {
                 EmbedViewManagementController.class,
                 EmbedGrantManagementController.class,
                 EmbedIdentityManagementController.class,
+                EmbedOptionsManagementController.class,
                 EmbedOperationsManagementController.class);
 
         for (Class<?> controller : controllers) {
@@ -38,6 +40,29 @@ class EmbedManagementControllerSecurityContractTest {
     }
 
     @Test
+    void nameOptionsAllowEitherWorkspaceWithoutWeakeningIdentityAdministration() throws Exception {
+        RequiresPermission optionPermission = EmbedOptionsManagementController.class
+                .getAnnotation(RequiresPermission.class);
+        assertArrayEquals(new String[]{
+                        "system:embed:view",
+                        "system:embed:identity-manage"},
+                optionPermission.value());
+        assertTrue(optionPermission.any());
+        assertArrayEquals(new String[]{"/api/embed-management/v1/options"},
+                EmbedOptionsManagementController.class.getAnnotation(RequestMapping.class).value());
+        for (String methodName : List.of("applications", "identityProviders")) {
+            Method method = EmbedOptionsManagementController.class.getMethod(
+                    methodName, String.class, String.class, int.class, int.class);
+            assertFalse(method.isAnnotationPresent(RequiresPermission.class));
+            assertArrayEquals(new String[]{methodName.equals("applications")
+                            ? "/applications" : "/identity-providers"},
+                    method.getAnnotation(GetMapping.class).value());
+        }
+        assertArrayEquals(new String[]{"system:embed:identity-manage"},
+                EmbedIdentityManagementController.class.getAnnotation(RequiresPermission.class).value());
+    }
+
+    @Test
     void currentConfigurationSaveUsesManagementPermission() throws Exception {
         RequiresPermission update = EmbedViewManagementController.class
                 .getMethod("updateDraft", String.class,
@@ -45,6 +70,22 @@ class EmbedManagementControllerSecurityContractTest {
                 .getAnnotation(RequiresPermission.class);
 
         assertEquals("system:embed:manage", update.value()[0]);
+    }
+
+    @Test
+    void currentValidationIsReadOnlyAndInheritsViewPermission() throws Exception {
+        Method validation = EmbedViewManagementController.class
+                .getMethod("validateCurrentActive", String.class);
+
+        assertFalse(validation.isAnnotationPresent(RequiresPermission.class));
+        assertArrayEquals(new String[]{"/{viewId}/validation"},
+                validation.getAnnotation(GetMapping.class).value());
+        assertArrayEquals(new String[]{"viewStatus", "valid", "violations"},
+                java.util.Arrays.stream(EmbedManagementViews.ViewValidation.class
+                                .getRecordComponents())
+                        .map(java.lang.reflect.RecordComponent::getName)
+                        .toArray(String[]::new),
+                "只读检查不能暴露 resolved 快照、canonicalConfig 或 configHash");
     }
 
     @Test

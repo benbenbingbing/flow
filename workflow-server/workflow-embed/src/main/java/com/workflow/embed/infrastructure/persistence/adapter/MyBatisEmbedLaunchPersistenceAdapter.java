@@ -130,7 +130,8 @@ public class MyBatisEmbedLaunchPersistenceAdapter implements
                     launch.parentOrigin(), launch.channelId(), launch.entryMode(), launch.recordId(),
                     launch.context().ciphertext(), launch.context().cipherKeyVersion(),
                     launch.context().digest(), launch.context().digestKeyVersion(),
-                    launch.uiLocale(), launch.uiTheme(), launch.launchCodeDigest(),
+                    launch.uiLocale(), launch.uiTheme(), launch.uiFormPresentation(),
+                    launch.launchCodeDigest(),
                     local(launch.expiresAt()), launch.traceId(), launch.requestId(),
                     local(launch.createTime()));
             if (affected != 1) {

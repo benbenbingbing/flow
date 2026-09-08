@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
 import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
+import com.workflow.embed.management.domain.EmbedManagementModel.ApplicationOption;
+import com.workflow.embed.management.domain.EmbedManagementModel.IdentityProviderOption;
+import com.workflow.embed.management.domain.EmbedManagementModel.OptionsFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingState;
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
@@ -224,6 +227,30 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
     }
 
     @Override
+    public Page<ApplicationOption> findApplicationOptions(OptionsFilter filter) {
+                List<ApplicationOption> records = mapper.findApplicationOptions(
+                        filter.keyword(), name(filter.status()), filter.pageSize(),
+                        offset(filter.pageNum(), filter.pageSize()))
+                .stream().map(row -> new ApplicationOption(row.id(), row.name(), row.clientId(),
+                        SecurityStatus.valueOf(row.status()), row.expiresAt(),
+                        row.embedLaunchReady())).toList();
+        return new Page<>(records, mapper.countApplicationOptions(
+                filter.keyword(), name(filter.status())), filter.pageNum(), filter.pageSize());
+    }
+
+    @Override
+    public Page<IdentityProviderOption> findIdentityProviderOptions(OptionsFilter filter) {
+        List<IdentityProviderOption> records = mapper.findIdentityProviderOptions(
+                        filter.keyword(), name(filter.status()), filter.pageSize(),
+                        offset(filter.pageNum(), filter.pageSize()))
+                .stream().map(row -> new IdentityProviderOption(row.id(), row.name(),
+                        ProviderType.valueOf(row.type()), SecurityStatus.valueOf(row.status())))
+                .toList();
+        return new Page<>(records, mapper.countIdentityProviderOptions(
+                filter.keyword(), name(filter.status())), filter.pageNum(), filter.pageSize());
+    }
+
+    @Override
     public Page<ProviderState> findProviders(ProviderFilter filter) {
         List<ProviderState> records = mapper.findProviders(
                 filter.keyword(), name(filter.status()), name(filter.type()),
@@ -423,7 +450,8 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
         return row == null ? null : new BindingState(
                 row.id(), row.applicationId(), row.identityProviderId(), row.subjectDigest(),
                 row.subjectDigestKeyVersion(), row.subjectHint(), row.flowUserId(),
-                SecurityStatus.valueOf(row.status()), row.bindingVersion(), row.effectiveAt(),
+                row.flowUserReady(), SecurityStatus.valueOf(row.status()), row.bindingVersion(),
+                row.effectiveAt(),
                 row.expiresAt(), row.createBy(), row.createTime(), row.updateBy(),
                 row.updateTime(), row.revokedBy(), row.revokedAt());
     }
@@ -431,7 +459,8 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
     private static BindingRow row(BindingState value) {
         return new BindingRow(value.id(), value.applicationId(), value.identityProviderId(),
                 value.subjectDigest(), value.subjectDigestKeyVersion(), value.subjectHint(),
-                value.flowUserId(), value.status().name(), value.bindingVersion(),
+                value.flowUserId(), value.flowUserReady(), value.status().name(),
+                value.bindingVersion(),
                 value.effectiveAt(), value.expiresAt(), value.createBy(), value.createTime(),
                 value.updateBy(), value.updateTime(), value.revokedBy(), value.revokedAt());
     }

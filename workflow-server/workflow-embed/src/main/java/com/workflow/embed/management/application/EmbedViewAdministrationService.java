@@ -82,6 +82,19 @@ public class EmbedViewAdministrationService {
         return requireView(viewId);
     }
 
+    /**
+     * 用与保存、Launch 相同的规则重新校验当前配置和最新 ACTIVE 资源。
+     *
+     * <p>该检查只读取当前状态，不生成 Release，也不修改 View 版本。</p>
+     */
+    @Transactional(readOnly = true)
+    public CurrentValidation validateCurrentActive(String viewId) {
+        ViewState view = requireView(viewId);
+        ValidationResult validation = validator.validateCurrentActive(
+                view.surfaceType(), read(view.draftConfigJson()));
+        return new CurrentValidation(view.status(), validation);
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public ViewState create(CreateViewCommand command) {
         CurrentActor actor = EmbedManagementSupport.requireActor(actorProvider);
@@ -275,6 +288,14 @@ public class EmbedViewAdministrationService {
         }
     }
 
+    private JsonNode read(String json) {
+        try {
+            return objectMapper.readTree(json);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Embed 配置 JSON 数据损坏", exception);
+        }
+    }
+
     private LocalDateTime now() {
         return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
     }
@@ -304,5 +325,9 @@ public class EmbedViewAdministrationService {
     }
 
     public record StatusChangeResult(ViewState view, long affectedActiveSessions) {
+    }
+
+    /** 同一只读事务中读取的 View 状态与当前 ACTIVE 资源校验结果。 */
+    public record CurrentValidation(ViewStatus viewStatus, ValidationResult validation) {
     }
 }

@@ -18,7 +18,31 @@ export const fileApi = {
         'Content-Type': 'multipart/form-data',
         'Idempotency-Key': options.idempotencyKey || getFileUploadIdempotencyKey(file)
       },
-      onUploadProgress: options.onUploadProgress
+      onUploadProgress: options.onUploadProgress,
+      silentError: options.silentError === true
+    })
+  },
+
+  /**
+   * 以实体表单动作权限上传文件。
+   * @param file 文件对象
+   * @param context 实体编码、动作和文件字段编码
+   * @param options 上传进度、幂等键等请求选项
+   * @returns 文件信息
+   */
+  uploadForEntity(file, context, options = {}) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('action', context.action)
+    formData.append('fieldCode', context.fieldCode)
+    const entityCode = encodeURIComponent(context.entityCode)
+    return request.post(`/file/entity/${entityCode}/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'Idempotency-Key': options.idempotencyKey || getFileUploadIdempotencyKey(file)
+      },
+      onUploadProgress: options.onUploadProgress,
+      silentError: options.silentError === true
     })
   },
 
@@ -38,7 +62,8 @@ export const fileApi = {
         'Content-Type': 'multipart/form-data',
         'Idempotency-Key': options.idempotencyKey || getFileUploadIdempotencyKey(file)
       },
-      onUploadProgress: options.onUploadProgress
+      onUploadProgress: options.onUploadProgress,
+      silentError: options.silentError === true
     })
   },
 

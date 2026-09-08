@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
 import {
+  createEmbedAppearance,
+  resolveEmbedLocale
+} from '../src/embed/runtime/embedAppearance.js'
+import {
   isEmbedPath,
   isEmbedRuntimeLocation,
   normalizeEmbedHosts,
@@ -129,5 +133,72 @@ assert.deepEqual(historyCalls, [[
   '',
   '/embed/v1/launches/lch_0123456789abcdef'
 ]])
+
+assert.equal(resolveEmbedLocale('zh-cn'), 'zh-CN')
+assert.throws(
+  () => resolveEmbedLocale('en-US'),
+  error => error.errorCode === 'EMBED_OPERATION_NOT_ALLOWED'
+    && error.message.includes('zh-CN')
+)
+
+const rootClasses = new Set(['existing-class'])
+const attributes = new Map([['lang', 'original-language']])
+const root = {
+  classList: {
+    contains: value => rootClasses.has(value),
+    toggle(value, enabled) {
+      if (enabled) rootClasses.add(value)
+      else rootClasses.delete(value)
+    }
+  },
+  style: { colorScheme: 'normal' },
+  getAttribute: name => attributes.get(name) ?? null,
+  setAttribute: (name, value) => attributes.set(name, value),
+  removeAttribute: name => attributes.delete(name)
+}
+let themeChangeListener
+const media = {
+  matches: false,
+  addEventListener(type, listener) {
+    assert.equal(type, 'change')
+    themeChangeListener = listener
+  },
+  removeEventListener(type, listener) {
+    assert.equal(type, 'change')
+    assert.equal(listener, themeChangeListener)
+    themeChangeListener = null
+  }
+}
+const appearance = createEmbedAppearance({
+  documentRef: { documentElement: root },
+  windowRef: {
+    matchMedia(query) {
+      assert.equal(query, '(prefers-color-scheme: dark)')
+      return media
+    }
+  }
+})
+appearance.apply({ theme: 'dark', locale: 'zh-cn' })
+assert.equal(rootClasses.has('dark'), true, '暗色必须应用到根节点，包含 body 下的弹窗')
+assert.equal(attributes.get('lang'), 'zh-CN')
+assert.equal(root.style.colorScheme, 'dark')
+appearance.apply({ theme: 'system', locale: 'zh-CN' })
+assert.equal(rootClasses.has('dark'), false)
+media.matches = true
+themeChangeListener()
+assert.equal(rootClasses.has('dark'), true, 'system 模式必须跟随系统主题变化')
+appearance.apply({ theme: 'light', locale: 'zh-CN' })
+themeChangeListener()
+assert.equal(rootClasses.has('dark'), false, '显式浅色不受系统暗色影响')
+assert.throws(() => appearance.apply({ theme: 'dark', locale: 'en-US' }))
+assert.equal(rootClasses.has('dark'), false, '语言被拒绝时不得部分应用外观状态')
+appearance.dispose()
+appearance.dispose()
+assert.equal(themeChangeListener, null)
+assert.deepEqual([...rootClasses], ['existing-class'])
+assert.equal(attributes.get('lang'), 'original-language')
+assert.equal(root.style.colorScheme, 'normal')
+appearance.apply({ theme: 'dark', locale: 'zh-CN' })
+assert.equal(rootClasses.has('dark'), false, '销毁后不得继续修改文档主题')
 
 console.log('embed app mode tests passed')

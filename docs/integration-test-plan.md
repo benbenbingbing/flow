@@ -1303,16 +1303,21 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 
 | 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
 |---|---|---|---|---|
+| `scopeType` | 动作作用域 | `PROCESS`/`NODE`/`SEQUENCE_FLOW` | 决定动作绑定在流程、节点还是连线 | 与入口和触发时机一致 |
+| `elementId` | BPMN 元素 ID | 流程级为空，节点和连线必填 | 精确定位动作绑定对象 | 同一 ID 在不同作用域下不串数据 |
 | `actionName` | 动作名称 | 如“发送通知” | 动作列表展示 | 唯一标识 |
-| `interfaceName` | 接口名称 | Spring Bean 名或类全名 | 执行目标 | Bean/类存在性 |
-| `methodName` | 方法名 | 默认 `execute` | 反射调用 | 方法签名匹配 |
-| `paramsJson` | 参数 JSON | 对象 | 方法参数 | 类型匹配 |
+| `actionDefinitionId` | 处理器目录 ID | 已启用且对当前实体可见的目录项 | 约束可选择的处理器 | 目录存在且可见 |
+| `interfaceName` | 处理器 Bean 名 | 实现 `FlowActionHandler` 的 Spring Bean | 执行目标快照 | Bean 存在且目录匹配 |
+| `triggerTiming` | 触发时机 | 随作用域和元素类型动态提供 | 决定生命周期触发点 | 与作用域、BPMN 类型兼容 |
+| `executionMode` | 执行方式 | `IN_TRANSACTION`/`AFTER_COMMIT` | 决定事务边界 | 与失败策略兼容 |
+| `failurePolicy` | 失败策略 | `ROLLBACK`/`CONTINUE`/`RETRY`/`IGNORE` | 决定失败后的流程与重试行为 | 非法组合被拒绝 |
+| `paramsJson` | 参数 JSON | 对象 | Handler 业务参数 | 类型匹配 |
 | `enabled` | 是否启用 | `true` | `false` 时不执行 | 禁用后跳过 |
 | `sortOrder` | 执行顺序 | 数字 | 多个动作按顺序执行 | 排序正确 |
 
 **验证步骤**：
 
-1. 在“通过”连线上添加动作，配置 `notificationService.sendApproveNotice`，审批通过后调用该服务。
+1. 在“通过”连线上添加动作，选择 `notificationService` 处理器并保存，确认记录使用 `scopeType=SEQUENCE_FLOW` 与对应 `elementId`，审批通过后由平台调用 `FlowActionHandler.execute`。
 2. 设置 `enabled=false`，确认动作不执行。
 3. 配置多个动作，按 `sortOrder` 顺序执行。
 4. 动作抛异常，确认审批事务回滚（如果设计为同事务）。
@@ -1480,7 +1485,7 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 | 超时 + 自动通过 + 网关 | `timeoutAction=AUTO_APPROVE` + 排他网关 | 自动通过后按 `approved=approve` 走分支 |
 | 数据权限 + 委托 | `entity_list_permission` + `entity_list_permission_delegate` | 受托人可见委托人规则允许的数据 |
 | 表单只读 + 字段必填 | `isReadonly=true` + `is_required=true` | 只读时跳过节点级校验，可正常提交 |
-| 流程动作 + 事务异常 | `flow_action` + 服务任务异常 | 动作失败时审批回滚 |
+| 流程动作 + 事务异常 | `process_action` + 服务任务异常 | 动作失败时审批回滚 |
 | 分支条件 + 自定义动作 | `conditionExpression` + `options.value` | `approved` 取自定义动作原始值 |
 | 会签 + 完成条件 + 驳回 | `multiInstanceType=parallel` + `completionCondition` + 驳回 | 驳回时立即终止多实例 |
 | 服务任务 + REST + 超时 + 重试 | `implementationType=rest` + `timeout` + `retryCount` | 超时后重试指定次数 |
@@ -1671,5 +1676,5 @@ WHERE id = 'your_data_id';
 | 并行网关 | 无 | BPMN 拓扑 |
 | 包容网关 | 条件、实体状态 | `conditionList` |
 | 事件网关 | 无 | BPMN 拓扑 + 后续事件 |
-| 顺序流 | 条件、实体状态、流程动作 | `conditionList`、`entityStatusCode`、`flow_action` |
+| 顺序流 | 条件、实体状态、流程动作 | `conditionList`、`entityStatusCode`、`process_action.scope_type/element_id` |
 | 节点-实体-表单关系 | 实体表单、节点表单绑定、字段权限、子表单 | `EntityForm`、`ProcessNodeForm`、`EntityFormField`、`TAB_SET/TAB`、`isReadonly` | 详见 5.16 节 |

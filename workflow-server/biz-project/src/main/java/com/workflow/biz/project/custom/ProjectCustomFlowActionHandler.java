@@ -60,7 +60,7 @@ public class ProjectCustomFlowActionHandler
         Map<String, Object> params = context.getExtraParams() == null
                 ? Map.of() : context.getExtraParams();
         log.info(
-                "项目自定义流程动作执行: actionId={}, actionName={}, scopeType={}, triggerTiming={}, processInstanceId={}, sourceNodeId={}, targetNodeId={}, sequenceFlowId={}, entityCode={}, entityDataId={}, scenario={}, messagePresent={}",
+                "项目自定义流程动作执行: actionId={}, actionName={}, scopeType={}, triggerTiming={}, processInstanceId={}, sourceNodeId={}, targetNodeId={}, elementId={}, entityCode={}, entityDataId={}, scenario={}, messagePresent={}",
                 LogValue.safe(context.getActionId()),
                 LogValue.safe(context.getActionName()),
                 LogValue.safe(context.getScopeType()),
@@ -68,7 +68,7 @@ public class ProjectCustomFlowActionHandler
                 LogValue.safe(context.getProcessInstanceId()),
                 LogValue.safe(context.getSourceNodeId()),
                 LogValue.safe(context.getTargetNodeId()),
-                LogValue.safe(context.getSequenceFlowId()),
+                LogValue.safe(context.getElementId()),
                 LogValue.safe(context.getEntityCode()),
                 LogValue.safe(context.getEntityDataId()),
                 LogValue.safe(params.get(SCENARIO)),

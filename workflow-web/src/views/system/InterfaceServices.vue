@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div>
         <h2>接口服务</h2>
-        <p>统一管理服务操作，并把操作绑定到列表、表单、字段和按钮事件。</p>
+        <p>统一管理服务定义与操作，并追踪服务在事件执行链中的引用。</p>
       </div>
       <el-button :loading="loading" title="刷新页面数据" @click="loadAll">
         <el-icon><Refresh /></el-icon>
@@ -30,7 +30,7 @@
               />
             </el-select>
           </div>
-          <el-button type="primary" @click="openCreateService">
+          <el-button v-if="canUpdateServices" type="primary" @click="openCreateService">
             <el-icon><Plus /></el-icon>
             新增接口服务
           </el-button>
@@ -96,102 +96,47 @@
           </el-table-column>
           <el-table-column label="操作" width="180" fixed="right" align="center">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openTest(row)">调试</el-button>
-              <el-button link type="primary" @click="openEditService(row)">编辑</el-button>
-              <el-button link type="danger" @click="removeService(row)">删除</el-button>
+              <el-button
+                v-if="canTestServices"
+                link
+                type="primary"
+                @click="openTest(row)"
+              >
+                调试
+              </el-button>
+              <el-button
+                v-if="canUpdateServices"
+                link
+                type="primary"
+                @click="openEditService(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                v-if="canUpdateServices"
+                link
+                type="danger"
+                @click="removeService(row)"
+              >
+                删除
+              </el-button>
+              <span
+                v-if="!canTestServices && !canUpdateServices"
+                class="secondary-text"
+              >
+                只读
+              </span>
             </template>
           </el-table-column>
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="事件绑定" name="bindings">
-        <div class="binding-layout">
-          <aside class="binding-scope-panel">
-            <div class="scope-title">绑定对象</div>
-            <el-form label-position="top">
-              <el-form-item label="实体">
-                <EntityDefinitionPicker
-                  v-model="selectedEntityId"
-                  placeholder="选择实体"
-                  value-key="id"
-                  title="选择事件绑定实体"
-                  :query="{ storageMode: 'DYNAMIC' }"
-                  @selected="handleBindingEntitySelected"
-                  @resolved="rememberBindingEntity"
-                />
-              </el-form-item>
-              <el-form-item label="配置层级">
-                <el-segmented
-                  v-model="bindingOwnerType"
-                  :options="ownerTypeOptions"
-                />
-              </el-form-item>
-              <el-form-item v-if="bindingOwnerType === 'FORM'" label="表单">
-                <el-select v-model="selectedFormId" filterable>
-                  <el-option
-                    v-for="form in forms"
-                    :key="form.id"
-                    :label="`${form.formName} (${form.formKey})`"
-                    :value="form.id"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-if="bindingOwnerType === 'LIST'" label="列表">
-                <el-select v-model="selectedListId" filterable>
-                  <el-option
-                    v-for="list in lists"
-                    :key="list.id"
-                    :label="`${list.listName} (${list.listKey})`"
-                    :value="list.id"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item
-                v-if="bindingOwnerType !== 'ENTITY'"
-                label="绑定位置"
-              >
-                <el-select v-model="bindingTargetType">
-                  <el-option label="当前表单或列表" value="OWNER" />
-                  <el-option
-                    v-if="bindingOwnerType === 'FORM'"
-                    label="字段"
-                    value="FIELD"
-                  />
-                  <el-option label="按钮" value="BUTTON" />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-if="bindingTargetType === 'FIELD'" label="字段">
-                <el-select v-model="bindingTargetKey" filterable>
-                  <el-option
-                    v-for="field in formFields"
-                    :key="field.id || field.fieldCode"
-                    :label="`${fieldLabel(field)} (${field.fieldCode})`"
-                    :value="String(field.fieldCode)"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-if="bindingTargetType === 'BUTTON'" label="按钮编码">
-                <el-input
-                  v-model="bindingTargetKey"
-                  placeholder="按钮稳定编码"
-                />
-              </el-form-item>
-            </el-form>
-          </aside>
-
-          <main class="binding-main">
-            <EventBindingEditor
-              :owner-type="bindingOwnerType"
-              :owner-id="bindingOwnerId"
-              :target-type="effectiveTargetType"
-              :target-key="effectiveTargetKey"
-              :target-name="bindingTargetName"
-              :allowed-events="allowedEvents"
-              :field-options="fieldOptions"
-              title="统一事件执行链"
-            />
-          </main>
-        </div>
+      <el-tab-pane label="事件使用情况" name="usage" lazy>
+        <InterfaceServiceUsagePanel
+          :services="services"
+          :can-configure-entity-events="canConfigureEntityEvents"
+          @configure="goToReferenceConfiguration"
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -212,35 +157,32 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
-import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import InterfaceServiceEditorDialog from '@/components/ui-config/InterfaceServiceEditorDialog.vue'
 import InterfaceServiceTestDialog from '@/components/ui-config/InterfaceServiceTestDialog.vue'
+import InterfaceServiceUsagePanel from '@/components/ui-config/InterfaceServiceUsagePanel.vue'
 import {
-  configurableEntities,
+  buildInterfaceServiceReferenceRoute
+} from '@/components/ui-config/interfaceServiceUsageModel'
+import {
   executionPolicy,
   serviceOperations,
   sourceTypeOptions
 } from '@/components/ui-config/interfaceServiceModel'
-import { eventsForScope } from '@/components/ui-config/uiEventScope'
 import { entityApi } from '@/api/entity'
 import {
-  getEntityFields,
   getFormById,
   getFormsByEntity
 } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { uiDataSourceApi } from '@/api/uiConfig'
+import { useUserStore } from '@/stores/user'
 
-const ownerTypeOptions = [
-  { label: '实体默认', value: 'ENTITY' },
-  { label: '表单覆盖', value: 'FORM' },
-  { label: '列表覆盖', value: 'LIST' }
-]
-
+const router = useRouter()
+const userStore = useUserStore()
 const activeTab = ref('services')
 const loading = ref(false)
 const keyword = ref('')
@@ -250,16 +192,24 @@ const scopeObjectNames = ref({})
 const catalog = ref({})
 const forms = ref([])
 const lists = ref([])
-const entityFields = ref([])
-const formFields = ref([])
 const selectedEntityId = ref('')
-const selectedFormId = ref('')
-const selectedListId = ref('')
-const bindingOwnerType = ref('ENTITY')
-const bindingTargetType = ref('OWNER')
-const bindingTargetKey = ref('')
 const serviceEditorRef = ref(null)
 const serviceTestRef = ref(null)
+
+function hasPermission(permission) {
+  return userStore.isSuperAdmin
+    || userStore.permissions.includes('*')
+    || userStore.permissions.includes(permission)
+}
+
+const canUpdateServices = computed(() =>
+  hasPermission('system:interface-service:update'))
+const canTestServices = computed(() =>
+  hasPermission('system:interface-service:test'))
+const canViewEntityDefinitions = computed(() =>
+  hasPermission('entity:definition:view'))
+const canConfigureEntityEvents = computed(() =>
+  canViewEntityDefinitions.value && hasPermission('entity:definition:manage'))
 
 const filteredServices = computed(() => {
   const text = keyword.value.trim().toLowerCase()
@@ -276,53 +226,20 @@ const filteredServices = computed(() => {
 
 const selectedEntity = ref(null)
 
-const bindingOwnerId = computed(() => {
-  if (bindingOwnerType.value === 'ENTITY') return selectedEntityId.value
-  if (bindingOwnerType.value === 'FORM') return selectedFormId.value
-  return selectedListId.value
-})
-
-const effectiveTargetType = computed(() =>
-  bindingOwnerType.value === 'ENTITY' ? 'OWNER' : bindingTargetType.value)
-
-const effectiveTargetKey = computed(() =>
-  effectiveTargetType.value === 'OWNER' ? '' : bindingTargetKey.value)
-
-const bindingTargetName = computed(() => {
-  if (effectiveTargetType.value === 'FIELD') {
-    return fieldLabel(formFields.value.find(field =>
-      String(field.fieldCode) === String(bindingTargetKey.value)))
-  }
-  return bindingTargetKey.value
-})
-
-const fieldOptions = computed(() =>
-  entityFields.value
-    .filter(field => !field.isSystem)
-    .map(field => ({
-      label: field.fieldName || field.fieldLabel || field.fieldCode,
-      value: field.fieldCode
-    }))
-)
-
-const allowedEvents = computed(() => {
-  return eventsForScope(
-    bindingOwnerType.value,
-    effectiveTargetType.value
-  )
-})
-
 async function loadAll() {
   loading.value = true
   try {
+    const entityOptionsRequest = canViewEntityDefinitions.value
+      ? entityApi.getOptions({
+          pageNum: 1,
+          pageSize: 1,
+          storageMode: 'DYNAMIC'
+        })
+      : Promise.resolve({ records: [] })
     const [serviceRows, serviceCatalog, entityPage] = await Promise.all([
       uiDataSourceApi.list(),
       uiDataSourceApi.catalog(),
-      entityApi.getOptions({
-        pageNum: 1,
-        pageSize: 1,
-        storageMode: 'DYNAMIC'
-      })
+      entityOptionsRequest
     ])
     services.value = Array.isArray(serviceRows) ? serviceRows : []
     await resolveScopeObjectNames(services.value)
@@ -340,6 +257,15 @@ async function loadAll() {
 }
 
 async function resolveScopeObjectNames(rows) {
+  if (!canViewEntityDefinitions.value) {
+    scopeObjectNames.value = Object.fromEntries(rows
+      .filter(row => row.scopeId)
+      .map(row => [
+        `${row.scopeType}:${row.scopeId}`,
+        row.scopeName || row.scopeId
+      ]))
+    return
+  }
   const entries = await Promise.all(rows
     .filter(row => row.scopeId)
     .map(async row => {
@@ -380,45 +306,16 @@ function contextTypeLabel(value) {
   }[String(value || '').toUpperCase()] || value || '-'
 }
 
-function rememberBindingEntity(entity) {
-  if (entity && !Array.isArray(entity)) {
-    selectedEntity.value = entity
-  }
-}
-
-async function handleBindingEntitySelected(entity) {
-  selectedEntity.value = entity || null
-  await loadEntityChildren()
-}
-
 async function loadEntityChildren() {
   forms.value = []
   lists.value = []
-  entityFields.value = []
-  formFields.value = []
-  selectedFormId.value = ''
-  selectedListId.value = ''
-  bindingTargetKey.value = ''
   if (!selectedEntityId.value) return
-  const [formRows, listRows, fieldRows] = await Promise.all([
+  const [formRows, listRows] = await Promise.all([
     getFormsByEntity(selectedEntityId.value),
-    entityListConfigApi.getByEntityId(selectedEntityId.value),
-    getEntityFields(selectedEntityId.value)
+    entityListConfigApi.getByEntityId(selectedEntityId.value)
   ])
   forms.value = Array.isArray(formRows) ? formRows : []
   lists.value = Array.isArray(listRows) ? listRows : []
-  entityFields.value = Array.isArray(fieldRows) ? fieldRows : []
-  selectedFormId.value = forms.value[0]?.id || ''
-  selectedListId.value = lists.value[0]?.id || ''
-  await loadSelectedFormFields()
-}
-
-async function loadSelectedFormFields() {
-  const form = forms.value.find(item => String(item.id) === String(selectedFormId.value))
-  formFields.value = Array.isArray(form?.fields) && form.fields.length
-    ? form.fields
-    : entityFields.value
-  bindingTargetKey.value = ''
 }
 
 function openCreateService() {
@@ -431,17 +328,35 @@ function openEditService(row) {
 
 async function removeService(row) {
   await ElMessageBox.confirm(
-    `确认删除接口服务“${row.sourceName}”？已发布页面的历史快照不受影响。`,
+    `确认删除接口服务“${row.sourceName}”？当前发布、仍可固定访问的历史版本、实体变更策略、流程或 Embed 仍有可执行引用时，后端都会阻止删除。可先在“事件使用情况”定位 ACTIVE 引用，但仅解除并重新发布可能不足；请确认历史版本及相关运行入口均已退役，冲突提示会给出具体版本。`,
     '删除接口服务',
     { type: 'warning' }
   )
-  await uiDataSourceApi.remove(row.id, row.revision)
-  ElMessage.success('已删除')
-  await loadAll()
+  try {
+    await uiDataSourceApi.remove(row.id, row.revision)
+    ElMessage.success('已删除')
+    await loadAll()
+  } catch (error) {
+    // 删除冲突包含具体的线上引用信息，不能被通用提示覆盖。
+    ElMessage.error(error?.message || '删除接口服务失败')
+  }
 }
 
 function openTest(row) {
   serviceTestRef.value?.open(row)
+}
+
+async function goToReferenceConfiguration(reference) {
+  if (reference.ownerType === 'ENTITY' && !canConfigureEntityEvents.value) {
+    ElMessage.warning('缺少实体定义查看或维护权限，无法进入实体默认事件配置')
+    return
+  }
+  const location = buildInterfaceServiceReferenceRoute(reference)
+  if (!location) {
+    ElMessage.warning('该引用缺少可定位的配置对象')
+    return
+  }
+  await router.push(location)
 }
 
 function sourceTypeLabel(type) {
@@ -456,18 +371,6 @@ function scopeLabel(type) {
     LIST: '列表'
   }[type] || type
 }
-
-function fieldLabel(field) {
-  return field?.fieldLabel || field?.fieldName || field?.fieldCode || ''
-}
-
-watch(bindingOwnerType, value => {
-  bindingTargetType.value = 'OWNER'
-  bindingTargetKey.value = ''
-  if (value === 'FORM') loadSelectedFormFields()
-})
-
-watch(selectedFormId, loadSelectedFormFields)
 
 onMounted(loadAll)
 </script>
@@ -514,8 +417,7 @@ onMounted(loadAll)
   gap: 10px;
 }
 
-.primary-text,
-.scope-title {
+.primary-text {
   color: var(--el-text-color-primary);
   font-weight: 600;
 }
@@ -532,36 +434,4 @@ onMounted(loadAll)
   gap: 6px;
 }
 
-.binding-layout {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  min-height: 620px;
-  border: 1px solid var(--el-border-color);
-}
-
-.binding-scope-panel {
-  padding: 16px;
-  background: var(--el-fill-color-lighter);
-  border-right: 1px solid var(--el-border-color);
-}
-
-.scope-title {
-  margin-bottom: 14px;
-}
-
-.binding-main {
-  min-width: 0;
-  padding: 18px;
-}
-
-@media (max-width: 1000px) {
-  .binding-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .binding-scope-panel {
-    border-right: 0;
-    border-bottom: 1px solid var(--el-border-color);
-  }
-}
 </style>

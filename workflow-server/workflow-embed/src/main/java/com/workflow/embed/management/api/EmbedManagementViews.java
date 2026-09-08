@@ -1,6 +1,7 @@
 package com.workflow.embed.management.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.workflow.embed.management.domain.EmbedManagementModel.Violation;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -8,6 +9,15 @@ import java.util.List;
 public final class EmbedManagementViews {
 
     private EmbedManagementViews() {
+    }
+
+    public record ApplicationOptionView(
+            String id, String name, String clientId, String status,
+            java.time.Instant expiresAt, boolean embedLaunchReady) {
+    }
+
+    public record IdentityProviderOptionView(
+            String id, String name, String type, String status) {
     }
 
     public record ViewSummary(
@@ -18,6 +28,11 @@ public final class EmbedManagementViews {
 
     public record ViewDraft(
             String viewId, long version, JsonNode draft) {
+    }
+
+    /** 接入向导使用的只读校验结果，不暴露解析快照或完整 canonical 配置。 */
+    public record ViewValidation(
+            String viewStatus, boolean valid, List<Violation> violations) {
     }
 
     public record StatusResult(ViewSummary view, long affectedActiveSessions) {
@@ -45,7 +60,7 @@ public final class EmbedManagementViews {
 
     public record BindingView(
             String id, String applicationId, String identityProviderId,
-            String subjectHint, String flowUserId, String status,
+            String subjectHint, String flowUserId, boolean flowUserReady, String status,
             long version, LocalDateTime effectiveAt, LocalDateTime expiresAt,
             LocalDateTime createTime, LocalDateTime updateTime) {
     }

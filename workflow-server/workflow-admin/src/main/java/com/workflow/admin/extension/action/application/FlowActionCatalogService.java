@@ -1,7 +1,5 @@
 package com.workflow.admin.extension.action.application;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
@@ -49,7 +47,6 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
     private final FlowActionDefinitionMapper definitionMapper;
     private final FlowActionDefinitionEntityMapper definitionEntityMapper;
     private final ApplicationContext applicationContext;
-    private final ObjectMapper objectMapper;
     private final EntityCodeCatalogPort entityCodeCatalogPort;
     private final CurrentUserRoleService currentUserRoleService;
 
@@ -126,7 +123,6 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         definition.setDisplayName(request.getDisplayName().trim());
         definition.setDescription(trimToNull(request.getDescription()));
         definition.setVisibilityScope(visibilityScope.name());
-        definition.setEntityCodesJson(writeEntityCodes(entityCodes));
         definition.setEnabled(request.getEnabled() == null || request.getEnabled());
         definition.setUpdatedAt(LocalDateTime.now());
 
@@ -272,7 +268,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
                 : definition.getVisibilityScope());
         option.setEntityCodes(definition == null
                 ? List.of()
-                : readEntityCodes(definition));
+                : definitionEntityMapper.findEntityCodes(definition.getId()));
         option.setEnabled(definition != null && Boolean.TRUE.equals(definition.getEnabled()));
         option.setConfigured(configured);
         option.setAvailable(handler != null);
@@ -317,7 +313,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         }
     }
 
-/** 归一化实体编码列表：去空白、转小写、去重 */
+    /** 归一化实体编码列表：去空白、转小写、去重 */
     private List<String> normalizeEntityCodes(List<String> values) {
         if (values == null) {
             return List.of();
@@ -340,32 +336,6 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
                 .toList();
         if (!unknown.isEmpty()) {
             throw new RuntimeException("存在无效实体编码：" + String.join(", ", unknown));
-        }
-    }
-
-    /** 序列化实体编码列表为 JSON */
-    private String writeEntityCodes(List<String> entityCodes) {
-        try {
-            return objectMapper.writeValueAsString(entityCodes);
-        } catch (Exception e) {
-            throw new RuntimeException("保存动作实体范围失败", e);
-        }
-    }
-
-    /** 读取定义可见实体编码：优先查关系表，回退到 JSON 字段 */
-    private List<String> readEntityCodes(FlowActionDefinition definition) {
-        List<String> relational = definitionEntityMapper.findEntityCodes(definition.getId());
-        if (!relational.isEmpty()) {
-            return relational;
-        }
-        String value = definition.getEntityCodesJson();
-        if (!StringUtils.hasText(value)) {
-            return List.of();
-        }
-        try {
-            return objectMapper.readValue(value, new TypeReference<>() {});
-        } catch (Exception e) {
-            return List.of();
         }
     }
 

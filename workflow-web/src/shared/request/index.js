@@ -121,6 +121,8 @@ function createApiError(
   const error = new Error(message || '请求失败')
   error.source = source
   error.errorCode = source?.errorCode
+  // 原生页面委托请求同样由 Embed controller 回传诊断，不能只把关联 ID 留在 source 中。
+  error.traceId = source?.traceId ?? null
   error.currentData = source?.data
   error.status = status ?? (Number(source?.code) || undefined)
   return error
@@ -466,6 +468,7 @@ request.interceptors.response.use(
   },
   async (error) => {
     const { response, config = {} } = error
+    error.traceId = response?.data?.traceId ?? error.traceId ?? null
     if (response?.status === 401) {
       let payload = response.data
       if (

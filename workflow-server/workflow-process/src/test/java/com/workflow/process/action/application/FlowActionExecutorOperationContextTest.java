@@ -37,7 +37,6 @@ class FlowActionExecutorOperationContextTest {
         when(applicationContext.getBean("projectHandler"))
                 .thenReturn(handler);
         FlowActionExecutor executor = new FlowActionExecutor(
-                mock(FlowActionService.class),
                 applicationContext,
                 mock(FlowActionRuntimeAdapter.class),
                 mock(FlowActionExecutionService.class),

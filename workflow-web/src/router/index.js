@@ -211,6 +211,18 @@ const routes = [
         meta: { title: '字典设置' }
       },
       {
+        path: '/system/external-systems',
+        name: 'ExternalSystemManagement',
+        component: () => import('@/views/system/ExternalSystem.vue'),
+        meta: {
+          title: '外部系统',
+          requiredPermissions: [
+            'system:external-system:view',
+            'system:external-system:manage'
+          ]
+        }
+      },
+      {
         path: '/system/work-calendars',
         name: 'WorkCalendarManagement',
         component: () => import('@/views/system/WorkCalendarManagement.vue'),

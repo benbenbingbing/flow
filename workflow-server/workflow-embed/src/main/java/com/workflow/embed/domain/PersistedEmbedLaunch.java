@@ -26,6 +26,7 @@ public record PersistedEmbedLaunch(
         ProtectedContext context,
         String uiLocale,
         String uiTheme,
+        String uiFormPresentation,
         String launchCodeDigest,
         Instant expiresAt,
         String traceId,

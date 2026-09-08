@@ -222,6 +222,7 @@ class EmbedSessionExchangeServiceTest {
                 "provider-1", 4, 3, 5, 6, "user-1", "binding-1", 7,
                 "a".repeat(64), "subject-v1", "https://portal.partner.example",
                 "channel-1234567890", entryMode, null, launchContext, "zh-CN", "light",
+                "seamless",
                 new Sha256EmbedDigest().sha256(LAUNCH_CODE), expiry, "trace-1", "request-1", NOW);
         EmbedIdentityProviderSnapshot provider = new EmbedIdentityProviderSnapshot(
                 "provider-1", "TRUSTED_EXTERNAL_ID", "ACTIVE", null, "erp-prod",

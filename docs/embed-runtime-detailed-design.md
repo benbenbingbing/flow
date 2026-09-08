@@ -1150,7 +1150,8 @@ X-Trace-Id: partner-20260826-001
   },
   "ui": {
     "locale": "zh-CN",
-    "theme": "light"
+    "theme": "light",
+    "formPresentation": "seamless"
   }
 }
 ```
@@ -1171,6 +1172,7 @@ X-Trace-Id: partner-20260826-001
 | `context` | object | 否 | 符合保存的 JSON Schema，最大 16 KiB、最多 32 个属性 |
 | `ui.locale` | string | 否 | 目标 Flow 资源支持的语言，默认 `zh-CN` |
 | `ui.theme` | string | 否 | `light/dark/system`，只影响展示 |
+| `ui.formPresentation` | enum | 否 | `seamless/dialog`，默认 `seamless`；控制直接表单及 LIST 内打开表单的展示方式，不影响授权 |
 
 `TRUSTED_EXTERNAL_ID` 请求示例：
 
@@ -1349,6 +1351,7 @@ X-Flow-Embed-Protocol: 1
     "ui": {
       "locale": "zh-CN",
       "theme": "light",
+      "formPresentation": "seamless",
       "showSearch": true,
       "showPagination": true,
       "showToolbar": true,
@@ -2183,7 +2186,7 @@ Provider 可复用，但 Grant 必须显式引用。
 | `entry_mode/record_id` | 固定入口 |
 | `context_ciphertext/context_cipher_key_version` | AEAD 加密 Context 及密钥版本 |
 | `context_digest/context_digest_key_version` | Canonical Context 的 HMAC 摘要及密钥版本 |
-| `ui_locale/ui_theme` | 受控展示参数 |
+| `ui_locale/ui_theme/ui_form_presentation` | 受控展示参数；表单展示方式缺省为 `seamless` |
 | `launch_code_digest` | 一次性高熵 code 的 SHA-256，唯一 |
 | `status` | `ISSUED/CONSUMED/EXPIRED/REVOKED` |
 | `expires_at/consumed_at/consumed_session_id/revoked_at` | 生命周期 |
@@ -2218,7 +2221,7 @@ Provider 可复用，但 Grant 必须显式引用。
 | `parent_nonce_digest/child_nonce_digest` | 256-bit 握手 Nonce 的 SHA-256，用于通道关联 |
 | `context_ciphertext/context_cipher_key_version` | 运行时可信 Context 的 AEAD 密文及密钥版本 |
 | `context_digest/context_digest_key_version` | Canonical Context 的 HMAC 摘要及密钥版本 |
-| `ui_locale/ui_theme` | 会话展示参数，不影响授权 |
+| `ui_locale/ui_theme/ui_form_presentation` | 会话展示参数，不影响授权；Launch 选定后固定到 Session |
 | `capability_snapshot_json` | 会话能力上限，不替代实时 Flow 权限 |
 | `application_version/grant_security_version/view_security_version` | 快速撤销版本 |
 | `status` | `ACTIVE/LOGGED_OUT/EXPIRED/REVOKED` |
@@ -3580,30 +3583,21 @@ mvn -f workflow-server/pom.xml -pl workflow-db-migrator \
 
 ### 23.1 当前迁移核查
 
-2026-08-28 实施前再次核查结果：
+2026-09-07 实施前再次核查结果：
 
 ```text
-main / HEAD 已跟踪的最高迁移：V065
-当前工作区已有且尚未合并的用户迁移：V066__entity_form_unique_claim.sql
-本 Embed 实现新增：V067、V068
-当前工作区并行新增的非 Embed 迁移：V069、V070
-本 Embed 用户手册新增：V071
-当前工作区已占用的最高迁移版本：V071
+main / HEAD 已跟踪的最高迁移：V076__align_navigation_menu_routes.sql
+本次 Embed 表单展示变更新增：V077__embed_form_presentation.sql
+当前工作区已占用的最高迁移版本：V077
 ```
 
 因此实施时：
 
-1. V001–V065 视为不可变，禁止修改、删除或重命名；
-2. V066 属于用户已有且尚未合并的实体表单唯一性纵切，Embed 不占用其版本；本轮安全
-   收口在合并前将其 value gate 契约修正为 `ENTITY:{entityCode}:{fieldCode}`，使同时进入
-   唯一性校验的同实体字段请求使用同一门闩，claim 命名空间保持表单/快照级。该门闩只协调
-   当前入口中适用且未忽略的已发布表单规则，不把无规则、忽略或条件不适用的其他写入口升级为
-   实体字段全局唯一约束；
-3. Embed 使用连续且当前不冲突的 V067、V068；V069、V070 是并行的组织岗位功能迁移，不属于
-   Embed 迁移清单，Embed 不修改、不删除、不重命名这些文件；
-4. 当前工作区最大版本已占用至 V071，后续 Embed 或 `record_version` 迁移不得低于 V072；真正
-   创建文件前仍必须重新扫描生产迁移目录，并使用高于届时最大版本的版本号；
-5. 不修改 `V001__business_schema.sql`，不使用 `flyway repair` 掩盖历史变化。
+1. V001–V076 均视为不可变，禁止修改、删除或重命名；
+2. 本次只新增 V077，为 Launch 和 Session 增加带默认值与取值约束的
+   `ui_form_presentation`；迁移前的记录统一得到 `seamless`；
+3. 后续迁移必须使用高于 V077 的版本号，创建文件前仍需重新扫描生产迁移目录；
+4. 不修改 `V001__business_schema.sql`，不使用 `flyway repair` 掩盖历史变化。
 
 ### 23.2 实际迁移拆分
 
@@ -3613,6 +3607,7 @@ main / HEAD 已跟踪的最高迁移：V065
 | --- | --- |
 | `V067__embed_views_identity_and_grants.sql` | View、Release、Provider、Binding、Grant、Origin、Assertion Replay、摘要/密文密钥版本 |
 | `V068__embed_launch_sessions_and_receipts.sql` | Launch、Session、`slot_released/slot_released_at`、Session Counter、Operation Receipt、明确 FK 方向、索引和状态 CHECK；若运行态配额实现需要，也只允许增加向后兼容的 Lease 范围字段 |
+| `V077__embed_form_presentation.sql` | 为 Launch、Session 增加 `ui_form_presentation`，默认 `seamless`，并限制为 `seamless/dialog` |
 
 `record_version` 不能只在 Flyway 中列举少量动态表。新建动态表 DDL、Schema Worker、既有表
 Expand 和所有写 SQL 必须一起建设。任务持久化明确复用 V009/V012 已建立的
@@ -3620,16 +3615,9 @@ Expand 和所有写 SQL 必须一起建设。任务持久化明确复用 V009/V0
 last_error/active_hash`），不再新建一套任务表；其静态元数据/保留字段若需 Flyway 变更，使用
 后续新版本迁移，实际动态表 DDL 仍进入该 fenced 队列。
 
-V062 的新库迁移问题已由项目侧处理，不再作为 Embed 验收阻塞项。对本机既有 `workflow` 库
-只读核对的结果是 V062–V065 已成功、V066–V068 尚未执行；不得在该库补跑 Embed 迁移来代替隔离
-验收。Embed 迁移契约测试会直接加载生产 `classpath:db/migration`，从空库完整执行当前全部迁移
-（截至本次核查为 V001–V071），并明确断言 V062–V071 均成功进入 Flyway History；其中 V069、
-V070 仅作为完整生产迁移链的一部分执行；V071 验证用户手册菜单。测试不使用独立高版本目录、
+Embed 迁移契约测试直接加载生产 `classpath:db/migration`，从空库按顺序执行 V001–V077，并
+验证新列的默认值、排序规则和取值约束。测试不使用独立高版本目录、
 `ignoreMigrationPatterns`、`repair`，也不修改任何已合并历史迁移。
-
-当前 `.env` root 凭据认证失败，`workflow_schema` 又只获准访问 `workflow.*`，因此必须先由 DBA
-预建符合 `workflow_embed_test_*` 命名规则的空库并对 schema 账号授权，或提供有效且具备建库
-权限的账号；禁止为规避权限问题启动 Docker 或复用现有业务库。
 
 ### 23.3 部署配置
 
@@ -3680,24 +3668,17 @@ workflow:
 
 ### 23.6 本设计任务的迁移变更
 
-当前实现分支的迁移变化：
+本次表单展示变更的迁移变化：
 
 ```text
 新增迁移文件：
-  V066__entity_form_unique_claim.sql（用户已有未合并文件；本轮更新其 gate 契约）
-  V067__embed_views_identity_and_grants.sql
-  V068__embed_launch_sessions_and_receipts.sql
-  V071__embed_integration_manual_menu.sql
+  V077__embed_form_presentation.sql
 修改已跟踪迁移文件：无
 删除迁移文件：无
 ```
 
-V066 不属于 Embed 表结构，但它参与当前完整迁移链和实体写入安全验收；由于尚未合并，可在不
-破坏历史 checksum 的前提下修正。若任何共享环境已执行旧内容，必须停止修改 V066，并改用新的
-更高版本迁移及非滚动升级方案。
-
-V069、V070 是共享工作区中并行开发的非 Embed 迁移，故不列入上面的 Embed 结构迁移清单；
-V071 只增加用户手册菜单及调整手册排序。后续 Embed/`record_version` 迁移不得占用 V071 或更低版本。
+V077 是向后兼容的 Expand 迁移；旧记录与未传新参数的调用方均使用 `seamless`。后续迁移不得
+占用 V077 或更低版本。
 
 ## 24. 第三方接入手册与上线检查
 

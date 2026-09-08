@@ -459,7 +459,6 @@ function createEmptyAction() {
     description: '',
     actionDefinitionId: '',
     interfaceName: '',
-    methodName: 'execute',
     enabled: true,
     triggerTiming: timing?.value || '',
     executionMode: timing?.defaultExecutionMode || 'IN_TRANSACTION',
@@ -572,17 +571,25 @@ async function saveAction() {
   }
   saving.value = true
   try {
+    // 保存请求显式遵循当前契约，避免把查询响应中的只读或历史字段重新透传给后端。
     await processActionApi.saveAction({
-      ...editingAction.value,
+      id: editingAction.value.id,
       processConfigId: props.processId,
       scopeType: props.scopeType,
       elementId: props.scopeType === 'PROCESS' ? null : props.elementId,
-      sequenceFlowId: props.scopeType === 'PROCESS' ? '__PROCESS__' : props.elementId,
+      triggerTiming: editingAction.value.triggerTiming,
+      executionMode: editingAction.value.executionMode,
+      failurePolicy: editingAction.value.failurePolicy,
+      actionName: editingAction.value.actionName,
+      description: editingAction.value.description,
+      interfaceName: editingAction.value.interfaceName,
       paramsJson: buildParamsJson(),
+      enabled: editingAction.value.enabled,
       retryConfig: editingAction.value.executionMode === 'AFTER_COMMIT'
         ? JSON.stringify({ maxRetries: retryForm.value.maxRetries })
         : null,
-      sortOrder: editingAction.value.id ? editingAction.value.sortOrder : actions.value.length
+      sortOrder: editingAction.value.id ? editingAction.value.sortOrder : actions.value.length,
+      actionDefinitionId: editingAction.value.actionDefinitionId
     })
     actionDialogVisible.value = false
     hasDraftChanges.value = true

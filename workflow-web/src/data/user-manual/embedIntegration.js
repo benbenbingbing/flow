@@ -20,7 +20,11 @@ const sdkExample = `import FlowEmbed from '@flow/embed-sdk'
 let widget
 let destroyPromise
 
-export async function openFlow(container, entry = { mode: 'LIST' }) {
+export async function openFlow(
+  container,
+  entry = { mode: 'LIST' },
+  formPresentation = 'seamless'
+) {
   // 切换页面或重新打开前，必须先释放上一条 Flow Session。
   if (widget) await closeFlow()
 
@@ -29,7 +33,7 @@ export async function openFlow(container, entry = { mode: 'LIST' }) {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channelId, entry })
+    body: JSON.stringify({ channelId, entry, formPresentation })
   })
   if (!response.ok) throw await response.json()
 
@@ -130,6 +134,15 @@ class FlowEmbedController {
     var channelId = validateUuid(request.channelId());
     var flowTraceId = normalizeTraceId(traceId);
 
+    // 展示方式由客户端选择，但代理层只接受公开枚举；缺省时使用无缝铺满。
+    var requestedPresentation = request.formPresentation();
+    var formPresentation = requestedPresentation == null
+        ? "seamless"
+        : switch (requestedPresentation) {
+          case "seamless", "dialog" -> requestedPresentation;
+          default -> throw badRequest("unsupported formPresentation");
+        };
+
     // LIST/CREATE 必须完全省略 recordId；VIEW 还要通过嵌入方业务授权。
     Map<String, Object> entry = switch (request.entry().mode()) {
       case "LIST", "CREATE" -> {
@@ -160,7 +173,7 @@ class FlowEmbedController {
         new SignedJwtSubject("SIGNED_JWT", assertion),
         entry,
         buildAuthorizedContext(partnerUser),
-        new LaunchUi("zh-CN", "light"));
+        new LaunchUi("zh-CN", "light", formPresentation));
 
     var flowResponse = flowClient.post()
         .uri("/api/open/v1/embed-launches")
@@ -241,7 +254,7 @@ export default {
               items: [
                 { title: '安装 SDK', text: '从 Flow 提供的私有制品库安装固定版本 @flow/embed-sdk；不要复制 SDK 源码，也不要手写 iframe 握手。' },
                 { title: '生成 channelId', text: '每次挂载使用 crypto.randomUUID() 生成新的 channelId。' },
-                { title: '请求自己的后端', text: '把 channelId 和受控 entry 意图提交给嵌入方后端。LIST、CREATE 不传 recordId；VIEW 必须传 recordId。' },
+                { title: '请求自己的后端', text: '把 channelId、受控 entry 意图和可选 formPresentation 提交给嵌入方后端。LIST、CREATE 不传 recordId；VIEW 必须传 recordId。formPresentation 缺省为 seamless，需要保留模态效果时传 dialog；它也控制从嵌入列表内后续打开的表单。' },
                 { title: '挂载 SDK', text: '把同一次 Launch 的 embedUrl、launchId、launchCode、channelId 传给 FlowEmbed.mount，并把 targetOrigin 固定为 Flow 提供的 Embed Origin。' }
               ]
             },
@@ -261,18 +274,19 @@ export default {
               type: 'table',
               columns: eventColumns,
               rows: [
-                { event: 'initialized', handle: '结束加载态；可读取 viewKey、surfaceType 和 capabilities。' },
+                { event: 'connected', handle: '仅表示安全通道握手完成；Flow 可能仍在兑换凭证或加载首屏。' },
+                { event: 'initialized', handle: '结束加载态并启用宿主刷新等操作；可读取 viewKey、surfaceType 和 capabilities。' },
                 { event: 'selection.changed', handle: '更新宿主选择结果；payload 只包含 Flow 配置允许回传的字段。' },
                 { event: 'form.saved', handle: '刷新宿主数据；完整数据仍以后端权威数据为准。' },
                 { event: 'close.requested', handle: '调用并等待 widget.destroy()，由宿主关闭嵌入区域。' },
-                { event: 'session.expired', handle: '销毁旧实例，重新向嵌入方后端申请 Launch 后再挂载。' },
+                { event: 'session.expired', handle: '等待旧实例 destroy() 成功，再重新向嵌入方后端申请 Launch 并挂载；失败时保持回收未确认。' },
                 { event: 'error', handle: '展示通用提示，并把 errorCode、traceId 交给 Flow 运维排查。' }
               ]
             },
             {
               type: 'checklist',
               items: [
-                '重新打开、路由离开或组件卸载前，必须 await widget.destroy()；失败或超时时不要继续创建新 Launch。',
+                '重新打开、路由离开或组件卸载前，必须 await widget.destroy()；失败或超时时保留回收未确认状态并禁用重新打开，等待服务端超时或管理员确认回收。',
                 'embedUrl 必须保持 Flow 返回值：使用 HTTPS，Origin 与 targetOrigin 完全相等，路径为 /embed/v1/launches/{launchId}，且不带 query 或 fragment。',
                 '不要把 launchCode 写入 URL、localStorage、sessionStorage、Cookie、埋点或错误日志。',
                 '不要直接创建 iframe，也不要使用 postMessage("*")；SDK 会校验 Origin、Window、Nonce 和 MessageChannel。',
@@ -296,7 +310,7 @@ export default {
             {
               type: 'steps',
               items: [
-                { title: '校验宿主请求', text: '从登录会话识别当前用户；校验 channelId 和 entry。viewKey、parentOrigin、Context 及允许的入口必须由后端白名单确定。' },
+                { title: '校验宿主请求', text: '从登录会话识别当前用户；校验 channelId、entry 和 formPresentation。展示方式只接受精确的小写 seamless/dialog，缺失或 null 默认 seamless；viewKey、parentOrigin、Context 及允许的入口必须由后端白名单确定。' },
                 { title: '取得机器 Token', text: '用 Integration Application 的 Client ID / Client Secret 调用 /oauth2/token，Scope 使用 embed.launch。Token 可按 expires_in 在后端内存短期缓存。' },
                 { title: '签发人员 JWT', text: '以稳定且不可回收的 external subject 作为 sub，使用与 Flow Provider 匹配的 iss、aud、alg 和 kid；设置短期 exp，并为每次断言生成唯一 jti。' },
                 { title: '创建 Launch', text: '携带机器 Token 调用 POST /api/open/v1/embed-launches，校验响应目标和 Embed Origin 后返回当前浏览器，并设置 Cache-Control: no-store。' }
@@ -330,7 +344,7 @@ export default {
                 { field: 'subject', owner: '嵌入方后端签发', rule: '默认使用 SIGNED_JWT；不得接受浏览器提交 Flow User ID。' },
                 { field: 'entry', owner: '嵌入方后端白名单', rule: 'LIST/CREATE 不含 recordId；VIEW 的 recordId 必须经过业务授权。' },
                 { field: 'context', owner: '嵌入方后端推导', rule: '只能提交 Flow 配置的 Context Schema 允许的字段。' },
-                { field: 'ui', owner: '嵌入方后端校验', rule: '只传允许的 locale 和 light/dark/system，不影响权限。' }
+                { field: 'ui', owner: '嵌入方后端校验', rule: 'locale、theme 和 formPresentation 必须按白名单校验；formPresentation 缺省为 seamless，可传 dialog 保留模态展示，并作用于列表内打开的表单；不影响权限。' }
               ]
             },
             {

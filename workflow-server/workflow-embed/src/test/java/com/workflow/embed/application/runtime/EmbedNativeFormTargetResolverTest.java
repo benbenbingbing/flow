@@ -195,6 +195,6 @@ class EmbedNativeFormTargetResolverTest {
                 listReleaseId, listReleaseVersion,
                 "form-release-4", 4,
                 capabilities, "{}", "{}", "[]", "{}", config,
-                "Alice", "zh-CN", "light");
+                "Alice", "zh-CN", "light", "seamless");
     }
 }

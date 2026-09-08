@@ -3,6 +3,7 @@ package com.workflow.embed.management.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.audit.SystemAuditEvent;
@@ -132,6 +133,27 @@ class EmbedViewAdministrationServiceTest {
         assertEquals("EMBED_VIEW_VALIDATION_FAILED", failure.errorCode());
         assertEquals(1L, service.get(created.id()).lockVersion());
         assertEquals(ViewStatus.DRAFT, service.get(created.id()).status());
+    }
+
+    @Test
+    void currentValidationRechecksLatestActiveResourceWithoutMutation() throws Exception {
+        ViewState created = service.create(new CreateViewCommand(
+                "supplier-orders", "供应商工单", SurfaceType.LIST, null));
+        ViewState saved = service.updateDraft(created.id(),
+                new UpdateDraftCommand(1L, objectMapper.readTree(validDraft())));
+        int auditCount = audits.size();
+
+        assertTrue(service.validateCurrentActive(saved.id()).validation().valid());
+        repository.resolvedResource = null;
+        var current = service.validateCurrentActive(saved.id());
+        var validation = current.validation();
+
+        assertEquals(ViewStatus.ACTIVE, current.viewStatus());
+        assertFalse(validation.valid());
+        assertEquals("PUBLISHED_RESOURCE_NOT_FOUND",
+                validation.violations().get(0).code());
+        assertEquals(saved.lockVersion(), service.get(saved.id()).lockVersion());
+        assertEquals(auditCount, audits.size());
     }
 
     @Test

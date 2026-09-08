@@ -117,6 +117,10 @@ abstract class AbstractEmbedRuntimeMigrationTest {
         assertEquals(
                 "",
                 columnDefault("integration_api_request_lease", "scope_key"));
+        for (String table : Set.of("embed_launch", "embed_session")) {
+            assertEquals("seamless", columnDefault(table, "ui_form_presentation"));
+            assertEquals("utf8mb4_bin", columnCollation(table, "ui_form_presentation"));
+        }
 
         // V074 统一排序规则后，父列及所有实体外键子列必须继续严格匹配。
         String applicationIdCollation = columnCollation("integration_application", "id");
@@ -189,6 +193,20 @@ abstract class AbstractEmbedRuntimeMigrationTest {
         migrateEmbedSchema();
         seedParents();
 
+        insertIssuedLaunch("presentation-launch", false);
+        assertEquals(1, countRows("""
+                SELECT COUNT(*)
+                  FROM embed_launch
+                 WHERE id = 'presentation-launch'
+                   AND ui_form_presentation = 'seamless'
+                """));
+        assertThrows(SQLException.class, () -> execute("""
+                UPDATE embed_launch
+                   SET ui_form_presentation = 'drawer'
+                 WHERE id = 'presentation-launch'
+                """));
+        execute("DELETE FROM embed_launch WHERE id = 'presentation-launch'");
+
         assertThrows(SQLException.class, () -> execute("""
                 INSERT INTO embed_view (
                   id, view_key, name, surface_type, status, draft_config_json,
@@ -239,6 +257,17 @@ abstract class AbstractEmbedRuntimeMigrationTest {
                 "embed-session", "embed-launch", "ACTIVE", 1, null));
 
         insertSession("embed-session", "embed-launch", "ACTIVE", 0, null);
+        assertEquals(1, countRows("""
+                SELECT COUNT(*)
+                  FROM embed_session
+                 WHERE id = 'embed-session'
+                   AND ui_form_presentation = 'seamless'
+                """));
+        assertThrows(SQLException.class, () -> execute("""
+                UPDATE embed_session
+                   SET ui_form_presentation = 'drawer'
+                 WHERE id = 'embed-session'
+                """));
         execute("""
                 INSERT INTO embed_session_counter (
                   grant_id, flow_user_id, active_count, lock_version
@@ -1507,7 +1536,7 @@ abstract class AbstractEmbedRuntimeMigrationTest {
         assertEquals(0, flyway.info().pending().length);
         // 该契约执行完整生产迁移链；并行功能占用的新版本也必须进入历史，
         // 否则把最高版本固定在 Embed 自身的 V068 会掩盖真实 classpath 漂移。
-        assertEquals("76", flyway.info().current().getVersion().getVersion());
+        assertEquals("79", flyway.info().current().getVersion().getVersion());
         try (Connection connection = connection();
              Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery("""

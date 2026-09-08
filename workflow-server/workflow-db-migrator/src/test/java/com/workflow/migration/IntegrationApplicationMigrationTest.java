@@ -324,6 +324,152 @@ class IntegrationApplicationMigrationTest {
         }
 
         @Test
+        void processActionCleanupBackfillsCanonicalFieldsBeforeDroppingLegacyColumns()
+                        throws Exception {
+                Flyway throughV77 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("77"))
+                                .load();
+                throughV77.migrate();
+
+                execute("""
+                                INSERT INTO process_action_definition (
+                                  id, action_code, display_name, handler_name,
+                                  visibility_scope, entity_codes_json,
+                                  enabled, deleted
+                                ) VALUES
+                                  (
+                                    'legacy-action-definition',
+                                    'legacy-action-code',
+                                    '历史动作',
+                                    'legacyActionHandler',
+                                    'ENTITY',
+                                    JSON_ARRAY('Invoice', 'customer', 'invoice', '  '),
+                                    1, 0
+                                  ),
+                                  (
+                                    'invalid-json-action-definition',
+                                    'invalid-json-action-code',
+                                    '无效历史范围',
+                                    'invalidJsonActionHandler',
+                                    'ENTITY',
+                                    'not-json',
+                                    1, 0
+                                  ),
+                                  (
+                                    'json-only-action-definition',
+                                    'json-only-action-code',
+                                    '仅有历史 JSON 范围',
+                                    'jsonOnlyActionHandler',
+                                    'ENTITY',
+                                    JSON_ARRAY('Invoice', 'invoice', '  '),
+                                    1, 0
+                                  )
+                                """);
+                execute("""
+                                INSERT INTO process_action_definition_entity (
+                                  id, action_definition_id, entity_code
+                                ) VALUES (
+                                  'existing-action-scope',
+                                  'legacy-action-definition',
+                                  'CUSTOMER'
+                                )
+                                """);
+                execute("""
+                                INSERT INTO process_action (
+                                  id, process_config_id, sequence_flow_id,
+                                  scope_type, element_id, trigger_timing,
+                                  action_name, interface_name, method_name,
+                                  status, deleted
+                                ) VALUES
+                                  (
+                                    'legacy-flow-action', 'process-config-1',
+                                    'Flow_legacy', NULL, NULL,
+                                    'TRANSITION_TAKEN', '历史顺序流动作',
+                                    'legacyActionHandler', 'legacyExecute',
+                                    'DRAFT', 0
+                                  ),
+                                  (
+                                    'canonical-node-action', 'process-config-1',
+                                    'Flow_obsolete', 'NODE', 'Activity_current',
+                                    'NODE_ENTER', '规范节点动作',
+                                    'legacyActionHandler', 'execute',
+                                    'DRAFT', 0
+                                  ),
+                                  (
+                                    'legacy-process-action', 'process-config-1',
+                                    '__PROCESS__', 'PROCESS', 'obsolete-process-element',
+                                    'PROCESS_START', '流程级动作',
+                                    'legacyActionHandler', 'execute',
+                                    'DRAFT', 0
+                                  )
+                                """);
+
+                Flyway current = flyway();
+                current.migrate();
+
+                assertSchemaIsCurrent(current);
+                // 关系表一旦已有数据就整体优先，不能混入已漂移的 JSON 值。
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM process_action_definition_entity
+                                 WHERE action_definition_id = 'legacy-action-definition'
+                                   AND LOWER(entity_code) = 'customer'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM process_action_definition_entity
+                                 WHERE action_definition_id = 'legacy-action-definition'
+                                   AND LOWER(entity_code) = 'invoice'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM process_action_definition_entity
+                                 WHERE action_definition_id =
+                                       'json-only-action-definition'
+                                   AND LOWER(entity_code) = 'invoice'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM process_action_definition_entity
+                                 WHERE action_definition_id =
+                                       'invalid-json-action-definition'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM process_action
+                                 WHERE id = 'legacy-flow-action'
+                                   AND scope_type = 'SEQUENCE_FLOW'
+                                   AND element_id = 'Flow_legacy'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM process_action
+                                 WHERE id = 'canonical-node-action'
+                                   AND scope_type = 'NODE'
+                                   AND element_id = 'Activity_current'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM process_action
+                                 WHERE id = 'legacy-process-action'
+                                   AND scope_type = 'PROCESS'
+                                   AND element_id IS NULL
+                                """));
+                assertFalse(columnExists("process_action", "method_name"));
+                assertFalse(columnExists("process_action", "sequence_flow_id"));
+                assertFalse(indexExists("process_action", "idx_sequence_flow"));
+                assertFalse(columnExists(
+                                "process_action_definition",
+                                "entity_codes_json"));
+        }
+
+        @Test
         void retainedNormalizerConvertsFlowableStyleTablesCreatedAfterV074()
                         throws Exception {
                 flyway().migrate();

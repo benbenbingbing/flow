@@ -1,11 +1,14 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
@@ -29,6 +32,59 @@ class EmbedManagementMapperContractTest {
         assertTrue(configuration.hasStatement(namespace + "findReleaseByConfigHash"));
         assertTrue(configuration.hasStatement(namespace + "findBindingByDigests"));
         assertTrue(configuration.hasStatement(namespace + "changeProviderStatus"));
+        assertTrue(configuration.hasStatement(namespace + "findApplicationOptions"));
+        assertTrue(configuration.hasStatement(namespace + "findIdentityProviderOptions"));
+    }
+
+    @Test
+    void optionQueriesHaveMinimalColumnsAndMatchingBoundCountFilters() {
+        Configuration configuration = new Configuration();
+        configuration.addMapper(EmbedManagementMapper.class);
+        String namespace = EmbedManagementMapper.class.getName() + ".";
+        for (String directory : new String[]{"Application", "IdentityProvider"}) {
+            Map<String, Object> parameters = new HashMap<>(Map.of(
+                    "keyword", "partner' OR 1=1 --", "status", "ACTIVE", "limit", 20, "offset", 20));
+            String query = configuration.getMappedStatement(namespace + "find" + directory + "Options")
+                    .getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
+            String count = configuration.getMappedStatement(namespace + "count" + directory + "Options")
+                    .getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
+
+            if (directory.equals("Application")) {
+                assertTrue(query.startsWith(
+                        "SELECT a.id, a.application_name AS name, a.client_id, a.status, "
+                                + "a.expires_at, CASE WHEN"));
+                assertTrue(query.contains("AS embed_launch_ready"));
+                assertTrue(query.contains("LEFT JOIN integration_application_credential c"));
+                assertTrue(query.contains("c.status = 'ACTIVE'"));
+                assertTrue(query.contains(
+                        "c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP(6)"));
+                assertTrue(query.contains("LEFT JOIN integration_application_scope s"));
+                assertTrue(query.contains("s.scope = 'embed.launch'"));
+                assertFalse(query.contains("secret_hash"));
+                assertFalse(query.contains("credential_hint"));
+            } else {
+                assertEquals("SELECT id, name, type, status",
+                        query.substring(0, query.indexOf(" FROM")));
+                assertFalse(query.contains("credential"));
+            }
+            assertEquals(count.substring(count.indexOf(" WHERE")),
+                    query.substring(query.indexOf(" WHERE"), query.indexOf(" ORDER BY")));
+            assertTrue(query.contains("id LIKE CONCAT('%', ?, '%')"));
+            assertTrue(query.contains("status = ?"));
+            assertTrue(query.contains("CASE WHEN") && query.contains("id = ? THEN 0 ELSE 1 END"),
+                    "完整 ID 回查必须优先返回精确项");
+            assertTrue(query.endsWith("LIMIT ? OFFSET ?"));
+            assertFalse(query.contains("partner'"), "搜索输入必须作为绑定参数传递");
+            assertFalse(query.contains("issuer"));
+            assertFalse(query.contains("jwks"));
+
+            parameters.put("keyword", null);
+            parameters.put("status", null);
+            String unfiltered = configuration.getMappedStatement(namespace + "find" + directory + "Options")
+                    .getBoundSql(parameters).getSql();
+            assertFalse(unfiltered.contains("LIKE"));
+            assertFalse(unfiltered.contains("status = ?"));
+        }
     }
 
     @Test
@@ -54,6 +110,7 @@ class EmbedManagementMapperContractTest {
     @Test
     void recordQueriesNeverDependOnPhysicalTableColumnOrder() {
         Set<String> recordQueries = Set.of(
+                "findApplicationOptions", "findIdentityProviderOptions",
                 "findReleaseByConfigHash",
                 "findGrant", "lockGrant", "findGrants",
                 "findProviders", "findProvider", "lockProvider",
@@ -67,6 +124,34 @@ class EmbedManagementMapperContractTest {
                     assertFalse(sql.matches("(?is).*SELECT\\s+(?:[a-z]+\\.)?\\*.*"),
                             method.getName() + " 不能使用 SELECT * 映射 Java record");
                 });
+    }
+
+    @Test
+    void bindingQueriesProjectTheSameFlowUserReadinessAsRuntime() {
+        for (String methodName : new String[]{
+                "findBindings", "findBinding", "findBindingByDigests"}) {
+            Method method = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
+                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .findFirst()
+                    .orElseThrow();
+            String sql = String.join("\n", method.getAnnotation(Select.class).value());
+
+            assertTrue(sql.contains("EXISTS (SELECT 1 FROM sys_user u"), methodName);
+            assertTrue(sql.contains("u.id = b.flow_user_id"), methodName);
+            assertTrue(sql.contains("u.status = '0'"), methodName);
+            assertTrue(sql.contains("u.deleted = 0"), methodName);
+            assertTrue(sql.contains("u.password_reset_required = 0"), methodName);
+            assertTrue(sql.indexOf("AS flow_user_ready") < sql.indexOf("b.status"),
+                    methodName + " 必须保持 BindingRow canonical constructor 列序");
+        }
+        Method lock = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
+                .filter(candidate -> candidate.getName().equals("lockBinding"))
+                .findFirst()
+                .orElseThrow();
+        String lockSql = String.join("\n", lock.getAnnotation(Select.class).value());
+        assertTrue(lockSql.contains("FALSE AS flow_user_ready"));
+        assertFalse(lockSql.contains("sys_user"),
+                "Binding 状态锁不能额外锁定用户行或改变既有锁顺序");
     }
 
     @Test

@@ -68,7 +68,10 @@ public @interface EmbedDelegatedRuntimeApi {
         SIGNED_RUNTIME_CONTEXT,
         /** 原生文件读取；文件归属继续由 FileAccessService 验证。 */
         FILE_READ,
-        /** 原生 multipart 文件写入；要求幂等键并继续执行存储写权限。 */
+        /**
+         * 原生 multipart 文件写入；要求幂等键，并继续执行通用存储权限或
+         * 与固定根实体一致的字段级上传授权。
+         */
         FILE_WRITE,
         /** {@code processInstanceId} URI variable，并反查固定实体记录。 */
         PROCESS_INSTANCE_PATH

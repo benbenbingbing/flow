@@ -19,7 +19,7 @@ public interface EmbedRuntimeReleaseMapper {
                    r.action_policy_json, r.context_bindings_json,
                    r.ui_config_json, r.config_json,
                    COALESCE(NULLIF(u.nickname, ''), u.username) AS actor_display_name,
-                   s.ui_locale, s.ui_theme
+                   s.ui_locale, s.ui_theme, s.ui_form_presentation
               FROM embed_session s
               JOIN embed_view_release r
                 ON r.id = s.view_release_id

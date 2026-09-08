@@ -329,7 +329,7 @@
                   <el-option
                     v-for="operation in operationOptions(step.serviceId)"
                     :key="operation.code"
-                    :label="`${operation.name} (${operation.code})`"
+                    :label="`${operation.name} (${operation.code}) · ${operationContextLabel(operation.contextType)}`"
                     :value="operation.code"
                   >
                     <span>{{ operation.name }}</span>
@@ -339,6 +339,9 @@
                       :type="operation.kind === 'WRITE' ? 'warning' : 'info'"
                     >
                       {{ operation.kind === 'WRITE' ? '写操作' : '查询' }}
+                    </el-tag>
+                    <el-tag class="operation-kind" size="small" effect="plain">
+                      {{ operationContextLabel(operation.contextType) }}
                     </el-tag>
                   </el-option>
                 </el-select>
@@ -722,6 +725,9 @@ function moveStep(index, offset) {
 
 function normalizeReplace(current) {
   if (current.strategy !== 'REPLACE') return
+  // 实体默认事件会分别投影到 FORM/LIST 执行链；两个上下文可以各自拥有
+  // 一个 REPLACE，由后端按实际投影链做最终校验。
+  if (String(props.ownerType || '').toUpperCase() === 'ENTITY') return
   editor.steps.forEach(step => {
     if (step !== current && step.strategy === 'REPLACE') {
       step.strategy = 'BEFORE'
@@ -740,6 +746,14 @@ async function onServiceChange(step) {
 
 function operationOptions(serviceId) {
   return operationCache[serviceId] || []
+}
+
+function operationContextLabel(contextType) {
+  return {
+    FORM: '表单',
+    LIST: '列表',
+    ENTITY: '实体'
+  }[String(contextType || '').toUpperCase()] || contextType || '未知上下文'
 }
 
 async function handleEventChange(eventCode) {

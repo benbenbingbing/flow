@@ -22,7 +22,7 @@ public class FlowActionExecution {
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
-    /** 关联的 flow_action 动作配置 ID */
+    /** 关联的 process_action 动作配置 ID */
     private String actionId;
     /** 动作名称（发布快照） */
     private String actionName;

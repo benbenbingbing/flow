@@ -8,6 +8,14 @@ final class ManagementPersistenceRows {
     private ManagementPersistenceRows() {
     }
 
+    record ApplicationOptionRow(
+            String id, String name, String clientId, String status,
+            LocalDateTime expiresAt, boolean embedLaunchReady) {
+    }
+
+    record IdentityProviderOptionRow(String id, String name, String type, String status) {
+    }
+
     record ViewRow(
             String id, String viewKey, String name, String description,
             String surfaceType, String status, String draftConfigJson,
@@ -56,7 +64,7 @@ final class ManagementPersistenceRows {
     record BindingRow(
             String id, String applicationId, String identityProviderId,
             String subjectDigest, String subjectDigestKeyVersion,
-            String subjectHint, String flowUserId, String status,
+            String subjectHint, String flowUserId, boolean flowUserReady, String status,
             long bindingVersion, LocalDateTime effectiveAt, LocalDateTime expiresAt,
             String createBy, LocalDateTime createTime,
             String updateBy, LocalDateTime updateTime,

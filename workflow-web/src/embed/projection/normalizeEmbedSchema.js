@@ -90,6 +90,16 @@ function normalizeFieldType(value) {
   return FIELD_TYPES.has(type) ? type : ''
 }
 
+/**
+ * Bootstrap 来自会话快照，但前端仍按安全默认值收敛展示方式，避免旧版本或
+ * 异常响应重新露出 Dialog 遮罩。
+ */
+export function normalizeEmbedFormPresentation(value) {
+  return safeText(value, '', 32) === 'dialog'
+    ? 'dialog'
+    : 'seamless'
+}
+
 function normalizeOptionValue(value) {
   if (typeof value === 'string') return value.slice(0, 256)
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -524,6 +534,7 @@ export function normalizeEmbedBootstrap(rawBootstrap = {}) {
       showPagination: ui.showPagination !== false,
       showToolbar: ui.showToolbar !== false,
       pageSize: clampInteger(ui.pageSize, 20, 1, 100),
+      formPresentation: normalizeEmbedFormPresentation(ui.formPresentation),
       heightMode: safeText(ui.heightMode, 'AUTO', 16).toUpperCase() === 'FIXED'
         ? 'FIXED'
         : 'AUTO'

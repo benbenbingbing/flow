@@ -485,8 +485,6 @@ const storageFieldList = [
   { field: 'processConfigId', type: 'String', meaning: '所属流程配置 ID。', notes: '发布时复制到对应版本，确保版本隔离。' },
   { field: 'scopeType', type: 'Enum<PROCESS | NODE | SEQUENCE_FLOW>', meaning: '动作绑定作用域。', notes: '由全局、节点或连线配置入口自动带入。' },
   { field: 'elementId', type: 'String / null', meaning: '绑定的 BPMN 节点或顺序流 ID。', notes: 'PROCESS 作用域为空；NODE 和 SEQUENCE_FLOW 必填。' },
-  { field: 'sequenceFlowId', type: 'String', meaning: '历史连线动作兼容字段。', notes: '新代码以 scopeType + elementId 为准，流程级使用兼容占位值。' },
-  { field: 'methodName', type: 'String', meaning: '历史方法名字段，当前固定为 execute。', notes: '运行时统一调用 FlowActionHandler.execute，不支持任意反射方法。' },
   { field: 'retryConfig', type: 'JSON String', meaning: '提交后动作的重试参数。', notes: '当前支持 maxRetries，后续可扩展退避策略。' },
   { field: 'versionId', type: 'String', meaning: '发布版本 ID。', notes: '草稿为空；发布复制后只读取当前流程定义对应版本。' },
   { field: 'status', type: 'String', meaning: 'DRAFT 或 PUBLISHED。', notes: '设计器编辑草稿，运行时只执行已发布动作。' }
@@ -694,7 +692,7 @@ const paramTypeList = [
 ]
 
 const contextList = [
-  { method: 'getActionId()', returnType: 'String', availability: '全部时机', desc: '当前已发布 flow_action 记录 ID。' },
+  { method: 'getActionId()', returnType: 'String', availability: '全部时机', desc: '当前已发布 process_action 记录 ID。' },
   { method: 'getActionName()', returnType: 'String', availability: '全部时机', desc: '动作业务名称。' },
   { method: 'getTriggerTiming()', returnType: 'String', availability: '全部时机', desc: '本次触发的业务时机编码。' },
   { method: 'getScopeType()', returnType: 'String', availability: '全部时机', desc: 'PROCESS、NODE 或 SEQUENCE_FLOW。' },

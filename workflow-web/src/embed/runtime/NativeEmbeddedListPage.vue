@@ -33,13 +33,14 @@
       :allow-default-form-resolve="!target.defaultFormResolved"
       :page-size="0"
       :max-height="0"
+      :form-presentation="formPresentation"
       @selection-change="controller.emitSelection"
     />
   </section>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getFormRuntimeRelease } from '@/api/entityForm'
 import { normalizeRuntimeFormRelease } from '@/shared/list-button-form-runtime'
 import EntityDataList from '@/views/entity/EntityDataList.vue'
@@ -56,6 +57,10 @@ const loading = ref(true)
 const error = ref('')
 const defaultForm = ref(null)
 let loadSequence = 0
+
+const formPresentation = computed(() =>
+  props.bootstrap.ui?.formPresentation === 'dialog' ? 'dialog' : 'seamless'
+)
 
 const createContext = computed(() => ({
   ...(target.runtimeContext || {}),
@@ -79,7 +84,7 @@ function hasFixedDefaultForm() {
  * 默认表单，这里预先读取该 exact FORM Release 并注入原生列表弹窗，
  * 避免已打开 Session 在管理员激活新表单后中途漂移。
  */
-async function prepareRuntime() {
+async function prepareRuntime(options = {}) {
   const sequence = ++loadSequence
   loading.value = true
   error.value = ''
@@ -107,6 +112,7 @@ async function prepareRuntime() {
     console.error('加载 Flow 原生嵌入列表失败:', cause)
     loading.value = false
     error.value = cause?.message || 'Flow 列表暂时无法加载，请稍后重试'
+    if (options?.throwOnError === true) throw cause
   }
 }
 
@@ -114,8 +120,19 @@ function focus() {
   listRef.value?.focus?.()
 }
 
-function reload() {
-  return listRef.value?.reload?.()
+/** 宿主刷新必须等待真实加载结果；预加载失败时先恢复固定表单，再挂载并刷新原生列表。 */
+async function reload() {
+  if (!listRef.value || error.value) {
+    await prepareRuntime({ throwOnError: true })
+    await nextTick()
+  }
+  if (!listRef.value?.reload) {
+    throw Object.assign(new Error('Flow 列表暂时无法加载，请稍后重试'), {
+      errorCode: 'EMBED_RUNTIME_UNAVAILABLE',
+      status: 503
+    })
+  }
+  return listRef.value.reload({ throwOnError: true })
 }
 
 defineExpose({ focus, reload })

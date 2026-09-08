@@ -116,6 +116,7 @@ export class FlowEmbedWidget {
     this.resolveDestroy = null
     this.rejectDestroy = null
     this.destroyStartedFrom = ''
+    this.launchCodeTransferred = false
     this._launchCode = options.launchCode
     this.handleWindowMessage = this.handleWindowMessage.bind(this)
     this.handlePortMessage = this.handlePortMessage.bind(this)
@@ -212,6 +213,7 @@ export class FlowEmbedWidget {
     }
     try {
       this.iframe.contentWindow.postMessage(initMessage, this.targetOrigin, [channel.port2])
+      this.launchCodeTransferred = true
     } catch (cause) {
       this.clearLaunchCode(initMessage)
       this.fail(new FlowEmbedError('无法初始化 Embed', 'FLOW_EMBED_INIT_FAILED', cause))
@@ -500,9 +502,15 @@ export class FlowEmbedWidget {
   destroy() {
     if (this.destroyPromise) return this.destroyPromise
 
-    // ready/init 尚未发生时 launchCode 从未交给 iframe，不可能已建立 Session。
+    // init 发送前可以确认没有 Session；发送后即使握手超时已清理本地通道，
+    // 子页仍可能完成兑换，不能把 DOM 清理成功误报为服务端注销成功。
     if (!['connected', 'acknowledging'].includes(this.state) || !this.port) {
-      this.destroyPromise = Promise.resolve()
+      this.destroyPromise = this.launchCodeTransferred
+        ? Promise.reject(new FlowEmbedError(
+            'Flow Embed 安全通道已关闭，会话回收未确认',
+            'FLOW_EMBED_DESTROY_FAILED'
+          ))
+        : Promise.resolve()
       this.state = 'destroyed'
       this.cleanup(true)
       this.listeners.clear()

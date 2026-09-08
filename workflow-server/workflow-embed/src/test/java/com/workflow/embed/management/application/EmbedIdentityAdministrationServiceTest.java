@@ -3,6 +3,7 @@ package com.workflow.embed.management.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.CurrentActor;
@@ -203,6 +204,7 @@ class EmbedIdentityAdministrationServiceTest {
         assertEquals("a".repeat(64), binding.subjectDigest());
         assertEquals("v2", binding.subjectDigestKeyVersion());
         assertEquals("ex***86", binding.subjectHint());
+        assertTrue(binding.flowUserReady());
         assertFalse(binding.toString().contains("external-user-10086"));
 
         var revoked = service.changeBindingStatus(binding.id(),

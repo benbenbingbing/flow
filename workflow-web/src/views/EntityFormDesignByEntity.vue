@@ -1609,6 +1609,23 @@ function openLinkedFormSettings() {
     .includes(requestedSection)
     ? requestedSection
     : 'data-source'
+  const targetType = String(route.query.targetType || 'OWNER').toUpperCase()
+  const targetKey = String(route.query.targetKey || '')
+  if (section === 'events' && targetType === 'FIELD' && targetKey) {
+    const field = eventFieldOptions.value.find(option =>
+      String(option.value) === targetKey)
+    if (field) {
+      eventBindingDialogRef.value?.openField({
+        fieldCode: field.value,
+        fieldName: field.label
+      })
+      return
+    }
+  }
+  if (section === 'events' && targetType === 'BUTTON' && targetKey) {
+    eventBindingDialogRef.value?.openButton({ key: targetKey, label: targetKey })
+    return
+  }
   openFormSettings('data-events', section)
 }
 
@@ -2096,7 +2113,8 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   formDataSourceBindingCount, eventFieldOptions,
   selectedCustomFormSchema, customFormOptions,
   selectedCustomFormCatalogOption, showFormExtensionConfig,
-  openFormDataSourceConfig, handleFormRendererModeChange,
+  openFormDataSourceConfig, onEventBindingsChanged: loadDiff,
+  handleFormRendererModeChange,
   openExtensionManagement, refreshExtensionCatalog,
   selectedField, activeNodeSettingsTab, isFieldNode,
   canConfigureSelectedNodeDataSource,

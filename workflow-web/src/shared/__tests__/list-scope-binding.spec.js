@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const entityDesign = readFileSync(join(root, 'views/EntityDesign.vue'), 'utf8')
 const listDesign = readFileSync(join(root, 'views/EntityListConfigDesign.vue'), 'utf8')
+const formDesign = readFileSync(join(root, 'views/EntityFormDesignByEntity.vue'), 'utf8')
+const formSettings = readFileSync(
+  join(root, 'components/form-designer/FormDesignerSettingsDrawer.vue'),
+  'utf8'
+)
 const manual = readFileSync(join(root, 'data/user-manual/entity.js'), 'utf8')
 
 assert.match(
@@ -96,6 +101,19 @@ assert.match(
   listDesign,
   /数据规则绑定已生效。列表界面配置没有需要发布的修改/,
   '只改绑定后点发布不能再报列表草稿已一致'
+)
+assert.match(listDesign, /openLinkedListEventBindings/, '列表设计器必须消费事件配置深链')
+assert.match(listDesign, /route\.query\.targetType/, '列表事件深链必须保留按钮目标')
+assert.match(formDesign, /route\.query\.targetType/, '表单事件深链必须保留字段或按钮目标')
+assert.match(
+  formSettings,
+  /@changed="onEventBindingsChanged"/,
+  '表单事件保存后必须立即刷新草稿与发布差异'
+)
+assert.match(
+  formDesign,
+  /onEventBindingsChanged: loadDiff/,
+  '表单设置必须把事件变更接回统一差异刷新链'
 )
 
 assert.match(manual, /列表未绑定规则时默认拒绝/)

@@ -18,6 +18,16 @@ for (const [name, componentSource] of [
     /:close-on-click-modal="false"/,
     `${name}点击遮罩时不得关闭`
   )
+  assert.match(dialogOpeningTag, /:fullscreen="seamlessPresentation"/,
+    `${name} seamless 模式必须铺满 iframe`)
+  assert.match(dialogOpeningTag, /:modal="!seamlessPresentation"/,
+    `${name} seamless 模式必须关闭根 Dialog 遮罩`)
+  assert.match(dialogOpeningTag, /:lock-scroll="!seamlessPresentation"/,
+    `${name} seamless 模式不得锁定 iframe body`)
+  assert.match(componentSource, /formPresentation:\s*'dialog'/,
+    `${name}普通调用默认保持 Dialog 展示`)
+  assert.match(componentSource, /entity-form-dialog--seamless/,
+    `${name}必须提供仅作用于 seamless 容器的铺满样式`)
 }
 
 const originalDialogDefault = ElDialog.props.closeOnClickModal.default

@@ -20,11 +20,23 @@
         <el-option label="停用" value="DISABLED" />
         <el-option label="已退役" value="RETIRED" />
       </el-select>
-      <el-input
+      <el-select
         v-model="filters.applicationId"
         clearable
-        placeholder="Application ID"
-      />
+        filterable
+        remote
+        reserve-keyword
+        :remote-method="loadApplicationOptions"
+        :loading="applicationOptionsLoading"
+        placeholder="按应用名称筛选"
+      >
+        <el-option
+          v-for="application in visibleApplicationOptions"
+          :key="application.id"
+          :label="applicationOptionLabel(application)"
+          :value="application.id"
+        />
+      </el-select>
       <el-button :loading="loading" @click="search">查询</el-button>
       <el-button @click="resetFilters">重置</el-button>
       <span class="filter-spacer" />
@@ -38,6 +50,14 @@
       v-if="loadError"
       type="error"
       :title="loadError"
+      show-icon
+      :closable="false"
+      class="workspace-alert"
+    />
+    <el-alert
+      v-if="applicationOptionError"
+      type="warning"
+      :title="applicationOptionError"
       show-icon
       :closable="false"
       class="workspace-alert"
@@ -69,7 +89,7 @@
       <el-table-column label="操作" fixed="right" width="250">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">
-            配置
+            接入向导
           </el-button>
           <template v-if="canManage && row.status !== 'RETIRED'">
             <el-button
@@ -195,6 +215,15 @@
           </el-descriptions-item>
         </el-descriptions>
         <el-tabs v-model="detailTab">
+          <el-tab-pane label="接入向导" name="guide">
+            <EmbedSetupGuide
+              ref="setupGuideRef"
+              :view="selectedView"
+              :can-manage="canManage"
+              :can-manage-identity="canManageIdentity"
+              @navigate="navigateFromGuide"
+            />
+          </el-tab-pane>
           <el-tab-pane label="集成配置" name="draft">
             <EmbedViewDraftPanel
               :view="selectedView"
@@ -202,7 +231,21 @@
             />
           </el-tab-pane>
           <el-tab-pane label="Application Grants" name="grants">
-            <EmbedGrantPanel :view="selectedView" />
+            <EmbedGrantPanel
+              ref="grantPanelRef"
+              :view="selectedView"
+              @changed="handleSetupChanged"
+            />
+          </el-tab-pane>
+          <el-tab-pane
+            v-if="canManageIdentity"
+            label="测试用户映射"
+            name="bindings"
+          >
+            <EmbedBindingPanel
+              ref="bindingPanelRef"
+              @changed="handleSetupChanged"
+            />
           </el-tab-pane>
         </el-tabs>
       </template>
@@ -211,14 +254,16 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, onMounted } from 'vue'
+import { computed, nextTick, reactive, ref, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import { Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { embedManagementApi } from '@/api/system/embedManagement'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import { useUserStore } from '@/stores/user'
+import EmbedBindingPanel from './EmbedBindingPanel.vue'
 import EmbedGrantPanel from './EmbedGrantPanel.vue'
+import EmbedSetupGuide from './EmbedSetupGuide.vue'
 import EmbedViewDraftPanel from './EmbedViewDraftPanel.vue'
 import {
   EMBED_PERMISSIONS,
@@ -229,15 +274,22 @@ import {
 
 const userStore = useUserStore()
 const views = ref([])
+const applicationOptions = ref([])
+const applicationSearchOptions = ref([])
 const loading = ref(false)
+const applicationOptionsLoading = ref(false)
 const loadError = ref('')
+const applicationOptionError = ref('')
 const createVisible = ref(false)
 const createFormRef = ref()
 const creating = ref(false)
 const createError = ref('')
 const detailVisible = ref(false)
-const detailTab = ref('draft')
+const detailTab = ref('guide')
 const selectedView = ref(null)
+const setupGuideRef = ref()
+const grantPanelRef = ref()
+const bindingPanelRef = ref()
 const filters = reactive({
   keyword: '',
   surfaceType: '',
@@ -251,14 +303,33 @@ const createRules = {
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
   surfaceType: [{ required: true, message: '请选择 Surface', trigger: 'change' }]
 }
+let applicationOptionsSequence = 0
 
 const canManage = computed(() => hasEmbedPermission(
   userStore.permissions,
   EMBED_PERMISSIONS.manage,
   userStore.isSuperAdmin
 ))
+const canManageIdentity = computed(() => hasEmbedPermission(
+  userStore.permissions,
+  EMBED_PERMISSIONS.identityManage,
+  userStore.isSuperAdmin
+))
+const visibleApplicationOptions = computed(() => {
+  const selected = applicationOptions.value.find(
+    item => item.id === filters.applicationId
+  )
+  if (!selected || applicationSearchOptions.value.some(item => item.id === selected.id)) {
+    return applicationSearchOptions.value
+  }
+  // 保留已选历史应用的名称，同时让远程搜索结果只反映当前关键字。
+  return [selected, ...applicationSearchOptions.value]
+})
 
-onMounted(loadViews)
+onMounted(() => {
+  loadViews()
+  loadApplicationOptions()
+})
 
 function defaultCreateForm() {
   return { viewKey: '', name: '', surfaceType: 'LIST', description: '' }
@@ -286,6 +357,33 @@ async function loadViews() {
     loadError.value = describeEmbedManagementError(error)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadApplicationOptions(keyword = '') {
+  const sequence = ++applicationOptionsSequence
+  applicationOptionsLoading.value = true
+  applicationOptionError.value = ''
+  try {
+    const result = await embedManagementApi.options.applications({
+      keyword: String(keyword || '').trim() || undefined,
+      pageNum: 1,
+      pageSize: 100
+    })
+    if (sequence !== applicationOptionsSequence) return
+    const incoming = result?.list || result?.records || []
+    applicationSearchOptions.value = incoming
+    const byId = new Map([
+      ...applicationOptions.value,
+      ...incoming
+    ].map(item => [item.id, item]))
+    applicationOptions.value = [...byId.values()]
+  } catch (error) {
+    if (sequence !== applicationOptionsSequence) return
+    applicationSearchOptions.value = []
+    applicationOptionError.value = `接入应用加载失败：${describeEmbedManagementError(error)}`
+  } finally {
+    if (sequence === applicationOptionsSequence) applicationOptionsLoading.value = false
   }
 }
 
@@ -340,7 +438,7 @@ async function createView() {
 
 function openDetail(row) {
   selectedView.value = row
-  detailTab.value = 'draft'
+  detailTab.value = 'guide'
   detailVisible.value = true
 }
 
@@ -351,6 +449,26 @@ async function refreshSelectedView() {
     ElMessage.error(describeEmbedManagementError(error))
   }
   await loadViews()
+  await setupGuideRef.value?.refresh?.()
+}
+
+async function handleSetupChanged() {
+  await setupGuideRef.value?.refresh?.()
+}
+
+/** 向导只负责导航，实际编辑仍由原有 CAS 表单完成。 */
+async function navigateFromGuide(tab, scope = {}) {
+  detailTab.value = tab
+  await nextTick()
+  if (tab === 'grants') {
+    await grantPanelRef.value?.configure?.(
+      scope.applicationId || '',
+      scope.providerId || ''
+    )
+  }
+  if (tab === 'bindings') {
+    await bindingPanelRef.value?.configure?.(scope)
+  }
 }
 
 async function changeStatus(row, status) {
@@ -404,6 +522,13 @@ function statusLabel(status) {
 
 function formatTime(value) {
   return value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'
+}
+
+function applicationOptionLabel(application) {
+  const name = application?.name || application?.applicationName || application?.id
+  return application?.clientId
+    ? `${name}（${application.clientId}）`
+    : name
 }
 </script>
 

@@ -8,6 +8,7 @@ import {
   DemoConfigurationError,
   FlowRemoteError,
   buildConfig,
+  buildFlowLaunchPayload,
   isApprovedEmbedProxyRequest,
   normalizeLaunchIntent,
   normalizeLaunchRequest,
@@ -68,20 +69,63 @@ test('拒绝让宿主和 Embed 共用 Origin', () => {
 test('CREATE 必须完全省略 recordId，VIEW 必须携带安全 recordId', () => {
   assert.deepEqual(
     normalizeLaunchIntent({ mode: 'CREATE', theme: 'light' }),
-    { mode: 'CREATE', theme: 'light' }
+    { mode: 'CREATE', theme: 'light', formPresentation: 'seamless' }
   )
   assert.throws(
     () => normalizeLaunchIntent({ mode: 'CREATE', recordId: null }),
     error => error instanceof FlowRemoteError && error.status === 400
   )
   assert.deepEqual(
-    normalizeLaunchIntent({ mode: 'VIEW', recordId: 'record-1001', theme: 'dark' }),
-    { mode: 'VIEW', recordId: 'record-1001', theme: 'dark' }
+    normalizeLaunchIntent({
+      mode: 'VIEW',
+      recordId: 'record-1001',
+      theme: 'dark',
+      formPresentation: 'dialog'
+    }),
+    { mode: 'VIEW', recordId: 'record-1001', theme: 'dark', formPresentation: 'dialog' }
   )
   assert.throws(
     () => normalizeLaunchIntent({ mode: 'VIEW', recordId: '../record' }),
     error => error instanceof FlowRemoteError && error.errorCode === 'FLOW_DEMO_RECORD_INVALID'
   )
+})
+
+test('表单展示缺省为 seamless，并严格拒绝枚举外的客户端值', () => {
+  assert.equal(
+    normalizeLaunchIntent({ mode: 'CREATE', formPresentation: null }).formPresentation,
+    'seamless'
+  )
+  for (const formPresentation of ['', ' seamless ', 'SEAMLESS', 'drawer', 1, {}]) {
+    assert.throws(
+      () => normalizeLaunchIntent({ mode: 'CREATE', formPresentation }),
+      error => error instanceof FlowRemoteError
+        && error.errorCode === 'FLOW_DEMO_FORM_PRESENTATION_INVALID'
+    )
+  }
+})
+
+test('Partner Backend 把校验后的展示方式写入 Flow Launch ui', () => {
+  const config = buildConfig({})
+  const target = config.targets.find(candidate => candidate.key === 'form')
+  const intent = normalizeLaunchIntent({
+    mode: 'VIEW',
+    recordId: 'record-1001',
+    theme: 'dark',
+    formPresentation: 'dialog'
+  })
+  const payload = buildFlowLaunchPayload(
+    config,
+    target,
+    intent,
+    'signed-user-assertion',
+    'channel-12345678'
+  )
+  assert.deepEqual(payload.ui, {
+    locale: 'zh-CN',
+    theme: 'dark',
+    formPresentation: 'dialog'
+  })
+  assert.deepEqual(payload.entry, { mode: 'VIEW', recordId: 'record-1001' })
 })
 
 test('浏览器不能覆盖 View、人员、Origin 或 Context 坐标', () => {
@@ -107,16 +151,22 @@ test('目标白名单分别约束 LIST 与 FORM 入口', () => {
     theme: 'light'
   }, targets)
   assert.equal(listRequest.target.viewKey, 'req-list')
-  assert.deepEqual(listRequest.intent, { mode: 'LIST', theme: 'light' })
+  assert.deepEqual(listRequest.intent, {
+    mode: 'LIST',
+    theme: 'light',
+    formPresentation: 'seamless'
+  })
 
   const formRequest = normalizeLaunchRequest({
     targetKey: 'form',
     mode: 'VIEW',
     recordId: 'record-1001',
-    theme: 'dark'
+    theme: 'dark',
+    formPresentation: 'dialog'
   }, targets)
   assert.equal(formRequest.target.viewKey, 'zdwreq-form-demo')
   assert.equal(formRequest.intent.recordId, 'record-1001')
+  assert.equal(formRequest.intent.formPresentation, 'dialog')
 
   for (const request of [
     { targetKey: 'list', mode: 'CREATE' },
@@ -195,6 +245,10 @@ test('示例源码不把敏感凭据写入浏览器 storage、URL 或日志', ()
   assert.match(hostHtml, /Flow 原生页面运行时/)
   assert.doesNotMatch(hostHtml, /Flow 原生表单运行时|zdwreq-form-demo/)
   assert.match(browserSource, /targetKey: target\?\.key/)
+  assert.match(browserSource, /formPresentation: presentation/)
+  assert.match(hostHtml, /id="form-presentation"[\s\S]*value="seamless" selected[\s\S]*value="dialog"/)
+  assert.match(hostHtml, /表单展示（含列表内打开）/)
+  assert.doesNotMatch(hostHtml, /id="form-presentation-field"\s+hidden/)
   assert.match(browserSource, /runtimeViewKey\.textContent = event\.payload\?\.viewKey/)
   const topbarRule = hostStyles.match(/\.topbar\s*\{[\s\S]*?\}/)?.[0] || ''
   assert.match(topbarRule, /position:\s*relative/)
@@ -215,7 +269,7 @@ test('关闭和重新打开会等待 Session Logout 并阻止并发 Launch', () 
 
   assert.match(browserSource, /await retiringWidget\.destroy\(\)/)
   assert.match(browserSource, /if \(destroyPromise\) return destroyPromise/)
-  assert.match(browserSource, /if \(launchInProgress \|\| destroyPromise\) return/)
+  assert.match(browserSource, /if \(launchInProgress \|\| destroyPromise \|\| logoutUnconfirmed\) return/)
   assert.match(browserSource, /async function closeEmbed\(\)[\s\S]*await destroyWidget\(\)/)
   assert.match(
     browserSource,

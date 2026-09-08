@@ -115,8 +115,9 @@ npm start
 ```
 
 打开 [https://localhost:3443](https://localhost:3443)，先选择“需求列表”或“需求表单”，再选择
-该目标允许的入口并点击“创建 Launch 并打开”。页面顶部和导航属于模拟第三方系统，白色运行区
-来自独立的 Flow Embed Origin。
+该目标允许的入口，还可以选择“无缝铺满”或“弹窗展示”，默认使用无缝铺满；最后点击“创建
+Launch 并打开”。该选择也控制从嵌入列表内后续打开的表单。页面顶部和导航属于模拟第三方系统，
+白色运行区来自独立的 Flow Embed Origin。
 
 “需求列表”只提供 LIST；“需求表单”提供 CREATE 和 VIEW，其中 VIEW 才需要填写 Flow
 `recordId`。切换目标重新打开时，Demo 会先等待旧 Session 安全注销，再为所选目标创建新
@@ -130,13 +131,14 @@ localhost 证书即可。如果 iframe 因 8443 的证书尚未确认而空白�
 ## 四、实际对接流程
 
 1. 浏览器请求第三方同源接口 `POST https://localhost:3443/partner-api/embed-launch`，只传
-   受控 `targetKey`、`mode`、可选 `recordId` 和主题；
+   受控 `targetKey`、`mode`、可选 `recordId`、主题和 `formPresentation`；
 2. 3443 Node 后端从本地安全文件读取 OAuth 凭据，调用
    `POST http://127.0.0.1:8080/oauth2/token`，Scope 固定为 `embed.launch`；
 3. Node 后端用人员断言私钥签发 60 秒 RS256 JWT，固定
    `iss/aud/sub/kid`，每次生成新的 `jti`；
 4. Node 后端把 `list/form` 映射为环境变量中的固定 View Key，再调用
-   `POST /api/open/v1/embed-launches`；`parentOrigin` 固定为 3443，Context 固定为空对象；
+   `POST /api/open/v1/embed-launches`；`parentOrigin` 固定为 3443，Context 固定为空对象，并把
+   严格校验后的展示方式写入 `ui.formPresentation`；
 5. 浏览器拿到一次性 Launch 后调用 `FlowEmbed.mount()`；SDK 创建 8443 iframe，通过
    `ready/init/init.ack` 严格握手，把 Launch Code 只交给对应 iframe；
 6. iframe 通过 8443 同源代理兑换短期 Session：Exchange、Bootstrap、LIST 与 Session 生命周期
@@ -149,12 +151,14 @@ localhost 证书即可。如果 iframe 因 8443 的证书尚未确认而空白�
    日志中；
 8. Flow 已发布表单的“关闭/取消”会发出 `close.requested`；宿主收到后与手工关闭、
    重新打开共用同一条 `await widget.destroy()` 链，等 iframe 完成服务端 Session
-   Logout 并返回 ACK 后才移除容器。注销失败时不会继续创建新 Launch，也不会通过提高
-   Grant 的活动会话上限掩盖问题。
+   Logout 并返回 ACK 后才移除容器。注销失败后页面保留“回收未确认”状态并禁用重新打开；
+   等待服务端会话超时或管理员确认回收后，再重新进入 Demo。不要通过提高 Grant 的活动
+   会话上限掩盖问题。宿主刷新等命令在 `initialized` 后才启用，避免在首屏加载中提前执行。
 
 浏览器无法覆盖 `viewKey`、人员、`parentOrigin`、`context` 或 `channelId`，也不能提交目标
 白名单以外的 `targetKey`。CREATE/LIST 必须完全省略 `recordId`；VIEW 必须携带第三方后端已
-授权的合法 `recordId`。
+授权的合法 `recordId`。`formPresentation` 缺失或为 `null` 时默认使用 `seamless`；显式值只
+接受精确的小写 `seamless` 或 `dialog`，其它值由 Demo 后端返回 400。
 
 ## 五、可选配置
 

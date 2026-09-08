@@ -194,10 +194,23 @@ class EmbedRuntimeReadFacadeTest {
         assertEquals("供应商工单", bootstrap.view().name());
         assertEquals("张三", bootstrap.actor().displayName());
         assertEquals("dark", bootstrap.ui().theme());
+        assertEquals("dialog", bootstrap.ui().formPresentation());
         assertEquals(25, bootstrap.ui().pageSize());
         assertEquals(100, bootstrap.limits().maxPageSize());
         assertTrue(bootstrap.capabilities().contains("ACTION_EXECUTE"));
         assertFalse(bootstrap.capabilities().contains("INTERNAL_PERMISSION"));
+    }
+
+    @Test
+    void bootstrapUsesSeamlessForLegacyNullPresentation() {
+        EmbedProperties properties = new EmbedProperties();
+        facade = new EmbedRuntimeReadFacade(
+                (sessionId, viewId, releaseId) -> release(null),
+                entityPort,
+                properties,
+                new ObjectMapper());
+
+        assertEquals("seamless", facade.bootstrap().ui().formPresentation());
     }
 
     @Test
@@ -236,7 +249,7 @@ class EmbedRuntimeReadFacadeTest {
                         + "\"showToolbar\":true,\"pageSize\":25,"
                         + "\"heightMode\":\"AUTO\"}",
                 objectMapper.writeValueAsString(configNode),
-                "张三", "zh-CN", "light");
+                "张三", "zh-CN", "light", "seamless");
         EmbedNativeFormTargetResolver resolver = mock(
                 EmbedNativeFormTargetResolver.class);
         when(resolver.resolveRoot(any())).thenReturn(
@@ -296,7 +309,8 @@ class EmbedRuntimeReadFacadeTest {
                         + "{\"source\":\"supplierId\",\"target\":\"supplier_id\","
                         + "\"usage\":\"FIXED_FILTER\"}]",
                 release.uiConfigJson(), release.configJson(),
-                release.actorDisplayName(), release.uiLocale(), release.uiTheme());
+                release.actorDisplayName(), release.uiLocale(), release.uiTheme(),
+                release.uiFormPresentation());
         facade = new EmbedRuntimeReadFacade(
                 (sessionId, viewId, releaseId) -> colliding,
                 entityPort,
@@ -357,6 +371,10 @@ class EmbedRuntimeReadFacadeTest {
     }
 
     private static EmbedRuntimeReleaseSnapshot release() {
+        return release("dialog");
+    }
+
+    private static EmbedRuntimeReleaseSnapshot release(String formPresentation) {
         return new EmbedRuntimeReleaseSnapshot(
                 "release_1", "view_1", "supplier-work-orders", "供应商工单", 7,
                 "LIST", "work_order", "supplier_open", "list-release-7", 7,
@@ -371,7 +389,7 @@ class EmbedRuntimeReadFacadeTest {
                 "{\"showSearch\":true,\"showPagination\":true,\"showToolbar\":true,"
                         + "\"pageSize\":25,\"heightMode\":\"AUTO\"}",
                 "{\"queryPolicy\":{\"allowTotal\":false,\"maxPageSize\":100}}",
-                "张三", "zh-CN", "dark");
+                "张三", "zh-CN", "dark", formPresentation);
     }
 
     private static final class CapturingEntityPort implements EmbedRuntimeEntityPort {

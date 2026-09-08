@@ -55,7 +55,7 @@ class EmbedRuntimeControllerTest {
                         "orders", "工单", "LIST", "LIST"),
                 List.of("LIST_QUERY"),
                 new EmbedRuntimeViews.Ui(
-                        "zh-CN", "light", true, true, true, 20, "AUTO"),
+                        "zh-CN", "light", "seamless", true, true, true, 20, "AUTO"),
                 new EmbedRuntimeViews.Limits(100, 1_048_576, 100)));
 
         mvc.perform(get("/api/embed/v1/runtime/bootstrap")
@@ -65,6 +65,7 @@ class EmbedRuntimeControllerTest {
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.errorCode").doesNotExist())
                 .andExpect(jsonPath("$.data.session.id").value("ems_1"))
+                .andExpect(jsonPath("$.data.ui.formPresentation").value("seamless"))
                 .andExpect(jsonPath("$.data.view.revision").doesNotExist())
                 .andExpect(jsonPath("$.traceId").value("trace-1"));
     }

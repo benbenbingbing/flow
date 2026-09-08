@@ -196,7 +196,7 @@ public class EmbedIdentityManagementController {
     private static EmbedManagementViews.BindingView binding(BindingState value) {
         return new EmbedManagementViews.BindingView(
                 value.id(), value.applicationId(), value.identityProviderId(),
-                value.subjectHint(), value.flowUserId(), value.status().name(),
+                value.subjectHint(), value.flowUserId(), value.flowUserReady(), value.status().name(),
                 value.bindingVersion(), value.effectiveAt(), value.expiresAt(),
                 value.createTime(), value.updateTime());
     }

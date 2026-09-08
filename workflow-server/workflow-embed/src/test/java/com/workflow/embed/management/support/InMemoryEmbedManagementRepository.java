@@ -1,6 +1,9 @@
 package com.workflow.embed.management.support;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.workflow.embed.management.domain.EmbedManagementModel.ApplicationOption;
+import com.workflow.embed.management.domain.EmbedManagementModel.IdentityProviderOption;
+import com.workflow.embed.management.domain.EmbedManagementModel.OptionsFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.BindingState;
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;
@@ -17,9 +20,11 @@ import com.workflow.embed.management.domain.EmbedManagementModel.ViewStatus;
 import com.workflow.embed.management.port.EmbedManagementRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 /** 测试用内存持久化端口，刻意不启动 Spring 或数据库。 */
 public class InMemoryEmbedManagementRepository implements EmbedManagementRepository {
@@ -28,6 +33,7 @@ public class InMemoryEmbedManagementRepository implements EmbedManagementReposit
     public final Map<String, List<ReleaseState>> releases = new LinkedHashMap<>();
     public final Map<String, GrantState> grants = new LinkedHashMap<>();
     public final Map<String, ProviderState> providers = new LinkedHashMap<>();
+    public final Map<String, ApplicationOption> applicationOptions = new LinkedHashMap<>();
     public final Map<String, BindingState> bindings = new LinkedHashMap<>();
     public ResolvedResource resolvedResource;
     public boolean applicationEnabled = true;
@@ -204,6 +210,49 @@ public class InMemoryEmbedManagementRepository implements EmbedManagementReposit
     }
 
     @Override
+    public Page<ApplicationOption> findApplicationOptions(OptionsFilter filter) {
+        List<ApplicationOption> values = applicationOptions.values().stream()
+                .filter(option -> filter.status() == null || option.status() == filter.status())
+                .filter(option -> matchesOptionKeyword(filter.keyword(),
+                        option.id(), option.name(), option.clientId()))
+                // 远程选择器用完整 ID 回查历史项；精确 ID 必须稳定落在第一页。
+                .sorted(Comparator.comparing(
+                                (ApplicationOption option) -> !option.id().equals(filter.keyword()))
+                        .thenComparing(ApplicationOption::name)
+                        .thenComparing(ApplicationOption::id))
+                .toList();
+        return optionsPage(values, filter);
+    }
+
+    @Override
+    public Page<IdentityProviderOption> findIdentityProviderOptions(OptionsFilter filter) {
+        List<IdentityProviderOption> values = providers.values().stream()
+                .filter(provider -> filter.status() == null || provider.status() == filter.status())
+                .filter(provider -> matchesOptionKeyword(
+                        filter.keyword(), provider.id(), provider.name()))
+                .map(provider -> new IdentityProviderOption(
+                        provider.id(), provider.name(), provider.type(), provider.status()))
+                .sorted(Comparator.comparing(
+                                (IdentityProviderOption option) -> !option.id().equals(filter.keyword()))
+                        .thenComparing(IdentityProviderOption::name)
+                        .thenComparing(IdentityProviderOption::id))
+                .toList();
+        return optionsPage(values, filter);
+    }
+
+    private static boolean matchesOptionKeyword(String keyword, String... values) {
+        return keyword == null || java.util.Arrays.stream(values)
+                .anyMatch(value -> value.toLowerCase(Locale.ROOT)
+                        .contains(keyword.toLowerCase(Locale.ROOT)));
+    }
+
+    private static <T> Page<T> optionsPage(List<T> values, OptionsFilter filter) {
+        return new Page<>(values.stream()
+                .skip(((long) filter.pageNum() - 1) * filter.pageSize())
+                .limit(filter.pageSize()).toList(), values.size(), filter.pageNum(), filter.pageSize());
+    }
+
+    @Override
     public Page<ProviderState> findProviders(ProviderFilter filter) {
         List<ProviderState> values = providers.values().stream().toList();
         return new Page<>(values, values.size(), filter.pageNum(), filter.pageSize());
@@ -325,7 +374,7 @@ public class InMemoryEmbedManagementRepository implements EmbedManagementReposit
         bindings.put(bindingId, new BindingState(
                 current.id(), current.applicationId(), current.identityProviderId(),
                 current.subjectDigest(), current.subjectDigestKeyVersion(), current.subjectHint(),
-                current.flowUserId(), SecurityStatus.valueOf(status),
+                current.flowUserId(), current.flowUserReady(), SecurityStatus.valueOf(status),
                 current.bindingVersion() + 1, current.effectiveAt(), current.expiresAt(),
                 current.createBy(), current.createTime(), actorId, now,
                 revoked ? actorId : null, revoked ? now : null));

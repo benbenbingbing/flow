@@ -28,6 +28,7 @@ public class MyBatisEmbedRuntimeReleaseAdapter implements EmbedRuntimeReleasePor
                 row.listReleaseVersion(), row.formReleaseId(), row.formReleaseVersion(),
                 row.capabilitiesJson(), row.fieldPolicyJson(),
                 row.actionPolicyJson(), row.contextBindingsJson(), row.uiConfigJson(),
-                row.configJson(), row.actorDisplayName(), row.uiLocale(), row.uiTheme());
+                row.configJson(), row.actorDisplayName(), row.uiLocale(), row.uiTheme(),
+                row.uiFormPresentation());
     }
 }

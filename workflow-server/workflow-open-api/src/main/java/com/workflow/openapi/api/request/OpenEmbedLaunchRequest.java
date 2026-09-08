@@ -92,7 +92,8 @@ public record OpenEmbedLaunchRequest(
                         subject.externalUserId()),
                 new EmbedLaunchEntry(entry.mode(), entry.recordId()),
                 context,
-                ui == null ? null : new EmbedLaunchUi(ui.locale, ui.theme));
+                ui == null ? null : new EmbedLaunchUi(
+                        ui.locale, ui.theme, ui.formPresentation));
     }
 
     private static boolean hasText(String value) {
@@ -255,7 +256,13 @@ public record OpenEmbedLaunchRequest(
      */
     public record Ui(
             @Size(max = 32) String locale,
-            @Pattern(regexp = "light|dark|system") String theme) {
+            @Pattern(regexp = "light|dark|system") String theme,
+            @Pattern(regexp = "seamless|dialog") String formPresentation) {
+
+        /** Compatibility constructor for callers that rely on the default presentation. */
+        public Ui(String locale, String theme) {
+            this(locale, theme, null);
+        }
 
         @JsonAnySetter
         public void rejectUnknownField(String name, Object value) {

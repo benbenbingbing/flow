@@ -514,4 +514,31 @@ assert.equal(timeoutHarness.widget.getState(), 'destroyed')
 assert.equal(timeoutHarness.container.children.length, 0)
 assert.equal(timeoutHarness.widget.destroy(), timedDestroy)
 
+// 握手超时是否能够确认清理，取决于一次性 code 是否已经交给子页。
+for (const initTransferred of [false, true]) {
+  let handshakeTimeoutCallback
+  const failedHandshake = createHarness({
+    handshakeTimeoutMs: 1000,
+    setTimeoutImpl(callback) {
+      handshakeTimeoutCallback = callback
+      return 92
+    },
+    clearTimeoutImpl() {}
+  })
+  if (initTransferred) emitWindow(failedHandshake, { data: ready() })
+  handshakeTimeoutCallback()
+  assert.equal(failedHandshake.widget.getState(), 'failed')
+  assert.equal(failedHandshake.container.children.length, 0)
+  const failedHandshakeDestroy = failedHandshake.widget.destroy()
+  if (initTransferred) {
+    await assert.rejects(failedHandshakeDestroy, error => (
+      error.errorCode === 'FLOW_EMBED_DESTROY_FAILED' && /回收未确认/.test(error.message)
+    ))
+  } else {
+    await failedHandshakeDestroy
+  }
+  assert.equal(failedHandshake.widget.getState(), 'destroyed')
+  assert.equal(failedHandshake.widget.destroy(), failedHandshakeDestroy)
+}
+
 console.log('flow embed host SDK tests passed')

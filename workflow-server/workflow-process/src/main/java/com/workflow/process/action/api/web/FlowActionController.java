@@ -1,13 +1,14 @@
 package com.workflow.process.action.api.web;
 
-import com.workflow.core.security.RequiresPermission;
-
-import com.workflow.core.result.ApiResponse;
-import com.workflow.process.action.api.request.FlowActionSaveRequest;
+import com.workflow.contracts.action.FlowActionScopeType;
 import com.workflow.contracts.action.FlowActionTimingOption;
-import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
-import com.workflow.process.action.application.FlowActionTimingCatalog;
+import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.core.result.ApiResponse;
+import com.workflow.core.security.RequiresPermission;
+import com.workflow.process.action.api.request.FlowActionSaveRequest;
 import com.workflow.process.action.application.FlowActionService;
+import com.workflow.process.action.application.FlowActionTimingCatalog;
+import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -33,15 +34,21 @@ public class FlowActionController {
     public ApiResponse<List<FlowAction>> findDraftActions(@PathVariable String processConfigId) {
         return ApiResponse.success(flowActionService.findDraftActions(processConfigId));
     }
-    
+
     /**
-     * 查询顺序流下所有草稿动作
+     * 兼容旧客户端按顺序流查询草稿动作；内部已转为规范绑定查询。
+     *
+     * @deprecated 新客户端应使用 {@code /binding?scopeType=SEQUENCE_FLOW&elementId=...}
      */
+    @Deprecated(forRemoval = true)
     @GetMapping("/process/{processConfigId}/flow/{sequenceFlowId}")
     public ApiResponse<List<FlowAction>> findDraftActionsBySequenceFlow(
             @PathVariable String processConfigId,
             @PathVariable String sequenceFlowId) {
-        return ApiResponse.success(flowActionService.findDraftActionsBySequenceFlow(processConfigId, sequenceFlowId));
+        return ApiResponse.success(flowActionService.findDraftActionsByBinding(
+                processConfigId,
+                FlowActionScopeType.SEQUENCE_FLOW.name(),
+                sequenceFlowId));
     }
 
     /**
@@ -82,15 +89,22 @@ public class FlowActionController {
     public ApiResponse<List<FlowAction>> findPublishedActions(@PathVariable String versionId) {
         return ApiResponse.success(flowActionService.findPublishedActions(versionId));
     }
-    
+
     /**
-     * 查询版本下特定顺序流的动作
+     * 兼容旧客户端按顺序流查询已发布动作；顺序流唯一合法时机为 TRANSITION_TAKEN。
+     *
+     * @deprecated 新运行时应使用规范的作用域、元素与触发时机查询
      */
+    @Deprecated(forRemoval = true)
     @GetMapping("/version/{versionId}/flow/{sequenceFlowId}")
     public ApiResponse<List<FlowAction>> findPublishedActionsBySequenceFlow(
             @PathVariable String versionId,
             @PathVariable String sequenceFlowId) {
-        return ApiResponse.success(flowActionService.findPublishedActionsBySequenceFlow(versionId, sequenceFlowId));
+        return ApiResponse.success(flowActionService.findPublishedActionsByBinding(
+                versionId,
+                FlowActionScopeType.SEQUENCE_FLOW.name(),
+                sequenceFlowId,
+                FlowActionTriggerTiming.TRANSITION_TAKEN.name()));
     }
     
     /**

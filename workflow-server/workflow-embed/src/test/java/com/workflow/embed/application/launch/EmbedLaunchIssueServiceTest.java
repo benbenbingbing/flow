@@ -76,6 +76,7 @@ class EmbedLaunchIssueServiceTest {
         assertEquals(NOW.plusSeconds(60), persisted.expiresAt());
         assertEquals("trace-1", persisted.traceId());
         assertEquals("request-1", persisted.requestId());
+        assertEquals("seamless", persisted.uiFormPresentation());
         assertEquals(new Sha256EmbedDigest().sha256(LAUNCH_CODE), persisted.launchCodeDigest());
         assertFalse(persisted.context().ciphertext().contains("S-10086"));
         assertFalse(persisted.toString().contains("external-user-1"));
@@ -91,6 +92,58 @@ class EmbedLaunchIssueServiceTest {
                 "lch_test", EmbedAuditCorrelation.of("trace-1", "request-1"));
         assertTrue(issued.toString().contains("<redacted>"));
         assertFalse(issued.toString().contains(LAUNCH_CODE));
+    }
+
+    @Test
+    void persistsExplicitDialogFormPresentation() {
+        Fixture fixture = new Fixture();
+        EmbedLaunchCommand command = new EmbedLaunchCommand(
+                "supplier-work-orders", "https://portal.partner.example",
+                "channel-1234567890", trustedSubject(),
+                new EmbedLaunchEntry("LIST", null),
+                Map.of("supplierId", "S-10086"),
+                new EmbedLaunchUi("zh-CN", "light", "dialog"));
+
+        fixture.service.issue(actor(), command);
+
+        assertEquals("dialog", fixture.launchStore.saved.uiFormPresentation());
+    }
+
+    @Test
+    void defaultsToSeamlessWhenUiObjectIsMissing() {
+        Fixture fixture = new Fixture();
+        EmbedLaunchCommand command = new EmbedLaunchCommand(
+                "supplier-work-orders", "https://portal.partner.example",
+                "channel-1234567890", trustedSubject(),
+                new EmbedLaunchEntry("LIST", null),
+                Map.of("supplierId", "S-10086"),
+                null);
+
+        fixture.service.issue(actor(), command);
+
+        assertEquals("seamless", fixture.launchStore.saved.uiFormPresentation());
+    }
+
+    @Test
+    void rejectsBlankOrUnsupportedFormPresentation() {
+        for (String formPresentation : List.of("", " ", "SEAMLESS", "drawer")) {
+            Fixture fixture = new Fixture();
+            EmbedLaunchCommand command = new EmbedLaunchCommand(
+                    "supplier-work-orders", "https://portal.partner.example",
+                    "channel-1234567890", trustedSubject(),
+                    new EmbedLaunchEntry("LIST", null),
+                    Map.of("supplierId", "S-10086"),
+                    new EmbedLaunchUi("zh-CN", "light", formPresentation));
+
+            EmbedException error = assertThrows(
+                    EmbedException.class,
+                    () -> fixture.service.issue(actor(), command),
+                    formPresentation);
+
+            assertEquals(400, error.getStatus(), formPresentation);
+            assertEquals(EmbedErrorCode.INVALID_REQUEST, error.getErrorCode(), formPresentation);
+            assertEquals(null, fixture.launchStore.saved, formPresentation);
+        }
     }
 
     @Test

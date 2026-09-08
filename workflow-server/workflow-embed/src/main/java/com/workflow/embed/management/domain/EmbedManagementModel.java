@@ -148,6 +148,7 @@ public final class EmbedManagementModel {
             String subjectDigestKeyVersion,
             String subjectHint,
             String flowUserId,
+            boolean flowUserReady,
             SecurityStatus status,
             long bindingVersion,
             LocalDateTime effectiveAt,
@@ -190,6 +191,21 @@ public final class EmbedManagementModel {
     }
 
     public record Page<T>(List<T> records, long total, int pageNum, int pageSize) {
+    }
+
+    /** 嵌入管理名称选择所需的应用投影；就绪态不包含凭据内容或授权明细。 */
+    public record ApplicationOption(
+            String id, String name, String clientId, SecurityStatus status,
+            LocalDateTime expiresAt, boolean embedLaunchReady) {
+    }
+
+    /** 普通嵌入管理权限可见的身份源投影，不包含身份验证配置。 */
+    public record IdentityProviderOption(
+            String id, String name, ProviderType type, SecurityStatus status) {
+    }
+
+    public record OptionsFilter(
+            String keyword, SecurityStatus status, int pageNum, int pageSize) {
     }
 
     public record ViewFilter(

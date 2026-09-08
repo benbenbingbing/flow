@@ -136,6 +136,29 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
+    void entityFileWriteMustMatchFixedRootEntity() {
+        AuthenticatedEmbedSession viewSession = session(Set.of("RECORD_VIEW"));
+        when(targetResolver.resolveRoot(viewSession)).thenReturn(root);
+        EmbedDelegatedRuntimePolicy policy = policy(null, null);
+        MockHttpServletRequest upload = new MockHttpServletRequest(
+                "POST", "/api/file/entity/order/upload");
+        pathVariables(upload, Map.of("entityCode", "order"));
+        upload.setContentType("multipart/form-data; boundary=native");
+        upload.addHeader("Idempotency-Key", "upload-entity-1");
+
+        assertEquals(root, policy.authorize(
+                upload, viewSession, null, declaration("fileWrite")));
+
+        MockHttpServletRequest tampered = new MockHttpServletRequest(
+                "POST", "/api/file/entity/customer/upload");
+        pathVariables(tampered, Map.of("entityCode", "customer"));
+        tampered.setContentType("multipart/form-data; boundary=native");
+        tampered.addHeader("Idempotency-Key", "upload-entity-2");
+        assertThrows(EmbedException.class, () -> policy.authorize(
+                tampered, viewSession, null, declaration("fileWrite")));
+    }
+
+    @Test
     void processReadMustMapBackToAuthorizedFixedRecord() {
         AuthenticatedEmbedSession session = session(Set.of("RECORD_VIEW"));
         when(targetResolver.resolveRoot(session)).thenReturn(root);

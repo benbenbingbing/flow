@@ -8,6 +8,7 @@ const elements = {
   subjectHint: document.querySelector('#subject-hint'),
   target: document.querySelector('#embed-target'),
   mode: document.querySelector('#entry-mode'),
+  formPresentation: document.querySelector('#form-presentation'),
   recordField: document.querySelector('#record-field'),
   recordId: document.querySelector('#record-id'),
   launch: document.querySelector('#launch-button'),
@@ -23,6 +24,7 @@ let config
 let widget
 let destroyPromise
 let launchInProgress = false
+let logoutUnconfirmed = false
 let darkTheme = false
 
 function setStatus(text, kind = 'idle') {
@@ -31,13 +33,15 @@ function setStatus(text, kind = 'idle') {
 }
 
 function setCommandsEnabled(enabled) {
-  elements.destroy.disabled = !widget
+  elements.destroy.disabled = !widget || logoutUnconfirmed || Boolean(destroyPromise)
   for (const button of elements.commands) button.disabled = !enabled
 }
 
 function setLaunchControlsDisabled(disabled) {
+  disabled = disabled || logoutUnconfirmed
   elements.target.disabled = disabled
   elements.mode.disabled = disabled
+  elements.formPresentation.disabled = disabled
   elements.recordId.disabled = disabled
   elements.launch.disabled = disabled
 }
@@ -100,6 +104,7 @@ async function destroyWidget({ showIdleStatus = true } = {}) {
   elements.launch.disabled = true
   elements.target.disabled = true
   elements.mode.disabled = true
+  elements.formPresentation.disabled = true
   elements.recordId.disabled = true
   elements.destroy.disabled = true
   for (const button of elements.commands) button.disabled = true
@@ -112,8 +117,9 @@ async function destroyWidget({ showIdleStatus = true } = {}) {
       resetEmbedSurface()
       if (showIdleStatus) setStatus('尚未挂载', 'idle')
     } catch (error) {
-      // SDK 在 Logout 失败或超时时会 fail-safe 拆除 iframe；宿主必须停止重开并显示错误。
-      if (widget === retiringWidget) widget = undefined
+      // SDK 失败后仍会拆除本地 iframe，但服务端回收未确认。保留实例和阻断状态，
+      // 避免 finally 或下一次按钮点击把本地清理误当成可以重新 Launch。
+      logoutUnconfirmed = true
       resetEmbedSurface()
       throw error
     } finally {
@@ -145,19 +151,26 @@ async function readJson(response) {
 }
 
 async function launchEmbed() {
-  if (launchInProgress || destroyPromise) return
+  if (launchInProgress || destroyPromise || logoutUnconfirmed) return
   launchInProgress = true
   setLaunchControlsDisabled(true)
   const target = selectedTarget()
   const mode = elements.mode.value
+  const presentation = elements.formPresentation.value || 'seamless'
   const intent = mode === 'VIEW'
     ? {
         targetKey: target?.key,
         mode,
         recordId: elements.recordId.value.trim(),
-        theme: darkTheme ? 'dark' : 'light'
+        theme: darkTheme ? 'dark' : 'light',
+        formPresentation: presentation
       }
-    : { targetKey: target?.key, mode, theme: darkTheme ? 'dark' : 'light' }
+    : {
+        targetKey: target?.key,
+        mode,
+        theme: darkTheme ? 'dark' : 'light',
+        formPresentation: presentation
+      }
   try {
     try {
       // 重新打开必须先等旧 iframe 确认 Logout，否则会命中 Grant 的活动会话上限。
@@ -165,7 +178,7 @@ async function launchEmbed() {
     } catch (error) {
       const detail = publicError(error)
       addEvent('host.destroy.failed', detail)
-      setStatus('旧会话注销失败，已停止重新打开', 'error')
+      setStatus('会话回收未确认，请等待超时回收或联系管理员', 'error')
       return
     }
 
@@ -192,11 +205,12 @@ async function launchEmbed() {
         addEvent(event.type, safeEventSummary(event))
         if (event.type === 'connected') {
           setStatus('安全通道已连接', 'connected')
-          setCommandsEnabled(true)
         }
         if (event.type === 'initialized') {
           elements.runtimeViewKey.textContent = event.payload?.viewKey || target?.viewKey || '未知'
           setStatus('Flow 已加载', 'connected')
+          // connected 只确认通道；首屏初始化后再开放刷新，避免命令在兑换期间丢失。
+          setCommandsEnabled(true)
         }
         if (event.type === 'form.saved') setStatus('表单已保存', 'success')
         if (event.type === 'close.requested') {
@@ -232,14 +246,14 @@ async function launchEmbed() {
 }
 
 async function closeEmbed() {
-  if (launchInProgress || destroyPromise || !widget) return
+  if (launchInProgress || destroyPromise || logoutUnconfirmed || !widget) return
   try {
     await destroyWidget()
     addEvent('host.destroyed', {})
   } catch (error) {
     const detail = publicError(error)
     addEvent('host.destroy.failed', detail)
-    setStatus('会话注销失败，未重新打开', 'error')
+    setStatus('会话回收未确认，请等待超时回收或联系管理员', 'error')
   }
 }
 

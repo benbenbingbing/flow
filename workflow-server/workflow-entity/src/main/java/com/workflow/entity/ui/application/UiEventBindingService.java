@@ -143,6 +143,7 @@ public class UiEventBindingService {
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
     private final UiConfigurationAccessService configurationAccessService;
     private final UiDataSourceService dataSourceService;
+    private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final UiConfigReleaseService releaseService;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
@@ -187,14 +188,13 @@ public class UiEventBindingService {
         validateEventScope(normalizedOwner, "OWNER", normalizedEvent);
         ConfigIdentity identity =
                 identity(normalizedOwner, ownerId);
+        // 草稿预览必须与正式发布使用同一 FORM/LIST 投影，避免共享 ENTITY
+        // 事件把另一页面上下文的接口步骤混入当前预览执行链。
         List<Map<String, Object>> bindings =
-                mapper.findForSnapshot(
-                                normalizedOwner,
-                                ownerId,
-                                identity.entityId())
-                        .stream()
-                        .map(this::snapshotValue)
-                        .toList();
+                eventBindingSnapshotService.snapshot(
+                        normalizedOwner,
+                        ownerId,
+                        identity.entityId());
         UiEventExecuteRequest request = new UiEventExecuteRequest();
         request.setConfigType(normalizedOwner);
         request.setConfigId(ownerId);
@@ -338,13 +338,8 @@ public class UiEventBindingService {
             String configType,
             String configId,
             String entityId) {
-        return mapper.findForSnapshot(
-                        normalize(configType),
-                        configId,
-                        entityId)
-                .stream()
-                .map(this::snapshotValue)
-                .toList();
+        return eventBindingSnapshotService.snapshot(
+                normalize(configType), configId, entityId);
     }
 
     /**
@@ -593,21 +588,6 @@ public class UiEventBindingService {
                 .orElse(null);
     }
 
-    private Map<String, Object> snapshotValue(
-            UiEventBinding binding) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", binding.getId());
-        result.put("ownerType", binding.getOwnerType());
-        result.put("ownerId", binding.getOwnerId());
-        result.put("targetType", binding.getTargetType());
-        result.put("targetKey", binding.getTargetKey());
-        result.put("eventCode", binding.getEventCode());
-        result.put("inheritanceMode", binding.getInheritanceMode());
-        result.put("steps", readSteps(binding.getStepsDocument()));
-        result.put("revision", binding.getRevision());
-        return result;
-    }
-
     private void validate(UiEventBindingSaveRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("事件绑定不能为空");
@@ -643,6 +623,10 @@ public class UiEventBindingService {
                 ? List.of() : request.getSteps();
         Set<Integer> orders = new LinkedHashSet<>();
         int replaceCount = 0;
+        Map<String, Integer> entityReplaceCounts = new LinkedHashMap<>();
+        Set<String> entityEventContexts = "ENTITY".equals(ownerType)
+                ? UiEventBindingApplicability.contextsForEvent(eventCode)
+                : Set.of();
         for (int index = 0; index < steps.size(); index++) {
             Map<String, Object> step = steps.get(index);
             String strategy = normalize(text(
@@ -662,11 +646,9 @@ public class UiEventBindingService {
                 throw new IllegalArgumentException(
                         "事件步骤顺序重复: " + order);
             }
-            if ("REPLACE".equals(strategy)) {
-                replaceCount++;
-            }
             String serviceId = firstText(
                     step.get("serviceId"));
+            String operationContext = "";
             if (StringUtils.hasText(serviceId)) {
                 String operationCode = firstText(
                         step.get("operationCode"));
@@ -674,25 +656,52 @@ public class UiEventBindingService {
                     throw new IllegalArgumentException(
                             "事件接口步骤缺少 operationCode");
                 }
-                boolean found = dataSourceService.operations(serviceId).stream()
-                        .anyMatch(operation -> Objects.equals(
-                                operationCode,
-                                text(operation.get("code"))));
-                if (!found) {
-                    throw new IllegalArgumentException(
-                            "接口服务操作不存在: "
-                                    + serviceId + "/" + operationCode);
-                }
+                Map<String, Object> operation =
+                        dataSourceService.operations(serviceId).stream()
+                                .filter(item -> Objects.equals(
+                                        operationCode,
+                                        text(item.get("code"))))
+                                .findFirst()
+                                .orElseThrow(() ->
+                                        new IllegalArgumentException(
+                                                "接口服务操作不存在: "
+                                                        + serviceId + "/"
+                                                        + operationCode));
+                operationContext = normalize(text(
+                        operation.get("contextType")));
             } else if (!(step.get("outputMapping") instanceof Map<?, ?>)
                     && !(step.get("outputMapping") instanceof List<?>)) {
                 throw new IllegalArgumentException(
                         "事件步骤必须选择接口操作或配置纯映射");
             }
+            if (!"REPLACE".equals(strategy)) {
+                continue;
+            }
+            if (!"ENTITY".equals(ownerType)) {
+                replaceCount++;
+                continue;
+            }
+            // 共享实体事件会按 FORM/LIST 投影为不同运行链：有效上下文明确的
+            // 接口步骤只计入对应链；纯映射及旧版未知上下文保守计入两边。
+            Set<String> replaceContexts =
+                    entityEventContexts.contains(operationContext)
+                            ? Set.of(operationContext)
+                            : entityEventContexts;
+            for (String context : replaceContexts) {
+                entityReplaceCounts.merge(context, 1, Integer::sum);
+            }
         }
-        if (replaceCount > 1) {
+        if (!"ENTITY".equals(ownerType) && replaceCount > 1) {
             throw new IllegalArgumentException(
                     "一个事件绑定链最多只能有一个 REPLACE 步骤");
         }
+        entityReplaceCounts.forEach((context, count) -> {
+            if (count > 1) {
+                throw new IllegalArgumentException(
+                        "实体默认事件投影到 " + context
+                                + " 后最多只能有一个 REPLACE 步骤");
+            }
+        });
     }
 
     /**
@@ -869,16 +878,6 @@ public class UiEventBindingService {
                 ? null : codec.write(steps, "UI事件步骤");
     }
 
-    private List<Map<String, Object>> readSteps(String document) {
-        if (!StringUtils.hasText(document)) {
-            return List.of();
-        }
-        return codec.readArray(document, "UI事件步骤").stream()
-                .filter(Map.class::isInstance)
-                .map(value -> stringMap((Map<?, ?>) value))
-                .toList();
-    }
-
     private List<Map<String, Object>> mapList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -889,13 +888,6 @@ public class UiEventBindingService {
                         item,
                         new TypeReference<Map<String, Object>>() {}))
                 .toList();
-    }
-
-    private Map<String, Object> stringMap(Map<?, ?> value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        value.forEach((key, child) ->
-                result.put(String.valueOf(key), child));
-        return result;
     }
 
     private String normalize(String value) {

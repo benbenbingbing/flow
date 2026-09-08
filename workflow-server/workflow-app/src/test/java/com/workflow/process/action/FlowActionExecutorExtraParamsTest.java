@@ -8,7 +8,6 @@ import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdap
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.application.FlowActionExecutionService;
-import com.workflow.process.action.application.FlowActionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
 
@@ -25,7 +24,6 @@ class FlowActionExecutorExtraParamsTest {
 
     @Test
     void rejectsServerSideExpressionsInActionParameters() {
-        FlowActionService actionService = mock(FlowActionService.class);
         ApplicationContext applicationContext = mock(ApplicationContext.class);
         FlowActionRuntimeAdapter helper = mock(FlowActionRuntimeAdapter.class);
         FlowActionExecutionService executionService =
@@ -33,7 +31,6 @@ class FlowActionExecutorExtraParamsTest {
         when(applicationContext.getBean("sampleAction"))
                 .thenReturn((FlowActionHandler) context -> {});
         FlowActionExecutor executor = new FlowActionExecutor(
-                actionService,
                 applicationContext,
                 helper,
                 executionService,
@@ -55,7 +52,6 @@ class FlowActionExecutorExtraParamsTest {
 
     @Test
     void exposesResolvedParamsThroughNewAndLegacyNames() {
-        FlowActionService actionService = mock(FlowActionService.class);
         ApplicationContext applicationContext =
                 mock(ApplicationContext.class);
         FlowActionRuntimeAdapter helper = mock(FlowActionRuntimeAdapter.class);
@@ -68,7 +64,6 @@ class FlowActionExecutorExtraParamsTest {
                 .thenReturn(handler);
 
         FlowActionExecutor executor = new FlowActionExecutor(
-                actionService,
                 applicationContext,
                 helper,
                 executionService,

@@ -1,13 +1,15 @@
 package com.workflow.storage.api.web;
 
-import com.workflow.core.security.RequiresPermission;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
-
-import com.workflow.core.result.Result;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.entity.port.EntityFileUploadAuthorizationPort;
+import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.result.Result;
+import com.workflow.core.security.AuthenticatedApi;
+import com.workflow.core.security.RequiresPermission;
 import com.workflow.storage.application.FileStorageFactory;
 import com.workflow.storage.application.FileStorageStrategy;
 import com.workflow.storage.application.FileUploadIdempotencyException;
@@ -23,6 +25,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -39,6 +42,8 @@ public class FileController {
     /** 文件存储策略工厂 */
     private final FileStorageFactory storageFactory;
     private final StoredFileAccessService fileAccessService;
+    private final List<EntityFileUploadAuthorizationPort> entityUploadAuthorizationPorts;
+
     /**
      * 上传文件
      *
@@ -63,6 +68,58 @@ public class FileController {
                     required = false)
             String idempotencyKey) {
         return store(file, idempotencyKey);
+    }
+
+    /**
+     * 从实体表单上传文件。
+     *
+     * <p>该入口不要求业务用户额外拥有全局存储写权限，而是委托实体模块校验
+     * 当前操作的实体权限和目标文件字段。鉴权必须在
+     * {@link #store(MultipartFile, String)} 的异常兜底
+     * 之外完成，确保权限异常保持为 HTTP 403。</p>
+     *
+     * @param entityCode     实体编码
+     * @param action         当前实体动作（create、update、approve）
+     * @param fieldCode      目标文件字段编码
+     * @param file           上传的文件
+     * @param idempotencyKey 上传幂等键
+     * @return 文件信息（url、filename 等）或错误信息
+     */
+    @PostMapping("/entity/{entityCode}/upload")
+    @AuthenticatedApi(objectAuthorization = true)
+    @EmbedDelegatedRuntimeApi(
+            value = EmbedDelegatedRuntimeApi.Scope.FILE_RUNTIME,
+            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FILE_WRITE)
+    @SystemAudit(
+            module = AuditModule.STORAGE,
+            action = AuditAction.UPLOAD,
+            operation = "实体字段上传文件",
+            risk = AuditRiskLevel.MEDIUM,
+            targetType = "ENTITY_FILE")
+    public Result<Map<String, String>> uploadEntityFile(
+            @PathVariable String entityCode,
+            @RequestParam("action") String action,
+            @RequestParam("fieldCode") String fieldCode,
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(
+                    value = "Idempotency-Key",
+                    required = false)
+            String idempotencyKey) {
+        entityUploadAuthorizer().requireUpload(
+                entityCode,
+                action,
+                fieldCode);
+        return store(file, idempotencyKey);
+    }
+
+    /**
+     * 解析唯一的实体上传授权实现；缺失或重复实现都失败关闭，避免退回全局上传。
+     */
+    private EntityFileUploadAuthorizationPort entityUploadAuthorizer() {
+        if (entityUploadAuthorizationPorts.size() != 1) {
+            throw new ForbiddenException("实体文件上传授权服务暂不可用");
+        }
+        return entityUploadAuthorizationPorts.get(0);
     }
 
     private Result<Map<String, String>> store(

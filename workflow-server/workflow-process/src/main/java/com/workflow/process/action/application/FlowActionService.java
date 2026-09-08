@@ -43,13 +43,6 @@ public class FlowActionService {
     }
     
     /**
-     * 查询顺序流下所有草稿动作（按排序）
-     */
-    public List<FlowAction> findDraftActionsBySequenceFlow(String processConfigId, String sequenceFlowId) {
-        return flowActionMapper.findDraftActionsBySequenceFlowId(processConfigId, sequenceFlowId);
-    }
-
-    /**
      * 按作用域与元素绑定查询草稿动作。
      *
      * @param processConfigId 流程配置 ID
@@ -58,10 +51,11 @@ public class FlowActionService {
      * @return 草稿动作列表
      */
     public List<FlowAction> findDraftActionsByBinding(String processConfigId, String scopeType, String elementId) {
+        String normalizedScopeType = normalizeScope(scopeType);
         return flowActionMapper.findDraftActionsByBinding(
                 processConfigId,
-                normalizeScope(scopeType, elementId),
-                normalizeElementId(scopeType, elementId));
+                normalizedScopeType,
+                normalizeElementId(normalizedScopeType, elementId));
     }
     
     /**
@@ -156,7 +150,6 @@ public class FlowActionService {
         for (FlowAction draft : draftActions) {
             FlowAction published = new FlowAction();
             published.setProcessConfigId(draft.getProcessConfigId());
-            published.setSequenceFlowId(draft.getSequenceFlowId());
             published.setScopeType(draft.getScopeType());
             published.setElementId(draft.getElementId());
             published.setTriggerTiming(draft.getTriggerTiming());
@@ -167,7 +160,6 @@ public class FlowActionService {
             published.setActionName(draft.getActionName());
             published.setDescription(draft.getDescription());
             published.setInterfaceName(draft.getInterfaceName());
-            published.setMethodName(draft.getMethodName());
             published.setParamsJson(draft.getParamsJson());
             published.setSortOrder(draft.getSortOrder());
             published.setEnabled(draft.getEnabled());
@@ -191,13 +183,6 @@ public class FlowActionService {
     }
     
     /**
-     * 查询版本下特定顺序流的动作
-     */
-    public List<FlowAction> findPublishedActionsBySequenceFlow(String versionId, String sequenceFlowId) {
-        return flowActionMapper.findPublishedActionsBySequenceFlowId(versionId, sequenceFlowId);
-    }
-
-    /**
      * 按版本、作用域、元素与触发时机查询已发布动作。
      *
      * @param versionId     流程发布版本 ID
@@ -211,10 +196,11 @@ public class FlowActionService {
             String scopeType,
             String elementId,
             String triggerTiming) {
+        String normalizedScopeType = normalizeScope(scopeType);
         return flowActionMapper.findPublishedActionsByBinding(
                 versionId,
-                scopeType,
-                elementId,
+                normalizedScopeType,
+                normalizeElementId(normalizedScopeType, elementId),
                 triggerTiming);
     }
     
@@ -281,7 +267,6 @@ public class FlowActionService {
         FlowAction action = new FlowAction();
         action.setId(request.getId());
         action.setProcessConfigId(request.getProcessConfigId());
-        action.setSequenceFlowId(request.getSequenceFlowId());
         action.setScopeType(request.getScopeType());
         action.setElementId(request.getElementId());
         action.setTriggerTiming(request.getTriggerTiming());
@@ -292,7 +277,6 @@ public class FlowActionService {
         action.setActionName(request.getActionName());
         action.setDescription(request.getDescription());
         action.setInterfaceName(request.getInterfaceName());
-        action.setMethodName(request.getMethodName());
         action.setParamsJson(request.getParamsJson());
         action.setSortOrder(request.getSortOrder());
         action.setEnabled(request.getEnabled());
@@ -301,18 +285,10 @@ public class FlowActionService {
 
     /** 归一化动作配置：补全作用域、元素 ID、触发时机、执行方式、失败策略等缺省值 */
     private void normalizeAction(FlowAction action) {
-        String scopeType = normalizeScope(action.getScopeType(), action.getSequenceFlowId());
+        String scopeType = normalizeScope(action.getScopeType());
         action.setScopeType(scopeType);
         if (FlowActionScopeType.PROCESS.name().equals(scopeType)) {
             action.setElementId(null);
-            action.setSequenceFlowId("__PROCESS__");
-        } else {
-            String elementId = action.getElementId();
-            if (!org.springframework.util.StringUtils.hasText(elementId)) {
-                elementId = action.getSequenceFlowId();
-            }
-            action.setElementId(elementId);
-            action.setSequenceFlowId(elementId);
         }
         if (!org.springframework.util.StringUtils.hasText(action.getTriggerTiming())) {
             action.setTriggerTiming(FlowActionScopeType.SEQUENCE_FLOW.name().equals(scopeType)
@@ -325,9 +301,6 @@ public class FlowActionService {
         if (!org.springframework.util.StringUtils.hasText(action.getFailurePolicy())) {
             action.setFailurePolicy(defaultFailurePolicy(action.getTriggerTiming()));
         }
-        if (!org.springframework.util.StringUtils.hasText(action.getMethodName())) {
-            action.setMethodName("execute");
-        }
         if (action.getSortOrder() == null) {
             action.setSortOrder(0);
         }
@@ -337,14 +310,12 @@ public class FlowActionService {
         action.setDeleted(0);
     }
 
-    /** 归一化作用域：显式值优先，否则按元素 ID 是否存在推断 PROCESS 或 SEQUENCE_FLOW */
-    private String normalizeScope(String scopeType, String legacyElementId) {
+    /** 归一化显式作用域；缺失值交由配置校验器拒绝，避免猜错 BPMN 元素类型。 */
+    private String normalizeScope(String scopeType) {
         if (org.springframework.util.StringUtils.hasText(scopeType)) {
             return scopeType.trim().toUpperCase(java.util.Locale.ROOT);
         }
-        return org.springframework.util.StringUtils.hasText(legacyElementId)
-                ? FlowActionScopeType.SEQUENCE_FLOW.name()
-                : FlowActionScopeType.PROCESS.name();
+        return scopeType;
     }
 
     /** 流程级作用域返回 null，其他作用域返回原元素 ID */

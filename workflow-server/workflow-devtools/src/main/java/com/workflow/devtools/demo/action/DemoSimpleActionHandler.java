@@ -27,7 +27,7 @@ public class DemoSimpleActionHandler implements FlowActionHandler {
         log.info("流程实例ID: {}", ctx.getProcessInstanceId());
         log.info("实体编码: {}", ctx.getEntityCode());
         log.info("实体数据ID: {}", ctx.getEntityDataId());
-        log.info("顺序流ID: {}", ctx.getSequenceFlowId());
+        log.info("BPMN元素ID: {}", ctx.getElementId());
         log.info("源节点ID: {}, 源节点名称: {}", ctx.getSourceNodeId(), ctx.getSourceNodeName());
         log.info("目标节点ID: {}, 目标节点名称: {}", ctx.getTargetNodeId(), ctx.getTargetNodeName());
         log.info("自定义参数: {}", ctx.getCustomParams());

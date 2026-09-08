@@ -7,7 +7,7 @@
 
     <div v-else-if="error" class="native-embedded-form__state" role="alert">
       <p>{{ error }}</p>
-      <el-button type="primary" @click="reload">重试</el-button>
+      <el-button type="primary" @click="retryLoad">重试</el-button>
     </div>
 
     <!--
@@ -27,6 +27,8 @@
       :list-release-resolution-token="target.listReleaseResolutionToken || undefined"
       :entity-status-options="entityStatusOptions"
       :submit-transport="submitNativeRecord"
+      :reload-pending="loading"
+      :form-presentation="formPresentation"
       @success="handleSuccess"
       @closed="handleClosed"
     />
@@ -43,10 +45,16 @@
       :list-release-version="target.listReleaseVersion"
       :list-release-resolution-token="target.listReleaseResolutionToken || undefined"
       :entity-status-options="entityStatusOptions"
+      :form-presentation="formPresentation"
       @closed="handleClosed"
     />
   </section>
 </template>
+
+<script>
+// 多个表单实例可能在同一渲染周期交替挂载；按节点计数，旧实例的收尾不能解锁新实例。
+const nativeFormReloadLocks = new WeakMap()
+</script>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -69,6 +77,9 @@ const target = props.target
 const mode = computed(() => String(
   target.mode || props.bootstrap.view?.entryMode || ''
 ).toUpperCase())
+const formPresentation = computed(() =>
+  props.bootstrap.ui?.formPresentation === 'dialog' ? 'dialog' : 'seamless'
+)
 const loading = ref(true)
 const error = ref('')
 const entityDefinition = ref({})
@@ -83,6 +94,33 @@ const runtimeReady = computed(() => Boolean(
 let loadSequence = 0
 let closeRequested = false
 let saveSucceeded = false
+let pendingReload = null
+let releaseReloadInteraction = null
+
+/**
+ * 暂停加载开始时已有的 iframe 内容，包括 Teleport 到 body 的下拉/日期弹层。
+ * 只锁已有节点，让 FORM_OPEN 新创建的业务确认框仍可操作；返回幂等恢复函数。
+ */
+function lockReloadInteraction() {
+  const elements = Array.from(globalThis.document?.body?.children || [])
+  for (const element of elements) {
+    const lock = nativeFormReloadLocks.get(element) || { count: 0, inert: Boolean(element.inert) }
+    lock.count += 1
+    nativeFormReloadLocks.set(element, lock)
+    element.inert = true
+  }
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    for (const element of elements) {
+      const lock = nativeFormReloadLocks.get(element)
+      if (!lock || --lock.count > 0) continue
+      element.inert = lock.inert
+      nativeFormReloadLocks.delete(element)
+    }
+  }
+}
 
 async function loadEntityStatuses(entityCode, runtimeContext = {}) {
   // 状态属于原生表单定义的一部分；委托策略已明确开放该 API，读取失败时必须
@@ -96,12 +134,19 @@ async function loadEntityStatuses(entityCode, runtimeContext = {}) {
  * 按 Bootstrap 固定坐标读取 Flow 自己的发布态 URL，然后调用原生 Dialog。
  * 不解析字段类型、不选择组件，也不消费 Embed 的投影表单端点。
  */
-async function reload() {
+async function loadRuntime() {
   const sequence = ++loadSequence
+  // 先取得丢弃确认，再修改加载状态和目标，取消刷新时保留整个原生表单。
+  if (dataFormDialogRef.value
+    && !(await dataFormDialogRef.value.confirmDiscardChanges())) return false
+  // 用户确认期间 Session 可能已销毁或已关闭表单，不能让确认续体复活旧组件。
+  if (sequence !== loadSequence || closeRequested) return false
   closeRequested = false
   saveSucceeded = false
   loading.value = true
   error.value = ''
+  const releaseInteraction = lockReloadInteraction()
+  releaseReloadInteraction = releaseInteraction
   try {
     const [entity, release, statuses] = await Promise.all([
       entityApi.getByCode(target.entityCode, target.runtimeContext),
@@ -116,7 +161,7 @@ async function reload() {
         target.runtimeContext
       )
     ])
-    if (sequence !== loadSequence) return
+    if (sequence !== loadSequence) return false
     entityDefinition.value = entity || {}
     entityFields.value = Array.isArray(entity?.fields) ? entity.fields : []
     entityStatusOptions.value = statuses
@@ -127,12 +172,17 @@ async function reload() {
         || target.formReleaseResolutionToken
         || null
     )
-    loading.value = false
     await nextTick()
-    if (sequence !== loadSequence) return
+    if (sequence !== loadSequence) return false
 
+    const dialog = mode.value === 'CREATE' ? dataFormDialogRef.value : approvalDialogRef.value
+    if (!dialog) {
+      throw Object.assign(new Error('Flow 表单尚未完成加载，请稍后重试'), {
+        errorCode: 'EMBED_RUNTIME_UNAVAILABLE', status: 503
+      })
+    }
     if (mode.value === 'CREATE') {
-      await dataFormDialogRef.value?.openCreate({
+      await dialog.openCreate({
         form: runtimeForm.value,
         initialData: target.initialData,
         parameters: target.parameters,
@@ -144,9 +194,11 @@ async function reload() {
             runtimeForm.value.releaseResolutionToken || undefined
         }
       })
-      return
+      if (sequence !== loadSequence) return false
+      loading.value = false
+      return true
     }
-    const opened = await approvalDialogRef.value?.openView({
+    const opened = await dialog.openView({
       id: target.recordId,
       entityCode: target.entityCode,
       processInstanceId: target.processInstanceId || undefined,
@@ -158,12 +210,33 @@ async function reload() {
     if (opened === false) {
       throw new Error('Flow 记录详情暂时无法加载，请稍后重试')
     }
+    if (sequence !== loadSequence) return false
+    loading.value = false
+    return true
   } catch (cause) {
-    if (sequence !== loadSequence) return
+    if (sequence !== loadSequence) return false
     console.error('加载 Flow 原生嵌入表单失败:', cause)
     loading.value = false
     error.value = cause?.message || 'Flow 表单暂时无法加载，请稍后重试'
+    // 宿主 refresh 必须收到真实失败，不能因局部错误页已经显示就返回成功 ACK。
+    throw cause
+  } finally {
+    releaseInteraction()
+    if (releaseReloadInteraction === releaseInteraction) releaseReloadInteraction = null
   }
+}
+
+/** 合并同时到达的刷新，避免重复确认以及晚返回的请求覆盖新输入。 */
+function reload() {
+  if (!pendingReload) {
+    pendingReload = loadRuntime().finally(() => { pendingReload = null })
+  }
+  return pendingReload
+}
+
+function retryLoad() {
+  // 页面首次加载/手工重试由局部错误态承接；宿主调用 reload 保留拒绝语义。
+  return reload().catch(() => {})
 }
 
 function submitNativeRecord(submission) {
@@ -181,6 +254,7 @@ function handleSuccess() {
 function handleClosed() {
   if (closeRequested) return
   closeRequested = true
+  loadSequence += 1
   if (props.canBack) {
     const shouldRefreshList = saveSucceeded
     props.controller.backToList()
@@ -200,11 +274,13 @@ function focus() {
 }
 
 defineExpose({ focus, reload })
-onMounted(reload)
+onMounted(retryLoad)
 onBeforeUnmount(() => {
   // 使在途原生 API 响应失效，避免列表返回/Session 销毁后重新打开已卸载 Dialog。
   loadSequence += 1
   closeRequested = true
+  releaseReloadInteraction?.()
+  releaseReloadInteraction = null
 })
 </script>
 

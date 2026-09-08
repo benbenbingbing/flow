@@ -97,6 +97,9 @@ public final class BusinessMigrationPreflight {
                 && tableExists(connection, "sys_menu")) {
             verifyNavigationMenuRouteMigrationPrerequisites(connection);
         }
+        if (!migrationApplied(connection, "079")) {
+            verifyExternalSystemManagementMigrationPrerequisites(connection);
+        }
     }
 
     /** 在 V072 seed 前拒绝固定 ID 或 resolver_code 被其他语义占用。 */
@@ -982,6 +985,132 @@ public final class BusinessMigrationPreflight {
                 2,
                 "V076 目标模块路径已被其他菜单占用",
                 "请先合并重复入口或调整冲突菜单，再统一页面路由");
+    }
+
+    /**
+     * 在 V079 的非事务 DDL 前检查目标表和菜单资源。
+     *
+     * <p>从较早版本一次升级到最新版本时，系统管理目录可能尚未由 V070
+     * 创建，因此只校验已存在目录的语义；若 V070 已记录成功，则目录缺失
+     * 同样属于损坏状态。</p>
+     */
+    private static void verifyExternalSystemManagementMigrationPrerequisites(
+            Connection connection) throws SQLException {
+        List<String> partialArtifacts = new ArrayList<>();
+        for (String table : List.of(
+                "sys_external_system",
+                "sys_external_system_parameter")) {
+            if (tableExists(connection, table)) {
+                partialArtifacts.add(table);
+            }
+        }
+        failIfSamples(
+                partialArtifacts,
+                "V079 检测到目标表已存在的部分迁移状态",
+                "请先核对数据库与 Flyway 历史并制定显式恢复方案，禁止在非事务 DDL 上续跑");
+
+        // 全新数据库会在同一次 Flyway 调用中先执行 V001，此时尚无菜单表。
+        if (!tableExists(connection, "sys_menu")) {
+            return;
+        }
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`,
+                       CONCAT_WS(':', `parent_id`, `menu_name`, `menu_type`,
+                                 COALESCE(`path`, ''),
+                                 COALESCE(`perm`, ''), `status`, `visible`,
+                                 `deleted`) AS semantics,
+                       1
+                FROM `sys_menu`
+                WHERE `id` = '400'
+                  AND NOT (
+                    COALESCE(`parent_id`, '') = '0'
+                    AND COALESCE(`menu_name`, '') = '系统管理'
+                    AND COALESCE(`menu_type`, '') = 'M'
+                    AND COALESCE(`path`, '') IN ('/system', 'system')
+                    AND COALESCE(TRIM(`perm`), '') = ''
+                    AND COALESCE(`status`, '') = '0'
+                    AND COALESCE(`visible`, '') = '0'
+                    AND COALESCE(`deleted`, -1) = 0
+                  )
+                LIMIT 10
+                """,
+                2,
+                "V079 既有系统管理父目录 400 语义错误或已停用",
+                "请先恢复为启用的系统管理目录；迁移不会覆盖既有菜单内容");
+        if (migrationApplied(connection, "070")) {
+            requireNoConflicts(
+                    connection,
+                    """
+                    SELECT '400', 'missing', 1
+                    WHERE NOT EXISTS (
+                      SELECT 1 FROM `sys_menu` WHERE `id` = '400'
+                    )
+                    """,
+                    2,
+                    "V079 缺少系统管理父目录 400",
+                    "请先恢复 V070 创建的系统管理目录，禁止生成悬空菜单");
+        }
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`, COALESCE(`menu_name`, ''), 1
+                FROM `sys_menu`
+                WHERE `id` IN (
+                  'external_system_menu_001',
+                  'external_system_view_permission_001',
+                  'external_system_manage_permission_001'
+                )
+                LIMIT 10
+                """,
+                2,
+                "V079 外部系统菜单固定 ID 已被占用或存在部分迁移",
+                "请先迁移冲突资源或核对 Flyway 历史，禁止覆盖既有菜单");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`, COALESCE(`path`, ''), 1
+                FROM `sys_menu`
+                WHERE `path` = '/system/external-systems'
+                LIMIT 10
+                """,
+                2,
+                "V079 外部系统菜单路径已被占用",
+                "请先调整冲突路由，禁止生成两个相同的系统管理页面入口");
+        requireNoConflicts(
+                connection,
+                """
+                SELECT `id`, COALESCE(`perm`, ''), 1
+                FROM `sys_menu`
+                WHERE `perm` IN (
+                  'system:external-system:view',
+                  'system:external-system:manage'
+                )
+                LIMIT 10
+                """,
+                2,
+                "V079 外部系统权限标识已被占用",
+                "请先核对冲突权限语义，禁止复用已有权限标识");
+
+        // 新菜单不存在时不应已有对应授权，否则 NOT EXISTS 会掩盖孤儿数据。
+        if (tableExists(connection, "sys_role_menu")) {
+            requireNoConflicts(
+                    connection,
+                    """
+                    SELECT `id`, `menu_id`, 1
+                    FROM `sys_role_menu`
+                    WHERE `menu_id` IN (
+                      'external_system_menu_001',
+                      'external_system_view_permission_001',
+                      'external_system_manage_permission_001'
+                    )
+                    LIMIT 10
+                    """,
+                    2,
+                    "V079 检测到外部系统菜单的孤儿授权或部分迁移状态",
+                    "请先核对角色授权与 Flyway 历史，禁止静默复用残留授权");
+        }
     }
 
     /**

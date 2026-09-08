@@ -1,6 +1,5 @@
 package com.workflow.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.extension.action.application.FlowActionCatalogService;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
@@ -35,6 +34,7 @@ import static org.mockito.Mockito.when;
 class FlowActionCatalogServiceTest {
 
     private FlowActionDefinitionMapper definitionMapper;
+    private FlowActionDefinitionEntityMapper definitionEntityMapper;
     private ApplicationContext applicationContext;
     private EntityCodeCatalogPort entityCodeCatalogPort;
     /** 被测服务 */
@@ -46,14 +46,14 @@ class FlowActionCatalogServiceTest {
     @BeforeEach
     void setUp() {
         definitionMapper = mock(FlowActionDefinitionMapper.class);
+        definitionEntityMapper = mock(FlowActionDefinitionEntityMapper.class);
         applicationContext = mock(ApplicationContext.class);
         entityCodeCatalogPort = mock(EntityCodeCatalogPort.class);
         handler = context -> {};
         service = new FlowActionCatalogService(
                 definitionMapper,
-                mock(FlowActionDefinitionEntityMapper.class),
+                definitionEntityMapper,
                 applicationContext,
-                new ObjectMapper(),
                 entityCodeCatalogPort,
                 mock(CurrentUserRoleService.class));
     }
@@ -64,10 +64,13 @@ class FlowActionCatalogServiceTest {
      */
     @Test
     void shouldReturnOnlyGlobalAndCurrentEntityDefinitions() {
-        FlowActionDefinition global = definition("global", "globalHandler", "GLOBAL", null);
-        FlowActionDefinition order = definition("order", "orderHandler", "ENTITY", "[\"order\"]");
-        FlowActionDefinition customer = definition("customer", "customerHandler", "ENTITY", "[\"customer\"]");
+        FlowActionDefinition global = definition("global", "globalHandler", "GLOBAL");
+        FlowActionDefinition order = definition("order", "orderHandler", "ENTITY");
+        FlowActionDefinition customer = definition("customer", "customerHandler", "ENTITY");
         when(definitionMapper.findAllActive()).thenReturn(List.of(global, order, customer));
+        when(definitionEntityMapper.findEntityCodes("global")).thenReturn(List.of());
+        when(definitionEntityMapper.findEntityCodes("order")).thenReturn(List.of("order"));
+        when(definitionEntityMapper.findEntityCodes("customer")).thenReturn(List.of("customer"));
         when(applicationContext.getBeansOfType(FlowActionHandler.class)).thenReturn(Map.of(
                 "globalHandler", handler,
                 "orderHandler", handler,
@@ -87,8 +90,9 @@ class FlowActionCatalogServiceTest {
      */
     @Test
     void shouldRejectDefinitionOutsideBoundEntity() {
-        FlowActionDefinition customer = definition("customer", "customerHandler", "ENTITY", "[\"customer\"]");
+        FlowActionDefinition customer = definition("customer", "customerHandler", "ENTITY");
         when(definitionMapper.findActiveById("customer")).thenReturn(Optional.of(customer));
+        when(definitionEntityMapper.findEntityCodes("customer")).thenReturn(List.of("customer"));
         when(applicationContext.containsBean("customerHandler")).thenReturn(true);
         when(applicationContext.getBean("customerHandler", FlowActionHandler.class)).thenReturn(handler);
         when(entityCodeCatalogPort.findEntityCodeByProcessDefinitionId("process-1")).thenReturn("order");
@@ -104,7 +108,7 @@ class FlowActionCatalogServiceTest {
      */
     @Test
     void shouldRequireConfiguredEnabledAndAvailableHandler() {
-        FlowActionDefinition configured = definition("configured", "configuredHandler", "GLOBAL", null);
+        FlowActionDefinition configured = definition("configured", "configuredHandler", "GLOBAL");
         when(definitionMapper.findByHandlerName("configuredHandler")).thenReturn(Optional.of(configured));
         when(applicationContext.containsBean("configuredHandler")).thenReturn(true);
         when(definitionMapper.findByHandlerName("unconfiguredHandler")).thenReturn(Optional.empty());
@@ -114,19 +118,17 @@ class FlowActionCatalogServiceTest {
         assertFalse(service.isConfiguredAndAvailable("unconfiguredHandler"));
     }
 
-    /** 构造一个启用、未删除的动作定义，含可见范围与实体编码 JSON */
+    /** 构造一个启用、未删除且具有指定可见范围的动作定义 */
     private FlowActionDefinition definition(
             String id,
             String handlerName,
-            String visibilityScope,
-            String entityCodesJson) {
+            String visibilityScope) {
         FlowActionDefinition definition = new FlowActionDefinition();
         definition.setId(id);
         definition.setActionCode(handlerName);
         definition.setDisplayName(handlerName);
         definition.setHandlerName(handlerName);
         definition.setVisibilityScope(visibilityScope);
-        definition.setEntityCodesJson(entityCodesJson);
         definition.setEnabled(true);
         definition.setDeleted(0);
         return definition;

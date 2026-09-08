@@ -35,6 +35,10 @@ class ManagementEndpointAccessPolicyTest {
                 "system:interface-service:list");
         assertPermission(
                 UiDataSourceController.class,
+                "references",
+                "system:interface-service:list");
+        assertPermission(
+                UiDataSourceController.class,
                 "create",
                 "system:interface-service:update");
         assertPermission(

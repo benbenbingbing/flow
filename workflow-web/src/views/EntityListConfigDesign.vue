@@ -1518,6 +1518,7 @@ onMounted(async () => {
   await nextTick()
   observeConfigPanelWidth()
   refreshFieldTableLayout()
+  openLinkedListEventBindings()
 })
 onBeforeUnmount(() => {
   configResizeObserver?.disconnect()
@@ -2748,6 +2749,20 @@ async function openRuntimeCode() {
 
 function openListEventBindings() {
   eventBindingDialogRef.value?.openOwner(configInfo.value.listName || '')
+}
+
+/**
+ * 消费接口服务“使用情况”的深链，直接落到当前列表唯一的事件编辑入口。
+ */
+function openLinkedListEventBindings() {
+  if (String(route.query.events || '') !== '1' || isSystemEntity.value) return
+  const targetType = String(route.query.targetType || 'OWNER').toUpperCase()
+  const targetKey = String(route.query.targetKey || '')
+  if (targetType === 'BUTTON' && targetKey) {
+    eventBindingDialogRef.value?.openButton({ key: targetKey, label: targetKey })
+    return
+  }
+  openListEventBindings()
 }
 
 function openRelatedContent() {

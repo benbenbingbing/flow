@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * 流程动作发布校验器。
  *
- * <p>发布流程前校验所有启用的 flow_action 配置是否合法。</p>
+ * <p>发布流程前校验所有启用的 process_action 配置是否合法。</p>
  */
 @Component
 @RequiredArgsConstructor

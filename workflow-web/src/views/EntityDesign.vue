@@ -59,6 +59,11 @@
         :label="relationCount ? `实体关系 ${relationCount}` : '实体关系'"
         name="relations"
       />
+      <el-tab-pane
+        v-if="canConfigureEntityDefaultEvents"
+        label="默认事件"
+        name="events"
+      />
     </el-tabs>
 
     <div v-show="!loadError && activeDesignTab === 'fields'" class="design-body">
@@ -555,6 +560,13 @@
       :can-manage="canManageEntityDefinition"
       :readonly-entity="isSystemEntity"
       @count-change="relationCount = $event"
+    />
+
+    <EntityDefaultEventPanel
+      v-if="!loadError && canConfigureEntityDefaultEvents && activeDesignTab === 'events'"
+      :entity-id="String(entityData.id || entityId)"
+      :entity-name="entityData.entityName || entityData.entityCode || ''"
+      :field-options="entityEventFieldOptions"
     />
 
     <!-- 编码规则配置对话框 -->
@@ -1093,6 +1105,7 @@ import { useUserStore } from '@/stores/user'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import EntityDefaultEventPanel from '@/views/entity/components/EntityDefaultEventPanel.vue'
 import EntityRelationManagement from '@/views/entity/components/EntityRelationManagement.vue'
 import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
@@ -1119,7 +1132,16 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const entityId = route.params.id
-const activeDesignTab = ref('fields')
+
+/**
+ * 解析实体设计深链页签；未知值回退到字段设计，避免外部入口打开空白区域。
+ */
+function normalizeEntityDesignTab(value) {
+  const tab = String(value || '').trim().toLowerCase()
+  return ['fields', 'relations', 'events'].includes(tab) ? tab : 'fields'
+}
+
+const activeDesignTab = ref(normalizeEntityDesignTab(route.query.tab))
 const relationCount = ref(0)
 const canManageEntityDefinition = computed(() => userStore.isSuperAdmin
   || userStore.permissions.includes('*')
@@ -1135,6 +1157,9 @@ const showSystemFields = ref(true)
 const entityBaseline = ref('')
 const selectedField = ref(null)
 const isSystemEntity = computed(() => entityData.value?.storageMode === 'SYSTEM')
+const canConfigureEntityDefaultEvents = computed(() => Boolean(entityData.value?.id)
+  && canManageEntityDefinition.value
+  && !isSystemEntity.value)
 const { handleFieldTypeChange, validateFieldRules } =
   useEntityValidationRules(selectedField)
 const {
@@ -1175,6 +1200,16 @@ const lifecycleFields = computed(() =>
 )
 const businessFieldCount = computed(() => lifecycleFields.value.filter(field => !field.isSystem).length)
 const systemFieldCount = computed(() => lifecycleFields.value.filter(field => field.isSystem).length)
+// 事件绑定独立保存，只提供服务端已保存字段，避免把尚未保存的字段编码写入执行链。
+const entityEventFieldOptions = computed(() => filterEntityFieldsByLifecycle(
+  entityData.value,
+  entityData.value?.fields || []
+)
+  .filter(field => field.fieldCode && !field.isSystem && field.uiConfigurable !== false)
+  .map(field => ({
+    label: field.fieldName || field.fieldCode,
+    value: field.fieldCode
+  })))
 const displayFields = computed(() => {
   const businessFields = lifecycleFields.value.filter(field => !field.isSystem)
   const systemFields = lifecycleFields.value.filter(field => field.isSystem)
@@ -2121,6 +2156,25 @@ watch(showSystemFields, (visible) => {
     selectedField.value = null
   }
 })
+
+// 支持“使用情况”等外部页面深链到默认事件，同时阻止只读用户和系统实体进入编辑区域。
+watch(() => route.query.tab, (value) => {
+  const requestedTab = normalizeEntityDesignTab(value)
+  activeDesignTab.value = requestedTab === 'events'
+    && entityData.value?.id
+    && !canConfigureEntityDefaultEvents.value
+    ? 'fields'
+    : requestedTab
+})
+
+watch(
+  [() => Boolean(entityData.value?.id), canConfigureEntityDefaultEvents],
+  ([entityLoaded, canConfigure]) => {
+    if (entityLoaded && activeDesignTab.value === 'events' && !canConfigure) {
+      activeDesignTab.value = 'fields'
+    }
+  }
+)
 
 onMounted(async () => {
   await Promise.all([
