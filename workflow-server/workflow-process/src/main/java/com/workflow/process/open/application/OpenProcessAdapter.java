@@ -22,9 +22,9 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.definition.application.DeployedSkipExpressionSafety;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.task.application.ProcessTaskService;
-import com.workflow.process.task.application.WorkflowAutoSkipService;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -51,6 +51,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Component
+@Slf4j
 public class OpenProcessAdapter
         implements OpenProcessCatalogPort, OpenProcessRuntimePort {
 
@@ -63,7 +64,9 @@ public class OpenProcessAdapter
             "entityCode",
             "entityDataId",
             "dataNo",
-            "skipNodeEnabled",
+            WorkflowReservedVariables.LEGACY_SKIP_NODE_ENABLED_VARIABLE,
+            WorkflowReservedVariables.FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE,
+            WorkflowReservedVariables.ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE,
             "integrationApplicationId",
             "integrationTraceId",
             "integrationBusinessSystem",
@@ -82,7 +85,6 @@ public class OpenProcessAdapter
     private final HistoryService historyService;
     private final org.flowable.engine.TaskService taskService;
     private final MultiInstanceCollectionListener multiInstanceListener;
-    private final WorkflowAutoSkipService autoSkipService;
     private final ProcessTaskService processTaskService;
     private final RepositoryService repositoryService;
     private final List<ExternalIdentityResolver> externalIdentityResolvers;
@@ -102,7 +104,6 @@ public class OpenProcessAdapter
             HistoryService historyService,
             org.flowable.engine.TaskService taskService,
             MultiInstanceCollectionListener multiInstanceListener,
-            WorkflowAutoSkipService autoSkipService,
             ProcessTaskService processTaskService,
             RepositoryService repositoryService,
             List<ExternalIdentityResolver> externalIdentityResolvers) {
@@ -112,7 +113,6 @@ public class OpenProcessAdapter
         this.historyService = historyService;
         this.taskService = taskService;
         this.multiInstanceListener = multiInstanceListener;
-        this.autoSkipService = autoSkipService;
         this.processTaskService = processTaskService;
         this.repositoryService = repositoryService;
         this.externalIdentityResolvers = externalIdentityResolvers == null
@@ -127,11 +127,10 @@ public class OpenProcessAdapter
             HistoryService historyService,
             org.flowable.engine.TaskService taskService,
             MultiInstanceCollectionListener multiInstanceListener,
-            WorkflowAutoSkipService autoSkipService,
             ProcessTaskService processTaskService) {
         this(processDefinitionMapper, processVersionMapper, runtimeService,
                 historyService, taskService, multiInstanceListener,
-                autoSkipService, processTaskService, null);
+                processTaskService, null);
     }
 
     public OpenProcessAdapter(
@@ -141,12 +140,11 @@ public class OpenProcessAdapter
             HistoryService historyService,
             org.flowable.engine.TaskService taskService,
             MultiInstanceCollectionListener multiInstanceListener,
-            WorkflowAutoSkipService autoSkipService,
             ProcessTaskService processTaskService,
             RepositoryService repositoryService) {
         this(processDefinitionMapper, processVersionMapper, runtimeService,
                 historyService, taskService, multiInstanceListener,
-                autoSkipService, processTaskService, repositoryService,
+                processTaskService, repositoryService,
                 List.of());
     }
 
@@ -230,15 +228,26 @@ public class OpenProcessAdapter
             initiatorSnapshotService.captureTrustedSnapshot(
                     variables, resolvedInitiator);
         }
+        // 开放入口也必须先检查历史部署，避免首次启用开关时激活旧 UI
+        // 曾允许写入的任意 UEL；不安全时不启用并保留人工待办。
+        String unsafeSkipElement =
+                DeployedSkipExpressionSafety.firstUnsafeElementId(
+                        repositoryService.getBpmnModel(
+                                deployed.getId()));
+        if (unsafeSkipElement == null) {
+            WorkflowReservedVariables.enableNativeSkipExpressions(
+                    variables);
+        } else {
+            log.warn(
+                    "历史部署包含不安全 skipExpression，开放入口未启用原生跳过: processDefinitionId={}, element={}",
+                    deployed.getId(), unsafeSkipElement);
+        }
         multiInstanceListener.prepareVariables(
                 deployed.getId(),
                 variables);
 
         ProcessInstance instance = runtimeService.startProcessInstanceById(
                 deployed.getId(), command.businessKey(), variables);
-        autoSkipService.autoSkipNodes(
-                instance.getId(),
-                deployed.getId());
         processTaskService.syncTasksFromFlowable(instance.getId());
         return get(instance.getId(), command.actor());
     }

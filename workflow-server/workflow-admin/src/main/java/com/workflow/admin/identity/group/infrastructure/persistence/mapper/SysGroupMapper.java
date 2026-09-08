@@ -20,9 +20,9 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
      *
      * @param groupCode  组编码
      * @param excludeId 排除的ID（更新时传入自身ID，新增传空串）
-     * @return 存在返回 true，否则 false
+     * @return 存在返回 true，否则 false；逻辑删除记录也计入，保持与数据库唯一约束一致
      */
-    @Select("SELECT COUNT(*) > 0 FROM sys_group WHERE group_code = #{groupCode} AND deleted = 0 AND (#{excludeId} = '' OR id != #{excludeId})")
+    @Select("SELECT COUNT(*) > 0 FROM sys_group WHERE group_code = #{groupCode} AND (#{excludeId} = '' OR id != #{excludeId})")
     boolean existsGroupCode(@Param("groupCode") String groupCode, @Param("excludeId") String excludeId);
     
     /**
@@ -46,6 +46,20 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
     List<SysUser> selectGroupUsers(@Param("groupId") String groupId);
 
     /**
+     * 查询组内全部未删除用户，供成员管理回显使用。
+     *
+     * <p>禁用用户仍保留组成员关系，避免管理员保存其他成员时误删其关系；
+     * 流程运行时应继续使用 {@link #selectGroupUsers(String)}，只解析启用用户。</p>
+     *
+     * @param groupId 组ID
+     * @return 组内未删除用户列表（包含禁用用户）
+     */
+    @Select("SELECT u.* FROM sys_user u " +
+            "INNER JOIN sys_user_group ug ON u.id = ug.user_id " +
+            "WHERE ug.group_id = #{groupId} AND u.deleted = 0")
+    List<SysUser> selectGroupMembers(@Param("groupId") String groupId);
+
+    /**
      * 批量查询用户组成员 ID，用于列表页成员数和分配成员回显。
      *
      * @param groupIds 组 ID 列表
@@ -56,7 +70,7 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
             "SELECT ug.group_id AS groupId, ug.user_id AS userId",
             "FROM sys_user_group ug",
             "INNER JOIN sys_user u ON u.id = ug.user_id",
-            "WHERE u.deleted = 0 AND u.status = '0'",
+            "WHERE u.deleted = 0",
             "AND ug.group_id IN",
             "<foreach collection='groupIds' item='groupId' open='(' separator=',' close=')'>",
             "#{groupId}",

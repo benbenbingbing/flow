@@ -18,8 +18,8 @@ import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceColl
 import com.workflow.process.assignment.relative.InitiatorOrganizationSnapshotService;
 import com.workflow.process.assignment.relative.RelativeOrgPositionProcessInspector;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
+import com.workflow.process.definition.application.DeployedSkipExpressionSafety;
 import com.workflow.process.task.application.ProcessTaskService;
-import com.workflow.process.task.application.WorkflowAutoSkipService;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 import lombok.RequiredArgsConstructor;
@@ -58,7 +58,6 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final IdentityService identityService;
     private final org.flowable.engine.TaskService taskService;
     private final ProcessTaskService processTaskService;
-    private final WorkflowAutoSkipService workflowAutoSkipService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final EntityProcessLinkMapper entityProcessLinkMapper;
     private final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider;
@@ -140,8 +139,6 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                             WorkflowReservedVariables.sanitize(
                                     request.variables())));
         }
-        workflowAutoSkipService.autoSkipNodes(
-                processInstance.getId(), deployedDefinition.getId());
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())
                 .active()
@@ -242,7 +239,21 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         variables.put("dataNo", request.dataNo());
         variables.put("submitterId", request.submitterId());
         variables.put("submitterName", request.submitterName());
-        variables.put("skipNodeEnabled", true);
+        // 历史部署可能包含旧 UI 保存的任意 UEL；只有全部表达式通过当前
+        // 发布白名单时才打开进程级开关，否则保留用户任务人工办理兜底。
+        String unsafeSkipElement =
+                DeployedSkipExpressionSafety.firstUnsafeElementId(
+                        repositoryService.getBpmnModel(
+                                processDefinitionId));
+        if (unsafeSkipElement == null) {
+            WorkflowReservedVariables.enableNativeSkipExpressions(
+                    variables);
+        } else {
+            log.warn(
+                    "历史部署包含不安全 skipExpression，未启用原生跳过: processDefinitionId={}, element={}",
+                    LogValue.safe(processDefinitionId),
+                    LogValue.safe(unsafeSkipElement));
+        }
         if (StringUtils.hasText(request.submitterId())) {
             variables.put("startUserId", request.submitterId());
             variables.put("initiator", request.submitterId());

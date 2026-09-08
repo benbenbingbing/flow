@@ -18,6 +18,25 @@ import java.time.LocalDateTime;
 public interface SysUserMapper extends BaseMapper<SysUser> {
 
     /**
+     * 批量查询仍存在的用户 ID，供用户组成员写入前校验。
+     *
+     * <p>禁用用户仍可保留成员关系，因此这里只排除已逻辑删除用户。</p>
+     *
+     * @param ids 待校验用户 ID
+     * @return 未删除且存在的用户 ID
+     */
+    @Select({
+            "<script>",
+            "SELECT id FROM sys_user",
+            "WHERE deleted = 0 AND id IN",
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>",
+            "#{id}",
+            "</foreach>",
+            "</script>"
+    })
+    List<String> selectExistingIdsByIds(@Param("ids") List<String> ids);
+
+    /**
      * Atomically activates the disabled built-in account only while it still
      * carries the historical public password hash.
      */

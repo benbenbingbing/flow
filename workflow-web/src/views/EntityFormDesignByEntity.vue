@@ -3068,14 +3068,14 @@ function handleParentChange(value) {
 }
 
 
-function nodeToField(node, legacyField) {
+function nodeToField(node, fieldMetadata) {
   const props = parseDocument(node.propsDocument)
   const rules = parseDocument(node.rulesDocument)
   const bindings = parseDocument(node.dataSourceBindingsDocument)
   const nodeType = normalizeFormNodeType(node.nodeType)
   const sourceField = mergeFormNodeFieldMetadata(
     entityFields.value,
-    legacyField,
+    fieldMetadata,
     props,
     node.nodeKey
   )
@@ -3536,38 +3536,16 @@ async function loadFormFields({ strict = false } = {}) {
   }
 
   try {
-    const [legacyFields, nodes] = await Promise.all([
+    const [fields, nodes] = await Promise.all([
       getFormFields(formId),
-      strict
-        ? getFormNodes(formId)
-        : getFormNodes(formId).catch(() => [])
+      getFormNodes(formId)
     ])
     formNodes.value = Array.isArray(nodes) ? nodes : []
-    if (formNodes.value.length > 0) {
-      const legacyById = new Map(
-        (legacyFields || []).map(field => [String(field.id), field])
-      )
-      const legacyByCode = new Map(
-        (legacyFields || []).map(field => [field.fieldCode, field])
-      )
-      formFields.value = formNodes.value.map(node =>
-        nodeToField(
-          node,
-          legacyById.get(String(node.id)) || legacyByCode.get(node.nodeKey)
-        )
-      )
-    } else {
-      formFields.value = legacyFields || []
-      formFields.value.forEach((field, index) => {
-        field.id = field.id || `legacy_${Date.now()}_${index}`
-        field.nodeId = field.id
-        field.nodeKey = field.fieldCode
-        field.nodeType = legacyNodeType(field)
-        field.revision = 0
-        field.orderKey = (index + 1) * 1000000
-        field.parentId = ''
-      })
-    }
+    // 字段接口补充实体关系元数据，设计内容始终以节点树为准。
+    const fieldsById = new Map((fields || []).map(field => [String(field.id), field]))
+    formFields.value = formNodes.value.map(node =>
+      nodeToField(node, fieldsById.get(String(node.id)))
+    )
     // 统一将 refEntityId 转为字符串，避免 el-select 类型不匹配显示原始值
     formFields.value.forEach(field => {
       if (field.refEntityId != null) {

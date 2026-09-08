@@ -1,6 +1,9 @@
 package com.workflow.process.task.application.operation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.flowable.bpmn.model.ExtensionAttribute;
+import org.flowable.bpmn.model.ExtensionElement;
+import org.flowable.bpmn.model.UserTask;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,8 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeOperationPolicyParserTest {
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final NodeOperationConfigReader operationConfigReader =
+            new NodeOperationConfigReader(objectMapper);
     private final NodeOperationPolicyParser parser = new NodeOperationPolicyParser(
-            new ObjectMapper(), new NodeOperationConditionEvaluator());
+            objectMapper, new NodeOperationConditionEvaluator(), operationConfigReader);
 
     @Test
     void parsesVersionedPolicyAndDisablesUnlistedOperations() {
@@ -46,6 +52,47 @@ class NodeOperationPolicyParserTest {
     }
 
     @Test
+    void givesSimpleSwitchesPriorityOverNestedLegacyPolicy() {
+        UserTask task = userTaskWithAssigneeConfig("""
+                {
+                  "allowTransfer": true,
+                  "nodeOperationPolicy": {
+                    "version": 1,
+                    "operations": {
+                      "transfer": {"enabled": false}
+                    }
+                  }
+                }
+                """);
+
+        NodeOperationPolicy policy = parser.parse(task);
+
+        assertFalse(policy.configured());
+        assertTrue(policy.rule(NodeOperationPolicy.Operation.TRANSFER).enabled());
+    }
+
+    @Test
+    void keepsNestedLegacyPolicyWhenSimpleSwitchesAreAbsent() {
+        UserTask task = userTaskWithAssigneeConfig("""
+                {
+                  "nodeOperationPolicy": {
+                    "version": 1,
+                    "operations": {
+                      "transfer": {"enabled": false},
+                      "terminate": {"enabled": true}
+                    }
+                  }
+                }
+                """);
+
+        NodeOperationPolicy policy = parser.parse(task);
+
+        assertTrue(policy.configured());
+        assertFalse(policy.rule(NodeOperationPolicy.Operation.TRANSFER).enabled());
+        assertTrue(policy.rule(NodeOperationPolicy.Operation.TERMINATE).enabled());
+    }
+
+    @Test
     void rejectsInvalidSpecificConstraints() {
         assertThrows(IllegalArgumentException.class, () -> parser.parse("""
                 {
@@ -74,5 +121,24 @@ class NodeOperationPolicyParserTest {
                   }
                 }
                 """));
+    }
+
+    private UserTask userTaskWithAssigneeConfig(String config) {
+        UserTask task = new UserTask();
+        ExtensionElement properties = extensionElement("properties");
+        ExtensionElement property = extensionElement("property");
+        property.addAttribute(new ExtensionAttribute("name", "assigneeConfig"));
+        property.addAttribute(new ExtensionAttribute("value", config));
+        properties.addChildElement(property);
+        task.addExtensionElement(properties);
+        return task;
+    }
+
+    private ExtensionElement extensionElement(String name) {
+        ExtensionElement element = new ExtensionElement();
+        element.setName(name);
+        element.setNamespace("http://flowable.org/bpmn");
+        element.setNamespacePrefix("flowable");
+        return element;
     }
 }

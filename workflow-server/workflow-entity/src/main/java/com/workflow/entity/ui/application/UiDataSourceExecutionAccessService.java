@@ -12,7 +12,6 @@ import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
-import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
@@ -20,7 +19,6 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -93,7 +91,6 @@ public class UiDataSourceExecutionAccessService {
     private final UiDataSourceBindingMatcher bindingMatcher;
     private final EntityFormMapper formMapper;
     private final EntityFormNodeMapper formNodeMapper;
-    private final EntityFormFieldMapper formFieldMapper;
     private final EntityListConfigMapper listMapper;
     private final EntityListFieldMapper listFieldMapper;
     private final EntityDefinitionMapper definitionMapper;
@@ -500,11 +497,6 @@ public class UiDataSourceExecutionAccessService {
             for (EntityFormNode node : formNodeMapper.findByFormId(origin.configId())) {
                 owners.add(objectMapper.convertValue(
                         node,
-                        new TypeReference<Map<String, Object>>() {}));
-            }
-            for (EntityFormField field : formFieldMapper.selectByFormId(origin.configId())) {
-                owners.add(objectMapper.convertValue(
-                        field,
                         new TypeReference<Map<String, Object>>() {}));
             }
             return bindingMatcher.findForm(

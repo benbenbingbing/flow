@@ -489,6 +489,16 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   },
   {
     domain: '流程配置',
+    area: '用户任务自动跳过方式',
+    source: 'src/components/NodeConfigPanel.vue',
+    values: [
+      ['OFF', '不跳过', '用户任务正常创建待办并等待办理。'],
+      ['ALWAYS', '始终跳过', '令牌到达用户任务后直接继续流转，不生成待办停留。'],
+      ['CONDITIONAL', '满足条件时跳过', '表达式为 true 时跳过，为 false 时正常创建待办。']
+    ]
+  },
+  {
+    domain: '流程配置',
     area: '知会触发时机',
     source: 'src/components/NodeConfigPanel.vue',
     values: [
@@ -692,11 +702,21 @@ export const KNOWN_LIMITATIONS = Object.freeze([
     id: 'process.auto-skip.runtime-arrival',
     domain: '流程配置',
     area: '节点自动跳过',
-    setting: '运行时节点识别',
-    location: '流程配置-流程-设计-节点属性-高级-自动跳过',
-    status: '历史问题已关闭',
-    reason: '当前后端监听 ACTIVITY_STARTED，按令牌实际到达节点处理，不再依赖首任务 BFS 推断。',
-    recommendation: '在排他、并行和子流程场景仍需配置明确的跳过表达式并做发布前模拟。'
+    setting: '原生跳过与存量兼容',
+    location: '流程配置-流程-设计-用户任务属性-高级-自动跳过',
+    status: '当前约定',
+    reason: '新发布配置使用 Flowable 原生 skipExpression；运行时监听器只为存量实例兼容旧 skipNode 开关。',
+    recommendation: '新配置使用三态自动跳过，并验证命中后不创建待办或写入当前节点审批结果。'
+  },
+  {
+    id: 'process.start-event.node-form',
+    domain: '流程配置',
+    area: '节点办理表单',
+    setting: '开始事件节点表单',
+    location: '流程配置-流程-设计-开始事件属性',
+    status: '当前不可配置',
+    reason: '节点表单发布快照当前只覆盖用户任务，开始事件不提供办理表单配置入口。',
+    recommendation: '通过实体新增入口的已发布默认表单采集发起数据，或由流程启动接口调用方提供业务数据。'
   },
   {
     id: 'entity.legacy-field-script-events',
@@ -832,8 +852,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/NodeConfigPanel.vue', '^callForm\\.', '流程配置-流程-设计-调用活动属性-常用-调用流程'),
   locationRule('src/components/NodeConfigPanel.vue', '^conditionForm\\.', '流程配置-流程-设计-连线属性-常用-流转条件'),
   locationRule('src/components/NodeConfigPanel.vue', '^slaForm\\.', '流程配置-流程-设计-用户任务属性-高级-任务 SLA'),
-  locationRule('src/components/NodeConfigPanel.vue', '^advancedForm\\.(skipExpression|skipNode)$', '流程配置-流程-设计-节点属性-高级-自动跳过'),
-  locationRule('src/components/NodeConfigPanel.vue', '^advancedForm\\.', '流程配置-流程-设计-节点属性-高级-执行控制'),
+  locationRule('src/components/NodeConfigPanel.vue', '^advancedForm\\.(skipExpression|skipMode)$', '流程配置-流程-设计-用户任务属性-高级-自动跳过'),
   locationRule('src/components/NodeConfigPanel.vue', '^basicForm\\.', '流程配置-流程-设计-节点属性-常用-标识与备注'),
 
   locationRule('src/components/FlowActionConfigPanel.vue', '.*', '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作'),
@@ -879,6 +898,7 @@ const ENUM_LOCATION_BY_AREA = Object.freeze({
   '顺序流条件类型': '流程配置-流程-设计-连线属性-常用-流转条件',
   '知会触发时机': '流程配置-流程-设计-节点属性-协同-知会配置',
   '知会收件人规则': '流程配置-流程-设计-节点属性-协同-知会配置',
+  '用户任务自动跳过方式': '流程配置-流程-设计-用户任务属性-高级-自动跳过',
   '流程动作执行方式': '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作',
   '流程动作失败策略': '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作',
   '数据版本变更入口': '实体配置-数据版本-场景配置',
@@ -1171,7 +1191,8 @@ const KEY_GUIDANCE = Object.freeze({
   errorHandling: ['设置 REST 调用失败后的处理方式。', 'FAIL', '决定抛错终止、继续或转为受控空结果。'],
   calledElement: ['指定被调用流程的流程键。', 'finance_review', '运行到调用活动时启动对应流程定义。'],
   conditionExpression: ['设置节点状态变更或流转条件表达式。', '${amount > 10000}', '仅表达式为真时应用对应状态或路径。'],
-  formSource: ['选择节点使用实体表单还是外部自定义表单。', 'entity', '决定运行时从发布表单快照还是外部表单键加载。'],
+  entityFormBindingMode: ['选择用户任务使用实体默认表单还是指定实体表单。', 'DEFAULT', 'DEFAULT 在应用时按 isDefault 解析当前默认表单，SPECIFIC 使用所选表单；两种方式都写入明确表单 ID，流程发布时再校验 ACTIVE release。'],
+  entityFormId: ['选择用户任务办理表单；默认选项代表应用当前实体默认表单。', '__DEFAULT__', '应用后写入 entityFormBindingMode 和解析出的实体表单 ID；未设置默认表单时阻止应用，表单未发布时由流程发布校验拒绝。'],
   isReadonly: ['强制节点表单整体只读。', true, '开启后覆盖字段级审批可编辑设置。'],
   commentLabel: ['设置审批意见输入框名称。', '审批意见', '审批弹窗使用该名称提示办理人填写意见。'],
   showComment: ['控制某审批结果是否展示备注框。', true, '选择该结果时显示审批备注输入。'],
@@ -1180,7 +1201,8 @@ const KEY_GUIDANCE = Object.freeze({
   channels: ['设置知会渠道。', '["IN_APP","EMAIL"]', '通知通过选中的渠道发送。'],
   includeOperator: ['设置是否把当前办理人加入知会对象。', true, '开启后即使规则未命中，当前办理人也会收到知会。'],
   allowManualCc: ['控制任务办理人能否临时添加知会对象。', false, '关闭后运行时不接受人工知会，只执行节点预配置规则。'],
-  skipExpression: ['设置节点自动跳过表达式。', '${skipFinance == true}', '令牌实际到达节点且表达式为真时自动完成该节点。'],
+  skipExpression: ['设置节点自动跳过表达式。', '${skipFinance == true}', '表达式为真时引擎不创建当前节点待办并直接继续流转。'],
+  skipMode: ['选择用户任务是否跳过及其判断方式。', 'CONDITIONAL', '不跳过时正常创建待办；始终跳过或条件成立时直接继续流转。'],
   policyCode: ['绑定已发布的任务 SLA 策略。', 'STANDARD_APPROVAL', '任务按策略计算响应、完成时限和升级动作。'],
   calendarSource: ['选择 SLA 使用的工作日历来源。', 'PROCESS', '时限计算从系统、流程、节点或业务字段解析日历。'],
   triggerTiming: ['设置流程动作触发时机。', 'NODE_COMPLETED', '仅在该流程生命周期事件发生时执行动作。'],
@@ -1209,11 +1231,7 @@ const KEY_GUIDANCE = Object.freeze({
   entityCodes: ['列出允许使用该扩展定义的实体稳定编码。', ['purchase_request'], '可见范围为指定实体时，仅这些实体的设计器显示该扩展。'],
   sourceNodeName: ['记录状态映射所对应的流程来源节点名称。', '部门审批', '设计器用它说明该状态变更从哪个节点离开，不作为运行时匹配主键。'],
   targetNodeName: ['记录状态映射所对应的流程目标节点名称。', '财务审批', '设计器用它说明状态变更进入哪个节点，不作为运行时匹配主键。'],
-  entityFormIds: ['选择用户任务需要展示或合并的已发布实体表单。', ['10001'], '办理任务时按节点配置加载这些表单；多个表单共用一组流程操作按钮。'],
-  async: ['启用 Flowable 节点异步作业边界。', true, '令牌在该节点通过作业执行器继续，主事务先提交并获得重试边界。'],
-  asyncBefore: ['在进入节点逻辑前创建异步作业边界。', true, '节点实际执行前先提交当前事务，后续失败由作业重试处理。'],
-  asyncAfter: ['在节点逻辑执行完成后创建异步作业边界。', true, '节点完成后先提交，再由作业继续后续流转。'],
-  skipNode: ['允许节点在满足跳过表达式时自动完成。', true, '令牌到达后计算跳过表达式；为真时不创建或不保留人工办理任务。'],
+  entityFormIds: ['兼容读取历史节点表单 ID 列表。', ['10001'], '只采用第一项并在重新保存后收敛为单个 entityFormId，不再合并多个完整表单。'],
   assignee: ['设置固定办理人编码，或在表达式模式下设置办理人表达式。', 'zhangsan', '普通任务直接分配给该用户；固定人员多实例以有序人员列表首人同步此值。'],
   candidateUserIds: ['选择普通任务候选用户，或选择多实例的有序固定审批人列表。', ['zhangsan', 'lisi'], '普通任务中用户可认领；多实例中平台按当前顺序为每个用户生成任务。'],
   candidateGroupIds: ['选择候选用户组；启用多实例时同一配置作为参与人来源。', ['finance'], '普通任务中组成员成为候选人；多实例中启用成员会展开为任务实例。'],
@@ -1534,6 +1552,22 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: 'businessId',
     expectedEffect: '当参数类型为 variable 时，执行动作会读取流程变量 businessId，并以参数名传给处理器。'
   },
+  'src/components/NodeConfigPanel.vue:advancedForm.skipMode': {
+    label: '自动跳过方式',
+    meaning: '选择用户任务正常办理、始终跳过或仅在条件成立时跳过。',
+    configureWhen: '该用户任务在明确场景下不应生成人工待办时配置。',
+    skipWhen: '任务必须始终由人员办理时保持“不跳过”。',
+    example: 'CONDITIONAL',
+    expectedEffect: '始终跳过直接继续流转；条件跳过仅在表达式为 true 时继续，其他情况正常创建待办。'
+  },
+  'src/components/NodeConfigPanel.vue:advancedForm.skipExpression': {
+    label: '自动跳过条件表达式',
+    meaning: '由结构化条件组生成用户任务的受控跳过表达式。',
+    configureWhen: '自动跳过方式选择“满足条件时跳过”时必须配置。',
+    skipWhen: '选择“不跳过”或“始终跳过”时不显示且不保存。',
+    example: '${skipFinance == true}',
+    expectedEffect: '表达式为 true 时不创建当前节点待办且直接继续后续流转；为 false 时正常等待办理。'
+  },
   'src/components/NodeConfigPanel.vue:assigneeForm.nextApproverSelection': {
     label: '下一节点审批人配置',
     meaning: '决定前序审批是否展示或允许改选本节点审批人，并选择复用本节点审批人、受控人员范围或人员接口。',
@@ -1659,7 +1693,7 @@ const CONTROL_OVERRIDES = Object.freeze({
   },
   'src/components/form-designer/FormDesignerSettingsDrawer.vue:form.isDefault': {
     label: '默认表单',
-    meaning: '指定当前表单为实体在未明确传入 formKey 时的首选表单。',
+    meaning: '指定当前表单为实体在未明确指定其他表单时的首选表单。',
     example: true,
     expectedEffect: '新增、编辑或查看入口没有指定表单时优先解析该表单的已发布版本。'
   },

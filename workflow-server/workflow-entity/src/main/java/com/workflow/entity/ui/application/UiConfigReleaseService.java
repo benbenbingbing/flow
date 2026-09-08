@@ -2936,7 +2936,7 @@ public class UiConfigReleaseService {
                         projectedDraft);
         int restoredRevision;
         if (FORM.equals(configType)) {
-            EntityForm publishedForm = runtimeForm(activeSnapshot);
+            EntityForm publishedForm = restorableForm(activeSnapshot);
             publishedForm.setId(configId);
             EntityForm restored = formService.restoreFormForRelease(
                     publishedForm,
@@ -3086,6 +3086,15 @@ public class UiConfigReleaseService {
             String configId,
             Map<String, Object> currentDraft,
             Map<String, Object> activeSnapshot) {
+        if (FORM.equals(configType)) {
+            // 草稿已统一为节点；旧发布也必须按同一规则补齐后比较，避免把格式转换当作配置变更。
+            EntityForm published = restorableForm(activeSnapshot);
+            Map<String, Object> normalized = new LinkedHashMap<>(activeSnapshot);
+            normalized.put("nodes", snapshotSupport.stableValue(published.getNodes()));
+            normalized.put("legacyFields", snapshotSupport.stableValue(
+                    deriveRuntimeFields(published, published.getNodes())));
+            return normalized;
+        }
         if (!LIST.equals(configType)) {
             return activeSnapshot;
         }
@@ -3178,7 +3187,7 @@ public class UiConfigReleaseService {
         Map<String, Object> projected = new LinkedHashMap<>(
                 activeSnapshot);
         if (FORM.equals(configType)) {
-            EntityForm form = runtimeForm(activeSnapshot);
+            EntityForm form = restorableForm(activeSnapshot);
             List<EntityFormNode> nodes = pinSubListReleases(
                     form.getNodes());
             projected.put(
@@ -3338,7 +3347,6 @@ public class UiConfigReleaseService {
             String configId,
             Object owner) {
         if (FORM.equals(configType)) {
-            formService.lockDraftFieldsForRelease(configId);
             formNodeService.lockDraftNodesForRelease(configId);
         } else {
             listConfigService.lockDraftChildrenForRelease(configId);
@@ -3940,6 +3948,14 @@ public class UiConfigReleaseService {
             boolean hotfixApplied) {
     }
 
+    /** 撤销草稿时补齐旧发布的节点配置，运行时读取仍保持原快照结构。 */
+    private EntityForm restorableForm(Map<String, Object> snapshot) {
+        EntityForm form = runtimeForm(snapshot);
+        form.setNodes(new com.workflow.entity.form.application.EntityFormFieldProjection(codec)
+                .materialize(form.getId(), form.getFields(), form.getNodes()));
+        return form;
+    }
+
     private EntityForm runtimeForm(Map<String, Object> snapshot) {
         EntityForm form = objectMapper.convertValue(
                 snapshot.get("form"), EntityForm.class);
@@ -4299,10 +4315,12 @@ public class UiConfigReleaseService {
             if (form == null) {
                 throw new IllegalArgumentException("表单不存在");
             }
+            // 发布、比较和撤销使用同一节点表示；字段只补充实体元数据和旧快照中的属性。
+            List<EntityFormNode> normalizedNodes =
+                    new com.workflow.entity.form.application.EntityFormFieldProjection(codec)
+                            .materialize(form.getId(), form.getFields(), form.getNodes());
             List<EntityFormNode> publishedNodes = pinRuntimeReferences
-                    ? pinSubListReleases(form.getNodes())
-                    : (form.getNodes() == null
-                    ? List.of() : form.getNodes());
+                    ? pinSubListReleases(normalizedNodes) : normalizedNodes;
             Map<String, Object> snapshot = new LinkedHashMap<>();
             snapshot.put("schemaVersion", 1);
             snapshot.put("configType", FORM);
@@ -4412,119 +4430,9 @@ public class UiConfigReleaseService {
     }
 
     private List<EntityFormField> deriveRuntimeFields(
-            EntityForm form,
-            List<EntityFormNode> publishedNodes) {
-        List<EntityFormField> existing =
-                form.getFields() == null ? List.of() : form.getFields();
-        Map<String, EntityFormField> byId = new HashMap<>();
-        Map<String, EntityFormField> byCode = new HashMap<>();
-        existing.forEach(field -> {
-            byId.put(field.getId(), field);
-            if (StringUtils.hasText(field.getFieldCode())) {
-                byCode.put(field.getFieldCode(), field);
-            }
-        });
-        List<EntityFormField> runtimeFields = new ArrayList<>();
-        int sortOrder = 0;
-        for (EntityFormNode node : publishedNodes == null
-                ? List.<EntityFormNode>of()
-                : publishedNodes) {
-            if (!Set.of("FIELD", "SUB_FORM", "REPEATER")
-                    .contains(node.getNodeType())) {
-                continue;
-            }
-            Map<String, Object> props = StringUtils.hasText(node.getPropsDocument())
-                    ? codec.readObject(node.getPropsDocument(), "发布表单节点属性")
-                    : Map.of();
-            String fieldCode = text(props.getOrDefault("fieldCode", node.getNodeKey()));
-            EntityFormField field = new EntityFormField();
-            EntityFormField previous = byId.get(node.getId());
-            if (previous == null) {
-                previous = byCode.get(fieldCode);
-            }
-            if (previous != null) {
-                BeanUtils.copyProperties(previous, field);
-            }
-            field.setId(node.getId());
-            field.setFormId(form.getId());
-            if (props.containsKey("fieldId")) {
-                field.setFieldId(text(props.get("fieldId")));
-            }
-            field.setFieldCode(fieldCode);
-            if (props.containsKey("fieldName")) {
-                field.setFieldName(text(props.get("fieldName")));
-            }
-            if (!StringUtils.hasText(field.getFieldName())) {
-                field.setFieldName(text(props.get("label")));
-            }
-            field.setFieldLabel(text(props.getOrDefault("label", field.getFieldName())));
-            if (props.containsKey("fieldType")) {
-                field.setFieldType(text(props.get("fieldType")));
-            }
-            if (!StringUtils.hasText(field.getFieldType())) {
-                field.setFieldType(
-                        Set.of("SUB_FORM", "REPEATER")
-                                .contains(node.getNodeType())
-                                ? "SUB_FORM"
-                                : node.getNodeType());
-            }
-            if (props.containsKey("componentType")) {
-                field.setComponentType(text(props.get("componentType")));
-            }
-            if (!StringUtils.hasText(field.getComponentType())) {
-                field.setComponentType(
-                        Set.of("SUB_FORM", "REPEATER")
-                                .contains(node.getNodeType())
-                                ? "sub_form"
-                                : node.getNodeType().toLowerCase());
-            }
-            if (props.containsKey("placeholder")) {
-                field.setPlaceholder(text(props.get("placeholder")));
-            }
-            if (props.containsKey("defaultValue")) {
-                field.setDefaultValue(text(props.get("defaultValue")));
-            }
-            if (props.containsKey("gridSpan")) {
-                field.setGridSpan(integer(props.get("gridSpan"), 24));
-            } else if (field.getGridSpan() == null) {
-                field.setGridSpan(24);
-            }
-            if (props.containsKey("required")) {
-                field.setIsRequired(booleanFlag(props.get("required")));
-            }
-            if (props.containsKey("readonly")) {
-                field.setIsReadonly(booleanFlag(props.get("readonly")));
-            }
-            if (props.containsKey("hidden")) {
-                field.setIsHidden(booleanFlag(props.get("hidden")));
-            }
-            field.setSortOrder(sortOrder++);
-            if (props.containsKey("componentProps")) {
-                Object componentProps = props.get("componentProps");
-                field.setComponentProps(componentProps == null
-                        ? null : codec.write(componentProps, "发布字段组件属性"));
-            }
-            Map<String, Object> rules = StringUtils.hasText(node.getRulesDocument())
-                    ? codec.readObject(node.getRulesDocument(), "发布表单节点规则")
-                    : Map.of();
-            if (rules.containsKey("validation")) {
-                Object validation = rules.get("validation");
-                field.setValidationRules(validation == null
-                        ? null : codec.write(validation, "发布字段校验规则"));
-            }
-            if (rules.containsKey("extension")) {
-                Object extension = rules.get("extension");
-                field.setExtensionConfig(extension == null
-                        ? null : codec.write(extension, "发布字段扩展配置"));
-            }
-            if (StringUtils.hasText(node.getDataSourceBindingsDocument())) {
-                field.setDataSourceBindings(codec.readObject(
-                        node.getDataSourceBindingsDocument(),
-                        "发布字段数据源绑定"));
-            }
-            runtimeFields.add(field);
-        }
-        return runtimeFields.isEmpty() ? existing : runtimeFields;
+            EntityForm form, List<EntityFormNode> publishedNodes) {
+        return new com.workflow.entity.form.application.EntityFormFieldProjection(codec)
+                .derive(form, publishedNodes);
     }
 
     private List<EntityFormNode> pinSubListReleases(

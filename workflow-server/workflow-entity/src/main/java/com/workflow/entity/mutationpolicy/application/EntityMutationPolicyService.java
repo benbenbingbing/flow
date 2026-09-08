@@ -12,7 +12,6 @@ import com.workflow.entity.mutationpolicy.infrastructure.persistence.mapper.Enti
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.mapper.EntityMutationPolicyReleaseMapper;
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.record.EntityMutationPolicyConfig;
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.record.EntityMutationPolicyRelease;
-import com.workflow.entity.version.application.EntityVersionConfigurationService;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.application.model.EntityVersionReleaseSummary;
 import lombok.RequiredArgsConstructor;
@@ -28,17 +27,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
- * Owns entity-mutation rule drafts and immutable releases.
- *
- * <p>When an entity has not published a native mutation policy yet, runtime
- * reads the legacy steps and target bindings from the active data-version
- * release. Saving a draft never changes that runtime fallback; publishing the
- * new policy is the explicit cut-over.</p>
+ * 管理独立实体变更策略的草稿及不可变发布。
+ * V080 已把旧版本配置中的变更行为迁入本模块，运行时只读取独立策略发布。
  */
 @Service
 @RequiredArgsConstructor
@@ -47,7 +40,6 @@ public class EntityMutationPolicyService {
     private final EntityMutationPolicyConfigMapper configMapper;
     private final EntityMutationPolicyReleaseMapper releaseMapper;
     private final EntityDefinitionMapper definitionMapper;
-    private final EntityVersionConfigurationService legacyService;
     private final EntityMutationPolicyValidator validator;
     private final ObjectMapper objectMapper;
 
@@ -68,7 +60,7 @@ public class EntityMutationPolicyService {
                     configMapper.findByEntityCode(
                             definition.getEntityCode());
             EntityMutationPolicyDocument document = config == null
-                    ? legacyDraft(definition)
+                    ? defaultDraft(definition)
                     : overlay(read(config.getDraftDocument()),
                             definition, config);
             result.add(new EntityMutationPolicySummary(
@@ -98,12 +90,12 @@ public class EntityMutationPolicyService {
         EntityMutationPolicyConfig config =
                 configMapper.findByEntityCode(entityCode);
         if (config == null) {
-            return legacyDraft(definition);
+            return defaultDraft(definition);
         }
         return overlay(read(config.getDraftDocument()), definition, config);
     }
 
-    /** Runtime reads only an immutable native release or the old release. */
+    /** 运行时只读取已激活的独立策略发布；未发布的草稿不参与执行。 */
     @Transactional(readOnly = true)
     public Optional<EntityMutationPolicyDocument> getPublished(
             String entityCode) {
@@ -123,14 +115,7 @@ public class EntityMutationPolicyService {
                 return Optional.of(document);
             }
         }
-        return legacyService.getPublished(entityCode)
-                .filter(this::hasMutationBehavior)
-                .map(source -> {
-                    EntityMutationPolicyDocument document = copy(source);
-                    document.setMigrationState("REVIEW_REQUIRED");
-                    document.setStatus("LEGACY");
-                    return document;
-                });
+        return Optional.empty();
     }
 
     @Transactional(readOnly = true)
@@ -141,10 +126,8 @@ public class EntityMutationPolicyService {
             return List.of();
         }
         List<EntityVersionConfiguration> result = new ArrayList<>();
-        Set<String> nativeEntityCodes = new java.util.HashSet<>();
         for (EntityMutationPolicyConfig config
                 : configMapper.findAllPublished()) {
-            nativeEntityCodes.add(config.getEntityCode());
             EntityMutationPolicyRelease release = releaseMapper.selectById(
                     config.getActiveReleaseId());
             if (release == null) {
@@ -157,19 +140,6 @@ public class EntityMutationPolicyService {
                 document.setActiveReleaseId(release.getId());
                 document.setActiveReleaseVersion(release.getVersion());
                 result.add(document);
-            }
-        }
-        for (EntityVersionConfiguration legacy
-                : legacyService.findPublishedTargetConfigurations(
-                        sourceEntityCode)) {
-            if (!nativeEntityCodes.contains(legacy.getEntityCode())) {
-                EntityMutationPolicyDocument document = copy(legacy);
-                if (Boolean.TRUE.equals(document.getEnabled())
-                        && hasSourceTarget(document, sourceEntityCode)) {
-                    document.setMigrationState("REVIEW_REQUIRED");
-                    document.setStatus("LEGACY");
-                    result.add(document);
-                }
             }
         }
         return result;
@@ -304,29 +274,16 @@ public class EntityMutationPolicyService {
                 .toList();
     }
 
-    private EntityMutationPolicyDocument legacyDraft(
-            EntityDefinition definition) {
-        EntityVersionConfiguration source = legacyService
-                .getPublished(definition.getEntityCode())
-                .filter(this::hasMutationBehavior)
-                .orElseGet(() -> legacyService.getDraft(
-                        definition.getEntityCode()));
-        EntityMutationPolicyDocument document = copy(source);
-        boolean hasLegacy = hasMutationBehavior(source);
-        if (!hasLegacy) {
-            document.setScenarios(new ArrayList<>());
-            document.setSteps(new ArrayList<>());
-            document.setTargetBindings(new ArrayList<>());
-            document.setEnabled(false);
-            document.setStatus("UNCONFIGURED");
-            document.setRevision(0);
-            document.setActiveReleaseId(null);
-            document.setActiveReleaseVersion(null);
-        } else {
-            document.setStatus("LEGACY");
-        }
-        document.setMigrationState(
-                hasLegacy ? "REVIEW_REQUIRED" : "NATIVE");
+    /** 新实体从未配置的独立策略开始，不读取数据版本配置作为隐式执行规则。 */
+    private EntityMutationPolicyDocument defaultDraft(EntityDefinition definition) {
+        EntityMutationPolicyDocument document = new EntityMutationPolicyDocument();
+        document.setEntityId(definition.getId());
+        document.setEntityCode(definition.getEntityCode());
+        document.setEntityName(definition.getEntityName());
+        document.setEnabled(false);
+        document.setStatus("UNCONFIGURED");
+        document.setRevision(0);
+        document.setMigrationState("NATIVE");
         return normalize(document);
     }
 
@@ -358,30 +315,6 @@ public class EntityMutationPolicyService {
         EntityMutationPolicyRelease release =
                 releaseMapper.selectById(config.getActiveReleaseId());
         return release == null ? null : release.getVersion();
-    }
-
-    private boolean hasMutationBehavior(
-            EntityVersionConfiguration document) {
-        return document != null
-                && ((document.getSteps() != null
-                        && !document.getSteps().isEmpty())
-                || (document.getTargetBindings() != null
-                        && !document.getTargetBindings().isEmpty()));
-    }
-
-    private EntityMutationPolicyDocument copy(
-            EntityVersionConfiguration source) {
-        EntityMutationPolicyDocument document = normalize(objectMapper.convertValue(
-                source, EntityMutationPolicyDocument.class));
-        Set<String> referencedRules = document.getSteps().stream()
-                .map(EntityVersionConfiguration.Step::getScenarioCode)
-                .filter(StringUtils::hasText)
-                .collect(Collectors.toSet());
-        document.setScenarios(new ArrayList<>(document.getScenarios().stream()
-                .filter(rule -> referencedRules.contains(
-                        rule.getScenarioCode()))
-                .toList()));
-        return document;
     }
 
     private EntityMutationPolicyDocument normalize(

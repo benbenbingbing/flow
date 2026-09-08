@@ -1,5 +1,8 @@
 # 实体与流程配置改进实施计划
 
+> 历史说明：原 4.3“节点操作矩阵”已于 2026-09-09 被
+> [节点操作权限三开关方案](./node-operation-permission-simplification.md)替代；相关章节保留用于追溯原始计划。
+
 > 编制日期：2026-08-21  
 > 依据：[实体配置与流程配置功能完善度分析](./entity-process-configuration-gap-analysis.md)  
 > 计划范围：完整实施 P0、完整实施 P2，并实施 P1 中的 4.2、4.3、4.5。

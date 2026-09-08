@@ -1,46 +1,49 @@
 import request from '@/utils/request'
+import { createGroupApi } from './groupApi.js'
+
+const groupApi = createGroupApi(request)
 
 // 获取组列表
 export const getGroupList = () => {
-  return request.get('/system/group/list')
+  return groupApi.getGroupList()
 }
 
 // 获取启用的组列表
 export const getEnabledGroups = () => {
-  return request.get('/system/group/enabled')
+  return groupApi.getEnabledGroups()
 }
 
 // 根据ID获取组
 export const getGroupById = (id: string) => {
-  return request.get(`/system/group/${id}`)
+  return groupApi.getGroupById(id)
 }
 
 // 创建组
 export const createGroup = (data: any) => {
-  return request.post('/system/group', data)
+  return groupApi.createGroup(data)
 }
 
 // 更新组
 export const updateGroup = (id: string, data: any) => {
-  return request.post(`/system/group/${id}/update`, data)
+  return groupApi.updateGroup(id, data)
 }
 
 // 删除组
 export const deleteGroup = (id: string) => {
-  return request.post(`/system/group/${id}/delete`)
+  return groupApi.deleteGroup(id)
 }
 
 // 更新组状态
 export const updateGroupStatus = (id: string, status: string) => {
-  return request.post(`/system/group/${id}/status?status=${status}`)
+  return groupApi.updateGroupStatus(id, status)
 }
 
 // 保存组用户
 export const saveGroupUsers = (id: string, userIds: string[]) => {
-  return request.post(`/system/group/${id}/users`, userIds)
+  return groupApi.saveGroupUsers(id, userIds)
 }
 
 // 获取用户列表
 export const getUsers = () => {
-  return request.get('/system/group/users')
+  return groupApi.getUsers()
 }

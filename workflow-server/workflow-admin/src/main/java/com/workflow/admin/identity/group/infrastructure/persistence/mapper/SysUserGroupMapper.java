@@ -16,12 +16,17 @@ import java.util.List;
 public interface SysUserGroupMapper extends BaseMapper<SysUserGroup> {
     
     /**
-     * 根据用户ID查询组ID列表
+     * 查询用户当前有效的组ID列表。
+     *
+     * <p>该方法用于运行时权限匹配，禁用或已删除的用户组不得继续扩大
+     * 用户的数据权限范围。管理端成员回显应使用独立的成员查询，不应复用此方法。</p>
      *
      * @param userId 用户ID
-     * @return 组ID列表
+     * @return 启用且未删除的组ID列表
      */
-    @Select("SELECT group_id FROM sys_user_group WHERE user_id = #{userId}")
+    @Select("SELECT ug.group_id FROM sys_user_group ug "
+            + "INNER JOIN sys_group g ON g.id = ug.group_id "
+            + "WHERE ug.user_id = #{userId} AND g.deleted = 0 AND g.status = '0'")
     List<String> selectGroupIdsByUserId(@Param("userId") String userId);
     
     /**

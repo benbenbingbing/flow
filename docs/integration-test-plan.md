@@ -127,13 +127,13 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 | `node_name` | 节点中文显示名称 | 默认与 BPMN 元素名相同 | 流程图节点标签、审批历史、待办列表、tooltip 展示 | 修改后实时同步到流程图和审批历史 |
 | `node_type` | BPMN 节点类型枚举 | `START`/`END`/`USER_TASK`/`SERVICE_TASK`/`SCRIPT_TASK`/`SEND_TASK`/`RECEIVE_TASK`/`MANUAL_TASK`/`BUSINESS_RULE_TASK`/`EXCLUSIVE_GATEWAY`/`PARALLEL_GATEWAY`/`INCLUSIVE_GATEWAY`/`EVENT_BASED_GATEWAY`/`CALL_ACTIVITY`/`SUB_PROCESS` | 决定设计器显示哪些配置页签和运行时行为 | 不同类型节点打开设计器时页签正确；运行时按类型执行 |
 | `config_json` | 节点扩展配置 JSON | 默认 `{}` | 存储多实例、超时、脚本、服务、审批等高级配置 | JSON 格式非法时保存报错；字段缺失时按默认值处理 |
-| `skip_node` | 是否自动跳过当前用户任务节点 | `false`（默认） | `true` 时流程到达后自动完成，不生成待办 | 仅对**用户任务**生效；非用户任务设置无效 |
+| `skip_node` | 用户任务是否始终自动跳过 | `false`（默认） | `true` 时使用 Flowable 原生跳过，节点不创建待办并直接继续流转 | 仅对**用户任务**生效；条件跳过由同一“自动跳过”配置区生成 `skipExpression` |
 | `process_config_id` | 所属流程定义配置 ID | 必填 | 关联流程 | 删除流程时级联删除节点配置 |
 
 **验证步骤**：
 
 1. 创建用户任务节点，修改 `node_name`，确认流程图和数据库同步。
-2. 设置 `skip_node=true`，发起流程，确认该节点自动完成。
+2. 设置“自动跳过=始终跳过”，发起流程，确认该节点不创建待办，也不写当前节点审批结果或意见。
 3. 在服务任务节点设置 `skip_node=true`，确认不生效。
 
 ---
@@ -147,14 +147,14 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 | 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
 |---|---|---|---|---|
 | `node_name` | 开始节点名称 | 默认“开始” | 审批历史展示 | 可自定义为“提交申请”等 |
-| `form_source` / `entity_form_ids` | 发起时绑定的表单 | 可选 | 流程启动页展示表单 | 同“用户任务-表单配置” |
+| 节点表单 | 当前暂不支持 | 不提供配置入口 | 发起数据由实体新增入口的默认表单或调用方提供 | 不生成开始事件表单绑定 |
 
 #### 5.1.2 集成测试用例
 
 | 用例编号 | 场景 | 操作步骤 | 预期结果 |
 |---|---|---|---|
 | SE-001 | 默认开始事件 | 绘制开始节点并发布 | 流程可正常发起 |
-| SE-002 | 开始节点绑定实体表单 | 开始节点选择实体表单 | 发起流程时显示该表单，提交后进入第一个任务 |
+| SE-002 | 开始事件表单能力限制 | 选中开始事件并查看配置面板 | 不显示办理表单配置，不生成 `ProcessNodeForm` 绑定 |
 | SE-003 | 开始事件指定启动人 | 通过 `initiator` 变量 | 审批历史中“开始”节点执行人显示为发起人 |
 
 ---
@@ -241,19 +241,22 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 
 | 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
 |---|---|---|---|---|
-| `formSource` | 表单来源 | `entity`（实体表单）/`custom`（自定义表单）/`none`（无表单） | 决定节点显示什么表单 | 选择不同来源时界面变化 |
-| `entityFormId` | 实体表单 ID | 单选实体表单 | 一个节点绑定一个办理表单 | 字段正确加载 |
+| `entityFormBindingMode` | 实体表单使用方式 | `DEFAULT`（使用实体默认表单）/ `SPECIFIC`（指定实体表单） | 决定应用配置时如何解析节点表单 | 两种方式均形成明确表单绑定 |
+| `entityFormId` | 解析后的实体表单 ID | DEFAULT 时由应用动作按 `isDefault` 写入当前默认表单 ID；SPECIFIC 时写入用户所选 ID | 一个节点绑定一个办理表单；流程发布成功后进入快照 | 默认与指定方式切换后 ID 正确 |
 | `entityFormIds` | 历史实体表单 ID 列表 | 只读兼容 | 旧配置存在多个值时只读取第一项 | 保存后收敛为 `entityFormId` |
-| `formKey` | 自定义表单 Key | 字符串 | 外部表单标识 | 自定义表单渲染 |
+| `flowable:formKey` | 历史/导入兼容的实体表单引用 | 仅兼容读取，不提供新建输入框 | 可解析时归一化为 `entityFormId`；不可解析时阻止发布并提示 | 不误当成外部自定义表单 |
 | `isReadonly` | 是否只读 | `false`（默认） | `true` 时表单仅展示不可编辑 | 提交时跳过节点级字段校验 |
 
 **表单配置验证步骤**：
 
-1. `formSource=entity`，选择实体表单，确认节点审批时显示该表单字段。
-2. `formSource=entity`，`isReadonly=true`，确认字段不可编辑，可正常提交。
-3. `formSource=custom`，填写 `formKey`，确认前端按 `formKey` 渲染自定义表单。
-4. `formSource=none`，确认节点无表单，仅显示审批操作。
-5. 加载历史多个 `entityFormIds`，确认只展示第一项，重新保存后仅写入 `entityFormId`。
+1. 选择“使用实体默认表单”，应用配置时按 `isDefault` 写入 `entityFormBindingMode=DEFAULT` 和当前默认 `entityFormId`。
+2. 实体未设置默认表单时选择 DEFAULT，确认应用失败并提示先设置默认表单。
+3. 默认表单仍为草稿时应用 DEFAULT，确认节点绑定成功，但流程发布因缺少 ACTIVE release 失败；发布该表单后流程可成功发布并形成快照。
+4. 选择“指定实体表单”，写入 `entityFormBindingMode=SPECIFIC` 和所选 `entityFormId`，确认节点审批时显示该表单字段。
+5. 指定实体表单并设置 `isReadonly=true`，确认字段不可编辑且可正常提交。
+6. 选择配置了 `customComponent` 的实体表单，确认由自定义组件渲染；节点仍只保存实体表单绑定。
+7. 加载历史多个 `entityFormIds`，确认只展示第一项，重新保存后仅写入 `entityFormId`。
+8. 导入含 `flowable:formKey` 的历史 BPMN：可解析引用归一化为实体表单，无法解析的引用在发布前给出明确错误。
 
 #### 5.3.4 审批配置（approvalConfig）
 
@@ -284,17 +287,17 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 
 | 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
 |---|---|---|---|---|
-| `async` | 是否启用异步执行 | `false`（默认） | `true` 时任务进入异步作业队列 | 适合长时间任务；需 Flowable 异步执行器激活 |
-| `asyncBefore` | 进入节点前异步执行 | `false` | 在到达节点前生成异步作业 | 事务边界变化 |
-| `asyncAfter` | 离开节点后异步执行 | `false` | 在离开节点后生成异步作业 | 事务边界变化 |
-| `skipExpression` | 条件跳过表达式 | 如 `${skip}` | 表达式为 `true` 时跳过该节点 | 与 `skipNode` 互斥或叠加 |
-| `skipNode` | 自动跳过标记 | `false` | `true` 时流程到达后自动完成 | 发布时生成 `flowable:skipExpression="${skipNodeEnabled}"` |
+| 自动跳过方式 | 不跳过 / 始终跳过 / 满足条件时跳过 | 不跳过（默认） | 始终跳过或条件命中时不创建当前待办并直接继续流转 | 仅用户任务显示，三种方式互斥 |
+| `skipExpression` | 条件组生成的跳过表达式 | 如 `${amount < 1000}` | 表达式为 `true` 时原生跳过；为 `false` 时正常创建待办 | 仅“满足条件时跳过”使用；不允许任意方法调用或属性访问 |
+| `skipNode` | 设计态始终跳过标记 | `false` | `true` 时发布为恒真的原生跳过表达式 | 发布时归一化为 `flowable:skipExpression="${true}"` |
+
+> 节点不再提供 `async`、`asyncBefore`、`asyncAfter` 等异步配置；草稿保存、发布和最终部署都会清除历史异步属性。流程动作的 AFTER_COMMIT 仍是独立能力。
 
 **高级配置验证步骤**：
 
-1. `async=true` + `asyncBefore=true`：任务进入异步作业表 `ACT_RU_JOB`，异步执行器执行后生成待办。
-2. `skipExpression=${amount < 1000}`：金额小于 1000 时自动跳过该审批节点。
-3. `skipNode=true`：流程到达后自动完成。
+1. 导入带 `flowable:async="true"`、`asyncBefore` 或 `asyncAfter` 的历史 BPMN，保存并发布后确认这些属性均被清除，节点同步执行。
+2. 选择“满足条件时跳过”并配置 `amount < 1000`：金额小于 1000 时不创建当前待办；否则正常生成待办。
+3. 选择“始终跳过”：流程到达后直接继续，且不写当前节点审批结果或意见。
 
 #### 5.3.6 用户任务集成测试用例
 
@@ -313,8 +316,8 @@ SHOW COLUMNS FROM process_task LIKE 'action_label';
 | UT-011 | 表单只读 | `isReadonly=true` | 字段不可编辑，可正常提交 |
 | UT-012 | 自定义审批选项 | 添加“同意，需要会签” | actionLabel 正确保存并显示 |
 | UT-013 | 备注必填 | 设置 remarkRequired=true | 空备注拒绝提交 |
-| UT-014 | 自动跳过 | `skipNode=true` | 节点自动完成 |
-| UT-015 | 条件跳过 | `skipExpression=${amount < 1000}` | 满足条件时跳过 |
+| UT-014 | 始终自动跳过 | 自动跳过方式选择“始终跳过” | 当前节点不创建待办，直接进入后续节点 |
+| UT-015 | 条件自动跳过 | 条件组配置 `amount < 1000` | 条件为真时不创建当前待办，为假时正常等待办理 |
 
 ---
 
@@ -650,9 +653,9 @@ ProcessNodeForm（流程节点表单绑定）
 | 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
 |---|---|---|---|---|
 | `formName` | 表单名称 | 如 `请假申请表单` | 前端表单标题、Tab 标签 | 修改后同步 |
-| `formKey` | 表单唯一标识 | 英文，如 `leave_apply` | 自定义表单路由、外部表单关联 | 唯一性 |
+| `formKey` | 实体表单稳定标识 | 英文，如 `leave_apply` | 发布、接口和跨环境导入导出引用；不作为节点外部表单入口 | 唯一性 |
 | `layoutType` | 表单布局 | `vertical`（垂直）/`horizontal`（水平）/`grid`（网格） | 表单整体布局 | 不同布局渲染正确 |
-| `isDefault` | 是否默认表单 | `false` | 节点未绑定时回退到默认表单 | 只有一个默认 |
+| `isDefault` | 是否默认表单 | `false` | DEFAULT 应用时解析该表单；旧无绑定流程可兼容回退 | 只有一个默认 |
 | `customComponent` | 自定义组件注册名 | 可选 | 使用完全自定义的表单组件 | 组件存在性 |
 | `dataSourceBindingsDocument` | 表单生命周期数据源绑定 JSON | 可选 | 按 `FORM_INIT`、`AFTER_LOAD`、`BEFORE_SUBMIT` 执行受控数据处理 | JSON、数据源引用与绑定位置合法性 |
 | `fieldCode` | 字段编码 | 对应 `entity_field.field_code` | 数据绑定 key | 一致性 |
@@ -677,29 +680,34 @@ ProcessNodeForm（流程节点表单绑定）
 
 **绑定关系验证点**：
 
-1. 一个节点绑定 0 个表单：运行时回退到实体默认表单；无默认表单时回退到第一个可用表单。
-2. 一个节点绑定 1 个表单：直接展示该表单。
+1. 节点选择“使用实体默认表单”：应用配置时保存 DEFAULT，并解析、写入当时的默认表单 ID。
+2. 节点选择“指定实体表单”：应用配置时保存 SPECIFIC 和所选表单 ID。
 3. 历史配置含多个表单：只读取第一项，重新保存后收敛为单表单配置。
 4. 同一表单绑定到多个节点：每个节点独立设置 `isReadonly`，互不影响。
+5. 整表自定义渲染属于 `EntityForm.customComponent`；节点选择该实体表单，不存在独立的“自定义表单来源”。
 
 ### 5.16.4 表单加载优先级（运行时）
 
-流程进度接口 `/process-instance/{id}/progress` 加载表单时，按以下优先级：
+流程进度接口 `/process-instance/{id}/progress` 加载用户任务表单时，按以下规则：
 
-1. **最高优先级**：从流程发布快照查询当前节点的 `ProcessNodeForm` 绑定。
-2. **回退 1**：节点无绑定时，使用实体的默认表单（`isDefault=true`）。
-3. **回退 2**：无默认表单时，使用实体的第一个可用表单。
-4. **回退 3**：仍无表单时，流程详情页不展示表单数据（仅展示流程图和历史）。
+1. **新配置统一读取快照**：DEFAULT 和 SPECIFIC 在应用时都写入明确的 `entityFormId`，发布后从 `ProcessNodeForm` 与流程发布快照读取。
+2. **DEFAULT 不是运行时动态选择**：默认表单以后发生变化，不影响已经发布的流程版本；需要重新应用节点配置并发布流程。
+3. **DEFAULT 配置校验**：应用时只按 `isDefault` 查找当前默认表单；未设置默认表单则失败。默认表单可以是草稿，但流程发布时必须已有 ACTIVE release。
+4. **旧无绑定流程兼容**：缺少 `entityFormBindingMode` 和节点绑定的历史流程仍保留现有运行时回退；不同链路可能回退默认表单或首个可用表单，不作为新配置语义。
+5. **历史 formKey 兼容**：`flowable:formKey` 只用于解析历史或导入的实体表单引用，可解析后按实体表单处理，不能解析时明确报错。
 
 **测试验证**：
 
 | 用例编号 | 场景 | 操作步骤 | 预期结果 |
 |---|---|---|---|
-| FLP-001 | 节点绑定表单 | 为节点 A 绑定表单 F1 | 流程到达 A 时展示 F1 |
-| FLP-002 | 节点未绑定表单 | 节点 A 不绑定表单，实体有默认表单 F2 | 流程到达 A 时展示 F2 |
-| FLP-003 | 无默认表单 | 节点 A 不绑定表单，实体无默认表单但有 F3 | 流程到达 A 时展示 F3 |
-| FLP-004 | 完全无表单 | 实体无任何表单 | 详情页不展示表单，仅展示流程图和历史 |
-| FLP-005 | 发布后修改表单 | 发布后修改实体表单字段 | 旧流程实例仍使用发布快照中的表单定义 |
+| FLP-001 | 指定实体表单 | 节点 A 指定表单 F1 | 流程到达 A 时展示 F1 |
+| FLP-002 | 使用实体默认表单 | 节点 A 应用 DEFAULT，当前默认表单为 F2 | 写入 F2 的节点绑定和发布快照；流程到达 A 时展示 F2 |
+| FLP-003 | 默认表单缺失 | 节点 A 使用 DEFAULT，但实体没有 `isDefault=true` 的表单 | 应用失败并提示先设置默认表单 |
+| FLP-004 | 默认表单尚未发布 | 默认表单 F2 为草稿，节点 A 应用 DEFAULT 后发布流程 | 节点应用成功并绑定 F2；流程发布因 F2 缺少 ACTIVE release 失败 |
+| FLP-005 | 自定义组件实体表单 | F1 配置 `customComponent`，节点 A 指定 F1 | 运行时使用 F1 的自定义组件渲染 |
+| FLP-006 | 发布后修改表单 | 发布后修改实体表单字段 | 旧流程实例仍使用发布快照中的表单定义 |
+| FLP-007 | 历史 formKey 兼容 | 导入可解析和不可解析的 `flowable:formKey` | 可解析项归一化；不可解析项阻止发布并指出节点 |
+| FLP-008 | 旧无绑定流程兼容 | 运行缺少 mode 和节点绑定的历史流程 | 保留既有默认/首个可用表单回退，不影响新 DEFAULT/SPECIFIC 语义 |
 
 ### 5.16.5 单表单展示与历史兼容
 
@@ -808,22 +816,18 @@ ProcessNodeForm（流程节点表单绑定）
 | SF-008 | 引用用户字段 | refEntityType=USER | 用户选择器加载系统用户 |
 | SF-009 | 引用部门字段 | refEntityType=DEPT | 部门选择器加载组织架构 |
 
-### 5.16.8 开始事件表单绑定
+### 5.16.8 开始事件表单能力限制
 
-开始事件可绑定表单，用于流程发起时填写申请信息。
-
-| 配置项 | 具体含义 | 取值/默认值 | 业务影响 | 测试验证点 |
-|---|---|---|---|---|
-| `formSource` | 表单来源 | `entity`/`custom`/`none` | 同用户任务 | 开始事件通常用实体表单 |
-| `entityFormId` | 实体表单 ID | 单选 | 发起时展示 | 同用户任务 |
+开始事件当前暂不支持节点表单配置。流程发起前的数据录入由实体新增入口在运行时使用的 ACTIVE 默认表单负责；API 或其他业务入口启动流程时，由调用方提供并校验业务数据。不得在开始事件上新建 `entityFormId` 或任意外部 `flowable:formKey` 配置。
 
 **测试验证**：
 
 | 用例编号 | 场景 | 操作步骤 | 预期结果 |
 |---|---|---|---|
-| SEF-001 | 开始事件绑定表单 | 开始事件选择实体表单 | 发起流程时先显示表单填写页 |
-| SEF-002 | 开始事件无表单 | 开始事件不绑定表单 | 直接发起流程，进入第一个任务 |
-| SEF-003 | 发起数据保存 | 填写开始表单并提交 | 实体数据表插入记录，并启动流程 |
+| SEF-001 | 设计器能力限制 | 选择开始事件 | 不显示“办理表单”配置区 |
+| SEF-002 | BPMN 保存 | 编辑开始事件名称并保存 | 不新增 `entityFormBindingMode`、`entityFormId` 或新的 `flowable:formKey` |
+| SEF-003 | 实体入口发起 | 使用实体默认表单新增并发起流程 | 实体数据保存后启动流程，开始事件不产生节点表单绑定 |
+| SEF-004 | API 发起 | 调用启动接口并提供业务数据 | 流程直接启动，数据契约由启动接口校验 |
 
 ### 5.16.9 自定义组件表单
 
@@ -857,20 +861,20 @@ ProcessNodeForm（流程节点表单绑定）
 | 页面 | 表单来源 | 展示组件 | 说明 |
 |---|---|---|---|
 | 数据新增/编辑页 | 实体默认表单 | `EntityDataFormFields` → `FormPreviewLinkage` | 可编辑模式 |
-| 流程发起页 | 开始事件绑定表单 | `EntityDataFormFields` | 填写后保存并发起流程 |
+| 流程发起页 | 实体的 ACTIVE 默认表单 | `EntityDataFormFields` | 填写并保存实体数据后发起流程；不读取开始事件节点表单 |
 | 待办审批弹窗 | 当前节点绑定的表单 | `EntityApprovalDialog` → `EntityApprovalBasicInfo` + `FormPreviewLinkage` | 可能只读，取决于 `ProcessNodeForm.isReadonly` |
 | 流程详情页 | 当前/最近节点表单 | `useProcessDetail` → `FormPreviewLinkage` | 只读展示 |
-| 审批历史 | 无表单，仅展示节点处理记录 | `EntityApprovalHistory` | 展示 actionLabel、comment、时间 |
-| 流程图 | 无表单 | `VueBpmnViewer` / `EntityApprovalDiagram` | 高亮节点、tooltip |
+| 审批历史 | 不加载业务表单 | `EntityApprovalHistory` | 展示 actionLabel、comment、时间 |
+| 流程图 | 不加载业务表单 | `VueBpmnViewer` / `EntityApprovalDiagram` | 高亮节点、tooltip |
 
 ### 5.16.12 节点-实体-表单关系集成测试用例汇总
 
 | 用例编号 | 场景 | 操作步骤 | 预期结果 |
 |---|---|---|---|
 | NEF-001 | 实体创建多个表单 | 实体下创建 F1、F2，设置 F1 为默认 | F1.isDefault=true，F2.isDefault=false |
-| NEF-002 | 节点绑定一个表单 | 节点 A 绑定 F1 | 到达 A 时展示 F1 字段 |
-| NEF-003 | 节点绑定两个表单 | 节点 A 绑定 F1、F2 | 合并展示，去重、排序、名称连接 |
-| NEF-004 | 节点未绑定表单 | 节点 A 不绑定，实体有默认表单 | 回退到默认表单 |
+| NEF-002 | 指定实体表单 | 节点 A 指定 F2 | 到达 A 时展示 F2 字段 |
+| NEF-003 | 切换到实体默认表单 | 节点 A 从指定 F2 切换为使用默认表单 | 写入 DEFAULT 和当时默认表单 F1 的 ID，发布后展示 F1 |
+| NEF-004 | 使用实体默认表单 | 节点 A 应用 DEFAULT，实体默认表单为 F1 | 生成 F1 的节点绑定与发布快照，到达 A 时展示 F1 |
 | NEF-005 | 节点只读覆盖 | ProcessNodeForm.isReadonly=1 | 节点 A 所有字段只读 |
 | NEF-006 | 表单字段隐藏 | EntityFormField.isHidden=1 | 字段不展示 |
 | NEF-007 | 字段权限叠加 | 实体必填+表单非必填 | 字段必填 |
@@ -883,6 +887,7 @@ ProcessNodeForm（流程节点表单绑定）
 | NEF-014 | 联动隐藏 | 配置字段联动规则 | 条件满足时字段隐藏 |
 | NEF-015 | 联动必填 | 配置字段联动规则 | 条件满足时字段必填 |
 | NEF-016 | 多布局类型 | layoutType=grid | 表单按网格布局展示 |
+| NEF-017 | 历史 formKey 兼容 | 导入 `flowable:formKey` 指向现有实体表单 | 归一化为实体表单绑定；不出现外部自定义来源 |
 
 ---
 
@@ -1151,9 +1156,9 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 
 #### 流程发起页
 
-- 来源：开始事件绑定的实体表单
+- 来源：实体新增入口在运行时使用的 ACTIVE 默认表单；开始事件当前不配置节点表单
 - 模式：`create`
-- 可编辑性：开始节点通常全部可编辑
+- 可编辑性：按实体表单字段权限和联动状态
 - 提交：保存实体数据 + 启动流程实例
 - 特殊：可附带 `processVariables`
 
@@ -1493,7 +1498,7 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 | 调用活动 + 参数映射 | `inputParameters` + `outputParameters` | 父子流程变量正确传递 |
 | 接收任务 + 超时 | `hasTimeout=true` + `timeoutAction` | 超时后按配置处理 |
 | 排他网关 + 默认流 + 实体状态 | `default` + `entityStatusCode` | 默认流触发时实体状态变更 |
-| 异步执行 + 跳过表达式 | `async=true` + `skipExpression` | 异步作业正确判断跳过条件 |
+| 历史异步属性 + 自动跳过 | 导入含 `async*` 属性并配置自动跳过 | 保存/发布后异步属性被清除，跳过规则仍按同步原生语义执行 |
 
 ---
 
@@ -1579,8 +1584,12 @@ registerCustomFormComponent('MyCustomForm', MyCustomForm)
 - [ ] REST 服务任务调用成功。
 - [ ] 接收任务消息触发后继续。
 - [ ] 调用活动调用子流程成功。
-- [ ] 节点表单绑定正确加载（绑定表单 > 默认表单 > 第一个可用表单）。
+- [ ] DEFAULT 应用时解析并绑定当前默认表单，SPECIFIC 绑定所选表单，两者均进入发布快照。
 - [ ] 同一节点只能选择一个表单，历史多值只读取第一项。
+- [ ] 未设置默认表单时 DEFAULT 应用失败；草稿默认表单可应用，但缺少 ACTIVE release 时流程发布失败。
+- [ ] 旧无绑定流程仍保留既有默认/首个可用表单兼容回退。
+- [ ] 带 `customComponent` 的实体表单仍通过实体表单绑定渲染，不出现独立自定义表单来源。
+- [ ] 历史 `flowable:formKey` 可解析时归一化，不可解析时发布前给出明确错误。
 - [ ] 节点级只读覆盖表单级只读。
 - [ ] 子表单 embedded/tab 两种展示方式正常。
 - [ ] 子表数据回填、级联删除、必填校验正常。
@@ -1662,9 +1671,9 @@ WHERE id = 'your_data_id';
 
 | 节点类型 | 主要配置页签 | 关键配置项 |
 |---|---|---|
-| 开始事件 | 基本信息、表单 | `node_name`、`formSource`、`entityFormId` |
+| 开始事件 | 基本信息 | `node_name`；当前暂不支持节点表单配置 |
 | 结束事件 | 基本信息 | `node_name`、`terminate_end_event` |
-| 用户任务 | 基本信息、执行人、表单、审批、高级 | `assigneeType`、`assignee`、`isMultiInstance`、`multiInstanceType`、`entityFormId`、`options`、`skipNode` |
+| 用户任务 | 基本信息、执行人、表单、审批、高级 | `assigneeType`、`assignee`、`isMultiInstance`、`multiInstanceType`、`entityFormBindingMode`、`entityFormId`、`options`、`skipNode` |
 | 服务任务 | 基本信息、服务 | `implementationType`、`implementation`、`restForm.*`、`resultVariable` |
 | 脚本任务 | 基本信息、脚本 | `scriptFormat`、`script`、`resultVariable`、`autoStoreVariables` |
 | 发送任务 | 基本信息、发送 | `channels`、`to`、`subject`、`content`、`templateKey` |

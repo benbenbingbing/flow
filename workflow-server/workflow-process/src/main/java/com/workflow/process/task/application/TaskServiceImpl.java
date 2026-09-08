@@ -55,43 +55,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     /** 办理权威入口。本类不再维护第二套会签完成逻辑。 */
     private final TaskActionService taskActionService;
 
-    /**
-     * 自动完成标记为跳过的任务
-     * 检查所有活跃任务，如果节点配置了 skipNode=true，则自动完成
-     */
-    private void autoCompleteSkipTasks() {
-        try {
-            // 查询当前用户的所有待办任务
-            List<Task> tasks = flowableTaskService.createTaskQuery()
-                    .taskCandidateOrAssigned(UserContext.requireUsernameOrId())
-                    .active()
-                    .list();
-            
-            for (Task task : tasks) {
-                // 检查任务是否标记为跳过
-                Object skipReason = runtimeService.getVariable(task.getProcessInstanceId(), 
-                        "skipReason_" + task.getTaskDefinitionKey());
-                
-                if (skipReason != null) {
-                    // 添加审批意见
-                    flowableTaskService.addComment(task.getId(), task.getProcessInstanceId(), 
-                            skipReason.toString());
-                    
-                    // 设置审批结果
-                    flowableTaskService.setVariable(task.getId(), "approved", "approve");
-                    
-                    // 自动完成任务
-                    flowableTaskService.complete(task.getId());
-                    
-                    log.info("自动完成跳过任务: taskName={}, taskId={}", task.getName(), task.getId());
-                }
-            }
-        } catch (Exception e) {
-            log.error("自动完成跳过任务失败: {}", e.getMessage(), e);
-            // 不抛出异常，避免影响正常查询
-        }
-    }
-
     @Override
     public TaskStatisticsVO getStatistics() {
         TaskStatisticsVO statistics = new TaskStatisticsVO();
@@ -141,8 +104,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     @Override
     public PageResult<TaskVO> getTodoList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
         PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
-        // 先处理所有标记为跳过的任务
-        autoCompleteSkipTasks();
         // 查询所有活跃任务（不限于当前用户，用于演示）
         TaskQuery query = flowableTaskService.createTaskQuery()
                 .active()

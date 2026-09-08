@@ -800,12 +800,6 @@
               </el-form-item>
             </template>
         <EmptyAssigneePolicyEditor v-model="assigneeForm.emptyAssigneeStrategy" :allow-inherit="true" />
-        <NodeOperationMatrixEditor
-          v-model="assigneeForm.nodeOperationPolicy"
-          :node-options="operationMatrixNodeOptions"
-          :current-node-id="currentOperationMatrixNodeId"
-          @copy-to-nodes="copyOperationMatrixToNodes"
-        />
           </SettingsSection>
           <NextApproverConfigEditor
             ref="nextApproverConfigEditorRef"
@@ -814,6 +808,28 @@
             :group-options="groupOptions"
             :organization-options="organizationOptions"
           />
+          </el-form>
+        </SettingsSection>
+      </section>
+
+      <!-- ========== 操作权限（用户任务） ========== -->
+      <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
+        <SettingsSection
+          title="操作权限"
+          description="控制当前节点允许人工发起的办理操作"
+          :collapsible="false"
+        >
+          <el-form :model="assigneeForm" label-width="100px" size="small">
+            <el-form-item label="允许转办">
+              <el-switch v-model="assigneeForm.allowTransfer" />
+            </el-form-item>
+            <el-form-item label="允许加签">
+              <el-switch v-model="assigneeForm.allowAddSign" />
+            </el-form-item>
+            <el-form-item label="允许终止">
+              <el-switch v-model="assigneeForm.allowTerminate" />
+              <div class="form-tip">存在并行活动节点时，所有节点均允许才能终止流程</div>
+            </el-form-item>
           </el-form>
         </SettingsSection>
       </section>
@@ -1363,11 +1379,11 @@
         </SettingsSection>
       </section>
       
-      <!-- ========== 表单配置（仅用户任务/开始事件） ========== -->
-      <section v-if="(isUserTask || isStartEvent) && activeTab === 'basic'" class="config-section">
+      <!-- ========== 表单配置（仅用户任务） ========== -->
+      <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="办理表单"
-          description="绑定实体表单、自定义表单或设置无表单"
+          description="使用实体默认表单，或为当前节点指定一个实体表单"
           :collapsible="false"
           primary
         >
@@ -1380,64 +1396,84 @@
             <el-tag v-else type="warning" size="large">该流程未绑定实体</el-tag>
           </el-form-item>
 
-          <el-form-item label="表单来源">
-            <el-select v-model="formConfig.formSource" @change="onFormSourceChange" style="width: 100%">
-              <el-option label="实体表单" value="entity" />
-              <el-option label="自定义表单" value="custom" />
-              <el-option label="无表单" value="none" />
-            </el-select>
-          </el-form-item>
+          <el-alert
+            v-if="unresolvedNodeFormBinding"
+            class="legacy-form-binding-alert"
+            type="warning"
+            :closable="false"
+            show-icon
+          >
+            <template #title>检测到无法识别的历史节点表单绑定</template>
+            {{ unresolvedNodeFormBindingMessage }}。当前值将原样保留；只有主动选择“使用实体默认表单”或具体表单后才会清理。
+          </el-alert>
 
-          <!-- 实体表单选择 -->
-          <template v-if="formConfig.formSource === 'entity'">
-            <el-form-item label="选择表单">
+          <el-form-item label="节点表单">
               <el-select
                 v-model="formConfig.entityFormId"
-                placeholder="请选择实体表单"
+                placeholder="请选择节点表单"
                 style="width: 100%"
                 filterable
+                :loading="nodeFormInitializing || entityFormsLoading"
+                :disabled="!boundEntity"
                 @change="onEntityFormChange"
               >
+                <el-option :label="defaultEntityFormOptionLabel" :value="DEFAULT_NODE_FORM_VALUE">
+                  <div class="form-option">
+                    <span class="form-name">{{ defaultEntityFormOptionLabel }}</span>
+                    <el-tag v-if="defaultEntityForm?.customComponent" size="small" type="warning">
+                      自定义组件
+                    </el-tag>
+                  </div>
+                </el-option>
+                <el-option
+                  v-if="unresolvedNodeFormBinding"
+                  :label="unresolvedNodeFormBindingOptionLabel"
+                  :value="unresolvedNodeFormBinding.selectionValue"
+                  disabled
+                />
                 <el-option
                   v-for="form in entityFormOptions"
                   :key="form.id"
                   :label="form.formName"
-                  :value="form.id"
+                  :value="String(form.id)"
                 >
                   <div class="form-option">
                     <span class="form-name">{{ form.formName }}</span>
                     <span class="form-key">({{ form.formKey }})</span>
-                    <el-tag size="small" type="info" v-if="form.fields">{{ form.fields?.length }}个字段</el-tag>
+                    <el-tag v-if="form.customComponent" size="small" type="warning">自定义组件</el-tag>
+                    <el-tag v-if="Array.isArray(form.fields)" size="small" type="info">
+                      {{ form.fields.length }}个字段
+                    </el-tag>
                   </div>
                 </el-option>
               </el-select>
-              <div class="form-tip" v-if="boundEntity && entityFormOptions.length === 0">
+              <div class="form-tip">
+                默认模式应用时绑定当前默认表单，发布时锁定其版本快照。
+              </div>
+              <div
+                v-if="boundEntity && !entityFormsLoading && entityFormOptions.length === 0"
+                class="form-tip"
+              >
                 暂无可用表单，请先
                 <el-button type="primary" link size="small" @click="goToFormDesign">创建表单</el-button>
               </div>
               <div class="form-tip" v-if="!boundEntity">
-                当前流程未绑定实体，无法选择实体表单
+                当前流程未绑定实体，无法指定实体表单
               </div>
-            </el-form-item>
-            
-            <el-form-item label="强制整表只读">
-              <el-switch v-model="formConfig.isReadonly" />
-              <div class="form-tip">
-                开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。
+              <div v-if="selectedEntityForm?.customComponent" class="custom-component-form-tip">
+                <el-tag size="small" type="warning">自定义组件表单</el-tag>
+                <span>
+                  该实体表单由 {{ selectedEntityForm.customComponent }} 渲染，节点仍通过实体表单定义统一绑定。
+                </span>
               </div>
-            </el-form-item>
-          </template>
-          
-          <!-- 自定义表单 -->
-          <template v-if="formConfig.formSource === 'custom'">
-            <el-form-item label="表单Key">
-              <el-input 
-                v-model="formConfig.formKey" 
-                placeholder="如：leave_apply_form"
-              />
-              <div class="form-tip">关联外部表单标识</div>
-            </el-form-item>
-          </template>
+          </el-form-item>
+
+          <el-form-item v-if="hasResolvedEntityFormSelection" label="强制整表只读">
+            <el-switch v-model="formConfig.isReadonly" />
+            <div class="form-tip">
+              开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。
+            </div>
+          </el-form-item>
           </el-form>
         </SettingsSection>
       </section>
@@ -1669,25 +1705,93 @@
       <!-- ========== 高级配置 ========== -->
       <section v-if="hasAdvancedConfig && activeTab === 'advanced'" class="config-section">
         <el-form :model="advancedForm" label-width="120px" size="small">
-          <el-form-item label="异步执行">
-            <el-switch v-model="advancedForm.async" @change="onAsyncChange" />
-          </el-form-item>
-          
-          <template v-if="advancedForm.async">
-            <el-form-item label="异步前">
-            <el-switch v-model="advancedForm.asyncBefore" />
+          <SettingsSection
+            v-if="isUserTask"
+            title="自动跳过"
+            description="用户任务到达后按规则直接继续流转，不生成待办停留"
+            :default-expanded="advancedForm.skipMode !== AUTO_SKIP_MODE.OFF"
+          >
+            <template #summary>
+              <el-tag
+                :type="advancedForm.skipMode === AUTO_SKIP_MODE.OFF ? 'info' : 'warning'"
+                size="small"
+              >
+                {{ advancedForm.skipMode === AUTO_SKIP_MODE.ALWAYS
+                  ? '始终跳过'
+                  : advancedForm.skipMode === AUTO_SKIP_MODE.CONDITIONAL
+                    ? '条件跳过'
+                    : '未启用' }}
+              </el-tag>
+            </template>
+
+            <el-form-item label="跳过方式">
+              <el-radio-group
+                :model-value="advancedForm.skipMode"
+                @update:model-value="onAutoSkipModeChange"
+              >
+                <el-radio :value="AUTO_SKIP_MODE.OFF">不跳过</el-radio>
+                <el-radio :value="AUTO_SKIP_MODE.ALWAYS">始终跳过</el-radio>
+                <el-radio :value="AUTO_SKIP_MODE.CONDITIONAL">满足条件时跳过</el-radio>
+              </el-radio-group>
             </el-form-item>
-            <el-form-item label="异步后">
-            <el-switch v-model="advancedForm.asyncAfter" />
-            </el-form-item>
-          </template>
-          
-          <el-form-item label="跳过表达式">
-            <el-input 
-              v-model="advancedForm.skipExpression" 
-              placeholder="如：${skip}"
+
+            <template v-if="advancedForm.skipMode === AUTO_SKIP_MODE.CONDITIONAL">
+              <el-alert
+                v-if="skipConditionParseWarning"
+                type="warning"
+                :closable="false"
+                show-icon
+                class="condition-parse-warning"
+              >
+                <template #title>当前跳过表达式暂时无法转换为条件组</template>
+                <div>{{ skipConditionParseWarning }}</div>
+                <el-button type="warning" link @click="resetSkipConditionGroups">
+                  清空并改用条件组
+                </el-button>
+              </el-alert>
+
+              <div v-else class="condition-group-editor">
+                <el-alert
+                  title="选择实体字段并组合条件；为保证发布安全，仅提供比较操作符。"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                  class="condition-group-tip"
+                />
+                <FlowConditionGroupEditor
+                  :group="skipConditionRoot"
+                  :entity-fields="entityFields"
+                  :include-approval-property="false"
+                  :operator-options="AUTO_SKIP_OPERATOR_OPTIONS"
+                  @change="updateSkipCondition"
+                />
+              </div>
+
+              <el-form-item label="完整表达式" required class="expression-preview">
+                <el-input
+                  :model-value="getSkipExpressionPreview()"
+                  disabled
+                  type="textarea"
+                  :rows="2"
+                />
+              </el-form-item>
+            </template>
+
+            <el-alert
+              v-if="advancedForm.skipMode === AUTO_SKIP_MODE.ALWAYS"
+              type="warning"
+              :closable="false"
+              show-icon
+              title="将直接进入后续流转：不创建待办，也不会写入当前节点审批结果或意见。"
             />
-          </el-form-item>
+            <el-alert
+              v-else-if="advancedForm.skipMode === AUTO_SKIP_MODE.CONDITIONAL"
+              type="info"
+              :closable="false"
+              show-icon
+              title="表达式为 true 时不创建待办或审批结果；为 false 时正常等待办理。"
+            />
+          </SettingsSection>
 
           <SettingsSection
             v-if="isUserTask"
@@ -1791,32 +1895,6 @@
           </SettingsSection>
           
           <SettingsSection
-            title="自动跳过"
-            description="节点到达后不生成停留，直接继续流转"
-            :default-expanded="advancedForm.skipNode"
-          >
-            <template #summary>
-              <el-tag :type="advancedForm.skipNode ? 'warning' : 'info'" size="small">
-                {{ advancedForm.skipNode ? '已启用' : '未启用' }}
-              </el-tag>
-            </template>
-
-            <el-form-item label="是否跳过">
-              <el-switch
-                v-model="advancedForm.skipNode"
-                active-text="是"
-                inactive-text="否"
-              />
-            </el-form-item>
-
-            <el-alert v-if="advancedForm.skipNode" type="warning" :closable="false" show-icon>
-              <template #title>
-                执行到此节点时直接流转
-              </template>
-            </el-alert>
-          </SettingsSection>
-
-          <SettingsSection
             title="标识与备注"
             description="节点技术标识和设计说明"
           >
@@ -1845,7 +1923,6 @@
 
 <script setup>
 import EmptyAssigneePolicyEditor from "./EmptyAssigneePolicyEditor.vue"
-import NodeOperationMatrixEditor from './NodeOperationMatrixEditor.vue'
 import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Delete, View, WarningFilled, QuestionFilled } from '@element-plus/icons-vue'
@@ -1878,6 +1955,7 @@ import {
   RELATIVE_ORG_POSITION_RESOLVER_CODE,
   normalizeDesignerAssigneeConfig,
   normalizeEntityUserReferenceConfig,
+  normalizeNodeOperationPermissions,
   normalizeNodeReferenceAssigneeConfig,
   isEntityUserReferenceField,
   relativeOrgPositionSummary,
@@ -1911,6 +1989,21 @@ import {
   parseFlowConditionExpression,
   serializeFlowConditionConfig
 } from '@/utils/flowConditionGroups'
+import {
+  DEFAULT_NODE_FORM_VALUE,
+  buildNodeFormPersistencePlan,
+  isNodeFormInitializationCurrent,
+  resolveNodeFormSelection
+} from './nodeFormBindingModel.js'
+import {
+  AUTO_SKIP_MODE,
+  AUTO_SKIP_OPERATOR_OPTIONS,
+  createAutoSkipForm,
+  resolveAutoSkipConditionRoot,
+  serializeAutoSkipForm,
+  transitionAutoSkipMode,
+  validateAutoSkipExpression
+} from '@/shared/node-auto-skip'
 
 const router = useRouter()
 
@@ -1923,10 +2016,8 @@ const emit = defineEmits(['save', 'update-status-mapping', 'action-changed'])
 const activeTab = ref('basic')
 
 // ========== 节点类型判断 ==========
+// 自动跳过只对具备人工待办语义的 UserTask 开放，其他节点不展示也不写入该配置。
 const isUserTask = computed(() => props.element?.type === 'bpmn:UserTask')
-
-// 注：自动跳过不再限制"仅第一个用户任务节点"，由后端 WorkflowAutoSkipService
-// 监听 ACTIVITY_STARTED 事件按运行时实际到达的节点判断，避免 BFS 在网关分支下误判。
 const isServiceTask = computed(() => props.element?.type === 'bpmn:ServiceTask')
 const isSendTask = computed(() => props.element?.type === 'bpmn:SendTask')
 const isCcConfigurable = computed(() => isUserTask.value || isServiceTask.value || isSendTask.value)
@@ -1938,7 +2029,6 @@ const isScriptTask = computed(() => props.element?.type === 'bpmn:ScriptTask')
 const isCallActivity = computed(() => props.element?.type === 'bpmn:CallActivity')
 const isSubProcess = computed(() => props.element?.type === 'bpmn:SubProcess')
 const isTask = computed(() => props.element?.type?.includes('Task') || props.element?.type?.includes('Activity'))
-const isStartEvent = computed(() => props.element?.type === 'bpmn:StartEvent')
 const isSequenceFlow = computed(() => props.element?.type === 'bpmn:SequenceFlow')
 const isActionConfigurable = computed(() => Boolean(props.element?.id) && props.element?.type !== 'bpmn:Process')
 const isGateway = computed(() => props.element?.type?.includes('Gateway'))
@@ -2020,7 +2110,9 @@ const assigneeForm = ref({
     backoffMultiplier: 2,
     responsibilityOwner: ''
   },
-  nodeOperationPolicy: null,
+  allowTransfer: true,
+  allowAddSign: true,
+  allowTerminate: true,
   assignee: '',
   candidateUsers: '',
   candidateGroups: '',
@@ -2063,13 +2155,6 @@ const referencedUserTaskOptions = computed(() => {
   void referenceOptionsRevision.value
   return getCurrentUserTaskReferenceOptions()
 })
-const currentOperationMatrixNodeId = computed(() => String(
-  basicForm.value.id || props.element?.businessObject?.id || props.element?.id || ''
-))
-const operationMatrixNodeOptions = computed(() => referencedUserTaskOptions.value.map(option => ({
-  label: option.nodeName ? `${option.nodeName} (${option.nodeId})` : option.label,
-  value: option.nodeId
-})))
 let referenceOptionsEventBus = null
 const refreshReferenceOptions = () => {
   referenceOptionsRevision.value += 1
@@ -2178,6 +2263,10 @@ const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParamet
 const conditionForm = ref({ type: '', expression: '' })
 const conditionRoot = ref(createFlowConditionGroup())
 const conditionParseWarning = ref('')
+const skipConditionRoot = ref(createFlowConditionGroup())
+const skipConditionParseWarning = ref('')
+const skipConditionOriginalExpression = ref('')
+const skipConditionDirty = ref(false)
 
 // 实体字段列表
 const entityFields = ref([])
@@ -2212,14 +2301,17 @@ const hasCondition = ref(false)
 const sourceNodeApprovalOptions = ref([])
 
 const formConfig = ref({ 
-  formKey: '',
-  formSource: 'entity',  // 默认实体表单
-  entityFormId: '',
+  entityFormId: DEFAULT_NODE_FORM_VALUE,
   entityFormIds: [],
   isReadonly: false,
   entityCode: ''
 })
-const advancedForm = ref({ async: false, asyncBefore: false, asyncAfter: false, skipExpression: '', skipNode: false })
+const legacyFormKey = ref('')
+const unresolvedNodeFormBinding = ref(null)
+const nodeFormSelectionDirty = ref(false)
+const nodeFormInitializing = ref(false)
+let nodeFormInitializationSequence = 0
+const advancedForm = ref(createAutoSkipForm())
 const slaForm = ref({
   enabled: false,
   policyCode: '',
@@ -2385,31 +2477,39 @@ const ccNaturalSummary = computed(() => {
 
 // 实体表单选项
 const entityFormOptions = ref([])
-const selectedFormFields = ref([])
-function normalizeEntityFormIds(value) {
-  const ids = Array.isArray(value) ? value : (value ? [value] : [])
-  return [...new Set(ids.map(id => String(id || '').trim()).filter(Boolean))]
-}
-
-function parseEntityFormIds(value) {
-  if (!value) return []
-  if (Array.isArray(value)) return normalizeEntityFormIds(value)
-  const raw = String(value).trim()
-  if (!raw) return []
-  if (raw.startsWith('[')) {
-    try {
-      return normalizeEntityFormIds(JSON.parse(raw))
-    } catch (e) {
-      console.warn('解析 entityFormIds 失败，按逗号列表处理:', e)
-    }
+const defaultEntityForm = computed(() =>
+  entityFormOptions.value.find(form =>
+    form?.isDefault === true || form?.isDefault === 1 || form?.isDefault === '1')
+  || null
+)
+const selectedEntityForm = computed(() => {
+  if (formConfig.value.entityFormId === DEFAULT_NODE_FORM_VALUE) {
+    return defaultEntityForm.value
   }
-  return normalizeEntityFormIds(raw.split(','))
-}
-
-function getSelectedEntityFormId() {
-  const directId = normalizeEntityFormIds(formConfig.value.entityFormId)[0]
-  return directId || normalizeEntityFormIds(formConfig.value.entityFormIds)[0] || ''
-}
+  return entityFormOptions.value.find(form =>
+    String(form?.id || '') === String(formConfig.value.entityFormId || '')) || null
+})
+const hasResolvedEntityFormSelection = computed(() =>
+  Boolean(selectedEntityForm.value) && !unresolvedNodeFormBinding.value
+)
+const defaultEntityFormOptionLabel = computed(() => defaultEntityForm.value
+  ? `使用实体默认表单（${defaultEntityForm.value.formName}）`
+  : '使用实体默认表单（尚未设置默认表单）'
+)
+const unresolvedNodeFormBindingOptionLabel = computed(() => {
+  const binding = unresolvedNodeFormBinding.value
+  if (!binding) return ''
+  return binding.kind === 'formKey'
+    ? `历史表单 Key：${binding.value}`
+    : `已失效实体表单：${binding.value}`
+})
+const unresolvedNodeFormBindingMessage = computed(() => {
+  const binding = unresolvedNodeFormBinding.value
+  if (!binding) return ''
+  return binding.kind === 'formKey'
+    ? `flowable:formKey “${binding.value}” 无法匹配当前实体的任何表单`
+    : `原实体表单 ID “${binding.value}” 已不在当前实体的可用表单中`
+})
 
 // 加载组列表
 async function loadGroups() {
@@ -2584,8 +2684,10 @@ async function loadOrganizations() {
 // 绑定的实体信息
 const boundEntity = ref(null)
 const ENTITY_NOT_BOUND_MESSAGE = '该流程未绑定实体'
+const entityFormsLoading = ref(false)
 let entityFormsLoadingProcessId = ''
 let entityFormsLoadingPromise = null
+let entityFormsLoadedProcessId = ''
 
 function isEntityNotBoundError(error) {
   const messages = [
@@ -2601,6 +2703,7 @@ function isEntityNotBoundError(error) {
 function resetEntityFormsState() {
   boundEntity.value = null
   entityFormOptions.value = []
+  entityFormsLoadedProcessId = ''
 }
 
 // 加载流程绑定的实体及表单列表
@@ -2611,10 +2714,15 @@ async function loadEntityForms() {
     return
   }
 
+  if (entityFormsLoadedProcessId === processId) {
+    return
+  }
+
   if (entityFormsLoadingPromise && entityFormsLoadingProcessId === processId) {
     return entityFormsLoadingPromise
   }
 
+  entityFormsLoading.value = true
   const loadingPromise = (async () => {
     let entityRes
     try {
@@ -2622,7 +2730,10 @@ async function loadEntityForms() {
     } catch (error) {
       if (String(props.processId || '').trim() !== processId) return
       resetEntityFormsState()
-      if (isEntityNotBoundError(error)) return
+      if (isEntityNotBoundError(error)) {
+        entityFormsLoadedProcessId = processId
+        return
+      }
       console.error('加载流程绑定实体失败:', error)
       ElMessage.error(`加载流程绑定实体失败: ${error.message || '未知错误'}`)
       return
@@ -2631,6 +2742,7 @@ async function loadEntityForms() {
     if (String(props.processId || '').trim() !== processId) return
     if (!entityRes?.id) {
       resetEntityFormsState()
+      entityFormsLoadedProcessId = processId
       return
     }
 
@@ -2641,6 +2753,7 @@ async function loadEntityForms() {
       const formsRes = await request.get(`/entity-form/entity/${entityRes.id}`, { silentError: true })
       if (String(props.processId || '').trim() === processId) {
         entityFormOptions.value = Array.isArray(formsRes) ? formsRes : []
+        entityFormsLoadedProcessId = processId
       }
     } catch (error) {
       if (String(props.processId || '').trim() !== processId) return
@@ -2659,31 +2772,8 @@ async function loadEntityForms() {
     if (entityFormsLoadingPromise === loadingPromise) {
       entityFormsLoadingProcessId = ''
       entityFormsLoadingPromise = null
+      entityFormsLoading.value = false
     }
-  }
-}
-
-// 获取默认表单
-async function getDefaultForm(entityId) {
-  try {
-    const res = await request.get(`/entity-form/entity/${entityId}/default`)
-    return res || null
-  } catch (e) {
-    console.log('获取默认表单失败:', e)
-    return null
-  }
-}
-
-// 加载表单字段
-async function loadFormFields(formId) {
-  try {
-    const res = await request.get(`/entity-form/${formId}/fields`)
-    if (res && Array.isArray(res)) {
-      selectedFormFields.value = res
-    }
-  } catch (e) {
-    console.error('加载表单字段失败:', e)
-    selectedFormFields.value = []
   }
 }
 
@@ -2827,7 +2917,12 @@ function parseLegacyMultiInstanceDecision(conditionBody, configuredDecision) {
   return MULTI_INSTANCE_DECISION_COUNTERSIGN
 }
 
-watch(() => props.element, async (newElement) => {
+watch([() => props.element, () => props.processId], async ([newElement]) => {
+  const initializationSequence = ++nodeFormInitializationSequence
+  const initializationElementId = String(newElement?.id || newElement?.businessObject?.id || '')
+  const initializationProcessId = String(props.processId || '').trim()
+  const initializationIsUserTask = newElement?.type === 'bpmn:UserTask'
+  if (!initializationIsUserTask) nodeFormInitializing.value = false
   if (newElement?.businessObject) {
     const bo = toRaw(newElement).businessObject
     const extProps = getExtensionProperties(bo)
@@ -2893,6 +2988,12 @@ watch(() => props.element, async (newElement) => {
         multiInstanceConfig,
         Boolean(loop)
       )
+      const operationPermissions = normalizeNodeOperationPermissions({
+        ...assigneeConfig,
+        // 早期版本也允许把矩阵直接写成 BPMN 扩展属性；首次保存时同样安全折叠。
+        nodeOperationPolicy: assigneeConfig.nodeOperationPolicy
+          ?? extProps.nodeOperationPolicy
+      })
       const isRelativePositionAssignee =
         ['interface', 'resolver'].includes(assigneeConfig.assigneeType)
         && (assigneeConfig.resolverCode || assigneeConfig.interfaceName)
@@ -2938,6 +3039,9 @@ watch(() => props.element, async (newElement) => {
           backoffMultiplier: 2,
           responsibilityOwner: ''
         },
+        allowTransfer: operationPermissions.allowTransfer,
+        allowAddSign: operationPermissions.allowAddSign,
+        allowTerminate: operationPermissions.allowTerminate,
         // 基础执行人配置
         assignee: assignee, 
         candidateUsers: candidateUsers, 
@@ -3195,87 +3299,51 @@ watch(() => props.element, async (newElement) => {
         loadEntityFields()
       }
     }
-    if (isUserTask.value || isStartEvent.value) {
-      // 从扩展属性中读取表单绑定信息
-      const entityFormIds = parseEntityFormIds(extProps['entityFormIds'])
-      const entityFormId = extProps['entityFormId']
-      const selectedEntityFormIds = (
-        entityFormIds.length ? entityFormIds : normalizeEntityFormIds(entityFormId)
-      ).slice(0, 1)
-      const entityFormReadonly = extProps['entityFormReadonly'] === 'true'
-      const entityCode = extProps['entityCode'] || ''
-      
-      if (selectedEntityFormIds.length) {
-        // 实体表单绑定
-        formConfig.value = {
-          formSource: 'entity',
-          formKey: '',
-          entityFormId: selectedEntityFormIds[0],
-          entityFormIds: selectedEntityFormIds,
-          isReadonly: entityFormReadonly,
-          entityCode: entityCode
-        }
-        // 加载表单字段
-        loadFormFields(selectedEntityFormIds[0])
-      } else if (bo.formKey) {
-        // 自定义表单
-        formConfig.value = {
-          formSource: 'custom',
-          formKey: bo.formKey,
-          entityFormId: '',
-          entityFormIds: [],
-          isReadonly: false,
-          entityCode: ''
-        }
-      } else if (boundEntity.value?.id) {
-        // 无表单配置，尝试使用默认表单
-        const defaultForm = await getDefaultForm(boundEntity.value.id)
-        if (defaultForm) {
-          console.log('使用默认表单:', defaultForm.formName)
-          formConfig.value = {
-            formSource: 'entity',
-            formKey: '',
-            entityFormId: defaultForm.id,
-            entityFormIds: [defaultForm.id],
-            isReadonly: false,
-            entityCode: boundEntity.value.entityCode || ''
-          }
-          loadFormFields(defaultForm.id)
-          // 自动保存到BPMN
-          updateExtensionProperty('entityFormId', defaultForm.id)
-          updateExtensionProperty('entityFormIds', null)
-          updateExtensionProperty('entityFormReadonly', 'false')
-          updateExtensionProperty('entityCode', boundEntity.value.entityCode || '')
-        } else {
-          // 无默认表单
-          formConfig.value = {
-            formSource: 'none',
-            formKey: '',
-            entityFormId: '',
-            entityFormIds: [],
-            isReadonly: false,
-            entityCode: ''
-          }
-        }
-      } else {
-        // 无表单
-        formConfig.value = {
-          formSource: 'none',
-          formKey: '',
-          entityFormId: '',
-          entityFormIds: [],
-          isReadonly: false,
-          entityCode: ''
-        }
-      }
-    }
     if (isTask.value || isGateway.value) {
-      advancedForm.value = { 
-        async: bo.async || bo.asyncBefore || bo.asyncAfter, 
-        asyncBefore: bo.asyncBefore || false, 
-        asyncAfter: bo.asyncAfter || false, 
-        skipExpression: bo.skipExpression?.body || '',
-        skipNode: extProps['skipNode'] === 'true'
+      if (isUserTask.value) loadAutoSkipConfig(bo, extProps)
+      else resetAutoSkipState()
+    }
+    if (initializationIsUserTask) {
+      nodeFormInitializing.value = true
+      try {
+        await loadEntityForms()
+        // 流程、节点或请求代次任一变化，都说明本次异步结果已过期。
+        const initializationStillCurrent = isNodeFormInitializationCurrent({
+          sequence: initializationSequence,
+          activeSequence: nodeFormInitializationSequence,
+          elementId: initializationElementId,
+          currentElementId: props.element?.id || props.element?.businessObject?.id,
+          processId: initializationProcessId,
+          currentProcessId: String(props.processId || '').trim()
+        })
+        if (initializationStillCurrent) {
+          const rawLegacyFormKey = String(
+            bo.get?.('formKey') || bo.get?.('flowable:formKey') || bo.formKey || ''
+          ).trim()
+          const resolvedForm = resolveNodeFormSelection({
+            entityFormIds: extProps['entityFormIds'],
+            entityFormId: extProps['entityFormId'],
+            legacyFormKey: rawLegacyFormKey,
+            entityForms: entityFormOptions.value,
+            entityFormBindingMode: extProps['entityFormBindingMode'],
+            entityFormReadonly: extProps['entityFormReadonly'] === 'true',
+            entityCode: extProps['entityCode'] || '',
+            boundEntityCode: boundEntity.value?.entityCode || ''
+          })
+          formConfig.value = {
+            entityFormId: resolvedForm.selectionValue,
+            entityFormIds: resolvedForm.entityFormIds,
+            isReadonly: resolvedForm.isReadonly,
+            entityCode: resolvedForm.entityCode
+          }
+          legacyFormKey.value = resolvedForm.legacyFormKey
+          unresolvedNodeFormBinding.value = resolvedForm.unresolvedBinding
+          nodeFormSelectionDirty.value = false
+        }
+      } finally {
+        if (initializationSequence === nodeFormInitializationSequence) {
+          nodeFormInitializing.value = false
+        }
       }
     }
   }
@@ -3597,31 +3665,138 @@ function getFieldType(fieldName) {
   return getProcessConditionFieldType(field)
 }
 
-function onAsyncChange() {
-  if (!advancedForm.value.async) {
-    advancedForm.value.asyncBefore = false
-    advancedForm.value.asyncAfter = false
+/** 恢复自动跳过三态，并将可安全解析的历史表达式转换为条件组。 */
+function loadAutoSkipConfig(bo, extProps) {
+  advancedForm.value = createAutoSkipForm(extProps.skipNode, bo.skipExpression)
+  skipConditionOriginalExpression.value = advancedForm.value.skipExpression
+  skipConditionDirty.value = false
+  skipConditionParseWarning.value = ''
+
+  if (advancedForm.value.skipMode !== AUTO_SKIP_MODE.CONDITIONAL) {
+    skipConditionRoot.value = createFlowConditionGroup()
+    return
   }
+
+  const expressionRoot = parseFlowConditionExpression(advancedForm.value.skipExpression)
+  // skipExpression 是运行时单一权威；条件元数据只在表达式缺失时兜底，
+  // 不能用可能陈旧的分组配置覆盖 XML 中实际会执行的表达式。
+  const savedRoot = parseFlowConditionConfig(extProps.skipConditionGroupConfig)
+  const parsedRoot = resolveAutoSkipConditionRoot(
+    advancedForm.value.skipExpression,
+    expressionRoot,
+    savedRoot
+  )
+  // 实体字段仍可能在异步加载；此处保留 XML 原表达式，避免数值/布尔值
+  // 因暂时缺少字段类型而被条件构建器错误改写成字符串。
+  const validation = validateAutoSkipExpression(advancedForm.value.skipExpression)
+  if (parsedRoot && validation.valid) {
+    skipConditionRoot.value = parsedRoot
+    return
+  }
+
+  skipConditionRoot.value = createFlowConditionGroup()
+  skipConditionParseWarning.value = validation.valid
+    ? '原表达式会继续保留且不会被自动覆盖。若要使用条件组，请先确认并清空原表达式。'
+    : `${validation.message}。原表达式会继续保留；请清空后改用条件组。`
 }
 
-function updateAsync() {
+function resetAutoSkipState() {
+  advancedForm.value = createAutoSkipForm()
+  skipConditionRoot.value = createFlowConditionGroup()
+  skipConditionParseWarning.value = ''
+  skipConditionOriginalExpression.value = ''
+  skipConditionDirty.value = false
+}
+
+/**
+ * 三种跳过方式互斥；跨模式切换时同步清空隐藏条件，
+ * 避免 ALWAYS/OFF 状态中的历史残留在返回 CONDITIONAL 时被复活。
+ */
+function onAutoSkipModeChange(nextMode) {
+  const previousMode = advancedForm.value.skipMode
+  advancedForm.value = transitionAutoSkipMode(advancedForm.value, nextMode)
+  if (previousMode === advancedForm.value.skipMode) return
+
+  skipConditionRoot.value = createFlowConditionGroup()
+  skipConditionParseWarning.value = ''
+  skipConditionOriginalExpression.value = ''
+  skipConditionDirty.value = false
+}
+
+function getSkipExpressionPreview() {
+  if (skipConditionParseWarning.value) {
+    return advancedForm.value.skipExpression
+  }
+  if (!skipConditionDirty.value && skipConditionOriginalExpression.value) {
+    return skipConditionOriginalExpression.value
+  }
+  return buildFlowConditionExpression(skipConditionRoot.value, getFieldType)
+}
+
+function updateSkipCondition() {
+  skipConditionDirty.value = true
+  skipConditionParseWarning.value = ''
+  advancedForm.value.skipExpression = buildFlowConditionExpression(
+    skipConditionRoot.value,
+    getFieldType
+  )
+}
+
+function resetSkipConditionGroups() {
+  skipConditionRoot.value = createFlowConditionGroup()
+  skipConditionParseWarning.value = ''
+  skipConditionOriginalExpression.value = ''
+  skipConditionDirty.value = true
+  advancedForm.value.skipExpression = ''
+}
+
+function updateAutoSkipConfig() {
+  if (!isUserTask.value) return true
   const modeling = getModeling()
-  if (!modeling) return
-  modeling.updateProperties(toRaw(props.element), { async: advancedForm.value.async, asyncBefore: advancedForm.value.asyncBefore, asyncAfter: advancedForm.value.asyncAfter })
-}
+  if (!modeling) {
+    ElMessage.warning('模型未初始化')
+    return false
+  }
 
-function updateSkipExpression() {
-  const modeling = getModeling(), moddle = getModdle()
-  if (!modeling || !moddle) return
-  if (advancedForm.value.skipExpression) {
-    const expr = moddle.create('bpmn:FormalExpression', { body: advancedForm.value.skipExpression })
-    modeling.updateProperties(toRaw(props.element), { skipExpression: expr })
-  } else modeling.updateProperties(toRaw(props.element), { skipExpression: undefined })
-}
+  let expression = advancedForm.value.skipExpression
+  if (advancedForm.value.skipMode === AUTO_SKIP_MODE.CONDITIONAL) {
+    expression = getSkipExpressionPreview()
+    if (!expression) {
+      ElMessage.warning('请至少配置一条完整的自动跳过条件')
+      return false
+    }
+    const validation = validateAutoSkipExpression(expression)
+    if (!validation.valid) {
+      ElMessage.warning(validation.message)
+      return false
+    }
+  }
 
-function updateSkipNode() {
-  // 使用扩展属性存储跳过节点配置
-  updateExtensionProperty('skipNode', advancedForm.value.skipNode ? 'true' : 'false')
+  const config = serializeAutoSkipForm({
+    ...advancedForm.value,
+    skipExpression: expression
+  })
+
+  // skipExpression 在 flowable moddle 描述中是 String 属性，不能写 FormalExpression 对象。
+  advancedForm.value.skipExpression = config.skipExpression || ''
+  modeling.updateProperties(toRaw(props.element), {
+    skipExpression: config.skipExpression
+  })
+  updateExtensionProperty('skipNode', config.skipNode)
+  if (advancedForm.value.skipMode === AUTO_SKIP_MODE.CONDITIONAL
+      && !skipConditionParseWarning.value) {
+    updateExtensionProperty(
+      'skipConditionGroupConfig',
+      serializeFlowConditionConfig(skipConditionRoot.value)
+    )
+    skipConditionOriginalExpression.value = config.skipExpression
+    skipConditionDirty.value = false
+  } else if (advancedForm.value.skipMode !== AUTO_SKIP_MODE.CONDITIONAL) {
+    updateExtensionProperty('skipConditionGroupConfig', null)
+    skipConditionOriginalExpression.value = ''
+    skipConditionDirty.value = false
+  }
+  return true
 }
 
 async function loadSlaOptions() {
@@ -3805,76 +3980,80 @@ function onReferencedNodeChange() {
 }
 
 // ========== 表单配置更新方法 ==========
-function onFormSourceChange(source) {
-  // 切换表单来源时清空之前的配置
-  if (source === 'entity') {
-    formConfig.value.formKey = ''
-  } else if (source === 'custom') {
-    formConfig.value.entityFormId = ''
-    formConfig.value.entityFormIds = []
-    formConfig.value.isReadonly = false
-  } else {
-    // none - 清除所有配置
-    formConfig.value.formKey = ''
-    formConfig.value.entityFormId = ''
-    formConfig.value.entityFormIds = []
-    formConfig.value.isReadonly = false
-  }
-}
+function onEntityFormChange(selectionValue) {
+  nodeFormSelectionDirty.value = true
+  unresolvedNodeFormBinding.value = null
+  legacyFormKey.value = ''
+  formConfig.value.entityFormId = selectionValue || DEFAULT_NODE_FORM_VALUE
 
-async function onEntityFormChange(formId) {
-  const selectedFormId = normalizeEntityFormIds(formId)[0] || ''
-  formConfig.value.entityFormIds = selectedFormId ? [selectedFormId] : []
-  formConfig.value.entityFormId = selectedFormId
-
-  if (selectedFormId) {
-    await loadFormFields(selectedFormId)
-    const selectedForm = entityFormOptions.value.find(f => f.id === selectedFormId)
-    formConfig.value.entityCode = selectedForm?.entityCode || boundEntity.value?.entityCode || ''
-  } else {
-    selectedFormFields.value = []
-    formConfig.value.entityCode = ''
+  if (formConfig.value.entityFormId === DEFAULT_NODE_FORM_VALUE) {
+    formConfig.value.entityFormIds = []
+    formConfig.value.entityCode = defaultEntityForm.value?.entityCode
+      || boundEntity.value?.entityCode
+      || ''
+    return
   }
+
+  const selectedForm = entityFormOptions.value.find(form =>
+    String(form?.id || '') === String(formConfig.value.entityFormId || ''))
+  formConfig.value.entityFormIds = selectedForm ? [String(selectedForm.id)] : []
+  formConfig.value.entityCode = selectedForm?.entityCode || boundEntity.value?.entityCode || ''
 }
 
 function updateNodeFormBind() {
-  if (!props.element) return
-  const rawElement = toRaw(props.element)
-  const bo = rawElement.businessObject
-  const modeling = getModeling()
-  
-  const entityFormId = getSelectedEntityFormId()
-
-  if (formConfig.value.formSource === 'entity' && entityFormId) {
-    // 实体表单绑定
-    formConfig.value.entityFormId = entityFormId
-    formConfig.value.entityFormIds = [entityFormId]
-    if (modeling) {
-      modeling.updateProperties(rawElement, { 'flowable:formKey': null, 'flowable:formData': null })
-    }
-    // 扩展属性存储表单绑定信息
-    updateExtensionProperty('entityFormId', entityFormId)
-    updateExtensionProperty('entityFormIds', null)
-    updateExtensionProperty('entityFormReadonly', formConfig.value.isReadonly ? 'true' : 'false')
-    updateExtensionProperty('entityCode', formConfig.value.entityCode)
-  } else if (formConfig.value.formSource === 'custom' && formConfig.value.formKey) {
-    // 自定义表单使用 formKey
-    updateProperty('formKey', formConfig.value.formKey)
-    if (modeling) {
-      modeling.updateProperties(rawElement, { 'flowable:formData': null })
-    }
-    updateExtensionProperty('entityFormId', null)
-    updateExtensionProperty('entityFormIds', null)
-    updateExtensionProperty('entityFormReadonly', null)
-    updateExtensionProperty('entityCode', null)
-  } else {
-    // 无表单
-    updateProperty('formKey', '')
-    updateExtensionProperty('entityFormId', null)
-    updateExtensionProperty('entityFormIds', null)
-    updateExtensionProperty('entityFormReadonly', null)
-    updateExtensionProperty('entityCode', null)
+  if (!props.element) return false
+  if (nodeFormInitializing.value || entityFormsLoading.value) {
+    ElMessage.warning('节点表单仍在加载，请稍后再应用')
+    return false
   }
+  const rawElement = toRaw(props.element)
+  const modeling = getModeling()
+  if (!modeling) {
+    ElMessage.warning('模型未初始化')
+    return false
+  }
+
+  const plan = buildNodeFormPersistencePlan({
+    selectionValue: formConfig.value.entityFormId,
+    entityForms: entityFormOptions.value,
+    unresolvedBinding: unresolvedNodeFormBinding.value,
+    selectionDirty: nodeFormSelectionDirty.value,
+    boundEntityCode: boundEntity.value?.entityCode || ''
+  })
+  if (plan.mode === 'PRESERVE') {
+    ElMessage.warning('无法识别的历史节点表单绑定已原样保留')
+    return true
+  }
+  if (plan.mode === 'MISSING_DEFAULT') {
+    ElMessage.warning('当前实体尚未设置默认表单，请先设置默认表单或为节点指定具体表单')
+    return false
+  }
+  if (plan.mode === 'INVALID') {
+    ElMessage.warning('所选实体表单已失效，请重新选择')
+    return false
+  }
+
+  // 新配置统一写实体表单扩展属性；旧 formKey 只读兼容，用户确认选择后即清理。
+  modeling.updateProperties(rawElement, {
+    formKey: null,
+    'flowable:formKey': null,
+    'flowable:formData': null
+  })
+  updateExtensionProperty('entityFormId', plan.entityFormId)
+  updateExtensionProperty('entityFormIds', null)
+  updateExtensionProperty('entityFormBindingMode', plan.mode)
+  updateExtensionProperty('entityFormReadonly', formConfig.value.isReadonly ? 'true' : 'false')
+  updateExtensionProperty('entityCode', plan.entityCode)
+
+  formConfig.value.entityFormId = plan.mode === 'DEFAULT'
+    ? DEFAULT_NODE_FORM_VALUE
+    : plan.entityFormId
+  formConfig.value.entityFormIds = plan.mode === 'SPECIFIC' ? [plan.entityFormId] : []
+  formConfig.value.entityCode = plan.entityCode
+  legacyFormKey.value = ''
+  unresolvedNodeFormBinding.value = null
+  nodeFormSelectionDirty.value = false
+  return true
 }
 
 function updateExtensionProperty(name, value) {
@@ -4089,62 +4268,8 @@ function updateAssigneeConfig() {
   const config = buildAssigneeConfig(projectedAssigneeFormForPersistence())
   // 使用 updateExtensionProperty 存储 JSON 字符串
   updateExtensionProperty('assigneeConfig', JSON.stringify(config))
-}
-
-/**
- * 将当前矩阵写入多个用户任务各自的 assigneeConfig，保持其他节点配置不变。
- * 每个节点仍保存独立快照，后续可单独调整，并由命令栈支持撤销。
- */
-function copyOperationMatrixToNodes({ nodeIds, policy }) {
-  const modeling = getModeling()
-  if (!modeling || !Array.isArray(nodeIds) || !nodeIds.length) return
-  const elements = getProcessBpmnElements()
-  let updated = 0
-  for (const nodeId of nodeIds) {
-    const element = elements.find(item => String(item?.id || item?.businessObject?.id) === String(nodeId))
-    if (!element || element.type !== 'bpmn:UserTask') continue
-    const businessObject = toRaw(element.businessObject || element)
-    const serialized = getExtensionProperties(businessObject).assigneeConfig
-    let config = {}
-    try {
-      config = serialized ? JSON.parse(serialized) : {}
-    } catch (error) {
-      ElMessage.warning(`节点 ${nodeId} 的办理人配置不是有效 JSON，已跳过`)
-      continue
-    }
-    writeElementExtensionProperty(
-      element,
-      'assigneeConfig',
-      JSON.stringify({ ...config, nodeOperationPolicy: JSON.parse(JSON.stringify(policy)) }),
-      modeling)
-    updated += 1
-  }
-  if (updated) {
-    ElMessage.success(`已将操作矩阵应用到 ${updated} 个节点`)
-  }
-}
-
-/** 为指定画布元素重建 flowable:Properties，避免直接修改 moddle 对象绕过命令栈。 */
-function writeElementExtensionProperty(element, name, value, modeling) {
-  const businessObject = toRaw(element.businessObject || element)
-  const moddle = businessObject.$model
-  if (!moddle?.create) {
-    throw new Error('BPMN moddle 未初始化')
-  }
-  const extensionValues = businessObject.extensionElements?.values || []
-  const existingProperties = extensionValues.find(item => item.$type === 'flowable:Properties')
-  const retainedProperties = (existingProperties?.values || []).filter(item => item.name !== name)
-  const nextProperty = moddle.create('flowable:Property', { name, value })
-  const nextProperties = moddle.create('flowable:Properties', {
-    values: [...retainedProperties, nextProperty]
-  })
-  const nextExtensionElements = moddle.create('bpmn:ExtensionElements', {
-    values: [
-      ...extensionValues.filter(item => item.$type !== 'flowable:Properties'),
-      nextProperties
-    ]
-  })
-  modeling.updateProperties(toRaw(element), { extensionElements: nextExtensionElements })
+  // 兼容清理早期版本写在 assigneeConfig 外层的独立矩阵属性。
+  updateExtensionProperty('nodeOperationPolicy', null)
 }
 
 // REST接口配置更新
@@ -4176,7 +4301,6 @@ function getConfigurationSections() {
   if (isBusinessRuleTask.value) sections.push('rule')
   if (isCallActivity.value) sections.push('call')
   if (isSequenceFlow.value) sections.push('condition')
-  if (isStartEvent.value) sections.push('form')
   if (isCcConfigurable.value) sections.push('cc')
   if (hasAdvancedConfig.value) sections.push('advanced')
   return sections
@@ -4530,7 +4654,7 @@ function applyConfigurationSection(section) {
         // 流程动作自动保存，无需额外操作
         break
       case 'form':
-        updateNodeFormBind()
+        if (!updateNodeFormBind()) return false
         break
       case 'approval':
         updateExtensionProperty('approvalConfig', JSON.stringify(approvalForm.value))
@@ -4560,9 +4684,7 @@ function applyConfigurationSection(section) {
         break
       }
       case 'advanced':
-        updateAsync()
-        updateSkipExpression()
-        updateSkipNode()
+        if (!updateAutoSkipConfig()) return false
         if (isUserTask.value && !updateSlaConfig()) return false
         break
       default:
@@ -4894,6 +5016,15 @@ async function saveStatusConfig() {
   min-height: 100%;
 }
 .form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
+.legacy-form-binding-alert { margin-bottom: 12px; }
+.custom-component-form-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: #606266;
+  font-size: 12px;
+}
 .assignment-reuse-tip { margin: -2px 0 12px 100px; }
 .legacy-assignment-alert { margin-bottom: 12px; }
 .assignee-reference-label { display: inline-flex; align-items: center; gap: 4px; }

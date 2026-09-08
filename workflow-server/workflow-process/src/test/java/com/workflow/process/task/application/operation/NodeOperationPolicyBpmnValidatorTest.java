@@ -9,8 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NodeOperationPolicyBpmnValidatorTest {
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final NodeOperationPolicyBpmnValidator validator = new NodeOperationPolicyBpmnValidator(
-            new NodeOperationPolicyParser(new ObjectMapper(), new NodeOperationConditionEvaluator()));
+            new NodeOperationPolicyParser(
+                    objectMapper,
+                    new NodeOperationConditionEvaluator(),
+                    new NodeOperationConfigReader(objectMapper)));
 
     @Test
     void acceptsSafeVersionedPolicy() {

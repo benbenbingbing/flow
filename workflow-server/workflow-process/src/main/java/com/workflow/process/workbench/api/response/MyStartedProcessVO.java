@@ -82,4 +82,7 @@ public class MyStartedProcessVO {
      * 状态文本
      */
     private String statusText;
+
+    /** 当前登录发起人是否可以终止该运行中流程。 */
+    private Boolean canTerminate;
 }

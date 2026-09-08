@@ -97,7 +97,7 @@ const bpmnXml = `<?xml version="1.0" encoding="UTF-8"?>
 const commonTab = { label: '常用', marker: '节点名称' }
 const collaborationTab = { label: '协同', marker: '启用知会' }
 const actionTab = { label: '流程动作', marker: '添加动作' }
-const advancedTab = { label: '高级', marker: '异步执行' }
+const advancedTab = { label: '高级', marker: '标识与备注' }
 const processNodePanelPlans = [
   {
     id: 'StartEvent_1',

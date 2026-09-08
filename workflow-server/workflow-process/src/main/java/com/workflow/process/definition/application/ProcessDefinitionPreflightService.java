@@ -58,9 +58,25 @@ public class ProcessDefinitionPreflightService {
 
     private static final Set<String> FLOW_NODE_TYPES = Set.of(
             "startEvent", "endEvent", "intermediateCatchEvent", "intermediateThrowEvent",
-            "userTask", "serviceTask", "sendTask", "receiveTask", "manualTask",
+            "task", "userTask", "serviceTask", "sendTask", "receiveTask", "manualTask",
             "businessRuleTask", "scriptTask", "callActivity", "subProcess",
             "exclusiveGateway", "inclusiveGateway", "parallelGateway", "eventBasedGateway");
+
+    /**
+     * Flowable 默认会在当前命令内执行完并沿出线继续的节点。
+     *
+     * <p>事件网关、捕获事件、接收任务和普通用户任务都会形成等待态，因此不得放入此集合。
+     * 调用活动是否同步返回取决于当前草稿不可见的被调用模型，同样不作为确定的同步节点；
+     * 嵌入子流程和可触发服务任务则需要结合节点内容单独判断。</p>
+     */
+    private static final Set<String> SYNCHRONOUS_FLOW_NODE_TYPES = Set.of(
+            "task", "serviceTask", "sendTask", "manualTask",
+            "businessRuleTask", "scriptTask", "intermediateThrowEvent",
+            "exclusiveGateway", "inclusiveGateway", "parallelGateway");
+
+    /** Flowable 中需要外部完成信号的服务任务类型。 */
+    private static final Set<String> WAITING_SERVICE_TASK_TYPES = Set.of(
+            "external", "external-worker", "case");
 
     private final ProcessDefinitionConfigMapper processMapper;
     private final ProcessVersionHistoryMapper versionHistoryMapper;
@@ -242,6 +258,7 @@ public class ProcessDefinitionPreflightService {
         }
 
         Set<String> reachable = reachableNodes(parsed);
+        validateAlwaysSkipCycles(config, parsed, reachable, issues);
         for (Map.Entry<String, Element> entry : parsed.flowNodes().entrySet()) {
             if (!reachable.contains(entry.getKey())) {
                 addIssue(issues, "BPMN_NODE_UNREACHABLE", Severity.BLOCKER,
@@ -249,6 +266,180 @@ public class ProcessDefinitionPreflightService {
                         "节点无法从开始事件到达", "请补齐连线或删除孤立节点", config.getId());
             }
         }
+    }
+
+    /**
+     * 阻断由始终跳过用户任务与同步穿透节点组成的可达环。
+     *
+     * <p>原生 {@code skipExpression} 会在当前引擎命令内立即继续；此类环
+     * 没有任务待办或其他等待状态来切断调用链，可导致启动/完成请求无限
+     * 自旋。普通用户任务、接收任务、捕获事件和事件网关会形成等待边界；调用活动
+     * 是否同步返回无法仅由当前草稿证明，按非确定同步节点处理。嵌入子流程只有在其
+     * 内部没有等待节点时才视为同步穿透。</p>
+     */
+    private void validateAlwaysSkipCycles(
+            ProcessDefinitionConfig config,
+            ParsedBpmn parsed,
+            Set<String> reachable,
+            List<ProcessValidationIssueDTO> issues) {
+        Set<String> synchronousNodes = new HashSet<>();
+        for (Map.Entry<String, Element> entry : parsed.flowNodes().entrySet()) {
+            if (reachable.contains(entry.getKey())
+                    && isSynchronousSkipPathNode(entry.getValue())) {
+                synchronousNodes.add(entry.getKey());
+            }
+        }
+
+        Map<String, List<String>> adjacency = new HashMap<>();
+        for (FlowEdge edge : parsed.edges()) {
+            if (synchronousNodes.contains(edge.sourceRef())
+                    && synchronousNodes.contains(edge.targetRef())) {
+                adjacency.computeIfAbsent(
+                                edge.sourceRef(), ignored -> new ArrayList<>())
+                        .add(edge.targetRef());
+            }
+        }
+        adjacency.values().forEach(values -> values.sort(String::compareTo));
+
+        Map<String, Integer> states = new HashMap<>();
+        List<String> path = new ArrayList<>();
+        List<String> orderedNodes = synchronousNodes.stream().sorted().toList();
+        for (String nodeId : orderedNodes) {
+            if (states.getOrDefault(nodeId, 0) != 0) {
+                continue;
+            }
+            List<String> cycle = findAlwaysSkipCycle(
+                    nodeId, parsed, adjacency, states, path);
+            if (cycle == null) {
+                continue;
+            }
+            String skippedNodeId = cycle.stream()
+                    .filter(candidate -> {
+                        Element element = parsed.flowNodes().get(candidate);
+                        return element != null
+                                && "userTask".equals(localName(element))
+                                && isAlwaysSkipped(element);
+                    })
+                    .sorted()
+                    .findFirst()
+                    .orElse(cycle.get(0));
+            addIssue(
+                    issues,
+                    "ALWAYS_SKIP_CYCLE",
+                    Severity.BLOCKER,
+                    skippedNodeId,
+                    "userTask",
+                    "始终跳过节点位于可达循环中，同步执行会无限流转",
+                    "请删除回边、取消始终跳过，或在环内增加人工等待节点",
+                    config.getId());
+            return;
+        }
+    }
+
+    private boolean isSynchronousSkipPathNode(Element element) {
+        String type = localName(element);
+        if ("userTask".equals(type)) {
+            return isAlwaysSkipped(element);
+        }
+        if ("serviceTask".equals(type)) {
+            return !isWaitingServiceTask(element);
+        }
+        if ("subProcess".equals(type)) {
+            return isSynchronouslyCompletingSubProcess(element);
+        }
+        return SYNCHRONOUS_FLOW_NODE_TYPES.contains(type);
+    }
+
+    /**
+     * 可触发、外部工作者和 CMMN case 服务任务均需等待外部完成，不能视为同步穿透。
+     */
+    private boolean isWaitingServiceTask(Element serviceTask) {
+        if (Boolean.parseBoolean(valueOrEmpty(
+                attributeByLocalName(serviceTask, "triggerable")).trim())) {
+            return true;
+        }
+        String type = valueOrEmpty(
+                attributeByLocalName(serviceTask, "type"))
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        return WAITING_SERVICE_TASK_TYPES.contains(type);
+    }
+
+    /**
+     * 判断嵌入子流程是否能在当前命令内完成。
+     *
+     * <p>子流程自身不是天然等待态；若内部仅含同步任务、路由节点或始终跳过任务，
+     * Flowable 会在同一 agenda 中执行到子流程出口。只要存在普通用户任务、接收任务、
+     * 捕获事件、事件网关、调用活动或等待型服务任务，就保守地把整个子流程视为等待边界，
+     * 避免阻断含真实人工/外部等待的合法业务回路。</p>
+     */
+    private boolean isSynchronouslyCompletingSubProcess(Element subProcess) {
+        if (Boolean.parseBoolean(valueOrEmpty(
+                attributeByLocalName(subProcess, "triggeredByEvent")).trim())) {
+            return false;
+        }
+        NodeList descendants = subProcess.getElementsByTagName("*");
+        for (int index = 0; index < descendants.getLength(); index++) {
+            Element descendant = (Element) descendants.item(index);
+            String type = localName(descendant);
+            if (("userTask".equals(type) && !isAlwaysSkipped(descendant))
+                    || "receiveTask".equals(type)
+                    || "intermediateCatchEvent".equals(type)
+                    || "eventBasedGateway".equals(type)
+                    || "callActivity".equals(type)
+                    || ("serviceTask".equals(type)
+                    && isWaitingServiceTask(descendant))
+                    || ("subProcess".equals(type)
+                    && !isSynchronouslyCompletingSubProcess(descendant))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 以三色 DFS 定位候选子图中第一个包含始终跳过任务的环。
+     */
+    private List<String> findAlwaysSkipCycle(
+            String nodeId,
+            ParsedBpmn parsed,
+            Map<String, List<String>> adjacency,
+            Map<String, Integer> states,
+            List<String> path) {
+        states.put(nodeId, 1);
+        path.add(nodeId);
+        for (String target : adjacency.getOrDefault(nodeId, List.of())) {
+            int targetState = states.getOrDefault(target, 0);
+            if (targetState == 0) {
+                List<String> nested = findAlwaysSkipCycle(
+                        target, parsed, adjacency, states, path);
+                if (nested != null) {
+                    return nested;
+                }
+                continue;
+            }
+            if (targetState != 1) {
+                continue;
+            }
+            int cycleStart = path.lastIndexOf(target);
+            if (cycleStart < 0) {
+                continue;
+            }
+            List<String> cycle = new ArrayList<>(
+                    path.subList(cycleStart, path.size()));
+            boolean containsAlwaysSkip = cycle.stream().anyMatch(candidate -> {
+                Element element = parsed.flowNodes().get(candidate);
+                return element != null
+                        && "userTask".equals(localName(element))
+                        && isAlwaysSkipped(element);
+            });
+            if (containsAlwaysSkip) {
+                return cycle;
+            }
+        }
+        path.remove(path.size() - 1);
+        states.put(nodeId, 2);
+        return null;
     }
 
     /**
@@ -304,7 +495,7 @@ public class ProcessDefinitionPreflightService {
                 continue;
             }
             NodeConfig nodeConfig = byNodeId.get(entry.getKey());
-            if (nodeConfig != null && Boolean.TRUE.equals(nodeConfig.getSkipNode())) {
+            if (isAlwaysSkipped(entry.getValue())) {
                 continue;
             }
             if (hasXmlAssignment(entry.getValue()) || hasStoredAssignment(nodeConfig)) {
@@ -314,6 +505,72 @@ public class ProcessDefinitionPreflightService {
                     entry.getKey(), "userTask", "用户任务没有配置办理人来源",
                     "请配置用户、角色、部门、动态解析器或明确的空办理人策略", config.getId());
         }
+    }
+
+    /**
+     * 判断当前草稿 XML 是否明确配置为始终跳过。
+     *
+     * <p>预检必须以当前 XML 为准，不能依赖可能来自上一版草稿的 NodeConfig；
+     * 条件跳过在表达式为 false 时仍会创建任务，因此必须配置办理人兜底。字面量
+     * {@code ${true}} / {@code #{true}} 以及历史 {@code skipNodeEnabled} 表达式在
+     * 运行时客观恒真，即使设计态错误残留了 {@code skipNode=false} 也必须按始终跳过处理。</p>
+     */
+    private boolean isAlwaysSkipped(Element userTask) {
+        String skipNode = extensionPropertyValue(
+                userTask, "skipNode");
+        if (skipNode != null
+                && Boolean.parseBoolean(skipNode.trim())) {
+            return true;
+        }
+        String expression = attributeByLocalName(
+                userTask, "skipExpression");
+        if (!StringUtils.hasText(expression)) {
+            NodeList descendants = userTask.getElementsByTagName("*");
+            for (int index = 0; index < descendants.getLength(); index++) {
+                Element descendant = (Element) descendants.item(index);
+                if ("skipExpression".equals(localName(descendant))) {
+                    expression = descendant.getTextContent();
+                    break;
+                }
+            }
+        }
+        return StringUtils.hasText(expression)
+                && expression.trim().matches(
+                        "(?i)^[#$]\\{\\s*(?:true|skipNodeEnabled)\\s*}$");
+    }
+
+    private String extensionPropertyValue(
+            Element element,
+            String propertyName) {
+        NodeList descendants = element.getElementsByTagName("*");
+        for (int index = 0; index < descendants.getLength(); index++) {
+            Element descendant = (Element) descendants.item(index);
+            if (!"property".equals(localName(descendant))) {
+                continue;
+            }
+            if (propertyName.equals(
+                    attributeByLocalName(descendant, "name"))) {
+                return attributeByLocalName(descendant, "value");
+            }
+        }
+        return null;
+    }
+
+    private String attributeByLocalName(
+            Element element,
+            String expectedName) {
+        NamedNodeMap attributes = element.getAttributes();
+        for (int index = 0; index < attributes.getLength(); index++) {
+            Node attribute = attributes.item(index);
+            if (expectedName.equals(localName(attribute))) {
+                return attribute.getNodeValue();
+            }
+        }
+        return null;
+    }
+
+    private String valueOrEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private boolean hasStoredAssignment(NodeConfig nodeConfig) {

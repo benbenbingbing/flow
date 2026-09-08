@@ -1,6 +1,6 @@
 -- =====================================================================
 -- 自定义实体与流程测试数据清理脚本（待确认）
--- 适用基线：workflow-server/workflow-app/.../V001__business_schema.sql
+-- 结构版本：已同步 V080、V081 退役表清理；正式执行前仍需预览候选数据。
 -- 数据库：MySQL 8.0+
 -- 编写日期：2026-07-27
 --
@@ -349,28 +349,6 @@ OR EXISTS (
 );
 
 -- 4. 自定义表单节点 JSON 中出现的字典编码。
-INSERT IGNORE INTO tmp_cleanup_dict (id, dict_code)
-SELECT DISTINCT d.id, d.dict_code
-FROM sys_dict d
-JOIN entity_form_field ff
-JOIN tmp_cleanup_entity_form tf
-  ON tf.id = ff.form_id COLLATE utf8mb4_unicode_ci
-WHERE JSON_SEARCH(
-          IF(JSON_VALID(ff.component_props), ff.component_props, '{}'),
-          'one',
-          d.dict_code
-      ) IS NOT NULL
-   OR JSON_SEARCH(
-          IF(JSON_VALID(ff.extension_config), ff.extension_config, '{}'),
-          'one',
-          d.dict_code
-      ) IS NOT NULL
-   OR JSON_SEARCH(
-          IF(JSON_VALID(ff.validation_rules), ff.validation_rules, '{}'),
-          'one',
-          d.dict_code
-      ) IS NOT NULL;
-
 INSERT IGNORE INTO tmp_cleanup_dict (id, dict_code)
 SELECT DISTINCT d.id, d.dict_code
 FROM sys_dict d
@@ -837,12 +815,10 @@ cleanup_main: BEGIN
     DELETE FROM process_task_candidate_group;
     DELETE FROM process_task_add_sign_user;
     DELETE FROM process_task_add_sign;
-    DELETE FROM process_task_instance;
     DELETE FROM process_task;
     DELETE FROM process_cc_record;
     DELETE FROM process_action_execution;
     DELETE FROM process_operation_log;
-    DELETE FROM process_draft;
 
     -- 6. 清理平台流程设计、发布和节点配置。
     DELETE FROM ui_config_hotfix_target;
@@ -859,8 +835,7 @@ cleanup_main: BEGIN
     DELETE FROM process_version_history;
     DELETE FROM process_definition_config;
 
-    -- process_common_opinion、process_action_definition、
-    -- process_person_resolver_definition 属于基础目录或用户偏好，予以保留。
+    -- process_action_definition、process_person_resolver_definition 属于基础目录，予以保留。
 
     -- 7. 移除流程动作目录中指向待删除实体的可见范围。
     DELETE binding
@@ -869,18 +844,12 @@ cleanup_main: BEGIN
       ON e.entity_code
          = binding.entity_code COLLATE utf8mb4_unicode_ci;
 
-    -- 8. 清理自定义实体运行数据和状态历史。
+    -- 8. 清理自定义实体运行数据。
     DELETE record
     FROM runtime_entity_record record
     JOIN tmp_cleanup_entity e
       ON e.entity_code
          = record.entity_code COLLATE utf8mb4_unicode_ci;
-
-    DELETE history
-    FROM entity_status_history history
-    JOIN tmp_cleanup_entity e
-      ON e.entity_code
-         = history.entity_code COLLATE utf8mb4_unicode_ci;
 
     -- 9. 清理自定义实体表单/列表发布快照和作用域数据源。
     DELETE FROM ui_config_release_audit
@@ -978,11 +947,6 @@ cleanup_main: BEGIN
     FROM entity_form_node node
     JOIN tmp_cleanup_entity_form f ON f.id = node.form_id;
 
-    DELETE form_field
-    FROM entity_form_field form_field
-    JOIN tmp_cleanup_entity_form f
-      ON f.id = form_field.form_id COLLATE utf8mb4_unicode_ci;
-
     DELETE form
     FROM entity_form form
     JOIN tmp_cleanup_entity_form f
@@ -1047,28 +1011,7 @@ cleanup_main: BEGIN
     FROM entity_field entity_field_row
     JOIN tmp_cleanup_entity e ON e.id = entity_field_row.entity_id;
 
-    -- 15. 清理实体关联菜单、角色授权和工作台快捷入口。
-    DELETE shortcut
-    FROM workbench_shortcut shortcut
-    WHERE (
-            UPPER(COALESCE(shortcut.shortcut_type, '')) = 'MENU'
-            AND shortcut.target_id IN (SELECT id FROM tmp_cleanup_menu)
-          );
-
-    DELETE shortcut
-    FROM workbench_shortcut shortcut
-    JOIN tmp_cleanup_entity entity_candidate
-      ON entity_candidate.entity_code
-         = shortcut.target_id COLLATE utf8mb4_unicode_ci
-    WHERE UPPER(COALESCE(shortcut.shortcut_type, '')) = 'ENTITY';
-
-    DELETE shortcut
-    FROM workbench_shortcut shortcut
-    JOIN tmp_cleanup_entity entity_candidate
-      ON CAST(entity_candidate.id AS CHAR) COLLATE utf8mb4_unicode_ci
-         = shortcut.target_id COLLATE utf8mb4_unicode_ci
-    WHERE UPPER(COALESCE(shortcut.shortcut_type, '')) = 'ENTITY';
-
+    -- 15. 清理实体关联菜单与角色授权。
     DELETE FROM sys_role_menu
     WHERE menu_id COLLATE utf8mb4_unicode_ci IN (
         SELECT id FROM tmp_cleanup_menu

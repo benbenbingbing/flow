@@ -8,6 +8,8 @@ import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.application.ProcessTaskService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
+import com.workflow.process.task.application.operation.NodeOperationDecisionService;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.history.HistoricProcessInstance;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,6 +53,9 @@ class ProcessTerminationServiceTest {
 
         assertEquals(200, result.getCode());
         verify(fixture.runtimeService).deleteProcessInstance("pi-1", "主动撤回");
+        verify(fixture.nodeOperationCapabilityService).requireTerminateAllowed(
+                org.mockito.ArgumentMatchers.eq("pi-1"),
+                any(NodeOperationDecisionService.CheckContext.class));
         verify(fixture.processTaskService).deleteTasksByProcessInstance("pi-1");
         verify(fixture.operationLogMapper).insert(org.mockito.ArgumentMatchers.any(ProcessOperationLog.class));
 
@@ -104,6 +110,8 @@ class ProcessTerminationServiceTest {
         final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
         final IdentityDirectoryPort identityDirectoryPort = mock(IdentityDirectoryPort.class);
         final EntityRecordPort entityRecordPort = mock(EntityRecordPort.class);
+        final NodeOperationCapabilityService nodeOperationCapabilityService =
+                mock(NodeOperationCapabilityService.class);
         final ProcessInstanceQuery processInstanceQuery = mock(ProcessInstanceQuery.class);
         final HistoricProcessInstanceQuery historicQuery = mock(HistoricProcessInstanceQuery.class);
 
@@ -140,7 +148,7 @@ class ProcessTerminationServiceTest {
         ProcessTerminationService service() {
             return new ProcessTerminationService(
                     runtimeService, historyService, operationLogMapper, processTaskService,
-                    identityDirectoryPort, entityRecordPort);
+                    identityDirectoryPort, entityRecordPort, nodeOperationCapabilityService);
         }
     }
 }

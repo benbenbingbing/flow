@@ -323,7 +323,12 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="info" size="small" @click="viewProgress(row)">查看</el-button>
-            <el-button v-if="row.status === 'RUNNING'" type="danger" size="small" @click="handleTerminate(row)">终止</el-button>
+            <el-button
+              v-if="row.status === 'RUNNING' && row.canTerminate === true"
+              type="danger"
+              size="small"
+              @click="handleTerminate(row)"
+            >终止</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -890,10 +895,10 @@ async function handleBatchClaim() {
 function getTodoMoreActions(row) {
   const actions = []
   if (!row.claimRequired && row.nodeType !== 'ADD_SIGN') {
-    if (row.taskOperations?.transfer !== false) {
+    if (row.taskOperations?.transfer === true) {
       actions.push({ command: 'transfer', label: '转办' })
     }
-    if (row.taskOperations?.addSign !== false) {
+    if (row.taskOperations?.addSign === true) {
       actions.push({ command: 'addSign', label: '加签' })
     } else if (row.taskOperations?.activeAddSign?.id) {
       actions.push({ command: 'cancelAddSign', label: '撤销加签' })

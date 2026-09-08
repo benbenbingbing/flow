@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import com.workflow.core.error.RateLimitExceededException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,6 +26,21 @@ class GlobalExceptionHandlerTest {
 
     /** 被测异常处理器实例 */
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+    /** 畸形 JSON 应返回稳定 400，不能把 Jackson 内部反序列化详情暴露给页面。 */
+    @Test
+    void shouldReturnSafeBadRequestForUnreadableJsonBody() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleUnreadableRequestBody(
+                        new HttpMessageNotReadableException(
+                                "Cannot coerce empty String to internal.SysGroup",
+                                new MockHttpInputMessage(new byte[0])));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(400, response.getBody().getCode());
+        assertEquals("请求体格式不正确", response.getBody().getMessage());
+    }
 
     @Test
     void returnsRetryAfterForRateLimit() {

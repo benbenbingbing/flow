@@ -186,10 +186,10 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用按执行人和多人办理、办理表单、审批设置排列。', notes: '知会统一进入协同；异步、跳过和标识备注进入高级。' },
+                { option: '用户任务', meaning: '显示“常用、协同、高级、流程动作”。常用按执行人和多人办理、办理表单、审批设置排列。', notes: '知会统一进入协同；自动跳过、SLA 和标识备注进入高级。' },
                 { option: '服务任务 / 发送任务', meaning: '显示“常用、协同、高级、流程动作”。常用展示任务主配置，协同展示知会。', notes: 'REST 可靠性、结果映射等仍在常用内按低频分组折叠。' },
                 { option: '其他任务、调用活动与网关', meaning: '显示“常用、高级、流程动作”。常用展示类型专属配置。', notes: '页面不会为不支持的能力显示空页签。' },
-                { option: '开始、结束事件与连线', meaning: '开始事件的表单、连线条件和连线实体状态都并入常用，只额外显示流程动作。', notes: '连线实体状态是常用内的折叠配置区，不再单独占用页签。' },
+                { option: '开始、结束事件与连线', meaning: '开始、结束事件显示适用的基础配置和流程动作；连线条件与连线实体状态并入常用。', notes: '开始事件暂不支持节点表单配置；连线实体状态是常用内的折叠配置区。' },
                 { option: '标识与备注', meaning: '节点 ID、设计备注统一使用“标识与备注”名称。', notes: '有高级页签时放在高级中；没有高级页签时折叠放在常用底部。' }
               ]
             },
@@ -253,7 +253,7 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '无类型开始事件', meaning: '流程由平台 API 或业务入口直接启动。', notes: '可绑定一个实体表单，并配置流程/节点动作。' },
+                { option: '无类型开始事件', meaning: '流程由平台 API 或业务入口直接启动。', notes: '开始事件暂不配置节点表单；发起数据由实体新增入口的默认表单或调用方提供。' },
                 { option: '消息 / 定时 / 条件 / 信号开始事件', meaning: '由消息、时间、条件或广播信号触发实例。', notes: '当前平台没有专用事件参数表单，必须确认 XML 中事件定义完整并与 Flowable 部署能力一致。' },
                 { option: '中间捕获事件', meaning: '等待消息、定时器、条件、链接或信号。', notes: '会暂停或路由执行；事件名称、时间表达式需在 XML 中有效。' },
                 { option: '中间抛出事件', meaning: '发送消息、升级、链接、补偿或信号。', notes: '确认接收方和作用域，避免无消费者事件。' },
@@ -633,19 +633,18 @@ export default {
       id: 'process-forms-approval',
       index: '07',
       title: '节点表单、只读与审批项',
-      summary: '开始事件和用户任务绑定实体表单或自定义表单，用户任务配置审批意见与按钮。',
+      summary: '用户任务使用实体默认表单或指定一个实体表单，并配置只读、审批意见与按钮。',
       topics: [
         {
           id: 'process-node-forms',
-          title: '节点表单来源',
+          title: '用户任务表单使用方式',
           blocks: [
             {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '实体表单 entity', meaning: '从流程绑定实体的已发布表单中选择一个。', notes: '流程未绑定实体时不可选；节点未显式配置时尝试实体默认表单。' },
-                { option: '自定义表单 custom', meaning: '填写外部表单 Key。', notes: '目标运行页面必须能解析该 Key。' },
-                { option: '无表单 none', meaning: '节点不展示业务表单。', notes: '开始事件无表单时要确保流程仍有业务数据来源。' }
+                { option: '使用实体默认表单 DEFAULT', meaning: '应用节点配置时按 isDefault 解析流程所属实体当前的默认表单，并把该表单 ID 写入节点绑定。', notes: '未设置默认表单时不能应用；默认表单没有 ACTIVE release 时可以应用节点配置，但流程发布会失败。' },
+                { option: '指定实体表单 SPECIFIC', meaning: '从流程所属实体的已发布表单中单选一个作为当前用户任务的办理表单。', notes: '应用时同时保存使用方式和 entityFormId，适用于不同节点需要不同字段、布局或只读策略的场景。' }
               ]
             },
             {
@@ -653,16 +652,28 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '所属实体', meaning: '显示当前流程绑定实体。', defaultLimit: '只读；未绑定时显示警告。', effect: '决定可选实体表单和实体字段条件。', publish: '先在实体管理绑定流程。' },
-                { field: '选择表单', meaning: '单选一个实体表单。', defaultLimit: '可筛选；默认无显式配置时尝试实体默认表单。', effect: '运行节点只展示该表单。', publish: '表单必须启用、字段已保存且目标环境存在。' },
+                { field: '表单使用方式', meaning: '选择使用实体默认表单或指定实体表单。', defaultLimit: '默认 DEFAULT。', effect: '写入 entityFormBindingMode；DEFAULT 和 SPECIFIC 应用后都会得到明确的 entityFormId。', publish: '两种方式都把解析后的实体表单纳入流程发布快照。' },
+                { field: '选择表单', meaning: '指定实体表单时单选一个实体表单。', defaultLimit: '仅“指定实体表单”时出现。', effect: '运行节点只展示该表单。', publish: '应用可以引用草稿表单；流程发布前该表单必须具有 ACTIVE release。' },
                 { field: '强制整表只读', meaning: '开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。', defaultLimit: '默认关闭。', effect: '写入 entityFormReadonly，作为节点级强制只读覆盖。', publish: '关闭时按表单字段的审批模式权限执行。' },
-                { field: '表单 Key', meaning: '自定义表单技术标识。', defaultLimit: '示例 leave_apply_form。', effect: '运行时打开外部表单。', publish: 'Key 在目标环境必须注册。' }
               ]
             },
             {
               type: 'callout',
               tone: 'info',
-              title: '自动默认表单',
-              text: '流程绑定实体、节点没有表单配置且实体存在默认表单时，设计器会自动把默认表单 ID、只读 false 和实体编码写入 BPMN。更换默认表单不会自动更新已显式保存的节点。'
+              title: '自定义组件仍是实体表单',
+              text: '整表自定义渲染通过实体表单的 customComponent 配置实现。节点仍选择该实体表单，不再把外部表单 Key 作为独立的节点表单来源。'
+            },
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '默认表单与指定表单',
+              text: '选择 DEFAULT 后，应用节点配置时按 isDefault 解析当前默认表单并写入 entityFormId；未设置默认表单会阻止应用，默认表单尚未发布不会阻止应用，但会由流程发布校验拒绝。选择 SPECIFIC 时写入所选表单 ID。两种方式成功发布后都固定到流程表单快照，更换实体默认表单不会自动改变已发布节点。旧流程缺少显式使用方式或绑定时，运行时仍保留默认表单及部分链路首个可用表单的历史兼容回退。'
+            },
+            {
+              type: 'callout',
+              tone: 'warning',
+              title: '历史 flowable:formKey 兼容',
+              text: '导入包或历史 BPMN 中的 flowable:formKey 仅作为实体表单兼容引用读取；能够解析时应归一化为实体表单绑定，无法解析时发布前报错。设计器不提供任意外部表单 Key 的新建入口。'
             },
             {
               type: 'callout',
@@ -718,7 +729,7 @@ export default {
                 { key: 'result', label: '运行结果' }
               ],
               rows: [
-                { layer: '节点强制整表只读', scope: '当前开始事件或用户任务选择的所有实体表单。', result: '开启后整张节点表单不可编辑，并覆盖字段的审批可编辑配置。' },
+                { layer: '节点强制整表只读', scope: '当前用户任务使用的实体表单。', result: '开启后整张节点表单不可编辑，并覆盖字段的审批可编辑配置。' },
                 { layer: '表单字段 isReadonly', scope: '该字段在所有模式。', result: '字段显示但不可编辑。' },
                 { layer: '表单运行模式 editable', scope: 'create/edit/approve/view 之一。', result: '对应模式关闭后字段不可编辑。' },
                 { layer: '表单运行模式 visible', scope: 'create/edit/approve/view 之一。', result: '对应模式关闭后字段隐藏。' },
@@ -878,7 +889,7 @@ export default {
       id: 'process-transactions',
       index: '09',
       title: '事务、失败策略与高级配置',
-      summary: '理解流程动作的事务边界，以及节点异步、跳过表达式和自动跳过。',
+      summary: '理解流程动作的事务边界，以及用户任务的自动跳过规则。',
       topics: [
         {
           id: 'process-action-transaction',
@@ -937,12 +948,15 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '异步执行', meaning: '开启 Flowable 异步能力。', defaultLimit: '默认关闭。', effect: '开启后可选择异步前和异步后。', publish: '依赖异步作业执行器和数据库作业表正常运行。' },
-                { field: '异步前', meaning: '在进入当前任务/网关前创建异步边界。', defaultLimit: '异步开启后可选。', effect: '前序事务提交后由作业继续。', publish: '变量和事务边界会变化。' },
-                { field: '异步后', meaning: '完成当前任务/网关后创建异步边界。', defaultLimit: '异步开启后可选。', effect: '当前节点提交后由作业继续后续路径。', publish: '后续状态和动作可能延迟。' },
-                { field: '跳过表达式', meaning: '满足表达式时跳过节点。', defaultLimit: '默认空；示例 ${skip}。', effect: '由 Flowable skip expression 语义处理。', publish: '必须同时确认引擎启用跳过表达式的条件。' },
-                { field: '自动跳过', meaning: '平台扩展 skipNode。', defaultLimit: '默认关闭。', effect: '运行到节点时由 WorkflowAutoSkipService 直接流转。', publish: '会绕过人工办理或自动任务逻辑；只用于明确无需处理的节点。' }
+                { field: '跳过方式', meaning: '选择不跳过、始终跳过或满足条件时跳过。', defaultLimit: '默认不跳过；仅用户任务支持。', effect: '始终跳过会直接继续流转；条件跳过仅在表达式结果为 true 时继续流转。', publish: '命中后不创建待办，也不会写入当前节点审批结果或意见。' },
+                { field: '条件表达式', meaning: '通过条件组设置自动跳过的 Flowable 表达式。', defaultLimit: '仅“满足条件时跳过”显示且必填；只提供安全的比较操作符。', effect: '结果为 true 时跳过，结果为 false 时正常创建待办。', publish: '引用的实体字段必须在令牌到达用户任务前有值。' }
               ]
+            },
+            {
+              type: 'callout',
+              tone: 'info',
+              title: '节点固定同步执行',
+              text: '节点不再提供异步前、异步后等执行方式配置，统一按同步方式执行。需要在事务提交后处理通知或外部系统调用时，请使用流程动作的 AFTER_COMMIT 执行方式。'
             }
           ]
         }

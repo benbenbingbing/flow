@@ -11,9 +11,9 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormFiel
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import org.junit.jupiter.api.Test;
@@ -36,13 +36,12 @@ class EntityFormServiceMetadataTest {
     /** 测试 getFormFields 从实体字段携带子表单关联元数据：验证关联字段、子实体和关系类型等元数据正确 */
     @Test
     void getFormFieldsCarriesSubFormAssociationMetadataFromEntityField() throws Exception {
-        EntityFormFieldMapper formFieldMapper = mock(EntityFormFieldMapper.class);
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
         EntityFieldMapper entityFieldMapper = mock(EntityFieldMapper.class);
         EntityRelationMapper relationMapper = mock(EntityRelationMapper.class);
         EntityFormService service = new EntityFormService(
                 mock(EntityFormMapper.class),
-                formFieldMapper,
-                mock(EntityFormNodeMapper.class),
+                nodeMapper,
                 mock(EntityDefinitionMapper.class),
                 entityFieldMapper,
                 relationMapper,
@@ -54,9 +53,11 @@ class EntityFormServiceMetadataTest {
                 new JsonDocumentCodec(new ObjectMapper())
         );
 
-        EntityFormField formField = new EntityFormField();
-        formField.setId("form-field-1");
-        formField.setFieldId("entity-field-1");
+        EntityFormNode node = new EntityFormNode();
+        node.setId("node-1");
+        node.setNodeKey("items");
+        node.setNodeType("SUB_FORM");
+        node.setPropsDocument("{\"fieldId\":\"entity-field-1\",\"fieldCode\":\"items\"}");
 
         EntityField entityField = new EntityField();
         entityField.setEntityId("parent-id");
@@ -76,7 +77,7 @@ class EntityFormServiceMetadataTest {
         relation.setRelationType(EntityRelation.RelationType.ONE_TO_MANY);
         relation.setCascadeDelete(true);
 
-        when(formFieldMapper.selectByFormId("form-1")).thenReturn(List.of(formField));
+        when(nodeMapper.findByFormId("form-1")).thenReturn(List.of(node));
         when(entityFieldMapper.findByIdString("entity-field-1")).thenReturn(entityField);
         when(relationMapper.selectByParentField("parent-id", "items")).thenReturn(relation);
 

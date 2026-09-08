@@ -2,9 +2,13 @@ package com.workflow.service;
 
 import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.TaskAddSignService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
+import com.workflow.process.task.application.operation.NodeOperationDecisionService;
+import com.workflow.process.task.application.operation.NodeOperationPolicy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.task.api.request.TaskAddSignRequest;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTaskAddSign;
@@ -49,6 +53,7 @@ class TaskAddSignServiceTest {
     @Mock ProcessTaskAddSignUserMapper addSignUserMapper;
     @Mock ProcessOperationLogMapper operationLogMapper;
     @Mock SysUserMapper userMapper;
+    @Mock NodeOperationCapabilityService nodeOperationCapabilityService;
     @Mock TaskActionService taskActionService;
 
     /** 被测加签服务 */
@@ -65,6 +70,7 @@ class TaskAddSignServiceTest {
                 operationLogMapper,
                 userMapper,
                 new ObjectMapper(),
+                nodeOperationCapabilityService,
                 taskActionService);
         UserContext.setCurrentUser("admin-id", "admin");
         lenient().when(taskService.createTaskQuery()).thenReturn(taskQuery);
@@ -219,6 +225,26 @@ class TaskAddSignServiceTest {
         order.verify(processTaskMapper).selectByTaskIdForUpdate("source-task");
         order.verify(addSignMapper).findOpenBySourceTaskId("source-task");
         verify(operationLogMapper).insert(any(ProcessOperationLog.class));
+    }
+
+    /** 节点关闭加签时必须在锁定任务镜像和写入任何加签记录前失败。 */
+    @Test
+    void addSignStopsBeforePersistenceWhenNodeSwitchDenies() {
+        doThrow(new ForbiddenException("当前节点不允许加签"))
+                .when(nodeOperationCapabilityService)
+                .requireAllowed(
+                        eq("source-task"),
+                        eq(NodeOperationPolicy.Operation.ADD_SIGN_PARALLEL),
+                        any(NodeOperationDecisionService.CheckContext.class));
+
+        assertThrows(ForbiddenException.class,
+                () -> service.addSign("source-task", request("PARALLEL")));
+
+        verify(processTaskMapper, never()).selectByTaskIdForUpdate(anyString());
+        verify(processTaskMapper, never()).insert(any(ProcessTask.class));
+        verify(addSignMapper, never()).insert(any(ProcessTaskAddSign.class));
+        verify(addSignUserMapper, never()).insert(any(ProcessTaskAddSignUser.class));
+        verify(operationLogMapper, never()).insert(any(ProcessOperationLog.class));
     }
 
     /** 构造指定加签类型的加签请求 */

@@ -28,6 +28,53 @@ const multiInstanceEnd = nodeConfigPanelSource.indexOf('<NextApproverConfigEdito
 assert.ok(multiInstanceStart >= 0 && multiInstanceEnd > multiInstanceStart, '节点配置应保留多人办理外层分组')
 const multiInstanceSource = nodeConfigPanelSource.slice(multiInstanceStart, multiInstanceEnd)
 
+const operationPermissionStart = nodeConfigPanelSource.indexOf('title="操作权限"')
+const operationPermissionEnd = nodeConfigPanelSource.indexOf('</section>', operationPermissionStart)
+assert.ok(
+  operationPermissionStart > multiInstanceEnd && operationPermissionEnd > operationPermissionStart,
+  '操作权限必须是独立区块，不能继续放在多人办理配置内'
+)
+const operationPermissionSource = nodeConfigPanelSource.slice(
+  operationPermissionStart,
+  operationPermissionEnd
+)
+assert.equal(
+  (operationPermissionSource.match(/<el-switch\b/g) || []).length,
+  3,
+  '操作权限区只应保留转办、加签和终止三个开关'
+)
+for (const model of [
+  'assigneeForm.allowTransfer',
+  'assigneeForm.allowAddSign',
+  'assigneeForm.allowTerminate'
+]) {
+  assert.ok(
+    operationPermissionSource.includes(`v-model="${model}"`),
+    `操作权限区缺少 ${model} 开关`
+  )
+}
+assert.equal(
+  nodeConfigPanelSource.includes('NodeOperationMatrixEditor'),
+  false,
+  '节点配置面板不得继续加载节点操作矩阵组件'
+)
+assert.equal(
+  nodeConfigPanelSource.includes('nodeOperationPolicy'),
+  true,
+  '节点配置面板必须识别并清理早期独立矩阵属性'
+)
+assert.ok(
+  nodeConfigPanelSource.includes('extProps.nodeOperationPolicy')
+    && nodeConfigPanelSource.includes("updateExtensionProperty('nodeOperationPolicy', null)"),
+  '节点配置面板必须安全折叠并删除早期独立矩阵属性'
+)
+for (const permission of ['allowTransfer', 'allowAddSign', 'allowTerminate']) {
+  assert.ok(
+    nodeConfigPanelSource.includes(`${permission}: operationPermissions.${permission}`),
+    `加载节点配置时必须显式回填 ${permission}`
+  )
+}
+
 for (const nestedTitle of ['办理方式', '完成规则', '技术参数']) {
   assert.doesNotMatch(
     multiInstanceSource,

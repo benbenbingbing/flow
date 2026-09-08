@@ -828,6 +828,119 @@ export function normalizeEmptyAssigneeStrategy(value = {}, allowInherit = true) 
   }
 }
 
+const SIMPLE_NODE_OPERATION_KEYS = [
+  'allowTransfer',
+  'allowAddSign',
+  'allowTerminate'
+]
+const LEGACY_ADD_SIGN_OPERATION_KEYS = [
+  'addSignBefore',
+  'addSignAfter',
+  'addSignParallel'
+]
+
+function normalizeBooleanSetting(value, fallback) {
+  if (value === true || value === false) return value
+  if (value === 1 || value === '1' || value === 'true') return true
+  if (value === 0 || value === '0' || value === 'false') return false
+  return fallback
+}
+
+function configuredValues(value) {
+  if (Array.isArray(value)) return value.length > 0
+  if (value && typeof value === 'object') return Object.keys(value).length > 0
+  return String(value ?? '').trim().length > 0
+}
+
+/**
+ * 判断旧矩阵规则是否携带三开关无法表达的限制。
+ *
+ * 折叠时宁可关闭权限，也不能把条件、权限码、理由、目标范围或加签类型等
+ * 限制静默升级成无条件开放。默认占位值不视为限制，以兼容旧编辑器的完整快照。
+ */
+function hasLegacyOperationRestrictions(rule) {
+  const source = configObject(rule)
+  return configuredValues(source.conditionExpression)
+    || configuredValues(source.condition)
+    || configuredValues(source.permissionCode)
+    || normalizeBooleanSetting(source.reasonRequired, false)
+    || normalizeBooleanSetting(source.reasonTemplateRequired, false)
+    || configuredValues(source.reasonTemplates)
+    || (configuredValues(source.targetScope)
+      && String(source.targetScope).trim().toUpperCase() !== 'ANY')
+    || configuredValues(source.targetIds)
+    || configuredValues(source.allowedAddSignTypes)
+    || configuredValues(source.allowedRejectTargets)
+    || (source.withdrawWithinMinutes !== undefined
+      && source.withdrawWithinMinutes !== null
+      && String(source.withdrawWithinMinutes).trim() !== '')
+}
+
+function parseLegacyNodeOperationPolicy(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {}
+  } catch {
+    // 存在但无法解析的旧策略不能按“未配置”放开权限。
+    return {}
+  }
+}
+
+function legacyOperationIsUnconditionallyEnabled(operations, operation) {
+  const rule = configObject(operations[operation])
+  return normalizeBooleanSetting(rule.enabled, false)
+    && !hasLegacyOperationRestrictions(rule)
+}
+
+/**
+ * 将节点的操作权限归一化为三个稳定布尔字段。
+ *
+ * 新字段优先且缺项默认开放；只有三个新字段全部缺失时才读取旧矩阵。
+ * 旧矩阵仅能安全降级无条件开放的规则，无法等价表达的高级限制统一关闭。
+ */
+export function normalizeNodeOperationPermissions(value = {}) {
+  const source = configObject(value)
+  const legacySource = configObject(source.legacyAssigneeConfig)
+  const simpleSource = SIMPLE_NODE_OPERATION_KEYS.some(key =>
+    Object.prototype.hasOwnProperty.call(source, key))
+    ? source
+    : SIMPLE_NODE_OPERATION_KEYS.some(key =>
+      Object.prototype.hasOwnProperty.call(legacySource, key))
+      ? legacySource
+      : null
+
+  if (simpleSource) {
+    return {
+      allowTransfer: normalizeBooleanSetting(simpleSource.allowTransfer, true),
+      allowAddSign: normalizeBooleanSetting(simpleSource.allowAddSign, true),
+      allowTerminate: normalizeBooleanSetting(simpleSource.allowTerminate, true)
+    }
+  }
+
+  const legacyPolicyValue = source.nodeOperationPolicy
+    ?? legacySource.nodeOperationPolicy
+  const legacyPolicy = parseLegacyNodeOperationPolicy(legacyPolicyValue)
+  if (!legacyPolicy) {
+    return {
+      allowTransfer: true,
+      allowAddSign: true,
+      allowTerminate: true
+    }
+  }
+
+  const operations = configObject(legacyPolicy.operations)
+  return {
+    allowTransfer: legacyOperationIsUnconditionallyEnabled(operations, 'transfer'),
+    allowAddSign: LEGACY_ADD_SIGN_OPERATION_KEYS.every(operation =>
+      legacyOperationIsUnconditionallyEnabled(operations, operation)),
+    allowTerminate: legacyOperationIsUnconditionallyEnabled(operations, 'terminate')
+  }
+}
+
 export function buildAssigneeConfig(form) {
   const normalizedReference = normalizeNodeReferenceAssigneeConfig(form)
   const type = normalizedReference.assigneeType || form.assigneeType
@@ -860,12 +973,14 @@ export function buildAssigneeConfig(form) {
   const nextApproverSelection = createNextApproverSelectionConfig(
     form.nextApproverSelection
   )
+  const operationPermissions = normalizeNodeOperationPermissions(form)
   if (form.legacyAssigneeConfig && !form.assignmentConfigDirty) {
+    const legacyAssigneeConfig = { ...form.legacyAssigneeConfig }
+    // 一次保存即迁移到简单布尔字段，避免新草稿继续携带已废弃矩阵。
+    delete legacyAssigneeConfig.nodeOperationPolicy
     return {
-      ...form.legacyAssigneeConfig,
-      nodeOperationPolicy: form.nodeOperationPolicy
-        ? JSON.parse(JSON.stringify(form.nodeOperationPolicy))
-        : null,
+      ...legacyAssigneeConfig,
+      ...operationPermissions,
       nextApproverSelection
     }
   }
@@ -873,9 +988,7 @@ export function buildAssigneeConfig(form) {
   return {
     assignmentConfigVersion: ASSIGNMENT_CONFIG_VERSION,
     emptyAssigneeStrategy: normalizeEmptyAssigneeStrategy(form.emptyAssigneeStrategy),
-    nodeOperationPolicy: form.nodeOperationPolicy
-      ? JSON.parse(JSON.stringify(form.nodeOperationPolicy))
-      : null,
+    ...operationPermissions,
     assigneeType: type,
     assigneeValue,
     candidateUsers,

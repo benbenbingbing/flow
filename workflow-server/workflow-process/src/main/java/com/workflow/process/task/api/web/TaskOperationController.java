@@ -7,6 +7,8 @@ import com.workflow.process.task.api.request.TaskAddSignRequest;
 import com.workflow.process.cc.api.request.TaskCcRequest;
 import com.workflow.process.cc.application.ProcessCcRuntimeService;
 import com.workflow.process.task.application.TaskAddSignService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
+import com.workflow.process.task.application.operation.NodeOperationDecisionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -28,10 +30,11 @@ public class TaskOperationController {
     private final TaskAddSignService taskAddSignService;
     /** 知会运行时服务 */
     private final ProcessCcRuntimeService ccRuntimeService;
+    /** 三个节点操作开关的服务端权威判定。 */
+    private final NodeOperationCapabilityService nodeOperationCapabilityService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private com.workflow.process.task.application.operation.NodeOperationDecisionService
-            nodeOperationDecisionService;
+    private NodeOperationDecisionService nodeOperationDecisionService;
 
     /**
      * 查询任务可执行的操作集合（含加签、转办、知会是否可用及加签类型）。
@@ -43,20 +46,35 @@ public class TaskOperationController {
     public Result<Map<String, Object>> operations(@PathVariable String taskId) {
         Map<String, Object> operations = new LinkedHashMap<>(taskAddSignService.operations(taskId));
         operations.put("manualCc", ccRuntimeService.isManualCcAllowed(taskId));
+        NodeOperationCapabilityService.OperationCapabilities capabilities =
+                nodeOperationCapabilityService.availableCapabilities(taskId);
+
+        // 固有运行状态与节点配置采用 AND，配置不能重新开放正在加签等场景下已关闭的动作。
+        boolean intrinsicTransfer = Boolean.TRUE.equals(operations.get("transfer"));
+        boolean intrinsicAddSign = Boolean.TRUE.equals(operations.get("addSign"));
+        List<String> allowedTypes = ((List<?>) operations.getOrDefault("addSignTypes", List.of()))
+                .stream()
+                .map(String::valueOf)
+                .filter(capabilities.allowedAddSignTypes()::contains)
+                .toList();
+        operations.put("transfer", intrinsicTransfer && capabilities.transfer());
+        operations.put("addSignTypes", allowedTypes);
+        operations.put("addSign", intrinsicAddSign
+                && capabilities.addSign()
+                && !allowedTypes.isEmpty());
+        operations.put("terminate", capabilities.terminate());
+
+        // 存量流程仍保留矩阵对其它旧动作的准确约束；新三开关会令旧矩阵自动失效。
         if (nodeOperationDecisionService != null) {
-            Map<String, com.workflow.process.task.application.operation.NodeOperationDecisionService.ActionDecision>
+            Map<String, NodeOperationDecisionService.ActionDecision>
                     decisions = nodeOperationDecisionService.availableActions(taskId);
-            operations.put("availableActions", decisions);
-            operations.put("approve", decisions.get("approve").allowed());
-            operations.put("reject", decisions.get("reject").allowed());
-            operations.put("transfer", decisions.get("transfer").allowed());
-            operations.put("manualCc", decisions.get("manualCc").allowed());
+            operations.put("approve", Boolean.TRUE.equals(operations.get("approve"))
+                    && decisions.get("approve").allowed());
+            operations.put("reject", Boolean.TRUE.equals(operations.get("reject"))
+                    && decisions.get("reject").allowed());
+            operations.put("manualCc", Boolean.TRUE.equals(operations.get("manualCc"))
+                    && decisions.get("manualCc").allowed());
             operations.put("withdraw", decisions.get("withdraw").allowed());
-            operations.put("terminate", decisions.get("terminate").allowed());
-            operations.put("addSign",
-                    decisions.get("addSignBefore").allowed()
-                            || decisions.get("addSignAfter").allowed()
-                            || decisions.get("addSignParallel").allowed());
         }
         return Result.success(operations);
     }
@@ -88,7 +106,6 @@ public class TaskOperationController {
     public Result<Map<String, Object>> addSign(
             @PathVariable String taskId,
             @Valid @RequestBody TaskAddSignRequest request) {
-        requireAddSignAllowed(taskId, request);
         return Result.success(taskAddSignService.addSign(taskId, request));
     }
 
@@ -132,36 +149,4 @@ public class TaskOperationController {
         return Result.success();
     }
 
-    /** 在创建加签任务前统一校验类型、权限、条件、理由和目标范围。 */
-    private void requireAddSignAllowed(String taskId, TaskAddSignRequest request) {
-        if (nodeOperationDecisionService == null) {
-            return;
-        }
-        String type = request.getType() == null
-                ? "PARALLEL"
-                : request.getType().trim().toUpperCase(java.util.Locale.ROOT);
-        com.workflow.process.task.application.operation.NodeOperationPolicy.Operation operation =
-                switch (type) {
-                    case "BEFORE" -> com.workflow.process.task.application.operation.NodeOperationPolicy.Operation
-                            .ADD_SIGN_BEFORE;
-                    case "AFTER" -> com.workflow.process.task.application.operation.NodeOperationPolicy.Operation
-                            .ADD_SIGN_AFTER;
-                    default -> com.workflow.process.task.application.operation.NodeOperationPolicy.Operation
-                            .ADD_SIGN_PARALLEL;
-                };
-        nodeOperationDecisionService.requireAllowed(
-                taskId,
-                operation,
-                com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
-                        .ofTarget(
-                                request.getComment(),
-                                request.getUserIds() == null
-                                        ? java.util.Set.of()
-                                        : new java.util.LinkedHashSet<>(request.getUserIds()),
-                                null,
-                                type,
-                                Map.of("completionPolicy",
-                                        request.getCompletionPolicy() == null
-                                                ? "" : request.getCompletionPolicy())));
-    }
 }

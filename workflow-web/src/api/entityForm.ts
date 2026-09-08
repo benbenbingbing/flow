@@ -30,11 +30,6 @@ export const getEntityFields = (entityId: string) => {
   return request.get(`/entity-form/entity/${entityId}/fields`)
 }
 
-// 保存表单字段
-export const saveFormFields = (id: string, fields: any[]) => {
-  return request.post(`/entity-form/${id}/fields`, fields)
-}
-
 // 获取表单字段
 export const getFormFields = (id: string) => {
   return request.get(`/entity-form/${id}/fields`)

@@ -129,19 +129,6 @@ public class EntityFormController {
     }
     
     /**
-     * 保存表单字段
-     */
-    @PostMapping("/{id}/fields")
-    public Result<Void> saveFormFields(
-            @PathVariable String id,
-            @RequestParam Integer expectedRevision,
-            @RequestBody List<EntityFormField> fields) {
-        accessService.requireFormAccess(id);
-        formService.saveFormFields(id, fields, expectedRevision);
-        return Result.success();
-    }
-    
-    /**
      * 获取表单字段
      */
     @GetMapping("/{id}/fields")

@@ -8,6 +8,7 @@ import com.workflow.core.result.Result;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
 import com.workflow.process.task.api.request.ReceiveTaskTriggerRequest;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.instance.application.ProcessDetailRuntimeService;
@@ -52,6 +53,7 @@ public class ProcessInstanceService {
     private final ProcessInstanceAccessService processInstanceAccessService;
     private final ProcessDetailRuntimeService processDetailRuntimeService;
     private final ProcessTerminationService processTerminationService;
+    private final NodeOperationCapabilityService nodeOperationCapabilityService;
     
     
     /**
@@ -362,6 +364,7 @@ public class ProcessInstanceService {
         List<MyStartedProcessVO> list = new ArrayList<>();
         for (HistoricProcessInstance historicInstance : historicInstances) {
             MyStartedProcessVO vo = new MyStartedProcessVO();
+            vo.setCanTerminate(false);
             vo.setProcessInstanceId(historicInstance.getId());
             vo.setProcessDefinitionId(historicInstance.getProcessDefinitionId());
             vo.setBusinessKey(historicInstance.getBusinessKey());
@@ -490,8 +493,17 @@ public class ProcessInstanceService {
         long total = list.size();
         int firstResult = Math.min((safePageNum - 1) * safePageSize, list.size());
         int toIndex = Math.min(firstResult + safePageSize, list.size());
+        List<MyStartedProcessVO> pageRecords = new ArrayList<>(
+                list.subList(firstResult, toIndex));
+        // 终止能力涉及活动任务和部署模型查询，仅计算当前页，避免列表总量放大查询次数。
+        for (MyStartedProcessVO item : pageRecords) {
+            if ("RUNNING".equals(item.getStatus())) {
+                item.setCanTerminate(nodeOperationCapabilityService.canTerminateProcess(
+                        item.getProcessInstanceId(), userId));
+            }
+        }
         return new PageResult<>(
-                new ArrayList<>(list.subList(firstResult, toIndex)),
+                pageRecords,
                 total,
                 safePageNum,
                 safePageSize);

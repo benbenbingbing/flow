@@ -5,16 +5,10 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityChangeTargetBindingMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigReleaseMapper;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionScenarioMapper;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionStepMapper;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityChangeTargetBinding;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfig;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfigRelease;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionScenario;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionStep;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,12 +38,6 @@ class EntityVersionConfigurationServiceV2Test {
     @Mock
     private EntityVersionConfigMapper configMapper;
     @Mock
-    private EntityVersionScenarioMapper scenarioMapper;
-    @Mock
-    private EntityVersionStepMapper stepMapper;
-    @Mock
-    private EntityChangeTargetBindingMapper targetBindingMapper;
-    @Mock
     private EntityVersionConfigReleaseMapper releaseMapper;
     @Mock
     private EntityDefinitionMapper definitionMapper;
@@ -68,9 +56,6 @@ class EntityVersionConfigurationServiceV2Test {
         objectMapper.findAndRegisterModules();
         service = new EntityVersionConfigurationService(
                 configMapper,
-                scenarioMapper,
-                stepMapper,
-                targetBindingMapper,
                 releaseMapper,
                 definitionMapper,
                 objectMapper,
@@ -100,7 +85,7 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
-    void v2SaveDoesNotDeleteOrRewriteLegacyMutationTables() {
+    void v2SavePersistsTriggersWithoutMutationRules() throws Exception {
         when(configMapper.updateDraftIfRevision(
                 eq("config-1"), eq(7), any(), eq(2),
                 anyString(), anyString(), any()))
@@ -108,13 +93,14 @@ class EntityVersionConfigurationServiceV2Test {
 
         service.saveDraft("asset", v2Draft(), 7);
 
-        verify(scenarioMapper, never()).deleteByConfigId(anyString());
-        verify(stepMapper, never()).deleteByConfigId(anyString());
-        verify(targetBindingMapper, never()).deleteByConfigId(anyString());
-        verify(scenarioMapper, never()).insert(any(EntityVersionScenario.class));
-        verify(stepMapper, never()).insert(any(EntityVersionStep.class));
-        verify(targetBindingMapper, never()).insert(
-                any(EntityChangeTargetBinding.class));
+        ArgumentCaptor<String> document = ArgumentCaptor.forClass(String.class);
+        verify(configMapper).updateDraftIfRevision(eq("config-1"), eq(7), any(), eq(2),
+                document.capture(), anyString(), any());
+        EntityVersionConfiguration saved = objectMapper.readValue(document.getValue(), EntityVersionConfiguration.class);
+        assertEquals("ROOT_CHANGE", saved.getTriggers().get(0).getTriggerCode());
+        assertTrue(saved.getScenarios().isEmpty());
+        assertTrue(saved.getSteps().isEmpty());
+        assertTrue(saved.getTargetBindings().isEmpty());
     }
 
     @Test
@@ -137,7 +123,7 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
-    void v2PublishUsesAtomicRevisionAndCopiesLegacyBehaviorServerSide()
+    void v2PublishUsesAtomicRevisionAndKeepsMutationPolicySeparate()
             throws Exception {
         config.setActiveReleaseId("release-old");
         EntityVersionConfiguration legacy = new EntityVersionConfiguration();
@@ -184,12 +170,44 @@ class EntityVersionConfigurationServiceV2Test {
         assertEquals(2, released.getSchemaVersion());
         assertEquals("ROOT_CHANGE", released.getTriggers().get(0)
                 .getTriggerCode());
-        assertEquals("LEGACY_CHANGE", released.getScenarios().get(0)
-                .getScenarioCode());
+        assertTrue(released.getScenarios().isEmpty());
+        assertTrue(released.getSteps().isEmpty());
+        assertTrue(released.getTargetBindings().isEmpty());
         assertEquals(8, config.getRevision());
         verify(configMapper).activateReleaseIfRevision(
                 eq("config-1"), eq(7), eq(captor.getValue().getId()),
                 eq(2), eq("MIGRATED"), any());
+    }
+
+    @Test
+    void firstPublishUsesOnlyTheSavedV2Draft() throws Exception {
+        when(scopeFreezer.freeze(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(configMapper.activateReleaseIfRevision(eq("config-1"), eq(7), anyString(), eq(2), eq("MIGRATED"), any()))
+                .thenReturn(1);
+        service.publish("asset", 7);
+        ArgumentCaptor<EntityVersionConfigRelease> inserted = ArgumentCaptor.forClass(EntityVersionConfigRelease.class);
+        verify(releaseMapper).insert(inserted.capture());
+        assertEquals(1, inserted.getValue().getVersion());
+        EntityVersionConfiguration released = objectMapper.readValue(inserted.getValue().getConfigDocument(), EntityVersionConfiguration.class);
+        assertEquals("ROOT_CHANGE", released.getTriggers().get(0).getTriggerCode());
+        assertTrue(released.getSteps().isEmpty());
+        assertTrue(released.getTargetBindings().isEmpty());
+    }
+
+    @Test
+    void listCountsTriggersFromTheDraftDocument() {
+        EntityDefinition definition = new EntityDefinition();
+        definition.setId("entity-1");
+        definition.setEntityCode("asset");
+        definition.setEntityName("资产");
+        when(definitionMapper.findAllWithFields()).thenReturn(List.of(definition));
+        assertEquals(1, service.list(null).get(0).triggerCount());
+    }
+
+    @Test
+    void refusesIncompleteMigrationInsteadOfSilentlyLosingOldRules() {
+        config.setDraftDocument(null);
+        assertThrows(IllegalStateException.class, () -> service.getDraft("asset"));
     }
 
     @Test

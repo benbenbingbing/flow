@@ -49,8 +49,8 @@
 |---|---|---|
 | `flow_auth` | auth-service | `sys_user` `sys_role` `sys_role_menu` `sys_menu` `sys_organization` `sys_group` `sys_user_group` `sys_user_role` `sys_dict` `sys_dict_item` |
 | `flow_file` | file-service | `entity_field_file_item`（文件元数据） |
-| `flow_design` | design-service | `entity_definition` `entity_field` `entity_form` `entity_form_field` `form_config` `form_field_config` `entity_list_config` `entity_list_field` `entity_status` `entity_status_history` `entity_code_rule` `entity_flow_status_mapping` `entity_publish_history` `entity_relation`（设计态定义） `process_definition_config` `process_draft` `node_config` `process_node_form` `process_node_approval` `process_action` `assignee_config` `process_version_history` `entity_list_permission` `entity_list_permission_delegate` `view_*` `workbench_*` |
-| `flow_runtime` | runtime-service | `entity_data` `entity_data_<code>`（动态表，运行时建） `process_task` `process_task_instance` `process_cc_record` `process_operation_log` `process_common_opinion` + Flowable `ACT_*` 引擎表 |
+| `flow_design` | design-service | `entity_definition` `entity_field` `entity_form` `form_config` `form_field_config` `entity_list_config` `entity_list_field` `entity_status` `entity_code_rule` `entity_flow_status_mapping` `entity_publish_history` `entity_relation`（设计态定义） `process_definition_config` `node_config` `process_node_form` `process_node_approval` `process_action` `assignee_config` `process_version_history` `entity_list_permission` `entity_list_permission_delegate` `view_*` |
+| `flow_runtime` | runtime-service | `entity_data` `entity_data_<code>`（动态表，运行时建） `process_task` `process_cc_record` `process_operation_log` + Flowable `ACT_*` 引擎表 |
 | — | 待定/未使用 | `report_*` `service_*`（无 Java 代码，遗留表，暂不分配） |
 
 **跨库引用处理**：

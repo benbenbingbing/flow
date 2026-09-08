@@ -29,7 +29,7 @@ public class FlowableEventListenerConfig {
     private final ProcessEndListener processEndListener;
     /** 多实例集合监听器：为会签/多实例任务自动准备集合变量 */
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
-    /** 自动跳过服务：到达配置为跳过的用户任务节点时自动完成 */
+    /** 原生跳过开关监听器：为启动前未注入开关的存量实例补齐可信上下文 */
     private final WorkflowAutoSkipService workflowAutoSkipService;
     /** 统一流程动作事件监听器：流程/节点/任务/连线事件的统一分发入口 */
     private final FlowActionEngineEventListener flowActionEngineEventListener;
@@ -49,7 +49,7 @@ public class FlowableEventListenerConfig {
      * 注册 Flowable 运行时事件监听器。
      *
      * <p>统一向 {@link RuntimeService} 注册各业务监听器，监听器内部按事件类型自行过滤，
-     * 确保流程运行过程中的状态同步、自动跳过、动作分发、知会等扩展逻辑均能被触发。
+     * 确保流程运行过程中的状态同步、原生跳过、动作分发、知会等扩展逻辑均能被触发。
      */
     @PostConstruct
     public void init() {
@@ -62,8 +62,8 @@ public class FlowableEventListenerConfig {
         // 注册多实例集合变量自动准备监听器
         runtimeService.addEventListener(multiInstanceCollectionListener);
 
-        // 注册自动跳过节点监听器：流程运行中途到达配置为跳过的用户任务节点时实时自动完成，
-        // 弥补原先仅在流程启动时一次性跳过的不足（解决中途到达的跳过节点不生效问题）。
+        // ACTIVITY_STARTED 发生在 UserTask behavior 之前；监听器只补齐引擎开关，
+        // 是否跳过以及如何记录历史仍完全由 Flowable 原生 skipExpression 决定。
         runtimeService.addEventListener(workflowAutoSkipService);
 
         // 统一流程动作事件监听器：流程、节点、任务、连线均从这里分发。

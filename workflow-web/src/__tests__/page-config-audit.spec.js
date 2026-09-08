@@ -2041,10 +2041,22 @@ assert.equal(
   false,
   '调用活动不应继续展示写死的演示子流程'
 )
-assert.match(
-  nodeConfigPanel,
-  /if \(isUserTask\.value \|\| isStartEvent\.value\) \{[\s\S]{0,800}entityFormId/,
-  '默认实体表单只应绑定到开始事件或用户任务'
+assert.ok(
+  nodeConfigPanel.includes('if (initializationIsUserTask)')
+    && nodeConfigPanel.includes('resolveNodeFormSelection')
+    && nodeConfigPanel.includes("updateExtensionProperty('entityFormBindingMode', plan.mode)"),
+  '用户任务节点表单应使用统一实体表单绑定并记录默认/指定模式'
+)
+assert.equal(
+  nodeConfigPanel.includes("isStartEvent.value) sections.push('form')"),
+  false,
+  '开始事件不应继续展示或保存办理表单配置'
+)
+assert.ok(nodeConfigPanel.includes('label="节点表单"'), '用户任务应使用统一节点表单选择器')
+assert.equal(
+  nodeConfigPanel.includes('formConfig.formSource'),
+  false,
+  '节点表单不应继续暴露实体/自定义/无表单来源分支'
 )
 assert.equal(
   nodeConfigPanel.includes('multiple\n                collapse-tags'),

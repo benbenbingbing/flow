@@ -69,6 +69,9 @@ public class TaskActionService {
     private final NextApproverOverrideService nextApproverOverrideService;
     /** 多实例通过人数、否决标记与汇聚判断的唯一入口。 */
     private final MultiInstanceOutcomeService multiInstanceOutcomeService;
+    /** 转办必须在产生任何任务副作用前通过节点开关校验。 */
+    private final com.workflow.process.task.application.operation.NodeOperationCapabilityService
+            nodeOperationCapabilityService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.workflow.process.task.application.operation.NodeOperationDecisionService
@@ -371,18 +374,13 @@ public class TaskActionService {
         }
     }
 
-    /**
-     * 将现有完成任务动作映射到标准操作矩阵，并在产生任何流程副作用前完成授权。
-     */
+    /** 将完成任务动作映射到新三开关或存量矩阵，并在副作用前完成授权。 */
     private void requireConfiguredNodeOperation(
             String taskId,
             String action,
             String comment,
             String transferTo,
             Map<String, Object> formData) {
-        if (nodeOperationDecisionService == null) {
-            return;
-        }
         String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
         com.workflow.process.task.application.operation.NodeOperationPolicy.Operation operation =
                 switch (normalized) {
@@ -399,11 +397,17 @@ public class TaskActionService {
         Map<String, Object> requestVariables = formData == null ? Map.of() : formData;
         String targetNodeId = firstText(
                 requestVariables, "targetNodeId", "targetActivityId", "rejectTarget");
-        nodeOperationDecisionService.requireAllowed(
-                taskId,
-                operation,
+        com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext context =
                 com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
-                        .ofTarget(comment, targets, targetNodeId, null, requestVariables));
+                        .ofTarget(comment, targets, targetNodeId, null, requestVariables);
+        if (operation == com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.TRANSFER) {
+            nodeOperationCapabilityService.requireAllowed(taskId, operation, context);
+            return;
+        }
+        // 新三开关不再约束同意和驳回；仅无新字段的存量矩阵继续保持原行为。
+        if (nodeOperationDecisionService != null) {
+            nodeOperationDecisionService.requireAllowed(taskId, operation, context);
+        }
     }
 
     private String firstText(Map<String, Object> values, String... keys) {

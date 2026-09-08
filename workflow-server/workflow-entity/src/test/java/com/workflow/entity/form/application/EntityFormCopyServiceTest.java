@@ -8,7 +8,6 @@ import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
-import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -98,8 +97,6 @@ class EntityFormCopyServiceTest {
 
     private Fixture fixture() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
-        EntityFormFieldMapper fieldMapper =
-                mock(EntityFormFieldMapper.class);
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
         EntityFormConfigurationValidator validator =
                 mock(EntityFormConfigurationValidator.class);
@@ -114,7 +111,6 @@ class EntityFormCopyServiceTest {
         source.setStatus(1);
 
         when(formMapper.selectById("form-1")).thenReturn(source);
-        when(fieldMapper.selectByFormId(any())).thenReturn(List.of());
         when(nodeMapper.findByFormId(any())).thenReturn(List.of());
         doAnswer(invocation -> {
             EntityForm inserted = invocation.getArgument(0);
@@ -124,7 +120,6 @@ class EntityFormCopyServiceTest {
 
         EntityFormService service = new EntityFormService(
                 formMapper,
-                fieldMapper,
                 nodeMapper,
                 mock(EntityDefinitionMapper.class),
                 mock(EntityFieldMapper.class),

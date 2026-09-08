@@ -13,7 +13,6 @@ import {
 import {
   getBuiltInFormFieldSupportedTypes,
   getDefaultFormFieldComponentType,
-  isReservedFormFieldComponentName,
   isBuiltInFormFieldComponentCompatible,
   normalizeFormNodeFieldType
 } from '../form-field-component-policy.js'
@@ -1045,14 +1044,6 @@ assert.deepEqual(
   getBuiltInFormFieldSupportedTypes('rich_text'),
   ['TEXT', 'RICH_TEXT']
 )
-;['input', 'rich_text', 'select', 'string', 'boolean'].forEach(name => {
-  assert.equal(
-    isReservedFormFieldComponentName(name),
-    true,
-    `平台内建字段组件名称必须保留: ${name}`
-  )
-})
-assert.equal(isReservedFormFieldComponentName('project_rating'), false)
 assert.equal(
   normalizeFormNodeFieldType('RICH_TEXT', 'rich_text'),
   'TEXT',

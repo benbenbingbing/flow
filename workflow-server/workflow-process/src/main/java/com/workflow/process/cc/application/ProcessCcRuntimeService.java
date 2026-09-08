@@ -261,8 +261,15 @@ public class ProcessCcRuntimeService {
         for (String value : values) {
             List<SysGroup> groups = groupMapper.selectList(new LambdaQueryWrapper<SysGroup>()
                     .and(wrapper -> wrapper.eq(SysGroup::getId, value).or().eq(SysGroup::getGroupCode, value))
+                    .eq(SysGroup::getStatus, SysGroup.Status.ENABLED.getValue())
                     .eq(SysGroup::getDeleted, 0));
             for (SysGroup group : groups) {
+                // 运行时再做一次状态校验，避免异常数据或替代 Mapper 绕过查询条件。
+                if (group == null
+                        || !SysGroup.Status.ENABLED.getValue().equals(group.getStatus())
+                        || Integer.valueOf(1).equals(group.getDeleted())) {
+                    continue;
+                }
                 resolveDirectUsers(userGroupMapper.selectUserIdsByGroupId(group.getId()))
                         .forEach(user -> users.putIfAbsent(user.getUsername(), user));
             }

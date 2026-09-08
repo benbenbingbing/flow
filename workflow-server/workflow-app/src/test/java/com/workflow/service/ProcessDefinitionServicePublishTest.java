@@ -16,9 +16,14 @@ import com.workflow.process.definition.application.ProcessPublishHistoryService;
 import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import org.flowable.engine.repository.Deployment;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -63,7 +68,17 @@ class ProcessDefinitionServicePublishTest {
                 preflightService,
                 entityCodeCatalogPort);
 
-        String designXml = "<bpmn:scriptTask id=\"script\" />";
+        String designXml = """
+                <bpmn:definitions
+                    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn:process id="draft_process">
+                    <bpmn:scriptTask id="script" name="脚本"
+                        flowable:async="true"
+                        flowable:exclusive="false" />
+                  </bpmn:process>
+                </bpmn:definitions>
+                """;
         String sanitizedXml = "<bpmn:serviceTask id=\"script\" />";
         String deployedXml = sanitizedXml + "<!-- actions -->";
         ProcessDefinitionConfig config = new ProcessDefinitionConfig();
@@ -77,7 +92,7 @@ class ProcessDefinitionServicePublishTest {
                 .thenReturn(config);
         when(historyService.nextVersion("process-1")).thenReturn(2);
         when(sanitizer.sanitize(
-                designXml, "expense_flow", "process-1"))
+                anyString(), eq("expense_flow"), eq("process-1")))
                 .thenReturn(sanitizedXml);
         when(actionDesignPort.prepareBpmnForPublish(
                 "process-1",
@@ -95,22 +110,32 @@ class ProcessDefinitionServicePublishTest {
         ProcessVersionHistory history = new ProcessVersionHistory();
         history.setId("version-2");
         when(historyService.recordPublish(
-                config,
-                designXml,
-                "deployment-2",
-                2,
-                "脚本节点版本",
-                nodeForms)).thenReturn(history);
+                eq(config),
+                anyString(),
+                eq("deployment-2"),
+                eq(2),
+                eq("脚本节点版本"),
+                eq(nodeForms))).thenReturn(history);
 
         service.publish("process-1", "脚本节点版本");
 
         verify(processMapper).selectByIdForUpdate("process-1");
+        ArgumentCaptor<String> designXmlCaptor =
+                ArgumentCaptor.forClass(String.class);
         verify(sanitizer).sanitize(
-                designXml, "expense_flow", "process-1");
+                designXmlCaptor.capture(),
+                eq("expense_flow"),
+                eq("process-1"));
+        String normalizedDesignXml = designXmlCaptor.getValue();
+        assertTrue(normalizedDesignXml.contains(
+                "<bpmn:scriptTask id=\"script\" name=\"脚本\""));
+        assertFalse(normalizedDesignXml.contains("flowable:async="));
+        assertFalse(normalizedDesignXml.contains("flowable:exclusive="));
+        assertEquals(normalizedDesignXml, config.getBpmnXml());
         verify(deploymentService).deploy(config, deployedXml, 2);
         verify(historyService).recordPublish(
                 config,
-                designXml,
+                normalizedDesignXml,
                 "deployment-2",
                 2,
                 "脚本节点版本",

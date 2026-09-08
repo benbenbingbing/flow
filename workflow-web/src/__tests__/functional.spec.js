@@ -585,17 +585,33 @@ const nodeOperationPolicy = {
     }
   }
 }
-assert.deepEqual(
-  buildAssigneeConfig({ assigneeType: 'user', nodeOperationPolicy }).nodeOperationPolicy,
+const migratedNodeOperationConfig = buildAssigneeConfig({
+  assigneeType: 'user',
   nodeOperationPolicy
-)
+})
 assert.deepEqual(
-  buildAssigneeConfig({
+  {
+    allowTransfer: migratedNodeOperationConfig.allowTransfer,
+    allowAddSign: migratedNodeOperationConfig.allowAddSign,
+    allowTerminate: migratedNodeOperationConfig.allowTerminate
+  },
+  { allowTransfer: false, allowAddSign: false, allowTerminate: false },
+  '旧矩阵未无条件开放的操作必须在简化配置中保持关闭'
+)
+assert.equal(
+  Object.hasOwn(migratedNodeOperationConfig, 'nodeOperationPolicy'),
+  false,
+  '新保存的办理人配置不得继续包含旧节点操作矩阵'
+)
+const migratedLegacyNodeOperationConfig = buildAssigneeConfig({
     legacyAssigneeConfig: { assignmentConfigVersion: 1, assigneeType: 'user' },
     assignmentConfigDirty: false,
     nodeOperationPolicy
-  }).nodeOperationPolicy,
-  nodeOperationPolicy
+  })
+assert.equal(
+  Object.hasOwn(migratedLegacyNodeOperationConfig, 'nodeOperationPolicy'),
+  false,
+  '旧配置直通保存也必须移除节点操作矩阵'
 )
 
 assert.ok(ENTITY_FIELD_TYPES.length >= 20)
@@ -1069,6 +1085,15 @@ for (const action of [
 ]) {
   assert.ok(homeSource.includes(action), `首页待办更多菜单缺少操作：${action}`)
 }
+assert.ok(
+  homeSource.includes('row.taskOperations?.transfer === true')
+    && homeSource.includes('row.taskOperations?.addSign === true'),
+  '首页只能在服务端明确允许时展示转办和发起加签'
+)
+assert.ok(
+  homeSource.includes("row.status === 'RUNNING' && row.canTerminate === true"),
+  '我发起的流程只能在运行中且服务端明确允许时展示终止按钮'
+)
 for (const formName of ['transferForm', 'addSignForm', 'ccForm']) {
   assert.ok(
     new RegExp(`:title="${formName}\\.processName"[\\s\\S]*?${formName}\\.processName \\|\\| '-'`).test(homeSource)

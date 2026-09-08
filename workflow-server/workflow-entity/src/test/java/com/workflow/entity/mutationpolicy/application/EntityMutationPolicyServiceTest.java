@@ -9,7 +9,6 @@ import com.workflow.entity.mutationpolicy.infrastructure.persistence.mapper.Enti
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.mapper.EntityMutationPolicyReleaseMapper;
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.record.EntityMutationPolicyConfig;
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.record.EntityMutationPolicyRelease;
-import com.workflow.entity.version.application.EntityVersionConfigurationService;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,8 +36,6 @@ class EntityMutationPolicyServiceTest {
     @Mock
     private EntityDefinitionMapper definitionMapper;
     @Mock
-    private EntityVersionConfigurationService legacyService;
-    @Mock
     private EntityMutationPolicyValidator validator;
 
     private ObjectMapper objectMapper;
@@ -51,59 +48,32 @@ class EntityMutationPolicyServiceTest {
                 configMapper,
                 releaseMapper,
                 definitionMapper,
-                legacyService,
                 validator,
                 objectMapper);
     }
 
     @Test
-    void legacyStepsBecomeReviewOnlyDraftWithoutCuttingOverRuntime() {
-        EntityDefinition definition = definition("asset");
-        EntityVersionConfiguration legacy = legacyWithStep();
+    void newEntityStartsWithAnEmptyNativeDraft() {
         when(definitionMapper.findByEntityCode("asset"))
-                .thenReturn(Optional.of(definition));
-        when(configMapper.findByEntityCode("asset"))
-                .thenReturn(null);
-        when(legacyService.getPublished("asset"))
-                .thenReturn(Optional.empty());
-        when(legacyService.getDraft("asset"))
-                .thenReturn(legacy);
-
+                .thenReturn(Optional.of(definition("asset")));
         EntityMutationPolicyDocument draft = service.getDraft("asset");
-
-        assertEquals("REVIEW_REQUIRED", draft.getMigrationState());
-        assertEquals("LEGACY", draft.getStatus());
-        assertEquals(1, draft.getSteps().size());
-        verify(configMapper, never()).insert(
-                org.mockito.ArgumentMatchers.any(
-                        EntityMutationPolicyConfig.class));
+        assertEquals("NATIVE", draft.getMigrationState());
+        assertEquals("UNCONFIGURED", draft.getStatus());
+        assertTrue(draft.getSteps().isEmpty());
+        assertTrue(draft.getTargetBindings().isEmpty());
+        verify(configMapper, never()).insert(org.mockito.ArgumentMatchers.any(EntityMutationPolicyConfig.class));
     }
 
     @Test
-    void activeLegacyReleaseRemainsVisibleAfterVersionDraftMigratesToV2() {
-        EntityDefinition definition = definition("asset");
-        EntityVersionConfiguration published = legacyWithStep();
-        EntityVersionConfiguration v2Draft = new EntityVersionConfiguration();
-        v2Draft.setSchemaVersion(2);
-        v2Draft.setScenarios(List.of());
-        v2Draft.setSteps(List.of());
-        v2Draft.setTargetBindings(List.of());
-        when(definitionMapper.findByEntityCode("asset"))
-                .thenReturn(Optional.of(definition));
-        when(configMapper.findByEntityCode("asset"))
-                .thenReturn(null);
-        when(legacyService.getPublished("asset"))
-                .thenReturn(Optional.of(published));
-
-        EntityMutationPolicyDocument draft = service.getDraft("asset");
-
-        assertEquals("REVIEW_REQUIRED", draft.getMigrationState());
-        assertEquals(1, draft.getSteps().size());
-        verify(legacyService, never()).getDraft("asset");
+    void unpublishedDraftDoesNotBecomeRuntimePolicy() {
+        EntityMutationPolicyConfig config = new EntityMutationPolicyConfig();
+        config.setDraftDocument("{\"enabled\":true,\"steps\":[{}]}");
+        when(configMapper.findByEntityCode("asset")).thenReturn(config);
+        assertTrue(service.getPublished("asset").isEmpty());
     }
 
     @Test
-    void nativePublishedReleaseWinsOverLegacyVersionConfiguration()
+    void readsOnlyTheActivatedMutationRelease()
             throws Exception {
         EntityMutationPolicyConfig config = new EntityMutationPolicyConfig();
         config.setId("config-1");
@@ -130,7 +100,6 @@ class EntityMutationPolicyServiceTest {
                 .getActiveReleaseVersion());
         assertEquals("MIGRATED", published.orElseThrow()
                 .getMigrationState());
-        verify(legacyService, never()).getPublished("asset");
     }
 
     @Test
@@ -177,24 +146,4 @@ class EntityMutationPolicyServiceTest {
         return value;
     }
 
-    private EntityVersionConfiguration legacyWithStep() {
-        EntityVersionConfiguration value =
-                new EntityVersionConfiguration();
-        value.setEnabled(true);
-        value.setStatus("PUBLISHED");
-        EntityVersionConfiguration.Scenario rule =
-                new EntityVersionConfiguration.Scenario();
-        rule.setScenarioCode("UPDATE_ASSET");
-        rule.setScenarioName("更新资产");
-        EntityVersionConfiguration.Step step =
-                new EntityVersionConfiguration.Step();
-        step.setScenarioCode("UPDATE_ASSET");
-        step.setPhase("BEFORE_WRITE");
-        step.setStepType("BUILT_IN_RULE");
-        step.setStepName("校验资产");
-        step.setProviderCode("REQUIRED_FIELDS");
-        value.setScenarios(List.of(rule));
-        value.setSteps(List.of(step));
-        return value;
-    }
 }

@@ -10,6 +10,9 @@ import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.process.task.api.request.TaskAddSignRequest;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
+import com.workflow.process.task.application.operation.NodeOperationDecisionService;
+import com.workflow.process.task.application.operation.NodeOperationPolicy;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTaskAddSign;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTaskAddSignUser;
@@ -34,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -56,6 +60,8 @@ public class TaskAddSignService {
     private final ProcessOperationLogMapper operationLogMapper;
     private final SysUserMapper userMapper;
     private final ObjectMapper objectMapper;
+    /** 加签必须在写入记录或创建镜像任务前通过节点开关校验。 */
+    private final NodeOperationCapabilityService nodeOperationCapabilityService;
     /** 任务动作服务（用于加签完成后延迟提交原任务），延迟加载避免循环依赖 */
     @Lazy
     private final TaskActionService taskActionService;
@@ -129,6 +135,7 @@ public class TaskAddSignService {
         Task sourceTask = requireSourceTask(taskId);
         String operator = requireTaskOperator(sourceTask);
         String type = normalizeType(request.getType());
+        requireAddSignAllowed(taskId, request, type);
         if (!"ALL".equalsIgnoreCase(request.getCompletionPolicy())) {
             throw new IllegalArgumentException("当前加签完成策略仅支持全部完成");
         }
@@ -192,6 +199,32 @@ public class TaskAddSignService {
                 "generatedTaskIds", generatedTaskIds,
                 "users", resolution.users().stream().map(this::userView).toList(),
                 "summary", structureSummary(type));
+    }
+
+    /** 在任何加签持久化副作用前统一校验新开关及存量矩阵。 */
+    private void requireAddSignAllowed(
+            String taskId,
+            TaskAddSignRequest request,
+            String type) {
+        NodeOperationPolicy.Operation operation = switch (type) {
+            case "BEFORE" -> NodeOperationPolicy.Operation.ADD_SIGN_BEFORE;
+            case "AFTER" -> NodeOperationPolicy.Operation.ADD_SIGN_AFTER;
+            default -> NodeOperationPolicy.Operation.ADD_SIGN_PARALLEL;
+        };
+        nodeOperationCapabilityService.requireAllowed(
+                taskId,
+                operation,
+                NodeOperationDecisionService.CheckContext.ofTarget(
+                        request.getComment(),
+                        request.getUserIds() == null
+                                ? Set.of()
+                                : new java.util.LinkedHashSet<>(request.getUserIds()),
+                        null,
+                        type,
+                        Map.of("completionPolicy",
+                                request.getCompletionPolicy() == null
+                                        ? ""
+                                        : request.getCompletionPolicy())));
     }
 
     /**

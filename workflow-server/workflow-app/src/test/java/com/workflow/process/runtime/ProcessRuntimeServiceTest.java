@@ -12,7 +12,7 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 import com.workflow.process.task.application.ProcessTaskService;
-import com.workflow.process.task.application.WorkflowAutoSkipService;
+import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.contracts.entity.mutation.port.EntityChangeTargetPort;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RepositoryService;
@@ -20,6 +20,8 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.repository.ProcessDefinitionQuery;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.bpmn.model.BpmnModel;
+import org.flowable.bpmn.model.UserTask;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,7 +55,10 @@ class ProcessRuntimeServiceTest {
                                 "管理员",
                                 "PENDING",
                                 Map.of("amount", 100),
-                                Map.of());
+                                Map.of(
+                                        "_FLOWABLE_SKIP_EXPRESSION_ENABLED", false,
+                                        "_ACTIVITI_SKIP_EXPRESSION_ENABLED", false,
+                                        "skipNodeEnabled", false));
 
                 ProcessStartResult result = fixture.service().start(request);
 
@@ -66,15 +72,57 @@ class ProcessRuntimeServiceTest {
                 assertEquals("expense", variableCaptor.getValue().get("entityCode"));
                 assertEquals("admin", variableCaptor.getValue().get("initiator"));
                 assertEquals(100, variableCaptor.getValue().get("amount"));
+                assertEquals(true, variableCaptor.getValue().get(
+                                WorkflowReservedVariables
+                                                .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE));
+                assertEquals(true, variableCaptor.getValue().get(
+                                WorkflowReservedVariables
+                                                .LEGACY_SKIP_NODE_ENABLED_VARIABLE));
+                assertFalse(variableCaptor.getValue().containsKey(
+                                WorkflowReservedVariables
+                                                .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE));
                 verify(fixture.identityService).setAuthenticatedUserId("admin");
                 verify(fixture.multiInstanceCollectionListener)
                                 .prepareVariables(eq("definition-v3"), anyMap());
-                verify(fixture.workflowAutoSkipService)
-                                .autoSkipNodes("pi-1", "definition-v3");
                 verify(fixture.processTaskService).syncTasksFromFlowable("pi-1");
                 assertEquals("pi-1", result.processInstanceId());
                 assertEquals("PENDING", result.entityStatus());
                 assertEquals("task-1", result.currentTaskId());
+        }
+
+        @Test
+        void unsafeHistoricalSkipExpressionDoesNotReceiveEnableSwitch() {
+                Fixture fixture = new Fixture();
+                UserTask unsafeTask = new UserTask();
+                unsafeTask.setId("unsafe-review");
+                unsafeTask.setSkipExpression(
+                                "${dangerousService.execute()}");
+                org.flowable.bpmn.model.Process process =
+                                new org.flowable.bpmn.model.Process();
+                process.addFlowElement(unsafeTask);
+                BpmnModel model = new BpmnModel();
+                model.addProcess(process);
+                when(fixture.repositoryService.getBpmnModel(
+                                "definition-v3")).thenReturn(model);
+                ProcessStartRequest request = new ProcessStartRequest(
+                                "process-config-1", "expense", "data-1",
+                                "EXP-1", "admin", "管理员", "PENDING",
+                                Map.of(), Map.of());
+
+                fixture.service().start(request);
+
+                @SuppressWarnings("unchecked")
+                ArgumentCaptor<Map<String, Object>> variables =
+                                ArgumentCaptor.forClass(Map.class);
+                verify(fixture.runtimeService).startProcessInstanceById(
+                                eq("definition-v3"), eq("data-1"),
+                                variables.capture());
+                assertFalse(variables.getValue().containsKey(
+                                WorkflowReservedVariables
+                                                .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE));
+                assertFalse(variables.getValue().containsKey(
+                                WorkflowReservedVariables
+                                                .LEGACY_SKIP_NODE_ENABLED_VARIABLE));
         }
 
         private static class Fixture {
@@ -86,7 +134,6 @@ class ProcessRuntimeServiceTest {
                 final org.flowable.engine.TaskService taskService = mock(org.flowable.engine.TaskService.class);
                 final EntityProcessLinkMapper entityProcessLinkMapper = mock(EntityProcessLinkMapper.class);
                 final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
-                final WorkflowAutoSkipService workflowAutoSkipService = mock(WorkflowAutoSkipService.class);
                 final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(
                                 MultiInstanceCollectionListener.class);
                 @SuppressWarnings("unchecked")
@@ -108,6 +155,11 @@ class ProcessRuntimeServiceTest {
                                         .thenReturn(definitionQuery);
                         when(definitionQuery.singleResult()).thenReturn(deployed);
                         when(deployed.getId()).thenReturn("definition-v3");
+                        BpmnModel safeModel = new BpmnModel();
+                        safeModel.addProcess(
+                                        new org.flowable.bpmn.model.Process());
+                        when(repositoryService.getBpmnModel("definition-v3"))
+                                        .thenReturn(safeModel);
 
                         ProcessInstance processInstance = mock(ProcessInstance.class);
                         when(processInstance.getId()).thenReturn("pi-1");
@@ -145,7 +197,6 @@ class ProcessRuntimeServiceTest {
                                         identityService,
                                         taskService,
                                         processTaskService,
-                                        workflowAutoSkipService,
                                         multiInstanceCollectionListener,
                                         entityProcessLinkMapper,
                                         changeTargetPortProvider);

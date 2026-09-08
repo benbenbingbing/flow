@@ -31,6 +31,8 @@ public class IntegrationVariableSchemaService {
             "entityDataId",
             "dataNo",
             "skipNodeEnabled",
+            "_FLOWABLE_SKIP_EXPRESSION_ENABLED",
+            "_ACTIVITI_SKIP_EXPRESSION_ENABLED",
             "integrationApplicationId",
             "integrationTraceId",
             "integrationBusinessSystem",

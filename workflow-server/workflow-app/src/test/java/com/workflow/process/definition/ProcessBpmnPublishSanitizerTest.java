@@ -8,6 +8,7 @@ import org.flowable.bpmn.model.BoundaryEvent;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.CallActivity;
 import org.flowable.bpmn.model.ServiceTask;
+import org.flowable.bpmn.model.UserTask;
 import org.flowable.validation.ProcessValidatorFactory;
 import org.junit.jupiter.api.Test;
 
@@ -27,6 +28,206 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 以及对不完整配置节点的拒绝逻辑。</p>
  */
 class ProcessBpmnPublishSanitizerTest {
+
+    /** 发布净化必须为未重新保存的历史草稿兜底，禁止异步属性进入部署 XML。 */
+    @Test
+    void sanitizeForcesHistoricalAsyncDraftToSynchronousExecution() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = wrap("""
+                <bpmn:userTask id="review" name="审批"
+                    flowable:async="true"
+                    flowable:asyncBefore="true"
+                    flowable:asyncAfter="true"
+                    flowable:asyncLeave="true"
+                    flowable:exclusive="false"
+                    flowable:asyncLeaveExclusive="false"
+                    flowable:assignee="admin" />
+                """);
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+        UserTask task = (UserTask) parse(result)
+                .getMainProcess()
+                .getFlowElement("review");
+
+        assertFalse(task.isAsynchronous());
+        assertFalse(task.isAsynchronousLeave());
+        assertTrue(task.isExclusive());
+        assertTrue(task.isAsynchronousLeaveExclusive());
+        assertEquals("admin", task.getAssignee());
+        assertFalse(result.contains("flowable:async="));
+        assertFalse(result.contains("flowable:asyncBefore="));
+        assertFalse(result.contains("flowable:asyncAfter="));
+        assertFalse(result.contains("flowable:asyncLeave="));
+        assertFalse(result.contains("flowable:exclusive="));
+        assertFalse(result.contains("flowable:asyncLeaveExclusive="));
+    }
+
+    @Test
+    void legacyAlwaysSkipOverridesResidualConditionWithNativeTrueExpression() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = wrap("""
+                <bpmn:userTask id="always-review"
+                    flowable:skipExpression="${amount &gt; 100}">
+                  <bpmn:extensionElements>
+                    <flowable:properties>
+                      <flowable:property name="skipNode" value="true" />
+                    </flowable:properties>
+                  </bpmn:extensionElements>
+                </bpmn:userTask>
+                """);
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+        UserTask task = (UserTask) parse(result)
+                .getMainProcess()
+                .getFlowElement("always-review");
+
+        assertEquals("${true}", task.getSkipExpression());
+        assertFalse(result.contains("${skipNodeEnabled}"));
+        assertFalse(result.contains("${amount &gt; 100}"));
+    }
+
+    @Test
+    void conditionalSkipExpressionIsPreservedWhenMarkerIsFalse() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = wrap("""
+                <bpmn:userTask id="conditional-review"
+                    flowable:skipExpression="${amount &gt; 100}">
+                  <bpmn:extensionElements>
+                    <flowable:properties>
+                      <flowable:property name="skipNode" value="false" />
+                    </flowable:properties>
+                  </bpmn:extensionElements>
+                </bpmn:userTask>
+                """);
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+        UserTask task = (UserTask) parse(result)
+                .getMainProcess()
+                .getFlowElement("conditional-review");
+
+        assertEquals("${amount > 100}", task.getSkipExpression());
+    }
+
+    @Test
+    void reservedMultiInstanceVariablesCannotReachDeployment() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String maliciousElementVariable = wrap("""
+                <bpmn:userTask id="reserved-element-variable">
+                  <bpmn:multiInstanceLoopCharacteristics
+                    flowable:collection="reviewers"
+                    flowable:elementVariable="_ACTIVITI_SKIP_EXPRESSION_ENABLED" />
+                </bpmn:userTask>
+                """);
+        String maliciousCollection = wrap("""
+                <bpmn:userTask id="reserved-collection">
+                  <bpmn:multiInstanceLoopCharacteristics
+                    flowable:collection="${_FLOWABLE_SKIP_EXPRESSION_ENABLED}"
+                    flowable:elementVariable="reviewer" />
+                </bpmn:userTask>
+                """);
+
+        IllegalArgumentException elementError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        maliciousElementVariable, "runtime_process"));
+        IllegalArgumentException collectionError = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        maliciousCollection, "runtime_process"));
+
+        assertTrue(elementError.getMessage().contains(
+                "elementVariable 不能覆盖平台保留流程变量"));
+        assertTrue(collectionError.getMessage().contains(
+                "collection 不能覆盖平台保留流程变量"));
+    }
+
+    @Test
+    void unprefixedAlwaysSkipTaskIsNormalizedToNativeTrueExpression() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = """
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:flowable="http://flowable.org/bpmn"
+                    targetNamespace="http://workflow.test/process">
+                  <process id="draft_process" isExecutable="true">
+                    <userTask id="unprefixed-review">
+                      <extensionElements>
+                        <flowable:properties>
+                          <flowable:property value="true" name="skipNode" />
+                        </flowable:properties>
+                      </extensionElements>
+                    </userTask>
+                  </process>
+                </definitions>
+                """;
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+        UserTask task = (UserTask) parse(result)
+                .getMainProcess()
+                .getFlowElement("unprefixed-review");
+
+        assertEquals("${true}", task.getSkipExpression());
+    }
+
+    @Test
+    void alternateBpmnNamespacePrefixUsesTheSameSanitizationPath() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = """
+                <bpmn2:definitions
+                    xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:flowable="http://flowable.org/bpmn"
+                    targetNamespace="http://workflow.test/process">
+                  <bpmn2:process id="draft_process" isExecutable="true">
+                    <bpmn2:userTask id="bpmn2-review">
+                      <bpmn2:extensionElements>
+                        <flowable:properties>
+                          <flowable:property name="skipNode" value="true" />
+                        </flowable:properties>
+                      </bpmn2:extensionElements>
+                    </bpmn2:userTask>
+                  </bpmn2:process>
+                </bpmn2:definitions>
+                """;
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+        UserTask task = (UserTask) parse(result)
+                .getMainProcess()
+                .getFlowElement("bpmn2-review");
+
+        assertEquals("${true}", task.getSkipExpression());
+        assertTrue(result.contains("<bpmn:userTask"));
+        assertFalse(result.contains("<bpmn2:userTask"));
+    }
+
+    @Test
+    void occupiedCanonicalBpmnPrefixIsRejectedWithoutChangingItsNamespace() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = """
+                <bpmn2:definitions
+                    xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:bpmn="urn:workflow:custom-extension"
+                    xmlns:flowable="http://flowable.org/bpmn"
+                    targetNamespace="http://workflow.test/process">
+                  <bpmn2:process id="draft_process" isExecutable="true">
+                    <bpmn2:userTask id="review" bpmn:marker="keep"
+                        flowable:assignee="admin" />
+                  </bpmn2:process>
+                </bpmn2:definitions>
+                """;
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(input, "runtime_process"));
+
+        assertTrue(exception.getMessage().startsWith(
+                "BPMN_PREFIX_CONFLICT:"));
+    }
 
     @Test
     void rejectsUserControlledExecutableExtensions() {
@@ -53,6 +254,24 @@ class ProcessBpmnPublishSanitizerTest {
                                 + "${demoExpressionService.execute('x')}"
                                 + "</bpmn:conditionExpression>"
                                 + "</bpmn:sequenceFlow>"),
+                        "runtime_process"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:userTask id=\"unsafe-skip\" "
+                                + "flowable:skipExpression=\"${demoExpressionService.execute('x')}\" />"),
+                        "runtime_process"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:userTask id=\"unsafe-assignment\" "
+                                + "flowable:skipExpression=\"${foo = true}\" />"),
+                        "runtime_process"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sanitizer.sanitize(
+                        wrap("<bpmn:userTask id=\"unsafe-lambda\" "
+                                + "flowable:skipExpression=\"${(x-&gt;x)(true)}\" />"),
                         "runtime_process"));
     }
 
@@ -128,6 +347,55 @@ class ProcessBpmnPublishSanitizerTest {
         assertEquals(
                 "component_palette_test_20260824_codex",
                 model.getPools().get(0).getProcessRef());
+    }
+
+    @Test
+    void sanitizeRenamesQualifiedProcessReferencesWithoutDroppingPrefix() {
+        ProcessBpmnPublishSanitizer sanitizer =
+                new ProcessBpmnPublishSanitizer(new ObjectMapper());
+        String input = """
+                <bpmn:definitions
+                    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                    xmlns:tns="http://workflow.test/process"
+                    xmlns:flowable="http://flowable.org/bpmn"
+                    targetNamespace="http://workflow.test/process">
+                  <bpmn:collaboration id="Collaboration_1">
+                    <bpmn:participant id="Participant_1"
+                        processRef="tns:DraftProcess" />
+                  </bpmn:collaboration>
+                  <bpmn:process id="DraftProcess" isExecutable="true">
+                    <bpmn:startEvent id="Start_1" />
+                    <bpmn:userTask id="Review_1" flowable:assignee="admin" />
+                    <bpmn:endEvent id="End_1" />
+                    <bpmn:sequenceFlow id="Flow_1"
+                        sourceRef="Start_1" targetRef="Review_1" />
+                    <bpmn:sequenceFlow id="Flow_2"
+                        sourceRef="Review_1" targetRef="End_1" />
+                  </bpmn:process>
+                  <bpmndi:BPMNDiagram id="Diagram_1">
+                    <bpmndi:BPMNPlane id="Plane_1"
+                        bpmnElement="tns:DraftProcess">
+                      <bpmndi:BPMNShape id="Shape_Review"
+                          bpmnElement="tns:Review_1">
+                        <dc:Bounds x="0" y="0" width="100" height="80" />
+                      </bpmndi:BPMNShape>
+                    </bpmndi:BPMNPlane>
+                  </bpmndi:BPMNDiagram>
+                </bpmn:definitions>
+                """;
+
+        String result = sanitizer.sanitize(input, "runtime_process");
+
+        assertTrue(result.contains(
+                "processRef=\"tns:runtime_process\""));
+        assertTrue(result.contains(
+                "bpmnElement=\"tns:runtime_process\""));
+        assertTrue(result.contains("bpmnElement=\"tns:Review_1\""));
+        assertTrue(result.contains(
+                "xmlns:tns=\"http://workflow.test/process\""));
     }
 
     /**

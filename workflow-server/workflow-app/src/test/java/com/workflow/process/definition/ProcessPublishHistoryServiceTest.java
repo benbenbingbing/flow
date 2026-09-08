@@ -21,7 +21,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -118,6 +120,7 @@ class ProcessPublishHistoryServiceTest {
         verify(bindingService).replaceBindings(
                 org.mockito.ArgumentMatchers.same(history),
                 org.mockito.ArgumentMatchers.anyList());
+        verify(releaseService).lockFormForProcessPublish("form-1");
     }
 
     /**
@@ -189,6 +192,56 @@ class ProcessPublishHistoryServiceTest {
         assertEquals(
                 "流程节点引用的表单尚未发布: nodeId=task-1, formId=form-1",
                 exception.getMessage());
+    }
+
+    /**
+     * 未知旧 formKey 应在生成发布快照时被明确拒绝，不能继续查询发布版本或回退默认表单。
+     */
+    @Test
+    void prepareNodeFormsSnapshotRejectsUnknownLegacyFormKey() {
+        ProcessVersionHistoryMapper versionHistoryMapper =
+                mock(ProcessVersionHistoryMapper.class);
+        FlowActionDesignPort flowActionDesignPort =
+                mock(FlowActionDesignPort.class);
+        ProcessNodeFormMapper nodeFormMapper =
+                mock(ProcessNodeFormMapper.class);
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        ProcessUiReleaseBindingService bindingService =
+                mock(ProcessUiReleaseBindingService.class);
+        when(nodeFormMapper.selectByProcessConfigId("process-1"))
+                .thenReturn(List.of(nodeForm(
+                        "task-review",
+                        "legacy-external-form",
+                        0)));
+        doThrow(new IllegalArgumentException(
+                "流程节点表单不存在: legacy-external-form"))
+                .when(releaseService)
+                .lockFormForProcessPublish("legacy-external-form");
+        ProcessPublishHistoryService service =
+                new ProcessPublishHistoryService(
+                        versionHistoryMapper,
+                        flowActionDesignPort,
+                        nodeFormMapper,
+                        releaseService,
+                        bindingService,
+                        new ObjectMapper());
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> service.prepareNodeFormsSnapshot("process-1"));
+
+        assertEquals(
+                "NODE_FORM_REFERENCE_INVALID: 流程节点引用的实体表单不存在或无法解析"
+                        + ", element=task-review formId=legacy-external-form"
+                        + "。若 BPMN 使用旧 flowable:formKey，请重新选择实体表单后保存流程",
+                exception.getMessage());
+        assertEquals(
+                "流程节点表单不存在: legacy-external-form",
+                exception.getCause().getMessage());
+        verify(releaseService, never()).active(
+                UiConfigReleaseService.FORM,
+                "legacy-external-form");
     }
 
     /**

@@ -129,9 +129,9 @@ public class ProcessPublishHistoryService {
                 .filter(value -> value != null && !value.isBlank())
                 .distinct()
                 .sorted()
-                .forEach(
-                        uiConfigReleaseService
-                                ::lockFormForProcessPublish);
+                .forEach(formId -> lockNodeFormForPublish(
+                        nodeForms,
+                        formId));
         try {
             List<NodeFormSnapshot> snapshots = nodeForms.stream()
                     .map(this::toSnapshot)
@@ -144,6 +144,37 @@ public class ProcessPublishHistoryService {
                     bindings);
         } catch (JsonProcessingException e) {
             throw new RuntimeException("节点表单快照生成失败: " + processConfigId, e);
+        }
+    }
+
+    /**
+     * 锁定并校验节点引用的实体表单。
+     *
+     * <p>历史 BPMN 可能把旧 {@code flowable:formKey} 原样同步为 formId。这里在部署前
+     * 将底层“表单不存在”转换为带节点定位和修复指引的稳定错误，避免后续运行时静默回退。</p>
+     *
+     * @param nodeForms 当前流程的节点表单绑定
+     * @param formId 待锁定的实体表单 ID
+     * @throws IllegalStateException 当 formId 无法解析为现存实体表单时抛出
+     */
+    private void lockNodeFormForPublish(
+            List<ProcessNodeForm> nodeForms,
+            String formId) {
+        try {
+            uiConfigReleaseService.lockFormForProcessPublish(formId);
+        } catch (IllegalArgumentException exception) {
+            String nodeId = nodeForms.stream()
+                    .filter(nodeForm -> formId.equals(nodeForm.getFormId()))
+                    .map(ProcessNodeForm::getNodeId)
+                    .filter(value -> value != null && !value.isBlank())
+                    .findFirst()
+                    .orElse("unknown");
+            throw new IllegalStateException(
+                    "NODE_FORM_REFERENCE_INVALID: 流程节点引用的实体表单不存在或无法解析"
+                            + ", element=" + nodeId
+                            + " formId=" + formId
+                            + "。若 BPMN 使用旧 flowable:formKey，请重新选择实体表单后保存流程",
+                    exception);
         }
     }
 

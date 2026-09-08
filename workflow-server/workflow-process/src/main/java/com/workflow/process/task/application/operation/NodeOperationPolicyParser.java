@@ -27,11 +27,16 @@ public class NodeOperationPolicyParser {
 
     private final ObjectMapper objectMapper;
     private final NodeOperationConditionEvaluator conditionEvaluator;
+    private final NodeOperationConfigReader operationConfigReader;
 
     /**
      * 从节点扩展属性读取策略。兼容直接属性及 assigneeConfig 内嵌属性两种设计器格式。
      */
     public NodeOperationPolicy parse(BaseElement element) {
+        // 新三开关一旦出现即成为权威配置，避免同一节点同时受两套规则约束。
+        if (operationConfigReader.read(element).isPresent()) {
+            return NodeOperationPolicy.legacyCompatible();
+        }
         String directJson = ConfiguredTaskPropertyReader.read(element, PROPERTY_NAME);
         if (StringUtils.hasText(directJson)) {
             return parse(directJson);

@@ -2,7 +2,7 @@
   <div class="group-management">
     <div class="page-header">
       <h2>流程用户组</h2>
-      <el-button type="primary" @click="handleAdd">
+      <el-button v-if="canManage" type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         新增用户组
       </el-button>
@@ -41,6 +41,8 @@
             inline-prompt
             active-text="启"
             inactive-text="禁"
+            :loading="isStatusPending(row.id)"
+            :disabled="!canManage || isStatusPending(row.id)"
             @change="handleStatusChange(row)"
           />
         </template>
@@ -48,7 +50,7 @@
       
       <el-table-column prop="createTime" label="创建时间" width="160" />
       
-      <el-table-column label="操作" width="240" fixed="right">
+      <el-table-column v-if="canManage" label="操作" width="240" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="handleEdit(row)">
             编辑
@@ -77,12 +79,19 @@
         label-width="100px"
       >
         <el-form-item label="组名称" prop="groupName">
-          <el-input v-model="formData.groupName" placeholder="请输入组名称" />
+          <el-input
+            v-model.trim="formData.groupName"
+            maxlength="50"
+            show-word-limit
+            placeholder="请输入组名称"
+          />
         </el-form-item>
         
         <el-form-item label="组编码" prop="groupCode">
           <el-input 
-            v-model="formData.groupCode" 
+            v-model.trim="formData.groupCode"
+            maxlength="50"
+            show-word-limit
             placeholder="请输入组编码，如：dept_manager"
             :disabled="!!formData.id"
           />
@@ -91,9 +100,11 @@
         
         <el-form-item label="描述" prop="description">
           <el-input 
-            v-model="formData.description" 
+            v-model.trim="formData.description"
             type="textarea"
             :rows="2"
+            maxlength="200"
+            show-word-limit
             placeholder="请输入描述"
           />
         </el-form-item>
@@ -155,12 +166,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { getGroupList, createGroup, updateGroup, deleteGroup, updateGroupStatus, saveGroupUsers } from '@/api/system/group'
 import PageState from '@/components/PageState.vue'
 import UserSelector from '@/components/UserSelector.vue'
+import { useUserStore } from '@/stores/user'
+import {
+  normalizeGroupMemberIds,
+  prepareGroupMemberChange,
+  runGroupStatusChange,
+  submitGroupForm
+} from '@/shared/group-management'
+
+const userStore = useUserStore()
+const canManage = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || userStore.permissions.includes('system:user:manage'))
 
 const loading = ref(false)
 const loadError = ref('')
@@ -182,8 +205,15 @@ const formData = reactive({
 })
 
 const formRules = {
-  groupName: [{ required: true, message: '请输入组名称', trigger: 'blur' }],
-  groupCode: [{ required: true, message: '请输入组编码', trigger: 'blur' }]
+  groupName: [
+    { required: true, message: '请输入组名称', trigger: 'blur' },
+    { max: 50, message: '组名称不能超过50个字符', trigger: 'blur' }
+  ],
+  groupCode: [
+    { required: true, message: '请输入组编码', trigger: 'blur' },
+    { max: 50, message: '组编码不能超过50个字符', trigger: 'blur' }
+  ],
+  description: [{ max: 200, message: '描述不能超过200个字符', trigger: 'blur' }]
 }
 
 // 用户分配对话框
@@ -191,6 +221,9 @@ const userDialogVisible = ref(false)
 const userSubmitLoading = ref(false)
 const selectedUserIds = ref<string[]>([])
 const currentGroupId = ref('')
+// 每个组独立加锁，避免一个状态请求阻塞其他行，也避免同一行重复提交。
+const statusPendingIds = reactive(new Set<string>())
+const isStatusPending = (id: unknown) => statusPendingIds.has(String(id ?? '').trim())
 
 // 获取组列表
 const fetchGroupList = async () => {
@@ -219,6 +252,7 @@ const resetForm = () => {
 
 // 新增组
 const handleAdd = () => {
+  if (!canManage.value) return
   resetForm()
   dialogTitle.value = '新增用户组'
   dialogVisible.value = true
@@ -226,6 +260,7 @@ const handleAdd = () => {
 
 // 编辑组
 const handleEdit = (row: any) => {
+  if (!canManage.value) return
   resetForm()
   Object.assign(formData, {
     id: row.id,
@@ -241,14 +276,18 @@ const handleEdit = (row: any) => {
 
 // 提交表单
 const handleSubmit = async () => {
-  await formRef.value.validate()
+  if (!canManage.value) return
+  // Element Plus 校验失败会拒绝 Promise；在事件入口消费它，避免产生未处理异常。
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   submitLoading.value = true
+  const isUpdate = Boolean(formData.id)
   try {
-    const api = formData.id ? updateGroup : createGroup
-    await api(formData.id, formData)
-    ElMessage.success(formData.id ? '更新成功' : '创建成功')
+    // 新增和更新接口签名不同，统一由已测试的提交函数构造白名单请求体并明确分派。
+    await submitGroupForm(formData, { createGroup, updateGroup })
+    ElMessage.success(isUpdate ? '更新成功' : '创建成功')
     dialogVisible.value = false
-    fetchGroupList()
+    await fetchGroupList()
   } finally {
     submitLoading.value = false
   }
@@ -256,6 +295,7 @@ const handleSubmit = async () => {
 
 // 删除组
 const handleDelete = async (row: any) => {
+  if (!canManage.value) return
   try {
     const confirmation = await ElMessageBox.prompt(
       `删除后，${row.userIds?.length || 0} 名成员将失去通过该组获得的流程候选资格。请输入组名称「${row.groupName}」确认。`,
@@ -270,7 +310,7 @@ const handleDelete = async (row: any) => {
     if (confirmation.value !== row.groupName) return
     await deleteGroup(row.id)
     ElMessage.success('删除成功')
-    fetchGroupList()
+    await fetchGroupList()
   } catch {
     // 取消删除
   }
@@ -278,11 +318,13 @@ const handleDelete = async (row: any) => {
 
 // 状态变更
 const handleStatusChange = async (row: any) => {
-  const previousStatus = row.status === '0' ? '1' : '0'
-  try {
-    const memberCount = row.userIds?.length || 0
-    const action = row.status === '0' ? '启用' : '禁用'
-    await ElMessageBox.confirm(
+  if (!canManage.value) return
+  const memberCount = normalizeGroupMemberIds(row.userIds).length
+  const action = row.status === '0' ? '启用' : '禁用'
+  const result = await runGroupStatusChange({
+    row,
+    pendingIds: statusPendingIds,
+    confirmChange: () => ElMessageBox.confirm(
       `${action}用户组「${row.groupName}」将影响 ${memberCount} 名成员后续通过该组参与流程审批。历史任务不会自动改派。`,
       `${action}用户组`,
       {
@@ -290,42 +332,56 @@ const handleStatusChange = async (row: any) => {
         confirmButtonText: `确认${action}`,
         cancelButtonText: '取消'
       }
-    )
-    await updateGroupStatus(row.id, row.status)
+    ),
+    updateStatus: updateGroupStatus
+  })
+  if (result.updated) {
     ElMessage.success(`用户组已${action}`)
-  } catch {
-    row.status = previousStatus
   }
 }
 
 // 分配成员
-const handleAssignUsers = async (row: any) => {
-  currentGroupId.value = row.id
-  selectedUserIds.value = row.userIds || []
+const handleAssignUsers = (row: any) => {
+  if (!canManage.value) return
+  currentGroupId.value = String(row.id ?? '').trim()
+  if (!currentGroupId.value) return
+  selectedUserIds.value = normalizeGroupMemberIds(row.userIds)
   userDialogVisible.value = true
 }
 
 // 保存组成员
 const handleSaveUsers = async () => {
-  if (!currentGroupId.value) return
+  if (!canManage.value || !currentGroupId.value) return
 
-  const group = groupList.value.find(item => item.id === currentGroupId.value)
-  const beforeCount = group?.userIds?.length || 0
-  const afterCount = selectedUserIds.value.length
-  if (beforeCount !== afterCount) {
-    await ElMessageBox.confirm(
-      `成员数量将从 ${beforeCount} 人变为 ${afterCount} 人。变更会影响后续按用户组选人的流程节点。`,
+  const group = groupList.value.find(
+    item => String(item.id ?? '').trim() === currentGroupId.value
+  )
+  const change = await prepareGroupMemberChange({
+    currentUserIds: group?.userIds,
+    selectedUserIds: selectedUserIds.value,
+    confirmChange: ({ beforeCount, afterCount, addedCount, removedCount }) => ElMessageBox.confirm(
+      `新增 ${addedCount}、移除 ${removedCount}（总数 ${beforeCount}→${afterCount}）。变更会影响后续按用户组选人的流程节点。`,
       '确认成员变更',
       { type: 'warning', confirmButtonText: '保存成员' }
     )
+  })
+  selectedUserIds.value = change.userIds
+  if (!change.shouldSave) {
+    if (change.reason === 'unchanged') {
+      ElMessage.info('成员未发生变化')
+      userDialogVisible.value = false
+    }
+    return
   }
 
   userSubmitLoading.value = true
   try {
-    await saveGroupUsers(currentGroupId.value, selectedUserIds.value)
+    await saveGroupUsers(currentGroupId.value, change.userIds)
     ElMessage.success('成员分配成功')
     userDialogVisible.value = false
-    fetchGroupList()
+    await fetchGroupList()
+  } catch {
+    // 请求层已统一提示错误；保留弹窗和当前选择，便于用户修正后重试。
   } finally {
     userSubmitLoading.value = false
   }

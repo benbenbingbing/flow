@@ -36,8 +36,9 @@ import static org.mockito.Mockito.when;
 class NodeOperationDecisionServiceTest {
 
     private final NodeOperationConditionEvaluator evaluator = new NodeOperationConditionEvaluator();
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final NodeOperationPolicyParser parser = new NodeOperationPolicyParser(
-            new ObjectMapper(), evaluator);
+            objectMapper, evaluator, new NodeOperationConfigReader(objectMapper));
 
     @Test
     void evaluatesPermissionConditionReasonAndHiddenOperation() {

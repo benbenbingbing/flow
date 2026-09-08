@@ -230,7 +230,7 @@ public class ProcessDefinitionService {
     }
     
     /**
-     * 新建流程定义（初始版本为0，状态为草稿）。
+     * 新建流程定义（初始版本为0，状态为草稿），并在入库前清除节点异步属性。
      *
      * @param dto 流程定义数据
      * @return 创建后的流程定义
@@ -246,6 +246,9 @@ public class ProcessDefinitionService {
             captureResult = true)
     public ProcessDefinitionDTO save(ProcessDefinitionDTO dto) {
         ProcessDefinitionConfig config = convertToEntity(dto);
+        config.setBpmnXml(
+                ProcessBpmnSynchronousExecutionNormalizer.normalize(
+                        config.getBpmnXml()));
         config.setVersion(0); // 初始版本为0，表示从未发布
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
         config.setDraftRevision(1L);
@@ -258,6 +261,7 @@ public class ProcessDefinitionService {
     
     /**
      * 更新流程定义信息及BPMN XML，并同步节点配置与节点表单绑定。
+     * BPMN XML 在计算草稿哈希和入库前会强制归一化为同步执行。
      *
      * @param id  流程定义ID
      * @param dto 更新的流程定义数据
@@ -292,12 +296,15 @@ public class ProcessDefinitionService {
             throw draftConflict(existing);
         }
 
+        String normalizedBpmnXml =
+                ProcessBpmnSynchronousExecutionNormalizer.normalize(
+                        dto.getBpmnXml());
         String nextDraftHash = ProcessDraftHashSupport.hash(
                 existing.getProcessKey(),
                 dto.getProcessName(),
                 dto.getDescription(),
                 dto.getCategory(),
-                dto.getBpmnXml());
+                normalizedBpmnXml);
 
         // 完全相同的整包重试直接返回当前草稿，避免网络重试制造无意义 revision。
         if (dto.getNodes() == null && nextDraftHash.equals(draftHashOf(existing))) {
@@ -310,7 +317,7 @@ public class ProcessDefinitionService {
                 dto.getProcessName(),
                 dto.getDescription(),
                 dto.getCategory(),
-                dto.getBpmnXml(),
+                normalizedBpmnXml,
                 nextDraftHash);
         if (updated != 1) {
             ProcessDefinitionConfig current = processMapper.selectById(id);
@@ -324,7 +331,7 @@ public class ProcessDefinitionService {
         existing.setProcessName(dto.getProcessName());
         existing.setDescription(dto.getDescription());
         existing.setCategory(dto.getCategory());
-        existing.setBpmnXml(dto.getBpmnXml());
+        existing.setBpmnXml(normalizedBpmnXml);
         existing.setDraftRevision(expectedRevision + 1);
         existing.setDraftHash(nextDraftHash);
         
@@ -334,8 +341,8 @@ public class ProcessDefinitionService {
         }
         
         // 同步 BPMN XML 中的节点表单配置到 process_node_form 表
-        if (dto.getBpmnXml() != null && !dto.getBpmnXml().isEmpty()) {
-            nodeSyncService.syncBpmnNodeBindings(id, dto.getBpmnXml());
+        if (normalizedBpmnXml != null && !normalizedBpmnXml.isEmpty()) {
+            nodeSyncService.syncBpmnNodeBindings(id, normalizedBpmnXml);
         }
         
         return convertToDTO(existing);
@@ -393,8 +400,8 @@ public class ProcessDefinitionService {
     /**
      * 发布流程定义（带完整发布请求）。
      *
-     * <p>校验动作配置 -> 生成新版本号 -> 净化BPMN -> 部署到Flowable -> 记录版本历史 ->
-     * 解析保存节点配置 -> 更新主配置状态为已发布。</p>
+     * <p>校验动作配置 -> 生成新版本号 -> 强制同步并净化BPMN -> 部署到Flowable ->
+     * 记录版本历史 -> 解析保存节点配置 -> 更新主配置状态为已发布。</p>
      *
      * @param id      流程定义ID
      * @param request 发布请求（含版本说明等）
@@ -492,7 +499,11 @@ public class ProcessDefinitionService {
         int newVersion = publishHistoryService.nextVersion(id);
         
         // 将 processKey 写入 XML 的 process id 属性，确保 Flowable 使用正确的 key
-        String designBpmnXml = config.getBpmnXml();
+        String designBpmnXml =
+                ProcessBpmnSynchronousExecutionNormalizer.normalize(
+                        config.getBpmnXml());
+        // 发布时回写归一化后的设计 XML，避免存量异步属性进入版本历史或后续回滚。
+        config.setBpmnXml(designBpmnXml);
         
         nodeSyncService.syncStatusMappingsFromBpmn(id, config.getProcessKey(), designBpmnXml);
         
@@ -563,7 +574,9 @@ public class ProcessDefinitionService {
         }
         
         // 使用目标版本的XML作为新版本的起点
-        config.setBpmnXml(targetVersion.getBpmnXml());
+        config.setBpmnXml(
+                ProcessBpmnSynchronousExecutionNormalizer.normalize(
+                        targetVersion.getBpmnXml()));
         config.setStatus(ProcessDefinitionConfig.ProcessStatus.DRAFT);
         config.setDraftRevision(revisionOf(config) + 1);
         config.setDraftHash(ProcessDraftHashSupport.hash(config));

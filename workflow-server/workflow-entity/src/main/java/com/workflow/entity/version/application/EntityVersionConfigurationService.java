@@ -1,7 +1,6 @@
 package com.workflow.entity.version.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
@@ -13,16 +12,10 @@ import com.workflow.entity.version.application.model.EntityVersionConfigSummary;
 import com.workflow.entity.version.application.model.EntityVersionConfigReleaseSummary;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.application.model.EntityVersionValidationResult;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityChangeTargetBindingMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigReleaseMapper;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionScenarioMapper;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionStepMapper;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityChangeTargetBinding;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfig;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfigRelease;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionScenario;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionStep;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +25,6 @@ import org.springframework.dao.DuplicateKeyException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -50,9 +42,6 @@ import java.util.UUID;
 public class EntityVersionConfigurationService {
 
     private final EntityVersionConfigMapper configMapper;
-    private final EntityVersionScenarioMapper scenarioMapper;
-    private final EntityVersionStepMapper stepMapper;
-    private final EntityChangeTargetBindingMapper targetBindingMapper;
     private final EntityVersionConfigReleaseMapper releaseMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final ObjectMapper objectMapper;
@@ -77,21 +66,11 @@ public class EntityVersionConfigurationService {
             EntityVersionConfig config =
                     configMapper.findByEntityCode(
                             definition.getEntityCode());
-            List<EntityVersionScenario> scenarios = config == null
-                    ? List.of()
-                    : scenarioMapper.findByConfigId(config.getId());
-            List<EntityVersionStep> steps = config == null
-                    ? List.of()
-                    : stepMapper.findByConfigId(config.getId());
-            List<EntityChangeTargetBinding> bindings = config == null
-                    ? List.of()
-                    : targetBindingMapper.findByConfigId(config.getId());
             EntityVersionConfiguration draft = config != null
                     && StringUtils.hasText(config.getDraftDocument())
                     ? readConfiguration(config.getDraftDocument()) : null;
             int triggerCount = draft == null
-                    || value(draft.getSchemaVersion(), 1) < 2
-                    ? scenarios.size() : safe(draft.getTriggers()).size();
+                    ? 0 : safe(draft.getTriggers()).size();
             int scopeRelationCount = draft == null
                     || draft.getSnapshotScope() == null
                     ? 0 : (int) safe(draft.getSnapshotScope().getRelations())
@@ -111,9 +90,9 @@ public class EntityVersionConfigurationService {
                     config == null ? 0 : config.getRevision(),
                     activeReleaseVersion(config),
                     runtimeEnabled,
-                    scenarios.size(),
-                    steps.size(),
-                    bindings.size(),
+                    0,
+                    0,
+                    0,
                     triggerCount,
                     scopeRelationCount,
                     config == null ? null : config.getUpdateTime()));
@@ -137,12 +116,8 @@ public class EntityVersionConfigurationService {
             result = readConfiguration(config.getDraftDocument());
             hydrateEnvelope(result, definition, config);
         } else {
-            result = upgradeLegacyDraft(assemble(
-                    definition,
-                    config,
-                    scenarioMapper.findByConfigId(config.getId()),
-                    stepMapper.findByConfigId(config.getId()),
-                    targetBindingMapper.findByConfigId(config.getId())));
+            // V080 已转换旧草稿；空文档表示迁移不完整，不能静默丢弃原规则。
+            throw new IllegalStateException("数据版本草稿文档缺失，请检查配置迁移结果");
         }
         return scopeFreezer.enrichDraftOptions(result);
     }
@@ -385,48 +360,6 @@ public class EntityVersionConfigurationService {
     /**
      * 按来源实体查找当前发布快照中的变更目标配置。
      */
-    @Transactional(readOnly = true)
-    public List<EntityVersionConfiguration>
-            findPublishedTargetConfigurations(
-                    String sourceEntityCode) {
-        if (!StringUtils.hasText(sourceEntityCode)) {
-            return List.of();
-        }
-        List<EntityVersionConfiguration> result =
-                new ArrayList<>();
-        for (EntityVersionConfig config
-                : configMapper.findAllPublished()) {
-            EntityVersionConfigRelease release =
-                    releaseMapper.selectById(
-                            config.getActiveReleaseId());
-            if (release == null) {
-                continue;
-            }
-            EntityVersionConfiguration document =
-                    readReleaseConfiguration(release);
-            if (!Boolean.TRUE.equals(
-                    document.getEnabled())) {
-                continue;
-            }
-            List<EntityVersionConfiguration.TargetBinding> bindings =
-                    document.getTargetBindings() == null
-                            ? List.of()
-                            : document.getTargetBindings();
-            boolean matches = bindings
-                    .stream()
-                    .anyMatch(binding ->
-                            !Boolean.FALSE.equals(
-                                    binding.getEnabled())
-                                    && sourceEntityCode.equals(
-                                            binding.getSourceEntityCode()));
-            if (matches) {
-                hydratePublishedEnvelope(document, config, release);
-                result.add(document);
-            }
-        }
-        return result;
-    }
-
     @Transactional(rollbackFor = Exception.class)
     public EntityVersionConfiguration saveDraft(
             String entityCode,
@@ -512,84 +445,6 @@ public class EntityVersionConfigurationService {
             }
         }
 
-        if (value(normalized.getSchemaVersion(), 1) < 2) {
-            scenarioMapper.deleteByConfigId(config.getId());
-            stepMapper.deleteByConfigId(config.getId());
-            targetBindingMapper.deleteByConfigId(config.getId());
-
-            Map<String, String> scenarioIds = new HashMap<>();
-            for (EntityVersionConfiguration.Scenario item
-                    : normalized.getScenarios()) {
-            EntityVersionScenario value =
-                    new EntityVersionScenario();
-            value.setId(id());
-            value.setConfigId(config.getId());
-            value.setScenarioCode(item.getScenarioCode());
-            value.setScenarioName(item.getScenarioName());
-            value.setSourceTypesDocument(
-                    write(item.getSourceTypes()));
-            value.setOperationTypesDocument(
-                    write(item.getOperationTypes()));
-            value.setBusinessIntentsDocument(
-                    write(item.getBusinessIntents()));
-            value.setConditionDocument(
-                    write(item.getCondition()));
-            value.setPriority(value(item.getPriority(), 0));
-            value.setVersionTitleTemplate(
-                    text(item.getVersionTitleTemplate()));
-            value.setEnabled(
-                    !Boolean.FALSE.equals(item.getEnabled()));
-            value.setCreateTime(now);
-            value.setUpdateTime(now);
-            scenarioMapper.insert(value);
-            scenarioIds.put(item.getScenarioCode(), value.getId());
-            }
-            for (EntityVersionConfiguration.Step item
-                    : normalized.getSteps()) {
-            EntityVersionStep value = new EntityVersionStep();
-            value.setId(id());
-            value.setConfigId(config.getId());
-            value.setScenarioId(
-                    scenarioIds.get(item.getScenarioCode()));
-            value.setPhase(item.getPhase());
-            value.setStepType(item.getStepType());
-            value.setStepName(item.getStepName());
-            value.setProviderCode(item.getProviderCode());
-            value.setConfigDocument(write(item.getConfig()));
-            value.setSortOrder(
-                    value(item.getSortOrder(), 0));
-            value.setEnabled(
-                    !Boolean.FALSE.equals(item.getEnabled()));
-            value.setCreateTime(now);
-            value.setUpdateTime(now);
-            stepMapper.insert(value);
-            }
-            for (EntityVersionConfiguration.TargetBinding item
-                    : normalized.getTargetBindings()) {
-            EntityChangeTargetBinding value =
-                    new EntityChangeTargetBinding();
-            value.setId(id());
-            value.setConfigId(config.getId());
-            value.setBindingCode(item.getBindingCode());
-            value.setBindingName(item.getBindingName());
-            value.setSourceEntityCode(
-                    item.getSourceEntityCode());
-            value.setTargetEntityCode(
-                    item.getTargetEntityCode());
-            value.setResolverType(item.getResolverType());
-            value.setResolverCode(item.getResolverCode());
-            value.setResolverConfigDocument(
-                    write(item.getResolverConfig()));
-            value.setMappingDocument(
-                    write(item.getFieldMapping()));
-            value.setApplyStrategy(item.getApplyStrategy());
-            value.setEnabled(
-                    !Boolean.FALSE.equals(item.getEnabled()));
-            value.setCreateTime(now);
-            value.setUpdateTime(now);
-            targetBindingMapper.insert(value);
-            }
-        }
         return getDraft(entityCode);
     }
 
@@ -616,7 +471,6 @@ public class EntityVersionConfigurationService {
         if (value(document.getSchemaVersion(), 1) >= 2) {
             document = scopeFreezer.freeze(document);
             validator.validate(document);
-            attachServerOwnedLegacyBehavior(document, config);
         }
         int releaseVersion =
                 value(releaseMapper.findMaxVersion(
@@ -733,97 +587,17 @@ public class EntityVersionConfigurationService {
                 ? scopeFreezer.freeze(normalized) : normalized;
     }
 
-    private EntityVersionConfiguration assemble(
-            EntityDefinition definition,
-            EntityVersionConfig config,
-            List<EntityVersionScenario> scenarios,
-            List<EntityVersionStep> steps,
-            List<EntityChangeTargetBinding> bindings) {
-        EntityVersionConfiguration result =
-                new EntityVersionConfiguration();
-        result.setId(config.getId());
-        result.setEntityId(definition.getId());
-        result.setEntityCode(definition.getEntityCode());
-        result.setEntityName(definition.getEntityName());
-        result.setEnabled(config.getEnabled());
-        result.setSchemaVersion(1);
-        result.setMigrationState("REVIEW_REQUIRED");
-        result.setRevision(config.getRevision());
-        result.setStatus(config.getStatus());
-        result.setActiveReleaseId(
-                config.getActiveReleaseId());
-        result.setActiveReleaseVersion(
-                activeReleaseVersion(config));
-        result.setUpdateTime(config.getUpdateTime());
-        Map<String, String> scenarioCodes = new HashMap<>();
-        result.setScenarios(scenarios.stream().map(item -> {
-            EntityVersionConfiguration.Scenario value =
-                    new EntityVersionConfiguration.Scenario();
-            value.setId(item.getId());
-            value.setScenarioCode(item.getScenarioCode());
-            value.setScenarioName(item.getScenarioName());
-            value.setSourceTypes(
-                    readList(item.getSourceTypesDocument()));
-            value.setOperationTypes(
-                    readList(item.getOperationTypesDocument()));
-            value.setBusinessIntents(
-                    readList(item.getBusinessIntentsDocument()));
-            value.setCondition(
-                    readMap(item.getConditionDocument()));
-            value.setPriority(item.getPriority());
-            value.setVersionTitleTemplate(
-                    item.getVersionTitleTemplate());
-            value.setEnabled(item.getEnabled());
-            scenarioCodes.put(item.getId(),
-                    item.getScenarioCode());
-            return value;
-        }).toList());
-        result.setSteps(steps.stream().map(item -> {
-            EntityVersionConfiguration.Step value =
-                    new EntityVersionConfiguration.Step();
-            value.setId(item.getId());
-            value.setScenarioCode(
-                    scenarioCodes.get(item.getScenarioId()));
-            value.setPhase(item.getPhase());
-            value.setStepType(item.getStepType());
-            value.setStepName(item.getStepName());
-            value.setProviderCode(item.getProviderCode());
-            value.setConfig(readMap(
-                    item.getConfigDocument()));
-            value.setSortOrder(item.getSortOrder());
-            value.setEnabled(item.getEnabled());
-            return value;
-        }).toList());
-        result.setTargetBindings(bindings.stream().map(item -> {
-            EntityVersionConfiguration.TargetBinding value =
-                    new EntityVersionConfiguration.TargetBinding();
-            value.setId(item.getId());
-            value.setBindingCode(item.getBindingCode());
-            value.setBindingName(item.getBindingName());
-            value.setSourceEntityCode(
-                    item.getSourceEntityCode());
-            value.setTargetEntityCode(
-                    item.getTargetEntityCode());
-            value.setResolverType(item.getResolverType());
-            value.setResolverCode(item.getResolverCode());
-            value.setResolverConfig(readMap(
-                    item.getResolverConfigDocument()));
-            value.setFieldMapping(readMap(
-                    item.getMappingDocument()));
-            value.setApplyStrategy(item.getApplyStrategy());
-            value.setEnabled(item.getEnabled());
-            return value;
-        }).toList());
-        return result;
-    }
-
     private EntityVersionConfiguration normalize(
             EntityDefinition definition,
             EntityVersionConfiguration request) {
         EntityVersionConfiguration source = request == null
                 ? new EntityVersionConfiguration() : request;
-        if (looksLikeLegacyRequest(source)) {
-            source.setSchemaVersion(1);
+        if (value(source.getSchemaVersion(), 2) != 2
+                || !safe(source.getScenarios()).isEmpty()
+                || !safe(source.getSteps()).isEmpty()
+                || !safe(source.getTargetBindings()).isEmpty()) {
+            throw new IllegalArgumentException(
+                    "数据版本配置仅支持 V2；处理步骤和变更目标请在独立变更策略中维护");
         }
         source.setEntityId(definition.getId());
         source.setEntityCode(definition.getEntityCode());
@@ -831,14 +605,9 @@ public class EntityVersionConfigurationService {
         source.setEnabled(
                 Boolean.TRUE.equals(source.getEnabled()));
         source.setSchemaVersion(value(source.getSchemaVersion(), 2));
-        source.setScenarios(source.getScenarios() == null
-                ? new ArrayList<>() : source.getScenarios());
-        source.setSteps(source.getSteps() == null
-                ? new ArrayList<>() : source.getSteps());
-        source.setTargetBindings(
-                source.getTargetBindings() == null
-                        ? new ArrayList<>()
-                        : source.getTargetBindings());
+        source.setScenarios(new ArrayList<>());
+        source.setSteps(new ArrayList<>());
+        source.setTargetBindings(new ArrayList<>());
         source.setTriggers(source.getTriggers() == null
                 ? new ArrayList<>() : source.getTriggers());
         if (source.getSnapshotScope() == null) {
@@ -908,74 +677,6 @@ public class EntityVersionConfigurationService {
             trigger.setPriority(value(trigger.getPriority(), 0));
             trigger.setEnabled(!Boolean.FALSE.equals(trigger.getEnabled()));
         }
-        for (EntityVersionConfiguration.Scenario scenario
-                : source.getScenarios()) {
-            scenario.setScenarioCode(
-                    upper(scenario.getScenarioCode()));
-            scenario.setScenarioName(
-                    text(scenario.getScenarioName()));
-            scenario.setSourceTypes(normalizeList(
-                    scenario.getSourceTypes()));
-            scenario.setOperationTypes(normalizeList(
-                    scenario.getOperationTypes()));
-            scenario.setBusinessIntents(normalizeList(
-                    scenario.getBusinessIntents()));
-            scenario.setCondition(
-                    scenario.getCondition() == null
-                            ? new LinkedHashMap<>()
-                            : scenario.getCondition());
-            scenario.setPriority(
-                    value(scenario.getPriority(), 0));
-            scenario.setEnabled(
-                    !Boolean.FALSE.equals(
-                            scenario.getEnabled()));
-        }
-        for (EntityVersionConfiguration.Step step
-                : source.getSteps()) {
-            step.setScenarioCode(
-                    upper(step.getScenarioCode()));
-            step.setPhase(upper(step.getPhase()));
-            step.setStepType(upper(step.getStepType()));
-            step.setStepName(text(step.getStepName()));
-            step.setProviderCode(
-                    text(step.getProviderCode()));
-            step.setConfig(step.getConfig() == null
-                    ? new LinkedHashMap<>() : step.getConfig());
-            step.setSortOrder(
-                    value(step.getSortOrder(), 0));
-            step.setEnabled(
-                    !Boolean.FALSE.equals(step.getEnabled()));
-        }
-        for (EntityVersionConfiguration.TargetBinding binding
-                : source.getTargetBindings()) {
-            binding.setBindingCode(
-                    upper(binding.getBindingCode()));
-            binding.setBindingName(
-                    text(binding.getBindingName()));
-            binding.setSourceEntityCode(
-                    text(binding.getSourceEntityCode()));
-            binding.setTargetEntityCode(
-                    text(binding.getTargetEntityCode()));
-            binding.setResolverType(
-                    upper(binding.getResolverType()));
-            binding.setResolverCode(
-                    text(binding.getResolverCode()));
-            binding.setResolverConfig(
-                    binding.getResolverConfig() == null
-                            ? new LinkedHashMap<>()
-                            : binding.getResolverConfig());
-            binding.setFieldMapping(
-                    binding.getFieldMapping() == null
-                            ? new LinkedHashMap<>()
-                            : binding.getFieldMapping());
-            binding.setApplyStrategy(
-                    upper(binding.getApplyStrategy()));
-            if (binding.getApplyStrategy() == null) {
-                binding.setApplyStrategy("MERGE");
-            }
-            binding.setEnabled(
-                    !Boolean.FALSE.equals(binding.getEnabled()));
-        }
         return source;
     }
 
@@ -996,15 +697,15 @@ public class EntityVersionConfigurationService {
         root.setEntityCode(definition.getEntityCode());
         root.setEntityName(definition.getEntityName());
         result.getSnapshotScope().setRoot(root);
-        result.setScenarios(List.of(
-                scenario(
+        result.setTriggers(new ArrayList<>(List.of(
+                trigger(
                         "INITIAL_EFFECTIVE",
                         "初始审批生效",
                         List.of("PROCESS_RUNTIME"),
                         List.of("STATUS_CHANGE"),
                         List.of("INITIAL_EFFECTIVE"),
                         200),
-                scenario(
+                trigger(
                         "CHANGE_EFFECTIVE",
                         "变更审批生效",
                         List.of(
@@ -1015,10 +716,7 @@ public class EntityVersionConfigurationService {
                                 "APPLY_CHANGE",
                                 "UPDATE"),
                         List.of("CHANGE_EFFECTIVE"),
-                        100)));
-        result.setTriggers(new ArrayList<>(result.getScenarios().stream()
-                .map(this::trigger)
-                .toList()));
+                        100))));
         EntityVersionConfiguration.CaptureTrigger manual =
                 new EntityVersionConfiguration.CaptureTrigger();
         manual.setTriggerCode("MANUAL_CHECKPOINT");
@@ -1029,34 +727,19 @@ public class EntityVersionConfigurationService {
         return result;
     }
 
+    /** 新实体默认提供两类根记录采集触发器，与独立变更规则分开维护。 */
     private EntityVersionConfiguration.CaptureTrigger trigger(
-            EntityVersionConfiguration.Scenario scenario) {
-        EntityVersionConfiguration.CaptureTrigger value =
-                new EntityVersionConfiguration.CaptureTrigger();
-        value.setTriggerCode(scenario.getScenarioCode());
-        value.setTriggerName(scenario.getScenarioName());
-        value.setTriggerType("ROOT_MUTATION");
-        value.setSourceTypes(scenario.getSourceTypes());
-        value.setOperationTypes(scenario.getOperationTypes());
-        value.setBusinessIntents(scenario.getBusinessIntents());
-        value.setCondition(scenario.getCondition());
-        value.setPriority(scenario.getPriority());
-        value.setVersionTitleTemplate(scenario.getVersionTitleTemplate());
-        value.setEnabled(scenario.getEnabled());
-        return value;
-    }
-
-    private EntityVersionConfiguration.Scenario scenario(
             String code,
             String name,
             List<String> sources,
             List<String> operations,
             List<String> intents,
             int priority) {
-        EntityVersionConfiguration.Scenario value =
-                new EntityVersionConfiguration.Scenario();
-        value.setScenarioCode(code);
-        value.setScenarioName(name);
+        EntityVersionConfiguration.CaptureTrigger value =
+                new EntityVersionConfiguration.CaptureTrigger();
+        value.setTriggerCode(code);
+        value.setTriggerName(name);
+        value.setTriggerType("ROOT_MUTATION");
         value.setSourceTypes(sources);
         value.setOperationTypes(operations);
         value.setBusinessIntents(intents);
@@ -1064,29 +747,6 @@ public class EntityVersionConfigurationService {
         value.setVersionTitleTemplate(
                 "V${versionNo} ${triggerName}");
         return value;
-    }
-
-    private EntityVersionConfiguration upgradeLegacyDraft(
-            EntityVersionConfiguration legacy) {
-        legacy.setSchemaVersion(2);
-        legacy.setMigrationState("REVIEW_REQUIRED");
-        legacy.setTriggers(new ArrayList<>(safe(legacy.getScenarios())
-                .stream()
-                .map(this::trigger)
-                .toList()));
-        EntityVersionConfiguration.CaptureTrigger manual =
-                new EntityVersionConfiguration.CaptureTrigger();
-        manual.setTriggerCode("MANUAL_CHECKPOINT");
-        manual.setTriggerName("手工固化");
-        manual.setTriggerType("MANUAL");
-        manual.setPriority(-100);
-        legacy.getTriggers().add(manual);
-        EntityVersionConfiguration.ScopeNode root =
-                new EntityVersionConfiguration.ScopeNode();
-        root.setEntityCode(legacy.getEntityCode());
-        root.setEntityName(legacy.getEntityName());
-        legacy.getSnapshotScope().setRoot(root);
-        return legacy;
     }
 
     private void hydrateEnvelope(
@@ -1121,44 +781,6 @@ public class EntityVersionConfigurationService {
             result.setTargetBindings(List.of());
         }
         return result;
-    }
-
-    /**
-     * V2 草稿不拥有旧 mutation 三类配置；为兼容尚未迁移的运行链路，
-     * 发布时只从服务端已有发布快照或旧表复制，绝不采信 V2 请求值。
-     */
-    private void attachServerOwnedLegacyBehavior(
-            EntityVersionConfiguration target,
-            EntityVersionConfig config) {
-        EntityVersionConfiguration legacy = null;
-        if (StringUtils.hasText(config.getActiveReleaseId())) {
-            EntityVersionConfigRelease active = releaseMapper.selectById(
-                    config.getActiveReleaseId());
-            if (active != null) {
-                legacy = readReleaseConfiguration(active);
-            }
-        }
-        if (legacy == null || !hasLegacyBehavior(legacy)) {
-            EntityDefinition definition = requireDefinition(
-                    config.getEntityCode());
-            legacy = assemble(
-                    definition,
-                    config,
-                    scenarioMapper.findByConfigId(config.getId()),
-                    stepMapper.findByConfigId(config.getId()),
-                    targetBindingMapper.findByConfigId(config.getId()));
-        }
-        target.setScenarios(new ArrayList<>(safe(legacy.getScenarios())));
-        target.setSteps(new ArrayList<>(safe(legacy.getSteps())));
-        target.setTargetBindings(new ArrayList<>(
-                safe(legacy.getTargetBindings())));
-    }
-
-    private boolean hasLegacyBehavior(
-            EntityVersionConfiguration configuration) {
-        return !safe(configuration.getScenarios()).isEmpty()
-                || !safe(configuration.getSteps()).isEmpty()
-                || !safe(configuration.getTargetBindings()).isEmpty();
     }
 
     private void normalizeNode(
@@ -1270,21 +892,6 @@ public class EntityVersionConfigurationService {
         document.setActiveReleaseVersion(release.getVersion());
     }
 
-    private boolean looksLikeLegacyRequest(
-            EntityVersionConfiguration source) {
-        if (!safe(source.getTriggers()).isEmpty()
-                || safe(source.getScenarios()).isEmpty()) {
-            return false;
-        }
-        EntityVersionConfiguration.SnapshotScope scope =
-                source.getSnapshotScope();
-        boolean relationScopeEmpty = scope == null
-                || safe(scope.getRelations()).isEmpty();
-        boolean rootUnspecified = scope == null || scope.getRoot() == null
-                || !StringUtils.hasText(scope.getRoot().getEntityCode());
-        return relationScopeEmpty && rootUnspecified;
-    }
-
     private String write(Object value) {
         try {
             return objectMapper.writeValueAsString(
@@ -1292,38 +899,6 @@ public class EntityVersionConfigurationService {
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException(
                     "实体版本配置无法序列化",
-                    exception);
-        }
-    }
-
-    private Map<String, Object> readMap(String document) {
-        if (!StringUtils.hasText(document)) {
-            return new LinkedHashMap<>();
-        }
-        try {
-            return objectMapper.readValue(
-                    document,
-                    new TypeReference<>() {
-                    });
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException(
-                    "实体版本配置 JSON 解析失败",
-                    exception);
-        }
-    }
-
-    private List<String> readList(String document) {
-        if (!StringUtils.hasText(document)) {
-            return new ArrayList<>();
-        }
-        try {
-            return objectMapper.readValue(
-                    document,
-                    new TypeReference<>() {
-                    });
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException(
-                    "实体版本配置 JSON 数组解析失败",
                     exception);
         }
     }

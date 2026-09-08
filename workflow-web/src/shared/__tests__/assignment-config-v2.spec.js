@@ -14,6 +14,7 @@ import {
   RELATIVE_ORG_POSITION_RESOLVER_CODE,
   normalizeDesignerAssigneeConfig,
   normalizeEntityUserReferenceConfig,
+  normalizeNodeOperationPermissions,
   normalizeNodeReferenceAssigneeConfig,
   normalizeRelativeOrgPositionConfig,
   relativeOrgPositionSummary,
@@ -77,6 +78,146 @@ for (const legacyKey of [
     `v2 新配置不得继续写入独立会签人员字段: ${legacyKey}`
   )
 }
+
+const defaultOperationPermissions = {
+  allowTransfer: true,
+  allowAddSign: true,
+  allowTerminate: true
+}
+assert.deepEqual(
+  normalizeNodeOperationPermissions({}),
+  defaultOperationPermissions,
+  '未配置旧矩阵或新开关时必须保持历史默认可用行为'
+)
+
+const unrestrictedLegacyOperation = {
+  enabled: true,
+  conditionExpression: '',
+  permissionCode: '',
+  reasonRequired: false,
+  reasonTemplates: [],
+  reasonTemplateRequired: false,
+  targetScope: 'ANY',
+  targetIds: [],
+  allowedAddSignTypes: [],
+  allowedRejectTargets: [],
+  withdrawWithinMinutes: null
+}
+const unrestrictedLegacyPolicy = {
+  version: 1,
+  operations: {
+    transfer: { ...unrestrictedLegacyOperation },
+    addSignBefore: { ...unrestrictedLegacyOperation },
+    addSignAfter: { ...unrestrictedLegacyOperation },
+    addSignParallel: { ...unrestrictedLegacyOperation },
+    terminate: { ...unrestrictedLegacyOperation }
+  }
+}
+assert.deepEqual(
+  normalizeNodeOperationPermissions({ nodeOperationPolicy: unrestrictedLegacyPolicy }),
+  defaultOperationPermissions,
+  '旧矩阵仅包含无条件开放规则时可以无损折叠为三个开关'
+)
+
+assert.deepEqual(
+  normalizeNodeOperationPermissions({
+    nodeOperationPolicy: {
+      operations: {
+        ...unrestrictedLegacyPolicy.operations,
+        transfer: { ...unrestrictedLegacyOperation, permissionCode: 'task:transfer' },
+        addSignBefore: { ...unrestrictedLegacyOperation, allowedAddSignTypes: ['BEFORE'] },
+        terminate: { ...unrestrictedLegacyOperation, reasonRequired: true }
+      }
+    }
+  }),
+  {
+    allowTransfer: false,
+    allowAddSign: false,
+    allowTerminate: false
+  },
+  '旧矩阵高级限制无法由开关表达时必须安全收紧，不能升级成无条件开放'
+)
+
+assert.equal(
+  normalizeNodeOperationPermissions({
+    nodeOperationPolicy: {
+      operations: {
+        ...unrestrictedLegacyPolicy.operations,
+        transfer: { ...unrestrictedLegacyOperation, condition: '${amount > 1000}' }
+      }
+    }
+  }).allowTransfer,
+  false,
+  '旧版 condition 别名同样属于无法折叠的条件限制'
+)
+
+assert.equal(
+  normalizeNodeOperationPermissions({
+    nodeOperationPolicy: {
+      operations: {
+        ...unrestrictedLegacyPolicy.operations,
+        addSignParallel: { ...unrestrictedLegacyOperation, enabled: false }
+      }
+    }
+  }).allowAddSign,
+  false,
+  '统一加签开关仅在旧版前加签、后加签和并行加签全部开放时开启'
+)
+
+assert.deepEqual(
+  normalizeNodeOperationPermissions({
+    allowTransfer: false,
+    nodeOperationPolicy: unrestrictedLegacyPolicy
+  }),
+  {
+    allowTransfer: false,
+    allowAddSign: true,
+    allowTerminate: true
+  },
+  '任一新开关存在后应优先使用新模型，其余缺失字段按 true 回填'
+)
+
+const migratedOperationConfig = buildAssigneeConfig({
+  assigneeType: 'user',
+  nodeOperationPolicy: unrestrictedLegacyPolicy
+})
+assert.deepEqual(
+  {
+    allowTransfer: migratedOperationConfig.allowTransfer,
+    allowAddSign: migratedOperationConfig.allowAddSign,
+    allowTerminate: migratedOperationConfig.allowTerminate
+  },
+  defaultOperationPermissions,
+  '保存时必须把旧矩阵显式迁移为三个布尔字段'
+)
+assert.equal(
+  Object.hasOwn(migratedOperationConfig, 'nodeOperationPolicy'),
+  false,
+  '新保存的 assigneeConfig 不得继续输出 nodeOperationPolicy'
+)
+
+const migratedLegacyPassthrough = buildAssigneeConfig({
+  legacyAssigneeConfig: {
+    assignmentConfigVersion: 1,
+    assigneeType: 'user',
+    nodeOperationPolicy: unrestrictedLegacyPolicy
+  },
+  assignmentConfigDirty: false
+})
+assert.deepEqual(
+  {
+    allowTransfer: migratedLegacyPassthrough.allowTransfer,
+    allowAddSign: migratedLegacyPassthrough.allowAddSign,
+    allowTerminate: migratedLegacyPassthrough.allowTerminate
+  },
+  defaultOperationPermissions,
+  '旧人员配置直通保存时也必须回填简化后的操作权限'
+)
+assert.equal(
+  Object.hasOwn(migratedLegacyPassthrough, 'nodeOperationPolicy'),
+  false,
+  '旧人员配置直通保存后也不得残留 nodeOperationPolicy'
+)
 
 const orderedMultiInstance = buildAssigneeConfig({
   isMultiInstance: true,

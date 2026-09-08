@@ -46,7 +46,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
+import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -133,7 +133,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final EntityStatusMapper statusMapper;
     private final EntityCodeRuleMapper codeRuleMapper;
     private final EntityFormMapper formMapper;
-    private final EntityFormFieldMapper formFieldMapper;
+    private final EntityFormService entityFormService;
     private final EntityFormNodeMapper formNodeMapper;
     private final EntityListConfigMapper listConfigMapper;
     private final EntityListFieldMapper listFieldMapper;
@@ -1004,7 +1004,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             if (releaseSnapshot.containsKey("legacyFields")) {
                 releasedFields.forEach(value -> formFields.add(sanitizeMap(value)));
             } else {
-                formFieldMapper.selectByFormId(form.getId()).forEach(formField -> {
+                entityFormService.getFormFields(form.getId()).forEach(formField -> {
                     Map<String, Object> formFieldSnapshot = portableMap(formField);
                     formFieldSnapshot.put("fieldCode",
                             firstNonBlank(

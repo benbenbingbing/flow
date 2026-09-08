@@ -8,6 +8,7 @@ import com.workflow.process.definition.api.response.ProcessPublishPreviewDTO;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
+import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.junit.jupiter.api.BeforeEach;
@@ -190,6 +191,191 @@ class ProcessDefinitionPreflightServiceTest {
         assertTrue(preview.issues().stream().allMatch(issue -> issue.fixRoute() != null));
     }
 
+    @Test
+    void alwaysSkipUserTaskDoesNotRequireFallbackAssignee() {
+        process.setBpmnXml(skipXml("true", "${amount > 100}"));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertTrue(preview.publishable());
+        assertFalse(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("USER_TASK_ASSIGNEE_MISSING")));
+    }
+
+    @Test
+    void conditionalSkipRequiresAssigneeEvenWhenOldSnapshotSaidAlways() {
+        NodeConfig stale = new NodeConfig();
+        stale.setId("node-config-old");
+        stale.setNodeId("ApproveTask");
+        stale.setSkipNode(true);
+        when(nodeConfigMapper.findByProcessConfigId("process-1"))
+                .thenReturn(List.of(stale));
+        process.setBpmnXml(skipXml(
+                "false", "${amount > 100}"));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.publishable());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("USER_TASK_ASSIGNEE_MISSING")
+                        && "ApproveTask".equals(issue.elementId())));
+    }
+
+    @Test
+    void reachableAlwaysSkipCycleBlocksPublishing() {
+        process.setBpmnXml(userTaskCycleXml(
+                "flowable:skipExpression=\"${true}\""));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.publishable());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("ALWAYS_SKIP_CYCLE")
+                        && issue.blocking()
+                        && "LoopTask".equals(issue.elementId())));
+    }
+
+    @Test
+    void cycleWithManualUserTaskRemainsPublishable() {
+        process.setBpmnXml(userTaskCycleXml(
+                "flowable:assignee=\"admin\""));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertTrue(preview.publishable());
+        assertFalse(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("ALWAYS_SKIP_CYCLE")));
+    }
+
+    @Test
+    void alwaysSkipCycleThroughImmediateActivitiesBlocksPublishing() {
+        List<String> immediateActivities = List.of(
+                "<bpmn:task id=\"Bridge\"/>",
+                "<bpmn:manualTask id=\"Bridge\"/>",
+                "<bpmn:serviceTask id=\"Bridge\" "
+                        + "flowable:delegateExpression=\"${restServiceTaskDelegate}\"/>",
+                "<bpmn:sendTask id=\"Bridge\"/>",
+                "<bpmn:businessRuleTask id=\"Bridge\"/>",
+                "<bpmn:scriptTask id=\"Bridge\" scriptFormat=\"groovy\">"
+                        + "<bpmn:script>return null</bpmn:script>"
+                        + "</bpmn:scriptTask>",
+                "<bpmn:intermediateThrowEvent id=\"Bridge\"/>");
+
+        for (String bridge : immediateActivities) {
+            process.setBpmnXml(cycleThroughNodeXml(
+                    "<bpmn:userTask id=\"LoopTask\" "
+                            + "flowable:skipExpression=\"${true}\"/>",
+                    bridge));
+
+            ProcessPublishPreviewDTO preview = service.preview(process);
+
+            assertTrue(preview.issues().stream().anyMatch(issue ->
+                            issue.code().equals("ALWAYS_SKIP_CYCLE")
+                                    && issue.blocking()),
+                    () -> "同步节点未被纳入跳过环: " + bridge);
+        }
+    }
+
+    @Test
+    void falseMarkerCannotMaskLiteralAlwaysSkipCycle() {
+        for (String expression : List.of(
+                "${true}", "#{true}", "${skipNodeEnabled}")) {
+            process.setBpmnXml(cycleThroughNodeXml(
+                    userTaskWithSkipMarker(expression, "false", null),
+                    "<bpmn:manualTask id=\"Bridge\"/>"));
+
+            ProcessPublishPreviewDTO preview = service.preview(process);
+
+            assertTrue(preview.issues().stream().anyMatch(issue ->
+                            issue.code().equals("ALWAYS_SKIP_CYCLE")
+                                    && "LoopTask".equals(issue.elementId())),
+                    () -> "恒真表达式被 skipNode=false 掩盖: " + expression);
+        }
+    }
+
+    @Test
+    void arbitraryConstantExpressionIsNotEvaluatedAsAlwaysSkip() {
+        process.setBpmnXml(cycleThroughNodeXml(
+                userTaskWithSkipMarker(
+                        "${true == true}", "false", "admin"),
+                "<bpmn:manualTask id=\"Bridge\"/>"));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("ALWAYS_SKIP_CYCLE")));
+    }
+
+    @Test
+    void waitAndExternalScopeBoundariesBreakAlwaysSkipCycleDetection() {
+        List<String> waitingActivities = List.of(
+                "<bpmn:receiveTask id=\"Bridge\"/>",
+                "<bpmn:intermediateCatchEvent id=\"Bridge\">"
+                        + "<bpmn:timerEventDefinition>"
+                        + "<bpmn:timeDuration>PT1M</bpmn:timeDuration>"
+                        + "</bpmn:timerEventDefinition>"
+                        + "</bpmn:intermediateCatchEvent>",
+                "<bpmn:callActivity id=\"Bridge\" calledElement=\"child\"/>",
+                "<bpmn:serviceTask id=\"Bridge\" flowable:triggerable=\"true\" "
+                        + "flowable:delegateExpression=\"${restServiceTaskDelegate}\"/>",
+                "<bpmn:serviceTask id=\"Bridge\" flowable:type=\"external-worker\"/>",
+                "<bpmn:serviceTask id=\"Bridge\" flowable:type=\"case\"/>");
+
+        for (String bridge : waitingActivities) {
+            process.setBpmnXml(cycleThroughNodeXml(
+                    "<bpmn:userTask id=\"LoopTask\" "
+                            + "flowable:skipExpression=\"${true}\"/>",
+                    bridge));
+
+            ProcessPublishPreviewDTO preview = service.preview(process);
+
+            assertFalse(preview.issues().stream().anyMatch(issue ->
+                            issue.code().equals("ALWAYS_SKIP_CYCLE")),
+                    () -> "等待或外部作用域边界被误判为同步跳过环: " + bridge);
+        }
+    }
+
+    @Test
+    void embeddedSubProcessDependsOnItsInternalWaitStates() {
+        String synchronousSubProcess = """
+                <bpmn:subProcess id="Bridge">
+                  <bpmn:startEvent id="SubStart"/>
+                  <bpmn:manualTask id="SubWork"/>
+                  <bpmn:endEvent id="SubEnd"/>
+                  <bpmn:sequenceFlow id="SubFlow1" sourceRef="SubStart" targetRef="SubWork"/>
+                  <bpmn:sequenceFlow id="SubFlow2" sourceRef="SubWork" targetRef="SubEnd"/>
+                </bpmn:subProcess>
+                """;
+        process.setBpmnXml(cycleThroughNodeXml(
+                "<bpmn:userTask id=\"LoopTask\" "
+                        + "flowable:skipExpression=\"${true}\"/>",
+                synchronousSubProcess));
+
+        ProcessPublishPreviewDTO synchronousPreview = service.preview(process);
+
+        assertTrue(synchronousPreview.issues().stream().anyMatch(issue ->
+                issue.code().equals("ALWAYS_SKIP_CYCLE")));
+
+        String waitingSubProcess = """
+                <bpmn:subProcess id="Bridge">
+                  <bpmn:startEvent id="SubStart"/>
+                  <bpmn:userTask id="SubReview" flowable:assignee="admin"/>
+                  <bpmn:endEvent id="SubEnd"/>
+                  <bpmn:sequenceFlow id="SubFlow1" sourceRef="SubStart" targetRef="SubReview"/>
+                  <bpmn:sequenceFlow id="SubFlow2" sourceRef="SubReview" targetRef="SubEnd"/>
+                </bpmn:subProcess>
+                """;
+        process.setBpmnXml(cycleThroughNodeXml(
+                "<bpmn:userTask id=\"LoopTask\" "
+                        + "flowable:skipExpression=\"${true}\"/>",
+                waitingSubProcess));
+
+        ProcessPublishPreviewDTO waitingPreview = service.preview(process);
+
+        assertFalse(waitingPreview.issues().stream().anyMatch(issue ->
+                issue.code().equals("ALWAYS_SKIP_CYCLE")));
+    }
+
     private String validXml() {
         return """
                 <?xml version="1.0" encoding="UTF-8"?>
@@ -227,6 +413,90 @@ class ProcessDefinitionPreflightServiceTest {
                   </bpmn:process>
                 </bpmn:definitions>
                 """;
+    }
+
+    private String skipXml(
+            String skipNode,
+            String skipExpression) {
+        return """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                                  xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn:process id="expense_flow" isExecutable="true">
+                    <bpmn:startEvent id="Start"/>
+                    <bpmn:userTask id="ApproveTask" flowable:skipExpression="%s">
+                      <bpmn:extensionElements>
+                        <flowable:properties>
+                          <flowable:property name="skipNode" value="%s"/>
+                        </flowable:properties>
+                      </bpmn:extensionElements>
+                    </bpmn:userTask>
+                    <bpmn:endEvent id="End"/>
+                    <bpmn:sequenceFlow id="Flow1" sourceRef="Start" targetRef="ApproveTask"/>
+                    <bpmn:sequenceFlow id="Flow2" sourceRef="ApproveTask" targetRef="End"/>
+                  </bpmn:process>
+                </bpmn:definitions>
+                """.formatted(skipExpression, skipNode);
+    }
+
+    private String userTaskCycleXml(String taskAttributes) {
+        return """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                                  xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn:process id="expense_flow" isExecutable="true">
+                    <bpmn:startEvent id="Start"/>
+                    <bpmn:userTask id="LoopTask" %s/>
+                    <bpmn:exclusiveGateway id="LoopRoute" default="FlowEnd"/>
+                    <bpmn:endEvent id="End"/>
+                    <bpmn:sequenceFlow id="FlowStart" sourceRef="Start" targetRef="LoopTask"/>
+                    <bpmn:sequenceFlow id="FlowRoute" sourceRef="LoopTask" targetRef="LoopRoute"/>
+                    <bpmn:sequenceFlow id="FlowLoop" sourceRef="LoopRoute" targetRef="LoopTask">
+                      <bpmn:conditionExpression>${retry == true}</bpmn:conditionExpression>
+                    </bpmn:sequenceFlow>
+                    <bpmn:sequenceFlow id="FlowEnd" sourceRef="LoopRoute" targetRef="End"/>
+                  </bpmn:process>
+                </bpmn:definitions>
+                """.formatted(taskAttributes);
+    }
+
+    private String cycleThroughNodeXml(
+            String loopTask,
+            String bridgeNode) {
+        return """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                                  xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn:process id="expense_flow" isExecutable="true">
+                    <bpmn:startEvent id="Start"/>
+                    %s
+                    %s
+                    <bpmn:endEvent id="End"/>
+                    <bpmn:sequenceFlow id="FlowStart" sourceRef="Start" targetRef="LoopTask"/>
+                    <bpmn:sequenceFlow id="FlowToBridge" sourceRef="LoopTask" targetRef="Bridge"/>
+                    <bpmn:sequenceFlow id="FlowBack" sourceRef="Bridge" targetRef="LoopTask"/>
+                    <bpmn:sequenceFlow id="FlowEnd" sourceRef="LoopTask" targetRef="End"/>
+                  </bpmn:process>
+                </bpmn:definitions>
+                """.formatted(loopTask, bridgeNode);
+    }
+
+    private String userTaskWithSkipMarker(
+            String expression,
+            String skipNode,
+            String assignee) {
+        String assignment = assignee == null
+                ? ""
+                : " flowable:assignee=\"" + assignee + "\"";
+        return """
+                <bpmn:userTask id="LoopTask" flowable:skipExpression="%s"%s>
+                  <bpmn:extensionElements>
+                    <flowable:properties>
+                      <flowable:property name="skipNode" value="%s"/>
+                    </flowable:properties>
+                  </bpmn:extensionElements>
+                </bpmn:userTask>
+                """.formatted(expression, assignment, skipNode);
     }
 
     private String modelingOnlyDataComponentsXml() {

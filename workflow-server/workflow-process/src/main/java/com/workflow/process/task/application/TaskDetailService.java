@@ -270,7 +270,6 @@ public class TaskDetailService {
             log.debug("尝试从流程变量获取数据: processInstanceId={}", processInstanceId);
             Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
             // 过滤掉系统变量
-            variables.remove("skipNodeEnabled");
             variables.remove("entityDataId");
             variables.remove("entityCode");
             variables.remove("submitterId");
@@ -366,7 +365,7 @@ public class TaskDetailService {
      * @param entityFieldCodeMap 实体字段ID到fieldCode的映射
      */
     private Map<String, Object> convertFieldToMap(EntityFormField f, Map<String, String> entityFieldCodeMap) {
-        // entity_form_field.field_id 存储的是 entity_field.id
+        // 发布表单字段视图中的 fieldId 对应 entity_field.id
         // 需要通过映射获取 fieldCode（如 "name", "gender"）
         String fieldCode = null;
         String fieldName = f.getFieldName();

@@ -223,6 +223,72 @@ class ProcessDefinitionNodeSyncServiceTest {
     }
 
     @Test
+    void parseAndSaveNodeConfigsSupportsAlternateBpmnPrefix() {
+        NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
+        ProcessDefinitionNodeSyncService service = service(
+                nodeMapper, null, null, null, null, null, null, null);
+        String bpmn = """
+                <bpmn2:definitions
+                    xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn2:process id="alternate_prefix">
+                    <bpmn2:startEvent id="start" />
+                    <bpmn2:userTask id="review">
+                      <bpmn2:extensionElements>
+                        <flowable:properties>
+                          <flowable:property name="skipNode" value="true" />
+                        </flowable:properties>
+                      </bpmn2:extensionElements>
+                    </bpmn2:userTask>
+                    <bpmn2:endEvent id="end" />
+                  </bpmn2:process>
+                </bpmn2:definitions>
+                """;
+
+        service.parseAndSaveNodeConfigs("process-1", bpmn);
+
+        ArgumentCaptor<NodeConfig> captor =
+                ArgumentCaptor.forClass(NodeConfig.class);
+        verify(nodeMapper, times(3)).insert(captor.capture());
+        NodeConfig review = captor.getAllValues().stream()
+                .filter(node -> "review".equals(node.getNodeId()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(NodeConfig.NodeType.USER_TASK, review.getNodeType());
+        assertEquals(true, review.getSkipNode());
+    }
+
+    @Test
+    void nodeSnapshotMarksOnlyAlwaysSkipAsSkipNode() {
+        NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
+        ProcessDefinitionNodeSyncService service = service(
+                nodeMapper, null, null, null, null, null, null, null);
+        String bpmn = "<bpmn:definitions "
+                + "xmlns:bpmn=\"http://www.omg.org/spec/BPMN/20100524/MODEL\" "
+                + "xmlns:flowable=\"http://flowable.org/bpmn\">"
+                + "<bpmn:process id=\"skip_modes\">"
+                + userTaskWithSkip("always", "true", "${amount &gt; 100}")
+                + userTaskWithSkip("conditional", "false", "${amount &gt; 100}")
+                + userTaskWithSkip("marker-false-dollar-true", "false", "${true}")
+                + userTaskWithSkip("marker-false-hash-true", "false", "#{true}")
+                + userTaskWithSkip("marker-false-switch", "false", "${skipNodeEnabled}")
+                + "<bpmn:userTask id=\"legacy-always\" flowable:skipExpression=\"${true}\" />"
+                + "<bpmn:userTask id=\"off\" />"
+                + "</bpmn:process></bpmn:definitions>";
+
+        service.parseAndSaveNodeConfigs("process-1", bpmn);
+
+        ArgumentCaptor<NodeConfig> captor =
+                ArgumentCaptor.forClass(NodeConfig.class);
+        verify(nodeMapper, times(7)).insert(captor.capture());
+        assertEquals(
+                List.of(true, false, true, true, true, true, false),
+                captor.getAllValues().stream()
+                        .map(NodeConfig::getSkipNode)
+                        .toList());
+    }
+
+    @Test
     void parseAndSaveNodeConfigsPropagatesInsertFailure() {
         NodeConfigMapper nodeMapper = mock(NodeConfigMapper.class);
         doThrow(new IllegalStateException("database unavailable"))
@@ -734,6 +800,19 @@ class ProcessDefinitionNodeSyncServiceTest {
                 + "</bpmn:userTask>"
                 + "</bpmn:process>"
                 + "</bpmn:definitions>";
+    }
+
+    private static String userTaskWithSkip(
+            String id,
+            String skipNode,
+            String skipExpression) {
+        return "<bpmn:userTask id=\"" + id
+                + "\" flowable:skipExpression=\"" + skipExpression
+                + "\"><bpmn:extensionElements><flowable:properties>"
+                + "<flowable:property value=\""
+                + skipNode
+                + "\" name=\"skipNode\" /></flowable:properties></bpmn:extensionElements>"
+                + "</bpmn:userTask>";
     }
 
     private static String escapeXmlAttribute(String value) {

@@ -70,7 +70,7 @@ public class SysGroupController {
     @PostMapping
     @RequiresPermission("system:user:manage")
     public Result<SysGroup> save(@Validated @RequestBody SysGroup group) {
-        return Result.success(groupService.saveGroup(group));
+        return Result.success(groupService.createGroup(group));
     }
     
     /**
@@ -83,8 +83,7 @@ public class SysGroupController {
     @PostMapping("/{id}/update")
     @RequiresPermission("system:user:manage")
     public Result<SysGroup> update(@PathVariable String id, @RequestBody SysGroup group) {
-        group.setId(id);
-        return Result.success(groupService.saveGroup(group));
+        return Result.success(groupService.updateGroup(id, group));
     }
     
     /**
@@ -115,7 +114,7 @@ public class SysGroupController {
                                      @RequestBody(required = false) java.util.Map<String, String> body) {
         String finalStatus = status != null ? status : (body != null ? body.get("status") : null);
         if (finalStatus == null) {
-            throw new RuntimeException("status参数不能为空");
+            throw new IllegalArgumentException("status参数不能为空");
         }
         groupService.updateStatus(id, finalStatus);
         return Result.success();

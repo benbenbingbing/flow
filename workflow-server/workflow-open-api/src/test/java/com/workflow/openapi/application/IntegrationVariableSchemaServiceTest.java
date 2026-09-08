@@ -115,6 +115,21 @@ class IntegrationVariableSchemaServiceTest {
                         objectMapper.readTree("""
                                 {
                                   "type": "object",
+                                  "maxProperties": 1,
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "_FLOWABLE_SKIP_EXPRESSION_ENABLED": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                                """)));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.validateConfiguration(
+                        objectMapper.readTree("""
+                                {
+                                  "type": "object",
                                   "maxProperties": 10,
                                   "additionalProperties": true
                                 }

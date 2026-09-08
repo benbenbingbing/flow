@@ -1,23 +1,17 @@
 package com.workflow.entity.form.infrastructure.persistence.record;
 
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * 表单字段配置
+ * 表单字段运行视图，由节点配置或不可变发布快照生成，不映射数据库表。
  */
 @Data
-@TableName("entity_form_field")
 public class EntityFormField {
 
     /** 主键ID */
-    @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
     /**
@@ -31,9 +25,8 @@ public class EntityFormField {
     private String fieldId;
 
     /**
-     * 字段编码（对应entity_field的field_code），持久化到数据库，用于前端表单字段 key
+     * 字段编码（对应entity_field的field_code），用于前端表单字段 key
      */
-    @com.baomidou.mybatisplus.annotation.TableField("field_code")
     private String fieldCode;
 
     /**
@@ -89,7 +82,6 @@ public class EntityFormField {
     /**
      * 字段模式权限及扩展配置JSON
      */
-    @TableField("extension_config")
     private String extensionConfig;
 
     /**
@@ -105,13 +97,11 @@ public class EntityFormField {
     /**
      * 选项配置JSON（用于下拉、单选、多选，非数据库字段，从entity_field补充）
      */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String optionsJson;
 
     /**
      * 关联实体ID（用于引用实体字段，非数据库字段，从entity_field补充）
      */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refEntityId;
 
     /**
@@ -122,52 +112,40 @@ public class EntityFormField {
      * ROLE - 系统角色
      * GROUP - 系统用户组
      */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refEntityType;
 
     /**
      * 子表单关联字段编码，非数据库字段，从entity_field补充
      */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refFieldCode;
 
     /** 子列表或实体引用默认列表编码（非数据库字段，从 entity_field 补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String refListKey;
 
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String relationCode;
 
     /** 关系名称（非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String relationName;
 
     /** 子实体ID（非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String childEntityId;
 
     /** 子实体编码（非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String childEntityCode;
 
     /** 子表单关联字段编码（非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String childRefFieldCode;
 
     /** 关系类型（ONE_TO_ONE/ONE_TO_MANY，非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private String relationType;
 
     /** 是否级联删除（非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean cascadeDelete;
 
     /** 关系是否必填（非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean relationRequired;
 
     /** 数据源绑定配置（非数据库字段，从entity_field补充） */
-    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Map<String, Object> dataSourceBindings;
 
     /**
@@ -178,12 +156,10 @@ public class EntityFormField {
     /**
      * 创建时间
      */
-    @com.baomidou.mybatisplus.annotation.TableField("create_time")
     private LocalDateTime createTime;
 
     /**
      * 更新时间
      */
-    @com.baomidou.mybatisplus.annotation.TableField("update_time")
     private LocalDateTime updateTime;
 }

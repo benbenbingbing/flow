@@ -22,7 +22,6 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -434,8 +433,6 @@ class UiDataSourceExecutionAccessServiceTest {
                 """);
         when(context.formNodeMapper().findByFormId("form-1"))
                 .thenReturn(List.of(node));
-        when(context.formFieldMapper().selectByFormId("form-1"))
-                .thenReturn(List.of());
         allowPermissionPlan();
 
         UiDataSourceExecutionAuthorization authorization =
@@ -760,8 +757,6 @@ class UiDataSourceExecutionAccessServiceTest {
                 mock(EntityFormMapper.class);
         EntityFormNodeMapper formNodeMapper =
                 mock(EntityFormNodeMapper.class);
-        EntityFormFieldMapper formFieldMapper =
-                mock(EntityFormFieldMapper.class);
         EntityListConfigMapper listMapper =
                 mock(EntityListConfigMapper.class);
         EntityListFieldMapper listFieldMapper =
@@ -799,8 +794,7 @@ class UiDataSourceExecutionAccessServiceTest {
                                 objectMapper),
                         formMapper,
                         formNodeMapper,
-                        formFieldMapper,
-                        listMapper,
+                                listMapper,
                         listFieldMapper,
                         definitionMapper,
                         menuMapper,
@@ -814,7 +808,6 @@ class UiDataSourceExecutionAccessServiceTest {
                 releaseMapper,
                 formMapper,
                 formNodeMapper,
-                formFieldMapper,
                 listMapper,
                 definitionMapper,
                 menuMapper,
@@ -830,7 +823,6 @@ class UiDataSourceExecutionAccessServiceTest {
             UiConfigReleaseMapper releaseMapper,
             EntityFormMapper formMapper,
             EntityFormNodeMapper formNodeMapper,
-            EntityFormFieldMapper formFieldMapper,
             EntityListConfigMapper listMapper,
             EntityDefinitionMapper definitionMapper,
             SysMenuMapper menuMapper,

@@ -1,284 +1,158 @@
 package com.workflow.process.task.application;
 
-import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
+import com.workflow.process.definition.application.DeployedSkipExpressionSafety;
+import com.workflow.process.instance.application.WorkflowReservedVariables;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
-import org.flowable.engine.RepositoryService;
+import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.engine.RuntimeService;
-import org.flowable.engine.TaskService;
+import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.event.FlowableActivityEvent;
-import org.flowable.bpmn.model.BpmnModel;
-import org.flowable.bpmn.model.FlowElement;
-import org.flowable.bpmn.model.SubProcess;
-import org.flowable.bpmn.model.UserTask;
-import org.flowable.engine.runtime.ProcessInstance;
-import org.flowable.task.api.Task;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-
 /**
- * 流程节点自动跳过服务。
+ * Flowable 原生用户任务跳过表达式的存量实例兼容监听器。
  *
- * <p>用于 BPMN 的 flowable:skipExpression 未生效时的运行时兜底：
- * 流程启动后，自动完成所有配置了 skip_node=true 的用户任务节点。</p>
- *
- * <p>同时实现 {@link FlowableEventListener}，监听 ACTIVITY_STARTED 事件，
- * 当流程运行中途到达配置为跳过的用户任务节点时，实时自动完成，
- * 弥补原先仅在流程启动时一次性跳过的不足。</p>
+ * <p>{@code ACTIVITY_STARTED} 在 {@code UserTaskActivityBehavior.execute}
+ * 的 skipExpression 判断之前触发。新实例在启动入口已经注入可信开关；本监听器只为
+ * 升级前启动、尚未到达用户任务的在途实例补齐该开关。任务是否跳过完全由部署版本中的
+ * {@code flowable:skipExpression} 决定，本服务不得查询或自动完成任务。</p>
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class WorkflowAutoSkipService implements FlowableEventListener {
 
-    private final TaskService taskService;
     private final RuntimeService runtimeService;
     private final RepositoryService repositoryService;
-    private final MultiInstanceOutcomeService multiInstanceOutcomeService;
-
-    /** 跳过节点总数硬上限，防止异常流程（如环路）导致死循环 */
-    private static final int MAX_SKIP_TOTAL = 500;
-    /** 实时跳过的递归深度上限：complete 会同步触发下一个 ACTIVITY_STARTED，链式跳过靠递归完成 */
-    private static final ThreadLocal<Integer> SKIP_DEPTH = ThreadLocal.withInitial(() -> 0);
 
     /**
-     * 自动完成指定流程实例中配置为跳过的节点任务（启动时一次性兜底）。
+     * 在用户任务行为执行前补齐原生 skipExpression 的可信启用变量。
      *
-     * @param processInstanceId 流程实例ID
-     * @param processDefinitionId Flowable 已部署流程定义 ID
+     * <p>Flowable 会优先读取旧 Activiti 变量，因此必须先删除该兼容键；否则存量
+     * {@code false} 会遮蔽平台写入的 Flowable 开关。安全模型的兼容变量写入异常
+     * 不阻断流程，节点会按普通用户任务停留；不安全模型若无法清除旧开关则中止命令。</p>
+     *
+     * @param event Flowable 运行时事件
      */
-    public void autoSkipNodes(
-            String processInstanceId,
-            String processDefinitionId) {
-        if (processInstanceId == null || processInstanceId.isEmpty()
-                || processDefinitionId == null
-                || processDefinitionId.isEmpty()) {
-            return;
-        }
-        Set<String> skipNodeIds = deployedSkipNodeIds(
-                processDefinitionId);
-
-        if (skipNodeIds.isEmpty()) {
-            return;
-        }
-
-        Set<String> completedTaskIds = new HashSet<>();
-        int totalSkipped = 0;
-        // 改为 while 循环：只要还有可跳过的活跃任务就继续，直到没有为止。
-        // 用 totalSkipped 硬上限防止异常流程导致死循环（替代原先固定 10 次的上限）。
-        while (totalSkipped < MAX_SKIP_TOTAL) {
-            List<Task> activeTasks = taskService.createTaskQuery()
-                    .processInstanceId(processInstanceId)
-                    .active()
-                    .list();
-
-            List<Task> skipTasks = activeTasks.stream()
-                    .filter(t -> skipNodeIds.contains(t.getTaskDefinitionKey()))
-                    .filter(t -> !completedTaskIds.contains(t.getId()))
-                    .collect(Collectors.toList());
-
-            if (skipTasks.isEmpty()) {
-                break;
-            }
-
-            for (Task task : skipTasks) {
-                try {
-                    taskService.addComment(task.getId(), processInstanceId, "系统自动跳过此节点");
-                    taskService.setVariable(task.getId(), "approved", "approve");
-                    // 跳过按通过处理，否则会签阈值永远到不了。
-                    multiInstanceOutcomeService.recordApprove(task);
-                    taskService.complete(task.getId(), Map.of("approved", "approve"));
-                    completedTaskIds.add(task.getId());
-                    totalSkipped++;
-                    log.info("自动跳过节点: processInstanceId={}, taskId={}, taskDefKey={}, taskName={}",
-                            processInstanceId, task.getId(), task.getTaskDefinitionKey(), task.getName());
-                } catch (Exception e) {
-                    log.error("自动跳过节点失败: processInstanceId={}, taskId={}", processInstanceId, task.getId(), e);
-                }
-            }
-        }
-    }
-
-    // ==================== 实时跳过：监听 ACTIVITY_STARTED ====================
-
     @Override
     public void onEvent(FlowableEvent event) {
-        if (!(event instanceof FlowableActivityEvent)) {
+        if (!(event instanceof FlowableActivityEvent activityEvent)
+                || event.getType()
+                != FlowableEngineEventType.ACTIVITY_STARTED
+                || !StringUtils.hasText(
+                        activityEvent.getProcessInstanceId())) {
             return;
         }
-        FlowableActivityEvent activityEvent = (FlowableActivityEvent) event;
+
+        String processInstanceId = activityEvent.getProcessInstanceId();
+        String unsafeSkipElement =
+                DeployedSkipExpressionSafety.firstUnsafeElementId(
+                        repositoryService.getBpmnModel(
+                                activityEvent.getProcessDefinitionId()));
+        if (unsafeSkipElement != null) {
+            disableUnsafeSkipExpressions(activityEvent);
+            log.warn(
+                    "历史部署包含不安全 skipExpression，已禁用原生跳过并保留正常流转: processDefinitionId={}, element={}",
+                    activityEvent.getProcessDefinitionId(),
+                    unsafeSkipElement);
+            return;
+        }
         if (!"userTask".equals(activityEvent.getActivityType())) {
             return;
         }
-
-        String activityId = activityEvent.getActivityId();
-        String processInstanceId = activityEvent.getProcessInstanceId();
-        if (activityId == null || processInstanceId == null) {
-            return;
-        }
-
-        // 递归深度保护：taskService.complete 会同步触发下一个节点的 ACTIVITY_STARTED，
-        // 链式跳过（连续多个跳过节点）通过递归完成，深度上限防止环路导致栈溢出。
-        int depth = SKIP_DEPTH.get();
-        if (depth >= MAX_SKIP_TOTAL) {
-            log.warn("实时自动跳过递归深度超限({})，停止跳过: processInstanceId={}", depth, processInstanceId);
-            return;
-        }
-        SKIP_DEPTH.set(depth + 1);
         try {
-            skipIfConfigured(processInstanceId, activityId);
-        } catch (Exception e) {
-            log.error("实时自动跳过失败: processInstanceId={}, activityId={}", processInstanceId, activityId, e);
-        } finally {
-            SKIP_DEPTH.set(depth);
+            Object legacyOverride = runtimeService.getVariable(
+                    processInstanceId,
+                    WorkflowReservedVariables
+                            .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE);
+            if (legacyOverride != null) {
+                runtimeService.removeVariable(
+                        processInstanceId,
+                        WorkflowReservedVariables
+                                .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE);
+            }
+            Object legacySkipEnabled = runtimeService.getVariable(
+                    processInstanceId,
+                    WorkflowReservedVariables
+                            .LEGACY_SKIP_NODE_ENABLED_VARIABLE);
+            if (!Boolean.TRUE.equals(legacySkipEnabled)) {
+                // 升级前的部署版本仍可能使用 ${skipNodeEnabled}。
+                runtimeService.setVariable(
+                        processInstanceId,
+                        WorkflowReservedVariables
+                                .LEGACY_SKIP_NODE_ENABLED_VARIABLE,
+                        true);
+            }
+            Object enabled = runtimeService.getVariable(
+                    processInstanceId,
+                    WorkflowReservedVariables
+                            .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE);
+            if (!Boolean.TRUE.equals(enabled)) {
+                runtimeService.setVariable(
+                        processInstanceId,
+                        WorkflowReservedVariables
+                                .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE,
+                        true);
+            }
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "补齐原生跳过表达式开关失败，用户任务将保留人工办理兜底: processInstanceId={}, activityId={}",
+                    processInstanceId,
+                    activityEvent.getActivityId(),
+                    exception);
         }
     }
 
     /**
-     * 判断当前到达的用户任务节点是否配置了跳过，若配置则自动完成。
+     * 禁用当前执行上的不安全跳过表达式。
+     *
+     * <p>多实例 {@code elementVariable} 会先于子活动启动写入 execution-local
+     * 变量，因此仅清理流程实例根变量无法阻止局部 {@code true}。在当前
+     * execution 写入优先级更高的 Activiti {@code false}，同时清理根与当前
+     * execution 的 Flowable 开关，使存量恶意模型只能按普通节点执行。</p>
+     *
+     * @param activityEvent 即将执行 activity behavior 的启动事件
      */
-    private void skipIfConfigured(String processInstanceId, String activityId) {
-        ProcessInstance pi = runtimeService.createProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-        if (pi == null) {
-            return;
+    private void disableUnsafeSkipExpressions(
+            FlowableActivityEvent activityEvent) {
+        String processInstanceId = activityEvent.getProcessInstanceId();
+        String executionId = activityEvent.getExecutionId();
+        if (!StringUtils.hasText(executionId)) {
+            throw new IllegalStateException(
+                    "无法禁用不安全 skipExpression: executionId 为空");
         }
 
-        String processDefinitionId = pi.getProcessDefinitionId();
-        Boolean deployedDecision = deployedSkipDecision(
-                processDefinitionId, activityId);
-        if (Boolean.FALSE.equals(deployedDecision)) {
-            return;
+        runtimeService.removeVariable(
+                processInstanceId,
+                WorkflowReservedVariables
+                        .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE);
+        runtimeService.removeVariable(
+                processInstanceId,
+                WorkflowReservedVariables
+                        .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE);
+        if (!processInstanceId.equals(executionId)) {
+            runtimeService.removeVariableLocal(
+                    executionId,
+                    WorkflowReservedVariables
+                            .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE);
         }
-        if (deployedDecision == null) {
-            return;
-        }
-
-        List<Task> tasks = taskService.createTaskQuery()
-                .processInstanceId(processInstanceId)
-                .taskDefinitionKey(activityId)
-                .active()
-                .list();
-        for (Task task : tasks) {
-            try {
-                taskService.addComment(task.getId(), processInstanceId, "系统自动跳过此节点");
-                taskService.setVariable(task.getId(), "approved", "approve");
-                multiInstanceOutcomeService.recordApprove(task);
-                taskService.complete(task.getId(), Map.of("approved", "approve"));
-                log.info("实时自动跳过节点: processInstanceId={}, taskId={}, taskDefKey={}",
-                        processInstanceId, task.getId(), activityId);
-            } catch (org.flowable.common.engine.api.FlowableException e) {
-                // 任务已被启动兜底逻辑完成/删除时会抛 "already deleted"，属于正常竞态，降级为 debug
-                log.debug("实时自动跳过跳过（任务可能已被处理）: processInstanceId={}, taskId={}, msg={}",
-                        processInstanceId, task.getId(), e.getMessage());
-            } catch (Exception e) {
-                log.error("实时自动跳过节点失败: processInstanceId={}, taskId={}", processInstanceId, task.getId(), e);
-            }
-        }
-    }
-
-    /** null 表示该部署版本没有跳过配置，不得回查当前草稿。 */
-    private Boolean deployedSkipDecision(
-            String processDefinitionId,
-            String activityId) {
-        BpmnModel model = repositoryService.getBpmnModel(
-                processDefinitionId);
-        FlowElement element = model == null
-                || model.getMainProcess() == null
-                ? null
-                : model.getMainProcess().getFlowElement(activityId, true);
-        if (!(element instanceof UserTask userTask)) {
-            return null;
-        }
-        String skipNode = ConfiguredTaskPropertyReader.read(
-                userTask, "skipNode");
-        String skipExpression = firstText(
-                userTask.getSkipExpression(),
-                userTask.getAttributeValue(
-                        "http://flowable.org/bpmn", "skipExpression"),
-                userTask.getAttributeValue("", "skipExpression"),
-                ConfiguredTaskPropertyReader.read(
-                        userTask, "skipExpression"));
-        if (skipNode != null) {
-            return Boolean.parseBoolean(skipNode);
-        }
-        // 条件 skipExpression 由 Flowable 自己求值。它仍证明部署快照
-        // 明确包含跳过语义，因此禁止回落到当前草稿节点表。
-        return StringUtils.hasText(skipExpression) ? Boolean.FALSE : null;
-    }
-
-    private Set<String> deployedSkipNodeIds(
-            String processDefinitionId) {
-        BpmnModel model = repositoryService.getBpmnModel(
-                processDefinitionId);
-        if (model == null || model.getMainProcess() == null) {
-            log.warn(
-                    "自动跳过忽略未知部署模型: processDefinitionId={}",
-                    processDefinitionId);
-            return Set.of();
-        }
-        Set<String> result = new HashSet<>();
-        collectDeployedSkipNodes(
-                model.getMainProcess().getFlowElements(), result);
-        return result;
-    }
-
-    private void collectDeployedSkipNodes(
-            java.util.Collection<FlowElement> elements,
-            Set<String> target) {
-        if (elements == null) {
-            return;
-        }
-        for (FlowElement element : elements) {
-            if (element instanceof UserTask userTask
-                    && Boolean.TRUE.equals(deployedSkipDecision(userTask))) {
-                target.add(userTask.getId());
-            }
-            if (element instanceof SubProcess subProcess) {
-                collectDeployedSkipNodes(
-                        subProcess.getFlowElements(), target);
-            }
-        }
-    }
-
-    private Boolean deployedSkipDecision(UserTask userTask) {
-        String skipNode = ConfiguredTaskPropertyReader.read(
-                userTask, "skipNode");
-        String skipExpression = firstText(
-                userTask.getSkipExpression(),
-                userTask.getAttributeValue(
-                        "http://flowable.org/bpmn", "skipExpression"),
-                userTask.getAttributeValue("", "skipExpression"),
-                ConfiguredTaskPropertyReader.read(
-                        userTask, "skipExpression"));
-        if (skipNode != null) {
-            return Boolean.parseBoolean(skipNode);
-        }
-        return StringUtils.hasText(skipExpression) ? Boolean.FALSE : null;
-    }
-
-    private String firstText(String... values) {
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
-        }
-        return null;
+        // Activiti 键的读取优先级高于 Flowable 键，local=false 可遮蔽任意父作用域。
+        runtimeService.setVariableLocal(
+                executionId,
+                WorkflowReservedVariables
+                        .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE,
+                false);
     }
 
     @Override
     public boolean isFailOnException() {
-        // 任何异常都不影响流程继续（跳过失败时任务停留在该节点，等同未配置跳过）
-        return false;
+        // 安全模型的兼容变量写入异常已在 onEvent 内降级为人工待办；
+        // 不安全模型若无法清除继承开关则必须中止当前引擎命令。
+        return true;
     }
 
     @Override

@@ -11,6 +11,8 @@ import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.application.ProcessTaskService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
+import com.workflow.process.task.application.operation.NodeOperationDecisionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.HistoryService;
@@ -39,6 +41,7 @@ public class ProcessTerminationService {
     private final ProcessTaskService processTaskService;
     private final IdentityDirectoryPort identityDirectoryPort;
     private final EntityRecordPort entityRecordPort;
+    private final NodeOperationCapabilityService nodeOperationCapabilityService;
 
     /**
      * 终止流程实例。
@@ -78,10 +81,17 @@ public class ProcessTerminationService {
                 .createHistoricProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .singleResult();
-        if (historicInstance != null
-                && !userId.equals(historicInstance.getStartUserId())) {
+        String startUserId = historicInstance != null
+                ? historicInstance.getStartUserId()
+                : processInstance.getStartUserId();
+        if (!userId.equals(startUserId)) {
             return Result.error(403, "只有发起人可以终止流程");
         }
+
+        // 权限校验下沉到事务服务，确保任何调用路径都无法绕过节点终止开关。
+        nodeOperationCapabilityService.requireTerminateAllowed(
+                processInstanceId,
+                NodeOperationDecisionService.CheckContext.ofReason(reason));
 
         String entityCode = null;
         String entityDataId = null;

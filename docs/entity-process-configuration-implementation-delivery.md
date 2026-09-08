@@ -2,6 +2,7 @@
 
 > 本文件记录早期阶段交付状态，最新完整实现、测试与迁移结论请以
 > `entity-process-configuration-implementation-final-report.md` 为准。
+> 原“节点操作矩阵”现已被[节点操作权限三开关方案](./node-operation-permission-simplification.md)替代。
 
 ## 1. 交付范围
 

@@ -1258,7 +1258,7 @@ public class ConfigMigrationImportApplyService {
                 formField.setFieldId(entityField.getId());
                 formFields.add(formField);
             }
-            form.setFields(formFields);
+            form.setFields(null);
             EntityForm saved = entityFormService.saveForm(form);
             List<EntityFormNode> nodes = new ArrayList<>();
             Map<String, String> idsByNodeKey =
@@ -1288,9 +1288,24 @@ public class ConfigMigrationImportApplyService {
                 node.setDeleted(0);
                 nodes.add(node);
             }
-            if (value.containsKey("nodes")) {
-                entityFormNodeService.replaceByDiff(
-                        saved.getId(), nodes);
+            // 导入包可能仍含快照字段；合入节点后只保存节点，避免两份可编辑配置。
+            nodes = new com.workflow.entity.form.application.EntityFormFieldProjection(
+                    new com.workflow.core.serialization.JsonDocumentCodec(objectMapper))
+                    .materialize(saved.getId(), formFields, nodes);
+            // 移植到当前实体时，节点内 fieldId 也必须重新绑定。
+            for (EntityFormNode node : nodes) {
+                Map<String, Object> props = new LinkedHashMap<>(
+                        new com.workflow.core.serialization.JsonDocumentCodec(objectMapper)
+                                .readObject(node.getPropsDocument(), "导入节点属性"));
+                EntityField targetField = fields.get(text(props.get("fieldCode"), node.getNodeKey()));
+                if (targetField != null) {
+                    props.put("fieldId", targetField.getId());
+                    node.setPropsDocument(new com.workflow.core.serialization.JsonDocumentCodec(objectMapper)
+                            .write(props, "导入节点属性"));
+                }
+            }
+            if (value.containsKey("nodes") || value.containsKey("fields")) {
+                entityFormNodeService.replaceByDiff(saved.getId(), nodes);
             }
             if (value.containsKey("eventBindings")) {
                 restoreEventBindings(

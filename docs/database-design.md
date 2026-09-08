@@ -1,16 +1,16 @@
 # Flow 系统数据库设计文档
 
-文档版本：1.1；整理日期：2026-09-08。
+文档版本：1.3；整理日期：2026-09-08。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
-文档收录 153 张平台现存表和 1 张 Flyway 迁移历史表，共 2,261 个字段。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
+文档收录本机库当前的 153 张表、2,220 个字段，其中七张为历史保留表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
 
-结构基准为 2026-09-08 工作区的 V001—V078 迁移及当前源码；Flyway 元数据按项目依赖的 11.20.3 MySQL 实现核对。V077、V078 和部分代码尚未提交，部署库执行情况未作核验。
+结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，数据库已执行至 V081。业务结构结合 V001—V079 SQL 迁移、V080 Java 迁移、V081 SQL 迁移及当前源码说明；历史保留表按实际库结构登记。
 
 字段表中的类型、可空性和默认值按数据库定义填写。“NULL（隐式）”表示可空列没有显式 DEFAULT；JSON 格式要求分别由应用校验或表内 CHECK 约束承担。表间业务关联与物理外键分别说明。
 
-“兼容使用中”表示当前代码仍保留读写或迁移路径；“疑似闲置”表示未找到应用直接引用，是否清理还需核对运行库和外部调用。
+“兼容使用中”表示字段仍保留读写或迁移路径；历史保留表的来源和使用情况在相应章节说明。
 
 ## 目录
 
@@ -29,14 +29,13 @@
 - [2. 表单与列表配置](#2-表单与列表配置)
   - [2.1 entity_form 实体表单定义表](#21-entity_form-实体表单定义表)
   - [2.2 entity_form_node 实体表单递归节点表](#22-entity_form_node-实体表单递归节点表)
-  - [2.3 entity_form_field 实体表单字段兼容表（兼容使用中）](#23-entity_form_field-实体表单字段兼容表兼容使用中)
-  - [2.4 entity_list_config 实体列表配置表](#24-entity_list_config-实体列表配置表)
-  - [2.5 entity_list_field 实体列表字段配置表](#25-entity_list_field-实体列表字段配置表)
-  - [2.6 entity_list_action 实体列表按钮配置表](#26-entity_list_action-实体列表按钮配置表)
-  - [2.7 entity_list_scene 实体列表场景配置表](#27-entity_list_scene-实体列表场景配置表)
-  - [2.8 entity_form_unique_value_gate 表单唯一值事务门闩表](#28-entity_form_unique_value_gate-表单唯一值事务门闩表)
-  - [2.9 entity_form_unique_claim 表单唯一值原子占位表](#29-entity_form_unique_claim-表单唯一值原子占位表)
-  - [2.10 ui_view_composition 表单列表关联内容表](#210-ui_view_composition-表单列表关联内容表)
+  - [2.3 entity_list_config 实体列表配置表](#23-entity_list_config-实体列表配置表)
+  - [2.4 entity_list_field 实体列表字段配置表](#24-entity_list_field-实体列表字段配置表)
+  - [2.5 entity_list_action 实体列表按钮配置表](#25-entity_list_action-实体列表按钮配置表)
+  - [2.6 entity_list_scene 实体列表场景配置表](#26-entity_list_scene-实体列表场景配置表)
+  - [2.7 entity_form_unique_value_gate 表单唯一值事务门闩表](#27-entity_form_unique_value_gate-表单唯一值事务门闩表)
+  - [2.8 entity_form_unique_claim 表单唯一值原子占位表](#28-entity_form_unique_claim-表单唯一值原子占位表)
+  - [2.9 ui_view_composition 表单列表关联内容表](#29-ui_view_composition-表单列表关联内容表)
 - [3. 数据权限](#3-数据权限)
   - [3.1 entity_list_scope_policy 列表数据范围方案表](#31-entity_list_scope_policy-列表数据范围方案表)
   - [3.2 entity_list_scope_binding 列表数据范围绑定表](#32-entity_list_scope_binding-列表数据范围绑定表)
@@ -45,19 +44,15 @@
   - [3.5 entity_list_scope_audit_log 列表数据范围审计表](#35-entity_list_scope_audit_log-列表数据范围审计表)
 - [4. 实体版本与变更](#4-实体版本与变更)
   - [4.1 entity_version_config 实体数据版本策略表](#41-entity_version_config-实体数据版本策略表)
-  - [4.2 entity_version_scenario 实体版本场景兼容表（兼容使用中）](#42-entity_version_scenario-实体版本场景兼容表兼容使用中)
-  - [4.3 entity_version_step 实体变更步骤兼容表（兼容使用中）](#43-entity_version_step-实体变更步骤兼容表兼容使用中)
-  - [4.4 entity_change_target_binding 变更目标解析兼容表（兼容使用中）](#44-entity_change_target_binding-变更目标解析兼容表兼容使用中)
-  - [4.5 entity_version_config_release 实体版本策略发布表](#45-entity_version_config_release-实体版本策略发布表)
-  - [4.6 entity_mutation_policy_config 实体变更策略草稿表](#46-entity_mutation_policy_config-实体变更策略草稿表)
-  - [4.7 entity_mutation_policy_release 实体变更策略发布表](#47-entity_mutation_policy_release-实体变更策略发布表)
-  - [4.8 entity_change_target_instance 变更实际目标记录表](#48-entity_change_target_instance-变更实际目标记录表)
-  - [4.9 entity_mutation_receipt 实体变更幂等回执表](#49-entity_mutation_receipt-实体变更幂等回执表)
-  - [4.10 entity_record_version 实体记录版本表](#410-entity_record_version-实体记录版本表)
-  - [4.11 entity_record_version_dataset 记录版本关系数据集表](#411-entity_record_version_dataset-记录版本关系数据集表)
-  - [4.12 entity_record_version_dataset_row 记录版本数据集行表](#412-entity_record_version_dataset_row-记录版本数据集行表)
-  - [4.13 entity_record_version_counter 记录版本计数器表](#413-entity_record_version_counter-记录版本计数器表)
-  - [4.14 entity_status_history 实体数据状态历史表（疑似闲置）](#414-entity_status_history-实体数据状态历史表疑似闲置)
+  - [4.2 entity_version_config_release 实体版本策略发布表](#42-entity_version_config_release-实体版本策略发布表)
+  - [4.3 entity_mutation_policy_config 实体变更策略草稿表](#43-entity_mutation_policy_config-实体变更策略草稿表)
+  - [4.4 entity_mutation_policy_release 实体变更策略发布表](#44-entity_mutation_policy_release-实体变更策略发布表)
+  - [4.5 entity_change_target_instance 变更实际目标记录表](#45-entity_change_target_instance-变更实际目标记录表)
+  - [4.6 entity_mutation_receipt 实体变更幂等回执表](#46-entity_mutation_receipt-实体变更幂等回执表)
+  - [4.7 entity_record_version 实体记录版本表](#47-entity_record_version-实体记录版本表)
+  - [4.8 entity_record_version_dataset 记录版本关系数据集表](#48-entity_record_version_dataset-记录版本关系数据集表)
+  - [4.9 entity_record_version_dataset_row 记录版本数据集行表](#49-entity_record_version_dataset_row-记录版本数据集行表)
+  - [4.10 entity_record_version_counter 记录版本计数器表](#410-entity_record_version_counter-记录版本计数器表)
 - [5. 流程设计](#5-流程设计)
   - [5.1 process_definition_config 流程定义配置表](#51-process_definition_config-流程定义配置表)
   - [5.2 process_version_history 流程发布历史表](#52-process_version_history-流程发布历史表)
@@ -74,7 +69,6 @@
   - [5.13 process_action_definition_entity 流程动作可见实体表](#513-process_action_definition_entity-流程动作可见实体表)
   - [5.14 process_person_resolver_definition 受控人员解析器目录表](#514-process_person_resolver_definition-受控人员解析器目录表)
   - [5.15 process_ui_release_binding 流程与界面发布绑定表](#515-process_ui_release_binding-流程与界面发布绑定表)
-  - [5.16 process_draft 流程草稿箱表（疑似闲置）](#516-process_draft-流程草稿箱表疑似闲置)
 - [6. 流程运行与协作](#6-流程运行与协作)
   - [6.1 entity_process_link 实体与流程实例关联表](#61-entity_process_link-实体与流程实例关联表)
   - [6.2 process_task 平台流程任务表](#62-process_task-平台流程任务表)
@@ -83,13 +77,11 @@
   - [6.5 process_task_add_sign 运行时加签记录表](#65-process_task_add_sign-运行时加签记录表)
   - [6.6 process_task_add_sign_user 运行时加签人员表](#66-process_task_add_sign_user-运行时加签人员表)
   - [6.7 process_cc_record 流程抄送记录表](#67-process_cc_record-流程抄送记录表)
-  - [6.8 process_common_opinion 常用审批意见表（疑似闲置）](#68-process_common_opinion-常用审批意见表疑似闲置)
-  - [6.9 process_task_instance 流程任务实例旧表（疑似闲置）](#69-process_task_instance-流程任务实例旧表疑似闲置)
-  - [6.10 process_operation_log 流程操作日志表](#610-process_operation_log-流程操作日志表)
-  - [6.11 process_action_execution 流程动作执行与重试表](#611-process_action_execution-流程动作执行与重试表)
-  - [6.12 process_status_sync_event 流程实体状态同步事件表](#612-process_status_sync_event-流程实体状态同步事件表)
-  - [6.13 process_assignee_incident 空办理人阻断事件表](#613-process_assignee_incident-空办理人阻断事件表)
-  - [6.14 process_assignee_incident_action 空办理人处置审计表](#614-process_assignee_incident_action-空办理人处置审计表)
+  - [6.8 process_operation_log 流程操作日志表](#68-process_operation_log-流程操作日志表)
+  - [6.9 process_action_execution 流程动作执行与重试表](#69-process_action_execution-流程动作执行与重试表)
+  - [6.10 process_status_sync_event 流程实体状态同步事件表](#610-process_status_sync_event-流程实体状态同步事件表)
+  - [6.11 process_assignee_incident 空办理人阻断事件表](#611-process_assignee_incident-空办理人阻断事件表)
+  - [6.12 process_assignee_incident_action 空办理人处置审计表](#612-process_assignee_incident_action-空办理人处置审计表)
 - [7. 工作日历与任务时效](#7-工作日历与任务时效)
   - [7.1 work_calendar 工作日历表](#71-work_calendar-工作日历表)
   - [7.2 work_calendar_period 每周工作时段表](#72-work_calendar_period-每周工作时段表)
@@ -178,15 +170,21 @@
   - [13.5 workflow_outbox_event 事务发件箱事件表](#135-workflow_outbox_event-事务发件箱事件表)
   - [13.6 workflow_bootstrap_job 启动初始化任务表](#136-workflow_bootstrap_job-启动初始化任务表)
   - [13.7 workflow_schema_change 数据库结构执行队列表](#137-workflow_schema_change-数据库结构执行队列表)
-  - [13.8 workbench_config 工作台配置表（疑似闲置）](#138-workbench_config-工作台配置表疑似闲置)
-  - [13.9 workbench_shortcut 工作台快捷入口表（疑似闲置）](#139-workbench_shortcut-工作台快捷入口表疑似闲置)
+  - [13.8 sys_external_system 外部系统基础信息表](#138-sys_external_system-外部系统基础信息表)
+  - [13.9 sys_external_system_parameter 外部系统扩展参数表](#139-sys_external_system_parameter-外部系统扩展参数表)
   - [13.10 flyway_schema_history Flyway迁移历史表](#1310-flyway_schema_history-flyway迁移历史表)
+- [14. 历史数据与迁移记录](#14-历史数据与迁移记录)
+  - [14.1 entity_table_migration_log 实体物理表迁移记录表](#141-entity_table_migration_log-实体物理表迁移记录表)
+  - [14.2 system_collation_migration_log 排序规则迁移记录表](#142-system_collation_migration_log-排序规则迁移记录表)
+  - [14.3 system_json_document_migration_log JSON文档迁移记录表](#143-system_json_document_migration_log-json文档迁移记录表)
+  - [14.4 flyway_schema_history_pre_v001_20260727 Flyway历史备份表](#144-flyway_schema_history_pre_v001_20260727-flyway历史备份表)
+  - [14.5 runtime_entity_record 旧运行时实体记录表](#145-runtime_entity_record-旧运行时实体记录表)
+  - [14.6 process_cc_outbox 旧流程抄送发件箱表](#146-process_cc_outbox-旧流程抄送发件箱表)
+  - [14.7 system_audit_outbox 旧审计发件箱表](#147-system_audit_outbox-旧审计发件箱表)
 
 ## 表和字段使用情况
 
-疑似闲置的 6 张现存表：[entity_status_history](#414-entity_status_history-实体数据状态历史表疑似闲置)、[process_common_opinion](#68-process_common_opinion-常用审批意见表疑似闲置)、[process_draft](#516-process_draft-流程草稿箱表疑似闲置)、[process_task_instance](#69-process_task_instance-流程任务实例旧表疑似闲置)、[workbench_config](#138-workbench_config-工作台配置表疑似闲置)、[workbench_shortcut](#139-workbench_shortcut-工作台快捷入口表疑似闲置)。
-
-明确保留兼容用途的表：[entity_change_target_binding](#44-entity_change_target_binding-变更目标解析兼容表兼容使用中)、[entity_form_field](#23-entity_form_field-实体表单字段兼容表兼容使用中)、[entity_version_scenario](#42-entity_version_scenario-实体版本场景兼容表兼容使用中)、[entity_version_step](#43-entity_version_step-实体变更步骤兼容表兼容使用中)。其他已识别字段状态见各字段行及对应实现说明。
+其他已识别字段的使用情况见各字段行及实现说明。
 
 已退役用途包括团队可见性旧开关、UI 热修复人工复核和 INDEX_ADVISOR 来源。按钮及场景 JSON、旧关系字段和历史节点属性仍有兼容路径，详见各表字段状态。
 
@@ -782,7 +780,7 @@ operation_id 关联结构发布操作。主表记录操作结果，本表保留�
 
 #### 2.1.1 业务说明
 
-保存实体下可复用表单的标识、布局、组件、草稿修订与激活发布指针。
+保存实体下可复用表单的标识、布局、组件、草稿修订与激活发布指针。控件属性由 entity_form_node 维护，字段查询接口根据节点生成字段视图。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 21 个。
 
@@ -906,71 +904,9 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 
 实现定位：[EntityFormNodeMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/infrastructure/persistence/mapper/EntityFormNodeMapper.java)、[EntityFormNode.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/infrastructure/persistence/record/EntityFormNode.java)、[EntityFormNodeService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/application/EntityFormNodeService.java)。
 
-### 2.3 entity_form_field 实体表单字段兼容表（兼容使用中）
+### 2.3 entity_list_config 实体列表配置表
 
 #### 2.3.1 业务说明
-
-保存表单字段标签、组件、校验和展示属性，承接旧表单字段结构以及发布恢复。
-
-**兼容使用中**：当前代码仍有读取、保存或迁移路径，属于旧配置兼容结构。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 21 个。
-
-#### 2.3.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 兼容使用中 |
-| `form_id` | 表单ID | `varchar(64)` | 否 | 无 | 表单ID。 | 兼容使用中 |
-| `field_id` | 字段ID | `varchar(64)` | 否 | 无 | 字段ID（对应entity_field）。 | 兼容使用中 |
-| `field_code` | 字段编码 | `varchar(100)` | 是 | `NULL` | 字段编码（对应 entity_field 的 field_code）。 | 兼容使用中 |
-| `field_name` | 字段名称 | `varchar(100)` | 否 | 无 | 字段名称。 | 兼容使用中 |
-| `field_label` | 显示标签 | `varchar(100)` | 否 | 无 | 显示标签。 | 兼容使用中 |
-| `field_type` | 字段类型 | `varchar(50)` | 否 | 无 | 字段类型。 | 兼容使用中 |
-| `sort_order` | 排序号 | `int` | 是 | `'0'` | 排序。 | 兼容使用中 |
-| `is_required` | 是否必填 | `tinyint` | 是 | `'0'` | 是否必填：0-否 1-是。 | 兼容使用中 |
-| `is_readonly` | 是否只读 | `tinyint` | 是 | `'0'` | 是否只读：0-否 1-是。 | 兼容使用中 |
-| `is_hidden` | 是否隐藏 | `tinyint` | 是 | `'0'` | 是否隐藏：0-否 1-是。 | 兼容使用中 |
-| `default_value` | 默认值 | `varchar(500)` | 是 | `''` | 默认值。 | 兼容使用中 |
-| `placeholder` | 占位提示 | `varchar(200)` | 是 | `''` | 占位提示。 | 兼容使用中 |
-| `validation_rules` | 结构化校验规则JSON | `longtext` | 是 | `NULL`（隐式） | 结构化校验规则JSON。 | 兼容使用中 |
-| `component_type` | 组件类型 | `varchar(50)` | 是 | `'input'` | 组件类型：input/select/date/number等。 | 兼容使用中 |
-| `component_props` | 组件额外配置JSON | `text` | 是 | `NULL`（隐式） | 组件额外配置JSON。 | 兼容使用中 |
-| `grid_span` | 栅格宽度 | `int` | 是 | `'12'` | 栅格宽度（1-24）。 | 兼容使用中 |
-| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 兼容使用中 |
-| `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 兼容使用中 |
-| `deleted` | 逻辑删除标记 | `tinyint` | 是 | `'0'` | 是否删除。 | 兼容使用中 |
-| `extension_config` | 字段模式权限及扩展配置JSON | `longtext` | 是 | `NULL`（隐式） | 字段模式权限及扩展配置JSON。 | 兼容使用中 |
-
-#### 2.3.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_form_id` (`form_id`)``。
-- ``KEY `idx_field_id` (`field_id`)``。
-- ``KEY `idx_sort_order` (`sort_order`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `form_id` → [entity_form](#21-entity_form-实体表单定义表).`id`。
-- `field_id` → [entity_field](#12-entity_field-实体字段定义表).`id`；两端物理类型不同。
-
-#### 2.3.4 业务规则
-
-当前节点设计已使用 entity_form_node，但本表仍被表单保存、快照恢复和兼容读取使用，属于兼容使用中。
-
-原 SQL 部分中文注释存在乱码，文档按还原后的含义表述。
-
-#### 2.3.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-实现定位：[EntityFormFieldMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/infrastructure/persistence/mapper/EntityFormFieldMapper.java)、[TaskDetailService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/task/application/TaskDetailService.java)、[NodeFormSubmissionService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/form/application/NodeFormSubmissionService.java)。
-
-### 2.4 entity_list_config 实体列表配置表
-
-#### 2.4.1 业务说明
 
 保存实体列表的名称、展示交互、查询入口、数据权限默认策略和发布状态，供页面、菜单、弹窗、嵌入视图及表单选数使用。每行对应某个实体下具有稳定 `list_key` 的一份列表配置；同一实体可以配置多个列表。
 
@@ -978,7 +914,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 
 物理属性：InnoDB；字符集 `utf8mb4`；排序规则 `utf8mb4_unicode_ci`。共 33 个字段、1 个主键、1 个联合唯一索引和 1 个普通索引。
 
-#### 2.4.2 配置存储边界
+#### 2.3.2 配置存储边界
 
 - 名称、展示、查询、选择模式等主配置：存放在本表的结构化字段或 JSON 文本字段中。
 - 列和查询字段的逐项配置：存放在 `entity_list_field`，本表没有 `columns_json` 或 `query_config_json` 字段。
@@ -989,7 +925,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 
 按钮和场景的整体保存会同步关系表，但逐项增量编辑主要修改关系表，并更新本表修订号。因此，本表 JSON 与关系表不能直接理解为始终一致的两份数据。运行时已解析的列表使用发布快照，不能从当前草稿关系表补入尚未发布的改动。
 
-#### 2.4.3 字段字典
+#### 2.3.3 字段字典
 
 本表共 33 个字段。数据库可空性与界面必填规则分别管理，应用补充的默认配置在业务说明中列出。
 
@@ -1035,7 +971,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 
 Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`pinnedRelease`、`releaseResolutionToken` 标记为 `exist = false`，属于运行时数据，不计入上述 33 个数据库字段。本表也没有独立的创建人、修改人字段。
 
-#### 2.4.4 枚举与业务规则
+#### 2.3.4 枚举与业务规则
 
 - 使用场景：`MENU` / `PAGE`；菜单入口 / 页面。
 - 使用场景：`DIALOG` / `DRAWER`；弹窗 / 抽屉。
@@ -1056,7 +992,7 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 
 **显式全量确认：** 新设置全量可见时需要确认标志、至少 5 个字符的原因，以及超级管理员身份或 `entity:list-scope:explicit-all` 权限。切换到其他策略时，业务代码会重置确认状态；确认人、时间和原因的历史留存不应仅依赖本行当前值。
 
-#### 2.4.5 JSON 配置结构与示例
+#### 2.3.5 JSON 配置结构与示例
 
 这些字段的物理类型是 `longtext`，不是 MySQL 原生 `JSON`。结构化序列化、配置解析和业务校验由应用完成，数据库没有为这些字段声明 JSON 格式检查约束。下列内容是说明用示例，不是从实际业务数据导出。
 
@@ -1127,7 +1063,7 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 
 尚未接入解释该配置的组件或查询扩展时保持空对象。默认受信任关联过滤通过调用上下文的 `relationKey` 找到已注册的 `EntityListContextResolver` 生成；向本字段填入 `parentField` 等键并不会自动实现关联查询。
 
-#### 2.4.6 主键、索引与关联
+#### 2.3.6 主键、索引与关联
 
 **当前索引**
 
@@ -1161,7 +1097,7 @@ erDiagram
 
 图中只表达与本表有关的业务关系，不表示数据库已经创建外键，也不展开其他表的字段设计。
 
-#### 2.4.7 保存、发布与删除流程
+#### 2.3.7 保存、发布与删除流程
 
 - 新建列表：生成 `id`；`revision = 1`、`published_version = 0`、`deleted = 0`，无激活快照；成为可编辑草稿；普通运行入口尚不能加载。
 - 保存元数据：事务内锁定配置行，校验 `expectedRevision`；递增 `revision`，清空 `draft_hash`，更新修改时间；保留原激活发布版本；界面配置保存后仍需发布。
@@ -1183,7 +1119,7 @@ erDiagram
 
 未指定 `list_key` 的默认选择流程按创建时间升序取列表，优先取标记为默认的第一条；没有默认标记则取第一条。它并不构成“每个实体有且仅有一个默认列表”的数据库约束。
 
-#### 2.4.8 现有设计问题
+#### 2.3.8 现有设计问题
 
 以下问题依据当前结构和实现整理，尚未调整。
 
@@ -1194,7 +1130,7 @@ erDiagram
 - 权限模式定义：三种模式名称仍保留，但当前引擎没有对应的三种范围合并算法；确认保留“列表绑定规则”模型，还是恢复继承 / 收窄 / 独立范围语义，再统一数据库注释、帮助文字与实现。
 - 编码查询索引：部分入口直接按 `entity_code + list_key + deleted` 查询，缺少匹配索引；有规模或性能证据时评估复合索引。
 
-#### 2.4.9 核对依据与迁移说明
+#### 2.3.9 核对依据与迁移说明
 
 - [V001 建表定义](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)：初始 27 个字段、索引、关联对象的物理定义。
 - [V034 接口操作上下文调整](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)、[V035 列表查询接口绑定](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V035__list_query_interface_operation.sql)：查询服务 ID 曾被删除后重新引入；最终仍保留服务与操作两个字段。
@@ -1210,15 +1146,15 @@ erDiagram
 - [EntityListScopeService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/EntityListScopeService.java)、[DataPermissionEngine](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/DataPermissionEngine.java)：未绑定策略、显式确认、独立权限发布、实际范围计算。
 - [EntityListConfigDesign.vue](../workflow-web/src/views/EntityListConfigDesign.vue)、[JSON 配置帮助](../workflow-web/src/shared/json-config-help.js)：视图初始化结构、选择返回映射、上下文配置的作用边界。
 
-### 2.5 entity_list_field 实体列表字段配置表
+### 2.4 entity_list_field 实体列表字段配置表
 
-#### 2.5.1 业务说明
+#### 2.4.1 业务说明
 
 逐项定义列表展示列和查询字段，包括字段来源、查询方式、宽度、渲染及模板引用。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 28 个。
 
-#### 2.5.2 字段设计
+#### 2.4.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1251,7 +1187,7 @@ erDiagram
 | `template_version` | 锁定模板版本 | `int` | 是 | `NULL` | 锁定模板版本。 | 现存 |
 | `local_overrides_document` | 模板实例本地覆盖JSON文档 | `longtext` | 是 | `NULL`（隐式） | 模板实例本地覆盖JSON文档。 | 现存 |
 
-#### 2.5.3 索引与关联
+#### 2.4.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_list_field` (`list_config_id`,`field_id`,`deleted`)``。
@@ -1261,28 +1197,28 @@ erDiagram
 
 业务关联：
 
-- `list_config_id` → [entity_list_config](#24-entity_list_config-实体列表配置表).`id`。
+- `list_config_id` → [entity_list_config](#23-entity_list_config-实体列表配置表).`id`。
 - `field_id` → [entity_field](#12-entity_field-实体字段定义表).`id`；两端物理类型不同。
 
-#### 2.5.4 业务规则
+#### 2.4.4 业务规则
 
 revision 用于逐项更新时的并发校验。order_key 为主要排序键，sort_order 保留为次级排序及兼容值。
 
-#### 2.5.5 来源与迁移
+#### 2.4.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V034__interface_operation_context.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)。
 
 实现定位：[EntityListFieldMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/mapper/EntityListFieldMapper.java)、[EntityListField.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/record/EntityListField.java)、[ConfigMigrationAssetService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
 
-### 2.6 entity_list_action 实体列表按钮配置表
+### 2.5 entity_list_action 实体列表按钮配置表
 
-#### 2.6.1 业务说明
+#### 2.5.1 业务说明
 
 按 TOOLBAR 或 ROW 位置保存按钮的稳定编码、权限、事件参数和适用条件。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 25 个。
 
-#### 2.6.2 字段设计
+#### 2.5.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1312,7 +1248,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 | `template_version` | 锁定模板版本 | `int` | 是 | `NULL` | 锁定模板版本。 | 现存 |
 | `local_overrides_document` | 模板实例本地覆盖JSON文档 | `longtext` | 是 | `NULL`（隐式） | 模板实例本地覆盖JSON文档。 | 现存 |
 
-#### 2.6.3 索引与关联
+#### 2.5.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_list_action` (`list_config_id`,`position`,`button_key`,`deleted`)``。
@@ -1322,27 +1258,27 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 
 业务关联：
 
-- `list_config_id` → [entity_list_config](#24-entity_list_config-实体列表配置表).`id`。
+- `list_config_id` → [entity_list_config](#23-entity_list_config-实体列表配置表).`id`。
 
-#### 2.6.4 业务规则
+#### 2.5.4 业务规则
 
 按钮稳定 ID 参与事件绑定和发布恢复；order_key、revision 服务于增量编辑，主表按钮 JSON 仍有兼容回退。
 
-#### 2.6.5 来源与迁移
+#### 2.5.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
 实现定位：[EntityListActionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/mapper/EntityListActionMapper.java)、[EntityListAction.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/record/EntityListAction.java)、[EntityFormService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/application/EntityFormService.java)。
 
-### 2.7 entity_list_scene 实体列表场景配置表
+### 2.6 entity_list_scene 实体列表场景配置表
 
-#### 2.7.1 业务说明
+#### 2.6.1 业务说明
 
 按列表维护允许的运行场景及顺序，供页面、弹窗、嵌入和表单选数入口校验。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 6 个。
 
-#### 2.7.2 字段设计
+#### 2.6.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1353,7 +1289,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `revision` | 修订号 | `int` | 否 | `'1'` | 场景草稿修订号。 | 现存 |
 
-#### 2.7.3 索引与关联
+#### 2.6.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_list_scene` (`list_config_id`,`scene_code`)``。
@@ -1362,27 +1298,27 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 
 业务关联：
 
-- `list_config_id` → [entity_list_config](#24-entity_list_config-实体列表配置表).`id`。
+- `list_config_id` → [entity_list_config](#23-entity_list_config-实体列表配置表).`id`。
 
-#### 2.7.4 业务规则
+#### 2.6.4 业务规则
 
 同一列表场景不能重复；空关系表在当前读取逻辑中可能触发主表 allowed_scenes 回退。
 
-#### 2.7.5 来源与迁移
+#### 2.6.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
 实现定位：[EntityListSceneMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/mapper/EntityListSceneMapper.java)、[EntityListScene.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/record/EntityListScene.java)、[EntityListRelationalConfigService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRelationalConfigService.java)。
 
-### 2.8 entity_form_unique_value_gate 表单唯一值事务门闩表
+### 2.7 entity_form_unique_value_gate 表单唯一值事务门闩表
 
-#### 2.8.1 业务说明
+#### 2.7.1 业务说明
 
 为相同实体字段和值建立跨表单、跨发布版本的串行入口，避免并发检查与占位之间的竞态。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 4 个。
 
-#### 2.8.2 字段设计
+#### 2.7.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1391,31 +1327,31 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 | `created_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `updated_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 
-#### 2.8.3 索引与关联
+#### 2.7.3 索引与关联
 
 - ``PRIMARY KEY (scope_key, value_hash)``。
 
 本表未声明物理外键。
 
-#### 2.8.4 业务规则
+#### 2.7.4 业务规则
 
 该行用于事务互斥，不代表业务记录；唯一字段核验应结合 claim 表和事务处理。
 
-#### 2.8.5 来源与迁移
+#### 2.7.5 来源与迁移
 
 结构依据：[V066__entity_form_unique_claim.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V066__entity_form_unique_claim.sql)。
 
 实现定位：[EntityFormUniqueValueGateMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/uniqueness/infrastructure/persistence/mapper/EntityFormUniqueValueGateMapper.java)。
 
-### 2.9 entity_form_unique_claim 表单唯一值原子占位表
+### 2.8 entity_form_unique_claim 表单唯一值原子占位表
 
-#### 2.9.1 业务说明
+#### 2.8.1 业务说明
 
 记录表单作用域内某业务记录对字段值的占用，以及对应的表单和发布配置。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
 
-#### 2.9.2 字段设计
+#### 2.8.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1435,7 +1371,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 | `created_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `updated_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 
-#### 2.9.3 索引与关联
+#### 2.8.3 索引与关联
 
 - ``PRIMARY KEY (constraint_key, value_hash)``。
 - ``UNIQUE KEY uk_form_unique_claim_record (constraint_key, record_id)``。
@@ -1449,25 +1385,25 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
 - `form_id` → [entity_form](#21-entity_form-实体表单定义表).`id`。
 
-#### 2.9.4 业务规则
+#### 2.8.4 业务规则
 
 支持按表单、范围和值摘要控制唯一性；跨表单同值并发协调使用 gate 表。
 
-#### 2.9.5 来源与迁移
+#### 2.8.5 来源与迁移
 
 结构依据：[V066__entity_form_unique_claim.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V066__entity_form_unique_claim.sql)。
 
 实现定位：[EntityFormUniqueClaim.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/uniqueness/infrastructure/persistence/record/EntityFormUniqueClaim.java)、[EntityFormUniqueClaimMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/uniqueness/infrastructure/persistence/mapper/EntityFormUniqueClaimMapper.java)、[EntityFormUniqueClaimService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/uniqueness/application/EntityFormUniqueClaimService.java)。
 
-### 2.10 ui_view_composition 表单列表关联内容表
+### 2.9 ui_view_composition 表单列表关联内容表
 
-#### 2.10.1 业务说明
+#### 2.9.1 业务说明
 
 把其他表单或列表作为关联内容组合到当前配置中，并保存目标发布版本与上下文映射。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
 
-#### 2.10.2 字段设计
+#### 2.9.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1485,7 +1421,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 | `deleted` | 逻辑删除标记 | `tinyint` | 否 | `0` | 逻辑删除标记；CHECK 枚举：0, 1。 | 现存 |
 | `active_composition_key` | 仅活动记录参与宿主内编码唯一约束 | `varchar(100)` | 是 | 生成列（非默认值） | 仅活动记录参与宿主内编码唯一约束；数据库生成，表达式见本表实现说明。 | 现存 |
 
-#### 2.10.3 索引与关联
+#### 2.9.3 索引与关联
 
 - ``PRIMARY KEY (id)``。
 - ``UNIQUE KEY uk_ui_view_composition_active_key ( owner_type, owner_id, active_composition_key )``。
@@ -1496,7 +1432,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 
 本表未声明物理外键。
 
-#### 2.10.4 业务规则
+#### 2.9.4 业务规则
 
 运行时使用发布快照及受信任上下文解析关联内容，不任意读取目标最新草稿。
 
@@ -1506,7 +1442,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 THEN composition_key ELSE NULL END ) STORED COMMENT '仅活动记录参与宿主内编码唯一约束'
 ```
 
-#### 2.10.5 来源与迁移
+#### 2.9.5 来源与迁移
 
 结构依据：[V061__ui_view_composition.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V061__ui_view_composition.sql)。
 
@@ -1756,7 +1692,7 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 #### 4.1.1 业务说明
 
-保存实体版本留存的开关、契约版本、触发器、快照范围和比较策略草稿。
+保存实体版本留存的开关、契约版本、触发器、快照范围和比较策略草稿。现行草稿统一使用 V2；历史发布仍按各自契约读取。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
 
@@ -1792,11 +1728,11 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 - `entity_id` → [entity_definition](#11-entity_definition-实体定义表).`id`；两端物理类型不同。
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `active_release_id` → [entity_version_config_release](#45-entity_version_config_release-实体版本策略发布表).`id`。
+- `active_release_id` → [entity_version_config_release](#42-entity_version_config_release-实体版本策略发布表).`id`。
 
 #### 4.1.4 业务规则
 
-V2 使用 draft_document；旧场景、步骤和变更目标仍有兼容迁移路径，migration_state 区分原生和待复核配置。
+草稿统一保存到 draft_document，使用 V2 触发器、范围和比较策略。写入规则、执行步骤和变更目标由独立变更策略管理；migration_state 记录配置来源及复核状态。
 
 #### 4.1.5 来源与迁移
 
@@ -1804,165 +1740,15 @@ V2 使用 draft_document；旧场景、步骤和变更目标仍有兼容迁移�
 
 实现定位：[EntityVersionConfigMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityVersionConfigMapper.java)、[EntityVersionConfig.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityVersionConfig.java)、[EntityVersionConfigurationService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionConfigurationService.java)。
 
-### 4.2 entity_version_scenario 实体版本场景兼容表（兼容使用中）
+### 4.2 entity_version_config_release 实体版本策略发布表
 
 #### 4.2.1 业务说明
-
-保存旧版版本留存的场景、触发条件和业务意图，为旧配置装配与迁移提供数据。
-
-**兼容使用中**：当前代码仍有读取、保存或迁移路径，属于旧配置兼容结构。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
-
-#### 4.2.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 场景ID。 | 兼容使用中 |
-| `config_id` | 版本配置ID | `varchar(64)` | 否 | 无 | 版本配置ID。 | 兼容使用中 |
-| `scenario_code` | 稳定场景编码 | `varchar(100)` | 否 | 无 | 稳定场景编码。 | 兼容使用中 |
-| `scenario_name` | 场景中文名称 | `varchar(200)` | 否 | 无 | 场景中文名称。 | 兼容使用中 |
-| `source_types_document` | 匹配的变更入口JSON数组 | `longtext` | 是 | `NULL`（隐式） | 匹配的变更入口JSON数组。 | 兼容使用中 |
-| `operation_types_document` | 匹配的操作类型JSON数组 | `longtext` | 是 | `NULL`（隐式） | 匹配的操作类型JSON数组。 | 兼容使用中 |
-| `business_intents_document` | 匹配的业务意图JSON数组 | `longtext` | 是 | `NULL`（隐式） | 匹配的业务意图JSON数组。 | 兼容使用中 |
-| `condition_document` | 可选条件表达式JSON文档 | `longtext` | 是 | `NULL`（隐式） | 可选条件表达式JSON文档。 | 兼容使用中 |
-| `priority` | 优先级 | `int` | 否 | `'0'` | 优先级，数值越大越先匹配。 | 兼容使用中 |
-| `version_title_template` | 版本标题模板 | `varchar(300)` | 是 | `NULL` | 版本标题模板。 | 兼容使用中 |
-| `enabled` | 是否启用 | `tinyint` | 否 | `'1'` | 是否启用。 | 兼容使用中 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 兼容使用中 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 兼容使用中 |
-
-#### 4.2.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_entity_version_scenario` (`config_id`,`scenario_code`)``。
-- ``KEY `idx_entity_version_scenario_runtime` (`config_id`,`enabled`,`priority`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `config_id` → [entity_version_config](#41-entity_version_config-实体数据版本策略表).`id`。
-
-#### 4.2.4 业务规则
-
-版本配置服务仍读取本表，并在旧配置迁移时使用。
-
-#### 4.2.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-实现定位：[EntityVersionScenarioMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityVersionScenarioMapper.java)、[EntityVersionScenario.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityVersionScenario.java)、[EntityVersionConfigurationService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionConfigurationService.java)。
-
-### 4.3 entity_version_step 实体变更步骤兼容表（兼容使用中）
-
-#### 4.3.1 业务说明
-
-保存旧数据版本配置中夹带的前置写入步骤、提供者或接口配置。
-
-**兼容使用中**：当前代码仍有读取、保存或迁移路径，属于旧配置兼容结构。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
-
-#### 4.3.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 步骤ID。 | 兼容使用中 |
-| `config_id` | 版本配置ID | `varchar(64)` | 否 | 无 | 版本配置ID。 | 兼容使用中 |
-| `scenario_id` | 限定场景ID | `varchar(64)` | 是 | `NULL` | 限定场景ID，为空表示实体级步骤。 | 兼容使用中 |
-| `phase` | 阶段 | `varchar(30)` | 否 | `'BEFORE_WRITE'` | 阶段。 | 兼容使用中 |
-| `step_type` | 步骤类型 | `varchar(30)` | 否 | 无 | 步骤类型。 | 兼容使用中 |
-| `step_name` | 步骤名称 | `varchar(200)` | 否 | 无 | 步骤名称。 | 兼容使用中 |
-| `provider_code` | 接口操作或Java Provider编码 | `varchar(200)` | 是 | `NULL` | 接口操作或Java Provider编码。 | 兼容使用中 |
-| `config_document` | 步骤参数JSON文档 | `longtext` | 是 | `NULL`（隐式） | 步骤参数JSON文档。 | 兼容使用中 |
-| `sort_order` | 排序号 | `int` | 否 | `'0'` | 排序号。 | 兼容使用中 |
-| `enabled` | 是否启用 | `tinyint` | 否 | `'1'` | 是否启用。 | 兼容使用中 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 兼容使用中 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 兼容使用中 |
-
-#### 4.3.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_entity_version_step_runtime` (`config_id`,`phase`,`enabled`,`sort_order`)``。
-- ``KEY `idx_entity_version_step_scenario` (`scenario_id`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `config_id` → [entity_version_config](#41-entity_version_config-实体数据版本策略表).`id`。
-
-#### 4.3.4 业务规则
-
-新变更策略已拆到独立配置，但旧版本策略仍有回退装配和迁移路径。
-
-#### 4.3.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-实现定位：[EntityVersionStepMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityVersionStepMapper.java)、[EntityVersionStep.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityVersionStep.java)、[EntityVersionConfigurationService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionConfigurationService.java)。
-
-### 4.4 entity_change_target_binding 变更目标解析兼容表（兼容使用中）
-
-#### 4.4.1 业务说明
-
-描述变更申请如何解析受影响的目标实体记录，包括关系、字段或扩展解析器。
-
-**兼容使用中**：当前代码仍有读取、保存或迁移路径，属于旧配置兼容结构。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 14 个。
-
-#### 4.4.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 绑定ID。 | 兼容使用中 |
-| `config_id` | 目标实体版本配置ID | `varchar(64)` | 否 | 无 | 目标实体版本配置ID。 | 兼容使用中 |
-| `binding_code` | 绑定编码 | `varchar(100)` | 否 | 无 | 绑定编码。 | 兼容使用中 |
-| `binding_name` | 绑定名称 | `varchar(200)` | 否 | 无 | 绑定名称。 | 兼容使用中 |
-| `source_entity_code` | 变更申请实体编码 | `varchar(100)` | 否 | 无 | 变更申请实体编码。 | 兼容使用中 |
-| `target_entity_code` | 目标实体编码 | `varchar(100)` | 否 | 无 | 目标实体编码。 | 兼容使用中 |
-| `resolver_type` | 解析器类型 | `varchar(30)` | 否 | 无 | 解析器类型。 | 兼容使用中 |
-| `resolver_code` | 引用字段、关系编码或Provider编码 | `varchar(200)` | 是 | `NULL` | 引用字段、关系编码或Provider编码。 | 兼容使用中 |
-| `resolver_config_document` | 目标解析参数JSON文档 | `longtext` | 是 | `NULL`（隐式） | 目标解析参数JSON文档。 | 兼容使用中 |
-| `mapping_document` | 申请字段到目标字段映射JSON文档 | `longtext` | 是 | `NULL`（隐式） | 申请字段到目标字段映射JSON文档。 | 兼容使用中 |
-| `apply_strategy` | 应用策略 | `varchar(20)` | 否 | `'MERGE'` | 应用策略。 | 兼容使用中 |
-| `enabled` | 是否启用 | `tinyint` | 否 | `'1'` | 是否启用。 | 兼容使用中 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 兼容使用中 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 兼容使用中 |
-
-#### 4.4.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_entity_change_target_binding` (`config_id`,`binding_code`)``。
-- ``KEY `idx_entity_change_target_source` (`source_entity_code`,`enabled`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `config_id` → [entity_version_config](#41-entity_version_config-实体数据版本策略表).`id`。
-
-#### 4.4.4 业务规则
-
-独立变更策略已承接新配置；旧表仍被旧策略装配与迁移使用。
-
-#### 4.4.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-实现定位：[EntityChangeTargetBindingMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityChangeTargetBindingMapper.java)、[EntityChangeTargetBinding.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityChangeTargetBinding.java)、[EntityVersionConfigurationService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionConfigurationService.java)。
-
-### 4.5 entity_version_config_release 实体版本策略发布表
-
-#### 4.5.1 业务说明
 
 按版本冻结实体数据版本策略，为记录版本捕获、比较和恢复校验提供依据。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 10 个。
 
-#### 4.5.2 字段设计
+#### 4.2.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1977,7 +1763,7 @@ V2 使用 draft_document；旧场景、步骤和变更目标仍有兼容迁移�
 | `publish_time` | 发布时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 发布时间。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.5.3 索引与关联
+#### 4.2.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_version_config_release` (`config_id`,`version`)``。
@@ -1988,25 +1774,25 @@ V2 使用 draft_document；旧场景、步骤和变更目标仍有兼容迁移�
 
 - `config_id` → [entity_version_config](#41-entity_version_config-实体数据版本策略表).`id`。
 
-#### 4.5.4 业务规则
+#### 4.2.4 业务规则
 
 contract_version 和 scope_hash 区分契约及冻结范围；旧发布还可承载旧变更步骤，仍有兼容读取。
 
-#### 4.5.5 来源与迁移
+#### 4.2.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
 
 实现定位：[EntityVersionConfigReleaseMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityVersionConfigReleaseMapper.java)、[EntityVersionConfigRelease.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityVersionConfigRelease.java)、[EntityVersionConfigurationService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionConfigurationService.java)。
 
-### 4.6 entity_mutation_policy_config 实体变更策略草稿表
+### 4.3 entity_mutation_policy_config 实体变更策略草稿表
 
-#### 4.6.1 业务说明
+#### 4.3.1 业务说明
 
 独立维护实体写入规则、执行步骤和跨实体变更目标，避免继续混入数据版本留存策略。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 14 个。
 
-#### 4.6.2 字段设计
+#### 4.3.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2025,7 +1811,7 @@ contract_version 和 scope_hash 区分契约及冻结范围；旧发布还可承
 | `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 | `deleted` | 逻辑删除标记 | `tinyint` | 否 | `'0'` | 逻辑删除标记。 | 现存 |
 
-#### 4.6.3 索引与关联
+#### 4.3.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_mutation_policy_code` (`entity_code`,`deleted`)``。
@@ -2037,27 +1823,27 @@ contract_version 和 scope_hash 区分契约及冻结范围；旧发布还可承
 
 - `entity_id` → [entity_definition](#11-entity_definition-实体定义表).`id`；两端物理类型不同。
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `active_release_id` → [entity_mutation_policy_release](#47-entity_mutation_policy_release-实体变更策略发布表).`id`。
+- `active_release_id` → [entity_mutation_policy_release](#44-entity_mutation_policy_release-实体变更策略发布表).`id`。
 
-#### 4.6.4 业务规则
+#### 4.3.4 业务规则
 
-原生配置缺失时，业务服务从旧数据版本策略装配兼容配置。
+草稿保存与发布分别管理。运行时只读取 active_release_id 指向的独立策略发布；未发布的草稿不参与执行。
 
-#### 4.6.5 来源与迁移
+#### 4.3.5 来源与迁移
 
 结构依据：[V044__split_entity_mutation_policy.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V044__split_entity_mutation_policy.sql)。
 
 实现定位：[EntityMutationPolicyConfigMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/mapper/EntityMutationPolicyConfigMapper.java)、[EntityMutationPolicyConfig.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/record/EntityMutationPolicyConfig.java)、[EntityMutationPolicyService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/application/EntityMutationPolicyService.java)。
 
-### 4.7 entity_mutation_policy_release 实体变更策略发布表
+### 4.4 entity_mutation_policy_release 实体变更策略发布表
 
-#### 4.7.1 业务说明
+#### 4.4.1 业务说明
 
 保存独立变更策略的不可变版本，供实际实体变更流程固定执行规则。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 8 个。
 
-#### 4.7.2 字段设计
+#### 4.4.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2070,7 +1856,7 @@ contract_version 和 scope_hash 区分契约及冻结范围；旧发布还可承
 | `publish_time` | 发布时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 发布时间。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.7.3 索引与关联
+#### 4.4.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_mutation_policy_release` (`config_id`,`version`)``。
@@ -2080,27 +1866,27 @@ contract_version 和 scope_hash 区分契约及冻结范围；旧发布还可承
 
 业务关联：
 
-- `config_id` → [entity_mutation_policy_config](#46-entity_mutation_policy_config-实体变更策略草稿表).`id`。
+- `config_id` → [entity_mutation_policy_config](#43-entity_mutation_policy_config-实体变更策略草稿表).`id`。
 
-#### 4.7.4 业务规则
+#### 4.4.4 业务规则
 
 config_id 与 version 组合唯一，草稿修改不应改写已发布策略内容。
 
-#### 4.7.5 来源与迁移
+#### 4.4.5 来源与迁移
 
 结构依据：[V044__split_entity_mutation_policy.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V044__split_entity_mutation_policy.sql)。
 
 实现定位：[EntityMutationPolicyReleaseMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/mapper/EntityMutationPolicyReleaseMapper.java)、[EntityMutationPolicyRelease.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/record/EntityMutationPolicyRelease.java)、[EntityMutationPolicyService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/application/EntityMutationPolicyService.java)。
 
-### 4.8 entity_change_target_instance 变更实际目标记录表
+### 4.5 entity_change_target_instance 变更实际目标记录表
 
-#### 4.8.1 业务说明
+#### 4.5.1 业务说明
 
 记录变更流程实际解析出的目标记录、锁定版本和执行关联，供变更应用及追溯。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
 
-#### 4.8.2 字段设计
+#### 4.5.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2117,7 +1903,7 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 
-#### 4.8.3 索引与关联
+#### 4.5.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_change_target_instance` (`source_entity_code`,`source_record_id`,`process_instance_id`,`binding_code`,`target_entity_code`,`target_record_id`)``。
@@ -2125,25 +1911,25 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 
 本表未声明物理外键。
 
-#### 4.8.4 业务规则
+#### 4.5.4 业务规则
 
 设计态目标规则与运行时实际目标分别保存；本表属于运行事实。
 
-#### 4.8.5 来源与迁移
+#### 4.5.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
 实现定位：[EntityChangeTargetInstanceMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityChangeTargetInstanceMapper.java)、[EntityChangeTargetInstance.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityChangeTargetInstance.java)、[EntityChangeTargetService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityChangeTargetService.java)。
 
-### 4.9 entity_mutation_receipt 实体变更幂等回执表
+### 4.6 entity_mutation_receipt 实体变更幂等回执表
 
-#### 4.9.1 业务说明
+#### 4.6.1 业务说明
 
 持久化实体变更请求的幂等键、请求摘要及结果，防止重试重复应用写入。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 14 个。
 
-#### 4.9.2 字段设计
+#### 4.6.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2162,7 +1948,7 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 
-#### 4.9.3 索引与关联
+#### 4.6.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_mutation_receipt_key` (`idempotency_key`)``。
@@ -2174,25 +1960,25 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
 
-#### 4.9.4 业务规则
+#### 4.6.4 业务规则
 
 相同幂等键需要匹配请求摘要；不能把已有成功回执用于不同请求内容。
 
-#### 4.9.5 来源与迁移
+#### 4.6.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
 实现定位：[EntityMutationReceiptMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityMutationReceiptMapper.java)、[UiViewCompositionActionReceiptService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiViewCompositionActionReceiptService.java)、[EntityMutationReceiptService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityMutationReceiptService.java)。
 
-### 4.10 entity_record_version 实体记录版本表
+### 4.7 entity_record_version 实体记录版本表
 
-#### 4.10.1 业务说明
+#### 4.7.1 业务说明
 
 为业务记录保存版本号、业务意图、原始快照、冻结展示语义和各类摘要。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 37 个。
 
-#### 4.10.2 字段设计
+#### 4.7.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2234,7 +2020,7 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 | `snapshot_document` | 快照文档 | `longtext` | 否 | 无 | 快照文档。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.10.3 索引与关联
+#### 4.7.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_record_version_no` (`entity_code`,`record_id`,`version_no`)``。
@@ -2248,27 +2034,27 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 业务关联：
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `config_release_id` → [entity_version_config_release](#45-entity_version_config_release-实体版本策略发布表).`id`。
+- `config_release_id` → [entity_version_config_release](#42-entity_version_config_release-实体版本策略发布表).`id`。
 
-#### 4.10.4 业务规则
+#### 4.7.4 业务规则
 
 V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_document。
 
-#### 4.10.5 来源与迁移
+#### 4.7.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)、[V046__record_version_global_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V046__record_version_global_idempotency.sql)。
 
 实现定位：[EntityRecordVersionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionMapper.java)、[BusinessMigrationPreflight.java](../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[EntityRecordVersionService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityRecordVersionService.java)。
 
-### 4.11 entity_record_version_dataset 记录版本关系数据集表
+### 4.8 entity_record_version_dataset 记录版本关系数据集表
 
-#### 4.11.1 业务说明
+#### 4.8.1 业务说明
 
 为一个记录版本冻结一层关系集合及范围、完整性、行数和内容摘要。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 18 个。
 
-#### 4.11.2 字段设计
+#### 4.8.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2291,7 +2077,7 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 | `complete` | V2必须完整 | `tinyint` | 否 | `'1'` | V2必须完整，禁止静默截断。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.11.3 索引与关联
+#### 4.8.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_record_version_dataset_node` (`version_id`,`node_code`)``。
@@ -2301,27 +2087,27 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 业务关联：
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `version_id` → [entity_record_version](#410-entity_record_version-实体记录版本表).`id`。
+- `version_id` → [entity_record_version](#47-entity_record_version-实体记录版本表).`id`。
 
-#### 4.11.4 业务规则
+#### 4.8.4 业务规则
 
 数据集属于指定版本；按冻结关系和范围解释，不实时重新查询业务关系。
 
-#### 4.11.5 来源与迁移
+#### 4.8.5 来源与迁移
 
 结构依据：[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
 
 实现定位：[EntityRecordVersionDatasetMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionDatasetMapper.java)、[EntityRecordVersionDataset.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityRecordVersionDataset.java)、[EntityVersionRestorePlanService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionRestorePlanService.java)。
 
-### 4.12 entity_record_version_dataset_row 记录版本数据集行表
+### 4.9 entity_record_version_dataset_row 记录版本数据集行表
 
-#### 4.12.1 业务说明
+#### 4.9.1 业务说明
 
 保存关系数据集中每条冻结记录的标识、顺序、快照和摘要。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 8 个。
 
-#### 4.12.2 字段设计
+#### 4.9.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2334,7 +2120,7 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 | `values_document` | 值集合文档 | `longtext` | 否 | 无 | fieldCode到FrozenValue的JSON。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.12.3 索引与关联
+#### 4.9.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_record_version_dataset_row` (`dataset_id`,`record_id`)``。
@@ -2343,27 +2129,27 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 
 业务关联：
 
-- `dataset_id` → [entity_record_version_dataset](#411-entity_record_version_dataset-记录版本关系数据集表).`id`。
+- `dataset_id` → [entity_record_version_dataset](#48-entity_record_version_dataset-记录版本关系数据集表).`id`。
 
-#### 4.12.4 业务规则
+#### 4.9.4 业务规则
 
 dataset 主表描述关系集合，本表保存集合内各条记录的冻结内容。
 
-#### 4.12.5 来源与迁移
+#### 4.9.5 来源与迁移
 
 结构依据：[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
 
 实现定位：[EntityRecordVersionDatasetRowMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionDatasetRowMapper.java)、[EntityRecordVersionDatasetRow.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityRecordVersionDatasetRow.java)、[EntityVersionRestorePlanService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionRestorePlanService.java)。
 
-### 4.13 entity_record_version_counter 记录版本计数器表
+### 4.10 entity_record_version_counter 记录版本计数器表
 
-#### 4.13.1 业务说明
+#### 4.10.1 业务说明
 
 按实体及记录维护下一版本号的事务计数状态，避免并发捕获产生重复版本。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 4 个。
 
-#### 4.13.2 字段设计
+#### 4.10.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2372,7 +2158,7 @@ dataset 主表描述关系集合，本表保存集合内各条记录的冻结内
 | `last_version_no` | 最近版本编号 | `int` | 否 | `'0'` | 最近版本编号。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 
-#### 4.13.3 索引与关联
+#### 4.10.3 索引与关联
 
 - ``PRIMARY KEY (`entity_code`,`record_id`)``。
 
@@ -2382,67 +2168,15 @@ dataset 主表描述关系集合，本表保存集合内各条记录的冻结内
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
 
-#### 4.13.4 业务规则
+#### 4.10.4 业务规则
 
 该计数值不是业务记录当前数据内容；版本事实以 entity_record_version 为准。
 
-#### 4.13.5 来源与迁移
+#### 4.10.5 来源与迁移
 
 结构依据：[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
 
 实现定位：[EntityRecordVersionCounter.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityRecordVersionCounter.java)、[EntityRecordVersionCounterMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionCounterMapper.java)、[EntityRecordVersionService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityRecordVersionService.java)。
-
-### 4.14 entity_status_history 实体数据状态历史表（疑似闲置）
-
-#### 4.14.1 业务说明
-
-建表设计用于记录实体记录的状态前后变化、来源流程及操作人员。
-
-状态：**疑似闲置**。未找到当前应用的直接读写入口，待结合运行库及外部调用确认。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
-
-#### 4.14.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 随表待核验 |
-| `entity_data_id` | 实体数据ID | `varchar(64)` | 否 | 无 | 实体数据ID。 | 随表待核验 |
-| `entity_code` | 实体编码 | `varchar(100)` | 否 | 无 | 实体编码。 | 随表待核验 |
-| `process_instance_id` | 流程实例ID | `varchar(64)` | 是 | `NULL` | 流程实例ID。 | 随表待核验 |
-| `from_status` | 变更前状态 | `varchar(100)` | 是 | `NULL` | 变更前状态。 | 随表待核验 |
-| `to_status` | 变更后状态 | `varchar(100)` | 否 | 无 | 变更后状态。 | 随表待核验 |
-| `from_node_id` | 来源节点ID | `varchar(100)` | 是 | `NULL` | 来源节点ID。 | 随表待核验 |
-| `to_node_id` | 目标节点ID | `varchar(100)` | 是 | `NULL` | 目标节点ID。 | 随表待核验 |
-| `operator_id` | 操作人ID | `varchar(64)` | 是 | `NULL` | 操作人ID。 | 随表待核验 |
-| `operator_name` | 操作人姓名 | `varchar(100)` | 是 | `NULL` | 操作人姓名。 | 随表待核验 |
-| `operation_type` | 操作类型 | `varchar(50)` | 是 | `NULL` | 操作类型：AUTO-自动流转, MANUAL-人工审批。 | 随表待核验 |
-| `remark` | 备注说明 | `varchar(500)` | 是 | `NULL` | 备注说明。 | 随表待核验 |
-| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 随表待核验 |
-
-#### 4.14.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_entity_data` (`entity_data_id`)``。
-- ``KEY `idx_entity_code` (`entity_code`)``。
-- ``KEY `idx_process_instance` (`process_instance_id`)``。
-- ``KEY `idx_create_time` (`create_time`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-
-#### 4.14.4 业务规则
-
-当前状态同步事件由 process_status_sync_event 保存。本表尚未找到直接持久化引用。
-
-#### 4.14.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-使用核验：检索当前 `src/main` 的 Java、SQL/XML 与前端业务引用未发现本表直接入口；此结论仅为静态证据。
 
 ## 5. 流程设计
 
@@ -2494,7 +2228,7 @@ dataset 主表描述关系集合，本表保存集合内各条记录的冻结内
 
 #### 5.1.4 业务规则
 
-draft_revision、published_revision 与对应哈希区分未发布编辑和已发布基线；当前草稿在本表，不依赖 process_draft 作为主存储。
+draft_revision、published_revision 与对应哈希区分未发布编辑和已发布基线；当前流程设计草稿保存在本表。
 
 原 SQL 部分中文注释存在乱码，文档按还原后的含义表述。
 
@@ -2915,7 +2649,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 
 #### 5.10.4 业务规则
 
-通过 FormFieldConfigMapper 由节点配置服务读写，需与 entity_form_field 区分归属。
+通过 FormFieldConfigMapper 由节点配置服务读写，归属于流程节点表单配置。
 
 #### 5.10.5 来源与迁移
 
@@ -3163,61 +2897,6 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
 实现定位：[ProcessUiReleaseBindingMapper.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/publish/infrastructure/persistence/mapper/ProcessUiReleaseBindingMapper.java)、[ProcessUiReleaseBinding.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/publish/infrastructure/persistence/record/ProcessUiReleaseBinding.java)、[ProcessUiReleaseBindingService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/publish/application/ProcessUiReleaseBindingService.java)。
-
-### 5.16 process_draft 流程草稿箱表（疑似闲置）
-
-#### 5.16.1 业务说明
-
-旧建表设计用于记录流程发起或办理过程中的草稿内容及引用信息。
-
-状态：**疑似闲置**。未找到当前应用的直接读写入口，待结合运行库及外部调用确认。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
-
-#### 5.16.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 随表待核验 |
-| `draft_code` | 草稿编码 | `varchar(100)` | 是 | `NULL` | 草稿编码。 | 随表待核验 |
-| `process_definition_id` | 流程定义ID | `varchar(64)` | 是 | `NULL` | 流程定义ID。 | 随表待核验 |
-| `process_name` | 流程名称 | `varchar(200)` | 是 | `NULL` | 流程名称。 | 随表待核验 |
-| `entity_code` | 关联实体编码 | `varchar(100)` | 是 | `NULL` | 关联实体编码。 | 随表待核验 |
-| `entity_data_id` | 关联实体数据ID | `varchar(64)` | 是 | `NULL` | 关联实体数据ID（临时数据）。 | 随表待核验 |
-| `business_key` | 业务主键 | `varchar(200)` | 是 | `NULL` | 业务主键。 | 随表待核验 |
-| `form_data` | 表单数据 | `longtext` | 否 | 无 | 表单数据。 | 随表待核验 |
-| `draft_title` | 草稿标题 | `varchar(500)` | 是 | `NULL` | 草稿标题。 | 随表待核验 |
-| `draft_summary` | 草稿摘要 | `text` | 是 | `NULL`（隐式） | 草稿摘要。 | 随表待核验 |
-| `user_id` | 创建人ID | `varchar(64)` | 否 | 无 | 创建人ID。 | 随表待核验 |
-| `user_name` | 用户名称 | `varchar(100)` | 是 | `NULL` | 用户名称。 | 随表待核验 |
-| `status` | 状态 | `varchar(20)` | 是 | `'ACTIVE'` | 状态：ACTIVE有效/SUBMITTED已提交/DELETED已删除。 | 随表待核验 |
-| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 随表待核验 |
-| `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 随表待核验 |
-
-#### 5.16.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `draft_code` (`draft_code`)``。
-- ``KEY `idx_user` (`user_id`,`status`,`update_time`)``。
-- ``KEY `idx_process` (`process_definition_id`)``。
-- ``KEY `idx_entity` (`entity_code`,`entity_data_id`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `user_id` → [sys_user](#95-sys_user-系统用户表).`id`。
-
-#### 5.16.4 业务规则
-
-当前源码未找到本表直接引用。流程设计器的 BPMN 草稿保存在 process_definition_config，与本表原设计的发起、办理草稿用途不同。
-
-#### 5.16.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-使用核验：检索当前 `src/main` 的 Java、SQL/XML 与前端业务引用未发现本表直接入口；此结论仅为静态证据。
 
 ## 6. 流程运行与协作
 
@@ -3572,132 +3251,15 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 
 实现定位：[ProcessCcRecordMapper.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/cc/infrastructure/persistence/mapper/ProcessCcRecordMapper.java)、[InAppCcNotificationChannel.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/cc/application/InAppCcNotificationChannel.java)、[ProcessInstanceAccessService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/instance/application/ProcessInstanceAccessService.java)。
 
-### 6.8 process_common_opinion 常用审批意见表（疑似闲置）
+### 6.8 process_operation_log 流程操作日志表
 
 #### 6.8.1 业务说明
-
-建表设计用于保存个人或公共常用审批意见和使用频次。
-
-状态：**疑似闲置**。未找到当前应用的直接读写入口，待结合运行库及外部调用确认。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 8 个。
-
-#### 6.8.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 随表待核验 |
-| `user_id` | 用户ID | `varchar(64)` | 否 | 无 | 用户ID。 | 随表待核验 |
-| `opinion_content` | 意见内容 | `varchar(500)` | 否 | 无 | 意见内容。 | 随表待核验 |
-| `opinion_type` | 意见类型 | `varchar(20)` | 是 | `'APPROVE'` | 意见类型：APPROVE同意/REJECT驳回/TRANSFER转办。 | 随表待核验 |
-| `sort_order` | 排序号 | `int` | 是 | `'0'` | 排序。 | 随表待核验 |
-| `use_count` | 使用次数 | `int` | 是 | `'0'` | 使用次数。 | 随表待核验 |
-| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 随表待核验 |
-| `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 随表待核验 |
-
-#### 6.8.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_user` (`user_id`,`sort_order`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `user_id` → [sys_user](#95-sys_user-系统用户表).`id`。
-
-#### 6.8.4 业务规则
-
-当前源码未找到本表的直接读写入口。
-
-#### 6.8.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-使用核验：检索当前 `src/main` 的 Java、SQL/XML 与前端业务引用未发现本表直接入口；此结论仅为静态证据。
-
-### 6.9 process_task_instance 流程任务实例旧表（疑似闲置）
-
-#### 6.9.1 业务说明
-
-旧建表设计用于保存任务执行实例、前后节点及业务数据快照。
-
-状态：**疑似闲置**。未找到当前应用的直接读写入口，待结合运行库及外部调用确认。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 31 个。
-
-#### 6.9.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 任务实例ID。 | 随表待核验 |
-| `process_instance_id` | 流程实例ID | `varchar(64)` | 否 | 无 | 流程实例ID。 | 随表待核验 |
-| `task_id` | Flowable任务ID | `varchar(64)` | 是 | `NULL` | Flowable任务ID。 | 随表待核验 |
-| `task_key` | 任务节点Key | `varchar(100)` | 是 | `NULL` | 任务节点Key。 | 随表待核验 |
-| `task_name` | 任务名称 | `varchar(200)` | 是 | `NULL` | 任务名称。 | 随表待核验 |
-| `process_definition_id` | 流程定义ID | `varchar(64)` | 是 | `NULL` | 流程定义ID。 | 随表待核验 |
-| `process_name` | 流程名称 | `varchar(200)` | 是 | `NULL` | 流程名称。 | 随表待核验 |
-| `entity_code` | 关联实体编码 | `varchar(100)` | 是 | `NULL` | 关联实体编码。 | 随表待核验 |
-| `entity_data_id` | 关联实体数据ID | `varchar(64)` | 是 | `NULL` | 关联实体数据ID。 | 随表待核验 |
-| `business_key` | 业务主键 | `varchar(200)` | 是 | `NULL` | 业务主键。 | 随表待核验 |
-| `assignee_id` | 被指派人ID | `varchar(64)` | 是 | `NULL` | 被指派人ID。 | 随表待核验 |
-| `assignee_name` | 被指派人姓名 | `varchar(100)` | 是 | `NULL` | 被指派人姓名。 | 随表待核验 |
-| `owner_id` | 持有者ID | `varchar(64)` | 是 | `NULL` | 任务所有人ID。 | 随表待核验 |
-| `candidate_users` | 候选用户集合 | `text` | 是 | `NULL`（隐式） | 候选人ID列表（JSON）。 | 随表待核验 |
-| `candidate_groups` | 候选组集合 | `text` | 是 | `NULL`（隐式） | 候选组列表（JSON）。 | 随表待核验 |
-| `task_type` | 任务类型 | `varchar(20)` | 是 | `NULL` | 任务类型：TODO待办/DONE已办/DRAFT草稿/CC抄送。 | 随表待核验 |
-| `action_type` | 操作类型 | `varchar(50)` | 是 | `NULL` | 操作类型：SUBMIT/APPROVE/REJECT/TRANSFER/RETURN/DELEGATE。 | 随表待核验 |
-| `action_comment` | 处理意见 | `text` | 是 | `NULL`（隐式） | 处理意见。 | 随表待核验 |
-| `form_data` | 表单数据快照 | `longtext` | 是 | `NULL`（隐式） | 表单数据快照。 | 随表待核验 |
-| `due_time` | 截止时间 | `datetime` | 是 | `NULL` | 截止时间。 | 随表待核验 |
-| `priority` | 优先级 0-100 | `int` | 是 | `'50'` | 优先级 0-100。 | 随表待核验 |
-| `is_read` | 是否已读 | `tinyint` | 是 | `'0'` | 是否已读。 | 随表待核验 |
-| `read_time` | 阅读时间 | `datetime` | 是 | `NULL` | 阅读时间。 | 随表待核验 |
-| `start_time` | 任务开始时间 | `datetime` | 是 | `NULL` | 任务开始时间。 | 随表待核验 |
-| `end_time` | 任务结束时间 | `datetime` | 是 | `NULL` | 任务结束时间。 | 随表待核验 |
-| `duration_ms` | 处理耗时 | `bigint` | 是 | `NULL` | 处理耗时（毫秒）。 | 随表待核验 |
-| `parent_task_id` | 父任务ID | `varchar(64)` | 是 | `NULL` | 父任务ID（用于会签）。 | 随表待核验 |
-| `root_task_id` | 根任务ID | `varchar(64)` | 是 | `NULL` | 根任务ID。 | 随表待核验 |
-| `delegation_state` | 委托状态 | `varchar(20)` | 是 | `NULL` | 委托状态：PENDING/RESOLVED。 | 随表待核验 |
-| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 随表待核验 |
-| `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 随表待核验 |
-
-#### 6.9.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_process_instance` (`process_instance_id`)``。
-- ``KEY `idx_assignee_type` (`assignee_id`,`task_type`)``。
-- ``KEY `idx_entity` (`entity_code`,`entity_data_id`)``。
-- ``KEY `idx_business_key` (`business_key`)``。
-- ``KEY `idx_start_time` (`start_time`)``。
-- ``KEY `idx_due_time` (`due_time`)``。
-- ``KEY `idx_task_type` (`task_type`,`is_read`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-
-#### 6.9.4 业务规则
-
-现有任务服务使用 process_task。本表未找到直接引用，使用状态待核实。
-
-#### 6.9.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-使用核验：检索当前 `src/main` 的 Java、SQL/XML 与前端业务引用未发现本表直接入口；此结论仅为静态证据。
-
-### 6.10 process_operation_log 流程操作日志表
-
-#### 6.10.1 业务说明
 
 记录流程发起、办理、退回等操作的操作者、节点、结果和意见。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
 
-#### 6.10.2 字段设计
+#### 6.8.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -3717,7 +3279,7 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 | `old_value_format` | 原值格式 | `varchar(20)` | 否 | `'JSON'` | 原值格式。 | 现存 |
 | `new_value_format` | 新值格式 | `varchar(20)` | 否 | `'JSON'` | 新值格式。 | 现存 |
 
-#### 6.10.3 索引与关联
+#### 6.8.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``KEY `idx_process` (`process_instance_id`,`operation_time`)``。
@@ -3725,25 +3287,25 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 
 本表未声明物理外键。
 
-#### 6.10.4 业务规则
+#### 6.8.4 业务规则
 
 本表保留流程业务上下文；system_operation_log 通过来源坐标关联流程操作。
 
-#### 6.10.5 来源与迁移
+#### 6.8.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
 实现定位：[ProcessOperationLogMapper.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/audit/infrastructure/persistence/mapper/ProcessOperationLogMapper.java)、[ProcessOperationLog.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/audit/infrastructure/persistence/record/ProcessOperationLog.java)、[RelatedProcessCoordinationExecutionService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/coordination/application/RelatedProcessCoordinationExecutionService.java)。
 
-### 6.11 process_action_execution 流程动作执行与重试表
+### 6.9 process_action_execution 流程动作执行与重试表
 
-#### 6.11.1 业务说明
+#### 6.9.1 业务说明
 
 记录动作触发、请求载荷、执行状态、重试及结果，承接可靠执行任务。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 33 个。
 
-#### 6.11.2 字段设计
+#### 6.9.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -3781,7 +3343,7 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 | `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间。 | 现存 |
 
-#### 6.11.3 索引与关联
+#### 6.9.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_process_action_execution_idempotency` (`idempotency_key`)``。
@@ -3797,25 +3359,25 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
 
-#### 6.11.4 业务规则
+#### 6.9.4 业务规则
 
 owner_id、lease_token、lease_until 构成跨实例领取租约；重试需要结合幂等键与执行状态。
 
-#### 6.11.5 来源与迁移
+#### 6.9.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V005__flow_action_execution_leases.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V005__flow_action_execution_leases.sql)。
 
 实现定位：[FlowActionExecutionMapper.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/action/infrastructure/persistence/mapper/FlowActionExecutionMapper.java)、[FlowActionExecution.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/action/infrastructure/persistence/record/FlowActionExecution.java)、[FlowActionExecutionService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/action/application/FlowActionExecutionService.java)。
 
-### 6.12 process_status_sync_event 流程实体状态同步事件表
+### 6.10 process_status_sync_event 流程实体状态同步事件表
 
-#### 6.12.1 业务说明
+#### 6.10.1 业务说明
 
 记录流程状态同步到实体记录的幂等事件、顺序和应用结果。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
 
-#### 6.12.2 字段设计
+#### 6.10.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -3832,7 +3394,7 @@ owner_id、lease_token、lease_until 构成跨实例领取租约；重试需要�
 | `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间。 | 现存 |
 
-#### 6.12.3 索引与关联
+#### 6.10.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_process_status_sync_event` (`process_instance_id`,`event_type`,`event_sequence`)``。
@@ -3845,25 +3407,25 @@ owner_id、lease_token、lease_until 构成跨实例领取租约；重试需要�
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`；两端物理类型不同。
 
-#### 6.12.4 业务规则
+#### 6.10.4 业务规则
 
 process_instance_id、event_type、event_sequence 的联合唯一键防止重复事件；与 entity_process_link 的当前状态共同使用。
 
-#### 6.12.5 来源与迁移
+#### 6.10.5 来源与迁移
 
 结构依据：[V006__durable_process_status_sync.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V006__durable_process_status_sync.sql)。
 
 实现定位：[ProcessStatusSyncMapper.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/status/infrastructure/persistence/mapper/ProcessStatusSyncMapper.java)、[ProcessStatusSyncOutboxHandler.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/status/application/ProcessStatusSyncOutboxHandler.java)。
 
-### 6.13 process_assignee_incident 空办理人阻断事件表
+### 6.11 process_assignee_incident 空办理人阻断事件表
 
-#### 6.13.1 业务说明
+#### 6.11.1 业务说明
 
 记录节点无法解析办理人时的阻断、重试策略和责任归属，避免流程静默跳过。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 28 个。
 
-#### 6.13.2 字段设计
+#### 6.11.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -3896,7 +3458,7 @@ process_instance_id、event_type、event_sequence 的联合唯一键防止重复
 | `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 | `open_slot` | 开放占位 | `varchar(128)` | 是 | 生成列（非默认值） | 开放占位；数据库生成，表达式见本表实现说明。 | 现存 |
 
-#### 6.13.3 索引与关联
+#### 6.11.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_process_assignee_incident_open` (`open_slot`)``。
@@ -3910,7 +3472,7 @@ process_instance_id、event_type、event_sequence 的联合唯一键防止重复
 
 - `process_config_id` → [process_definition_config](#51-process_definition_config-流程定义配置表).`id`；两端物理类型不同。
 
-#### 6.13.4 业务规则
+#### 6.11.4 业务规则
 
 open_slot 及唯一约束用于限制同一开放事件；自动重试和人工处置均需更新事件状态。
 
@@ -3920,21 +3482,21 @@ open_slot 及唯一约束用于限制同一开放事件；自动重试和人工�
 open_slot varchar(128) GENERATED ALWAYS AS ( CASE WHEN status IN ('OPEN', 'RETRY_SCHEDULED', 'MANUAL_REQUIRED') THEN CONCAT(COALESCE(task_id, process_instance_id, 'NO_INSTANCE'), ':', node_id) ELSE NULL END ) STORED
 ```
 
-#### 6.13.5 来源与迁移
+#### 6.11.5 来源与迁移
 
 结构依据：[V054__empty_assignee_policy_incident.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V054__empty_assignee_policy_incident.sql)。
 
 实现定位：[AssigneeIncidentRecorder.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/AssigneeIncidentRecorder.java)、[AssigneeIncidentService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/AssigneeIncidentService.java)、[EmptyAssigneePolicyService.java](../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/EmptyAssigneePolicyService.java)。
 
-### 6.14 process_assignee_incident_action 空办理人处置审计表
+### 6.12 process_assignee_incident_action 空办理人处置审计表
 
-#### 6.14.1 业务说明
+#### 6.12.1 业务说明
 
 记录空办理人事件的人工或自动处置、请求参数、结果和操作人员。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 11 个。
 
-#### 6.14.2 字段设计
+#### 6.12.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -3950,7 +3512,7 @@ open_slot varchar(128) GENERATED ALWAYS AS ( CASE WHEN status IN ('OPEN', 'RETRY
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `finished_at` | 完成时间 | `datetime` | 是 | `NULL` | 完成时间。 | 现存 |
 
-#### 6.14.3 索引与关联
+#### 6.12.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_assignee_incident_action_request` (`incident_id`, `request_id`)``。
@@ -3960,13 +3522,13 @@ open_slot varchar(128) GENERATED ALWAYS AS ( CASE WHEN status IN ('OPEN', 'RETRY
 
 业务关联：
 
-- `incident_id` → [process_assignee_incident](#613-process_assignee_incident-空办理人阻断事件表).`id`。
+- `incident_id` → [process_assignee_incident](#611-process_assignee_incident-空办理人阻断事件表).`id`。
 
-#### 6.14.4 业务规则
+#### 6.12.4 业务规则
 
 审计归属 incident_id，用于解释主事件如何被恢复或关闭。
 
-#### 6.14.5 来源与迁移
+#### 6.12.5 来源与迁移
 
 结构依据：[V054__empty_assignee_policy_incident.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V054__empty_assignee_policy_incident.sql)。
 
@@ -8157,100 +7719,81 @@ active_hash 约束活跃结构请求的重复申请，执行进程通过租约�
 
 实现定位：[SchemaChangeWorker.java](../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/SchemaChangeWorker.java)、[QueuedSchemaDdlExecutor.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/data/infrastructure/QueuedSchemaDdlExecutor.java)。
 
-### 13.8 workbench_config 工作台配置表（疑似闲置）
+### 13.8 sys_external_system 外部系统基础信息表
 
 #### 13.8.1 业务说明
 
-建表设计用于保存用户或角色工作台的布局与组件配置。
+维护外部系统名称、编码、地址和启停状态。system_code 全局唯一，逻辑删除后也不能复用；version 用于编辑时的乐观锁校验。
 
-状态：**疑似闲置**。未找到当前应用的直接读写入口，待结合运行库及外部调用确认。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
 
 #### 13.8.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 随表待核验 |
-| `config_name` | 配置名称 | `varchar(200)` | 否 | 无 | 配置名称。 | 随表待核验 |
-| `config_code` | 配置编码 | `varchar(100)` | 是 | `NULL` | 配置编码。 | 随表待核验 |
-| `user_id` | 用户ID | `varchar(64)` | 是 | `NULL` | 用户ID（为空表示系统默认）。 | 随表待核验 |
-| `layout_type` | 布局类型 | `varchar(20)` | 是 | `'GRID'` | 布局类型：GRID/FREE。 | 随表待核验 |
-| `layout_config` | 布局配置 | `longtext` | 否 | 无 | 布局配置。 | 随表待核验 |
-| `widgets_config` | 组件配置列表 | `longtext` | 是 | `NULL`（隐式） | 组件配置列表。 | 随表待核验 |
-| `is_default` | 是否默认 | `tinyint` | 是 | `'0'` | 是否默认。 | 随表待核验 |
-| `is_system` | 是否系统预设 | `tinyint` | 是 | `'0'` | 是否系统预设。 | 随表待核验 |
-| `status` | 状态 | `varchar(20)` | 是 | `'ACTIVE'` | 状态。 | 随表待核验 |
-| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 随表待核验 |
-| `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 随表待核验 |
+| `id` | 记录ID | `varchar(64)` | 否 | 无 | 外部系统ID | 现存 |
+| `system_name` | 系统名称 | `varchar(100)` | 否 | 无 | 外部系统名称 | 现存 |
+| `system_code` | 系统编码 | `varchar(100)` | 否 | 无 | 外部系统稳定编码，删除后也不得复用 | 现存 |
+| `status` | 状态 | `char(1)` | 否 | `'0'` | 状态：0-启用 1-禁用 | 现存 |
+| `address` | 系统地址 | `varchar(500)` | 否 | 无 | 外部系统地址 | 现存 |
+| `description` | 说明 | `varchar(500)` | 是 | `NULL` | 描述 | 现存 |
+| `version` | 版本号 | `bigint` | 否 | `0` | 乐观锁版本号 | 现存 |
+| `created_by` | 创建人 | `varchar(64)` | 是 | `NULL` | 创建人 | 现存 |
+| `updated_by` | 更新人 | `varchar(64)` | 是 | `NULL` | 更新人 | 现存 |
+| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间 | 现存 |
+| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动刷新。 | 现存 |
+| `deleted` | 逻辑删除标记 | `tinyint` | 否 | `0` | 逻辑删除：0-正常 1-删除 | 现存 |
 
 #### 13.8.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `config_code` (`config_code`)``。
-- ``KEY `idx_user` (`user_id`)``。
-- ``KEY `idx_default` (`is_default`)``。
+- ``UNIQUE KEY `uk_sys_external_system_code` (`system_code`)``。
+- ``KEY `idx_sys_external_system_status_name` (`deleted`,`status`,`system_name`)``。
+- ``CONSTRAINT `chk_sys_external_system_deleted` CHECK ((`deleted` in (0,1)))``。
+- ``CONSTRAINT `chk_sys_external_system_status` CHECK ((`status` in (_utf8mb4'0',_utf8mb4'1')))``。
+- ``CONSTRAINT `chk_sys_external_system_version` CHECK ((`version` >= 0))``。
 
-本表未声明物理外键。
+#### 13.8.4 来源与使用情况
 
-业务关联：
+结构依据：[V079__external_system_management.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V079__external_system_management.sql)，已与本机库核对。
 
-- `user_id` → [sys_user](#95-sys_user-系统用户表).`id`。
-
-#### 13.8.4 业务规则
-
-当前未找到直接应用持久化引用，标记疑似闲置。
-
-#### 13.8.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-使用核验：检索当前 `src/main` 的 Java、SQL/XML 与前端业务引用未发现本表直接入口；此结论仅为静态证据。
-
-### 13.9 workbench_shortcut 工作台快捷入口表（疑似闲置）
+### 13.9 sys_external_system_parameter 外部系统扩展参数表
 
 #### 13.9.1 业务说明
 
-建表设计用于保存工作台快捷入口的名称、图标、颜色和目标信息。
+保存外部系统的参数名称、值和显示顺序。同一系统下，未删除参数的英文名唯一；外部系统ID受物理外键约束。
 
-状态：**疑似闲置**。未找到当前应用的直接读写入口，待结合运行库及外部调用确认。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 9 个。
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
 
 #### 13.9.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 随表待核验 |
-| `user_id` | 用户ID | `varchar(64)` | 否 | 无 | 用户ID。 | 随表待核验 |
-| `shortcut_name` | 快捷入口名称 | `varchar(200)` | 否 | 无 | 快捷入口名称。 | 随表待核验 |
-| `shortcut_type` | 类型 | `varchar(50)` | 是 | `NULL` | 类型：MENU/URL/ENTITY。 | 随表待核验 |
-| `target_id` | 目标ID | `varchar(200)` | 是 | `NULL` | 目标ID（菜单ID或URL）。 | 随表待核验 |
-| `icon` | 图标 | `varchar(100)` | 是 | `NULL` | 图标。 | 随表待核验 |
-| `color` | 颜色 | `varchar(20)` | 是 | `NULL` | 颜色。 | 随表待核验 |
-| `sort_order` | 排序号 | `int` | 是 | `'0'` | 排序号。 | 随表待核验 |
-| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 随表待核验 |
+| `id` | 记录ID | `varchar(64)` | 否 | 无 | 参数ID | 现存 |
+| `external_system_id` | 外部系统ID | `varchar(64)` | 否 | 无 | 外部系统ID | 现存 |
+| `parameter_name_zh` | 参数中文名 | `varchar(100)` | 否 | 无 | 参数中文名 | 现存 |
+| `parameter_name_en` | 参数英文名 | `varchar(100)` | 否 | 无 | 参数英文名 | 现存 |
+| `parameter_value` | 参数值 | `longtext` | 否 | 无 | 普通配置参数值，敏感凭据应使用受控密钥存储 | 现存 |
+| `sort_order` | 显示顺序 | `int` | 否 | `0` | 显示顺序 | 现存 |
+| `created_by` | 创建人 | `varchar(64)` | 是 | `NULL` | 创建人 | 现存 |
+| `updated_by` | 更新人 | `varchar(64)` | 是 | `NULL` | 更新人 | 现存 |
+| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间 | 现存 |
+| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动刷新。 | 现存 |
+| `deleted` | 逻辑删除标记 | `tinyint` | 否 | `0` | 逻辑删除：0-正常 1-删除 | 现存 |
+| `active_parameter_name_en` | 活动参数英文名 | `varchar(100)` | 是 | —（生成列） | 仅活动参数参与英文名唯一约束；生成表达式：``(case when (`deleted` = 0) then `parameter_name_en` else NULL end)`` | 现存 |
 
 #### 13.9.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_user` (`user_id`,`sort_order`)``。
+- ``UNIQUE KEY `uk_sys_external_system_parameter_active_name` (`external_system_id`,`active_parameter_name_en`)``。
+- ``KEY `idx_sys_external_system_parameter_order` (`external_system_id`,`deleted`,`sort_order`,`id`)``。
+- ``CONSTRAINT `fk_sys_external_system_parameter_system` FOREIGN KEY (`external_system_id`) REFERENCES `sys_external_system` (`id`) ON DELETE RESTRICT``。
+- ``CONSTRAINT `chk_sys_external_system_parameter_deleted` CHECK ((`deleted` in (0,1)))``。
+- ``CONSTRAINT `chk_sys_external_system_parameter_sort` CHECK ((`sort_order` >= 0))``。
 
-本表未声明物理外键。
+#### 13.9.4 来源与使用情况
 
-业务关联：
-
-- `user_id` → [sys_user](#95-sys_user-系统用户表).`id`。
-
-#### 13.9.4 业务规则
-
-当前未找到直接应用引用；表仍存在于迁移目标中，标记疑似闲置。
-
-#### 13.9.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-使用核验：检索当前 `src/main` 的 Java、SQL/XML 与前端业务引用未发现本表直接入口；此结论仅为静态证据。
+结构依据：[V079__external_system_management.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V079__external_system_management.sql)，已与本机库核对。
 
 ### 13.10 flyway_schema_history Flyway迁移历史表
 
@@ -8260,7 +7803,7 @@ active_hash 约束活跃结构请求的重复申请，执行进程通过租约�
 
 状态：**框架管理中**，由 Flyway 维护。
 
-物理属性：由 Flyway 11.20.3 MySQL 实现生成；引擎/字符集采用创建时数据库默认值。 V074 显式跳过此表，因此不能推定已被统一排序规则。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。结构由 Flyway 11.20.3 MySQL 实现生成，物理属性已按本机库核对。
 
 #### 13.10.2 字段设计
 
@@ -8294,20 +7837,269 @@ active_hash 约束活跃结构请求的重复申请，执行进程通过租约�
 
 实现定位：[DatabaseMigrator.java](../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/DatabaseMigrator.java)。
 
-依赖定义：[Flyway MySQL 11.20.3 本地依赖](/Users/dawei/.m2/repository/org/flywaydb/flyway-mysql/11.20.3/flyway-mysql-11.20.3.jar) 中的 `MySQLDatabase.getRawCreateScript`；数据库默认引擎及排序规则需结合部署实际核验。
+依赖定义：[Flyway MySQL 11.20.3 本地依赖](/Users/dawei/.m2/repository/org/flywaydb/flyway-mysql/11.20.3/flyway-mysql-11.20.3.jar) 中的 `MySQLDatabase.getRawCreateScript`。V074 的统一排序规则过程跳过本表；此处记录本机库的实际值。
+
+## 14. 历史数据与迁移记录
+
+以下七张表仍存在于本机库中，未在当前源码中找到直接读写引用或正式建表迁移。这里记录实际结构，使用状态统一标为“历史保留”。
+
+### 14.1 entity_table_migration_log 实体物理表迁移记录表
+
+#### 14.1.1 业务说明
+
+记录实体物理表迁移的源表、目标表、行数和处理结果。
+
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
+
+#### 14.1.2 字段设计
+
+| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `id` | 记录ID | `varchar(64)` | 否 | 无 | 主键ID | 历史保留 |
+| `entity_code` | 实体编码 | `varchar(100)` | 否 | 无 | 实体编码 | 历史保留 |
+| `source_table` | 原物理表 | `varchar(100)` | 是 | `NULL` | 迁移前物理表 | 历史保留 |
+| `target_table` | 目标物理表 | `varchar(100)` | 是 | `NULL` | 目标物理表 | 历史保留 |
+| `status` | 状态 | `varchar(20)` | 否 | 无 | PENDING/SUCCESS/FAILED/CONFLICT/MISSING | 历史保留 |
+| `source_row_count` | 迁移前行数 | `bigint` | 是 | `NULL` | 迁移前行数 | 历史保留 |
+| `target_row_count` | 迁移后行数 | `bigint` | 是 | `NULL` | 迁移后行数 | 历史保留 |
+| `error_message` | 错误信息 | `text` | 是 | `NULL` | 失败原因 | 历史保留 |
+| `retry_count` | 重试次数 | `int` | 是 | `0` | 重复处理次数 | 历史保留 |
+| `started_at` | 开始时间 | `datetime` | 是 | `NULL` | 开始时间 | 历史保留 |
+| `finished_at` | 完成时间 | `datetime` | 是 | `NULL` | 完成时间 | 历史保留 |
+| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间 | 历史保留 |
+| `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动刷新。 | 历史保留 |
+
+#### 14.1.3 索引与关联
+
+- ``PRIMARY KEY (`id`)``。
+- ``UNIQUE KEY `uk_entity_table_migration` (`entity_code`)``。
+- ``KEY `idx_entity_table_migration_status` (`status`)``。
+
+#### 14.1.4 来源与使用情况
+
+结构来自本机库；当前源码未发现直接读写引用，按历史保留表登记。
+
+### 14.2 system_collation_migration_log 排序规则迁移记录表
+
+#### 14.2.1 业务说明
+
+记录各表排序规则调整前后的设置及执行结果。
+
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 7 个。
+
+#### 14.2.2 字段设计
+
+| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `id` | 记录ID | `varchar(64)` | 否 | 无 | 主键ID | 历史保留 |
+| `table_name` | 表名 | `varchar(128)` | 否 | 无 | 迁移表名 | 历史保留 |
+| `source_collation` | 原排序规则 | `varchar(64)` | 是 | `NULL` | 迁移前排序规则 | 历史保留 |
+| `target_collation` | 目标排序规则 | `varchar(64)` | 否 | 无 | 目标排序规则 | 历史保留 |
+| `status` | 状态 | `varchar(20)` | 否 | 无 | SUCCESS/FAILED | 历史保留 |
+| `message` | 处理说明 | `varchar(1000)` | 是 | `NULL` | 迁移说明 | 历史保留 |
+| `migrated_at` | 迁移时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 迁移时间 | 历史保留 |
+
+#### 14.2.3 索引与关联
+
+- ``PRIMARY KEY (`id`)``。
+- ``UNIQUE KEY `uk_collation_migration_table` (`table_name`)``。
+
+#### 14.2.4 来源与使用情况
+
+结构来自本机库；当前源码未发现直接读写引用，按历史保留表登记。
+
+### 14.3 system_json_document_migration_log JSON文档迁移记录表
+
+#### 14.3.1 业务说明
+
+记录字段类型迁移时的总行数、非空行数、非法文档数量和处理结果。
+
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
+
+#### 14.3.2 字段设计
+
+| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `id` | 记录ID | `varchar(64)` | 否 | 无 | 主键ID | 历史保留 |
+| `table_name` | 表名 | `varchar(128)` | 否 | 无 | 迁移表名 | 历史保留 |
+| `column_name` | 字段名 | `varchar(128)` | 否 | 无 | 迁移字段名 | 历史保留 |
+| `source_type` | 原字段类型 | `varchar(64)` | 否 | 无 | 迁移前类型 | 历史保留 |
+| `target_type` | 目标字段类型 | `varchar(64)` | 否 | 无 | 迁移后逻辑类型 | 历史保留 |
+| `total_rows` | 总行数 | `bigint` | 否 | `0` | 总行数 | 历史保留 |
+| `non_null_rows` | 非空行数 | `bigint` | 否 | `0` | 非空行数 | 历史保留 |
+| `invalid_rows` | 非法文档行数 | `bigint` | 否 | `0` | 非法文档行数 | 历史保留 |
+| `max_document_length` | 最大文档长度 | `bigint` | 是 | `NULL` | 最大文档长度 | 历史保留 |
+| `status` | 状态 | `varchar(20)` | 否 | 无 | SUCCESS/FAILED | 历史保留 |
+| `message` | 处理说明 | `varchar(1000)` | 是 | `NULL` | 迁移说明 | 历史保留 |
+| `migrated_at` | 迁移时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 迁移时间 | 历史保留 |
+
+#### 14.3.3 索引与关联
+
+- ``PRIMARY KEY (`id`)``。
+- ``UNIQUE KEY `uk_json_document_migration` (`table_name`,`column_name`)``。
+
+#### 14.3.4 来源与使用情况
+
+结构来自本机库；当前源码未发现直接读写引用，按历史保留表登记。
+
+### 14.4 flyway_schema_history_pre_v001_20260727 Flyway历史备份表
+
+#### 14.4.1 业务说明
+
+字段结构与 Flyway 迁移历史表一致，表名标记为 V001 之前的历史备份。现行迁移器使用 flyway_schema_history。
+
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 10 个。
+
+#### 14.4.2 字段设计
+
+| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `installed_rank` | 安装顺序 | `int` | 否 | 无 | 该历史版本内的安装顺序。 | 历史保留 |
+| `version` | 版本号 | `varchar(50)` | 是 | `NULL` | 备份时记录的迁移版本。 | 历史保留 |
+| `description` | 说明 | `varchar(200)` | 否 | 无 | 说明 | 历史保留 |
+| `type` | 迁移类型 | `varchar(20)` | 否 | 无 | 迁移类型 | 历史保留 |
+| `script` | 脚本名称 | `varchar(1000)` | 否 | 无 | 脚本名称 | 历史保留 |
+| `checksum` | 校验值 | `int` | 是 | `NULL` | 迁移脚本校验值。 | 历史保留 |
+| `installed_by` | 执行账号 | `varchar(100)` | 否 | 无 | 执行账号 | 历史保留 |
+| `installed_on` | 执行时间 | `timestamp` | 否 | `CURRENT_TIMESTAMP` | 执行时间 | 历史保留 |
+| `execution_time` | 耗时 | `int` | 否 | 无 | 迁移执行耗时，单位毫秒。 | 历史保留 |
+| `success` | 是否成功 | `tinyint(1)` | 否 | 无 | 记录迁移是否成功。 | 历史保留 |
+
+#### 14.4.3 索引与关联
+
+- ``PRIMARY KEY (`installed_rank`)``。
+- ``KEY `flyway_schema_history_s_idx` (`success`)``。
+
+#### 14.4.4 来源与使用情况
+
+结构来自本机库；当前源码未发现直接读写引用，按历史保留表登记。
+
+### 14.5 runtime_entity_record 旧运行时实体记录表
+
+#### 14.5.1 业务说明
+
+同时保存业务 JSON、流程实例及任务定位、提交人信息。当前实体数据服务采用实体对应的业务表。
+
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 21 个。
+
+#### 14.5.2 字段设计
+
+| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `id` | 记录ID | `bigint` | 否 | 无 | 主键ID | 历史保留 |
+| `entity_code` | 实体编码 | `varchar(100)` | 否 | 无 | 实体编码 | 历史保留 |
+| `data_no` | 数据编号 | `varchar(100)` | 是 | `NULL` | 数据编号 | 历史保留 |
+| `title` | 标题 | `varchar(500)` | 是 | `NULL` | 数据标题 | 历史保留 |
+| `name` | 名称 | `varchar(200)` | 是 | `NULL` | 数据名称 | 历史保留 |
+| `code` | 编码 | `varchar(100)` | 是 | `NULL` | 数据编码 | 历史保留 |
+| `status` | 状态 | `varchar(20)` | 是 | `'DRAFT'` | 状态 | 历史保留 |
+| `process_instance_id` | 流程实例ID | `varchar(64)` | 是 | `NULL` | 流程实例ID | 历史保留 |
+| `process_start_time` | 流程开始时间 | `datetime` | 是 | `NULL` | 流程开始时间 | 历史保留 |
+| `process_end_time` | 流程结束时间 | `datetime` | 是 | `NULL` | 流程结束时间 | 历史保留 |
+| `current_task_id` | 当前任务ID | `varchar(64)` | 是 | `NULL` | 当前任务ID | 历史保留 |
+| `current_task_name` | 当前任务名称 | `varchar(200)` | 是 | `NULL` | 当前任务名称 | 历史保留 |
+| `data_json` | 业务数据 | `text` | 是 | `NULL` | 数据内容JSON | 历史保留 |
+| `submitter_id` | 提交人ID | `varchar(64)` | 是 | `NULL` | 提交人ID | 历史保留 |
+| `submitter_name` | 提交人姓名 | `varchar(100)` | 是 | `NULL` | 提交人姓名 | 历史保留 |
+| `submit_time` | 提交时间 | `datetime` | 是 | `NULL` | 提交时间 | 历史保留 |
+| `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间 | 历史保留 |
+| `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动刷新。 | 历史保留 |
+| `deleted` | 逻辑删除标记 | `tinyint(1)` | 是 | `0` | 是否删除：0-否 1-是 | 历史保留 |
+| `created_by` | 创建人 | `varchar(64)` | 是 | `NULL` | 创建人 | 历史保留 |
+| `updated_by` | 更新人 | `varchar(64)` | 是 | `NULL` | 最后更新人 | 历史保留 |
+
+#### 14.5.3 索引与关联
+
+- ``PRIMARY KEY (`id`)``。
+- ``KEY `idx_entity_code` (`entity_code`)``。
+- ``KEY `idx_data_no` (`data_no`)``。
+- ``KEY `idx_process_instance_id` (`process_instance_id`)``。
+- ``KEY `idx_status` (`status`)``。
+
+#### 14.5.4 来源与使用情况
+
+结构来自本机库；当前源码未发现直接读写引用，按历史保留表登记。
+
+### 14.6 process_cc_outbox 旧流程抄送发件箱表
+
+#### 14.6.1 业务说明
+
+保存抄送消息、渠道、发送状态和重试信息。当前抄送事件使用统一事务发件箱。
+
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 10 个。
+
+#### 14.6.2 字段设计
+
+| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `id` | 记录ID | `varchar(64)` | 否 | 无 | 记录ID | 历史保留 |
+| `cc_record_id` | 抄送记录ID | `varchar(64)` | 否 | 无 | 对应抄送记录的标识。 | 历史保留 |
+| `channel` | 通知渠道 | `varchar(20)` | 否 | `'IN_APP'` | 抄送消息的发送渠道。 | 历史保留 |
+| `payload` | 消息内容 | `longtext` | 是 | `NULL` | 待发送的消息内容。 | 历史保留 |
+| `status` | 状态 | `varchar(20)` | 否 | `'PENDING'` | 状态 | 历史保留 |
+| `retry_count` | 重试次数 | `int` | 否 | `0` | 重试次数 | 历史保留 |
+| `next_retry_time` | 下次重试时间 | `datetime` | 是 | `NULL` | 下一次允许重试的时间。 | 历史保留 |
+| `error_message` | 错误信息 | `varchar(1000)` | 是 | `NULL` | 错误信息 | 历史保留 |
+| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间 | 历史保留 |
+| `sent_time` | 发送时间 | `datetime` | 是 | `NULL` | 消息发送完成时间。 | 历史保留 |
+
+#### 14.6.3 索引与关联
+
+- ``PRIMARY KEY (`id`)``。
+- ``UNIQUE KEY `uk_cc_outbox_record_channel` (`cc_record_id`,`channel`)``。
+- ``KEY `idx_cc_outbox_pending` (`status`,`next_retry_time`)``。
+
+#### 14.6.4 来源与使用情况
+
+结构来自本机库；当前源码未发现直接读写引用，按历史保留表登记。
+
+### 14.7 system_audit_outbox 旧审计发件箱表
+
+#### 14.7.1 业务说明
+
+保存审计事件内容、处理状态和重试信息。当前审计事件使用统一事务发件箱。
+
+物理属性：InnoDB；表排序规则 utf8mb4_unicode_ci。现存字段 10 个。
+
+#### 14.7.2 字段设计
+
+| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `id` | 记录ID | `varchar(64)` | 否 | 无 | 记录ID | 历史保留 |
+| `event_id` | 事件ID | `varchar(64)` | 否 | 无 | 事件ID | 历史保留 |
+| `payload_json` | 事件内容 | `longtext` | 否 | 无 | 审计事件内容，按 JSON 保存。 | 历史保留 |
+| `status` | 状态 | `varchar(20)` | 否 | `'PENDING'` | 状态 | 历史保留 |
+| `retry_count` | 重试次数 | `int` | 否 | `0` | 重试次数 | 历史保留 |
+| `next_retry_time` | 下次重试时间 | `datetime` | 是 | `NULL` | 下一次允许重试的时间。 | 历史保留 |
+| `error_message` | 错误信息 | `varchar(1000)` | 是 | `NULL` | 错误信息 | 历史保留 |
+| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间 | 历史保留 |
+| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间 | 历史保留 |
+| `processed_time` | 处理时间 | `datetime` | 是 | `NULL` | 事件处理完成时间。 | 历史保留 |
+
+#### 14.7.3 索引与关联
+
+- ``PRIMARY KEY (`id`)``。
+- ``UNIQUE KEY `uk_system_audit_outbox_event` (`event_id`)``。
+- ``KEY `idx_system_audit_outbox_ready` (`status`,`next_retry_time`,`update_time`)``。
+
+#### 14.7.4 来源与使用情况
+
+结构来自本机库；当前源码未发现直接读写引用，按历史保留表登记。
 
 ## 文档核验与迁移变更
 
-核验口径：按正式迁移及迁移器后处理还原当前结构，核对 153 张平台表和 Flyway 迁移历史表的字段、类型、可空性、默认值、生成列、显式索引与约束、目录锚点和源码链接。表使用情况结合直接 SQL、ORM 映射及业务服务查验，静态证据不足时标记为疑似。
+核验口径：以本机库实际结构为准，结合正式迁移及迁移器后处理，核对 153 张表的字段、类型、可空性、默认值、生成列、显式索引与约束、目录锚点和源码链接。表使用情况结合直接 SQL、ORM 映射及业务服务查验，静态证据不足时标记为疑似。
 
 索引清单记录迁移显式声明的索引。MySQL 为外键自动创建的辅助索引、部署手工增加的索引，以及仓库外的扩展表，以实际库为准。
 
 V074 统一已有表和字符列的排序规则。V077 新增的 `embed_launch.ui_form_presentation`、`embed_session.ui_form_presentation` 在 SQL 中声明 `utf8mb4_bin`；标准 [DatabaseMigrator](../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/DatabaseMigrator.java) 在全部迁移及引擎建表结束后再次调用统一过程，最终将这两列也调整为 `utf8mb4_unicode_ci`。若仅执行 Flyway 脚本而未运行该后处理，两列会保留 `utf8mb4_bin`。`flyway_schema_history` 始终被统一过程排除。
 
-本次新增迁移文件：无。
+前次迁移：[V080__remove_compatibility_configuration_tables.java](../workflow-server/workflow-db-migrator/src/main/java/db/migration/V080__remove_compatibility_configuration_tables.java)。已在本机 workflow 库执行成功，历史配置先转换为节点或独立变更策略，再清除兼容表。
+
+本次新增迁移文件：[V081__remove_unused_workflow_tables.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V081__remove_unused_workflow_tables.sql)。已在本机 workflow 库执行成功，删除六张未接入业务的闲置表。
 
 本次修改迁移文件：无。
 
 本次删除或重命名迁移文件：无。
 
-本文记录现有设计，结构调整仍通过新增 Flyway 版本迁移实施。
+本次未修改、删除或重命名已有迁移文件。其他结构调整继续通过新增 Flyway 迁移实施。

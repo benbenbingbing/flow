@@ -7,6 +7,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkflowReservedVariablesTest {
 
@@ -20,6 +21,9 @@ class WorkflowReservedVariablesTest {
         source.put("_wfFutureSecurityContext", "forged");
         source.put("_wfInitiatorOrgSnapshotV1", "forged");
         source.put("initiator", "attacker");
+        source.put("skipNodeEnabled", false);
+        source.put("_FLOWABLE_SKIP_EXPRESSION_ENABLED", false);
+        source.put("_ACTIVITI_SKIP_EXPRESSION_ENABLED", false);
 
         Map<String, Object> sanitized =
                 WorkflowReservedVariables.sanitizeRuntimeMutation(source);
@@ -35,11 +39,41 @@ class WorkflowReservedVariablesTest {
         variables.put("businessField", 42);
         variables.put("_wfNextApproverOverrides_", "internal");
         variables.put("_wf_mi_approved_count_task", 1);
+        variables.put("skipNodeEnabled", true);
+        variables.put("_FLOWABLE_SKIP_EXPRESSION_ENABLED", true);
+        variables.put("_ACTIVITI_SKIP_EXPRESSION_ENABLED", true);
 
         WorkflowReservedVariables.removeInternalVariables(variables);
 
         assertEquals(Map.of("businessField", 42), variables);
         assertFalse(WorkflowReservedVariables.isInternalVariable(
                 "businessField"));
+    }
+
+    @Test
+    void nativeSkipSwitchIsWrittenOnlyByTheTrustedBoundary() {
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("businessField", "kept");
+        variables.put(
+                WorkflowReservedVariables
+                        .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE,
+                false);
+
+        WorkflowReservedVariables.enableNativeSkipExpressions(variables);
+
+        assertEquals("kept", variables.get("businessField"));
+        assertEquals(
+                true,
+                variables.get(WorkflowReservedVariables
+                        .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE));
+        assertEquals(
+                true,
+                variables.get(WorkflowReservedVariables
+                        .LEGACY_SKIP_NODE_ENABLED_VARIABLE));
+        assertFalse(variables.containsKey(WorkflowReservedVariables
+                .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE));
+        assertTrue(WorkflowReservedVariables.isProtectedContextVariable(
+                WorkflowReservedVariables
+                        .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE));
     }
 }

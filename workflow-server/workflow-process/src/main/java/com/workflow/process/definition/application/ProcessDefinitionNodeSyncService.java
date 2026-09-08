@@ -49,6 +49,10 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ProcessDefinitionNodeSyncService {
 
+    /** 兼容 bpmn2 等任意合法 XML 前缀，不把前缀当作 BPMN 语义的一部分。 */
+    private static final String OPTIONAL_XML_PREFIX =
+            "(?:[A-Za-z_][A-Za-z0-9_.-]*:)?";
+
     /** 节点配置 Mapper */
     private final NodeConfigMapper nodeMapper;
     /** 审批人配置 Mapper */
@@ -334,13 +338,14 @@ public class ProcessDefinitionNodeSyncService {
     private int parseNodesByType(String processConfigId, String bpmnXml, String tagName, NodeConfig.NodeType nodeType) {
         int count = 0;
         Pattern pattern = Pattern.compile(
-                "<(bpmn:)?" + tagName + "[^>]*?id=\"([^\"]+)\"[^>]*?>",
+                "<" + OPTIONAL_XML_PREFIX + Pattern.quote(tagName)
+                        + "\\b[^>]*?id=\"([^\"]+)\"[^>]*?>",
                 Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(bpmnXml);
 
         while (matcher.find()) {
             String fullTag = matcher.group(0);
-            String nodeId = matcher.group(2);
+            String nodeId = matcher.group(1);
             Matcher nameMatcher = Pattern.compile("name=\"([^\"]*)\"").matcher(fullTag);
             String nodeName = nameMatcher.find() ? nameMatcher.group(1) : "";
             String defaultFlow = null;
@@ -360,12 +365,13 @@ public class ProcessDefinitionNodeSyncService {
     private int parseUserTasks(String processConfigId, String bpmnXml) {
         int count = 0;
         Pattern pattern = Pattern.compile(
-                "<(?:bpmn:)?userTask\\b([^>]*?)(?:/\\s*>|>(.*?)</(?:bpmn:)?userTask\\s*>)",
+                "<(" + OPTIONAL_XML_PREFIX
+                        + "userTask)\\b([^>]*?)(?:/\\s*>|>(.*?)</\\1\\s*>)",
                 Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(bpmnXml);
         while (matcher.find()) {
-            String startTag = matcher.group(1);
-            String content = matcher.group(2) == null ? "" : matcher.group(2);
+            String startTag = matcher.group(2);
+            String content = matcher.group(3) == null ? "" : matcher.group(3);
             Matcher idMatcher = Pattern.compile("id=\"([^\"]+)\"").matcher(startTag);
             if (!idMatcher.find()) {
                 continue;
@@ -408,14 +414,44 @@ public class ProcessDefinitionNodeSyncService {
         return nodeConfigId;
     }
 
+    /**
+     * 将持久化的 skipNode 收敛为“始终跳过”标记。
+     *
+     * <p>{@code skipNode=true} 直接表示始终跳过；false 只表示没有设计态强制标记，
+     * 不能遮蔽部署 XML 中实际恒真的原生表达式。任意其他条件表达式仍不得被当作
+     * 无需办理人的节点。</p>
+     */
     private boolean resolveSkipNode(NodeConfig.NodeType nodeType, String content) {
         if (nodeType != NodeConfig.NodeType.USER_TASK) {
             return false;
         }
-        Matcher skipMatcher = Pattern.compile("flowable:skipExpression=\"([^\"]+)\"").matcher(content);
-        Matcher skipElemMatcher = Pattern.compile("<flowable:skipExpression>([^<]+)</flowable:skipExpression>")
+        String skipNode = readExtensionPropertyValue(
+                content, "skipNode");
+        if (skipNode != null
+                && Boolean.parseBoolean(skipNode.trim())) {
+            return true;
+        }
+
+        Matcher attribute = Pattern.compile(
+                "(?i)(?:flowable:)?skipExpression=\"([^\"]+)\"")
                 .matcher(content);
-        return skipMatcher.find() || skipElemMatcher.find();
+        if (attribute.find()) {
+            return isLegacyAlwaysSkipExpression(
+                    bpmnParser.decodeXmlAttributeValue(attribute.group(1)));
+        }
+        Matcher element = Pattern.compile(
+                "(?is)<(?:flowable:)?skipExpression\\b[^>]*>(.*?)</(?:flowable:)?skipExpression\\s*>")
+                .matcher(content);
+        return element.find()
+                && isLegacyAlwaysSkipExpression(
+                        element.group(1).replaceAll(
+                                "(?is)<!\\[CDATA\\[(.*?)]]>", "$1").trim());
+    }
+
+    private boolean isLegacyAlwaysSkipExpression(String expression) {
+        return expression != null
+                && expression.trim().matches(
+                        "(?i)^[#$]\\{\\s*(?:true|skipNodeEnabled)\\s*}$");
     }
 
     private String resolveNodeConfigId(String processConfigId, String nodeId) {
@@ -640,6 +676,14 @@ public class ProcessDefinitionNodeSyncService {
             if (propMatcher.find()) {
                 return bpmnParser.decodeXmlAttributeValue(propMatcher.group(1));
             }
+            Matcher valueFirstMatcher = Pattern.compile(
+                    "<(?:flowable|camunda):property\\s+value=\"([^\"]*)\"\\s+name=\""
+                            + Pattern.quote(propertyName) + "\"",
+                    Pattern.CASE_INSENSITIVE).matcher(propsContent);
+            if (valueFirstMatcher.find()) {
+                return bpmnParser.decodeXmlAttributeValue(
+                        valueFirstMatcher.group(1));
+            }
         }
         return null;
     }
@@ -714,7 +758,8 @@ public class ProcessDefinitionNodeSyncService {
     private void parseAndSaveMultiInstanceConfig(String nodeConfigId, String content) {
         try {
             Matcher miMatcher = Pattern.compile(
-                    "<(bpmn:)?multiInstanceLoopCharacteristics[^>]*>",
+                    "<" + OPTIONAL_XML_PREFIX
+                            + "multiInstanceLoopCharacteristics\\b[^>]*>",
                     Pattern.CASE_INSENSITIVE).matcher(content);
             if (!miMatcher.find()) {
                 return;
@@ -737,10 +782,11 @@ public class ProcessDefinitionNodeSyncService {
                 miConfig.put("elementVariable", varMatcher.group(1));
             }
             Matcher ccMatcher = Pattern.compile(
-                    "<completionCondition[^>]*>([^<]+)</completionCondition>",
+                    "<(" + OPTIONAL_XML_PREFIX
+                            + "completionCondition)\\b[^>]*>([^<]+)</\\1\\s*>",
                     Pattern.CASE_INSENSITIVE).matcher(content);
             if (ccMatcher.find()) {
-                miConfig.put("completionCondition", ccMatcher.group(1).trim());
+                miConfig.put("completionCondition", ccMatcher.group(2).trim());
             }
             mergeConfigJson(nodeConfigId, miConfig);
         } catch (Exception e) {

@@ -5,6 +5,9 @@ import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
+import com.workflow.process.task.application.operation.NodeOperationDecisionService;
+import com.workflow.process.task.application.operation.NodeOperationPolicy;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.identity.user.application.SysUserService;
@@ -40,6 +43,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -104,6 +108,9 @@ class TaskActionServiceTest {
     @Mock
     private NextApproverOverrideService nextApproverOverrideService;
 
+    @Mock
+    private NodeOperationCapabilityService nodeOperationCapabilityService;
+
     /** 被测任务动作服务 */
     private TaskActionService service;
 
@@ -127,7 +134,8 @@ class TaskActionServiceTest {
                         runtimeService,
                         repositoryService,
                         taskService,
-                        new com.fasterxml.jackson.databind.ObjectMapper())
+                        new com.fasterxml.jackson.databind.ObjectMapper()),
+                nodeOperationCapabilityService
         );
         UserContext.setCurrentUser("admin-id", "admin");
     }
@@ -160,6 +168,24 @@ class TaskActionServiceTest {
         verify(taskService).complete(eq("task-1"), anyMap());
         verify(processTaskService).completeTask("task-1", "reject", "资料不全", null);
         verify(processTaskService).syncTasksFromFlowable("proc-1");
+    }
+
+    @Test
+    void transferStopsBeforeTaskLookupWhenNodeSwitchDenies() {
+        doThrow(new com.workflow.core.error.ForbiddenException("当前节点不允许转办"))
+                .when(nodeOperationCapabilityService)
+                .requireAllowed(
+                        eq("task-1"),
+                        eq(NodeOperationPolicy.Operation.TRANSFER),
+                        any(NodeOperationDecisionService.CheckContext.class));
+
+        assertThrows(
+                com.workflow.core.error.ForbiddenException.class,
+                () -> service.completeTask(
+                        "task-1", "admin", "transfer", "转交处理", "user-2", null));
+
+        verify(taskService, never()).createTaskQuery();
+        verifyNoInteractions(nodeFormSubmissionService);
     }
 
     @Test

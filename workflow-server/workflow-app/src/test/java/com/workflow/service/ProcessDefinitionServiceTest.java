@@ -205,6 +205,40 @@ public class ProcessDefinitionServiceTest {
         assertEquals(64, result.getDraftHash().length());
     }
 
+    /** 新建流程也必须在首次入库前清除节点异步配置。 */
+    @Test
+    void testSaveForcesBpmnNodesToSynchronousExecution() {
+        ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
+        dto.setProcessKey("new_process");
+        dto.setProcessName("新流程");
+        dto.setBpmnXml("""
+                <bpmn:definitions
+                    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+                  <bpmn:process id="new_process">
+                    <bpmn:userTask id="review"
+                        camunda:asyncBefore="true"
+                        camunda:exclusive="false"
+                        camunda:candidateUsers="admin" />
+                  </bpmn:process>
+                </bpmn:definitions>
+                """);
+        when(processMapper.insert(any(ProcessDefinitionConfig.class)))
+                .thenReturn(1);
+
+        ProcessDefinitionDTO result = processService.save(dto);
+
+        org.mockito.ArgumentCaptor<ProcessDefinitionConfig> configCaptor =
+                org.mockito.ArgumentCaptor.forClass(
+                        ProcessDefinitionConfig.class);
+        verify(processMapper).insert(configCaptor.capture());
+        String storedXml = configCaptor.getValue().getBpmnXml();
+        assertFalse(storedXml.contains("camunda:asyncBefore="));
+        assertFalse(storedXml.contains("camunda:exclusive="));
+        assertTrue(storedXml.contains("camunda:candidateUsers=\"admin\""));
+        assertEquals(storedXml, result.getBpmnXml());
+    }
+
     /**
      * 测试更新流程定义：验证更新成功后调用了 selectById、updateById，并触发节点绑定同步。
      */
@@ -231,6 +265,51 @@ public class ProcessDefinitionServiceTest {
                 eq("1"), eq(1L), eq("更新后的流程名"), eq("更新后的描述"),
                 isNull(), eq("<bpmn:definitions>updated</bpmn:definitions>"), anyString());
         verify(nodeSyncService).syncBpmnNodeBindings(eq("1"), eq("<bpmn:definitions>updated</bpmn:definitions>"));
+    }
+
+    /** 草稿保存边界应移除异步属性，同时保留办理人与其他节点配置。 */
+    @Test
+    void testUpdateForcesBpmnNodesToSynchronousExecution() {
+        ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
+        dto.setProcessName("同步审批流程");
+        dto.setExpectedRevision(1L);
+        dto.setBpmnXml("""
+                <bpmn:definitions
+                    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                    xmlns:flowable="http://flowable.org/bpmn">
+                  <bpmn:process id="leave_process">
+                    <bpmn:userTask id="review"
+                        flowable:async="true"
+                        flowable:asyncLeave="true"
+                        flowable:exclusive="false"
+                        flowable:assignee="admin" />
+                  </bpmn:process>
+                </bpmn:definitions>
+                """);
+        when(processMapper.selectById("1")).thenReturn(testProcess);
+        when(processMapper.updateDraftCas(
+                anyString(), anyLong(), any(), any(), any(), any(), anyString()))
+                .thenReturn(1);
+
+        ProcessDefinitionDTO result = processService.update("1", dto);
+
+        org.mockito.ArgumentCaptor<String> xmlCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(processMapper).updateDraftCas(
+                eq("1"),
+                eq(1L),
+                eq("同步审批流程"),
+                isNull(),
+                isNull(),
+                xmlCaptor.capture(),
+                anyString());
+        String storedXml = xmlCaptor.getValue();
+        assertFalse(storedXml.contains("flowable:async="));
+        assertFalse(storedXml.contains("flowable:asyncLeave="));
+        assertFalse(storedXml.contains("flowable:exclusive="));
+        assertTrue(storedXml.contains("flowable:assignee=\"admin\""));
+        assertEquals(storedXml, result.getBpmnXml());
+        verify(nodeSyncService).syncBpmnNodeBindings("1", storedXml);
     }
 
     /** 测试流程更新强制携带 expectedRevision，避免旧客户端绕过并发保护。 */

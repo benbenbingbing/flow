@@ -26,8 +26,8 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
+import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.task.application.ProcessTaskService;
-import com.workflow.process.task.application.WorkflowAutoSkipService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
@@ -41,6 +41,7 @@ import org.flowable.engine.history.HistoricProcessInstanceQuery;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.repository.ProcessDefinitionQuery;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.flowable.eventsubscription.api.EventSubscription;
 import org.flowable.eventsubscription.api.EventSubscriptionQuery;
@@ -62,8 +63,6 @@ class OpenProcessAdapterTest {
             mock(org.flowable.engine.TaskService.class);
     private final MultiInstanceCollectionListener multiInstanceListener =
             mock(MultiInstanceCollectionListener.class);
-    private final WorkflowAutoSkipService autoSkipService =
-            mock(WorkflowAutoSkipService.class);
     private final ProcessTaskService processTaskService =
             mock(ProcessTaskService.class);
     private final RepositoryService repositoryService =
@@ -80,7 +79,6 @@ class OpenProcessAdapterTest {
                 historyService,
                 taskService,
                 multiInstanceListener,
-                autoSkipService,
                 processTaskService,
                 repositoryService);
     }
@@ -146,6 +144,9 @@ class OpenProcessAdapterTest {
                         "title", "Release",
                         "initiator", "admin",
                         "entityDataId", "private-record",
+                        "skipNodeEnabled", false,
+                        "_FLOWABLE_SKIP_EXPRESSION_ENABLED", false,
+                        "_ACTIVITI_SKIP_EXPRESSION_ENABLED", false,
                         "_wfNextApproverOverrides_", Map.of(
                                 "approve", Map.of(
                                         "usernames", List.of("attacker")))),
@@ -159,13 +160,20 @@ class OpenProcessAdapterTest {
                 variables.capture());
         verify(multiInstanceListener).prepareVariables(
                 eq(deployed.getId()), anyMap());
-        verify(autoSkipService).autoSkipNodes(
-                "process-instance-01", deployed.getId());
         assertEquals("Release", variables.getValue().get("title"));
         assertFalse(variables.getValue().containsKey("initiator"));
         assertFalse(variables.getValue().containsKey("entityDataId"));
         assertFalse(variables.getValue().containsKey(
                 "_wfNextApproverOverrides_"));
+        assertEquals(true, variables.getValue().get(
+                WorkflowReservedVariables
+                        .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE));
+        assertEquals(true, variables.getValue().get(
+                WorkflowReservedVariables
+                        .LEGACY_SKIP_NODE_ENABLED_VARIABLE));
+        assertFalse(variables.getValue().containsKey(
+                WorkflowReservedVariables
+                        .ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE));
         assertEquals(
                 "application-01",
                 variables.getValue().get("integrationApplicationId"));
@@ -190,7 +198,6 @@ class OpenProcessAdapterTest {
                 historyService,
                 taskService,
                 multiInstanceListener,
-                autoSkipService,
                 processTaskService,
                 repositoryService,
                 List.of(resolver));
@@ -268,12 +275,8 @@ class OpenProcessAdapterTest {
                 eq(deployed.getId()), anyMap());
         verify(runtimeService).startProcessInstanceById(
                 eq(deployed.getId()), eq("binding-v1"), anyMap());
-        verify(autoSkipService).autoSkipNodes(
-                "process-instance-v1", deployed.getId());
         verify(multiInstanceListener, never()).prepareVariables(
                 eq("current-process-config"), anyMap());
-        verify(autoSkipService, never()).autoSkipNodes(
-                "process-instance-v1", "current-process-config");
     }
 
     @Test
@@ -289,7 +292,6 @@ class OpenProcessAdapterTest {
                         historyService,
                         taskService,
                         multiInstanceListener,
-                        autoSkipService,
                         processTaskService,
                         null,
                         List.of()).start(new OpenProcessStartCommand(
@@ -438,6 +440,10 @@ class OpenProcessAdapterTest {
         when(query.singleResult()).thenReturn(definition);
         when(definition.getId()).thenReturn(id);
         when(definition.getVersion()).thenReturn(version);
+        BpmnModel safeModel = new BpmnModel();
+        safeModel.addProcess(new org.flowable.bpmn.model.Process());
+        when(repositoryService.getBpmnModel(id))
+                .thenReturn(safeModel);
         return definition;
     }
 

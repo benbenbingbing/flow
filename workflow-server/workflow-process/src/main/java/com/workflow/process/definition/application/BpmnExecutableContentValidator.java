@@ -57,24 +57,88 @@ final class BpmnExecutableContentValidator {
                     && !ALLOWED_DELEGATE_EXPRESSIONS.contains(attribute.getNodeValue())) {
                 throw rejected(element, localName);
             }
+            if ("skipExpression".equals(localName)) {
+                validateDataExpression(
+                        attribute.getNodeValue(), element,
+                        "skipExpression");
+            }
         }
         if ("conditionExpression".equals(element.getLocalName())) {
-            validateDataExpression(element.getTextContent(), element);
+            validateDataExpression(
+                    element.getTextContent(), element,
+                    "conditionExpression");
+        } else if ("skipExpression".equals(element.getLocalName())) {
+            validateDataExpression(
+                    element.getTextContent(), element,
+                    "skipExpression");
         }
     }
 
-    private static void validateDataExpression(String expression, Element element) {
+    private static void validateDataExpression(
+            String expression,
+            Element element,
+            String feature) {
+        if (!isSafeDataExpression(expression)) {
+            throw rejected(element, feature);
+        }
+    }
+
+    /** 与历史部署运行时安全闸共用的受控数据表达式语法。 */
+    static boolean isSafeDataExpression(String expression) {
         if (expression == null || !expression.startsWith("${")
                 || !expression.endsWith("}") || expression.length() > 1002) {
-            throw rejected(element, "conditionExpression");
+            return false;
         }
-        String body = stripQuotedLiterals(expression.substring(2, expression.length() - 1));
+        String rawBody = expression.substring(
+                2, expression.length() - 1);
+        if (rawBody.isBlank()) {
+            return false;
+        }
+        String body;
+        try {
+            body = stripQuotedLiterals(rawBody);
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
         String withoutDecimals = body.replaceAll("(?<=\\d)\\.(?=\\d)", "");
-        if (withoutDecimals.matches(".*[.\\[\\]{};:@?#\\\\].*")
-                || withoutDecimals.matches(".*\\b[A-Za-z_][A-Za-z0-9_]*\\s*\\(.*")
-                || !withoutDecimals.matches("[A-Za-z0-9_\\s=!<>&|()+\\-*/%,]*")) {
-            throw rejected(element, "conditionExpression");
+        return !withoutDecimals.contains("->")
+                && !hasUnsupportedEquals(withoutDecimals)
+                && !withoutDecimals.matches(".*\\)\\s*\\(.*")
+                && !withoutDecimals.matches(".*[.\\[\\]{};:@?#\\\\].*")
+                && !withoutDecimals.matches(
+                        ".*\\b[A-Za-z_][A-Za-z0-9_]*\\s*\\(.*")
+                && withoutDecimals.matches(
+                        "[A-Za-z0-9_\\s=!<>&|()+\\-*/%]*");
+    }
+
+    /**
+     * 判断等号是否只作为受支持的二元比较运算符出现。
+     *
+     * <p>统一 EL 支持赋值和 lambda；简单字符白名单若允许单个 {@code =}，历史导入
+     * 表达式便可能在开启 skipExpression 后修改上下文。这里按运算符逐个消费，只接受
+     * {@code ==}、{@code !=}、{@code >=} 与 {@code <=} 中的等号，并拒绝三等号等
+     * 非结构化条件生成器产物。</p>
+     */
+    private static boolean hasUnsupportedEquals(String expression) {
+        for (int index = 0; index < expression.length(); index++) {
+            char current = expression.charAt(index);
+            if ((current == '!' || current == '>' || current == '<')
+                    && index + 1 < expression.length()
+                    && expression.charAt(index + 1) == '=') {
+                index++;
+                continue;
+            }
+            if (current != '=') {
+                continue;
+            }
+            if (index + 1 < expression.length()
+                    && expression.charAt(index + 1) == '=') {
+                index++;
+                continue;
+            }
+            return true;
         }
+        return false;
     }
 
     private static String stripQuotedLiterals(String value) {
@@ -101,7 +165,7 @@ final class BpmnExecutableContentValidator {
         }
         if (quote != 0) {
             throw new IllegalArgumentException(
-                    "BPMN_EXECUTABLE_SURFACE_REJECTED: 条件表达式字符串未闭合");
+                    "BPMN_EXECUTABLE_SURFACE_REJECTED: 数据表达式字符串未闭合");
         }
         return result.toString();
     }

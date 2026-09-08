@@ -66,9 +66,9 @@ public class NodeConfig {
     private String configJson;
 
     /**
-     * 是否跳过此节点（仅第一个用户任务节点可设置）
-     * true: 流程到达此节点后自动跳转到下一节点
-     * false: 正常处理
+     * 用户任务是否“始终跳过”。
+     * true 表示发布后使用原生恒真 skipExpression；条件跳过与关闭均为 false，
+     * 因为二者在条件不成立时仍需要办理人兜底。
      */
     @TableField("skip_node")
     private Boolean skipNode;

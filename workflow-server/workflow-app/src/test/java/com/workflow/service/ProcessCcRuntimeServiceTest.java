@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
+import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
@@ -112,6 +113,41 @@ class ProcessCcRuntimeServiceTest {
                 .enqueue(captor.getValue(), List.of("IN_APP"));
     }
 
+    /** 禁用用户组不得在新的流程事件中扩展知会收件人。 */
+    @Test
+    void disabledGroupRuleDoesNotCreateCcRecipient() {
+        ProcessCcRuntimeService service = service();
+        SysGroup disabledGroup = group("group-disabled", "disabled-group", false);
+        when(groupMapper.selectList(any())).thenReturn(List.of(disabledGroup));
+
+        int created = service.trigger(
+                context(), groupRuleConfig("disabled-group"));
+
+        assertEquals(0, created);
+        verify(userGroupMapper, never())
+                .selectUserIdsByGroupId("group-disabled");
+        verifyNoInteractions(ccService, notificationPublisher);
+    }
+
+    /** 启用用户组仍应正常解析其启用成员，防止状态收紧误伤正常知会。 */
+    @Test
+    void enabledGroupRuleCreatesCcRecipient() {
+        ProcessCcRuntimeService service = service();
+        SysGroup enabledGroup = group("group-enabled", "enabled-group", true);
+        SysUser member = enabledUser("user-1", "observer");
+        when(groupMapper.selectList(any())).thenReturn(List.of(enabledGroup));
+        when(userGroupMapper.selectUserIdsByGroupId("group-enabled"))
+                .thenReturn(List.of("user-1"));
+        when(userMapper.selectById("user-1")).thenReturn(member);
+
+        int created = service.trigger(
+                context(), groupRuleConfig("enabled-group"));
+
+        assertEquals(1, created);
+        verify(ccService).createCcRecord(any());
+        verify(notificationPublisher).enqueue(any(), eq(List.of("IN_APP")));
+    }
+
     /** 测试时机不匹配时不做任何动作：验证返回 0 且未与知会服务、Outbox 交互 */
     @Test
     void unmatchedTimingDoesNothing() {
@@ -174,5 +210,67 @@ class ProcessCcRuntimeServiceTest {
         when(configService.findConfig("definition-1", "approve-node"))
                 .thenReturn("{}");
         assertTrue(service.isManualCcAllowed("task-1"));
+    }
+
+    /** 构造含当前测试替身的知会运行时服务。 */
+    private ProcessCcRuntimeService service() {
+        return new ProcessCcRuntimeService(
+                taskService,
+                processTaskMapper,
+                operationLogMapper,
+                ccService,
+                notificationPublisher,
+                configService,
+                userMapper,
+                roleMapper,
+                userRoleMapper,
+                groupMapper,
+                userGroupMapper,
+                organizationMapper,
+                new ObjectMapper(),
+                List.of(),
+                personResolverRuntimeService);
+    }
+
+    /** 构造自动知会运行时上下文。 */
+    private CcRuntimeContext context() {
+        return new CcRuntimeContext(
+                "process-1", "definition-1", "expense", "费用流程", "biz-1",
+                "approve-node", "经理审批", "TASK_COMPLETE", "admin", Map.of());
+    }
+
+    /** 构造按用户组解析收件人的知会规则。 */
+    private String groupRuleConfig(String groupCode) {
+        return """
+                {
+                  "enabled": true,
+                  "timings": ["TASK_COMPLETE"],
+                  "channels": ["IN_APP"],
+                  "recipientRules": [{"type":"GROUP","values":["%s"]}]
+                }
+                """.formatted(groupCode);
+    }
+
+    /** 构造用户组记录。 */
+    private SysGroup group(String id, String code, boolean enabled) {
+        SysGroup group = new SysGroup();
+        group.setId(id);
+        group.setGroupCode(code);
+        group.setStatus(enabled
+                ? SysGroup.Status.ENABLED.getValue()
+                : SysGroup.Status.DISABLED.getValue());
+        group.setDeleted(0);
+        return group;
+    }
+
+    /** 构造可接收知会的启用用户。 */
+    private SysUser enabledUser(String id, String username) {
+        SysUser user = new SysUser();
+        user.setId(id);
+        user.setUsername(username);
+        user.setNickname("观察员");
+        user.setStatus(SysUser.Status.ENABLED.getValue());
+        user.setDeleted(0);
+        return user;
     }
 }

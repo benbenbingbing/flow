@@ -18,9 +18,9 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormFieldMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
@@ -72,7 +72,6 @@ class EntityWholePackageCasServiceTest {
 
         assertEquals("expectedRevision 不能为空", exception.getMessage());
         verify(context.formMapper(), never()).update(any(), any());
-        verify(context.formFieldMapper(), never()).selectByFormId(any());
     }
 
     /** 测试表单整包保存修订过期时返回服务端当前配置：验证抛出 RevisionConflictException 且 currentData 为服务端最新 */
@@ -91,8 +90,6 @@ class EntityWholePackageCasServiceTest {
         EntityForm server = (EntityForm) exception.getCurrentData();
         assertEquals(7, server.getRevision());
         verify(context.formMapper(), never()).update(any(), any());
-        verify(context.formFieldMapper(), never())
-                .insert(any(EntityFormField.class));
     }
 
     /** 测试表单整包保存使用修订条件与可变列白名单：验证 SQL 仅更新允许列且 WHERE 含 revision */
@@ -163,40 +160,6 @@ class EntityWholePackageCasServiceTest {
                 "data_source_bindings_document"));
         assertTrue(captor.getValue().getParamNameValuePairs().containsValue(
                 current.getDataSourceBindingsDocument()));
-    }
-
-    /** 测试表单字段快照冲突不静默覆盖：验证字段更新返回 0 时抛出修订冲突且 WHERE 含 form_id 与 update_time */
-    @Test
-    void formFieldSnapshotConflictDoesNotSilentlyOverwrite() {
-        FormContext context = formContext();
-        EntityForm current = form("form-1", 2);
-        EntityForm refreshed = form("form-1", 3);
-        EntityFormField existing = formField("field-1", "amount", "旧标签");
-        EntityFormField incoming = formField("field-1", "amount", "新标签");
-        incoming.setUpdateTime(existing.getUpdateTime());
-        EntityForm request = form("form-1", null);
-        request.setFields(List.of(incoming));
-        when(context.formMapper().selectByIdForUpdate("form-1"))
-                .thenReturn(current);
-        when(context.formMapper().update(isNull(), any()))
-                .thenReturn(1);
-        when(context.formFieldMapper().selectByFormId("form-1"))
-                .thenReturn(List.of(existing));
-        when(context.formFieldMapper().update(isNull(), any()))
-                .thenReturn(0);
-        stubCurrentForm(context, refreshed, List.of(existing));
-
-        RevisionConflictException exception = assertThrows(
-                RevisionConflictException.class,
-                () -> context.service().saveForm(request, 2));
-
-        assertEquals(3, ((EntityForm) exception.getCurrentData()).getRevision());
-        ArgumentCaptor<UpdateWrapper<EntityFormField>> captor =
-                updateWrapperCaptor();
-        verify(context.formFieldMapper()).update(isNull(), captor.capture());
-        String where = captor.getValue().getSqlSegment();
-        assertTrue(where.contains("form_id"));
-        assertTrue(where.contains("update_time"));
     }
 
     /** 测试表单系统导入走显式非 API 保存路径：验证导入保存后修订号自增 */
@@ -490,8 +453,6 @@ class EntityWholePackageCasServiceTest {
     /** 装配表单服务及其 Mock 依赖，返回表单测试上下文 */
     private FormContext formContext() {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
-        EntityFormFieldMapper formFieldMapper =
-                mock(EntityFormFieldMapper.class);
         EntityFormNodeMapper formNodeMapper =
                 mock(EntityFormNodeMapper.class);
         EntityDefinitionMapper definitionMapper =
@@ -500,7 +461,6 @@ class EntityWholePackageCasServiceTest {
         EntityRelationMapper relationMapper = mock(EntityRelationMapper.class);
         EntityFormService service = new EntityFormService(
                 formMapper,
-                formFieldMapper,
                 formNodeMapper,
                 definitionMapper,
                 entityFieldMapper,
@@ -514,7 +474,6 @@ class EntityWholePackageCasServiceTest {
         return new FormContext(
                 service,
                 formMapper,
-                formFieldMapper,
                 formNodeMapper);
     }
 
@@ -558,8 +517,6 @@ class EntityWholePackageCasServiceTest {
             EntityForm form,
             List<EntityFormField> fields) {
         when(context.formMapper().selectById(form.getId())).thenReturn(form);
-        when(context.formFieldMapper().selectByFormId(form.getId()))
-                .thenReturn(fields);
         when(context.formNodeMapper().findByFormId(form.getId()))
                 .thenReturn(List.of());
     }
@@ -664,7 +621,6 @@ class EntityWholePackageCasServiceTest {
     private record FormContext(
             EntityFormService service,
             EntityFormMapper formMapper,
-            EntityFormFieldMapper formFieldMapper,
             EntityFormNodeMapper formNodeMapper) {
     }
 

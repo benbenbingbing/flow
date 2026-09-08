@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
@@ -50,13 +51,15 @@ import java.util.regex.Pattern;
 /**
  * 发布前 BPMN 归一化处理器
  * 负责在流程发布前对 BPMN XML 进行清洗、转换与补全：
- * 包括 Camunda 属性转 Flowable 属性、多实例配置修正、跳过节点表达式注入、
+ * 包括强制节点同步执行、Camunda 属性转 Flowable 属性、多实例配置修正、跳过节点表达式注入、
  * 配置化任务（服务/发送/业务规则/调用活动/脚本）改写、ID 冲突消解等，确保 XML 可被 Flowable 正确部署执行。
  */
 @Slf4j
 @Service
 public class ProcessBpmnPublishSanitizer {
 
+    private static final String BPMN_NAMESPACE =
+            "http://www.omg.org/spec/BPMN/20100524/MODEL";
     private static final String FLOWABLE_NAMESPACE = "http://flowable.org/bpmn";
     /** JSON 序列化工具，用于解析节点配置 JSON */
     private final ObjectMapper objectMapper;
@@ -111,7 +114,10 @@ public class ProcessBpmnPublishSanitizer {
             String bpmnXml,
             String processKey,
             String processConfigId) {
-        String result = bpmnXml;
+        // 发布是最后一道权威边界，确保存量草稿也无法把异步节点部署到运行时。
+        String result = ProcessBpmnSynchronousExecutionNormalizer.normalize(
+                bpmnXml);
+        result = normalizeBpmnElementPrefixes(result);
 
         result = removeDuplicateCamundaAssignments(result);
         result = convertCamundaAssignments(result);
@@ -140,9 +146,93 @@ public class ProcessBpmnPublishSanitizer {
         result = validateNextApproverSelections(result, processConfigId);
         result = installEntryDynamicResolverCollectionHandlers(result);
         result = fixScriptTasks(result);
+        validateProtectedMultiInstanceVariables(result);
         BpmnExecutableContentValidator.validate(result);
 
         return result;
+    }
+
+    /**
+     * 将标准 BPMN 命名空间的元素前缀收敛为 {@code bpmn:}。
+     *
+     * <p>发布器需要兼容外部工具常用的 {@code bpmn2:} 乃至默认命名空间。
+     * 后续历史字符串净化链以 {@code bpmn:} 为规范前缀；若它已被业务扩展
+     * 命名空间占用，发布必须明确拒绝，不能覆盖绑定后静默改变扩展语义。</p>
+     */
+    private String normalizeBpmnElementPrefixes(String bpmnXml) {
+        try {
+            Document document = parseXml(bpmnXml);
+            String canonicalPrefix = selectCanonicalBpmnPrefix(document);
+            NodeList elements = document.getElementsByTagNameNS(
+                    BPMN_NAMESPACE, "*");
+            boolean changed = false;
+            for (int index = 0; index < elements.getLength(); index++) {
+                Element element = (Element) elements.item(index);
+                if (!canonicalPrefix.equals(element.getPrefix())) {
+                    element.setPrefix(canonicalPrefix);
+                    changed = true;
+                }
+            }
+            String boundNamespace = document.getDocumentElement()
+                    .lookupNamespaceURI(canonicalPrefix);
+            if (!BPMN_NAMESPACE.equals(boundNamespace)) {
+                changed = true;
+            }
+            if (!changed) {
+                return bpmnXml;
+            }
+            document.getDocumentElement().setAttributeNS(
+                    XMLConstants.XMLNS_ATTRIBUTE_NS_URI,
+                    "xmlns:" + canonicalPrefix,
+                    BPMN_NAMESPACE);
+            return writeXml(document);
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "BPMN_NAMESPACE_NORMALIZATION_INVALID: 无法归一化 BPMN 命名空间",
+                    exception);
+        }
+    }
+
+    /** 确认规范前缀未被扩展命名空间占用，避免发布净化改变 XML 语义。 */
+    private String selectCanonicalBpmnPrefix(Document document) {
+        if (isPrefixBoundToOtherNamespace(document, "bpmn")) {
+            throw new IllegalArgumentException(
+                    "BPMN_PREFIX_CONFLICT: bpmn 前缀已绑定到非 BPMN 命名空间");
+        }
+        return "bpmn";
+    }
+
+    private boolean isPrefixBoundToOtherNamespace(
+            Document document,
+            String prefix) {
+        NodeList elements = document.getElementsByTagName("*");
+        for (int index = 0; index < elements.getLength(); index++) {
+            Element element = (Element) elements.item(index);
+            if (prefix.equals(element.getPrefix())
+                    && !BPMN_NAMESPACE.equals(element.getNamespaceURI())) {
+                return true;
+            }
+            NamedNodeMap attributes = element.getAttributes();
+            for (int attributeIndex = 0;
+                    attributeIndex < attributes.getLength();
+                    attributeIndex++) {
+                Node attribute = attributes.item(attributeIndex);
+                if (XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(
+                        attribute.getNamespaceURI())
+                        && prefix.equals(attribute.getLocalName())
+                        && !BPMN_NAMESPACE.equals(attribute.getNodeValue())) {
+                    return true;
+                }
+                if (prefix.equals(attribute.getPrefix())
+                        && !BPMN_NAMESPACE.equals(
+                        attribute.getNamespaceURI())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -1310,6 +1400,75 @@ public class ProcessBpmnPublishSanitizer {
                 editableCollections.add(collectionVariable);
             }
         }
+    }
+
+    /**
+     * 校验部署态多实例变量不得覆盖平台与 Flowable 保留上下文。
+     *
+     * <p>{@code elementVariable} 会作为 execution-local 变量写入每个子执行；
+     * 若允许复用 skipExpression 开关，就能遮蔽根作用域的安全值。这里在
+     * 所有发布改写完成后使用 namespace-aware DOM 复核，同时覆盖任意合法
+     * XML 前缀与历史草稿的无前缀属性。</p>
+     *
+     * @param bpmnXml 即将进入 Flowable 部署的 BPMN XML
+     */
+    private void validateProtectedMultiInstanceVariables(
+            String bpmnXml) {
+        try {
+            Document document = parseXml(bpmnXml);
+            for (Element loop : elementsByLocalName(
+                    document, "multiInstanceLoopCharacteristics")) {
+                Element activity = loop.getParentNode() instanceof Element
+                        ? (Element) loop.getParentNode() : null;
+                String nodeId = activity == null
+                        ? "" : activity.getAttribute("id");
+
+                String elementVariable = flowableAttribute(
+                        loop, "elementVariable").trim();
+                if (WorkflowReservedVariables.isProtectedContextVariable(
+                        elementVariable)) {
+                    throw multiInstanceVariableError(
+                            nodeId,
+                            "elementVariable 不能覆盖平台保留流程变量: "
+                                    + elementVariable);
+                }
+
+                String collectionVariable = simpleCollectionVariable(
+                        flowableAttribute(loop, "collection"));
+                boolean generatedCollection = StringUtils.hasText(
+                        collectionVariable)
+                        && (collectionVariable.equals(
+                        MultiInstanceVariableNames
+                                .buildCollectionVariableName(nodeId))
+                        || MultiInstanceVariableNames
+                                .LEGACY_COLLECTION_VARIABLE
+                                .equals(collectionVariable));
+                if (!generatedCollection
+                        && WorkflowReservedVariables
+                        .isProtectedContextVariable(collectionVariable)) {
+                    throw multiInstanceVariableError(
+                            nodeId,
+                            "collection 不能覆盖平台保留流程变量: "
+                                    + collectionVariable);
+                }
+            }
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(
+                    "多实例变量安全校验无法解析 BPMN XML",
+                    exception);
+        }
+    }
+
+    private IllegalArgumentException multiInstanceVariableError(
+            String nodeId,
+            String detail) {
+        return new IllegalArgumentException(
+                "多实例变量配置无效: nodeId="
+                        + nodeId
+                        + ", "
+                        + detail);
     }
 
     /**
@@ -2744,13 +2903,52 @@ public class ProcessBpmnPublishSanitizer {
             String localName = element.getLocalName() == null
                     ? element.getTagName()
                     : element.getLocalName();
-            if ((elementLocalName == null
-                    || elementLocalName.equals(localName))
-                    && previousValue.equals(
-                    element.getAttribute(attributeName))) {
-                element.setAttribute(attributeName, nextValue);
+            if (elementLocalName != null
+                    && !elementLocalName.equals(localName)) {
+                continue;
+            }
+            String currentValue = element.getAttribute(attributeName);
+            String updatedValue = renameIdOrQNameReference(
+                    element,
+                    currentValue,
+                    previousValue,
+                    nextValue);
+            if (!currentValue.equals(updatedValue)) {
+                element.setAttribute(attributeName, updatedValue);
             }
         }
+    }
+
+    /** 裸 ID 直接替换；QName 仅替换 local part，并保留其已绑定前缀。 */
+    private String renameIdOrQNameReference(
+            Element context,
+            String currentValue,
+            String previousValue,
+            String nextValue) {
+        if (previousValue.equals(currentValue)) {
+            return nextValue;
+        }
+        int separator = currentValue.indexOf(':');
+        if (separator <= 0
+                || separator != currentValue.lastIndexOf(':')
+                || !previousValue.equals(
+                currentValue.substring(separator + 1))) {
+            return currentValue;
+        }
+        String prefix = currentValue.substring(0, separator);
+        String referenceNamespace = context.lookupNamespaceURI(prefix);
+        if (referenceNamespace == null) {
+            return currentValue;
+        }
+        String targetNamespace = context.getOwnerDocument()
+                .getDocumentElement()
+                .getAttribute("targetNamespace");
+        // 同 local part 的外部 QName 不指向当前 definitions，不能随主流程改名。
+        if (!targetNamespace.isBlank()
+                && !targetNamespace.equals(referenceNamespace)) {
+            return currentValue;
+        }
+        return prefix + ":" + nextValue;
     }
 
     /**
@@ -2896,20 +3094,39 @@ public class ProcessBpmnPublishSanitizer {
         return bpmnXml;
     }
 
+    /**
+     * 将旧版 {@code skipNode=true} 归一化为 Flowable 原生恒真表达式。
+     *
+     * <p>扩展属性只承担设计态三态标记；部署态以 skipExpression 为唯一权威。
+     * {@code skipNode=false} 的条件表达式必须原样保留。</p>
+     */
     private String processSkipNodeTasks(String bpmnXml) {
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "<bpmn:userTask([^>]*)>(.*?)</bpmn:userTask>",
-                java.util.regex.Pattern.DOTALL);
-        java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
+        Pattern pattern = Pattern.compile(
+                "(?i)<((?:bpmn:)?userTask)\\b([^>]*)>([\\s\\S]*?)</\\1\\s*>",
+                Pattern.DOTALL);
+        Matcher matcher = pattern.matcher(bpmnXml);
         StringBuffer result = new StringBuffer();
         while (matcher.find()) {
-            String attrs = matcher.group(1);
-            String content = matcher.group(2);
-            if (content.contains("name=\"skipNode\" value=\"true\"") && !attrs.contains("flowable:skipExpression")) {
-                attrs += " flowable:skipExpression=\"${skipNodeEnabled}\"";
+            // 捕获完整限定名，避免可选前缀未参与匹配时 Java 反向引用导致
+            // 无前缀 </userTask> 永远无法命中。
+            String qualifiedTagName = matcher.group(1);
+            String startTag = "<" + qualifiedTagName
+                    + matcher.group(2) + ">";
+            String content = matcher.group(3);
+            String skipNode = readPropertyValue(content, "skipNode");
+            if (Boolean.parseBoolean(skipNode == null
+                    ? "false" : skipNode.trim())) {
+                // ALWAYS 必须覆盖历史上同时残留的条件表达式，避免两套语义竞争。
+                startTag = setQualifiedAttribute(
+                        removeAttributes(startTag, "skipExpression"),
+                        "skipExpression",
+                        "${true}");
+                content = content.replaceAll(
+                        "(?is)<(?:flowable:)?skipExpression\\b[^>]*>.*?</(?:flowable:)?skipExpression\\s*>",
+                        "");
             }
-            matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(
-                    "<bpmn:userTask" + attrs + ">" + content + "</bpmn:userTask>"));
+            matcher.appendReplacement(result, Matcher.quoteReplacement(
+                    startTag + content + "</" + qualifiedTagName + ">"));
         }
         matcher.appendTail(result);
         return result.toString();
