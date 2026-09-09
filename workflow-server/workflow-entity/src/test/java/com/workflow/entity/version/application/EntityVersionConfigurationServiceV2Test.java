@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -205,6 +206,108 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
+    void recordCapabilitiesAreDisabledWhenNoActiveReleaseExists() {
+        var capabilities = service.recordCapabilities("asset");
+
+        assertFalse(capabilities.runtimeEnabled());
+        assertFalse(capabilities.manualCaptureEnabled());
+        verify(releaseMapper, never()).selectById(anyString());
+        verify(definitionMapper, never()).findByEntityCode(anyString());
+    }
+
+    @Test
+    void recordCapabilitiesAreDisabledWhenEntityHasNoVersionConfig() {
+        when(configMapper.findByEntityCode("asset")).thenReturn(null);
+
+        var capabilities = service.recordCapabilities("asset");
+
+        assertFalse(capabilities.runtimeEnabled());
+        assertFalse(capabilities.manualCaptureEnabled());
+        verify(releaseMapper, never()).selectById(anyString());
+    }
+
+    @Test
+    void recordCapabilitiesUseOnlyEnabledActiveReleaseDocument()
+            throws Exception {
+        // 草稿开关关闭且没有 MANUAL 触发器；运行能力必须仍由 active release 决定。
+        config.setEnabled(false);
+        config.setDraftDocument(objectMapper.writeValueAsString(v2Draft()));
+        EntityVersionConfiguration published = v2Draft();
+        EntityVersionConfiguration.CaptureTrigger manual =
+                new EntityVersionConfiguration.CaptureTrigger();
+        manual.setTriggerCode("MANUAL_CHECKPOINT");
+        manual.setTriggerType("MANUAL");
+        published.setTriggers(List.of(manual));
+        activateRelease(published, 2);
+
+        var capabilities = service.recordCapabilities("asset");
+
+        assertTrue(capabilities.runtimeEnabled());
+        assertTrue(capabilities.manualCaptureEnabled());
+        verify(definitionMapper, never()).findByEntityCode(anyString());
+    }
+
+    @Test
+    void disabledActiveReleaseDisablesAllRecordCapabilities()
+            throws Exception {
+        EntityVersionConfiguration published = v2Draft();
+        published.setEnabled(false);
+        EntityVersionConfiguration.CaptureTrigger manual =
+                new EntityVersionConfiguration.CaptureTrigger();
+        manual.setTriggerType("MANUAL");
+        published.setTriggers(List.of(manual));
+        activateRelease(published, 2);
+
+        var capabilities = service.recordCapabilities("asset");
+
+        assertFalse(capabilities.runtimeEnabled());
+        assertFalse(capabilities.manualCaptureEnabled());
+    }
+
+    @Test
+    void legacyActiveReleaseCannotAdvertiseManualCapture()
+            throws Exception {
+        EntityVersionConfiguration published = v2Draft();
+        EntityVersionConfiguration.CaptureTrigger manual =
+                new EntityVersionConfiguration.CaptureTrigger();
+        manual.setTriggerType("MANUAL");
+        published.setTriggers(List.of(manual));
+        activateRelease(published, 1);
+
+        var capabilities = service.recordCapabilities("asset");
+
+        assertTrue(capabilities.runtimeEnabled());
+        assertFalse(capabilities.manualCaptureEnabled());
+    }
+
+    @Test
+    void disabledManualTriggerIsNotAvailable() throws Exception {
+        EntityVersionConfiguration published = v2Draft();
+        EntityVersionConfiguration.CaptureTrigger manual =
+                new EntityVersionConfiguration.CaptureTrigger();
+        manual.setTriggerType("MANUAL");
+        manual.setEnabled(false);
+        published.setTriggers(List.of(manual));
+        activateRelease(published, 2);
+
+        var capabilities = service.recordCapabilities("asset");
+
+        assertTrue(capabilities.runtimeEnabled());
+        assertFalse(capabilities.manualCaptureEnabled());
+    }
+
+    @Test
+    void activeReleaseWithoutManualTriggerCannotAdvertiseCapture()
+            throws Exception {
+        activateRelease(v2Draft(), 2);
+
+        var capabilities = service.recordCapabilities("asset");
+
+        assertTrue(capabilities.runtimeEnabled());
+        assertFalse(capabilities.manualCaptureEnabled());
+    }
+
+    @Test
     void refusesIncompleteMigrationInsteadOfSilentlyLosingOldRules() {
         config.setDraftDocument(null);
         assertThrows(IllegalStateException.class, () -> service.getDraft("asset"));
@@ -352,5 +455,21 @@ class EntityVersionConfigurationServiceV2Test {
         relation.setEnabled(true);
         value.getSnapshotScope().setRelations(List.of(relation));
         return value;
+    }
+
+    private void activateRelease(
+            EntityVersionConfiguration published,
+            int contractVersion) throws Exception {
+        EntityVersionConfigRelease release =
+                new EntityVersionConfigRelease();
+        release.setId("release-active");
+        release.setConfigId("config-1");
+        release.setVersion(3);
+        release.setContractVersion(contractVersion);
+        release.setConfigDocument(
+                objectMapper.writeValueAsString(published));
+        config.setActiveReleaseId(release.getId());
+        when(releaseMapper.selectById(release.getId()))
+                .thenReturn(release);
     }
 }

@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.util.Set;
 
 public record UpdateIntegrationAccessRequest(
-        @NotEmpty @Size(max = 5) Set<@NotBlank String> scopes,
+        @NotEmpty Set<@NotBlank String> scopes,
         @Size(max = 100) Set<@NotBlank @Size(max = 100) String> processKeys,
         @NotNull @PositiveOrZero Long expectedVersion) {
 }

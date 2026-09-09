@@ -9,9 +9,11 @@ import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.version.application.EntityRecordVersionService;
 import com.workflow.entity.version.application.EntityRecordVersionComparisonService;
+import com.workflow.entity.version.application.EntityVersionConfigurationService;
 import com.workflow.entity.version.application.EntityVersionRestorePlanService;
 import com.workflow.entity.version.api.request.ManualVersionCaptureRequest;
 import com.workflow.entity.version.application.model.EntityRecordVersionSummary;
+import com.workflow.entity.version.application.model.EntityRecordVersionCapabilities;
 import com.workflow.entity.version.application.model.RecordVersionComparisonV2;
 import com.workflow.entity.version.application.model.EntityVersionRestorePlan;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
@@ -40,9 +42,28 @@ public class EntityRecordVersionController {
 
     private final EntityRecordVersionService service;
     private final EntityActionCapabilityService actionCapabilityService;
+    private final EntityVersionConfigurationService configurationService;
     private final EntityRecordVersionComparisonService comparisonService;
     private final EntityVersionRestorePlanService restorePlanService;
     private final EntityDataDynamicService dataService;
+
+    /**
+     * 查询实体记录版本入口的运行时能力。
+     *
+     * <p>类级权限限制版本功能访问，本方法再校验具体实体的 VIEW 权限。能力计算不读取
+     * 任意记录数据，也不受未发布草稿影响。</p>
+     *
+     * @param entityCode 实体编码
+     * @return 当前已发布版本策略对应的运行时能力
+     */
+    @GetMapping("/{entityCode}/capabilities")
+    public ApiResponse<EntityRecordVersionCapabilities> capabilities(
+            @PathVariable String entityCode) {
+        actionCapabilityService.requireStandardPermission(
+                entityCode, EntityPermissionAction.VIEW);
+        return ApiResponse.success(
+                configurationService.recordCapabilities(entityCode));
+    }
 
     @GetMapping("/{entityCode}/{recordId}")
     public ApiResponse<PageResult<EntityRecordVersionSummary>> list(

@@ -423,11 +423,13 @@ assert.match(entityDataList, /customListComponent[\s\S]*hasCustomListComponent/,
 assert.match(entityDataList, /queryFields[\s\S]*listFields[\s\S]*toolbarButtons[\s\S]*rowActionButtons/s, '动态实体列表应派生查询、表格和按钮配置')
 assert.match(entityDataList, /selectionScene[\s\S]*toolbarButtons[\s\S]*return \[\]/s, '选择型列表应隐藏业务工具栏动作')
 assert.ok(
-  entityDataList.includes(':showVersionAction="!selectionScene && !isSystemEntity && canViewVersions"')
+  entityDataList.includes(':showVersionAction="showVersionAction"')
+    && entityDataList.includes('canShowEntityVersionAction({')
+    && entityDataList.includes('runtimeEnabled: versionCapabilities.value.runtimeEnabled')
     && entityDataList.includes("userStore.permissions.includes('entity:version:record:view')")
-    && entityDataList.includes("userStore.permissions.includes(entityViewPermission.value)")
-    && entityDataList.includes('if (!canViewVersions.value) return'),
-  '平台系统表及缺少版本查看或实体查看权限的列表不得显示数据版本入口；Embed 与主站按同一用户权限显示'
+    && entityDataList.includes('hasVersionViewPermission(entityCode.value)')
+    && entityDataList.includes('if (!showVersionAction.value) return'),
+  '只有启用运行版本策略且具备版本与实体查看权限的普通列表才显示版本入口；Embed 与主站规则一致'
 )
 assert.ok(
   entityDataList.includes('props.embedded && !props.showToolbar')

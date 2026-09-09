@@ -216,11 +216,17 @@ import {
   normalizePage,
   normalizeSnapshot
 } from '@/shared/entity-version-model'
+import { canCaptureEntityRecordVersion } from '@/shared/entity-version-capabilities'
 import VersionDiffForm from './version/VersionDiffForm.vue'
 import VersionRelationDiff from './version/VersionRelationDiff.vue'
 import VersionSnapshotForm from './version/VersionSnapshotForm.vue'
 
-const props = defineProps<{ entityCode: string }>()
+const props = withDefaults(defineProps<{
+  entityCode: string
+  manualCaptureEnabled?: boolean
+}>(), {
+  manualCaptureEnabled: false
+})
 const userStore = useUserStore()
 const visible = ref(false)
 const loading = ref(false)
@@ -266,7 +272,10 @@ const visibleRelationNodes = computed(() => relationNodes.value.filter((node: an
 }))
 const snapshotNodes = computed(() => selectedDetail.value?.nodes || [])
 const snapshotTitle = computed(() => selectedDetail.value ? `V${selectedDetail.value.versionNo} ${selectedDetail.value.scenarioName || selectedDetail.value.triggerName || '版本快照'}` : '版本快照')
-const canCapture = computed(() => hasPermission('entity:version:record:capture'))
+const canCapture = computed(() => canCaptureEntityRecordVersion({
+  hasCapturePermission: hasPermission('entity:version:record:capture'),
+  manualCaptureEnabled: props.manualCaptureEnabled
+}))
 const canCompare = computed(() => {
   const from = parseVersionNo(fromVersion.value)
   const to = parseVersionNo(toVersion.value)
@@ -413,6 +422,7 @@ async function loadSnapshotRelationPage(node: any, pageNum: number, silent = fal
 }
 
 async function captureNow() {
+  if (!canCapture.value) return
   try {
     const { value } = await ElMessageBox.prompt('请填写本次手工固化的原因，版本数据将从服务端当前记录读取。', '立即固化当前数据', {
       inputPlaceholder: '例如：合同签署前检查点',

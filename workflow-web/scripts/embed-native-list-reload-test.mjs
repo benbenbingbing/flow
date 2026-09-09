@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { babelParse, parse } from '@vue/compiler-sfc'
 import { ref } from 'vue'
+import { normalizeEntityVersionCapabilities } from '../src/shared/entity-version-capabilities.js'
 
 /** 执行组件的真实加载方法，以可控 API/挂载时机验证异步结果，不依赖 DOM 或字符串断言。 */
 async function componentMethods(path, names, dependencies) {
@@ -67,12 +68,15 @@ async function entityList(overrides = {}) {
     pageNum: ref(1),
     pageSize: ref(10),
     loadedDefaultForm: ref(null),
+    versionCapabilities: ref(normalizeEntityVersionCapabilities()),
+    isSystemEntity: ref(false),
+    canViewVersions: ref(false),
     toolbarButtons: ref([]),
     rowActionButtons: ref([]),
     queryFields: ref([]),
     queryForm: {},
     props: { embedded: true, releaseId: 'release-fixed', releaseVersion: 1 },
-    console: { error() {} },
+    console: { error() {}, warn() {} },
     clearQueryForm() {},
     safeParseConfig: value => value || {},
     buildRequestFilters: () => ({}),
@@ -80,6 +84,8 @@ async function entityList(overrides = {}) {
     loadEntityStatusMap: async () => {},
     loadRefEntityNames: async () => {},
     entityApi: { getByCode: async () => ({ id: 'entity-order', fields: [] }) },
+    entityVersionApi: { recordCapabilities: async () => ({}) },
+    normalizeEntityVersionCapabilities,
     entityListRuntimeApi: {
       getSchema: async () => ({ releaseId: 'release-fixed', publishedVersion: 1 }),
       query: async () => ({ list: [{ id: 'record-1' }], total: 1 })
@@ -87,11 +93,86 @@ async function entityList(overrides = {}) {
     ...overrides
   }
   const methods = await componentMethods('../src/views/entity/EntityDataList.vue', [
-    'entityLoadPromise', 'loadEntityDefinition', 'prepareEntityDefinition',
-    'loadListConfig', 'loadDataList', 'reload'
+    'versionCapabilitiesGeneration', 'resetVersionCapabilities',
+    'loadVersionCapabilities', 'entityLoadPromise', 'loadEntityDefinition',
+    'prepareEntityDefinition', 'loadListConfig', 'loadDataList', 'reload'
   ], state)
   return { ...state, ...methods }
 }
+
+let capabilityRequests = 0
+const noVersionPermission = await entityList({
+  entityVersionApi: {
+    recordCapabilities: async () => {
+      capabilityRequests += 1
+      return { runtimeEnabled: true, manualCaptureEnabled: true }
+    }
+  }
+})
+await noVersionPermission.loadVersionCapabilities(
+  'order',
+  noVersionPermission.resetVersionCapabilities()
+)
+assert.equal(capabilityRequests, 0, '缺少版本查看权限时不得请求实体版本能力')
+assert.equal(noVersionPermission.versionCapabilities.value.runtimeEnabled, false)
+
+const versionPermission = ref(true)
+const systemEntity = await entityList({
+  canViewVersions: versionPermission,
+  isSystemEntity: ref(true),
+  entityVersionApi: {
+    recordCapabilities: async () => {
+      capabilityRequests += 1
+      return { runtimeEnabled: true, manualCaptureEnabled: true }
+    }
+  }
+})
+await systemEntity.loadVersionCapabilities(
+  'order',
+  systemEntity.resetVersionCapabilities()
+)
+assert.equal(capabilityRequests, 0, 'SYSTEM 实体不得请求业务数据版本能力')
+
+const versionEnabled = await entityList({
+  canViewVersions: versionPermission,
+  entityVersionApi: {
+    recordCapabilities: async entityCode => {
+      capabilityRequests += 1
+      assert.equal(entityCode, 'order')
+      return { runtimeEnabled: true, manualCaptureEnabled: true }
+    }
+  }
+})
+await versionEnabled.loadVersionCapabilities(
+  'order',
+  versionEnabled.resetVersionCapabilities()
+)
+assert.equal(capabilityRequests, 1)
+assert.deepEqual(versionEnabled.versionCapabilities.value, {
+  runtimeEnabled: true,
+  manualCaptureEnabled: true
+})
+
+let resolveStaleCapability
+const staleCapabilityPending = new Promise(resolve => {
+  resolveStaleCapability = resolve
+})
+const staleCapability = await entityList({
+  canViewVersions: versionPermission,
+  entityVersionApi: {
+    recordCapabilities: () => staleCapabilityPending
+  }
+})
+const staleGeneration = staleCapability.resetVersionCapabilities()
+const staleLoad = staleCapability.loadVersionCapabilities('order', staleGeneration)
+staleCapability.resetVersionCapabilities()
+resolveStaleCapability({ runtimeEnabled: true, manualCaptureEnabled: true })
+await staleLoad
+assert.equal(
+  staleCapability.versionCapabilities.value.runtimeEnabled,
+  false,
+  '实体切换后旧能力响应不得重新显示版本入口'
+)
 
 const failure = remoteError()
 const failedQuery = await entityList({

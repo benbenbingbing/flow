@@ -63,14 +63,14 @@
 
     <div class="policy-row">
       <div>
-        <span class="policy-label">Scope</span>
+        <span class="policy-label">权限范围</span>
         <el-tag
           v-for="scope in application.scopes"
           :key="scope"
           size="small"
           effect="plain"
         >
-          {{ scope }}
+          {{ integrationScopeLabel(scope) }}
         </el-tag>
       </div>
       <div>
@@ -152,13 +152,13 @@
       :close-on-click-modal="false"
     >
       <el-form label-position="top">
-        <el-form-item label="Scope" required>
+        <el-form-item label="权限范围" required>
           <el-select v-model="accessForm.scopes" multiple style="width: 100%">
             <el-option
               v-for="scope in scopeOptions"
-              :key="scope"
-              :label="scope"
-              :value="scope"
+              :key="scope.value"
+              :label="scope.label"
+              :value="scope.value"
             />
           </el-select>
         </el-form-item>
@@ -212,16 +212,12 @@ import IntegrationWebhookPanel from './IntegrationWebhookPanel.vue'
 import IntegrationSecretPanel from './IntegrationSecretPanel.vue'
 import IntegrationConnectorPanel from './IntegrationConnectorPanel.vue'
 import IntegrationScenarioPanel from './IntegrationScenarioPanel.vue'
+import {
+  INTEGRATION_SCOPE_OPTIONS,
+  integrationScopeLabel
+} from './integrationScopeOptions'
 
-const scopeOptions = [
-  'embed.launch',
-  'process.definition.read',
-  'process.instance.start',
-  'process.instance.read',
-  'process.task.read',
-  'process.message.correlate',
-  'process.instance.cancel'
-]
+const scopeOptions = INTEGRATION_SCOPE_OPTIONS
 
 const props = defineProps({
   application: { type: Object, required: true },
@@ -294,7 +290,7 @@ function openAccess() {
 
 async function saveAccess() {
   if (!accessForm.value.scopes.length) {
-    ElMessage.warning('至少选择一个 Scope')
+    ElMessage.warning('至少选择一个权限范围')
     return
   }
   saving.value = true

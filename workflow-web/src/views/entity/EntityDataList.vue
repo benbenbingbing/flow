@@ -125,7 +125,7 @@
           :refEntityNameMap="refEntityNameMap"
           :refresh="loadDataList"
           :viewConfig="viewConfig"
-          :showVersionAction="!selectionScene && !isSystemEntity && canViewVersions"
+          :showVersionAction="showVersionAction"
           :show-pagination="!embedded || showPagination"
           :max-height="embedded && maxHeight > 0 ? maxHeight : undefined"
           :selection-mode="runtimeSelectionMode"
@@ -222,6 +222,7 @@
     <EntityRecordVersionDrawer
       ref="versionDrawerRef"
       :entityCode="entityCode"
+      :manualCaptureEnabled="versionCapabilities.manualCaptureEnabled"
     />
   </div>
 </template>
@@ -230,6 +231,7 @@ import { ref, reactive, computed, watch, nextTick, toRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
+import { entityVersionApi } from '@/api/entityVersion'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { applySelectionReturnMappings } from '@/utils/selectionReturnMappings'
@@ -270,6 +272,10 @@ import PageState from '@/components/PageState.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
+import {
+  canShowEntityVersionAction,
+  normalizeEntityVersionCapabilities
+} from '@/shared/entity-version-capabilities'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -476,12 +482,68 @@ const listRuntimeDiagnosticResetKey = computed(() => [
   listConfig.value?.releaseId || ''
 ].join(':'))
 const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')
-const entityViewPermission = computed(() =>
-  `entity:${String(entityCode.value || '').trim().toLowerCase()}:view`)
-const canViewVersions = computed(() => userStore.isSuperAdmin
-  || userStore.permissions.includes('*')
-  || (userStore.permissions.includes('entity:version:record:view')
-    && userStore.permissions.includes(entityViewPermission.value)))
+function hasVersionViewPermission(entityCodeValue: string) {
+  const normalizedCode = String(entityCodeValue || '').trim().toLowerCase()
+  return userStore.isSuperAdmin
+    || userStore.permissions.includes('*')
+    || (userStore.permissions.includes('entity:version:record:view')
+      && userStore.permissions.includes(`entity:${normalizedCode}:view`))
+}
+const canViewVersions = computed(() =>
+  hasVersionViewPermission(entityCode.value))
+const versionCapabilities = ref(normalizeEntityVersionCapabilities())
+const showVersionAction = computed(() => canShowEntityVersionAction({
+  selectionScene: selectionScene.value,
+  isSystemEntity: isSystemEntity.value,
+  canViewVersions: canViewVersions.value,
+  runtimeEnabled: versionCapabilities.value.runtimeEnabled
+}))
+let versionCapabilitiesGeneration = 0
+
+/**
+ * 实体或列表上下文变化时先关闭入口；代次递增用于丢弃旧请求的迟到响应。
+ */
+function resetVersionCapabilities() {
+  versionCapabilitiesGeneration += 1
+  versionCapabilities.value = normalizeEntityVersionCapabilities()
+  return versionCapabilitiesGeneration
+}
+
+/**
+ * 仅为有权查看版本的普通实体读取运行能力。能力接口失败不阻断列表，
+ * 并保持默认关闭，避免出现可见但点击后必然失败的入口。
+ */
+async function loadVersionCapabilities(
+  requestedEntityCode: string,
+  generation: number
+) {
+  if (!requestedEntityCode
+      || requestedEntityCode !== entityCode.value
+      || generation !== versionCapabilitiesGeneration
+      || !entityDefinition.value?.id
+      || isSystemEntity.value
+      || !canViewVersions.value) {
+    return
+  }
+  try {
+    const capabilities = await entityVersionApi.recordCapabilities(
+      requestedEntityCode
+    )
+    if (generation !== versionCapabilitiesGeneration
+        || requestedEntityCode !== entityCode.value) {
+      return
+    }
+    versionCapabilities.value = normalizeEntityVersionCapabilities(
+      capabilities
+    )
+  } catch (error) {
+    if (generation === versionCapabilitiesGeneration
+        && requestedEntityCode === entityCode.value) {
+      versionCapabilities.value = normalizeEntityVersionCapabilities()
+    }
+    console.warn('加载实体版本能力失败，版本入口保持隐藏:', error)
+  }
+}
 // 查询字段（使用列表配置）
 const queryFields = computed(() => {
   if (listConfigFields.value.length > 0) {
@@ -593,8 +655,8 @@ const customListRuntime = computed(() => ({
   edit: handleEdit,
   delete: handleDelete,
   approve: handleApprove,
-  versions: canViewVersions.value ? handleVersions : undefined,
-  canViewVersions: canViewVersions.value,
+  versions: showVersionAction.value ? handleVersions : undefined,
+  canViewVersions: showVersionAction.value,
   exportData: handleExport,
   canAction,
   getActionReason,
@@ -835,6 +897,8 @@ const loadEntityDefinition = (options: { throwOnError?: boolean } = {}) => {
 // 页面事件默认就地显示错误；宿主刷新需要原始错误以关联已有 error 事件。
 const prepareEntityDefinition = async (options: { throwOnError?: boolean } = {}) => {
   if (!entityCode.value) return
+  const requestedEntityCode = entityCode.value
+  const capabilitiesGeneration = resetVersionCapabilities()
   loading.value = true
   loadError.value = ''
   dataError.value = ''
@@ -855,7 +919,10 @@ const prepareEntityDefinition = async (options: { throwOnError?: boolean } = {})
     })
     entityDefinition.value = res || {}
     entityFields.value = res?.fields || []
-    await loadListConfig()
+    await Promise.all([
+      loadListConfig(),
+      loadVersionCapabilities(requestedEntityCode, capabilitiesGeneration)
+    ])
     if (!props.embedded
         || toolbarButtons.value.length > 0
         || rowActionButtons.value.length > 0) {
@@ -1258,7 +1325,7 @@ async function loadRuntimeButtonForm(
 }
 
 const handleVersions = (row: any) => {
-  if (!canViewVersions.value) return
+  if (!showVersionAction.value) return
   versionDrawerRef.value?.open(row)
 }
 const confirmSelection = () => {
@@ -1292,6 +1359,8 @@ watch(() => [
 ], () => {
   if (entityCode.value && runtimeListKey.value) {
     loadEntityDefinition()
+  } else {
+    resetVersionCapabilities()
   }
 }, { immediate: true })
 

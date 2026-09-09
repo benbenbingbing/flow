@@ -9,6 +9,11 @@ import {
   normalizeSnapshot,
   serializeVersionDraft
 } from '../entity-version-model.js'
+import {
+  canCaptureEntityRecordVersion,
+  canShowEntityVersionAction,
+  normalizeEntityVersionCapabilities
+} from '../entity-version-capabilities.js'
 
 const legacy = createVersionDraft({
   entityCode: 'ORDER',
@@ -187,6 +192,51 @@ assert.match(
   '切换仅看变化时必须重新读取关系行首屏'
 )
 assert.ok(versionApiSource.includes("...(String(recordId || '').trim()"))
+assert.match(
+  versionApiSource,
+  /recordCapabilities\(entityCode\)[\s\S]{0,180}`\/entity-versions\/records\/\$\{entityCode\}\/capabilities`/,
+  '实体版本 API 应提供实体级运行能力查询'
+)
+assert.deepEqual(normalizeEntityVersionCapabilities({
+  runtimeEnabled: true,
+  manualCaptureEnabled: true
+}), {
+  runtimeEnabled: true,
+  manualCaptureEnabled: true
+})
+assert.deepEqual(normalizeEntityVersionCapabilities({
+  runtimeEnabled: false,
+  manualCaptureEnabled: true
+}), {
+  runtimeEnabled: false,
+  manualCaptureEnabled: false
+})
+assert.equal(canShowEntityVersionAction({
+  canViewVersions: true,
+  runtimeEnabled: true
+}), true)
+for (const blocked of [
+  { selectionScene: true, canViewVersions: true, runtimeEnabled: true },
+  { isSystemEntity: true, canViewVersions: true, runtimeEnabled: true },
+  { canViewVersions: false, runtimeEnabled: true },
+  { canViewVersions: true, runtimeEnabled: false }
+]) {
+  assert.equal(canShowEntityVersionAction(blocked), false)
+}
+assert.equal(canCaptureEntityRecordVersion({
+  hasCapturePermission: true,
+  manualCaptureEnabled: true
+}), true)
+assert.equal(canCaptureEntityRecordVersion({
+  hasCapturePermission: true,
+  manualCaptureEnabled: false
+}), false)
+assert.equal(canCaptureEntityRecordVersion({
+  hasCapturePermission: false,
+  manualCaptureEnabled: true
+}), false)
+assert.ok(drawerSource.includes('manualCaptureEnabled: props.manualCaptureEnabled'))
+assert.ok(drawerSource.includes('if (!canCapture.value) return'))
 assert.ok(managementSource.includes('previewResult?.datasets || previewResult?.relations'))
 assert.ok(managementSource.includes("previewResult.totalRows ?? '-') : '未计算'"))
 

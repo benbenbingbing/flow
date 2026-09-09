@@ -85,6 +85,12 @@ export const entityVersionApi = {
       params: { type, ...params }
     })
   },
+  recordCapabilities(entityCode) {
+    return request.get(
+      `/entity-versions/records/${entityCode}/capabilities`,
+      { silentError: true }
+    )
+  },
   captureRecordVersion(entityCode, recordId, data = {}, idempotencyKey) {
     return request.post(
       `/entity-versions/records/${entityCode}/${recordId}/captures`,

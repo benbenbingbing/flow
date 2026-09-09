@@ -10,6 +10,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.version.application.model.EntityVersionConfigSummary;
 import com.workflow.entity.version.application.model.EntityVersionConfigReleaseSummary;
+import com.workflow.entity.version.application.model.EntityRecordVersionCapabilities;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.application.model.EntityVersionValidationResult;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigMapper;
@@ -145,6 +146,39 @@ public class EntityVersionConfigurationService {
                 readReleaseConfiguration(release);
         hydratePublishedEnvelope(document, config, release);
         return Optional.of(document);
+    }
+
+    /**
+     * 读取实体记录版本入口所需的运行时能力。
+     *
+     * <p>能力只能由当前 active release 的不可变发布文档决定，不能使用配置表上的草稿
+     * 开关或草稿触发器，避免未发布修改提前影响业务列表。手工固化还必须满足真实执行端
+     * 的 V2 与 MANUAL 触发器约束。</p>
+     *
+     * @param entityCode 实体编码
+     * @return 当前发布策略对应的版本运行时能力；无配置、未发布或发布策略停用时均返回禁用
+     */
+    @Transactional(readOnly = true)
+    public EntityRecordVersionCapabilities recordCapabilities(
+            String entityCode) {
+        Optional<EntityVersionConfiguration> published =
+                getPublished(entityCode);
+        if (published.isEmpty()
+                || !Boolean.TRUE.equals(published.get().getEnabled())) {
+            return EntityRecordVersionCapabilities.disabled();
+        }
+        EntityVersionConfiguration configuration = published.get();
+        boolean manualCaptureEnabled =
+                value(configuration.getSchemaVersion(), 1) >= 2
+                        && safe(configuration.getTriggers()).stream()
+                                .filter(Objects::nonNull)
+                                .anyMatch(trigger ->
+                                        !Boolean.FALSE.equals(
+                                                trigger.getEnabled())
+                                                && "MANUAL".equals(
+                                                        trigger.getTriggerType()));
+        return new EntityRecordVersionCapabilities(
+                true, manualCaptureEnabled);
     }
 
     /** 按命中ID读取不可变发布，捕获过程不得因 active 切换而改读草稿或降级。 */

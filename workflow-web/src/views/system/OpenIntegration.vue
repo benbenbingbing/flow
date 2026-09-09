@@ -121,13 +121,13 @@
             show-word-limit
           />
         </el-form-item>
-        <el-form-item label="Scope" prop="scopes">
+        <el-form-item label="权限范围" prop="scopes">
           <el-select v-model="createForm.scopes" multiple style="width: 100%">
             <el-option
               v-for="scope in scopeOptions"
-              :key="scope"
-              :label="scope"
-              :value="scope"
+              :key="scope.value"
+              :label="scope.label"
+              :value="scope.value"
             />
           </el-select>
         </el-form-item>
@@ -195,16 +195,9 @@ import { useUserStore } from '@/stores/user'
 import { integrationApplicationApi } from '@/api/system/openIntegration'
 import IntegrationApplicationPanel from './open-integration/IntegrationApplicationPanel.vue'
 import OneTimeSecretDialog from './open-integration/OneTimeSecretDialog.vue'
+import { INTEGRATION_SCOPE_OPTIONS } from './open-integration/integrationScopeOptions'
 
-const scopeOptions = [
-  'embed.launch',
-  'process.definition.read',
-  'process.instance.start',
-  'process.instance.read',
-  'process.task.read',
-  'process.message.correlate',
-  'process.instance.cancel'
-]
+const scopeOptions = INTEGRATION_SCOPE_OPTIONS
 
 const userStore = useUserStore()
 const applications = ref([])
@@ -222,7 +215,7 @@ const secretFields = ref([])
 const createForm = reactive(defaultCreateForm())
 const createRules = {
   applicationName: [{ required: true, message: '请输入应用名称', trigger: 'blur' }],
-  scopes: [{ required: true, type: 'array', min: 1, message: '至少选择一个 Scope', trigger: 'change' }]
+  scopes: [{ required: true, type: 'array', min: 1, message: '至少选择一个权限范围', trigger: 'change' }]
 }
 
 const canManage = computed(() => hasPermission('system:integration:manage'))

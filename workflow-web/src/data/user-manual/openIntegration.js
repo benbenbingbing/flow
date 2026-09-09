@@ -345,7 +345,7 @@ export default {
                 { field: '应用名称', purpose: '管理端识别接入方的业务名称。', rule: '必填，最多 128 字符。建议使用“系统 + 环境 + 用途”，如 ERP-生产-订单变更。', effect: '只用于管理和审计，不作为 OAuth client_id。' },
                 { field: '责任组织', purpose: '记录归口团队或组织标识。', rule: '可选，最多 64 字符。当前为文本标识，不会自动继承组织权限。', effect: '便于责任追踪；不要误认为填写后会替代 Scope 或流程授权。' },
                 { field: '说明', purpose: '记录数据方向、业务范围、联系人和变更单。', rule: '可选，最多 500 字符。', effect: '建议注明生产/测试、调用系统和停用条件。' },
-                { field: 'Scope', purpose: '控制令牌可以执行的开放接口动作。', rule: '至少 1 个，最多 5 个；默认选中流程目录、启动和实例读取。', effect: 'OAuth 请求只能申请应用已授予 Scope 的子集；接口还会再次检查对应 Scope。' },
+                { field: '权限范围（Scope）', purpose: '控制令牌可以执行的开放接口动作。', rule: '至少 1 个；当前支持 7 个合法权限范围，默认选中流程目录、启动和实例读取。', effect: 'OAuth 请求只能申请应用已授予 Scope 的子集；接口还会再次检查对应 Scope。' },
                 { field: '允许流程', purpose: '控制应用能看到和操作哪些流程 Key。', rule: '可选，最多 100 个；必须以字母开头，仅允许字母、数字、点、下划线和短横线。', effect: '留空表示未授权任何流程，即使有 Scope 也不能启动或查看流程目录。' },
                 { field: '每分钟请求上限', purpose: '限制该应用调用 /api/open/** 的速率。', rule: '1–10000，默认 60。', effect: '超限返回 429、errorCode=RATE_LIMIT_EXCEEDED，并可能携带 Retry-After。令牌端点另有部署级限流。' },
                 { field: '并发上限', purpose: '限制同一应用同时处理的开放 API 请求数。', rule: '1–1000，默认 10。', effect: '并发租约耗尽时返回 429；应通过队列和退避控制调用方并发。' },
@@ -363,17 +363,19 @@ export default {
         },
         {
           id: 'integration-scope-reference',
-          title: '五个 Scope 怎么选',
+          title: '七个权限范围（Scope）怎么选',
           blocks: [
             {
               type: 'table',
               columns: optionColumns,
               rows: [
+                { option: 'embed.launch', meaning: '签发一次性的嵌入启动凭证。', usage: '第三方系统需要在受控 iframe 中嵌入平台页面时授予；普通流程 API 不需要。' },
                 { option: 'process.definition.read', meaning: '查询已授权且已发布的流程定义及其输入 Schema。', usage: '调用方需要发现可启动流程、版本或契约时授予。' },
                 { option: 'process.instance.start', meaning: '使用业务引用和 variables 启动流程实例。', usage: '外部系统作为流程发起方时授予。' },
                 { option: 'process.instance.read', meaning: '读取由当前接入应用绑定的流程实例状态。', usage: '调用方需要同步查询运行/完成状态时授予。' },
                 { option: 'process.task.read', meaning: '查询当前应用所启动实例的活动任务摘要。', usage: '外部工作台需要展示待处理环节时授予；它不等于任务办理权限。' },
-                { option: 'process.message.correlate', meaning: '向当前应用绑定的实例发送契约允许的消息。', usage: '到账、外部完成、取消等外部事件驱动流程继续时授予。' }
+                { option: 'process.message.correlate', meaning: '向当前应用绑定的实例发送契约允许的消息。', usage: '到账、外部完成、取消等外部事件驱动流程继续时授予。' },
+                { option: 'process.instance.cancel', meaning: '取消由当前接入应用绑定且仍在运行的流程实例。', usage: '外部业务被撤销且需要同步终止对应流程时授予。' }
               ]
             },
             {
