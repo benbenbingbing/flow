@@ -9,6 +9,7 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
@@ -20,6 +21,8 @@ import com.workflow.process.sla.runtime.infrastructure.persistence.record.Proces
 import com.workflow.process.task.api.request.TaskAddSignRequest;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskAddSignService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
+import com.workflow.process.task.application.operation.NodeOperationPolicy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.task.api.Task;
@@ -44,6 +47,7 @@ public class TaskSlaEventProcessor {
     private final org.flowable.engine.TaskService flowableTaskService;
     private final ProcessTaskService processTaskService;
     private final TaskAddSignService taskAddSignService;
+    private final NodeOperationCapabilityService nodeOperationCapabilityService;
     private final ProcessCcService ccService;
     private final ProcessCcNotificationPublisher notificationPublisher;
     private final ProcessCcRecordMapper ccRecordMapper;
@@ -79,7 +83,9 @@ public class TaskSlaEventProcessor {
                     ? 0 : event.getAttempts();
             int maxRetries = event.getMaxRetries() == null
                     ? 5 : event.getMaxRetries();
-            boolean dead = attempts + 1 >= maxRetries;
+            // 节点开关拒绝属于确定性策略结果，重试不会改变权限，直接结束事件以免反复告警。
+            boolean dead = exception instanceof ForbiddenException
+                    || attempts + 1 >= maxRetries;
             long retrySeconds = Math.min(
                     1800L,
                     15L * (1L << Math.min(6, attempts)));
@@ -182,6 +188,10 @@ public class TaskSlaEventProcessor {
             throw new IllegalArgumentException("SLA转办目标不能为空");
         }
         Task task = requireActiveTask(event.getTaskId());
+        // SLA 自动升级同样属于转办，必须在修改 Flowable 办理人之前通过节点总开关。
+        nodeOperationCapabilityService.requireConfiguredAllowed(
+                task.getId(),
+                NodeOperationPolicy.Operation.TRANSFER);
         flowableTaskService.setAssignee(task.getId(), target);
         processTaskService.transferTask(
                 task.getId(),

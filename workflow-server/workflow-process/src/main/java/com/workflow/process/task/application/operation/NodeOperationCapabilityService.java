@@ -84,11 +84,24 @@ public class NodeOperationCapabilityService {
             throw new IllegalArgumentException("仅支持校验转办和加签操作");
         }
         Task task = requireTask(taskId);
-        if (!config(task).allows(operation)) {
-            throw new ForbiddenException(deniedMessage(operation));
-        }
+        requireConfiguredAllowed(task, operation);
         // 新字段存在时旧解析器会返回兼容放行；仅旧矩阵时此处保持原条件、角色和目标约束。
         legacyDecisionService.requireAllowed(taskId, operation, context);
+    }
+
+    /**
+     * 仅校验当前部署节点的新三开关。
+     *
+     * <p>SLA 等系统动作不具备交互用户语义，但仍不得绕过节点的转办/加签总开关。
+     * 存量部署未配置新字段时按允许处理，不将旧矩阵的角色和条件强加给系统动作。</p>
+     */
+    public void requireConfiguredAllowed(
+            String taskId,
+            NodeOperationPolicy.Operation operation) {
+        if (!isTaskOperation(operation)) {
+            throw new IllegalArgumentException("仅支持校验转办和加签操作");
+        }
+        requireConfiguredAllowed(requireTask(taskId), operation);
     }
 
     /**
@@ -101,16 +114,22 @@ public class NodeOperationCapabilityService {
         if (tasks.isEmpty()) {
             throw new ForbiddenException("当前流程没有可校验的活动任务");
         }
-        for (Task task : tasks) {
-            if (!config(task).allowTerminate()) {
-                throw new ForbiddenException("当前节点不允许终止流程");
-            }
-        }
+        requireConfiguredTerminateAllowed(tasks);
         // 旧矩阵同样按所有活动分支 AND 聚合；新字段存在时解析器自动屏蔽旧矩阵。
         legacyDecisionService.requireAllowedForProcess(
                 processInstanceId,
                 NodeOperationPolicy.Operation.TERMINATE,
                 context);
+    }
+
+    /**
+     * 仅校验流程当前所有活动用户节点的“允许终止”开关。
+     *
+     * <p>用于 Open API 取消、撤回等非标准终止入口的硬门禁。并行分支按 AND
+     * 聚合；没有活动用户任务时不存在可应用的节点开关，保持该入口原有行为。</p>
+     */
+    public void requireConfiguredTerminateAllowed(String processInstanceId) {
+        requireConfiguredTerminateAllowed(activeTasks(processInstanceId));
     }
 
     /**
@@ -171,6 +190,22 @@ public class NodeOperationCapabilityService {
                     "任务节点不存在于绑定的流程版本: " + task.getTaskDefinitionKey());
         }
         return configReader.read(userTask).orElseGet(NodeOperationConfig::allowAll);
+    }
+
+    private void requireConfiguredAllowed(
+            Task task,
+            NodeOperationPolicy.Operation operation) {
+        if (!config(task).allows(operation)) {
+            throw new ForbiddenException(deniedMessage(operation));
+        }
+    }
+
+    private void requireConfiguredTerminateAllowed(List<Task> tasks) {
+        for (Task task : tasks) {
+            if (!config(task).allowTerminate()) {
+                throw new ForbiddenException("当前节点不允许终止流程");
+            }
+        }
     }
 
     private FlowElement findElement(BpmnModel model, String elementId) {

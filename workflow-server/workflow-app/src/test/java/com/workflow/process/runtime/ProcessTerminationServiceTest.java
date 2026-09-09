@@ -2,6 +2,7 @@ package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessTerminationService;
 
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.Result;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
@@ -20,7 +21,9 @@ import org.junit.jupiter.api.Test;
 import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -100,6 +103,40 @@ class ProcessTerminationServiceTest {
 
         assertEquals(400, result.getCode());
         verify(fixture.runtimeService, never()).deleteProcessInstance(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void terminateProcessStopsBeforeEverySideEffectWhenNodeSwitchDenies() {
+        Fixture fixture = new Fixture();
+        fixture.runningProcess("starter");
+        doThrow(new ForbiddenException("当前节点不允许终止流程"))
+                .when(fixture.nodeOperationCapabilityService)
+                .requireTerminateAllowed(
+                        org.mockito.ArgumentMatchers.eq("pi-1"),
+                        any(NodeOperationDecisionService.CheckContext.class));
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> fixture.service().terminateProcess(
+                        "pi-1",
+                        "starter",
+                        "主动终止"));
+
+        verify(fixture.runtimeService, never()).deleteProcessInstance(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
+        verify(fixture.processTaskService, never())
+                .deleteTasksByProcessInstance(
+                        org.mockito.ArgumentMatchers.anyString());
+        verify(fixture.operationLogMapper, never()).insert(
+                any(ProcessOperationLog.class));
+        verify(fixture.entityRecordPort, never()).recordActivity(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     /** 测试夹具：封装 mock 依赖与场景构造方法 */

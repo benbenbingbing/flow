@@ -520,9 +520,11 @@
         </el-form-item>
         <el-form-item label="加签方式" required>
           <el-radio-group v-model="addSignForm.type" @change="loadAddSignPreview">
-            <el-radio-button value="BEFORE">前加签</el-radio-button>
-            <el-radio-button value="PARALLEL">并行加签</el-radio-button>
-            <el-radio-button value="AFTER">后加签</el-radio-button>
+            <el-radio-button
+              v-for="option in availableAddSignTypeOptions"
+              :key="option.value"
+              :value="option.value"
+            >{{ option.label }}</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="处理方式">
@@ -606,6 +608,12 @@ import {
   resumeTaskSla,
   terminateProcess
 } from '@/api/processTask'
+import {
+  ADD_SIGN_TYPE_OPTIONS,
+  isTaskOperationExplicitlyAllowed,
+  resolveAllowedAddSignTypes,
+  selectAllowedAddSignType
+} from '@/shared/workflow-operation-guards'
 
 // 统计数据
 const statistics = reactive({
@@ -667,6 +675,7 @@ const claimableSelectedCount = computed(() =>
 // 转办弹窗
 const transferDialogVisible = ref(false)
 const transferLoading = ref(false)
+let transferDialogSession = 0
 const transferForm = reactive({
   taskId: '',
   processName: '',
@@ -677,14 +686,20 @@ const transferForm = reactive({
 const addSignDialogVisible = ref(false)
 const ccDialogVisible = ref(false)
 const operationLoading = ref(false)
+let addSignDialogSession = 0
+let addSignPreviewRequestSequence = 0
 const addSignForm = reactive({
   taskId: '',
   processName: '',
   code: '',
-  type: 'BEFORE',
+  type: '',
   userIds: [],
   comment: ''
 })
+const allowedAddSignTypes = ref([])
+const availableAddSignTypeOptions = computed(() => ADD_SIGN_TYPE_OPTIONS.filter(
+  option => allowedAddSignTypes.value.includes(option.value)
+))
 const addSignPreview = reactive({ structure: '', duplicates: [], disabled: [], invalid: [] })
 const addSignTypeSummary = computed(() => ({
   BEFORE: '加签人员先处理；全部通过后原办理人继续审批',
@@ -806,6 +821,57 @@ async function loadTaskOperations(tasks) {
     }))
 }
 
+/**
+ * 在真正提交前重新读取任务能力，避免弹窗打开后权限或任务状态变化。
+ * 查询失败与非 boolean true 均按不允许处理。
+ */
+async function requireFreshTaskOperation(taskId, operation, label) {
+  if (!taskId) {
+    ElMessage.warning('未获取到待' + label + '任务，请刷新列表后重试')
+    return null
+  }
+  try {
+    const operations = await getTaskOperations(taskId)
+    const currentRow = todoList.value.find(
+      row => String(row.taskId) === String(taskId)
+    )
+    if (currentRow) currentRow.taskOperations = operations || {}
+    if (!isTaskOperationExplicitlyAllowed(operations, operation)) {
+      ElMessage.warning(label + '权限或任务状态已变化，请刷新列表后重试')
+      return null
+    }
+    return operations
+  } catch (error) {
+    console.warn('提交前校验' + label + '能力失败:', taskId, error)
+    ElMessage.warning('无法确认' + label + '权限，请稍后重试')
+    return null
+  }
+}
+
+/**
+ * 终止前重新读取当前“我发起的”页；只有同一实例仍在运行且服务端明确允许时才放行。
+ * 真正的并发授权仍由终止接口负责，本检查用于让前端在状态变化后及时失败关闭。
+ */
+async function requireFreshTerminateOperation(row) {
+  try {
+    const result = await getMyStartedList(buildQueryParams())
+    const records = result?.records || result?.list || []
+    const current = records.find(item =>
+      String(item.processInstanceId) === String(row.processInstanceId)
+    )
+    if (current) Object.assign(row, current)
+    if (current?.status !== 'RUNNING' || current?.canTerminate !== true) {
+      ElMessage.warning('终止权限或流程状态已变化，请刷新列表后重试')
+      return false
+    }
+    return true
+  } catch (error) {
+    console.warn('提交前校验终止能力失败:', row?.processInstanceId, error)
+    ElMessage.warning('无法确认终止权限，请稍后重试')
+    return false
+  }
+}
+
 // 加载已办
 async function loadDoneList() {
   loading.value = true
@@ -898,7 +964,8 @@ function getTodoMoreActions(row) {
     if (row.taskOperations?.transfer === true) {
       actions.push({ command: 'transfer', label: '转办' })
     }
-    if (row.taskOperations?.addSign === true) {
+    if (row.taskOperations?.addSign === true
+        && resolveAllowedAddSignTypes(row.taskOperations).length > 0) {
       actions.push({ command: 'addSign', label: '加签' })
     } else if (row.taskOperations?.activeAddSign?.id) {
       actions.push({ command: 'cancelAddSign', label: '撤销加签' })
@@ -1117,6 +1184,11 @@ function onApprovalSuccess() {
 
 // 打开转办弹窗
 function openTransferDialog(row) {
+  if (!isTaskOperationExplicitlyAllowed(row?.taskOperations, 'transfer')) {
+    ElMessage.warning('服务端未明确允许转办，请刷新列表后重试')
+    return
+  }
+  transferDialogSession += 1
   transferForm.taskId = row.taskId
   transferForm.processName = row.processName || ''
   transferForm.code = row.code || ''
@@ -1126,11 +1198,20 @@ function openTransferDialog(row) {
 }
 
 function openAddSignDialog(row) {
+  const nextAllowedTypes = resolveAllowedAddSignTypes(row?.taskOperations)
+  if (!isTaskOperationExplicitlyAllowed(row?.taskOperations, 'addSign')
+      || nextAllowedTypes.length === 0) {
+    ElMessage.warning('服务端未明确允许可用的加签方式，请刷新列表后重试')
+    return
+  }
+  addSignDialogSession += 1
+  addSignPreviewRequestSequence += 1
+  allowedAddSignTypes.value = nextAllowedTypes
   Object.assign(addSignForm, {
     taskId: row.taskId,
     processName: row.processName || '',
     code: row.code || '',
-    type: 'BEFORE',
+    type: selectAllowedAddSignType(row.taskOperations),
     userIds: [],
     comment: ''
   })
@@ -1139,8 +1220,27 @@ function openAddSignDialog(row) {
 }
 
 async function loadAddSignPreview() {
-  if (!addSignForm.taskId || !addSignForm.userIds.length) return
-  const result = await previewAddSign(addSignForm.taskId, addSignForm.userIds, addSignForm.type)
+  const requestSequence = ++addSignPreviewRequestSequence
+  const dialogSession = addSignDialogSession
+  const taskId = addSignForm.taskId
+  const type = addSignForm.type
+  const userIds = [...addSignForm.userIds]
+  if (!taskId
+      || !userIds.length
+      || !allowedAddSignTypes.value.includes(type)) {
+    Object.assign(addSignPreview, {
+      structure: '',
+      duplicates: [],
+      disabled: [],
+      invalid: []
+    })
+    return
+  }
+  const result = await previewAddSign(taskId, userIds, type)
+  // 丢弃已关闭、重新打开或被更新选择所淘汰的迟到响应。
+  if (!addSignDialogVisible.value
+      || dialogSession !== addSignDialogSession
+      || requestSequence !== addSignPreviewRequestSequence) return
   Object.assign(addSignPreview, result || {})
 }
 
@@ -1156,17 +1256,58 @@ function openCcDialog(row) {
 }
 
 async function submitAddSign() {
-  if (!addSignForm.userIds.length) return ElMessage.warning('请选择加签人员')
+  const submission = {
+    taskId: addSignForm.taskId,
+    type: addSignForm.type,
+    userIds: [...addSignForm.userIds],
+    comment: addSignForm.comment
+  }
+  const dialogSession = addSignDialogSession
+  if (!submission.userIds.length) return ElMessage.warning('请选择加签人员')
   operationLoading.value = true
   try {
-    await addSignTask(addSignForm.taskId, {
-      type: addSignForm.type,
-      userIds: addSignForm.userIds,
-      comment: addSignForm.comment,
+    const operations = await requireFreshTaskOperation(
+      submission.taskId,
+      'addSign',
+      '加签'
+    )
+    if (!operations
+        || !addSignDialogVisible.value
+        || dialogSession !== addSignDialogSession
+        || String(addSignForm.taskId) !== String(submission.taskId)) return
+    const refreshedTypes = resolveAllowedAddSignTypes(operations)
+    const refreshedSelection = selectAllowedAddSignType(
+      operations,
+      submission.type
+    )
+    allowedAddSignTypes.value = refreshedTypes
+    if (!refreshedSelection) {
+      ElMessage.warning('服务端未明确允许可用的加签方式，请刷新列表后重试')
+      return
+    }
+    if (refreshedSelection !== submission.type) {
+      // 不静默改成另一种加签语义后继续提交，要求办理人确认新的合法默认值。
+      addSignForm.type = refreshedSelection
+      addSignPreviewRequestSequence += 1
+      Object.assign(addSignPreview, {
+        structure: '',
+        duplicates: [],
+        disabled: [],
+        invalid: []
+      })
+      ElMessage.warning('可用加签方式已变化，请确认新的加签方式后再次提交')
+      return
+    }
+    await addSignTask(submission.taskId, {
+      type: submission.type,
+      userIds: submission.userIds,
+      comment: submission.comment,
       completionPolicy: 'ALL'
     })
-    ElMessage.success('加签成功')
-    addSignDialogVisible.value = false
+    if (dialogSession === addSignDialogSession) {
+      ElMessage.success('加签成功')
+      addSignDialogVisible.value = false
+    }
     loadTodoList()
   } finally {
     operationLoading.value = false
@@ -1215,20 +1356,37 @@ function viewCc(row) {
 
 // 提交转办
 async function submitTransfer() {
-  if (!transferForm.transferTo) {
+  const submission = {
+    taskId: transferForm.taskId,
+    transferTo: transferForm.transferTo,
+    comment: transferForm.comment
+  }
+  const dialogSession = transferDialogSession
+  if (!submission.transferTo) {
     ElMessage.warning('请选择转办人')
     return
   }
   transferLoading.value = true
   try {
+    const operations = await requireFreshTaskOperation(
+      submission.taskId,
+      'transfer',
+      '转办'
+    )
+    if (!operations
+        || !transferDialogVisible.value
+        || dialogSession !== transferDialogSession
+        || String(transferForm.taskId) !== String(submission.taskId)) return
     await completeTask({
-      taskId: transferForm.taskId,
+      taskId: submission.taskId,
       action: 'transfer',
-      comment: transferForm.comment,
-      transferTo: transferForm.transferTo
+      comment: submission.comment,
+      transferTo: submission.transferTo
     })
-    ElMessage.success('转办成功')
-    transferDialogVisible.value = false
+    if (dialogSession === transferDialogSession) {
+      ElMessage.success('转办成功')
+      transferDialogVisible.value = false
+    }
     loadTodoList()
     loadDoneList()
     loadStatistics()
@@ -1242,6 +1400,10 @@ async function submitTransfer() {
 
 // 终止流程
 async function handleTerminate(row) {
+  if (row?.status !== 'RUNNING' || row?.canTerminate !== true) {
+    ElMessage.warning('服务端未明确允许终止该流程，请刷新列表后重试')
+    return
+  }
   try {
     await ElMessageBox.confirm(
       '终止后流程将直接结束，相关待办也会取消，且不能从当前节点继续。确认终止吗？',
@@ -1252,6 +1414,7 @@ async function handleTerminate(row) {
         cancelButtonText: '取消'
       }
     )
+    if (!(await requireFreshTerminateOperation(row))) return
     await terminateProcess(row.processInstanceId, '发起人主动终止')
     ElMessage.success('终止成功')
     loadStartedList()

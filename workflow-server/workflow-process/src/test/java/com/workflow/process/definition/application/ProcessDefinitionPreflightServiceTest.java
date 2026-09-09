@@ -1,5 +1,8 @@
 package com.workflow.process.definition.application;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.process.assignment.application.EmptyAssigneePolicyBpmnValidator;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
@@ -9,6 +12,9 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
+import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
+import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
+import com.workflow.process.publish.application.ProcessUiReleaseBindingService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstanceQuery;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,13 +22,23 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -89,6 +105,66 @@ class ProcessDefinitionPreflightServiceTest {
         assertEquals(first.previewToken(), second.previewToken());
         verify(emptyAssigneePolicyValidator, times(2))
                 .validate(process.getBpmnXml());
+    }
+
+    /** 独立预检需开启可加行锁的事务，避免表单依赖检查因只读事务而误报发布阻断。 */
+    @Test
+    void previewByIdLocksNodeFormsInWritableTransaction() throws Exception {
+        process.setBpmnXml(validXml());
+        when(processMapper.selectById("process-1")).thenReturn(process);
+
+        ProcessNodeFormMapper nodeFormMapper = mock(ProcessNodeFormMapper.class);
+        UiConfigReleaseService uiConfigReleaseService = mock(UiConfigReleaseService.class);
+        ProcessNodeForm nodeForm = new ProcessNodeForm();
+        nodeForm.setNodeId("ApproveTask");
+        nodeForm.setFormId("form-1");
+        when(nodeFormMapper.selectByProcessConfigId("process-1")).thenAnswer(invocation -> {
+            assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
+            assertFalse(TransactionSynchronizationManager.isCurrentTransactionReadOnly());
+            return List.of(nodeForm);
+        });
+        doAnswer(invocation -> {
+            // 使用真实快照服务走到加锁入口，确保将来调整调用链时仍覆盖 SELECT FOR UPDATE 的事务要求。
+            assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
+            assertFalse(TransactionSynchronizationManager.isCurrentTransactionReadOnly());
+            return null;
+        }).when(uiConfigReleaseService).lockFormForProcessPublish("form-1");
+        UiConfigRelease release = new UiConfigRelease();
+        release.setId("form-release-1");
+        release.setVersion(1);
+        when(uiConfigReleaseService.active(UiConfigReleaseService.FORM, "form-1"))
+                .thenReturn(release);
+        ProcessPublishHistoryService realPublishHistoryService = new ProcessPublishHistoryService(
+                versionMapper, actionDesignPort, nodeFormMapper, uiConfigReleaseService,
+                mock(ProcessUiReleaseBindingService.class), new ObjectMapper());
+        ProcessDefinitionPreflightService target = new ProcessDefinitionPreflightService(
+                processMapper, versionMapper, nodeConfigMapper, assigneeConfigMapper,
+                actionDesignPort, sanitizer, realPublishHistoryService, runtimeService);
+        target.setEmptyAssigneePolicyBpmnValidator(emptyAssigneePolicyValidator);
+
+        // 普通直接调用不会应用 @Transactional；通过 Spring 代理验证实际事务边界和 JDBC 提交。
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.getAutoCommit()).thenReturn(true);
+        TransactionInterceptor transactionInterceptor = new TransactionInterceptor();
+        transactionInterceptor.setTransactionManager(new DataSourceTransactionManager(dataSource));
+        transactionInterceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        ProxyFactory proxyFactory = new ProxyFactory(target);
+        proxyFactory.addAdvice(transactionInterceptor);
+        ProcessDefinitionPreflightService transactionalService =
+                (ProcessDefinitionPreflightService) proxyFactory.getProxy();
+
+        ProcessPublishPreviewDTO preview = transactionalService.preview("process-1");
+
+        assertTrue(preview.publishable());
+        assertEquals(0, preview.blockerCount());
+        verify(uiConfigReleaseService).lockFormForProcessPublish("form-1");
+        verify(uiConfigReleaseService).active(UiConfigReleaseService.FORM, "form-1");
+        verify(connection, never()).setReadOnly(true);
+        verify(connection).commit();
+        verify(connection, never()).rollback();
+        assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
     }
 
     @Test

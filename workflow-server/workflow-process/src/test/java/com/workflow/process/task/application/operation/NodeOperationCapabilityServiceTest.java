@@ -100,6 +100,42 @@ class NodeOperationCapabilityServiceTest {
     }
 
     @Test
+    void configuredOnlyGateBlocksSystemTransferWithoutConsultingLegacyPolicy() {
+        Task task = task("task-1", "review", "definition-1", "process-1");
+        query(task, List.of(task));
+        when(repositoryService.getBpmnModel("definition-1"))
+                .thenReturn(model(userTask("review", """
+                        {"allowTransfer": false}
+                        """)));
+
+        assertThrows(ForbiddenException.class, () ->
+                service.requireConfiguredAllowed(
+                        "task-1",
+                        NodeOperationPolicy.Operation.TRANSFER));
+
+        verifyNoInteractions(legacyDecisionService);
+    }
+
+    @Test
+    void configuredOnlyTerminateGateUsesParallelAndAndAllowsNoUserTaskState() {
+        Task first = task("task-1", "review-a", "definition-1", "process-1");
+        Task second = task("task-2", "review-b", "definition-1", "process-1");
+        TaskQuery query = query(first, List.of(first, second));
+        when(repositoryService.getBpmnModel("definition-1"))
+                .thenReturn(model(
+                        userTask("review-a", "{\"allowTerminate\": true}"),
+                        userTask("review-b", "{\"allowTerminate\": false}")));
+
+        assertThrows(ForbiddenException.class, () ->
+                service.requireConfiguredTerminateAllowed("process-1"));
+
+        when(query.list()).thenReturn(List.of());
+        assertDoesNotThrow(() ->
+                service.requireConfiguredTerminateAllowed("process-1"));
+        verifyNoInteractions(legacyDecisionService);
+    }
+
+    @Test
     void keepsLegacyPolicyGateWhenSimpleSwitchesAreAbsent() {
         Task task = task("task-1", "review", "definition-1", "process-1");
         query(task, List.of(task));

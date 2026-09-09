@@ -229,16 +229,24 @@ class TaskAddSignServiceTest {
 
     /** 节点关闭加签时必须在锁定任务镜像和写入任何加签记录前失败。 */
     @Test
-    void addSignStopsBeforePersistenceWhenNodeSwitchDenies() {
-        doThrow(new ForbiddenException("当前节点不允许加签"))
-                .when(nodeOperationCapabilityService)
-                .requireAllowed(
-                        eq("source-task"),
-                        eq(NodeOperationPolicy.Operation.ADD_SIGN_PARALLEL),
-                        any(NodeOperationDecisionService.CheckContext.class));
+    void everyAddSignTypeStopsBeforePersistenceWhenNodeSwitchDenies() {
+        List<NodeOperationPolicy.Operation> operations = List.of(
+                NodeOperationPolicy.Operation.ADD_SIGN_BEFORE,
+                NodeOperationPolicy.Operation.ADD_SIGN_PARALLEL,
+                NodeOperationPolicy.Operation.ADD_SIGN_AFTER);
+        for (NodeOperationPolicy.Operation operation : operations) {
+            doThrow(new ForbiddenException("当前节点不允许加签"))
+                    .when(nodeOperationCapabilityService)
+                    .requireAllowed(
+                            eq("source-task"),
+                            eq(operation),
+                            any(NodeOperationDecisionService.CheckContext.class));
+        }
 
-        assertThrows(ForbiddenException.class,
-                () -> service.addSign("source-task", request("PARALLEL")));
+        for (String type : List.of("BEFORE", "PARALLEL", "AFTER")) {
+            assertThrows(ForbiddenException.class,
+                    () -> service.addSign("source-task", request(type)));
+        }
 
         verify(processTaskMapper, never()).selectByTaskIdForUpdate(anyString());
         verify(processTaskMapper, never()).insert(any(ProcessTask.class));

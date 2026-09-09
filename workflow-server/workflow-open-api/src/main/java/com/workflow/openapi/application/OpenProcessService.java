@@ -2,6 +2,7 @@ package com.workflow.openapi.application;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.contracts.process.open.OpenProcessCancelCommand;
 import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
@@ -497,6 +498,12 @@ public class OpenProcessService {
         } catch (OpenProcessNotFoundException exception) {
             idempotencyService.failRetryable(claim);
             throw notFound();
+        } catch (ForbiddenException exception) {
+            idempotencyService.failRetryable(claim);
+            throw new OpenApiException(
+                    403,
+                    "NODE_OPERATION_FORBIDDEN",
+                    exception.getMessage());
         } catch (OpenApiException exception) {
             idempotencyService.failRetryable(claim);
             throw exception;

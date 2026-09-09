@@ -177,6 +177,7 @@ import {
 import { BUSINESS_TRACE_HEADER } from '@/shared/request'
 import { resolveActionableTaskId } from '@/utils/listButtonPermission'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
+import { isReservedApprovalActionCode } from '@/shared/workflow-operation-guards'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -436,7 +437,9 @@ const {
   getActionLabel: () => selectedApprovalOption.value?.label,
   getComment: () => approveForm.comment,
   getFormData: () => entityData.value,
-  isEnabled: () => !isViewMode.value && processDialogVisible.value
+  isEnabled: () => !isViewMode.value
+    && processDialogVisible.value
+    && !isReservedApprovalActionCode(approveForm.action)
 })
 const showApprovalDecisionSection = computed(() =>
   !isViewMode.value
@@ -944,6 +947,11 @@ function isDeferredDefaultRequired(error: any) {
 // 提交审批
 const submitApprove = async () => {
   if (!currentTask.value?.taskId || approveSubmitLoading.value) return
+  // 兼容历史已保存配置：保留码既不能进入预览，也不能作为普通审批结果提交。
+  if (isReservedApprovalActionCode(approveForm.action)) {
+    ElMessage.warning('当前审批选项占用了系统操作保留编码，请联系流程管理员修正配置')
+    return
+  }
   approveSubmitLoading.value = true
   try {
     const validation = await validateApprovalForms()

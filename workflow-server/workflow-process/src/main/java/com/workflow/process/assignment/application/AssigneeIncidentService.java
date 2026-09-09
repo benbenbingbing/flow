@@ -334,6 +334,8 @@ public class AssigneeIncidentService {
     }
 
     private Map<String, Object> terminate(Incident incident, String reason) {
+        // 这是受管理员权限保护的故障恢复通道，不是办理人可用的“终止”操作；
+        // 必须保留三开关豁免，否则关闭终止的空办理人流程将无法由管理员清理。
         if (StringUtils.hasText(incident.processInstanceId())
                 && runtimeService.createProcessInstanceQuery()
                 .processInstanceId(incident.processInstanceId()).singleResult() != null) {

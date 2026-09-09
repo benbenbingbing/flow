@@ -90,8 +90,18 @@ public class ProcessDefinitionPreflightService {
     private final ProcessPublishHistoryService publishHistoryService;
     private final RuntimeService runtimeService;
 
-    /** 对当前持久化草稿执行完整发布预检。 */
-    @Transactional(readOnly = true)
+    /**
+     * 对当前持久化草稿执行完整发布预检。
+     *
+     * <p>预检不写入业务数据，但生成节点表单快照时需要锁定表单配置行，与表单热修复
+     * 发布保持一致的并发边界，因此必须使用允许 SELECT FOR UPDATE 的非只读事务。
+     * 行锁在本次预检结束时释放，正式发布仍在自己的事务内重新校验并持锁。</p>
+     *
+     * @param processId 流程定义配置 ID
+     * @return 当前草稿的发布预检结果
+     * @throws IllegalArgumentException 流程定义不存在时抛出
+     */
+    @Transactional
     public ProcessPublishPreviewDTO preview(String processId) {
         ProcessDefinitionConfig config = processMapper.selectById(processId);
         if (config == null) {

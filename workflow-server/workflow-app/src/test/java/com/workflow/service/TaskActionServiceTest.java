@@ -44,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -171,7 +172,7 @@ class TaskActionServiceTest {
     }
 
     @Test
-    void transferStopsBeforeTaskLookupWhenNodeSwitchDenies() {
+    void transferAliasesStopBeforeTaskLookupWhenNodeSwitchDenies() {
         doThrow(new com.workflow.core.error.ForbiddenException("当前节点不允许转办"))
                 .when(nodeOperationCapabilityService)
                 .requireAllowed(
@@ -179,13 +180,53 @@ class TaskActionServiceTest {
                         eq(NodeOperationPolicy.Operation.TRANSFER),
                         any(NodeOperationDecisionService.CheckContext.class));
 
-        assertThrows(
-                com.workflow.core.error.ForbiddenException.class,
-                () -> service.completeTask(
-                        "task-1", "admin", "transfer", "转交处理", "user-2", null));
+        for (String action : List.of(
+                "transfer",
+                "TRANSFER",
+                "transferred",
+                " TRANSFERRED ")) {
+            assertThrows(
+                    com.workflow.core.error.ForbiddenException.class,
+                    () -> service.completeTask(
+                            "task-1",
+                            "admin",
+                            action,
+                            "转交处理",
+                            "user-2",
+                            null));
+        }
 
         verify(taskService, never()).createTaskQuery();
         verifyNoInteractions(nodeFormSubmissionService);
+    }
+
+    @Test
+    void withdrawStopsBeforeDeleteWhenTerminateSwitchDenies() {
+        org.flowable.engine.runtime.ProcessInstanceQuery processQuery =
+                mock(org.flowable.engine.runtime.ProcessInstanceQuery.class);
+        org.flowable.engine.runtime.ProcessInstance processInstance =
+                mock(org.flowable.engine.runtime.ProcessInstance.class);
+        when(runtimeService.createProcessInstanceQuery()).thenReturn(processQuery);
+        when(processQuery.processInstanceId("proc-1")).thenReturn(processQuery);
+        when(processQuery.singleResult()).thenReturn(processInstance);
+        when(processInstance.getStartUserId()).thenReturn("admin-id");
+        doThrow(new com.workflow.core.error.ForbiddenException(
+                "当前节点不允许终止流程"))
+                .when(nodeOperationCapabilityService)
+                .requireConfiguredTerminateAllowed("proc-1");
+
+        assertThrows(
+                com.workflow.core.error.ForbiddenException.class,
+                () -> service.withdrawProcess(
+                        "proc-1",
+                        "admin-id",
+                        "撤回申请"));
+
+        verify(runtimeService, never()).deleteProcessInstance(
+                anyString(), anyString());
+        verify(processTaskService, never())
+                .deleteTasksByProcessInstance(anyString());
+        verifyNoInteractions(entityRecordPort);
     }
 
     @Test

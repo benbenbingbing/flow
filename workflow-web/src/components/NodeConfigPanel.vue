@@ -816,7 +816,7 @@
       <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="操作权限"
-          description="控制当前节点允许人工发起的办理操作"
+          description="控制当前节点是否允许转办、加签和终止流程"
           :collapsible="false"
         >
           <el-form :model="assigneeForm" label-width="100px" size="small">
@@ -2004,6 +2004,7 @@ import {
   transitionAutoSkipMode,
   validateAutoSkipExpression
 } from '@/shared/node-auto-skip'
+import { validateApprovalOptionActionCodes } from '@/shared/workflow-operation-guards'
 
 const router = useRouter()
 
@@ -4701,6 +4702,16 @@ function applyConfigurationSection(section) {
 }
 
 async function applyNodeConfiguration() {
+  if (isUserTask.value && approvalForm.value.enabled) {
+    // 审批选项必须在任何分区写入 bpmn-js 前完成预检，避免后置失败留下半应用状态。
+    const approvalValidation = validateApprovalOptionActionCodes(
+      approvalForm.value.options
+    )
+    if (!approvalValidation.valid) {
+      ElMessage.warning(approvalValidation.message)
+      return
+    }
+  }
   for (const section of getConfigurationSections()) {
     if (!applyConfigurationSection(section)) return
   }

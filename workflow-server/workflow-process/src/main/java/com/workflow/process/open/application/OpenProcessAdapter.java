@@ -25,6 +25,7 @@ import com.workflow.process.definition.infrastructure.persistence.record.Process
 import com.workflow.process.definition.application.DeployedSkipExpressionSafety;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.task.application.ProcessTaskService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -88,6 +89,7 @@ public class OpenProcessAdapter
     private final ProcessTaskService processTaskService;
     private final RepositoryService repositoryService;
     private final List<ExternalIdentityResolver> externalIdentityResolvers;
+    private final NodeOperationCapabilityService nodeOperationCapabilityService;
 
     /** 兼容直接构造的旧测试；生产组件会注入快照服务。 */
     @Autowired
@@ -106,7 +108,8 @@ public class OpenProcessAdapter
             MultiInstanceCollectionListener multiInstanceListener,
             ProcessTaskService processTaskService,
             RepositoryService repositoryService,
-            List<ExternalIdentityResolver> externalIdentityResolvers) {
+            List<ExternalIdentityResolver> externalIdentityResolvers,
+            NodeOperationCapabilityService nodeOperationCapabilityService) {
         this.processDefinitionMapper = processDefinitionMapper;
         this.processVersionMapper = processVersionMapper;
         this.runtimeService = runtimeService;
@@ -118,6 +121,24 @@ public class OpenProcessAdapter
         this.externalIdentityResolvers = externalIdentityResolvers == null
                 ? List.of()
                 : List.copyOf(externalIdentityResolvers);
+        this.nodeOperationCapabilityService = nodeOperationCapabilityService;
+    }
+
+    /** 兼容不执行 cancel 的直接构造测试；生产环境始终使用完整依赖构造器。 */
+    public OpenProcessAdapter(
+            ProcessDefinitionConfigMapper processDefinitionMapper,
+            ProcessVersionHistoryMapper processVersionMapper,
+            RuntimeService runtimeService,
+            HistoryService historyService,
+            org.flowable.engine.TaskService taskService,
+            MultiInstanceCollectionListener multiInstanceListener,
+            ProcessTaskService processTaskService,
+            RepositoryService repositoryService,
+            List<ExternalIdentityResolver> externalIdentityResolvers) {
+        this(processDefinitionMapper, processVersionMapper, runtimeService,
+                historyService, taskService, multiInstanceListener,
+                processTaskService, repositoryService,
+                externalIdentityResolvers, null);
     }
 
     public OpenProcessAdapter(
@@ -388,6 +409,13 @@ public class OpenProcessAdapter
             throw new OpenProcessStateConflictException(
                     "Process is not running");
         }
+        if (nodeOperationCapabilityService == null) {
+            // 仅旧单元测试允许省略该依赖；真实取消入口必须失败关闭，不能静默绕过节点开关。
+            throw new IllegalStateException(
+                    "Node operation capability service is unavailable");
+        }
+        nodeOperationCapabilityService.requireConfiguredTerminateAllowed(
+                command.processInstanceId());
         runtimeService.deleteProcessInstance(
                 command.processInstanceId(), command.reason());
         return get(command.processInstanceId(), command.actor());

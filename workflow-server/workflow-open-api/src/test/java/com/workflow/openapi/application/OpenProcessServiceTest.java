@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.open.OpenApplicationActor;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.contracts.process.open.port.OpenProcessCatalogPort;
 import com.workflow.contracts.process.open.OpenProcessDefinition;
 import com.workflow.contracts.process.open.OpenProcessEvent;
@@ -23,9 +24,11 @@ import com.workflow.contracts.process.open.OpenProcessView;
 import com.workflow.contracts.process.open.OpenTaskView;
 import com.workflow.openapi.api.error.OpenApiException;
 import com.workflow.openapi.api.request.OpenBusinessReferenceRequest;
+import com.workflow.openapi.api.request.OpenCancelProcessRequest;
 import com.workflow.openapi.api.request.OpenStartProcessRequest;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessBindingMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessGrantMapper;
+import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessBindingRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessGrantRecord;
 import java.time.Clock;
 import java.time.Instant;
@@ -296,6 +299,58 @@ class OpenProcessServiceTest {
         assertEquals(
                 "com.flow.process.completed.v1",
                 events.getAllValues().get(1).eventType());
+    }
+
+    @Test
+    void cancelMapsNodeSwitchDenialToStableForbiddenResponse() {
+        IntegrationProcessBindingRecord binding =
+                new IntegrationProcessBindingRecord();
+        binding.setApplicationId("application-01");
+        binding.setProcessInstanceId("process-instance-01");
+        binding.setProcessDefinitionKey("change_process");
+        when(bindingMapper.findByProcessInstance(
+                "application-01",
+                "process-instance-01")).thenReturn(binding);
+        when(grantMapper.findContract(
+                "application-01",
+                "change_process")).thenReturn(contract());
+        OpenIdempotencyService.Claim claim =
+                new OpenIdempotencyService.Claim(
+                        "idempotency-01",
+                        1,
+                        true,
+                        false,
+                        false,
+                        0,
+                        null);
+        when(idempotencyService.claim(
+                anyString(),
+                eq("PROCESS_CANCEL"),
+                eq("request-01"),
+                any())).thenReturn(claim);
+        when(runtimePort.cancel(any())).thenThrow(
+                new ForbiddenException("当前节点不允许终止流程"));
+
+        OpenApiException exception = assertThrows(
+                OpenApiException.class,
+                () -> service.cancel(
+                        actor(),
+                        "process-instance-01",
+                        "request-01",
+                        new OpenCancelProcessRequest("外部系统取消")));
+
+        assertEquals(403, exception.getStatus());
+        assertEquals(
+                "NODE_OPERATION_FORBIDDEN",
+                exception.getErrorCode());
+        verify(idempotencyService).failRetryable(claim);
+        verify(idempotencyService, never())
+                .completeInBusinessTransaction(
+                        any(),
+                        anyString(),
+                        anyString(),
+                        anyInt(),
+                        any());
     }
 
     private IntegrationProcessGrantRecord contract() {

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -15,12 +16,14 @@ import static org.mockito.Mockito.when;
 import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.contracts.process.open.OpenBusinessReference;
 import com.workflow.contracts.process.open.OpenMessageCorrelationCommand;
+import com.workflow.contracts.process.open.OpenProcessCancelCommand;
 import com.workflow.contracts.process.open.OpenProcessNotFoundException;
 import com.workflow.contracts.process.open.OpenProcessStartCommand;
 import com.workflow.contracts.process.open.OpenProcessStateConflictException;
 import com.workflow.contracts.process.open.OpenProcessIdentityNotResolvedException;
 import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
 import com.workflow.contracts.process.open.spi.ExternalIdentityResolver;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
@@ -28,6 +31,7 @@ import com.workflow.process.definition.infrastructure.persistence.record.Process
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.task.application.ProcessTaskService;
+import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
@@ -67,6 +71,8 @@ class OpenProcessAdapterTest {
             mock(ProcessTaskService.class);
     private final RepositoryService repositoryService =
             mock(RepositoryService.class);
+    private final NodeOperationCapabilityService nodeOperationCapabilityService =
+            mock(NodeOperationCapabilityService.class);
 
     private OpenProcessAdapter adapter;
 
@@ -80,7 +86,9 @@ class OpenProcessAdapterTest {
                 taskService,
                 multiInstanceListener,
                 processTaskService,
-                repositoryService);
+                repositoryService,
+                List.of(),
+                nodeOperationCapabilityService);
     }
 
     @Test
@@ -414,6 +422,35 @@ class OpenProcessAdapterTest {
 
         assertEquals(Map.of("businessField", "visible"),
                 view.variables());
+    }
+
+    @Test
+    void cancelStopsBeforeDeletingInstanceWhenTerminateSwitchDenies() {
+        ProcessInstance active = mock(ProcessInstance.class);
+        when(active.getId()).thenReturn("process-instance-01");
+        when(active.getProcessDefinitionKey())
+                .thenReturn("change_process");
+        ProcessInstanceQuery processQuery =
+                mock(ProcessInstanceQuery.class, RETURNS_SELF);
+        when(runtimeService.createProcessInstanceQuery())
+                .thenReturn(processQuery);
+        when(processQuery.singleResult()).thenReturn(active);
+        when(runtimeService.getVariables("process-instance-01"))
+                .thenReturn(Map.of());
+        doThrow(new ForbiddenException("当前节点不允许终止流程"))
+                .when(nodeOperationCapabilityService)
+                .requireConfiguredTerminateAllowed(
+                        "process-instance-01");
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> adapter.cancel(new OpenProcessCancelCommand(
+                        "process-instance-01",
+                        "外部系统取消",
+                        actor())));
+
+        verify(runtimeService, never()).deleteProcessInstance(
+                any(), any());
     }
 
     private ProcessDefinitionConfig definition() {

@@ -488,45 +488,34 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             targetType = "PROCESS_INSTANCE",
             targetIdArg = 0)
     public void withdrawProcess(String processInstanceId, String reason) {
-        // 1. 查询流程实例
         HistoricProcessInstance processInstance = historyService
                 .createHistoricProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .singleResult();
-        
         if (processInstance == null) {
             throw new RuntimeException("流程实例不存在");
         }
-        
-        // 2. 检查是否是发起人（当前用户）
-        if (!UserContext.requireUsernameOrId().equals(processInstance.getStartUserId())) {
+        if (!UserContext.requireUsernameOrId().equals(
+                processInstance.getStartUserId())) {
             throw new RuntimeException("只有发起人才能撤回流程");
         }
-        
-        // 3. 检查流程是否已结束
         if (processInstance.getEndTime() != null) {
             throw new RuntimeException("流程已结束，无法撤回");
         }
-        
-        // 4. 检查是否已有审批记录（第一个节点是否已审批）
-        long completedTaskCount = historyService.createHistoricTaskInstanceQuery()
+        long completedTaskCount = historyService
+                .createHistoricTaskInstanceQuery()
                 .processInstanceId(processInstanceId)
                 .finished()
                 .count();
-        
         if (completedTaskCount > 0) {
             throw new RuntimeException("流程已被审批，无法撤回");
         }
-        
-        // 5. 删除流程实例（撤回）
-        runtimeService.deleteProcessInstance(processInstanceId, 
-                "发起人撤回: " + (reason != null ? reason : ""));
-        
-        // 6. 更新本地待办状态
-        processTaskService.deleteTasksByProcessInstance(processInstanceId);
-        
-        log.info("流程撤回成功: processInstanceId={}, user={}, reason={}", 
-                processInstanceId, UserContext.requireUsernameOrId(), reason);
+
+        // 撤回只保留一个权威实现，避免本类直接删除实例而绕过终止开关。
+        taskActionService.withdrawProcess(
+                processInstanceId,
+                UserContext.requireUsernameOrId(),
+                reason);
     }
 
     @Override

@@ -381,7 +381,11 @@ public class TaskActionService {
             String comment,
             String transferTo,
             Map<String, Object> formData) {
-        String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+        // 授权映射必须与执行层共用同一归一化规则，否则 TRANSFERRED
+        // 等同义状态值会在执行层变成转办，却绕过转办开关。
+        String normalized = multiInstanceOutcomeService
+                .normalizeAction(action)
+                .toUpperCase(Locale.ROOT);
         com.workflow.process.task.application.operation.NodeOperationPolicy.Operation operation =
                 switch (normalized) {
                     case "REJECT", "ROLLBACK" ->
@@ -654,13 +658,6 @@ public class TaskActionService {
             targetType = "PROCESS_INSTANCE",
             targetIdArg = 0)
     public void withdrawProcess(String processInstanceId, String userId, String reason) {
-        if (nodeOperationDecisionService != null) {
-            nodeOperationDecisionService.requireAllowedForProcess(
-                    processInstanceId,
-                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.WITHDRAW,
-                    com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
-                            .ofReason(reason));
-        }
         // 验证流程实例是否存在
         ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(processInstanceId)
@@ -670,10 +667,28 @@ public class TaskActionService {
             throw new RuntimeException("流程实例不存在或已结束");
         }
 
-        // 验证是否是发起人（简化处理）
+        // 发起人信息在运行时缺失时回退到历史表；仍无法确认则失败关闭。
         String startUserId = processInstance.getStartUserId();
-        if (startUserId != null && !startUserId.equals(userId)) {
+        if (!StringUtils.hasText(startUserId)) {
+            HistoricProcessInstance historic = historyService
+                    .createHistoricProcessInstanceQuery()
+                    .processInstanceId(processInstanceId)
+                    .singleResult();
+            startUserId = historic == null ? null : historic.getStartUserId();
+        }
+        if (!StringUtils.hasText(startUserId) || !startUserId.equals(userId)) {
             throw new RuntimeException("只有发起人才能撤回流程");
+        }
+
+        // 撤回同样会删除运行中实例，因此必须受“允许终止”总开关约束。
+        nodeOperationCapabilityService.requireConfiguredTerminateAllowed(
+                processInstanceId);
+        if (nodeOperationDecisionService != null) {
+            nodeOperationDecisionService.requireAllowedForProcess(
+                    processInstanceId,
+                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.WITHDRAW,
+                    com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+                            .ofReason(reason));
         }
 
         try {
