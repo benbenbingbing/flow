@@ -42,7 +42,9 @@ services:
       FILE_STORAGE_PATH: /app/uploads
       FILE_STORAGE_ACCESS_URL: /uploads
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      AUTH_SESSION_COOKIE_SECURE: "true"
+      # HTTPS 环境保持默认 true；仅同源 HTTP 的受控内网测试环境可在目标机 .env 中显式设为 false。
+      # 通过环境变量保留目标机差异，避免 CI 更新 Compose 文件时覆盖服务器侧选择。
+      AUTH_SESSION_COOKIE_SECURE: ${AUTH_SESSION_COOKIE_SECURE:-true}
       AUTH_SESSION_IDLE_TIMEOUT: ${AUTH_SESSION_IDLE_TIMEOUT:-2h}
       AUTH_SESSION_ABSOLUTE_TIMEOUT: ${AUTH_SESSION_ABSOLUTE_TIMEOUT:-12h}
       AUTH_SESSION_RETENTION: ${AUTH_SESSION_RETENTION:-7d}
