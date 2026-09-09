@@ -761,13 +761,17 @@ const handleEdit = (row: any) => {
   dialogVisible.value = true
 }
 
-// 提交表单
+/** 校验并保存角色，成功后关闭弹窗并刷新列表；失败时保留表单供重试。 */
 const handleSubmit = async () => {
   await formRef.value.validate()
   submitLoading.value = true
   try {
-    const api = formData.id ? updateRole : createRole
-    await api(formData.id, formData)
+    // 创建只接收角色对象，不能复用更新的 (id, data) 参数，否则空 ID 会被当作请求体。
+    if (formData.id) {
+      await updateRole(formData.id, formData)
+    } else {
+      await createRole(formData)
+    }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false
     fetchRoleList()
