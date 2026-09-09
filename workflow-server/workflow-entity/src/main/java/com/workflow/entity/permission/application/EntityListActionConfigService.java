@@ -660,7 +660,16 @@ public class EntityListActionConfigService {
         };
     }
 
+    /**
+     * 为未显式配置适用条件的内置按钮提供默认规则，编辑与删除共享本人草稿或撤回限制。
+     *
+     * @param buttonKey 列表按钮编码
+     * @return 默认规则；无需限制的按钮返回 null，显式配置由调用方保留
+     */
     private EntityActionRuleDTO defaultRule(String buttonKey) {
+        if ("edit".equals(buttonKey)) {
+            return ownDraftOrWithdrawnRule("仅本人未流转草稿或已撤回数据可以编辑");
+        }
         if ("delete".equals(buttonKey)) {
             return ownDraftOrWithdrawnRule("仅本人未流转草稿或已撤回数据可以删除");
         }

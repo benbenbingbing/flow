@@ -6,6 +6,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
 import com.workflow.process.task.application.TaskIdentityAccessService;
+import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.TaskService;
@@ -30,6 +31,7 @@ public class ProcessInstanceAccessService {
     private final ProcessCcRecordMapper ccRecordMapper;
     private final CurrentUserRoleService currentUserRoleService;
     private final TaskIdentityAccessService taskIdentityAccessService;
+    private final LocalAddSignTaskAccessService localAddSignTaskAccessService;
 
     @Transactional(readOnly = true)
     public void requireReadAccess(String processInstanceId) {
@@ -72,7 +74,9 @@ public class ProcessInstanceAccessService {
                 .processInstanceId(processInstanceId)
                 .list().stream()
                 .anyMatch(taskIdentityAccessService::canCurrentUserAccess);
-        return currentParticipant || identities(userId, username).anyMatch(identity ->
+        return currentParticipant
+                || localAddSignTaskAccessService.hasCurrentUserTaskInProcess(processInstanceId)
+                || identities(userId, username).anyMatch(identity ->
                 historyService.createHistoricTaskInstanceQuery()
                         .processInstanceId(processInstanceId)
                         .taskAssignee(identity)

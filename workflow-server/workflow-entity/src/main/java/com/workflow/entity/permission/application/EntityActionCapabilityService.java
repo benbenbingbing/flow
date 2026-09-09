@@ -344,6 +344,49 @@ public class EntityActionCapabilityService {
                 : EntityActionCapabilityDTO.hidden(reason);
     }
 
+    /**
+     * 评估内置提交审批按钮，同时保留标准审批权限、真实任务绑定和发布规则约束。
+     *
+     * <p>候选人打开审批表单时尚未认领；只在此审批入口把办理人关系解释为已验证的
+     * 可审批身份。默认规则与覆盖规则必须同时满足，覆盖不能取消流程状态等前置条件。
+     * 普通保存、编辑和自定义动作继续使用 evaluateConfiguredAction。</p>
+     *
+     * @param entityCode 实体编码，用于校验 APPROVE 标准权限
+     * @param row 已通过记录访问校验的当前数据
+     * @param mandatoryRule 内置审批规则，不受表单覆盖配置替换
+     * @param overrideRule 已发布按钮的额外适用条件，可以为空
+     * @return 允许时携带当前用户的实际任务 ID；不满足条件时按对应规则隐藏或禁用
+     */
+    public EntityActionCapabilityDTO evaluateApprovalAction(
+            String entityCode,
+            EntityDataDTO row,
+            EntityActionRuleDTO mandatoryRule,
+            EntityActionRuleDTO overrideRule) {
+        String permissionCode = EntityPermissionAction.APPROVE.permissionCode(entityCode);
+        if (!PermissionUtil.hasPermission(permissionCode)) {
+            return EntityActionCapabilityDTO.hidden("缺少权限：" + permissionCode);
+        }
+        SysUser user = currentUser();
+        String actionableTaskId = assigneeLookup.findActionableTaskId(row, user).orElse(null);
+        if (!StringUtils.hasText(actionableTaskId)) {
+            // 实体 currentTaskId/assignee 可能来自兄弟任务或过期投影，不能作为审批授权。
+            return EntityActionCapabilityDTO.hidden("当前用户没有可办理的审批任务");
+        }
+        EntityStatus status = row != null && StringUtils.hasText(row.getStatus())
+                ? statusMapper.findByEntityAndCode(entityCode, row.getStatus()) : null;
+        for (EntityActionRuleDTO rule : new EntityActionRuleDTO[] {mandatoryRule, overrideRule}) {
+            if (!ruleEvaluator.evaluateForApproval(rule, row, user,
+                    status == null ? null : status.getStatusCategory(), true)) {
+                String reason = rule != null && StringUtils.hasText(rule.getMessage())
+                        ? rule.getMessage() : "当前数据不满足操作条件";
+                return rule != null && "DISABLE".equalsIgnoreCase(rule.getUnavailableBehavior())
+                        ? EntityActionCapabilityDTO.disabled(reason)
+                        : EntityActionCapabilityDTO.hidden(reason);
+            }
+        }
+        return EntityActionCapabilityDTO.allowedForTask(actionableTaskId);
+    }
+
     private EntityActionCapabilityDTO evaluateButton(
             String entityCode,
             Map<String, Object> button,
@@ -355,22 +398,24 @@ public class EntityActionCapabilityService {
             return EntityActionCapabilityDTO.hidden("无操作权限");
         }
         EntityActionRuleDTO rule = actionConfigService.readRule(button);
-        if (ruleEvaluator.evaluate(rule, row, user, statusCategory)) {
-            if ("approve".equals(asString(button.get("key")))) {
-                String actionableTaskId = assigneeLookup
-                        .findActionableTaskId(row, user)
-                        .orElse(null);
-                if (!StringUtils.hasText(actionableTaskId)) {
-                    // current_task_assignee/current_task_id 是流程摘要，在会签或任务刚完成时
-                    // 可能指向兄弟任务或已经过期；审批入口必须绑定当前用户自己的 TODO。
-                    return unavailable(
-                            button,
-                            "当前用户没有可办理的审批任务");
-                }
-                return EntityActionCapabilityDTO.allowedForTask(
-                        actionableTaskId);
+        boolean approveAction = "approve".equals(asString(button.get("key")));
+        String actionableTaskId = null;
+        if (approveAction) {
+            actionableTaskId = assigneeLookup.findActionableTaskId(row, user).orElse(null);
+            if (!StringUtils.hasText(actionableTaskId)) {
+                // 流程摘要可能指向兄弟任务或已过期；先绑定当前用户真实可审批的任务。
+                return unavailable(button, "当前用户没有可办理的审批任务");
             }
-            return EntityActionCapabilityDTO.allowed();
+        }
+        // 审批入口允许真实候选人直接办理；其他动作仍只认实际办理人，
+        // 并且审批自身的状态、字段等条件不能被候选身份绕过。
+        boolean available = approveAction
+                ? ruleEvaluator.evaluateForApproval(rule, row, user, statusCategory, true)
+                : ruleEvaluator.evaluate(rule, row, user, statusCategory);
+        if (available) {
+            return approveAction
+                    ? EntityActionCapabilityDTO.allowedForTask(actionableTaskId)
+                    : EntityActionCapabilityDTO.allowed();
         }
         String reason = rule != null && StringUtils.hasText(rule.getMessage())
                 ? rule.getMessage()

@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -146,6 +147,84 @@ class EntityActionCapabilityServiceTaskBindingTest {
         assertEquals(
                 "当前用户没有可办理的审批任务",
                 approve.getReason());
+    }
+
+    @Test
+    void candidateMayApproveWithoutGainingEditDeleteOrTransferAssigneePermissions() {
+        EntityDataDTO row = multiInstanceRow();
+        when(assigneeLookup.findActionableTaskId(row, currentUser))
+                .thenReturn(Optional.of("candidate-task"));
+        when(menuMapper.selectPermsByUserId("user-lisi"))
+                .thenReturn(Set.of(APPROVE_PERMISSION, "entity:ZDWREQ:edit",
+                        "entity:ZDWREQ:delete", "entity:ZDWREQ:transfer"));
+        List<Map<String, Object>> buttons = new java.util.ArrayList<>();
+        buttons.add(approveButton);
+        for (String key : List.of("edit", "delete", "transfer")) {
+            Map<String, Object> button = Map.of("key", key, "enabled", true);
+            buttons.add(button);
+            when(actionConfigService.permissionFor(ENTITY_CODE, button))
+                    .thenReturn("entity:ZDWREQ:" + key);
+            when(actionConfigService.readRule(button)).thenReturn(assigneeRule());
+        }
+        when(actionConfigService.resolveRowButtons(listConfig, ENTITY_CODE)).thenReturn(buttons);
+
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+
+        assertTrue(row.getActionCapabilities().get("approve").isEnabled());
+        assertEquals("candidate-task", row.getActionCapabilities().get("approve").getActionableTaskId());
+        for (String key : List.of("edit", "delete", "transfer")) {
+            assertFalse(row.getActionCapabilities().get(key).isEnabled(), key + "不能继承候选审批权");
+            assertNull(row.getActionCapabilities().get(key).getActionableTaskId());
+        }
+    }
+
+    @Test
+    void candidateApprovalStillRequiresConfiguredStatusAndFieldConditions() {
+        EntityDataDTO row = multiInstanceRow();
+        when(assigneeLookup.findActionableTaskId(row, currentUser))
+                .thenReturn(Optional.of("candidate-task"));
+        EntityActionRuleDTO rule = assigneeRule();
+        EntityActionRuleDTO.RuleNode status = new EntityActionRuleDTO.RuleNode();
+        status.setType("STATUS_CODE");
+        status.setOperator("EQ");
+        status.setValue("PENDING");
+        EntityActionRuleDTO.RuleNode field = new EntityActionRuleDTO.RuleNode();
+        field.setType("FIELD");
+        field.setField("name");
+        field.setOperator("EQ");
+        field.setValue("ready");
+        EntityActionRuleDTO.RuleNode all = new EntityActionRuleDTO.RuleNode();
+        all.setType("GROUP");
+        all.setLogic("AND");
+        all.setChildren(List.of(rule.getRoot(), status, field));
+        rule.setRoot(all);
+        when(actionConfigService.readRule(approveButton)).thenReturn(rule);
+
+        row.setStatus("DRAFT");
+        row.setName("ready");
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        assertFalse(row.getActionCapabilities().get("approve").isEnabled());
+
+        row.setStatus("PENDING");
+        row.setName("not-ready");
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        assertFalse(row.getActionCapabilities().get("approve").isEnabled());
+
+        row.setName("ready");
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        assertTrue(row.getActionCapabilities().get("approve").isEnabled());
+    }
+
+    @Test
+    void candidateIdentityCannotReplaceApprovePermission() {
+        when(menuMapper.selectPermsByUserId("user-lisi")).thenReturn(Set.of());
+        EntityDataDTO row = multiInstanceRow();
+
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+
+        assertFalse(row.getActionCapabilities().get("approve").isVisible());
+        assertNull(row.getActionCapabilities().get("approve").getActionableTaskId());
+        verifyNoInteractions(assigneeLookup);
     }
 
     /** 构造实体摘要指向其他会签人的兄弟任务。 */

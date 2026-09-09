@@ -16,6 +16,7 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
 import com.workflow.entity.form.application.EntityFormFieldRuntimeMapper;
+import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.HistoryService;
@@ -65,6 +66,7 @@ public class ProcessProgressRuntimeService {
     private final SysUserMapper sysUserMapper;
     private final ProcessOperationLogMapper operationLogMapper;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
+    private final LocalAddSignTaskAccessService localAddSignTaskAccessService;
     /** 日期时间格式化器（用于操作日志时间格式化） */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -484,9 +486,24 @@ public class ProcessProgressRuntimeService {
             if (StringUtils.hasText(requestedTaskId)
                     && taskInfos.stream().noneMatch(item ->
                             requestedTaskId.equals(item.getTaskId()))) {
-                throw new IllegalArgumentException(
-                        "任务不存在、已处理或不属于该流程实例: "
-                                + requestedTaskId);
+                if (!requestedTaskId.startsWith("addsign-")) {
+                    throw new IllegalArgumentException(
+                            "任务不存在、已处理或不属于该流程实例: " + requestedTaskId);
+                }
+                // 加签子任务不在 Flowable 中；只加入当前授权的请求任务，源节点取自实际引擎任务。
+                // 前缀仅用于路由，真正访问权由 ACTIVE/TODO 加签关联及当前办理人共同校验。
+                var authorized = localAddSignTaskAccessService
+                        .requireCurrentUserAccess(requestedTaskId, processInstanceId);
+                var localTask = authorized.localTask();
+                ProcessProgressDTO.TaskInfoDTO localInfo = new ProcessProgressDTO.TaskInfoDTO();
+                localInfo.setTaskId(localTask.getTaskId());
+                localInfo.setTaskName(localTask.getNodeName());
+                localInfo.setNodeId(authorized.sourceTask().getTaskDefinitionKey());
+                localInfo.setAssignee(localTask.getAssigneeId());
+                localInfo.setAssigneeName(sysUserService.getDisplayName(localTask.getAssigneeId()));
+                localInfo.setCreateTime(localTask.getCreateTime() == null
+                        ? null : localTask.getCreateTime().format(DATE_FORMATTER));
+                taskInfos.add(localInfo);
             }
         } else if (StringUtils.hasText(requestedTaskId)) {
             throw new IllegalArgumentException(

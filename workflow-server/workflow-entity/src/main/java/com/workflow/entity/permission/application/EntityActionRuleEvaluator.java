@@ -61,20 +61,50 @@ public class EntityActionRuleEvaluator {
         if (rule == null || rule.getRoot() == null) {
             return true;
         }
-        return evaluateNode(rule.getRoot(), row, user, statusCategory);
+        return evaluateNode(rule.getRoot(), row, user, statusCategory, false);
+    }
+
+    /**
+     * 仅为审批入口评估规则，将办理人关系解释为已验证的当前可审批身份。
+     *
+     * <p>调用方必须先通过任务访问契约取得该记录的真实可审批任务；
+     * 该上下文只扩展 CURRENT_USER_IS_ASSIGNEE，状态、字段和其他关系条件仍逐项评估。
+     * 编辑、删除、转办以及任意自定义动作继续调用 evaluate，不能借用候选审批权。</p>
+     *
+     * @param rule 审批按钮配置规则
+     * @param row 当前业务记录
+     * @param user 当前认证用户
+     * @param statusCategory 记录状态分类
+     * @param hasActionableTask 调用方是否已验证当前用户的真实可审批任务
+     * @return 审批入口规则满足时为 true
+     */
+    public boolean evaluateForApproval(
+            EntityActionRuleDTO rule,
+            EntityDataDTO row,
+            SysUser user,
+            String statusCategory,
+            boolean hasActionableTask) {
+        if (!hasActionableTask || row == null || user == null) {
+            return false;
+        }
+        if (rule == null || rule.getRoot() == null) {
+            return true;
+        }
+        return evaluateNode(rule.getRoot(), row, user, statusCategory, hasActionableTask);
     }
 
     private boolean evaluateNode(
             EntityActionRuleDTO.RuleNode node,
             EntityDataDTO row,
             SysUser user,
-            String statusCategory) {
+            String statusCategory,
+            boolean currentApprover) {
         if (node == null || node.getType() == null) {
             return false;
         }
         return switch (node.getType().toUpperCase(Locale.ROOT)) {
-            case "GROUP" -> evaluateGroup(node, row, user, statusCategory);
-            case "RELATION" -> evaluateRelation(node.getRelation(), row, user);
+            case "GROUP" -> evaluateGroup(node, row, user, statusCategory, currentApprover);
+            case "RELATION" -> evaluateRelation(node.getRelation(), row, user, currentApprover);
             case "PROCESS_STATE" -> compare(processState(row, statusCategory), node.getOperator(), node.getValue());
             case "STATUS_CODE" -> compare(row == null ? null : row.getStatus(), node.getOperator(), node.getValue());
             case "STATUS_CATEGORY" -> compare(statusCategory, node.getOperator(), node.getValue());
@@ -100,25 +130,27 @@ public class EntityActionRuleEvaluator {
             EntityActionRuleDTO.RuleNode node,
             EntityDataDTO row,
             SysUser user,
-            String statusCategory) {
+            String statusCategory,
+            boolean currentApprover) {
         List<EntityActionRuleDTO.RuleNode> children = node.getChildren();
         if (children == null || children.isEmpty()) {
             return false;
         }
         if ("OR".equalsIgnoreCase(node.getLogic())) {
-            return children.stream().anyMatch(child -> evaluateNode(child, row, user, statusCategory));
+            return children.stream().anyMatch(child -> evaluateNode(child, row, user, statusCategory, currentApprover));
         }
-        return children.stream().allMatch(child -> evaluateNode(child, row, user, statusCategory));
+        return children.stream().allMatch(child -> evaluateNode(child, row, user, statusCategory, currentApprover));
     }
 
-    private boolean evaluateRelation(String relation, EntityDataDTO row, SysUser user) {
+    private boolean evaluateRelation(String relation, EntityDataDTO row, SysUser user, boolean currentApprover) {
         if (row == null || user == null || relation == null) {
             return false;
         }
         return switch (relation.toUpperCase(Locale.ROOT)) {
             case "CURRENT_USER_IS_CREATOR" -> matchesUser(row.getCreatedBy(), user);
             case "CURRENT_USER_IS_SUBMITTER" -> matchesUser(row.getSubmitterId(), user);
-            case "CURRENT_USER_IS_ASSIGNEE" -> matchesUser(row.getCurrentTaskAssignee(), user)
+            case "CURRENT_USER_IS_ASSIGNEE" -> currentApprover
+                    || matchesUser(row.getCurrentTaskAssignee(), user)
                     || isLiveProcessTaskAssignee(row, user);
             case "CURRENT_USER_SAME_DEPT" -> StringUtils.hasText(row.getDeptId())
                     && Objects.equals(row.getDeptId(), user.getDeptId());

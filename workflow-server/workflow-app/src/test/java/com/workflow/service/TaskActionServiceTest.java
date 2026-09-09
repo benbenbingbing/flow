@@ -269,6 +269,48 @@ class TaskActionServiceTest {
         verify(taskService, never()).claim(any(), any());
     }
 
+    /** 在表单打开后任务已被接手，提交只能提示状态变化，不能抢回或保存审批数据。 */
+    @Test
+    void submittingTaskClaimedByAnotherUserReturnsConflictBeforeWrites() {
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task);
+        when(task.getAssignee()).thenReturn("bob");
+
+        BusinessConflictException failure = assertThrows(BusinessConflictException.class,
+                () -> service.completeTask("task-1", "admin", "approve", "同意", null, null));
+
+        assertEquals("TASK_ALREADY_CLAIMED", failure.getErrorCode());
+        verifyNoInteractions(nodeFormSubmissionService, processTaskService, operationLogMapper);
+        verify(taskService, never()).claim(any(), any());
+        verify(taskService, never()).complete(anyString(), anyMap());
+    }
+
+    @Test
+    void submittingCompletedTaskReturnsStableConflict() {
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+
+        BusinessConflictException failure = assertThrows(BusinessConflictException.class,
+                () -> service.completeTask("task-1", "admin", "approve", "同意", null, null));
+
+        assertEquals("TASK_ALREADY_COMPLETED", failure.getErrorCode());
+        verifyNoInteractions(nodeFormSubmissionService, processTaskService, operationLogMapper);
+    }
+
+    @Test
+    void missingLoginIsStillAnAccessDenialInsteadOfAClaimConflict() {
+        UserContext.clear();
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task);
+
+        assertThrows(com.workflow.core.error.ForbiddenException.class,
+                () -> service.claimTask("task-1"));
+
+        verifyNoInteractions(nodeFormSubmissionService, processTaskService, operationLogMapper);
+    }
+
     /** 测试候选人完成时先认领再校验实体审批权限：验证 claim、同步、权限校验、complete 的顺序，以及操作日志与记录写入 */
     @Test
     void candidateCompletionClaimsBeforeCheckingEntityApprovalCapability() {

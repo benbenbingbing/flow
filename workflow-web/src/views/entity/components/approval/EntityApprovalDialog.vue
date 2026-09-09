@@ -29,6 +29,14 @@
       </RuntimeVersionDiagnostics>
     </template>
     <div class="approval-dialog-body">
+      <el-alert
+        v-if="approvalConflictMessage"
+        :title="approvalConflictMessage"
+        type="warning"
+        show-icon
+        :closable="false"
+        class="approval-conflict-message"
+      />
       <el-tabs v-model="activeDialogTab" type="border-card" class="approval-tabs">
         <el-tab-pane v-if="approvalShowBasicTab" label="基本信息" name="basic">
           <EntityApprovalBasicInfo
@@ -178,6 +186,7 @@ import { BUSINESS_TRACE_HEADER } from '@/shared/request'
 import { resolveActionableTaskId } from '@/utils/listButtonPermission'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 import { isReservedApprovalActionCode } from '@/shared/workflow-operation-guards'
+import { taskApprovalConflictMessage } from '@/shared/workflow-task-actions'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -223,6 +232,7 @@ const processDialogVisible = ref(false)
 const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
 const activeDialogTab = ref('basic')
 const approveSubmitLoading = ref(false)
+const approvalConflictMessage = ref('')
 const formActions = ref<any[]>([])
 const actionLoadingKey = ref('')
 const currentTask = ref<any>(null)
@@ -394,6 +404,7 @@ const dialogRuntimeDiagnosticResetKey = computed(() => [
 
 function handleDialogClosed() {
   runtimeDiagnosticsRef.value?.reset()
+  approvalConflictMessage.value = ''
   processRuntimeMetadata.value = {}
   emit('closed')
 }
@@ -542,6 +553,7 @@ const openApprove = async (
     return false
   }
   runtimeDiagnosticsRef.value?.reset()
+  approvalConflictMessage.value = ''
   // 审批任务可能复用同一流程实例，仍需先清空上一个任务的诊断坐标。
   processRuntimeMetadata.value = {}
   resetNextApproverPreview()
@@ -602,6 +614,7 @@ interface OpenViewOptions {
 // 打开查看弹窗（只读模式）
 const openView = async (row: any, options: OpenViewOptions = {}) => {
   runtimeDiagnosticsRef.value?.reset()
+  approvalConflictMessage.value = ''
   // 无流程的独立数据不会调用进度接口，必须先清空上一次实例坐标，避免诊断信息串行污染。
   processRuntimeMetadata.value = {}
   resetNextApproverPreview()
@@ -996,6 +1009,13 @@ const submitApprove = async () => {
     emit('success')
   } catch (e: any) {
     console.error('审批失败:', e)
+    const conflictMessage = taskApprovalConflictMessage(e)
+    if (conflictMessage) {
+      // 其他候选人可能已抢先提交；保留当前输入及弹窗，不能通过刷新详情覆盖未提交内容。
+      approvalConflictMessage.value = conflictMessage
+      ElMessage.warning(conflictMessage)
+      return
+    }
     if (isDeferredDefaultRequired(e)) {
       const message = e?.message
         || '延迟解析的下一审批节点必须配置可用默认审批人，请联系流程管理员'
@@ -1066,6 +1086,11 @@ defineExpose({
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.approval-conflict-message {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
 }
 
 .approval-dialog-title {

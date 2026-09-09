@@ -107,8 +107,10 @@ class TaskServiceTodoScopeTest {
         verify(query, never()).taskCandidateOrAssigned(anyString());
         assertEquals(2L, page.getTotal());
         assertTrue(page.getRecords().get(0).getClaimRequired());
+        assertTrue(page.getRecords().get(0).getCanClaim());
         assertEquals("group", page.getRecords().get(0).getAssigneeType());
         assertFalse(page.getRecords().get(1).getClaimRequired());
+        assertFalse(page.getRecords().get(1).getCanClaim());
         assertEquals("user", page.getRecords().get(1).getAssigneeType());
     }
 
@@ -125,6 +127,51 @@ class TaskServiceTodoScopeTest {
 
         assertEquals(1L, page.getTotal());
         assertEquals("match", page.getRecords().get(0).getTaskId());
+    }
+
+    @Test
+    void legacyTodoListIncludesLocalAddSignWithoutOfferingClaim() {
+        ProcessTask addSign = localTask("addsign-child");
+        addSign.setNodeType("ADD_SIGN");
+        addSign.setNodeName("财务审批（加签）");
+        addSign.setAssigneeId("alice");
+        addSign.setAssigneeName("张三(alice)");
+        addSign.setProcessName("费用申请");
+        addSign.setEntityCode("expense");
+        addSign.setEntityDataId("record-1");
+        addSign.setCreateTime(java.time.LocalDateTime.now());
+        when(processTasks.getTodoList("alice")).thenReturn(List.of(addSign));
+
+        var page = service.getTodoList(1, 10, "费用", "加签", "week");
+
+        assertEquals(1L, page.getTotal());
+        var task = page.getRecords().get(0);
+        assertEquals("addsign-child", task.getTaskId());
+        assertEquals("ADD_SIGN", task.getNodeType());
+        assertEquals("alice", task.getAssignee());
+        assertEquals("record-1", task.getEntityDataId());
+        assertFalse(task.getClaimRequired());
+        assertFalse(task.getCanClaim());
+        verifyNoInteractions(flowable);
+    }
+
+    @Test
+    void localAddSignAndEngineTasksShareSortingFilteringAndPagination() {
+        ProcessTask addSign = localTask("addsign-child");
+        addSign.setNodeType("ADD_SIGN");
+        addSign.setCreateTime(java.time.LocalDateTime.now());
+        when(processTasks.getTodoList("alice")).thenReturn(List.of(localTask("ordinary"), addSign));
+        TaskQuery query = mock(TaskQuery.class, org.mockito.Mockito.RETURNS_SELF);
+        when(flowable.createTaskQuery()).thenReturn(query);
+        Task ordinary = engineTask("ordinary", "经理审批", "alice");
+        when(ordinary.getCreateTime()).thenReturn(new java.util.Date(System.currentTimeMillis() - 60_000));
+        when(query.list()).thenReturn(List.of(ordinary));
+
+        var page = service.getTodoList(1, 1, null, null, null);
+
+        verify(query).taskIds(List.of("ordinary"));
+        assertEquals(2L, page.getTotal());
+        assertEquals("addsign-child", page.getRecords().get(0).getTaskId());
     }
 
     private ProcessTask localTask(String id) {

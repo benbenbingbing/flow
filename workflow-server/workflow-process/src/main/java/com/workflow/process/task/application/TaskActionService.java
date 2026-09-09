@@ -214,11 +214,11 @@ public class TaskActionService {
                 .singleResult();
 
         if (task == null) {
-            throw new RuntimeException("任务不存在或已处理: " + taskId);
+            throw taskAlreadyCompleted();
         }
 
         if (checkAccess) {
-            requireTaskIdentityAccess(task);
+            requireTaskProcessingAccess(task);
         }
 
         String assignee = task.getAssignee();
@@ -430,7 +430,7 @@ public class TaskActionService {
     public void requireTaskAccess(String taskId) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
-            throw new RuntimeException("任务不存在或已处理: " + taskId);
+            throw taskAlreadyCompleted();
         }
         requireTaskIdentityAccess(task);
     }
@@ -439,14 +439,30 @@ public class TaskActionService {
     public void claimTask(String taskId) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
-            throw new RuntimeException("任务不存在或已处理: " + taskId);
+            throw taskAlreadyCompleted();
         }
-        requireTaskIdentityAccess(task);
+        requireTaskProcessingAccess(task);
         claimTaskForCurrentUser(task, currentTaskIdentity());
     }
 
     private void requireTaskIdentityAccess(Task task) {
         taskIdentityAccessService.requireCurrentUserAccess(task);
+    }
+
+    /** 提交时重新检查归属；候选人打开表单后被别人接手属于状态冲突，不自动抢回任务。 */
+    private void requireTaskProcessingAccess(Task task) {
+        String userId = UserContext.getUserId();
+        String username = UserContext.getUsername();
+        if ((StringUtils.hasText(userId) || StringUtils.hasText(username))
+                && StringUtils.hasText(task.getAssignee())
+                && !matchesCurrentUser(task.getAssignee(), userId, username)) {
+            throw new BusinessConflictException("TASK_ALREADY_CLAIMED", "任务已被其他办理人认领，请刷新待办列表");
+        }
+        requireTaskIdentityAccess(task);
+    }
+
+    private BusinessConflictException taskAlreadyCompleted() {
+        return new BusinessConflictException("TASK_ALREADY_COMPLETED", "任务不存在或已被处理，请刷新待办列表");
     }
 
     private void requireEntityApprovalAccess(Task task) {

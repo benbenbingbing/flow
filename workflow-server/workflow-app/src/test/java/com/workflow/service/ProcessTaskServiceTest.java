@@ -280,4 +280,43 @@ class ProcessTaskServiceTest {
 
         Assertions.assertTrue(service.getTodoList("alice").isEmpty());
     }
+
+    /** 共享 SQL 已验证的加签子任务只存在本地，不因缺少 Flowable 子任务而从待办消失。 */
+    @Test
+    void todoListPreservesAuthorizedLocalAddSignTaskWithoutEngineLookup() {
+        ProcessTask addSign = new ProcessTask();
+        addSign.setTaskId("addsign-child");
+        addSign.setNodeType("ADD_SIGN");
+        addSign.setAssigneeType("user");
+        addSign.setAssigneeId("alice");
+        addSign.setAssigneeName("张三(alice)");
+        when(taskMapper.selectTodoByUser("alice")).thenReturn(List.of(addSign));
+
+        List<ProcessTask> result = service.getTodoList("alice");
+
+        Assertions.assertEquals(List.of(addSign), result);
+        Assertions.assertEquals("user", result.get(0).getAssigneeType());
+        org.mockito.Mockito.verifyNoInteractions(flowableTaskService);
+    }
+
+    @Test
+    void todoListRefreshesOrdinaryTaskAlongsideLocalAddSignTask() {
+        ProcessTask addSign = new ProcessTask();
+        addSign.setTaskId("addsign-child");
+        addSign.setNodeType("ADD_SIGN");
+        addSign.setAssigneeId("alice");
+        ProcessTask ordinary = new ProcessTask();
+        ordinary.setTaskId("ordinary");
+        when(taskMapper.selectTodoByUser("alice")).thenReturn(List.of(addSign, ordinary));
+        when(flowableTaskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskIds(List.of("ordinary"))).thenReturn(taskQuery);
+        when(taskQuery.list()).thenReturn(List.of(flowableTask));
+        when(flowableTask.getId()).thenReturn("ordinary");
+
+        List<ProcessTask> result = service.getTodoList("alice");
+
+        Assertions.assertEquals(2, result.size());
+        Assertions.assertEquals("ADD_SIGN", result.get(0).getNodeType());
+        Assertions.assertEquals("group", result.get(1).getAssigneeType());
+    }
 }

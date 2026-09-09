@@ -803,12 +803,15 @@ function normalizeButtons() {
   }
 }
 
+/** 为未配置适用条件的内置按钮提供默认规则，编辑与删除采用相同的本人草稿/撤回限制。 */
 function defaultRule(key) {
-  if (key === 'delete' || key === 'batchDelete') {
+  if (key === 'edit' || key === 'delete' || key === 'batchDelete') {
     return {
       version: 1,
       unavailableBehavior: key === 'batchDelete' ? 'DISABLE' : 'HIDE',
-      message: key === 'batchDelete' ? '选中数据中存在不可删除的数据' : '仅本人未流转草稿或已撤回数据可以删除',
+      message: key === 'batchDelete'
+        ? '选中数据中存在不可删除的数据'
+        : `仅本人未流转草稿或已撤回数据可以${key === 'edit' ? '编辑' : '删除'}`,
       root: {
         type: 'GROUP',
         logic: 'AND',

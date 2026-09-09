@@ -24,6 +24,10 @@ import com.workflow.process.task.application.nextapproval.NextApproverCandidateS
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
+import org.flowable.common.engine.api.FlowableObjectNotFoundException;
+import org.flowable.common.engine.api.FlowableOptimisticLockingException;
+import org.flowable.common.engine.api.FlowableTaskAlreadyClaimedException;
+import org.flowable.task.api.Task;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
@@ -141,7 +145,12 @@ public class ProcessTaskController {
      */
     @GetMapping("/detail/{taskId}")
     public Result<TaskDetailDTO> getTaskDetail(@PathVariable String taskId) {
-        taskActionService.requireTaskAccess(taskId);
+        if (taskAddSignService.isAddSignTask(taskId)) {
+            // 本地加签没有独立引擎任务，必须验证有效编排和本人办理权后再读取表单。
+            taskDetailService.requireLocalAddSignTaskAccess(taskId);
+        } else {
+            taskActionService.requireTaskAccess(taskId);
+        }
         return Result.success(taskDetailService.getTaskDetail(taskId));
     }
 
@@ -150,7 +159,16 @@ public class ProcessTaskController {
      */
     @PostMapping("/claim/{taskId}")
     public Result<Void> claimTask(@PathVariable String taskId) {
-        taskActionService.claimTask(taskId);
+        try {
+            taskActionService.claimTask(taskId);
+        } catch (FlowableOptimisticLockingException | FlowableTaskAlreadyClaimedException exception) {
+            throw taskStateChanged();
+        } catch (FlowableObjectNotFoundException exception) {
+            if (Task.class.equals(exception.getObjectClass())) {
+                throw taskAlreadyCompleted();
+            }
+            throw exception;
+        }
         return Result.success();
     }
 
@@ -223,6 +241,15 @@ public class ProcessTaskController {
                     params.getNextApprovalScopeKey(),
                     params.getNextApproverSelections());
             return Result.success();
+        } catch (FlowableOptimisticLockingException | FlowableTaskAlreadyClaimedException e) {
+            // 事务代理提交时也可能才检测出并发修改，必须在服务事务退出后转换为可识别的冲突。
+            throw taskStateChanged();
+        } catch (FlowableObjectNotFoundException e) {
+            // 另一人可能在读取任务之后、执行认领之前完成审批；仅转换任务消失，保留其他对象缺失的原错误。
+            if (Task.class.equals(e.getObjectClass())) {
+                throw taskAlreadyCompleted();
+            }
+            return Result.error("审批失败: " + e.getMessage());
         } catch (ForbiddenException | BusinessConflictException e) {
             throw e;
         } catch (Exception e) {
@@ -325,6 +352,16 @@ public class ProcessTaskController {
         }
     }
 
+    /** 并发提交或提前认领导致引擎版本冲突时，让界面保留输入并提示刷新任务状态。 */
+    private BusinessConflictException taskStateChanged() {
+        return new BusinessConflictException("TASK_STATE_CHANGED", "任务状态已变化，可能已被其他人认领或处理，请刷新待办列表");
+    }
+
+    /** 引擎已删除被抢先完成的任务时，提示状态冲突并保留尚未提交的审批内容。 */
+    private BusinessConflictException taskAlreadyCompleted() {
+        return new BusinessConflictException("TASK_ALREADY_COMPLETED", "任务不存在或已被处理，请刷新待办列表");
+    }
+
     /**
      * 将ProcessTask转换为TaskVO
      */
@@ -340,6 +377,10 @@ public class ProcessTaskController {
         vo.setAssigneeName(task.getAssigneeName()); // 执行人姓名
         vo.setAssigneeType(task.getAssigneeType());
         vo.setClaimRequired("group".equalsIgnoreCase(task.getAssigneeType()));
+        // 候选身份只决定是否允许提前接手；所有合法待办均可直接进入审批。
+        vo.setCanClaim(ProcessTask.STATUS_TODO.equals(task.getStatus())
+                && "group".equalsIgnoreCase(task.getAssigneeType())
+                && !"ADD_SIGN".equals(task.getNodeType()));
         
         // 发起人名称从流程实例历史记录中查询，不能复用 assigneeName（候选组任务时 assigneeName 是组名）
         String startUserName = null;

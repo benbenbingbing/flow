@@ -10,6 +10,7 @@ import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
 import com.workflow.process.task.application.TaskIdentityAccessService;
+import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.history.HistoricProcessInstance;
@@ -47,6 +48,7 @@ class ProcessInstanceAccessServiceTest {
     private HistoricTaskInstanceQuery historyByUserId;
     private HistoricTaskInstanceQuery historyByUsername;
     private ProcessInstanceAccessService service;
+    private LocalAddSignTaskAccessService localAddSignTaskAccessService;
 
     @BeforeEach
     void setUp() {
@@ -77,11 +79,12 @@ class ProcessInstanceAccessServiceTest {
         when(historyQuery.taskAssignee("alice-id")).thenReturn(historyByUserId);
         when(historyQuery.taskAssignee("alice")).thenReturn(historyByUsername);
 
+        localAddSignTaskAccessService = mock(LocalAddSignTaskAccessService.class);
         service = new ProcessInstanceAccessService(
                 historyService, taskService, mock(ProcessCcRecordMapper.class),
                 mock(CurrentUserRoleService.class),
                 new TaskIdentityAccessService(taskService, groupMapper, roleMapper,
-                        mock(IdentityDirectoryPort.class)));
+                        mock(IdentityDirectoryPort.class)), localAddSignTaskAccessService);
     }
 
     @AfterEach
@@ -140,5 +143,23 @@ class ProcessInstanceAccessServiceTest {
 
         verify(taskService, never()).getIdentityLinksForTask(anyString());
         verifyNoInteractions(groupMapper, roleMapper);
+    }
+
+    @Test
+    void activeLocalAddSignApproverCanReadWithoutEngineAssignmentOrHistory() {
+        when(task.getAssignee()).thenReturn("source-approver");
+        when(localAddSignTaskAccessService.hasCurrentUserTaskInProcess(INSTANCE_ID)).thenReturn(true);
+
+        assertDoesNotThrow(() -> service.requireReadAccess(INSTANCE_ID));
+
+        verify(historyService, never()).createHistoricTaskInstanceQuery();
+    }
+
+    @Test
+    void inactiveOrUnrelatedLocalAddSignDoesNotGrantProcessReadAccess() {
+        when(task.getAssignee()).thenReturn("source-approver");
+        when(localAddSignTaskAccessService.hasCurrentUserTaskInProcess(INSTANCE_ID)).thenReturn(false);
+
+        assertThrows(ForbiddenException.class, () -> service.requireReadAccess(INSTANCE_ID));
     }
 }

@@ -1,36 +1,34 @@
 package com.workflow.entity.permission.application;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Optional;
 
 /**
- * 查询当前用户是否持有某条记录的未完成待办。
- * 会签时实体 current_task_assignee 只保存其中一人，必须回查 process_task。
+ * 通过流程访问契约查询业务记录的实际办理人及可审批任务。
+ * 会签时实体 current_task_assignee 只保存其中一人，不能作为任务归属依据。
  */
 @Component
 @RequiredArgsConstructor
 public class CurrentProcessTaskAssigneeLookup {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final ProcessTaskAccessPort taskAccessPort;
 
     /**
      * 判断用户是否为该记录的当前待办办理人。
      *
      * @param row  业务记录，缺少标识时返回 false
      * @param user 当前用户
-     * @return 存在未完成待办时返回 true
+     * @return 存在实际指派给当前用户的未完成任务时返回 true；候选人返回 false
      */
     public boolean isCurrentAssignee(EntityDataDTO row, SysUser user) {
-        return findActionableTaskId(row, user).isPresent();
+        return hasLookupCoordinates(row, user) && taskAccessPort.isCurrentAssignee(
+                identity(user), row.getEntityCode(), row.getId(), row.getProcessInstanceId());
     }
 
     /**
@@ -39,73 +37,30 @@ public class CurrentProcessTaskAssigneeLookup {
      * <p>多实例审批会为同一流程节点生成多个兄弟任务，而实体表上的
      * {@code current_task_id} 只能保存其中一个任务。本方法以当前认证用户、
      * 记录身份和流程实例为联合约束回查 {@code process_task}，返回的始终是
-     * 当前用户自己的 Flowable taskId，不能使用实体字段中的兄弟任务 ID 代替。</p>
+     * 当前用户实际持有或作为真实候选人可审批的 Flowable taskId，不能使用
+     * 实体字段中的兄弟任务 ID 代替。候选审批权不影响 isCurrentAssignee 的语义。</p>
      *
      * @param row  业务记录，缺少标识时返回空
      * @param user 当前认证 Flow 用户
      * @return 当前用户可办理的任务 ID；没有未完成待办时返回空
      */
     public Optional<String> findActionableTaskId(EntityDataDTO row, SysUser user) {
-        if (row == null || user == null) {
+        if (!hasLookupCoordinates(row, user)) {
             return Optional.empty();
         }
-        List<String> identities = identities(user);
-        if (identities.isEmpty()) {
-            return Optional.empty();
-        }
-        List<Object> args = new ArrayList<>();
-        StringBuilder sql = new StringBuilder(
-                "SELECT task_id FROM process_task "
-                        + "WHERE deleted = 0 AND status = 'todo' "
-                        + "AND task_id IS NOT NULL AND task_id <> '' "
-                        + "AND assignee_id IN (");
-        for (int index = 0; index < identities.size(); index++) {
-            if (index > 0) {
-                sql.append(',');
-            }
-            sql.append('?');
-            args.add(identities.get(index));
-        }
-        sql.append(')');
-        boolean hasEntityCoordinates =
-                StringUtils.hasText(row.getId())
-                        && StringUtils.hasText(row.getEntityCode());
-        boolean hasProcessCoordinate =
-                StringUtils.hasText(row.getProcessInstanceId());
-        if (!hasEntityCoordinates && !hasProcessCoordinate) {
-            return Optional.empty();
-        }
-        if (hasEntityCoordinates) {
-            sql.append(" AND entity_data_id = ? AND entity_code = ?");
-            args.add(row.getId());
-            args.add(row.getEntityCode());
-        }
-        if (hasProcessCoordinate) {
-            // 两类坐标同时存在时必须联合约束，不能用 OR 容忍矛盾摘要，
-            // 否则可能把另一记录或另一流程实例的同用户任务错误绑定到按钮。
-            sql.append(" AND process_instance_id = ?");
-            args.add(row.getProcessInstanceId());
-        }
-        // 同一用户在并行分支也可能同时持有多个任务；按最新本地任务稳定取一个，
-        // 后续提交仍由任务服务再次校验办理人与 TODO 状态，避免把查询结果当授权凭据。
-        sql.append(" ORDER BY create_time DESC, id DESC LIMIT 1");
-        List<String> taskIds = jdbcTemplate.queryForList(
-                sql.toString(),
-                String.class,
-                args.toArray());
-        return taskIds == null
-                ? Optional.empty()
-                : taskIds.stream().filter(StringUtils::hasText).findFirst();
+        return taskAccessPort.findActionableTaskId(
+                identity(user), row.getEntityCode(), row.getId(), row.getProcessInstanceId());
     }
 
-    private List<String> identities(SysUser user) {
-        LinkedHashSet<String> values = new LinkedHashSet<>();
-        if (StringUtils.hasText(user.getId())) {
-            values.add(user.getId());
-        }
-        if (StringUtils.hasText(user.getUsername())) {
-            values.add(user.getUsername());
-        }
-        return List.copyOf(values);
+    /** 优先使用认证用户 ID；流程端口负责统一匹配 ID 与用户名别名。 */
+    private String identity(SysUser user) {
+        return StringUtils.hasText(user.getId()) ? user.getId() : user.getUsername();
+    }
+
+    /** 缺少认证用户或记录坐标时不查询，避免把用户在其他记录上的任务误当本行能力。 */
+    private boolean hasLookupCoordinates(EntityDataDTO row, SysUser user) {
+        return row != null && user != null && StringUtils.hasText(identity(user))
+                && (StringUtils.hasText(row.getProcessInstanceId())
+                || StringUtils.hasText(row.getEntityCode()) && StringUtils.hasText(row.getId()));
     }
 }

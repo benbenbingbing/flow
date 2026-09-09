@@ -100,9 +100,14 @@ public class TaskVO {
      */
     private String assigneeType;
 
+    /** 当前候选任务是否可以主动认领；直接审批无需先调用认领接口。 */
+    private Boolean canClaim;
+
     /**
-     * 当前待办是否需要候选用户先认领。
+     * 旧客户端使用的未认领候选任务标记。
+     * 新客户端使用 canClaim 展示可选认领，不得据此隐藏审批入口。
      */
+    @Deprecated
     private Boolean claimRequired;
 
     

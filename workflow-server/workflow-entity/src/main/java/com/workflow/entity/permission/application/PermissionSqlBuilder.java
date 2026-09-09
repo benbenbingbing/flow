@@ -1,5 +1,6 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -71,6 +72,7 @@ public class PermissionSqlBuilder {
     private final EntityRecordTeamService teamService;
     private final EntityPhysicalTableResolver tableResolver;
     private final PermissionSqlFragmentCompiler sqlFragmentCompiler;
+    private final ProcessTaskAccessPort taskAccessPort;
 
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
@@ -99,7 +101,6 @@ public class PermissionSqlBuilder {
         this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, tableResolver, null);
     }
 
-    @Autowired
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
@@ -108,6 +109,20 @@ public class PermissionSqlBuilder {
             EntityRecordTeamService teamService,
             EntityPhysicalTableResolver tableResolver,
             PermissionSqlFragmentCompiler sqlFragmentCompiler) {
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders,
+                teamService, tableResolver, sqlFragmentCompiler, null);
+    }
+
+    @Autowired
+    public PermissionSqlBuilder(
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityStatusMapper statusMapper,
+            List<EntityDataPermissionFilterProvider> filterProviders,
+            EntityRecordTeamService teamService,
+            EntityPhysicalTableResolver tableResolver,
+            PermissionSqlFragmentCompiler sqlFragmentCompiler,
+            ProcessTaskAccessPort taskAccessPort) {
         this.definitionMapper = definitionMapper;
         this.fieldMapper = fieldMapper;
         this.statusMapper = statusMapper;
@@ -115,6 +130,7 @@ public class PermissionSqlBuilder {
         this.teamService = teamService;
         this.tableResolver = tableResolver;
         this.sqlFragmentCompiler = sqlFragmentCompiler;
+        this.taskAccessPort = taskAccessPort;
     }
 
     /**
@@ -678,28 +694,34 @@ public class PermissionSqlBuilder {
     }
 
     /**
-     * 当前用户存在未完成待办。必须限定外层业务表 id，
-     * 不能写裸列 id，否则 MySQL 会解析成 process_task.id。
+     * 当前用户存在真实可审批任务，包括未认领候选任务。
+     * 通过流程契约查询当前实体记录 ID，限定外层业务表，不能把任务投影当作权限来源。
      */
     private String currentProcessTaskSql(String entityCode, SysUser user) {
-        if (!StringUtils.hasText(entityCode) || user == null) {
+        if (!StringUtils.hasText(entityCode) || user == null || taskAccessPort == null) {
             return "1=0";
         }
         String tableName = resolvePhysicalTable(entityCode);
-        LinkedHashSet<String> identities = userIdentities(user);
-        if (tableName == null || identities.isEmpty()) {
+        String userId = StringUtils.hasText(user.getId()) ? user.getId() : user.getUsername();
+        if (tableName == null || !StringUtils.hasText(userId)) {
             return "1=0";
         }
-        String identityList = identities.stream()
-                .map(this::escapeLiteral)
-                .map(value -> "'" + value + "'")
+        List<String> recordIds = taskAccessPort.findActionableEntityDataIds(userId, entityCode);
+        String idList = recordIds.stream()
+                .filter(StringUtils::hasText)
+                .distinct()
+                .map(this::taskRecordIdLiteral)
                 .collect(java.util.stream.Collectors.joining(","));
-        return "EXISTS (SELECT 1 FROM process_task pt "
-                + "WHERE pt.entity_data_id = `" + tableName + "`.id "
-                + "AND pt.entity_code = '" + escapeLiteral(entityCode) + "' "
-                + "AND pt.deleted = 0 "
-                + "AND pt.status = 'todo' "
-                + "AND pt.assignee_id IN (" + identityList + "))";
+        return idList.isEmpty() ? "1=0" : "`" + tableName + "`.id IN (" + idList + ")";
+    }
+
+    /**
+     * 将端口返回的记录 ID 编译成 UTF-8 数据字面量，不能解释为 SQL。
+     * 使用十六进制避免单引号和反斜杠转义受 MySQL sql_mode 影响。
+     */
+    private String taskRecordIdLiteral(String id) {
+        String hex = java.util.HexFormat.of().formatHex(id.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return "CONVERT(X'" + hex + "' USING utf8mb4)";
     }
 
     private String resolvePhysicalTable(String entityCode) {

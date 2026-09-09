@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
@@ -35,8 +36,10 @@ class ProcessTaskMapperTodoScopeTest {
         jdbc = new JdbcTemplate(database);
         namedJdbc = new NamedParameterJdbcTemplate(database);
         jdbc.execute("CREATE TABLE process_task (task_id VARCHAR(64), assignee_id VARCHAR(200), "
-                + "assignee_type VARCHAR(16), status VARCHAR(16), deleted INT, create_time TIMESTAMP)");
-        jdbc.execute("CREATE TABLE ACT_RU_TASK (ID_ VARCHAR(64), ASSIGNEE_ VARCHAR(64))");
+                + "assignee_type VARCHAR(16), status VARCHAR(16), deleted INT, create_time TIMESTAMP, "
+                + "node_type VARCHAR(32) DEFAULT 'USER_TASK', process_instance_id VARCHAR(64), "
+                + "entity_code VARCHAR(64), entity_data_id VARCHAR(64))");
+        jdbc.execute("CREATE TABLE ACT_RU_TASK (ID_ VARCHAR(64), ASSIGNEE_ VARCHAR(64), PROC_INST_ID_ VARCHAR(64))");
         jdbc.execute("CREATE TABLE ACT_RU_IDENTITYLINK (TASK_ID_ VARCHAR(64), "
                 + "TYPE_ VARCHAR(32), USER_ID_ VARCHAR(64), GROUP_ID_ VARCHAR(64))");
         jdbc.execute("CREATE TABLE sys_user (id VARCHAR(64), username VARCHAR(64), status CHAR(1), deleted INT)");
@@ -44,6 +47,10 @@ class ProcessTaskMapperTodoScopeTest {
         jdbc.execute("CREATE TABLE sys_role (id VARCHAR(64), role_code VARCHAR(64), status CHAR(1), deleted INT)");
         jdbc.execute("CREATE TABLE sys_user_group (user_id VARCHAR(64), group_id VARCHAR(64))");
         jdbc.execute("CREATE TABLE sys_user_role (user_id VARCHAR(64), role_id VARCHAR(64))");
+        jdbc.execute("CREATE TABLE process_task_add_sign (id VARCHAR(64), source_task_id VARCHAR(64), "
+                + "process_instance_id VARCHAR(64), status VARCHAR(32))");
+        jdbc.execute("CREATE TABLE process_task_add_sign_user (add_sign_id VARCHAR(64), generated_task_id VARCHAR(64), "
+                + "user_id VARCHAR(64), status VARCHAR(32))");
         jdbc.update("INSERT INTO sys_user VALUES ('user-1', 'alice', '0', 0), ('user-2', 'bob', '0', 0)");
         jdbc.update("INSERT INTO sys_group VALUES ('group-1', 'finance', '0', 0)");
         jdbc.update("INSERT INTO sys_role VALUES ('role-1', 'manager', '0', 0)");
@@ -147,9 +154,61 @@ class ProcessTaskMapperTodoScopeTest {
         assertTodo("alice", List.of());
     }
 
+    @Test
+    void activeLocalAddSignTaskIsVisibleAndCountedOnlyForItsAssignedUser() throws Exception {
+        addLocalAddSign();
+
+        assertVisible("addsign-child");
+        assertTodo("bob", List.of());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"HOLD,ACTIVE", "DONE,ACTIVE", "CANCELLED,ACTIVE", "TODO,WAITING_SOURCE", "TODO,COMPLETED", "TODO,CANCELLED"})
+    void inactiveAddSignStateNeverRevivesLocalTodoProjection(String childStatus, String parentStatus) throws Exception {
+        addLocalAddSign();
+        jdbc.update("UPDATE process_task_add_sign_user SET status = ?", childStatus);
+        jdbc.update("UPDATE process_task_add_sign SET status = ?", parentStatus);
+
+        assertTodo("alice", List.of());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-child", "missing-parent", "missing-source", "wrong-parent-process",
+            "wrong-source-process", "wrong-source-record", "wrong-child-assignee", "wrong-local-assignee", "ordinary-local-task"})
+    void localAddSignRequiresMatchingActiveSourceAndAssigneeRelations(String failure) throws Exception {
+        addLocalAddSign();
+        switch (failure) {
+            case "missing-child" -> jdbc.update("DELETE FROM process_task_add_sign_user");
+            case "missing-parent" -> jdbc.update("DELETE FROM process_task_add_sign");
+            case "missing-source" -> jdbc.update("DELETE FROM ACT_RU_TASK WHERE ID_ = 'source'");
+            case "wrong-parent-process" -> jdbc.update("UPDATE process_task_add_sign SET process_instance_id = 'another-process'");
+            case "wrong-source-process" -> jdbc.update("UPDATE ACT_RU_TASK SET PROC_INST_ID_ = 'another-process' WHERE ID_ = 'source'");
+            case "wrong-source-record" -> jdbc.update("UPDATE process_task SET entity_data_id = 'another-record' WHERE task_id = 'source'");
+            case "wrong-child-assignee" -> jdbc.update("UPDATE process_task_add_sign_user SET user_id = 'bob'");
+            case "wrong-local-assignee" -> jdbc.update("UPDATE process_task SET assignee_id = 'bob' WHERE task_id = 'addsign-child'");
+            case "ordinary-local-task" -> jdbc.update("UPDATE process_task SET node_type = 'USER_TASK' WHERE task_id = 'addsign-child'");
+            default -> throw new AssertionError(failure);
+        }
+
+        assertTodo("alice", List.of());
+    }
+
+    /** 构造后加签已激活阶段：父引擎任务尚在，原镜像等待，子任务仅存在于本地。 */
+    private void addLocalAddSign() {
+        addTask("source", "bob");
+        jdbc.update("UPDATE process_task SET status = 'waiting', process_instance_id = 'process-1', "
+                + "entity_code = 'expense', entity_data_id = 'record-1' WHERE task_id = 'source'");
+        jdbc.update("UPDATE ACT_RU_TASK SET PROC_INST_ID_ = 'process-1' WHERE ID_ = 'source'");
+        jdbc.update("INSERT INTO process_task(task_id, assignee_id, assignee_type, status, deleted, create_time, "
+                + "node_type, process_instance_id, entity_code, entity_data_id) "
+                + "VALUES ('addsign-child', 'alice', 'user', 'todo', 0, CURRENT_TIMESTAMP, 'ADD_SIGN', 'process-1', 'expense', 'record-1')");
+        jdbc.update("INSERT INTO process_task_add_sign VALUES ('add-sign-1', 'source', 'process-1', 'ACTIVE')");
+        jdbc.update("INSERT INTO process_task_add_sign_user VALUES ('add-sign-1', 'addsign-child', 'alice', 'TODO')");
+    }
+
     private void addTask(String taskId, String assignee) {
-        jdbc.update("INSERT INTO process_task VALUES (?, 'legacy-projection', 'group', 'todo', 0, CURRENT_TIMESTAMP)", taskId);
-        jdbc.update("INSERT INTO ACT_RU_TASK VALUES (?, ?)", taskId, assignee);
+        jdbc.update("INSERT INTO process_task(task_id, assignee_id, assignee_type, status, deleted, create_time) VALUES (?, 'legacy-projection', 'group', 'todo', 0, CURRENT_TIMESTAMP)", taskId);
+        jdbc.update("INSERT INTO ACT_RU_TASK(ID_, ASSIGNEE_) VALUES (?, ?)", taskId, assignee);
     }
 
     private void addCandidate(String taskId, String type, String userId, String groupId) {

@@ -194,13 +194,19 @@ class DataPermissionEngineTest {
         com.workflow.entity.data.application.EntityPhysicalTableResolver tableResolver =
                 mock(com.workflow.entity.data.application.EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        com.workflow.contracts.process.port.ProcessTaskAccessPort taskAccess =
+                mock(com.workflow.contracts.process.port.ProcessTaskAccessPort.class);
+        when(taskAccess.findActionableEntityDataIds("2038628006255251457", "expense"))
+                .thenReturn(List.of("record-1"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
                 statusMapper,
                 List.of(),
                 null,
-                tableResolver);
+                tableResolver,
+                null,
+                taskAccess);
         DataPermissionEngine todoEngine = new DataPermissionEngine(
                 scopeService,
                 delegationMapper,
@@ -224,8 +230,8 @@ class DataPermissionEngineTest {
         var result = todoEngine.calculatePermission("expense", "default", lisi);
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.getSqlCondition().contains("pt.entity_data_id = `wf_expense`.id"));
-        assertTrue(result.getSqlCondition().contains("assignee_id IN ('2038628006255251457','lisi')"));
+        assertTrue(result.getSqlCondition().contains("`wf_expense`.id IN (CONVERT(X'7265636f72642d31' USING utf8mb4))"));
+        assertFalse(result.getSqlCondition().contains("assignee_id"));
         assertFalse(result.getSqlCondition().contains("_team"));
     }
 

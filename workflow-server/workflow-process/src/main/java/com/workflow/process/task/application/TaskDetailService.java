@@ -47,6 +47,18 @@ public class TaskDetailService {
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
     private final EntityFormRuntimeService entityFormRuntimeService;
     private final ObjectMapper objectMapper;
+    private final LocalAddSignTaskAccessService localAddSignTaskAccessService;
+
+    /**
+     * 校验本地加签详情入口，不以任务前缀或历史加签记录单独放行。
+     * Controller 可在发现任务属于加签编排时调用；仅当前有效子任务办理人能够通过。
+     *
+     * @param taskId 加签生成的本地任务 ID
+     * @throws com.workflow.core.error.ForbiddenException 加签无效或非当前办理人时抛出
+     */
+    public void requireLocalAddSignTaskAccess(String taskId) {
+        localAddSignTaskAccessService.requireCurrentUserAccess(taskId, null);
+    }
     
     /**
      * 获取任务详情（包含表单和实体数据）
@@ -58,6 +70,13 @@ public class TaskDetailService {
         ProcessTask processTask = processTaskMapper.selectByTaskId(taskId);
         if (processTask == null) {
             throw new RuntimeException("任务不存在: " + taskId);
+        }
+        LocalAddSignTaskAccessService.AuthorizedAddSignTask addSignContext = null;
+        if ("ADD_SIGN".equals(processTask.getNodeType())) {
+            // 本地加签没有引擎子任务；必须先验证有效关联与本人处理权，再读取源节点的发布表单。
+            addSignContext = localAddSignTaskAccessService.requireCurrentUserAccess(
+                    taskId, processTask.getProcessInstanceId());
+            processTask = addSignContext.localTask();
         }
         dto.setProcessTask(processTask);
         
@@ -93,7 +112,10 @@ public class TaskDetailService {
         dto.setProcessInstance(instanceDTO);
         
         // 3. 获取节点配置（表单绑定信息）
-        String nodeId = processTask.getNodeId();
+        String nodeId = addSignContext == null ? processTask.getNodeId()
+                : addSignContext.sourceTask().getTaskDefinitionKey();
+        String processDefinitionId = addSignContext == null ? processTask.getProcessDefinitionId()
+                : addSignContext.sourceTask().getProcessDefinitionId();
         String entityCode = processTask.getEntityCode();
         
         // 预加载实体字段映射（id -> fieldCode），用于表单字段转换
@@ -118,15 +140,16 @@ public class TaskDetailService {
         }
         
         List<TaskDetailDTO.FormConfigDTO> formConfigs = new ArrayList<>();
-        String formKey = processTask.getFormKey();
+        String formKey = addSignContext == null ? processTask.getFormKey()
+                : addSignContext.sourceTask().getFormKey();
 
-        if (processTask.getProcessDefinitionId() != null
+        if (processDefinitionId != null
                 && nodeId != null) {
             try {
                 ProcessPublishedSnapshotService.PublishedNodeForms published =
                         processPublishedSnapshotService
                                 .getNodeFormsContextByProcessDefinitionId(
-                                        processTask.getProcessDefinitionId(),
+                                        processDefinitionId,
                                         nodeId);
                 for (com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm nodeForm
                         : published.nodeForms()) {
@@ -148,7 +171,7 @@ public class TaskDetailService {
             } catch (Exception exception) {
                 log.warn(
                         "读取流程节点表单发布快照失败: processDefinitionId={}, nodeId={}, error={}",
-                        processTask.getProcessDefinitionId(),
+                        processDefinitionId,
                         nodeId,
                         exception.getMessage());
             }

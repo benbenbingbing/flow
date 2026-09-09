@@ -1195,7 +1195,7 @@ export default {
                 { location: '工具栏', button: '导出全部 exportAll', permission: 'entity:{code}:export-all', defaultRule: '无；高风险权限应谨慎授权。' },
                 { location: '工具栏', button: '批量删除 batchDelete', permission: 'entity:{code}:batch-delete', defaultRule: '当前用户是创建人或提交人，且为未发起+NEW 或 WITHDRAWN；不满足时禁用并提示选中数据中存在不可删除数据。' },
                 { location: '行操作', button: '查看 view', permission: 'entity:{code}:view', defaultRule: '无。' },
-                { location: '行操作', button: '编辑 edit', permission: 'entity:{code}:update', defaultRule: '无；可按业务补充草稿限制。' },
+                { location: '行操作', button: '编辑 edit', permission: 'entity:{code}:update', defaultRule: '当前用户是创建人或提交人，且为未发起+NEW 或 WITHDRAWN；不满足时隐藏。' },
                 { location: '行操作', button: '审批 approve', permission: 'entity:{code}:approve', defaultRule: '当前用户是当前办理人，且流程状态 RUNNING；不满足时隐藏。' },
                 { location: '行操作', button: '删除 delete', permission: 'entity:{code}:delete', defaultRule: '当前用户是创建人或提交人，且为未发起+NEW 或 WITHDRAWN；不满足时隐藏。' }
               ]

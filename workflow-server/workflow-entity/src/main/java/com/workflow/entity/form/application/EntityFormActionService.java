@@ -391,13 +391,16 @@ public class EntityFormActionService {
             return EntityActionCapabilityDTO.hidden(
                     "当前数据不能发起流程");
         }
+        if ("submitApproval".equals(key)) {
+            // 打开审批表单不会抢占候选任务；提交按钮需使用可审批身份，并继续叠加发布覆盖条件。
+            return capabilityService.evaluateApprovalAction(
+                    definition.getEntityCode(), row, approvalRule(), readRule(button));
+        }
         EntityPermissionAction action = switch (key) {
             case "save", "saveAndStart" ->
                     "create".equals(mode)
                             ? EntityPermissionAction.CREATE
                             : EntityPermissionAction.UPDATE;
-            case "submitApproval" ->
-                    EntityPermissionAction.APPROVE;
             default -> null;
         };
         EntityActionCapabilityDTO standard =
@@ -407,9 +410,7 @@ public class EntityFormActionService {
                                 ? null
                                 : action.permissionCode(
                                         definition.getEntityCode()),
-                        "submitApproval".equals(key)
-                                ? approvalRule()
-                                : null,
+                        null,
                         row);
         if (!standard.isVisible() || !standard.isEnabled()) {
             return standard;
@@ -454,7 +455,7 @@ public class EntityFormActionService {
     private EntityActionRuleDTO approvalRule() {
         EntityActionRuleDTO rule = new EntityActionRuleDTO();
         rule.setUnavailableBehavior("HIDE");
-        rule.setMessage("仅当前任务办理人可以提交审批");
+        rule.setMessage("仅当前可审批用户可在流程运行中提交审批");
         EntityActionRuleDTO.RuleNode relation =
                 new EntityActionRuleDTO.RuleNode();
         relation.setType("RELATION");

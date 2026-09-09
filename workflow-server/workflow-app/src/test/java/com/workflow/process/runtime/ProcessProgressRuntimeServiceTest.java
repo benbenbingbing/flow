@@ -1,6 +1,9 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessProgressRuntimeService;
+import com.workflow.process.task.application.LocalAddSignTaskAccessService;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.core.error.ForbiddenException;
 
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -286,6 +289,58 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals(oldVersion.getBpmnXml(), progress.getBpmnXml());
     }
 
+    @Test
+    void authorizedLocalAddSignUsesSourceNodePublishedFormAndKeepsChildTaskId() {
+        Fixture fixture = new Fixture();
+        fixture.runningInstance();
+        fixture.processDefinition();
+        fixture.history();
+        fixture.activeExecution();
+        fixture.activeTask();
+        fixture.noOperationLogs();
+        fixture.entityVariables();
+        fixture.entityDefinition();
+        fixture.entityData();
+        fixture.publishedNodeForms();
+        ProcessTask child = new ProcessTask();
+        child.setTaskId("addsign-1");
+        child.setNodeName("加签审批");
+        child.setNodeId("stale-local-node");
+        child.setAssigneeId("alice");
+        Task source = mock(Task.class);
+        when(source.getTaskDefinitionKey()).thenReturn("task-1");
+        when(fixture.localAddSignTaskAccessService.requireCurrentUserAccess("addsign-1", "pi-1"))
+                .thenReturn(new LocalAddSignTaskAccessService.AuthorizedAddSignTask(child, source));
+
+        ProcessProgressDTO progress = fixture.service().getProcessProgress("pi-1", "addsign-1");
+
+        ProcessProgressDTO.TaskInfoDTO task = progress.getTasks().stream()
+                .filter(item -> "addsign-1".equals(item.getTaskId())).findFirst().orElseThrow();
+        assertEquals("task-1", task.getNodeId());
+        assertEquals("alice", task.getAssignee());
+        assertEquals("form-1", progress.getFormConfig().getFormId());
+        verify(fixture.snapshotService).getNodeFormsContextByProcessDefinitionId("pd-1", "task-1");
+        verify(fixture.snapshotService, never()).getNodeFormsContextByProcessDefinitionId("pd-1", "stale-local-node");
+    }
+
+    @Test
+    void inaccessibleOrCrossInstanceLocalAddSignStopsBeforeFormAndEntityLoading() {
+        Fixture fixture = new Fixture();
+        fixture.runningInstance();
+        fixture.processDefinition();
+        fixture.history();
+        fixture.activeExecution();
+        fixture.activeTask();
+        fixture.noOperationLogs();
+        when(fixture.localAddSignTaskAccessService.requireCurrentUserAccess("addsign-other", "pi-1"))
+                .thenThrow(new ForbiddenException("加签任务不属于当前用户或当前实例"));
+
+        assertThrows(ForbiddenException.class,
+                () -> fixture.service().getProcessProgress("pi-1", "addsign-other"));
+
+        org.mockito.Mockito.verifyNoInteractions(fixture.entityDataDynamicService, fixture.entityFormRuntimeService);
+    }
+
     /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
     private static class Fixture {
         final RuntimeService runtimeService = mock(RuntimeService.class);
@@ -303,6 +358,7 @@ class ProcessProgressRuntimeServiceTest {
         final SysUserMapper sysUserMapper = mock(SysUserMapper.class);
         final ProcessOperationLogMapper operationLogMapper = mock(ProcessOperationLogMapper.class);
         final ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
+        final LocalAddSignTaskAccessService localAddSignTaskAccessService = mock(LocalAddSignTaskAccessService.class);
 
         final ProcessInstanceQuery processInstanceQuery = mock(ProcessInstanceQuery.class);
         final ProcessDefinitionQuery processDefinitionQuery = mock(ProcessDefinitionQuery.class);
@@ -562,7 +618,7 @@ class ProcessProgressRuntimeServiceTest {
                     runtimeService, historyService, repositoryService, taskService,
                     sysUserService, entityDataDynamicService, entityFormRuntimeService,
                     entityDefinitionMapper, processTaskMapper, sysGroupMapper, sysUserGroupMapper,
-                    sysUserMapper, operationLogMapper, snapshotService);
+                    sysUserMapper, operationLogMapper, snapshotService, localAddSignTaskAccessService);
         }
     }
 }

@@ -189,7 +189,7 @@
         empty-text="当前条件下没有待办任务"
         @selection-change="selectedTodoRows = $event"
       >
-        <el-table-column type="selection" width="44" :selectable="row => row.claimRequired" />
+        <el-table-column type="selection" width="44" :selectable="isTaskClaimable" />
         <el-table-column type="index" width="50" />
         <el-table-column prop="processName" label="流程名称" min-width="150" show-overflow-tooltip />
         <el-table-column prop="code" label="编码" min-width="150" show-overflow-tooltip />
@@ -223,18 +223,9 @@
           <template #default="{ row }">
             <div class="todo-operation-cell">
               <el-button
-                v-if="row.claimRequired"
                 type="primary"
                 size="small"
-                :loading="claimingTaskId === row.taskId"
-                @click="handleClaim(row)"
-              >
-                认领
-              </el-button>
-              <el-button
-                v-else
-                type="primary"
-                size="small"
+                :disabled="claimingTaskId === row.taskId"
                 @click="handleApprove(row)"
               >
                 审批
@@ -251,6 +242,7 @@
                   type="primary"
                   link
                   native-type="button"
+                  :loading="claimingTaskId === row.taskId"
                   aria-label="更多任务操作"
                   title="更多任务操作"
                 >
@@ -263,6 +255,7 @@
                       :key="action.command"
                       :command="action.command"
                       :divided="action.divided"
+                      :disabled="action.command === 'claim' && Boolean(claimingTaskId)"
                     >
                       {{ action.label }}
                     </el-dropdown-item>
@@ -614,6 +607,10 @@ import {
   resolveAllowedAddSignTypes,
   selectAllowedAddSignType
 } from '@/shared/workflow-operation-guards'
+import {
+  getTodoTaskMoreActions,
+  isTaskClaimable
+} from '@/shared/workflow-task-actions'
 
 // 统计数据
 const statistics = reactive({
@@ -669,7 +666,7 @@ const claimingTaskId = ref('')
 const selectedTodoRows = ref([])
 const bulkClaimLoading = ref(false)
 const claimableSelectedCount = computed(() =>
-  selectedTodoRows.value.filter(row => row.claimRequired && row.taskId).length
+  selectedTodoRows.value.filter(isTaskClaimable).length
 )
 
 // 转办弹窗
@@ -925,7 +922,7 @@ async function loadCcList() {
 }
 
 async function handleBatchClaim() {
-  const tasks = selectedTodoRows.value.filter(row => row.claimRequired && row.taskId)
+  const tasks = selectedTodoRows.value.filter(isTaskClaimable)
   if (!tasks.length) return
   try {
     await ElMessageBox.confirm(
@@ -959,33 +956,13 @@ async function handleBatchClaim() {
 }
 
 function getTodoMoreActions(row) {
-  const actions = []
-  if (!row.claimRequired && row.nodeType !== 'ADD_SIGN') {
-    if (row.taskOperations?.transfer === true) {
-      actions.push({ command: 'transfer', label: '转办' })
-    }
-    if (row.taskOperations?.addSign === true
-        && resolveAllowedAddSignTypes(row.taskOperations).length > 0) {
-      actions.push({ command: 'addSign', label: '加签' })
-    } else if (row.taskOperations?.activeAddSign?.id) {
-      actions.push({ command: 'cancelAddSign', label: '撤销加签' })
-    }
-    if (row.taskOperations?.manualCc !== false) {
-      actions.push({ command: 'cc', label: '知会' })
-    }
-  }
-  if (row.slaStatus) {
-    actions.push({
-      command: 'sla',
-      label: 'SLA',
-      divided: actions.length > 0
-    })
-  }
-  return actions
+  return getTodoTaskMoreActions(row)
 }
 
 function handleTodoMoreCommand(command, row) {
-  if (command === 'transfer') {
+  if (command === 'claim') {
+    handleClaim(row)
+  } else if (command === 'transfer') {
     openTransferDialog(row)
   } else if (command === 'addSign') {
     openAddSignDialog(row)
@@ -1151,17 +1128,17 @@ function eventStatusText(status) {
   })[status] || status
 }
 
-// 审批
+// 打开候选任务不会认领；提交时由后端在同一事务内确定办理人并完成审批。
 function handleApprove(row) {
   approvalDialogRef.value?.openApprove(row)
 }
 
 async function handleClaim(row) {
-  if (!row.taskId || claimingTaskId.value) return
+  if (!isTaskClaimable(row) || claimingTaskId.value) return
   claimingTaskId.value = row.taskId
   try {
     await claimTask(row.taskId)
-    ElMessage.success('任务认领成功')
+    ElMessage.success('任务已认领，已由你接手，可稍后继续审批')
     await Promise.all([loadTodoList(), loadStatistics()])
   } catch (error) {
     console.error('认领任务失败:', error)

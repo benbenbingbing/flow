@@ -593,10 +593,13 @@ public class ProcessTaskService {
         if (tasks.isEmpty()) {
             return tasks;
         }
-        // 批量读取避免逐行访问引擎；查询过程中已完成的任务不再返回。
-        Map<String, Task> runtimeTasks = flowableTaskService.createTaskQuery()
-                .taskIds(tasks.stream().map(ProcessTask::getTaskId).toList())
-                .list().stream().collect(java.util.stream.Collectors.toMap(Task::getId, task -> task));
+        // 普通任务批量回查引擎。ADD_SIGN 是经共享 SQL 校验过父编排与用户明细的
+        // 本地子任务，没有引擎任务 ID，不能在这次引擎投影刷新时误删。
+        List<String> engineTaskIds = tasks.stream().filter(task -> !"ADD_SIGN".equals(task.getNodeType()))
+                .map(ProcessTask::getTaskId).toList();
+        Map<String, Task> runtimeTasks = engineTaskIds.isEmpty() ? Map.of()
+                : flowableTaskService.createTaskQuery().taskIds(engineTaskIds)
+                        .list().stream().collect(java.util.stream.Collectors.toMap(Task::getId, task -> task));
         java.util.Set<String> userIdentities = new java.util.HashSet<>();
         userIdentities.add(userId);
         identityDirectoryPort.findUser(userId).ifPresent(user -> {
@@ -604,6 +607,9 @@ public class ProcessTaskService {
             userIdentities.add(user.username());
         });
         return tasks.stream().filter(task -> {
+                    if ("ADD_SIGN".equals(task.getNodeType())) {
+                        return userIdentities.contains(task.getAssigneeId());
+                    }
                     Task runtimeTask = runtimeTasks.get(task.getTaskId());
                     if (runtimeTask == null) {
                         return false;
@@ -613,6 +619,10 @@ public class ProcessTaskService {
                     return assignee == null || assignee.isBlank() || userIdentities.contains(assignee);
                 })
                 .peek(task -> {
+                    if ("ADD_SIGN".equals(task.getNodeType())) {
+                        task.setAssigneeType("user");
+                        return;
+                    }
                     String assignee = runtimeTasks.get(task.getTaskId()).getAssignee();
                     if (assignee == null || assignee.isBlank()) {
                         task.setAssigneeType("group");

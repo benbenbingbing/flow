@@ -111,23 +111,30 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         if (visibleTasks.isEmpty()) {
             return new PageResult<>(List.of(), 0L, page.pageNumber(), page.pageSize());
         }
-        TaskQuery query = flowableTaskService.createTaskQuery()
-                .taskIds(visibleTasks.stream().map(ProcessTask::getTaskId).toList())
-                .active()
-                .orderByTaskCreateTime()
-                .desc();
-        if (StringUtils.hasText(timeRange)) {
-            Date startDate = getStartDateByRange(timeRange);
-            if (startDate != null) {
-                query.taskCreatedAfter(startDate);
-            }
+        List<String> engineTaskIds = visibleTasks.stream()
+                .filter(task -> !"ADD_SIGN".equals(task.getNodeType()))
+                .map(ProcessTask::getTaskId).toList();
+        List<TaskVO> visible = new java.util.ArrayList<>();
+        if (!engineTaskIds.isEmpty()) {
+            TaskQuery query = flowableTaskService.createTaskQuery()
+                    .taskIds(engineTaskIds)
+                    .active()
+                    .orderByTaskCreateTime()
+                    .desc();
+            query.list().stream().map(this::convertToTodoVO).forEach(visible::add);
         }
-        List<TaskVO> matching = query.list().stream()
-                .map(this::convertToTodoVO)
+        // ADD_SIGN 仅有本地任务，已由统一待办 SQL 校验编排和办理人；不能再要求子引擎任务存在。
+        visibleTasks.stream().filter(task -> "ADD_SIGN".equals(task.getNodeType()))
+                .map(this::convertAddSignToTodoVO).forEach(visible::add);
+        Date startDate = StringUtils.hasText(timeRange) ? getStartDateByRange(timeRange) : null;
+        List<TaskVO> matching = visible.stream()
+                .filter(vo -> startDate == null || vo.getCreateTime() != null && vo.getCreateTime().after(startDate))
                 .filter(vo -> !StringUtils.hasText(processName)
                         || vo.getProcessName() != null && vo.getProcessName().contains(processName))
                 .filter(vo -> !StringUtils.hasText(taskName)
                         || vo.getTaskName() != null && vo.getTaskName().contains(taskName))
+                .sorted(java.util.Comparator.comparing(TaskVO::getCreateTime,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
                 .toList();
         List<TaskVO> records = matching.stream().skip(page.offset()).limit(page.pageSize()).toList();
         return new PageResult<>(records, (long) matching.size(), page.pageNumber(), page.pageSize());
@@ -316,7 +323,8 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         vo.setPriority(task.getPriority());
         vo.setAssignee(task.getAssignee());
         vo.setClaimRequired(!StringUtils.hasText(task.getAssignee()));
-        vo.setAssigneeType(vo.getClaimRequired() ? "group" : "user");
+        vo.setCanClaim(!StringUtils.hasText(task.getAssignee()));
+        vo.setAssigneeType(vo.getCanClaim() ? "group" : "user");
         applySlaSummary(vo, task.getId());
         
         // 获取流程定义信息
@@ -362,6 +370,36 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             log.debug("获取数据标题失败: {}", e.getMessage());
         }
         
+        return vo;
+    }
+
+    /**
+     * 将已通过统一访问查询的本地加签子任务转换为列表项。
+     * 加签办理人已由明细确定，不提供认领；保留 ADD_SIGN 类型以进入专用通过/驳回流程。
+     */
+    private TaskVO convertAddSignToTodoVO(ProcessTask task) {
+        TaskVO vo = new TaskVO();
+        vo.setTaskId(task.getTaskId());
+        vo.setTaskName(task.getNodeName());
+        vo.setNodeType("ADD_SIGN");
+        vo.setProcessInstanceId(task.getProcessInstanceId());
+        vo.setProcessDefinitionId(task.getProcessDefinitionId());
+        vo.setProcessName(task.getProcessName());
+        vo.setBusinessKey(task.getBusinessKey());
+        LocalDateTime created = task.getStartTime() != null ? task.getStartTime() : task.getCreateTime();
+        vo.setCreateTime(created == null ? null : Date.from(created.atZone(ZoneId.systemDefault()).toInstant()));
+        vo.setPriority(task.getPriority());
+        vo.setAssignee(task.getAssigneeId());
+        vo.setAssigneeName(task.getAssigneeName());
+        vo.setAssigneeType("user");
+        vo.setClaimRequired(false);
+        vo.setCanClaim(false);
+        vo.setEntityCode(task.getEntityCode());
+        vo.setEntityDataId(task.getEntityDataId());
+        vo.setFormKey(task.getFormKey());
+        vo.setSlaStatus(task.getSlaStatus());
+        vo.setResponseDueTime(toDate(task.getResponseDueTime()));
+        vo.setDueTime(toDate(task.getDueTime()));
         return vo;
     }
 

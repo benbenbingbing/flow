@@ -1,5 +1,6 @@
 package com.workflow.service.permission;
 
+import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.entity.permission.application.PermissionSqlFragmentCompiler;
@@ -25,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -90,13 +93,18 @@ class PermissionSqlBuilderTest {
         com.workflow.entity.data.application.EntityPhysicalTableResolver tableResolver =
                 mock(com.workflow.entity.data.application.EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
+        ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
+        when(taskAccess.findActionableEntityDataIds("2038628006255251457", "expense"))
+                .thenReturn(List.of("record-1"));
         PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
                 statusMapper,
                 List.of(),
                 null,
-                tableResolver);
+                tableResolver,
+                null,
+                taskAccess);
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
 
@@ -105,11 +113,48 @@ class PermissionSqlBuilderTest {
                 filter,
                 user("2038628006255251457", "lisi", "dept-1"));
 
-        assertTrue(sql.contains("process_task"));
-        assertTrue(sql.contains("pt.entity_data_id = `wf_expense`.id"));
-        assertTrue(sql.contains("assignee_id IN ('2038628006255251457','lisi')"));
-        assertFalse(sql.contains("pt.entity_data_id = id"));
+        assertEquals("`wf_expense`.id IN (CONVERT(X'7265636f72642d31' USING utf8mb4))", sql);
+        verify(taskAccess).findActionableEntityDataIds("2038628006255251457", "expense");
+        assertFalse(sql.contains("process_task"));
         assertFalse(sql.contains("_team"));
+    }
+
+    @Test
+    void hasTodoEmptyScopeAndInvalidPhysicalTableFailClosed() {
+        EntityPhysicalTableResolver resolver = mock(EntityPhysicalTableResolver.class);
+        ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
+        when(resolver.resolve("expense")).thenReturn("wf_expense");
+        PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
+                definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess);
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("HAS_TODO");
+
+        assertEquals("1=0", todoBuilder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1")));
+
+        when(resolver.resolve("invalid")).thenReturn("wf_expense` OR 1=1 --");
+        org.mockito.Mockito.clearInvocations(taskAccess);
+        assertEquals("1=0", todoBuilder.buildFilterSql("invalid", filter, user("u1", "alice", "dept-1")));
+        verifyNoInteractions(taskAccess);
+    }
+
+    @Test
+    void hasTodoIdsAreEncodedAsDataRatherThanExecutableSql() {
+        EntityPhysicalTableResolver resolver = mock(EntityPhysicalTableResolver.class);
+        ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
+        when(resolver.resolve("expense")).thenReturn("wf_expense");
+        String unusualId = "id\\' OR 1=1 --";
+        when(taskAccess.findActionableEntityDataIds("u1", "expense")).thenReturn(List.of(unusualId));
+        PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
+                definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess);
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType("HAS_TODO");
+
+        String sql = todoBuilder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1"));
+
+        String hex = java.util.HexFormat.of().formatHex(unusualId.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals("`wf_expense`.id IN (CONVERT(X'" + hex + "' USING utf8mb4))", sql);
+        assertFalse(sql.contains(" OR 1=1"));
+        assertFalse(sql.contains("\\"));
     }
 
     @Test
