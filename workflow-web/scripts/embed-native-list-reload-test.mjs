@@ -150,6 +150,7 @@ await versionEnabled.loadVersionCapabilities(
 assert.equal(capabilityRequests, 1)
 assert.deepEqual(versionEnabled.versionCapabilities.value, {
   runtimeEnabled: true,
+  historyReadable: false,
   manualCaptureEnabled: true
 })
 

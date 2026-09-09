@@ -53,6 +53,17 @@ public interface EntityRecordVersionMapper
             @Param("entityCode") String entityCode,
             @Param("recordId") String recordId);
 
+    /** 判断实体下是否至少存在一个历史版本，供停用后的只读入口使用。 */
+    @Select("""
+            SELECT EXISTS(
+                SELECT 1
+                FROM entity_record_version
+                WHERE entity_code = #{entityCode}
+                LIMIT 1
+            )
+            """)
+    boolean existsByEntityCode(@Param("entityCode") String entityCode);
+
     @Select("""
             SELECT COALESCE(data_hash, snapshot_hash)
             FROM entity_record_version

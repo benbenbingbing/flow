@@ -211,7 +211,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^dialogVisible$', '^activeTab$', '^showAddEvent$'
   ],
   'src/views/system/EntityVersionManagement.vue': [
-    '^keyword$', '^drawerVisible$', '^activeTab$', '^releasePage$',
+    '^keyword$', '^drawerVisible$', '^activeTab$',
     '^triggerDialogVisible$', '^scopeDialogVisible$', '^previewVisible$',
     '^previewRecordId$'
   ],
@@ -1356,11 +1356,11 @@ const KEY_GUIDANCE = Object.freeze({
   filterType: ['选择权限规则最终允许或拒绝的实体数据范围。', 'DEPARTMENT', '权限引擎据此生成全部、个人、提交人、部门或自定义字段过滤。'],
   mode: ['选择状态限制集合表示允许列表还是排除列表。', 'IN', 'IN 只保留指定状态；NOT_IN 排除指定状态。'],
   itemsText: ['按“编码:名称”逐行录入要创建的系统代码项。', 'DRAFT:草稿\nAPPROVED:已通过', '保存后创建代码表及选项，实体枚举字段可立即引用。'],
-  sourceType: ['为数据版本模拟选择本次假设变更的来源入口。', 'APPROVAL_TASK', '模拟器只按该入口匹配场景，不写入发布配置。'],
-  operationType: ['为数据版本模拟选择本次假设写入的操作类型。', 'UPDATE', '模拟器只运行匹配该操作的场景，不实际修改实体记录。'],
-  beforeText: ['提供数据版本模拟中的写入前记录 JSON。', '{"status":"DRAFT","amount":1000}', '模拟器用它计算字段差异、条件和目标解析，不实际写库。'],
-  afterText: ['提供数据版本模拟中的写入后记录 JSON。', '{"status":"APPROVED","amount":1000}', '模拟器以该数据验证步骤转换、版本标题和目标映射。'],
-  extraText: ['提供数据版本模拟所需的流程、用户或业务扩展上下文。', '{"processDefinitionKey":"purchase_approval"}', '模拟器把扩展参数并入匹配上下文，不进入正式配置。'],
+  sourceType: ['为数据版本模拟选择本次假设变更的来源入口。', 'APPROVAL_TASK', '模拟器只按该入口匹配当前触发器，不修改或保存配置。'],
+  operationType: ['为数据版本模拟选择本次假设写入的操作类型。', 'UPDATE', '模拟器只匹配支持该操作的触发器，不实际修改实体记录。'],
+  beforeText: ['提供数据版本模拟中的写入前记录 JSON。', '{"status":"DRAFT","amount":1000}', '模拟器用它判断字段是否变化及 BEFORE 条件，不实际写库。'],
+  afterText: ['提供数据版本模拟中的写入后记录 JSON。', '{"status":"APPROVED","amount":1000}', '模拟器用它判断 AFTER 条件并验证最终命中的触发器。'],
+  extraText: ['提供数据版本模拟所需的流程、用户或业务扩展上下文。', '{"processDefinitionKey":"purchase_approval"}', '模拟器把扩展参数并入匹配上下文，但不会写入当前配置。'],
   priority: ['设置多个同时匹配的日历绑定或版本场景之间的优先级。', 100, '数值较高的匹配项优先采用；同优先级再按平台稳定规则处理。'],
   estimatedHours: ['记录线下人工任务预计需要的工时。', 4, '流程文档和跟踪页面显示预计工时，当前引擎不会据此自动完成任务。'],
   maxPauseMinutes: ['限制单个任务累计允许暂停 SLA 的最长分钟数。', 480, '人工暂停累计达到上限后不能继续延长暂停时间。'],
@@ -2147,9 +2147,9 @@ const USAGE_CONTEXT_BY_AREA = Object.freeze({
     '实体记录需要保留变更快照、差异、回滚目标或按场景控制版本行为时',
     '实体不需要记录级版本审计和回滚能力时'
   ],
-  '数据版本模拟（验证输入，不发布）': [
-    '保存版本场景前，需要用假设记录验证命中条件和变更目标时',
-    '不做交互模拟，或自动化测试已覆盖当前版本规则时'
+  '数据版本模拟（验证输入，不保存）': [
+    '保存触发器与固化范围前，需要用假设记录验证触发匹配或用样例记录预览范围时',
+    '不做交互模拟和范围预览，或自动化测试已覆盖当前触发器与范围规则时'
   ],
   '表单与列表发布': [
     '草稿配置需要形成正式快照，或兼容修复需要作用于允许的活动版本时',
@@ -2438,7 +2438,7 @@ function narrative(control, group) {
   const inferred = inferredGuidance(control, control.binding, label)
   const meaning = override.meaning || guidance?.[0] || inferred[0]
   const expectedEffect = override.expectedEffect || guidance?.[2] || inferred[2]
-  const validationOnly = group.area.includes('不发布')
+  const validationOnly = group.area.includes('不发布') || group.area.includes('不保存')
   const [usageContext, skipContext] = USAGE_CONTEXT_BY_AREA[group.area] || [
     `当前功能需要单独调整“${label}”时`,
     `当前功能沿用平台默认“${label}”时`
@@ -2454,10 +2454,10 @@ function narrative(control, group) {
     label,
     meaning,
     configureWhen: override.configureWhen || (validationOnly
-      ? `当需要在发布前验证“${label}”的匹配或转换结果时填写。`
+      ? `当需要在正式保存或发布前验证“${label}”的匹配或转换结果时填写。`
       : defaultConfigureWhen),
     skipWhen: override.skipWhen || (validationOnly
-      ? `该值只用于当前模拟，不进入草稿或发布版本；不做验证时无需填写。`
+      ? `该值只用于当前模拟，不会写入正式配置；不做验证时无需填写。`
       : defaultSkipWhen),
     example: override.example ?? guidance?.[1] ?? inferred[1] ?? inferredExample(control, control.binding),
     expectedEffect

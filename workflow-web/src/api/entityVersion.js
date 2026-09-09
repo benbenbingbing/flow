@@ -1,15 +1,6 @@
 import request from '@/utils/request'
 
-const legacyFallbackStatuses = new Set([404, 405])
-
-async function withLegacyFallback(primary, fallback) {
-  try {
-    return await primary()
-  } catch (error) {
-    if (!legacyFallbackStatuses.has(Number(error?.status))) throw error
-    return fallback()
-  }
-}
+const LEGACY_SAVE_FALLBACK_STATUSES = new Set([404, 405])
 
 function pageParams(params = {}) {
   return {
@@ -24,54 +15,58 @@ export const entityVersionApi = {
     return request.get('/entity-versions/configs', { params })
   },
   getConfig(entityCode) {
-    return withLegacyFallback(
-      () => request.get(`/entity-versions/configs/${entityCode}/draft`, {
-        silentError: true
-      }),
-      () => request.get(`/entity-versions/configs/${entityCode}`)
-    )
+    return request.get(`/entity-versions/configs/${entityCode}/current`)
   },
-  getDraft(entityCode) {
-    return this.getConfig(entityCode)
-  },
-  saveConfig(entityCode, data, revision = data?.revision) {
-    return withLegacyFallback(
-      () => request({
-        url: `/entity-versions/configs/${entityCode}/draft`,
-        method: 'POST',
+  /**
+   * 使用当前 revision 保存唯一配置并立即生效。
+   * 滚动部署期间仅在新 PUT 路由不存在时兼容旧 Controller；确认 N 版已覆盖
+   * 所有环境后，应在 N+1 删除此前端 fallback，并在 active release 完成最终
+   * 投影与对账后停止兼容读取；后端仍继续兼容写入。
+   * N+2 改为 config-only 读写并保留旧 schema，完成滚动且等待所有 N+1 Pod 和
+   * 在途事务退出；N+3 才物理 contract，删除旧表、旧字段和发布权限。
+   */
+  async saveConfig(entityCode, data, revision = data?.revision) {
+    const expectedRevision = revision ?? 0
+    try {
+      return await request({
+        url: `/entity-versions/configs/${entityCode}/current`,
+        method: 'PUT',
         data,
-        headers: revision == null ? {} : { 'If-Match': String(revision) },
+        headers: { 'If-Match': String(expectedRevision) },
         silentError: true
-      }),
-      () => request.post(`/entity-versions/configs/${entityCode}/save`, data)
-    )
+      })
+    } catch (error) {
+      if (!LEGACY_SAVE_FALLBACK_STATUSES.has(Number(error?.status))) {
+        throw error
+      }
+    }
+
+    const saved = await request({
+      url: `/entity-versions/configs/${entityCode}/draft`,
+      method: 'POST',
+      data,
+      headers: { 'If-Match': String(expectedRevision) },
+      silentError: true
+    })
+    if (saved?.revision == null) {
+      throw new Error('旧版配置保存未返回 revision，无法安全切换运行配置')
+    }
+    return request({
+      url: `/entity-versions/configs/${entityCode}/releases`,
+      method: 'POST',
+      headers: { 'If-Match': String(saved.revision) },
+      silentError: true
+    })
   },
-  saveDraft(entityCode, data, revision = data?.revision) {
-    return this.saveConfig(entityCode, data, revision)
-  },
-  validateDraft(entityCode, data) {
+  validateConfig(entityCode, data) {
     return request.post(`/entity-versions/configs/${entityCode}/validate`, data)
   },
-  scopePreview(entityCode, draft, recordId = '') {
+  scopePreview(entityCode, configuration, recordId = '') {
     return request.post(`/entity-versions/configs/${entityCode}/scope-preview`, {
-      draft,
+      ...(configuration || {}),
       ...(String(recordId || '').trim()
         ? { recordId: String(recordId).trim() }
         : {})
-    })
-  },
-  publishConfig(entityCode, data = {}) {
-    return withLegacyFallback(
-      () => request.post(`/entity-versions/configs/${entityCode}/releases`, data, {
-        headers: data?.revision == null ? {} : { 'If-Match': String(data.revision) },
-        silentError: true
-      }),
-      () => request.post(`/entity-versions/configs/${entityCode}/publish`)
-    )
-  },
-  releases(entityCode, params = {}) {
-    return request.get(`/entity-versions/configs/${entityCode}/releases`, {
-      params: pageParams(params)
     })
   },
   simulate(entityCode, data) {

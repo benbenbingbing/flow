@@ -69,7 +69,7 @@ class CompatibilityTableRemovalMigrationTest {
     @Test
     void freshDatabaseDropsAllFourTablesAndCanValidateAndMigrateAgain() throws Exception {
         if (SHADOW) { migrate(); assertRemoved(); return; }
-        Flyway current = flyway(null, null);
+        Flyway current = flyway("080", null);
         current.migrate();
         assertRemoved();
         current.validate();
@@ -149,7 +149,7 @@ class CompatibilityTableRemovalMigrationTest {
         String oldVersions = scalar("SELECT COALESCE(SUM(CRC32(config_document)),0) FROM entity_version_config_release");
         String oldNative = scalar("SELECT COALESCE(SUM(CRC32(config_document)),0) FROM entity_mutation_policy_release");
         String activeNative = scalar("SELECT COUNT(*) FROM entity_mutation_policy_config WHERE active_release_id IS NOT NULL");
-        if (SHADOW) migrate(); else flyway(null, fixture).migrate();
+        if (SHADOW) migrate(); else flyway("080", fixture).migrate();
         assertRemoved();
         assertEquals(oldVersions, scalar("SELECT COALESCE(SUM(CRC32(config_document)),0) FROM entity_version_config_release"));
         // 已有策略发布原文均保留；新增的旧发布转换允许增加独立发布数量。
@@ -188,7 +188,8 @@ class CompatibilityTableRemovalMigrationTest {
         return sql;
     }
     private void migrate() throws Exception {
-        if (!SHADOW) { flyway(null, null).migrate(); return; }
+        // 本测试只验证 V080；后续迁移可能按设计删除这里需要继续断言的旧表。
+        if (!SHADOW) { flyway("080", null).migrate(); return; }
         try (Connection connection = testConnection()) {
             Context context = (Context) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{Context.class},
                     (p,m,a) -> {

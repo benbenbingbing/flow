@@ -426,6 +426,7 @@ assert.ok(
   entityDataList.includes(':showVersionAction="showVersionAction"')
     && entityDataList.includes('canShowEntityVersionAction({')
     && entityDataList.includes('runtimeEnabled: versionCapabilities.value.runtimeEnabled')
+    && entityDataList.includes('historyReadable: versionCapabilities.value.historyReadable')
     && entityDataList.includes("userStore.permissions.includes('entity:version:record:view')")
     && entityDataList.includes('hasVersionViewPermission(entityCode.value)')
     && entityDataList.includes('if (!showVersionAction.value) return'),

@@ -22,7 +22,18 @@
     </template>
 
     <div ref="drawerBodyRef" v-loading="loading" class="version-body">
-      <el-empty v-if="!loading && versions.length === 0" description="当前数据还没有正式版本" />
+      <el-alert
+        v-if="!runtimeEnabled"
+        class="runtime-disabled-alert"
+        type="info"
+        :closable="false"
+        show-icon
+        title="数据版本功能已停用，仅可查看和比较停用前生成的历史版本。"
+      />
+      <el-empty
+        v-if="!loading && versions.length === 0"
+        :description="runtimeEnabled ? '当前数据还没有正式版本' : '当前数据没有可查看的历史版本'"
+      />
 
       <div v-else class="version-layout">
         <aside class="timeline-pane" :class="{ 'is-collapsed': timelineCollapsed }">
@@ -223,8 +234,10 @@ import VersionSnapshotForm from './version/VersionSnapshotForm.vue'
 
 const props = withDefaults(defineProps<{
   entityCode: string
+  runtimeEnabled?: boolean
   manualCaptureEnabled?: boolean
 }>(), {
+  runtimeEnabled: false,
   manualCaptureEnabled: false
 })
 const userStore = useUserStore()
@@ -256,6 +269,7 @@ const activeChangeIndex = ref(0)
 const changeElements = ref<HTMLElement[]>([])
 const viewportWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 let triggerElement: Element | null = null
+let drawerContextGeneration = 0
 
 const drawerSize = computed(() => viewportWidth.value < 768 ? '100%' : '88%')
 const snapshotDescriptionColumns = computed(() => viewportWidth.value < 768 ? 1 : 4)
@@ -274,6 +288,7 @@ const snapshotNodes = computed(() => selectedDetail.value?.nodes || [])
 const snapshotTitle = computed(() => selectedDetail.value ? `V${selectedDetail.value.versionNo} ${selectedDetail.value.scenarioName || selectedDetail.value.triggerName || '版本快照'}` : '版本快照')
 const canCapture = computed(() => canCaptureEntityRecordVersion({
   hasCapturePermission: hasPermission('entity:version:record:capture'),
+  runtimeEnabled: props.runtimeEnabled,
   manualCaptureEnabled: props.manualCaptureEnabled
 }))
 const canCompare = computed(() => {
@@ -283,6 +298,12 @@ const canCompare = computed(() => {
 })
 
 watch(comparison, refreshChangeElements, { deep: true })
+watch(() => props.entityCode, () => {
+  // 实体切换后旧记录 ID 不得与新实体编码组合请求，迟到响应也必须失效。
+  invalidateDrawerContext()
+  visible.value = false
+  record.value = null
+}, { flush: 'sync' })
 watch(changedOnly, async () => {
   if (compareLoading.value || !comparison.value) {
     refreshChangeElements()
@@ -304,21 +325,22 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateViewport))
 
 async function open(rowValue: any) {
   triggerElement = document.activeElement
+  invalidateDrawerContext()
   record.value = rowValue
   visible.value = true
-  versionPage.value = 1
-  comparison.value = null
   await loadVersions(true)
 }
 
 async function loadVersions(resetComparison = true) {
-  if (!props.entityCode || !record.value?.id) return
+  const context = currentDrawerContext()
+  if (!context.entityCode || !context.recordId) return
   loading.value = true
   try {
-    const page = normalizePage(await entityVersionApi.recordVersions(props.entityCode, record.value.id, {
+    const page = normalizePage(await entityVersionApi.recordVersions(context.entityCode, context.recordId, {
       pageNum: versionPage.value,
       pageSize: versionPageSize
     }), versionPageSize)
+    if (!isCurrentDrawerContext(context)) return
     versions.value = [...page.records].sort((a, b) => Number(b.versionNo) - Number(a.versionNo))
     versionTotal.value = page.total
     if (resetComparison) {
@@ -330,9 +352,11 @@ async function loadVersions(resetComparison = true) {
       if (previous && newest) await loadComparison()
     }
   } catch (error: any) {
-    ElMessage.error(error.message || '加载数据版本失败')
+    if (isCurrentDrawerContext(context)) {
+      ElMessage.error(error.message || '加载数据版本失败')
+    }
   } finally {
-    loading.value = false
+    if (isCurrentDrawerContext(context)) loading.value = false
   }
 }
 
@@ -347,15 +371,18 @@ async function loadComparison() {
     ElMessage.warning('请选择两个不同的数据版本')
     return
   }
-  if (!record.value?.id) return
+  const context = currentDrawerContext()
+  if (!context.entityCode || !context.recordId) return
   fromVersion.value = normalizedFrom
   toVersion.value = normalizedTo
   compareLoading.value = true
   try {
-    comparison.value = normalizeComparison(await entityVersionApi.compareRecordVersions(
-      props.entityCode, record.value.id, fromVersion.value, toVersion.value,
+    const nextComparison = normalizeComparison(await entityVersionApi.compareRecordVersions(
+      context.entityCode, context.recordId, fromVersion.value, toVersion.value,
       { rowPageNum: 1, rowPageSize: 20 }
     ))
+    if (!isCurrentDrawerContext(context)) return
+    comparison.value = nextComparison
     changedOnly.value = comparison.value?.diffPolicy?.changedOnlyDefault !== false
     const relationFirstPages = comparison.value.nodes
       .filter((node: any) => node.nodeKind !== 'ROOT' && Number(node.counts?.total || 0) > 0)
@@ -366,63 +393,86 @@ async function loadComparison() {
     summaryRef.value?.focus()
     refreshChangeElements()
   } catch (error: any) {
-    ElMessage.error(error.message || '版本比较失败')
+    if (isCurrentDrawerContext(context)) {
+      ElMessage.error(error.message || '版本比较失败')
+    }
   } finally {
-    compareLoading.value = false
+    if (isCurrentDrawerContext(context)) compareLoading.value = false
   }
 }
 
 async function loadRelationPage(node: any, pageNum: number, silent = false) {
+  const context = currentDrawerContext()
+  if (!context.entityCode || !context.recordId) return
   try {
     const page = normalizePage(await entityVersionApi.comparisonRows(
-      props.entityCode, record.value.id, fromVersion.value, toVersion.value,
+      context.entityCode, context.recordId, fromVersion.value, toVersion.value,
       node.nodeCode, {
         pageNum,
         pageSize: node.rowPage?.pageSize || 20,
         changedOnly: changedOnly.value
       }
     ), 20)
+    if (!isCurrentDrawerContext(context)) return
     const normalized = normalizeComparison({ nodes: [{ ...node, rowChanges: page, rowChangeCounts: page.counts || node.counts }] }).nodes[0]
     const index = comparison.value.nodes.findIndex((item: any) => item.nodeCode === node.nodeCode)
     if (index >= 0) comparison.value.nodes.splice(index, 1, normalized)
   } catch (error: any) {
-    if (!silent) ElMessage.error(error.message || '加载关联行差异失败')
+    if (!silent && isCurrentDrawerContext(context)) {
+      ElMessage.error(error.message || '加载关联行差异失败')
+    }
   }
 }
 
 async function openSnapshot(item: any) {
+  const context = currentDrawerContext()
+  if (!context.entityCode || !context.recordId) return
   snapshotVisible.value = true
   snapshotLoading.value = true
   selectedDetail.value = null
   try {
-    selectedDetail.value = normalizeSnapshot(await entityVersionApi.recordVersion(props.entityCode, record.value.id, item.versionNo))
+    const detail = normalizeSnapshot(await entityVersionApi.recordVersion(
+      context.entityCode,
+      context.recordId,
+      item.versionNo
+    ))
+    if (!isCurrentDrawerContext(context)) return
+    selectedDetail.value = detail
     await Promise.allSettled(selectedDetail.value.nodes
       .filter((node: any) => node.nodeKind !== 'ROOT' && Number(node.rowPage?.total || 0) > 0)
       .map((node: any) => loadSnapshotRelationPage(node, 1, true)))
     snapshotOpenNodes.value = selectedDetail.value.nodes.map((node: any) => node.nodeCode)
   } catch (error: any) {
-    ElMessage.error(error.message || '加载版本快照失败')
+    if (isCurrentDrawerContext(context)) {
+      ElMessage.error(error.message || '加载版本快照失败')
+    }
   } finally {
-    snapshotLoading.value = false
+    if (isCurrentDrawerContext(context)) snapshotLoading.value = false
   }
 }
 
 async function loadSnapshotRelationPage(node: any, pageNum: number, silent = false) {
+  const context = currentDrawerContext()
+  if (!context.entityCode || !context.recordId || !selectedDetail.value) return
   try {
     const page = normalizePage(await entityVersionApi.snapshotRows(
-      props.entityCode, record.value.id, selectedDetail.value.versionNo,
+      context.entityCode, context.recordId, selectedDetail.value.versionNo,
       node.nodeCode, { pageNum, pageSize: node.rowPage?.pageSize || 20 }
     ), 20)
+    if (!isCurrentDrawerContext(context) || !selectedDetail.value) return
     const normalized = normalizeSnapshot({ nodes: [{ ...node, rows: page }] }).nodes[0]
     const index = selectedDetail.value.nodes.findIndex((item: any) => item.nodeCode === node.nodeCode)
     if (index >= 0) selectedDetail.value.nodes.splice(index, 1, normalized)
   } catch (error: any) {
-    if (!silent) ElMessage.error(error.message || '加载关联快照失败')
+    if (!silent && isCurrentDrawerContext(context)) {
+      ElMessage.error(error.message || '加载关联快照失败')
+    }
   }
 }
 
 async function captureNow() {
-  if (!canCapture.value) return
+  const context = currentDrawerContext()
+  if (!canCapture.value || !context.entityCode || !context.recordId) return
   try {
     const { value } = await ElMessageBox.prompt('请填写本次手工固化的原因，版本数据将从服务端当前记录读取。', '立即固化当前数据', {
       inputPlaceholder: '例如：合同签署前检查点',
@@ -430,20 +480,66 @@ async function captureNow() {
       confirmButtonText: '生成版本',
       cancelButtonText: '取消'
     })
+    // 用户填写原因期间实体、记录或能力都可能发生变化，提交前必须再次校验。
+    if (!canCapture.value || !isCurrentDrawerContext(context)) {
+      if (isCurrentDrawerContext(context)) ElMessage.warning('数据版本能力已变化，请刷新后重试')
+      return
+    }
     captureLoading.value = true
     const idempotencyKey = globalThis.crypto?.randomUUID?.() || `manual-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    await entityVersionApi.captureRecordVersion(props.entityCode, record.value.id, {
+    await entityVersionApi.captureRecordVersion(context.entityCode, context.recordId, {
       triggerType: 'MANUAL', reason: String(value).trim()
     }, idempotencyKey)
+    if (!isCurrentDrawerContext(context)) return
     ElMessage.success('当前数据已固化为新版本')
     versionPage.value = 1
     await loadVersions(true)
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return
-    if (error?.message && !String(error.message).includes('cancel')) ElMessage.error(error.message || '手工固化失败')
+    if (isCurrentDrawerContext(context) && error?.message && !String(error.message).includes('cancel')) {
+      ElMessage.error(error.message || '手工固化失败')
+    }
   } finally {
-    captureLoading.value = false
+    if (isCurrentDrawerContext(context)) captureLoading.value = false
   }
+}
+
+/**
+ * 记录一次抽屉请求所属的实体、记录和代次，用于拦截切换上下文后的迟到响应。
+ */
+function currentDrawerContext() {
+  return {
+    generation: drawerContextGeneration,
+    entityCode: String(props.entityCode || '').trim(),
+    recordId: String(record.value?.id ?? '').trim()
+  }
+}
+
+function isCurrentDrawerContext(context: ReturnType<typeof currentDrawerContext>) {
+  const current = currentDrawerContext()
+  return context.generation === current.generation
+    && context.entityCode === current.entityCode
+    && context.recordId === current.recordId
+}
+
+/**
+ * 实体或记录切换时立即清空旧状态，并递增代次使所有在途请求失效。
+ */
+function invalidateDrawerContext() {
+  drawerContextGeneration += 1
+  loading.value = false
+  compareLoading.value = false
+  captureLoading.value = false
+  snapshotLoading.value = false
+  snapshotVisible.value = false
+  versions.value = []
+  versionPage.value = 1
+  versionTotal.value = 0
+  fromVersion.value = null
+  toVersion.value = null
+  comparison.value = null
+  selectedDetail.value = null
+  snapshotOpenNodes.value = []
 }
 
 function swapVersions() {
@@ -495,6 +591,7 @@ defineExpose({ open })
 .drawer-heading span, .pane-heading span { color: var(--el-text-color-secondary); font-size: 13px; }
 .drawer-heading__actions, .pane-heading > div { gap: 8px; }
 .version-body { min-height: 360px; }
+.runtime-disabled-alert { margin-bottom: 14px; }
 .version-layout { display: grid; grid-template-columns: minmax(280px, 31%) minmax(0, 1fr); min-height: calc(100vh - 150px); }
 .timeline-pane { padding: 0 20px 20px 4px; border-right: 1px solid var(--el-border-color-light); }
 .timeline-pane.is-collapsed { display: none; }

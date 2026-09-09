@@ -3,7 +3,7 @@
     <header class="page-heading">
       <div>
         <h2>业务数据版本</h2>
-        <p>把 biz_* 实体记录及其选定关系数据固化为可比较的历史版本；本页只配置固化策略。</p>
+        <p>每个业务实体维护一套固化策略；保存后立即影响后续数据变更，已有历史版本不会被改写。</p>
       </div>
       <el-button :loading="loading" title="刷新数据版本配置" aria-label="刷新数据版本配置" @click="loadConfigs">
         <el-icon><Refresh /></el-icon>
@@ -28,28 +28,18 @@
             <div class="secondary-text">{{ row.entityCode }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="运行状态" width="110" align="center">
+        <el-table-column label="启用状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="runtimeEnabled(row) ? 'success' : 'info'">
-              {{ runtimeEnabled(row) ? '运行中' : '未启用' }}
+            <el-tag :type="configStatus(row).type">
+              {{ configStatus(row).label }}
             </el-tag>
           </template>
-        </el-table-column>
-        <el-table-column label="草稿状态" width="110" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'PUBLISHED' ? 'success' : 'warning'" effect="plain">
-              {{ statusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="发布版本" width="100" align="center">
-          <template #default="{ row }">{{ row.activeReleaseVersion ? `v${row.activeReleaseVersion}` : '-' }}</template>
         </el-table-column>
         <el-table-column label="生成时机" width="100" align="center">
-          <template #default="{ row }">{{ row.triggerCount ?? row.scenarioCount ?? 0 }}</template>
+          <template #default="{ row }">{{ row.triggerCount ?? 0 }}</template>
         </el-table-column>
         <el-table-column label="关联范围" width="100" align="center">
-          <template #default="{ row }">{{ row.scopeRelationCount ?? row.relationCount ?? 0 }}</template>
+          <template #default="{ row }">{{ row.scopeRelationCount ?? 0 }}</template>
         </el-table-column>
         <el-table-column prop="updateTime" label="更新时间" width="180">
           <template #default="{ row }">{{ formatTime(row.updateTime) }}</template>
@@ -64,7 +54,7 @@
 
     <el-drawer
       v-model="drawerVisible"
-      size="88%"
+      :size="drawerSize"
       class="config-drawer"
       :before-close="handleDrawerClose"
       :close-on-click-modal="false"
@@ -76,13 +66,16 @@
               <h3>{{ draft.entityName }}</h3>
               <el-tag v-if="isDirty" type="warning" effect="plain">有未保存修改</el-tag>
             </div>
-            <span>{{ draft.entityCode }} · 草稿 r{{ draft.revision || 0 }}</span>
+            <span>{{ draft.entityCode }} · 当前配置</span>
           </div>
           <div class="drawer-actions">
-            <el-tag :type="draft.activeReleaseVersion ? 'success' : 'info'">
-              {{ draft.activeReleaseVersion ? `当前固化策略 v${draft.activeReleaseVersion}` : '固化策略尚未发布' }}
-            </el-tag>
             <el-form-item label="启用数据版本" class="header-switch">
+              <template #label>
+                <ConfigHelpLabel
+                  label="启用数据版本"
+                  help-key="entityVersion.enabled"
+                />
+              </template>
               <el-switch
                 v-model="draft.enabled"
                 :disabled="!canUpdate"
@@ -92,19 +85,26 @@
               />
             </el-form-item>
             <el-button :disabled="!canUpdate" :loading="previewLoading" @click="previewScope">范围预览</el-button>
-            <el-button :disabled="!canUpdate || !isDirty" :loading="saving" @click="saveDraft">保存草稿</el-button>
-            <el-button type="primary" :disabled="!canPublish" :loading="publishing" @click="publishDraft">发布</el-button>
+            <el-button type="primary" :disabled="!canUpdate || !isDirty" :loading="saving" @click="saveConfig">保存并生效</el-button>
           </div>
         </div>
       </template>
 
       <el-alert
-        v-if="legacyDraft"
+        class="save-effect-alert"
+        type="info"
+        :closable="false"
+        show-icon
+        title="保存后配置立即生效，只影响之后生成的数据版本；停用后不再生成新版本，停用前的历史版本仍可查看。"
+      />
+
+      <el-alert
+        v-if="legacyConfig"
         class="legacy-alert"
         type="warning"
         :closable="false"
         show-icon
-        title="这是旧版配置生成的 V2 草稿。旧步骤和变更目标会被原样保留；发布前请检查生成时机和固化范围。"
+        title="这是由旧版策略迁移的当前配置。保存前请检查转换后的生成时机和固化范围。"
       />
 
       <el-tabs v-model="activeTab" class="config-tabs">
@@ -187,6 +187,12 @@
             </div>
             <div class="scope-card__body">
               <el-form-item label="固化字段">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="固化字段"
+                    help-key="entityVersion.scopeFields"
+                  />
+                </template>
                 <el-radio-group v-model="draft.snapshotScope.root.fieldMode" :disabled="!canUpdate">
                   <el-radio-button value="ALL_PUBLISHED">全部已发布字段</el-radio-button>
                   <el-radio-button value="SELECTED">指定字段</el-radio-button>
@@ -233,9 +239,16 @@
           </el-table>
 
           <div class="limit-panel">
-            <strong>版本保护上限</strong>
+            <div class="limit-panel__heading">
+              <strong>版本保护上限</strong>
+              <ConfigHelpLabel
+                label="版本保护上限"
+                help-key="entityVersion.scopeLimits"
+                :show-label="false"
+              />
+            </div>
             <el-form inline label-width="110px">
-              <el-form-item label="单关系默认">
+              <el-form-item label="单关系最多">
                 <el-input-number v-model="draft.snapshotScope.limits.maxRowsPerRelation" :disabled="!canUpdate" :min="1" :max="500" />
                 <span>行</span>
               </el-form-item>
@@ -261,13 +274,31 @@
           </div>
           <el-form label-width="160px" class="diff-form">
             <el-form-item label="打开时仅看变化">
+              <template #label>
+                <ConfigHelpLabel
+                  label="打开时仅看变化"
+                  help-key="entityVersion.diffChangedOnly"
+                />
+              </template>
               <el-switch v-model="draft.diffPolicy.changedOnlyDefault" :disabled="!canUpdate" />
             </el-form-item>
             <el-form-item label="追踪关联行顺序">
+              <template #label>
+                <ConfigHelpLabel
+                  label="追踪关联行顺序"
+                  help-key="entityVersion.diffTrackOrder"
+                />
+              </template>
               <el-switch v-model="draft.diffPolicy.trackOrder" :disabled="!canUpdate" />
               <span class="form-help">开启后，行位置变化会单独显示“移动”。</span>
             </el-form-item>
             <el-form-item label="忽略比较的字段">
+              <template #label>
+                <ConfigHelpLabel
+                  label="忽略比较的字段"
+                  help-key="entityVersion.diffIgnoredFields"
+                />
+              </template>
               <el-select
                 v-model="draft.diffPolicy.ignoredFieldCodes"
                 :disabled="!canUpdate"
@@ -283,43 +314,37 @@
           </el-form>
         </el-tab-pane>
 
-        <el-tab-pane label="固化策略发布历史" name="releases">
-          <el-alert
-            title="这里记录的是固化规则的发布历史，不是 biz_* 业务数据版本；业务数据版本请在具体实体记录的“数据版本”中查看。"
-            type="info"
-            :closable="false"
-            show-icon
-            class="strategy-release-hint"
-          />
-          <el-table v-loading="releaseLoading" :data="releases" border>
-            <el-table-column label="版本" width="90"><template #default="{ row }">v{{ row.version }}</template></el-table-column>
-            <el-table-column prop="publishedByName" label="发布人" min-width="140" />
-            <el-table-column label="范围" min-width="220">
-              <template #default="{ row }">{{ row.scopeSummary || `${row.relationCount ?? 0} 个关联范围` }}</template>
-            </el-table-column>
-            <el-table-column label="发布时间" width="190"><template #default="{ row }">{{ formatTime(row.publishTime) }}</template></el-table-column>
-          </el-table>
-          <el-pagination
-            v-if="releaseTotal > releasePageSize"
-            class="release-pagination"
-            v-model:current-page="releasePage"
-            :page-size="releasePageSize"
-            :total="releaseTotal"
-            layout="total, prev, pager, next"
-            @current-change="loadReleases"
-          />
-        </el-tab-pane>
       </el-tabs>
     </el-drawer>
 
     <el-dialog v-model="triggerDialogVisible" :title="triggerIndexValue < 0 ? '新增生成时机' : '编辑生成时机'" width="760px" :close-on-click-modal="false">
       <el-form label-width="120px">
         <el-form-item label="名称" required><el-input v-model="triggerEditor.triggerName" /></el-form-item>
-        <el-form-item label="稳定编码" required><el-input v-model="triggerEditor.triggerCode" :disabled="triggerIndexValue >= 0" /></el-form-item>
+        <el-form-item label="稳定编码" required>
+          <template #label>
+            <ConfigHelpLabel
+              label="稳定编码"
+              help-key="entityVersion.triggerCode"
+            />
+          </template>
+          <el-input v-model="triggerEditor.triggerCode" :disabled="triggerIndexValue >= 0" />
+        </el-form-item>
         <el-form-item label="触发类型" required>
+          <template #label>
+            <ConfigHelpLabel
+              label="触发类型"
+              help-key="entityVersion.triggerType"
+            />
+          </template>
           <el-segmented v-model="triggerEditor.triggerType" :options="triggerTypeOptions" @change="onTriggerTypeChange" />
         </el-form-item>
         <el-form-item v-if="triggerEditor.triggerType === 'RELATED_MUTATION'" label="关联范围" required>
+          <template #label>
+            <ConfigHelpLabel
+              label="关联范围"
+              help-key="entityVersion.triggerRelation"
+            />
+          </template>
           <el-select v-model="triggerEditor.relationCode" filterable>
             <el-option v-for="item in draft.snapshotScope.relations" :key="item.relationCode" :label="item.relationName" :value="item.relationCode" />
           </el-select>
@@ -327,25 +352,65 @@
         </el-form-item>
         <template v-if="triggerEditor.triggerType !== 'MANUAL'">
           <el-form-item v-if="triggerEditor.triggerType === 'ROOT_MUTATION'" label="变更入口">
+            <template #label>
+              <ConfigHelpLabel
+                label="变更入口"
+                help-key="entityVersion.sourceTypes"
+              />
+            </template>
             <el-select v-model="triggerEditor.sourceTypes" multiple filterable placeholder="留空表示全部入口">
               <el-option v-for="item in sourceTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
           <el-form-item label="操作类型">
+            <template #label>
+              <ConfigHelpLabel
+                label="操作类型"
+                help-key="entityVersion.operationTypes"
+              />
+            </template>
             <el-select v-model="triggerEditor.operationTypes" multiple placeholder="留空表示全部操作">
               <el-option v-for="item in operationTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
           <el-form-item label="业务意图">
+            <template #label>
+              <ConfigHelpLabel
+                label="业务意图"
+                help-key="entityVersion.businessIntents"
+              />
+            </template>
             <el-select v-model="triggerEditor.businessIntents" multiple filterable allow-create default-first-option placeholder="留空表示全部意图" />
           </el-form-item>
           <el-form-item label="附加条件">
+            <template #label>
+              <ConfigHelpLabel
+                label="附加条件"
+                help-key="entityVersion.triggerCondition"
+              />
+            </template>
             <el-input v-model="triggerEditor.conditionText" type="textarea" :rows="4" placeholder='例如：{"field":"status","operator":"EQ","value":"APPROVED"}' />
             <div class="condition-help">支持 field/operator/value，以及 all、any、not 组合；留空或 {} 表示不限制。</div>
           </el-form-item>
         </template>
-        <el-form-item label="标题模板"><el-input v-model="triggerEditor.versionTitleTemplate" /></el-form-item>
-        <el-form-item label="优先级"><el-input-number v-model="triggerEditor.priority" :min="0" :max="9999" /></el-form-item>
+        <el-form-item label="标题模板">
+          <template #label>
+            <ConfigHelpLabel
+              label="标题模板"
+              help-key="entityVersion.titleTemplate"
+            />
+          </template>
+          <el-input v-model="triggerEditor.versionTitleTemplate" />
+        </el-form-item>
+        <el-form-item label="优先级">
+          <template #label>
+            <ConfigHelpLabel
+              label="优先级"
+              help-key="entityVersion.triggerPriority"
+            />
+          </template>
+          <el-input-number v-model="triggerEditor.priority" :min="0" :max="9999" />
+        </el-form-item>
         <el-form-item label="启用"><el-switch v-model="triggerEditor.enabled" /></el-form-item>
       </el-form>
       <template #footer>
@@ -357,6 +422,12 @@
     <el-dialog v-model="scopeDialogVisible" :title="scopeIndex < 0 ? '添加关联范围' : '编辑关联范围'" width="860px" :close-on-click-modal="false">
       <el-form label-width="120px">
         <el-form-item label="实体关系" required>
+          <template #label>
+            <ConfigHelpLabel
+              label="实体关系"
+              help-key="entityVersion.scopeRelation"
+            />
+          </template>
           <el-select v-model="scopeEditor.relationCode" :disabled="scopeIndex >= 0" filterable @change="applyRelationOption">
             <el-option
               v-for="item in scopeRelationChoices"
@@ -367,6 +438,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="固化字段">
+          <template #label>
+            <ConfigHelpLabel
+              label="固化字段"
+              help-key="entityVersion.scopeFields"
+            />
+          </template>
           <el-radio-group v-model="scopeEditor.fieldMode">
             <el-radio-button value="ALL_PUBLISHED">全部已发布字段</el-radio-button>
             <el-radio-button value="SELECTED">指定字段</el-radio-button>
@@ -378,6 +455,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="固定过滤">
+          <template #label>
+            <ConfigHelpLabel
+              label="固定过滤"
+              help-key="entityVersion.scopeFilter"
+            />
+          </template>
           <el-radio-group v-model="scopeEditor.filter.logic">
             <el-radio value="ALL">全部满足</el-radio>
             <el-radio value="ANY">任一满足</el-radio>
@@ -410,7 +493,15 @@
             <el-button text type="primary" @click="addFilterCondition"><el-icon><Plus /></el-icon>添加条件</el-button>
           </div>
         </el-form-item>
-        <el-form-item label="最多固化"><el-input-number v-model="scopeEditor.maxRows" :min="1" :max="500" /><span>行</span></el-form-item>
+        <el-form-item label="最多固化">
+          <template #label>
+            <ConfigHelpLabel
+              label="最多固化"
+              help-key="entityVersion.scopeMaxRows"
+            />
+          </template>
+          <el-input-number v-model="scopeEditor.maxRows" :min="1" :max="500" /><span>行</span>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="scopeDialogVisible = false">取消</el-button>
@@ -466,9 +557,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import { entityVersionApi } from '@/api/entityVersion'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useUserStore } from '@/stores/user'
@@ -506,24 +598,20 @@ const loading = ref(false)
 const drawerVisible = ref(false)
 const activeTab = ref('triggers')
 const saving = ref(false)
-const publishing = ref(false)
 const previewLoading = ref(false)
 const previewVisible = ref(false)
 const previewResult = ref(null)
 const previewRecordId = ref('')
 const previewedRecordId = ref('')
-const releases = ref([])
-const releaseLoading = ref(false)
-const releasePage = ref(1)
-const releasePageSize = 15
-const releaseTotal = ref(0)
+const viewportWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 const baseline = ref('')
-const legacyDraft = ref(false)
+const baselineEnabled = ref(false)
+const legacyConfig = ref(false)
 const draft = reactive(createVersionDraft())
 
 const canView = computed(() => hasPermission('entity:version:config:list'))
 const canUpdate = computed(() => hasPermission('entity:version:config:update'))
-const canPublish = computed(() => hasPermission('entity:version:config:publish'))
+const drawerSize = computed(() => viewportWidth.value <= 768 ? '100%' : '66.6667%')
 const serializedDraft = computed(() => serializeVersionDraft(draft))
 const isDirty = computed(() => drawerVisible.value && stableJson(serializedDraft.value) !== baseline.value)
 const sortedTriggers = computed(() => [...draft.triggers].sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0)))
@@ -557,10 +645,12 @@ const scopeFieldOptions = computed(() =>
   draft.relationOptions.find(item => item.relationCode === scopeEditor.relationCode)?.fields || [])
 
 useUnsavedChangesGuard(isDirty, {
-  message: '数据版本草稿有未保存修改，离开后这些修改将丢失。'
+  message: '数据版本配置有未保存修改，离开后这些修改将丢失。'
 })
 
 onMounted(loadConfigs)
+onMounted(() => window.addEventListener('resize', updateViewport))
+onBeforeUnmount(() => window.removeEventListener('resize', updateViewport))
 
 async function loadConfigs() {
   loading.value = true
@@ -577,8 +667,8 @@ async function loadConfigs() {
 async function openConfig(row) {
   if (!canView.value) return
   try {
-    const data = await entityVersionApi.getDraft(row.entityCode)
-    legacyDraft.value = Number(data?.schemaVersion || 1) < 2 || (!data?.triggers && Array.isArray(data?.scenarios))
+    const data = await entityVersionApi.getConfig(row.entityCode)
+    legacyConfig.value = Number(data?.schemaVersion || 1) < 2 || (!data?.triggers && Array.isArray(data?.scenarios))
     replaceDraft(createVersionDraft(data))
     activeTab.value = 'triggers'
     drawerVisible.value = true
@@ -586,89 +676,92 @@ async function openConfig(row) {
     previewRecordId.value = ''
     previewedRecordId.value = ''
     previewResult.value = null
-    releasePage.value = 1
-    await loadReleases()
   } catch (error) {
-    ElMessage.error(error?.message || '加载数据版本草稿失败')
+    ElMessage.error(error?.message || '加载数据版本配置失败')
   }
 }
 
-async function saveDraft() {
+/** 校验候选配置并通过 revision 乐观锁原子保存，成功后立即成为运行配置。 */
+async function saveConfig() {
   if (!canUpdate.value) return
-  const error = localValidationError()
-  if (error) return ElMessage.warning(error)
   saving.value = true
-  const payload = serializedDraft.value
   try {
-    const saved = await entityVersionApi.saveDraft(draft.entityCode, payload, draft.revision)
+    if (!await validateForSave()) return
+    if (!await confirmDisable()) return
+    const payload = serializedDraft.value
+    const saved = await entityVersionApi.saveConfig(
+      draft.entityCode,
+      payload,
+      draft.revision
+    )
     const merged = saved?.snapshotScope || saved?.triggers
       ? saved
       : { ...payload, ...saved, triggers: payload.triggers, snapshotScope: payload.snapshotScope, diffPolicy: payload.diffPolicy }
     replaceDraft(createVersionDraft(merged))
-    legacyDraft.value = false
+    legacyConfig.value = false
     markBaseline()
-    ElMessage.success('数据版本草稿已保存')
+    ElMessage.success(draft.enabled ? '数据版本配置已保存并启用' : '数据版本配置已保存并停用')
     await loadConfigs()
   } catch (error) {
-    if (Number(error?.status) === 409) {
-      ElMessage.error('草稿已被其他人更新。请重新打开配置后再修改。')
+    if ([409, 412].includes(Number(error?.status))) {
+      ElMessage.error('配置已被其他人更新，当前修改尚未保存。请重新打开最新配置后再修改。')
     } else {
-      ElMessage.error(error?.message || '保存数据版本草稿失败')
+      ElMessage.error(error?.message || '保存数据版本配置失败')
     }
   } finally {
     saving.value = false
   }
 }
 
-async function publishDraft() {
-  if (!canPublish.value) return
-  if (isDirty.value) {
-    await saveDraft()
-    if (isDirty.value) return
-  }
-  const valid = await validateForPublish()
-  if (!valid) return
-  await ElMessageBox.confirm(
-    `将草稿 r${draft.revision} 发布为新的不可变运行配置。运行时只读取发布版本。`,
-    '发布数据版本策略',
-    { type: 'warning', confirmButtonText: '确认发布', cancelButtonText: '取消' }
-  )
-  publishing.value = true
-  try {
-    await entityVersionApi.publishConfig(draft.entityCode, { revision: draft.revision })
-    const latest = await entityVersionApi.getDraft(draft.entityCode)
-    replaceDraft(createVersionDraft(latest))
-    markBaseline()
-    legacyDraft.value = false
-    ElMessage.success('数据版本策略已发布')
-    await Promise.all([loadConfigs(), loadReleases()])
-  } catch (error) {
-    ElMessage.error(error?.message || '发布数据版本策略失败')
-  } finally {
-    publishing.value = false
-  }
-}
-
-async function validateForPublish() {
+async function validateForSave() {
   const error = localValidationError()
   if (error) {
     ElMessage.warning(error)
     return false
   }
   try {
-    const result = await entityVersionApi.validateDraft(draft.entityCode, serializedDraft.value)
+    const result = await entityVersionApi.validateConfig(draft.entityCode, serializedDraft.value)
     if (result?.valid === false || result?.errors?.length) {
-      await ElMessageBox.alert((result.errors || [result.message]).filter(Boolean).join('\n'), '发布校验未通过', { type: 'error' })
+      await ElMessageBox.alert(
+        (result.errors || [result.message]).filter(Boolean).join('\n'),
+        '保存校验未通过',
+        { type: 'error' }
+      ).catch(() => {})
       return false
     }
     if (result?.warnings?.length) {
-      await ElMessageBox.confirm(result.warnings.join('\n'), '发布校验提示', { type: 'warning', confirmButtonText: '继续发布' })
+      try {
+        await ElMessageBox.confirm(result.warnings.join('\n'), '保存校验提示', {
+          type: 'warning',
+          confirmButtonText: '继续保存',
+          cancelButtonText: '返回修改'
+        })
+      } catch {
+        return false
+      }
     }
     return true
   } catch (error) {
-    // V1 后端没有独立校验端点时，仍由旧发布接口完成最终校验。
-    if ([404, 405].includes(Number(error?.status))) return true
-    ElMessage.error(error?.message || '发布校验失败')
+    ElMessage.error(error?.message || '保存校验失败')
+    return false
+  }
+}
+
+/** 停用只停止后续固化，不删除已生成的数据版本。 */
+async function confirmDisable() {
+  if (!baselineEnabled.value || draft.enabled) return true
+  try {
+    await ElMessageBox.confirm(
+      '停用后将不再自动或手工生成新版本；停用前的历史版本仍可查看和比较。确定保存并停用吗？',
+      '停用数据版本',
+      {
+        type: 'warning',
+        confirmButtonText: '保存并停用',
+        cancelButtonText: '返回修改'
+      }
+    )
+    return true
+  } catch {
     return false
   }
 }
@@ -688,21 +781,6 @@ async function previewScope() {
     ElMessage.error(error?.message || '固化范围预览失败')
   } finally {
     previewLoading.value = false
-  }
-}
-
-async function loadReleases() {
-  if (!draft.entityCode) return
-  releaseLoading.value = true
-  try {
-    const page = normalizePage(await entityVersionApi.releases(draft.entityCode, {
-      pageNum: releasePage.value,
-      pageSize: releasePageSize
-    }), releasePageSize)
-    releases.value = page.records
-    releaseTotal.value = page.total
-  } finally {
-    releaseLoading.value = false
   }
 }
 
@@ -814,7 +892,7 @@ function onTriggerTypeChange(type) {
 async function handleDrawerClose(done) {
   if (!isDirty.value) return done()
   try {
-    await ElMessageBox.confirm('当前草稿有未保存修改，关闭后修改将丢失。', '放弃修改？', {
+    await ElMessageBox.confirm('当前配置有未保存修改，关闭后修改将丢失。', '放弃修改？', {
       type: 'warning', confirmButtonText: '放弃修改', cancelButtonText: '继续编辑'
     })
     done()
@@ -833,7 +911,10 @@ function replaceDraft(value) {
   Object.keys(draft).forEach(key => delete draft[key])
   Object.assign(draft, clone(value))
 }
-function markBaseline() { baseline.value = stableJson(serializeVersionDraft(draft)) }
+function markBaseline() {
+  baseline.value = stableJson(serializeVersionDraft(draft))
+  baselineEnabled.value = draft.enabled === true
+}
 function stableJson(value) { return JSON.stringify(value) }
 function clone(value) { return JSON.parse(JSON.stringify(value || {})) }
 function parseObjectText(value, label) { try { const parsed = JSON.parse(value || '{}'); if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error(); return parsed } catch { ElMessage.warning(`${label}必须是 JSON 对象`); return null } }
@@ -845,14 +926,21 @@ function emptyScopeRelation() {
   return { nodeCode: '', relationCode: '', relationName: '', childEntityCode: '', childEntityName: '', fieldMode: 'ALL_PUBLISHED', fieldCodes: [], filter: { logic: 'ALL', conditions: [] }, maxRows: 500, enabled: true }
 }
 function hasPermission(permission) { return userStore.isSuperAdmin || userStore.permissions.includes('*') || userStore.permissions.includes(permission) }
-function runtimeEnabled(row) { return row.runtimeEnabled ?? row.activeReleaseEnabled ?? (row.status === 'PUBLISHED' && row.enabled) }
+function updateViewport() { viewportWidth.value = window.innerWidth }
+function configStatus(row) {
+  if ((row.runtimeEnabled ?? row.enabled) === true) {
+    return { label: '已启用', type: 'success' }
+  }
+  return Number(row.revision || 0) > 0
+    ? { label: '已停用', type: 'info' }
+    : { label: '未配置', type: 'info' }
+}
 function relationName(code) { return draft.snapshotScope.relations.find(item => item.relationCode === code)?.relationName || code || '-' }
 function fieldCode(field) { return field?.fieldCode || field?.code || String(field || '') }
 function fieldLabel(field) { const code = fieldCode(field); return `${field?.fieldName || field?.label || code}${field?.fieldName || field?.label ? `（${code}）` : ''}` }
 function filterSummary(filter) { const count = filter?.conditions?.length || 0; return count ? `${count} 个条件 · ${filter.logic === 'ANY' ? '任一满足' : '全部满足'}` : '不过滤' }
 function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 19) : '-' }
 function formatBytes(value) { const bytes = Number(value); return Number.isFinite(bytes) ? `${(bytes / 1024 / 1024).toFixed(2)} MiB` : '-' }
-function statusText(status) { return ({ UNCONFIGURED: '未配置', DRAFT: '草稿', PUBLISHED: '已发布' })[status] || status || '-' }
 function labelOf(options, value) { return options.find(item => item.value === value)?.label || value }
 const sourceTypeText = value => labelOf(sourceTypeOptions, value)
 const operationTypeText = value => labelOf(operationTypeOptions, value)
@@ -861,7 +949,7 @@ const triggerTypeText = value => labelOf(triggerTypeOptions, value)
 
 <style scoped>
 .version-management { padding: 20px; }
-.page-heading, .drawer-heading, .table-toolbar, .drawer-actions, .heading-line, .scope-card__title { display: flex; align-items: center; }
+.page-heading, .drawer-heading, .table-toolbar, .drawer-actions, .heading-line, .scope-card__title, .limit-panel__heading { display: flex; align-items: center; }
 .page-heading, .drawer-heading, .scope-card__title { justify-content: space-between; }
 .page-heading { margin-bottom: 16px; }
 .page-heading h2, .drawer-heading h3 { margin: 0; }
@@ -875,7 +963,7 @@ const triggerTypeText = value => labelOf(triggerTypeOptions, value)
 .drawer-actions, .heading-line { gap: 8px; }
 .drawer-actions { flex-wrap: wrap; justify-content: flex-end; }
 .header-switch { margin: 0 4px 0 0; }
-.legacy-alert { margin-bottom: 12px; }
+.save-effect-alert, .legacy-alert { margin-bottom: 12px; }
 .section-intro { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 10px 0 16px; }
 .el-table .el-tag { margin: 2px 4px 2px 0; }
 .scope-card { margin-bottom: 16px; border: 1px solid var(--el-border-color); border-radius: 8px; background: var(--el-bg-color); }
@@ -887,6 +975,7 @@ const triggerTypeText = value => labelOf(triggerTypeOptions, value)
 .scope-card__body .el-form-item { margin-bottom: 0; }
 .scope-table { margin-bottom: 16px; }
 .limit-panel { padding: 16px; background: var(--el-fill-color-lighter); border-radius: 8px; }
+.limit-panel__heading { gap: 4px; }
 .limit-panel .el-form { margin-top: 14px; }
 .limit-panel .el-form-item span, .condition-row + span { margin-left: 6px; }
 .diff-form { max-width: 900px; padding-top: 12px; }
@@ -901,7 +990,6 @@ const triggerTypeText = value => labelOf(triggerTypeOptions, value)
 .preview-toolbar .el-input { flex: 1; }
 .preview-warning + .preview-warning { margin-top: 8px; }
 .preview-summary { margin: 14px 0; }
-.release-pagination { justify-content: flex-end; margin-top: 14px; }
 :deep(.config-drawer .el-drawer__body) { overflow-y: auto; padding-top: 0; }
 :deep(.config-tabs .el-tabs__content) { overflow: visible; }
 

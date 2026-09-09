@@ -1,12 +1,12 @@
 # Flow 系统数据库设计文档
 
-文档版本：1.3；整理日期：2026-09-08。
+文档版本：1.4；整理日期：2026-09-09。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
-文档收录本机库当前的 153 张表、2,220 个字段，其中七张为历史保留表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
+文档收录 V082 扩展迁移后的 153 张平台表、2,221 个字段，其中七张为历史保留表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
 
-结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，数据库已执行至 V081。业务结构结合 V001—V079 SQL 迁移、V080 Java 迁移、V081 SQL 迁移及当前源码说明；历史保留表按实际库结构登记。
+V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前向变更已在隔离 MySQL 8.0 实例验证。业务结构结合 V001—V079 SQL 迁移、V080 Java 迁移、V081—V082 SQL 迁移及当前源码说明；历史保留表按实际库结构登记。
 
 字段表中的类型、可空性和默认值按数据库定义填写。“NULL（隐式）”表示可空列没有显式 DEFAULT；JSON 格式要求分别由应用校验或表内 CHECK 约束承担。表间业务关联与物理外键分别说明。
 
@@ -44,7 +44,7 @@
   - [3.5 entity_list_scope_audit_log 列表数据范围审计表](#35-entity_list_scope_audit_log-列表数据范围审计表)
 - [4. 实体版本与变更](#4-实体版本与变更)
   - [4.1 entity_version_config 实体数据版本策略表](#41-entity_version_config-实体数据版本策略表)
-  - [4.2 entity_version_config_release 实体版本策略发布表](#42-entity_version_config_release-实体版本策略发布表)
+  - [4.2 entity_version_config_release 实体版本策略发布兼容表](#42-entity_version_config_release-实体版本策略发布兼容表)
   - [4.3 entity_mutation_policy_config 实体变更策略草稿表](#43-entity_mutation_policy_config-实体变更策略草稿表)
   - [4.4 entity_mutation_policy_release 实体变更策略发布表](#44-entity_mutation_policy_release-实体变更策略发布表)
   - [4.5 entity_change_target_instance 变更实际目标记录表](#45-entity_change_target_instance-变更实际目标记录表)
@@ -1692,9 +1692,9 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 #### 4.1.1 业务说明
 
-保存实体版本留存的开关、契约版本、触发器、快照范围和比较策略草稿。现行草稿统一使用 V2；历史发布仍按各自契约读取。
+每个实体在 `config_document` 中只保存一份当前数据版本配置，包括启用开关、触发器、快照范围和比较策略。配置通过 revision 乐观锁保存，校验和范围冻结成功后立即生效，业务上不再维护可见的草稿、发布或配置历史版本。旧发布列和由兼容桥生成的过渡快照暂时只为滚动发布期间的新旧 Pod 混部保留。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 16 个，其中 5 个为过渡兼容字段。
 
 #### 4.1.2 字段设计
 
@@ -1704,12 +1704,13 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 | `entity_id` | 实体定义ID | `varchar(64)` | 否 | 无 | 实体定义ID。 | 现存 |
 | `entity_code` | 实体编码 | `varchar(100)` | 否 | 无 | 实体编码。 | 现存 |
 | `enabled` | 是否启用 | `tinyint` | 否 | `'0'` | 是否启用数据版本。 | 现存 |
-| `contract_version` | 配置契约版本 | `int` | 否 | `'1'` | 配置契约版本：1/2。 | 现存 |
-| `draft_document` | V2触发器、范围和比较策略草稿JSON | `longtext` | 是 | `NULL`（隐式） | V2触发器、范围和比较策略草稿JSON。 | 现存 |
-| `migration_state` | 迁移状态 | `varchar(30)` | 否 | `'REVIEW_REQUIRED'` | 迁移状态。 | 现存 |
-| `active_release_id` | 当前运行时发布快照ID | `varchar(64)` | 是 | `NULL` | 当前运行时发布快照ID。 | 现存 |
-| `revision` | 修订号 | `int` | 否 | `'1'` | 草稿修订号。 | 现存 |
-| `status` | 状态 | `varchar(20)` | 否 | `'DRAFT'` | 状态。 | 现存 |
+| `contract_version` | 旧配置契约版本 | `int` | 否 | `'1'` | 供兼容桥和尚未升级的旧 Pod 使用。 | 过渡兼容 |
+| `draft_document` | 旧草稿JSON | `longtext` | 是 | `NULL`（隐式） | 供兼容路由、双写桥和尚未升级的旧 Pod 使用；新核心运行时不读取。 | 过渡兼容 |
+| `config_document` | 当前生效配置JSON | `longtext` | 是 | `NULL`（隐式） | V2 触发器、范围和比较策略；保存后立即参与后续版本捕获。过渡期可空，以兼容旧 Pod 创建未发布配置。 | 现存 |
+| `migration_state` | 旧迁移状态 | `varchar(30)` | 否 | `'REVIEW_REQUIRED'` | 供兼容桥和旧 Pod 保持旧契约。 | 过渡兼容 |
+| `active_release_id` | 旧运行发布ID | `varchar(64)` | 是 | `NULL` | 由兼容桥维护，供尚未升级的旧 Pod 定位发布快照。 | 过渡兼容 |
+| `revision` | 修订号 | `int` | 否 | `'1'` | 当前配置修订号，用于 If-Match 乐观锁；不代表可回退的配置版本。 | 现存 |
+| `status` | 旧发布状态 | `varchar(20)` | 否 | `'DRAFT'` | 供兼容路由和旧 Pod 区分草稿、已发布。 | 过渡兼容 |
 | `create_by` | 创建人 | `varchar(64)` | 是 | `NULL` | 创建人。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_by` | 修改人 | `varchar(64)` | 是 | `NULL` | 修改人。 | 现存 |
@@ -1720,7 +1721,7 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_version_config_code` (`entity_code`,`deleted`)``。
-- ``KEY `idx_entity_version_config_release` (`active_release_id`)``。
+- ``KEY `idx_entity_version_config_release` (`active_release_id`)``（过渡兼容）。
 
 本表未声明物理外键。
 
@@ -1728,40 +1729,44 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 - `entity_id` → [entity_definition](#11-entity_definition-实体定义表).`id`；两端物理类型不同。
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `active_release_id` → [entity_version_config_release](#42-entity_version_config_release-实体版本策略发布表).`id`。
+- `active_release_id` → [entity_version_config_release](#42-entity_version_config_release-实体版本策略发布兼容表).`id`（仅旧 Pod）。
 
 #### 4.1.4 业务规则
 
-草稿统一保存到 draft_document，使用 V2 触发器、范围和比较策略。写入规则、执行步骤和变更目标由独立变更策略管理；migration_state 记录配置来源及复核状态。
+当前配置统一保存到 config_document。启用时，新业务变更按当前配置生成版本；停用只阻止后续捕获，不删除既有记录版本。写入规则、执行步骤和变更目标继续由独立变更策略管理。
+
+默认不冻结配置写时必须采用四阶段滚动升级：N 版（V082 expand）由应用查询优先解析有效的 active release，兼容旧 Pod 的发布结果；legacy 草稿始终不参与当前运行语义，新管理写入则通过应用桥同步旧存储。切换 N+1 的 config-only 读取前，必须通过迁移或对账把所有有效 active release 最终投影回 config_document，并验证投影完整、一致。N+1 停止 active release 兼容读取，可移除旧对外路由，但仍须兼容双写旧存储并保留旧 schema。N+2 改为 config-only 读写并继续保留旧 schema，完成全量滚动且确认所有 N+1 Pod 和在途事务退出后，N+3 才可由 pre-upgrade contract 删除旧字段、发布表和发布权限。
+
+只有在 N+1 全程冻结数据版本配置写、切换前排空在途配置事务并完成上述最终投影与对账，才允许压缩为 N/N+1/N+2 三阶段；全部旧 Pod 退出前不得解除写冻结，也不得提前执行 contract。
 
 #### 4.1.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
+结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)、[V082__simplify_entity_version_configuration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V082__simplify_entity_version_configuration.sql)。
 
 实现定位：[EntityVersionConfigMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityVersionConfigMapper.java)、[EntityVersionConfig.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityVersionConfig.java)、[EntityVersionConfigurationService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionConfigurationService.java)。
 
-### 4.2 entity_version_config_release 实体版本策略发布表
+### 4.2 entity_version_config_release 实体版本策略发布兼容表
 
 #### 4.2.1 业务说明
 
-按版本冻结实体数据版本策略，为记录版本捕获、比较和恢复校验提供依据。
+N 版（V082 expand）的应用查询仍会读取 active release，以兼容混部期间旧 Pod 的发布结果；新管理写入也会为旧 Pod 生成不可变兼容快照。切换 N+1 的 config-only 读取前，必须将有效 active release 最终投影回 config_document 并完成对账。N+1 虽停止兼容读取且可移除旧对外路由，但仍继续为旧存储生成兼容快照；N+2 才停止兼容写入，并在保留本表的前提下完成全量滚动、等待所有 N+1 Pod 和在途事务退出。N+3 才由 contract 迁移物理删除本表及相关旧字段和发布权限，避免 Helm pre-upgrade 迁移早于旧应用退出而产生缺表错误。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 10 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。过渡兼容字段 10 个。
 
 #### 4.2.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 发布快照ID。 | 现存 |
-| `config_id` | 版本配置ID | `varchar(64)` | 否 | 无 | 版本配置ID。 | 现存 |
-| `version` | 版本号 | `int` | 否 | 无 | 发布版本号。 | 现存 |
-| `contract_version` | 配置契约版本 | `int` | 否 | `'1'` | 配置契约版本：1/2。 | 现存 |
-| `config_document` | 完整不可变配置JSON文档 | `longtext` | 否 | 无 | 完整不可变配置JSON文档。 | 现存 |
-| `scope_hash` | 发布时冻结范围摘要 | `varchar(64)` | 是 | `NULL` | 发布时冻结范围摘要。 | 现存 |
-| `published_by` | 发布人 | `varchar(64)` | 是 | `NULL` | 发布人。 | 现存 |
-| `published_by_name` | 发布人名称 | `varchar(100)` | 是 | `NULL` | 发布人名称。 | 现存 |
-| `publish_time` | 发布时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 发布时间。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
+| `id` | 主键ID | `varchar(64)` | 否 | 无 | 旧发布快照ID。 | 过渡兼容 |
+| `config_id` | 版本配置ID | `varchar(64)` | 否 | 无 | 版本配置ID。 | 过渡兼容 |
+| `version` | 版本号 | `int` | 否 | 无 | 旧发布版本号。 | 过渡兼容 |
+| `contract_version` | 配置契约版本 | `int` | 否 | `'1'` | 旧配置契约版本。 | 过渡兼容 |
+| `config_document` | 旧不可变配置JSON | `longtext` | 否 | 无 | 由兼容桥写入，供尚未升级的旧 Pod 读取。 | 过渡兼容 |
+| `scope_hash` | 发布时范围摘要 | `varchar(64)` | 是 | `NULL` | 旧发布时冻结范围摘要。 | 过渡兼容 |
+| `published_by` | 发布人 | `varchar(64)` | 是 | `NULL` | 旧发布人。 | 过渡兼容 |
+| `published_by_name` | 发布人名称 | `varchar(100)` | 是 | `NULL` | 旧发布人名称。 | 过渡兼容 |
+| `publish_time` | 发布时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 旧发布时间。 | 过渡兼容 |
+| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 过渡兼容 |
 
 #### 4.2.3 索引与关联
 
@@ -1776,13 +1781,11 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 #### 4.2.4 业务规则
 
-contract_version 和 scope_hash 区分契约及冻结范围；旧发布还可承载旧变更步骤，仍有兼容读取。
+仅作滚动发布兼容，不再作为用户可见的数据版本配置生命周期，也不应新增长期依赖。
 
 #### 4.2.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
-
-实现定位：[EntityVersionConfigReleaseMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityVersionConfigReleaseMapper.java)、[EntityVersionConfigRelease.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityVersionConfigRelease.java)、[EntityVersionConfigurationService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionConfigurationService.java)。
+结构来源于历史 [V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql) 和 [V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)；V082 明确保留。默认清理顺序是：N+1 切换 config-only 读取前先最终投影并对账有效 active release，同时继续兼容写入；N+2 停止兼容写入、保留旧 schema 并完成全量滚动；确认所有 N+1 Pod 和在途事务退出后，N+3 再执行 contract 迁移删除旧表、旧字段和发布权限。若压缩为三阶段，N+1 全程必须冻结配置写并排空事务，直至全部旧 Pod 退出。
 
 ### 4.3 entity_mutation_policy_config 实体变更策略草稿表
 
@@ -2006,8 +2009,8 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 | `entity_release_id` | 实体发布ID | `varchar(64)` | 是 | `NULL` | 实体发布ID。 | 现存 |
 | `entity_release_version` | 实体发布版本 | `int` | 是 | `NULL` | 实体发布版本。 | 现存 |
 | `schema_version` | 快照契约版本 | `int` | 否 | `'1'` | 快照契约版本：1/2。 | 现存 |
-| `config_release_id` | 命中的版本策略发布ID | `varchar(64)` | 是 | `NULL` | 命中的版本策略发布ID。 | 现存 |
-| `config_release_version` | 命中的版本策略发布版本 | `int` | 是 | `NULL` | 命中的版本策略发布版本。 | 现存 |
+| `config_release_id` | 旧版本策略发布ID | `varchar(64)` | 是 | `NULL` | 仅供滚动发布期间的旧 Pod 写入；业务快照不再依赖此值。 | 过渡兼容 |
+| `config_release_version` | 旧版本策略发布版本 | `int` | 是 | `NULL` | 仅供滚动发布期间的旧 Pod 写入；新代码不使用。 | 过渡兼容 |
 | `data_hash` | 原始业务数据摘要 | `varchar(64)` | 是 | `NULL` | 原始业务数据摘要。 | 现存 |
 | `presentation_hash` | 冻结中文展示语义摘要 | `varchar(64)` | 是 | `NULL` | 冻结中文展示语义摘要。 | 现存 |
 | `scope_hash` | 固化范围摘要 | `varchar(64)` | 是 | `NULL` | 固化范围摘要。 | 现存 |
@@ -2026,23 +2029,23 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 - ``UNIQUE KEY `uk_entity_record_version_no` (`entity_code`,`record_id`,`version_no`)``。
 - ``KEY `idx_entity_record_version_time` (`entity_code`,`record_id`,`create_time`)``。
 - ``KEY `idx_entity_record_version_process` (`process_instance_id`)``。
-- ``KEY `idx_entity_record_version_release` (`config_release_id`)``。
+- ``KEY `idx_entity_record_version_release` (`config_release_id`)``（过渡兼容）。
 - ``KEY `idx_entity_record_version_schema` (`schema_version`,`create_time`)``。
-- ``CONSTRAINT `fk_entity_record_version_config_release` FOREIGN KEY (`config_release_id`) REFERENCES `entity_version_config_release` (`id`)``。
+- ``CONSTRAINT `fk_entity_record_version_config_release` FOREIGN KEY (`config_release_id`) REFERENCES `entity_version_config_release` (`id`)``（过渡兼容）。
 - ``UNIQUE KEY `uk_entity_record_version_idempotent` (`entity_code`, `record_id`, `idempotency_key`)``。
 
 业务关联：
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `config_release_id` → [entity_version_config_release](#42-entity_version_config_release-实体版本策略发布表).`id`。
+- `config_release_id` → [entity_version_config_release](#42-entity_version_config_release-实体版本策略发布兼容表).`id`（仅旧 Pod）。
 
 #### 4.7.4 业务规则
 
-V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_document。
+V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_document。记录自身已经冻结配置所需的数据、展示和范围语义，因此新代码不再依赖配置发布 ID；两个兼容列随发布表在后续 contract 迁移删除。
 
 #### 4.7.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)、[V046__record_version_global_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V046__record_version_global_idempotency.sql)。
+结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)、[V046__record_version_global_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V046__record_version_global_idempotency.sql)、[V082__simplify_entity_version_configuration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V082__simplify_entity_version_configuration.sql)。
 
 实现定位：[EntityRecordVersionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionMapper.java)、[BusinessMigrationPreflight.java](../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[EntityRecordVersionService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityRecordVersionService.java)。
 

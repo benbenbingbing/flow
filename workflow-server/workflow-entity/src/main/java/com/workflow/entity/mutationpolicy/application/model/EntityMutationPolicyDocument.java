@@ -2,6 +2,8 @@ package com.workflow.entity.mutationpolicy.application.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Mutation policy document.
@@ -18,8 +20,16 @@ import com.workflow.entity.version.application.model.EntityVersionConfiguration;
         "relationOptions",
         "fieldOptions"
 })
+@Getter
+@Setter
 public class EntityMutationPolicyDocument
         extends EntityVersionConfiguration {
+
+    /** 独立变更策略仍保留自身的草稿/发布生命周期。 */
+    private String status;
+    private String migrationState = "NATIVE";
+    private String activeReleaseId;
+    private Integer activeReleaseVersion;
 
     public EntityMutationPolicyDocument() {
         setSchemaVersion(1);

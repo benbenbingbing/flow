@@ -16,65 +16,99 @@ import java.util.List;
 public interface EntityVersionConfigMapper
         extends BaseMapper<EntityVersionConfig> {
 
+    /**
+     * 读取当前配置。N 版混部期间旧 Pod 发布只会切 active release，因此有效
+     * release 优先于 config_document；legacy draft 永远不参与当前运行语义。
+     */
     @Select("""
-            SELECT * FROM entity_version_config
-            WHERE entity_code = #{entityCode}
-              AND deleted = 0
+            SELECT c.id,
+                   c.entity_id,
+                   c.entity_code,
+                   c.enabled,
+                   CASE
+                       WHEN r.id IS NOT NULL
+                        AND JSON_VALID(r.config_document) = 1
+                       THEN JSON_REMOVE(
+                           JSON_SET(
+                               CAST(r.config_document AS JSON),
+                               '$.schemaVersion',
+                               COALESCE(r.contract_version, 1)),
+                           '$.status',
+                           '$.migrationState',
+                           '$.activeReleaseId',
+                           '$.activeReleaseVersion')
+                       ELSE c.config_document
+                   END AS config_document,
+                   c.revision,
+                   c.create_by,
+                   c.create_time,
+                   c.update_by,
+                   c.update_time,
+                   c.deleted
+            FROM entity_version_config c
+            LEFT JOIN entity_version_config_release r
+                   ON r.id = c.active_release_id
+                  AND r.config_id = c.id
+            WHERE c.entity_code = #{entityCode}
+              AND c.deleted = 0
             LIMIT 1
             """)
     EntityVersionConfig findByEntityCode(
             @Param("entityCode") String entityCode);
 
+    /** 批量查询与单条查询使用完全相同的 active release 优先级。 */
     @Select("""
-            SELECT * FROM entity_version_config
-            WHERE active_release_id IS NOT NULL
-              AND active_release_id <> ''
-              AND deleted = 0
-            ORDER BY entity_code ASC
+            SELECT c.id,
+                   c.entity_id,
+                   c.entity_code,
+                   c.enabled,
+                   CASE
+                       WHEN r.id IS NOT NULL
+                        AND JSON_VALID(r.config_document) = 1
+                       THEN JSON_REMOVE(
+                           JSON_SET(
+                               CAST(r.config_document AS JSON),
+                               '$.schemaVersion',
+                               COALESCE(r.contract_version, 1)),
+                           '$.status',
+                           '$.migrationState',
+                           '$.activeReleaseId',
+                           '$.activeReleaseVersion')
+                       ELSE c.config_document
+                   END AS config_document,
+                   c.revision,
+                   c.create_by,
+                   c.create_time,
+                   c.update_by,
+                   c.update_time,
+                   c.deleted
+            FROM entity_version_config c
+            LEFT JOIN entity_version_config_release r
+                   ON r.id = c.active_release_id
+                  AND r.config_id = c.id
+            WHERE c.deleted = 0
+              AND (c.config_document IS NOT NULL
+                   OR (r.id IS NOT NULL
+                       AND JSON_VALID(r.config_document) = 1))
+            ORDER BY c.entity_code ASC
             """)
-    List<EntityVersionConfig> findAllPublished();
+    List<EntityVersionConfig> findAllCurrent();
 
     @Update("""
             UPDATE entity_version_config
             SET enabled = #{enabled},
-                contract_version = #{contractVersion},
-                draft_document = #{draftDocument},
-                migration_state = #{migrationState},
+                config_document = #{configDocument},
                 revision = revision + 1,
-                status = 'DRAFT',
                 update_by = #{updateBy},
                 update_time = CURRENT_TIMESTAMP
             WHERE id = #{id}
               AND revision = #{expectedRevision}
               AND deleted = 0
             """)
-    int updateDraftIfRevision(
+    int updateCurrentIfRevision(
             @Param("id") String id,
             @Param("expectedRevision") Integer expectedRevision,
             @Param("enabled") Boolean enabled,
-            @Param("contractVersion") Integer contractVersion,
-            @Param("draftDocument") String draftDocument,
-            @Param("migrationState") String migrationState,
-            @Param("updateBy") String updateBy);
-
-    @Update("""
-            UPDATE entity_version_config
-            SET active_release_id = #{activeReleaseId},
-                contract_version = #{contractVersion},
-                migration_state = #{migrationState},
-                revision = revision + 1,
-                status = 'PUBLISHED',
-                update_by = #{updateBy},
-                update_time = CURRENT_TIMESTAMP
-            WHERE id = #{id}
-              AND revision = #{expectedRevision}
-              AND deleted = 0
-            """)
-    int activateReleaseIfRevision(
-            @Param("id") String id,
-            @Param("expectedRevision") Integer expectedRevision,
-            @Param("activeReleaseId") String activeReleaseId,
-            @Param("contractVersion") Integer contractVersion,
-            @Param("migrationState") String migrationState,
+            @Param("configDocument") String configDocument,
             @Param("updateBy") String updateBy);
 }

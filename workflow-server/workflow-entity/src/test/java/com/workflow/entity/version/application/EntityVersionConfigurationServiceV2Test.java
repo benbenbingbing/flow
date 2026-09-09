@@ -1,36 +1,42 @@
 package com.workflow.entity.version.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
-import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
+import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigMapper;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigReleaseMapper;
+import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionRolloutBridgeMapper;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfig;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfigRelease;
+import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionRolloutState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,7 +45,9 @@ class EntityVersionConfigurationServiceV2Test {
     @Mock
     private EntityVersionConfigMapper configMapper;
     @Mock
-    private EntityVersionConfigReleaseMapper releaseMapper;
+    private EntityVersionRolloutBridgeMapper rolloutBridgeMapper;
+    @Mock
+    private EntityRecordVersionMapper recordVersionMapper;
     @Mock
     private EntityDefinitionMapper definitionMapper;
     @Mock
@@ -57,55 +65,141 @@ class EntityVersionConfigurationServiceV2Test {
         objectMapper.findAndRegisterModules();
         service = new EntityVersionConfigurationService(
                 configMapper,
-                releaseMapper,
+                rolloutBridgeMapper,
+                recordVersionMapper,
                 definitionMapper,
                 objectMapper,
                 validator,
                 scopeFreezer);
+
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
         definition.setEntityCode("asset");
         definition.setEntityName("资产");
         lenient().when(definitionMapper.findByEntityCode("asset"))
                 .thenReturn(Optional.of(definition));
-        lenient().when(scopeFreezer.enrichDraftOptions(any()))
+        lenient().when(scopeFreezer.enrichManagementOptions(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(scopeFreezer.freeze(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(recordVersionMapper.existsByEntityCode("asset"))
+                .thenReturn(false);
+        lenient().when(rolloutBridgeMapper.syncLegacyDraft(
+                        anyString(), any(), any(), anyString(), any()))
+                .thenReturn(1);
+        lenient().when(rolloutBridgeMapper.findNextReleaseVersion(anyString()))
+                .thenReturn(1);
+        lenient().when(rolloutBridgeMapper.insertCompatibilityRelease(
+                        anyString(), anyString(), any(), any(), anyString(),
+                        any(), any(), any()))
+                .thenReturn(1);
+        lenient().when(rolloutBridgeMapper.activateCompatibilityRelease(
+                        anyString(), any(), anyString(), any()))
+                .thenReturn(1);
 
-        config = new EntityVersionConfig();
-        config.setId("config-1");
-        config.setEntityId("entity-1");
-        config.setEntityCode("asset");
-        config.setEnabled(true);
-        config.setRevision(7);
-        config.setStatus("DRAFT");
-        config.setDeleted(0);
-        config.setContractVersion(2);
-        config.setDraftDocument(objectMapper.writeValueAsString(v2Draft()));
-        when(configMapper.findByEntityCode("asset"))
+        config = currentConfig(v2Configuration("ROOT_MUTATION", true));
+        lenient().when(configMapper.findByEntityCode("asset"))
                 .thenReturn(config);
     }
 
     @Test
-    void v2SavePersistsTriggersWithoutMutationRules() throws Exception {
-        when(configMapper.updateDraftIfRevision(
-                eq("config-1"), eq(7), any(), eq(2),
-                anyString(), anyString(), any()))
+    void saveFreezesThenAtomicallyReplacesCurrentDocument()
+            throws Exception {
+        when(configMapper.updateCurrentIfRevision(
+                eq("config-1"), eq(7), eq(true),
+                anyString(), any()))
                 .thenReturn(1);
 
-        service.saveDraft("asset", v2Draft(), 7);
+        EntityVersionConfiguration saved = service.save(
+                "asset", v2Configuration("ROOT_MUTATION", true), 7);
 
-        ArgumentCaptor<String> document = ArgumentCaptor.forClass(String.class);
-        verify(configMapper).updateDraftIfRevision(eq("config-1"), eq(7), any(), eq(2),
-                document.capture(), anyString(), any());
-        EntityVersionConfiguration saved = objectMapper.readValue(document.getValue(), EntityVersionConfiguration.class);
-        assertEquals("ROOT_CHANGE", saved.getTriggers().get(0).getTriggerCode());
-        assertTrue(saved.getScenarios().isEmpty());
-        assertTrue(saved.getSteps().isEmpty());
-        assertTrue(saved.getTargetBindings().isEmpty());
+        ArgumentCaptor<String> document =
+                ArgumentCaptor.forClass(String.class);
+        verify(configMapper).updateCurrentIfRevision(
+                eq("config-1"), eq(7), eq(true),
+                document.capture(), any());
+        verify(validator, org.mockito.Mockito.times(2)).validate(any());
+        verify(scopeFreezer).freeze(any());
+        InOrder bridgeOrder = inOrder(rolloutBridgeMapper);
+        bridgeOrder.verify(rolloutBridgeMapper).syncLegacyDraft(
+                eq("config-1"), eq(8), eq(2),
+                eq(document.getValue()), any());
+        ArgumentCaptor<String> releaseId =
+                ArgumentCaptor.forClass(String.class);
+        bridgeOrder.verify(rolloutBridgeMapper).insertCompatibilityRelease(
+                releaseId.capture(),
+                eq("config-1"),
+                eq(1),
+                eq(2),
+                eq(document.getValue()),
+                any(),
+                any(),
+                any());
+        bridgeOrder.verify(rolloutBridgeMapper).activateCompatibilityRelease(
+                eq("config-1"), eq(8), eq(releaseId.getValue()), any());
+        EntityVersionConfiguration persisted = objectMapper.readValue(
+                document.getValue(), EntityVersionConfiguration.class);
+        assertEquals("ROOT_CHANGE", persisted.getTriggers().get(0)
+                .getTriggerCode());
+        assertEquals(8, persisted.getRevision());
+        assertEquals(8, saved.getRevision());
+        assertTrue(persisted.getScenarios().isEmpty());
+        assertTrue(persisted.getSteps().isEmpty());
+        assertTrue(persisted.getTargetBindings().isEmpty());
+        assertTrue(persisted.getRelationOptions().isEmpty());
+        assertTrue(persisted.getFieldOptions().isEmpty());
     }
 
     @Test
-    void concurrentFirstSaveReturnsRevisionConflictInsteadOfRawDuplicate() {
+    void everySaveCreatesAndActivatesANewImmutableCompatibilityRelease() {
+        when(configMapper.updateCurrentIfRevision(
+                eq("config-1"), eq(7), eq(true),
+                anyString(), any()))
+                .thenReturn(1);
+        when(rolloutBridgeMapper.findNextReleaseVersion("config-1"))
+                .thenReturn(4);
+        when(rolloutBridgeMapper.insertCompatibilityRelease(
+                anyString(), eq("config-1"), eq(4), eq(2),
+                anyString(), any(), any(), any()))
+                .thenReturn(1);
+        when(rolloutBridgeMapper.activateCompatibilityRelease(
+                eq("config-1"), eq(8), anyString(), any()))
+                .thenReturn(1);
+
+        service.save(
+                "asset", v2Configuration("ROOT_MUTATION", true), 7);
+
+        ArgumentCaptor<String> releaseId =
+                ArgumentCaptor.forClass(String.class);
+        verify(rolloutBridgeMapper).insertCompatibilityRelease(
+                releaseId.capture(), eq("config-1"), eq(4), eq(2),
+                anyString(), any(), any(), any());
+        verify(rolloutBridgeMapper).activateCompatibilityRelease(
+                eq("config-1"), eq(8), eq(releaseId.getValue()), any());
+    }
+
+    @Test
+    void bridgeFailureAbortsTheSaveTransaction() {
+        when(configMapper.updateCurrentIfRevision(
+                eq("config-1"), eq(7), eq(true),
+                anyString(), any()))
+                .thenReturn(1);
+        when(rolloutBridgeMapper.syncLegacyDraft(
+                eq("config-1"), eq(8), eq(2), anyString(), any()))
+                .thenReturn(0);
+
+        assertThrows(IllegalStateException.class,
+                () -> service.save(
+                        "asset",
+                        v2Configuration("ROOT_MUTATION", true),
+                        7));
+
+        verify(rolloutBridgeMapper, never())
+                .findNextReleaseVersion(anyString());
+    }
+
+    @Test
+    void firstSaveRequiresRevisionZeroAndMapsDuplicateToConflict() {
         EntityVersionConfig winner = new EntityVersionConfig();
         winner.setRevision(1);
         when(configMapper.findByEntityCode("asset"))
@@ -113,10 +207,12 @@ class EntityVersionConfigurationServiceV2Test {
         when(configMapper.insert(any(EntityVersionConfig.class)))
                 .thenThrow(new DuplicateKeyException("concurrent insert"));
 
-        com.workflow.core.error.BusinessConflictException exception =
-                assertThrows(
-                        com.workflow.core.error.BusinessConflictException.class,
-                        () -> service.saveDraft("asset", v2Draft(), 0));
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.save(
+                        "asset",
+                        v2Configuration("ROOT_MUTATION", true),
+                        0));
 
         assertEquals("ENTITY_VERSION_CONFIG_REVISION_CONFLICT",
                 exception.getErrorCode());
@@ -124,155 +220,312 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
-    void v2PublishUsesAtomicRevisionAndKeepsMutationPolicySeparate()
-            throws Exception {
-        config.setActiveReleaseId("release-old");
-        EntityVersionConfiguration legacy = new EntityVersionConfiguration();
-        legacy.setSchemaVersion(1);
-        EntityVersionConfiguration.Scenario scenario =
-                new EntityVersionConfiguration.Scenario();
-        scenario.setScenarioCode("LEGACY_CHANGE");
-        scenario.setScenarioName("旧变更策略");
-        legacy.setScenarios(List.of(scenario));
-        EntityVersionConfigRelease oldRelease = new EntityVersionConfigRelease();
-        oldRelease.setId("release-old");
-        oldRelease.setVersion(1);
-        oldRelease.setConfigDocument(objectMapper.writeValueAsString(legacy));
-        AtomicReference<EntityVersionConfigRelease> inserted =
-                new AtomicReference<>();
-        when(releaseMapper.selectById(anyString())).thenAnswer(invocation -> {
-            String id = invocation.getArgument(0);
-            return "release-old".equals(id) ? oldRelease : inserted.get();
-        });
-        when(releaseMapper.findMaxVersion("config-1")).thenReturn(1);
-        when(scopeFreezer.freeze(any()))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-        when(configMapper.activateReleaseIfRevision(
-                eq("config-1"), eq(7), anyString(), eq(2),
-                eq("MIGRATED"), any())).thenAnswer(invocation -> {
-                    config.setActiveReleaseId(invocation.getArgument(2));
-                    config.setRevision(8);
-                    return 1;
-                });
-        when(releaseMapper.insert(any(EntityVersionConfigRelease.class)))
-                .thenAnswer(invocation -> {
-            inserted.set(invocation.getArgument(0));
-            return 1;
-                });
+    void firstSaveRejectsMissingExpectedRevision() {
+        when(configMapper.findByEntityCode("asset")).thenReturn(null);
 
-        service.publish("asset", 7);
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.save(
+                        "asset",
+                        v2Configuration("ROOT_MUTATION", true),
+                        null));
 
-        ArgumentCaptor<EntityVersionConfigRelease> captor =
-                ArgumentCaptor.forClass(EntityVersionConfigRelease.class);
-        verify(releaseMapper).insert(captor.capture());
-        EntityVersionConfiguration released = objectMapper.readValue(
-                captor.getValue().getConfigDocument(),
-                EntityVersionConfiguration.class);
-        assertEquals(2, released.getSchemaVersion());
-        assertEquals("ROOT_CHANGE", released.getTriggers().get(0)
-                .getTriggerCode());
-        assertTrue(released.getScenarios().isEmpty());
-        assertTrue(released.getSteps().isEmpty());
-        assertTrue(released.getTargetBindings().isEmpty());
-        assertEquals(8, config.getRevision());
-        verify(configMapper).activateReleaseIfRevision(
-                eq("config-1"), eq(7), eq(captor.getValue().getId()),
-                eq(2), eq("MIGRATED"), any());
+        assertEquals("ENTITY_VERSION_CONFIG_REVISION_CONFLICT",
+                exception.getErrorCode());
+        verify(configMapper, never()).insert(any(EntityVersionConfig.class));
     }
 
     @Test
-    void firstPublishUsesOnlyTheSavedV2Draft() throws Exception {
-        when(scopeFreezer.freeze(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(configMapper.activateReleaseIfRevision(eq("config-1"), eq(7), anyString(), eq(2), eq("MIGRATED"), any()))
+    void staleRevisionCannotReplaceCurrentDocument() {
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.save(
+                        "asset",
+                        v2Configuration("ROOT_MUTATION", true),
+                        6));
+
+        assertEquals("ENTITY_VERSION_CONFIG_REVISION_CONFLICT",
+                exception.getErrorCode());
+        verify(configMapper, never()).updateCurrentIfRevision(
+                anyString(), any(), any(), anyString(), anyString());
+        verifyNoInteractions(rolloutBridgeMapper);
+    }
+
+    @Test
+    void failedCasReturnsLatestRevisionConflict() {
+        EntityVersionConfig latest = currentConfigUnchecked(
+                v2Configuration("ROOT_MUTATION", true));
+        latest.setRevision(8);
+        when(configMapper.findByEntityCode("asset"))
+                .thenReturn(config, latest);
+        when(configMapper.updateCurrentIfRevision(
+                eq("config-1"), eq(7), eq(true),
+                anyString(), any()))
+                .thenReturn(0);
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.save(
+                        "asset",
+                        v2Configuration("ROOT_MUTATION", true),
+                        7));
+
+        assertTrue(exception.getMessage().contains("currentRevision=8"));
+    }
+
+    @Test
+    void managementReadReturnsDefaultWhenEntityHasNoConfiguration() {
+        when(configMapper.findByEntityCode("asset")).thenReturn(null);
+
+        EntityVersionConfiguration result = service.get("asset");
+
+        assertEquals(0, result.getRevision());
+        assertEquals(2, result.getSchemaVersion());
+        assertFalse(result.getEnabled());
+        assertTrue(result.getTriggers().stream().anyMatch(trigger ->
+                "MANUAL".equals(trigger.getTriggerType())));
+    }
+
+    @Test
+    void managementReadTreatsLegacyDraftOnlyRowAsDisabledPlaceholder() {
+        config.setConfigDocument(null);
+        config.setEnabled(true);
+
+        EntityVersionConfiguration result = service.get("asset");
+
+        assertEquals("config-1", result.getId());
+        assertEquals(7, result.getRevision());
+        assertFalse(result.getEnabled());
+        assertTrue(service.getCurrent("asset").isEmpty());
+    }
+
+    @Test
+    void legacyDraftOnlyRowCanBeTakenOverAtItsExistingRevision() {
+        config.setConfigDocument(null);
+        when(configMapper.updateCurrentIfRevision(
+                eq("config-1"), eq(7), eq(true),
+                anyString(), any()))
                 .thenReturn(1);
-        service.publish("asset", 7);
-        ArgumentCaptor<EntityVersionConfigRelease> inserted = ArgumentCaptor.forClass(EntityVersionConfigRelease.class);
-        verify(releaseMapper).insert(inserted.capture());
-        assertEquals(1, inserted.getValue().getVersion());
-        EntityVersionConfiguration released = objectMapper.readValue(inserted.getValue().getConfigDocument(), EntityVersionConfiguration.class);
-        assertEquals("ROOT_CHANGE", released.getTriggers().get(0).getTriggerCode());
-        assertTrue(released.getSteps().isEmpty());
-        assertTrue(released.getTargetBindings().isEmpty());
+
+        EntityVersionConfiguration result = service.save(
+                "asset", v2Configuration("ROOT_MUTATION", true), 7);
+
+        assertEquals(8, result.getRevision());
+        verify(configMapper).updateCurrentIfRevision(
+                eq("config-1"), eq(7), eq(true),
+                anyString(), any());
     }
 
     @Test
-    void listCountsTriggersFromTheDraftDocument() {
-        EntityDefinition definition = new EntityDefinition();
-        definition.setId("entity-1");
-        definition.setEntityCode("asset");
-        definition.setEntityName("资产");
-        when(definitionMapper.findAllWithFields()).thenReturn(List.of(definition));
-        assertEquals(1, service.list(null).get(0).triggerCount());
+    void legacyDraftSaveAdvancesOnlyTheDraftAndKeepsCurrentRuntime()
+            throws Exception {
+        String currentDocument = config.getConfigDocument();
+        EntityVersionConfiguration candidate =
+                v2Configuration("MANUAL", true);
+        EntityVersionRolloutState before = rolloutState(
+                "PUBLISHED", 7, currentDocument, currentDocument);
+        EntityVersionRolloutState after = rolloutState(
+                "DRAFT", 8,
+                objectMapper.writeValueAsString(candidate),
+                currentDocument);
+        when(rolloutBridgeMapper.findStateByEntityCode("asset"))
+                .thenReturn(before, after);
+        when(rolloutBridgeMapper.updateLegacyDraftIfRevision(
+                eq("config-1"), eq(7), eq(true), eq(2),
+                anyString(), any()))
+                .thenReturn(1);
+
+        Map<String, Object> saved = service.saveLegacyDraft(
+                "asset", candidate, 7);
+
+        assertEquals("DRAFT", saved.get("status"));
+        assertEquals(8, saved.get("revision"));
+        assertEquals("ROOT_MUTATION", service.getCurrent("asset")
+                .orElseThrow().getTriggers().get(0).getTriggerType());
+        verify(configMapper, never()).updateCurrentIfRevision(
+                anyString(), any(), any(), anyString(), any());
+        verify(configMapper, never()).insert(any(EntityVersionConfig.class));
     }
 
     @Test
-    void recordCapabilitiesAreDisabledWhenNoActiveReleaseExists() {
-        var capabilities = service.recordCapabilities("asset");
+    void legacyPublishAdoptsDraftSavedByAnOldPod() throws Exception {
+        String currentDocument = config.getConfigDocument();
+        EntityVersionConfiguration candidate =
+                v2Configuration("MANUAL", true);
+        String draftDocument = objectMapper.writeValueAsString(candidate);
+        EntityVersionRolloutState pending = rolloutState(
+                "DRAFT", 8, draftDocument, currentDocument);
+        when(rolloutBridgeMapper.findStateByEntityCode("asset"))
+                .thenReturn(pending);
+        config.setRevision(8);
+        when(configMapper.updateCurrentIfRevision(
+                eq("config-1"), eq(8), eq(true),
+                anyString(), any()))
+                .thenReturn(1);
 
-        assertFalse(capabilities.runtimeEnabled());
-        assertFalse(capabilities.manualCaptureEnabled());
-        verify(releaseMapper, never()).selectById(anyString());
+        EntityVersionConfiguration published =
+                service.publishLegacyDraft("asset", 8);
+
+        assertEquals(9, published.getRevision());
+        assertEquals("MANUAL", published.getTriggers().get(0)
+                .getTriggerType());
+        verify(rolloutBridgeMapper).insertCompatibilityRelease(
+                anyString(), eq("config-1"), eq(1), eq(2),
+                anyString(), any(), any(), any());
+    }
+
+    @Test
+    void synchronizedLegacyPublishIsIdempotent() {
+        String currentDocument = config.getConfigDocument();
+        EntityVersionRolloutState synchronizedState = rolloutState(
+                "PUBLISHED", 7, currentDocument, currentDocument);
+        when(rolloutBridgeMapper.findStateByEntityCode("asset"))
+                .thenReturn(synchronizedState);
+
+        EntityVersionConfiguration result =
+                service.publishLegacyDraft("asset", 7);
+
+        assertEquals(7, result.getRevision());
+        verify(configMapper, never()).updateCurrentIfRevision(
+                anyString(), any(), any(), anyString(), any());
+        verify(rolloutBridgeMapper, never())
+                .insertCompatibilityRelease(
+                        anyString(), anyString(), any(), any(), anyString(),
+                        any(), any(), any());
+    }
+
+    @Test
+    void concurrentCurrentSaveWinsOverLegacyPublishCas() throws Exception {
+        EntityVersionConfiguration candidate =
+                v2Configuration("MANUAL", true);
+        when(rolloutBridgeMapper.findStateByEntityCode("asset"))
+                .thenReturn(rolloutState(
+                        "DRAFT", 8,
+                        objectMapper.writeValueAsString(candidate),
+                        config.getConfigDocument()));
+        config.setRevision(9);
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.publishLegacyDraft("asset", 8));
+
+        assertEquals("ENTITY_VERSION_CONFIG_REVISION_CONFLICT",
+                exception.getErrorCode());
+        assertTrue(exception.getMessage().contains("currentRevision=9"));
+        verify(configMapper, never()).updateCurrentIfRevision(
+                anyString(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    void currentReadHydratesOnlyTheCurrentRowEnvelope() {
+        EntityVersionConfiguration result = service.getCurrent("asset")
+                .orElseThrow();
+
+        assertEquals("config-1", result.getId());
+        assertEquals("asset", result.getEntityCode());
+        assertEquals(7, result.getRevision());
+        assertTrue(result.getEnabled());
         verify(definitionMapper, never()).findByEntityCode(anyString());
     }
 
     @Test
-    void recordCapabilitiesAreDisabledWhenEntityHasNoVersionConfig() {
+    void currentReadIgnoresLegacyReleaseEnvelopeProperties() {
+        config.setConfigDocument("""
+                {"schemaVersion":2,"enabled":true,
+                 "status":"PUBLISHED","migrationState":"MIGRATED",
+                 "activeReleaseId":"release-7","activeReleaseVersion":7,
+                 "triggers":[]}
+                """);
+
+        EntityVersionConfiguration result = service.getCurrent("asset")
+                .orElseThrow();
+
+        assertEquals("config-1", result.getId());
+        assertEquals(7, result.getRevision());
+        assertEquals(2, result.getSchemaVersion());
+    }
+
+    @Test
+    void listSummarizesTheSingleCurrentDocument() {
+        EntityDefinition definition = new EntityDefinition();
+        definition.setId("entity-1");
+        definition.setEntityCode("asset");
+        definition.setEntityName("资产");
+        when(definitionMapper.findAllWithFields())
+                .thenReturn(List.of(definition));
+
+        var summary = service.list(null).get(0);
+
+        assertEquals("asset", summary.entityCode());
+        assertEquals(7, summary.revision());
+        assertTrue(summary.enabled());
+        assertTrue(summary.runtimeEnabled());
+        assertEquals(1, summary.triggerCount());
+        assertEquals(1, summary.scopeRelationCount());
+    }
+
+    @Test
+    void listTreatsLegacyDraftOnlyRowAsDisabledAndNotRuntimeEnabled() {
+        EntityDefinition definition = new EntityDefinition();
+        definition.setId("entity-1");
+        definition.setEntityCode("asset");
+        definition.setEntityName("资产");
+        config.setConfigDocument(null);
+        config.setEnabled(true);
+        when(definitionMapper.findAllWithFields())
+                .thenReturn(List.of(definition));
+
+        var summary = service.list(null).get(0);
+
+        assertFalse(summary.enabled());
+        assertFalse(summary.runtimeEnabled());
+        assertEquals(7, summary.revision());
+    }
+
+    @Test
+    void capabilitiesAreAllFalseWithoutCurrentConfigOrHistory() {
         when(configMapper.findByEntityCode("asset")).thenReturn(null);
 
         var capabilities = service.recordCapabilities("asset");
 
         assertFalse(capabilities.runtimeEnabled());
         assertFalse(capabilities.manualCaptureEnabled());
-        verify(releaseMapper, never()).selectById(anyString());
+        assertFalse(capabilities.historyReadable());
     }
 
     @Test
-    void recordCapabilitiesUseOnlyEnabledActiveReleaseDocument()
+    void disabledCurrentConfigKeepsExistingHistoryReadable()
             throws Exception {
-        // 草稿开关关闭且没有 MANUAL 触发器；运行能力必须仍由 active release 决定。
+        EntityVersionConfiguration disabled =
+                v2Configuration("ROOT_MUTATION", true);
+        disabled.setEnabled(false);
+        setCurrentDocument(disabled);
         config.setEnabled(false);
-        config.setDraftDocument(objectMapper.writeValueAsString(v2Draft()));
-        EntityVersionConfiguration published = v2Draft();
-        EntityVersionConfiguration.CaptureTrigger manual =
-                new EntityVersionConfiguration.CaptureTrigger();
-        manual.setTriggerCode("MANUAL_CHECKPOINT");
-        manual.setTriggerType("MANUAL");
-        published.setTriggers(List.of(manual));
-        activateRelease(published, 2);
-
-        var capabilities = service.recordCapabilities("asset");
-
-        assertTrue(capabilities.runtimeEnabled());
-        assertTrue(capabilities.manualCaptureEnabled());
-        verify(definitionMapper, never()).findByEntityCode(anyString());
-    }
-
-    @Test
-    void disabledActiveReleaseDisablesAllRecordCapabilities()
-            throws Exception {
-        EntityVersionConfiguration published = v2Draft();
-        published.setEnabled(false);
-        EntityVersionConfiguration.CaptureTrigger manual =
-                new EntityVersionConfiguration.CaptureTrigger();
-        manual.setTriggerType("MANUAL");
-        published.setTriggers(List.of(manual));
-        activateRelease(published, 2);
+        when(recordVersionMapper.existsByEntityCode("asset"))
+                .thenReturn(true);
 
         var capabilities = service.recordCapabilities("asset");
 
         assertFalse(capabilities.runtimeEnabled());
         assertFalse(capabilities.manualCaptureEnabled());
+        assertTrue(capabilities.historyReadable());
     }
 
     @Test
-    void legacyActiveReleaseCannotAdvertiseManualCapture()
+    void enabledV2ManualTriggerAdvertisesManualCapture()
             throws Exception {
-        EntityVersionConfiguration published = v2Draft();
-        EntityVersionConfiguration.CaptureTrigger manual =
-                new EntityVersionConfiguration.CaptureTrigger();
-        manual.setTriggerType("MANUAL");
-        published.setTriggers(List.of(manual));
-        activateRelease(published, 1);
+        setCurrentDocument(v2Configuration("MANUAL", true));
+
+        var capabilities = service.recordCapabilities("asset");
+
+        assertTrue(capabilities.runtimeEnabled());
+        assertTrue(capabilities.manualCaptureEnabled());
+    }
+
+    @Test
+    void disabledManualTriggerDoesNotAdvertiseManualCapture()
+            throws Exception {
+        setCurrentDocument(v2Configuration("MANUAL", false));
 
         var capabilities = service.recordCapabilities("asset");
 
@@ -281,14 +534,20 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
-    void disabledManualTriggerIsNotAvailable() throws Exception {
-        EntityVersionConfiguration published = v2Draft();
-        EntityVersionConfiguration.CaptureTrigger manual =
-                new EntityVersionConfiguration.CaptureTrigger();
-        manual.setTriggerType("MANUAL");
-        manual.setEnabled(false);
-        published.setTriggers(List.of(manual));
-        activateRelease(published, 2);
+    void enabledV2WithoutManualTriggerDoesNotAdvertiseManualCapture() {
+        var capabilities = service.recordCapabilities("asset");
+
+        assertTrue(capabilities.runtimeEnabled());
+        assertFalse(capabilities.manualCaptureEnabled());
+    }
+
+    @Test
+    void legacyV1DocumentNeverAdvertisesManualCapture()
+            throws Exception {
+        EntityVersionConfiguration legacy =
+                v2Configuration("MANUAL", true);
+        legacy.setSchemaVersion(1);
+        setCurrentDocument(legacy);
 
         var capabilities = service.recordCapabilities("asset");
 
@@ -297,58 +556,32 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
-    void activeReleaseWithoutManualTriggerCannotAdvertiseCapture()
-            throws Exception {
-        activateRelease(v2Draft(), 2);
-
-        var capabilities = service.recordCapabilities("asset");
-
-        assertTrue(capabilities.runtimeEnabled());
-        assertFalse(capabilities.manualCaptureEnabled());
-    }
-
-    @Test
-    void refusesIncompleteMigrationInsteadOfSilentlyLosingOldRules() {
-        config.setDraftDocument(null);
-        assertThrows(IllegalStateException.class, () -> service.getDraft("asset"));
-    }
-
-    @Test
-    void rejectsEntityReleaseThatRemovesActiveScopeRelation()
-            throws Exception {
-        EntityVersionConfiguration active = v2Draft();
-        active.getSnapshotScope().getRelations().get(0)
-                .setRelationCode("asset_lines");
-        EntityVersionConfigRelease release = new EntityVersionConfigRelease();
-        release.setId("release-active");
-        release.setVersion(2);
-        release.setContractVersion(2);
-        release.setConfigDocument(objectMapper.writeValueAsString(active));
-        config.setActiveReleaseId("release-active");
-        when(releaseMapper.selectById("release-active")).thenReturn(release);
-
-        assertTrue(org.junit.jupiter.api.Assertions.assertThrows(
-                com.workflow.core.error.BusinessConflictException.class,
+    void rejectsEntityReleaseThatRemovesEnabledCurrentScopeRelation() {
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
                 () -> service.requireRelationScopeCompatible(
-                        "asset", List.of())).getMessage().contains("asset_lines"));
+                        "asset", List.of()));
+
+        assertEquals("ENTITY_VERSION_SCOPE_RELATION_REMOVED",
+                exception.getErrorCode());
+        assertTrue(exception.getMessage().contains("asset_lines"));
     }
 
     @Test
-    void rejectsPublishingChangedRelationSelector() throws Exception {
-        EntityVersionConfiguration active = v2Draft();
-        EntityVersionConfiguration.RelationScope frozen = active
-                .getSnapshotScope().getRelations().get(0);
-        frozen.setChildEntityCode("asset_line");
-        frozen.setChildRefFieldCode("assetId");
-        frozen.setRelationType("ONE_TO_MANY");
-        frozen.setDataKey("lines");
-        EntityVersionConfigRelease release = new EntityVersionConfigRelease();
-        release.setId("release-active");
-        release.setVersion(2);
-        release.setContractVersion(2);
-        release.setConfigDocument(objectMapper.writeValueAsString(active));
-        config.setActiveReleaseId("release-active");
-        when(releaseMapper.selectById("release-active")).thenReturn(release);
+    void disabledCurrentConfigDoesNotBlockEntityRelationPublishing()
+            throws Exception {
+        EntityVersionConfiguration disabled =
+                v2Configuration("ROOT_MUTATION", true);
+        disabled.setEnabled(false);
+        setCurrentDocument(disabled);
+        config.setEnabled(false);
+
+        assertDoesNotThrow(() -> service.requireRelationScopeCompatible(
+                "asset", List.of()));
+    }
+
+    @Test
+    void rejectsPublishingChangedRelationSelector() {
         EntityRelation changed = new EntityRelation();
         changed.setRelationCode("asset_lines");
         changed.setChildEntityCode("asset_line");
@@ -358,87 +591,66 @@ class EntityVersionConfigurationServiceV2Test {
         changed.setDataKey("lines");
         changed.setEnabled(true);
 
-        com.workflow.core.error.BusinessConflictException exception =
-                assertThrows(
-                        com.workflow.core.error.BusinessConflictException.class,
-                        () -> service.requireRelationScopeDefinitionsCompatible(
-                                "asset", List.of(changed)));
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.requireRelationScopeDefinitionsCompatible(
+                        "asset", List.of(changed)));
 
         assertEquals("ENTITY_VERSION_SCOPE_RELATION_INCOMPATIBLE",
                 exception.getErrorCode());
     }
 
-    @Test
-    void legacyReleaseWithoutSchemaPropertyUsesReleaseContractV1()
-            throws Exception {
-        config.setActiveReleaseId("legacy-release");
-        EntityVersionConfigRelease release = new EntityVersionConfigRelease();
-        release.setId("legacy-release");
-        release.setVersion(3);
-        release.setContractVersion(1);
-        release.setConfigDocument("{\"enabled\":true,\"scenarios\":[]}");
-        when(releaseMapper.selectById("legacy-release")).thenReturn(release);
-
-        EntityVersionConfiguration published = service.getPublished("asset")
-                .orElseThrow();
-
-        assertEquals(1, published.getSchemaVersion());
-        assertEquals(3, published.getActiveReleaseVersion());
+    private EntityVersionConfig currentConfig(
+            EntityVersionConfiguration document) throws Exception {
+        EntityVersionConfig value = new EntityVersionConfig();
+        value.setId("config-1");
+        value.setEntityId("entity-1");
+        value.setEntityCode("asset");
+        value.setEnabled(true);
+        value.setRevision(7);
+        value.setDeleted(0);
+        value.setConfigDocument(
+                objectMapper.writeValueAsString(document));
+        return value;
     }
 
-    @Test
-    void readsOldOneLayerV2JsonWithoutTreeFields() {
-        config.setActiveReleaseId("old-v2-release");
-        EntityVersionConfigRelease release = new EntityVersionConfigRelease();
-        release.setId("old-v2-release");
-        release.setConfigId("config-1");
-        release.setVersion(4);
-        release.setContractVersion(2);
-        release.setConfigDocument("""
-                {"enabled":true,"snapshotScope":{"root":{},"relations":[
-                  {"nodeCode":"REL_LINES","relationCode":"asset_lines",
-                   "childEntityCode":"asset_line","enabled":true}
-                ]}}
-                """);
-        when(releaseMapper.selectById("old-v2-release"))
-                .thenReturn(release);
-
-        EntityVersionConfiguration published = service.getPublished("asset")
-                .orElseThrow();
-        EntityVersionConfiguration.RelationScope relation = published
-                .getSnapshotScope().getRelations().get(0);
-
-        assertEquals("asset", published.getEntityCode());
-        assertEquals("ROOT", relation.getParentNodeCode());
-        assertEquals(1, relation.getDepth());
-        assertTrue(relation.getRelationPath().isEmpty());
+    private EntityVersionConfig currentConfigUnchecked(
+            EntityVersionConfiguration document) {
+        try {
+            return currentConfig(document);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
-    @Test
-    void releaseHistoryUsesServerSidePagination() {
-        EntityVersionConfigRelease release = new EntityVersionConfigRelease();
-        release.setId("release-1");
-        release.setVersion(1);
-        release.setContractVersion(2);
-        release.setConfigDocument(
-                "{\"snapshotScope\":{\"relations\":[{\"enabled\":true}]}}");
-        when(releaseMapper.countByConfigId("config-1")).thenReturn(3L);
-        when(releaseMapper.findPageByConfigId("config-1", 2, 2))
-                .thenReturn(List.of(release));
-
-        var page = service.releases("asset", 2, 2);
-
-        assertEquals(3, page.getTotal());
-        assertEquals(2, page.getPageNum());
-        assertEquals(2, page.getPageSize());
-        assertEquals(List.of(1), page.getRecords().stream()
-                .map(item -> item.version())
-                .toList());
-        assertEquals(1, page.getRecords().get(0).relationCount());
+    private EntityVersionRolloutState rolloutState(
+            String status,
+            int revision,
+            String draftDocument,
+            String currentDocument) {
+        EntityVersionRolloutState value = new EntityVersionRolloutState();
+        value.setId("config-1");
+        value.setEntityId("entity-1");
+        value.setEntityCode("asset");
+        value.setEnabled(true);
+        value.setRevision(revision);
+        value.setStatus(status);
+        value.setDraftDocument(draftDocument);
+        value.setConfigDocument(currentDocument);
+        return value;
     }
 
-    private EntityVersionConfiguration v2Draft() {
-        EntityVersionConfiguration value = new EntityVersionConfiguration();
+    private void setCurrentDocument(
+            EntityVersionConfiguration document) throws Exception {
+        config.setConfigDocument(
+                objectMapper.writeValueAsString(document));
+    }
+
+    private EntityVersionConfiguration v2Configuration(
+            String triggerType,
+            boolean triggerEnabled) {
+        EntityVersionConfiguration value =
+                new EntityVersionConfiguration();
         value.setSchemaVersion(2);
         value.setEnabled(true);
         value.setRevision(7);
@@ -446,30 +658,20 @@ class EntityVersionConfigurationServiceV2Test {
                 new EntityVersionConfiguration.CaptureTrigger();
         trigger.setTriggerCode("ROOT_CHANGE");
         trigger.setTriggerName("根实体变化");
-        trigger.setTriggerType("ROOT_MUTATION");
+        trigger.setTriggerType(triggerType);
+        trigger.setEnabled(triggerEnabled);
         value.setTriggers(List.of(trigger));
         EntityVersionConfiguration.RelationScope relation =
                 new EntityVersionConfiguration.RelationScope();
         relation.setNodeCode("REL_LINES");
         relation.setRelationCode("asset_lines");
+        relation.setParentEntityCode("asset");
+        relation.setChildEntityCode("asset_line");
+        relation.setChildRefFieldCode("assetId");
+        relation.setRelationType("ONE_TO_MANY");
+        relation.setDataKey("lines");
         relation.setEnabled(true);
         value.getSnapshotScope().setRelations(List.of(relation));
         return value;
-    }
-
-    private void activateRelease(
-            EntityVersionConfiguration published,
-            int contractVersion) throws Exception {
-        EntityVersionConfigRelease release =
-                new EntityVersionConfigRelease();
-        release.setId("release-active");
-        release.setConfigId("config-1");
-        release.setVersion(3);
-        release.setContractVersion(contractVersion);
-        release.setConfigDocument(
-                objectMapper.writeValueAsString(published));
-        config.setActiveReleaseId(release.getId());
-        when(releaseMapper.selectById(release.getId()))
-                .thenReturn(release);
     }
 }

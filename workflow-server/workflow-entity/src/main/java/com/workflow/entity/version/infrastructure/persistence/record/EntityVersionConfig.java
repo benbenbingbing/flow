@@ -7,9 +7,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/**
- * 实体数据版本配置草稿。
- */
+/** 每个实体唯一的一份当前数据版本配置。 */
 @Data
 @TableName("entity_version_config")
 public class EntityVersionConfig {
@@ -19,12 +17,8 @@ public class EntityVersionConfig {
     private String entityId;
     private String entityCode;
     private Boolean enabled;
-    private Integer contractVersion;
-    private String draftDocument;
-    private String migrationState;
-    private String activeReleaseId;
+    private String configDocument;
     private Integer revision;
-    private String status;
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;

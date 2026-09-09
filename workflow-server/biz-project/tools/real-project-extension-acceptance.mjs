@@ -93,13 +93,14 @@ const pageOutputSchema = {
   required: ['records', 'total', 'pageNum', 'pageSize']
 }
 
-async function api(method, endpoint, body) {
+async function api(method, endpoint, body, extraHeaders = {}) {
   const response = await fetch(apiBase + endpoint, {
     method,
     signal: AbortSignal.timeout(45000),
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...extraHeaders
     },
     body: body == null ? undefined : JSON.stringify(body)
   })
@@ -126,9 +127,9 @@ async function api(method, endpoint, body) {
   return payload?.data ?? payload
 }
 
-async function optionalApi(method, endpoint, body) {
+async function optionalApi(method, endpoint, body, extraHeaders = {}) {
   try {
-    return await api(method, endpoint, body)
+    return await api(method, endpoint, body, extraHeaders)
   } catch (error) {
     if (/404|不存在|not found/i.test(error.message)) return null
     throw error
@@ -2825,7 +2826,75 @@ async function ensureProcess(forms, entity) {
 }
 
 async function configureVersionPolicy(entity, entitySource) {
-  const document = {
+  const sourceTypes = [
+    'FORM',
+    'LIST',
+    'FLOW_ACTION',
+    'CUSTOM_INTERFACE',
+    'SYSTEM_TASK'
+  ]
+  const operationTypes = [
+    'CREATE',
+    'UPDATE'
+  ]
+  const currentVersion = await api(
+    'GET',
+    `/entity-versions/configs/${entityCode}/current`
+  )
+  const versionDocument = {
+    schemaVersion: 2,
+    entityId: entity.id,
+    entityCode,
+    entityName,
+    enabled: true,
+    triggers: [
+      {
+        triggerCode: 'PROJECT_EXTENSION_ACCEPTANCE',
+        triggerName: '项目扩展验收实体变更',
+        triggerType: 'ROOT_MUTATION',
+        sourceTypes,
+        operationTypes,
+        businessIntents: [],
+        condition: {},
+        priority: 10,
+        versionTitleTemplate:
+          '项目扩展验收-${operationType}',
+        enabled: true
+      }
+    ],
+    snapshotScope: {
+      root: {
+        ...(currentVersion.snapshotScope?.root || {}),
+        fieldMode:
+          currentVersion.snapshotScope?.root?.fieldMode
+          || 'ALL_PUBLISHED',
+        fieldCodes:
+          currentVersion.snapshotScope?.root?.fieldCodes
+          || []
+      },
+      relations:
+        currentVersion.snapshotScope?.relations || [],
+      limits:
+        currentVersion.snapshotScope?.limits || {}
+    },
+    diffPolicy: currentVersion.diffPolicy || {}
+  }
+  const savedVersion = await api(
+    'PUT',
+    `/entity-versions/configs/${entityCode}/current`,
+    versionDocument,
+    {
+      'If-Match': String(currentVersion.revision ?? 0)
+    }
+  )
+
+  // 变更步骤属于独立变更策略，不再与数据版本触发器混存。
+  const currentMutation = await api(
+    'GET',
+    `/entity-mutation-policies/configs/${entityCode}/draft`
+  )
+  const mutationDocument = {
+    schemaVersion: 1,
     entityId: entity.id,
     entityCode,
     entityName,
@@ -2834,17 +2903,8 @@ async function configureVersionPolicy(entity, entitySource) {
       {
         scenarioCode: 'PROJECT_EXTENSION_ACCEPTANCE',
         scenarioName: '项目扩展验收实体变更',
-        sourceTypes: [
-          'FORM',
-          'LIST',
-          'FLOW_ACTION',
-          'CUSTOM_INTERFACE',
-          'SYSTEM_TASK'
-        ],
-        operationTypes: [
-          'CREATE',
-          'UPDATE'
-        ],
+        sourceTypes,
+        operationTypes,
         businessIntents: [],
         condition: {},
         priority: 10,
@@ -2887,25 +2947,40 @@ async function configureVersionPolicy(entity, entitySource) {
     ],
     targetBindings: []
   }
-  const saved = await api(
+  const savedMutation = await api(
     'POST',
-    `/entity-versions/configs/${entityCode}/save`,
-    document
+    `/entity-mutation-policies/configs/${entityCode}/draft`,
+    mutationDocument,
+    {
+      'If-Match': String(currentMutation.revision ?? 0)
+    }
   )
-  const published = await api(
+  const publishedMutation = await api(
     'POST',
-    `/entity-versions/configs/${entityCode}/publish`
+    `/entity-mutation-policies/configs/${entityCode}/releases`,
+    undefined,
+    {
+      'If-Match': String(savedMutation.revision)
+    }
   )
   evidence.versionConfiguration = {
-    id: saved.id,
-    enabled: published.enabled,
-    status: published.status,
-    activeReleaseId: published.activeReleaseId,
-    activeReleaseVersion:
-      published.activeReleaseVersion,
-    scenarioCount:
-      published.scenarios?.length || 0,
-    stepCount: published.steps?.length || 0
+    id: savedVersion.id,
+    enabled: savedVersion.enabled,
+    revision: savedVersion.revision,
+    triggerCount: savedVersion.triggers?.length || 0,
+    scopeRelationCount:
+      savedVersion.snapshotScope?.relations?.length || 0,
+    mutationPolicy: {
+      id: savedMutation.id,
+      status: publishedMutation.status,
+      activeReleaseId:
+        publishedMutation.activeReleaseId,
+      activeReleaseVersion:
+        publishedMutation.activeReleaseVersion,
+      scenarioCount:
+        publishedMutation.scenarios?.length || 0,
+      stepCount: publishedMutation.steps?.length || 0
+    }
   }
 }
 

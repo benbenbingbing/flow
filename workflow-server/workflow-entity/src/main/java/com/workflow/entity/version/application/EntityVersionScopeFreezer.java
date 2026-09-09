@@ -30,8 +30,8 @@ import java.util.Set;
  * 把版本范围解析为不可变的组成关系树。
  *
  * <p>旧配置没有 {@code parentNodeCode} 时仍按 ROOT 的一层关系处理。新配置可把
- * 任一已冻结节点作为父节点；发布后捕获只使用这里冻结的实体版本、关系路径和字段
- * 结构，不再通过 SUB_FORM/SUB_LIST 或当前实体定义推断范围。</p>
+ * 任一已冻结节点作为父节点；配置保存生效后，捕获只使用这里冻结的实体版本、
+ * 关系路径和字段结构，不再通过 SUB_FORM/SUB_LIST 或当前实体定义推断范围。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -52,6 +52,13 @@ public class EntityVersionScopeFreezer {
     private static final int HARD_MAX_DEPTH = 8;
     private static final int HARD_MAX_SCOPE_NODES = 64;
 
+    /**
+     * 在写入当前配置前冻结实体版本、关系路径、字段展示和范围摘要。
+     *
+     * @param source 已经结构校验的候选配置
+     * @return 与运行时实体定义解耦的冻结副本
+     * @throws IllegalArgumentException 范围引用无效或超过治理上限时抛出
+     */
     public EntityVersionConfiguration freeze(
             EntityVersionConfiguration source) {
         EntityVersionConfiguration document = copy(source);
@@ -184,7 +191,6 @@ public class EntityVersionScopeFreezer {
         scope.setRelations(frozenRelations);
         scope.setScopeHash(hash(scopeMaterial(scope)));
         document.setSchemaVersion(2);
-        document.setMigrationState("MIGRATED");
         document.setRelationOptions(List.of());
         document.setFieldOptions(List.of());
         return document;
@@ -272,7 +278,14 @@ public class EntityVersionScopeFreezer {
         return step;
     }
 
-    public EntityVersionConfiguration enrichDraftOptions(
+    /**
+     * 为管理端读取结果补充当前可选字段和直接组成关系。
+     * 这些派生选项不属于运行时配置，保存时会被剔除。
+     *
+     * @param document 当前配置或新建默认配置
+     * @return 补充了管理选项的同一配置对象
+     */
+    public EntityVersionConfiguration enrichManagementOptions(
             EntityVersionConfiguration document) {
         if (document == null || !StringUtils.hasText(document.getEntityCode())) {
             return document;

@@ -25,6 +25,8 @@ class SchemaRequiredTablesTest {
             "updated" + "_at";
     private static final Path MIGRATION_DIRECTORY =
             Path.of("../workflow-db-migrator/src/main/resources/db/migration");
+    private static final Path JAVA_MIGRATION_DIRECTORY =
+            Path.of("../workflow-db-migrator/src/main/java/db/migration");
     private static final Path BASELINE =
             MIGRATION_DIRECTORY.resolve("V001__business_schema.sql");
     private static final Path CURRENT_BASELINE_PATCH =
@@ -34,17 +36,20 @@ class SchemaRequiredTablesTest {
     @Test
     void flywayUsesOrderedMigrationSeries() throws Exception {
         List<String> files;
-        try (var paths = Files.list(MIGRATION_DIRECTORY)) {
-            files = paths
+        try (var sqlPaths = Files.list(MIGRATION_DIRECTORY);
+             var javaPaths = Files.list(JAVA_MIGRATION_DIRECTORY)) {
+            // V080 是需要转换 JSON 文档的 Java 迁移；序列校验必须同时覆盖两类迁移。
+            files = java.util.stream.Stream.concat(sqlPaths, javaPaths)
                     .filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
+                    .filter(name -> name.matches("V\\d+__.+\\.(sql|java)"))
                     .sorted()
                     .toList();
         }
 
         assertFalse(files.isEmpty());
-        assertTrue(files.get(files.size() - 1).startsWith("V079__"),
-                "latest migration must be V079: " + files);
+        assertTrue(files.get(files.size() - 1).startsWith("V082__"),
+                "latest migration must be V082: " + files);
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -191,6 +196,35 @@ class SchemaRequiredTablesTest {
                 "CREATE TABLE `entity_mutation_policy_config`"));
         assertFalse(baseline.contains(
                 "CREATE TABLE `entity_record_version_dataset`"));
+    }
+
+    @Test
+    void entityVersionConfigurationIsSimplifiedForwardOnly()
+            throws Exception {
+        String simplification = Files.readString(
+                MIGRATION_DIRECTORY.resolve(
+                        "V082__simplify_entity_version_configuration.sql"));
+
+        assertTrue(simplification.contains(
+                "ADD COLUMN `config_document`"));
+        assertTrue(simplification.contains(
+                "@flow_v082_config_document_exists"));
+        assertTrue(simplification.contains(
+                "JSON_SET("));
+        assertFalse(simplification.contains("CREATE TRIGGER"));
+        assertFalse(simplification.contains(
+                "log_bin_trust_function_creators"));
+        // 迁移先于新 Pod 执行，V082 必须保持旧运行时仍可访问的结构。
+        assertFalse(simplification.contains(
+                "DROP COLUMN `active_release_id`"));
+        assertFalse(simplification.contains(
+                "DROP COLUMN `config_release_id`"));
+        assertFalse(simplification.contains(
+                "DROP TABLE `entity_version_config_release`"));
+        assertFalse(simplification.contains(
+                "DROP TABLE `entity_record_version`"));
+        assertFalse(simplification.contains(
+                "DELETE FROM `entity_record_version`"));
     }
 
     @Test

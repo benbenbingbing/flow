@@ -7,8 +7,6 @@ import com.workflow.entity.mutationpolicy.infrastructure.persistence.mapper.Enti
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.record.EntityMutationPolicyRelease;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigReleaseMapper;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfigRelease;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +24,6 @@ class UiPublishedDataSourceReferenceGuardTest {
 
     private UiConfigReleaseMapper releaseMapper;
     private EntityMutationPolicyReleaseMapper mutationReleaseMapper;
-    private EntityVersionConfigReleaseMapper legacyMutationReleaseMapper;
     private UiConfigReleaseService releaseService;
     private UiPublishedDataSourceReferenceGuard guard;
 
@@ -35,21 +32,15 @@ class UiPublishedDataSourceReferenceGuardTest {
         releaseMapper = mock(UiConfigReleaseMapper.class);
         mutationReleaseMapper = mock(
                 EntityMutationPolicyReleaseMapper.class);
-        legacyMutationReleaseMapper = mock(
-                EntityVersionConfigReleaseMapper.class);
         releaseService = mock(UiConfigReleaseService.class);
         guard = new UiPublishedDataSourceReferenceGuard(
                 releaseMapper,
                 mutationReleaseMapper,
-                legacyMutationReleaseMapper,
                 releaseService,
                 new JsonDocumentCodec(new ObjectMapper()));
         when(releaseMapper.findExecutableDataSourceReferenceCandidates(
                 anyString())).thenReturn(List.of());
         when(mutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of());
-        when(legacyMutationReleaseMapper
                 .findActiveDataSourceReferenceCandidates(anyString()))
                 .thenReturn(List.of());
     }
@@ -140,29 +131,6 @@ class UiPublishedDataSourceReferenceGuardTest {
     }
 
     @Test
-    void blocksManagedInterfaceInActiveLegacyMutationRelease() {
-        EntityVersionConfigRelease release =
-                new EntityVersionConfigRelease();
-        release.setId("legacy-release-1");
-        release.setConfigId("legacy-config-1");
-        release.setVersion(9);
-        release.setConfigDocument("{\"enabled\":true,\"steps\":[{"
-                + "\"stepType\":\"MANAGED_INTERFACE\","
-                + "\"providerCode\":\"source-1\","
-                + "\"config\":{\"operationCode\":\"mutate\"}}]}");
-        when(legacyMutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of(release));
-
-        BusinessConflictException error = assertThrows(
-                BusinessConflictException.class,
-                () -> guard.requireNoExecutableReferences("source-1"));
-
-        assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
-                error.getErrorCode());
-    }
-
-    @Test
     void ignoresManagedInterfaceWhenMutationPolicyRootIsDisabled() {
         EntityMutationPolicyRelease release =
                 new EntityMutationPolicyRelease();
@@ -193,51 +161,6 @@ class UiPublishedDataSourceReferenceGuardTest {
 
         assertDoesNotThrow(() ->
                 guard.requireNoExecutableReferences("source-1"));
-    }
-
-    @Test
-    void nativeActiveReleaseShadowsLegacyFallbackForSameEntity() {
-        EntityVersionConfigRelease release =
-                new EntityVersionConfigRelease();
-        release.setConfigId("legacy-config-1");
-        release.setConfigDocument("{\"enabled\":true,\"steps\":[{"
-                + "\"stepType\":\"MANAGED_INTERFACE\","
-                + "\"providerCode\":\"source-1\"}]}");
-        when(legacyMutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of(release));
-        when(legacyMutationReleaseMapper
-                .countActiveNativePolicyForLegacyConfig(
-                        "legacy-config-1"))
-                .thenReturn(1L);
-
-        assertDoesNotThrow(() ->
-                guard.requireNoExecutableReferences("source-1"));
-    }
-
-    @Test
-    void danglingNativePointerDoesNotShadowExecutableLegacyFallback() {
-        EntityVersionConfigRelease release =
-                new EntityVersionConfigRelease();
-        release.setConfigId("legacy-config-with-dangling-native");
-        release.setConfigDocument("{\"enabled\":true,\"steps\":[{"
-                + "\"stepType\":\"MANAGED_INTERFACE\","
-                + "\"providerCode\":\"source-1\"}]}");
-        when(legacyMutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of(release));
-        // SQL 只有在 native active_release_id 能实际 join 发布行时才返回 > 0。
-        when(legacyMutationReleaseMapper
-                .countActiveNativePolicyForLegacyConfig(
-                        "legacy-config-with-dangling-native"))
-                .thenReturn(0L);
-
-        BusinessConflictException error = assertThrows(
-                BusinessConflictException.class,
-                () -> guard.requireNoExecutableReferences("source-1"));
-
-        assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
-                error.getErrorCode());
     }
 
     @Test

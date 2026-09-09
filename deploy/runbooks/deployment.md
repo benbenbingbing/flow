@@ -33,6 +33,30 @@ helm -n flow test flow
 Abort if migrations fail. Do not bypass Flyway validation or edit an applied
 migration. Add a new corrective migration.
 
+### Expand/contract schema changes
+
+Because migration hooks finish before the Deployment rolls, changing the
+canonical read path and retiring compatibility writes defaults to four
+application releases when affected writes remain available:
+
+1. expand the schema and deploy code that reads the old canonical state while
+   bridging both old and new writes;
+2. after a final backfill and reconciliation, switch reads to the new canonical
+   state but keep compatibility writes and the old schema; legacy public APIs
+   may be removed when their clients have already exited;
+3. switch to new-only reads and writes while retaining the old schema, finish
+   the rollout, and wait for every step-2 Pod and in-flight transaction to exit;
+4. in a later release, run the contract migration that removes the old schema
+   and retired permissions.
+
+Do not stop compatibility writes in step 2 during an ordinary rolling deploy,
+and do not combine steps 3 and 4: a pre-upgrade migration runs while Pods from
+the previous application release can still be serving. A three-release variant
+may combine steps 2 and 3 only if affected writes are frozen for the entire
+step-2 rollout, in-flight write transactions are drained before cutover, the
+final backfill and reconciliation succeed, and the freeze remains until every
+old Pod has exited.
+
 ## Rollback decision
 
 Application-only changes may be rolled back with `helm rollback` if the old

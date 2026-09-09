@@ -47,7 +47,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
@@ -93,13 +92,6 @@ class EntityRecordVersionServiceTest {
                 datasetRowMapper,
                 dataService,
                 aggregateWriter);
-        EntityVersionConfiguration legacyRelease =
-                new EntityVersionConfiguration();
-        legacyRelease.setSchemaVersion(1);
-        legacyRelease.setActiveReleaseId("release-1");
-        lenient().when(configurationService.getPublishedRelease(
-                        anyString(), anyString()))
-                .thenReturn(Optional.of(legacyRelease));
     }
 
     @Test
@@ -249,8 +241,7 @@ class EntityRecordVersionServiceTest {
                 "人工复核",
                 null,
                 90,
-                "release-1",
-                1);
+                legacyConfiguration());
         BusinessConflictException triggerConflict = assertThrows(
                 BusinessConflictException.class,
                 () -> service.createIfMatched(
@@ -270,15 +261,14 @@ class EntityRecordVersionServiceTest {
                 new EntityVersionConfiguration();
         configuration.setEnabled(true);
         configuration.setSchemaVersion(2);
-        configuration.setActiveReleaseId("release-1");
-        when(configurationService.getPublished("asset"))
-                .thenReturn(Optional.of(configuration));
-        when(configurationService.getPublishedRelease(
-                "asset", "release-1"))
+        configuration.setId("config-1");
+        configuration.setEntityCode("asset");
+        configuration.setRevision(7);
+        when(configurationService.getCurrent("asset"))
                 .thenReturn(Optional.of(configuration));
         MatchedScenario manual = new MatchedScenario(
                 "MANUAL_CHECKPOINT", "手工固化",
-                "V${versionNo} ${triggerName}", 1, "release-1", 1);
+                "V${versionNo} ${triggerName}", 1, configuration);
         when(policyMatcher.matchManual(configuration, null))
                 .thenReturn(Optional.of(manual));
         EntityDataDTO record = new EntityDataDTO();
@@ -355,17 +345,23 @@ class EntityRecordVersionServiceTest {
     }
 
     @Test
-    void missingMatchedReleaseFailsInsteadOfSilentlyCapturingV1() {
-        when(configurationService.getPublishedRelease(
-                "asset", "release-1")).thenReturn(Optional.empty());
+    void mismatchedCarriedConfigurationFailsBeforeSnapshotCapture() {
+        EntityVersionConfiguration other = legacyConfiguration();
+        other.setEntityCode("other");
+        MatchedScenario mismatched = new MatchedScenario(
+                "CHANGE_EFFECTIVE",
+                "变更审批生效",
+                null,
+                100,
+                other);
 
         BusinessConflictException exception = assertThrows(
                 BusinessConflictException.class,
                 () -> service.createIfMatched(
                         command("mutation-missing-release"),
-                        scenario(), Map.of("id", "record-1"), false));
+                        mismatched, Map.of("id", "record-1"), false));
 
-        assertEquals("ENTITY_VERSION_RELEASE_NOT_FOUND",
+        assertEquals("ENTITY_VERSION_CONFIG_MISMATCH",
                 exception.getErrorCode());
         verify(snapshotService, never()).capture(
                 anyString(), anyString(), any(), anyBoolean());
@@ -403,8 +399,18 @@ class EntityRecordVersionServiceTest {
                 "变更审批生效",
                 null,
                 100,
-                "release-1",
-                1);
+                legacyConfiguration());
+    }
+
+    private EntityVersionConfiguration legacyConfiguration() {
+        EntityVersionConfiguration configuration =
+                new EntityVersionConfiguration();
+        configuration.setId("config-1");
+        configuration.setEntityCode("asset");
+        configuration.setEnabled(true);
+        configuration.setSchemaVersion(1);
+        configuration.setRevision(7);
+        return configuration;
     }
 
     private EntityRecordVersion storedVersion(

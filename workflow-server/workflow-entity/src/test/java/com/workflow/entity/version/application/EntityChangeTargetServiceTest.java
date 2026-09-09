@@ -15,6 +15,7 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.mutationpolicy.application.EntityMutationPolicyService;
+import com.workflow.entity.mutationpolicy.application.model.EntityMutationPolicyDocument;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityChangeTargetInstanceMapper;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityChangeTargetInstance;
@@ -78,7 +79,7 @@ class EntityChangeTargetServiceTest {
     @Test
     void freezeCapturesResolvedTargetBaselineAndMappedPatch()
             throws Exception {
-        EntityVersionConfiguration configuration =
+        EntityMutationPolicyDocument configuration =
                 configuration();
         when(configurationService
                 .findPublishedTargetConfigurations(
@@ -231,7 +232,7 @@ class EntityChangeTargetServiceTest {
                 "CONFLICT");
     }
 
-    private EntityVersionConfiguration configuration() {
+    private EntityMutationPolicyDocument configuration() {
         EntityVersionConfiguration.TargetBinding binding =
                 new EntityVersionConfiguration.TargetBinding();
         binding.setBindingCode("asset-change-target");
@@ -247,8 +248,8 @@ class EntityChangeTargetServiceTest {
         binding.setApplyStrategy("MERGE");
         binding.setEnabled(true);
 
-        EntityVersionConfiguration configuration =
-                new EntityVersionConfiguration();
+        EntityMutationPolicyDocument configuration =
+                new EntityMutationPolicyDocument();
         configuration.setEntityCode("asset");
         configuration.setActiveReleaseId("release-1");
         configuration.setActiveReleaseVersion(2);

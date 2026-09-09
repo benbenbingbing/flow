@@ -22,7 +22,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * 已发布版本场景的统一匹配器。
+ * 当前数据版本场景的统一匹配器。
  */
 @Service
 @RequiredArgsConstructor
@@ -31,12 +31,12 @@ public class EntityVersionPolicyMatcher {
     private final EntityVersionConfigurationService configurationService;
     private final ObjectMapper objectMapper;
 
-    public Optional<MatchedScenario> matchPublished(
+    public Optional<MatchedScenario> matchCurrent(
             EntityMutationCommand command,
             Map<String, Object> beforeRecord,
             Map<String, Object> afterRecord) {
         return configurationService
-                .getPublished(command.entityCode())
+                .getCurrent(command.entityCode())
                 .filter(config ->
                         Boolean.TRUE.equals(config.getEnabled()))
                 .flatMap(config -> match(
@@ -95,8 +95,7 @@ public class EntityVersionPolicyMatcher {
                         item.getScenarioName(),
                         item.getVersionTitleTemplate(),
                         value(item.getPriority()),
-                        configuration.getActiveReleaseId(),
-                        configuration.getActiveReleaseVersion()));
+                        configuration));
     }
 
     public Optional<MatchedScenario> matchManual(
@@ -177,15 +176,14 @@ public class EntityVersionPolicyMatcher {
                 trigger.getTriggerName(),
                 trigger.getVersionTitleTemplate(),
                 value(trigger.getPriority()),
-                configuration.getActiveReleaseId(),
-                configuration.getActiveReleaseVersion());
+                configuration);
     }
 
     public Map<String, Object> simulate(
             String entityCode,
             EntityVersionSimulationRequest request) {
         EntityVersionConfiguration configuration =
-                configurationService.getDraft(entityCode);
+                configurationService.get(entityCode);
         EntityMutationContext context =
                 EntityMutationContext.builder(
                                 enumValue(
@@ -222,8 +220,6 @@ public class EntityVersionPolicyMatcher {
         result.put("matched", matched.isPresent());
         result.put("configurationEnabled",
                 Boolean.TRUE.equals(configuration.getEnabled()));
-        result.put("configurationStatus",
-                configuration.getStatus());
         result.put("scenario", matched
                 .map(value -> Map.of(
                         "code", value.scenarioCode(),
@@ -459,14 +455,16 @@ public class EntityVersionPolicyMatcher {
     }
 
     /**
-     * 运行时命中的已发布版本场景。
+     * 运行时命中的版本场景及其同一次读取所得的冻结配置。
+     *
+     * <p>捕获必须直接使用这里携带的配置，禁止再次查询当前配置，否则并发保存可能
+     * 把旧触发器与新范围拼接成不存在的组合。</p>
      */
     public record MatchedScenario(
             String scenarioCode,
             String scenarioName,
             String versionTitleTemplate,
             int priority,
-            String releaseId,
-            Integer releaseVersion) {
+            EntityVersionConfiguration configuration) {
     }
 }

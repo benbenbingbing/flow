@@ -85,7 +85,23 @@ class ManagementEndpointAccessPolicyTest {
                 "entity:version:config:update");
         assertPermission(
                 EntityVersionConfigurationController.class,
-                "publish",
+                "current",
+                "entity:version:config:list");
+        assertPermission(
+                EntityVersionConfigurationController.class,
+                "saveCurrent",
+                "entity:version:config:update");
+        assertPermission(
+                EntityVersionConfigurationController.class,
+                "legacySaveDraft",
+                "entity:version:config:update");
+        assertPermission(
+                EntityVersionConfigurationController.class,
+                "legacyPublish",
+                "entity:version:config:publish");
+        assertPermission(
+                EntityVersionConfigurationController.class,
+                "legacyCreateRelease",
                 "entity:version:config:publish");
         assertClassPermission(
                 EntityMutationCatalogController.class,
@@ -93,6 +109,11 @@ class ManagementEndpointAccessPolicyTest {
         assertClassPermission(
                 EntityRecordVersionController.class,
                 "entity:version:record:view");
+        assertPermission(
+                EntityRecordVersionController.class,
+                "capture",
+                "entity:version:record:view",
+                "entity:version:record:capture");
     }
 
     private void assertClassPermission(

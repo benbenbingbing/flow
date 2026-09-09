@@ -2,7 +2,7 @@ package com.workflow.entity.version.application.model;
 
 import java.util.List;
 
-/** 数据版本草稿校验结果。结构错误仍通过统一异常响应返回。 */
+/** 数据版本候选配置校验结果。结构错误仍通过统一异常响应返回。 */
 public record EntityVersionValidationResult(
         boolean valid,
         List<String> warnings) {

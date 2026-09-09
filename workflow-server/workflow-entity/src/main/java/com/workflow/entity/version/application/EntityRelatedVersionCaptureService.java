@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -25,7 +26,7 @@ import java.util.Set;
 /**
  * 子实体独立变化沿冻结组成路径向根聚合传播版本。
  *
- * <p>旧一层配置仍直接读取 childRef；多层配置按发布时冻结的 relationPath 逐跳反查。
+ * <p>旧一层配置仍直接读取 childRef；多层配置按保存时冻结的 relationPath 逐跳反查。
  * 范围和时机相互独立：只有 RELATED_MUTATION 触发器明确启用时才传播。</p>
  */
 @Service
@@ -85,7 +86,7 @@ public class EntityRelatedVersionCaptureService {
             Map<String, Object>... currentRecords) {
         Set<RootKey> keys = new LinkedHashSet<>();
         for (EntityVersionConfiguration configuration
-                : configurationService.findPublishedScopedConfigurations(
+                : configurationService.findCurrentScopedConfigurations(
                         command.entityCode())) {
             for (EntityVersionConfiguration.RelationScope relation
                     : scopedRelationsForChild(
@@ -102,13 +103,27 @@ public class EntityRelatedVersionCaptureService {
         return keys;
     }
 
+    /**
+     * 使用同一次读取的当前配置计划并捕获所有关联根版本。
+     *
+     * <p>单配置可被并发替换，因此必须先基于同一批配置构建完整计划并校验
+     * 根记录已预锁，再把计划中携带的配置交给快照捕获。禁止在单个计划中
+     * 二次查询配置，避免新触发器与旧冻结范围被拼接。</p>
+     *
+     * @param command 子实体变更命令
+     * @param beforeRecord 变更前记录
+     * @param afterRecord 变更后记录
+     * @param lockedRoots 本事务已按稳定顺序加锁的根记录
+     */
     @Transactional(rollbackFor = Exception.class)
     public void captureRelated(
             EntityMutationCommand command,
             Map<String, Object> beforeRecord,
-            Map<String, Object> afterRecord) {
+            Map<String, Object> afterRecord,
+            Set<RootKey> lockedRoots) {
+        List<RelatedCapturePlan> plans = new ArrayList<>();
         for (EntityVersionConfiguration configuration
-                : configurationService.findPublishedRelatedConfigurations(
+                : configurationService.findCurrentRelatedConfigurations(
                         command.entityCode())) {
             for (EntityVersionConfiguration.RelationScope relation
                     : relationsForChild(configuration, command.entityCode())) {
@@ -144,14 +159,33 @@ public class EntityRelatedVersionCaptureService {
                     parentIds.addAll(rootIds(
                             relation, afterRecord, Map.of()));
                 }
-                parentIds.stream().sorted().forEach(parentId ->
-                        captureParent(
+                parentIds.stream().sorted().forEach(parentId -> plans.add(
+                        new RelatedCapturePlan(
                                 configuration,
                                 relation,
                                 parentId,
-                                command,
-                                scenario));
+                                scenario)));
             }
+        }
+        Set<RootKey> requiredRoots = new LinkedHashSet<>();
+        for (RelatedCapturePlan plan : plans) {
+            requiredRoots.add(new RootKey(
+                    plan.configuration().getEntityCode(),
+                    plan.parentId()));
+        }
+        if (!safeSet(lockedRoots).containsAll(requiredRoots)) {
+            throw new BusinessConflictException(
+                    "ENTITY_RELATED_ROOT_LOCK_CONFLICT",
+                    "关联版本配置已变更，请重试本次操作");
+        }
+        // 所有根锁一次校验通过后才写版本，避免中途发现新根导致部分固化。
+        for (RelatedCapturePlan plan : plans) {
+            captureParent(
+                    plan.configuration(),
+                    plan.relation(),
+                    plan.parentId(),
+                    command,
+                    plan.scenario());
         }
     }
 
@@ -357,5 +391,13 @@ public class EntityRelatedVersionCaptureService {
     }
 
     public record RootKey(String entityCode, String recordId) {
+    }
+
+    /** 一个关联根版本的不可变捕获计划。 */
+    private record RelatedCapturePlan(
+            EntityVersionConfiguration configuration,
+            EntityVersionConfiguration.RelationScope relation,
+            String parentId,
+            MatchedScenario scenario) {
     }
 }

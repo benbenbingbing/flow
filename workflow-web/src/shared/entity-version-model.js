@@ -45,8 +45,6 @@ export function createVersionDraft(seed = {}) {
     entityName: seed.entityName || seed.entityCode || '',
     enabled: seed.enabled === true,
     revision: Number(seed.revision || 0),
-    status: seed.status || 'UNCONFIGURED',
-    activeReleaseVersion: seed.activeReleaseVersion ?? null,
     triggers: triggers.map(normalizeTrigger),
     snapshotScope: {
       root: {
@@ -77,7 +75,7 @@ export function createVersionDraft(seed = {}) {
     },
     relationOptions: relationOptions.map(normalizeRelationOption),
     fieldOptions: seed.fieldOptions || seed.availableFields || [],
-    // V1 的步骤和变更目标必须原样保留，避免 V2 页面保存时丢失旧草稿。
+    // V1 的步骤和变更目标先保留到规范化对象，序列化当前 V2 配置时再明确移除。
     scenarios: legacyScenarios,
     steps: Array.isArray(seed.steps) ? seed.steps : [],
     targetBindings: Array.isArray(seed.targetBindings) ? seed.targetBindings : []
@@ -88,6 +86,11 @@ export function serializeVersionDraft(draft) {
   const result = JSON.parse(JSON.stringify(draft || {}))
   delete result.relationOptions
   delete result.fieldOptions
+  // 旧草稿/发布流程的只读信封字段不属于当前单配置保存契约。
+  delete result.status
+  delete result.migrationState
+  delete result.activeReleaseId
+  delete result.activeReleaseVersion
   result.schemaVersion = 2
   result.triggers = (result.triggers || []).map(trigger => ({
     ...trigger,

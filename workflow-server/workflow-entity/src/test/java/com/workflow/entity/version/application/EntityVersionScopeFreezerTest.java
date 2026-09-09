@@ -70,7 +70,7 @@ class EntityVersionScopeFreezerTest {
                 .findFirst().orElseThrow().getOptionLabels().get("HW"));
         assertTrue(frozen.getSnapshotScope().getScopeHash().length() == 64);
 
-        EntityVersionConfiguration enriched = freezer.enrichDraftOptions(
+        EntityVersionConfiguration enriched = freezer.enrichManagementOptions(
                 draft("asset_lines", "category"));
         assertEquals(List.of("asset_lines"), enriched.getRelationOptions()
                 .stream()

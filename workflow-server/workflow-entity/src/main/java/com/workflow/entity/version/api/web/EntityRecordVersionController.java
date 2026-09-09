@@ -50,11 +50,11 @@ public class EntityRecordVersionController {
     /**
      * 查询实体记录版本入口的运行时能力。
      *
-     * <p>类级权限限制版本功能访问，本方法再校验具体实体的 VIEW 权限。能力计算不读取
-     * 任意记录数据，也不受未发布草稿影响。</p>
+     * <p>类级权限限制版本功能访问，本方法再校验具体实体的 VIEW 权限。能力计算只读
+     * 当前单配置与历史版本存在性，不读取任意记录业务数据。</p>
      *
      * @param entityCode 实体编码
-     * @return 当前已发布版本策略对应的运行时能力
+     * @return 当前配置的运行时能力和历史可读性
      */
     @GetMapping("/{entityCode}/capabilities")
     public ApiResponse<EntityRecordVersionCapabilities> capabilities(

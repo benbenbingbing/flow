@@ -39,8 +39,6 @@ public class EntityRecordVersion {
     private String entityReleaseId;
     private Integer entityReleaseVersion;
     private Integer schemaVersion;
-    private String configReleaseId;
-    private Integer configReleaseVersion;
     private String dataHash;
     private String presentationHash;
     private String scopeHash;

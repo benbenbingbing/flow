@@ -6,8 +6,6 @@ import com.workflow.entity.mutationpolicy.infrastructure.persistence.mapper.Enti
 import com.workflow.entity.mutationpolicy.infrastructure.persistence.record.EntityMutationPolicyRelease;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigReleaseMapper;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfigRelease;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -22,7 +20,7 @@ import java.util.Set;
  * 阻止删除仍可能被发布运行时调用的接口服务。
  *
  * <p>检查范围包含可被签名上下文或 Embed 固定的历史 FORM/LIST 发布版本，
- * 以及当前生效的新旧实体变更策略。该检查是全局完整性约束，不按操作者
+ * 以及当前生效的实体变更策略。该检查是全局完整性约束，不按操作者
  * 权限过滤；否则管理员可能删除自己看不到、但运行时仍在使用的服务。</p>
  */
 @Service
@@ -35,7 +33,6 @@ public class UiPublishedDataSourceReferenceGuard {
 
     private final UiConfigReleaseMapper releaseMapper;
     private final EntityMutationPolicyReleaseMapper mutationReleaseMapper;
-    private final EntityVersionConfigReleaseMapper legacyMutationReleaseMapper;
     private final UiConfigReleaseService releaseService;
     private final JsonDocumentCodec codec;
 
@@ -97,41 +94,6 @@ public class UiPublishedDataSourceReferenceGuard {
                 throw new BusinessConflictException(
                         "UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
                         "接口服务仍被当前生效实体变更策略引用，不能安全删除："
-                                + release.getConfigId() + "@v"
-                                + release.getVersion() + " " + path);
-            }
-        }
-
-        // 未迁移实体仍从旧版 active release 执行 MANAGED_INTERFACE；即使
-        // 新版策略表没有记录，也不能遗漏这条兼容运行路径。反之，同实体
-        // 的原生 active release 真实存在时运行时不会再 fallback legacy。
-        for (EntityVersionConfigRelease release : safe(
-                legacyMutationReleaseMapper
-                        .findActiveDataSourceReferenceCandidates(
-                                normalizedId))) {
-            if (release == null) {
-                continue;
-            }
-            if (legacyMutationReleaseMapper
-                    .countActiveNativePolicyForLegacyConfig(
-                            release.getConfigId()) > 0) {
-                continue;
-            }
-            String path;
-            try {
-                Map<String, Object> document = codec.readObject(
-                        release.getConfigDocument(), "旧版实体变更配置发布文档");
-                path = rootPolicyEnabled(document)
-                        ? managedInterfaceReferencePath(
-                                document, normalizedId, "$", 0)
-                        : null;
-            } catch (IllegalArgumentException exception) {
-                throw unverifiable("旧版实体变更配置发布版本");
-            }
-            if (path != null) {
-                throw new BusinessConflictException(
-                        "UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
-                        "接口服务仍被当前生效旧版实体变更配置引用，不能安全删除："
                                 + release.getConfigId() + "@v"
                                 + release.getVersion() + " " + path);
             }

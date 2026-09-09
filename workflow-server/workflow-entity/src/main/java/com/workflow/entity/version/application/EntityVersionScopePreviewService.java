@@ -30,7 +30,7 @@ public class EntityVersionScopePreviewService {
             EntityVersionConfiguration request,
             String recordId) {
         EntityVersionConfiguration resolved = configurationService
-                .resolveDraft(entityCode, request);
+                .resolveCandidate(entityCode, request);
         if (!StringUtils.hasText(recordId)) {
             return new EntityVersionScopePreview(
                     true, 0, 0L, false,

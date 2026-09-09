@@ -18,6 +18,10 @@ import {
 const legacy = createVersionDraft({
   entityCode: 'ORDER',
   entityName: '订单',
+  status: 'PUBLISHED',
+  migrationState: 'LEGACY',
+  activeReleaseId: 'release-1',
+  activeReleaseVersion: 3,
   scenarios: [{
     scenarioCode: 'APPROVED',
     scenarioName: '审批通过',
@@ -35,6 +39,10 @@ assert.equal(serialized.triggers[0].triggerName, '审批通过')
 assert.equal('scenarios' in serialized, false)
 assert.equal('steps' in serialized, false)
 assert.equal('targetBindings' in serialized, false)
+assert.equal('status' in serialized, false)
+assert.equal('migrationState' in serialized, false)
+assert.equal('activeReleaseId' in serialized, false)
+assert.equal('activeReleaseVersion' in serialized, false)
 
 const bounded = serializeVersionDraft(createVersionDraft({
   snapshotScope: {
@@ -183,6 +191,10 @@ const managementSource = readFileSync(
   fileURLToPath(new URL('../../views/system/EntityVersionManagement.vue', import.meta.url)),
   'utf8'
 )
+const entityDataListSource = readFileSync(
+  fileURLToPath(new URL('../../views/entity/EntityDataList.vue', import.meta.url)),
+  'utf8'
+)
 assert.ok(drawerSource.includes('loadSnapshotRelationPage(node, 1, true)'))
 assert.ok(drawerSource.includes('changedOnly: changedOnly.value'))
 assert.ok(drawerSource.includes('comparison.value?.diffPolicy?.changedOnlyDefault !== false'))
@@ -197,19 +209,34 @@ assert.match(
   /recordCapabilities\(entityCode\)[\s\S]{0,180}`\/entity-versions\/records\/\$\{entityCode\}\/capabilities`/,
   '实体版本 API 应提供实体级运行能力查询'
 )
+const configReadMethod = versionApiSource.match(
+  /getConfig\(entityCode\) \{[\s\S]*?\n\s*},/
+)?.[0] || ''
+assert.ok(
+  configReadMethod.includes('`/entity-versions/configs/${entityCode}/current`'),
+  '混部读取必须使用只返回当前生效配置的 /current 路径'
+)
+assert.equal(
+  configReadMethod.includes('LEGACY_SAVE_FALLBACK_STATUSES') || configReadMethod.includes('catch'),
+  false,
+  '当前配置读取失败不得回退旧 root draft 路径'
+)
 assert.deepEqual(normalizeEntityVersionCapabilities({
   runtimeEnabled: true,
-  manualCaptureEnabled: true
+  manualCaptureEnabled: true,
+  historyReadable: true
 }), {
   runtimeEnabled: true,
-  manualCaptureEnabled: true
+  manualCaptureEnabled: true,
+  historyReadable: true
 })
 assert.deepEqual(normalizeEntityVersionCapabilities({
   runtimeEnabled: false,
   manualCaptureEnabled: true
 }), {
   runtimeEnabled: false,
-  manualCaptureEnabled: false
+  manualCaptureEnabled: false,
+  historyReadable: false
 })
 assert.equal(canShowEntityVersionAction({
   canViewVersions: true,
@@ -223,20 +250,119 @@ for (const blocked of [
 ]) {
   assert.equal(canShowEntityVersionAction(blocked), false)
 }
+assert.equal(canShowEntityVersionAction({
+  canViewVersions: true,
+  runtimeEnabled: false,
+  historyReadable: true
+}), true)
 assert.equal(canCaptureEntityRecordVersion({
   hasCapturePermission: true,
+  runtimeEnabled: true,
   manualCaptureEnabled: true
 }), true)
 assert.equal(canCaptureEntityRecordVersion({
   hasCapturePermission: true,
+  runtimeEnabled: true,
   manualCaptureEnabled: false
 }), false)
 assert.equal(canCaptureEntityRecordVersion({
   hasCapturePermission: false,
+  runtimeEnabled: true,
+  manualCaptureEnabled: true
+}), false)
+assert.equal(canCaptureEntityRecordVersion({
+  hasCapturePermission: true,
+  runtimeEnabled: false,
   manualCaptureEnabled: true
 }), false)
 assert.ok(drawerSource.includes('manualCaptureEnabled: props.manualCaptureEnabled'))
-assert.ok(drawerSource.includes('if (!canCapture.value) return'))
+assert.ok(drawerSource.includes('runtimeEnabled: props.runtimeEnabled'))
+assert.ok(drawerSource.includes('仅可查看和比较停用前生成的历史版本'))
+assert.ok(drawerSource.includes('当前数据没有可查看的历史版本'))
+assert.ok(drawerSource.includes('drawerContextGeneration'))
+assert.ok(drawerSource.includes("watch(() => props.entityCode"))
+assert.ok(drawerSource.includes('if (!canCapture.value || !isCurrentDrawerContext(context))'))
+assert.ok(drawerSource.includes('captureRecordVersion(context.entityCode, context.recordId'))
+assert.ok(entityDataListSource.includes('historyReadable: versionCapabilities.value.historyReadable'))
+assert.ok(entityDataListSource.includes(':runtimeEnabled="versionCapabilities.runtimeEnabled"'))
+assert.match(
+  versionApiSource,
+  /saveConfig\(entityCode,[\s\S]{0,500}method: 'PUT'[\s\S]{0,160}'If-Match'/,
+  '实体版本配置保存应使用 PUT 与 revision 乐观锁'
+)
+assert.match(
+  versionApiSource,
+  /saveConfig\(entityCode,[\s\S]{0,400}`\/entity-versions\/configs\/\$\{entityCode\}\/current`[\s\S]{0,100}method: 'PUT'/,
+  '当前配置保存必须使用语义明确的 /current 路径'
+)
+assert.ok(versionApiSource.includes('const LEGACY_SAVE_FALLBACK_STATUSES = new Set([404, 405])'))
+assert.ok(versionApiSource.includes('if (!LEGACY_SAVE_FALLBACK_STATUSES.has(Number(error?.status)))'))
+assert.match(
+  versionApiSource,
+  /`\/entity-versions\/configs\/\$\{entityCode\}\/draft`[\s\S]{0,100}method: 'POST'[\s\S]{0,160}'If-Match': String\(expectedRevision\)/,
+  '旧 Controller 兼容分支应先按原 revision 保存草稿'
+)
+assert.match(
+  versionApiSource,
+  /`\/entity-versions\/configs\/\$\{entityCode\}\/releases`[\s\S]{0,140}method: 'POST'[\s\S]{0,160}'If-Match': String\(saved\.revision\)/,
+  '旧 Controller 兼容分支应使用保存后 revision 切换运行配置'
+)
+assert.ok(versionApiSource.includes('应在 N+1 删除此前端 fallback'))
+assert.ok(versionApiSource.includes('N+3 才物理 contract'))
+;[
+  '/publish',
+  'getDraft(', 'saveDraft(', 'publishConfig(', 'validateDraft('
+].forEach(marker => assert.equal(
+  versionApiSource.includes(marker),
+  false,
+  `实体版本 API 不应对业务调用暴露旧契约: ${marker}`
+))
+;[
+  '保存并生效',
+  'entityVersionApi.getConfig(',
+  'entityVersionApi.saveConfig(',
+  'entityVersionApi.validateConfig(',
+  '停用前的历史版本仍可查看'
+].forEach(marker => assert.ok(
+  managementSource.includes(marker),
+  `单配置即时生效页面缺少契约: ${marker}`
+))
+assert.ok(managementSource.includes(':size="drawerSize"'))
+assert.match(
+  managementSource,
+  /drawerSize = computed\(\(\) => viewportWidth\.value <= 768 \? '100%' : '66\.6667%'\)/,
+  '数据版本配置抽屉应在桌面端约占三分之二，小屏使用全宽'
+)
+;[
+  'entityVersion.enabled',
+  'entityVersion.triggerType',
+  'entityVersion.sourceTypes',
+  'entityVersion.operationTypes',
+  'entityVersion.businessIntents',
+  'entityVersion.triggerCondition',
+  'entityVersion.triggerPriority',
+  'entityVersion.scopeFields',
+  'entityVersion.scopeRelation',
+  'entityVersion.scopeFilter',
+  'entityVersion.scopeMaxRows',
+  'entityVersion.scopeLimits',
+  'entityVersion.diffChangedOnly',
+  'entityVersion.diffTrackOrder',
+  'entityVersion.diffIgnoredFields'
+].forEach(key => assert.ok(
+  managementSource.includes(`help-key="${key}"`),
+  `数据版本关键配置缺少问号帮助: ${key}`
+))
+;[
+  '保存草稿', 'publishDraft', 'loadReleases', '固化策略发布历史',
+  'canPublish', 'publishing', 'activeReleaseVersion',
+  'entityVersionApi.getDraft(', 'entityVersionApi.saveDraft(',
+  'entityVersionApi.publishConfig(', 'entityVersionApi.releases('
+].forEach(marker => assert.equal(
+  managementSource.includes(marker),
+  false,
+  `单配置即时生效页面不应保留草稿或发布入口: ${marker}`
+))
 assert.ok(managementSource.includes('previewResult?.datasets || previewResult?.relations'))
 assert.ok(managementSource.includes("previewResult.totalRows ?? '-') : '未计算'"))
 

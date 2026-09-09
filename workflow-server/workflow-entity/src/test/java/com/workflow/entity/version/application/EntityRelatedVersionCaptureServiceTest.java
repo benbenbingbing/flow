@@ -10,6 +10,7 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.version.application.EntityRelatedVersionCaptureService.RootKey;
+import com.workflow.entity.version.application.EntityVersionPolicyMatcher.MatchedScenario;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,11 +21,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -61,7 +68,7 @@ class EntityRelatedVersionCaptureServiceTest {
     @Test
     void locksOldAndRequestedNewParentsInStableOrder() {
         EntityMutationCommand command = command("asset-2");
-        when(configurationService.findPublishedScopedConfigurations(
+        when(configurationService.findCurrentScopedConfigurations(
                 "asset_line")).thenReturn(List.of(configuration()));
 
         Set<RootKey> roots = service.lockRelatedRoots(
@@ -78,7 +85,7 @@ class EntityRelatedVersionCaptureServiceTest {
     @Test
     void rejectsParentMoveObservedAfterChildLockInsteadOfReverseLocking() {
         EntityMutationCommand command = command("asset-2");
-        when(configurationService.findPublishedScopedConfigurations(
+        when(configurationService.findCurrentScopedConfigurations(
                 "asset_line")).thenReturn(List.of(configuration()));
         Set<RootKey> locked = service.lockRelatedRoots(
                 command, record("asset-1"));
@@ -96,18 +103,92 @@ class EntityRelatedVersionCaptureServiceTest {
     void scopeWithoutPropagationTriggerStillLocksParentButDoesNotCapture() {
         EntityVersionConfiguration scoped = configuration();
         scoped.setTriggers(List.of());
-        when(configurationService.findPublishedScopedConfigurations(
+        when(configurationService.findCurrentScopedConfigurations(
                 "asset_line")).thenReturn(List.of(scoped));
-        when(configurationService.findPublishedRelatedConfigurations(
+        when(configurationService.findCurrentRelatedConfigurations(
                 "asset_line")).thenReturn(List.of());
 
         Set<RootKey> locked = service.lockRelatedRoots(
                 command("asset-1"), record("asset-1"));
         service.captureRelated(
-                command("asset-1"), record("asset-1"), record("asset-1"));
+                command("asset-1"),
+                record("asset-1"),
+                record("asset-1"),
+                locked);
 
         assertEquals(Set.of(new RootKey("asset", "asset-1")), locked);
         verifyNoInteractions(policyMatcher, versionService, dataService);
+    }
+
+    @Test
+    void captureCarriesOneCurrentConfigurationThroughTheWholePlan() {
+        EntityMutationCommand command = command("asset-1");
+        EntityVersionConfiguration configuration = configuration();
+        Map<String, Object> record = record("asset-1");
+        EntityVersionConfiguration.RelationScope relation = configuration
+                .getSnapshotScope().getRelations().get(0);
+        MatchedScenario scenario = new MatchedScenario(
+                "RELATED_LINE_CHANGE",
+                "行项变化",
+                null,
+                10,
+                configuration);
+        when(configurationService.findCurrentRelatedConfigurations(
+                "asset_line")).thenReturn(List.of(configuration));
+        when(snapshotService.matchesFixedFilter(
+                record, relation.getFilter())).thenReturn(true);
+        when(policyMatcher.matchRelated(
+                configuration,
+                null,
+                command,
+                record,
+                record)).thenReturn(Optional.of(scenario));
+        when(dataService.findById("asset", "asset-1"))
+                .thenReturn(dto("asset-1", Map.of("name", "资产")));
+
+        service.captureRelated(
+                command,
+                record,
+                record,
+                Set.of(new RootKey("asset", "asset-1")));
+
+        verify(configurationService, times(1))
+                .findCurrentRelatedConfigurations("asset_line");
+        verify(versionService).createIfMatched(
+                any(), eq(scenario), anyMap(), eq(false));
+    }
+
+    @Test
+    void captureRejectsAParentIntroducedByAConcurrentConfigSave() {
+        EntityMutationCommand command = command("asset-1");
+        EntityVersionConfiguration configuration = configuration();
+        Map<String, Object> record = record("asset-1");
+        EntityVersionConfiguration.RelationScope relation = configuration
+                .getSnapshotScope().getRelations().get(0);
+        when(configurationService.findCurrentRelatedConfigurations(
+                "asset_line")).thenReturn(List.of(configuration));
+        when(snapshotService.matchesFixedFilter(
+                record, relation.getFilter())).thenReturn(true);
+        when(policyMatcher.matchRelated(
+                configuration,
+                null,
+                command,
+                record,
+                record)).thenReturn(Optional.of(new MatchedScenario(
+                        "RELATED_LINE_CHANGE",
+                        "行项变化",
+                        null,
+                        10,
+                        configuration)));
+
+        BusinessConflictException exception = assertThrows(
+                BusinessConflictException.class,
+                () -> service.captureRelated(
+                        command, record, record, Set.of()));
+
+        assertEquals("ENTITY_RELATED_ROOT_LOCK_CONFLICT",
+                exception.getErrorCode());
+        verifyNoInteractions(versionService, dataService);
     }
 
     @Test
@@ -124,7 +205,7 @@ class EntityRelatedVersionCaptureServiceTest {
                                 "检查变化")
                         .trace("trace-check", "mutation-check")
                         .build());
-        when(configurationService.findPublishedScopedConfigurations(
+        when(configurationService.findCurrentScopedConfigurations(
                 "asset_check")).thenReturn(List.of(
                         multiLevelConfiguration()));
         when(dataService.findById("asset_component", "component-1"))

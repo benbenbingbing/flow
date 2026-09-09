@@ -1,6 +1,7 @@
 package com.workflow.entity.version.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
@@ -8,20 +9,20 @@ import com.workflow.core.result.PageResult;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
-import com.workflow.entity.version.application.model.EntityVersionConfigSummary;
-import com.workflow.entity.version.application.model.EntityVersionConfigReleaseSummary;
 import com.workflow.entity.version.application.model.EntityRecordVersionCapabilities;
+import com.workflow.entity.version.application.model.EntityVersionConfigSummary;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.application.model.EntityVersionValidationResult;
+import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigMapper;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionConfigReleaseMapper;
+import com.workflow.entity.version.infrastructure.persistence.mapper.EntityVersionRolloutBridgeMapper;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfig;
-import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionConfigRelease;
+import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionRolloutState;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,14 +37,15 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 实体数据版本配置的草稿、发布和运行时解析服务。
+ * 每个实体唯一的数据版本配置保存与运行时解析服务。
  */
 @Service
 @RequiredArgsConstructor
 public class EntityVersionConfigurationService {
 
     private final EntityVersionConfigMapper configMapper;
-    private final EntityVersionConfigReleaseMapper releaseMapper;
+    private final EntityVersionRolloutBridgeMapper rolloutBridgeMapper;
+    private final EntityRecordVersionMapper recordVersionMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final ObjectMapper objectMapper;
     private final EntityVersionConfigurationValidator validator;
@@ -67,33 +69,29 @@ public class EntityVersionConfigurationService {
             EntityVersionConfig config =
                     configMapper.findByEntityCode(
                             definition.getEntityCode());
-            EntityVersionConfiguration draft = config != null
-                    && StringUtils.hasText(config.getDraftDocument())
-                    ? readConfiguration(config.getDraftDocument()) : null;
-            int triggerCount = draft == null
-                    ? 0 : safe(draft.getTriggers()).size();
-            int scopeRelationCount = draft == null
-                    || draft.getSnapshotScope() == null
-                    ? 0 : (int) safe(draft.getSnapshotScope().getRelations())
+            EntityVersionConfiguration document = config != null
+                    && StringUtils.hasText(config.getConfigDocument())
+                    ? readConfiguration(config.getConfigDocument()) : null;
+            int triggerCount = document == null
+                    ? 0 : safe(document.getTriggers()).size();
+            int scopeRelationCount = document == null
+                    || document.getSnapshotScope() == null
+                    ? 0 : (int) safe(document.getSnapshotScope().getRelations())
                             .stream()
                             .filter(item -> !Boolean.FALSE.equals(
                                     item.getEnabled()))
                             .count();
-            boolean runtimeEnabled = activeReleaseEnabled(config);
+            // 混部期间旧 Pod 保存草稿会先改旧 enabled 列；Mapper 只让有效的
+            // active release 覆盖 config_document，legacy 草稿始终不参与运行语义。
+            boolean runtimeEnabled = document != null
+                    && Boolean.TRUE.equals(document.getEnabled());
             result.add(new EntityVersionConfigSummary(
                     definition.getId(),
                     definition.getEntityCode(),
                     definition.getEntityName(),
-                    config != null
-                            && Boolean.TRUE.equals(config.getEnabled()),
-                    config == null ? "UNCONFIGURED"
-                            : config.getStatus(),
-                    config == null ? 0 : config.getRevision(),
-                    activeReleaseVersion(config),
                     runtimeEnabled,
-                    0,
-                    0,
-                    0,
+                    config == null ? 0 : config.getRevision(),
+                    runtimeEnabled,
                     triggerCount,
                     scopeRelationCount,
                     config == null ? null : config.getUpdateTime()));
@@ -102,72 +100,70 @@ public class EntityVersionConfigurationService {
     }
 
     @Transactional(readOnly = true)
-    public EntityVersionConfiguration getDraft(
+    public EntityVersionConfiguration get(
             String entityCode) {
         EntityDefinition definition =
                 requireDefinition(entityCode);
         EntityVersionConfig config =
                 configMapper.findByEntityCode(entityCode);
         if (config == null) {
-            return scopeFreezer.enrichDraftOptions(
+            return scopeFreezer.enrichManagementOptions(
                     defaultConfiguration(definition));
         }
         EntityVersionConfiguration result;
-        if (StringUtils.hasText(config.getDraftDocument())) {
-            result = readConfiguration(config.getDraftDocument());
-            hydrateEnvelope(result, definition, config);
+        if (StringUtils.hasText(config.getConfigDocument())) {
+            result = readConfiguration(config.getConfigDocument());
+            hydrateCurrentEnvelope(result, definition, config);
         } else {
-            // V080 已转换旧草稿；空文档表示迁移不完整，不能静默丢弃原规则。
-            throw new IllegalStateException("数据版本草稿文档缺失，请检查配置迁移结果");
+            // expand 阶段旧 Pod 仍可能新建只有 draft_document 的行。它不是当前
+            // 生效配置，但必须保留 id/revision 供新客户端用 If-Match 安全接管。
+            result = defaultConfiguration(definition);
+            hydrateCurrentEnvelope(result, definition, config);
+            result.setEnabled(false);
         }
-        return scopeFreezer.enrichDraftOptions(result);
+        return scopeFreezer.enrichManagementOptions(result);
     }
 
     /**
-     * 读取当前已发布配置。运行时禁止读取草稿表。
+     * 读取当前生效配置。每次调用只解析当前行一次，调用方应把返回对象贯穿本次捕获。
      */
     @Transactional(readOnly = true)
-    public Optional<EntityVersionConfiguration> getPublished(
+    public Optional<EntityVersionConfiguration> getCurrent(
             String entityCode) {
         EntityVersionConfig config =
                 configMapper.findByEntityCode(entityCode);
         if (config == null
-                || !StringUtils.hasText(
-                        config.getActiveReleaseId())) {
-            return Optional.empty();
-        }
-        EntityVersionConfigRelease release =
-                releaseMapper.selectById(
-                        config.getActiveReleaseId());
-        if (release == null) {
+                || !StringUtils.hasText(config.getConfigDocument())) {
             return Optional.empty();
         }
         EntityVersionConfiguration document =
-                readReleaseConfiguration(release);
-        hydratePublishedEnvelope(document, config, release);
+                readConfiguration(config.getConfigDocument());
+        hydrateCurrentEnvelope(document, null, config);
         return Optional.of(document);
     }
 
     /**
      * 读取实体记录版本入口所需的运行时能力。
      *
-     * <p>能力只能由当前 active release 的不可变发布文档决定，不能使用配置表上的草稿
-     * 开关或草稿触发器，避免未发布修改提前影响业务列表。手工固化还必须满足真实执行端
-     * 的 V2 与 MANUAL 触发器约束。</p>
+     * <p>手工固化必须同时满足当前配置启用、V2 和 MANUAL 触发器约束；历史可读性
+     * 独立计算，使策略停用后仍可从列表进入已有历史的只读抽屉。</p>
      *
      * @param entityCode 实体编码
-     * @return 当前发布策略对应的版本运行时能力；无配置、未发布或发布策略停用时均返回禁用
+     * @return 当前配置对应的运行时与历史读取能力
      */
     @Transactional(readOnly = true)
     public EntityRecordVersionCapabilities recordCapabilities(
             String entityCode) {
-        Optional<EntityVersionConfiguration> published =
-                getPublished(entityCode);
-        if (published.isEmpty()
-                || !Boolean.TRUE.equals(published.get().getEnabled())) {
-            return EntityRecordVersionCapabilities.disabled();
+        boolean historyReadable = recordVersionMapper
+                .existsByEntityCode(entityCode);
+        Optional<EntityVersionConfiguration> current =
+                getCurrent(entityCode);
+        if (current.isEmpty()
+                || !Boolean.TRUE.equals(current.get().getEnabled())) {
+            return EntityRecordVersionCapabilities.disabled(
+                    historyReadable);
         }
-        EntityVersionConfiguration configuration = published.get();
+        EntityVersionConfiguration configuration = current.get();
         boolean manualCaptureEnabled =
                 value(configuration.getSchemaVersion(), 1) >= 2
                         && safe(configuration.getTriggers()).stream()
@@ -178,35 +174,14 @@ public class EntityVersionConfigurationService {
                                                 && "MANUAL".equals(
                                                         trigger.getTriggerType()));
         return new EntityRecordVersionCapabilities(
-                true, manualCaptureEnabled);
+                true, manualCaptureEnabled, historyReadable);
     }
 
-    /** 按命中ID读取不可变发布，捕获过程不得因 active 切换而改读草稿或降级。 */
+    /** 查找把指定子实体纳入 RELATED_MUTATION 触发范围的当前 V2 配置。 */
     @Transactional(readOnly = true)
-    public Optional<EntityVersionConfiguration> getPublishedRelease(
-            String entityCode,
-            String releaseId) {
-        if (!StringUtils.hasText(entityCode)
-                || !StringUtils.hasText(releaseId)) {
-            return Optional.empty();
-        }
-        EntityVersionConfig config = configMapper.findByEntityCode(entityCode);
-        EntityVersionConfigRelease release = releaseMapper.selectById(releaseId);
-        if (config == null || release == null
-                || !Objects.equals(config.getId(), release.getConfigId())) {
-            return Optional.empty();
-        }
-        EntityVersionConfiguration document =
-                readReleaseConfiguration(release);
-        hydratePublishedEnvelope(document, config, release);
-        return Optional.of(document);
-    }
-
-    /** 查找把指定子实体纳入 RELATED_MUTATION 触发范围的活动 V2 配置。 */
-    @Transactional(readOnly = true)
-    public List<EntityVersionConfiguration> findPublishedRelatedConfigurations(
+    public List<EntityVersionConfiguration> findCurrentRelatedConfigurations(
             String childEntityCode) {
-        return findPublishedScopedConfigurations(childEntityCode).stream()
+        return findCurrentScopedConfigurations(childEntityCode).stream()
                 .filter(document -> safe(document.getTriggers()).stream()
                         .anyMatch(trigger -> !Boolean.FALSE.equals(
                                 trigger.getEnabled())
@@ -219,20 +194,20 @@ public class EntityVersionConfigurationService {
      * 查找把 B 纳入快照的根配置；即使不传播生成根版本，也用于 ROOT→…→B 锁序。
      */
     @Transactional(readOnly = true)
-    public List<EntityVersionConfiguration> findPublishedScopedConfigurations(
+    public List<EntityVersionConfiguration> findCurrentScopedConfigurations(
             String childEntityCode) {
         if (!StringUtils.hasText(childEntityCode)) {
             return List.of();
         }
         List<EntityVersionConfiguration> result = new ArrayList<>();
-        for (EntityVersionConfig config : configMapper.findAllPublished()) {
-            EntityVersionConfigRelease release = releaseMapper.selectById(
-                    config.getActiveReleaseId());
-            if (release == null) {
+        for (EntityVersionConfig config : configMapper.findAllCurrent()) {
+            if (config == null
+                    || !StringUtils.hasText(config.getConfigDocument())) {
                 continue;
             }
             EntityVersionConfiguration document =
-                    readReleaseConfiguration(release);
+                    readConfiguration(config.getConfigDocument());
+            hydrateCurrentEnvelope(document, null, config);
             if (!Boolean.TRUE.equals(document.getEnabled())
                     || value(document.getSchemaVersion(), 1) < 2) {
                 continue;
@@ -243,7 +218,6 @@ public class EntityVersionConfigurationService {
                     .anyMatch(scope -> !Boolean.FALSE.equals(scope.getEnabled())
                             && childEntityCode.equals(scope.getChildEntityCode()));
             if (relationMatches) {
-                hydratePublishedEnvelope(document, config, release);
                 result.add(document);
             }
         }
@@ -258,7 +232,7 @@ public class EntityVersionConfigurationService {
             String entityCode,
             Collection<String> publishingRelationCodes) {
         List<EntityVersionConfiguration.RelationScope> frozenRelations =
-                publishedScopesUsingParent(entityCode);
+                currentScopesUsingParent(entityCode);
         if (frozenRelations.isEmpty()) {
             return;
         }
@@ -277,7 +251,7 @@ public class EntityVersionConfigurationService {
                     "ENTITY_VERSION_SCOPE_RELATION_REMOVED",
                     "实体发布会移除活动数据版本范围引用的关系: "
                             + String.join(",", missing)
-                            + "；请先调整并发布数据版本配置");
+                        + "；请先调整并保存数据版本配置");
         }
     }
 
@@ -287,7 +261,7 @@ public class EntityVersionConfigurationService {
             String entityCode,
             Collection<EntityRelation> publishingRelations) {
         List<EntityVersionConfiguration.RelationScope> frozenRelations =
-                publishedScopesUsingParent(entityCode);
+                currentScopesUsingParent(entityCode);
         if (frozenRelations.isEmpty()) {
             return;
         }
@@ -329,7 +303,7 @@ public class EntityVersionConfigurationService {
                     "ENTITY_VERSION_SCOPE_RELATION_INCOMPATIBLE",
                     "实体发布会改变活动数据版本范围的关系语义: "
                             + String.join(",", incompatible)
-                            + "；请先调整并发布数据版本配置");
+                        + "；请先调整并保存数据版本配置");
         }
     }
 
@@ -337,33 +311,36 @@ public class EntityVersionConfigurationService {
      * 查找所有以指定实体作为父节点的活动冻结关系。
      *
      * <p>多层版本策略的根配置属于另一个实体，因此不能只读
-     * {@code getPublished(entityCode)}。旧一层发布没有 parentEntityCode 时，仍用
+     * {@code getCurrent(entityCode)}。旧一层配置没有 parentEntityCode 时，仍用
      * ROOT + 配置根实体编码兼容识别。</p>
      */
     private List<EntityVersionConfiguration.RelationScope>
-            publishedScopesUsingParent(String entityCode) {
+            currentScopesUsingParent(String entityCode) {
         if (!StringUtils.hasText(entityCode)) {
             return List.of();
         }
         Map<String, EntityVersionConfiguration> documents =
                 new LinkedHashMap<>();
-        getPublished(entityCode).ifPresent(document -> documents.put(
-                firstText(document.getActiveReleaseId(),
-                        "ROOT:" + document.getEntityCode()), document));
-        for (EntityVersionConfig config : configMapper.findAllPublished()) {
-            if (config == null || !StringUtils.hasText(
-                    config.getActiveReleaseId())) {
+        getCurrent(entityCode)
+                .filter(document -> Boolean.TRUE.equals(
+                        document.getEnabled()))
+                .ifPresent(document -> documents.put(
+                        document.getId(), document));
+        for (EntityVersionConfig config : configMapper.findAllCurrent()) {
+            if (config == null
+                    || !StringUtils.hasText(config.getConfigDocument())) {
                 continue;
             }
-            EntityVersionConfigRelease release = releaseMapper.selectById(
-                    config.getActiveReleaseId());
-            if (release == null || documents.containsKey(release.getId())) {
+            if (documents.containsKey(config.getId())) {
                 continue;
             }
             EntityVersionConfiguration document =
-                    readReleaseConfiguration(release);
-            hydratePublishedEnvelope(document, config, release);
-            documents.put(release.getId(), document);
+                    readConfiguration(config.getConfigDocument());
+            hydrateCurrentEnvelope(document, null, config);
+            if (!Boolean.TRUE.equals(document.getEnabled())) {
+                continue;
+            }
+            documents.put(config.getId(), document);
         }
         List<EntityVersionConfiguration.RelationScope> result =
                 new ArrayList<>();
@@ -392,20 +369,18 @@ public class EntityVersionConfigurationService {
     }
 
     /**
-     * 按来源实体查找当前发布快照中的变更目标配置。
+     * 校验、冻结并以 CAS 原子保存当前配置，成功后立即参与运行时匹配。
+     *
+     * <p>冻结发生在任何配置写入之前；更新语句同时比较 revision，避免两个管理员
+     * 基于同一旧配置相互覆盖。首次创建要求 {@code expectedRevision=0}。</p>
+     *
+     * @param entityCode 实体编码
+     * @param request 候选配置
+     * @param expectedRevision If-Match 携带的当前修订号
+     * @return 已生效且带最新修订号的配置
      */
     @Transactional(rollbackFor = Exception.class)
-    public EntityVersionConfiguration saveDraft(
-            String entityCode,
-            EntityVersionConfiguration request) {
-        return saveDraft(
-                entityCode,
-                request,
-                request == null ? null : request.getRevision());
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public EntityVersionConfiguration saveDraft(
+    public EntityVersionConfiguration save(
             String entityCode,
             EntityVersionConfiguration request,
             Integer expectedRevision) {
@@ -414,6 +389,9 @@ public class EntityVersionConfigurationService {
         EntityVersionConfiguration normalized =
                 normalize(definition, request);
         validator.validate(normalized);
+        EntityVersionConfiguration effective =
+                scopeFreezer.freeze(normalized);
+        validator.validate(effective);
         EntityVersionConfig current =
                 configMapper.findByEntityCode(entityCode);
         EntityVersionConfig config = current == null
@@ -421,7 +399,7 @@ public class EntityVersionConfigurationService {
         LocalDateTime now = LocalDateTime.now();
         String userId = UserContext.getUserId();
         if (current == null) {
-            if (value(expectedRevision, 0) != 0) {
+            if (expectedRevision == null || expectedRevision != 0) {
                 throw revisionConflict(entityCode, 0, expectedRevision);
             }
             config.setId(id());
@@ -439,16 +417,16 @@ public class EntityVersionConfigurationService {
                         current.getRevision(),
                         expectedRevision);
             }
+            config.setRevision(value(current.getRevision(), 0) + 1);
         }
         config.setEnabled(
-                Boolean.TRUE.equals(normalized.getEnabled()));
-        config.setContractVersion(value(normalized.getSchemaVersion(), 2));
-        config.setMigrationState(value(normalized.getSchemaVersion(), 2) >= 2
-                ? "MIGRATED" : "REVIEW_REQUIRED");
-        config.setDraftDocument(write(draftDocument(normalized)));
-        config.setStatus("DRAFT");
+                Boolean.TRUE.equals(effective.getEnabled()));
         config.setUpdateBy(userId);
         config.setUpdateTime(now);
+        effective.setId(config.getId());
+        effective.setRevision(config.getRevision());
+        effective.setUpdateTime(now);
+        config.setConfigDocument(write(storedDocument(effective)));
         if (current == null) {
             try {
                 configMapper.insert(config);
@@ -461,13 +439,11 @@ public class EntityVersionConfigurationService {
                         expectedRevision);
             }
         } else {
-            int updated = configMapper.updateDraftIfRevision(
+            int updated = configMapper.updateCurrentIfRevision(
                     config.getId(),
                     expectedRevision,
                     config.getEnabled(),
-                    config.getContractVersion(),
-                    config.getDraftDocument(),
-                    config.getMigrationState(),
+                    config.getConfigDocument(),
                     userId);
             if (updated != 1) {
                 EntityVersionConfig latest =
@@ -478,121 +454,183 @@ public class EntityVersionConfigurationService {
                         expectedRevision);
             }
         }
-
-        return getDraft(entityCode);
+        syncRolloutBridge(config, effective);
+        return scopeFreezer.enrichManagementOptions(effective);
     }
 
+    /**
+     * 读取旧页面正在编辑的 legacy 草稿，而不是当前 {@code config_document}。
+     *
+     * @return 带旧 status/active release 信封的兼容 JSON；这些字段不进入新模型
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> legacyDraft(String entityCode) {
+        EntityDefinition definition = requireDefinition(entityCode);
+        EntityVersionRolloutState state = rolloutBridgeMapper
+                .findStateByEntityCode(entityCode);
+        if (state == null) {
+            return legacyDraftResponse(
+                    scopeFreezer.enrichManagementOptions(
+                            defaultConfiguration(definition)),
+                    "UNCONFIGURED",
+                    null,
+                    null);
+        }
+        String document = StringUtils.hasText(state.getDraftDocument())
+                ? state.getDraftDocument() : state.getConfigDocument();
+        EntityVersionConfiguration draft = StringUtils.hasText(document)
+                ? readConfiguration(document)
+                : defaultConfiguration(definition);
+        hydrateLegacyDraftEnvelope(draft, definition, state);
+        draft = scopeFreezer.enrichManagementOptions(draft);
+        Integer activeReleaseVersion = StringUtils.hasText(
+                state.getActiveReleaseId())
+                ? rolloutBridgeMapper.findReleaseVersion(
+                        state.getActiveReleaseId(), state.getId())
+                : null;
+        return legacyDraftResponse(
+                draft,
+                firstText(state.getStatus(), "DRAFT"),
+                state.getActiveReleaseId(),
+                activeReleaseVersion);
+    }
+
+    /**
+     * 兼容旧 POST draft/save：只 CAS 保存 legacy 草稿，绝不提前改变当前运行配置。
+     */
     @Transactional(rollbackFor = Exception.class)
-    public EntityVersionConfiguration publish(
+    public Map<String, Object> saveLegacyDraft(
+            String entityCode,
+            EntityVersionConfiguration request,
+            Integer expectedRevision) {
+        EntityDefinition definition = requireDefinition(entityCode);
+        EntityVersionConfiguration normalized = normalize(definition, request);
+        validator.validate(normalized);
+        EntityVersionRolloutState state = rolloutBridgeMapper
+                .findStateByEntityCode(entityCode);
+        String document = write(storedDocument(normalized));
+        String userId = UserContext.getUserId();
+        if (state == null) {
+            if (expectedRevision == null || expectedRevision != 0) {
+                throw revisionConflict(entityCode, 0, expectedRevision);
+            }
+            try {
+                int inserted = rolloutBridgeMapper.insertLegacyDraft(
+                        id(),
+                        definition.getId(),
+                        entityCode,
+                        Boolean.TRUE.equals(normalized.getEnabled()),
+                        value(normalized.getSchemaVersion(), 2),
+                        document,
+                        userId);
+                if (inserted != 1) {
+                    throw new IllegalStateException(
+                            "数据版本兼容草稿创建失败: entity=" + entityCode);
+                }
+            } catch (DuplicateKeyException exception) {
+                EntityVersionRolloutState latest = rolloutBridgeMapper
+                        .findStateByEntityCode(entityCode);
+                throw revisionConflict(
+                        entityCode,
+                        latest == null ? null : latest.getRevision(),
+                        expectedRevision);
+            }
+        } else {
+            if (expectedRevision == null
+                    || !expectedRevision.equals(state.getRevision())) {
+                throw revisionConflict(
+                        entityCode, state.getRevision(), expectedRevision);
+            }
+            int updated = rolloutBridgeMapper.updateLegacyDraftIfRevision(
+                    state.getId(),
+                    expectedRevision,
+                    Boolean.TRUE.equals(normalized.getEnabled()),
+                    value(normalized.getSchemaVersion(), 2),
+                    document,
+                    userId);
+            if (updated != 1) {
+                EntityVersionRolloutState latest = rolloutBridgeMapper
+                        .findStateByEntityCode(entityCode);
+                throw revisionConflict(
+                        entityCode,
+                        latest == null ? null : latest.getRevision(),
+                        expectedRevision);
+            }
+        }
+        return legacyDraft(entityCode);
+    }
+
+    /**
+     * 兼容旧 publish/releases：有待发布草稿时按新流程校验、冻结并接管；已经由
+     * 新保存桥同步的状态则只做 revision 校验并幂等返回。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public EntityVersionConfiguration publishLegacyDraft(
             String entityCode,
             Integer expectedRevision) {
-        EntityVersionConfig config =
-                configMapper.findByEntityCode(entityCode);
-        if (config == null) {
-            throw new IllegalArgumentException(
-                    "请先保存数据版本配置");
+        EntityVersionRolloutState state = rolloutBridgeMapper
+                .findStateByEntityCode(entityCode);
+        if (state == null) {
+            throw new IllegalArgumentException("请先保存数据版本配置");
         }
         if (expectedRevision == null
-                || !expectedRevision.equals(config.getRevision())) {
+                || !expectedRevision.equals(state.getRevision())) {
             throw revisionConflict(
-                    entityCode,
-                    config.getRevision(),
-                    expectedRevision);
+                    entityCode, state.getRevision(), expectedRevision);
         }
-        EntityVersionConfiguration document =
-                getDraft(entityCode);
-        validator.validate(document);
-        if (value(document.getSchemaVersion(), 1) >= 2) {
-            document = scopeFreezer.freeze(document);
-            validator.validate(document);
+        if ("PUBLISHED".equalsIgnoreCase(state.getStatus())
+                && Objects.equals(
+                        text(state.getDraftDocument()),
+                        text(state.getConfigDocument()))) {
+            return get(entityCode);
         }
-        int releaseVersion =
-                value(releaseMapper.findMaxVersion(
-                        config.getId()), 0) + 1;
-        EntityVersionConfigRelease release =
-                new EntityVersionConfigRelease();
-        LocalDateTime now = LocalDateTime.now();
-        release.setId(id());
-        release.setConfigId(config.getId());
-        release.setVersion(releaseVersion);
-        release.setContractVersion(value(document.getSchemaVersion(), 1));
-        document.setActiveReleaseId(release.getId());
-        document.setActiveReleaseVersion(releaseVersion);
-        document.setStatus("PUBLISHED");
-        release.setConfigDocument(write(document));
-        release.setScopeHash(document.getSnapshotScope() == null
-                ? null : document.getSnapshotScope().getScopeHash());
-        release.setPublishedBy(UserContext.getUserId());
-        release.setPublishedByName(
-                UserContext.getUsername());
-        release.setPublishTime(now);
-        release.setCreateTime(now);
-        String migrationState = value(document.getSchemaVersion(), 1) >= 2
-                ? "MIGRATED" : "REVIEW_REQUIRED";
-        int activated = configMapper.activateReleaseIfRevision(
-                config.getId(),
-                expectedRevision,
-                release.getId(),
-                value(document.getSchemaVersion(), 1),
-                migrationState,
-                UserContext.getUserId());
-        if (activated != 1) {
-            EntityVersionConfig latest =
-                    configMapper.findByEntityCode(entityCode);
-            throw revisionConflict(
-                    entityCode,
-                    latest == null ? null : latest.getRevision(),
-                    expectedRevision);
+        if (!StringUtils.hasText(state.getDraftDocument())) {
+            throw new IllegalArgumentException("待接管的数据版本草稿不存在");
         }
-        releaseMapper.insert(release);
-        return getDraft(entityCode);
+        // save 内的唯一 CAS 再次校验 revision；并发旧/新保存只能有一个成功。
+        return save(
+                entityCode,
+                readConfiguration(state.getDraftDocument()),
+                expectedRevision);
     }
 
+    /**
+     * 给旧页面提供单条“当前配置”兼容分页，避免继续暴露已废弃的真实发布历史。
+     */
     @Transactional(readOnly = true)
-    public PageResult<EntityVersionConfigReleaseSummary> releases(
+    public PageResult<Map<String, Object>> legacyReleasePage(
             String entityCode,
             long requestedPageNum,
             long requestedPageSize) {
         long pageNum = Math.max(1, requestedPageNum);
         long pageSize = Math.max(1, Math.min(100, requestedPageSize));
-        EntityVersionConfig config =
-                configMapper.findByEntityCode(entityCode);
-        if (config == null) {
+        EntityVersionConfig config = configMapper.findByEntityCode(entityCode);
+        if (config == null
+                || !StringUtils.hasText(config.getConfigDocument())) {
             return new PageResult<>(List.of(), 0, pageNum, pageSize);
         }
-        long total = releaseMapper.countByConfigId(config.getId());
-        List<EntityVersionConfigReleaseSummary> records = releaseMapper
-                .findPageByConfigId(
-                        config.getId(),
-                        (pageNum - 1) * pageSize,
-                        pageSize)
-                .stream()
-                .map(item -> new EntityVersionConfigReleaseSummary(
-                        item.getId(),
-                        item.getVersion(),
-                        item.getPublishedBy(),
-                        item.getPublishedByName(),
-                        item.getPublishTime(),
-                        relationCount(item)))
-                .toList();
-        return new PageResult<>(records, total, pageNum, pageSize);
-    }
-
-    private int relationCount(EntityVersionConfigRelease release) {
-        EntityVersionConfiguration configuration =
-                readReleaseConfiguration(release);
-        if (configuration.getSnapshotScope() == null) {
-            return 0;
-        }
-        return (int) safe(configuration.getSnapshotScope().getRelations())
-                .stream()
-                .filter(item -> item.getEnabled() == null
-                        || Boolean.TRUE.equals(item.getEnabled()))
-                .count();
+        EntityVersionConfiguration document = readConfiguration(
+                config.getConfigDocument());
+        int relationCount = document.getSnapshotScope() == null
+                ? 0 : (int) safe(document.getSnapshotScope().getRelations())
+                        .stream()
+                        .filter(item -> !Boolean.FALSE.equals(
+                                item.getEnabled()))
+                        .count();
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("id", config.getId());
+        summary.put("version", config.getRevision());
+        summary.put("publishedBy", config.getUpdateBy());
+        summary.put("publishedByName", config.getUpdateBy());
+        summary.put("publishTime", config.getUpdateTime());
+        summary.put("relationCount", relationCount);
+        summary.put("scopeSummary", relationCount + " 个关联范围");
+        return new PageResult<>(pageNum == 1 ? List.of(summary) : List.of(),
+                1, pageNum, pageSize);
     }
 
     @Transactional(readOnly = true)
-    public EntityVersionValidationResult validateDraft(
+    public EntityVersionValidationResult validate(
             String entityCode,
             EntityVersionConfiguration request) {
         EntityVersionConfiguration normalized = normalize(
@@ -609,9 +647,9 @@ public class EntityVersionConfigurationService {
         return EntityVersionValidationResult.valid(warnings);
     }
 
-    /** 供范围预览使用；只解析和冻结，不保存或发布。 */
+    /** 供范围预览使用；只解析和冻结，不保存。 */
     @Transactional(readOnly = true)
-    public EntityVersionConfiguration resolveDraft(
+    public EntityVersionConfiguration resolveCandidate(
             String entityCode,
             EntityVersionConfiguration request) {
         EntityVersionConfiguration normalized = normalize(
@@ -723,9 +761,7 @@ public class EntityVersionConfigurationService {
         result.setEntityName(definition.getEntityName());
         result.setEnabled(false);
         result.setRevision(0);
-        result.setStatus("UNCONFIGURED");
         result.setSchemaVersion(2);
-        result.setMigrationState("NATIVE");
         EntityVersionConfiguration.ScopeNode root =
                 new EntityVersionConfiguration.ScopeNode();
         root.setEntityCode(definition.getEntityCode());
@@ -761,6 +797,57 @@ public class EntityVersionConfigurationService {
         return result;
     }
 
+    /**
+     * 把本次 CAS 保存的同一份文档投影到旧草稿，并创建新的旧 active release。
+     *
+     * <p>整个方法运行在 {@link #save(String, EntityVersionConfiguration, Integer)}
+     * 的事务内；任一步失败都会回滚主配置 CAS，避免新旧运行时看到不同版本。</p>
+     */
+    private void syncRolloutBridge(
+            EntityVersionConfig config,
+            EntityVersionConfiguration effective) {
+        int contractVersion = value(effective.getSchemaVersion(), 2);
+        String scopeHash = effective.getSnapshotScope() == null
+                ? null : effective.getSnapshotScope().getScopeHash();
+        String userId = UserContext.getUserId();
+        String username = UserContext.getUsername();
+        int draftSynced = rolloutBridgeMapper.syncLegacyDraft(
+                config.getId(),
+                config.getRevision(),
+                contractVersion,
+                config.getConfigDocument(),
+                userId);
+        if (draftSynced != 1) {
+            throw new IllegalStateException(
+                    "数据版本滚动兼容草稿同步失败: entity="
+                            + config.getEntityCode());
+        }
+        // release 被历史版本引用，必须保持不可变；每次保存创建新快照再切 active。
+        String compatibilityReleaseId = id();
+        int releaseVersion = value(
+                rolloutBridgeMapper.findNextReleaseVersion(config.getId()),
+                1);
+        int inserted = rolloutBridgeMapper.insertCompatibilityRelease(
+                compatibilityReleaseId,
+                config.getId(),
+                releaseVersion,
+                contractVersion,
+                config.getConfigDocument(),
+                scopeHash,
+                userId,
+                username);
+        if (inserted != 1
+                || rolloutBridgeMapper.activateCompatibilityRelease(
+                        config.getId(),
+                        config.getRevision(),
+                        compatibilityReleaseId,
+                        userId) != 1) {
+            throw new IllegalStateException(
+                    "数据版本滚动兼容发布同步失败: entity="
+                            + config.getEntityCode());
+        }
+    }
+
     /** 新实体默认提供两类根记录采集触发器，与独立变更规则分开维护。 */
     private EntityVersionConfiguration.CaptureTrigger trigger(
             String code,
@@ -783,27 +870,60 @@ public class EntityVersionConfigurationService {
         return value;
     }
 
-    private void hydrateEnvelope(
+    private void hydrateCurrentEnvelope(
             EntityVersionConfiguration document,
             EntityDefinition definition,
             EntityVersionConfig config) {
         document.setId(config.getId());
-        document.setEntityId(definition.getId());
-        document.setEntityCode(definition.getEntityCode());
-        document.setEntityName(definition.getEntityName());
-        document.setEnabled(config.getEnabled());
-        document.setSchemaVersion(value(
-                config.getContractVersion(),
-                value(document.getSchemaVersion(), 2)));
+        document.setEntityId(definition == null
+                ? firstText(document.getEntityId(), config.getEntityId())
+                : definition.getId());
+        document.setEntityCode(definition == null
+                ? firstText(document.getEntityCode(), config.getEntityCode())
+                : definition.getEntityCode());
+        if (definition != null) {
+            document.setEntityName(definition.getEntityName());
+        }
+        // expand 混部期间旧草稿会修改 legacy enabled；当前语义只认文档内开关。
+        document.setEnabled(Boolean.TRUE.equals(document.getEnabled()));
+        document.setSchemaVersion(value(document.getSchemaVersion(), 2));
         document.setRevision(config.getRevision());
-        document.setStatus(config.getStatus());
-        document.setMigrationState(config.getMigrationState());
-        document.setActiveReleaseId(config.getActiveReleaseId());
-        document.setActiveReleaseVersion(activeReleaseVersion(config));
         document.setUpdateTime(config.getUpdateTime());
     }
 
-    private EntityVersionConfiguration draftDocument(
+    /** 旧草稿信封使用旧行 revision，但不把这些管理字段重新放回新模型。 */
+    private void hydrateLegacyDraftEnvelope(
+            EntityVersionConfiguration document,
+            EntityDefinition definition,
+            EntityVersionRolloutState state) {
+        document.setId(state.getId());
+        document.setEntityId(definition.getId());
+        document.setEntityCode(definition.getEntityCode());
+        document.setEntityName(definition.getEntityName());
+        document.setEnabled(Boolean.TRUE.equals(state.getEnabled()));
+        document.setSchemaVersion(value(document.getSchemaVersion(), 2));
+        document.setRevision(state.getRevision());
+        document.setUpdateTime(state.getUpdateTime());
+    }
+
+    /** 把废弃信封字段限制在兼容响应中，避免污染新 GET/PUT 契约。 */
+    private Map<String, Object> legacyDraftResponse(
+            EntityVersionConfiguration draft,
+            String status,
+            String activeReleaseId,
+            Integer activeReleaseVersion) {
+        Map<String, Object> result = objectMapper.convertValue(
+                draft,
+                new TypeReference<LinkedHashMap<String, Object>>() {
+                });
+        result.put("status", status);
+        result.put("activeReleaseId", activeReleaseId);
+        result.put("activeReleaseVersion", activeReleaseVersion);
+        return result;
+    }
+
+    /** 去掉仅供管理端选择的派生选项后持久化当前生效文档。 */
+    private EntityVersionConfiguration storedDocument(
             EntityVersionConfiguration source) {
         EntityVersionConfiguration result = objectMapper.convertValue(
                 source, EntityVersionConfiguration.class);
@@ -839,37 +959,9 @@ public class EntityVersionConfigurationService {
             Integer expectedRevision) {
         return new BusinessConflictException(
                 "ENTITY_VERSION_CONFIG_REVISION_CONFLICT",
-                "数据版本草稿已被更新: entity=" + entityCode
+                "数据版本配置已被更新: entity=" + entityCode
                         + ", currentRevision=" + currentRevision
                         + ", expectedRevision=" + expectedRevision);
-    }
-
-    private Integer activeReleaseVersion(
-            EntityVersionConfig config) {
-        if (config == null
-                || !StringUtils.hasText(
-                        config.getActiveReleaseId())) {
-            return null;
-        }
-        EntityVersionConfigRelease release =
-                releaseMapper.selectById(
-                        config.getActiveReleaseId());
-        return release == null ? null : release.getVersion();
-    }
-
-    private boolean activeReleaseEnabled(
-            EntityVersionConfig config) {
-        if (config == null || !StringUtils.hasText(
-                config.getActiveReleaseId())) {
-            return false;
-        }
-        EntityVersionConfigRelease release = releaseMapper.selectById(
-                config.getActiveReleaseId());
-        if (release == null) {
-            return false;
-        }
-        return Boolean.TRUE.equals(readConfiguration(
-                release.getConfigDocument()).getEnabled());
     }
 
     private EntityDefinition requireDefinition(
@@ -893,37 +985,9 @@ public class EntityVersionConfigurationService {
                     EntityVersionConfiguration.class);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException(
-                    "实体版本发布配置解析失败",
+                    "实体版本配置解析失败",
                     exception);
         }
-    }
-
-    private EntityVersionConfiguration readReleaseConfiguration(
-            EntityVersionConfigRelease release) {
-        EntityVersionConfiguration document = readConfiguration(
-                release.getConfigDocument());
-        document.setSchemaVersion(value(release.getContractVersion(), 1));
-        return document;
-    }
-
-    /**
-     * 为不可变发布文档补充不参与发布内容哈希的运行时信封字段。
-     *
-     * <p>早期一层 V2 发布只保证 scope 文档完整，并不一定把根实体编码重复写进 JSON。
-     * 多层逐跳解析必须知道稳定根实体，因此只在读取时从发布所属配置回填缺失身份；
-     * 已冻结文档中已有的身份绝不覆盖。</p>
-     */
-    private void hydratePublishedEnvelope(
-            EntityVersionConfiguration document,
-            EntityVersionConfig config,
-            EntityVersionConfigRelease release) {
-        document.setId(firstText(document.getId(), config.getId()));
-        document.setEntityId(firstText(
-                document.getEntityId(), config.getEntityId()));
-        document.setEntityCode(firstText(
-                document.getEntityCode(), config.getEntityCode()));
-        document.setActiveReleaseId(release.getId());
-        document.setActiveReleaseVersion(release.getVersion());
     }
 
     private String write(Object value) {

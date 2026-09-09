@@ -281,7 +281,7 @@ public class EntityMutationTransactionExecutor {
                         == EntityMutationOperationType.DELETE
                         ? beforeRecord : afterRecord;
         EntityRecordVersion version = policyMatcher
-                .matchPublished(
+                .matchCurrent(
                         effectiveCommand,
                         beforeRecord,
                         afterRecord)
@@ -296,7 +296,8 @@ public class EntityMutationTransactionExecutor {
         relatedVersionCaptureService.captureRelated(
                 effectiveCommand,
                 beforeRecord,
-                afterRecord);
+                afterRecord,
+                lockedRelatedRoots);
         EntityMutationResult result =
                 new EntityMutationResult(
                 effectiveCommand.operationId(),

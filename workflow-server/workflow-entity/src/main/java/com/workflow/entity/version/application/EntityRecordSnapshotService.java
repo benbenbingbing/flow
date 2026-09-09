@@ -159,9 +159,9 @@ public class EntityRecordSnapshotService {
     }
 
     /**
-     * 按已发布 V2 范围捕获根实体和多层组成关系数据集。
+     * 按当前 V2 冻结范围捕获根实体和多层组成关系数据集。
      *
-     * <p>旧一层范围仍走同一逻辑；多层节点必须带有发布时冻结的父节点和关系路径。
+     * <p>旧一层范围仍走同一逻辑；多层节点必须带有保存时冻结的父节点和关系路径。
      * 捕获严格拒绝发布漂移、记录环、同一组成子记录归属多个父记录以及任何预算超限，
      * 不允许用截断快照冒充完整业务版本。</p>
      */
@@ -173,7 +173,7 @@ public class EntityRecordSnapshotService {
         EntityVersionConfiguration.SnapshotScope scope =
                 configuration.getSnapshotScope();
         if (scope == null || scope.getRoot() == null) {
-            throw new IllegalStateException("V2发布配置缺少冻结固化范围");
+            throw new IllegalStateException("V2当前配置缺少冻结固化范围");
         }
         requireFrozenScopeCurrent(scope);
         Map<String, Object> record = deepCopy(aggregateRecord);
@@ -1335,7 +1335,7 @@ public class EntityRecordSnapshotService {
     private BusinessConflictException stale(String message) {
         return new BusinessConflictException(
                 "ENTITY_VERSION_SCOPE_STALE",
-                message + "，请重新发布数据版本策略后再固化");
+                message + "，请重新保存数据版本配置后再固化");
     }
 
     private String normalizedParentNode(

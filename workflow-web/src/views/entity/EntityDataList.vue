@@ -222,6 +222,7 @@
     <EntityRecordVersionDrawer
       ref="versionDrawerRef"
       :entityCode="entityCode"
+      :runtimeEnabled="versionCapabilities.runtimeEnabled"
       :manualCaptureEnabled="versionCapabilities.manualCaptureEnabled"
     />
   </div>
@@ -496,7 +497,8 @@ const showVersionAction = computed(() => canShowEntityVersionAction({
   selectionScene: selectionScene.value,
   isSystemEntity: isSystemEntity.value,
   canViewVersions: canViewVersions.value,
-  runtimeEnabled: versionCapabilities.value.runtimeEnabled
+  runtimeEnabled: versionCapabilities.value.runtimeEnabled,
+  historyReadable: versionCapabilities.value.historyReadable
 }))
 let versionCapabilitiesGeneration = 0
 

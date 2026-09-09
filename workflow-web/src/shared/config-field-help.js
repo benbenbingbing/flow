@@ -105,10 +105,42 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '含义：传给操作的业务 JSON 对象，不包含系统身份等可信上下文。使用方法：填写合法 JSON，字段及类型须符合所选操作的输入 Schema；无参数时填写 {}。适用场景：传递查询条件、记录 ID、分页参数或待处理字段，并验证必填项和类型约束。',
   'interfaceService.debugResult':
     '含义：显示本次执行返回的格式化 JSON 或错误信息。使用方法：对照所选用途、输出 Schema 及后续结果映射核对结构；如提示“类型应为 array，实际为 object”，先确认用途是否选对，再检查实际返回与 Schema。适用场景：验证选项列表、分页结果、字段回填以及异常或空结果；内容不会自动保存为页面配置。',
+  'entityVersion.enabled':
+    '启用后，保存的生成时机才会自动匹配数据变化，也允许具备权限的用户手工固化。停用会停止生成新版本，但不会删除已有历史版本。',
+  'entityVersion.triggerType':
+    '根实体变化监听当前实体写入；关联数据变化监听所选关系中的数据写入；手工固化只在用户或流程显式请求时生成版本。',
+  'entityVersion.triggerCode':
+    '生成时机的稳定业务标识，会随数据版本一起保存并用于追溯。创建后不可修改；名称可以调整，但不要把同一编码复用于另一种含义。',
+  'entityVersion.triggerRelation':
+    '仅“关联数据变化”使用。所选关系必须已加入固化范围；其子记录变化命中条件后，会为对应根记录生成完整版本。',
   'entityVersion.sourceTypes':
-    '限定版本场景由表单、审批、流程动作、接口、导入、批量或系统任务等哪些入口触发。留空表示不按入口限制。',
+    '限定根实体变化由表单、审批、流程动作、接口、导入、批量或系统任务等哪些入口触发。留空表示不按入口限制。',
   'entityVersion.operationTypes':
-    '限定场景匹配新增、修改、删除、状态变化、变更生效或幂等写入中的哪些操作。',
+    '限定生成时机匹配新增、修改、删除、状态变化、变更生效或幂等写入中的哪些操作；留空表示匹配全部操作。',
+  'entityVersion.businessIntents':
+    '只匹配运行上下文中相同编码的业务意图，例如审批通过或变更生效；留空表示不按业务意图限制。',
+  'entityVersion.triggerCondition':
+    '在入口、操作和业务意图均匹配后继续判断。字段默认读取变更后的记录，可用 all、any、not 组合条件；{} 表示不限制。',
+  'entityVersion.triggerPriority':
+    '同一次变化命中多个生成时机时，只采用优先级最高的一项生成版本；数值越大优先级越高。',
+  'entityVersion.titleTemplate':
+    '生成版本标题的模板。可用 ${versionNo}、${triggerName}（兼容 ${scenarioName}）和 ${businessIntentName}；未填写时使用版本号和生成时机名称。',
+  'entityVersion.scopeFields':
+    '“全部已发布字段”会在保存配置时冻结当时的字段集合；“指定字段”只固化选中的稳定字段编码。之后实体字段变化不会改写历史版本。',
+  'entityVersion.scopeRelation':
+    '选择要随根记录一起固化的已发布实体关系。保存配置时会冻结关系路径和展示定义，后续关系定义变化需重新检查并保存配置。',
+  'entityVersion.scopeFilter':
+    '只固化满足固定条件的关联记录；“全部满足”要求每个条件都成立，“任一满足”只需一个条件成立。未添加条件表示不过滤。',
+  'entityVersion.scopeMaxRows':
+    '该关系单次最多固化的行数，实际还会受全局“单关系最多”限制；任一上限被超过时，本次版本整体生成失败。',
+  'entityVersion.scopeLimits':
+    '单关系最多是所有关系的全局上限，整版最多限制关联总行数，整版大小限制快照体积；实际还会取每个关系自身上限，超限时不会保存截断版本。',
+  'entityVersion.diffChangedOnly':
+    '只决定打开版本比较时是否默认隐藏未变化字段和关联行，不影响版本中实际固化的数据，也可在比较页面临时切换。',
+  'entityVersion.diffTrackOrder':
+    '开启后比较会把同一关联记录的位置变化识别为“移动”；关闭后只比较记录新增、删除和字段变化。',
+  'entityVersion.diffIgnoredFields':
+    '所选字段仍会固化在版本快照中，但版本比较不会把它们的值变化计入差异，适合更新时间等高频噪声字段。',
   'entityVersion.phase':
     '准备和写入前发生在落库前；写入后仍在事务内；提交后发生在事务成功后，适合外部副作用。',
   'entityVersion.stepType':

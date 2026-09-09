@@ -19,6 +19,7 @@ import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueRefer
 import com.workflow.entity.version.application.EntityMutationStepExecutor.ExecutionOutcome;
 import com.workflow.entity.version.application.EntityRelatedVersionCaptureService.RootKey;
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher.MatchedScenario;
+import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -442,9 +443,8 @@ class EntityMutationTransactionExecutorTest {
                         "变更审批生效",
                         null,
                         100,
-                        "release-1",
-                        1);
-        when(policyMatcher.matchPublished(
+                        new EntityVersionConfiguration());
+        when(policyMatcher.matchCurrent(
                 any(),
                 anyMap(),
                 anyMap())).thenReturn(Optional.of(scenario));

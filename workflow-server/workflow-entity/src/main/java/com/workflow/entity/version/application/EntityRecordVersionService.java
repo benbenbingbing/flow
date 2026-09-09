@@ -84,21 +84,22 @@ public class EntityRecordVersionService {
         if (existing != null) {
             return existing;
         }
-        EntityVersionConfiguration published = null;
-        if (StringUtils.hasText(scenario.releaseId())) {
-            published = configurationService.getPublishedRelease(
-                            command.entityCode(), scenario.releaseId())
-                    .orElseThrow(() -> new BusinessConflictException(
-                            "ENTITY_VERSION_RELEASE_NOT_FOUND",
-                            "命中的数据版本发布快照不存在或不属于当前实体: "
-                                    + scenario.releaseId()));
+        EntityVersionConfiguration configuration =
+                scenario.configuration();
+        if (configuration != null
+                && !Objects.equals(
+                        command.entityCode(), configuration.getEntityCode())) {
+            throw new BusinessConflictException(
+                    "ENTITY_VERSION_CONFIG_MISMATCH",
+                    "命中的数据版本配置不属于当前实体: "
+                            + configuration.getEntityCode());
         }
         SnapshotCapture legacyCapture = null;
         SnapshotCaptureV2 captureV2 = null;
-        if (published != null
-                && value(published.getSchemaVersion()) >= 2) {
+        if (configuration != null
+                && value(configuration.getSchemaVersion()) >= 2) {
             captureV2 = snapshotService.captureV2(
-                    published,
+                    configuration,
                     command.recordId(),
                     aggregateRecord,
                     deletedSnapshot);
@@ -155,8 +156,6 @@ public class EntityRecordVersionService {
         version.setIdempotencyKey(
                 command.context().idempotencyKey());
         version.setRequestHash(requestHash);
-        version.setConfigReleaseId(scenario.releaseId());
-        version.setConfigReleaseVersion(scenario.releaseVersion());
         if (captureV2 != null) {
             populateV2(version, captureV2);
         } else {
@@ -222,12 +221,12 @@ public class EntityRecordVersionService {
             throw new IllegalArgumentException("手工固化必须提供 Idempotency-Key");
         }
         EntityVersionConfiguration configuration = configurationService
-                .getPublished(entityCode)
+                .getCurrent(entityCode)
                 .filter(item -> Boolean.TRUE.equals(item.getEnabled()))
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "实体没有启用的已发布数据版本策略: " + entityCode));
+                        "实体没有启用的数据版本策略: " + entityCode));
         if (value(configuration.getSchemaVersion()) < 2) {
-            throw new IllegalArgumentException("手工固化只支持已发布的V2版本策略");
+            throw new IllegalArgumentException("手工固化只支持V2版本策略");
         }
         ManualVersionCaptureRequest effective = request == null
                 ? new ManualVersionCaptureRequest() : request;
@@ -652,7 +651,15 @@ public class EntityRecordVersionService {
         material.put("payload", command.payload());
         material.put("deletedSnapshot", deletedSnapshot);
         material.put("triggerCode", scenario.scenarioCode());
-        material.put("releaseId", scenario.releaseId());
+        EntityVersionConfiguration configuration =
+                scenario.configuration();
+        material.put("configId", configuration == null
+                ? null : configuration.getId());
+        material.put("configRevision", configuration == null
+                ? null : configuration.getRevision());
+        material.put("scopeHash", configuration == null
+                        || configuration.getSnapshotScope() == null
+                ? null : configuration.getSnapshotScope().getScopeHash());
         material.put("businessIntentCode",
                 command.context().businessIntentCode());
         material.put("sourceEntityCode",

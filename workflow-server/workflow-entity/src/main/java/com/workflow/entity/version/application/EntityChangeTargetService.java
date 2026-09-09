@@ -24,6 +24,7 @@ import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.mutationpolicy.application.EntityMutationPolicyService;
+import com.workflow.entity.mutationpolicy.application.model.EntityMutationPolicyDocument;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityChangeTargetInstanceMapper;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityChangeTargetInstance;
@@ -85,7 +86,7 @@ public class EntityChangeTargetService
                 command.sourceRecordId());
         List<FrozenEntityChangeTarget> result =
                 new ArrayList<>();
-        for (EntityVersionConfiguration configuration
+        for (EntityMutationPolicyDocument configuration
                 : mutationPolicyService
                         .findPublishedTargetConfigurations(
                                 command.sourceEntityCode())) {
@@ -220,7 +221,7 @@ public class EntityChangeTargetService
     }
 
     private FrozenEntityChangeTarget freezeOne(
-            EntityVersionConfiguration configuration,
+            EntityMutationPolicyDocument configuration,
             EntityVersionConfiguration.TargetBinding binding,
             EntityChangeTarget target,
             Map<String, Object> sourceRecord,

@@ -10,13 +10,8 @@ public record EntityVersionConfigSummary(
         String entityCode,
         String entityName,
         boolean enabled,
-        String status,
         Integer revision,
-        Integer activeReleaseVersion,
         boolean runtimeEnabled,
-        int scenarioCount,
-        int stepCount,
-        int targetBindingCount,
         int triggerCount,
         int scopeRelationCount,
         LocalDateTime updateTime) {

@@ -119,13 +119,13 @@ public class EntityMutationPolicyService {
     }
 
     @Transactional(readOnly = true)
-    public List<EntityVersionConfiguration>
+    public List<EntityMutationPolicyDocument>
             findPublishedTargetConfigurations(
                     String sourceEntityCode) {
         if (!StringUtils.hasText(sourceEntityCode)) {
             return List.of();
         }
-        List<EntityVersionConfiguration> result = new ArrayList<>();
+        List<EntityMutationPolicyDocument> result = new ArrayList<>();
         for (EntityMutationPolicyConfig config
                 : configMapper.findAllPublished()) {
             EntityMutationPolicyRelease release = releaseMapper.selectById(

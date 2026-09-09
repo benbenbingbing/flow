@@ -1,5 +1,6 @@
 package com.workflow.entity.version.application.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -12,9 +13,10 @@ import java.util.Map;
 /**
  * 实体数据版本配置文档。
  *
- * <p>同一结构同时用于草稿编辑和不可变发布快照，运行时只读取发布快照。</p>
+ * <p>保存前会冻结实体与关系展示语义；保存成功后该文档立即成为运行时配置。</p>
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class EntityVersionConfiguration {
 
     /** V1 为旧场景/整包快照，V2 为触发器、范围和差异策略。 */
@@ -25,10 +27,6 @@ public class EntityVersionConfiguration {
     private String entityName;
     private Boolean enabled = false;
     private Integer revision;
-    private String status;
-    private String migrationState = "NATIVE";
-    private String activeReleaseId;
-    private Integer activeReleaseVersion;
     private LocalDateTime updateTime;
     private List<Scenario> scenarios = new ArrayList<>();
     private List<Step> steps = new ArrayList<>();
@@ -63,7 +61,7 @@ public class EntityVersionConfiguration {
         private ScopeNode root = new ScopeNode();
         private List<RelationScope> relations = new ArrayList<>();
         private ScopeLimits limits = new ScopeLimits();
-        /** 发布时根据已冻结选择器与字段结构计算。 */
+        /** 保存时根据已冻结选择器与字段结构计算。 */
         private String scopeHash;
     }
 
@@ -81,7 +79,7 @@ public class EntityVersionConfiguration {
         private String entitySchemaHash;
         private String fieldMode = "ALL_PUBLISHED";
         private List<String> fieldCodes = new ArrayList<>();
-        /** 发布时冻结，捕获和历史展示均不得再读取当前定义。 */
+        /** 保存时冻结，捕获和历史展示均不得再读取当前定义。 */
         private List<FieldPresentation> fields = new ArrayList<>();
     }
 
