@@ -65,6 +65,8 @@ public class TaskAddSignService {
     /** 任务动作服务（用于加签完成后延迟提交原任务），延迟加载避免循环依赖 */
     @Lazy
     private final TaskActionService taskActionService;
+    /** 与认领和审批共用身份校验，避免业务用户组候选人被引擎身份库误判。 */
+    private final TaskIdentityAccessService taskIdentityAccessService;
 
     /**
      * 查询任务当前可执行的操作集合及进行中的加签信息。
@@ -616,23 +618,8 @@ public class TaskAddSignService {
 
     /** 校验当前用户是否为任务办理人或候选办理人，返回用户名，否则抛出禁止异常 */
     private String requireTaskOperator(Task task) {
-        String username = currentUsername();
-        String userId = UserContext.getUserId();
-        if (StringUtils.hasText(task.getAssignee())
-                && !task.getAssignee().equals(username)
-                && !task.getAssignee().equals(userId)) {
-            throw new ForbiddenException("当前任务已分配给其他办理人");
-        }
-        if (!StringUtils.hasText(task.getAssignee())) {
-            boolean candidate = taskService.createTaskQuery().taskId(task.getId()).taskCandidateUser(username).count() > 0;
-            if (!candidate && StringUtils.hasText(userId)) {
-                candidate = taskService.createTaskQuery().taskId(task.getId()).taskCandidateUser(userId).count() > 0;
-            }
-            if (!candidate) {
-                throw new ForbiddenException("当前用户不是该任务候选办理人");
-            }
-        }
-        return username;
+        taskIdentityAccessService.requireCurrentUserAccess(task);
+        return currentUsername();
     }
 
     /** 解析加签人员：去重、过滤禁用/无效/与原办理人重复，并返回分类结果 */

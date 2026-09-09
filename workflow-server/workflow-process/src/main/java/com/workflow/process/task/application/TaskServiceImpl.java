@@ -59,11 +59,8 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     public TaskStatisticsVO getStatistics() {
         TaskStatisticsVO statistics = new TaskStatisticsVO();
         
-        // 待办任务数
-        long todoCount = flowableTaskService.createTaskQuery()
-                .taskCandidateOrAssigned(UserContext.requireUsernameOrId())
-                .active()
-                .count();
+        // 与待办页共用业务用户组/角色候选范围，Flowable IDM 并未维护这些成员关系。
+        long todoCount = processTaskService.countTodo(UserContext.requireUsernameOrId());
         statistics.setTodoCount(todoCount);
         
         // 已办任务数（本月）
@@ -101,44 +98,39 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         return statistics;
     }
 
+    /**
+     * 按当前用户的真实办理/候选范围查询待办，先过滤再分页以保证总数准确。
+     *
+     * <p>业务用户组和角色由 ProcessTaskService 统一匹配，不能使用未同步成员
+     * 关系的 Flowable IDM，也不能让旧版接口查询其他用户的全部活跃任务。</p>
+     */
     @Override
     public PageResult<TaskVO> getTodoList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
         PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
-        // 查询所有活跃任务（不限于当前用户，用于演示）
+        List<ProcessTask> visibleTasks = processTaskService.getTodoList(UserContext.requireUsernameOrId());
+        if (visibleTasks.isEmpty()) {
+            return new PageResult<>(List.of(), 0L, page.pageNumber(), page.pageSize());
+        }
         TaskQuery query = flowableTaskService.createTaskQuery()
+                .taskIds(visibleTasks.stream().map(ProcessTask::getTaskId).toList())
                 .active()
                 .orderByTaskCreateTime()
                 .desc();
-        // 时间范围过滤
         if (StringUtils.hasText(timeRange)) {
             Date startDate = getStartDateByRange(timeRange);
             if (startDate != null) {
                 query.taskCreatedAfter(startDate);
             }
         }
-        
-        long total = query.count();
-        List<Task> tasks = page.offset() <= Integer.MAX_VALUE ? query.listPage((int) page.offset(), page.pageSize()) : List.of();
-        
-        List<TaskVO> records = tasks.stream()
+        List<TaskVO> matching = query.list().stream()
                 .map(this::convertToTodoVO)
-                .filter(vo -> {
-                    // 流程名称过滤
-                    if (StringUtils.hasText(processName)) {
-                        return vo.getProcessName() != null && vo.getProcessName().contains(processName);
-                    }
-                    return true;
-                })
-                .filter(vo -> {
-                    // 任务名称过滤
-                    if (StringUtils.hasText(taskName)) {
-                        return vo.getTaskName() != null && vo.getTaskName().contains(taskName);
-                    }
-                    return true;
-                })
-                .collect(Collectors.toList());
-        
-        return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
+                .filter(vo -> !StringUtils.hasText(processName)
+                        || vo.getProcessName() != null && vo.getProcessName().contains(processName))
+                .filter(vo -> !StringUtils.hasText(taskName)
+                        || vo.getTaskName() != null && vo.getTaskName().contains(taskName))
+                .toList();
+        List<TaskVO> records = matching.stream().skip(page.offset()).limit(page.pageSize()).toList();
+        return new PageResult<>(records, (long) matching.size(), page.pageNumber(), page.pageSize());
     }
 
     @Override
@@ -323,6 +315,8 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         vo.setCreateTime(task.getCreateTime());
         vo.setPriority(task.getPriority());
         vo.setAssignee(task.getAssignee());
+        vo.setClaimRequired(!StringUtils.hasText(task.getAssignee()));
+        vo.setAssigneeType(vo.getClaimRequired() ? "group" : "user");
         applySlaSummary(vo, task.getId());
         
         // 获取流程定义信息

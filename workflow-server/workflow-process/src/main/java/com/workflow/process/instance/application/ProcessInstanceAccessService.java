@@ -5,6 +5,7 @@ import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
+import com.workflow.process.task.application.TaskIdentityAccessService;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.TaskService;
@@ -28,6 +29,7 @@ public class ProcessInstanceAccessService {
     private final TaskService taskService;
     private final ProcessCcRecordMapper ccRecordMapper;
     private final CurrentUserRoleService currentUserRoleService;
+    private final TaskIdentityAccessService taskIdentityAccessService;
 
     @Transactional(readOnly = true)
     public void requireReadAccess(String processInstanceId) {
@@ -65,12 +67,13 @@ public class ProcessInstanceAccessService {
             String processInstanceId,
             String userId,
             String username) {
-        return identities(userId, username).anyMatch(identity ->
-                taskService.createTaskQuery()
-                        .processInstanceId(processInstanceId)
-                        .taskCandidateOrAssigned(identity)
-                        .count() > 0
-                || historyService.createHistoricTaskInstanceQuery()
+        // 组和角色成员由业务目录维护，必须与认领授权共用规则，才能在认领前查看流程。
+        boolean currentParticipant = taskService.createTaskQuery()
+                .processInstanceId(processInstanceId)
+                .list().stream()
+                .anyMatch(taskIdentityAccessService::canCurrentUserAccess);
+        return currentParticipant || identities(userId, username).anyMatch(identity ->
+                historyService.createHistoricTaskInstanceQuery()
                         .processInstanceId(processInstanceId)
                         .taskAssignee(identity)
                         .count() > 0);

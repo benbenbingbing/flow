@@ -13,25 +13,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 流程任务 Mapper 用户身份 SQL 单元测试。
  *
  * <p>验证待办与已办查询 SQL 同时支持用户名与用户 ID 两种身份标识，
- * 通过子查询回退确保传入用户名时能匹配到对应 ID 的任务。</p>
+ * 待办直接读取引擎身份关系，已办保留本地办理记录的身份回退。</p>
  */
 class ProcessTaskMapperIdentitySqlTest {
 
     /**
      * 待办查询 SQL 应同时接受用户名或用户 ID。
      *
-     * <p>断言 selectTodoByUser 与 countTodoByUser 的 SQL 含双向身份回退子查询
-     * 与 OR 条件。</p>
+     * <p>列表和统计均将引擎办理人、候选用户与 ID/用户名两个别名匹配。</p>
      */
     @Test
     void todoQueriesAcceptUsernameOrUserId() throws Exception {
         String listSql = selectSql("selectTodoByUser", String.class);
         String countSql = selectSql("countTodoByUser", String.class);
 
-        assertUserIdentityFallbacks(listSql);
-        assertUserIdentityFallbacks(countSql);
-        assertTrue(listSql.contains("u.username = #{userId} OR u.id = #{userId}"));
-        assertTrue(countSql.contains("u.username = #{userId} OR u.id = #{userId}"));
+        for (String sql : java.util.List.of(listSql, countSql)) {
+            assertTrue(sql.contains("u.username = #{userId} OR u.id = #{userId}"));
+            assertTrue(sql.contains("ft.ASSIGNEE_ COLLATE utf8mb4_unicode_ci IN (u.id, u.username)"));
+            assertTrue(sql.contains("candidate.USER_ID_ COLLATE utf8mb4_unicode_ci IN (u.id, u.username)"));
+        }
     }
 
     /**

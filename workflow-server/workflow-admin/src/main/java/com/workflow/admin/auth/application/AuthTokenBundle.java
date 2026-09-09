@@ -4,7 +4,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import java.time.Instant;
 
 /**
- * 登录、刷新和改密后返回的完整浏览器会话令牌。
+ * 登录或刷新后返回的完整浏览器会话令牌。
  */
 public record AuthTokenBundle(
         /** 当前用户。 */

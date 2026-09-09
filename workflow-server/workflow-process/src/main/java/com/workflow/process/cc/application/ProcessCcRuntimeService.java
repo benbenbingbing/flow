@@ -6,6 +6,7 @@ import com.workflow.process.audit.infrastructure.persistence.record.ProcessOpera
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.process.task.application.TaskIdentityAccessService;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -72,6 +73,8 @@ public class ProcessCcRuntimeService {
     private final List<CcRecipientResolver> customResolvers;
     /** 统一人员解析器运行时 */
     private final PersonResolverRuntimeService personResolverRuntimeService;
+    /** 人工知会与任务认领使用一致的业务身份、候选用户及候选组校验。 */
+    private final TaskIdentityAccessService taskIdentityAccessService;
 
     /**
      * 人工知会：办理人手动添加知会人员。
@@ -519,21 +522,10 @@ public class ProcessCcRuntimeService {
 
     /** 校验并返回当前操作人：需为任务办理人或候选办理人，否则抛出禁止异常 */
     private String requireOperator(Task task) {
+        taskIdentityAccessService.requireCurrentUserAccess(task);
         String username = UserContext.getUsername();
-        String userId = UserContext.getUserId();
         if (!StringUtils.hasText(username)) {
             throw new ForbiddenException("用户未登录");
-        }
-        if (StringUtils.hasText(task.getAssignee())
-                && !task.getAssignee().equals(username)
-                && !task.getAssignee().equals(userId)) {
-            throw new ForbiddenException("当前任务已分配给其他办理人");
-        }
-        if (!StringUtils.hasText(task.getAssignee())) {
-            boolean candidate = taskService.createTaskQuery().taskId(task.getId()).taskCandidateUser(username).count() > 0;
-            if (!candidate) {
-                throw new ForbiddenException("当前用户不是该任务候选办理人");
-            }
         }
         return username;
     }

@@ -559,7 +559,14 @@ public class SysUserService {
     }
     
     /**
-     * 校验当前密码并完成改密，同时解除首次登录限制。
+     * 校验当前密码并完成改密，同时解除首次登录限制并撤销全部会话。
+     *
+     * <p>密码更新和会话撤销在同一事务中完成，成功后必须使用新密码重新登录。</p>
+     *
+     * @param id 当前用户 ID
+     * @param currentPassword 当前密码
+     * @param newPassword 符合密码策略且不同于当前密码的新密码
+     * @throws IllegalArgumentException 用户不存在、当前密码不正确或新密码不符合要求
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(

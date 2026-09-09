@@ -6,13 +6,13 @@
         <div>
           <h1 id="change-password-title">修改登录密码</h1>
           <p v-if="mustChangePassword">临时密码仅用于首次登录，请设置一个只有你知道的新密码。</p>
-          <p v-else>更新当前账号的登录密码。</p>
+          <p v-else>更新当前账号的登录密码，完成后需重新登录。</p>
         </div>
       </header>
 
       <el-alert
         v-if="mustChangePassword"
-        title="完成改密后才能进入系统"
+        title="完成改密后，请使用新密码重新登录"
         type="warning"
         :closable="false"
         show-icon
@@ -52,7 +52,7 @@
         </el-form-item>
         <div class="actions">
           <el-button @click="signOut">退出登录</el-button>
-          <el-button type="primary" :loading="submitting" @click="submit">保存新密码并继续</el-button>
+          <el-button type="primary" :loading="submitting" @click="submit">保存并重新登录</el-button>
         </div>
       </el-form>
     </section>
@@ -64,11 +64,7 @@ import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock } from '@element-plus/icons-vue'
-import {
-  changePassword,
-  getPermissions,
-  logout
-} from '@/api/auth'
+import { changePassword, logout } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -105,20 +101,21 @@ const rules = {
   ]
 }
 
+/** 改密成功后清理本地及其他标签页的登录态；失败则留在当前页面重试。 */
 const submit = async () => {
-  if (!formRef.value) return
-  await formRef.value.validate()
+  if (!formRef.value || submitting.value) return
+  // 校验阶段也锁定提交，避免重复请求使用刚被改密操作撤销的会话。
   submitting.value = true
   try {
-    const session = await changePassword({
+    await formRef.value.validate()
+    await changePassword({
       currentPassword: form.currentPassword,
       newPassword: form.newPassword
     })
-    userStore.applySession(session)
-    const permissions = await getPermissions()
-    userStore.setPermissions(permissions || [])
-    ElMessage.success('密码已更新')
-    await router.replace('/home')
+    // 服务端已撤销全部会话并清除刷新 Cookie，必须重新验证新密码才能进入系统。
+    userStore.logout()
+    ElMessage.success('密码已修改，请使用新密码重新登录')
+    await router.replace('/login')
   } finally {
     submitting.value = false
   }

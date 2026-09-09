@@ -75,7 +75,7 @@ public class AuthSessionService {
     }
 
     /**
-     * 登录或改密后创建新的浏览器刷新会话。
+     * 验证登录密码后创建新的浏览器刷新会话。
      *
      * @param user 已验证用户
      * @return 新会话的令牌组合
@@ -110,26 +110,6 @@ public class AuthSessionService {
                 sessionId,
                 absoluteExpiry,
                 tokenVersion);
-    }
-
-    /**
-     * 在同一事务中修改密码、撤销旧会话并签发当前浏览器的新会话。
-     *
-     * @param userId 当前用户 ID
-     * @param currentPassword 当前密码
-     * @param newPassword 新密码
-     * @return 改密后创建的新会话令牌组合
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public AuthTokenBundle changePasswordAndCreateSession(
-            String userId,
-            String currentPassword,
-            String newPassword) {
-        userService.changePassword(
-                userId,
-                currentPassword,
-                newPassword);
-        return createSession(userService.getById(userId));
     }
 
     /**

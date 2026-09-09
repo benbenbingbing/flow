@@ -72,6 +72,8 @@ public class TaskActionService {
     /** 转办必须在产生任何任务副作用前通过节点开关校验。 */
     private final com.workflow.process.task.application.operation.NodeOperationCapabilityService
             nodeOperationCapabilityService;
+    /** 待办、认领、审批与其他任务操作共用业务候选身份口径。 */
+    private final TaskIdentityAccessService taskIdentityAccessService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.workflow.process.task.application.operation.NodeOperationDecisionService
@@ -444,18 +446,7 @@ public class TaskActionService {
     }
 
     private void requireTaskIdentityAccess(Task task) {
-        String currentUserId = UserContext.getUserId();
-        String currentUsername = UserContext.getUsername();
-        String assignee = task.getAssignee();
-        boolean assigned = matchesCurrentUser(assignee, currentUserId, currentUsername);
-        boolean candidate = isCandidate(task.getId(), currentUserId)
-                || isCandidate(task.getId(), currentUsername);
-        if (StringUtils.hasText(assignee) && !assigned) {
-            throw new ForbiddenException("当前任务已分配给其他办理人");
-        }
-        if (!StringUtils.hasText(assignee) && !candidate) {
-            throw new ForbiddenException("当前用户不是该任务的候选办理人");
-        }
+        taskIdentityAccessService.requireCurrentUserAccess(task);
     }
 
     private void requireEntityApprovalAccess(Task task) {
@@ -547,16 +538,6 @@ public class TaskActionService {
             return userId;
         }
         throw new ForbiddenException("用户未登录");
-    }
-
-    private boolean isCandidate(String taskId, String userId) {
-        if (!StringUtils.hasText(userId)) {
-            return false;
-        }
-        return taskService.createTaskQuery()
-                .taskId(taskId)
-                .taskCandidateUser(userId)
-                .count() > 0;
     }
 
     private boolean matchesCurrentUser(String value, String userId, String username) {

@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.TaskAddSignService;
+import com.workflow.process.task.application.TaskIdentityAccessService;
 import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
 import com.workflow.process.task.application.operation.NodeOperationDecisionService;
 import com.workflow.process.task.application.operation.NodeOperationPolicy;
@@ -55,6 +56,7 @@ class TaskAddSignServiceTest {
     @Mock SysUserMapper userMapper;
     @Mock NodeOperationCapabilityService nodeOperationCapabilityService;
     @Mock TaskActionService taskActionService;
+    @Mock TaskIdentityAccessService taskIdentityAccessService;
 
     /** 被测加签服务 */
     TaskAddSignService service;
@@ -71,7 +73,8 @@ class TaskAddSignServiceTest {
                 userMapper,
                 new ObjectMapper(),
                 nodeOperationCapabilityService,
-                taskActionService);
+                taskActionService,
+                taskIdentityAccessService);
         UserContext.setCurrentUser("admin-id", "admin");
         lenient().when(taskService.createTaskQuery()).thenReturn(taskQuery);
         lenient().when(taskQuery.taskId(anyString())).thenReturn(taskQuery);
@@ -225,6 +228,38 @@ class TaskAddSignServiceTest {
         order.verify(processTaskMapper).selectByTaskIdForUpdate("source-task");
         order.verify(addSignMapper).findOpenBySourceTaskId("source-task");
         verify(operationLogMapper).insert(any(ProcessOperationLog.class));
+    }
+
+    /** 共享身份服务认可的候选组成员应能查看能力、预览并加签，不再依赖引擎用户组查询。 */
+    @Test
+    void candidateGroupOperatorUsesSharedAccessForOperationsPreviewAndAddSign() {
+        when(task.getAssignee()).thenReturn(null);
+
+        assertEquals(true, service.operations("source-task").get("addSign"));
+        assertEquals(1, service.preview("source-task", List.of("reviewer"), "PARALLEL").get("taskCount"));
+        service.addSign("source-task", request("PARALLEL"));
+
+        verify(taskIdentityAccessService, times(3)).requireCurrentUserAccess(task);
+        verify(taskQuery, never()).taskCandidateUser(anyString());
+        verify(addSignMapper).insert(any(ProcessTaskAddSign.class));
+    }
+
+    /** 共享校验拒绝时，能力查询、预览与三类加签都必须在读取人员或写入记录前失败。 */
+    @Test
+    void deniedIdentityCannotBypassAccessThroughOperationsPreviewOrAnyAddSignType() {
+        doThrow(new ForbiddenException("当前用户不是该任务的候选办理人"))
+                .when(taskIdentityAccessService).requireCurrentUserAccess(task);
+
+        assertThrows(ForbiddenException.class, () -> service.operations("source-task"));
+        assertThrows(ForbiddenException.class,
+                () -> service.preview("source-task", List.of("reviewer"), "PARALLEL"));
+        for (String type : List.of("BEFORE", "PARALLEL", "AFTER")) {
+            assertThrows(ForbiddenException.class, () -> service.addSign("source-task", request(type)));
+        }
+
+        verify(taskIdentityAccessService, times(5)).requireCurrentUserAccess(task);
+        verifyNoInteractions(processTaskMapper, addSignMapper, addSignUserMapper,
+                operationLogMapper, userMapper, nodeOperationCapabilityService);
     }
 
     /** 节点关闭加签时必须在锁定任务镜像和写入任何加签记录前失败。 */

@@ -162,23 +162,28 @@ public class AuthController {
     }
 
     /**
-     * 修改当前登录用户密码。
+     * 修改当前登录用户密码并结束所有登录会话，要求使用新密码重新登录。
+     *
+     * @param request 当前密码和新密码
+     * @param response 改密成功后清除浏览器的 Refresh Token Cookie
+     * @return 不携带会话令牌的成功结果；未登录时返回错误
+     * @throws IllegalArgumentException 当前密码不正确或新密码不符合要求
      */
     @PostMapping("/change-password")
-    public Result<LoginUserVO> changePassword(
+    public Result<Void> changePassword(
             @Validated @RequestBody ChangePasswordDTO request,
             HttpServletResponse response) {
         String userId = UserContext.getUserId();
         if (userId == null) {
             return Result.error("未登录");
         }
-        AuthTokenBundle tokens =
-                authSessionService.changePasswordAndCreateSession(
-                        userId,
-                        request.getCurrentPassword(),
-                        request.getNewPassword());
-        writeRefreshCookie(response, tokens);
-        return Result.success(toLoginUser(tokens));
+        userService.changePassword(
+                userId,
+                request.getCurrentPassword(),
+                request.getNewPassword());
+        // 服务层已提交改密和会话撤销，成功后才清 Cookie，避免校验失败导致用户退出。
+        clearRefreshCookie(response);
+        return Result.success();
     }
 
     /**

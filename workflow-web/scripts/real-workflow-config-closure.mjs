@@ -77,6 +77,9 @@ async function activateApprover(username, initialPassword, newPassword) {
     currentPassword: initialPassword,
     newPassword
   }, username)
+  // 改密会撤销临时登录会话；后续验收必须通过新密码重新取得令牌。
+  delete tokens[username]
+  await login(username, newPassword)
   record(`activateApprover:${username}`, {
     username,
     passwordResetRequired: false

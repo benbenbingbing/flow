@@ -26,7 +26,8 @@ export function logout() {
 }
 
 /**
- * 修改当前登录用户密码
+ * 修改当前登录用户密码。成功后服务端撤销全部会话并清除刷新 Cookie，
+ * 不返回新登录会话；调用方需清理本地登录态并引导用户使用新密码重新登录。
  */
 export function changePassword(data) {
   return request.post('/auth/change-password', data)

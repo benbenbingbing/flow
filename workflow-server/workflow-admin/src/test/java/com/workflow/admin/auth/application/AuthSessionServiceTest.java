@@ -140,42 +140,6 @@ class AuthSessionServiceTest {
     }
 
     @Test
-    void changePasswordCreatesReplacementSessionInOneServiceOperation() {
-        AuthRefreshSessionMapper mapper =
-                mock(AuthRefreshSessionMapper.class);
-        SysUserService userService =
-                mock(SysUserService.class);
-        when(mapper.insert(
-                anyString(),
-                anyString(),
-                anyString(),
-                anyLong(),
-                any(),
-                any(),
-                any(),
-                any()))
-                .thenReturn(1);
-        when(userService.getById("user-1"))
-                .thenReturn(activeUser());
-
-        AuthTokenBundle bundle = service(
-                mapper,
-                userService)
-                .changePasswordAndCreateSession(
-                        "user-1",
-                        "CurrentPassword1",
-                        "NextPassword2");
-
-        verify(userService).changePassword(
-                "user-1",
-                "CurrentPassword1",
-                "NextPassword2");
-        verify(userService).getById("user-1");
-        assertEquals("user-1", bundle.user().getId());
-        assertTrue(JwtUtil.validateToken(bundle.accessToken()));
-    }
-
-    @Test
     void idleExpiredRefreshIsRevokedAndRejected() {
         AuthRefreshSessionMapper mapper =
                 mock(AuthRefreshSessionMapper.class);

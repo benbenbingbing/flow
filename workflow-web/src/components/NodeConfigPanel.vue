@@ -263,7 +263,7 @@
               <div class="form-tip">
                 {{ assigneeForm.isMultiInstance
                   ? '组内启用用户会展开为多人办理参与人并分别生成任务'
-                  : '组内所有成员都可处理任务' }}
+                  : '组内任意成员可先认领再审批，认领后由该成员处理' }}
               </div>
             </el-form-item>
           </template>
@@ -289,7 +289,7 @@
               <div class="form-tip">
                 {{ assigneeForm.isMultiInstance
                   ? '拥有该角色的启用用户会展开为多人办理参与人并分别生成任务'
-                  : '拥有该角色的用户都可处理任务' }}
+                  : '拥有该角色的任意用户可先认领再审批，认领后由该用户处理' }}
               </div>
             </el-form-item>
           </template>

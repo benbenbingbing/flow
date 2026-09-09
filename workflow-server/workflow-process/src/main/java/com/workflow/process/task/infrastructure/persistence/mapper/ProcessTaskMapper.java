@@ -16,28 +16,58 @@ import java.util.List;
 public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     
     /**
-     * 查询待办列表（根据用户ID查询用户的待办）
+     * 待办列表和统计共用同一授权范围，以引擎当前办理人及候选关系为准。
+     *
+     * <p>本地 assignee_id 是展示投影，旧任务可能将多候选人压成逗号串，
+     * 混合用户/组时还可能只保留组。直接读取引擎关系可兼容这些已存在任务，
+     * 并确保任务被他人认领后，即使本地投影滞后也不再显示给候选人。</p>
      */
-    @Select("SELECT pt.* FROM process_task pt " +
-            "WHERE pt.status = 'todo' AND pt.deleted = 0 " +
-            "AND (" +
-            "  pt.assignee_id = #{userId} " +
-            "  OR pt.assignee_id COLLATE utf8mb4_unicode_ci = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 LIMIT 1) " +
-            "  OR pt.assignee_id COLLATE utf8mb4_unicode_ci = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 LIMIT 1) " +
-            "  OR (" +
-            "    pt.assignee_type = 'group' " +
-            "    AND EXISTS (" +
-            "      SELECT 1 FROM sys_group g " +
-            "      INNER JOIN sys_user_group ug ON ug.group_id = g.id " +
-            "      INNER JOIN sys_user u ON u.id = ug.user_id " +
-            "      WHERE (u.username = #{userId} OR u.id = #{userId}) " +
-            "        AND g.deleted = 0 " +
-            "        AND FIND_IN_SET(g.group_code COLLATE utf8mb4_0900_ai_ci, pt.assignee_id) > 0" +
-            "    )" +
-            "  )" +
-            ") ORDER BY pt.create_time DESC")
+    String TODO_USER_SCOPE = """
+            FROM process_task pt
+            INNER JOIN ACT_RU_TASK ft
+              ON ft.ID_ COLLATE utf8mb4_unicode_ci = pt.task_id
+            WHERE pt.status = 'todo' AND pt.deleted = 0
+              AND EXISTS (
+                SELECT 1 FROM sys_user u
+                WHERE (u.username = #{userId} OR u.id = #{userId})
+                  AND u.deleted = 0 AND u.status = '0'
+                  AND (
+                    ft.ASSIGNEE_ COLLATE utf8mb4_unicode_ci IN (u.id, u.username)
+                    OR (
+                      (ft.ASSIGNEE_ IS NULL OR ft.ASSIGNEE_ = '')
+                      AND EXISTS (
+                        SELECT 1 FROM ACT_RU_IDENTITYLINK candidate
+                        WHERE candidate.TASK_ID_ = ft.ID_
+                          AND candidate.TYPE_ = 'candidate'
+                          AND (
+                            candidate.USER_ID_ COLLATE utf8mb4_unicode_ci IN (u.id, u.username)
+                            OR EXISTS (
+                              SELECT 1 FROM sys_user_group ug
+                              INNER JOIN sys_group g ON g.id = ug.group_id
+                              WHERE ug.user_id = u.id
+                                AND g.deleted = 0 AND g.status = '0'
+                                AND LEFT(candidate.GROUP_ID_, 5) != 'ROLE_'
+                                AND candidate.GROUP_ID_ COLLATE utf8mb4_unicode_ci IN (g.id, g.group_code)
+                            )
+                            OR EXISTS (
+                              SELECT 1 FROM sys_user_role ur
+                              INNER JOIN sys_role r ON r.id = ur.role_id
+                              WHERE ur.user_id = u.id
+                                AND r.deleted = 0 AND r.status = '0'
+                                AND candidate.GROUP_ID_ COLLATE utf8mb4_unicode_ci
+                                    IN (CONCAT('ROLE_', r.id), CONCAT('ROLE_', r.role_code))
+                            )
+                          )
+                      )
+                    )
+                  )
+              )
+            """;
+
+    /** 查询当前用户的待办，同时接受用户 ID 和用户名。 */
+    @Select("SELECT pt.* " + TODO_USER_SCOPE + " ORDER BY pt.create_time DESC")
     List<ProcessTask> selectTodoByUser(@Param("userId") String userId);
-    
+
     /**
      * 查询已办列表（根据用户ID查询用户已完成的）
      */
@@ -99,29 +129,10 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
                      @Param("action") String action, @Param("comment") String comment,
                      @Param("duration") Long duration);
     
-    /**
-     * 统计用户待办数
-     */
-    @Select("SELECT COUNT(*) FROM process_task pt " +
-            "WHERE pt.status = 'todo' AND pt.deleted = 0 " +
-            "AND (" +
-            "  pt.assignee_id = #{userId} " +
-            "  OR pt.assignee_id COLLATE utf8mb4_unicode_ci = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 LIMIT 1) " +
-            "  OR pt.assignee_id COLLATE utf8mb4_unicode_ci = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 LIMIT 1) " +
-            "  OR (" +
-            "    pt.assignee_type = 'group' " +
-            "    AND EXISTS (" +
-            "      SELECT 1 FROM sys_group g " +
-            "      INNER JOIN sys_user_group ug ON ug.group_id = g.id " +
-            "      INNER JOIN sys_user u ON u.id = ug.user_id " +
-            "      WHERE (u.username = #{userId} OR u.id = #{userId}) " +
-            "        AND g.deleted = 0 " +
-            "        AND FIND_IN_SET(g.group_code COLLATE utf8mb4_0900_ai_ci, pt.assignee_id) > 0" +
-            "    )" +
-            "  )" +
-            ")")
+    /** 统计当前用户待办数，授权条件与列表查询保持一致。 */
+    @Select("SELECT COUNT(*) " + TODO_USER_SCOPE)
     Long countTodoByUser(@Param("userId") String userId);
-    
+
     /**
      * 统计用户已办数
      */

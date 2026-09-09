@@ -156,6 +156,10 @@ public class ProcessTaskService {
                 List<String> groupMemberNames = new java.util.ArrayList<>();
                 List<String> candidateUserIds = new java.util.ArrayList<>();
                 for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
+                    // owner、participant 等关联不授予认领权限，不能投影为候选审批人。
+                    if (!"candidate".equals(link.getType())) {
+                        continue;
+                    }
                     if (link.getGroupId() != null) {
                         groupIds.add(link.getGroupId());
                         String members = getGroupMemberNames(link.getGroupId());
@@ -293,6 +297,10 @@ public class ProcessTaskService {
                 List<String> groupMemberNames = new java.util.ArrayList<>();
                 List<String> candidateUserIds = new java.util.ArrayList<>();
                 for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
+                    // owner、participant 等关联不授予认领权限，不能投影为候选审批人。
+                    if (!"candidate".equals(link.getType())) {
+                        continue;
+                    }
                     if (link.getGroupId() != null) {
                         groupIds.add(link.getGroupId());
                         String members = getGroupMemberNames(link.getGroupId());
@@ -572,10 +580,48 @@ public class ProcessTaskService {
     }
     
     /**
-     * 获取用户待办列表
+     * 获取用户待办列表，并按引擎当前认领状态刷新返回数据。
+     *
+     * <p>旧任务的本地执行人投影可能尚未同步，不能仅凭 assignee_type
+     * 决定显示“认领”或“审批”。此处只刷新展示对象，不写库或改变任务归属。</p>
+     *
+     * @param userId 当前用户 ID 或用户名
+     * @return 当前仍存在的待办任务
      */
     public List<ProcessTask> getTodoList(String userId) {
-        return taskMapper.selectTodoByUser(userId);
+        List<ProcessTask> tasks = taskMapper.selectTodoByUser(userId);
+        if (tasks.isEmpty()) {
+            return tasks;
+        }
+        // 批量读取避免逐行访问引擎；查询过程中已完成的任务不再返回。
+        Map<String, Task> runtimeTasks = flowableTaskService.createTaskQuery()
+                .taskIds(tasks.stream().map(ProcessTask::getTaskId).toList())
+                .list().stream().collect(java.util.stream.Collectors.toMap(Task::getId, task -> task));
+        java.util.Set<String> userIdentities = new java.util.HashSet<>();
+        userIdentities.add(userId);
+        identityDirectoryPort.findUser(userId).ifPresent(user -> {
+            userIdentities.add(user.id());
+            userIdentities.add(user.username());
+        });
+        return tasks.stream().filter(task -> {
+                    Task runtimeTask = runtimeTasks.get(task.getTaskId());
+                    if (runtimeTask == null) {
+                        return false;
+                    }
+                    // 列表 SQL 与这次批量读取之间可能被他人认领，不能返回已失去办理权的任务。
+                    String assignee = runtimeTask.getAssignee();
+                    return assignee == null || assignee.isBlank() || userIdentities.contains(assignee);
+                })
+                .peek(task -> {
+                    String assignee = runtimeTasks.get(task.getTaskId()).getAssignee();
+                    if (assignee == null || assignee.isBlank()) {
+                        task.setAssigneeType("group");
+                    } else {
+                        task.setAssigneeType("user");
+                        task.setAssigneeId(assignee);
+                        task.setAssigneeName(identityDirectoryPort.getDisplayName(assignee));
+                    }
+                }).toList();
     }
     
     /**

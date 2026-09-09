@@ -4,6 +4,11 @@ import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskActionService;
+import com.workflow.process.task.application.TaskIdentityAccessService;
+import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
+import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
+import com.workflow.contracts.identity.port.IdentityDirectoryPort;
+import org.flowable.identitylink.api.IdentityLink;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideService;
 import com.workflow.process.task.application.operation.NodeOperationCapabilityService;
 import com.workflow.process.task.application.operation.NodeOperationDecisionService;
@@ -136,7 +141,9 @@ class TaskActionServiceTest {
                         repositoryService,
                         taskService,
                         new com.fasterxml.jackson.databind.ObjectMapper()),
-                nodeOperationCapabilityService
+                nodeOperationCapabilityService,
+                new TaskIdentityAccessService(taskService, mock(SysGroupMapper.class),
+                        mock(SysRoleMapper.class), mock(IdentityDirectoryPort.class))
         );
         UserContext.setCurrentUser("admin-id", "admin");
     }
@@ -291,8 +298,7 @@ class TaskActionServiceTest {
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
         when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
         when(taskQuery.singleResult()).thenReturn(task, latestTask);
-        when(taskQuery.taskCandidateUser(any())).thenReturn(taskQuery);
-        when(taskQuery.count()).thenReturn(1L);
+        mockCandidateIdentity("task-1");
         when(task.getId()).thenReturn("task-1");
         when(task.getAssignee()).thenReturn(null);
         when(latestTask.getAssignee()).thenReturn("other-user");
@@ -467,25 +473,29 @@ class TaskActionServiceTest {
                 });
     }
 
+    private void mockCandidateIdentity(String taskId) {
+        IdentityLink link = mock(IdentityLink.class);
+        when(link.getType()).thenReturn("candidate");
+        when(link.getUserId()).thenReturn("admin-id");
+        when(taskService.getIdentityLinksForTask(taskId)).thenReturn(List.of(link));
+    }
+
     /** Mock 一个已分配给指定处理人的任务查询链 */
     private void mockTask(String taskId, String processInstanceId, String assignee) {
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
         when(taskQuery.taskId(taskId)).thenReturn(taskQuery);
         when(taskQuery.singleResult()).thenReturn(task);
-        when(taskQuery.taskCandidateUser(any())).thenReturn(taskQuery);
-        when(taskQuery.count()).thenReturn(0L);
         when(task.getId()).thenReturn(taskId);
         when(task.getAssignee()).thenReturn(assignee);
         when(task.getProcessInstanceId()).thenReturn(processInstanceId);
     }
 
-    /** Mock 一个候选人任务查询链（assignee 为空、候选人计数为 1） */
+    /** Mock 一个候选任务，使用真实 candidate identity link 驱动统一身份校验。 */
     private void mockCandidateTask(String taskId) {
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
         when(taskQuery.taskId(taskId)).thenReturn(taskQuery);
         when(taskQuery.singleResult()).thenReturn(task);
-        when(taskQuery.taskCandidateUser(any())).thenReturn(taskQuery);
-        when(taskQuery.count()).thenReturn(1L);
+        mockCandidateIdentity(taskId);
         when(task.getId()).thenReturn(taskId);
         when(task.getAssignee()).thenReturn(null);
     }

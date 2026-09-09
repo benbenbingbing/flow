@@ -27,6 +27,8 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -129,7 +131,7 @@ class SysUserServiceTest {
     }
 
     @Test
-    void changePasswordClearsRequiredFlag() {
+    void changePasswordClearsRequiredFlagAndRevokesAllSessions() {
         SysUser existing = new SysUser();
         existing.setId("user-1");
         String currentPassword = "CurrentPass1";
@@ -143,7 +145,28 @@ class SysUserServiceTest {
         verify(userMapper).updateById(argThat((SysUser user) ->
                 Boolean.FALSE.equals(user.getPasswordResetRequired())
                         && userService.passwordMatches("NextPassword2", user.getPassword())));
+        verify(userMapper).incrementTokenVersion("user-1");
+        verify(refreshSessionMapper).revokeByUserId(
+                eq("user-1"), any(), eq("TOKEN_VERSION_CHANGED"));
         assertFalse(userService.passwordMatches("NextPassword2", existing.getPassword()));
+    }
+
+    @Test
+    void incorrectCurrentPasswordDoesNotChangePasswordOrRevokeSessions() {
+        SysUser existing = new SysUser();
+        existing.setId("user-1");
+        existing.setPassword(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder()
+                .encode("CurrentPass1"));
+        when(userMapper.selectById("user-1")).thenReturn(existing);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> userService.changePassword("user-1", "WrongPassword1", "NextPassword2"));
+
+        assertEquals("当前密码不正确", exception.getMessage());
+        verify(userMapper, never()).updateById(any(SysUser.class));
+        verify(userMapper, never()).incrementTokenVersion("user-1");
+        verifyNoInteractions(refreshSessionMapper);
     }
 
     @Test

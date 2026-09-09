@@ -219,4 +219,65 @@ class ProcessTaskServiceTest {
         verify(entityRecordPort).updateCurrentTask(
                 "expense", "record-1", "task-1", "经理审批", "admin");
     }
+
+    /** 旧本地组投影已被认领时，返回实际审批人，页面应显示审批按钮。 */
+    @Test
+    void todoListRefreshesClaimedStateWithoutRewritingExistingTask() {
+        ProcessTask local = new ProcessTask();
+        local.setTaskId("task-1");
+        local.setAssigneeType("group");
+        local.setAssigneeId("finance");
+        when(taskMapper.selectTodoByUser("alice")).thenReturn(List.of(local));
+        when(flowableTaskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskIds(List.of("task-1"))).thenReturn(taskQuery);
+        when(taskQuery.list()).thenReturn(List.of(flowableTask));
+        when(flowableTask.getId()).thenReturn("task-1");
+        when(flowableTask.getAssignee()).thenReturn("user-1");
+        when(identityDirectoryPort.getDisplayName("user-1")).thenReturn("张三(alice)");
+        when(identityDirectoryPort.findUser("alice")).thenReturn(java.util.Optional.of(
+                new com.workflow.contracts.identity.IdentityUser("user-1", "alice", "张三", null, null)));
+
+        List<ProcessTask> result = service.getTodoList("alice");
+
+        Assertions.assertEquals("user", result.get(0).getAssigneeType());
+        Assertions.assertEquals("user-1", result.get(0).getAssigneeId());
+        Assertions.assertEquals("张三(alice)", result.get(0).getAssigneeName());
+        org.mockito.Mockito.verify(taskMapper, org.mockito.Mockito.never())
+                .updateById(org.mockito.ArgumentMatchers.any(ProcessTask.class));
+    }
+
+    /** 引擎仍无办理人的候选任务必须先认领，即使旧投影误标记为 user。 */
+    @Test
+    void todoListRefreshesUnclaimedStateAndOmitsTasksAlreadyCompleted() {
+        ProcessTask local = new ProcessTask();
+        local.setTaskId("task-1");
+        local.setAssigneeType("user");
+        ProcessTask completed = new ProcessTask();
+        completed.setTaskId("task-completed");
+        when(taskMapper.selectTodoByUser("alice")).thenReturn(List.of(local, completed));
+        when(flowableTaskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskIds(List.of("task-1", "task-completed"))).thenReturn(taskQuery);
+        when(taskQuery.list()).thenReturn(List.of(flowableTask));
+        when(flowableTask.getId()).thenReturn("task-1");
+
+        List<ProcessTask> result = service.getTodoList("alice");
+
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertEquals("group", result.get(0).getAssigneeType());
+    }
+
+    /** SQL 查询后被他人认领的任务不再返回，避免显示已经失去办理权的待办。 */
+    @Test
+    void todoListOmitsTaskClaimedByAnotherUserDuringRead() {
+        ProcessTask local = new ProcessTask();
+        local.setTaskId("task-1");
+        when(taskMapper.selectTodoByUser("alice")).thenReturn(List.of(local));
+        when(flowableTaskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskIds(List.of("task-1"))).thenReturn(taskQuery);
+        when(taskQuery.list()).thenReturn(List.of(flowableTask));
+        when(flowableTask.getId()).thenReturn("task-1");
+        when(flowableTask.getAssignee()).thenReturn("bob");
+
+        Assertions.assertTrue(service.getTodoList("alice").isEmpty());
+    }
 }

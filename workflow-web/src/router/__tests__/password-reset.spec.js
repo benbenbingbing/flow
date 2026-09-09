@@ -83,11 +83,17 @@ assert.deepEqual(restricted.calls.warnings, [], '强制改密不能被业务权�
 
 const completed = createGuard()
 assert.equal(await completed.navigate('/change-password'), undefined)
+// 改密后先清理本地会话，必须重新登录才允许恢复业务导航。
+completed.userStore.isLoggedIn = false
+assert.equal(await completed.navigate('/login', { public: true }), undefined)
+assert.equal(await completed.navigate('/entity'), '/login')
+assert.equal(completed.calls.permissions, 0)
+completed.userStore.isLoggedIn = true
 completed.userStore.userInfo.passwordResetRequired = false
 assert.equal(await completed.navigate('/entity', {
   requiredPermissions: ['entity:definition:view']
-}), undefined, '改密成功后应恢复正常业务导航')
-assert.equal(completed.calls.permissions, 1, '解除强制改密后才加载业务权限')
+}), undefined, '使用新密码重新登录后应恢复正常业务导航')
+assert.equal(completed.calls.permissions, 1, '重新登录且解除强制改密后才加载业务权限')
 assert.deepEqual(completed.userStore.permissions, ['entity:definition:view'])
 assert.equal(await completed.navigate('/login', { public: true }), '/')
 

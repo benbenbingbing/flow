@@ -2,9 +2,15 @@ package com.workflow.service;
 
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
+import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.cc.application.ProcessCcRuntimeService;
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.process.task.application.TaskIdentityAccessService;
+import com.workflow.process.cc.api.request.TaskCcRequest;
+import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.ForbiddenException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
@@ -23,6 +29,7 @@ import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -34,6 +41,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -58,6 +66,13 @@ class ProcessCcRuntimeServiceTest {
     @Mock SysUserGroupMapper userGroupMapper;
     @Mock SysOrganizationMapper organizationMapper;
     @Mock PersonResolverRuntimeService personResolverRuntimeService;
+    @Mock TaskIdentityAccessService taskIdentityAccessService;
+
+    /** 人工知会用例设置当前用户后必须清理，避免影响自动知会及其他测试。 */
+    @AfterEach
+    void clearUserContext() {
+        UserContext.clear();
+    }
 
     /** 测试固定用户规则触发收件箱与 Outbox 各一次：验证知会记录的用户、唯一键与渠道符合预期 */
     @Test
@@ -77,7 +92,8 @@ class ProcessCcRuntimeServiceTest {
                 organizationMapper,
                 new ObjectMapper(),
                 List.of(),
-                personResolverRuntimeService);
+                personResolverRuntimeService,
+                taskIdentityAccessService);
         SysUser user = new SysUser();
         user.setId("u1");
         user.setUsername("observer");
@@ -166,7 +182,8 @@ class ProcessCcRuntimeServiceTest {
                 organizationMapper,
                 new ObjectMapper(),
                 List.of(),
-                personResolverRuntimeService);
+                personResolverRuntimeService,
+                taskIdentityAccessService);
         CcRuntimeContext context = new CcRuntimeContext(
                 "process-1", "definition-1", "expense", "费用流程", "biz-1",
                 "approve-node", "经理审批", "TASK_CREATE", "admin", Map.of());
@@ -194,7 +211,8 @@ class ProcessCcRuntimeServiceTest {
                 organizationMapper,
                 new ObjectMapper(),
                 List.of(),
-                personResolverRuntimeService);
+                personResolverRuntimeService,
+                taskIdentityAccessService);
         TaskQuery taskQuery = mock(TaskQuery.class);
         Task task = mock(Task.class);
         when(taskService.createTaskQuery()).thenReturn(taskQuery);
@@ -210,6 +228,63 @@ class ProcessCcRuntimeServiceTest {
         when(configService.findConfig("definition-1", "approve-node"))
                 .thenReturn("{}");
         assertTrue(service.isManualCcAllowed("task-1"));
+    }
+
+    /** 共享校验认可的业务组候选人应能人工知会，且不再依赖 Flowable 自带的用户组关系。 */
+    @Test
+    void manualCcAcceptsCandidateThroughSharedTaskAccess() {
+        UserContext.setCurrentUser("operator-id", "operator");
+        Task task = manualCcTask();
+        when(task.getProcessInstanceId()).thenReturn("process-1");
+        when(task.getProcessDefinitionId()).thenReturn("definition-1");
+        when(task.getTaskDefinitionKey()).thenReturn("approve-node");
+        when(configService.findConfig("definition-1", "approve-node")).thenReturn("{}");
+        ProcessTask mirror = new ProcessTask();
+        mirror.setProcessKey("expense");
+        when(processTaskMapper.selectByTaskId("task-1")).thenReturn(mirror);
+        when(userMapper.selectByUsername("observer"))
+                .thenReturn(enabledUser("observer-id", "observer"));
+
+        assertEquals(1, service().manualCc("task-1", manualCcRequest()));
+
+        var order = inOrder(taskIdentityAccessService, ccService);
+        order.verify(taskIdentityAccessService).requireCurrentUserAccess(task);
+        order.verify(ccService).createCcRecord(any());
+        verify(notificationPublisher).enqueue(any(), eq(List.of("IN_APP")));
+        verify(operationLogMapper).insert(any(ProcessOperationLog.class));
+    }
+
+    /** 身份校验失败必须在配置、候选收件人解析及持久化之前退出，不能借知会接口越权。 */
+    @Test
+    void manualCcStopsBeforeSideEffectsWhenSharedTaskAccessDenies() {
+        UserContext.setCurrentUser("outsider-id", "outsider");
+        Task task = manualCcTask();
+        doThrow(new ForbiddenException("当前用户不是该任务的候选办理人"))
+                .when(taskIdentityAccessService).requireCurrentUserAccess(task);
+
+        assertThrows(ForbiddenException.class,
+                () -> service().manualCc("task-1", manualCcRequest()));
+
+        verify(taskIdentityAccessService).requireCurrentUserAccess(task);
+        verifyNoInteractions(configService, processTaskMapper, userMapper,
+                ccService, notificationPublisher, operationLogMapper);
+    }
+
+    /** 仅提供引擎任务，不模拟引擎身份组表，使入口测试约束权限必须委派给共享服务。 */
+    private Task manualCcTask() {
+        TaskQuery query = mock(TaskQuery.class);
+        Task task = mock(Task.class);
+        when(taskService.createTaskQuery()).thenReturn(query);
+        when(query.taskId("task-1")).thenReturn(query);
+        when(query.singleResult()).thenReturn(task);
+        return task;
+    }
+
+    /** 构造人工知会请求。 */
+    private TaskCcRequest manualCcRequest() {
+        TaskCcRequest request = new TaskCcRequest();
+        request.setUserIds(List.of("observer"));
+        return request;
     }
 
     /** 构造含当前测试替身的知会运行时服务。 */
@@ -229,7 +304,8 @@ class ProcessCcRuntimeServiceTest {
                 organizationMapper,
                 new ObjectMapper(),
                 List.of(),
-                personResolverRuntimeService);
+                personResolverRuntimeService,
+                taskIdentityAccessService);
     }
 
     /** 构造自动知会运行时上下文。 */
