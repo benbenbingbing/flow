@@ -440,8 +440,10 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  if (isLoggedIn && userStore.userInfo?.passwordResetRequired && to.path !== '/change-password') {
-    next('/change-password')
+  if (isLoggedIn && userStore.userInfo?.passwordResetRequired) {
+    // 待改密会话不能请求业务权限（后端返回 428）。改密页直接放行，
+    // 避免继续加载权限触发整页跳转，也不受业务菜单禁用配置影响。
+    next(to.path === '/change-password' ? undefined : '/change-password')
     return
   }
 
