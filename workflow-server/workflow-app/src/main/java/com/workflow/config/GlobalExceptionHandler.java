@@ -15,6 +15,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.sql.SQLException;
@@ -105,6 +106,23 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error(403, e.getMessage()));
+    }
+
+    /**
+     * 处理查询参数或路径参数的类型转换失败。
+     *
+     * <p>客户端只获得稳定提示，不暴露 Spring 类型名、目标类型或原始异常；
+     * 参数名仅写入服务端日志以便排查。</p>
+     *
+     * @param exception 方法参数类型转换异常
+     * @return HTTP 400 及统一错误响应
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException exception) {
+        log.warn("请求参数格式不正确: parameter={}", exception.getName());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(400, "请求参数格式不正确"));
     }
 
     /**

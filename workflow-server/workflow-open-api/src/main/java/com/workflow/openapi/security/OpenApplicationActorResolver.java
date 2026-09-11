@@ -1,6 +1,5 @@
 package com.workflow.openapi.security;
 
-import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.openapi.api.error.OpenApiException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -9,7 +8,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class OpenApplicationActorResolver {
 
-    public OpenApplicationActor resolve(
+    public ResolvedApplicationActor resolve(
             Authentication authentication,
             String traceId) {
         if (!(authentication instanceof JwtAuthenticationToken token)) {
@@ -30,9 +29,16 @@ public class OpenApplicationActorResolver {
                     "INVALID_ACCESS_TOKEN",
                     "Access token is invalid");
         }
-        return new OpenApplicationActor(
+        return new ResolvedApplicationActor(
                 applicationId,
                 clientId,
                 traceId);
+    }
+
+    /** 通过机器令牌解析出的最小应用身份。 */
+    public record ResolvedApplicationActor(
+            String applicationId,
+            String clientId,
+            String traceId) {
     }
 }

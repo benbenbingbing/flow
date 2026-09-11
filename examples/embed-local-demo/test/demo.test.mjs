@@ -256,6 +256,8 @@ test('示例源码不把敏感凭据写入浏览器 storage、URL 或日志', ()
   assert.match(readme, /平台内建控件来自目标最新 ACTIVE 发布版/s)
   assert.doesNotMatch(readme, /releaseSelector|FOLLOW_ACTIVE|PINNED/)
   assert.doesNotMatch(readme, /FORM r\d+/)
+  assert.match(serverSource, /grant_type: 'client_credentials'/)
+  assert.doesNotMatch(serverSource, /scope:\s*['"]embed\.launch['"]/)
   for (const statement of serverSource.matchAll(/console\.(?:log|info|debug|warn|error)\(([^\n]*)/g)) {
     assert.doesNotMatch(statement[1], /clientSecret|accessToken|assertion|launchCode/)
   }
@@ -299,8 +301,8 @@ test('Embed Origin 只代理控制面或携带 opaque 委托身份的原生 Flow
   for (const controlPath of [
     '/api/auth/current',
     '/api/embed-management/v1/views',
-    '/api/open/v1/processes',
-    '/api/integration-applications/app-1/secrets'
+    '/api/open/v1/embed-launches',
+    '/api/integration-applications/app-1/credentials/rotate'
   ]) {
     assert.equal(isApprovedEmbedProxyRequest(request({
       authorization: `Bearer ${'a'.repeat(43)}`,

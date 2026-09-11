@@ -55,8 +55,7 @@ public class UiAvailableOperationService {
             UiDataSourceUsages.DATA_DELETE,
             UiDataSourceUsages.DATA_BATCH_DELETE,
             UiDataSourceUsages.FORM_SAVE,
-            UiDataSourceUsages.SUBFORM_SAVE,
-            UiDataSourceUsages.ENTITY_MUTATION_PREPARE);
+            UiDataSourceUsages.SUBFORM_SAVE);
 
     /** 接口服务定义查询入口。 */
     private final UiDataSourceDefinitionMapper sourceMapper;
@@ -141,10 +140,8 @@ public class UiAvailableOperationService {
     private boolean isInvalidGlobalExtension(
             UiDataSourceDefinition definition) {
         return "GLOBAL".equals(normalize(definition.getScopeType()))
-                && Set.of(
-                        "REGISTERED_PROVIDER",
-                        "INTEGRATION_CONNECTOR")
-                .contains(normalize(definition.getSourceType()));
+                && "REGISTERED_PROVIDER".equals(
+                        normalize(definition.getSourceType()));
     }
 
     private boolean schemaMatches(

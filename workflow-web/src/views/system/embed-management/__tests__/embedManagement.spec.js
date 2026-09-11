@@ -696,7 +696,8 @@ for (const step of ['目标页面', '应用授权', '测试用户映射', '接�
 }
 assert.match(setupGuideSource, /可开始联调/)
 assert.match(setupGuideSource, /selectedApplication\.value\.embedLaunchReady/)
-assert.match(setupGuideSource, /有效凭据或 embed\.launch Scope/)
+assert.match(setupGuideSource, /接入应用缺少有效凭据/)
+assert.doesNotMatch(setupGuideSource, /embed\.launch|Scope/)
 assert.match(setupGuideSource, /embedManagementApi\.views\.validation\(props\.view\.id\)/)
 assert.match(setupGuideSource, /validation\.value\?\.valid === false/)
 assert.match(setupGuideSource, /validation\.value\.viewStatus !== 'ACTIVE'/)

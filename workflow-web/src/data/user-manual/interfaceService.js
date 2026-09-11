@@ -50,10 +50,6 @@ const listResultExample = `{
   "pageSize": 20
 }`
 
-const connectorConfigExample = `{
-  "connectorConfigId": "customer-center"
-}`
-
 const computeConfigExample = `{
   "inputs": ["firstName", "lastName"],
   "separator": " "
@@ -72,9 +68,9 @@ export default {
       text: '接口服务负责定义“调用什么能力、有哪些操作、输入输出是什么”；事件绑定负责定义“什么时候调用、参数从哪里来、结果写到哪里”。新建接口服务不会自动绑定任何页面；但已被事件链引用的服务，其作用范围、Provider、操作、Schema 或启停状态修改后会即时影响运行，修改前应先在“事件使用情况”确认引用范围。'
     },
     {
-      title: '不要在页面里直接填写 URL 或代码',
+      title: '只使用平台内置能力或注册 Provider',
       type: 'warning',
-      text: '外部 HTTP 地址、认证和凭据由开放集成中的受控 Connector 管理。接口服务只选择已注册 Provider 或 Connector，并引用稳定编码；基础配置和操作配置禁止 sql、script、url、jdbcUrl、command、expression 等键。'
+      text: '接口服务只允许选择平台内置实现或后端已注册的 Provider，并引用稳定编码；基础配置和操作配置禁止 sql、script、url、jdbcUrl、command、expression 等键。'
     },
     {
       title: '先调试，再绑定，再发布',
@@ -87,12 +83,12 @@ export default {
       id: 'interface-service-overview',
       index: '01',
       title: '什么时候使用',
-      summary: '判断应该使用平台默认处理、接口服务，还是开放集成 Connector。',
+      summary: '判断应该使用平台默认处理，还是配置接口服务。',
       topics: [
         {
           id: 'interface-service-purpose',
           title: '接口服务解决什么问题',
-          lead: '当列表、表单、字段或按钮需要复用平台内置能力、后端 Provider 或外部系统能力时，使用接口服务建立统一、可审计的调用入口。',
+          lead: '当列表、表单、字段或按钮需要复用平台内置能力或后端 Provider 时，使用接口服务建立统一、可审计的调用入口。',
           blocks: [
             {
               type: 'table',
@@ -118,8 +114,7 @@ export default {
               items: [
                 '普通实体列表查询、详情加载、新增、修改和删除已经由平台默认处理满足需求时，不需要增加接口服务。',
                 '只需要调整列表显示列、查询字段、按钮名称或表单布局时，应在列表或表单设计器配置，不需要接口服务。',
-                '只做实体选择字段之间的直接回填，并且选择结果已经包含所需值时，可以在事件步骤中只配置结果回填，不必调用接口。',
-                '外部系统主动调用平台流程 API、接收 Webhook 或管理外部凭据时，应使用“开放集成”，不是直接新建接口服务。'
+                '只做实体选择字段之间的直接回填，并且选择结果已经包含所需值时，可以在事件步骤中只配置结果回填，不必调用接口。'
               ]
             },
             {
@@ -157,7 +152,7 @@ export default {
               rows: [
                 { field: 'system:interface-service:list', meaning: '查看接口服务目录、操作和配置摘要。', when: '只读管理员、审计人员。', how: '通过角色菜单和功能权限授权。', effect: '可以查看页面与操作目录，不能保存或删除。' },
                 { field: 'system:interface-service:update', meaning: '新增、编辑、启停和删除接口服务。', when: '平台配置管理员。', how: '与全局配置访问权限一起授予。', effect: '保存时执行作用域、Schema、Provider 和并发版本校验。' },
-                { field: 'system:interface-service:test', meaning: '执行接口服务调试。', when: '需要联调 Provider、Connector 和映射的人员。', how: '只授予可信管理员；调试仍要求选择真实业务上下文。', effect: '按当前用户权限和数据范围执行，不是绕过权限的测试入口。' }
+                { field: 'system:interface-service:test', meaning: '执行接口服务调试。', when: '需要联调 Provider 和映射的人员。', how: '只授予可信管理员；调试仍要求选择真实业务上下文。', effect: '按当前用户权限和数据范围执行，不是绕过权限的测试入口。' }
               ]
             }
           ]
@@ -171,17 +166,17 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '搜索服务名称或编码', meaning: '在当前已加载服务中按名称、编码模糊过滤。', when: '服务较多时快速定位。', how: '输入关键词；清空恢复全部。', effect: '只改变页面展示，不改变服务。' },
-                { field: '全部实现类型', meaning: '按服务实现类型过滤。', when: '只查看平台查询、Provider 或 Connector。', how: '选择一种类型或清空。', effect: '只改变页面展示。' },
-                { field: '刷新', meaning: '重新加载服务、可用 Provider/Connector 目录和实体上下文。', when: '其他管理员刚修改服务，或后端注册能力发生变化。', how: '点击页面右上角刷新图标。', effect: '丢弃当前列表筛选以外的缓存数据，不修改服务。' },
+                { field: '全部实现类型', meaning: '按服务实现类型过滤。', when: '只查看平台内置实现或 Provider。', how: '选择一种类型或清空。', effect: '只改变页面展示。' },
+                { field: '刷新', meaning: '重新加载服务、可用 Provider 目录和实体上下文。', when: '其他管理员刚修改服务，或后端注册能力发生变化。', how: '点击页面右上角刷新图标。', effect: '丢弃当前列表筛选以外的缓存数据，不修改服务。' },
                 { field: '服务列', meaning: '显示服务名称和稳定服务编码。', when: '识别业务含义和技术引用。', how: '名称给人看，编码给配置和审计使用。', effect: '编码创建后不可在页面修改。' },
-                { field: '实现列', meaning: '显示实现类型以及 Provider/Connector 编码。', when: '确认服务最终由谁执行。', how: '在编辑弹窗选择实现类型和受控连接。', effect: '类型变化会改变运行逻辑和所需基础配置。' },
+                { field: '实现列', meaning: '显示实现类型以及 Provider 编码。', when: '确认服务最终由谁执行。', how: '在编辑弹窗选择实现类型和 Provider。', effect: '类型变化会改变运行逻辑和所需基础配置。' },
                 { field: '作用范围列', meaning: '显示服务可用于全局、实体、表单或列表。', when: '控制服务的配置边界。', how: '在编辑弹窗选择范围和范围对象。', effect: '运行时仍会继续校验页面发布版本、权限和数据范围。' },
                 { field: '操作列（能力摘要）', meaning: '显示服务包含的查询或写操作。', when: '确认一个服务可复用哪些能力。', how: '在“服务操作”区域维护。', effect: '事件绑定最终选择的是“服务 + 操作”。' },
                 { field: '策略列', meaning: '显示服务级超时和缓存时间。', when: '排查响应慢、结果未更新。', how: '在编辑弹窗配置。', effect: '操作没有独立策略时继承服务策略。' },
                 { field: '状态列', meaning: '显示启用或停用。', when: '临时下线能力或上线新服务。', how: '编辑服务并切换“启用”。', effect: '停用服务不能被运行时执行。' },
                 { field: '调试', meaning: '在真实表单或列表上下文中执行一个操作。', when: '保存后、绑定前联调。', how: '点击“调试”，选择操作和业务上下文。', effect: 'WRITE 操作可能修改数据，不能把调试当作无副作用预览。' },
                 { field: '编辑', meaning: '修改服务属性、操作和 Schema。', when: '新增操作、调整连接或规则。', how: '点击“编辑”；提交时携带修订号。', effect: '多人同时修改时旧版本保存会失败，需要刷新后合并。' },
-                { field: '删除', meaning: '删除不再被任何可执行版本使用的服务定义。', when: '当前发布、可固定访问的历史版本和实体变更策略均已退役。', how: '点击“删除”并确认；后端会全局检查发布引用，无法可靠校验时也会拒绝删除。', effect: '历史快照不会被改写；仍可被流程、签名上下文或 Embed 使用的版本会阻止删除。' }
+                { field: '删除', meaning: '删除不再被任何可执行版本使用的服务定义。', when: '当前发布和可固定访问的历史版本均已退役。', how: '点击“删除”并确认；后端会全局检查发布引用，无法可靠校验时也会拒绝删除。', effect: '历史快照不会被改写；仍可被流程、签名上下文或 Embed 使用的版本会阻止删除。' }
               ]
             }
           ]
@@ -204,8 +199,8 @@ export default {
               rows: [
                 { field: '服务名称', meaning: '管理员看到的中文业务名称。', when: '所有服务必填。', how: '使用“客户服务”“项目查询服务”等可识别名称。', effect: '显示在服务列表和事件绑定选择器中，可以修改。' },
                 { field: '服务编码', meaning: '服务的稳定技术标识。', when: '所有服务必填。', how: '建议使用小写英文、数字和短横线，如 customer-service；创建后页面锁定。', effect: '用于长期识别服务，不能依赖名称作为稳定引用。' },
-                { field: '实现类型', meaning: '决定服务由平台内置逻辑、Java Provider、Connector、上下文或结构化计算执行。', when: '创建服务时必须按数据来源选择。', how: '参见“实现类型详解”。', effect: '类型选错会导致配置字段无效或运行结果不符合预期。' },
-                { field: '受控连接', meaning: '后端已注册的 Provider 或 Connector 编码。', when: '实现类型为“平台注册能力”或“HTTP 受控连接”时必填。', how: '从下拉目录选择，不手工填写 URL。', effect: '运行时只允许调用目录中的受控实现。' },
+                { field: '实现类型', meaning: '决定服务由平台内置逻辑、Java Provider、上下文或结构化计算执行。', when: '创建服务时必须按数据来源选择。', how: '参见“实现类型详解”。', effect: '类型选错会导致配置字段无效或运行结果不符合预期。' },
+                { field: 'Provider', meaning: '后端已注册的 Provider 编码。', when: '实现类型为“平台注册能力”时必填。', how: '从下拉目录选择，不手工填写实现编码。', effect: '运行时只允许调用目录中的受控实现。' },
                 { field: '作用范围', meaning: '限制服务的业务配置边界。', when: '服务只应被某个实体、表单或列表使用时。', how: '选择全局、实体、表单或列表。', effect: '非全局必须指定范围对象；写操作还会校验目标实体是否匹配。' },
                 { field: '范围对象', meaning: '实体 ID、表单 ID 或列表 ID。', when: '作用范围不是全局时必填。', how: '实体范围使用选择器；表单、列表范围填写对应配置 ID。', effect: '对象不存在、不是动态实体或无配置权限时保存失败。' },
                 { field: '超时', meaning: '一次操作允许执行的最长时间。', when: '所有服务都应根据下游响应设置。', how: '100～30000 毫秒，默认 3000 毫秒。', effect: '超时后按失败策略处理；过长会占用请求线程，过短会造成误失败。' },
@@ -237,11 +232,11 @@ export default {
       id: 'interface-service-types',
       index: '04',
       title: '实现类型详解',
-      summary: '说明六种实现类型什么时候使用、基础配置写什么、会返回什么。',
+      summary: '说明五种实现类型什么时候使用、基础配置写什么、会返回什么。',
       topics: [
         {
           id: 'interface-service-type-reference',
-          title: '六种实现类型',
+          title: '五种实现类型',
           blocks: [
             {
               type: 'table',
@@ -249,8 +244,7 @@ export default {
               rows: [
                 { option: '平台字典 DICTIONARY', meaning: '按字典编码返回 label、value、disabled、children。', when: '下拉、单选、多选需要平台字典。', notes: '基础配置填写 dictCode；不需要 Provider。' },
                 { option: '平台静态数据 STATIC_OPTIONS', meaning: '直接返回配置中的固定 options。', when: '少量稳定选项，不值得创建字典。', notes: '基础配置填写 options 数组；变更需要修改服务配置。' },
-                { option: '平台注册能力 REGISTERED_PROVIDER', meaning: '调用后端实现 UiDataSourceProvider 的受控 Java 能力。', when: '需要复杂查询、聚合或内部系统逻辑，且应在同一应用事务边界内受控执行。', notes: '必须选择受控连接；配置结构和输入输出由 Provider 契约决定。' },
-                { option: 'HTTP 受控连接 INTEGRATION_CONNECTOR', meaning: '通过开放集成中已审核的 Connector 调用外部 HTTP JSON 服务。', when: '查询 ERP、CRM，或向外部系统创建、更新数据。', notes: '先在开放集成创建 Connector 和 Secret；接口服务不允许填写任意 URL 或凭据。' },
+                { option: '平台注册能力 REGISTERED_PROVIDER', meaning: '调用后端实现 UiDataSourceProvider 的受控 Java 能力。', when: '需要复杂查询、聚合或内部系统逻辑，且应在同一应用事务边界内受控执行。', notes: '必须选择已注册 Provider；配置结构和输入输出由 Provider 契约决定。' },
                 { option: '运行时上下文 RUNTIME_CONTEXT', meaning: '返回当前事件上下文。', when: '需要把用户、记录、选择项或页面上下文映射到表单字段或后续步骤。', notes: '不需要基础配置；返回内容取决于触发事件和服务端提供的可信上下文。' },
                 { option: '结构化计算 STRUCTURED_COMPUTE', meaning: '执行白名单内的简单计算，不运行表达式或脚本。', when: '取第一个非空值、拼接文本、求和或条件取值。', notes: '操作编码必须使用 COALESCE、CONCAT、SUM 或 IF_EQUALS；通过 config 指定输入路径和参数。' }
               ]
@@ -268,13 +262,11 @@ export default {
                 { field: 'DICTIONARY.dictCode', meaning: '平台字典编码。', when: '返回某一字典的树形选项。', how: '基础配置填写 {"dictCode":"customer_status"}。', effect: '字典项状态会映射为 disabled，层级映射为 children。' },
                 { field: 'STATIC_OPTIONS.options', meaning: '固定选项数组。', when: '选项少且不需要字典管理。', how: '基础配置填写 {"options":[{"label":"启用","value":"1"}]}。', effect: '运行时原样返回 options。' },
                 { field: 'REGISTERED_PROVIDER 配置', meaning: 'Provider 自定义参数。', when: '所选 Provider 需要实体编码、查询模式或其他受控参数。', how: '按 Provider 开发文档填写基础配置和操作配置。', effect: '服务级配置先加载，操作配置覆盖同名键。' },
-                { field: 'INTEGRATION_CONNECTOR.connectorConfigId', meaning: '开放集成 Connector 的稳定配置编码。', when: '通过受控 HTTP Connector 调用外部系统。', how: '基础配置只写 Connector 编码；事件选择的接口操作编码应与 Connector operation 一致。', effect: '平台生成幂等键并传入当前用户、页面、数据权限摘要。' },
                 { field: 'STRUCTURED_COMPUTE.inputs', meaning: '从接口输入中读取值的点路径数组。', when: '计算只使用部分输入字段。', how: '例如 ["firstName","lastName"]；未配置时使用全部输入值。', effect: '路径不存在时得到 null。' },
                 { field: 'STRUCTURED_COMPUTE.separator', meaning: 'CONCAT 文本拼接分隔符。', when: '拼接姓名、编码或展示文本。', how: '例如空格、短横线或逗号。', effect: 'null 按空字符串参与拼接。' },
                 { field: 'STRUCTURED_COMPUTE.equals / then / else', meaning: 'IF_EQUALS 的比较值和两个返回分支。', when: '简单二选一映射。', how: '第一个 inputs 值与 equals 严格相等时返回 then，否则返回 else。', effect: '不支持任意表达式。' }
               ]
             },
-            { type: 'code', title: 'HTTP Connector 基础配置', language: 'json', code: connectorConfigExample },
             { type: 'code', title: '结构化计算操作配置', language: 'json', code: computeConfigExample }
           ]
         }
@@ -296,7 +288,7 @@ export default {
               rows: [
                 { field: '增加操作', meaning: '在当前服务下新增一个能力。', when: '同一业务服务需要查询列表、加载详情、保存、校验等多个动作。', how: '点击“增加操作”，填写名称、编码和数据影响。', effect: '接口服务至少需要一个操作；操作按配置顺序展示。' },
                 { field: '操作名称', meaning: '管理员看到的中文动作名称。', when: '每个操作必填。', how: '例如“查询客户列表”“获取客户详情”“校验客户状态”。', effect: '显示在事件绑定和调试操作选择器中。' },
-                { field: '操作编码', meaning: '服务内唯一的稳定技术标识。', when: '每个操作必填。', how: '使用稳定英文编码，如 queryCustomers、getCustomer；Connector 和结构化计算需与下游操作编码一致。', effect: '同一服务不能重复；事件绑定按该编码执行。' },
+                { field: '操作编码', meaning: '服务内唯一的稳定技术标识。', when: '每个操作必填。', how: '使用稳定英文编码，如 queryCustomers、getCustomer；结构化计算使用平台支持的操作编码。', effect: '同一服务不能重复；事件绑定按该编码执行。' },
                 { field: '数据影响：只读查询 READ', meaning: '声明操作不应修改业务数据。', when: '列表、详情、字典、校验查询。', how: '选择“只读查询”。', effect: '列表查询简化入口只显示已启用服务中的 READ 操作。' },
                 { field: '数据影响：修改数据 WRITE', meaning: '声明操作可能新增、修改、删除或触发外部副作用。', when: '保存、作废、同步、发送、生成任务。', how: '选择“修改数据”。', effect: '调试时也可能产生真实副作用；缓存应设为 0，并依赖幂等。' },
                 { field: '删除操作', meaning: '从服务草稿移除操作。', when: '确认没有事件绑定继续引用该编码。', how: '点击操作标题右侧删除图标。', effect: '已引用的绑定在后续校验或执行时会提示操作不存在。' }
@@ -313,9 +305,9 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '操作配置', meaning: '当前操作覆盖服务基础配置的 JSON 对象。', when: '同一服务的操作需要不同目标动作、查询模式或固定参数。', how: '填写合法 JSON 对象；同名键覆盖基础配置。', effect: '系统还会写入当前 operation 编码；禁止 URL、SQL、脚本、命令和表达式键。' },
-                { field: '操作输入 Schema', meaning: '校验当前操作最终收到的 input。', when: '希望在调用 Provider/Connector 前拒绝缺字段或错类型。', how: '使用受支持的 JSON Schema 子集；空对象表示不校验。', effect: '校验失败不会执行接口，且不会被空结果失败策略吞掉。' },
+                { field: '操作输入 Schema', meaning: '校验当前操作最终收到的 input。', when: '希望在调用 Provider 前拒绝缺字段或错类型。', how: '使用受支持的 JSON Schema 子集；空对象表示不校验。', effect: '校验失败不会执行接口，且不会被空结果失败策略吞掉。' },
                 { field: '操作输出 Schema', meaning: '校验接口执行结果。', when: '事件映射依赖固定返回结构。', how: '描述对象、数组和字段类型；空对象表示不校验。', effect: '缓存命中和实际执行结果都会校验。' },
-                { field: '服务级基础配置', meaning: '所有操作共享的 JSON 配置。', when: '多个操作共享实体、Connector、字典或固定参数。', how: '写公共键；差异放入操作配置。', effect: '操作配置覆盖同名服务配置。' },
+                { field: '服务级基础配置', meaning: '所有操作共享的 JSON 配置。', when: '多个操作共享实体、Provider、字典或固定参数。', how: '写公共键；差异放入操作配置。', effect: '操作配置覆盖同名服务配置。' },
                 { field: '服务级输入 Schema', meaning: '服务基础定义中的输入契约。', when: '主要用于历史单操作服务兼容。', how: '新建多操作服务应在每个操作中明确配置输入 Schema。', effect: '多操作服务执行时使用操作级 Schema；操作级空对象表示该操作不校验输入。' },
                 { field: '服务级输出 Schema', meaning: '服务基础定义中的输出契约。', when: '主要用于历史单操作服务兼容。', how: '新建多操作服务应在每个操作中明确配置输出 Schema。', effect: '多操作服务执行时使用操作级 Schema；操作级空对象表示该操作不校验输出。' }
               ]
@@ -376,7 +368,7 @@ export default {
             {
               type: 'steps',
               items: [
-                { title: '先测最小输入', text: '只传必填字段，确认 Provider 或 Connector 能被找到且权限通过。' },
+                { title: '先测最小输入', text: '只传必填字段，确认 Provider 能被找到且权限通过。' },
                 { title: '再测完整输入', text: '加入查询条件、页码、场景和上下文依赖字段，确认输入 Schema。' },
                 { title: '核对返回结构', text: '列表操作确认 records、total、pageNum、pageSize；字段回填确认中文字段对应的数据路径。' },
                 { title: '测试异常路径', text: '测试无权限、空结果、下游失败和超时，确认错误信息以及后续事件失败策略。' },
@@ -613,7 +605,7 @@ export default {
                 { option: '保存事件绑定', meaning: '在对应实体、表单或列表设计器更新绑定草稿。', when: '执行链编辑完成。', notes: '接口服务“使用情况”只读；实际运行仍读取当前激活发布版本。' },
                 { option: '保存列表查询接口', meaning: '更新列表的 queryDataSourceId 和 queryOperationCode。', when: '通过列表设置直接修改查询数据源。', notes: '服务 ID 和操作编码同时保存到列表查询配置槽位。' },
                 { option: '发布表单或列表', meaning: '生成并激活运行快照。', when: '调试、映射、权限和影响预检通过。', notes: '发布后实际页面才使用新链；未发布修改只在设计草稿中存在。' },
-                { option: '删除或停用服务', meaning: '停止服务后续执行。', when: '下线、故障隔离或安全处置。', notes: '优先停用并准备替代服务；删除前除解除当前引用外，还必须确认历史固定版本、嵌入链接、流程和实体变更策略已经退役。' }
+                { option: '删除或停用服务', meaning: '停止服务后续执行。', when: '下线、故障隔离或安全处置。', notes: '优先停用并准备替代服务；删除前除解除当前引用外，还必须确认历史固定版本、嵌入链接和流程已经退役。' }
               ]
             }
           ]
@@ -632,11 +624,11 @@ export default {
                 { option: '列表有数据但分页不对', meaning: '接口返回的 total/pageNum/pageSize 不正确。', when: '只有第一页、总数为 0 或翻页重复。', notes: '检查操作输出 Schema 和标准分页四字段。' },
                 { option: '操作下拉没有目标操作', meaning: '服务停用、操作不是 READ、操作未保存或服务范围不匹配。', when: '配置列表查询接口或事件步骤。', notes: '刷新接口服务页面，确认操作编码、数据影响和启用状态。' },
                 { option: '输入 Schema 校验失败', meaning: '映射后的 input 缺字段或类型不符。', when: '接口尚未真正执行即报错。', notes: '用调试窗口查看输入，注意 integer 与字符串、数组与单值区别。' },
-                { option: '输出 Schema 校验失败', meaning: 'Provider/Connector 返回结构与声明不符。', when: '下游成功但平台报告输出错误。', notes: '修正接口返回或 Schema；不要用空 Schema 长期掩盖不稳定契约。' },
+                { option: '输出 Schema 校验失败', meaning: 'Provider 返回结构与声明不符。', when: 'Provider 执行成功但平台报告输出错误。', notes: '修正返回结果或 Schema；不要用空 Schema 长期掩盖不稳定契约。' },
                 { option: '数据一直不更新', meaning: 'READ 服务配置了缓存。', when: '短时间重复查询返回旧值。', notes: '检查缓存秒数；写操作必须为 0，需要强实时的查询也应设为 0。' },
                 { option: '接口执行超时', meaning: '下游超过服务超时值。', when: '调试或运行提示数据源执行超时。', notes: '先查下游性能，再合理提高超时；不要把 30000 毫秒当作常规值。' },
                 { option: '配置版本冲突', meaning: '其他管理员已经保存了更新修订号。', when: '编辑或删除时提示刷新重试。', notes: '刷新页面，对比最新内容并重新合并，不要连续盲点保存。' },
-                { option: 'Provider/Connector 未注册', meaning: '当前部署没有对应后端 Bean 或 Connector。', when: '目录中不存在或执行时报未注册。', notes: '确认模块已部署、能力开关开启、编码完全一致。' },
+                { option: 'Provider 未注册', meaning: '当前部署没有对应后端 Bean。', when: '目录中不存在或执行时报未注册。', notes: '确认模块已部署、Provider 已注册且编码完全一致。' },
                 { option: '作用域不匹配或无权限', meaning: '服务范围、页面对象、目标实体或当前角色不一致。', when: '调试能选但执行被拒绝，或写操作报范围不匹配。', notes: '优先使用真实目标页面调试，并检查实体/表单/列表范围。' }
               ]
             }
@@ -650,7 +642,7 @@ export default {
               type: 'checklist',
               items: [
                 '服务名称清晰，服务编码和操作编码稳定且无重复。',
-                '实现类型与真实数据来源一致，Provider/Connector 已在目标环境注册。',
+                '实现类型与真实数据来源一致，Provider 已在目标环境注册。',
                 '作用范围采用满足复用需要的最小范围，写操作优先限定到实体。',
                 'READ 与 WRITE 标记正确，WRITE 操作缓存为 0，并验证幂等。',
                 '输入和输出 Schema 覆盖必填字段与关键类型，错误输入已验证。',

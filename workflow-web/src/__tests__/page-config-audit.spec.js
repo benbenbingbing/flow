@@ -2150,7 +2150,7 @@ const linkageConfigPanel = readFileSync(path.join(root, 'src/components/LinkageC
   'label="显示与状态"',
   'label="值与计算"',
   'label="选项"',
-  '受控 Provider / Connector',
+  '受控 Provider',
   'LinkageConditionRuleEditor',
   'visibilityConditionConfig',
   'disabledConditionConfig',
@@ -2267,7 +2267,7 @@ const configurationArchitectureExpectations = {
     '什么时候使用',
     '怎么配置',
     'REGISTERED_PROVIDER',
-    'INTEGRATION_CONNECTOR',
+    '五种实现类型',
     'STRUCTURED_COMPUTE',
     'LIST_LOAD',
     'ENTITY_SELECTED',
@@ -2282,14 +2282,15 @@ const configurationArchitectureExpectations = {
   ],
   'src/data/user-manual/openIntegration.js': [
     '开放集成解决什么问题',
-    'process.definition.read',
-    'process.message.correlate',
-    'Idempotency-Key',
-    'additionalProperties=false',
-    'Flow-Webhook-Signature',
-    'secret://integration/',
-    'INTEGRATION_CONNECTOR',
-    '$context.organizationId',
+    'Application ID',
+    'Client ID',
+    'Client Secret',
+    'client_credentials',
+    '/oauth2/token',
+    '/api/open/v1/embed-launches',
+    '来源 CIDR',
+    '凭据轮换与吊销',
+    'Cache-Control: no-store',
     '上线检查清单'
   ],
   'src/data/user-manual/embedIntegration.js': [
@@ -2303,7 +2304,7 @@ const configurationArchitectureExpectations = {
     '嵌入方后端需要做什么',
     '@PostMapping',
     'RestClient',
-    'embed.launch',
+    'client_credentials',
     '/api/open/v1/embed-launches',
     'SIGNED_JWT',
     'flow-embed-launch',
@@ -2333,7 +2334,6 @@ const configurationArchitectureExpectations = {
     '/publish',
     '/releases',
     '/activate',
-    'INTEGRATION_CONNECTOR',
     'FORM_INIT',
     'BEFORE_SUBMIT',
     'DataScopePlan',
@@ -2366,7 +2366,6 @@ const configurationArchitectureExpectations = {
     'TAB_SET / TAB',
     '最大嵌套深度为 `8`',
     'UiDataSourceProvider',
-    'IntegrationConnector',
     'DataScopePlan',
     'FORM_INIT',
     'BEFORE_SUBMIT',
@@ -2394,7 +2393,6 @@ const configurationArchitectureExpectations = {
     'HTTP `409`',
     'LIST_QUERY',
     'LIST_COLUMN',
-    'INTEGRATION_CONNECTOR',
     'DataScopePlan',
     '/draft',
     '/diff',
@@ -2416,7 +2414,6 @@ const configurationArchitectureExpectations = {
     '最大深度 8 层',
     'registerFormNodeComponent',
     '节点级扩展',
-    'INTEGRATION_CONNECTOR',
     'FORM_INIT',
     'BEFORE_SUBMIT',
     'DataScopePlan',
@@ -2437,6 +2434,53 @@ for (const [file, markers] of Object.entries(configurationArchitectureExpectatio
   markers.forEach((marker) => {
     assert.ok(source.includes(marker), `${file} 缺少通用配置架构说明: ${marker}`)
   })
+}
+
+const retiredIntegrationManualMarkers = {
+  'src/data/user-manual/openIntegration.js': [
+    'process.definition.read',
+    'process.instance.start',
+    '/api/open/v1/process-',
+    '允许流程',
+    '输入契约',
+    'Webhook',
+    '集成 Secret',
+    'INTEGRATION_CONNECTOR',
+    'Connector',
+    'scope=',
+    'embed.launch'
+  ],
+  'src/data/user-manual/embedIntegration.js': ['scope=', 'embed.launch'],
+  'src/data/user-manual/interfaceService.js': [
+    'Webhook',
+    'INTEGRATION_CONNECTOR',
+    'Connector',
+    'connectorConfigId'
+  ],
+  'src/data/user-manual/entity.js': ['INTEGRATION_CONNECTOR', 'Connector']
+}
+for (const [file, markers] of Object.entries(retiredIntegrationManualMarkers)) {
+  const source = readFileSync(path.join(root, file), 'utf8')
+  markers.forEach((marker) => {
+    assert.equal(
+      source.includes(marker),
+      false,
+      `${file} 不应继续说明已退役的开放集成能力: ${marker}`
+    )
+  })
+}
+
+for (const file of [
+  'src/views/system/DevGuide.vue',
+  'src/views/system/CustomListGuide.vue',
+  'src/views/system/CustomFormGuide.vue'
+]) {
+  const source = readFileSync(path.join(root, file), 'utf8')
+  assert.equal(
+    source.includes('INTEGRATION_CONNECTOR') || source.includes('IntegrationConnector'),
+    false,
+    `${file} 不应继续说明已退役的 Connector 数据源`
+  )
 }
 
 const demoExpectations = {

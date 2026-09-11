@@ -203,52 +203,6 @@ class UiAvailableOperationServiceTest {
     }
 
     @Test
-    void entityMutationRequiresEntityWriteOperationInSameEntity() throws Exception {
-        when(sourceMapper.selectList(any())).thenReturn(List.of(
-                definition(
-                        "entity-write",
-                        "ENTITY",
-                        "entity-a",
-                        "REGISTERED_PROVIDER",
-                        operation(
-                                "prepare",
-                                "ENTITY",
-                                "WRITE",
-                                Map.of("type", "object"))),
-                definition(
-                        "entity-read",
-                        "ENTITY",
-                        "entity-a",
-                        "STATIC_OPTIONS",
-                        operation(
-                                "inspect",
-                                "ENTITY",
-                                "READ",
-                                Map.of("type", "object"))),
-                definition(
-                        "other-write",
-                        "ENTITY",
-                        "entity-b",
-                        "REGISTERED_PROVIDER",
-                        operation(
-                                "prepareOther",
-                                "ENTITY",
-                                "WRITE",
-                                Map.of("type", "object")))));
-
-        List<UiAvailableOperation> result = service.available(
-                "ENTITY",
-                "entity-a",
-                "ENTITY_MUTATION_PREPARE");
-
-        assertEquals(
-                List.of("entity-write"),
-                result.stream()
-                        .map(UiAvailableOperation::serviceId)
-                        .toList());
-    }
-
-    @Test
     void entityDefaultFormEventSelectsFormRuntimeOperation() throws Exception {
         when(sourceMapper.selectList(any())).thenReturn(List.of(
                 definition(

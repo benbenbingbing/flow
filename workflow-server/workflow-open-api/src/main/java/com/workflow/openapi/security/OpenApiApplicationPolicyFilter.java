@@ -86,7 +86,8 @@ public class OpenApiApplicationPolicyFilter
                             applicationId);
             if (application == null
                     || clientId == null
-                    || !clientId.equals(application.getClientId())) {
+                    || !clientId.equals(application.getClientId())
+                    || !isUsable(application)) {
                 responseWriter.write(
                         request,
                         response,
@@ -180,6 +181,16 @@ public class OpenApiApplicationPolicyFilter
         }
     }
 
+    /**
+     * 校验令牌对应应用仍可使用，确保停用、吊销或过期后已签发令牌也会立即失效。
+     */
+    private boolean isUsable(IntegrationApplicationRecord application) {
+        return "ACTIVE".equals(application.getStatus())
+                && (application.getExpiresAt() == null
+                || application.getExpiresAt().isAfter(
+                LocalDateTime.now(ZoneOffset.UTC)));
+    }
+
     private void recordAudit(
             HttpServletRequest request,
             HttpServletResponse response,
@@ -197,7 +208,7 @@ public class OpenApiApplicationPolicyFilter
                     .action("GET".equals(request.getMethod())
                             ? AuditAction.OTHER
                             : AuditAction.START)
-                    .operationName("调用开放流程接口")
+                    .operationName("调用 Embed 开放接口")
                     .riskLevel(AuditRiskLevel.MEDIUM)
                     .result(response.getStatus() < 400
                             ? AuditResult.SUCCESS

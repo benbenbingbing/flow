@@ -101,24 +101,6 @@ spec:
               value: {{ .Values.application.httpAllowedHosts | quote }}
             - name: WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES
               value: {{ .Values.application.httpAllowPrivateAddresses | quote }}
-            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_ENABLED
-              value: {{ .Values.connector.http.enabled | quote }}
-            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY_VERSION
-              value: {{ .Values.connector.http.masterKeyVersion | quote }}
-            {{- if .Values.connector.http.enabled }}
-            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_MASTER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.global.existingSecret }}
-                  key: {{ .Values.connector.http.masterKeySecretKey }}
-            {{- if ne .Values.connector.http.previousMasterKeysSecretKey "" }}
-            - name: WORKFLOW_INTEGRATION_CONNECTOR_HTTP_PREVIOUS_MASTER_KEYS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.global.existingSecret }}
-                  key: {{ .Values.connector.http.previousMasterKeysSecretKey }}
-            {{- end }}
-            {{- end }}
             - name: WORKFLOW_LOG_LEVEL
               value: {{ .Values.application.logLevel | quote }}
             - name: SHUTDOWN_TIMEOUT
@@ -153,20 +135,6 @@ spec:
               value: {{ .Values.openApi.trustForwardedHeaders | quote }}
             - name: WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS
               value: {{ join "," .Values.openApi.trustedProxyCidrs | quote }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_ENABLED
-              value: {{ .Values.openApi.webhook.enabled | quote }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_CONCURRENCY
-              value: {{ .Values.openApi.webhook.workerConcurrency | quote }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_QUEUE_CAPACITY
-              value: {{ .Values.openApi.webhook.workerQueueCapacity | quote }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_BATCH_SIZE
-              value: {{ .Values.openApi.webhook.workerBatchSize | quote }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_LEASE_SECONDS
-              value: {{ .Values.openApi.webhook.workerLeaseSeconds | quote }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_WORKER_DELAY_MS
-              value: {{ .Values.openApi.webhook.workerDelayMs | quote }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_METRICS_REFRESH_MS
-              value: {{ .Values.openApi.webhook.metricsRefreshMs | quote }}
             - name: WORKFLOW_EMBED_ENABLED
               value: {{ .Values.embed.enabled | quote }}
             # 禁用时仍注入满足应用配置校验的保留 HTTPS Origin，且不会指向后台 Host。
@@ -183,13 +151,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.global.existingSecret }}
                   key: {{ .Values.embed.hmacKeySecretKey }}
-            {{- end }}
-            {{- if .Values.openApi.webhook.enabled }}
-            - name: WORKFLOW_OPEN_API_WEBHOOK_MASTER_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.global.existingSecret }}
-                  key: {{ .Values.openApi.webhook.masterKeySecretKey }}
             {{- end }}
             {{- if .Values.openApi.enabled }}
             - name: WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION

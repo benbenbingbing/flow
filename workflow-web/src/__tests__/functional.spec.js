@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 import {
   registerCustomListComponent,
@@ -683,12 +683,9 @@ const apiExpectations = {
   'src/api/system/audit.ts': ['getSystemAuditLogs', 'getSystemAuditLogDetail', 'exportSystemAuditLogs'],
   'src/api/system/openIntegration.js': [
     'integrationApplicationApi',
-    'integrationWebhookApi',
-    'integrationSecretApi',
-    'integrationConnectorApi',
-    'validate',
+    'updateStatus',
     'rotateCredential',
-    'replay'
+    'revokeCredential'
   ]
 }
 
@@ -867,11 +864,8 @@ const pageFeatureExpectations = {
   'src/views/system/User.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleResetPassword'],
   'src/views/system/Role.vue': ['handleAdd', 'handleEdit', 'handleDelete', 'handleAssignMenu', 'handleSaveMenus', '确认绕过数据范围'],
   'src/views/system/Dict.vue': ['handleAddDict', 'handleEditDict', 'handleDeleteDict', 'handleAddItem', 'handleEditItem', 'handleDeleteItem'],
-  'src/views/system/OpenIntegration.vue': ['loadApplications', 'createApplication', 'selectedId', 'embed.launch', 'Application ID'],
-  'src/views/system/open-integration/IntegrationApplicationPanel.vue': ['saveAccess', 'saveContracts', 'rotateCredential', 'revokeCredential', 'embed.launch', 'copyApplicationId'],
-  'src/views/system/open-integration/IntegrationWebhookPanel.vue': ['validateEndpoint', 'rotate', 'replay'],
-  'src/views/system/open-integration/IntegrationSecretPanel.vue': ['openRotate', 'revoke', 'destroy'],
-  'src/views/system/open-integration/IntegrationConnectorPanel.vue': ['openCreate', 'openEdit', 'save', 'openTest', 'runTest']
+  'src/views/system/OpenIntegration.vue': ['loadApplications', 'createApplication', 'selectedId', 'Application ID'],
+  'src/views/system/open-integration/IntegrationApplicationPanel.vue': ['toggleStatus', 'rotateCredential', 'revokeCredential', 'copyApplicationId']
 }
 
 for (const [file, names] of Object.entries(pageFeatureExpectations)) {
@@ -889,30 +883,53 @@ const integrationApplicationPanelSource = readFileSync(
   'src/views/system/open-integration/IntegrationApplicationPanel.vue',
   'utf8'
 )
-assert.ok(
-  openIntegrationSource.includes('integrationApplicationApi.capabilities')
-    && openIntegrationSource.includes(':capabilities="capabilities"'),
-  '开放集成页面应先读取服务端能力，再加载应用子资源'
+const openIntegrationApiSource = readFileSync(
+  'src/api/system/openIntegration.js',
+  'utf8'
 )
-assert.ok(
-  /v-if="capabilities\.webhookEnabled"[\s\S]*?IntegrationWebhookPanel/.test(
-    integrationApplicationPanelSource
-  )
-    && (
-      integrationApplicationPanelSource.match(
-        /v-if="capabilities\.httpConnectorEnabled"/g
-      ) || []
-    ).length === 2,
-  'Webhook、Secret 和 Connector 面板必须按服务端能力装载，避免功能关闭时产生 404'
-)
-for (const unavailableTitle of [
-  'Webhook 能力未启用',
-  '集成 Secret 能力未启用',
-  'HTTP Connector 能力未启用'
+for (const retiredMarker of [
+  'IntegrationScenarioPanel',
+  'IntegrationWebhookPanel',
+  'IntegrationSecretPanel',
+  'IntegrationConnectorPanel',
+  '权限范围',
+  '允许流程',
+  '输入契约',
+  'processKeys',
+  'scopes'
 ]) {
-  assert.ok(
-    integrationApplicationPanelSource.includes(unavailableTitle),
-    `开放集成缺少明确的未启用状态: ${unavailableTitle}`
+  assert.equal(
+    `${openIntegrationSource}\n${integrationApplicationPanelSource}`.includes(retiredMarker),
+    false,
+    `开放集成页面不应继续暴露已退役能力: ${retiredMarker}`
+  )
+}
+for (const retiredApiPath of [
+  '/capabilities',
+  '/access/update',
+  '/process-contracts',
+  '/scenarios',
+  '/webhooks',
+  '/secrets',
+  '/connectors'
+]) {
+  assert.equal(
+    openIntegrationApiSource.includes(retiredApiPath),
+    false,
+    `开放集成 API 不应继续声明已退役路径: ${retiredApiPath}`
+  )
+}
+for (const retiredComponent of [
+  'src/views/system/open-integration/IntegrationScenarioPanel.vue',
+  'src/views/system/open-integration/IntegrationWebhookPanel.vue',
+  'src/views/system/open-integration/IntegrationSecretPanel.vue',
+  'src/views/system/open-integration/IntegrationConnectorPanel.vue',
+  'src/views/system/open-integration/integrationScopeOptions.js'
+]) {
+  assert.equal(
+    existsSync(retiredComponent),
+    false,
+    `已退役的开放集成组件仍然存在: ${retiredComponent}`
   )
 }
 

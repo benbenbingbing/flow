@@ -24,21 +24,16 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.openapi.api.request.CreateIntegrationApplicationRequest;
 import com.workflow.openapi.api.request.RevokeIntegrationCredentialRequest;
 import com.workflow.openapi.api.request.RotateIntegrationCredentialRequest;
-import com.workflow.openapi.api.request.UpdateIntegrationAccessRequest;
 import com.workflow.openapi.api.request.UpdateIntegrationStatusRequest;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationCredentialMapper;
-import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessGrantMapper;
-import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationScopeMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationCredentialRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
-import com.workflow.openapi.infrastructure.persistence.record.IntegrationGrantValueRecord;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,8 +47,6 @@ class IntegrationApplicationServiceTest {
 
     private IntegrationApplicationMapper applicationMapper;
     private IntegrationCredentialMapper credentialMapper;
-    private IntegrationScopeMapper scopeMapper;
-    private IntegrationProcessGrantMapper processGrantMapper;
     private CurrentActorPort actorProvider;
     private SystemAuditPort auditPort;
     private IntegrationSecretHasher secretHasher;
@@ -64,8 +57,6 @@ class IntegrationApplicationServiceTest {
     void setUp() {
         applicationMapper = mock(IntegrationApplicationMapper.class);
         credentialMapper = mock(IntegrationCredentialMapper.class);
-        scopeMapper = mock(IntegrationScopeMapper.class);
-        processGrantMapper = mock(IntegrationProcessGrantMapper.class);
         actorProvider = mock(CurrentActorPort.class);
         auditPort = mock(SystemAuditPort.class);
         secretHasher = new IntegrationSecretHasher();
@@ -81,11 +72,8 @@ class IntegrationApplicationServiceTest {
         service = new IntegrationApplicationService(
                 applicationMapper,
                 credentialMapper,
-                scopeMapper,
-                processGrantMapper,
                 new IntegrationSecretGenerator(),
                 secretHasher,
-                new IntegrationVariableSchemaService(objectMapper),
                 actorProvider,
                 auditPort,
                 objectMapper,
@@ -105,21 +93,10 @@ class IntegrationApplicationServiceTest {
                 });
         when(credentialMapper.findActive(anyString()))
                 .thenAnswer(invocation -> stored.get());
-        when(scopeMapper.findByApplicationId(anyString()))
-                .thenReturn(Set.of(
-                        "process.instance.start",
-                        "process.instance.read"));
-        when(processGrantMapper.findByApplicationId(anyString()))
-                .thenReturn(Set.of("project_change_process"));
-
         var result = service.create(new CreateIntegrationApplicationRequest(
                 "Project system",
                 "Starts project change workflows",
                 "org-1",
-                Set.of(
-                        "process.instance.start",
-                        "process.instance.read"),
-                Set.of("project_change_process"),
                 120,
                 8,
                 List.of("10.10.0.0/16", "2001:db8::/32"),
@@ -153,7 +130,7 @@ class IntegrationApplicationServiceTest {
     }
 
     @Test
-    void listLoadsBoundedApplicationPageWithBulkGrantQueries() {
+    void listLoadsBoundedApplicationPageWithBulkCredentialQuery() {
         IntegrationApplicationRecord first =
                 application("ACTIVE", 2L);
         IntegrationApplicationRecord second =
@@ -169,32 +146,12 @@ class IntegrationApplicationServiceTest {
         when(credentialMapper.findActiveByApplicationIds(
                 List.of("app-1", "app-2")))
                 .thenReturn(List.of(credential));
-        when(scopeMapper.findByApplicationIds(
-                List.of("app-1", "app-2")))
-                .thenReturn(List.of(
-                        grant(
-                                "app-1",
-                                "process.instance.read"),
-                        grant(
-                                "app-2",
-                                "process.definition.read")));
-        when(processGrantMapper.findByApplicationIds(
-                List.of("app-1", "app-2")))
-                .thenReturn(List.of(
-                        grant("app-1", "expense"),
-                        grant("app-2", "purchase")));
-
         var result = service.list();
 
         assertEquals(2, result.size());
         assertEquals("abcd1234", result.get(0).activeCredentialHint());
-        assertEquals(
-                Set.of("process.definition.read"),
-                result.get(1).scopes());
+        assertEquals("DISABLED", result.get(1).status());
         verify(credentialMapper, never()).findActive(anyString());
-        verify(scopeMapper, never()).findByApplicationId(anyString());
-        verify(processGrantMapper, never())
-                .findByApplicationId(anyString());
     }
 
     @Test
@@ -215,11 +172,6 @@ class IntegrationApplicationServiceTest {
                 });
         when(credentialMapper.findActive("app-1"))
                 .thenAnswer(invocation -> stored.get());
-        when(scopeMapper.findByApplicationId("app-1"))
-                .thenReturn(Set.of("process.instance.read"));
-        when(processGrantMapper.findByApplicationId("app-1"))
-                .thenReturn(Set.of("project_change_process"));
-
         var first = service.rotateCredential(
                 "app-1",
                 new RotateIntegrationCredentialRequest(
@@ -305,11 +257,6 @@ class IntegrationApplicationServiceTest {
                 "admin-1",
                 LocalDateTime.ofInstant(NOW, ZoneOffset.UTC)))
                 .thenReturn(1);
-        when(scopeMapper.findByApplicationId("app-1"))
-                .thenReturn(Set.of("process.instance.read"));
-        when(processGrantMapper.findByApplicationId("app-1"))
-                .thenReturn(Set.of("project_change_process"));
-
         var view = service.revokeCredential(
                 "app-1",
                 new RevokeIntegrationCredentialRequest(11L));
@@ -325,50 +272,6 @@ class IntegrationApplicationServiceTest {
         assertEquals("credential-1", audit.getValue().targetId());
         assertFalse(objectMapper.writeValueAsString(
                 audit.getValue()).contains("secret"));
-    }
-
-    @Test
-    void staleAccessUpdateIsRejectedBeforeGrantChanges() {
-        when(applicationMapper.lockById("app-1"))
-                .thenReturn(application("ACTIVE", 9L));
-
-        BusinessConflictException failure = assertThrows(
-                BusinessConflictException.class,
-                () -> service.updateAccess(
-                        "app-1",
-                        new UpdateIntegrationAccessRequest(
-                                Set.of("process.instance.read"),
-                                Set.of("project_change_process"),
-                                8L)));
-
-        assertEquals(
-                "INTEGRATION_APPLICATION_VERSION_CONFLICT",
-                failure.getErrorCode());
-        verify(scopeMapper, never()).deleteByApplicationId(anyString());
-        verify(processGrantMapper, never())
-                .deleteByApplicationId(anyString());
-    }
-
-    @Test
-    void unknownScopeIsRejectedBeforePersistence() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> service.create(
-                        new CreateIntegrationApplicationRequest(
-                                "Unsafe app",
-                                null,
-                                null,
-                                Set.of("system.admin"),
-                                Set.of(),
-                                null,
-                                null,
-                                List.of(),
-                                null)));
-
-        verify(applicationMapper, never()).insert(any(
-                IntegrationApplicationRecord.class));
-        verify(credentialMapper, never()).insert(any(
-                IntegrationApplicationCredentialRecord.class));
     }
 
     private IntegrationApplicationRecord application(
@@ -391,15 +294,5 @@ class IntegrationApplicationServiceTest {
         application.setUpdateTime(
                 LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
         return application;
-    }
-
-    private IntegrationGrantValueRecord grant(
-            String applicationId,
-            String value) {
-        IntegrationGrantValueRecord grant =
-                new IntegrationGrantValueRecord();
-        grant.setApplicationId(applicationId);
-        grant.setGrantValue(value);
-        return grant;
     }
 }

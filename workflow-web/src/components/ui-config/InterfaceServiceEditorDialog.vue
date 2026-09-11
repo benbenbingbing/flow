@@ -39,19 +39,19 @@
         </el-form-item>
         <el-form-item
           v-if="requiresProvider(editor.sourceType)"
-          label="受控连接"
+          label="Provider"
           required
         >
           <template #label>
             <ConfigHelpLabel
-              label="受控连接"
+              label="Provider"
               help-key="interfaceService.backendImplementation"
             />
           </template>
           <el-select
             v-model="editor.providerCode"
             filterable
-            placeholder="选择后端注册 Provider 或 Connector"
+            placeholder="选择后端注册 Provider"
           >
             <el-option
               v-for="option in providerOptions"
@@ -276,7 +276,7 @@
                   spellcheck="false"
                 />
                 <div class="json-editor-hint">
-                  校验 Provider、Connector 或平台数据源的最终返回值，也会校验缓存结果。
+                  校验 Provider 或平台数据源的最终返回值，也会校验缓存结果。
                 </div>
               </div>
             </div>
@@ -302,7 +302,7 @@
                 spellcheck="false"
               />
               <div class="json-editor-hint">
-                适合同一服务全部操作共享的字典编码、Provider 参数或 Connector 配置编码。
+                适合同一服务全部操作共享的字典编码或 Provider 参数。
               </div>
             </div>
           </div>
@@ -352,10 +352,7 @@ const scopeObjects = ref([])
 let rowSequence = 0
 const editor = reactive(emptyEditor())
 
-const providerOptions = computed(() =>
-  editor.sourceType === 'INTEGRATION_CONNECTOR'
-    ? props.catalog.connectors || []
-    : props.catalog.providers || [])
+const providerOptions = computed(() => props.catalog.providers || [])
 
 const selectedProvider = computed(() =>
   editor.sourceType === 'REGISTERED_PROVIDER'

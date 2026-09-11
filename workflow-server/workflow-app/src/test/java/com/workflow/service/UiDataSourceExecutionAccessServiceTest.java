@@ -170,7 +170,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 BusinessForbiddenException.class,
                 () -> context.service().authorizePublished(
                         definition(
-                                "INTEGRATION_CONNECTOR",
+                                "REGISTERED_PROVIDER",
                                 "GLOBAL",
                                 null),
                         request));
@@ -195,7 +195,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 BusinessForbiddenException.class,
                 () -> context.service().authorizePublished(
                         definition(
-                                "INTEGRATION_CONNECTOR",
+                                "REGISTERED_PROVIDER",
                                 "GLOBAL",
                                 null),
                         request));
@@ -241,7 +241,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 BusinessForbiddenException.class,
                 () -> context.service().authorizePublished(
                         definition(
-                                "INTEGRATION_CONNECTOR",
+                                "REGISTERED_PROVIDER",
                                 "GLOBAL",
                                 null),
                         request));
@@ -272,7 +272,7 @@ class UiDataSourceExecutionAccessServiceTest {
         UiDataSourceExecutionAuthorization authorization =
                 context.service().authorizePublished(
                         definition(
-                                "INTEGRATION_CONNECTOR",
+                                "REGISTERED_PROVIDER",
                                 "GLOBAL",
                                 null),
                         request);
@@ -346,7 +346,7 @@ class UiDataSourceExecutionAccessServiceTest {
         UiDataSourceExecutionAuthorization authorization =
                 context.service().authorizePublished(
                         definition(
-                                "INTEGRATION_CONNECTOR",
+                                "REGISTERED_PROVIDER",
                                 "GLOBAL",
                                 null),
                         request);
@@ -386,7 +386,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 BusinessForbiddenException.class,
                 () -> context.service().authorizePublished(
                         definition(
-                                "INTEGRATION_CONNECTOR",
+                                "REGISTERED_PROVIDER",
                                 "GLOBAL",
                                 null),
                         request));

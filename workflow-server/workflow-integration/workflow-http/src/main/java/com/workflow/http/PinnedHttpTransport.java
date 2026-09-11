@@ -126,7 +126,7 @@ public class PinnedHttpTransport {
                     if (body.length > maxBytes) {
                         if (!request.truncateOversizedResponse()) {
                             throw new java.io.IOException(
-                                    "HTTP Connector 响应超过大小限制");
+                                    "HTTP 响应超过大小限制");
                         }
                         body = java.util.Arrays.copyOf(body, maxBytes);
                         truncated = true;
@@ -161,7 +161,7 @@ public class PinnedHttpTransport {
                         1,
                         120) * 1000) {
             throw new IllegalArgumentException(
-                    "HTTP Connector 传输请求无效");
+                    "HTTP 传输请求无效");
         }
         int maxRequestBytes = bounded(
                 properties.getMaxRequestBytes(),
@@ -171,7 +171,7 @@ public class PinnedHttpTransport {
                 && request.body().getBytes(StandardCharsets.UTF_8).length
                 > maxRequestBytes) {
             throw new IllegalArgumentException(
-                    "HTTP Connector 请求超过大小限制");
+                    "HTTP 请求超过大小限制");
         }
         int headerBytes = request.headers().entrySet().stream()
                 .mapToInt(entry ->
@@ -182,7 +182,7 @@ public class PinnedHttpTransport {
                 .sum();
         if (headerBytes > MAX_HEADER_BYTES) {
             throw new IllegalArgumentException(
-                    "HTTP Connector Header 超过大小限制");
+                    "HTTP 请求 Header 超过大小限制");
         }
         request.headers().forEach((name, value) -> {
             if (name == null
@@ -197,7 +197,7 @@ public class PinnedHttpTransport {
                     || "content-length".equalsIgnoreCase(name)
                     || "transfer-encoding".equalsIgnoreCase(name)) {
                 throw new IllegalArgumentException(
-                        "HTTP Connector Header 无效");
+                        "HTTP 请求 Header 无效");
             }
         });
     }

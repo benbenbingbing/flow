@@ -210,51 +210,6 @@ public class UiDataSourceExecutionAccessService {
                 request);
     }
 
-    /**
-     * 为实体变更 PREPARE 阶段创建受信授权。
-     *
-     * <p>该入口不依赖表单或列表绑定，但仍使用当前用户、目标实体和数据权限计划，
-     * 且会清洗客户端不能伪造的运行时上下文。</p>
-     */
-    public UiDataSourceExecutionAuthorization authorizeEntityMutation(
-            UiDataSourceDefinition definition,
-            UiDataSourceExecuteRequest request) {
-        if (request == null
-                || !StringUtils.hasText(
-                        request.getEntityCode())) {
-            throw conflict(
-                    "ENTITY_MUTATION_SOURCE_REQUIRED",
-                    "实体变更接口执行必须声明目标实体");
-        }
-        rejectTrustedMetadata(request);
-        EntityDefinition entity = definitionMapper
-                .findByEntityCode(request.getEntityCode())
-                .orElseThrow(() -> conflict(
-                        "ENTITY_MUTATION_ENTITY_NOT_FOUND",
-                        "实体不存在: "
-                                + request.getEntityCode()));
-        SysUser user = currentUser();
-        DataScopePlan plan = permissionPlan(
-                entity.getEntityCode(),
-                null,
-                user);
-        return new UiDataSourceExecutionAuthorization(
-                false,
-                "ENTITY_MUTATION",
-                entity.getId(),
-                null,
-                null,
-                UiDataSourceUsages.ENTITY_MUTATION_PREPARE,
-                UiDataSourceUsages.ENTITY_MUTATION_PREPARE,
-                entity.getId(),
-                entity.getEntityCode(),
-                null,
-                user,
-                plan,
-                sanitizeContext(request.getContext()),
-                request.getServerIdempotencyKey());
-    }
-
     private UiConfigRelease resolvePublishedRelease(
             Origin origin,
             ConfigTarget target,

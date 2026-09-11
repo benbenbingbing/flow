@@ -1,6 +1,6 @@
-name: 开放集成契约校验
+name: Embed 集成契约校验
 
-run-name: 开放集成契约校验 · ${{ github.ref_name }} · ${{ github.actor }}
+run-name: Embed 集成契约校验 · ${{ github.ref_name }} · ${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -16,12 +16,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: open-integration-contract-${{ github.ref }}
+  group: embed-integration-contract-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   contract:
-    name: OpenAPI 与开放流程契约
+    name: Embed OpenAPI 契约
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -38,15 +38,12 @@ jobs:
           java-version: "21"
           cache: maven
 
-      # - name: 执行 OpenAPI 兼容性和事件 Schema 测试
-      #   env:
-      #     OPENAPI_BASE_REF: >-
-      #       ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
-      #   working-directory: workflow-server
-      #   run: >-
-      #     mvn -B -ntp -pl workflow-app -am
-      #     -Dtest=OpenIntegrationContractTest,EmbedOpenApiContractTest
-      #     -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: 执行 Embed OpenAPI 契约测试
+        working-directory: workflow-server
+        run: >-
+          mvn -B -ntp -pl workflow-app -am
+          -Dtest=EmbedOpenApiContractTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
 
       - name: 校验前端生产构建
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

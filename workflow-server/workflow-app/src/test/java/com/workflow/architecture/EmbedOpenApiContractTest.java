@@ -20,7 +20,6 @@ import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
 import com.workflow.contracts.embed.EmbedLaunchIssued;
 import com.workflow.contracts.embed.EmbedLaunchView;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
-import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.embed.api.web.EmbedApiExceptionHandler;
 import com.workflow.embed.api.web.EmbedLaunchEntryController;
 import com.workflow.embed.api.web.EmbedNativeFormTargetController;
@@ -48,6 +47,7 @@ import com.workflow.embed.security.EmbedContextHolder;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.web.EmbedLaunchController;
 import com.workflow.openapi.security.OpenApplicationActorResolver;
+import com.workflow.openapi.security.OpenApplicationActorResolver.ResolvedApplicationActor;
 import com.workflow.openapi.security.OpenIntegrationProperties;
 import io.swagger.v3.core.util.Yaml31;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -343,11 +343,13 @@ class EmbedOpenApiContractTest {
                 Files.readString(contract));
         assertNotNull(difference, "Embed OpenAPI 兼容性差异不能为空");
         if (!difference.isCompatible()) {
-            // The projection endpoints were an internal reimplementation of
-            // Published Form and are intentionally retired as one atomic
-            // boundary change. All surviving operations remain locked by the
-            // bidirectional controller/OpenAPI assertions below.
-            assertTrue(containsRetiredProjectionOperations(baseline),
+            // Published Form projection endpoints and the configurable OAuth
+            // business scope were intentionally retired as contract changes.
+            // Surviving operations remain locked by the bidirectional
+            // controller/OpenAPI assertions below. Once the new contract is
+            // merged, neither exception exists in the next baseline.
+            assertTrue(containsRetiredProjectionOperations(baseline)
+                            || containsRetiredMachineScope(baseline),
                     () -> "Embed OpenAPI V1 contains an unrelated breaking "
                             + "change: " + difference);
         }
@@ -742,7 +744,7 @@ class EmbedOpenApiContractTest {
                 mock(OpenApplicationActorResolver.class);
         Authentication authentication = mock(Authentication.class);
         when(actorResolver.resolve(authentication, "trace-contract"))
-                .thenReturn(new OpenApplicationActor(
+                .thenReturn(new ResolvedApplicationActor(
                         "app-contract", "client-contract",
                         "trace-contract"));
         when(issuePort.issue(any(), any())).thenReturn(
@@ -1401,9 +1403,9 @@ class EmbedOpenApiContractTest {
                     Map.of("clientBasic", List.of()), requirement,
                     () -> "OAuth Token 必须只使用 Client Basic: " + key);
             case MACHINE_OAUTH -> assertEquals(
-                    Map.of("machineOAuth", List.of("embed.launch")),
+                    Map.of("machineOAuth", List.of()),
                     requirement,
-                    () -> "Launch 必须只使用 embed.launch scope: " + key);
+                    () -> "Launch 只需有效的机器令牌，不应依赖 scope: " + key);
             case EMBED_BEARER -> assertEquals(
                     Map.of("embedBearer", List.of()), requirement,
                     () -> "运行态必须只使用 Embed Bearer: " + key);
@@ -1431,7 +1433,7 @@ class EmbedOpenApiContractTest {
         assertNotNull(machineOAuth.getFlows().getClientCredentials());
         assertEquals("/oauth2/token", machineOAuth.getFlows()
                 .getClientCredentials().getTokenUrl());
-        assertEquals(Set.of("embed.launch"), machineOAuth.getFlows()
+        assertEquals(Set.of(), machineOAuth.getFlows()
                 .getClientCredentials().getScopes().keySet());
 
         SecurityScheme embedBearer = schemes.get("embedBearer");
@@ -1562,6 +1564,42 @@ class EmbedOpenApiContractTest {
                 && result.getOpenAPI() != null
                 && openApiOperations(result.getOpenAPI()).keySet()
                 .containsAll(RETIRED_FORM_PROJECTION_OPERATIONS);
+    }
+
+    private boolean containsRetiredMachineScope(String contract) {
+        try {
+            JsonNode document = Yaml31.mapper().readTree(contract);
+            if (document.path("components")
+                    .path("securitySchemes")
+                    .path("machineOAuth")
+                    .path("flows")
+                    .path("clientCredentials")
+                    .path("scopes")
+                    .has("embed.launch")) {
+                return true;
+            }
+        } catch (IOException ignored) {
+            // 继续使用 OpenAPI Parser，让既有容错路径决定是否存在旧 Scope。
+        }
+        ParseOptions options = new ParseOptions();
+        options.setResolve(true);
+        SwaggerParseResult result = new OpenAPIV3Parser().readContents(
+                contract, null, options);
+        if (result == null || result.getOpenAPI() == null
+                || result.getOpenAPI().getComponents() == null
+                || result.getOpenAPI().getComponents()
+                .getSecuritySchemes() == null) {
+            return false;
+        }
+        SecurityScheme machineOAuth = result.getOpenAPI().getComponents()
+                .getSecuritySchemes().get("machineOAuth");
+        return machineOAuth != null
+                && machineOAuth.getFlows() != null
+                && machineOAuth.getFlows().getClientCredentials() != null
+                && machineOAuth.getFlows().getClientCredentials()
+                .getScopes() != null
+                && machineOAuth.getFlows().getClientCredentials()
+                .getScopes().containsKey("embed.launch");
     }
 
     private OpenAPI parseCurrentContract() throws IOException {

@@ -11,10 +11,18 @@ import com.workflow.core.error.RateLimitExceededException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * 全局异常处理器单元测试。
@@ -68,6 +76,30 @@ class GlobalExceptionHandlerTest {
         assertNotNull(response.getBody());
         assertEquals(400, response.getBody().getCode());
         assertEquals("结构化条件不能为空", response.getBody().getMessage());
+    }
+
+    /** enabled/pageNum 转换失败必须返回真实 HTTP 400 与稳定响应体。 */
+    @Test
+    void shouldReturnStableBadRequestForQueryParameterTypeMismatch()
+            throws Exception {
+        MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new QueryParameterController())
+                .setControllerAdvice(handler)
+                .build();
+
+        mockMvc.perform(get("/test/query-parameters")
+                        .param("enabled", "not-a-boolean"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value("请求参数格式不正确"));
+
+        mockMvc.perform(get("/test/query-parameters")
+                        .param("pageNum", "not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value("请求参数格式不正确"));
     }
 
     /** 权限拒绝异常应返回 403 FORBIDDEN 且消息正确 */
@@ -162,5 +194,17 @@ class GlobalExceptionHandlerTest {
                 "CONFIG_REVISION_CONFLICT",
                 response.getBody().getErrorCode());
         assertEquals(current, response.getBody().getData());
+    }
+
+    /** 仅用于验证 Spring MVC 查询参数绑定与全局 advice 的集成行为。 */
+    @RestController
+    static final class QueryParameterController {
+
+        @GetMapping("/test/query-parameters")
+        public ApiResponse<Void> query(
+                @RequestParam(required = false) Boolean enabled,
+                @RequestParam(required = false) Integer pageNum) {
+            return ApiResponse.success();
+        }
     }
 }

@@ -36,7 +36,7 @@ final class PinnedDnsResolver implements DnsResolver {
                 || !host.equals(
                         requestedHost.toLowerCase(Locale.ROOT))) {
             throw new UnknownHostException(
-                    "HTTP Connector 拒绝解析未审批主机");
+                    "HTTP 请求拒绝解析未审批主机");
         }
     }
 }

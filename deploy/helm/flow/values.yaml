@@ -118,15 +118,6 @@ openApi:
   tokenAddressLimitPerMinute: 300
   trustForwardedHeaders: false
   trustedProxyCidrs: []
-  webhook:
-    enabled: false
-    masterKeySecretKey: webhook-master-key
-    workerConcurrency: 4
-    workerQueueCapacity: 200
-    workerBatchSize: 100
-    workerLeaseSeconds: 30
-    workerDelayMs: 1000
-    metricsRefreshMs: 15000
 
 embed:
   enabled: false
@@ -135,13 +126,6 @@ embed:
   contextKeySecretKey: embed-context-key-base64
   hmacKeySecretKey: embed-hmac-key-base64
   annotations: {}
-
-connector:
-  http:
-    enabled: false
-    masterKeyVersion: ""
-    masterKeySecretKey: integration-connector-master-key
-    previousMasterKeysSecretKey: ""
 
 monitoring:
   serviceMonitor:
@@ -155,11 +139,6 @@ monitoring:
     minimumReadyReplicas: 2
     http5xxRatio: 0.05
     queueOldestReadySeconds: 300
-    webhookOldestPendingSeconds: 300
-    webhookSuccessRatio: 0.95
-    webhookMinimumAttempts: 10
-    connectorSuccessRatio: 0.95
-    connectorMinimumAttempts: 10
     authFailureCount: 20
     jwtInvalidCount: 5
 

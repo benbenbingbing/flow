@@ -1,6 +1,5 @@
 package com.workflow.openapi.security;
 
-import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,7 +35,6 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Base64;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -58,8 +56,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 
 @SpringBootTest(
         classes = OpenIntegrationSecurityIntegrationTest.TestApplication.class,
@@ -146,8 +142,7 @@ class OpenIntegrationSecurityIntegrationTest {
     @Test
     void clientCredentialsIssuesIsolatedRs256AccessToken()
             throws Exception {
-        String token = issueToken(
-                "process.instance.start process.instance.read");
+        String token = issueToken();
 
         String[] parts = token.split("\\.");
         JsonNode header = objectMapper.readTree(
@@ -175,23 +170,17 @@ class OpenIntegrationSecurityIntegrationTest {
         org.junit.jupiter.api.Assertions.assertEquals(
                 "app-test-1",
                 claims.get("application_id").asText());
+        org.junit.jupiter.api.Assertions.assertFalse(
+                claims.has("scope"),
+                "machine token must not carry a retired business scope");
         org.junit.jupiter.api.Assertions.assertTrue(claims.hasNonNull("jti"));
         org.junit.jupiter.api.Assertions.assertTrue(claims.hasNonNull("iat"));
         org.junit.jupiter.api.Assertions.assertTrue(claims.hasNonNull("exp"));
 
-        mockMvc.perform(get("/api/open/test-probe")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.subject", is(CLIENT_ID)))
-                .andExpect(jsonPath(
-                        "$.scopes",
-                        containsInAnyOrder(
-                                "process.instance.start",
-                                "process.instance.read")));
     }
 
     @Test
-    void scopeEscalationAndWrongSecretUseOauthErrors()
+    void unsupportedScopeAndWrongSecretUseOauthErrors()
             throws Exception {
         mockMvc.perform(post("/oauth2/token")
                         .with(httpBasic(CLIENT_ID, CLIENT_SECRET))
@@ -218,10 +207,12 @@ class OpenIntegrationSecurityIntegrationTest {
     @Test
     void nonMachineBearerTokenCannotEnterOpenApiDomain()
             throws Exception {
-        mockMvc.perform(get("/api/open/test-probe")
+        mockMvc.perform(post("/api/open/v1/embed-launches")
                         .header(
                                 "Authorization",
-                                "Bearer not-a-machine-jwt"))
+                                "Bearer not-a-machine-jwt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(embedLaunchRequest()))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -246,10 +237,12 @@ class OpenIntegrationSecurityIntegrationTest {
                 "user-jwt-test-key-with-at-least-sixty-four-bytes-"
                         + "of-entropy-material-123456"));
 
-        mockMvc.perform(get("/api/open/test-probe")
+        mockMvc.perform(post("/api/open/v1/embed-launches")
                         .header(
                                 "Authorization",
-                                "Bearer " + jwt.serialize()))
+                                "Bearer " + jwt.serialize())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(embedLaunchRequest()))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -266,9 +259,6 @@ class OpenIntegrationSecurityIntegrationTest {
                         now.plusSeconds(300)))
                 .jwtID("previous-key-token")
                 .claim("application_id", "app-test-1")
-                .claim(
-                        "scope",
-                        Set.of("process.instance.read"))
                 .build();
         SignedJWT jwt = new SignedJWT(
                 new JWSHeader.Builder(JWSAlgorithm.RS256)
@@ -278,76 +268,19 @@ class OpenIntegrationSecurityIntegrationTest {
                 claims);
         jwt.sign(new RSASSASigner(previousPrivateKey));
 
-        mockMvc.perform(get("/api/open/test-probe")
-                        .header(
-                                "Authorization",
-                                "Bearer " + jwt.serialize()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.subject", is(CLIENT_ID)));
-    }
-
-    @Test
-    void actualResourcePathRequiresItsDedicatedScope()
-            throws Exception {
-        String token = issueToken("process.instance.read");
-
-        mockMvc.perform(get("/api/open/v1/process-definitions")
-                        .header(
-                                "Authorization",
-                                "Bearer " + token)
-                        .header("X-Trace-Id", "trace-scope-denied"))
-                .andExpect(status().isForbidden())
-                .andExpect(header().string(
-                        "X-Trace-Id",
-                        "trace-scope-denied"))
-                .andExpect(header().string(
-                        "Cache-Control",
-                        org.hamcrest.Matchers.containsString(
-                                "no-store")))
-                .andExpect(jsonPath(
-                        "$.errorCode",
-                        is("INSUFFICIENT_SCOPE")))
-                .andExpect(jsonPath(
-                        "$.traceId",
-                        is("trace-scope-denied")));
-    }
-
-    @Test
-    void cancelResourceRequiresCancelScope()
-            throws Exception {
-        String startToken = issueToken("process.instance.start");
-        mockMvc.perform(post(
-                        "/api/open/v1/process-instances/process-01/cancel")
-                        .header("Authorization", "Bearer " + startToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"operator request\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath(
-                        "$.errorCode",
-                        is("INSUFFICIENT_SCOPE")));
-
-        String cancelToken = issueToken("process.instance.cancel");
-        mockMvc.perform(post(
-                        "/api/open/v1/process-instances/process-01/cancel")
-                        .header("Authorization", "Bearer " + cancelToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"operator request\"}"))
-                .andExpect(status().isNotFound());
-    }
-
-    @Test
-    void embedLaunchRequiresItsDedicatedScope() throws Exception {
-        String processReadToken = issueToken("process.instance.read");
         mockMvc.perform(post("/api/open/v1/embed-launches")
-                        .header("Authorization", "Bearer " + processReadToken)
+                        .header(
+                                "Authorization",
+                                "Bearer " + jwt.serialize())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(embedLaunchRequest()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath(
-                        "$.errorCode",
-                        is("INSUFFICIENT_SCOPE")));
+                .andExpect(status().isCreated());
+    }
 
-        String launchToken = issueToken("embed.launch");
+    @Test
+    void embedLaunchAcceptsAuthenticatedMachineTokenWithoutScope()
+            throws Exception {
+        String launchToken = issueToken();
         mockMvc.perform(post("/api/open/v1/embed-launches")
                         .header("Authorization", "Bearer " + launchToken)
                         .header("X-Trace-Id", "trace-embed-launch")
@@ -368,13 +301,29 @@ class OpenIntegrationSecurityIntegrationTest {
                         is("trace-embed-launch")));
     }
 
-    private String issueToken(String scopes) throws Exception {
+    @Test
+    void openNamespaceFailsClosedOutsideEmbedLaunchPost()
+            throws Exception {
+        String token = issueToken();
+
+        mockMvc.perform(get("/api/open/v1/embed-launches")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode", is("ACCESS_DENIED")));
+        mockMvc.perform(post("/api/open/v1/unknown")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode", is("ACCESS_DENIED")));
+    }
+
+    private String issueToken() throws Exception {
         MvcResult result = mockMvc.perform(post("/oauth2/token")
                         .with(httpBasic(CLIENT_ID, CLIENT_SECRET))
                         .contentType(
                                 MediaType.APPLICATION_FORM_URLENCODED)
-                        .param("grant_type", "client_credentials")
-                        .param("scope", scopes))
+                        .param("grant_type", "client_credentials"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token_type", is("Bearer")))
                 .andExpect(jsonPath("$.expires_in", is(599)))
@@ -425,8 +374,7 @@ class OpenIntegrationSecurityIntegrationTest {
             OpenIntegrationSecurityConfiguration.class,
             TestBeans.class,
             EmbedLaunchController.class,
-            OpenApplicationActorResolver.class,
-            TestProbeController.class
+            OpenApplicationActorResolver.class
     })
     static class TestApplication {
     }
@@ -446,11 +394,6 @@ class OpenIntegrationSecurityIntegrationTest {
                             ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                     .authorizationGrantType(
                             AuthorizationGrantType.CLIENT_CREDENTIALS)
-                    .scopes(scopes -> scopes.addAll(Set.of(
-                            "embed.launch",
-                            "process.instance.start",
-                            "process.instance.read",
-                            "process.instance.cancel")))
                     .tokenSettings(TokenSettings.builder()
                             .accessTokenTimeToLive(
                                     java.time.Duration.ofMinutes(10))
@@ -556,16 +499,4 @@ class OpenIntegrationSecurityIntegrationTest {
         }
     }
 
-    @RestController
-    static class TestProbeController {
-
-        @GetMapping("/api/open/test-probe")
-        java.util.Map<String, Object> probe(
-                @org.springframework.security.core.annotation.AuthenticationPrincipal
-                org.springframework.security.oauth2.jwt.Jwt jwt) {
-            return java.util.Map.of(
-                    "subject", jwt.getSubject(),
-                    "scopes", jwt.getClaimAsStringList("scope"));
-        }
-    }
 }

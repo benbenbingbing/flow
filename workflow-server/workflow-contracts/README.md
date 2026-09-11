@@ -21,16 +21,15 @@ com.workflow.contracts.<domain>[.<feature>].port|spi
 | `annotation` / `context` / `error` | 编译元数据、生命周期上下文或跨边界异常 | 按能力就近放置 |
 
 `feature` 只保留具有独立业务语义的子领域，例如 `entity.form`、`entity.list`、
-`entity.mutation`、`entity.ui`、`process.action`、`process.assignment` 与
-`process.open`。不以 `catalog`、`execution`、`trigger`、`target`、`step`、
+`entity.mutation`、`entity.ui`、`process.action` 与 `process.assignment`。
+不以 `catalog`、`execution`、`trigger`、`target`、`step`、
 `datasource` 或 `hotfix` 等可由类名表达的技术角色继续分包。
 
 例如：
 
 - 流程动作：`process.action.port.FlowActionCatalogPort`、
   `process.action.spi.FlowActionHandler`
-- 实体变更：`entity.mutation.port.EntityMutationPort`、
-  `entity.mutation.spi.EntityMutationStepProvider`
+- 实体写入：`entity.mutation.port.EntityMutationPort`
 - 实体 UI：`entity.ui.port.UiExtensionCatalogPort`、
   `entity.ui.spi.UiDataSourceProvider`
 - 当前操作人：`identity.port.CurrentActorPort`
@@ -38,7 +37,7 @@ com.workflow.contracts.<domain>[.<feature>].port|spi
 ## 命名与依赖
 
 - `*Port` 表示单一逻辑能力边界。
-- `*Provider`、`*Handler`、`*Resolver`、`*Connector` 表示宿主可发现的扩展角色；
+- `*Provider`、`*Handler`、`*Resolver` 表示宿主可发现的扩展角色；
   只有真实 Registry/集合消费者存在时才能公开为稳定 SPI。
 - 具体 Port 实现命名为 `*Adapter`，不能再以 `Port` 结尾。
 - `port -> model`，`spi -> model`；SPI 仅可调用宿主明确暴露的 Port。

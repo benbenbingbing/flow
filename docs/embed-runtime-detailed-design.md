@@ -1,13 +1,15 @@
 # Flow 第三方 iframe 嵌入运行时详细设计
 
 > 状态：V1 Native LIST/FORM 单运行时架构已实现；仍需本机 MySQL 隔离迁移验证、跨浏览器/安全验收、生产部署与接入方联合评审
-> 文档版本：1.2
-> 日期：2026-09-01
+> 文档版本：1.3
+> 日期：2026-09-10
 > 适用范围：第三方平台通过 iframe 嵌入 Flow 已发布的实体列表、实体表单及受控相关操作
 > 实现状态：当前分支以 `NativeEmbeddedListPage` / `NativeEmbeddedFormPage` 直接运行 Flow
 > 原生列表与表单页面。Capability 只约束宿主直接入口和跨域 Bridge；页内新增、查看、编辑、
 > 按钮、弹框及数据请求均按映射 Flow 用户的原生权限与 DataScope 执行。宿主直接
 > RECORD_UPDATE 与独立 PROCESS_START 命令仍关闭。生产上线门槛见第 17.6、22、24.5 节
+> V084 收缩说明：OAuth 不再签发或校验业务 Scope；凭有效应用凭据认证后，机器 Token
+> 只能访问唯一保留的 Embed launch 边界。
 
 ## 0. 方案摘要
 
@@ -15,7 +17,7 @@
 
 | 关键问题 | 设计结论 |
 | --- | --- |
-| 第三方应用如何认证 | 第三方后端复用现有 OAuth Client Credentials，新增 `embed.launch` Scope |
+| 第三方应用如何认证 | 第三方后端复用现有 OAuth Client Credentials；机器 Token 只允许访问 Embed launch |
 | iframe 中的人如何对应 Flow 用户 | 第三方短期签名人员断言，经精确 Identity Binding 映射到已存在的 `flowUserId` |
 | iframe 如何持续鉴权 | 一次性 Launch 兑换为短期、受限、仅内存的 Embed Session Token |
 | Flow 权限如何生效 | 每次 Runtime 请求恢复真实 `UserContext`，继续执行现有功能权限、数据权限和行级动作 |
@@ -47,7 +49,7 @@ Flow 的实体、表单、列表、流程、数据权限和 UI 发布能力已�
 5. iframe 不依赖第三方 Cookie，不复用普通 Flow 登录 JWT，不跳转 Flow 登录页。
 6. 复用现有已发布表单、列表和实体运行态，避免重新实现业务规则。
 7. 接口具备稳定错误码、审计、限流、幂等、重放防护和版本兼容策略。
-8. 为后续 SDK、Webhook、附件、审批和 Headless API 扩展保留边界。
+8. 未经真实接入需求验证的回调、附件、审批和 Headless API 不预留产品能力，出现需求后重新评审。
 
 ### 1.2 V1 已实现范围与关闭边界
 
@@ -226,7 +228,7 @@ Embed 配置保存的 JSON Schema 校验，并由服务端映射为：
 | --- | --- | --- |
 | 第三方应用、Client ID/Secret、启停和轮换 | `workflow-open-api` 的 `IntegrationApplicationService` | 直接作为 Embed Application 的机器身份根对象 |
 | OAuth Client Credentials | `OpenIntegrationSecurityConfiguration` | 直接用于服务端 Launch API，不用于 iframe 运行态 |
-| 应用 Scope、来源网段、限流、并发租约 | `IntegrationScopeMapper`、`OpenApiApplicationPolicyFilter` 等 | 扩展 `embed.launch` Scope 后复用 |
+| 应用来源网段、限流、并发租约 | `OpenApiApplicationPolicyFilter` 等 | 在唯一 Embed launch 边界复用 |
 | 外部响应 Envelope、Trace、1 MiB 请求保护 | `OpenApiResponse`、`OpenApiRequestGuardFilter` | 外部 Launch 与 Embed API 统一复用其风格 |
 | 凭据生成与哈希 | `IntegrationSecretGenerator`、`IntegrationSecretHasher` | 复用安全随机数和哈希设计，Token 不存明文 |
 | 系统审计 | `SystemAuditPort`、`SystemAuditEvent` | 复用，模块归类为 `INTEGRATION` |
@@ -253,8 +255,8 @@ Embed 配置保存的 JSON Schema 校验，并由服务端映射为：
 7. `UiEventRuntimeController`、`UiInterfaceOperationRuntimeController` 是内部泛化执行入口，
    不能允许外部浏览器指定任意事件或接口操作。
 8. 当前动态实体更新没有通用乐观版本条件。若直接开放外部编辑，可能发生覆盖更新。
-9. 当前 `ExternalIdentityResolver` 请求模型偏开放流程场景，缺少 Application、Issuer、Subject
-   和已验证断言语义，不能直接作为完整 Embed 身份链路。
+9. Embed 身份链路必须绑定 Application、Issuer/Namespace、Subject 和已验证断言，不能退回
+   用户名猜测或已退役的开放流程身份模型。
 
 ### 3.3 相关现有代码
 
@@ -356,7 +358,7 @@ workflow-web
 ### 5.1 Integration Application
 
 现有 `integration_application`。表示一个第三方系统及其机器身份、Client Credentials、
-Scope、来源网段、限流和并发策略。Embed 不重新创建一套 Client ID/Secret。
+来源网段、限流和并发策略。Embed 不重新创建一套 Client ID/Secret。
 
 ### 5.2 Embed View
 
@@ -523,9 +525,9 @@ Namespace 下任意已绑定用户，应配合最小来源网段、强审计和�
 7. 每个 Runtime 请求重新检查用户有效状态；角色和数据权限不写入长期 Token，继续从 Flow
    当前权限服务计算，使权限变更在短缓存窗口内生效。
 
-当前 `ExternalIdentityResolver` 可复用“Namespace 精确解析”思想，但其请求结构是流程场景。
-建议新增通用 `ExternalSubjectResolver`，避免把 Embed Application、Issuer 和 Subject 塞入
-流程专用字段。
+当前实现由 `EmbedSignedAssertionVerifierPort` 产出 `VerifiedExternalSubject`，再通过
+`EmbedExternalIdentityBindingPort` 精确查询 ACTIVE Binding；Application、Issuer/Namespace
+和 Subject 均保持在 Embed 专用边界内。
 
 ### 6.4 Embed Session 认证过滤器
 
@@ -1104,7 +1106,7 @@ POST /oauth2/token
 Authorization: Basic base64(client_id:client_secret)
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=client_credentials&scope=embed.launch
+grant_type=client_credentials
 ```
 
 响应沿用 OAuth 标准格式：
@@ -1113,14 +1115,12 @@ grant_type=client_credentials&scope=embed.launch
 {
   "access_token": "machine-access-token",
   "token_type": "Bearer",
-  "expires_in": 900,
-  "scope": "embed.launch"
+  "expires_in": 900
 }
 ```
 
-需要在现有 `IntegrationScope` 增加 `EMBED_LAUNCH("embed.launch")`，并在 Open API 安全链把
-Launch 路由映射到 `SCOPE_embed.launch`。Client Secret 和机器 Token 只能保存在第三方后端，
-不得下发给浏览器。
+Open API 安全链只向机器 Token 暴露精确的 Embed launch 路由，不签发或校验业务 Scope。
+Client Secret 和机器 Token 只能保存在第三方后端，不得下发给浏览器。
 
 ### 10.2 创建 Embed Launch（新增）
 
@@ -1222,7 +1222,7 @@ X-Trace-Id: partner-20260826-001
 
 服务端按以下顺序执行，任何失败都不签发凭据：
 
-1. 机器 Token 有效且包含 `embed.launch`；
+1. 机器 Token 有效，且请求命中唯一开放的 Embed launch 路由；
 2. Integration Application 为 ACTIVE，来源 CIDR、应用限流和并发租约通过；
 3. View、Release 和 Application Grant 有效且未过期；
 4. `parentOrigin` 规范化后精确命中 Grant；
@@ -1851,7 +1851,7 @@ sequenceDiagram
 
 配置顺序建议：
 
-1. 创建/确认现有 Integration Application，并授予 `embed.launch` Scope；
+1. 创建/确认现有 Integration Application，并签发有效 Client Credential；
 2. 创建 Identity Provider；
 3. 批量或逐个建立外部人员到 Flow 用户的精确绑定；
 4. 创建 Embed View：LIST 只选择实体和该实体下当前有 ACTIVE 版本的列表；FORM 选择目标表单；
@@ -2019,8 +2019,7 @@ Launch AAD 固定为 `embed-launch-v1|applicationId|launchId`，Session AAD 固�
 
 | 现有表 | 复用方式 | 需要调整 |
 | --- | --- | --- |
-| `integration_application` | 第三方机器身份和状态根对象 | 增加 Scope 枚举，不改表结构 |
-| `integration_application_scope` | 保存 `embed.launch` | 无新结构 |
+| `integration_application` | 第三方机器身份和状态根对象 | 直接复用，不改表结构 |
 | `integration_rate_limit_bucket` | Launch/Exchange/Runtime 限流 | 增加 Embed namespace |
 | `integration_api_request_lease` | 写操作跨 Pod 并发租约 | 增加 Embed operation |
 | `integration_idempotency_record` | 写操作 claim、重放和 fencing | 保持 Application/Operation/Key 唯一范围；请求哈希加入稳定 Actor/View，排除 Session/Release；响应只保存最小回执 |
@@ -2617,8 +2616,7 @@ Launch、Exchange、授权求交和重放 Use Case 必须可用 In-Memory Port �
 需要明确调整：
 
 1. `/api/open/v1/embed-launches` 继续进入现有 `@Order(2)` OAuth Resource Server 安全链，
-   并在 `anyRequest().authenticated()` 之前增加精确
-   `POST + SCOPE_embed.launch` Matcher，不能让任意机器 Scope 调用。
+   以精确 Matcher 限定唯一可访问路由并要求认证；其它开放流程路由不存在。
 2. 新增优先于现有 `@Order(1000)` catch-all `permitAll` 的专用 Spring
    `SecurityFilterChain`（建议 `@Order(3)`、`securityMatcher("/api/embed/**")`）。
 3. `/api/embed/v1/launches/*/exchange` 从普通 `AuthInterceptor` 和
@@ -2743,8 +2741,8 @@ LIST/FORM 目标与请求委托：
 
 ### 16.6 幂等、事务与审计一致性
 
-Embed 写请求复用现有 `OpenIdempotencyService` 的状态机、120 秒 stale reclaim 和 fencing
-思想，但通过 Contracts Port/共享组件调用。
+Embed 写请求通过 `EmbedIdempotencyPort` 和 `MyBatisEmbedIdempotencyAdapter` 使用共享
+`integration_idempotency_record` 状态机，保留 120 秒 stale reclaim 和 fencing 约束。
 
 Canonical request hash 至少包含：
 
@@ -3040,7 +3038,7 @@ SDK 默认创建：
 | 接口 | 状态 | 认证 | 主要实现 |
 | --- | --- | --- | --- |
 | `POST /oauth2/token` | 现有复用 | Client Credentials | 现有 OAuth |
-| `POST /api/open/v1/embed-launches` | V1 已实现 | Machine Bearer + `embed.launch` | Open API Controller + Embed Launch Port |
+| `POST /api/open/v1/embed-launches` | V1 已实现 | Machine Bearer | Open API Controller + Embed Launch Port |
 | `GET /embed/v1/launches/{launchId}` | V1 已实现 | Launch ID + 动态 CSP | Embed Entry Handler |
 | `POST /api/embed/v1/launches/{launchId}/exchange` | V1 已实现 | 一次性 Launch code | Exchange Service |
 | `GET /api/embed/v1/session` | V1 已实现 | Embed Bearer | 非秘密 Session 状态 |
@@ -3068,8 +3066,8 @@ Published Form 内建 `saveAndStart` 只提交封闭 `actionKey`，服务端重�
 
 | 能力 | 复用现有 | 需要扩展 | 全新开发 |
 | --- | --- | --- | --- |
-| 第三方应用和 Client Secret | `integration_application`、凭据轮换 | 新增 `embed.launch` Scope | 无 |
-| 机器 OAuth | Spring Authorization Server 配置 | Launch 路由 Scope 映射 | 无 |
+| 第三方应用和 Client Secret | `integration_application`、凭据轮换 | 无 | 无 |
+| 机器 OAuth | Spring Authorization Server 配置 | 只允许精确 Launch 路由 | 无 |
 | 应用 CIDR/限流/并发 | 现有 Policy Filter、Bucket、Lease | 增加 Embed namespace 和 Contracts Port | Exchange/Session 细分策略 |
 | 用户目录 | `IdentityDirectoryPort`、SysUser | 校验 Embed 使用限制 | 无 |
 | 外部人员映射 | 现有 Resolver 思想 | 抽象通用 `ExternalSubjectResolver` | V1 Provider、Binding、JWT 校验、防重放；OIDC 后续建设 |
@@ -3106,7 +3104,7 @@ Published Form 内建 `saveAndStart` 只提交封闭 `actionKey`，服务端重�
 
 1. 给现有实体 Controller 加 `@PublicApi`；
 2. 把普通 Flow Access Token 交给第三方浏览器；
-3. 用 `AuthSessionService.createSession` 签发不带 Embed Scope 的普通会话；
+3. 用 `AuthSessionService.createSession` 把普通后台会话冒充 Embed Session；
 4. 用 OAuth Client Credentials Token 直接调用实体 CRUD；
 5. iframe 依赖普通 Refresh Cookie；
 6. 宿主传 `flowUserId/entityCode/formId/listKey/releaseId`；
@@ -3126,7 +3124,6 @@ Published Form 内建 `saveAndStart` 只提交封闭 `actionKey`，服务端重�
 | 401 | `EMBED_SESSION_INVALID` | Embed Token 无效 | 清空并重新 Launch |
 | 401 | `EMBED_SESSION_EXPIRED` | idle/absolute 到期 | 重新 Launch |
 | 403 | `SOURCE_ADDRESS_NOT_ALLOWED` | Launch 来源 CIDR 拒绝 | 检查接入配置 |
-| 403 | `INSUFFICIENT_SCOPE` | 机器 Token 缺少 `embed.launch` | 重新授权应用 Scope |
 | 403 | `EMBED_VIEW_NOT_GRANTED` | 应用未获授权 | 联系管理员 |
 | 403 | `EMBED_ORIGIN_NOT_ALLOWED` | 父 Origin 未授权 | 修正 Grant/Origin |
 | 403 | `EMBED_IDENTITY_ASSERTION_INVALID` | 断言验签/Claim 失败 | 修正 IdP/断言 |
@@ -3166,9 +3163,8 @@ OAuth/Open API 安全链在进入 Launch Controller 前产生的稳定错误继�
 
 | 来源 | 现有错误/异常 | 对外接口 | Embed 对外错误 |
 | --- | --- | --- | --- |
-| OAuth Scope | `INSUFFICIENT_SCOPE` | Launch | 原样 `INSUFFICIENT_SCOPE` |
 | Open 应用策略/Lease | `INTEGRATION_TEMPORARILY_UNAVAILABLE` | Launch | 原样保留 |
-| `OpenIdempotencyService` | `IDEMPOTENCY_KEY_REUSED` | Runtime 写 | `EMBED_IDEMPOTENCY_KEY_REUSED` |
+| `EmbedIdempotencyPort` | 幂等键与请求摘要不一致 | Runtime 写 | `EMBED_IDEMPOTENCY_KEY_REUSED` |
 | 幂等处理中 | `REQUEST_IN_PROGRESS` | Runtime 写 | `EMBED_REQUEST_IN_PROGRESS` |
 | Embed 下游临时故障 | `INTEGRATION_TEMPORARILY_UNAVAILABLE` | Runtime | `EMBED_RUNTIME_UNAVAILABLE` |
 | 实体/数据权限拒绝或对象不存在 | 内部权限/NotFound 异常 | Runtime | 统一 `EMBED_RESOURCE_NOT_FOUND` |
@@ -3327,7 +3323,7 @@ Launch/Session、安全链、Shell 和 SDK。这里保留阶段划分用于说�
 后端：
 
 - Embed View/Grant/Origin/Provider/Binding 管理与内部 Session 快照能力；
-- `embed.launch` Scope 与 Launch API；
+- 有效应用凭据与唯一 Embed Launch API；
 - JWT 验签、防重放、Flow 用户映射；
 - Launch/Session 表、原子 Exchange 和专用认证 Filter；
 - Bootstrap、固定 List Release/依赖闭包与原生请求委托；
@@ -3372,9 +3368,8 @@ Launch/Session、安全链、Shell 和 SDK。这里保留阶段划分用于说�
 - 多 Pod 并发和故障注入测试；
 - 开启宿主 `RECORD_UPDATE/PROCESS_START` Bridge 保存校验；页内动作不要求 `ACTION_EXECUTE`。
 
-### 21.5 阶段 4：可选扩展（未实施）
+### 21.5 阶段 4：有真实需求后重新评审（未实施）
 
-- 签名 Webhook 的 Embed 业务事件；
 - 宿主级文件回传/下载 API；FORM 内原生附件组件已随表单运行；
 - 审批任务和关联内容；
 - OIDC Discovery/更丰富的企业 SSO；
@@ -3729,8 +3724,7 @@ Flow 管理员需提供：
 curl --request POST 'https://api.flow.example.com/oauth2/token' \
   --user '<client_id>:<client_secret>' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
-  --data-urlencode 'grant_type=client_credentials' \
-  --data-urlencode 'scope=embed.launch'
+  --data-urlencode 'grant_type=client_credentials'
 ```
 
 创建 Launch：
@@ -3768,7 +3762,7 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 
 | 现象 | 优先检查 |
 | --- | --- |
-| OAuth 401 | Client 状态、Secret、Scope、Token URL |
+| OAuth 401 | Client 状态、Secret、Token URL |
 | Launch 403 | Application CIDR、Grant、Origin、Provider、Binding、Flow 用户 |
 | iframe 浏览器拒绝加载 | Entry 响应 CSP `frame-ancestors` 和实际 Parent Origin |
 | iframe 跳到登录 | Route 是否跳过 `restoreAuthSession`、是否误用普通 Request |
@@ -3785,7 +3779,7 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 
 - [ ] 生产 Application 使用独立 Client，不与测试共用；
 - [ ] 已部署并验证专用 Embed Origin/VHost/Ingress、TLS、同源 Runtime 代理和动态 CSP；未完成不得上线；
-- [ ] `embed.launch` 是该 Client 的最小必要 Scope；
+- [ ] Client Credential 有效、应用为 ACTIVE，机器 Token 仅能访问 Embed launch；
 - [ ] 生产 Origin 精确且全部使用 HTTPS；
 - [ ] 默认使用签名用户断言，`aud/iss/kid` 正确；
 - [ ] 所有外部人员已精确绑定到已启用 Flow 用户；
@@ -3816,7 +3810,7 @@ curl --request POST 'https://api.flow.example.com/api/open/v1/embed-launches' \
 | 宿主直接动作 | 通用 Bridge 命令关闭；不影响 iframe 内原生按钮 |
 | Session 过期 | 宿主重新 Launch，不跳 Flow 登录 |
 | 非 Flow 外部人员 | V1 不支持 |
-| 可靠业务回调 | 后续建设签名 Webhook；V1 不把 postMessage 当可靠回调 |
+| 可靠业务回调 | 当前不提供；出现具名接入方需求后单独评审，postMessage 不作为可靠回调 |
 
 ## 25. 结论
 

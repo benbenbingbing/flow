@@ -1,12 +1,11 @@
 # Flow 系统数据库设计文档
-
-文档版本：1.4；整理日期：2026-09-09。
+文档版本：1.6；整理日期：2026-09-10。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
-文档收录 V082 扩展迁移后的 153 张平台表、2,221 个字段，其中七张为历史保留表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
+文档收录 V084 退役迁移后的 139 张平台表、2,024 个字段，其中七张为历史保留表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
 
-V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前向变更已在隔离 MySQL 8.0 实例验证。业务结构结合 V001—V079 SQL 迁移、V080 Java 迁移、V081—V082 SQL 迁移及当前源码说明；历史保留表按实际库结构登记。
+V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前向变更曾在隔离 MySQL 8.0 实例验证；V083—V084 按前向迁移和当前源码整理，发布前仍须在 MySQL 8 环境执行迁移验证。业务结构结合 V001—V079 SQL 迁移、V080 Java 迁移、V081—V084 SQL 迁移及当前源码说明；历史保留表按实际库结构登记。
 
 字段表中的类型、可空性和默认值按数据库定义填写。“NULL（隐式）”表示可空列没有显式 DEFAULT；JSON 格式要求分别由应用校验或表内 CHECK 约束承担。表间业务关联与物理外键分别说明。
 
@@ -42,17 +41,14 @@ V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前�
   - [3.3 entity_list_scope_delegation 列表数据范围委派表](#33-entity_list_scope_delegation-列表数据范围委派表)
   - [3.4 entity_list_scope_release 列表数据范围发布表](#34-entity_list_scope_release-列表数据范围发布表)
   - [3.5 entity_list_scope_audit_log 列表数据范围审计表](#35-entity_list_scope_audit_log-列表数据范围审计表)
-- [4. 实体版本与变更](#4-实体版本与变更)
+- [4. 实体数据版本与写入](#4-实体数据版本与写入)
   - [4.1 entity_version_config 实体数据版本策略表](#41-entity_version_config-实体数据版本策略表)
   - [4.2 entity_version_config_release 实体版本策略发布兼容表](#42-entity_version_config_release-实体版本策略发布兼容表)
-  - [4.3 entity_mutation_policy_config 实体变更策略草稿表](#43-entity_mutation_policy_config-实体变更策略草稿表)
-  - [4.4 entity_mutation_policy_release 实体变更策略发布表](#44-entity_mutation_policy_release-实体变更策略发布表)
-  - [4.5 entity_change_target_instance 变更实际目标记录表](#45-entity_change_target_instance-变更实际目标记录表)
-  - [4.6 entity_mutation_receipt 实体变更幂等回执表](#46-entity_mutation_receipt-实体变更幂等回执表)
-  - [4.7 entity_record_version 实体记录版本表](#47-entity_record_version-实体记录版本表)
-  - [4.8 entity_record_version_dataset 记录版本关系数据集表](#48-entity_record_version_dataset-记录版本关系数据集表)
-  - [4.9 entity_record_version_dataset_row 记录版本数据集行表](#49-entity_record_version_dataset_row-记录版本数据集行表)
-  - [4.10 entity_record_version_counter 记录版本计数器表](#410-entity_record_version_counter-记录版本计数器表)
+  - [4.3 entity_mutation_receipt 实体变更幂等回执表](#43-entity_mutation_receipt-实体变更幂等回执表)
+  - [4.4 entity_record_version 实体记录版本表](#44-entity_record_version-实体记录版本表)
+  - [4.5 entity_record_version_dataset 记录版本关系数据集表](#45-entity_record_version_dataset-记录版本关系数据集表)
+  - [4.6 entity_record_version_dataset_row 记录版本数据集行表](#46-entity_record_version_dataset_row-记录版本数据集行表)
+  - [4.7 entity_record_version_counter 记录版本计数器表](#47-entity_record_version_counter-记录版本计数器表)
 - [5. 流程设计](#5-流程设计)
   - [5.1 process_definition_config 流程定义配置表](#51-process_definition_config-流程定义配置表)
   - [5.2 process_version_history 流程发布历史表](#52-process_version_history-流程发布历史表)
@@ -118,23 +114,12 @@ V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前�
   - [9.11 sys_role_menu 角色菜单权限关联表](#911-sys_role_menu-角色菜单权限关联表)
   - [9.12 auth_login_throttle 登录失败限流表](#912-auth_login_throttle-登录失败限流表)
   - [9.13 auth_refresh_session 浏览器刷新会话表](#913-auth_refresh_session-浏览器刷新会话表)
-- [10. 开放集成与回调](#10-开放集成与回调)
+- [10. 集成应用安全底座](#10-集成应用安全底座)
   - [10.1 integration_application 外部集成应用表](#101-integration_application-外部集成应用表)
   - [10.2 integration_application_credential 集成应用凭证表](#102-integration_application_credential-集成应用凭证表)
-  - [10.3 integration_application_scope 集成应用作用域表](#103-integration_application_scope-集成应用作用域表)
-  - [10.4 integration_process_grant 集成应用流程授权表](#104-integration_process_grant-集成应用流程授权表)
-  - [10.5 integration_rate_limit_bucket 集成应用限流桶表](#105-integration_rate_limit_bucket-集成应用限流桶表)
-  - [10.6 integration_idempotency_record 开放接口幂等记录表](#106-integration_idempotency_record-开放接口幂等记录表)
-  - [10.7 integration_process_binding 外部业务流程绑定表](#107-integration_process_binding-外部业务流程绑定表)
-  - [10.8 integration_api_request_lease 开放接口并发租约表](#108-integration_api_request_lease-开放接口并发租约表)
-  - [10.9 integration_workflow_scenario 外部流程场景草稿表](#109-integration_workflow_scenario-外部流程场景草稿表)
-  - [10.10 integration_workflow_scenario_revision 外部流程场景发布版本表](#1010-integration_workflow_scenario_revision-外部流程场景发布版本表)
-  - [10.11 integration_secret 集成密钥密文表](#1011-integration_secret-集成密钥密文表)
-  - [10.12 integration_connector_config 集成连接器配置表](#1012-integration_connector_config-集成连接器配置表)
-  - [10.13 webhook_endpoint 回调目标端点表](#1013-webhook_endpoint-回调目标端点表)
-  - [10.14 webhook_subscription 回调事件订阅表](#1014-webhook_subscription-回调事件订阅表)
-  - [10.15 webhook_event 稳定回调事件表](#1015-webhook_event-稳定回调事件表)
-  - [10.16 webhook_delivery 回调投递任务表](#1016-webhook_delivery-回调投递任务表)
+  - [10.3 integration_rate_limit_bucket 集成应用限流桶表](#103-integration_rate_limit_bucket-集成应用限流桶表)
+  - [10.4 integration_idempotency_record Embed 写入幂等记录表](#104-integration_idempotency_record-embed-写入幂等记录表)
+  - [10.5 integration_api_request_lease Embed 请求并发租约表](#105-integration_api_request_lease-embed-请求并发租约表)
 - [11. 嵌入式视图与会话](#11-嵌入式视图与会话)
   - [11.1 embed_view 嵌入视图草稿表](#111-embed_view-嵌入视图草稿表)
   - [11.2 embed_view_release 嵌入视图发布快照表](#112-embed_view_release-嵌入视图发布快照表)
@@ -1686,7 +1671,14 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 实现定位：[EntityListScopeAuditLogMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/infrastructure/persistence/mapper/EntityListScopeAuditLogMapper.java)、[EntityListScopeAuditLog.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/infrastructure/persistence/record/EntityListScopeAuditLog.java)、[EntityListScopeAuditService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/EntityListScopeAuditService.java)。
 
-## 4. 实体版本与变更
+## 4. 实体数据版本与写入
+
+V083 已完整删除独立“实体变更策略”的配置、发布快照、跨实体目标运行数据及
+管理权限，对应的 `entity_mutation_policy_config`、
+`entity_mutation_policy_release` 和 `entity_change_target_instance` 不再属于当前
+schema。V083 还会从有效的数据版本当前配置、兼容草稿和兼容发布 JSON 中删除
+`steps` 与 `targetBindings`，但保留 `scenarios`、`triggers` 和数据版本历史本体。
+`entity_mutation_receipt` 是通用实体写入与界面动作共享的幂等底座，继续保留。
 
 ### 4.1 entity_version_config 实体数据版本策略表
 
@@ -1733,7 +1725,7 @@ active_composition_key varchar(100) GENERATED ALWAYS AS ( CASE WHEN deleted = 0 
 
 #### 4.1.4 业务规则
 
-当前配置统一保存到 config_document。启用时，新业务变更按当前配置生成版本；停用只阻止后续捕获，不删除既有记录版本。写入规则、执行步骤和变更目标继续由独立变更策略管理。
+当前配置统一保存到 config_document。启用时，新业务变更按当前配置生成版本；停用只阻止后续捕获，不删除既有记录版本。该配置只负责版本捕获与快照范围，不承担已经由 V083 退役的写入步骤或跨实体变更编排。
 
 默认不冻结配置写时必须采用四阶段滚动升级：N 版（V082 expand）由应用查询优先解析有效的 active release，兼容旧 Pod 的发布结果；legacy 草稿始终不参与当前运行语义，新管理写入则通过应用桥同步旧存储。切换 N+1 的 config-only 读取前，必须通过迁移或对账把所有有效 active release 最终投影回 config_document，并验证投影完整、一致。N+1 停止 active release 兼容读取，可移除旧对外路由，但仍须兼容双写旧存储并保留旧 schema。N+2 改为 config-only 读写并继续保留旧 schema，完成全量滚动且确认所有 N+1 Pod 和在途事务退出后，N+3 才可由 pre-upgrade contract 删除旧字段、发布表和发布权限。
 
@@ -1787,152 +1779,15 @@ N 版（V082 expand）的应用查询仍会读取 active release，以兼容混�
 
 结构来源于历史 [V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql) 和 [V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)；V082 明确保留。默认清理顺序是：N+1 切换 config-only 读取前先最终投影并对账有效 active release，同时继续兼容写入；N+2 停止兼容写入、保留旧 schema 并完成全量滚动；确认所有 N+1 Pod 和在途事务退出后，N+3 再执行 contract 迁移删除旧表、旧字段和发布权限。若压缩为三阶段，N+1 全程必须冻结配置写并排空事务，直至全部旧 Pod 退出。
 
-### 4.3 entity_mutation_policy_config 实体变更策略草稿表
+### 4.3 entity_mutation_receipt 实体变更幂等回执表
 
 #### 4.3.1 业务说明
 
-独立维护实体写入规则、执行步骤和跨实体变更目标，避免继续混入数据版本留存策略。
+持久化通用实体写入请求的幂等键、请求摘要及结果，防止重试重复应用写入；它同时服务于界面组合动作，不是已退役实体变更策略的专属表。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 14 个。
 
 #### 4.3.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 变更策略配置ID。 | 现存 |
-| `entity_id` | 实体定义ID | `varchar(64)` | 否 | 无 | 实体定义ID。 | 现存 |
-| `entity_code` | 实体编码 | `varchar(100)` | 否 | 无 | 实体编码。 | 现存 |
-| `enabled` | 是否启用 | `tinyint` | 否 | `'0'` | 是否启用实体变更策略。 | 现存 |
-| `draft_document` | 规则、步骤和变更目标草稿JSON | `longtext` | 是 | `NULL`（隐式） | 规则、步骤和变更目标草稿JSON。 | 现存 |
-| `active_release_id` | 当前运行发布快照ID | `varchar(64)` | 是 | `NULL` | 当前运行发布快照ID。 | 现存 |
-| `revision` | 修订号 | `int` | 否 | `'1'` | 草稿修订号。 | 现存 |
-| `status` | 状态 | `varchar(20)` | 否 | `'DRAFT'` | 状态。 | 现存 |
-| `migration_state` | 迁移状态 | `varchar(30)` | 否 | `'NATIVE'` | 迁移状态。 | 现存 |
-| `create_by` | 创建人 | `varchar(64)` | 是 | `NULL` | 创建人。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-| `update_by` | 修改人 | `varchar(64)` | 是 | `NULL` | 修改人。 | 现存 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
-| `deleted` | 逻辑删除标记 | `tinyint` | 否 | `'0'` | 逻辑删除标记。 | 现存 |
-
-#### 4.3.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_entity_mutation_policy_code` (`entity_code`,`deleted`)``。
-- ``KEY `idx_entity_mutation_policy_release` (`active_release_id`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `entity_id` → [entity_definition](#11-entity_definition-实体定义表).`id`；两端物理类型不同。
-- `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `active_release_id` → [entity_mutation_policy_release](#44-entity_mutation_policy_release-实体变更策略发布表).`id`。
-
-#### 4.3.4 业务规则
-
-草稿保存与发布分别管理。运行时只读取 active_release_id 指向的独立策略发布；未发布的草稿不参与执行。
-
-#### 4.3.5 来源与迁移
-
-结构依据：[V044__split_entity_mutation_policy.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V044__split_entity_mutation_policy.sql)。
-
-实现定位：[EntityMutationPolicyConfigMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/mapper/EntityMutationPolicyConfigMapper.java)、[EntityMutationPolicyConfig.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/record/EntityMutationPolicyConfig.java)、[EntityMutationPolicyService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/application/EntityMutationPolicyService.java)。
-
-### 4.4 entity_mutation_policy_release 实体变更策略发布表
-
-#### 4.4.1 业务说明
-
-保存独立变更策略的不可变版本，供实际实体变更流程固定执行规则。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 8 个。
-
-#### 4.4.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 发布快照ID。 | 现存 |
-| `config_id` | 变更策略配置ID | `varchar(64)` | 否 | 无 | 变更策略配置ID。 | 现存 |
-| `version` | 版本号 | `int` | 否 | 无 | 发布版本号。 | 现存 |
-| `config_document` | 不可变变更策略JSON | `longtext` | 否 | 无 | 不可变变更策略JSON。 | 现存 |
-| `published_by` | 发布人 | `varchar(64)` | 是 | `NULL` | 发布人。 | 现存 |
-| `published_by_name` | 发布人名称 | `varchar(100)` | 是 | `NULL` | 发布人名称。 | 现存 |
-| `publish_time` | 发布时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 发布时间。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-
-#### 4.4.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_entity_mutation_policy_release` (`config_id`,`version`)``。
-- ``KEY `idx_entity_mutation_policy_release_time` (`config_id`,`publish_time`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `config_id` → [entity_mutation_policy_config](#43-entity_mutation_policy_config-实体变更策略草稿表).`id`。
-
-#### 4.4.4 业务规则
-
-config_id 与 version 组合唯一，草稿修改不应改写已发布策略内容。
-
-#### 4.4.5 来源与迁移
-
-结构依据：[V044__split_entity_mutation_policy.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V044__split_entity_mutation_policy.sql)。
-
-实现定位：[EntityMutationPolicyReleaseMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/mapper/EntityMutationPolicyReleaseMapper.java)、[EntityMutationPolicyRelease.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/infrastructure/persistence/record/EntityMutationPolicyRelease.java)、[EntityMutationPolicyService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutationpolicy/application/EntityMutationPolicyService.java)。
-
-### 4.5 entity_change_target_instance 变更实际目标记录表
-
-#### 4.5.1 业务说明
-
-记录变更流程实际解析出的目标记录、锁定版本和执行关联，供变更应用及追溯。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
-
-#### 4.5.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 目标实例ID。 | 现存 |
-| `binding_code` | 绑定编码 | `varchar(100)` | 否 | 无 | 绑定编码。 | 现存 |
-| `source_entity_code` | 变更申请实体 | `varchar(100)` | 否 | 无 | 变更申请实体。 | 现存 |
-| `source_record_id` | 变更申请记录ID | `varchar(64)` | 否 | 无 | 变更申请记录ID。 | 现存 |
-| `process_instance_id` | 流程实例ID | `varchar(64)` | 是 | `NULL` | 流程实例ID。 | 现存 |
-| `target_entity_code` | 目标实体 | `varchar(100)` | 否 | 无 | 目标实体。 | 现存 |
-| `target_record_id` | 目标记录ID | `varchar(64)` | 否 | 无 | 目标记录ID。 | 现存 |
-| `baseline_version_no` | 目标冻结时版本号 | `int` | 是 | `NULL` | 目标冻结时版本号。 | 现存 |
-| `target_document` | 解析时目标与映射快照 | `longtext` | 是 | `NULL`（隐式） | 解析时目标与映射快照。 | 现存 |
-| `status` | 状态 | `varchar(30)` | 否 | `'FROZEN'` | 状态。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
-
-#### 4.5.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_entity_change_target_instance` (`source_entity_code`,`source_record_id`,`process_instance_id`,`binding_code`,`target_entity_code`,`target_record_id`)``。
-- ``KEY `idx_entity_change_target_process` (`process_instance_id`,`status`)``。
-
-本表未声明物理外键。
-
-#### 4.5.4 业务规则
-
-设计态目标规则与运行时实际目标分别保存；本表属于运行事实。
-
-#### 4.5.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-实现定位：[EntityChangeTargetInstanceMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityChangeTargetInstanceMapper.java)、[EntityChangeTargetInstance.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityChangeTargetInstance.java)、[EntityChangeTargetService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityChangeTargetService.java)。
-
-### 4.6 entity_mutation_receipt 实体变更幂等回执表
-
-#### 4.6.1 业务说明
-
-持久化实体变更请求的幂等键、请求摘要及结果，防止重试重复应用写入。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 14 个。
-
-#### 4.6.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1951,7 +1806,7 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 
-#### 4.6.3 索引与关联
+#### 4.3.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_mutation_receipt_key` (`idempotency_key`)``。
@@ -1963,25 +1818,25 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
 
-#### 4.6.4 业务规则
+#### 4.3.4 业务规则
 
 相同幂等键需要匹配请求摘要；不能把已有成功回执用于不同请求内容。
 
-#### 4.6.5 来源与迁移
+#### 4.3.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
+结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)；[V083__remove_entity_mutation_policy.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V083__remove_entity_mutation_policy.sql) 明确保留本表。
 
 实现定位：[EntityMutationReceiptMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityMutationReceiptMapper.java)、[UiViewCompositionActionReceiptService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiViewCompositionActionReceiptService.java)、[EntityMutationReceiptService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityMutationReceiptService.java)。
 
-### 4.7 entity_record_version 实体记录版本表
+### 4.4 entity_record_version 实体记录版本表
 
-#### 4.7.1 业务说明
+#### 4.4.1 业务说明
 
 为业务记录保存版本号、业务意图、原始快照、冻结展示语义和各类摘要。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 37 个。
 
-#### 4.7.2 字段设计
+#### 4.4.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2023,7 +1878,7 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 | `snapshot_document` | 快照文档 | `longtext` | 否 | 无 | 快照文档。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.7.3 索引与关联
+#### 4.4.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_record_version_no` (`entity_code`,`record_id`,`version_no`)``。
@@ -2039,25 +1894,25 @@ config_id 与 version 组合唯一，草稿修改不应改写已发布策略内�
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
 - `config_release_id` → [entity_version_config_release](#42-entity_version_config_release-实体版本策略发布兼容表).`id`（仅旧 Pod）。
 
-#### 4.7.4 业务规则
+#### 4.4.4 业务规则
 
 V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_document。记录自身已经冻结配置所需的数据、展示和范围语义，因此新代码不再依赖配置发布 ID；两个兼容列随发布表在后续 contract 迁移删除。
 
-#### 4.7.5 来源与迁移
+#### 4.4.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)、[V046__record_version_global_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V046__record_version_global_idempotency.sql)、[V082__simplify_entity_version_configuration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V082__simplify_entity_version_configuration.sql)。
 
 实现定位：[EntityRecordVersionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionMapper.java)、[BusinessMigrationPreflight.java](../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[EntityRecordVersionService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityRecordVersionService.java)。
 
-### 4.8 entity_record_version_dataset 记录版本关系数据集表
+### 4.5 entity_record_version_dataset 记录版本关系数据集表
 
-#### 4.8.1 业务说明
+#### 4.5.1 业务说明
 
 为一个记录版本冻结一层关系集合及范围、完整性、行数和内容摘要。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 18 个。
 
-#### 4.8.2 字段设计
+#### 4.5.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2080,7 +1935,7 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 | `complete` | V2必须完整 | `tinyint` | 否 | `'1'` | V2必须完整，禁止静默截断。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.8.3 索引与关联
+#### 4.5.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_record_version_dataset_node` (`version_id`,`node_code`)``。
@@ -2090,27 +1945,27 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 业务关联：
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
-- `version_id` → [entity_record_version](#47-entity_record_version-实体记录版本表).`id`。
+- `version_id` → [entity_record_version](#44-entity_record_version-实体记录版本表).`id`。
 
-#### 4.8.4 业务规则
+#### 4.5.4 业务规则
 
 数据集属于指定版本；按冻结关系和范围解释，不实时重新查询业务关系。
 
-#### 4.8.5 来源与迁移
+#### 4.5.5 来源与迁移
 
 结构依据：[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
 
 实现定位：[EntityRecordVersionDatasetMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionDatasetMapper.java)、[EntityRecordVersionDataset.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityRecordVersionDataset.java)、[EntityVersionRestorePlanService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionRestorePlanService.java)。
 
-### 4.9 entity_record_version_dataset_row 记录版本数据集行表
+### 4.6 entity_record_version_dataset_row 记录版本数据集行表
 
-#### 4.9.1 业务说明
+#### 4.6.1 业务说明
 
 保存关系数据集中每条冻结记录的标识、顺序、快照和摘要。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 8 个。
 
-#### 4.9.2 字段设计
+#### 4.6.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2123,7 +1978,7 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 | `values_document` | 值集合文档 | `longtext` | 否 | 无 | fieldCode到FrozenValue的JSON。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
-#### 4.9.3 索引与关联
+#### 4.6.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_entity_record_version_dataset_row` (`dataset_id`,`record_id`)``。
@@ -2132,27 +1987,27 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 
 业务关联：
 
-- `dataset_id` → [entity_record_version_dataset](#48-entity_record_version_dataset-记录版本关系数据集表).`id`。
+- `dataset_id` → [entity_record_version_dataset](#45-entity_record_version_dataset-记录版本关系数据集表).`id`。
 
-#### 4.9.4 业务规则
+#### 4.6.4 业务规则
 
 dataset 主表描述关系集合，本表保存集合内各条记录的冻结内容。
 
-#### 4.9.5 来源与迁移
+#### 4.6.5 来源与迁移
 
 结构依据：[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
 
 实现定位：[EntityRecordVersionDatasetRowMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionDatasetRowMapper.java)、[EntityRecordVersionDatasetRow.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/record/EntityRecordVersionDatasetRow.java)、[EntityVersionRestorePlanService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityVersionRestorePlanService.java)。
 
-### 4.10 entity_record_version_counter 记录版本计数器表
+### 4.7 entity_record_version_counter 记录版本计数器表
 
-#### 4.10.1 业务说明
+#### 4.7.1 业务说明
 
 按实体及记录维护下一版本号的事务计数状态，避免并发捕获产生重复版本。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 4 个。
 
-#### 4.10.2 字段设计
+#### 4.7.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -2161,7 +2016,7 @@ dataset 主表描述关系集合，本表保存集合内各条记录的冻结内
 | `last_version_no` | 最近版本编号 | `int` | 否 | `'0'` | 最近版本编号。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 
-#### 4.10.3 索引与关联
+#### 4.7.3 索引与关联
 
 - ``PRIMARY KEY (`entity_code`,`record_id`)``。
 
@@ -2171,11 +2026,11 @@ dataset 主表描述关系集合，本表保存集合内各条记录的冻结内
 
 - `entity_code` → [entity_definition](#11-entity_definition-实体定义表).`entity_code`。
 
-#### 4.10.4 业务规则
+#### 4.7.4 业务规则
 
 该计数值不是业务记录当前数据内容；版本事实以 entity_record_version 为准。
 
-#### 4.10.5 来源与迁移
+#### 4.7.5 来源与迁移
 
 结构依据：[V045__entity_version_scope_snapshot_v2.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)。
 
@@ -4063,7 +3918,7 @@ exception_id 归属指定日历例外，不能直接与星期模板混用。
 | `source_code` | 稳定编码 | `varchar(100)` | 否 | 无 | 稳定编码。 | 现存 |
 | `source_name` | 名称 | `varchar(200)` | 否 | 无 | 名称。 | 现存 |
 | `source_type` | 来源类型 | `varchar(30)` | 否 | 无 | 来源类型。 | 现存 |
-| `provider_code` | Provider或Connector注册编码 | `varchar(100)` | 是 | `NULL` | Provider或Connector注册编码。 | 现存 |
+| `provider_code` | Provider注册编码 | `varchar(100)` | 是 | `NULL` | Provider注册编码。 | 现存 |
 | `scope_type` | 范围类型 | `varchar(20)` | 否 | `'GLOBAL'` | 范围类型。 | 现存 |
 | `scope_id` | 作用域资源ID | `varchar(64)` | 是 | `NULL` | 作用域资源ID。 | 现存 |
 | `config_document` | 受控配置JSON文档 | `longtext` | 是 | `NULL`（隐式） | 受控配置JSON文档。 | 现存 |
@@ -4089,7 +3944,7 @@ operations_document 保存各操作及其输入输出契约。
 
 #### 8.1.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V031__remove_entity_query_source_type.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V031__remove_entity_query_source_type.sql)、[V034__interface_operation_context.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)。
+结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V031__remove_entity_query_source_type.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V031__remove_entity_query_source_type.sql)、[V034__interface_operation_context.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)、[V084__remove_retired_open_integration_features.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V084__remove_retired_open_integration_features.sql)。
 
 实现定位：[UiDataSourceDefinitionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiDataSourceDefinitionMapper.java)、[CurrentBaselineSchemaUpgrade.java](../workflow-server/workflow-app/src/main/java/com/workflow/config/CurrentBaselineSchemaUpgrade.java)、[ConfigMigrationAssetService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
 
@@ -5170,7 +5025,11 @@ password 保存口令哈希，token_version 用于撤销此前签发的会话。
 
 实现定位：[AuthRefreshSessionMapper.java](../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/AuthRefreshSessionMapper.java)、[SysUserService.java](../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/application/SysUserService.java)。
 
-## 10. 开放集成与回调
+## 10. 集成应用安全底座
+
+[`V084__remove_retired_open_integration_features.sql`](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V084__remove_retired_open_integration_features.sql)
+已删除公共流程 API、外部流程场景、Webhook、Connector、集成 Secret、可配置 Scope
+和流程授权的专用表。本章仅记录 Embed/OAuth 仍在使用的应用身份与流量安全存储。
 
 ### 10.1 integration_application 外部集成应用表
 
@@ -5215,13 +5074,13 @@ password 保存口令哈希，token_version 用于撤销此前签发的会话。
 
 #### 10.1.4 业务规则
 
-应用身份与代表的人员身份分离；下属凭证、作用域和资源授权分别管理。
+应用身份与代表的人员身份分离；应用凭证负责机器认证，Embed 视图授权由 Embed 模块管理。
 
 #### 10.1.5 来源与迁移
 
 结构依据：[V013__integration_applications.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V013__integration_applications.sql)。
 
-实现定位：[IntegrationApplicationMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationApplicationMapper.java)、[IntegrationConnectorConfigMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/connector/config/IntegrationConnectorConfigMapper.java)、[WebhookValidationService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/application/WebhookValidationService.java)。
+实现定位：[IntegrationApplicationMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationApplicationMapper.java)。
 
 ### 10.2 integration_application_credential 集成应用凭证表
 
@@ -5280,95 +5139,15 @@ active_application_id varchar(64) COLLATE utf8mb4_bin GENERATED ALWAYS AS ( CASE
 
 实现定位：[IntegrationCredentialMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationCredentialMapper.java)、[IntegrationApplicationCredentialRecord.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/record/IntegrationApplicationCredentialRecord.java)、[IntegrationApplicationService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/IntegrationApplicationService.java)。
 
-### 10.3 integration_application_scope 集成应用作用域表
+### 10.3 integration_rate_limit_bucket 集成应用限流桶表
 
 #### 10.3.1 业务说明
-
-为应用授予允许调用的 API 作用域。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 5 个。
-
-#### 10.3.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `scope` | 范围 | `varchar(100)` | 否 | 无 | 范围。 | 现存 |
-| `granted_by` | 授权人员 | `varchar(64)` | 否 | 无 | 授权人员。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.3.3 索引与关联
-
-- ``PRIMARY KEY (`application_id`,`scope`)``。
-- ``KEY `idx_integration_scope_scope` (`scope`,`application_id`)``。
-- ``CONSTRAINT `fk_integration_scope_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.3.4 业务规则
-
-作用域只表示接口能力，具体流程或嵌入视图还需要资源授权。
-
-#### 10.3.5 来源与迁移
-
-结构依据：[V013__integration_applications.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V013__integration_applications.sql)、[V014__integration_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V014__integration_idempotency.sql)。
-
-实现定位：[IntegrationScopeMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationScopeMapper.java)、[EmbedManagementMapper.java](../workflow-server/workflow-embed/src/main/java/com/workflow/embed/management/infrastructure/persistence/EmbedManagementMapper.java)、[IntegrationApplicationService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/IntegrationApplicationService.java)。
-
-### 10.4 integration_process_grant 集成应用流程授权表
-
-#### 10.4.1 业务说明
-
-将允许使用的流程及输入契约、消息键授予集成应用。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 7 个。
-
-#### 10.4.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `process_key` | 流程键 | `varchar(100)` | 否 | 无 | 流程键。 | 现存 |
-| `input_schema_json` | 输入结构JSON | `longtext` | 否 | `('{"type":"object","maxProperties":0,"additionalProperties":false}')` | 输入结构JSON。 | 现存 |
-| `allowed_message_keys` | 允许的消息键集合 | `longtext` | 否 | `('[]')` | 允许的消息键集合。 | 现存 |
-| `granted_by` | 授权人员 | `varchar(64)` | 否 | 无 | 授权人员。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.4.3 索引与关联
-
-- ``PRIMARY KEY (`application_id`,`process_key`)``。
-- ``KEY `idx_integration_process_grant_process` (`process_key`,`application_id`)``。
-- ``CONSTRAINT `fk_integration_process_grant_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_integration_process_grant_schema` CHECK ( JSON_VALID(`input_schema_json`) AND CHAR_LENGTH(`input_schema_json`) <= 65535 )``。
-- ``CONSTRAINT `chk_integration_process_grant_messages` CHECK ( JSON_VALID(`allowed_message_keys`) AND CHAR_LENGTH(`allowed_message_keys`) <= 8192 )``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.4.4 业务规则
-
-input_schema_json 和 allowed_message_keys 有 JSON 合法性与大小约束；默认空对象契约不表示接受任意输入。
-
-#### 10.4.5 来源与迁移
-
-结构依据：[V013__integration_applications.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V013__integration_applications.sql)、[V014__integration_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V014__integration_idempotency.sql)。
-
-实现定位：[IntegrationProcessGrantMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationProcessGrantMapper.java)、[OpenProcessService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/OpenProcessService.java)。
-
-### 10.5 integration_rate_limit_bucket 集成应用限流桶表
-
-#### 10.5.1 业务说明
 
 记录应用在时间窗口内的请求次数，供跨实例流量控制。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 5 个。
 
-#### 10.5.2 字段设计
+#### 10.3.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -5378,7 +5157,7 @@ input_schema_json 和 allowed_message_keys 有 JSON 合法性与大小约束；�
 | `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
 
-#### 10.5.3 索引与关联
+#### 10.3.3 索引与关联
 
 - ``PRIMARY KEY (`bucket_key`,`window_epoch`)``。
 - ``KEY `idx_integration_rate_bucket_updated` (`update_time`)``。
@@ -5386,25 +5165,25 @@ input_schema_json 和 allowed_message_keys 有 JSON 合法性与大小约束；�
 
 本表未声明物理外键。
 
-#### 10.5.4 业务规则
+#### 10.3.4 业务规则
 
 按窗口和桶键计数，与并发租约表控制的同时执行数量不同。
 
-#### 10.5.5 来源与迁移
+#### 10.3.5 来源与迁移
 
 结构依据：[V013__integration_applications.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V013__integration_applications.sql)。
 
 实现定位：[IntegrationRateLimitMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationRateLimitMapper.java)、[EmbedTrafficControlMapper.java](../workflow-server/workflow-embed/src/main/java/com/workflow/embed/infrastructure/persistence/mapper/EmbedTrafficControlMapper.java)。
 
-### 10.6 integration_idempotency_record 开放接口幂等记录表
+### 10.4 integration_idempotency_record Embed 写入幂等记录表
 
-#### 10.6.1 业务说明
+#### 10.4.1 业务说明
 
 保存应用写请求的幂等键、请求摘要、处理中状态和响应结果。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
 
-#### 10.6.2 字段设计
+#### 10.4.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -5424,7 +5203,7 @@ input_schema_json 和 allowed_message_keys 有 JSON 合法性与大小约束；�
 | `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
 
-#### 10.6.3 索引与关联
+#### 10.4.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_integration_idempotency_operation` (`application_id`,`operation`,`idempotency_key`)``。
@@ -5440,108 +5219,36 @@ input_schema_json 和 allowed_message_keys 有 JSON 合法性与大小约束；�
 
 - `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
 
-#### 10.6.4 业务规则
+#### 10.4.4 业务规则
 
 租约及 fencing_token 避免过期执行者覆盖新结果；同一幂等键不得复用于不同请求。
 
-#### 10.6.5 来源与迁移
+#### 10.4.5 来源与迁移
 
 结构依据：[V014__integration_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V014__integration_idempotency.sql)。
 
-实现定位：[IntegrationIdempotencyMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationIdempotencyMapper.java)、[EmbedIdempotencyPort.java](../workflow-server/workflow-embed/src/main/java/com/workflow/embed/application/port/EmbedIdempotencyPort.java)、[OpenIdempotencyService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/OpenIdempotencyService.java)。
+实现定位：[EmbedIdempotencyMapper.java](../workflow-server/workflow-embed/src/main/java/com/workflow/embed/infrastructure/persistence/mapper/EmbedIdempotencyMapper.java)、[EmbedIdempotencyPort.java](../workflow-server/workflow-embed/src/main/java/com/workflow/embed/application/port/EmbedIdempotencyPort.java)。
 
-### 10.7 integration_process_binding 外部业务流程绑定表
+### 10.5 integration_api_request_lease Embed 请求并发租约表
 
-#### 10.7.1 业务说明
+#### 10.5.1 业务说明
 
-固定外部业务标识与平台流程实例的关系，并保存场景、输入、结果映射及身份快照。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 22 个。
-
-#### 10.7.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `scenario_id` | 场景ID | `varchar(64)` | 是 | `NULL` | 场景ID。 | 现存 |
-| `scenario_key` | 场景键 | `varchar(100)` | 是 | `NULL` | 场景键。 | 现存 |
-| `scenario_revision` | 场景修订号 | `bigint` | 是 | `NULL` | 场景修订号。 | 现存 |
-| `scenario_config_hash` | 场景配置哈希 | `char(64)` | 是 | `NULL` | 场景配置哈希。 | 现存 |
-| `external_system` | 外部系统 | `varchar(64)` | 否 | 无 | 外部系统。 | 现存 |
-| `business_type` | 业务类型 | `varchar(64)` | 否 | 无 | 业务类型。 | 现存 |
-| `business_id` | 业务ID | `varchar(128)` | 否 | 无 | 业务ID。 | 现存 |
-| `business_version` | 业务版本 | `varchar(128)` | 是 | `NULL` | 业务版本。 | 现存 |
-| `business_version_key` | 业务版本唯一性键 | `varchar(128)` | 是 | 生成列（非默认值） | 业务版本唯一性键；数据库生成，表达式见本表实现说明。 | 现存 |
-| `process_instance_id` | 流程实例ID | `varchar(128)` | 否 | 无 | 流程实例ID。 | 现存 |
-| `process_definition_key` | 流程定义键 | `varchar(100)` | 否 | 无 | 流程定义键。 | 现存 |
-| `input_snapshot_json` | 输入快照JSON | `longtext` | 是 | `NULL` | 输入快照JSON。 | 现存 |
-| `input_hash` | 输入哈希 | `char(64)` | 是 | `NULL` | 输入哈希。 | 现存 |
-| `outcome_mapping_snapshot_json` | 结果映射快照JSON | `longtext` | 是 | `NULL` | 结果映射快照JSON。 | 现存 |
-| `event_types_snapshot_json` | 事件类型集合快照JSON | `longtext` | 是 | `NULL` | 事件类型集合快照JSON。 | 现存 |
-| `external_initiator_id` | 外部发起人ID | `varchar(128)` | 是 | `NULL` | 外部发起人ID。 | 现存 |
-| `identity_namespace` | 身份命名空间 | `varchar(128)` | 是 | `NULL` | 身份命名空间。 | 现存 |
-| `identity_mapping_snapshot_json` | 身份映射快照JSON | `longtext` | 是 | `NULL` | 身份映射快照JSON。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.7.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_integration_binding_instance` (`application_id`,`process_instance_id`)``。
-- ``KEY `idx_integration_binding_instance` (`process_instance_id`)``。
-- ``KEY `idx_integration_binding_process` (`application_id`,`process_definition_key`,`create_time`)``。
-- ``CONSTRAINT `fk_integration_binding_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``UNIQUE KEY `uk_integration_binding_global_instance` (`process_instance_id`)``。
-- ``KEY `idx_integration_binding_scenario` (`application_id`,`scenario_key`,`create_time`)``。
-- ``CONSTRAINT `fk_integration_binding_scenario` FOREIGN KEY (`scenario_id`) REFERENCES `integration_workflow_scenario` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_integration_binding_snapshot` CHECK ( (`input_snapshot_json` IS NULL AND `input_hash` IS NULL) OR (`input_snapshot_json` IS NOT NULL AND JSON_VALID(`input_snapshot_json`) AND `input_hash` REGEXP '^[0-9a-f]{64}$' AND CHAR_LENGTH(`input_snapshot_json`) <= 262144) )``。
-- ``CONSTRAINT `chk_integration_binding_scenario_snapshot` CHECK ( (`scenario_id` IS NULL AND `outcome_mapping_snapshot_json` IS NULL AND `event_types_snapshot_json` IS NULL) OR (`scenario_id` IS NOT NULL AND JSON_VALID(`outcome_mapping_snapshot_json`) AND JSON_VALID(`event_types_snapshot_json`) AND CHAR_LENGTH(`outcome_mapping_snapshot_json`) <= 16384 AND CHAR_LENGTH(`event_types_snapshot_json`) <= 8192) )``。
-- ``CONSTRAINT `chk_integration_binding_business_version` CHECK (`business_version` IS NULL OR CHAR_LENGTH(`business_version`) > 0)``。
-- ``CONSTRAINT `chk_integration_binding_identity_namespace` CHECK (`identity_namespace` IS NULL OR CHAR_LENGTH(`identity_namespace`) > 0)``。
-- ``CONSTRAINT `chk_integration_binding_identity_snapshot` CHECK (`identity_mapping_snapshot_json` IS NULL OR (JSON_VALID(`identity_mapping_snapshot_json`) AND CHAR_LENGTH(`identity_mapping_snapshot_json`) <= 16384))``。
-- ``UNIQUE KEY `uk_integration_binding_business` (`application_id`, `external_system`, `business_type`, `business_id`, `business_version_key`)``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.7.4 业务规则
-
-business_version_key 把空业务版本归一后参与唯一性；外部业务版本、场景版本和流程版本不能混用。
-
-生成列 `business_version_key` 的定义：
-
-```sql
-business_version_key varchar(128) COLLATE utf8mb4_bin GENERATED ALWAYS AS (COALESCE(`business_version`, '')) STORED
-```
-
-#### 10.7.5 来源与迁移
-
-结构依据：[V014__integration_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V014__integration_idempotency.sql)、[V015__webhook_delivery.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V015__webhook_delivery.sql)、[V025__integration_workflow_scenarios.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V025__integration_workflow_scenarios.sql)、[V027__external_subject_version_and_identity_namespace.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V027__external_subject_version_and_identity_namespace.sql)、[V028__external_identity_mapping_snapshot.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V028__external_identity_mapping_snapshot.sql)、[V029__business_reference_version_uniqueness.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V029__business_reference_version_uniqueness.sql)。
-
-实现定位：[IntegrationProcessBindingMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationProcessBindingMapper.java)、[WebhookDomainEventPublisher.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/application/WebhookDomainEventPublisher.java)、[OpenProcessService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/OpenProcessService.java)。
-
-### 10.8 integration_api_request_lease 开放接口并发租约表
-
-#### 10.8.1 业务说明
-
-为应用和作用域记录短期并发请求占位，控制跨实例同时运行数。
+按应用和请求类别记录短期并发请求占位，控制跨实例同时运行数。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 6 个。
 
-#### 10.8.2 字段设计
+#### 10.5.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `lease_id` | 租约ID | `varchar(64)` | 否 | 无 | 租约ID。 | 现存 |
 | `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `scope_key` | 范围键 | `varchar(128)` | 否 | `''` | 范围键。 | 现存 |
+| `scope_key` | 并发配额范围键 | `varchar(128)` | 否 | `''` | 区分请求类别的内部键，不表示 OAuth Scope。 | 现存 |
 | `expires_at` | 过期时间 | `datetime(6)` | 否 | 无 | 过期时间。 | 现存 |
 | `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
 
-#### 10.8.3 索引与关联
+#### 10.5.3 索引与关联
 
 - ``PRIMARY KEY (`lease_id`)``。
 - ``KEY `idx_integration_api_lease_application` (`application_id`,`expires_at`)``。
@@ -5553,473 +5260,15 @@ business_version_key varchar(128) COLLATE utf8mb4_bin GENERATED ALWAYS AS (COALE
 
 - `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
 
-#### 10.8.4 业务规则
+#### 10.5.4 业务规则
 
-expires_at 限定租约有效期，scope_key 将不同请求范围隔离。
+expires_at 限定租约有效期，scope_key 将不同内部请求类别隔离。
 
-#### 10.8.5 来源与迁移
+#### 10.5.5 来源与迁移
 
 结构依据：[V014__integration_idempotency.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V014__integration_idempotency.sql)、[V068__embed_launch_sessions_and_receipts.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V068__embed_launch_sessions_and_receipts.sql)。
 
 实现定位：[IntegrationApiRequestLeaseMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationApiRequestLeaseMapper.java)、[EmbedTrafficControlMapper.java](../workflow-server/workflow-embed/src/main/java/com/workflow/embed/infrastructure/persistence/mapper/EmbedTrafficControlMapper.java)。
-
-### 10.9 integration_workflow_scenario 外部流程场景草稿表
-
-#### 10.9.1 业务说明
-
-按应用维护面向外部系统的业务场景及流程版本、输入输出和身份映射配置。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 19 个。
-
-#### 10.9.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `scenario_key` | 场景键 | `varchar(100)` | 否 | 无 | 场景键。 | 现存 |
-| `display_name` | 展示名称 | `varchar(128)` | 否 | 无 | 展示名称。 | 现存 |
-| `process_key` | 流程键 | `varchar(100)` | 否 | 无 | 流程键。 | 现存 |
-| `process_definition_version` | 流程定义版本 | `int` | 是 | `NULL` | 流程定义版本。 | 现存 |
-| `status` | 状态 | `varchar(16)` | 否 | `'ACTIVE'` | 状态；CHECK 枚举：'DRAFT','ACTIVE','DISABLED'。 | 现存 |
-| `input_schema_json` | 输入结构JSON | `longtext` | 否 | 无 | 输入结构JSON。 | 现存 |
-| `outcome_mapping_json` | 结果映射JSON | `longtext` | 否 | 无 | 结果映射JSON。 | 现存 |
-| `identity_mapping_json` | 身份映射JSON | `longtext` | 否 | 无 | 身份映射JSON。 | 现存 |
-| `event_types_json` | 事件类型集合JSON | `longtext` | 否 | 无 | 事件类型集合JSON。 | 现存 |
-| `revision` | 修订号 | `bigint` | 否 | `'1'` | 修订号。 | 现存 |
-| `published_revision` | 发布修订号 | `bigint` | 是 | `NULL` | 发布修订号。 | 现存 |
-| `draft_revision` | 草稿修订号 | `bigint` | 是 | `NULL` | 草稿修订号。 | 现存 |
-| `config_hash` | 配置哈希 | `char(64)` | 否 | 无 | 配置哈希。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `updated_by` | 修改人 | `varchar(64)` | 否 | 无 | 修改人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.9.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_integration_scenario_application_key` (`application_id`,`scenario_key`)``。
-- ``KEY `idx_integration_scenario_process` (`application_id`,`process_key`,`status`)``。
-- ``CONSTRAINT `fk_integration_scenario_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_integration_scenario_version` CHECK (`process_definition_version` IS NULL OR `process_definition_version` > 0)``。
-- ``CONSTRAINT `chk_integration_scenario_revision` CHECK (`revision` > 0)``。
-- ``CONSTRAINT `chk_integration_scenario_json` CHECK ( JSON_VALID(`input_schema_json`) AND JSON_VALID(`outcome_mapping_json`) AND JSON_VALID(`identity_mapping_json`) AND JSON_VALID(`event_types_json`) AND CHAR_LENGTH(`input_schema_json`) <= 65535 AND CHAR_LENGTH(`outcome_mapping_json`) <= 16384 AND CHAR_LENGTH(`identity_mapping_json`) <= 16384 AND CHAR_LENGTH(`event_types_json`) <= 8192 )``。
-- ``CONSTRAINT `chk_integration_scenario_hash` CHECK (`config_hash` REGEXP '^[0-9a-f]{64}$')``。
-- ``CONSTRAINT `chk_integration_scenario_status_v020` CHECK (`status` IN ('DRAFT','ACTIVE','DISABLED'))``。
-- ``CONSTRAINT `chk_integration_scenario_published_revision` CHECK (`published_revision` IS NULL OR `published_revision` > 0)``。
-- ``CONSTRAINT `chk_integration_scenario_draft_revision` CHECK (`draft_revision` IS NULL OR `draft_revision` > 0)``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.9.4 业务规则
-
-published_revision 与 draft_revision 分别指向发布和草稿进度；实际使用不可变 revision 表。
-
-#### 10.9.5 来源与迁移
-
-结构依据：[V025__integration_workflow_scenarios.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V025__integration_workflow_scenarios.sql)、[V026__immutable_workflow_scenario_revisions.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V026__immutable_workflow_scenario_revisions.sql)。
-
-实现定位：[IntegrationWorkflowScenarioMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationWorkflowScenarioMapper.java)、[WebhookDomainEventPublisher.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/application/WebhookDomainEventPublisher.java)、[OpenProcessService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/OpenProcessService.java)。
-
-### 10.10 integration_workflow_scenario_revision 外部流程场景发布版本表
-
-#### 10.10.1 业务说明
-
-保存外部流程场景不可变配置、流程版本及输入、结果和身份映射契约。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 17 个。
-
-#### 10.10.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `scenario_id` | 场景ID | `varchar(64)` | 否 | 无 | 场景ID。 | 现存 |
-| `revision` | 修订号 | `bigint` | 否 | 无 | 修订号。 | 现存 |
-| `status` | 状态 | `varchar(16)` | 否 | `'DRAFT'` | 状态；CHECK 枚举：'DRAFT','PUBLISHED','RETIRED'。 | 现存 |
-| `display_name` | 展示名称 | `varchar(128)` | 否 | 无 | 展示名称。 | 现存 |
-| `process_key` | 流程键 | `varchar(100)` | 否 | 无 | 流程键。 | 现存 |
-| `process_definition_version` | 流程定义版本 | `int` | 是 | `NULL` | 流程定义版本。 | 现存 |
-| `input_schema_json` | 输入结构JSON | `longtext` | 否 | 无 | 输入结构JSON。 | 现存 |
-| `outcome_mapping_json` | 结果映射JSON | `longtext` | 否 | 无 | 结果映射JSON。 | 现存 |
-| `identity_mapping_json` | 身份映射JSON | `longtext` | 否 | 无 | 身份映射JSON。 | 现存 |
-| `event_types_json` | 事件类型集合JSON | `longtext` | 否 | 无 | 事件类型集合JSON。 | 现存 |
-| `config_hash` | 配置哈希 | `char(64)` | 否 | 无 | 配置哈希。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `published_by` | 发布人 | `varchar(64)` | 是 | `NULL` | 发布人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-| `published_time` | 发布时间 | `datetime(6)` | 是 | `NULL` | 发布时间。 | 现存 |
-
-#### 10.10.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_integration_scenario_revision` (`scenario_id`,`revision`)``。
-- ``KEY `idx_integration_scenario_revision_status` (`scenario_id`,`status`,`revision`)``。
-- ``CONSTRAINT `fk_integration_scenario_revision_scenario` FOREIGN KEY (`scenario_id`) REFERENCES `integration_workflow_scenario` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_integration_scenario_revision_status` CHECK (`status` IN ('DRAFT','PUBLISHED','RETIRED'))``。
-- ``CONSTRAINT `chk_integration_scenario_revision_number` CHECK (`revision` > 0)``。
-- ``CONSTRAINT `chk_integration_scenario_revision_version` CHECK (`process_definition_version` IS NULL OR `process_definition_version` > 0)``。
-- ``CONSTRAINT `chk_integration_scenario_revision_json` CHECK ( JSON_VALID(`input_schema_json`) AND JSON_VALID(`outcome_mapping_json`) AND JSON_VALID(`identity_mapping_json`) AND JSON_VALID(`event_types_json`) AND CHAR_LENGTH(`input_schema_json`) <= 65535 AND CHAR_LENGTH(`outcome_mapping_json`) <= 16384 AND CHAR_LENGTH(`identity_mapping_json`) <= 16384 AND CHAR_LENGTH(`event_types_json`) <= 8192 )``。
-- ``CONSTRAINT `chk_integration_scenario_revision_hash` CHECK (`config_hash` REGEXP '^[0-9a-f]{64}$')``。
-
-#### 10.10.4 业务规则
-
-业务启动绑定冻结场景配置和哈希，后续编辑草稿不应影响既有实例解释。
-
-#### 10.10.5 来源与迁移
-
-结构依据：[V026__immutable_workflow_scenario_revisions.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V026__immutable_workflow_scenario_revisions.sql)。
-
-实现定位：[IntegrationWorkflowScenarioRevisionMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationWorkflowScenarioRevisionMapper.java)、[IntegrationWorkflowScenarioMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/persistence/mapper/IntegrationWorkflowScenarioMapper.java)、[OpenProcessService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/OpenProcessService.java)。
-
-### 10.11 integration_secret 集成密钥密文表
-
-#### 10.11.1 业务说明
-
-按应用保存采用信封加密的集成密钥、加密数据密钥、nonce 和密钥版本。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 20 个。
-
-#### 10.11.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `secret_name` | 密钥名称 | `varchar(64)` | 否 | 无 | 密钥名称。 | 现存 |
-| `secret_version` | 密钥版本 | `bigint` | 否 | 无 | 密钥版本。 | 现存 |
-| `status` | 状态 | `varchar(16)` | 否 | `'ACTIVE'` | 状态；CHECK 枚举：'ACTIVE','REVOKED','DESTROYED' / 'ACTIVE','REVOKED'。 | 现存 |
-| `key_version` | 键版本 | `varchar(64)` | 是 | `NULL` | 键版本。 | 现存 |
-| `encrypted_data_key` | 加密数据键 | `varchar(1024)` | 是 | `NULL` | 加密数据键。 | 现存 |
-| `data_key_nonce` | 数据键随机数 | `varchar(64)` | 是 | `NULL` | 数据键随机数。 | 现存 |
-| `secret_ciphertext` | 密钥密文 | `longtext` | 是 | `NULL`（隐式） | 密钥密文。 | 现存 |
-| `secret_nonce` | 密钥随机数 | `varchar(64)` | 是 | `NULL` | 密钥随机数。 | 现存 |
-| `secret_hint` | 密钥提示 | `varchar(12)` | 否 | 无 | 密钥提示。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `revoked_by` | 撤销人 | `varchar(64)` | 是 | `NULL` | 撤销人。 | 现存 |
-| `revoked_at` | 撤销时间 | `datetime(6)` | 是 | `NULL` | 撤销时间。 | 现存 |
-| `destroyed_by` | 销毁人员 | `varchar(64)` | 是 | `NULL` | 销毁人员。 | 现存 |
-| `destroyed_at` | 销毁时间 | `datetime(6)` | 是 | `NULL` | 销毁时间。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-| `active_application_id` | 活跃应用ID | `varchar(64)` | 是 | 生成列（非默认值） | 活跃应用ID；数据库生成，表达式见本表实现说明。 | 现存 |
-| `active_secret_name` | 活跃密钥名称 | `varchar(64)` | 是 | 生成列（非默认值） | 活跃密钥名称；数据库生成，表达式见本表实现说明。 | 现存 |
-
-#### 10.11.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_integration_secret_version` (`application_id`,`secret_name`,`secret_version`)``。
-- ``UNIQUE KEY `uk_integration_secret_active` (`active_application_id`,`active_secret_name`)``。
-- ``UNIQUE KEY `uk_integration_secret_id_application` (`id`,`application_id`)``。
-- ``KEY `idx_integration_secret_application` (`application_id`,`status`,`create_time`)``。
-- ``CONSTRAINT `fk_integration_secret_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_integration_secret_name` CHECK ( CHAR_LENGTH(`secret_name`) BETWEEN 1 AND 64 AND `secret_name` REGEXP '^[A-Za-z][A-Za-z0-9._-]*$' )``。
-- ``CONSTRAINT `chk_integration_secret_version` CHECK (`secret_version` > 0)``。
-- ``CONSTRAINT `chk_integration_secret_status` CHECK (`status` IN ('ACTIVE','REVOKED','DESTROYED'))``。
-- ``CONSTRAINT `chk_integration_secret_material` CHECK ( (`status` IN ('ACTIVE','REVOKED') AND `key_version` IS NOT NULL AND `encrypted_data_key` IS NOT NULL AND `data_key_nonce` IS NOT NULL AND `secret_ciphertext` IS NOT NULL AND `secret_nonce` IS NOT NULL AND CHAR_LENGTH(`secret_ciphertext`) <= 131072) OR (`status` = 'DESTROYED' AND `key_version` IS NULL AND `encrypted_data_key` IS NULL AND `data_key_nonce` IS NULL AND `secret_ciphertext` IS NULL AND `secret_nonce` IS NULL) )``。
-- ``CONSTRAINT `chk_integration_secret_lifecycle` CHECK ( (`status` = 'ACTIVE' AND `revoked_by` IS NULL AND `revoked_at` IS NULL AND `destroyed_by` IS NULL AND `destroyed_at` IS NULL) OR (`status` = 'REVOKED' AND `revoked_by` IS NOT NULL AND `revoked_at` IS NOT NULL AND `destroyed_by` IS NULL AND `destroyed_at` IS NULL) OR (`status` = 'DESTROYED' AND `revoked_by` IS NOT NULL AND `revoked_at` IS NOT NULL AND `destroyed_by` IS NOT NULL AND `destroyed_at` IS NOT NULL) )``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.11.4 业务规则
-
-密钥密文、加密数据密钥、nonce 和密钥版本共同用于解密；与应用验证凭证分表管理。
-
-生成列 `active_application_id` 的定义：
-
-```sql
-active_application_id varchar(64) COLLATE utf8mb4_bin GENERATED ALWAYS AS ( CASE WHEN `status` = 'ACTIVE' THEN `application_id` ELSE NULL END ) STORED
-```
-
-生成列 `active_secret_name` 的定义：
-
-```sql
-active_secret_name varchar(64) COLLATE utf8mb4_bin GENERATED ALWAYS AS ( CASE WHEN `status` = 'ACTIVE' THEN `secret_name` ELSE NULL END ) STORED
-```
-
-#### 10.11.5 来源与迁移
-
-结构依据：[V016__integration_secrets.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V016__integration_secrets.sql)。
-
-实现定位：[IntegrationSecretMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/connector/secret/IntegrationSecretMapper.java)、[IntegrationSecretRecord.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/connector/secret/IntegrationSecretRecord.java)。
-
-### 10.12 integration_connector_config 集成连接器配置表
-
-#### 10.12.1 业务说明
-
-保存应用拥有的连接器参数、允许访问主机及启用版本信息。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
-
-#### 10.12.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `config_name` | 配置名称 | `varchar(128)` | 否 | 无 | 配置名称。 | 现存 |
-| `connector_code` | 连接器编码 | `varchar(64)` | 否 | 无 | 连接器编码。 | 现存 |
-| `status` | 状态 | `varchar(16)` | 否 | `'ACTIVE'` | 状态；CHECK 枚举：'ACTIVE','DISABLED'。 | 现存 |
-| `configuration_document` | 配置文档 | `longtext` | 否 | 无 | 配置文档。 | 现存 |
-| `allowed_hosts_document` | 允许的主机集合文档 | `longtext` | 否 | 无 | 允许的主机集合文档。 | 现存 |
-| `version` | 版本号 | `bigint` | 否 | `'0'` | 版本号。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `updated_by` | 修改人 | `varchar(64)` | 否 | 无 | 修改人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.12.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_integration_connector_name` (`application_id`,`config_name`)``。
-- ``UNIQUE KEY `uk_integration_connector_id_application` (`id`,`application_id`)``。
-- ``KEY `idx_integration_connector_application` (`application_id`,`status`,`connector_code`)``。
-- ``CONSTRAINT `fk_integration_connector_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_integration_connector_code` CHECK (`connector_code` = 'http-json')``。
-- ``CONSTRAINT `chk_integration_connector_status` CHECK (`status` IN ('ACTIVE','DISABLED'))``。
-- ``CONSTRAINT `chk_integration_connector_configuration` CHECK ( JSON_VALID(`configuration_document`) AND JSON_TYPE(`configuration_document`) = 'OBJECT' AND CHAR_LENGTH(`configuration_document`) <= 262144 )``。
-- ``CONSTRAINT `chk_integration_connector_hosts` CHECK ( JSON_VALID(`allowed_hosts_document`) AND JSON_TYPE(`allowed_hosts_document`) = 'ARRAY' AND JSON_LENGTH(`allowed_hosts_document`) BETWEEN 1 AND 100 AND CHAR_LENGTH(`allowed_hosts_document`) <= 16384 )``。
-- ``CONSTRAINT `chk_integration_connector_version` CHECK (`version` >= 0)``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.12.4 业务规则
-
-连接器配置与密钥分开管理，主机白名单与注册连接器共同限制调用目标。
-
-#### 10.12.5 来源与迁移
-
-结构依据：[V016__integration_secrets.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V016__integration_secrets.sql)。
-
-实现定位：[IntegrationConnectorConfigMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/connector/config/IntegrationConnectorConfigMapper.java)、[IntegrationConnectorConfigRecord.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/connector/config/IntegrationConnectorConfigRecord.java)。
-
-### 10.13 webhook_endpoint 回调目标端点表
-
-#### 10.13.1 业务说明
-
-登记应用的回调地址、签名密钥版本、地址摘要和启用状态。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 17 个。
-
-#### 10.13.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `endpoint_name` | 端点名称 | `varchar(128)` | 否 | 无 | 端点名称。 | 现存 |
-| `endpoint_url` | 端点URL | `varchar(2048)` | 否 | 无 | 端点URL。 | 现存 |
-| `endpoint_hash` | 端点哈希 | `char(64)` | 否 | 无 | 端点哈希。 | 现存 |
-| `status` | 状态 | `varchar(16)` | 否 | 无 | 状态；CHECK 枚举：'ACTIVE','DISABLED'。 | 现存 |
-| `secret_ciphertext` | 密钥密文 | `varchar(1024)` | 否 | 无 | 密钥密文。 | 现存 |
-| `secret_version` | 密钥版本 | `bigint` | 否 | `'1'` | 密钥版本。 | 现存 |
-| `secret_hint` | 密钥提示 | `char(8)` | 否 | 无 | 密钥提示。 | 现存 |
-| `previous_secret_ciphertext` | 上一版本密钥密文 | `varchar(1024)` | 是 | `NULL` | 上一版本密钥密文。 | 现存 |
-| `previous_secret_version` | 上一版本密钥版本 | `bigint` | 是 | `NULL` | 上一版本密钥版本。 | 现存 |
-| `previous_secret_valid_until` | 上一版本密钥有效截止时间 | `datetime(6)` | 是 | `NULL` | 上一版本密钥有效截止时间。 | 现存 |
-| `version` | 版本号 | `bigint` | 否 | `'0'` | 版本号。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `updated_by` | 修改人 | `varchar(64)` | 否 | 无 | 修改人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.13.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_webhook_endpoint_application_id` (`id`,`application_id`)``。
-- ``UNIQUE KEY `uk_webhook_endpoint_url` (`application_id`,`endpoint_hash`)``。
-- ``KEY `idx_webhook_endpoint_application` (`application_id`,`status`,`create_time`)``。
-- ``CONSTRAINT `fk_webhook_endpoint_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_webhook_endpoint_status` CHECK (`status` IN ('ACTIVE','DISABLED'))``。
-- ``CONSTRAINT `chk_webhook_endpoint_hash` CHECK (`endpoint_hash` REGEXP '^[0-9a-f]{64}$')``。
-- ``CONSTRAINT `chk_webhook_endpoint_secret_version` CHECK ( `secret_version` > 0 AND ( (`previous_secret_version` IS NULL AND `previous_secret_ciphertext` IS NULL AND `previous_secret_valid_until` IS NULL) OR (`previous_secret_version` > 0 AND `previous_secret_version` < `secret_version` AND `previous_secret_ciphertext` IS NOT NULL AND `previous_secret_valid_until` IS NOT NULL) ) )``。
-- ``CONSTRAINT `chk_webhook_endpoint_version` CHECK (`version` >= 0)``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.13.4 业务规则
-
-签名密钥轮换后保留旧版本及宽限截止时间，投递按对应版本处理。
-
-#### 10.13.5 来源与迁移
-
-结构依据：[V015__webhook_delivery.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V015__webhook_delivery.sql)。
-
-实现定位：[WebhookEndpointMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookEndpointMapper.java)、[WebhookEndpointRecord.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/record/WebhookEndpointRecord.java)、[WebhookValidationService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/application/WebhookValidationService.java)。
-
-### 10.14 webhook_subscription 回调事件订阅表
-
-#### 10.14.1 业务说明
-
-把应用关心的事件类型订阅到回调端点。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 9 个。
-
-#### 10.14.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `endpoint_id` | 端点ID | `varchar(64)` | 否 | 无 | 端点ID。 | 现存 |
-| `event_type` | 事件类型 | `varchar(128)` | 否 | 无 | 事件类型；CHECK 枚举： 'com.flow.process.started.v1', 'com.flow.task.created.v1', 'com.flow.task.completed.v1', 'com.flow.process.completed.v1', 'com.flow.process.terminated.v1', 'com.flow.process.failed.v1' 。 | 现存 |
-| `status` | 状态 | `varchar(16)` | 否 | 无 | 状态；CHECK 枚举：'ACTIVE','DISABLED'。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `updated_by` | 修改人 | `varchar(64)` | 否 | 无 | 修改人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.14.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_webhook_subscription_application_id` (`id`,`application_id`)``。
-- ``UNIQUE KEY `uk_webhook_subscription_event` (`endpoint_id`,`event_type`)``。
-- ``KEY `idx_webhook_subscription_dispatch` (`application_id`,`event_type`,`status`)``。
-- ``CONSTRAINT `fk_webhook_subscription_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `fk_webhook_subscription_endpoint` FOREIGN KEY (`endpoint_id`,`application_id`) REFERENCES `webhook_endpoint` (`id`,`application_id`) ON DELETE CASCADE``。
-- ``CONSTRAINT `chk_webhook_subscription_status` CHECK (`status` IN ('ACTIVE','DISABLED'))``。
-- ``CONSTRAINT `chk_webhook_subscription_event_type` CHECK (`event_type` IN ( 'com.flow.process.started.v1', 'com.flow.task.created.v1', 'com.flow.task.completed.v1', 'com.flow.process.completed.v1', 'com.flow.process.terminated.v1', 'com.flow.process.failed.v1' ))``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-- `endpoint_id` → [webhook_endpoint](#1013-webhook_endpoint-回调目标端点表).`id`。
-
-#### 10.14.4 业务规则
-
-应用、端点、事件类型以及启用状态共同决定是否生成投递。
-
-#### 10.14.5 来源与迁移
-
-结构依据：[V015__webhook_delivery.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V015__webhook_delivery.sql)。
-
-实现定位：[WebhookDeliveryMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookDeliveryMapper.java)、[WebhookSubscriptionMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookSubscriptionMapper.java)、[WebhookAdministrationService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/application/WebhookAdministrationService.java)。
-
-### 10.15 webhook_event 稳定回调事件表
-
-#### 10.15.1 业务说明
-
-将平台源事件物化为稳定的 CloudEvents 事件内容，供订阅与重试复用。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
-
-#### 10.15.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `event_id` | 事件ID | `varchar(64)` | 否 | 无 | 事件ID。 | 现存 |
-| `source_event_key` | 来源事件键 | `varchar(191)` | 否 | 无 | 来源事件键。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `event_type` | 事件类型 | `varchar(128)` | 否 | 无 | 事件类型。 | 现存 |
-| `subject` | 主体 | `varchar(191)` | 否 | 无 | 主体。 | 现存 |
-| `process_instance_id` | 流程实例ID | `varchar(128)` | 否 | 无 | 流程实例ID。 | 现存 |
-| `trace_id` | 追踪ID | `varchar(128)` | 是 | `NULL` | 追踪ID。 | 现存 |
-| `payload_document` | 载荷文档 | `longtext` | 否 | 无 | 载荷文档。 | 现存 |
-| `occurred_at` | 发生时间 | `datetime(6)` | 否 | 无 | 发生时间。 | 现存 |
-| `expires_at` | 过期时间 | `datetime(6)` | 否 | 无 | 过期时间。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.15.3 索引与关联
-
-- ``PRIMARY KEY (`event_id`)``。
-- ``UNIQUE KEY `uk_webhook_event_application_id` (`event_id`,`application_id`)``。
-- ``UNIQUE KEY `uk_webhook_event_source` (`source_event_key`)``。
-- ``KEY `idx_webhook_event_application` (`application_id`,`occurred_at`,`event_id`)``。
-- ``KEY `idx_webhook_event_expiry` (`expires_at`)``。
-- ``CONSTRAINT `fk_webhook_event_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_webhook_event_payload` CHECK ( JSON_VALID(`payload_document`) AND CHAR_LENGTH(`payload_document`) <= 262144 )``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-
-#### 10.15.4 业务规则
-
-事件事实与具体投递尝试分离；重试不应重新构造改变后的事件语义。
-
-#### 10.15.5 来源与迁移
-
-结构依据：[V015__webhook_delivery.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V015__webhook_delivery.sql)。
-
-实现定位：[WebhookEventMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookEventMapper.java)、[WebhookDeliveryMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookDeliveryMapper.java)、[WebhookDeliveryAdministrationService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/application/WebhookDeliveryAdministrationService.java)。
-
-### 10.16 webhook_delivery 回调投递任务表
-
-#### 10.16.1 业务说明
-
-按事件和订阅维护投递状态、签名版本、尝试次数、租约及响应摘要。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 23 个。
-
-#### 10.16.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `application_id` | 应用ID | `varchar(64)` | 否 | 无 | 应用ID。 | 现存 |
-| `subscription_id` | 订阅ID | `varchar(64)` | 否 | 无 | 订阅ID。 | 现存 |
-| `event_id` | 事件ID | `varchar(64)` | 否 | 无 | 事件ID。 | 现存 |
-| `replay_sequence` | 重放序列 | `int` | 否 | `'0'` | 重放序列。 | 现存 |
-| `status` | 状态 | `varchar(16)` | 否 | 无 | 状态；CHECK 枚举： 'PENDING','PROCESSING','RETRY','SUCCEEDED','DEAD' 。 | 现存 |
-| `attempt_count` | 尝试次数数量 | `int` | 否 | `'0'` | 尝试次数数量。 | 现存 |
-| `max_attempts` | 最大尝试次数 | `int` | 否 | `'8'` | 最大尝试次数。 | 现存 |
-| `next_attempt_at` | 下一次尝试次数时间 | `datetime(6)` | 否 | 无 | 下一次尝试次数时间。 | 现存 |
-| `owner_id` | 持有者ID | `varchar(128)` | 是 | `NULL` | 当前记录对应的持有者或执行者标识，具体职责见本表业务说明。 | 现存 |
-| `lease_token` | 租约代次 | `bigint` | 否 | `'0'` | 领取租约的代次，用于识别过期执行者；不是客户端登录令牌。 | 现存 |
-| `lease_until` | 租约截止时间 | `datetime(6)` | 是 | `NULL` | 当前执行租约到期时间，过期后可按领取规则重新调度。 | 现存 |
-| `signing_secret_ciphertext` | 签名密钥密文 | `varchar(1024)` | 否 | 无 | 签名密钥密文。 | 现存 |
-| `signing_secret_version` | 签名密钥版本 | `bigint` | 否 | 无 | 签名密钥版本。 | 现存 |
-| `response_status` | 响应状态 | `smallint` | 是 | `NULL` | 响应状态。 | 现存 |
-| `response_body_excerpt` | 响应正文摘要 | `text` | 是 | `NULL`（隐式） | 响应正文摘要。 | 现存 |
-| `error_code` | 错误编码 | `varchar(64)` | 是 | `NULL` | 错误编码。 | 现存 |
-| `error_message` | 错误消息 | `varchar(1000)` | 是 | `NULL` | 错误消息。 | 现存 |
-| `last_attempt_at` | 最近尝试次数时间 | `datetime(6)` | 是 | `NULL` | 最近尝试次数时间。 | 现存 |
-| `delivered_at` | 送达时间 | `datetime(6)` | 是 | `NULL` | 送达时间。 | 现存 |
-| `created_by` | 创建人 | `varchar(64)` | 否 | 无 | 创建人。 | 现存 |
-| `create_time` | 创建时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime(6)` | 否 | `CURRENT_TIMESTAMP(6)` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP(6)。 | 现存 |
-
-#### 10.16.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_webhook_delivery_replay` (`subscription_id`,`event_id`,`replay_sequence`)``。
-- ``KEY `idx_webhook_delivery_ready` (`status`,`next_attempt_at`,`lease_until`)``。
-- ``KEY `idx_webhook_delivery_event` (`event_id`,`create_time`)``。
-- ``KEY `idx_webhook_delivery_application` (`application_id`,`status`,`create_time`)``。
-- ``CONSTRAINT `fk_webhook_delivery_application` FOREIGN KEY (`application_id`) REFERENCES `integration_application` (`id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `fk_webhook_delivery_subscription` FOREIGN KEY (`subscription_id`,`application_id`) REFERENCES `webhook_subscription` (`id`,`application_id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `fk_webhook_delivery_event` FOREIGN KEY (`event_id`,`application_id`) REFERENCES `webhook_event` (`event_id`,`application_id`) ON DELETE RESTRICT``。
-- ``CONSTRAINT `chk_webhook_delivery_status` CHECK (`status` IN ( 'PENDING','PROCESSING','RETRY','SUCCEEDED','DEAD' ))``。
-- ``CONSTRAINT `chk_webhook_delivery_attempts` CHECK ( `attempt_count` >= 0 AND `max_attempts` BETWEEN 1 AND 20 AND `attempt_count` <= `max_attempts` )``。
-- ``CONSTRAINT `chk_webhook_delivery_replay_sequence` CHECK (`replay_sequence` >= 0)``。
-- ``CONSTRAINT `chk_webhook_delivery_lease` CHECK ( (`status` = 'PROCESSING' AND `owner_id` IS NOT NULL AND `lease_until` IS NOT NULL AND `lease_token` > 0) OR (`status` <> 'PROCESSING' AND `owner_id` IS NULL AND `lease_until` IS NULL) )``。
-- ``CONSTRAINT `chk_webhook_delivery_result` CHECK ( (`status` = 'SUCCEEDED' AND `delivered_at` IS NOT NULL AND `response_status` BETWEEN 200 AND 299) OR (`status` <> 'SUCCEEDED' AND `delivered_at` IS NULL) )``。
-
-业务关联：
-
-- `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-- `event_id` → [webhook_event](#1015-webhook_event-稳定回调事件表).`event_id`。
-- `subscription_id` → [webhook_subscription](#1014-webhook_subscription-回调事件订阅表).`id`。
-
-#### 10.16.4 业务规则
-
-采用至少一次投递，调用方仍需依据事件标识去重；租约和下一尝试时间支持可靠重试。
-
-#### 10.16.5 来源与迁移
-
-结构依据：[V015__webhook_delivery.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V015__webhook_delivery.sql)。
-
-实现定位：[WebhookEventMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookEventMapper.java)、[WebhookDeliveryMapper.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookDeliveryMapper.java)、[WebhookDeliveryAdministrationService.java](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/application/WebhookDeliveryAdministrationService.java)。
 
 ## 11. 嵌入式视图与会话
 
@@ -6705,7 +5954,7 @@ launch_code_digest 为启动码摘要；ui_form_presentation 在 V077 新增并�
 业务关联：
 
 - `application_id` → [integration_application](#101-integration_application-外部集成应用表).`id`。
-- `idempotency_record_id` → [integration_idempotency_record](#106-integration_idempotency_record-开放接口幂等记录表).`id`。
+- `idempotency_record_id` → [integration_idempotency_record](#104-integration_idempotency_record-embed-写入幂等记录表).`id`。
 
 #### 11.11.4 业务规则
 

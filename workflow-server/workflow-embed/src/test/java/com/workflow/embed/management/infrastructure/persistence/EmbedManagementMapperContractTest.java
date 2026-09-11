@@ -58,8 +58,7 @@ class EmbedManagementMapperContractTest {
                 assertTrue(query.contains("c.status = 'ACTIVE'"));
                 assertTrue(query.contains(
                         "c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP(6)"));
-                assertTrue(query.contains("LEFT JOIN integration_application_scope s"));
-                assertTrue(query.contains("s.scope = 'embed.launch'"));
+                assertFalse(query.contains("integration_application_scope"));
                 assertFalse(query.contains("secret_hash"));
                 assertFalse(query.contains("credential_hint"));
             } else {

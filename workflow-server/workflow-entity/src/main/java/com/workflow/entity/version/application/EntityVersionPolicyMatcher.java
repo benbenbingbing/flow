@@ -229,18 +229,6 @@ public class EntityVersionPolicyMatcher {
         return result;
     }
 
-    public boolean evaluateCondition(
-            Map<String, Object> condition,
-            EntityMutationCommand command,
-            Map<String, Object> beforeRecord,
-            Map<String, Object> afterRecord) {
-        return evaluate(
-                condition,
-                command,
-                beforeRecord,
-                afterRecord);
-    }
-
     private boolean matchesDimension(
             List<String> configured,
             String actual) {

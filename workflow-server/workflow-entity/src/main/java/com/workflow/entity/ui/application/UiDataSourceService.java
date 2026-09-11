@@ -11,12 +11,6 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.integration.spi.IntegrationConnector;
-import com.workflow.contracts.integration.IntegrationConnectorConfigurationSnapshot;
-import com.workflow.contracts.integration.spi.IntegrationConnectorConfigurationSnapshotProvider;
-import com.workflow.contracts.integration.IntegrationRequest;
-import com.workflow.contracts.integration.IntegrationResult;
-import com.workflow.contracts.integration.IntegrationRuntimeContext;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.UiInvocationContext;
@@ -59,7 +53,7 @@ import java.util.concurrent.TimeUnit;
  * UI 数据源定义与执行服务，负责数据源配置的校验、保存、查询与可信执行。
  *
  * <p>
- * 支持字典、静态选项、注册提供器、集成连接器、运行时上下文和结构化计算等
+ * 支持字典、静态选项、注册提供器、运行时上下文和结构化计算等
  * 数据源类型，配置中禁止 SQL/脚本/URL 等危险字段；执行链路经
  * {@link UiDataSourceExecutionAccessService} 授权后按数据源类型分派，
  * 并提供带 TTL 的结果缓存。
@@ -69,8 +63,7 @@ import java.util.concurrent.TimeUnit;
 public class UiDataSourceService {
         private static final Set<String> SOURCE_TYPES = Set.of(
                         "DICTIONARY", "STATIC_OPTIONS", "REGISTERED_PROVIDER",
-                        "INTEGRATION_CONNECTOR", "RUNTIME_CONTEXT",
-                        "STRUCTURED_COMPUTE");
+                        "RUNTIME_CONTEXT", "STRUCTURED_COMPUTE");
         private static final Set<String> SCOPE_TYPES = Set.of("GLOBAL", "ENTITY", "FORM", "LIST");
         private static final Set<String> CONTEXT_TYPES = Set.of("FORM", "LIST", "ENTITY");
         private static final Set<String> USAGES = Set.of(
@@ -125,24 +118,19 @@ public class UiDataSourceService {
         private final UiDataSourceDefinitionValidator definitionValidator;
         /** 当前部署注册的接口 Provider。 */
         private final List<UiDataSourceProvider> providers;
-        /** 当前部署注册的集成 Connector。 */
-        private final List<IntegrationConnector> connectors;
-        /** 由连接器管理模块提供的安全发布快照出口。 */
-        private List<IntegrationConnectorConfigurationSnapshotProvider>
-                        connectorSnapshotProviders = List.of();
         /** 只生成结构化实体变更计划的本地关联动作 Provider。 */
         private List<UiActionCommandPlanProvider> actionCommandPlanProviders =
                         List.of();
         /** JSON 配置、Schema 和操作文档编解码器。 */
         private final JsonDocumentCodec codec;
-        /** Provider 和 Connector 超时执行使用的任务执行器。 */
+        /** Provider 超时执行使用的任务执行器。 */
         private final TaskExecutor taskExecutor;
 
         /** 数据源执行结果缓存，按 key+版本+内容哈希索引。 */
         private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
         /**
-         * 构造数据源服务，注入数据源提供器、集成连接器和异步执行器。
+         * 构造数据源服务，注入数据源提供器和异步执行器。
          *
          * @param mapper                 数据源定义 Mapper
          * @param formMapper             表单 Mapper
@@ -154,7 +142,6 @@ public class UiDataSourceService {
          * @param invocationContextFactory 强类型调用上下文工厂
          * @param definitionValidator    接口服务定义与 Schema 校验器
          * @param providers              注册的数据源提供器集合
-         * @param connectors             集成连接器集合
          * @param codec                  JSON 文档编解码器
          * @param taskExecutor           应用异步任务执行器
          */
@@ -169,7 +156,6 @@ public class UiDataSourceService {
                         UiInvocationContextFactory invocationContextFactory,
                         UiDataSourceDefinitionValidator definitionValidator,
                         List<UiDataSourceProvider> providers,
-                        List<IntegrationConnector> connectors,
                         JsonDocumentCodec codec,
                         @Qualifier("applicationTaskExecutor") TaskExecutor taskExecutor) {
                 this.mapper = mapper;
@@ -183,7 +169,6 @@ public class UiDataSourceService {
                 this.invocationContextFactory = invocationContextFactory;
                 this.definitionValidator = definitionValidator;
                 this.providers = providers;
-                this.connectors = connectors;
                 this.codec = codec;
                 this.taskExecutor = taskExecutor;
         }
@@ -196,18 +181,6 @@ public class UiDataSourceService {
         public void setPublishedReferenceGuard(
                         UiPublishedDataSourceReferenceGuard value) {
                 this.publishedReferenceGuard = value;
-        }
-
-        /**
-         * 可选注入连接器快照提供器。单元测试和未开启外部集成的部署
-         * 不需要伪造实现；只有发布 INTEGRATION_CONNECTOR 时才强制要求。
-         */
-        @Autowired(required = false)
-        public void setConnectorSnapshotProviders(
-                        List<IntegrationConnectorConfigurationSnapshotProvider>
-                                        snapshotProviders) {
-                this.connectorSnapshotProviders = snapshotProviders == null
-                                ? List.of() : List.copyOf(snapshotProviders);
         }
 
         /** 可选注入本地受控写计划 Provider，不影响只读接口服务部署。 */
@@ -252,10 +225,6 @@ public class UiDataSourceService {
                                                 "name", provider.getDisplayName(),
                                                 "schema", provider.configurationSchema()))
                                 .toList();
-                List<Map<String, Object>> connectorOptions = connectors.stream()
-                                .map(connector -> Map.<String, Object>of(
-                                                "code", connector.code()))
-                                .toList();
                 Map<String, Object> catalog = new LinkedHashMap<>();
                 catalog.put("sourceTypes", SOURCE_TYPES);
                 catalog.put("usages", USAGES);
@@ -268,7 +237,6 @@ public class UiDataSourceService {
                                                                 "code", provider.getCode(),
                                                                 "name", provider.getDisplayName()))
                                                 .toList());
-                catalog.put("connectors", connectorOptions);
                 catalog.put("failurePolicies", List.of("FAIL", "EMPTY", "NULL"));
                 return catalog;
         }
@@ -486,45 +454,6 @@ public class UiDataSourceService {
         }
 
         /**
-         * 实体变更管道 PREPARE 阶段执行受管理接口操作。
-         *
-         * <p>
-         * 此入口只供服务端版本策略调用，不要求接口先绑定某个表单或列表发布版本。
-         * </p>
-         */
-        public Object executeManagedMutationOperation(
-                        String id,
-                        String operationCode,
-                        UiDataSourceExecuteRequest request) {
-                UiDataSourceDefinition definition = requireExecutableDefinition(id);
-                UiDataSourceDefinition operationDefinition = resolveOperationDefinition(
-                                definition,
-                                operationCode);
-                if (request == null) {
-                        request = new UiDataSourceExecuteRequest();
-                }
-                request.setUsage(
-                                UiDataSourceUsages
-                                                .ENTITY_MUTATION_PREPARE);
-                request.setOperationCode(
-                                blankToNull(operationCode));
-                UiDataSourceExecutionAuthorization authorization = executionAccessService
-                                .authorizeEntityMutation(
-                                                operationDefinition,
-                                                request);
-                requireMutationScope(
-                                operationDefinition,
-                                authorization);
-                requireOperationContext(
-                                operationDefinition,
-                                "ENTITY");
-                return executeAuthorized(
-                                operationDefinition,
-                                request,
-                                authorization);
-        }
-
-        /**
          * 在管理端调试接口服务中的指定操作，不要求该操作已经绑定到发布页面。
          */
         public Object previewOperation(
@@ -604,8 +533,7 @@ public class UiDataSourceService {
          * 固定一个接口服务操作的完整可执行定义。
          *
          * <p>快照保存已合并操作覆盖后的配置、Schema 和执行策略，
-         * 运行时因此无需回读可变的 ui_data_source_definition。集成连接器
-         * 还会嵌入经具体连接器校验的配置快照，但凭据仍只保存 SecretRef。</p>
+         * 运行时因此无需回读可变的 ui_data_source_definition。</p>
          *
          * @param id 接口服务 ID
          * @param operationCode 具体操作编码
@@ -653,12 +581,6 @@ public class UiDataSourceService {
                 snapshot.put("outputSchemaDocument", canonicalDocument(
                                 resolved.getOperationOutputSchemaDocument(),
                                 "接口操作输出 Schema"));
-                if ("INTEGRATION_CONNECTOR".equals(
-                                normalize(resolved.getSourceType()))) {
-                        snapshot.put(
-                                        "connectorSnapshot",
-                                        freezeConnectorConfiguration(resolved));
-                }
                 String document = codec.canonicalize(
                                 codec.write(snapshot, "接口操作发布快照"),
                                 "接口操作发布快照");
@@ -744,8 +666,7 @@ public class UiDataSourceService {
         /**
          * 校验设计态关联动作操作是否可安全发布。
          *
-         * <p>READ 可同步执行；WRITE 只能绑定注册的本地命令计划 Provider。
-         * Connector WRITE 在持久化 Outbox、状态和补偿链完成前明确 fail-closed。</p>
+         * <p>READ 可同步执行；WRITE 只能绑定注册的本地命令计划 Provider。</p>
          */
         public ActionOperationDescriptor validateActionOperation(
                         String serviceId,
@@ -1117,12 +1038,6 @@ public class UiDataSourceService {
                                         "UI_INTERFACE_ACTION_KIND_INVALID",
                                         "接口动作类型只支持 READ 或 WRITE");
                 }
-                if ("INTEGRATION_CONNECTOR".equals(normalize(
-                                definition.getSourceType()))) {
-                        throw new BusinessForbiddenException(
-                                        "UI_INTERFACE_EXTERNAL_WRITE_OUTBOX_REQUIRED",
-                                        "外部写入必须提交后异步执行；当前尚未接入持久任务、幂等、补偿和状态查询，不能发布");
-                }
                 if (!"REGISTERED_PROVIDER".equals(normalize(
                                 definition.getSourceType()))
                                 || actionCommandPlanProviders.stream().noneMatch(
@@ -1171,49 +1086,6 @@ public class UiDataSourceService {
                 requirePinnedReadFailurePolicyValue(definition);
         }
 
-        private Map<String, Object> freezeConnectorConfiguration(
-                        UiDataSourceDefinition definition) {
-                Map<String, Object> config = read(
-                                definition.getConfigDocument(),
-                                "连接器接口操作配置");
-                String configurationId = text(
-                                config.get("connectorConfigId"));
-                if (!StringUtils.hasText(configurationId)) {
-                        throw new BusinessConflictException(
-                                        "UI_CONNECTOR_SNAPSHOT_REQUIRED",
-                                        "集成连接器操作未配置 connectorConfigId");
-                }
-                IntegrationConnectorConfigurationSnapshotProvider provider =
-                                connectorSnapshotProviders.stream()
-                                .filter(item -> item.connectorCode()
-                                                .equalsIgnoreCase(
-                                                        definition.getProviderCode()))
-                                .findFirst()
-                                .orElseThrow(() -> new BusinessConflictException(
-                                                "UI_CONNECTOR_SNAPSHOT_PROVIDER_MISSING",
-                                                "集成连接器未提供安全发布快照能力: "
-                                                        + definition.getProviderCode()));
-                IntegrationConnectorConfigurationSnapshot value =
-                                provider.snapshot(configurationId);
-                if (value == null
-                                || !definition.getProviderCode().equalsIgnoreCase(
-                                                value.connectorCode())
-                                || !configurationId.equals(
-                                                value.configurationId())
-                                || !StringUtils.hasText(
-                                                value.snapshotDocument())) {
-                        throw new BusinessConflictException(
-                                        "UI_CONNECTOR_SNAPSHOT_INVALID",
-                                        "连接器返回的发布快照不完整或与绑定不一致");
-                }
-                Map<String, Object> result = new LinkedHashMap<>();
-                result.put("connectorCode", value.connectorCode());
-                result.put("configurationId", value.configurationId());
-                result.put("revision", value.revision());
-                result.put("snapshotDocument", value.snapshotDocument());
-                return result;
-        }
-
         private UiDataSourceDefinition readPinnedOperation(
                         String snapshotDocument,
                         String expectedHash) {
@@ -1243,7 +1115,7 @@ public class UiDataSourceService {
                                 "revision", "operationCode", "operationContextType",
                                 "operationKind", "configDocument",
                                 "executionPolicyDocument", "inputSchemaDocument",
-                                "outputSchemaDocument", "connectorSnapshot");
+                                "outputSchemaDocument");
                 int schemaVersion = integer(value.get("schemaVersion"), 0);
                 if (!allowed.containsAll(value.keySet())
                                 || !Set.of(1, 2).contains(schemaVersion)) {
@@ -1318,12 +1190,6 @@ public class UiDataSourceService {
                                         value, "outputSchemaDocument"));
                 definition.setEnabled(true);
                 definition.setDeleted(0);
-                if ("INTEGRATION_CONNECTOR".equals(
-                                definition.getSourceType())) {
-                        definition.setConnectorConfigurationSnapshot(
-                                        connectorSnapshot(value));
-                        requireConnectorSnapshotBinding(definition);
-                }
                 definitionValidator.validateNoForbiddenKeys(
                                 read(definition.getConfigDocument(),
                                         "已发布接口操作配置"),
@@ -1332,53 +1198,6 @@ public class UiDataSourceService {
                                 definition.getExecutionPolicyDocument(),
                                 "已发布接口操作策略"));
                 return definition;
-        }
-
-        private void requireConnectorSnapshotBinding(
-                        UiDataSourceDefinition definition) {
-                IntegrationConnectorConfigurationSnapshot snapshot =
-                                definition.getConnectorConfigurationSnapshot();
-                Map<String, Object> config = read(
-                                definition.getConfigDocument(),
-                                "已发布连接器操作配置");
-                if (!StringUtils.hasText(definition.getProviderCode())
-                                || !definition.getProviderCode()
-                                .equalsIgnoreCase(snapshot.connectorCode())
-                                || !Objects.equals(
-                                                text(config.get(
-                                                        "connectorConfigId")),
-                                                snapshot.configurationId())) {
-                        throw new BusinessConflictException(
-                                        "UI_CONNECTOR_PINNED_SNAPSHOT_CONFLICT",
-                                        "已发布连接器快照与接口操作绑定不一致");
-                }
-        }
-
-        private IntegrationConnectorConfigurationSnapshot connectorSnapshot(
-                        Map<String, Object> value) {
-                if (!(value.get("connectorSnapshot")
-                                instanceof Map<?, ?> raw)) {
-                        throw new BusinessConflictException(
-                                        "UI_CONNECTOR_PINNED_SNAPSHOT_REQUIRED",
-                                        "已发布连接器操作缺少配置快照");
-                }
-                Map<String, Object> snapshot = stringMap(raw);
-                if (!Set.of(
-                                "connectorCode", "configurationId", "revision",
-                                "snapshotDocument").containsAll(
-                                        snapshot.keySet())) {
-                        throw new BusinessConflictException(
-                                        "UI_CONNECTOR_PINNED_SNAPSHOT_INVALID",
-                                        "已发布连接器快照包含未知字段");
-                }
-                return new IntegrationConnectorConfigurationSnapshot(
-                                requiredSnapshotText(
-                                        snapshot, "connectorCode"),
-                                requiredSnapshotText(
-                                        snapshot, "configurationId"),
-                                text(snapshot.get("revision")),
-                                requiredSnapshotText(
-                                        snapshot, "snapshotDocument"));
         }
 
         private String requiredSnapshotText(
@@ -1423,29 +1242,6 @@ public class UiDataSourceService {
                                         "数据源不存在、已删除或未启用");
                 }
                 return definition;
-        }
-
-        private void requireMutationScope(
-                        UiDataSourceDefinition definition,
-                        UiDataSourceExecutionAuthorization authorization) {
-                String scopeType = normalize(
-                                definition.getScopeType());
-                if ("GLOBAL".equals(scopeType)
-                                || scopeType.isEmpty()) {
-                        return;
-                }
-                if ("ENTITY".equals(scopeType)
-                                && (Objects.equals(
-                                                definition.getScopeId(),
-                                                authorization.entityId())
-                                                || Objects.equals(
-                                                                definition.getScopeId(),
-                                                                authorization.entityCode()))) {
-                        return;
-                }
-                throw new BusinessForbiddenException(
-                                "ENTITY_MUTATION_SOURCE_SCOPE_MISMATCH",
-                                "受管理接口的作用域与目标实体不一致");
         }
 
         private Object executeAuthorized(
@@ -1585,47 +1381,6 @@ public class UiDataSourceService {
                                         config,
                                         input);
                 }
-                if ("INTEGRATION_CONNECTOR".equals(sourceType)) {
-                        if (!authorization.dataScopePlan().allowed()) {
-                                throw new BusinessForbiddenException(
-                                                "UI_DATA_SOURCE_DATA_SCOPE_DENIED",
-                                                "当前用户的数据权限计划拒绝执行该 Connector");
-                        }
-                        IntegrationConnector connector = connectors.stream()
-                                        .filter(item -> item.code().equalsIgnoreCase(
-                                                        definition.getProviderCode()))
-                                        .findFirst()
-                                        .orElseThrow(() -> new IllegalStateException(
-                                                        "Integration Connector未注册: "
-                                                                        + definition.getProviderCode()));
-                        IntegrationResult result = connector.execute(
-                                        IntegrationRequest.builder()
-                                                        .idempotencyKey(idempotencyKey(
-                                                                        definition,
-                                                                        authorization,
-                                                                        input))
-                                                        .operation(text(config.get("operation")))
-                                                        .connectorConfigId(text(
-                                                                        config.get("connectorConfigId")))
-                                                        .configurationSnapshot(
-                                                                        definition
-                                                                                .getConnectorConfigurationSnapshot())
-                                                        .parameters(Collections.unmodifiableMap(
-                                                                        new LinkedHashMap<>(input)))
-                                                        .runtimeContext(
-                                                                        new IntegrationRuntimeContext(
-                                                                                        context))
-                                                        .dataScopePlan(
-                                                                        authorization.dataScopePlan())
-                                                        .permissionSummary(permissionSummary(
-                                                                        authorization.dataScopePlan()))
-                                                        .build());
-                        if (!result.isSuccess()) {
-                                throw new IllegalStateException(
-                                                "Connector执行失败: " + result.getMessage());
-                        }
-                        return result.getData();
-                }
                 throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
         }
 
@@ -1677,10 +1432,9 @@ public class UiDataSourceService {
                         throw new IllegalArgumentException("非全局数据源必须指定 scopeId");
                 }
                 if ("GLOBAL".equals(scopeType)
-                                && Set.of("REGISTERED_PROVIDER", "INTEGRATION_CONNECTOR")
-                                                .contains(sourceType)) {
+                                && "REGISTERED_PROVIDER".equals(sourceType)) {
                         throw new IllegalArgumentException(
-                                        "Provider 和 Connector 必须绑定实体、表单或列表范围");
+                                        "Provider 必须绑定实体、表单或列表范围");
                 }
                 definitionValidator.validateNoForbiddenKeys(
                                 request.getConfig(),
@@ -1691,9 +1445,9 @@ public class UiDataSourceService {
                 validateOperationScopes(
                                 request.getOperations(),
                                 scopeType);
-                if (Set.of("REGISTERED_PROVIDER", "INTEGRATION_CONNECTOR").contains(sourceType)
+                if ("REGISTERED_PROVIDER".equals(sourceType)
                                 && !StringUtils.hasText(request.getProviderCode())) {
-                        throw new IllegalArgumentException("Provider/Connector编码不能为空");
+                        throw new IllegalArgumentException("Provider 编码不能为空");
                 }
                 requireScopeAccess(scopeType, request.getScopeId());
         }
@@ -1849,8 +1603,6 @@ public class UiDataSourceService {
                 target.setOperationCode(source.getOperationCode());
                 target.setOperationContextType(source.getOperationContextType());
                 target.setOperationKind(source.getOperationKind());
-                target.setConnectorConfigurationSnapshot(
-                                source.getConnectorConfigurationSnapshot());
                 target.setRevision(source.getRevision());
                 target.setEnabled(source.getEnabled());
                 target.setCreatedAt(source.getCreatedAt());
@@ -1913,48 +1665,6 @@ public class UiDataSourceService {
                 value.put("matchedPolicies", plan.matchedPolicies());
                 value.put("releaseVersion", plan.releaseVersion());
                 return value;
-        }
-
-        private Map<String, Object> permissionSummary(
-                        DataScopePlan plan) {
-                Map<String, Object> summary = new LinkedHashMap<>();
-                summary.put("allowed", plan.allowed());
-                summary.put("matchedPolicies", plan.matchedPolicies());
-                summary.put("explanation", plan.explanation());
-                summary.put("releaseVersion", plan.releaseVersion());
-                return Collections.unmodifiableMap(summary);
-        }
-
-        private String idempotencyKey(
-                        UiDataSourceDefinition definition,
-                        UiDataSourceExecutionAuthorization authorization,
-                        Map<String, Object> input) {
-                Map<String, Object> material = new LinkedHashMap<>();
-                material.put("serviceId", definition.getId());
-                material.put("sourceRevision", definition.getRevision());
-                material.put("configType", authorization.configType());
-                material.put("configId", authorization.configId());
-                material.put("releaseId", authorization.releaseId());
-                material.put("releaseVersion", authorization.releaseVersion());
-                material.put("usage", authorization.usage());
-                material.put("userId", authorization.user().getId());
-                material.put("tenantId", authorization.user().getOrgId());
-                material.put("serverSeed", authorization.idempotencySeed());
-                material.put("input", input);
-                String canonical = codec.canonicalize(
-                                codec.write(material, "Connector幂等键"),
-                                "Connector幂等键");
-                try {
-                        return "ui-ds-"
-                                        + HexFormat.of().formatHex(
-                                                        MessageDigest.getInstance("SHA-256")
-                                                                        .digest(canonical.getBytes(
-                                                                                        StandardCharsets.UTF_8)));
-                } catch (Exception exception) {
-                        throw new IllegalStateException(
-                                        "生成 Connector 幂等键失败",
-                                        exception);
-                }
         }
 
         private RuntimeException executionFailure(
@@ -2039,9 +1749,6 @@ public class UiDataSourceService {
                         String ownerType) {
                 String expected = normalize(definition.getOperationContextType());
                 String actual = normalize(ownerType);
-                if ("ENTITY_MUTATION".equals(actual)) {
-                        actual = "ENTITY";
-                }
                 if (!Objects.equals(expected, actual)) {
                         throw new BusinessForbiddenException(
                                         "UI_INTERFACE_CONTEXT_MISMATCH",

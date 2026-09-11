@@ -126,7 +126,7 @@ class UiInvocationContextFactoryTest {
     }
 
     @Test
-    void buildsEntityOperationFromServerOnlyField() {
+    void buildsEntityOperationFromAuthorizedUsage() {
         EntityDefinitionMapper definitionMapper =
                 mock(EntityDefinitionMapper.class);
         EntityFormMapper formMapper =
@@ -158,8 +158,8 @@ class UiInvocationContextFactoryTest {
                         "entity-a",
                         null,
                         5,
-                        "$.release.entity.steps[0]",
-                        "ENTITY_MUTATION_PREPARE",
+                        "$.release.entity",
+                        "UPDATE",
                         "entity-a",
                         "expense",
                         null,
@@ -183,7 +183,6 @@ class UiInvocationContextFactoryTest {
 
         UiDataSourceExecuteRequest request =
                 new UiDataSourceExecuteRequest();
-        request.setServerEntityOperation("UPDATE");
         request.setInput(Map.of(
                 "recordId", "record-a",
                 "operation", "DELETE"));

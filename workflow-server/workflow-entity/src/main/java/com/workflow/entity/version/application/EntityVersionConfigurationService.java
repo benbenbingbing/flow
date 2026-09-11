@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.result.PageRequest;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -51,9 +52,68 @@ public class EntityVersionConfigurationService {
     private final EntityVersionConfigurationValidator validator;
     private final EntityVersionScopeFreezer scopeFreezer;
 
+    /**
+     * 返回兼容旧客户端的完整配置摘要列表。
+     *
+     * @param keyword 实体名称或编码的模糊关键字，可为空
+     * @return 匹配关键字的全部摘要，顺序稳定
+     */
     @Transactional(readOnly = true)
     public List<EntityVersionConfigSummary> list(String keyword) {
+        return List.copyOf(summaries(keyword, null));
+    }
+
+    /**
+     * 按实体名称/编码和启用状态分页查询数据版本配置摘要。
+     *
+     * <p>{@code enabled=false} 遵循摘要字段的既有语义：除显式停用配置外，
+     * 未配置实体和混部期间只有 legacy 草稿的占位行也归入未启用。分页参数沿用
+     * 平台统一规范，页码最小为 1，每页大小限制在 1 到 100。</p>
+     *
+     * @param keyword 实体名称或编码的模糊关键字，可为空
+     * @param enabled 启用状态；为空表示全部
+     * @param requestedPageNum 请求页码
+     * @param requestedPageSize 请求每页大小
+     * @return 筛选后的分页摘要
+     */
+    @Transactional(readOnly = true)
+    public PageResult<EntityVersionConfigSummary> listPage(
+            String keyword,
+            Boolean enabled,
+            Integer requestedPageNum,
+            Integer requestedPageSize) {
+        PageRequest page = PageRequest.normalize(
+                requestedPageNum, requestedPageSize, 20, 100);
+        List<EntityVersionConfigSummary> result =
+                summaries(keyword, enabled);
+        int start = page.startIndex(result.size());
+        int end = (int) Math.min(
+                (long) start + page.pageSize(), result.size());
+        return new PageResult<>(
+                List.copyOf(result.subList(start, end)),
+                result.size(),
+                page.pageNumber(),
+                page.pageSize());
+    }
+
+    /** 两种列表契约共用批量读取和筛选逻辑，实体定义查询统一保证稳定顺序。 */
+    private List<EntityVersionConfigSummary> summaries(
+            String keyword,
+            Boolean enabled) {
         String normalizedKeyword = text(keyword);
+        Map<String, EntityVersionConfig> configsByEntityCode =
+                new LinkedHashMap<>();
+        // 管理列表包含未配置实体，先批量建立当前配置索引，避免逐实体 N+1 查询。
+        for (EntityVersionConfig config
+                : configMapper.findAllForManagementList()) {
+            if (config != null
+                    && StringUtils.hasText(config.getEntityCode())) {
+                // 数据库实体编码使用 CI collation；内存索引必须保持相同的
+                // 大小写语义，否则历史 ASSET/asset 数据会被误判为未配置。
+                configsByEntityCode.putIfAbsent(
+                        entityCodeKey(config.getEntityCode()), config);
+            }
+        }
         List<EntityVersionConfigSummary> result = new ArrayList<>();
         for (EntityDefinition definition
                 : definitionMapper.findAllWithFields()) {
@@ -66,9 +126,8 @@ public class EntityVersionConfigurationService {
                             normalizedKeyword)) {
                 continue;
             }
-            EntityVersionConfig config =
-                    configMapper.findByEntityCode(
-                            definition.getEntityCode());
+            EntityVersionConfig config = configsByEntityCode.get(
+                    entityCodeKey(definition.getEntityCode()));
             EntityVersionConfiguration document = config != null
                     && StringUtils.hasText(config.getConfigDocument())
                     ? readConfiguration(config.getConfigDocument()) : null;
@@ -85,6 +144,10 @@ public class EntityVersionConfigurationService {
             // active release 覆盖 config_document，legacy 草稿始终不参与运行语义。
             boolean runtimeEnabled = document != null
                     && Boolean.TRUE.equals(document.getEnabled());
+            if (enabled != null
+                    && enabled.booleanValue() != runtimeEnabled) {
+                continue;
+            }
             result.add(new EntityVersionConfigSummary(
                     definition.getId(),
                     definition.getEntityCode(),
@@ -665,11 +728,9 @@ public class EntityVersionConfigurationService {
         EntityVersionConfiguration source = request == null
                 ? new EntityVersionConfiguration() : request;
         if (value(source.getSchemaVersion(), 2) != 2
-                || !safe(source.getScenarios()).isEmpty()
-                || !safe(source.getSteps()).isEmpty()
-                || !safe(source.getTargetBindings()).isEmpty()) {
+                || !safe(source.getScenarios()).isEmpty()) {
             throw new IllegalArgumentException(
-                    "数据版本配置仅支持 V2；处理步骤和变更目标请在独立变更策略中维护");
+                    "数据版本配置仅支持 V2");
         }
         source.setEntityId(definition.getId());
         source.setEntityCode(definition.getEntityCode());
@@ -678,8 +739,6 @@ public class EntityVersionConfigurationService {
                 Boolean.TRUE.equals(source.getEnabled()));
         source.setSchemaVersion(value(source.getSchemaVersion(), 2));
         source.setScenarios(new ArrayList<>());
-        source.setSteps(new ArrayList<>());
-        source.setTargetBindings(new ArrayList<>());
         source.setTriggers(source.getTriggers() == null
                 ? new ArrayList<>() : source.getTriggers());
         if (source.getSnapshotScope() == null) {
@@ -931,8 +990,6 @@ public class EntityVersionConfigurationService {
         result.setFieldOptions(List.of());
         if (value(result.getSchemaVersion(), 1) >= 2) {
             result.setScenarios(List.of());
-            result.setSteps(List.of());
-            result.setTargetBindings(List.of());
         }
         return result;
     }
@@ -1018,6 +1075,13 @@ public class EntityVersionConfigurationService {
         return normalized == null
                 ? null
                 : normalized.toUpperCase(Locale.ROOT);
+    }
+
+    private String entityCodeKey(String value) {
+        String normalized = text(value);
+        return normalized == null
+                ? null
+                : normalized.toLowerCase(Locale.ROOT);
     }
 
     private String text(Object value) {

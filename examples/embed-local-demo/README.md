@@ -23,7 +23,7 @@ Demo 默认提供两个受控目标：`req-list / ZDWREQ / list001` 列表和
 
 | 对象 | 示例值 |
 | --- | --- |
-| Application | 当前环境创建的“嵌入联调示例”；Scope 仅 `embed.launch` |
+| Application | 当前环境创建的“嵌入联调示例”，配置有效 Client Credential |
 | Provider | 当前环境创建的 SIGNED_JWT Provider；Issuer `https://id.embed-demo.local` |
 | 外部人员 | `sub=demo-lisi-001`，绑定到当前环境中已启用且具备目标权限的 Flow 用户 |
 | 列表嵌入配置 | `req-list` / `LIST`；目标区域只选择实体 `ZDWREQ` 和列表 `list001` |
@@ -132,8 +132,8 @@ localhost 证书即可。如果 iframe 因 8443 的证书尚未确认而空白�
 
 1. 浏览器请求第三方同源接口 `POST https://localhost:3443/partner-api/embed-launch`，只传
    受控 `targetKey`、`mode`、可选 `recordId`、主题和 `formPresentation`；
-2. 3443 Node 后端从本地安全文件读取 OAuth 凭据，调用
-   `POST http://127.0.0.1:8080/oauth2/token`，Scope 固定为 `embed.launch`；
+2. 3443 Node 后端从本地安全文件读取 OAuth 凭据，以 `client_credentials` 调用
+   `POST http://127.0.0.1:8080/oauth2/token`；不配置或发送 OAuth 业务 Scope；
 3. Node 后端用人员断言私钥签发 60 秒 RS256 JWT，固定
    `iss/aud/sub/kid`，每次生成新的 `jti`；
 4. Node 后端把 `list/form` 映射为环境变量中的固定 View Key，再调用

@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationCredentialMapper;
-import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationScopeMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationCredentialRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import java.time.Clock;
@@ -30,21 +29,18 @@ class IntegrationRegisteredClientRepositoryTest {
 
     private IntegrationApplicationMapper applicationMapper;
     private IntegrationCredentialMapper credentialMapper;
-    private IntegrationScopeMapper scopeMapper;
     private IntegrationRegisteredClientRepository repository;
 
     @BeforeEach
     void setUp() {
         applicationMapper = mock(IntegrationApplicationMapper.class);
         credentialMapper = mock(IntegrationCredentialMapper.class);
-        scopeMapper = mock(IntegrationScopeMapper.class);
         OpenIntegrationProperties properties =
                 new OpenIntegrationProperties();
         properties.setAccessTokenTtl(Duration.ofMinutes(10));
         repository = new IntegrationRegisteredClientRepository(
                 applicationMapper,
                 credentialMapper,
-                scopeMapper,
                 properties,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -59,11 +55,6 @@ class IntegrationRegisteredClientRepositoryTest {
                 .thenReturn(application);
         when(credentialMapper.findActive("app-1"))
                 .thenReturn(credential);
-        when(scopeMapper.findByApplicationId("app-1"))
-                .thenReturn(Set.of(
-                        "process.instance.start",
-                        "process.instance.read"));
-
         RegisteredClient result = repository.findByClientId(
                 "flow_client");
 
@@ -77,9 +68,7 @@ class IntegrationRegisteredClientRepositoryTest {
                 Set.of(AuthorizationGrantType.CLIENT_CREDENTIALS),
                 result.getAuthorizationGrantTypes());
         assertEquals(
-                Set.of(
-                        "process.instance.start",
-                        "process.instance.read"),
+                Set.of(),
                 result.getScopes());
         assertEquals(
                 Duration.ofMinutes(10),
@@ -87,25 +76,15 @@ class IntegrationRegisteredClientRepositoryTest {
     }
 
     @Test
-    void disabledExpiredOrUnscopedApplicationIsNotARegisteredClient() {
+    void disabledOrExpiredApplicationIsNotARegisteredClient() {
         when(applicationMapper.findByClientId("disabled"))
                 .thenReturn(application("DISABLED", null));
         when(applicationMapper.findByClientId("expired"))
                 .thenReturn(application(
                         "ACTIVE",
                         NOW.minusSeconds(1)));
-        IntegrationApplicationRecord unscoped =
-                application("ACTIVE", null);
-        when(applicationMapper.findByClientId("unscoped"))
-                .thenReturn(unscoped);
-        when(credentialMapper.findActive("app-1"))
-                .thenReturn(credential(null));
-        when(scopeMapper.findByApplicationId("app-1"))
-                .thenReturn(Set.of());
-
         assertNull(repository.findByClientId("disabled"));
         assertNull(repository.findByClientId("expired"));
-        assertNull(repository.findByClientId("unscoped"));
     }
 
     @Test

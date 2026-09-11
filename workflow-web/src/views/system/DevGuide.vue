@@ -123,7 +123,7 @@ Content-Type: application/json
             <li>属性抽屉默认关闭；选中画布节点后才从右侧打开。节点 ID、nodeKey、revision、orderKey、发布快照版本、bindingType 与 bindingRef 只能作为只读摘要展示。</li>
             <li>扩展 `configSchema` 的每个可编辑项应标注 `group: 'common' | 'advanced'`；也可使用自定义 group 对象。`order` 控制组内稳定顺序，`priority` 在未指定 order 时决定优先级，`advanced: true` 让低频或高风险组默认折叠，`visibleWhen` 使用结构化条件按当前配置显隐。未分组的历史 Schema 自动归入常用区。</li>
             <li>平台内置与扩展属性面板统一复用 `SettingsSection` 语义：常用区使用 `primary` 且不可折叠，高级区使用 `defaultExpanded=false`；不要为每个字段再创建一层折叠，也不要自行实现不同的展开状态和视觉规范。</li>
-            <li>`visibleWhen` 只能描述字段路径、equals/notEquals、in/notIn、includes、exists、truthy/falsy 以及 all/any/not 等结构化条件；来自服务端或迁移包的 Schema 不得携带可执行脚本。生产数据源必须引用 Provider/Connector，历史 apiUrl 只允许作为兼容数据迁移。</li>
+            <li>`visibleWhen` 只能描述字段路径、equals/notEquals、in/notIn、includes、exists、truthy/falsy 以及 all/any/not 等结构化条件；来自服务端或迁移包的 Schema 不得携带可执行脚本。生产数据源必须引用 Provider，历史 apiUrl 只允许作为兼容数据迁移。</li>
             <li>父容器是受限结构属性：TAB 只能选择 TAB_SET；TAB_SET 只直接接受 TAB；其他节点可位于根节点或 SECTION、GRID、TAB、COLLAPSE、SUB_FORM、REPEATER，不能直接放入 TAB_SET。</li>
             <li>创建与 PATCH 必须读取同一份 nodeType Schema 和服务端白名单；新增、编辑、整包 diff/upsert 不得出现不同的属性能力或绕过路径。</li>
             <li>历史节点编辑保存时按当前 Schema 归一化：不兼容的活动 props、rules、组件参数和数据源绑定必须清除，必要原值仅进入 `legacyProps` 等非活动兼容区，运行时和发布快照不得继续消费。</li>
@@ -243,7 +243,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <el-table-column prop="meaning" label="用途" />
           </el-table>
           <ul class="check-list">
-            <li>禁止任意 SQL、JavaScript、Groovy、SpEL、动态类名和外网 URL；外部调用只能引用已注册 Connector 与平台凭据。</li>
+            <li>禁止任意 SQL、JavaScript、Groovy、SpEL、动态类名和外网 URL；外部调用只能封装在已注册 Provider 中，凭据由服务端安全管理。</li>
             <li>`FORM_INIT` 是表单级绑定；FIELD 仅允许 `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / AFTER_LOAD / BEFORE_SUBMIT`。</li>
             <li>SUB_FORM 与 REPEATER 仅允许 `SUBFORM_ROWS / AFTER_LOAD / BEFORE_SUBMIT`，不能借用 FIELD Usage 配置选项、默认值或字段计算。</li>
             <li>配置 Schema、输入映射、输出映射、分页、超时、缓存和失败策略在预览与发布时统一校验。</li>
@@ -254,7 +254,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="data-source-spi" class="guide-section">
-          <h3>9. Provider 与 Connector SPI</h3>
+          <h3>9. Provider SPI</h3>
           <CodeCard title="UiDataSourceProvider.java" language="Java">
             <pre v-pre><code>public interface UiDataSourceProvider {
     String getCode();
@@ -276,18 +276,11 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
     );
 }</code></pre>
           </CodeCard>
-          <CodeCard title="IntegrationConnector.java" language="Java">
-            <pre v-pre><code>public interface IntegrationConnector {
-    String code();
-    IntegrationResult execute(IntegrationRequest request);
-}</code></pre>
-          </CodeCard>
           <ul class="check-list">
-            <li>自定义实现加 `@Component`（或显式声明 `@Bean`）；Provider 的 `getCode()`、Connector 的 `code()` 必须全局唯一。</li>
+            <li>自定义实现加 `@Component`（或显式声明 `@Bean`）；Provider 的 `getCode()` 必须全局唯一。</li>
             <li>同一 `getCode() + getVersion()` 对应的实现必须保持不可变；逻辑或依赖变化时提升版本。默认摘要覆盖实现类字节码，依赖额外模型、脚本或资源时必须覆盖 `getArtifactDigest()`，返回整个受审制品的稳定 SHA-256。</li>
             <li>表单事件 Provider 可参考 `ProjectCustomFormUiDataSourceProvider`，操作编码从 `context.common().operationCode()` 读取。</li>
             <li>`UiInvocationContext` 按 FORM、LIST、ENTITY 分型，只暴露服务端解析的用户、实体、页面、发布版本和绑定位置等可信元数据。</li>
-            <li>Connector 配置只保存 `connectorCode + operation + credentialRef`；URL、令牌和密钥由平台连接器中心管理。</li>
             <li>现有 `EntityListDataProvider` 和 `ListFieldDataProvider` 通过适配器接入 `LIST_QUERY`、`LIST_COLUMN`，保持已有扩展兼容。</li>
             <li>Provider 必须支持超时、批量、取消、可观测 traceId 和结构化错误，不得按行发起 N+1 远程请求。</li>
           </ul>
@@ -444,7 +437,7 @@ Content-Type: application/json
             <li>存量 `process_version_history.node_forms_snapshot` 由启动回填器分页 200 条幂等解析；配置 `workflow.ui-hotfix.binding-backfill-enabled=false` 可暂时关闭，缺省为开启。</li>
             <li>生产升级应核对回填日志中的 `histories`、`inserted`、`updated`、`missingRelease`、`invalidSnapshot`、`skippedExisting`；关闭回填只适合受控迁移窗口，完成核对后应重新开启。</li>
             <li>新运行时优先读取激活 release；不存在时仅临时回退旧配置并记录告警，生成初始 release 后停止依赖回退。</li>
-            <li>扩展废弃必须保留快照读取和配置迁移路径，不得因为 Provider、Connector 或组件升级导致历史 release 无法渲染。</li>
+            <li>扩展废弃必须保留快照读取和配置迁移路径，不得因为 Provider 或组件升级导致历史 release 无法渲染。</li>
           </ul>
         </section>
 
@@ -538,7 +531,7 @@ const toc = [
   { id: 'provider', label: '后端提供者' },
   { id: 'provider-context', label: '上下文与约束' },
   { id: 'unified-data-source', label: '统一数据源' },
-  { id: 'data-source-spi', label: 'Provider / Connector' },
+  { id: 'data-source-spi', label: 'Provider SPI' },
   { id: 'release-api', label: '发布与热修复' },
   { id: 'migration-compatibility', label: '迁移兼容' },
   { id: 'cell', label: '单元格组件' },
@@ -582,7 +575,6 @@ const dataSourceTypes = [
   { type: 'DICTIONARY', capability: '平台字典，输出稳定 label/value' },
   { type: 'STATIC_OPTIONS', capability: '少量固定选项或对象，不存储敏感信息' },
   { type: 'REGISTERED_PROVIDER', capability: '部署时注册的 Provider，声明 Schema 与支持位置' },
-  { type: 'INTEGRATION_CONNECTOR', capability: '引用受控连接器、操作和凭据引用，不接受自由 URL' },
   { type: 'RUNTIME_CONTEXT', capability: '读取白名单运行上下文，客户端值不能作为授权事实' },
   { type: 'STRUCTURED_COMPUTE', capability: '白名单运算符和路径，不执行任意脚本或 SQL' }
 ]

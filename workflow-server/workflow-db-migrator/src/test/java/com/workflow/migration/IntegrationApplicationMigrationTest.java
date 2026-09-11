@@ -73,29 +73,13 @@ class IntegrationApplicationMigrationTest {
                                                 "integration_application",
                                                 "integration_application_credential",
                                                 "integration_api_request_lease",
-                                                "integration_connector_config",
                                                 "integration_idempotency_record",
-                                                "integration_process_binding",
-                                                "integration_secret",
-                                                "integration_application_scope",
-                                                "integration_process_grant",
-                                                "integration_rate_limit_bucket",
-                                                "integration_workflow_scenario",
-                                                "integration_workflow_scenario_revision"),
+                                                "integration_rate_limit_bucket"),
                                 integrationTables());
-                assertEquals(
-                                Set.of(
-                                                "webhook_delivery",
-                                                "webhook_endpoint",
-                                                "webhook_event",
-                                                "webhook_subscription"),
-                                webhookTables());
+                assertEquals(Set.of(), webhookTables());
                 assertTrue(indexExists(
                                 "integration_application_credential",
                                 "uk_integration_credential_active"));
-                assertTrue(indexExists(
-                                "integration_secret",
-                                "uk_integration_secret_active"));
                 assertFalse(columnExists(
                                 "integration_application_credential",
                                 "client_secret"));
@@ -172,6 +156,45 @@ class IntegrationApplicationMigrationTest {
                                   FROM sys_role_menu
                                  WHERE menu_id = 'entity_scope_inventory_menu_001'
                                 """));
+                for (String retiredTable : Set.of(
+                                "entity_change_target_instance",
+                                "entity_mutation_policy_release",
+                                "entity_mutation_policy_config")) {
+                        assertFalse(tableExists(retiredTable));
+                }
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id IN (
+                                           'entity_mutation_policy_management_001',
+                                           'entity_mutation_policy_list_001',
+                                           'entity_mutation_policy_update_001',
+                                           'entity_mutation_policy_publish_001'
+                                       )
+                                    OR perm IN (
+                                           'entity:mutation:config:list',
+                                           'entity:mutation:config:update',
+                                           'entity:mutation:config:publish'
+                                       )
+                                    OR path = '/system/entity-mutation-policies'
+                                    OR component =
+                                       'system/EntityMutationPolicyManagement'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu
+                                 WHERE menu_id IN (
+                                           'entity_mutation_policy_management_001',
+                                           'entity_mutation_policy_list_001',
+                                           'entity_mutation_policy_update_001',
+                                           'entity_mutation_policy_publish_001'
+                                       )
+                                """));
+                // 写入幂等回执和数据版本存储属于共享底座，不随变更策略退场。
+                assertTrue(tableExists("entity_mutation_receipt"));
+                assertTrue(tableExists("entity_version_config"));
+                assertTrue(tableExists("entity_version_config_release"));
+                assertTrue(tableExists("entity_record_version"));
                 // EXPLICIT_ALL 仍属于列表设计器的通用安全策略，撤除盘点页不能连带移除它。
                 assertEquals(1, countRows("""
                                 SELECT COUNT(*)
@@ -321,6 +344,442 @@ class IntegrationApplicationMigrationTest {
                         assertTrue(columnExists(table, "create_time"));
                         assertTrue(columnExists(table, "update_time"));
                 }
+        }
+
+        @Test
+        void entityMutationPolicyUpgradeRemovesPersistedFeatureAndAllTargetStates()
+                        throws Exception {
+                Flyway throughV82 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("82"))
+                                .load();
+                throughV82.migrate();
+
+                execute("""
+                                INSERT INTO entity_version_config (
+                                  id, entity_id, entity_code, enabled,
+                                  contract_version, draft_document,
+                                  config_document, migration_state,
+                                  active_release_id, revision, status, deleted
+                                ) VALUES (
+                                  'version-config-with-policy-json',
+                                  'entity-version-asset', 'version_asset', 1, 2,
+                                  '{"schemaVersion":2,"scenarios":[{"scenarioCode":"DRAFT_RULE"}],"triggers":[{"triggerCode":"DRAFT_TRIGGER"}],"steps":[{"stepName":"retire"}],"targetBindings":[{"bindingCode":"retire"}]}',
+                                  '{"schemaVersion":2,"scenarios":[{"scenarioCode":"CURRENT_RULE"}],"triggers":[{"triggerCode":"CURRENT_TRIGGER"}],"steps":[{"stepName":"retire"}],"targetBindings":[{"bindingCode":"retire"}]}',
+                                  'NATIVE', 'version-release-with-policy-json',
+                                  3, 'PUBLISHED', 0
+                                )
+                                """);
+                execute("""
+                                INSERT INTO entity_version_config_release (
+                                  id, config_id, version, contract_version,
+                                  config_document
+                                ) VALUES (
+                                  'version-release-with-policy-json',
+                                  'version-config-with-policy-json', 1, 2,
+                                  '{"schemaVersion":2,"scenarios":[{"scenarioCode":"RELEASE_RULE"}],"triggers":[{"triggerCode":"RELEASE_TRIGGER"}],"steps":[{"stepName":"retire"}],"targetBindings":[{"bindingCode":"retire"}]}'
+                                )
+                                """);
+                execute("""
+                                INSERT INTO entity_mutation_policy_config (
+                                  id, entity_id, entity_code, enabled,
+                                  draft_document, active_release_id,
+                                  revision, status, migration_state, deleted
+                                ) VALUES (
+                                  'policy-config-1', 'entity-asset', 'asset', 1,
+                                  '{"schemaVersion":1,"steps":[]}',
+                                  'policy-release-1', 2, 'PUBLISHED', 'NATIVE', 0
+                                )
+                                """);
+                execute("""
+                                INSERT INTO entity_mutation_policy_release (
+                                  id, config_id, version, config_document
+                                ) VALUES (
+                                  'policy-release-1', 'policy-config-1', 1,
+                                  '{"schemaVersion":1,"steps":[]}'
+                                )
+                                """);
+                execute("""
+                                INSERT INTO entity_change_target_instance (
+                                  id, binding_code, source_entity_code,
+                                  source_record_id, process_instance_id,
+                                  target_entity_code, target_record_id,
+                                  target_document, status
+                                ) VALUES
+                                  (
+                                    'frozen-target-1', 'APPLY_ASSET', 'request',
+                                    'request-1', 'process-1', 'asset', 'asset-1',
+                                    '{"fields":{"name":"after"}}', 'FROZEN'
+                                  ),
+                                  (
+                                    'failed-target-1', 'APPLY_ASSET', 'request',
+                                    'request-2', 'process-2', 'asset', 'asset-2',
+                                    '{"fields":{"name":"after"}}', 'FAILED'
+                                  ),
+                                  (
+                                    'conflict-target-1', 'APPLY_ASSET', 'request',
+                                    'request-3', 'process-3', 'asset', 'asset-3',
+                                    '{"fields":{"name":"after"}}', 'CONFLICT'
+                                  ),
+                                  (
+                                    'applied-target-1', 'APPLY_ASSET', 'request',
+                                    'request-4', 'process-4', 'asset', 'asset-4',
+                                    '{"fields":{"name":"after"}}', 'APPLIED'
+                                  )
+                                """);
+                execute("""
+                                INSERT INTO sys_menu (
+                                  id, parent_id, menu_name, menu_type,
+                                  path, component, perm, status, visible, deleted
+                                ) VALUES
+                                  (
+                                    'mutation_policy_copy_root', '0',
+                                    '实体变更策略副本', 'C',
+                                    '/system/entity-mutation-policies-copy',
+                                    'system/EntityMutationPolicyManagement',
+                                    'entity:mutation:config:copy', '0', '0', 0
+                                  ),
+                                  (
+                                    'mutation_policy_copy_child',
+                                    'mutation_policy_copy_root', '执行策略副本', 'F',
+                                    '', '', 'entity:mutation:config:copy-execute',
+                                    '0', '0', 0
+                                  )
+                                """);
+                execute("""
+                                INSERT INTO sys_role_menu (
+                                  id, role_id, menu_id, create_time
+                                ) VALUES
+                                  (
+                                    'mutation-copy-root-grant', '1',
+                                    'mutation_policy_copy_root', CURRENT_TIMESTAMP
+                                  ),
+                                  (
+                                    'mutation-copy-child-grant', '1',
+                                    'mutation_policy_copy_child', CURRENT_TIMESTAMP
+                                  )
+                                """);
+                // 模拟页面菜单已被人工删除但授权仍残留的存量异常。
+                execute("""
+                                DELETE FROM sys_menu
+                                 WHERE id = 'entity_mutation_policy_publish_001'
+                                """);
+
+                assertEquals("82", currentVersion());
+                assertTrue(tableExists("entity_mutation_policy_config"));
+                assertEquals(4, countRows(
+                                "SELECT COUNT(*) FROM entity_change_target_instance"));
+
+                Flyway current = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("83"))
+                                .load();
+                assertEquals(1, current.migrate().migrationsExecuted);
+                current.validate();
+
+                assertEquals("83", currentVersion());
+                assertFalse(tableExists("entity_change_target_instance"));
+                assertFalse(tableExists("entity_mutation_policy_release"));
+                assertFalse(tableExists("entity_mutation_policy_config"));
+                assertEquals(0, countRows("""
+                                SELECT JSON_CONTAINS_PATH(
+                                           config_document, 'one',
+                                           '$.steps', '$.targetBindings')
+                                  FROM entity_version_config
+                                 WHERE id = 'version-config-with-policy-json'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT JSON_CONTAINS_PATH(
+                                           draft_document, 'one',
+                                           '$.steps', '$.targetBindings')
+                                  FROM entity_version_config
+                                 WHERE id = 'version-config-with-policy-json'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT JSON_CONTAINS_PATH(
+                                           config_document, 'one',
+                                           '$.steps', '$.targetBindings')
+                                  FROM entity_version_config_release
+                                 WHERE id = 'version-release-with-policy-json'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM entity_version_config
+                                 WHERE id = 'version-config-with-policy-json'
+                                   AND JSON_UNQUOTE(JSON_EXTRACT(
+                                         config_document,
+                                         '$.scenarios[0].scenarioCode')) =
+                                       'CURRENT_RULE'
+                                   AND JSON_UNQUOTE(JSON_EXTRACT(
+                                         config_document,
+                                         '$.triggers[0].triggerCode')) =
+                                       'CURRENT_TRIGGER'
+                                   AND JSON_UNQUOTE(JSON_EXTRACT(
+                                         draft_document,
+                                         '$.scenarios[0].scenarioCode')) =
+                                       'DRAFT_RULE'
+                                   AND JSON_UNQUOTE(JSON_EXTRACT(
+                                         draft_document,
+                                         '$.triggers[0].triggerCode')) =
+                                       'DRAFT_TRIGGER'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM entity_version_config_release
+                                 WHERE id = 'version-release-with-policy-json'
+                                   AND JSON_UNQUOTE(JSON_EXTRACT(
+                                         config_document,
+                                         '$.scenarios[0].scenarioCode')) =
+                                       'RELEASE_RULE'
+                                   AND JSON_UNQUOTE(JSON_EXTRACT(
+                                         config_document,
+                                         '$.triggers[0].triggerCode')) =
+                                       'RELEASE_TRIGGER'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id IN (
+                                           'entity_mutation_policy_management_001',
+                                           'entity_mutation_policy_list_001',
+                                           'entity_mutation_policy_update_001',
+                                           'entity_mutation_policy_publish_001',
+                                           'mutation_policy_copy_root',
+                                           'mutation_policy_copy_child'
+                                       )
+                                    OR perm IN (
+                                           'entity:mutation:config:list',
+                                           'entity:mutation:config:update',
+                                           'entity:mutation:config:publish'
+                                       )
+                                    OR path = '/system/entity-mutation-policies'
+                                    OR component =
+                                       'system/EntityMutationPolicyManagement'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu
+                                 WHERE menu_id IN (
+                                           'entity_mutation_policy_management_001',
+                                           'entity_mutation_policy_list_001',
+                                           'entity_mutation_policy_update_001',
+                                           'entity_mutation_policy_publish_001',
+                                           'mutation_policy_copy_root',
+                                           'mutation_policy_copy_child'
+                                       )
+                                """));
+                assertTrue(tableExists("entity_mutation_receipt"));
+                assertTrue(tableExists("entity_version_config"));
+                assertTrue(tableExists("entity_version_config_release"));
+                assertTrue(tableExists("entity_record_version"));
+        }
+
+        @Test
+        void openIntegrationRetirementKeepsEmbedSecurityStorageAndRemovesLegacyFeatures()
+                        throws Exception {
+                Flyway throughV83 = Flyway.configure()
+                                .dataSource(
+                                                MYSQL.getJdbcUrl(),
+                                                MYSQL.getUsername(),
+                                                MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .cleanDisabled(false)
+                                .target(MigrationVersion.fromVersion("83"))
+                                .load();
+                throughV83.migrate();
+
+                insertApplication("retained-embed-app", "retained-embed-client");
+                insertIdempotency(
+                                "retained-embed-idempotency",
+                                "retained-embed-app",
+                                "EMBED_RECORD_CREATE",
+                                "retained-request");
+                insertIdempotency(
+                                "retired-open-process-idempotency",
+                                "retained-embed-app",
+                                "PROCESS_START",
+                                "retired-request");
+                execute("""
+                                INSERT INTO workflow_outbox_event (
+                                  id, topic, event_key, payload_document
+                                ) VALUES
+                                  (
+                                    'retired-webhook-outbox',
+                                    'INTEGRATION_DOMAIN_EVENT',
+                                    'retired-domain-event',
+                                    JSON_OBJECT('type', 'retired')
+                                  ),
+                                  (
+                                    'retained-generic-outbox',
+                                    'GENERIC_DOMAIN_EVENT',
+                                    'retained-domain-event',
+                                    JSON_OBJECT('type', 'retained')
+                                  )
+                                """);
+                execute("""
+                                INSERT INTO ui_data_source_definition (
+                                  id, source_code, source_name, source_type,
+                                  provider_code
+                                ) VALUES
+                                  (
+                                    'retired-connector-source',
+                                    'RETIRED_CONNECTOR_SOURCE',
+                                    '退役连接器服务',
+                                    'INTEGRATION_CONNECTOR',
+                                    'http-json'
+                                  ),
+                                  (
+                                    'retained-provider-source',
+                                    'RETAINED_PROVIDER_SOURCE',
+                                    '保留 Provider 服务',
+                                    'REGISTERED_PROVIDER',
+                                    'projectCustomUiDataSourceProvider'
+                                  )
+                                """);
+                execute("""
+                                INSERT INTO entity_list_config (
+                                  id, entity_id, entity_code, list_key, list_name,
+                                  query_data_source_id, query_operation_code
+                                ) VALUES (
+                                  'connector-list', 'connector-entity',
+                                  'connector_entity', 'default', '连接器列表',
+                                  'retired-connector-source', 'query'
+                                )
+                                """);
+                execute("""
+                                INSERT INTO entity_list_field (
+                                  id, list_config_id, field_id, field_code,
+                                  field_name, data_source_id,
+                                  data_source_operation_code
+                                ) VALUES (
+                                  'connector-list-field', 'connector-list',
+                                  'connector-field', 'display_name', '展示名称',
+                                  'retired-connector-source', 'render'
+                                )
+                                """);
+
+                assertEquals("83", currentVersion());
+                assertTrue(tableExists("integration_process_binding"));
+                assertTrue(tableExists("integration_secret"));
+                assertTrue(tableExists("webhook_delivery"));
+
+                Flyway current = flyway();
+                assertEquals(1, current.migrate().migrationsExecuted);
+                current.validate();
+
+                assertEquals("84", currentVersion());
+                assertEquals(
+                                Set.of(
+                                                "integration_application",
+                                                "integration_application_credential",
+                                                "integration_api_request_lease",
+                                                "integration_idempotency_record",
+                                                "integration_rate_limit_bucket"),
+                                integrationTables());
+                assertEquals(Set.of(), webhookTables());
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM integration_application
+                                 WHERE id = 'retained-embed-app'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM integration_idempotency_record
+                                 WHERE id = 'retained-embed-idempotency'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM integration_idempotency_record
+                                 WHERE id = 'retired-open-process-idempotency'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM workflow_outbox_event
+                                 WHERE id = 'retired-webhook-outbox'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM workflow_outbox_event
+                                 WHERE id = 'retained-generic-outbox'
+                                   AND topic = 'GENERIC_DOMAIN_EVENT'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ui_data_source_definition
+                                 WHERE source_type = 'INTEGRATION_CONNECTOR'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM ui_data_source_definition
+                                 WHERE id = 'retained-provider-source'
+                                   AND source_type = 'REGISTERED_PROVIDER'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM entity_list_config
+                                 WHERE id = 'connector-list'
+                                   AND query_data_source_id IS NULL
+                                   AND query_operation_code IS NULL
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM entity_list_field
+                                 WHERE id = 'connector-list-field'
+                                   AND data_source_id IS NULL
+                                   AND data_source_operation_code IS NULL
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM information_schema.columns
+                                 WHERE table_schema = DATABASE()
+                                   AND table_name = 'ui_data_source_definition'
+                                   AND column_name IN ('source_type', 'provider_code')
+                                   AND column_comment LIKE '%Connector%'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'integration_perm_delivery_replay'
+                                """));
+                assertEquals(0, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu
+                                 WHERE menu_id = 'integration_perm_delivery_replay'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'user_manual_open_integration_001'
+                                   AND menu_name = '集成应用与 Embed'
+                                   AND remark =
+                                     '集成应用、Client Credential、OAuth 与 Embed 接入说明'
+                                """));
+                assertTrue(countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_role_menu
+                                 WHERE menu_id = 'user_manual_open_integration_001'
+                                """) > 0);
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'integration_management_menu_001'
+                                """));
+                assertEquals(1, countRows("""
+                                SELECT COUNT(*)
+                                  FROM sys_menu
+                                 WHERE id = 'integration_perm_secret_rotate'
+                                   AND menu_name = '轮换应用凭据'
+                                """));
         }
 
         @Test
@@ -978,7 +1437,7 @@ class IntegrationApplicationMigrationTest {
         }
 
         @Test
-        void versionFourteenUpgradePreservesExistingBusinessData()
+        void versionFourteenUpgradePreservesRetainedDataAndRemovesRetiredIntegrationData()
                         throws Exception {
                 Flyway.configure()
                                 .dataSource(
@@ -1018,16 +1477,20 @@ class IntegrationApplicationMigrationTest {
                                 "SELECT COUNT(*) FROM sys_dict "
                                                 + "WHERE id = 'upgrade-sentinel' "
                                                 + "AND dict_code = 'upgrade_sentinel'"));
-                assertTrue(tableExists("webhook_endpoint"));
-                assertTrue(tableExists("integration_secret"));
-                assertTrue(tableExists("integration_connector_config"));
                 assertEquals(1, countRows("""
                                 SELECT COUNT(*)
-                                  FROM integration_process_binding
-                                 WHERE application_id = 'upgrade-app'
-                                   AND process_instance_id =
-                                     'upgrade-process-instance'
+                                  FROM integration_application
+                                 WHERE id = 'upgrade-app'
+                                   AND client_id = 'upgrade-client'
                                 """));
+                assertFalse(tableExists("integration_process_binding"));
+                assertFalse(tableExists("integration_process_grant"));
+                assertFalse(tableExists("integration_application_scope"));
+                assertFalse(tableExists("integration_secret"));
+                assertFalse(tableExists("integration_connector_config"));
+                assertFalse(tableExists("integration_workflow_scenario"));
+                assertFalse(tableExists("integration_workflow_scenario_revision"));
+                assertEquals(Set.of(), webhookTables());
         }
 
         @Test
@@ -1201,7 +1664,7 @@ class IntegrationApplicationMigrationTest {
         }
 
         @Test
-        void databaseEnforcesApplicationScopedIdempotencyAndBindings()
+        void databaseEnforcesApplicationScopedIdempotency()
                         throws Exception {
                 flyway().migrate();
                 insertApplication("app-a", "client-a");
@@ -1222,191 +1685,6 @@ class IntegrationApplicationMigrationTest {
                                 "app-b",
                                 "start-process",
                                 "request-1");
-
-                insertBinding(
-                                "binding-a",
-                                "app-a",
-                                "business-1",
-                                "process-instance-a");
-                assertThrows(SQLException.class, () -> insertBinding(
-                                "binding-a-duplicate-business",
-                                "app-a",
-                                "business-1",
-                                "process-instance-other"));
-                assertThrows(SQLException.class, () -> insertBinding(
-                                "binding-a-duplicate-instance",
-                                "app-a",
-                                "business-2",
-                                "process-instance-a"));
-                assertThrows(SQLException.class, () -> insertBinding(
-                                "binding-b",
-                                "app-b",
-                                "business-1",
-                                "process-instance-a"));
-                insertBindingWithVersion(
-                                "binding-a-v1",
-                                "app-a",
-                                "business-1",
-                                "v1",
-                                "process-instance-v1");
-                insertBindingWithVersion(
-                                "binding-a-v2",
-                                "app-a",
-                                "business-1",
-                                "v2",
-                                "process-instance-v2");
-                assertThrows(SQLException.class, () -> insertBindingWithVersion(
-                                "binding-a-v1-duplicate",
-                                "app-a",
-                                "business-1",
-                                "v1",
-                                "process-instance-v1-duplicate"));
-        }
-
-        @Test
-        void databaseEnforcesWebhookApplicationOwnershipAndReplayUniqueness()
-                        throws Exception {
-                flyway().migrate();
-                insertApplication("webhook-app-a", "webhook-client-a");
-                insertApplication("webhook-app-b", "webhook-client-b");
-                insertWebhookEndpoint("endpoint-a", "webhook-app-a");
-                insertWebhookEndpoint("endpoint-b", "webhook-app-b");
-                insertWebhookSubscription(
-                                "subscription-a",
-                                "webhook-app-a",
-                                "endpoint-a");
-                assertThrows(SQLException.class, () -> insertWebhookSubscription(
-                                "cross-app-subscription",
-                                "webhook-app-b",
-                                "endpoint-a"));
-                insertWebhookEvent("event-a", "webhook-app-a");
-                insertWebhookEvent("event-b", "webhook-app-b");
-                insertWebhookDelivery(
-                                "delivery-a",
-                                "webhook-app-a",
-                                "subscription-a",
-                                "event-a",
-                                0);
-                assertThrows(SQLException.class, () -> insertWebhookDelivery(
-                                "delivery-duplicate",
-                                "webhook-app-a",
-                                "subscription-a",
-                                "event-a",
-                                0));
-                assertThrows(SQLException.class, () -> insertWebhookDelivery(
-                                "delivery-cross-app-event",
-                                "webhook-app-a",
-                                "subscription-a",
-                                "event-b",
-                                1));
-        }
-
-        @Test
-        void integrationRowsCannotReferenceUnknownApplications()
-                        throws Exception {
-                flyway().migrate();
-
-                assertThrows(SQLException.class, () -> execute("""
-                                INSERT INTO integration_application_scope (
-                                  application_id, scope, granted_by
-                                ) VALUES (
-                                  'missing-app',
-                                  'process.instance.read',
-                                  'migration-test'
-                                )
-                                """));
-                assertThrows(SQLException.class, () -> insertBinding(
-                                "binding-orphan",
-                                "missing-app",
-                                "business-1",
-                                "process-instance-1"));
-                assertThrows(SQLException.class, () -> insertSecret(
-                                "secret-orphan",
-                                "missing-app",
-                                "api-token",
-                                1));
-        }
-
-        @Test
-        void databaseEnforcesSecretLifecycleAndSingleActiveVersion()
-                        throws Exception {
-                flyway().migrate();
-                insertApplication("secret-app", "secret-client");
-                insertSecret("secret-v1", "secret-app", "api-token", 1);
-
-                assertThrows(SQLException.class, () -> insertSecret(
-                                "secret-v2-active",
-                                "secret-app",
-                                "api-token",
-                                2));
-                execute("""
-                                UPDATE integration_secret
-                                   SET status = 'REVOKED',
-                                       revoked_by = 'migration-test',
-                                       revoked_at = CURRENT_TIMESTAMP(6)
-                                 WHERE id = 'secret-v1'
-                                """);
-                insertSecret("secret-v2", "secret-app", "api-token", 2);
-                assertThrows(SQLException.class, () -> execute("""
-                                UPDATE integration_secret
-                                   SET status = 'DESTROYED',
-                                       key_version = NULL,
-                                       encrypted_data_key = NULL,
-                                       data_key_nonce = NULL,
-                                       secret_ciphertext = NULL,
-                                       secret_nonce = NULL
-                                 WHERE id = 'secret-v1'
-                                """));
-                execute("""
-                                UPDATE integration_secret
-                                   SET status = 'DESTROYED',
-                                       key_version = NULL,
-                                       encrypted_data_key = NULL,
-                                       data_key_nonce = NULL,
-                                       secret_ciphertext = NULL,
-                                       secret_nonce = NULL,
-                                       destroyed_by = 'migration-test',
-                                       destroyed_at = CURRENT_TIMESTAMP(6)
-                                 WHERE id = 'secret-v1'
-                                """);
-        }
-
-        @Test
-        void databaseRejectsInvalidConnectorConfiguration()
-                        throws Exception {
-                flyway().migrate();
-                insertApplication("connector-app", "connector-client");
-                insertConnectorConfig(
-                                "connector-valid",
-                                "connector-app",
-                                "Primary ERP",
-                                JSON_OBJECT_PLACEHOLDER,
-                                "JSON_ARRAY('erp.example.com')");
-                assertThrows(SQLException.class, () -> insertConnectorConfig(
-                                "connector-invalid-json",
-                                "connector-app",
-                                "Invalid JSON",
-                                "'not-json'",
-                                "JSON_ARRAY('erp.example.com')"));
-                assertThrows(SQLException.class, () -> insertConnectorConfig(
-                                "connector-empty-hosts",
-                                "connector-app",
-                                "Empty hosts",
-                                JSON_OBJECT_PLACEHOLDER,
-                                "JSON_ARRAY()"));
-                assertThrows(SQLException.class, () -> execute("""
-                                INSERT INTO integration_connector_config (
-                                  id, application_id, config_name, connector_code,
-                                  status, configuration_document,
-                                  allowed_hosts_document, version,
-                                  created_by, updated_by
-                                ) VALUES (
-                                  'connector-orphan', 'missing-app', 'Orphan',
-                                  'http-json', 'ACTIVE', JSON_OBJECT(),
-                                  JSON_ARRAY('erp.example.com'), 0,
-                                  'migration-test', 'migration-test'
-                                )
-                                """));
         }
 
         private Flyway flyway() {
@@ -1606,53 +1884,6 @@ class IntegrationApplicationMigrationTest {
                                 """.formatted(id, clientId));
         }
 
-        private static final String JSON_OBJECT_PLACEHOLDER = "JSON_OBJECT()";
-
-        private void insertSecret(
-                        String id,
-                        String applicationId,
-                        String name,
-                        long version) throws Exception {
-                execute("""
-                                INSERT INTO integration_secret (
-                                  id, application_id, secret_name, secret_version,
-                                  status, key_version, encrypted_data_key,
-                                  data_key_nonce, secret_ciphertext, secret_nonce,
-                                  secret_hint, created_by
-                                ) VALUES (
-                                  '%s', '%s', '%s', %d,
-                                  'ACTIVE', 'master-v1', 'encrypted-data-key',
-                                  'data-key-nonce', 'encrypted-secret', 'secret-nonce',
-                                  '12345678', 'migration-test'
-                                )
-                                """.formatted(id, applicationId, name, version));
-        }
-
-        private void insertConnectorConfig(
-                        String id,
-                        String applicationId,
-                        String name,
-                        String configurationExpression,
-                        String hostsExpression) throws Exception {
-                execute("""
-                                INSERT INTO integration_connector_config (
-                                  id, application_id, config_name, connector_code,
-                                  status, configuration_document,
-                                  allowed_hosts_document, version,
-                                  created_by, updated_by
-                                ) VALUES (
-                                  '%s', '%s', '%s', 'http-json',
-                                  'ACTIVE', %s, %s, 0,
-                                  'migration-test', 'migration-test'
-                                )
-                                """.formatted(
-                                id,
-                                applicationId,
-                                name,
-                                configurationExpression,
-                                hostsExpression));
-        }
-
         private void incrementRateLimitBucket() throws Exception {
                 execute("""
                                 INSERT INTO integration_rate_limit_bucket (
@@ -1708,106 +1939,4 @@ class IntegrationApplicationMigrationTest {
                                 processInstanceId));
         }
 
-        private void insertBindingWithVersion(
-                        String id,
-                        String applicationId,
-                        String businessId,
-                        String businessVersion,
-                        String processInstanceId) throws Exception {
-                execute("""
-                                INSERT INTO integration_process_binding (
-                                  id, application_id, external_system, business_type,
-                                  business_id, business_version, process_instance_id,
-                                  process_definition_key
-                                ) VALUES (
-                                  '%s', '%s', 'project-system', 'change-request',
-                                  '%s', '%s', '%s', 'project_change_process'
-                                )
-                                """.formatted(
-                                id,
-                                applicationId,
-                                businessId,
-                                businessVersion,
-                                processInstanceId));
-        }
-
-        private void insertWebhookEndpoint(
-                        String id,
-                        String applicationId) throws Exception {
-                execute("""
-                                INSERT INTO webhook_endpoint (
-                                  id, application_id, endpoint_name, endpoint_url,
-                                  endpoint_hash, status, secret_ciphertext,
-                                  secret_version, secret_hint, created_by, updated_by
-                                ) VALUES (
-                                  '%s', '%s', 'Migration endpoint',
-                                  'https://example.com/webhook/%s',
-                                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                                  'ACTIVE', 'encrypted-secret', 1, '12345678',
-                                  'migration-test', 'migration-test'
-                                )
-                                """.formatted(id, applicationId, id));
-        }
-
-        private void insertWebhookSubscription(
-                        String id,
-                        String applicationId,
-                        String endpointId) throws Exception {
-                execute("""
-                                INSERT INTO webhook_subscription (
-                                  id, application_id, endpoint_id, event_type,
-                                  status, created_by, updated_by
-                                ) VALUES (
-                                  '%s', '%s', '%s',
-                                  'com.flow.process.started.v1',
-                                  'ACTIVE', 'migration-test', 'migration-test'
-                                )
-                                """.formatted(id, applicationId, endpointId));
-        }
-
-        private void insertWebhookEvent(
-                        String id,
-                        String applicationId) throws Exception {
-                execute("""
-                                INSERT INTO webhook_event (
-                                  event_id, source_event_key, application_id,
-                                  event_type, subject, process_instance_id,
-                                  trace_id, payload_document, occurred_at, expires_at
-                                ) VALUES (
-                                  '%s', 'source-%s', '%s',
-                                  'com.flow.process.started.v1',
-                                  'process-instance/process-1', 'process-1',
-                                  'trace-1', JSON_OBJECT('specversion', '1.0'),
-                                  CURRENT_TIMESTAMP(6),
-                                  TIMESTAMPADD(DAY, 30, CURRENT_TIMESTAMP(6))
-                                )
-                                """.formatted(id, id, applicationId));
-        }
-
-        private void insertWebhookDelivery(
-                        String id,
-                        String applicationId,
-                        String subscriptionId,
-                        String eventId,
-                        int replaySequence) throws Exception {
-                execute("""
-                                INSERT INTO webhook_delivery (
-                                  id, application_id, subscription_id, event_id,
-                                  replay_sequence, status, attempt_count,
-                                  max_attempts, next_attempt_at,
-                                  signing_secret_ciphertext,
-                                  signing_secret_version, created_by
-                                ) VALUES (
-                                  '%s', '%s', '%s', '%s',
-                                  %d, 'PENDING', 0, 8,
-                                  CURRENT_TIMESTAMP(6),
-                                  'encrypted-secret', 1, 'migration-test'
-                                )
-                                """.formatted(
-                                id,
-                                applicationId,
-                                subscriptionId,
-                                eventId,
-                                replaySequence));
-        }
 }

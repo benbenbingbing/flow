@@ -897,11 +897,11 @@ B 发起 -> A，上溯 1 级 -> 王经理
 
 要求：
 
-1. 本地实体流程和开放流程入口都必须捕获快照；
-2. 外部发起人先映射为本地用户；
+1. 所有本地流程发起入口（含实体绑定流程）都必须捕获快照；
+2. Embed 原生页面触发流程时，以已映射的本地 Flow 用户进入同一本地发起路径；
 3. 业务变量合并完成后由服务端最后写入快照；
 4. 快照变量加入 reserved-variable 列表，调用方不能覆盖；
-5. 任务详情、开放 API 和实体数据回显统一过滤内部快照；
+5. 任务详情、实体数据和 Embed 原生页面回显统一过滤内部快照；
 6. 使用 `parent_id` 构造完整祖先链，设置 visited 集合和最大 32 层；
 7. 不依赖可能过期的 `path/level`；
 8. 快照同时保存业务层级编码，组织后续移动或重分类不改变历史实例。
@@ -1212,7 +1212,7 @@ incident 保存职务编码、组织快照版本、扫描轨迹和失败原因�
 - 空办理人事件、重试和兜底；
 - 下一审批人预览后任职变化，提交前重验；
 - 人工传入越权用户被拒绝；
-- 本地流程与开放流程均正确生成快照。
+- 实体绑定流程与其他本地流程入口均正确生成快照。
 
 ### 16.5 前端
 
@@ -1364,7 +1364,6 @@ B 也有负责人李经理时，`NEAREST_WITH_HOLDER` 应命中李经理；改�
 - `workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/relative/`
 - `workflow-server/workflow-process/src/main/java/com/workflow/process/definition/application/ProcessBpmnPublishSanitizer.java`
 - `workflow-server/workflow-process/src/main/java/com/workflow/process/instance/application/ProcessRuntimeService.java`
-- `workflow-server/workflow-process/src/main/java/com/workflow/process/open/application/OpenProcessAdapter.java`
 - `workflow-web/src/views/system/Organization.vue`
 - `workflow-web/src/views/system/User.vue`
 - `workflow-web/src/components/NodeConfigPanel.vue`

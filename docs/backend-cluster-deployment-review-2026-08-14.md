@@ -1,5 +1,9 @@
 # 后端集群部署设计走查报告
 
+> **历史资料（已被 [ADR-0007](architecture/decisions/0007-retire-open-process-integration.md) 取代）**：
+> 本文对开放流程、Webhook 与 Connector 的代码和运维判断只适用于 2026-08-14 的仓库快照；
+> 相关能力和部分链接现已退役，不应作为当前架构或上线操作依据。
+
 > - 走查日期：2026-08-14
 > - 走查对象：当前工作区后端代码、数据库迁移、Docker Compose、Helm Chart、GitHub Actions 与部署文档
 > - 代码基准：`main@681b819cc103906b54e39137883adc1fa211b0c7` 加当前未提交工作区

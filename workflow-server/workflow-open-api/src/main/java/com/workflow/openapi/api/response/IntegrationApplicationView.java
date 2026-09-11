@@ -2,7 +2,6 @@ package com.workflow.openapi.api.response;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 
 public record IntegrationApplicationView(
         String id,
@@ -11,8 +10,6 @@ public record IntegrationApplicationView(
         String description,
         String ownerOrganizationId,
         String status,
-        Set<String> scopes,
-        Set<String> processKeys,
         int rateLimitPerMinute,
         int maxConcurrency,
         List<String> allowedSourceCidrs,

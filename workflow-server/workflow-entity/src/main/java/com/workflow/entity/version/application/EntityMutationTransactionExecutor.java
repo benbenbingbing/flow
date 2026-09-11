@@ -5,9 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
@@ -15,7 +13,6 @@ import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimServ
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.Preparation;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
-import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -43,7 +40,6 @@ public class EntityMutationTransactionExecutor {
 
     private final EntityAggregateWriter writer;
     private final EntityDataDynamicService queryService;
-    private final EntityMutationStepExecutor stepExecutor;
     private final EntityVersionPolicyMatcher policyMatcher;
     private final EntityRecordVersionService versionService;
     private final EntityRelatedVersionCaptureService relatedVersionCaptureService;
@@ -64,12 +60,9 @@ public class EntityMutationTransactionExecutor {
                 == EntityMutationOperationType.CREATE
                 ? Map.of()
                 : load(command.entityCode(), command.recordId());
-        EntityMutationCommand finalized = beforeWrite(
-                command,
-                before);
         PreparedUniqueClaims prepared =
-                formUniqueClaimService.prepare(finalized, before);
-        return executeInternal(finalized, null, prepared);
+                formUniqueClaimService.prepare(command, before);
+        return executeInternal(command, null, prepared);
     }
 
     /**
@@ -77,8 +70,8 @@ public class EntityMutationTransactionExecutor {
      *
      * <p>这是审批表单“实际提交但无字段变化”的受信 no-op 路径：
      * 故意不调用 writer 和版本服务，避免产生伪更新与多余业务版本。
-     * BEFORE_WRITE 仍先执行，但任何 PATCH 都会被拒绝；随后才准备唯一性
-     * gate/扫描并锁业务记录复读。候选若因并发修改漂移会 fail closed。</p>
+     * 随后直接准备唯一性 gate/扫描并锁业务记录复读。候选若因
+     * 并发修改漂移会 fail closed。</p>
      */
     @Transactional(
             rollbackFor = Exception.class,
@@ -100,25 +93,18 @@ public class EntityMutationTransactionExecutor {
         Map<String, Object> snapshot = load(
                 entityCode,
                 recordId);
-        EntityMutationCommand finalized = beforeWrite(
-                command,
-                snapshot);
-        if (!finalized.payload().isEmpty()) {
-            throw new IllegalStateException(
-                    "无字段变更唯一终检不能接受 BEFORE_WRITE PATCH");
-        }
         PreparedUniqueClaims prepared =
-                formUniqueClaimService.prepare(finalized, snapshot);
+                formUniqueClaimService.prepare(command, snapshot);
         writer.lock(entityCode, recordId);
         Map<String, Object> current = load(
                 entityCode,
                 recordId);
         formUniqueClaimService.verifyPrepared(
-                finalized,
+                command,
                 current,
                 prepared);
         formUniqueClaimService.reconcile(
-                finalized,
+                command,
                 current,
                 prepared);
     }
@@ -163,16 +149,7 @@ public class EntityMutationTransactionExecutor {
                         : load(item.command().entityCode(),
                                 item.command().recordId()))
                 .toList();
-        List<IndexedCommand> writeOrder =
-                java.util.stream.IntStream.range(
-                                0, originalWriteOrder.size())
-                        .mapToObj(index -> new IndexedCommand(
-                                originalWriteOrder.get(index).index(),
-                                beforeWrite(
-                                        originalWriteOrder.get(index)
-                                                .command(),
-                                        snapshots.get(index))))
-                        .toList();
+        List<IndexedCommand> writeOrder = originalWriteOrder;
         List<PreparedUniqueClaims> prepared =
                 formUniqueClaimService.prepareAll(
                         java.util.stream.IntStream.range(
@@ -221,7 +198,6 @@ public class EntityMutationTransactionExecutor {
             }
             relatedVersionCaptureService.requireRootsLocked(
                     original, lockedRelatedRoots, beforeRecord);
-            validateBaseline(original);
         } else {
             lockedRelatedRoots = batchLockedRoots == null
                     ? relatedVersionCaptureService.lockRelatedRoots(
@@ -266,16 +242,6 @@ public class EntityMutationTransactionExecutor {
                 lockedRelatedRoots,
                 beforeRecord,
                 afterRecord);
-        EntityMutationStepExecutor.ExecutionOutcome after =
-                stepExecutor.execute(
-                        effectiveCommand,
-                        EntityMutationPhase.AFTER_WRITE,
-                        beforeRecord,
-                        afterRecord);
-        if (!after.plannedCommands().isEmpty()) {
-            throw new IllegalStateException(
-                    "AFTER_WRITE 步骤不能创建额外变更计划");
-        }
         Map<String, Object> versionRecord =
                 command.operationType()
                         == EntityMutationOperationType.DELETE
@@ -353,33 +319,6 @@ public class EntityMutationTransactionExecutor {
             EntityMutationCommand command) {
     }
 
-    /**
-     * 在唯一性 gate/扫描和任何业务锁之前执行最后一个 payload 变换阶段。
-     * Marker 的路径与对象身份必须保持不变；普通字段 PATCH 会由随后 prepare
-     * 基于最终 payload 重新求唯一候选。
-     */
-    private EntityMutationCommand beforeWrite(
-            EntityMutationCommand command,
-            Map<String, Object> beforeRecord) {
-        TrustedSubFormUniqueReference.PayloadSnapshot trusted =
-                TrustedSubFormUniqueReference.snapshot(
-                        command.payload());
-        EntityMutationStepExecutor.ExecutionOutcome outcome =
-                stepExecutor.execute(
-                        command,
-                        EntityMutationPhase.BEFORE_WRITE,
-                        beforeRecord,
-                        Map.of());
-        if (!outcome.plannedCommands().isEmpty()) {
-            throw new IllegalStateException(
-                    "事务内 BEFORE_WRITE 步骤不能创建额外变更计划");
-        }
-        TrustedSubFormUniqueReference.requireUnchanged(
-                trusted,
-                outcome.command().payload());
-        return outcome.command();
-    }
-
     private Preparation preparation(
             EntityMutationCommand command,
             Map<String, Object> beforeRecord) {
@@ -395,30 +334,6 @@ public class EntityMutationTransactionExecutor {
                         ? List.of()
                         : FormUniqueMutationContext.resolveAll(
                                 command.context()));
-    }
-
-    private void validateBaseline(
-            EntityMutationCommand command) {
-        Object raw = command.context().extraParams()
-                .get("baselineVersionNo");
-        if (raw == null) {
-            return;
-        }
-        int expected = raw instanceof Number number
-                ? number.intValue()
-                : Integer.parseInt(String.valueOf(raw));
-        int current = versionService.currentVersionNo(
-                command.entityCode(),
-                command.recordId());
-        if (current != expected) {
-            throw new BusinessConflictException(
-                    "ENTITY_VERSION_BASELINE_CONFLICT",
-                    "变更生效失败：申请基于 V"
-                            + expected
-                            + "，目标记录当前已是 V"
-                            + current
-                            + "，请重新发起变更");
-        }
     }
 
     private Map<String, Object> load(

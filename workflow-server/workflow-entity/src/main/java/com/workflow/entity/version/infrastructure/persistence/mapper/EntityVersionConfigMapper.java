@@ -94,6 +94,46 @@ public interface EntityVersionConfigMapper
             """)
     List<EntityVersionConfig> findAllCurrent();
 
+    /**
+     * 批量读取管理列表所需的全部配置行。
+     *
+     * <p>与运行时 current 投影保持相同的 active release 优先级，但不能过滤
+     * config_document 为空的过渡占位行，否则列表会丢失其 revision。</p>
+     */
+    @Select("""
+            SELECT c.id,
+                   c.entity_id,
+                   c.entity_code,
+                   c.enabled,
+                   CASE
+                       WHEN r.id IS NOT NULL
+                        AND JSON_VALID(r.config_document) = 1
+                       THEN JSON_REMOVE(
+                           JSON_SET(
+                               CAST(r.config_document AS JSON),
+                               '$.schemaVersion',
+                               COALESCE(r.contract_version, 1)),
+                           '$.status',
+                           '$.migrationState',
+                           '$.activeReleaseId',
+                           '$.activeReleaseVersion')
+                       ELSE c.config_document
+                   END AS config_document,
+                   c.revision,
+                   c.create_by,
+                   c.create_time,
+                   c.update_by,
+                   c.update_time,
+                   c.deleted
+            FROM entity_version_config c
+            LEFT JOIN entity_version_config_release r
+                   ON r.id = c.active_release_id
+                  AND r.config_id = c.id
+            WHERE c.deleted = 0
+            ORDER BY c.entity_code ASC
+            """)
+    List<EntityVersionConfig> findAllForManagementList();
+
     @Update("""
             UPDATE entity_version_config
             SET enabled = #{enabled},

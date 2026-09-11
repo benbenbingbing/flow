@@ -149,7 +149,7 @@ public class EntityFormUniqueClaimService {
     }
 
     /**
-     * 在写入前确认 BEFORE_WRITE 后的命令仍只使用已持有的 gate。
+     * 在写入前确认最终命令仍只使用已持有的 gate。
      *
      * <p>命令转换、并发更新或默认值若使候选值漂移，不能在持有业务行锁后补锁，
      * 必须 fail closed 并由调用方重试整个事务。</p>

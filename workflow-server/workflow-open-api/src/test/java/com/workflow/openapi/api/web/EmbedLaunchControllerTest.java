@@ -11,10 +11,10 @@ import com.workflow.contracts.embed.EmbedLaunchCommand;
 import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
 import com.workflow.contracts.embed.EmbedLaunchIssued;
 import com.workflow.contracts.embed.EmbedLaunchView;
-import com.workflow.contracts.process.open.OpenApplicationActor;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.response.OpenEmbedLaunchResponse;
 import com.workflow.openapi.security.OpenApplicationActorResolver;
+import com.workflow.openapi.security.OpenApplicationActorResolver.ResolvedApplicationActor;
 import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -39,7 +39,7 @@ class EmbedLaunchControllerTest {
         request.addHeader("X-Trace-Id", "trace-embed-launch");
         request.addHeader("X-Request-Id", "request-embed-launch");
         when(actorResolver.resolve(authentication, "trace-embed-launch"))
-                .thenReturn(new OpenApplicationActor(
+                .thenReturn(new ResolvedApplicationActor(
                         "app-01",
                         "client-01",
                         "trace-embed-launch"));

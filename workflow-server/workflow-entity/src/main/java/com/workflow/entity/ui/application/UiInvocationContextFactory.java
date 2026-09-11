@@ -90,11 +90,7 @@ public class UiInvocationContextFactory {
             case "ENTITY" -> new EntityInvocationContext(
                     common,
                     descriptor,
-                    firstText(
-                            request == null
-                                    ? null
-                                    : request.getServerEntityOperation(),
-                            normalize(authorization.usage())),
+                    normalize(authorization.usage()),
                     text(input.get("recordId")));
             default -> throw new IllegalStateException(
                     "接口操作上下文类型无效: "

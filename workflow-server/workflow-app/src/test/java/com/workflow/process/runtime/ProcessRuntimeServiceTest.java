@@ -13,7 +13,6 @@ import com.workflow.process.instance.infrastructure.persistence.mapper.EntityPro
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
-import com.workflow.contracts.entity.mutation.port.EntityChangeTargetPort;
 import org.flowable.engine.IdentityService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -26,7 +25,6 @@ import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.Map;
 
@@ -136,9 +134,6 @@ class ProcessRuntimeServiceTest {
                 final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
                 final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(
                                 MultiInstanceCollectionListener.class);
-                @SuppressWarnings("unchecked")
-                final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider = mock(ObjectProvider.class);
-
                 Fixture() {
                         ProcessDefinitionConfig config = new ProcessDefinitionConfig();
                         config.setId("process-config-1");
@@ -198,8 +193,7 @@ class ProcessRuntimeServiceTest {
                                         taskService,
                                         processTaskService,
                                         multiInstanceCollectionListener,
-                                        entityProcessLinkMapper,
-                                        changeTargetPortProvider);
+                                        entityProcessLinkMapper);
                 }
         }
 }

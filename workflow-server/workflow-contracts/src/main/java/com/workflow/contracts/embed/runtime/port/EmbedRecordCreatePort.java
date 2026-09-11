@@ -5,7 +5,7 @@ import java.util.Map;
 /**
  * Embed 新建记录到实体域的强类型防腐层端口。
  *
- * <p>实体域在同一外层业务事务中重新校验权限、精确发布版本和统一实体变更策略。</p>
+ * <p>实体域在同一外层业务事务中重新校验权限和精确发布版本。</p>
  */
 public interface EmbedRecordCreatePort {
 

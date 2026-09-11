@@ -40,11 +40,32 @@ public class EntityVersionConfigurationController {
     private final EntityVersionScopePreviewService previewService;
     private final ObjectMapper objectMapper;
 
+    /** 混部期间保留旧客户端依赖的完整 List 响应，仅支持关键字过滤。 */
     @GetMapping
     @RequiresPermission("entity:version:config:list")
     public ApiResponse<List<EntityVersionConfigSummary>> list(
             @RequestParam(required = false) String keyword) {
         return ApiResponse.success(service.list(keyword));
+    }
+
+    /**
+     * 分页查询实体数据版本配置摘要。
+     *
+     * @param keyword 实体名称或编码的模糊关键字
+     * @param enabled 启用状态；false 表示未启用，包含已停用和未配置
+     * @param pageNum 页码，非法下界会按统一分页规则归一为 1
+     * @param pageSize 每页大小，统一限制为 1 到 100
+     * @return 配置摘要分页结果
+     */
+    @GetMapping("/page")
+    @RequiresPermission("entity:version:config:list")
+    public ApiResponse<PageResult<EntityVersionConfigSummary>> listPage(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Boolean enabled,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "20") Integer pageSize) {
+        return ApiResponse.success(service.listPage(
+                keyword, enabled, pageNum, pageSize));
     }
 
     /** 根 GET 在 expand 版本保留旧草稿语义；新客户端必须使用 /current。 */

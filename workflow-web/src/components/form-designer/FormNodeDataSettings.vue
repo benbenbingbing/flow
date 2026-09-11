@@ -89,7 +89,7 @@
             :value="source.id"
           />
         </el-select>
-        <div class="form-tip">仅可选择受控实体、字典、Provider 或 Connector。</div>
+        <div class="form-tip">仅可选择受控实体、字典或 Provider。</div>
       </el-form-item>
       <el-form-item
         v-if="selectedField.dataSourceId"

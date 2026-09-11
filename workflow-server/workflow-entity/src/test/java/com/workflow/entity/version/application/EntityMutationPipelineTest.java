@@ -1,32 +1,25 @@
 package com.workflow.entity.version.application;
 
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.audit.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
+import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.entity.version.application.EntityMutationStepExecutor.ExecutionOutcome;
-import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
-import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,8 +27,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class EntityMutationPipelineTest {
 
-    @Mock
-    private EntityMutationStepExecutor stepExecutor;
     @Mock
     private EntityMutationTransactionExecutor transactionExecutor;
     @Mock
@@ -46,61 +37,32 @@ class EntityMutationPipelineTest {
     @BeforeEach
     void setUp() {
         pipeline = new EntityMutationPipeline(
-                stepExecutor,
                 transactionExecutor,
                 auditPort);
     }
 
     @Test
-    void replayDoesNotExecuteAfterCommitSideEffectsAgain() {
+    void replayDoesNotRecordAuditAgain() {
         EntityMutationCommand command = command();
         EntityMutationResult replayed = result(true);
-        when(stepExecutor.execute(
-                eq(command),
-                eq(EntityMutationPhase.PREPARE),
-                anyMap(),
-                anyMap())).thenReturn(
-                        new ExecutionOutcome(
-                                command,
-                                List.of()));
         when(transactionExecutor.execute(command))
                 .thenReturn(replayed);
 
-        EntityMutationResult actual =
-                pipeline.execute(command);
+        EntityMutationResult actual = pipeline.execute(command);
 
         assertEquals(replayed, actual);
-        verify(stepExecutor, never()).execute(
-                eq(command),
-                eq(EntityMutationPhase.AFTER_COMMIT),
-                anyMap(),
-                anyMap(),
-                eq("CHANGE_EFFECTIVE"));
+        verify(auditPort, never()).record(any());
     }
 
     @Test
-    void afterCommitUsesScenarioFrozenByVersionResult() {
+    void committedMutationRecordsUnifiedAudit() {
         EntityMutationCommand command = command();
         EntityMutationResult result = result(false);
-        when(stepExecutor.execute(
-                eq(command),
-                eq(EntityMutationPhase.PREPARE),
-                anyMap(),
-                anyMap())).thenReturn(
-                        new ExecutionOutcome(
-                                command,
-                                List.of()));
         when(transactionExecutor.execute(command))
                 .thenReturn(result);
 
         pipeline.execute(command);
 
-        verify(stepExecutor).execute(
-                eq(command),
-                eq(EntityMutationPhase.AFTER_COMMIT),
-                anyMap(),
-                eq(result.record()),
-                eq("CHANGE_EFFECTIVE"));
         ArgumentCaptor<SystemAuditEvent> audit =
                 ArgumentCaptor.forClass(SystemAuditEvent.class);
         verify(auditPort).record(audit.capture());
@@ -110,81 +72,18 @@ class EntityMutationPipelineTest {
         assertEquals("asset:record-1", audit.getValue().targetId());
     }
 
-    /** PREPARE 追加命令后仍必须遵守关联内容动作声明的整批硬预算。 */
     @Test
-    void expandedPlanIsRejectedBeforeTransactionWhenBudgetExceeded() {
-        EntityMutationCommand command = commandWithExpansionBudget(1);
-        EntityMutationCommand planned = new EntityMutationCommand(
-                "operation-2",
-                "asset",
-                "record-2",
-                EntityMutationOperationType.UPDATE,
-                Map.of("data", Map.of("name", "派生命令")),
-                command.context());
-        when(stepExecutor.execute(
-                eq(command),
-                eq(EntityMutationPhase.PREPARE),
-                anyMap(),
-                anyMap())).thenReturn(
-                        new ExecutionOutcome(command, List.of(planned)));
+    void atomicBatchForwardsOnlySubmittedCommands() {
+        EntityMutationCommand command = command();
+        EntityMutationResult result = result(false);
+        when(transactionExecutor.executeBatch(List.of(command)))
+                .thenReturn(List.of(result));
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> pipeline.executeBatch(
-                        new EntityMutationBatchCommand(
-                                "batch-1", List.of(command), true)));
+        pipeline.executeBatch(new EntityMutationBatchCommand(
+                "batch-1", List.of(command), true));
 
-        verify(transactionExecutor, never()).executeBatch(
-                org.mockito.ArgumentMatchers.anyList());
-    }
-
-    @Test
-    void prepareManagedRoundTripCannotStripTrustedChildMarker() {
-        FormUniqueMutationContext.Reference reference =
-                new FormUniqueMutationContext.Reference(
-                        "child-form", "release-1", 1, "release-1");
-        Map<String, Object> child = new LinkedHashMap<>(
-                Map.of("name", "明细A"));
-        TrustedSubFormUniqueReference.attach(
-                child, "asset_line", reference);
-        EntityMutationCommand command = new EntityMutationCommand(
-                "operation-marker",
-                "asset",
-                "record-1",
-                EntityMutationOperationType.UPDATE,
-                Map.of("data", Map.of(
-                        "details", List.of(child))),
-                command().context());
-        EntityMutationCommand roundTripped =
-                new EntityMutationCommand(
-                        command.operationId(),
-                        command.entityCode(),
-                        command.recordId(),
-                        command.operationType(),
-                        Map.of("data", Map.of(
-                                "details", List.of(Map.of(
-                                        "name", "明细A")))),
-                        command.context());
-        when(stepExecutor.execute(
-                eq(command),
-                eq(EntityMutationPhase.PREPARE),
-                anyMap(),
-                anyMap())).thenReturn(
-                        new ExecutionOutcome(
-                                roundTripped,
-                                List.of()));
-
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> pipeline.execute(command));
-
-        assertEquals(
-                "实体变换剥离或新增了可信子表单标记",
-                exception.getMessage());
-        verify(transactionExecutor, never()).execute(
-                org.mockito.ArgumentMatchers.any());
-        verify(transactionExecutor, never()).executeBatch(
-                org.mockito.ArgumentMatchers.anyList());
+        verify(transactionExecutor).executeBatch(List.of(command));
+        verify(auditPort).record(any());
     }
 
     private EntityMutationCommand command() {
@@ -193,9 +92,7 @@ class EntityMutationPipelineTest {
                 "asset",
                 "record-1",
                 EntityMutationOperationType.UPDATE,
-                Map.of(
-                        "data",
-                        Map.of("name", "新名称")),
+                Map.of("data", Map.of("name", "新名称")),
                 EntityMutationContext.builder(
                                 EntityMutationSourceType.FLOW_ACTION,
                                 "CHANGE_EFFECTIVE",
@@ -205,34 +102,13 @@ class EntityMutationPipelineTest {
                         .build());
     }
 
-    private EntityMutationCommand commandWithExpansionBudget(int budget) {
-        EntityMutationContext context = EntityMutationContext.builder(
-                        EntityMutationSourceType.FORM,
-                        "VIEW_COMPOSITION_INTERFACE_ACTION",
-                        "关联内容接口动作")
-                .operator("user-1", "张三")
-                .trace("trace-1", "mutation-budget-1")
-                .extraParams(Map.of("maxExpandedCommands", budget))
-                .build();
-        return new EntityMutationCommand(
-                "operation-1",
-                "asset",
-                "record-1",
-                EntityMutationOperationType.UPDATE,
-                Map.of("data", Map.of("name", "新名称")),
-                context);
-    }
-
-    private EntityMutationResult result(
-            boolean replayed) {
+    private EntityMutationResult result(boolean replayed) {
         return new EntityMutationResult(
                 "operation-1",
                 "asset",
                 "record-1",
                 EntityMutationOperationType.UPDATE,
-                Map.of(
-                        "data",
-                        Map.of("name", "新名称")),
+                Map.of("data", Map.of("name", "新名称")),
                 2,
                 "CHANGE_EFFECTIVE",
                 true,

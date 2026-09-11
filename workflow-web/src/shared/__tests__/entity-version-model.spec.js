@@ -14,6 +14,10 @@ import {
   canShowEntityVersionAction,
   normalizeEntityVersionCapabilities
 } from '../entity-version-capabilities.js'
+import {
+  loadEntityVersionConfigPageWithLegacyFallback,
+  paginateLegacyEntityVersionConfigs
+} from '../entity-version-config-list.js'
 
 const legacy = createVersionDraft({
   entityCode: 'ORDER',
@@ -27,9 +31,7 @@ const legacy = createVersionDraft({
     scenarioName: '审批通过',
     sourceTypes: ['APPROVAL_TASK'],
     operationTypes: ['UPDATE']
-  }],
-  steps: [{ stepName: '旧步骤' }],
-  targetBindings: [{ bindingCode: 'LEGACY' }]
+  }]
 })
 assert.equal(legacy.triggers[0].triggerCode, 'APPROVED')
 assert.equal(legacy.triggers[0].triggerType, 'ROOT_MUTATION')
@@ -37,8 +39,6 @@ assert.equal(legacy.snapshotScope.limits.maxRowsPerRelation, 500)
 const serialized = serializeVersionDraft(legacy)
 assert.equal(serialized.triggers[0].triggerName, '审批通过')
 assert.equal('scenarios' in serialized, false)
-assert.equal('steps' in serialized, false)
-assert.equal('targetBindings' in serialized, false)
 assert.equal('status' in serialized, false)
 assert.equal('migrationState' in serialized, false)
 assert.equal('activeReleaseId' in serialized, false)
@@ -146,6 +146,69 @@ assert.equal(frozenValueText({ arbitrary: true }), '结构化数据')
 assert.deepEqual(normalizePage({ records: [1], total: 5, pageNum: 2 }), {
   records: [1], total: 5, pageNum: 2, pageSize: 20, counts: undefined
 })
+
+const legacyConfigRows = [
+  { entityId: '1', entityCode: 'ORDER', entityName: '订单', enabled: true },
+  { entityId: '2', entityCode: 'CONTRACT', entityName: '合同', enabled: false },
+  {
+    entityId: '3', entityCode: 'ASSET', entityName: '资产', revision: 7,
+    enabled: true, runtimeEnabled: false
+  },
+  { entityId: '4', entityCode: 'CUSTOMER', entityName: '客户', enabled: true }
+]
+assert.deepEqual(
+  paginateLegacyEntityVersionConfigs(legacyConfigRows, {
+    keyword: 'con', enabled: false, pageNum: 1, pageSize: 20
+  }).records,
+  [legacyConfigRows[1]],
+  '旧数组回退应按实体名称或编码忽略大小写筛选'
+)
+assert.deepEqual(
+  paginateLegacyEntityVersionConfigs(legacyConfigRows, {
+    enabled: false, pageNum: 2, pageSize: 1
+  }),
+  {
+    records: [legacyConfigRows[2]],
+    total: 2,
+    pageNum: 2,
+    pageSize: 1
+  },
+  '旧数组回退的未启用筛选应包含已停用和未配置，并返回真实分页总数'
+)
+assert.equal(
+  paginateLegacyEntityVersionConfigs(legacyConfigRows, {
+    pageNum: 0, pageSize: 500
+  }).pageSize,
+  100,
+  '旧数组回退应与服务端一致地归一页码并限制每页最多 100 条'
+)
+let legacyListCalls = 0
+for (const routeMiss of [
+  { status: 404, message: 'not found' },
+  { status: 405, message: 'method not allowed' },
+  { status: 400, message: '实体不存在: page' }
+]) {
+  const fallbackPage = await loadEntityVersionConfigPageWithLegacyFallback({
+    loadPage: async () => { throw Object.assign(new Error(routeMiss.message), routeMiss) },
+    loadLegacy: async () => { legacyListCalls += 1; return legacyConfigRows }
+  }, { enabled: true, pageNum: 1, pageSize: 1 })
+  assert.deepEqual(fallbackPage.records, [legacyConfigRows[0]])
+}
+assert.equal(legacyListCalls, 3)
+for (const realError of [
+  { status: 400, message: '分页参数错误' },
+  { status: 500, message: 'server error' }
+]) {
+  await assert.rejects(
+    loadEntityVersionConfigPageWithLegacyFallback({
+      loadPage: async () => { throw Object.assign(new Error(realError.message), realError) },
+      loadLegacy: async () => { legacyListCalls += 1; return legacyConfigRows }
+    }),
+    new RegExp(realError.message),
+    '非路由缺失错误必须原样抛出，不能误读旧列表'
+  )
+}
+assert.equal(legacyListCalls, 3, '非兼容错误不应调用旧列表接口')
 
 const v2Detail = normalizeSnapshot({
   snapshot: {
@@ -365,5 +428,50 @@ assert.match(
 ))
 assert.ok(managementSource.includes('previewResult?.datasets || previewResult?.relations'))
 assert.ok(managementSource.includes("previewResult.totalRows ?? '-') : '未计算'"))
+assert.match(
+  versionApiSource,
+  /listConfigPage\(params = \{\}\)[\s\S]{0,260}\/entity-versions\/configs\/page[\s\S]{0,160}params: normalizedParams/,
+  '数据版本配置列表 API 应统一携带服务端页码和每页条数'
+)
+assert.match(
+  versionApiSource,
+  /listConfigs\(params = \{\}\)[\s\S]{0,160}\/entity-versions\/configs/,
+  '数据版本配置 API 应保留旧列表方法供滚动兼容'
+)
+assert.ok(
+  versionApiSource.includes('loadEntityVersionConfigPageWithLegacyFallback({')
+    && versionApiSource.includes("loadLegacy: () => request.get('/entity-versions/configs'")
+    && /\/entity-versions\/configs\/page[\s\S]{0,120}silentError: true/.test(versionApiSource),
+  '分页端点只能在确认新路由不存在时回退旧数组，并在前端完成同语义筛选分页'
+)
+assert.ok(
+  managementSource.includes('entityVersionApi.listConfigPage({'),
+  '数据版本设置页面应优先调用服务端分页端点'
+)
+;[
+  'label="全部" value="ALL"',
+  'label="已启用" value="ENABLED"',
+  'label="未启用" value="DISABLED"',
+  "enabledFilter.value === 'DISABLED' ? false",
+  'pageNum: pageInfo.pageNum',
+  'pageSize: pageInfo.pageSize',
+  ':total="pageInfo.total"',
+  '@current-change="loadConfigs"',
+  '@size-change="handlePageSizeChange"'
+].forEach(marker => assert.ok(
+  managementSource.includes(marker),
+  `数据版本配置列表缺少筛选或服务端分页契约: ${marker}`
+))
+assert.match(
+  managementSource,
+  /function handleQuery\(\) \{\s*pageInfo\.pageNum = 1\s*loadConfigs\(\)/,
+  '搜索和状态筛选必须先回到第一页'
+)
+assert.match(
+  managementSource,
+  /function handlePageSizeChange\(\) \{\s*pageInfo\.pageNum = 1\s*loadConfigs\(\)/,
+  '修改每页条数必须先回到第一页'
+)
+assert.equal(managementSource.includes('<Refresh />'), false, '页面右上角不应保留刷新按钮')
 
 console.log('entity-version-model tests passed')

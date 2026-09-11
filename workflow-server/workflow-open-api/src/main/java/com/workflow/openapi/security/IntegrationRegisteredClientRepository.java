@@ -2,13 +2,11 @@ package com.workflow.openapi.security;
 
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationCredentialMapper;
-import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationScopeMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationCredentialRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
@@ -27,7 +25,6 @@ public class IntegrationRegisteredClientRepository
 
     private final IntegrationApplicationMapper applicationMapper;
     private final IntegrationCredentialMapper credentialMapper;
-    private final IntegrationScopeMapper scopeMapper;
     private final OpenIntegrationProperties properties;
     private final Clock clock;
 
@@ -35,12 +32,10 @@ public class IntegrationRegisteredClientRepository
     public IntegrationRegisteredClientRepository(
             IntegrationApplicationMapper applicationMapper,
             IntegrationCredentialMapper credentialMapper,
-            IntegrationScopeMapper scopeMapper,
             OpenIntegrationProperties properties) {
         this(
                 applicationMapper,
                 credentialMapper,
-                scopeMapper,
                 properties,
                 Clock.systemUTC());
     }
@@ -48,12 +43,10 @@ public class IntegrationRegisteredClientRepository
     IntegrationRegisteredClientRepository(
             IntegrationApplicationMapper applicationMapper,
             IntegrationCredentialMapper credentialMapper,
-            IntegrationScopeMapper scopeMapper,
             OpenIntegrationProperties properties,
             Clock clock) {
         this.applicationMapper = applicationMapper;
         this.credentialMapper = credentialMapper;
-        this.scopeMapper = scopeMapper;
         this.properties = properties;
         this.clock = clock;
     }
@@ -99,12 +92,6 @@ public class IntegrationRegisteredClientRepository
                 && !credential.getExpiresAt().isAfter(now)) {
             return null;
         }
-        Set<String> scopes = scopeMapper.findByApplicationId(
-                application.getId());
-        if (scopes == null || scopes.isEmpty()) {
-            return null;
-        }
-
         return RegisteredClient.withId(application.getId())
                 .clientId(application.getClientId())
                 .clientSecret(credential.getSecretHash())
@@ -112,7 +99,6 @@ public class IntegrationRegisteredClientRepository
                         ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .authorizationGrantType(
                         AuthorizationGrantType.CLIENT_CREDENTIALS)
-                .scopes(values -> values.addAll(scopes))
                 .tokenSettings(TokenSettings.builder()
                         .accessTokenTimeToLive(
                                 properties.getAccessTokenTtl())

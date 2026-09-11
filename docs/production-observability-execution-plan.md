@@ -1,6 +1,7 @@
 # Flow 生产可观测性执行方案
 
-> 状态：待执行
+> 状态：历史计划；其中开放流程、Webhook 和 Connector 已由 ADR-0007 与 V084 退役，
+> 相关指标、告警和执行批次不再适用于当前版本
 > 实施分支：`feature/production-observability`
 > 基线提交：`d541adb`
 > 适用范围：Flow Web、Flow Server、MySQL、Flowable、Outbox、Webhook、

@@ -127,5 +127,5 @@ lines.push('5. **运行验证**：高风险组合还需在真实服务上做发�
 lines.push('')
 
 mkdirSync(path.dirname(output), { recursive: true })
-writeFileSync(output, `${lines.join('\n')}\n`, 'utf8')
+writeFileSync(output, lines.join('\n'), 'utf8')
 console.log(`generated ${path.relative(root, output)} with ${entries.length} configuration entries`)

@@ -11,11 +11,9 @@ import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.entity.version.application.EntityMutationPipeline;
-import com.workflow.entity.version.application.EntityMutationStepExecutor;
 import com.workflow.entity.version.application.EntityMutationTransactionExecutor;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.process.action.application.FlowActionExecutionService;
@@ -35,8 +33,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -87,19 +83,9 @@ public class UnifiedAuditOperationPropagationTest {
 
     private EntityMutationPipeline mutationPipeline(
             SystemAuditPort auditPort) {
-        EntityMutationStepExecutor stepExecutor =
-                mock(EntityMutationStepExecutor.class);
         EntityMutationTransactionExecutor transactionExecutor =
                 mock(EntityMutationTransactionExecutor.class);
         EntityMutationCommand command = mutationCommand();
-        when(stepExecutor.execute(
-                eq(command),
-                eq(EntityMutationPhase.PREPARE),
-                anyMap(),
-                anyMap())).thenReturn(
-                new EntityMutationStepExecutor.ExecutionOutcome(
-                        command,
-                        List.of()));
         when(transactionExecutor.execute(command)).thenReturn(
                 new EntityMutationResult(
                         command.operationId(),
@@ -112,7 +98,6 @@ public class UnifiedAuditOperationPropagationTest {
                         true,
                         false));
         return new EntityMutationPipeline(
-                stepExecutor,
                 transactionExecutor,
                 auditPort);
     }

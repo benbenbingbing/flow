@@ -144,9 +144,9 @@ class PinnedHttpTransportTest {
     }
 
     @Test
-    void preservesExplicitCloudEventsContentType() throws Exception {
+    void preservesExplicitContentType() throws Exception {
         AtomicReference<String> contentType = new AtomicReference<>();
-        server.createContext("/webhook", exchange -> {
+        server.createContext("/target", exchange -> {
             contentType.set(exchange.getRequestHeaders()
                     .getFirst("Content-Type"));
             respond(exchange, 204, "");
@@ -154,10 +154,10 @@ class PinnedHttpTransportTest {
         server.start();
         HttpTransportRequest request = new HttpTransportRequest(
                 "POST",
-                endpoint("/webhook"),
+                endpoint("/target"),
                 Map.of(
                         "Content-Type",
-                        "application/cloudevents+json"),
+                        "application/vnd.example+json"),
                 "{\"specversion\":\"1.0\"}",
                 2000,
                 Set.of("127.0.0.1"),
@@ -167,7 +167,7 @@ class PinnedHttpTransportTest {
         transport.executeLegacy(request, true);
 
         assertEquals(
-                "application/cloudevents+json",
+                "application/vnd.example+json",
                 contentType.get());
     }
 

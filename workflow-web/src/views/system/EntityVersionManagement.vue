@@ -5,17 +5,33 @@
         <h2>业务数据版本</h2>
         <p>每个业务实体维护一套固化策略；保存后立即影响后续数据变更，已有历史版本不会被改写。</p>
       </div>
-      <el-button :loading="loading" title="刷新数据版本配置" aria-label="刷新数据版本配置" @click="loadConfigs">
-        <el-icon><Refresh /></el-icon>
-      </el-button>
     </header>
 
     <section class="content-panel">
       <div class="table-toolbar">
-        <el-input v-model="keyword" clearable placeholder="搜索实体名称或编码" @keyup.enter="loadConfigs">
+        <el-input
+          v-model="keyword"
+          clearable
+          placeholder="搜索实体名称或编码"
+          @clear="handleQuery"
+          @keyup.enter="handleQuery"
+        >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-button type="primary" @click="loadConfigs">
+        <div class="status-filter-field">
+          <span>启用状态</span>
+          <el-select
+            v-model="enabledFilter"
+            class="status-filter"
+            aria-label="按启用状态筛选"
+            @change="handleQuery"
+          >
+            <el-option label="全部" value="ALL" />
+            <el-option label="已启用" value="ENABLED" />
+            <el-option label="未启用" value="DISABLED" />
+          </el-select>
+        </div>
+        <el-button type="primary" @click="handleQuery">
           <el-icon><Search /></el-icon>
           查询
         </el-button>
@@ -50,6 +66,17 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <el-pagination
+        v-model:current-page="pageInfo.pageNum"
+        v-model:page-size="pageInfo.pageSize"
+        :total="pageInfo.total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="pagination"
+        @size-change="handlePageSizeChange"
+        @current-change="loadConfigs"
+      />
     </section>
 
     <el-drawer
@@ -558,7 +585,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Delete, Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import { entityVersionApi } from '@/api/entityVersion'
@@ -594,6 +621,8 @@ const filterOperatorOptions = [
 const userStore = useUserStore()
 const configs = ref([])
 const keyword = ref('')
+const enabledFilter = ref('ALL')
+const pageInfo = reactive({ pageNum: 1, pageSize: 20, total: 0 })
 const loading = ref(false)
 const drawerVisible = ref(false)
 const activeTab = ref('triggers')
@@ -608,6 +637,7 @@ const baseline = ref('')
 const baselineEnabled = ref(false)
 const legacyConfig = ref(false)
 const draft = reactive(createVersionDraft())
+let listRequestSequence = 0
 
 const canView = computed(() => hasPermission('entity:version:config:list'))
 const canUpdate = computed(() => hasPermission('entity:version:config:update'))
@@ -653,15 +683,40 @@ onMounted(() => window.addEventListener('resize', updateViewport))
 onBeforeUnmount(() => window.removeEventListener('resize', updateViewport))
 
 async function loadConfigs() {
+  const requestSequence = ++listRequestSequence
   loading.value = true
   try {
-    const page = normalizePage(await entityVersionApi.listConfigs({ keyword: keyword.value || undefined }), 50)
+    const enabled = enabledFilter.value === 'ENABLED'
+      ? true
+      : enabledFilter.value === 'DISABLED' ? false : undefined
+    const page = normalizePage(await entityVersionApi.listConfigPage({
+      keyword: keyword.value.trim() || undefined,
+      ...(enabled === undefined ? {} : { enabled }),
+      pageNum: pageInfo.pageNum,
+      pageSize: pageInfo.pageSize
+    }), pageInfo.pageSize)
+    if (requestSequence !== listRequestSequence) return
     configs.value = page.records
+    pageInfo.total = page.total
+    pageInfo.pageNum = page.pageNum
+    pageInfo.pageSize = page.pageSize
   } catch (error) {
+    if (requestSequence !== listRequestSequence) return
     ElMessage.error(error?.message || '加载数据版本配置失败')
   } finally {
-    loading.value = false
+    if (requestSequence === listRequestSequence) loading.value = false
   }
+}
+
+/** 新查询条件从第一页开始；翻页加载本身不重置当前页。 */
+function handleQuery() {
+  pageInfo.pageNum = 1
+  loadConfigs()
+}
+
+function handlePageSizeChange() {
+  pageInfo.pageNum = 1
+  loadConfigs()
 }
 
 async function openConfig(row) {
@@ -955,8 +1010,11 @@ const triggerTypeText = value => labelOf(triggerTypeOptions, value)
 .page-heading h2, .drawer-heading h3 { margin: 0; }
 .page-heading p, .section-intro p, .limit-panel p { margin: 5px 0 0; color: var(--el-text-color-secondary); font-size: 13px; }
 .content-panel { padding: 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: 8px; }
-.table-toolbar { gap: 10px; margin-bottom: 14px; }
+.table-toolbar { flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 .table-toolbar .el-input { width: 320px; }
+.status-filter-field { display: flex; align-items: center; gap: 8px; color: var(--el-text-color-regular); font-size: 14px; }
+.status-filter { width: 160px; }
+.pagination { justify-content: flex-end; margin-top: 16px; }
 .primary-text { color: var(--el-text-color-primary); font-weight: 600; }
 .secondary-text, .drawer-heading span { color: var(--el-text-color-secondary); font-size: 13px; }
 .drawer-heading { width: 100%; padding-right: 18px; gap: 16px; }
@@ -996,6 +1054,9 @@ const triggerTypeText = value => labelOf(triggerTypeOptions, value)
 @media (max-width: 900px) {
   .version-management { padding: 12px; }
   .drawer-heading, .section-intro { flex-direction: column; align-items: stretch; }
+  .table-toolbar .el-input, .status-filter-field { width: 100%; }
+  .status-filter { flex: 1; width: auto; }
+  .pagination { justify-content: center; overflow-x: auto; }
   .drawer-actions { justify-content: flex-start; }
   .scope-card__body { grid-template-columns: 1fr; }
   .condition-row { grid-template-columns: 1fr; padding-bottom: 10px; border-bottom: 1px solid var(--el-border-color-light); }

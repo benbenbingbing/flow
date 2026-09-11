@@ -14,15 +14,17 @@
         </div>
         <div class="client-id">Client ID：{{ application.clientId }}</div>
       </div>
-      <el-dropdown v-if="canManage || canRotate" trigger="click" @command="handleCommand">
+      <el-dropdown
+        v-if="application.status !== 'REVOKED' && (canManage || canRotate)"
+        trigger="click"
+        @command="handleCommand"
+      >
         <el-button aria-label="应用操作">
           操作
           <el-icon><ArrowDown /></el-icon>
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item v-if="canManage" command="access">访问策略</el-dropdown-item>
-            <el-dropdown-item v-if="canManage" command="contracts">输入契约</el-dropdown-item>
             <el-dropdown-item v-if="canManage" command="status">
               {{ application.status === 'ACTIVE' ? '停用应用' : '启用应用' }}
             </el-dropdown-item>
@@ -60,145 +62,6 @@
         v{{ application.version }}
       </el-descriptions-item>
     </el-descriptions>
-
-    <div class="policy-row">
-      <div>
-        <span class="policy-label">权限范围</span>
-        <el-tag
-          v-for="scope in application.scopes"
-          :key="scope"
-          size="small"
-          effect="plain"
-        >
-          {{ integrationScopeLabel(scope) }}
-        </el-tag>
-      </div>
-      <div>
-        <span class="policy-label">允许流程</span>
-        <el-tag
-          v-for="processKey in application.processKeys"
-          :key="processKey"
-          size="small"
-          type="info"
-          effect="plain"
-        >
-          {{ processKey }}
-        </el-tag>
-        <span v-if="!application.processKeys?.length" class="empty-inline">未授权</span>
-      </div>
-    </div>
-
-    <el-tabs v-model="activeTab" class="resource-tabs">
-      <el-tab-pane label="流程场景" name="scenarios">
-        <IntegrationScenarioPanel
-          :application="application"
-          :can-manage="canManage"
-        />
-      </el-tab-pane>
-      <el-tab-pane label="Webhook" name="webhooks">
-        <IntegrationWebhookPanel
-          v-if="capabilities.webhookEnabled"
-          :application-id="application.id"
-          :can-manage="canManage"
-          :can-rotate="canRotate"
-          :can-replay="canReplay"
-          @secret-issued="$emit('secret-issued', $event)"
-        />
-        <PageState
-          v-else
-          type="empty"
-          title="Webhook 能力未启用"
-          description="当前环境未启用 Webhook 管理与投递能力。"
-          compact
-        />
-      </el-tab-pane>
-      <el-tab-pane label="Secret" name="secrets">
-        <IntegrationSecretPanel
-          v-if="capabilities.httpConnectorEnabled"
-          :application-id="application.id"
-          :can-rotate="canRotate"
-          @secret-issued="$emit('secret-issued', $event)"
-        />
-        <PageState
-          v-else
-          type="empty"
-          title="集成 Secret 能力未启用"
-          description="启用 HTTP Connector 后可以管理集成 Secret。"
-          compact
-        />
-      </el-tab-pane>
-      <el-tab-pane label="Connector" name="connectors">
-        <IntegrationConnectorPanel
-          v-if="capabilities.httpConnectorEnabled"
-          :application-id="application.id"
-          :can-manage="canManage"
-        />
-        <PageState
-          v-else
-          type="empty"
-          title="HTTP Connector 能力未启用"
-          description="当前环境未启用 HTTP Connector 配置与连接测试能力。"
-          compact
-        />
-      </el-tab-pane>
-    </el-tabs>
-
-    <el-dialog
-      v-model="accessVisible"
-      title="访问策略"
-      width="min(680px, 94vw)"
-      append-to-body
-      destroy-on-close
-      :close-on-click-modal="false"
-    >
-      <el-form label-position="top">
-        <el-form-item label="权限范围" required>
-          <el-select v-model="accessForm.scopes" multiple style="width: 100%">
-            <el-option
-              v-for="scope in scopeOptions"
-              :key="scope.value"
-              :label="scope.label"
-              :value="scope.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="允许流程">
-          <el-select
-            v-model="accessForm.processKeys"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            style="width: 100%"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="accessVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveAccess">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog
-      v-model="contractsVisible"
-      title="流程输入契约"
-      width="min(780px, 96vw)"
-      append-to-body
-      destroy-on-close
-      :close-on-click-modal="false"
-    >
-      <el-input
-        v-model="contractsDocument"
-        type="textarea"
-        :rows="18"
-        spellcheck="false"
-        class="json-editor"
-      />
-      <template #footer>
-        <el-button @click="contractsVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveContracts">保存契约</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -207,43 +70,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { integrationApplicationApi } from '@/api/system/openIntegration'
-import PageState from '@/components/PageState.vue'
-import IntegrationWebhookPanel from './IntegrationWebhookPanel.vue'
-import IntegrationSecretPanel from './IntegrationSecretPanel.vue'
-import IntegrationConnectorPanel from './IntegrationConnectorPanel.vue'
-import IntegrationScenarioPanel from './IntegrationScenarioPanel.vue'
-import {
-  INTEGRATION_SCOPE_OPTIONS,
-  integrationScopeLabel
-} from './integrationScopeOptions'
-
-const scopeOptions = INTEGRATION_SCOPE_OPTIONS
 
 const props = defineProps({
   application: { type: Object, required: true },
-  capabilities: {
-    type: Object,
-    default: () => ({
-      openApiEnabled: false,
-      webhookEnabled: false,
-      httpConnectorEnabled: false
-    })
-  },
   permissions: { type: Array, default: () => [] },
   superAdmin: { type: Boolean, default: false }
 })
 const emit = defineEmits(['refresh', 'secret-issued'])
 
-const activeTab = ref('webhooks')
-const accessVisible = ref(false)
-const contractsVisible = ref(false)
-const saving = ref(false)
-const contractsDocument = ref('[]')
-const accessForm = ref({ scopes: [], processKeys: [] })
 const descriptionColumns = ref(3)
 const canManage = computed(() => hasPermission('system:integration:manage'))
 const canRotate = computed(() => hasPermission('system:integration:secret-rotate'))
-const canReplay = computed(() => hasPermission('system:integration:delivery-replay'))
 
 function updateDescriptionColumns() {
   descriptionColumns.value = window.innerWidth < 720 ? 1 : 3
@@ -264,8 +101,6 @@ function hasPermission(permission) {
 }
 
 function handleCommand(command) {
-  if (command === 'access') openAccess()
-  if (command === 'contracts') openContracts()
   if (command === 'status') toggleStatus()
   if (command === 'rotate') rotateCredential()
   if (command === 'revoke') revokeCredential()
@@ -280,75 +115,12 @@ async function copyApplicationId() {
   }
 }
 
-function openAccess() {
-  accessForm.value = {
-    scopes: [...(props.application.scopes || [])],
-    processKeys: [...(props.application.processKeys || [])]
-  }
-  accessVisible.value = true
-}
-
-async function saveAccess() {
-  if (!accessForm.value.scopes.length) {
-    ElMessage.warning('至少选择一个权限范围')
-    return
-  }
-  saving.value = true
-  try {
-    await integrationApplicationApi.updateAccess(props.application.id, {
-      ...accessForm.value,
-      expectedVersion: props.application.version
-    })
-    accessVisible.value = false
-    emit('refresh')
-    ElMessage.success('访问策略已更新')
-  } finally {
-    saving.value = false
-  }
-}
-
-async function openContracts() {
-  saving.value = true
-  try {
-    const contracts = await integrationApplicationApi.listProcessContracts(
-      props.application.id
-    )
-    contractsDocument.value = JSON.stringify(contracts || [], null, 2)
-    contractsVisible.value = true
-  } finally {
-    saving.value = false
-  }
-}
-
-async function saveContracts() {
-  let contracts
-  try {
-    contracts = JSON.parse(contractsDocument.value)
-    if (!Array.isArray(contracts)) throw new Error()
-  } catch {
-    ElMessage.error('契约必须是 JSON 数组')
-    return
-  }
-  saving.value = true
-  try {
-    await integrationApplicationApi.updateProcessContracts(props.application.id, {
-      contracts,
-      expectedVersion: props.application.version
-    })
-    contractsVisible.value = false
-    emit('refresh')
-    ElMessage.success('流程输入契约已更新')
-  } finally {
-    saving.value = false
-  }
-}
-
 async function toggleStatus() {
   const target = props.application.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'
   await ElMessageBox.confirm(
     target === 'ACTIVE'
-      ? '启用后该应用可以重新获取令牌并访问授权接口。'
-      : '停用后将立即阻止新令牌签发和新的开放接口调用。',
+      ? '启用后该应用可以重新获取令牌并发起接入请求。'
+      : '停用后将立即阻止新令牌签发和新的接入请求。',
     target === 'ACTIVE' ? '启用应用' : '停用应用',
     { type: target === 'ACTIVE' ? 'info' : 'warning' }
   )
@@ -409,8 +181,7 @@ function formatTime(value) {
 
 <style scoped>
 .detail-header,
-.title-row,
-.policy-row {
+.title-row {
   display: flex;
   align-items: center;
 }
@@ -454,55 +225,9 @@ function formatTime(value) {
   margin-top: 16px;
 }
 
-.policy-row {
-  align-items: flex-start;
-  gap: 22px;
-  padding: 14px 0 4px;
-  border-bottom: 1px solid #ebeef2;
-}
-
-.policy-row > div {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-.policy-label {
-  width: 72px;
-  color: #606773;
-  font-size: 13px;
-  line-height: 24px;
-}
-
-.empty-inline {
-  color: #9098a3;
-  font-size: 13px;
-  line-height: 24px;
-}
-
-.resource-tabs {
-  margin-top: 12px;
-}
-
-.json-editor :deep(textarea) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-
 @media (max-width: 720px) {
   .detail-header {
     align-items: flex-start;
-  }
-
-  .policy-row {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .policy-label {
-    width: 100%;
   }
 }
 </style>

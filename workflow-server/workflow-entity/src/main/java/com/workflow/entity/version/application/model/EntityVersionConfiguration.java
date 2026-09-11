@@ -29,8 +29,6 @@ public class EntityVersionConfiguration {
     private Integer revision;
     private LocalDateTime updateTime;
     private List<Scenario> scenarios = new ArrayList<>();
-    private List<Step> steps = new ArrayList<>();
-    private List<TargetBinding> targetBindings = new ArrayList<>();
     private List<CaptureTrigger> triggers = new ArrayList<>();
     private SnapshotScope snapshotScope = new SnapshotScope();
     private DiffPolicy diffPolicy = new DiffPolicy();
@@ -223,35 +221,4 @@ public class EntityVersionConfiguration {
         private Boolean enabled = true;
     }
 
-    @Data
-    public static class Step {
-
-        private String id;
-        private String scenarioCode;
-        private String phase = "BEFORE_WRITE";
-        private String stepType;
-        private String stepName;
-        private String providerCode;
-        private Map<String, Object> config = new LinkedHashMap<>();
-        private Integer sortOrder = 0;
-        private Boolean enabled = true;
-    }
-
-    @Data
-    public static class TargetBinding {
-
-        private String id;
-        private String bindingCode;
-        private String bindingName;
-        private String sourceEntityCode;
-        private String targetEntityCode;
-        private String resolverType;
-        private String resolverCode;
-        private Map<String, Object> resolverConfig =
-                new LinkedHashMap<>();
-        private Map<String, Object> fieldMapping =
-                new LinkedHashMap<>();
-        private String applyStrategy = "MERGE";
-        private Boolean enabled = true;
-    }
 }

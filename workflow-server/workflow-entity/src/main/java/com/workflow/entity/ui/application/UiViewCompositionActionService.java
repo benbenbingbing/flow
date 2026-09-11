@@ -895,7 +895,7 @@ public class UiViewCompositionActionService {
      *
      * <p>单次最多 100 条；每条重新校验 CRUD 权限、记录数据范围和发布字段，
      * operationId、幂等键及上下文全部由平台生成。MutationPort 随后还会执行
-     * 实体字段校验和 mutation policy，Provider 无法跳过任一层。</p>
+     * 实体字段校验、唯一性和版本规则，Provider 无法跳过任一层。</p>
      */
     private List<EntityMutationCommand> actionMutationCommands(
             ValidatedAction action,
@@ -1087,8 +1087,7 @@ public class UiViewCompositionActionService {
                         "compositionKey", context.claims().compositionKey(),
                         "actionKey", action.action(),
                         "ownerReleaseId", context.claims().releaseId(),
-                        "ownerReleaseVersion", context.claims().releaseVersion(),
-                        "maxExpandedCommands", MAX_ACTION_MUTATIONS))
+                        "ownerReleaseVersion", context.claims().releaseVersion()))
                 .build();
         Map<String, Object> payload = operation
                 == EntityMutationOperationType.DELETE

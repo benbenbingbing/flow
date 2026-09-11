@@ -15,17 +15,13 @@ import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationBatchResult;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.entity.version.application.EntityMutationStepExecutor.ExecutionOutcome;
-import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -37,54 +33,24 @@ import java.util.List;
 public class EntityMutationPipeline
         implements EntityMutationPort {
 
-    private static final String MAX_EXPANDED_COMMANDS =
-            "maxExpandedCommands";
-
-    private final EntityMutationStepExecutor stepExecutor;
     private final EntityMutationTransactionExecutor transactionExecutor;
     private final SystemAuditPort auditPort;
 
     @Override
     public EntityMutationResult execute(
             EntityMutationCommand input) {
-        ExecutionOutcome prepared = prepare(
-                withOperator(input));
-        List<EntityMutationCommand> commands =
-                new ArrayList<>();
-        commands.add(prepared.command());
-        commands.addAll(prepared.plannedCommands());
-        List<EntityMutationResult> results =
-                commands.size() == 1
-                        ? List.of(transactionExecutor.execute(
-                                commands.get(0)))
-                        : transactionExecutor.executeBatch(
-                                commands);
-        afterCommit(commands, results);
-        return results.get(0);
+        EntityMutationCommand command = withOperator(input);
+        EntityMutationResult result = transactionExecutor.execute(command);
+        recordCommittedAudits(List.of(command), List.of(result));
+        return result;
     }
 
     @Override
     public EntityMutationBatchResult executeBatch(
             EntityMutationBatchCommand batch) {
-        List<EntityMutationCommand> commands =
-                new ArrayList<>();
-        int expansionBudget = expansionBudget(batch.commands());
-        for (EntityMutationCommand value
-                : batch.commands()) {
-            ExecutionOutcome prepared =
-                    prepare(withOperator(value));
-            commands.add(prepared.command());
-            commands.addAll(
-                    prepared.plannedCommands());
-            // 受控扩展可以声明整个 PREPARE 展开后的硬预算。检查必须发生在
-            // 事务写入前，不能只限制 Provider 返回的顶层命令数量，否则变更
-            // 策略继续追加 plannedCommands 后会绕过页面动作的规模边界。
-            if (commands.size() > expansionBudget) {
-                throw new IllegalArgumentException(
-                        "实体变更计划展开后超过单次允许的 "
-                                + expansionBudget + " 条命令");
-            }
-        }
+        List<EntityMutationCommand> commands = batch.commands().stream()
+                .map(this::withOperator)
+                .toList();
         List<EntityMutationResult> results;
         if (batch.atomic()) {
             results = transactionExecutor
@@ -94,7 +60,7 @@ public class EntityMutationPipeline
                     .map(transactionExecutor::execute)
                     .toList();
         }
-        afterCommit(commands, results);
+        recordCommittedAudits(commands, results);
         return new EntityMutationBatchResult(
                 batch.operationId(),
                 results);
@@ -103,8 +69,8 @@ public class EntityMutationPipeline
     /**
      * 执行不产生变更版本和审计事件的表单唯一终检。
      *
-     * <p>该路径不经过变更规则 PREPARE/AFTER_COMMIT，因为它不改变业务
-     * 记录；但仍由事务执行器锁定最终记录并维护 claim。</p>
+     * <p>该路径不改变业务记录，但仍由事务执行器锁定
+     * 最终记录并维护 claim。</p>
      */
     @Override
     public void reconcileFormUniqueness(
@@ -117,54 +83,7 @@ public class EntityMutationPipeline
                 context);
     }
 
-    private int expansionBudget(
-            List<EntityMutationCommand> commands) {
-        int result = Integer.MAX_VALUE;
-        for (EntityMutationCommand command : commands) {
-            Object raw = command == null || command.context() == null
-                    ? null
-                    : command.context().extraParams().get(
-                    MAX_EXPANDED_COMMANDS);
-            if (raw == null) {
-                continue;
-            }
-            int value;
-            try {
-                value = raw instanceof Number number
-                        ? number.intValue()
-                        : Integer.parseInt(String.valueOf(raw));
-            } catch (NumberFormatException exception) {
-                throw new IllegalArgumentException(
-                        "实体变更展开预算必须为正整数", exception);
-            }
-            if (value < 1 || value > 10_000) {
-                throw new IllegalArgumentException(
-                        "实体变更展开预算必须在 1 到 10000 之间");
-            }
-            result = Math.min(result, value);
-        }
-        return result;
-    }
-
-    private ExecutionOutcome prepare(
-            EntityMutationCommand command) {
-        TrustedSubFormUniqueReference.PayloadSnapshot trusted =
-                TrustedSubFormUniqueReference.snapshot(
-                        command.payload());
-        ExecutionOutcome result = stepExecutor.execute(
-                command,
-                EntityMutationPhase.PREPARE,
-                java.util.Map.of(),
-                java.util.Map.of());
-        // PREPARE 可修改普通字段或展开命令，但不能通过 managed-interface
-        // round-trip 剥离/替换服务端发布处理器附加的可信子表单身份。
-        TrustedSubFormUniqueReference.requireUnchanged(
-                trusted,
-                result.command().payload());
-        return result;
-    }
-
-    private void afterCommit(
+    private void recordCommittedAudits(
             List<EntityMutationCommand> commands,
             List<EntityMutationResult> results) {
         for (int index = 0;
@@ -176,13 +95,6 @@ public class EntityMutationPipeline
             }
             recordUnifiedAudit(
                     commands.get(index), results.get(index));
-            stepExecutor.execute(
-                    commands.get(index),
-                    EntityMutationPhase.AFTER_COMMIT,
-                    java.util.Map.of(),
-                    results.get(index).record(),
-                    results.get(index)
-                            .versionScenarioCode());
         }
     }
 

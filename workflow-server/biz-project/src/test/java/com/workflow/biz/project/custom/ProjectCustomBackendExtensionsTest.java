@@ -13,28 +13,12 @@ import com.workflow.contracts.entity.list.spi.EntityListContextResolver;
 import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.EntityListRuntimeContext;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
-import com.workflow.contracts.entity.mutation.EntityChangeTarget;
-import com.workflow.contracts.entity.mutation.EntityChangeTargetContext;
-import com.workflow.contracts.entity.mutation.spi.EntityChangeTargetResolver;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationPhase;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.entity.mutation.EntityMutationStepContext;
-import com.workflow.contracts.entity.mutation.spi.EntityMutationStepProvider;
-import com.workflow.contracts.entity.mutation.EntityMutationStepResult;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.IdentityUser;
-import com.workflow.contracts.identity.external.ExternalIdentityResolutionRequest;
-import com.workflow.contracts.process.open.spi.ExternalIdentityResolver;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
-import com.workflow.contracts.integration.spi.IntegrationConnector;
-import com.workflow.contracts.integration.IntegrationRequest;
-import com.workflow.contracts.integration.IntegrationResult;
-import com.workflow.contracts.integration.port.IntegrationSecretResolver;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.contracts.ui.CommonInvocationContext;
@@ -53,7 +37,6 @@ import com.workflow.entity.permission.application.EntityActionRuleConditionProvi
 import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
 import com.workflow.entity.permission.application.EntityDataPermissionMatchProvider;
 import com.workflow.entity.permission.application.EntityPermissionOptionProvider;
-import com.workflow.http.HttpConnectorConfigurationProvider;
 import com.workflow.outbox.api.OutboxEvent;
 import com.workflow.outbox.api.OutboxEventHandler;
 import com.workflow.process.cc.application.CcNotificationChannel;
@@ -109,17 +92,11 @@ class ProjectCustomBackendExtensionsTest {
                     context,
                     FlowActionTriggerProvider.class);
             assertSingleBean(context, PersonResolver.class);
-            assertSingleBean(
-                    context,
-                    ExternalIdentityResolver.class);
             assertEquals(
                     4,
                     context.getBeansOfType(
                             UiDataSourceProvider.class)
                             .size());
-            assertSingleBean(
-                    context,
-                    IntegrationConnector.class);
             assertSingleBean(
                     context,
                     ListFieldDataProvider.class);
@@ -138,12 +115,6 @@ class ProjectCustomBackendExtensionsTest {
             assertSingleBean(
                     context,
                     DataScopePredicateProvider.class);
-            assertSingleBean(
-                    context,
-                    EntityMutationStepProvider.class);
-            assertSingleBean(
-                    context,
-                    EntityChangeTargetResolver.class);
             assertSingleBean(
                     context,
                     EntityPermissionOptionProvider.class);
@@ -188,16 +159,6 @@ class ProjectCustomBackendExtensionsTest {
                                     .CODE),
                     uiDataSourceProviderCodes);
             assertEquals(
-                    ProjectCustomIntegrationConnector.CODE,
-                    context.getBean(
-                            IntegrationConnector.class)
-                            .code());
-            assertEquals(
-                    ProjectCustomMutationStepProvider.CODE,
-                    context.getBean(
-                            EntityMutationStepProvider.class)
-                            .getCode());
-            assertEquals(
                     ProjectCustomFileStorageStrategy
                             .STORAGE_TYPE,
                     context.getBean(
@@ -214,21 +175,14 @@ class ProjectCustomBackendExtensionsTest {
     @Test
     void keepsSingleImplementationReplacementPortsUnregistered() {
         assertFalse(component(
-                ProjectCustomIntegrationSecretResolver.class));
-        assertFalse(component(
                 ProjectCustomMigrationAssetHandler.class));
         assertFalse(component(
                 ProjectCustomBootstrapJobCoordinator.class));
         assertFalse(component(
                 ProjectCustomUiExtensionCatalogAdapter.class));
-        assertFalse(component(
-                ProjectCustomHttpConnectorConfigurationProvider.class));
 
         try (AnnotationConfigApplicationContext context =
                      customExtensionContext()) {
-            assertTrue(context.getBeansOfType(
-                            IntegrationSecretResolver.class)
-                    .isEmpty());
             assertTrue(context.getBeansOfType(
                             MigrationAssetHandler.class)
                     .isEmpty());
@@ -237,9 +191,6 @@ class ProjectCustomBackendExtensionsTest {
                     .isEmpty());
             assertTrue(context.getBeansOfType(
                             UiExtensionCatalogPort.class)
-                    .isEmpty());
-            assertTrue(context.getBeansOfType(
-                            HttpConnectorConfigurationProvider.class)
                     .isEmpty());
         }
     }
@@ -405,22 +356,6 @@ class ProjectCustomBackendExtensionsTest {
                                         .get("message"))
                         .contains(
                                 "FORM_BUTTON_CLICK"));
-
-        IntegrationResult integrationResult =
-                new ProjectCustomIntegrationConnector()
-                        .execute(IntegrationRequest.builder()
-                                .operation("PING")
-                                .connectorConfigId("CONFIG-1")
-                                .idempotencyKey("KEY-1")
-                                .parameters(Map.of(
-                                        "requestId",
-                                        "REQ-1"))
-                                .dataScopePlan(allowedPlan)
-                                .build());
-        assertTrue(integrationResult.isSuccess());
-        assertEquals(
-                "PROJECT_CUSTOM_LOGGED",
-                integrationResult.getCode());
 
         Object page = new ProjectCustomEntityListDataProvider()
                 .query(
@@ -641,81 +576,10 @@ class ProjectCustomBackendExtensionsTest {
                 1,
                 personResult.principals().size());
 
-        IdentityDirectoryPort directory =
-                mock(IdentityDirectoryPort.class);
-        when(directory.findUser("external-user"))
-                .thenReturn(Optional.of(
-                        new IdentityUser(
-                                "USER-1",
-                                "demo",
-                                "演示用户",
-                                "ORG-1",
-                                "DEPT-1")));
-        Optional<String> resolved =
-                new ProjectCustomExternalIdentityResolver(
-                        directory)
-                        .resolve(
-                                new ExternalIdentityResolutionRequest(
-                                        ProjectCustomExternalIdentityResolver
-                                                .NAMESPACE,
-                                        "external-user",
-                                        "project-system",
-                                        "project",
-                                        "PROJECT-1",
-                                        null,
-                                        Map.of()));
-        assertEquals(
-                Optional.of("demo"),
-                resolved);
     }
 
     @Test
-    void executesMutationPermissionAndMessagingExamples() {
-        EntityMutationCommand command =
-                EntityMutationCommand.update(
-                        "project",
-                        "PROJECT-1",
-                        Map.of("name", "demo"),
-                        EntityMutationContext.builder(
-                                        EntityMutationSourceType.FORM,
-                                        "TEST",
-                                        "test")
-                                .build());
-        EntityMutationStepResult stepResult =
-                new ProjectCustomMutationStepProvider()
-                        .execute(
-                                new EntityMutationStepContext(
-                                        EntityMutationPhase
-                                                .BEFORE_WRITE,
-                                        command,
-                                        Map.of(),
-                                        command.payload(),
-                                        Map.of(
-                                                "scene",
-                                                "test")));
-        assertEquals(
-                EntityMutationStepResult.Decision.ALLOW,
-                stepResult.decision());
-
-        List<EntityChangeTarget> targets =
-                new ProjectCustomChangeTargetResolver()
-                        .resolve(
-                                new EntityChangeTargetContext(
-                                        "project_change",
-                                        "CHANGE-1",
-                                        Map.of(
-                                                "data",
-                                                Map.of(
-                                                        "targetId",
-                                                        "PROJECT-1")),
-                                        "PROC-1",
-                                        Map.of(
-                                                "recordIdPath",
-                                                "data.targetId"),
-                                        Map.of()));
-        assertEquals("PROJECT-1",
-                targets.get(0).recordId());
-
+    void executesPermissionAndMessagingExamples() {
         ProjectCustomPermissionOptionProvider
                 permissionProvider =
                 new ProjectCustomPermissionOptionProvider();
@@ -817,14 +681,6 @@ class ProjectCustomBackendExtensionsTest {
 
     @Test
     void executesUnregisteredReplacementExamplesSafely() {
-        assertThrows(
-                UnsupportedOperationException.class,
-                () -> new ProjectCustomIntegrationSecretResolver()
-                        .resolve("project/demo"));
-        assertThrows(
-                UnsupportedOperationException.class,
-                () -> new ProjectCustomHttpConnectorConfigurationProvider()
-                        .findActive("project-demo-http"));
         assertThrows(
                 UnsupportedOperationException.class,
                 () -> new ProjectCustomBootstrapJobCoordinator()

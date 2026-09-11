@@ -166,8 +166,8 @@
                       :closable="false"
                       show-icon
                       class="controlled-source-tip"
-                      title="生产环境请使用受控 Provider / Connector"
-                      description="以下字段仅保留历史配置兼容。生产环境应从统一数据源目录选择 Provider 或 Connector，并由平台统一处理凭据、权限、超时与审计；不建议新增任意接口地址。"
+                      title="生产环境请使用受控 Provider"
+                      description="以下字段仅保留历史配置兼容。生产环境应从统一数据源目录选择 Provider，并由平台统一处理权限、超时与审计；不建议新增任意接口地址。"
                     />
 
                     <SettingsSection

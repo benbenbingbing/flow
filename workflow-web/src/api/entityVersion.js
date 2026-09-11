@@ -1,18 +1,34 @@
 import request from '@/utils/request'
+import { loadEntityVersionConfigPageWithLegacyFallback } from '@/shared/entity-version-config-list'
 
 const LEGACY_SAVE_FALLBACK_STATUSES = new Set([404, 405])
 
 function pageParams(params = {}) {
   return {
+    ...params,
     pageNum: params.pageNum ?? 1,
-    pageSize: params.pageSize ?? 20,
-    ...params
+    pageSize: params.pageSize ?? 20
   }
 }
 
 export const entityVersionApi = {
   listConfigs(params = {}) {
     return request.get('/entity-versions/configs', { params })
+  },
+  /**
+   * 优先读取服务端分页端点；混部命中旧 Pod 时把旧数组响应适配为相同分页契约。
+   */
+  async listConfigPage(params = {}) {
+    const normalizedParams = pageParams(params)
+    return loadEntityVersionConfigPageWithLegacyFallback({
+      loadPage: () => request.get('/entity-versions/configs/page', {
+        params: normalizedParams,
+        silentError: true
+      }),
+      loadLegacy: () => request.get('/entity-versions/configs', {
+        silentError: true
+      })
+    }, normalizedParams)
   },
   getConfig(entityCode) {
     return request.get(`/entity-versions/configs/${entityCode}/current`)
@@ -71,14 +87,6 @@ export const entityVersionApi = {
   },
   simulate(entityCode, data) {
     return request.post(`/entity-versions/configs/${entityCode}/simulate`, data)
-  },
-  mutationCatalog() {
-    return request.get('/entity-versions/mutation-catalog')
-  },
-  mutationCatalogOptions(type, params = {}) {
-    return request.get('/entity-versions/mutation-catalog/options', {
-      params: { type, ...params }
-    })
   },
   recordCapabilities(entityCode) {
     return request.get(

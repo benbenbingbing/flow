@@ -392,16 +392,12 @@ interface EmbedManagementMapper {
                    CASE WHEN a.status = 'ACTIVE'
                               AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP(6))
                               AND c.application_id IS NOT NULL
-                              AND s.application_id IS NOT NULL
                         THEN TRUE ELSE FALSE END AS embed_launch_ready
               FROM integration_application a
               LEFT JOIN integration_application_credential c
                 ON c.application_id = a.id
                AND c.status = 'ACTIVE'
                AND (c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP(6))
-              LEFT JOIN integration_application_scope s
-                ON s.application_id = a.id
-               AND s.scope = 'embed.launch'
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
                  AND (a.id LIKE CONCAT('%', #{keyword}, '%')

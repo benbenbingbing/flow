@@ -14,6 +14,8 @@ import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplica
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
 import com.workflow.openapi.web.OpenRequestTrace;
 import jakarta.servlet.FilterChain;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,6 +105,7 @@ class OpenApiApplicationPolicyFilterTest {
                 new IntegrationApplicationRecord();
         application.setId("application-01");
         application.setClientId("flow_client");
+        application.setStatus("ACTIVE");
         application.setRateLimitPerMinute(60);
         application.setMaxConcurrency(1);
         when(applicationMapper.selectById("application-01"))
@@ -140,11 +143,66 @@ class OpenApiApplicationPolicyFilterTest {
         verify(chain).doFilter(any(), any());
     }
 
+    @Test
+    void disabledApplicationInvalidatesPreviouslyIssuedToken()
+            throws Exception {
+        IntegrationApplicationRecord application = application("DISABLED");
+        when(applicationMapper.selectById("application-01"))
+                .thenReturn(application);
+        FilterChain chain = mock(FilterChain.class);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request(), response, chain);
+
+        assertEquals(401, response.getStatus());
+        assertEquals(
+                "INVALID_ACCESS_TOKEN",
+                objectMapper.readTree(response.getContentAsByteArray())
+                        .path("errorCode")
+                        .asText());
+        verify(chain, never()).doFilter(any(), any());
+        verify(networkPolicy, never()).evaluate(any(), any());
+    }
+
+    @Test
+    void expiredApplicationInvalidatesPreviouslyIssuedToken()
+            throws Exception {
+        IntegrationApplicationRecord application = application("ACTIVE");
+        application.setExpiresAt(
+                LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1));
+        when(applicationMapper.selectById("application-01"))
+                .thenReturn(application);
+        FilterChain chain = mock(FilterChain.class);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request(), response, chain);
+
+        assertEquals(401, response.getStatus());
+        assertEquals(
+                "INVALID_ACCESS_TOKEN",
+                objectMapper.readTree(response.getContentAsByteArray())
+                        .path("errorCode")
+                        .asText());
+        verify(chain, never()).doFilter(any(), any());
+        verify(networkPolicy, never()).evaluate(any(), any());
+    }
+
+    private IntegrationApplicationRecord application(String status) {
+        IntegrationApplicationRecord application =
+                new IntegrationApplicationRecord();
+        application.setId("application-01");
+        application.setClientId("flow_client");
+        application.setStatus(status);
+        application.setRateLimitPerMinute(60);
+        application.setMaxConcurrency(1);
+        return application;
+    }
+
     private MockHttpServletRequest request() {
         MockHttpServletRequest request =
                 new MockHttpServletRequest(
                         "GET",
-                        "/api/open/v1/process-definitions");
+                        "/api/open/v1/embed-launches");
         request.setAttribute(
                 OpenRequestTrace.ATTRIBUTE,
                 "trace-policy-test");

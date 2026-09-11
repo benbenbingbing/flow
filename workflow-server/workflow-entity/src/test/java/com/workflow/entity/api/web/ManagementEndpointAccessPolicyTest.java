@@ -4,7 +4,6 @@ import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.entity.ui.api.web.UiDataSourceController;
 import com.workflow.entity.ui.api.web.UiEventBindingController;
-import com.workflow.entity.version.api.web.EntityMutationCatalogController;
 import com.workflow.entity.version.api.web.EntityRecordVersionController;
 import com.workflow.entity.version.api.web.EntityVersionConfigurationController;
 import org.junit.jupiter.api.Test;
@@ -103,9 +102,6 @@ class ManagementEndpointAccessPolicyTest {
                 EntityVersionConfigurationController.class,
                 "legacyCreateRelease",
                 "entity:version:config:publish");
-        assertClassPermission(
-                EntityMutationCatalogController.class,
-                "entity:version:config:list");
         assertClassPermission(
                 EntityRecordVersionController.class,
                 "entity:version:record:view");

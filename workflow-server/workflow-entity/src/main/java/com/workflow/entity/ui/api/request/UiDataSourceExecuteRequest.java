@@ -47,10 +47,6 @@ public class UiDataSourceExecuteRequest {
     @JsonIgnore
     private String serverIdempotencyKey;
 
-    /** 服务端解析的实体 CRUD 操作类型，不接受客户端赋值。 */
-    @JsonIgnore
-    private String serverEntityOperation;
-
     /** 是否固定使用服务端指定的发布版本，不序列化给前端。 */
     @JsonIgnore
     private boolean serverPinnedRelease;

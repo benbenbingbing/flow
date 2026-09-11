@@ -521,8 +521,7 @@ function loadOptionalCa(config) {
 
 async function issueMachineToken(config, secrets) {
   const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    scope: 'embed.launch'
+    grant_type: 'client_credentials'
   }).toString()
   const response = await requestBuffer(new URL('/oauth2/token', config.flowBaseUrl), {
     method: 'POST',

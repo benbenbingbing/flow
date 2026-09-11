@@ -322,15 +322,6 @@ const routes = [
         }
       },
       {
-        path: '/system/entity-mutation-policies',
-        name: 'EntityMutationPolicyManagement',
-        component: () => import('@/views/system/EntityMutationPolicyManagement.vue'),
-        meta: {
-          title: '实体变更策略',
-          requiredPermissions: ['entity:mutation:config:list']
-        }
-      },
-      {
         path: '/system/config-migration',
         name: 'ConfigMigration',
         component: () => import('@/views/system/ConfigMigration.vue'),

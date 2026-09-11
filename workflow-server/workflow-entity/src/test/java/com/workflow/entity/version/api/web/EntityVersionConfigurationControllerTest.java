@@ -70,6 +70,58 @@ class EntityVersionConfigurationControllerTest {
     }
 
     @Test
+    void legacyListPreservesCompleteListShapeAndKeyword() throws Exception {
+        when(service.list("asset")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/entity-versions/configs")
+                        .param("keyword", "asset"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+
+        verify(service).list("asset");
+    }
+
+    @Test
+    void paginatedListUsesPageResultDefaults() throws Exception {
+        when(service.listPage(null, null, 1, 20))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 20));
+
+        mockMvc.perform(get("/api/entity-versions/configs/page"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records").isArray())
+                .andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.pageNum").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(20));
+
+        verify(service).listPage(null, null, 1, 20);
+    }
+
+    @Test
+    void listForwardsKeywordEnabledAndPagination() throws Exception {
+        when(service.listPage("asset", false, 2, 25))
+                .thenReturn(new PageResult<>(List.of(), 3, 2, 25));
+
+        mockMvc.perform(get("/api/entity-versions/configs/page")
+                        .param("keyword", "asset")
+                        .param("enabled", "false")
+                        .param("pageNum", "2")
+                        .param("pageSize", "25"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.pageNum").value(2))
+                .andExpect(jsonPath("$.data.pageSize").value(25));
+
+        verify(service).listPage("asset", false, 2, 25);
+    }
+
+    @Test
+    void listRejectsAnInvalidEnabledValue() throws Exception {
+        mockMvc.perform(get("/api/entity-versions/configs/page")
+                        .param("enabled", "all"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void currentPutAndRootAliasParseIfMatchForCasSave() throws Exception {
         when(service.save(
                 eq("asset"),

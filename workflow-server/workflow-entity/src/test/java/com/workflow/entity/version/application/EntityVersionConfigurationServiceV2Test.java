@@ -100,6 +100,8 @@ class EntityVersionConfigurationServiceV2Test {
         config = currentConfig(v2Configuration("ROOT_MUTATION", true));
         lenient().when(configMapper.findByEntityCode("asset"))
                 .thenReturn(config);
+        lenient().when(configMapper.findAllForManagementList())
+                .thenReturn(List.of(config));
     }
 
     @Test
@@ -144,8 +146,6 @@ class EntityVersionConfigurationServiceV2Test {
         assertEquals(8, persisted.getRevision());
         assertEquals(8, saved.getRevision());
         assertTrue(persisted.getScenarios().isEmpty());
-        assertTrue(persisted.getSteps().isEmpty());
-        assertTrue(persisted.getTargetBindings().isEmpty());
         assertTrue(persisted.getRelationOptions().isEmpty());
         assertTrue(persisted.getFieldOptions().isEmpty());
     }
@@ -483,6 +483,75 @@ class EntityVersionConfigurationServiceV2Test {
     }
 
     @Test
+    void listMatchesEntityCodesUsingDatabaseCaseInsensitiveSemantics() {
+        EntityDefinition definition = definition(
+                "entity-1", "asset", "资产");
+        config.setEntityCode("ASSET");
+        when(definitionMapper.findAllWithFields())
+                .thenReturn(List.of(definition));
+
+        var summary = service.listPage(null, true, 1, 20)
+                .getRecords().get(0);
+
+        assertEquals("asset", summary.entityCode());
+        assertEquals(7, summary.revision());
+        assertTrue(summary.runtimeEnabled());
+    }
+
+    @Test
+    void listFiltersDisabledIncludingUnconfiguredThenPreservesDefinitionOrder()
+            throws Exception {
+        EntityDefinition zeta = definition("entity-z", "zeta", "泽塔");
+        EntityDefinition asset = definition("entity-a", "asset", "资产");
+        EntityDefinition beta = definition("entity-b", "beta", "贝塔");
+        EntityDefinition order = definition("entity-o", "order", "订单");
+        when(definitionMapper.findAllWithFields())
+                .thenReturn(List.of(zeta, order, asset, beta));
+
+        EntityVersionConfiguration disabled =
+                v2Configuration("ROOT_MUTATION", true);
+        disabled.setEnabled(false);
+        EntityVersionConfig disabledConfig = currentConfig(disabled);
+        disabledConfig.setId("config-b");
+        disabledConfig.setEntityId("entity-b");
+        disabledConfig.setEntityCode("beta");
+        disabledConfig.setEnabled(false);
+        when(configMapper.findAllForManagementList())
+                .thenReturn(List.of(config, disabledConfig));
+
+        var firstPage = service.listPage("A", false, 1, 1);
+        var secondPage = service.listPage("A", false, 2, 1);
+        var enabledPage = service.listPage(null, true, 1, 20);
+
+        assertEquals(2, firstPage.getTotal());
+        assertEquals("zeta",
+                firstPage.getRecords().get(0).entityCode());
+        assertEquals("beta",
+                secondPage.getRecords().get(0).entityCode());
+        assertEquals(1, enabledPage.getTotal());
+        assertEquals("asset",
+                enabledPage.getRecords().get(0).entityCode());
+    }
+
+    @Test
+    void listNormalizesPageBoundariesUsingTheSharedConvention() {
+        when(definitionMapper.findAllWithFields())
+                .thenReturn(List.of(
+                        definition("entity-1", "asset", "资产")));
+
+        var minimum = service.listPage(null, null, 0, 0);
+        var maximum = service.listPage(
+                null, null, Integer.MAX_VALUE, Integer.MAX_VALUE);
+
+        assertEquals(1, minimum.getPageNum());
+        assertEquals(1, minimum.getPageSize());
+        assertEquals(1, minimum.getRecords().size());
+        assertEquals(Integer.MAX_VALUE, maximum.getPageNum());
+        assertEquals(100, maximum.getPageSize());
+        assertTrue(maximum.getRecords().isEmpty());
+    }
+
+    @Test
     void capabilitiesAreAllFalseWithoutCurrentConfigOrHistory() {
         when(configMapper.findByEntityCode("asset")).thenReturn(null);
 
@@ -611,6 +680,17 @@ class EntityVersionConfigurationServiceV2Test {
         value.setDeleted(0);
         value.setConfigDocument(
                 objectMapper.writeValueAsString(document));
+        return value;
+    }
+
+    private EntityDefinition definition(
+            String id,
+            String entityCode,
+            String entityName) {
+        EntityDefinition value = new EntityDefinition();
+        value.setId(id);
+        value.setEntityCode(entityCode);
+        value.setEntityName(entityName);
         return value;
     }
 

@@ -3,8 +3,6 @@ package com.workflow.entity.ui.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.entity.mutationpolicy.infrastructure.persistence.mapper.EntityMutationPolicyReleaseMapper;
-import com.workflow.entity.mutationpolicy.infrastructure.persistence.record.EntityMutationPolicyRelease;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,26 +21,19 @@ import static org.mockito.Mockito.when;
 class UiPublishedDataSourceReferenceGuardTest {
 
     private UiConfigReleaseMapper releaseMapper;
-    private EntityMutationPolicyReleaseMapper mutationReleaseMapper;
     private UiConfigReleaseService releaseService;
     private UiPublishedDataSourceReferenceGuard guard;
 
     @BeforeEach
     void setUp() {
         releaseMapper = mock(UiConfigReleaseMapper.class);
-        mutationReleaseMapper = mock(
-                EntityMutationPolicyReleaseMapper.class);
         releaseService = mock(UiConfigReleaseService.class);
         guard = new UiPublishedDataSourceReferenceGuard(
                 releaseMapper,
-                mutationReleaseMapper,
                 releaseService,
                 new JsonDocumentCodec(new ObjectMapper()));
         when(releaseMapper.findExecutableDataSourceReferenceCandidates(
                 anyString())).thenReturn(List.of());
-        when(mutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of());
     }
 
     @Test
@@ -103,81 +94,6 @@ class UiPublishedDataSourceReferenceGuardTest {
                 () -> guard.requireNoExecutableReferences("source-1"));
 
         assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
-                error.getErrorCode());
-    }
-
-    @Test
-    void blocksManagedInterfaceInActiveMutationPolicyRelease() {
-        EntityMutationPolicyRelease release =
-                new EntityMutationPolicyRelease();
-        release.setId("mutation-release-1");
-        release.setConfigId("mutation-config-1");
-        release.setVersion(4);
-        release.setConfigDocument("{\"enabled\":true,\"steps\":[{"
-                + "\"stepType\":\"MANAGED_INTERFACE\","
-                + "\"providerCode\":\"source-other\","
-                + "\"config\":{\"dataSourceId\":\"source-1\","
-                + "\"operationCode\":\"mutate\"}}]}");
-        when(mutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of(release));
-
-        BusinessConflictException error = assertThrows(
-                BusinessConflictException.class,
-                () -> guard.requireNoExecutableReferences("source-1"));
-
-        assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
-                error.getErrorCode());
-    }
-
-    @Test
-    void ignoresManagedInterfaceWhenMutationPolicyRootIsDisabled() {
-        EntityMutationPolicyRelease release =
-                new EntityMutationPolicyRelease();
-        release.setConfigId("mutation-config-disabled");
-        release.setConfigDocument("{\"enabled\":false,\"steps\":[{"
-                + "\"stepType\":\"MANAGED_INTERFACE\","
-                + "\"providerCode\":\"source-1\"}]}");
-        when(mutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of(release));
-
-        assertDoesNotThrow(() ->
-                guard.requireNoExecutableReferences("source-1"));
-    }
-
-    @Test
-    void ignoresExplicitlyDisabledManagedInterfaceStep() {
-        EntityMutationPolicyRelease release =
-                new EntityMutationPolicyRelease();
-        release.setConfigId("mutation-config-disabled-step");
-        release.setConfigDocument("{\"enabled\":true,\"steps\":[{"
-                + "\"enabled\":false,"
-                + "\"stepType\":\"MANAGED_INTERFACE\","
-                + "\"providerCode\":\"source-1\"}]}");
-        when(mutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of(release));
-
-        assertDoesNotThrow(() ->
-                guard.requireNoExecutableReferences("source-1"));
-    }
-
-    @Test
-    void malformedMutationCandidateFailsClosed() {
-        EntityMutationPolicyRelease release =
-                new EntityMutationPolicyRelease();
-        release.setConfigId("mutation-config-broken");
-        release.setConfigDocument("{\"enabled\":true,\"steps\":[");
-        when(mutationReleaseMapper
-                .findActiveDataSourceReferenceCandidates(anyString()))
-                .thenReturn(List.of(release));
-
-        BusinessConflictException error = assertThrows(
-                BusinessConflictException.class,
-                () -> guard.requireNoExecutableReferences("source-1"));
-
-        assertEquals("UI_DATA_SOURCE_PUBLISHED_REFERENCE_UNVERIFIABLE",
                 error.getErrorCode());
     }
 

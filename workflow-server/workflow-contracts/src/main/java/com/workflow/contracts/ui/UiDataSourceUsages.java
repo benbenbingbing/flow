@@ -112,14 +112,6 @@ public final class UiDataSourceUsages {
     public static final String RELATED_CONTENT_ACTION =
             "RELATED_CONTENT_ACTION";
 
-    /**
-     * 实体变更写入前的服务端内部阶段，用于执行受管理的预处理操作。
-     *
-     * <p>该 usage 不代表浏览器事件，运行时会按实体变更权限和作用域单独鉴权。</p>
-     */
-    public static final String ENTITY_MUTATION_PREPARE =
-            "ENTITY_MUTATION_PREPARE";
-
     private UiDataSourceUsages() {
     }
 }

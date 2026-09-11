@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.workflow.contracts.integration.IntegrationConnectorConfigurationSnapshot;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -27,7 +26,7 @@ public class UiDataSourceDefinition {
     private String sourceCode;
     /** 接口服务显示名称。 */
     private String sourceName;
-    /** 服务实现类型，例如 STATIC_OPTIONS、PROVIDER、INTEGRATION_CONNECTOR。 */
+    /** 服务实现类型，例如 STATIC_OPTIONS 或 REGISTERED_PROVIDER。 */
     private String sourceType;
     /** Provider 实现编码；非 Provider 类型可为空。 */
     private String providerCode;
@@ -62,10 +61,6 @@ public class UiDataSourceDefinition {
     /** 当前解析出的操作读写类型（仅运行时） */
     @TableField(exist = false)
     private String operationKind;
-    /** 宿主发布时固定的连接器配置（仅钉版运行时）。 */
-    @TableField(exist = false)
-    private IntegrationConnectorConfigurationSnapshot
-            connectorConfigurationSnapshot;
     /** 草稿元数据修订号，用于乐观并发控制。 */
     private Integer revision;
     /** 接口服务是否启用。 */

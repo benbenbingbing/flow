@@ -33,6 +33,18 @@ class EntityVersionConfigMapperSqlTest {
         assertTrue(sql.contains("or (r.id is not null"));
     }
 
+    @Test
+    void managementListReadsAllRowsWithoutReadingLegacyDraft()
+            throws Exception {
+        String sql = selectSql(EntityVersionConfigMapper.class.getMethod(
+                "findAllForManagementList"));
+
+        assertCurrentProjection(sql);
+        assertTrue(sql.contains("where c.deleted = 0"));
+        assertFalse(sql.contains("c.config_document is not null"));
+        assertTrue(sql.contains("order by c.entity_code asc"));
+    }
+
     private void assertCurrentProjection(String sql) {
         assertTrue(sql.contains(
                 "left join entity_version_config_release r"));

@@ -406,7 +406,7 @@ public class EntityListRuntimeService {
             // 关联内容令牌已经固定目标列表发布版本。现有 LIST_LOAD 事件解析器
             // 只认识父表单令牌，不能让它回退到当前 ACTIVE；这里直接执行同一
             // 发布列表的默认查询链；自定义查询结果会在归一化后由平台再次
-            // 应用目标实体数据范围，不能依赖 Provider/Connector 自行声明。
+            // 应用目标实体数据范围，不能依赖 Provider 自行声明。
             result = queryDefault(
                     config,
                     entityCode,
@@ -490,7 +490,7 @@ public class EntityListRuntimeService {
         authoritativeFilters.put("id_op", "IN");
 
         // 标准列表链负责在服务端应用目标 listKey 的 DataScope，并补充平台
-        // 管理的列值和行操作能力；不能复用 Provider/Connector 返回的整行。
+        // 管理的列值和行操作能力；不能复用 Provider 返回的整行。
         PageResult<EntityDataDTO> authoritativePage =
                 dataListService.findPageWithResolvedConfig(
                         entityCode,

@@ -328,7 +328,7 @@ function openEditService(row) {
 
 async function removeService(row) {
   await ElMessageBox.confirm(
-    `确认删除接口服务“${row.sourceName}”？当前发布、仍可固定访问的历史版本、实体变更策略、流程或 Embed 仍有可执行引用时，后端都会阻止删除。可先在“事件使用情况”定位 ACTIVE 引用，但仅解除并重新发布可能不足；请确认历史版本及相关运行入口均已退役，冲突提示会给出具体版本。`,
+    `确认删除接口服务“${row.sourceName}”？当前发布、仍可固定访问的历史版本、流程或 Embed 仍有可执行引用时，后端都会阻止删除。可先在“事件使用情况”定位 ACTIVE 引用，但仅解除并重新发布可能不足；请确认历史版本及相关运行入口均已退役，冲突提示会给出具体版本。`,
     '删除接口服务',
     { type: 'warning' }
   )

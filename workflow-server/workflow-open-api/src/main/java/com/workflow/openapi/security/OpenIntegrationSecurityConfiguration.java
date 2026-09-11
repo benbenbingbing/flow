@@ -282,39 +282,8 @@ public class OpenIntegrationSecurityConfiguration {
                             .requestMatchers(
                                     HttpMethod.POST,
                                     "/api/open/v1/embed-launches")
-                            .hasAuthority("SCOPE_embed.launch")
-                            .requestMatchers(
-                                    HttpMethod.GET,
-                                    "/api/open/v1/process-definitions")
-                            .hasAuthority(
-                                    "SCOPE_process.definition.read")
-                            .requestMatchers(
-                                    HttpMethod.POST,
-                                    "/api/open/v1/process-instances/*/cancel")
-                            .hasAuthority(
-                                    "SCOPE_process.instance.cancel")
-                            .requestMatchers(
-                                    HttpMethod.POST,
-                                    "/api/open/v1/process-instances")
-                            .hasAuthority(
-                                    "SCOPE_process.instance.start")
-                            .requestMatchers(
-                                    HttpMethod.GET,
-                                    "/api/open/v1/process-instances/*/tasks")
-                            .hasAuthority(
-                                    "SCOPE_process.task.read")
-                            .requestMatchers(
-                                    HttpMethod.GET,
-                                    "/api/open/v1/process-instances/*")
-                            .hasAuthority(
-                                    "SCOPE_process.instance.read")
-                            .requestMatchers(
-                                    HttpMethod.POST,
-                                    "/api/open/v1/process-instances/*"
-                                            + "/messages/*")
-                            .hasAuthority(
-                                    "SCOPE_process.message.correlate")
-                            .anyRequest().authenticated())
+                            .authenticated()
+                            .anyRequest().denyAll())
                     .oauth2ResourceServer(resource -> resource
                             .jwt(jwt -> jwt.decoder(machineJwtDecoder))
                             .authenticationEntryPoint(
@@ -336,8 +305,8 @@ public class OpenIntegrationSecurityConfiguration {
                                                     request,
                                                     response,
                                                     403,
-                                                    "INSUFFICIENT_SCOPE",
-                                                    "Required scope is not granted",
+                                                    "ACCESS_DENIED",
+                                                    "Access is denied",
                                                     null)))
                     .addFilterBefore(
                             new OpenApiRequestGuardFilter(

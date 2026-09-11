@@ -822,7 +822,7 @@ export default {
                 { field: '初始化子字段', meaning: '把父字段、父记录ID、运行上下文或固定值初始化到可写子实体字段。', defaultLimit: '固定采用仅空值写入；ID、关系外键和系统维护字段不可选择。', effect: '新增子行自动带入业务字段；已有非空值不会被覆盖。', publish: '只有该映射会进入子记录持久化，普通运行参数不会落库。' },
                 { field: '递归提交', meaning: '服务端按父表单钉定的子表单发布版本重新计算可信参数，并逐行执行子表单提交前处理。', defaultLimit: '支持一对一、一对多和最多 8 层嵌套；不信任浏览器提交的 params。', effect: '每条子行使用独立幂等上下文，完成校验、空值初始化和 BEFORE_SUBMIT。', publish: '只有 parameterContract.version=1 启用新契约，旧表单行为保持不变。' },
                 { field: '引用类型 / 关联实体', meaning: '来源于实体字段，已有 fieldId 时禁改。', defaultLimit: 'CUSTOM、USER、DEPT、ROLE、GROUP。', effect: '决定候选数据源。', publish: '需要改来源时返回实体设计。' },
-                { field: '候选数据源', meaning: '引用受控数据源目录中的 Provider 或 Connector。', defaultLimit: '不允许直接填写任意 URL。', effect: '统一执行输入映射、分页、缓存、超时、失败策略和数据权限。', publish: '数据源必须启用、Schema 合法且目标环境存在。' }
+                { field: '候选数据源', meaning: '引用受控数据源目录中的 Provider。', defaultLimit: '不允许直接填写任意 URL。', effect: '统一执行输入映射、分页、缓存、超时、失败策略和数据权限。', publish: '数据源必须启用、Schema 合法且目标环境存在。' }
               ]
             }]
         }
@@ -845,7 +845,6 @@ export default {
                 { option: '字典 DICTIONARY', meaning: '读取平台字典项。', notes: '字典编码与选项 value 必须稳定。' },
                 { option: '静态选项 STATIC_OPTIONS', meaning: '保存固定 label/value 或固定对象。', notes: '适合少量稳定选项，不适合敏感或频繁变化数据。' },
                 { option: '注册 Provider REGISTERED_PROVIDER', meaning: '调用部署时注册的受控数据提供者。', notes: 'Provider 必须声明配置 Schema、输入输出结构和支持的绑定位置。' },
-                { option: '连接器 INTEGRATION_CONNECTOR', meaning: '引用平台管理的外部连接器和凭据。', notes: '配置中只保存 connectorCode，不保存 URL、令牌或密钥。' },
                 { option: '运行上下文 RUNTIME_CONTEXT', meaning: '读取当前用户、实体、记录、路由和流程上下文中的白名单值。', notes: '客户端上下文不能作为授权事实，敏感关系由后端重新解析。' },
                 { option: '结构化计算 STRUCTURED_COMPUTE', meaning: '使用白名单运算符、字段路径和常量进行安全计算。', notes: '不执行 JavaScript、Groovy、SpEL、自由 SQL 或动态类加载。' }
               ]
@@ -854,7 +853,7 @@ export default {
               type: 'callout',
               tone: 'warning',
               title: '统一安全边界',
-              text: '禁止配置任意 SQL、脚本和外网 URL。外部调用必须引用受控 Connector 与平台凭据；预览、发布和运行时都执行相同 Schema 校验、超时、缓存、失败策略和数据权限计划。'
+              text: '禁止配置任意 SQL、脚本和外网 URL。自定义数据能力必须引用后端已注册的 Provider；预览、发布和运行时都执行相同 Schema 校验、超时、缓存、失败策略和数据权限计划。'
             }
           ]
         },
@@ -892,7 +891,7 @@ export default {
               title: '通用执行配置',
               columns: fieldColumns,
               rows: [
-                { field: '输入映射', meaning: '把表单值、查询参数和运行上下文映射为数据源输入。', defaultLimit: '只允许白名单路径、常量和结构化表达式。', effect: '统一 Provider 与 Connector 入参。', publish: '引用不存在路径或敏感上下文时发布失败。' },
+                { field: '输入映射', meaning: '把表单值、查询参数和运行上下文映射为数据源输入。', defaultLimit: '只允许白名单路径、常量和结构化表达式。', effect: '统一 Provider 入参。', publish: '引用不存在路径或敏感上下文时发布失败。' },
                 { field: '输出映射', meaning: '把返回结构映射到字段、选项、列表列或子表行。', defaultLimit: '按目标绑定 Schema 校验。', effect: '隔离外部结构变化。', publish: '必填目标缺失时按失败策略处理。' },
                 { field: '分页 / 超时 / 缓存', meaning: '控制请求规模与生产稳定性。', defaultLimit: '超时和最大页大小必须有平台上限。', effect: '避免慢源拖垮表单和列表。', publish: '涉及用户权限的缓存键必须包含权限版本和用户上下文。' },
                 { field: '失败策略', meaning: 'FAIL、EMPTY 或 NULL。需要默认值时使用 FIELD_DEFAULT 数据源或输入映射显式配置。', defaultLimit: '提交前关键校验默认 FAIL。', effect: '决定错误提示以及是否返回空集合或空值。', publish: '不得用 EMPTY/NULL 掩盖权限、Schema 或 Provider 未部署问题。' },
@@ -917,7 +916,7 @@ export default {
               rows: [
                 { field: '显示条件', meaning: '条件组满足时显示当前字段。', defaultLimit: '默认关闭；可添加条件和嵌套条件组，每组可选全部满足 AND 或任一满足 OR；支持 ==、!=、>、<、>=、<=、contains、empty、notEmpty。', effect: '表单值变化时动态显示或隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
-                { field: '历史接口兼容', meaning: '保留旧 apiUrl、apiParams、apiResultField 的查看与迁移入口。', defaultLimit: '位于“值与计算 / 受控数据源 / 高级兼容”，默认折叠；不建议新增任意地址。', effect: '旧配置可继续识别；新生产场景应改用统一数据源目录中的 Provider 或 Connector。', publish: 'Provider/Connector 必须统一处理凭据、数据权限、超时和审计，禁止通过自由 URL 绕过。' },
+                { field: '历史接口兼容', meaning: '保留旧 apiUrl、apiParams、apiResultField 的查看与迁移入口。', defaultLimit: '位于“值与计算 / 受控数据源 / 高级兼容”，默认折叠；不建议新增任意地址。', effect: '旧配置可继续识别；新生产场景应改用统一数据源目录中的 Provider。', publish: 'Provider 必须统一处理数据权限、超时和审计，禁止通过自由 URL 绕过。' },
                 { field: '值联动：公式', meaning: '根据其他字段计算。', defaultLimit: '支持 + - * / ( )，使用 ${fieldCode}。', effect: '字段变化时重新计算。', publish: '空值、除零和字符串转数字必须测试。' }
               ]
             }
@@ -1033,7 +1032,7 @@ export default {
                 { field: '选择模式', meaning: 'NONE、SINGLE 或 MULTIPLE，并配置返回值字段。', defaultLimit: '默认 NONE，返回 id。', effect: '决定弹窗、抽屉和表单选择器的选择行为。', publish: '返回字段被表单映射引用后保持稳定。' },
                 { field: '固定条件', meaning: '平台服务端附加的不可被客户端覆盖的结构化查询条件。', defaultLimit: '界面按对象编辑并由后端校验，数据库以可移植大文本保存。', effect: '只能缩小显示结果，不能替代数据范围授权。', publish: '字段必须存在且适合数据库查询。' },
                 { field: '上下文绑定', meaning: '以结构化对象声明 relationKey 等来源记录关系。', defaultLimit: '后端校验对象结构，前端不再进行二次 JSON 编解码。', effect: '后端通过 EntityListContextResolver 重新加载来源记录并生成可信条件。', publish: '不能把前端直接传入的客户、部门或项目 ID 当作权限依据。' },
-                { field: 'LIST_QUERY 数据源', meaning: '从统一目录选择实体查询、注册 Provider 或受控 Connector。', defaultLimit: '默认使用实体查询。', effect: '整表查询统一接收不可绕过的 DataScopePlan。', publish: '任意 SQL、脚本、URL 或缺失 Provider 均阻止发布。' },
+                { field: 'LIST_QUERY 数据源', meaning: '从统一目录选择实体查询或注册 Provider。', defaultLimit: '默认使用实体查询。', effect: '整表查询统一接收不可绕过的 DataScopePlan。', publish: '任意 SQL、脚本、URL 或缺失 Provider 均阻止发布。' },
                 { field: '组件参数', meaning: '按组件 configSchema 编辑。', defaultLimit: '组件声明 schema 时显示。', effect: '传入 viewConfig.customComponentProps。', publish: '迁移时确保组件版本一致。' },
                 { field: '收起时显示条件数', meaning: '查询区收起时保留显示的条件数量。', defaultLimit: '1–20，默认 4。', effect: '超出数量的条件在展开后显示。', publish: '高频条件排在前面。' },
                 { field: '启用查询区折叠', meaning: '查询条件较多时是否允许展开和收起。', defaultLimit: '默认开启。', effect: '开启后节省页面空间；关闭时全部常驻。', publish: '关闭后“收起时显示条件数”不参与运行时展示。' },
@@ -1077,7 +1076,6 @@ export default {
                 { option: 'ENTITY_FIELD', meaning: '读取当前行实体字段。', notes: '字段编码来自当前列表实体定义。' },
                 { option: 'DICTIONARY / STATIC_OPTIONS', meaning: '字典映射或固定选项展示。', notes: '适合状态文案、枚举和少量稳定标签。' },
                 { option: 'REGISTERED_PROVIDER', meaning: '适配 EntityListDataProvider、ListFieldDataProvider 或统一 UiDataSourceProvider。', notes: '必须声明 Schema、批量能力、超时和支持的 LIST_QUERY/LIST_COLUMN 位置。' },
-                { option: 'INTEGRATION_CONNECTOR', meaning: '通过已注册 Connector 访问外部系统。', notes: '凭据由平台管理，配置不得包含自由 URL 和密钥。' },
                 { option: 'RUNTIME_CONTEXT', meaning: '读取当前用户、场景和可信来源记录上下文。', notes: '不能用客户端传值扩大数据范围。' },
                 { option: 'STRUCTURED_COMPUTE / FIELD_TEMPLATE', meaning: '白名单计算和字段占位符组合。', notes: '不执行 JavaScript、Groovy、SpEL 或 SQL。' }
               ]
@@ -1439,7 +1437,7 @@ export default {
                 '附件大小、数量与全局网关、应用、存储限制一致。',
                 '默认表单、默认列表已设置，表单四种模式和移动端已验证。',
                 '表单树没有循环引用且不超过 8 层；只修改一个节点或列表项不会改变其他项目。',
-                '统一数据源 Schema、输入输出映射、分页、超时、缓存、失败策略和目标环境 Provider/Connector 均已验证。',
+                '统一数据源 Schema、输入输出映射、分页、超时、缓存、失败策略和目标环境 Provider 均已验证。',
                 '数据权限由普通角色验证，所有 LIST_QUERY、LIST_COLUMN 和表单实体查询均执行 DataScopePlan。',
                 '按钮权限已授予角色，适用条件与后端操作校验一致。',
                 '流程绑定、节点表单和实体状态连线配置完整。',

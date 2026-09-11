@@ -27,10 +27,7 @@
 | `ProjectCustomEntityUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，ENTITY 作用范围/字段数据 | `PROJECT_CUSTOM_UI_ENTITY` |
 | `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，FORM 作用范围 | `PROJECT_CUSTOM_UI_FORM` |
 | `ProjectCustomListUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，LIST 作用范围 | `PROJECT_CUSTOM_UI_LIST` |
-| `ProjectCustomIntegrationConnector` | `IntegrationConnector` | 接口服务，集成 Connector | `PROJECT_CUSTOM_LOG_CONNECTOR` |
 | `ProjectCustomListFieldDataProvider` | `ListFieldDataProvider` | 列表字段高级配置 -> 数据源 | `PROJECT_CUSTOM_FIELD` |
-| `ProjectCustomMutationStepProvider` | `EntityMutationStepProvider` | 实体配置 -> 数据版本 -> 操作步骤 | `PROJECT_CUSTOM_MUTATION_STEP` |
-| `ProjectCustomChangeTargetResolver` | `EntityChangeTargetResolver` | 实体配置 -> 数据版本 -> 变更目标 | `PROJECT_CUSTOM_CHANGE_TARGET` |
 | `ProjectCustomPermissionOptionProvider` | `EntityPermissionOptionProvider` | 实体列表按钮权限选择器 | `entity:{entity}:custom:project-review` |
 
 ## 运行时按编码引用
@@ -43,7 +40,6 @@
 | `ProjectCustomActionRuleConditionProvider` | `EntityActionRuleConditionProvider` | `PROJECT:CUSTOM_CONDITION` | 支持 EQ、NE、IN 的行条件 |
 | `ProjectCustomDataPermissionMatchProvider` | `EntityDataPermissionMatchProvider` | `PROJECT:CUSTOM_MATCH` | 按用户 ID 或用户名匹配 |
 | `ProjectCustomDataPermissionFilterProvider` | `EntityDataPermissionFilterProvider` | `PROJECT:CUSTOM_FILTER` | 固定编译为 `1=0` |
-| `ProjectCustomExternalIdentityResolver` | `ExternalIdentityResolver` | `project-demo` | 精确映射到平台用户目录 |
 | `ProjectCustomCcRecipientResolver` | `CcRecipientResolver` | `projectCustomCcRecipient` | 兼容旧知会解析器配置 |
 | `ProjectCustomCcNotificationChannel` | `CcNotificationChannel` | `PROJECT_LOG` | 只打印通知元数据 |
 | `ProjectCustomFileStorageStrategy` | `FileStorageStrategy` | `PROJECT_LOG_ONLY` | 打印后抛出未实现异常，不伪造成功 |
@@ -108,8 +104,6 @@ Spring Bean，方便后续补入口时直接验证：
 
 | 类 | 接口 | 用途 |
 | --- | --- | --- |
-| `ProjectCustomIntegrationSecretResolver` | `IntegrationSecretResolver` | 对接 KMS/密钥中心；示例不返回伪密钥 |
-| `ProjectCustomHttpConnectorConfigurationProvider` | `HttpConnectorConfigurationProvider` | 从配置中心读取 HTTP Connector 配置；示例不返回伪配置 |
 | `ProjectCustomMigrationAssetHandler` | `MigrationAssetHandler` | 发布时登记配置迁移资产 |
 | `ProjectCustomBootstrapJobCoordinator` | `BootstrapJobCoordinator` | 多实例启动任务互斥 |
 | `ProjectCustomUiExtensionCatalogAdapter` | `UiExtensionCatalogPort` | 替换 UI 扩展目录读取来源 |

@@ -48,8 +48,14 @@ class SchemaRequiredTablesTest {
         }
 
         assertFalse(files.isEmpty());
-        assertTrue(files.get(files.size() - 1).startsWith("V082__"),
-                "latest migration must be V082: " + files);
+        assertTrue(files.stream().anyMatch(name -> name.startsWith(
+                        "V083__remove_entity_mutation_policy.")),
+                "entity mutation policy removal migration is missing: "
+                        + files);
+        assertTrue(files.stream().anyMatch(name -> name.startsWith(
+                        "V084__remove_retired_open_integration_features.")),
+                "open integration retirement migration is missing: "
+                        + files);
         for (int index = 0; index < files.size(); index++) {
             assertTrue(
                     files.get(index).startsWith(
@@ -69,7 +75,7 @@ class SchemaRequiredTablesTest {
     }
 
     @Test
-    void baselineCreatesCurrentBusinessSchema() throws Exception {
+    void historicalBaselineContainsCoreBusinessSchema() throws Exception {
         String sql = Files.readString(BASELINE);
         for (String table : List.of(
                 "entity_definition",
@@ -81,10 +87,7 @@ class SchemaRequiredTablesTest {
                 "entity_list_scope_binding",
                 "entity_version_config",
                 "entity_version_scenario",
-                "entity_version_step",
-                "entity_change_target_binding",
                 "entity_version_config_release",
-                "entity_change_target_instance",
                 "entity_mutation_receipt",
                 "entity_record_version",
                 "process_definition_config",
@@ -114,10 +117,7 @@ class SchemaRequiredTablesTest {
         for (String table : List.of(
                 "entity_version_config",
                 "entity_version_scenario",
-                "entity_version_step",
-                "entity_change_target_binding",
                 "entity_version_config_release",
-                "entity_change_target_instance",
                 "entity_mutation_receipt",
                 "entity_record_version",
                 "ui_event_binding")) {
@@ -161,8 +161,6 @@ class SchemaRequiredTablesTest {
         String baseline = Files.readString(BASELINE);
         String relations = Files.readString(MIGRATION_DIRECTORY.resolve(
                 "V043__decouple_entity_relations.sql"));
-        String mutationPolicy = Files.readString(MIGRATION_DIRECTORY.resolve(
-                "V044__split_entity_mutation_policy.sql"));
         String versionV2 = Files.readString(MIGRATION_DIRECTORY.resolve(
                 "V045__entity_version_scope_snapshot_v2.sql"));
         String globalIdempotency = Files.readString(MIGRATION_DIRECTORY.resolve(
@@ -170,10 +168,6 @@ class SchemaRequiredTablesTest {
 
         assertTrue(relations.contains("`relations_snapshot`"));
         assertTrue(relations.contains("`data_key`"));
-        assertTrue(mutationPolicy.contains(
-                "CREATE TABLE `entity_mutation_policy_config`"));
-        assertTrue(mutationPolicy.contains(
-                "CREATE TABLE `entity_mutation_policy_release`"));
         assertTrue(versionV2.contains(
                 "CREATE TABLE `entity_record_version_dataset`"));
         assertTrue(versionV2.contains(
@@ -225,6 +219,121 @@ class SchemaRequiredTablesTest {
                 "DROP TABLE `entity_record_version`"));
         assertFalse(simplification.contains(
                 "DELETE FROM `entity_record_version`"));
+    }
+
+    @Test
+    void entityMutationPolicyIsRemovedByForwardOnlyMigration()
+            throws Exception {
+        String removal = Files.readString(
+                MIGRATION_DIRECTORY.resolve(
+                        "V083__remove_entity_mutation_policy.sql"));
+
+        for (String table : List.of(
+                "entity_change_target_instance",
+                "entity_mutation_policy_release",
+                "entity_mutation_policy_config")) {
+            assertTrue(removal.contains(
+                    "DROP TABLE IF EXISTS `" + table + "`"),
+                    "missing retired table: " + table);
+        }
+        for (String permission : List.of(
+                "entity:mutation:config:list",
+                "entity:mutation:config:update",
+                "entity:mutation:config:publish")) {
+            assertTrue(removal.contains(permission),
+                    "missing retired permission: " + permission);
+        }
+        assertTrue(removal.contains(
+                "/system/entity-mutation-policies"));
+        assertTrue(removal.contains(
+                "system/EntityMutationPolicyManagement"));
+        assertTrue(removal.indexOf("FROM sys_role_menu")
+                < removal.indexOf("FROM sys_menu menu\nJOIN"));
+        assertTrue(removal.contains(
+                "UPDATE `entity_version_config`"));
+        assertTrue(removal.contains(
+                "UPDATE `entity_version_config_release`"));
+        assertTrue(removal.contains(
+                "JSON_VALID(`config_document`) = 1"));
+        assertTrue(removal.contains(
+                "'$.steps', '$.targetBindings'"));
+
+        // 通用写入幂等和数据版本存储不属于实体变更策略，退场迁移不得连带删除。
+        assertFalse(removal.contains(
+                "DROP TABLE IF EXISTS `entity_mutation_receipt`"));
+        assertFalse(removal.contains(
+                "DROP TABLE IF EXISTS `entity_version_config_release`"));
+        assertFalse(removal.contains(
+                "DROP TABLE IF EXISTS `entity_record_version`"));
+    }
+
+    @Test
+    void openIntegrationRetirementKeepsEmbedSecurityStorage()
+            throws Exception {
+        String removal = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V084__remove_retired_open_integration_features.sql"));
+
+        for (String table : List.of(
+                "integration_application_scope",
+                "integration_process_grant",
+                "integration_process_binding",
+                "integration_workflow_scenario_revision",
+                "integration_workflow_scenario",
+                "integration_connector_config",
+                "integration_secret",
+                "webhook_delivery",
+                "webhook_subscription",
+                "webhook_event",
+                "webhook_endpoint")) {
+            assertTrue(removal.contains("DROP TABLE `" + table + "`"),
+                    "missing retired table: " + table);
+        }
+        for (String retainedTable : List.of(
+                "integration_application",
+                "integration_application_credential",
+                "integration_rate_limit_bucket",
+                "integration_api_request_lease",
+                "integration_idempotency_record")) {
+            assertFalse(removal.contains(
+                            "DROP TABLE `" + retainedTable + "`"),
+                    "Embed/OAuth shared table must remain: " + retainedTable);
+        }
+        assertTrue(removal.contains(
+                "WHERE `source_definition`.`source_type` = "
+                        + "'INTEGRATION_CONNECTOR'"));
+        assertTrue(removal.contains(
+                "DELETE FROM `ui_data_source_definition`"));
+        for (String operation : List.of(
+                "PROCESS_START", "PROCESS_CANCEL", "MESSAGE_CORRELATE")) {
+            assertTrue(removal.contains(operation),
+                    "missing retired idempotency operation: " + operation);
+        }
+        assertTrue(removal.contains(
+                "DELETE FROM `workflow_outbox_event`\n"
+                        + " WHERE `topic` = "
+                        + "'INTEGRATION_DOMAIN_EVENT';"));
+        assertTrue(removal.contains(
+                "DELETE FROM `sys_role_menu`\n"
+                        + " WHERE `menu_id` = "
+                        + "'integration_perm_delivery_replay';"));
+        assertTrue(removal.contains(
+                "DELETE FROM `sys_menu`\n"
+                        + " WHERE `id` = "
+                        + "'integration_perm_delivery_replay';"));
+        assertTrue(removal.contains(
+                "SET `menu_name` = '轮换应用凭据'"));
+        assertTrue(removal.contains(
+                "SET `menu_name` = '集成应用与 Embed'"));
+        assertTrue(removal.contains(
+                "`remark` = '集成应用、Client Credential、OAuth 与 Embed 接入说明'"));
+        assertFalse(removal.contains(
+                "DELETE FROM `sys_role_menu`\n"
+                        + " WHERE `menu_id` = "
+                        + "'user_manual_open_integration_001';"));
+        assertFalse(removal.contains(
+                "DELETE FROM `sys_menu`\n"
+                        + " WHERE `id` = "
+                        + "'user_manual_open_integration_001';"));
     }
 
     @Test

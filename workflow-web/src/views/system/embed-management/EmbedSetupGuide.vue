@@ -210,7 +210,7 @@ const prerequisiteSteps = computed(() => {
   else {
     grantReasons.push(...availabilityReasons(selectedApplication.value, '所选应用'))
     if (selectedApplication.value && !selectedApplication.value.embedLaunchReady) {
-      grantReasons.push('接入应用缺少有效凭据或 embed.launch Scope')
+      grantReasons.push('接入应用缺少有效凭据')
     }
     grantReasons.push(...availabilityReasons(matchingGrant.value, '当前应用授权'))
     if (matchingGrant.value) {

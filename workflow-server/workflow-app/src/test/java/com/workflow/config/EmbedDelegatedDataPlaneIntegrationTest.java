@@ -97,7 +97,7 @@ class EmbedDelegatedDataPlaneIntegrationTest {
     @ValueSource(strings = {
             "/api/auth/current",
             "/api/embed-management/v1/views",
-            "/api/open/v1/process-definitions",
+            "/api/open/v1/embed-launches",
             "/api/integration-applications"
     })
     void opaqueSessionCannotEnterControlPlanes(String path)

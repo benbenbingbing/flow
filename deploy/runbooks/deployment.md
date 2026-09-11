@@ -57,6 +57,35 @@ step-2 rollout, in-flight write transactions are drained before cutover, the
 final backfill and reconciliation succeed, and the freeze remains until every
 old Pod has exited.
 
+### V083 entity mutation policy contract gate
+
+`V083__remove_entity_mutation_policy.sql` is a destructive contract migration:
+it removes every persisted entity-mutation policy, every change-target row
+regardless of status, and the feature's menu grants. The release plan must keep
+this migration out of the application release that first removes policy reads,
+writes, freeze/apply listeners, and management APIs. Fully roll that code-only
+release, drain in-flight requests and workflow callbacks, verify that no old Pod
+or worker can access the retired tables, and record the database backup before
+shipping a later release containing V083.
+
+Do not run V083 as the pre-upgrade hook while a policy-aware application image
+is still serving. Its data removal is intentional and is not reversible by
+`helm rollback`; recovery requires a database restore or a tested forward fix.
+
+### V084 open integration contract gate
+
+`V084__remove_retired_open_integration_features.sql` removes the retired open
+process API, scenarios, Webhook delivery, Connector/Secret configuration,
+grants and scopes. It intentionally preserves integration applications,
+machine credentials and the rate-limit, request-lease and idempotency storage
+shared by Embed/OAuth.
+
+Ship V084 only after a code-only release has removed every reader, writer and
+worker for the retired tables, all old Pods have exited, and in-flight requests
+have drained. Before migration, export any history required for compliance and
+record a tested database backup. Helm rollback cannot restore the deleted data;
+recovery requires a database restore or a tested forward fix.
+
 ## Rollback decision
 
 Application-only changes may be rolled back with `helm rollback` if the old

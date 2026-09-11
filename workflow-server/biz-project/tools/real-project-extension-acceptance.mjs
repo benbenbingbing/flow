@@ -324,12 +324,6 @@ const acceptanceFields = [
       ]),
       sortOrder: 160
     }
-  ),
-  entityField(
-    'connector_trace',
-    '连接器轨迹',
-    'TEXT',
-    { sortOrder: 170 }
   )
 ]
 
@@ -1154,12 +1148,6 @@ async function configureForms(entity) {
         '字段按钮事件',
         'WRITE',
         'FORM'
-      ),
-      operation(
-        'MUTATION_PREPARE',
-        '实体变更准备',
-        'WRITE',
-        'ENTITY'
       )
     ]
   })
@@ -1212,33 +1200,6 @@ async function configureForms(entity) {
         '节点表单按钮事件',
         'WRITE',
         'FORM'
-      )
-    ]
-  })
-
-  const connectorSource = await ensureDataSource({
-    sourceCode: 'PROJECT_ACCEPTANCE_LOG_CONNECTOR',
-    sourceName: '项目扩展验收日志连接器',
-    sourceType: 'INTEGRATION_CONNECTOR',
-    providerCode: 'PROJECT_CUSTOM_LOG_CONNECTOR',
-    scopeType: 'ENTITY',
-    scopeId: entity.id,
-    config: {
-      operation: 'PROJECT_ACCEPTANCE_LOG',
-      connectorConfigId: 'project-extension-acceptance'
-    },
-    operations: [
-      operation(
-        'FORM_CONNECTOR_LOG',
-        '表单连接器日志',
-        'WRITE',
-        'FORM'
-      ),
-      operation(
-        'LIST_CONNECTOR_LOG',
-        '列表连接器日志',
-        'WRITE',
-        'LIST'
       )
     ]
   })
@@ -1480,20 +1441,6 @@ async function configureForms(entity) {
   })
   await ensureEventBinding({
     ownerType: 'FORM',
-    ownerId: fullForm.id,
-    targetType: 'OWNER',
-    eventCode: 'FORM_SAVE',
-    steps: [
-      eventStep(
-        connectorSource,
-        'FORM_CONNECTOR_LOG',
-        'AFTER',
-        10
-      )
-    ]
-  })
-  await ensureEventBinding({
-    ownerType: 'FORM',
     ownerId: matrixForm.id,
     targetType: 'FIELD',
     targetKey: 'acceptance_score',
@@ -1519,12 +1466,6 @@ async function configureForms(entity) {
         'FIELD_BUTTON_CLICK',
         'BEFORE',
         10
-      ),
-      eventStep(
-        connectorSource,
-        'FORM_CONNECTOR_LOG',
-        'AFTER',
-        20
       )
     ]
   })
@@ -1540,12 +1481,6 @@ async function configureForms(entity) {
         'FORM_BUTTON_CLICK',
         'BEFORE',
         10
-      ),
-      eventStep(
-        connectorSource,
-        'FORM_CONNECTOR_LOG',
-        'AFTER',
-        20
       )
     ]
   })
@@ -1561,12 +1496,6 @@ async function configureForms(entity) {
         'FORM_BUTTON_CLICK',
         'BEFORE',
         10
-      ),
-      eventStep(
-        connectorSource,
-        'FORM_CONNECTOR_LOG',
-        'AFTER',
-        20
       )
     ]
   })
@@ -1597,8 +1526,7 @@ async function configureForms(entity) {
       'GET',
       `/entity-form/${readonlyForm.id}`
     ),
-    entitySource,
-    connectorSource
+    entitySource
   }
 }
 
@@ -2211,12 +2139,6 @@ async function configureLists(entity, sources) {
         'TOOLBAR_BUTTON_CLICK',
         'BEFORE',
         10
-      ),
-      eventStep(
-        sources.connectorSource,
-        'LIST_CONNECTOR_LOG',
-        'AFTER',
-        20
       )
     ]
   })
@@ -2825,7 +2747,7 @@ async function ensureProcess(forms, entity) {
   return process
 }
 
-async function configureVersionPolicy(entity, entitySource) {
+async function configureEntityVersioning(entity) {
   const sourceTypes = [
     'FORM',
     'LIST',
@@ -2887,100 +2809,13 @@ async function configureVersionPolicy(entity, entitySource) {
       'If-Match': String(currentVersion.revision ?? 0)
     }
   )
-
-  // 变更步骤属于独立变更策略，不再与数据版本触发器混存。
-  const currentMutation = await api(
-    'GET',
-    `/entity-mutation-policies/configs/${entityCode}/draft`
-  )
-  const mutationDocument = {
-    schemaVersion: 1,
-    entityId: entity.id,
-    entityCode,
-    entityName,
-    enabled: true,
-    scenarios: [
-      {
-        scenarioCode: 'PROJECT_EXTENSION_ACCEPTANCE',
-        scenarioName: '项目扩展验收实体变更',
-        sourceTypes,
-        operationTypes,
-        businessIntents: [],
-        condition: {},
-        priority: 10,
-        versionTitleTemplate:
-          '项目扩展验收-${operationType}',
-        enabled: true
-      }
-    ],
-    steps: [
-      {
-        scenarioCode:
-          'PROJECT_EXTENSION_ACCEPTANCE',
-        phase: 'PREPARE',
-        stepType: 'MANAGED_INTERFACE',
-        stepName: '统一数据源变更准备日志',
-        providerCode: entitySource.id,
-        config: {
-          dataSourceId: entitySource.id,
-          operationCode: 'MUTATION_PREPARE'
-        },
-        sortOrder: 10,
-        enabled: true
-      },
-      {
-        scenarioCode:
-          'PROJECT_EXTENSION_ACCEPTANCE',
-        phase: 'BEFORE_WRITE',
-        stepType: 'JAVA_PROVIDER',
-        stepName: '项目自定义实体变更步骤日志',
-        providerCode:
-          'PROJECT_CUSTOM_MUTATION_STEP',
-        config: {
-          scene: 'PROJECT_EXTENSION_ACCEPTANCE',
-          message:
-            '记录验收实体创建和更新的内部执行逻辑'
-        },
-        sortOrder: 20,
-        enabled: true
-      }
-    ],
-    targetBindings: []
-  }
-  const savedMutation = await api(
-    'POST',
-    `/entity-mutation-policies/configs/${entityCode}/draft`,
-    mutationDocument,
-    {
-      'If-Match': String(currentMutation.revision ?? 0)
-    }
-  )
-  const publishedMutation = await api(
-    'POST',
-    `/entity-mutation-policies/configs/${entityCode}/releases`,
-    undefined,
-    {
-      'If-Match': String(savedMutation.revision)
-    }
-  )
   evidence.versionConfiguration = {
     id: savedVersion.id,
     enabled: savedVersion.enabled,
     revision: savedVersion.revision,
     triggerCount: savedVersion.triggers?.length || 0,
     scopeRelationCount:
-      savedVersion.snapshotScope?.relations?.length || 0,
-    mutationPolicy: {
-      id: savedMutation.id,
-      status: publishedMutation.status,
-      activeReleaseId:
-        publishedMutation.activeReleaseId,
-      activeReleaseVersion:
-        publishedMutation.activeReleaseVersion,
-      scenarioCount:
-        publishedMutation.scenarios?.length || 0,
-      stepCount: publishedMutation.steps?.length || 0
-    }
+      savedVersion.snapshotScope?.relations?.length || 0
   }
 }
 
@@ -3644,7 +3479,7 @@ async function main() {
   await ensurePersonResolver()
   await ensureActionHandlers()
   const forms = await configureForms(entity)
-  await configureVersionPolicy(entity, forms.entitySource)
+  await configureEntityVersioning(entity)
   const process = await ensureProcess(forms, entity)
 
   const fixtures = [

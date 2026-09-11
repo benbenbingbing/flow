@@ -2,7 +2,6 @@ export const sourceTypeOptions = [
   { label: '平台字典', value: 'DICTIONARY' },
   { label: '平台静态数据', value: 'STATIC_OPTIONS' },
   { label: '平台注册能力', value: 'REGISTERED_PROVIDER' },
-  { label: 'HTTP 受控连接', value: 'INTEGRATION_CONNECTOR' },
   { label: '运行时上下文', value: 'RUNTIME_CONTEXT' },
   { label: '结构化计算', value: 'STRUCTURED_COMPUTE' }
 ]
@@ -136,7 +135,7 @@ export function executionPolicy(service = {}) {
 }
 
 export function requiresProvider(type) {
-  return ['REGISTERED_PROVIDER', 'INTEGRATION_CONNECTOR'].includes(type)
+  return type === 'REGISTERED_PROVIDER'
 }
 
 export function configurableEntities(entities) {

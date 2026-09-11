@@ -17,56 +17,47 @@ import com.workflow.core.error.ForbiddenException;
 import com.workflow.openapi.api.request.CreateIntegrationApplicationRequest;
 import com.workflow.openapi.api.request.RevokeIntegrationCredentialRequest;
 import com.workflow.openapi.api.request.RotateIntegrationCredentialRequest;
-import com.workflow.openapi.api.request.UpdateIntegrationAccessRequest;
-import com.workflow.openapi.api.request.UpdateIntegrationProcessContractsRequest;
 import com.workflow.openapi.api.request.UpdateIntegrationStatusRequest;
 import com.workflow.openapi.api.response.IntegrationApplicationView;
-import com.workflow.openapi.api.response.IntegrationProcessContractView;
 import com.workflow.openapi.api.response.IssuedIntegrationCredentialView;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationCredentialMapper;
-import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationProcessGrantMapper;
-import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationScopeMapper;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationCredentialRecord;
 import com.workflow.openapi.infrastructure.persistence.record.IntegrationApplicationRecord;
-import com.workflow.openapi.infrastructure.persistence.record.IntegrationGrantValueRecord;
-import com.workflow.openapi.infrastructure.persistence.record.IntegrationProcessGrantRecord;
 import com.workflow.openapi.network.IpNetwork;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 管理接入应用及其 Client Credential 生命周期。
+ *
+ * <p>接入应用不再承载开放流程、Scope 或 Connector 配置；保留的限流、
+ * 并发与来源网络策略仅用于 Embed launch 边界。</p>
+ */
 @Service
 public class IntegrationApplicationService {
 
     private static final int DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
     private static final int DEFAULT_MAX_CONCURRENCY = 10;
-    private static final Pattern PROCESS_KEY = Pattern.compile(
-            "[A-Za-z][A-Za-z0-9._-]{0,99}");
     private static final TypeReference<List<String>> STRING_LIST =
             new TypeReference<>() {
             };
 
     private final IntegrationApplicationMapper applicationMapper;
     private final IntegrationCredentialMapper credentialMapper;
-    private final IntegrationScopeMapper scopeMapper;
-    private final IntegrationProcessGrantMapper processGrantMapper;
     private final IntegrationSecretGenerator secretGenerator;
     private final IntegrationSecretHasher secretHasher;
-    private final IntegrationVariableSchemaService variableSchemaService;
     private final CurrentActorPort actorProvider;
     private final SystemAuditPort auditPort;
     private final ObjectMapper objectMapper;
@@ -76,22 +67,16 @@ public class IntegrationApplicationService {
     public IntegrationApplicationService(
             IntegrationApplicationMapper applicationMapper,
             IntegrationCredentialMapper credentialMapper,
-            IntegrationScopeMapper scopeMapper,
-            IntegrationProcessGrantMapper processGrantMapper,
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
-            IntegrationVariableSchemaService variableSchemaService,
             CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper) {
         this(
                 applicationMapper,
                 credentialMapper,
-                scopeMapper,
-                processGrantMapper,
                 secretGenerator,
                 secretHasher,
-                variableSchemaService,
                 actorProvider,
                 auditPort,
                 objectMapper,
@@ -101,28 +86,23 @@ public class IntegrationApplicationService {
     IntegrationApplicationService(
             IntegrationApplicationMapper applicationMapper,
             IntegrationCredentialMapper credentialMapper,
-            IntegrationScopeMapper scopeMapper,
-            IntegrationProcessGrantMapper processGrantMapper,
             IntegrationSecretGenerator secretGenerator,
             IntegrationSecretHasher secretHasher,
-            IntegrationVariableSchemaService variableSchemaService,
             CurrentActorPort actorProvider,
             SystemAuditPort auditPort,
             ObjectMapper objectMapper,
             Clock clock) {
         this.applicationMapper = applicationMapper;
         this.credentialMapper = credentialMapper;
-        this.scopeMapper = scopeMapper;
-        this.processGrantMapper = processGrantMapper;
         this.secretGenerator = secretGenerator;
         this.secretHasher = secretHasher;
-        this.variableSchemaService = variableSchemaService;
         this.actorProvider = actorProvider;
         this.auditPort = auditPort;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
+    /** 返回最近创建的接入应用，并批量附带活动凭据的非敏感摘要。 */
     @Transactional(readOnly = true)
     public List<IntegrationApplicationView> list() {
         List<IntegrationApplicationRecord> applications =
@@ -134,36 +114,28 @@ public class IntegrationApplicationService {
                 .map(IntegrationApplicationRecord::getId)
                 .toList();
         Map<String, IntegrationApplicationCredentialRecord> credentials =
-                credentialMapper.findActiveByApplicationIds(
-                                applicationIds)
+                credentialMapper.findActiveByApplicationIds(applicationIds)
                         .stream()
                         .collect(Collectors.toMap(
                                 IntegrationApplicationCredentialRecord
                                         ::getApplicationId,
                                 Function.identity()));
-        Map<String, Set<String>> scopes = groupGrants(
-                scopeMapper.findByApplicationIds(applicationIds));
-        Map<String, Set<String>> processGrants = groupGrants(
-                processGrantMapper.findByApplicationIds(applicationIds));
         return applications.stream()
                 .map(application -> toView(
                         application,
-                        credentials.get(application.getId()),
-                        scopes.getOrDefault(
-                                application.getId(),
-                                Set.of()),
-                        processGrants.getOrDefault(
-                                application.getId(),
-                                Set.of())))
+                        credentials.get(application.getId())))
                 .toList();
     }
 
+    /**
+     * 创建应用并签发首个 Client Secret。
+     *
+     * <p>明文 Secret 仅在本次返回中出现，持久化层只保存 Argon2 摘要。</p>
+     */
     @Transactional(rollbackFor = Exception.class)
     public IssuedIntegrationCredentialView create(
             CreateIntegrationApplicationRequest request) {
         CurrentActor actor = requireActor();
-        Set<String> scopes = IntegrationScope.validate(request.scopes());
-        Set<String> processKeys = validateProcessKeys(request.processKeys());
         List<String> cidrs = validateCidrs(request.allowedSourceCidrs());
         LocalDateTime now = now();
 
@@ -191,7 +163,6 @@ public class IntegrationApplicationService {
         application.setUpdateTime(now);
         applicationMapper.insert(application);
 
-        storeGrants(application.getId(), scopes, processKeys, actor.userId(), now);
         IssuedSecret issued = createCredential(
                 application.getId(),
                 1L,
@@ -204,48 +175,13 @@ public class IntegrationApplicationService {
                 application,
                 actor,
                 true);
-
         return new IssuedIntegrationCredentialView(
                 toView(application),
                 issued.secret(),
                 issued.expiresAt());
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public IntegrationApplicationView updateAccess(
-            String applicationId,
-            UpdateIntegrationAccessRequest request) {
-        CurrentActor actor = requireActor();
-        Set<String> scopes = IntegrationScope.validate(request.scopes());
-        Set<String> processKeys = validateProcessKeys(request.processKeys());
-        LocalDateTime now = now();
-        IntegrationApplicationRecord application =
-                requireLockedApplication(applicationId);
-        requireNotRevoked(application);
-        requireExpectedVersion(application, request.expectedVersion());
-        int updated = applicationMapper.advanceVersion(
-                applicationId,
-                request.expectedVersion(),
-                actor.userId(),
-                now);
-        if (updated != 1) {
-            throw versionConflict();
-        }
-        scopeMapper.deleteByApplicationId(applicationId);
-        processGrantMapper.deleteByApplicationId(applicationId);
-        storeGrants(applicationId, scopes, processKeys, actor.userId(), now);
-        application.setVersion(application.getVersion() + 1);
-        application.setUpdatedBy(actor.userId());
-        application.setUpdateTime(now);
-        recordAudit(
-                AuditAction.ASSIGN_PERMISSION,
-                "更新接入应用授权",
-                application,
-                actor,
-                true);
-        return toView(application);
-    }
-
+    /** 按乐观锁版本更新应用状态，并在吊销应用时同步吊销活动凭据。 */
     @Transactional(rollbackFor = Exception.class)
     public IntegrationApplicationView updateStatus(
             String applicationId,
@@ -293,80 +229,7 @@ public class IntegrationApplicationService {
         return toView(application);
     }
 
-    @Transactional(readOnly = true)
-    public List<IntegrationProcessContractView> listProcessContracts(
-            String applicationId) {
-        if (applicationMapper.selectById(applicationId) == null) {
-            throw new IllegalArgumentException("接入应用不存在");
-        }
-        return processGrantMapper
-                .findContractsByApplicationId(applicationId)
-                .stream()
-                .map(this::toProcessContractView)
-                .toList();
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public List<IntegrationProcessContractView> updateProcessContracts(
-            String applicationId,
-            UpdateIntegrationProcessContractsRequest request) {
-        CurrentActor actor = requireActor();
-        IntegrationApplicationRecord application =
-                requireLockedApplication(applicationId);
-        requireNotRevoked(application);
-        requireExpectedVersion(application, request.expectedVersion());
-        Set<String> granted = processGrantMapper
-                .findByApplicationId(applicationId);
-        Set<String> requested = request.contracts().stream()
-                .map(contract -> contract.processKey().trim())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (requested.size() != request.contracts().size()
-                || !requested.equals(granted)) {
-            throw new IllegalArgumentException(
-                    "流程契约必须与当前授权流程完整对应");
-        }
-        LocalDateTime now = now();
-        for (var contract : request.contracts()) {
-            String schema = variableSchemaService.validateConfiguration(
-                    contract.inputSchema());
-            Set<String> messages = contract.allowedMessageKeys().stream()
-                    .map(String::trim)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-            if (messages.size()
-                    != contract.allowedMessageKeys().size()) {
-                throw new IllegalArgumentException(
-                        "消息标识不能重复");
-            }
-            int updated = processGrantMapper.updateContract(
-                    applicationId,
-                    contract.processKey().trim(),
-                    schema,
-                    writeStringSet(messages),
-                    actor.userId(),
-                    now);
-            if (updated != 1) {
-                throw new IllegalStateException(
-                        "流程契约更新失败");
-            }
-        }
-        advanceApplicationVersion(
-                application,
-                request.expectedVersion(),
-                actor.userId(),
-                now);
-        recordAudit(
-                AuditAction.CONFIGURE,
-                "更新开放流程契约",
-                application,
-                actor,
-                true);
-        return processGrantMapper
-                .findContractsByApplicationId(applicationId)
-                .stream()
-                .map(this::toProcessContractView)
-                .toList();
-    }
-
+    /** 吊销旧凭据并签发新的 Client Secret，避免同时存在多个活动凭据。 */
     @Transactional(rollbackFor = Exception.class)
     public IssuedIntegrationCredentialView rotateCredential(
             String applicationId,
@@ -402,6 +265,7 @@ public class IntegrationApplicationService {
                 issued.expiresAt());
     }
 
+    /** 显式吊销当前活动凭据，并推进应用版本用于并发控制。 */
     @Transactional(rollbackFor = Exception.class)
     public IntegrationApplicationView revokeCredential(
             String applicationId,
@@ -459,34 +323,16 @@ public class IntegrationApplicationService {
         return new IssuedSecret(secret, expiresAt);
     }
 
-    private void storeGrants(
-            String applicationId,
-            Set<String> scopes,
-            Set<String> processKeys,
-            String operatorId,
-            LocalDateTime now) {
-        scopes.forEach(scope -> scopeMapper.insertGrant(
-                applicationId, scope, operatorId, now));
-        processKeys.forEach(processKey -> processGrantMapper.insertGrant(
-                applicationId, processKey, operatorId, now));
-    }
-
     private IntegrationApplicationView toView(
             IntegrationApplicationRecord application) {
         return toView(
                 application,
-                credentialMapper.findActive(application.getId()),
-                immutableSet(scopeMapper.findByApplicationId(
-                        application.getId())),
-                immutableSet(processGrantMapper.findByApplicationId(
-                        application.getId())));
+                credentialMapper.findActive(application.getId()));
     }
 
     private IntegrationApplicationView toView(
             IntegrationApplicationRecord application,
-            IntegrationApplicationCredentialRecord credential,
-            Set<String> scopes,
-            Set<String> processGrants) {
+            IntegrationApplicationCredentialRecord credential) {
         return new IntegrationApplicationView(
                 application.getId(),
                 application.getClientId(),
@@ -494,8 +340,6 @@ public class IntegrationApplicationService {
                 application.getDescription(),
                 application.getOwnerOrganizationId(),
                 application.getStatus(),
-                scopes,
-                processGrants,
                 application.getRateLimitPerMinute(),
                 application.getMaxConcurrency(),
                 readCidrs(application.getAllowedSourceCidrs()),
@@ -508,34 +352,6 @@ public class IntegrationApplicationService {
                         credential.getLastUsedAt()),
                 toInstant(application.getCreateTime()),
                 toInstant(application.getUpdateTime()));
-    }
-
-    private Map<String, Set<String>> groupGrants(
-            List<IntegrationGrantValueRecord> grants) {
-        return grants.stream().collect(Collectors.groupingBy(
-                IntegrationGrantValueRecord::getApplicationId,
-                Collectors.mapping(
-                        IntegrationGrantValueRecord::getGrantValue,
-                        Collectors.toCollection(LinkedHashSet::new))));
-    }
-
-    private Set<String> immutableSet(Set<String> values) {
-        return values == null ? Set.of() : Set.copyOf(values);
-    }
-
-    private Set<String> validateProcessKeys(Set<String> values) {
-        if (values == null || values.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> result = new LinkedHashSet<>();
-        for (String value : values) {
-            String normalized = value == null ? "" : value.trim();
-            if (!PROCESS_KEY.matcher(normalized).matches()) {
-                throw new IllegalArgumentException("流程标识格式不正确");
-            }
-            result.add(normalized);
-        }
-        return Set.copyOf(result);
     }
 
     private List<String> validateCidrs(List<String> values) {
@@ -562,32 +378,6 @@ public class IntegrationApplicationService {
             return objectMapper.writeValueAsString(cidrs);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("无法序列化来源 CIDR", exception);
-        }
-    }
-
-    private String writeStringSet(Set<String> values) {
-        try {
-            return objectMapper.writeValueAsString(values);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException(
-                    "无法序列化流程消息白名单",
-                    exception);
-        }
-    }
-
-    private IntegrationProcessContractView toProcessContractView(
-            IntegrationProcessGrantRecord contract) {
-        try {
-            return new IntegrationProcessContractView(
-                    contract.processKey(),
-                    objectMapper.readTree(contract.inputSchemaJson()),
-                    Set.copyOf(objectMapper.readValue(
-                            contract.allowedMessageKeys(),
-                            STRING_LIST)));
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException(
-                    "流程契约配置损坏",
-                    exception);
         }
     }
 

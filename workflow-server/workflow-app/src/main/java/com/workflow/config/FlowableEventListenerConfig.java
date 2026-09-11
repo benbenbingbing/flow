@@ -6,7 +6,6 @@ import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
 import com.workflow.process.cc.infrastructure.flowable.ProcessCcEventListener;
 import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
 import com.workflow.process.action.application.FlowActionEngineEventListener;
-import com.workflow.process.open.application.OpenIntegrationProcessEventListener;
 import com.workflow.process.task.application.WorkflowAutoSkipService;
 import com.workflow.process.sla.runtime.application.TaskSlaProcessStateListener;
 import lombok.RequiredArgsConstructor;
@@ -38,9 +37,6 @@ public class FlowableEventListenerConfig {
             personResolverTaskAssignmentListener;
     /** 自动知会监听器：解析 ccConfig 并写入知会收件箱与 Outbox */
     private final ProcessCcEventListener processCcEventListener;
-    /** 开放集成生命周期事件：同事务写入可靠 Outbox */
-    private final OpenIntegrationProcessEventListener
-            openIntegrationProcessEventListener;
     /** 流程挂起/激活时同步暂停或恢复任务SLA */
     private final TaskSlaProcessStateListener
             taskSlaProcessStateListener;
@@ -75,9 +71,6 @@ public class FlowableEventListenerConfig {
 
         // 自动知会：流程/任务时机统一解析 ccConfig 并写入知会收件箱与Outbox。
         runtimeService.addEventListener(processCcEventListener);
-
-        runtimeService.addEventListener(
-                openIntegrationProcessEventListener);
 
         runtimeService.addEventListener(
                 taskSlaProcessStateListener);

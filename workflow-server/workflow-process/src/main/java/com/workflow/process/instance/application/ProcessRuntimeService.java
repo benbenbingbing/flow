@@ -8,8 +8,6 @@ import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.entity.mutation.EntityChangeTargetFreezeCommand;
-import com.workflow.contracts.entity.mutation.port.EntityChangeTargetPort;
 import com.workflow.contracts.process.port.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartRequest;
 import com.workflow.contracts.process.ProcessStartResult;
@@ -31,7 +29,6 @@ import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -60,7 +57,6 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final ProcessTaskService processTaskService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final EntityProcessLinkMapper entityProcessLinkMapper;
-    private final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider;
 
     /** 可选字段注入仅用于兼容直接 new 的旧测试；生产环境必须由 Spring 提供。 */
     @Autowired
@@ -126,18 +122,6 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         if (entityProcessLinkMapper.activate(
                 link.getId(), link.getRequestId(), processInstance.getId()) != 1) {
             throw new IllegalStateException("实体流程链接激活失败: " + link.getId());
-        }
-        EntityChangeTargetPort changeTargetPort = changeTargetPortProvider.getIfAvailable();
-        if (changeTargetPort != null) {
-            changeTargetPort.freeze(
-                    new EntityChangeTargetFreezeCommand(
-                            request.entityCode(),
-                            request.entityRecordId(),
-                            processConfig.getId(),
-                            processInstance.getId(),
-                            request.submitterId(),
-                            WorkflowReservedVariables.sanitize(
-                                    request.variables())));
         }
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())

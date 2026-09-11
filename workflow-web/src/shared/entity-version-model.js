@@ -38,7 +38,6 @@ export function createVersionDraft(seed = {}) {
     || scope.availableRelations
     || []
   return {
-    ...seed,
     schemaVersion: Number(seed.schemaVersion || 2),
     entityId: seed.entityId || '',
     entityCode: seed.entityCode || '',
@@ -74,11 +73,7 @@ export function createVersionDraft(seed = {}) {
       ignoredFieldCodes: [...(seed.diffPolicy?.ignoredFieldCodes || [])]
     },
     relationOptions: relationOptions.map(normalizeRelationOption),
-    fieldOptions: seed.fieldOptions || seed.availableFields || [],
-    // V1 的步骤和变更目标先保留到规范化对象，序列化当前 V2 配置时再明确移除。
-    scenarios: legacyScenarios,
-    steps: Array.isArray(seed.steps) ? seed.steps : [],
-    targetBindings: Array.isArray(seed.targetBindings) ? seed.targetBindings : []
+    fieldOptions: seed.fieldOptions || seed.availableFields || []
   }
 }
 
@@ -130,10 +125,8 @@ export function serializeVersionDraft(draft) {
       ),
       filter: normalizeScopeFilter(relation.filter)
     }))
-  // V2 数据版本策略不再拥有变更规则、写入步骤和跨实体目标。
+  // 历史场景已在读取时转换为当前触发器，不写回旧契约字段。
   delete result.scenarios
-  delete result.steps
-  delete result.targetBindings
   return result
 }
 

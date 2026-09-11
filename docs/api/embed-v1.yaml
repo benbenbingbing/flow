@@ -206,8 +206,7 @@ paths:
         第三方后端提交 View、精确父 Origin、人员断言和入口模式。Flow 将人员精确映射到
         已存在且启用的 Flow 用户。响应中的 `launchCode` 只返回一次，不得记录或放入 URL Query。
       security:
-        - machineOAuth:
-            - embed.launch
+        - machineOAuth: []
       parameters:
         - $ref: '#/components/parameters/TraceId'
       requestBody:
@@ -667,8 +666,7 @@ components:
       flows:
         clientCredentials:
           tokenUrl: /oauth2/token
-          scopes:
-            embed.launch: 签发一次性 Embed Launch
+          scopes: {}
     embedBearer:
       type: http
       scheme: bearer
@@ -756,7 +754,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
     LaunchForbidden:
-      description: Scope、View Grant、Origin、身份断言、绑定或 Flow 用户校验失败
+      description: View Grant、Origin、身份断言、绑定或 Flow 用户校验失败
       content:
         application/json:
           schema:
@@ -888,14 +886,10 @@ components:
       type: object
       required:
         - grant_type
-        - scope
       properties:
         grant_type:
           type: string
           const: client_credentials
-        scope:
-          type: string
-          const: embed.launch
       additionalProperties: false
     AccessTokenResponse:
       type: object
@@ -903,7 +897,6 @@ components:
         - access_token
         - token_type
         - expires_in
-        - scope
       properties:
         access_token:
           type: string
@@ -913,9 +906,6 @@ components:
         expires_in:
           type: integer
           minimum: 1
-        scope:
-          type: string
-          pattern: '(^| )embed\.launch( |$)'
       additionalProperties: true
 
     EmbedLaunchRequest:
@@ -1989,7 +1979,6 @@ components:
       enum:
         - INVALID_REQUEST
         - INVALID_ACCESS_TOKEN
-        - INSUFFICIENT_SCOPE
         - SOURCE_ADDRESS_NOT_ALLOWED
         - PAYLOAD_TOO_LARGE
         - EMBED_CONTEXT_INVALID

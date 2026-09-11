@@ -7,7 +7,9 @@ import {
   configurableEntities,
   defaultInterfaceServiceDebugUsage,
   interfaceServiceUsageOptions,
-  isInterfaceServiceUsageCompatible
+  isInterfaceServiceUsageCompatible,
+  requiresProvider,
+  sourceTypeOptions
 } from '../interfaceServiceModel.js'
 import {
   eventGroupsForScope,
@@ -26,6 +28,19 @@ assert.deepEqual(
 )
 assert.equal(entities.length, 3)
 assert.deepEqual(configurableEntities(null), [])
+
+assert.deepEqual(
+  sourceTypeOptions.map(option => option.value),
+  [
+    'DICTIONARY',
+    'STATIC_OPTIONS',
+    'REGISTERED_PROVIDER',
+    'RUNTIME_CONTEXT',
+    'STRUCTURED_COMPUTE'
+  ]
+)
+assert.equal(requiresProvider('REGISTERED_PROVIDER'), true)
+assert.equal(requiresProvider('DICTIONARY'), false)
 
 assert.equal(
   interfaceServiceUsageOptions.some(option => option.value === 'FIELD_OPTIONS'),

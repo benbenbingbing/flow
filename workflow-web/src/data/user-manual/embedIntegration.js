@@ -93,8 +93,7 @@ CLIENT_SECRET='<仅保存在嵌入方后端的 Client Secret>'
 curl --request POST "$FLOW_API_BASE/oauth2/token" \\
   --user "$CLIENT_ID:$CLIENT_SECRET" \\
   --header 'Content-Type: application/x-www-form-urlencoded' \\
-  --data-urlencode 'grant_type=client_credentials' \\
-  --data-urlencode 'scope=embed.launch'`
+  --data-urlencode 'grant_type=client_credentials'`
 
 const assertionExample = `// JWT Header
 {
@@ -159,7 +158,7 @@ class FlowEmbedController {
       default -> throw badRequest("unsupported entry mode");
     };
 
-    var accessToken = machineTokenService.getToken("embed.launch");
+    var accessToken = machineTokenService.getToken();
     var assertion = assertionService.signShortLivedJwt(
         partnerUser.immutableSubject(),
         "https://id.partner.example",
@@ -311,7 +310,7 @@ export default {
               type: 'steps',
               items: [
                 { title: '校验宿主请求', text: '从登录会话识别当前用户；校验 channelId、entry 和 formPresentation。展示方式只接受精确的小写 seamless/dialog，缺失或 null 默认 seamless；viewKey、parentOrigin、Context 及允许的入口必须由后端白名单确定。' },
-                { title: '取得机器 Token', text: '用 Integration Application 的 Client ID / Client Secret 调用 /oauth2/token，Scope 使用 embed.launch。Token 可按 expires_in 在后端内存短期缓存。' },
+                { title: '取得机器 Token', text: '用 Integration Application 的 Client ID / Client Secret 调用 /oauth2/token；只提交 client_credentials 授权类型。Token 可按 expires_in 在后端内存短期缓存。' },
                 { title: '签发人员 JWT', text: '以稳定且不可回收的 external subject 作为 sub，使用与 Flow Provider 匹配的 iss、aud、alg 和 kid；设置短期 exp，并为每次断言生成唯一 jti。' },
                 { title: '创建 Launch', text: '携带机器 Token 调用 POST /api/open/v1/embed-launches，校验响应目标和 Embed Origin 后返回当前浏览器，并设置 Cache-Control: no-store。' }
               ]
@@ -408,7 +407,7 @@ export default {
             {
               type: 'steps',
               items: [
-                { title: '1. Integration Application', text: '在“系统管理 → 开放集成”创建嵌入方专用 Application，只授予 embed.launch；交付 Client ID 和一次性展示的 Client Secret，并记录内部 Application ID。测试、生产分别创建。' },
+                { title: '1. Integration Application', text: '在“系统管理 → 开放集成”创建嵌入方专用 Application；交付 Client ID 和一次性展示的 Client Secret，并记录内部 Application ID。测试、生产分别创建。' },
                 { title: '2. Identity Provider', text: '在“系统管理 → 嵌入集成 → Identity Provider 与 Binding”创建 SIGNED_JWT Provider；配置 Subject Namespace、精确 Issuer、Audience=flow-embed-launch、允许算法和公开 JWKS。推荐 RS256 或 ES256，Flow 只保存公钥。' },
                 { title: '3. Identity Binding', text: '按 Application + Provider + external subject 精确绑定到一个已启用 Flow 用户。该用户的角色、字段权限和 DataScope 决定 iframe 内实际可见与可操作内容。' },
                 { title: '4. 嵌入配置', text: '在“配置与 Grant”创建稳定 viewKey，选择 LIST 或 FORM，再选择一个已有 ACTIVE 版本的实体列表或表单；配置入口、Returnable 和必要 Capability。有 Context 时定义 Schema，并用 FIXED_FILTER 或 FORCED_FORM_VALUE 绑定。首次有效保存会自动启用。' },

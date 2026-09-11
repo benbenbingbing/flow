@@ -139,7 +139,7 @@ class OpenApiRequestGuardFilterTest {
         MockHttpServletRequest request =
                 new MockHttpServletRequest(
                         "POST",
-                        "/api/open/v1/process-instances");
+                        "/api/open/v1/embed-launches");
         request.setContent(new byte[bodySize]);
         request.addHeader(
                 OpenRequestTrace.HEADER,

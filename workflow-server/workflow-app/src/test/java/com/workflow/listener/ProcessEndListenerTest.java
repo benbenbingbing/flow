@@ -1,6 +1,5 @@
 package com.workflow.listener;
 
-import com.workflow.contracts.entity.mutation.port.EntityChangeTargetPort;
 import com.workflow.process.engine.infrastructure.flowable.ProcessEndListener;
 import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
@@ -14,7 +13,6 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.variable.api.history.HistoricVariableInstance;
 import org.flowable.variable.api.history.HistoricVariableInstanceQuery;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.ObjectProvider;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,9 +51,6 @@ class ProcessEndListenerTest {
     @Test
     void processCompletionPublishesDurableEndEvent() {
         HistoryService historyService = mock(HistoryService.class);
-        @SuppressWarnings("unchecked")
-        ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
-                mock(ObjectProvider.class);
         ProcessStatusSyncPublisher publisher =
                 mock(ProcessStatusSyncPublisher.class);
         HistoricVariableInstanceQuery entityCodeQuery =
@@ -84,7 +79,6 @@ class ProcessEndListenerTest {
         ProcessEndListener listener =
                 new ProcessEndListener(
                         historyService,
-                        changeTargetPortProvider,
                         publisher);
 
         listener.onEvent(event);
@@ -101,9 +95,6 @@ class ProcessEndListenerTest {
     @Test
     void processCancellationPublishesWithdrawnEndEvent() {
         HistoryService historyService = mock(HistoryService.class);
-        @SuppressWarnings("unchecked")
-        ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider =
-                mock(ObjectProvider.class);
         ProcessStatusSyncPublisher publisher =
                 mock(ProcessStatusSyncPublisher.class);
         HistoricVariableInstanceQuery entityCodeQuery =
@@ -131,7 +122,6 @@ class ProcessEndListenerTest {
         ProcessEndListener listener =
                 new ProcessEndListener(
                         historyService,
-                        changeTargetPortProvider,
                         publisher);
 
         listener.onEvent(event);

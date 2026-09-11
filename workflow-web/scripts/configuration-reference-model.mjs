@@ -105,14 +105,6 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^condition\\.(fieldCode|operator|value)$',
     '^maxSizeMb$'
   ]),
-  source('src/views/system/EntityMutationPolicyManagement.vue', '实体配置', '实体变更策略', [
-    '^draft\\.enabled$'
-  ]),
-  source('src/views/system/components/EntityVersionConfigDialogs.vue', '实体配置', '实体变更策略', [
-    '^scenario\\.',
-    '^step\\.',
-    '^target\\.'
-  ]),
   source('src/components/UiConfigPublishDialog.vue', '实体配置', '表单与列表发布', [
     '^form\\.(releaseMode|description)$'
   ]),
@@ -214,11 +206,6 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^keyword$', '^drawerVisible$', '^activeTab$',
     '^triggerDialogVisible$', '^scopeDialogVisible$', '^previewVisible$',
     '^previewRecordId$'
-  ],
-  'src/views/system/EntityMutationPolicyManagement.vue': [
-    '^keyword$', '^drawerVisible$', '^activeTab$', '^scenarioDialogVisible$',
-    '^stepDialogVisible$', '^targetDialogVisible$', '^pickerVisible$',
-    '^pickerKeyword$', '^pickerPage$'
   ],
   'src/components/UiConfigPublishDialog.vue': [],
   'src/views/ProcessList.vue': [
@@ -575,48 +562,6 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
     ]
   },
   {
-    domain: '实体配置',
-    area: '数据版本执行阶段',
-    source: 'src/views/system/EntityMutationPolicyManagement.vue',
-    values: [
-      ['PREPARE', '准备', '写库前准备上下文或默认数据。'],
-      ['BEFORE_WRITE', '写入前', '正式写库前执行校验、表达式或映射。'],
-      ['AFTER_WRITE', '写入后', '记录写入后、事务提交前执行后续处理。'],
-      ['AFTER_COMMIT', '提交后', '事务成功提交后执行异步或外部副作用。']
-    ]
-  },
-  {
-    domain: '实体配置',
-    area: '数据版本步骤类型',
-    source: 'src/views/system/EntityMutationPolicyManagement.vue',
-    values: [
-      ['BUILT_IN_RULE', '内置规则', '执行平台登记的内置规则，保存前必须选择有效的规则实现。'],
-      ['EXPRESSION', '条件表达式', '执行受控表达式计算或判断。'],
-      ['FIELD_MAPPING', '字段映射', '按结构化映射转换当前记录或上下文；仅允许 PREPARE 或 BEFORE_WRITE。'],
-      ['MANAGED_INTERFACE', '受管理接口', '调用平台登记的接口服务；仅允许 PREPARE。'],
-      ['JAVA_PROVIDER', 'Java Provider', '调用已注册的 Java 扩展实现；执行阶段必须属于 Provider 的 supportedPhases。']
-    ]
-  },
-  {
-    domain: '实体配置',
-    area: '数据版本目标解析方式',
-    source: 'src/views/system/EntityMutationPolicyManagement.vue',
-    values: [
-      ['FIELD', '引用字段', '从来源记录的引用字段取得目标记录 ID。'],
-      ['RELATION', '实体关系', '通过已定义实体关系查找目标记录。'],
-      ['JAVA_PROVIDER', 'Java Provider', '调用已注册目标解析器计算目标记录。']
-    ]
-  },
-  {
-    domain: '实体配置',
-    area: '数据版本目标应用策略',
-    source: 'src/views/system/components/EntityVersionConfigDialogs.vue',
-    values: [
-      ['MERGE', '合并', '只更新映射得到的目标字段，保留目标其他字段。'],
-      ['REPLACE', '替换', '按配置替换目标数据内容，未提供字段可能被清除。']
-    ]
-  },
-  {
     domain: '流程配置',
     area: 'SLA 时间口径',
     source: 'src/views/process/TaskSlaPolicyManagement.vue',
@@ -752,7 +697,6 @@ const DEFAULT_LOCATION_BY_AREA = Object.freeze({
   '旧字段脚本事件（受限）': '实体配置-表单-编辑-字段属性-事件',
   '实体选择后回填': '实体配置-表单-编辑-单选实体属性-选择后回填',
   '实体数据版本': '实体配置-数据版本',
-  '实体变更策略': '实体配置-实体变更策略',
   '表单与列表发布': '实体配置-表单或列表-编辑-发布',
   '流程定义与发布': '流程配置-流程',
   '流程节点': '流程配置-流程-设计-节点属性',
@@ -831,11 +775,6 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/system/EntityVersionManagement.vue', '^triggerEditor\\.', '实体配置-数据版本-生成时机'),
   locationRule('src/views/system/EntityVersionManagement.vue', '^(draft\\.snapshotScope\\.|scopeEditor\\.|condition\\.|maxSizeMb$)', '实体配置-数据版本-固化范围'),
   locationRule('src/views/system/EntityVersionManagement.vue', '^draft\\.diffPolicy\\.', '实体配置-数据版本-比对规则'),
-  locationRule('src/views/system/EntityMutationPolicyManagement.vue', '^draft\\.enabled$', '实体配置-实体变更策略-策略设置'),
-  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^scenario\\.', '实体配置-实体变更策略-变更规则'),
-  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^step\\.', '实体配置-实体变更策略-处理步骤'),
-  locationRule('src/views/system/components/EntityVersionConfigDialogs.vue', '^target\\.', '实体配置-实体变更策略-变更目标'),
-
   locationRule('src/views/ProcessList.vue', '^formData\\.', '流程配置-流程-新建/编辑'),
   locationRule('src/views/ProcessList.vue', '^publishForm\\.', '流程配置-流程-发布'),
 
@@ -903,10 +842,6 @@ const ENUM_LOCATION_BY_AREA = Object.freeze({
   '流程动作失败策略': '流程配置-流程-设计-节点属性-流程动作-新增/编辑动作',
   '数据版本变更入口': '实体配置-数据版本-场景配置',
   '数据版本操作类型': '实体配置-数据版本-场景配置',
-  '数据版本执行阶段': '实体配置-实体变更策略-处理步骤',
-  '数据版本步骤类型': '实体配置-实体变更策略-处理步骤',
-  '数据版本目标解析方式': '实体配置-实体变更策略-变更目标',
-  '数据版本目标应用策略': '实体配置-实体变更策略-变更目标',
   'SLA 时间口径': '系统管理-SLA管理-SLA策略-新建/编辑策略',
   'SLA 指标': '系统管理-SLA管理-SLA策略-升级动作',
   'SLA 升级触发点': '系统管理-SLA管理-SLA策略-升级动作',
@@ -1330,17 +1265,8 @@ const KEY_GUIDANCE = Object.freeze({
   sourceTypes: ['选择哪些数据写入入口会命中版本场景。', ['FORM', 'APPROVAL_TASK'], '只有来源入口在集合内的变更才进入该场景。'],
   operationTypes: ['选择新增、修改、删除或状态变化等哪些操作会命中场景。', ['UPDATE', 'STATUS_CHANGE'], '写入操作类型命中后才继续计算业务意图和场景条件。'],
   businessIntents: ['限制版本场景只处理指定业务意图编码。', ['APPROVAL_SUBMIT'], '写入上下文携带其中一个意图时场景才匹配；留空表示不限制。'],
-  conditionText: ['设置数据版本场景进一步匹配的结构化条件或受控表达式。', '{"field":"status","operator":"EQ","value":"APPROVED"}', '来源、操作和业务意图命中后，还需条件为真才执行步骤。'],
+  conditionText: ['设置数据版本场景进一步匹配的结构化条件或受控表达式。', '{"field":"status","operator":"EQ","value":"APPROVED"}', '来源、操作和业务意图命中后，还需条件为真才生成数据版本。'],
   versionTitleTemplate: ['设置数据版本记录标题的变量模板。', '采购申请 ${record.code} 审批变更', '生成版本时解析记录上下文，形成可读审计标题。'],
-  phase: ['选择数据版本步骤在写入前、写入后或事务提交后执行。', 'BEFORE_WRITE', '步骤按阶段排序执行；受管理接口固定使用支持的阶段。'],
-  stepType: ['选择版本步骤执行内置规则、表达式、字段映射、受管理接口或 Java Provider。', 'FIELD_MAPPING', '运行时按类型校验配置并调用对应执行器。'],
-  configText: ['配置数据版本步骤所选执行器需要的 JSON 参数。', '{"mappings":{"amount":"requestAmount"}}', '场景命中后执行器按参数转换、校验或调用服务。'],
-  bindingName: ['设置数据版本跨实体目标绑定的显示名称。', '同步项目预算', '管理页面和执行日志用该名称识别目标绑定。'],
-  resolverType: ['选择通过引用字段、实体关系或 Java Provider 解析目标记录。', 'FIELD', '运行时按类型取得目标 ID；无法解析时按目标失败策略处理。'],
-  resolverConfigText: ['配置目标解析器所需的字段、关系或 Provider 参数。', '{"sourceField":"project_id"}', '解析目标记录前按该结构构造解析请求。'],
-  effectivePatchText: ['配置跨实体变更成功后回写来源记录的字段补丁。', '{"sync_status":"SUCCESS"}', '目标写入成功后把补丁合并到来源记录。'],
-  failedPatchText: ['配置跨实体变更失败后回写来源记录的字段补丁。', '{"sync_status":"FAILED"}', '目标处理失败时记录失败状态，便于重试和人工处理。'],
-  applyStrategy: ['选择跨实体目标数据采用字段合并还是完整替换。', 'MERGE', '合并只更新映射字段；替换可能清除未提供字段。'],
   optionSource: ['选择枚举字段选项来自系统代码表还是只读旧内嵌选项。', 'DICT', '新配置从代码表加载；旧内嵌选项仅用于历史兼容。'],
   fileTypes: ['限制文件或图片字段允许上传的扩展名集合。', ['.jpg', '.png', '.pdf'], '选择文件时前端过滤类型，服务端仍执行最终文件策略校验。'],
   prefix: ['设置自动编码在日期和流水号前的固定前缀。', 'CG', '生成编码时以该前缀开头，便于区分业务单据类型。'],
@@ -1374,7 +1300,6 @@ const KEY_GUIDANCE = Object.freeze({
   size: ['选择列表表格的紧凑、默认或宽松行高。', 'small', '运行时表格按所选密度展示，不改变分页数量和数据内容。'],
   width: ['设置列表列的目标像素宽度。', 180, '该列按配置宽度布局，并受最小宽度和表格可用空间约束。'],
   minWidth: ['设置列表列在自适应布局中不得低于的像素宽度。', 120, '窗口收窄时该列不会缩到此值以下，表格可改为横向滚动。'],
-  sortOrder: ['设置数据版本步骤在同一执行阶段内的先后顺序。', 20, '场景命中后按顺序值从小到大执行步骤。'],
   maxSize: ['限制单个上传文件允许的最大大小。', 20, '超过 20 MB 的文件在前端选择和服务端上传校验时被拒绝。'],
   maxCount: ['限制文件或图片字段最多保留的附件数量。', 5, '达到数量上限后不能继续添加附件。'],
   seqLength: ['设置自动编码流水号固定占用的位数。', 4, '序号 12 会补零为 0012；超过位数时按生成规则继续增长或报错。'],
@@ -1401,10 +1326,6 @@ const KEY_GUIDANCE = Object.freeze({
   targetListKey: ['选择列表按钮要打开的目标列表稳定键。', 'project_picker', '运行时加载该列表的已发布版本。'],
   relationKey: ['选择服务端注册的上下文关系键，用于约束目标列表。', 'project_members', '打开列表时服务端按关系生成可信上下文过滤。'],
   statusCode: ['设置实体业务状态的稳定编码。', 'FINANCE_REVIEW', '流程状态映射、权限限制和接口按该编码引用状态。'],
-  scenarioCode: ['设置或引用实体数据版本场景的稳定编码。', 'approval_change', '版本步骤、模拟和运行时匹配通过该编码识别场景。'],
-  providerCode: ['选择数据版本步骤使用的已注册 Java Provider 或内置实现编码。', 'syncProjectBudget', '步骤执行时只调用注册表中对应实现。'],
-  bindingCode: ['设置跨实体目标绑定的稳定编码。', 'sync_project_budget', '场景、迁移和执行日志通过该编码引用目标绑定。'],
-  sourceEntityCode: ['选择跨实体变更的来源实体编码。', 'purchase_request', '只有该实体的匹配变更会解析并写入目标记录。'],
   childRefFieldCode: ['选择子实体中指向主实体记录的外键字段编码。', 'request_id', '保存子表数据时把主记录 ID 写入该字段，并据此查询明细。'],
   listKey: ['选择数据权限规则适用的具体列表键。', 'my_pending', '留空时规则作用于实体默认范围；填写后只影响该列表。'],
   dictCode: ['设置系统代码表的稳定编码。', 'purchase_status', '实体字段、接口和迁移包通过该编码引用代码项。'],
@@ -2073,7 +1994,7 @@ const EVIDENCE_BY_AREA = Object.freeze({
   '表单字段联动': 'src/components/form-fields/composables/__tests__/useFormField.spec.js',
   '实体选择后回填': 'src/shared/__tests__/entity-selection-mapping.spec.js',
   '表单与列表发布': 'workflow-app UiConfigReleaseServiceTest',
-  '实体数据版本': 'workflow-entity EntityMutationPipelineTest / EntityRecordVersionServiceTest / EntityChangeTargetServiceTest',
+  '实体数据版本': 'workflow-entity EntityVersionConfigurationServiceV2Test / EntityRecordSnapshotServiceV2Test / EntityRecordVersionComparisonServiceTest',
   '流程条件': 'src/utils/__tests__/flowConditionGroups.spec.js',
   '流程节点': 'src/shared/process-config/index.js；workflow-app ProcessBpmnPublishSanitizerTest / EntityFormResolveServiceTest / ProcessCcRuntimeServiceTest / ProcessCcEventListenerTest',
   '流程动作': 'workflow-app FlowActionEngineEventListenerTest / FlowActionExecutionProcessorTest',

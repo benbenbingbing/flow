@@ -80,15 +80,6 @@
       "revision": 11
     },
     {
-      "id": "b0e7462e0779a5da0878fbe37bfe685d",
-      "code": "PROJECT_ACCEPTANCE_LOG_CONNECTOR",
-      "type": "INTEGRATION_CONNECTOR",
-      "providerCode": "PROJECT_CUSTOM_LOG_CONNECTOR",
-      "scopeType": "ENTITY",
-      "scopeId": "2087011532046143489",
-      "revision": 11
-    },
-    {
       "id": "075448e84b21c1ea635df0d6e08fb8c0",
       "code": "PROJECT_ACCEPTANCE_MATRIX_LIST_SOURCE",
       "type": "REGISTERED_PROVIDER",

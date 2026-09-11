@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationPhase;
 import com.workflow.contracts.entity.mutation.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
@@ -14,9 +13,6 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
-import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
-import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
-import com.workflow.entity.version.application.EntityMutationStepExecutor.ExecutionOutcome;
 import com.workflow.entity.version.application.EntityRelatedVersionCaptureService.RootKey;
 import com.workflow.entity.version.application.EntityVersionPolicyMatcher.MatchedScenario;
 import com.workflow.entity.version.application.model.EntityVersionConfiguration;
@@ -32,7 +28,6 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -59,8 +54,6 @@ class EntityMutationTransactionExecutorTest {
     @Mock
     private EntityDataDynamicService queryService;
     @Mock
-    private EntityMutationStepExecutor stepExecutor;
-    @Mock
     private EntityVersionPolicyMatcher policyMatcher;
     @Mock
     private EntityRecordVersionService versionService;
@@ -85,18 +78,9 @@ class EntityMutationTransactionExecutorTest {
                 .thenAnswer(invocation -> java.util.Collections.nCopies(
                         ((List<?>) invocation.getArgument(0)).size(),
                         prepared));
-        lenient().when(stepExecutor.execute(
-                        any(),
-                        eq(EntityMutationPhase.BEFORE_WRITE),
-                        anyMap(),
-                        anyMap()))
-                .thenAnswer(invocation -> new ExecutionOutcome(
-                        invocation.getArgument(0),
-                        List.of()));
         executor = new EntityMutationTransactionExecutor(
                 writer,
                 queryService,
-                stepExecutor,
                 policyMatcher,
                 versionService,
                 relatedVersionCaptureService,
@@ -148,17 +132,11 @@ class EntityMutationTransactionExecutorTest {
                 context);
 
         InOrder order = inOrder(
-                stepExecutor,
                 writer,
                 queryService,
                 formUniqueClaimService);
         order.verify(queryService).findById(
                 "asset", "record-1");
-        order.verify(stepExecutor).execute(
-                org.mockito.ArgumentMatchers.any(),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap());
         order.verify(formUniqueClaimService).prepare(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyMap());
@@ -226,141 +204,12 @@ class EntityMutationTransactionExecutorTest {
         verifyNoInteractions(
                 writer,
                 queryService,
-                stepExecutor,
                 policyMatcher,
                 versionService,
                 relatedVersionCaptureService,
                 formUniqueClaimService);
         verify(receiptService, never())
                 .complete(any(), any());
-    }
-
-    @Test
-    void baselineConflictStopsMutationBeforeWrite() {
-        EntityMutationCommand command = command(
-                Map.of(
-                        "data",
-                        Map.of("name", "新名称")),
-                Map.of("baselineVersionNo", 1));
-        when(queryService.findById(
-                "asset",
-                "record-1")).thenReturn(record("原名称"));
-        when(versionService.currentVersionNo(
-                "asset",
-                "record-1")).thenReturn(2);
-
-        BusinessConflictException exception =
-                assertThrows(
-                        BusinessConflictException.class,
-                        () -> executor.execute(command));
-
-        assertEquals(
-                "ENTITY_VERSION_BASELINE_CONFLICT",
-                exception.getErrorCode());
-        InOrder order = inOrder(
-                stepExecutor,
-                formUniqueClaimService,
-                writer);
-        order.verify(stepExecutor).execute(
-                eq(command),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap());
-        order.verify(formUniqueClaimService).prepare(
-                eq(command), anyMap());
-        order.verify(writer).lock("asset", "record-1");
-        verify(writer).lock("asset", "record-1");
-        verify(writer, never()).apply(any(), any());
-    }
-
-    @Test
-    void approvalNoOpRejectsBeforeWritePatchBeforeGateOrRecordLock() {
-        EntityMutationContext context = command(
-                Map.of(),
-                Map.of("formReferences", List.of(Map.of(
-                        "formId", "form-1",
-                        "formReleaseId", "release-1",
-                        "formReleaseVersion", 1))))
-                .context();
-        when(queryService.findById("asset", "record-1"))
-                .thenReturn(record("当前名称"));
-        when(stepExecutor.execute(
-                any(),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap())).thenAnswer(invocation -> {
-                    EntityMutationCommand original = invocation.getArgument(0);
-                    return new ExecutionOutcome(
-                            new EntityMutationCommand(
-                                    original.operationId(),
-                                    original.entityCode(),
-                                    original.recordId(),
-                                    original.operationType(),
-                                    Map.of("data", Map.of(
-                                            "name", "被补丁修改")),
-                                    original.context()),
-                            List.of());
-                });
-
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> executor.reconcileFormUniqueness(
-                        "asset", "record-1", context));
-
-        assertEquals(
-                "无字段变更唯一终检不能接受 BEFORE_WRITE PATCH",
-                exception.getMessage());
-        verify(formUniqueClaimService, never()).prepare(any(), anyMap());
-        verify(writer, never()).lock(any(), any());
-    }
-
-    @Test
-    void beforeWriteCannotReplaceTrustedChildMarker() {
-        FormUniqueMutationContext.Reference reference =
-                new FormUniqueMutationContext.Reference(
-                        "child-form", "release-1", 1, "release-1");
-        Map<String, Object> child = new LinkedHashMap<>(
-                Map.of("name", "明细A"));
-        TrustedSubFormUniqueReference.attach(
-                child, "asset_line", reference);
-        EntityMutationCommand command = command(
-                Map.of("data", Map.of("details", List.of(child))),
-                Map.of());
-        when(queryService.findById("asset", "record-1"))
-                .thenReturn(record("当前名称"));
-        when(stepExecutor.execute(
-                eq(command),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap())).thenAnswer(invocation -> {
-                    Map<String, Object> replacement =
-                            new LinkedHashMap<>(Map.of(
-                                    "name", "明细A"));
-                    TrustedSubFormUniqueReference.attach(
-                            replacement, "asset_line", reference);
-                    return new ExecutionOutcome(
-                            new EntityMutationCommand(
-                                    command.operationId(),
-                                    command.entityCode(),
-                                    command.recordId(),
-                                    command.operationType(),
-                                    Map.of("data", Map.of(
-                                            "details",
-                                            List.of(replacement))),
-                                    command.context()),
-                            List.of());
-                });
-
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> executor.execute(command));
-
-        assertEquals(
-                "实体变换替换或移动了可信子表单标记",
-                exception.getMessage());
-        verify(formUniqueClaimService, never()).prepare(any(), anyMap());
-        verify(writer, never()).lock(any(), any());
-        verify(writer, never()).apply(any(), any());
     }
 
     @Test
@@ -377,14 +226,6 @@ class EntityMutationTransactionExecutorTest {
                                 "formReleaseId", "release-1",
                                 "formReleaseVersion", 1))
                         .build());
-        when(stepExecutor.execute(
-                any(),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap())).thenAnswer(invocation ->
-                        new ExecutionOutcome(
-                                invocation.getArgument(0),
-                                List.of()));
         IllegalStateException stopped =
                 new IllegalStateException("stop after ordering proof");
         org.mockito.Mockito.doThrow(stopped)
@@ -417,22 +258,6 @@ class EntityMutationTransactionExecutorTest {
                 "record-1")).thenReturn(
                         record,
                         record);
-        when(stepExecutor.execute(
-                any(),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap())).thenAnswer(invocation ->
-                        new ExecutionOutcome(
-                                invocation.getArgument(0),
-                                List.of()));
-        when(stepExecutor.execute(
-                any(),
-                eq(EntityMutationPhase.AFTER_WRITE),
-                anyMap(),
-                anyMap())).thenAnswer(invocation ->
-                        new ExecutionOutcome(
-                                invocation.getArgument(0),
-                                List.of()));
         when(writer.apply(any(), eq(prepared))).thenReturn(
                 new EntityAggregateWriter.WriteResult(
                         "record-1",
@@ -474,22 +299,11 @@ class EntityMutationTransactionExecutorTest {
                 any(),
                 eq(result));
         InOrder transactionOrder = inOrder(
-                stepExecutor,
                 writer,
                 formUniqueClaimService);
-        transactionOrder.verify(stepExecutor).execute(
-                any(),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap());
         transactionOrder.verify(writer).apply(any(), eq(prepared));
         transactionOrder.verify(formUniqueClaimService)
                 .reconcile(any(), anyMap(), eq(prepared));
-        transactionOrder.verify(stepExecutor).execute(
-                any(),
-                eq(EntityMutationPhase.AFTER_WRITE),
-                anyMap(),
-                anyMap());
     }
 
     @Test
@@ -510,10 +324,6 @@ class EntityMutationTransactionExecutorTest {
         when(relatedVersionCaptureService.requiredRootKeys(
                 eq(secondChild), anyMap())).thenReturn(
                         Set.of(new RootKey("asset", "parent-z")));
-        when(stepExecutor.execute(
-                any(), any(), anyMap(), anyMap())).thenAnswer(invocation ->
-                        new ExecutionOutcome(
-                                invocation.getArgument(0), List.of()));
         when(writer.apply(any(), eq(prepared))).thenAnswer(invocation -> {
             EntityMutationCommand command = invocation.getArgument(0);
             return new EntityAggregateWriter.WriteResult(
@@ -537,11 +347,11 @@ class EntityMutationTransactionExecutorTest {
     }
 
     @Test
-    void batchPreparesOnlyAfterAllBeforeWritePatches() {
+    void batchPreparesAllUniqueClaimsBeforeTakingLocks() {
         EntityMutationCommand first = command(
-                "operation-1", "line-1");
+                "operation-1", "line-1", "最终同值");
         EntityMutationCommand second = command(
-                "operation-2", "line-2");
+                "operation-2", "line-2", "最终同值");
         EntityDataDTO line1 = record(
                 "asset_line", "line-1", "原值A");
         EntityDataDTO line2 = record(
@@ -550,23 +360,6 @@ class EntityMutationTransactionExecutorTest {
                 .thenReturn(line1);
         when(queryService.findById("asset_line", "line-2"))
                 .thenReturn(line2);
-        when(stepExecutor.execute(
-                any(),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap())).thenAnswer(invocation -> {
-                    EntityMutationCommand original = invocation.getArgument(0);
-                    return new ExecutionOutcome(
-                            new EntityMutationCommand(
-                                    original.operationId(),
-                                    original.entityCode(),
-                                    original.recordId(),
-                                    original.operationType(),
-                                    Map.of("data", Map.of(
-                                            "name", "最终同值")),
-                                    original.context()),
-                            List.of());
-                });
         org.mockito.Mockito.doThrow(
                         new BusinessConflictException(
                                 "ENTITY_FORM_UNIQUE_CONFLICT",
@@ -585,11 +378,6 @@ class EntityMutationTransactionExecutorTest {
 
         assertEquals("ENTITY_FORM_UNIQUE_CONFLICT",
                 exception.getErrorCode());
-        verify(stepExecutor, org.mockito.Mockito.times(2)).execute(
-                any(),
-                eq(EntityMutationPhase.BEFORE_WRITE),
-                anyMap(),
-                anyMap());
         verify(writer, never()).lock(any(), any());
         verify(writer, never()).apply(any(), any());
     }
@@ -624,12 +412,19 @@ class EntityMutationTransactionExecutorTest {
     private EntityMutationCommand command(
             String operationId,
             String recordId) {
+        return command(operationId, recordId, "更新");
+    }
+
+    private EntityMutationCommand command(
+            String operationId,
+            String recordId,
+            String name) {
         return new EntityMutationCommand(
                 operationId,
                 "asset_line",
                 recordId,
                 EntityMutationOperationType.UPDATE,
-                Map.of("data", Map.of("name", "更新")),
+                Map.of("data", Map.of("name", name)),
                 EntityMutationContext.builder(
                                 EntityMutationSourceType.APPROVAL_TASK,
                                 "CHANGE_EFFECTIVE",

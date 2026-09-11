@@ -14,9 +14,6 @@ import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.integration.spi.IntegrationConnector;
-import com.workflow.contracts.integration.IntegrationRequest;
-import com.workflow.contracts.integration.IntegrationResult;
 import com.workflow.contracts.ui.CommonInvocationContext;
 import com.workflow.contracts.ui.EntityDescriptor;
 import com.workflow.contracts.ui.ListInvocationContext;
@@ -58,7 +55,7 @@ import static org.mockito.Mockito.when;
  *
  * <p>被测对象：{@link UiDataSourceService}，覆盖数据源保存的 URL/schema 校验、执行前的必填输入与类型校验、
  * provider 输出类型校验、权限拒绝时不执行 Provider、
- * 缓存按权限计划/发布版本/表单发布/列表发布隔离、集成连接器仅接收服务端可信安全上下文、
+ * 缓存按权限计划/发布版本/表单发布/列表发布隔离、
  * 预览走草稿授权而非发布授权等场景。
  */
 class UiDataSourceServiceTest {
@@ -265,39 +262,6 @@ class UiDataSourceServiceTest {
 
         verify(context.executionAccessService(), never())
                 .authorizeManagementPreview(any(), any());
-    }
-
-    @Test
-    void relatedContentActionRejectsConnectorWriteAtPublishTime() {
-        TestContext context = context(List.of());
-        UiDataSourceDefinition definition = definition(
-                context.codec(),
-                "INTEGRATION_CONNECTOR",
-                "http",
-                Map.of(),
-                Map.of(),
-                Map.of("connectorConfigId", "connector-1"),
-                Map.of("failurePolicy", "FAIL"));
-        definition.setOperationsDocument(context.codec().write(
-                List.of(Map.of(
-                        "code", "send",
-                        "name", "发送外部系统",
-                        "kind", "WRITE",
-                        "contextType", "LIST",
-                        "inputSchema", Map.of(),
-                        "outputSchema", Map.of())),
-                "WRITE 接口操作"));
-        when(context.mapper().selectById("source-1"))
-                .thenReturn(definition);
-
-        BusinessForbiddenException error = assertThrows(
-                BusinessForbiddenException.class,
-                () -> context.service().validateActionOperation(
-                        "source-1", "send", "LIST"));
-
-        assertTrue(error.getMessage().contains("异步执行"));
-        verify(context.executionAccessService(), never())
-                .authorizePublished(any(), any());
     }
 
     @Test
@@ -668,77 +632,6 @@ class UiDataSourceServiceTest {
         assertEquals(2, calls.get());
     }
 
-    /** 测试集成连接器仅接收服务端可信安全上下文：验证幂等键、参数、用户、租户、release、权限摘要符合预期且不含 SQL 片段 */
-    @Test
-    void connectorReceivesOnlyServerTrustedSecurityContext() {
-        IntegrationConnector connector =
-                mock(IntegrationConnector.class);
-        when(connector.code()).thenReturn("safe-connector");
-        when(connector.execute(any()))
-                .thenReturn(IntegrationResult.builder()
-                        .success(true)
-                        .data(Map.of("ok", true))
-                        .build());
-        TestContext context = context(
-                List.of(),
-                List.of(connector));
-        context.user().setOrgId("org-1");
-        context.user().setDeptId("dept-1");
-        DataScopePlan plan =
-                plan("owner_id = 'user-1'", 9);
-        authorize(context, plan);
-        UiDataSourceDefinition definition = definition(
-                context.codec(),
-                "INTEGRATION_CONNECTOR",
-                "safe-connector",
-                Map.of(),
-                Map.of(),
-                Map.of("operation", "sync-order"));
-        when(context.mapper().selectById("source-1"))
-                .thenReturn(definition);
-        UiDataSourceExecuteRequest request = request(
-                Map.of("orderId", "order-1"),
-                Map.of("formId", "form-1"));
-
-        Object result = context.service().execute(
-                "source-1",
-                request);
-
-        assertEquals(Map.of("ok", true), result);
-        ArgumentCaptor<IntegrationRequest> captor =
-                ArgumentCaptor.forClass(
-                        IntegrationRequest.class);
-        verify(connector).execute(captor.capture());
-        IntegrationRequest integrationRequest =
-                captor.getValue();
-        assertTrue(integrationRequest.getIdempotencyKey()
-                .startsWith("ui-ds-"));
-        assertEquals(
-                Map.of("orderId", "order-1"),
-                integrationRequest.getParameters());
-        assertEquals(
-                "user-1",
-                integrationRequest.getRuntimeContext().userId());
-        assertEquals(
-                null,
-                integrationRequest.getRuntimeContext().tenantId());
-        assertEquals(
-                "org-1",
-                integrationRequest.getRuntimeContext().organizationId());
-        assertEquals(
-                "release-1",
-                integrationRequest.getRuntimeContext().releaseId());
-        assertEquals(
-                plan,
-                integrationRequest.getDataScopePlan());
-        assertEquals(
-                9,
-                integrationRequest.getPermissionSummary()
-                        .get("releaseVersion"));
-        assertTrue(!integrationRequest.getPermissionSummary()
-                .containsKey("sqlFragment"));
-    }
-
     /** 测试预览走草稿授权而非发布授权：验证调用 authorizePreview 且不调用 authorizePublished */
     @Test
     void previewUsesDraftAuthorizationInsteadOfPublishedAuthorization() {
@@ -1014,16 +907,9 @@ class UiDataSourceServiceTest {
                 null);
     }
 
-    /** 装配不含集成连接器的测试上下文（重载） */
+    /** 装配测试上下文。 */
     private TestContext context(
             List<UiDataSourceProvider> providers) {
-        return context(providers, List.of());
-    }
-
-    /** 装配含 provider 与集成连接器的完整测试上下文 */
-    private TestContext context(
-            List<UiDataSourceProvider> providers,
-            List<IntegrationConnector> connectors) {
         UiDataSourceDefinitionMapper mapper =
                 mock(UiDataSourceDefinitionMapper.class);
         EntityFormMapper formMapper =
@@ -1092,7 +978,6 @@ class UiDataSourceServiceTest {
                 invocationContextFactory,
                 new UiDataSourceDefinitionValidator(codec),
                 providers,
-                connectors,
                 codec,
                 new SimpleAsyncTaskExecutor(
                         "ui-data-source-test-"));

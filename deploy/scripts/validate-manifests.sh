@@ -30,18 +30,6 @@ open_api_args="
   --set openApi.trustForwardedHeaders=true
   --set openApi.trustedProxyCidrs[0]=10.42.0.0/16
 "
-webhook_args="
-  --set openApi.webhook.enabled=true
-  --set-string application.httpAllowedHosts=hooks.example.com
-  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
-"
-connector_args="
-  --set connector.http.enabled=true
-  --set connector.http.masterKeyVersion=current-2026-07
-  --set connector.http.masterKeySecretKey=integration-connector-master-key
-  --set connector.http.previousMasterKeysSecretKey=integration-connector-previous-master-keys
-  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32
-"
 embed_args="
   --set ingress.enabled=true
   --set-string ingress.host=admin.flow.example.com
@@ -79,21 +67,6 @@ helm template flow-open-api "$repository_root/deploy/helm/flow" \
   $production_args \
   $open_api_args \
   >"$temporary_directory/open-api.yaml"
-
-# shellcheck disable=SC2086
-helm template flow-webhook "$repository_root/deploy/helm/flow" \
-  --namespace flow-production \
-  $production_args \
-  $open_api_args \
-  $webhook_args \
-  >"$temporary_directory/webhook.yaml"
-
-# shellcheck disable=SC2086
-helm template flow-connector "$repository_root/deploy/helm/flow" \
-  --namespace flow-production \
-  $production_args \
-  $connector_args \
-  >"$temporary_directory/connector.yaml"
 
 # shellcheck disable=SC2086
 helm template flow-embed "$repository_root/deploy/helm/flow" \
@@ -159,37 +132,6 @@ if helm template flow-invalid-embed "$repository_root/deploy/helm/flow" \
   --set-string embed.tlsSecretName=flow-embed-tls \
   >"$temporary_directory/invalid-embed-open-api-disabled.yaml" 2>/dev/null; then
   printf 'Embed Runtime must require the Open API launch boundary\n' >&2
-  exit 1
-fi
-
-if helm template flow-connector "$repository_root/deploy/helm/flow" \
-  --namespace flow-production \
-  $production_args \
-  --set connector.http.enabled=true \
-  --set connector.http.masterKeyVersion=current-2026-07 \
-  >"$temporary_directory/invalid-connector-egress.yaml" 2>/dev/null; then
-  printf 'HTTP Connector must reject an empty outbound HTTPS CIDR list\n' >&2
-  exit 1
-fi
-
-if helm template flow-connector "$repository_root/deploy/helm/flow" \
-  --namespace flow-production \
-  $production_args \
-  --set connector.http.enabled=true \
-  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32 \
-  >"$temporary_directory/invalid-connector-key-version.yaml" 2>/dev/null; then
-  printf 'HTTP Connector must require a master key version\n' >&2
-  exit 1
-fi
-
-if helm template flow-webhook "$repository_root/deploy/helm/flow" \
-  --namespace flow-production \
-  $production_args \
-  $open_api_args \
-  --set openApi.webhook.enabled=true \
-  --set networkPolicy.outboundHttpsCIDRs[0]=203.0.113.10/32 \
-  >"$temporary_directory/invalid-webhook-hosts.yaml" 2>/dev/null; then
-  printf 'Webhook must reject an empty destination host allowlist\n' >&2
   exit 1
 fi
 
@@ -523,16 +465,6 @@ run_kubeconform_file "$temporary_directory/local.yaml" \
   -summary
 
 run_kubeconform_file "$temporary_directory/open-api.yaml" \
-  -kubernetes-version 1.32.0 \
-  -strict \
-  -summary
-
-run_kubeconform_file "$temporary_directory/webhook.yaml" \
-  -kubernetes-version 1.32.0 \
-  -strict \
-  -summary
-
-run_kubeconform_file "$temporary_directory/connector.yaml" \
   -kubernetes-version 1.32.0 \
   -strict \
   -summary

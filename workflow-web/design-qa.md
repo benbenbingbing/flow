@@ -384,6 +384,10 @@ final result: blocked
 
 # 开放集成能力状态验收
 
+> **历史验收（已被 [ADR-0007](../docs/architecture/decisions/0007-retire-open-process-integration.md) 取代）**：
+> 本节记录的是退役前的 Webhook、Secret、Connector 能力开关行为，不代表当前产品状态；
+> 当前页面只保留集成应用、Client Credential 与 Embed 接入能力。
+
 ## Evidence
 
 - Source visual truth: `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-a373f8d9-6db5-4ec3-8003-11570d78958f.png`

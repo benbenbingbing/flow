@@ -3,7 +3,6 @@ package com.workflow.entity.ui.application;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
-import com.workflow.contracts.integration.spi.IntegrationConnector;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -116,7 +115,6 @@ class UiDataSourceServiceRevisionTest {
                 mock(UiInvocationContextFactory.class),
                 mock(UiDataSourceDefinitionValidator.class),
                 List.<UiDataSourceProvider>of(),
-                List.<IntegrationConnector>of(),
                 new JsonDocumentCodec(new ObjectMapper()),
                 Runnable::run);
         service.setPublishedReferenceGuard(guard);

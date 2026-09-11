@@ -441,6 +441,7 @@ class EntityVersionSingleConfigurationMigrationTest {
                 .placeholderReplacement(false)
                 .baselineOnMigrate(true)
                 .baselineVersion("081")
+                .target("082")
                 .locations("classpath:db/migration")
                 .load();
     }

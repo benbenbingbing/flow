@@ -47,6 +47,7 @@
             type="button"
             class="application-item"
             :class="{ active: application.id === selectedId }"
+            :aria-pressed="application.id === selectedId"
             @click="selectedId = application.id"
           >
             <span class="application-heading">
@@ -76,7 +77,6 @@
         <IntegrationApplicationPanel
           v-if="selectedApplication"
           :application="selectedApplication"
-          :capabilities="capabilities"
           :permissions="userStore.permissions"
           :super-admin="userStore.isSuperAdmin"
           @refresh="loadApplications(true)"
@@ -119,27 +119,6 @@
             :rows="2"
             maxlength="500"
             show-word-limit
-          />
-        </el-form-item>
-        <el-form-item label="权限范围" prop="scopes">
-          <el-select v-model="createForm.scopes" multiple style="width: 100%">
-            <el-option
-              v-for="scope in scopeOptions"
-              :key="scope.value"
-              :label="scope.label"
-              :value="scope.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="允许流程">
-          <el-select
-            v-model="createForm.processKeys"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            style="width: 100%"
-            placeholder="输入已发布流程 Key"
           />
         </el-form-item>
         <div class="form-grid">
@@ -195,13 +174,9 @@ import { useUserStore } from '@/stores/user'
 import { integrationApplicationApi } from '@/api/system/openIntegration'
 import IntegrationApplicationPanel from './open-integration/IntegrationApplicationPanel.vue'
 import OneTimeSecretDialog from './open-integration/OneTimeSecretDialog.vue'
-import { INTEGRATION_SCOPE_OPTIONS } from './open-integration/integrationScopeOptions'
-
-const scopeOptions = INTEGRATION_SCOPE_OPTIONS
 
 const userStore = useUserStore()
 const applications = ref([])
-const capabilities = ref(defaultCapabilities())
 const selectedId = ref('')
 const keyword = ref('')
 const loading = ref(false)
@@ -214,8 +189,7 @@ const secretTitle = ref('')
 const secretFields = ref([])
 const createForm = reactive(defaultCreateForm())
 const createRules = {
-  applicationName: [{ required: true, message: '请输入应用名称', trigger: 'blur' }],
-  scopes: [{ required: true, type: 'array', min: 1, message: '至少选择一个权限范围', trigger: 'change' }]
+  applicationName: [{ required: true, message: '请输入应用名称', trigger: 'blur' }]
 }
 
 const canManage = computed(() => hasPermission('system:integration:manage'))
@@ -243,19 +217,9 @@ function defaultCreateForm() {
     applicationName: '',
     description: '',
     ownerOrganizationId: '',
-    scopes: ['process.definition.read', 'process.instance.start', 'process.instance.read'],
-    processKeys: [],
     rateLimitPerMinute: 60,
     maxConcurrency: 10,
     allowedSourceCidrs: ''
-  }
-}
-
-function defaultCapabilities() {
-  return {
-    openApiEnabled: false,
-    webhookEnabled: false,
-    httpConnectorEnabled: false
   }
 }
 
@@ -263,15 +227,8 @@ async function loadApplications(preserveSelection = false) {
   loading.value = true
   loadError.value = ''
   try {
-    const [applicationRows, capabilityResult] = await Promise.all([
-      integrationApplicationApi.list(),
-      integrationApplicationApi.capabilities().catch(() => null)
-    ])
+    const applicationRows = await integrationApplicationApi.list()
     applications.value = applicationRows || []
-    capabilities.value = {
-      ...defaultCapabilities(),
-      ...(capabilityResult || {})
-    }
     if (!preserveSelection || !applications.value.some(item => item.id === selectedId.value)) {
       selectedId.value = applications.value[0]?.id || ''
     }

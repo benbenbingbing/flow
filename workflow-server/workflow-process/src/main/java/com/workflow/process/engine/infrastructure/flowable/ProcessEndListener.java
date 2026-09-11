@@ -1,8 +1,5 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
-import com.workflow.contracts.entity.mutation.EntityChangeTargetApplyCommand;
-import com.workflow.contracts.entity.mutation.port.EntityChangeTargetPort;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,10 +11,7 @@ import org.flowable.engine.delegate.event.FlowableCancelledEvent;
 import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.runtime.ProcessInstance;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
-
-import java.util.Map;
 
 /**
  * 流程结束监听器。
@@ -34,7 +28,6 @@ import java.util.Map;
 public class ProcessEndListener implements FlowableEventListener {
 
         private final HistoryService historyService;
-        private final ObjectProvider<EntityChangeTargetPort> changeTargetPortProvider;
         private final ProcessStatusSyncPublisher statusSyncPublisher;
 
         @Override
@@ -97,15 +90,6 @@ public class ProcessEndListener implements FlowableEventListener {
                                         "process-end",
                                         processInstanceId,
                                         statusCategory);
-                        if ("COMPLETED".equals(statusCategory)
-                                        && processInstance != null) {
-                                applyChangeTargets(
-                                                processInstance,
-                                                historicInstance,
-                                                entityCode,
-                                                entityDataId,
-                                                idempotencyKey);
-                        }
                         statusSyncPublisher.publishProcessEnd(
                                         processInstanceId,
                                         entityCode,
@@ -141,34 +125,6 @@ public class ProcessEndListener implements FlowableEventListener {
                 return event instanceof FlowableEngineEvent engineEvent
                                 ? engineEvent.getProcessInstanceId()
                                 : null;
-        }
-
-        private void applyChangeTargets(
-                        ProcessInstance processInstance,
-                        HistoricProcessInstance historicInstance,
-                        String entityCode,
-                        String entityDataId,
-                        String processEndIdempotencyKey) {
-                EntityChangeTargetPort port = changeTargetPortProvider.getIfAvailable();
-                if (port == null) {
-                        return;
-                }
-                port.apply(new EntityChangeTargetApplyCommand(
-                                entityCode,
-                                entityDataId,
-                                processInstance.getProcessDefinitionId(),
-                                processInstance.getId(),
-                                null,
-                                historicInstance == null
-                                                ? null
-                                                : historicInstance.getStartUserId(),
-                                null,
-                                EntityMutationSourceType.PROCESS_RUNTIME,
-                                "CHANGE_EFFECTIVE",
-                                "变更审批生效",
-                                processEndIdempotencyKey
-                                                + ":change-targets",
-                                Map.of()));
         }
 
         private String defaultEndStatus(String category) {

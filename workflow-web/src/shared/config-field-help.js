@@ -80,13 +80,13 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'interfaceService.operationConfig':
     '当前操作的静态配置，不是调用时传入的 input。执行时先加载服务基础配置，再用操作配置覆盖同名键；Provider 可从 context.common().operationCode() 读取操作编码。',
   'interfaceService.backendImplementation':
-    '平台注册能力需实现 UiDataSourceProvider、加 @Component，getCode() 返回唯一编码；外部连接需实现 IntegrationConnector，code() 返回连接器编码。',
+    '平台注册能力需实现 UiDataSourceProvider、加 @Component，并由 getCode() 返回唯一编码。',
   'interfaceService.operationInputSchema':
-    '在调用 Provider 或 Connector 前校验当前操作最终收到的 input。支持 type、required、properties、items；填写空对象表示不校验。多操作服务运行时以操作级 Schema 为准。',
+    '在调用 Provider 前校验当前操作最终收到的 input。支持 type、required、properties、items；填写空对象表示不校验。多操作服务运行时以操作级 Schema 为准。',
   'interfaceService.operationOutputSchema':
     '在接口执行后校验最终返回值，缓存命中结果和失败策略产生的回退结果也会校验。事件回填依赖固定结构时应配置；填写空对象表示不校验。',
   'interfaceService.baseConfig':
-    '所有操作共享的静态配置。适合放 Provider 公共参数、字典编码或 Connector 配置编码；某个操作需要不同值时，在操作配置中使用同名键覆盖。',
+    '所有操作共享的静态配置。适合放 Provider 公共参数或字典编码；某个操作需要不同值时，在操作配置中使用同名键覆盖。',
   'interfaceService.baseInputSchema':
     '服务基础定义的输入契约，主要兼容没有操作目录的历史单操作服务。新建多操作服务应在每个操作中配置输入 Schema，操作级空对象表示该操作不校验。',
   'interfaceService.baseOutputSchema':
@@ -141,18 +141,6 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '开启后比较会把同一关联记录的位置变化识别为“移动”；关闭后只比较记录新增、删除和字段变化。',
   'entityVersion.diffIgnoredFields':
     '所选字段仍会固化在版本快照中，但版本比较不会把它们的值变化计入差异，适合更新时间等高频噪声字段。',
-  'entityVersion.phase':
-    '准备和写入前发生在落库前；写入后仍在事务内；提交后发生在事务成功后，适合外部副作用。',
-  'entityVersion.stepType':
-    '选择内置规则、表达式、字段映射、受管理接口或 Java Provider。受管理接口固定在准备阶段执行。',
-  'entityVersion.stepImplementation':
-    'Java Provider 需实现 EntityMutationStepProvider、加 @Component，并由 getCode() 返回唯一编码；受管理接口从“接口服务”中选择。',
-  'entityVersion.resolverType':
-    '决定如何找到需要联动修改的目标记录：从引用字段取 ID、按实体关系查找，或调用受管理的 Java 解析器。',
-  'entityVersion.targetResolver':
-    'Java 解析器需实现 EntityChangeTargetResolver、加 @Component，并由 getCode() 返回唯一编码。',
-  'entityVersion.applyStrategy':
-    '合并只更新映射得到的字段；替换按新结果重建目标内容，未提供字段可能被清除。',
   'embed.application.internalId':
     '填写“开放集成”应用详情中的内部 Application ID。OAuth 换取 Token 使用 Client ID（client_id），二者不能互换。',
   'embed.version.cas':
