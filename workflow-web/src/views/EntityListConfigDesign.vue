@@ -2089,7 +2089,8 @@ function applySavedAction(button, saved) {
     perm: saved.permissionCode || '',
     sort: saved.sortOrder ?? 0,
     enabled: saved.enabled !== false,
-    availabilityRule: availabilityRule || button.availabilityRule || {},
+    // 关系型响应是保存后的权威值；null 表示用户已经显式清空条件。
+    availabilityRule: availabilityRule || null,
     templateId: saved.templateId || null,
     templateVersion: saved.templateVersion || null,
     localOverridesDocument: saved.localOverridesDocument || null

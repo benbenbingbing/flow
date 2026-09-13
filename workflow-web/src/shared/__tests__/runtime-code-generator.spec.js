@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { compileTemplate, parse } from '@vue/compiler-sfc'
 import {
   buildFormDraftRuntimeSnapshot,
   buildListDraftRuntimeSnapshot,
@@ -16,7 +17,7 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
         operationCode: 'initializeForm'
       }
     }),
-    viewConfig: '{"actionBar":{"customButtons":[{"key":"submit"}]}}'
+    viewConfig: '{"actionBar":{"customButtons":[{"key":"submit","placement":"FOOTER"},{"key":"inline_review","placement":"ACTION_SLOT","slotKey":"record_actions"}]}}'
   },
   nodes: [{
     id: 'node-1',
@@ -37,6 +38,14 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
       }
     }),
     _saving: true
+  }, {
+    id: 'node-actions',
+    nodeKey: 'record_actions',
+    nodeType: 'ACTION_SLOT',
+    propsDocument: JSON.stringify({
+      label: '记录操作',
+      gridSpan: 8
+    })
   }],
   eventBindings: [{
     eventCode: 'FORM_SUBMIT',
@@ -44,7 +53,11 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
     stepsDocument: JSON.stringify([{
       strategy: 'BEFORE',
       serviceId: 'service-1',
-      operationCode: 'validateForm'
+      operationCode: 'validateForm',
+      executableSnapshot: JSON.stringify({
+        configDocument: { apiToken: 'server-secret' }
+      }),
+      definitionHash: 'pinned-hash'
     }])
   }]
 })
@@ -61,6 +74,11 @@ assert.equal(
 )
 assert.equal(formSnapshot.nodes[0]._saving, undefined)
 assert.equal(formSnapshot.eventBindings[0].steps.length, 1)
+assert.equal(
+  formSnapshot.eventBindings[0].steps[0].executableSnapshot,
+  undefined,
+  '服务端钉版可执行文档不得进入前端等价代码制品'
+)
 
 const formArtifact = buildRuntimeCodeArtifact({
   configType: 'FORM',
@@ -70,8 +88,60 @@ const formArtifact = buildRuntimeCodeArtifact({
 assert.match(formArtifact.code, /<template>/)
 assert.match(formArtifact.code, /<script setup>/)
 assert.match(formArtifact.code, /FormNodeRenderer/)
+assert.match(formArtifact.code, /#\[`action-\$\{slotKey\}`\]/)
+assert.match(formArtifact.code, /:actions="slotActions\(slotKey\)"/)
+assert.match(formArtifact.code, /:actions="footerActions"/)
+assert.doesNotMatch(formArtifact.code, /:actions="formActions"/)
+assert.match(formArtifact.code, /String\(action\.placement \|\| ''\).*ACTION_SLOT/s)
 assert.match(formArtifact.code, /FORM_BUTTON_CLICK/)
+const parsedFormArtifact = parse(formArtifact.code, {
+  filename: 'GeneratedFormRuntime.vue'
+})
+assert.deepEqual(parsedFormArtifact.errors, [])
+const compiledFormTemplate = compileTemplate({
+  id: 'generated-form-runtime',
+  filename: 'GeneratedFormRuntime.vue',
+  source: parsedFormArtifact.descriptor.template.content
+})
+assert.deepEqual(compiledFormTemplate.errors, [])
+assert.match(
+  formArtifact.code,
+  /const targetKey = action\.key \|\| action\.buttonKey/
+)
+assert.match(
+  formArtifact.code,
+  /const loadingKey = action\.runtimeKey \|\| targetKey/
+)
+assert.match(formArtifact.code, /function createFormActionRequestId\(\)/)
+assert.match(formArtifact.code, /const requestId = createFormActionRequestId\(\)/)
+assert.match(formArtifact.code, /\n\s+requestId,/)
+assert.match(formArtifact.code, /targetKey: String\(targetKey\)/)
+assert.match(
+  formArtifact.code,
+  /const recordId = computed\(\(\) => String\(props\.recordId \|\| formData\.id/
+)
+assert.match(
+  formArtifact.code,
+  /const mode = computed\(\(\) => props\.mode \|\| \(recordId\.value \? 'edit' : 'create'\)\)/
+)
+assert.match(formArtifact.code, /recordId: recordId\.value \|\| undefined/)
+assert.match(formArtifact.code, /taskId: props\.taskId \|\| undefined/)
+assert.match(formArtifact.code, /releaseId: props\.releaseId \|\| formDefinition\.runtimeReleaseId/)
+assert.match(formArtifact.code, /releaseVersion: props\.releaseVersion/)
+assert.match(formArtifact.code, /releaseResolutionToken:/)
+assert.match(formArtifact.code, /props\.releaseResolutionToken/)
+assert.match(formArtifact.code, /input: \{\s+mode: mode\.value,/)
+assert.equal(formArtifact.code.includes('button: action'), false)
+assert.doesNotMatch(
+  formArtifact.code,
+  /input: \{\s+mode: mode\.value,\s+recordId:/
+)
+assert.match(formArtifact.code, /context: \{\}/)
+assert.equal(formArtifact.code.includes('context: runtimeContext.value'), false)
+assert.match(formArtifact.code, /if \(action\.type === 'built-in'\) return/)
+assert.doesNotMatch(formArtifact.code, /targetKey: String\(actionKey\)/)
 assert.doesNotMatch(formArtifact.code, /as const/)
+assert.doesNotMatch(formArtifact.json, /server-secret|configDocument/)
 assert.ok(formArtifact.logicItems.some(item =>
   item.category === '规则' && item.name === '项目'
 ))
@@ -144,6 +214,9 @@ assert.match(listArtifact.code, /<template>/)
 assert.match(listArtifact.code, /EntityDataSearchForm/)
 assert.match(listArtifact.code, /entityListRuntimeApi\.query/)
 assert.match(listArtifact.code, /ROW_BUTTON_CLICK/)
+assert.match(listArtifact.code, /selectedIds: selectedRows\.value\.map/)
+assert.match(listArtifact.code, /releaseResolutionToken:/)
+assert.doesNotMatch(listArtifact.code, /input: \{ button, row, selectedRows:/)
 assert.match(
   listArtifact.code,
   /type="selection"\s+width="50"\s+fixed="left"/

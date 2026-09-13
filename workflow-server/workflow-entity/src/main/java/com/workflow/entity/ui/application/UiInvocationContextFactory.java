@@ -6,6 +6,7 @@ import com.workflow.contracts.ui.EntityInvocationContext;
 import com.workflow.contracts.ui.FormInvocationContext;
 import com.workflow.contracts.ui.ListInvocationContext;
 import com.workflow.contracts.ui.UiInvocationContext;
+import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -73,13 +74,14 @@ public class UiInvocationContextFactory {
                 authorization.user().getDeptId(),
                 authorization.releaseId(),
                 authorization.releaseVersion(),
-                UUID.randomUUID().toString());
+                providerRequestId(authorization));
 
         return switch (definition.getOperationContextType()) {
             case "FORM" -> formContext(
                     common,
                     descriptor,
                     authorization,
+                    request,
                     input);
             case "LIST" -> listContext(
                     common,
@@ -102,6 +104,7 @@ public class UiInvocationContextFactory {
             CommonInvocationContext common,
             EntityDescriptor entity,
             UiDataSourceExecutionAuthorization authorization,
+            UiDataSourceExecuteRequest request,
             Map<String, Object> input) {
         EntityForm form = formMapper.selectById(authorization.configId());
         if (form == null) {
@@ -111,15 +114,30 @@ public class UiInvocationContextFactory {
                 input.get("parent"));
         Map<String, Object> row = objectMap(
                 input.get("row"));
+        boolean trustedFormButton = UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                normalize(authorization.usage()));
+        if (trustedFormButton && (request == null
+                || !StringUtils.hasText(request.getServerFormMode()))) {
+            throw new IllegalStateException(
+                    "表单按钮 Provider 上下文缺少已验证运行模式");
+        }
         return new FormInvocationContext(
                 common,
                 entity,
                 form.getId(),
                 form.getFormKey(),
                 form.getFormName(),
-                firstText(input.get("mode"), "view"),
-                text(input.get("recordId")),
-                firstText(common.targetKey(), input.get("fieldCode")),
+                trustedFormButton
+                        ? request.getServerFormMode()
+                        : firstText(input.get("mode"), "view"),
+                trustedFormButton
+                        ? request.getServerRecordId()
+                        : text(input.get("recordId")),
+                trustedFormButton
+                        ? null
+                        : firstText(
+                                common.targetKey(),
+                                input.get("fieldCode")),
                 firstText(
                         input.get("parentRecordId"),
                         parent.get("recordId")),
@@ -127,7 +145,11 @@ public class UiInvocationContextFactory {
                         input.get("rowKey"),
                         row.get("key"),
                         row.get("id"),
-                        row.get("index")));
+                        row.get("index")),
+                trustedFormButton && request != null
+                        ? request.getServerTaskId() : null,
+                trustedFormButton && request != null
+                        ? request.getServerProcessInstanceId() : null);
     }
 
     private ListInvocationContext listContext(
@@ -160,6 +182,19 @@ public class UiInvocationContextFactory {
     private String normalizedOwnerType(String value) {
         String normalized = normalize(value);
         return normalized.startsWith("ENTITY") ? "ENTITY" : normalized;
+    }
+
+    /**
+     * 表单按钮的客户端 requestId 不能直接进入 Provider；运行时只下传服务端
+     * 绑定租户、用户、发布和按钮身份后生成的可信种子，保证重试可稳定识别。
+     */
+    private String providerRequestId(
+            UiDataSourceExecutionAuthorization authorization) {
+        return UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                normalize(authorization.usage()))
+                && StringUtils.hasText(authorization.idempotencySeed())
+                ? authorization.idempotencySeed()
+                : UUID.randomUUID().toString();
     }
 
     private Integer firstInteger(Object... values) {

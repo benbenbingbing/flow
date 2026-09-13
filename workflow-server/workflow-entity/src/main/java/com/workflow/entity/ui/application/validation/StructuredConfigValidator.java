@@ -68,4 +68,15 @@ public class StructuredConfigValidator {
                 ? codec.read(json, label)
                 : null;
     }
+
+    /**
+     * 将已校验、可能已规范化的配置对象重新写回 JSON 文档。
+     *
+     * @param value 配置对象
+     * @param label 配置项名称
+     * @return JSON 文档
+     */
+    public String writeJson(Object value, String label) {
+        return codec.write(value, label);
+    }
 }

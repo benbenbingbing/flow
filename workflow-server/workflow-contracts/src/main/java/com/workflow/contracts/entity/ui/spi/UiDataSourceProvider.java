@@ -44,6 +44,11 @@ public interface UiDataSourceProvider {
     /**
      * 在数据范围计划约束下执行数据源查询。
      *
+     * <p>当该 SPI 用于 {@code FORM_BUTTON_CLICK} 的 READ 路径时必须保持无外部
+     * 副作用：只能读取、校验和计算 UI 返回值。表单按钮的实体写入应交给平台默认
+     * 处理或受控命令计划；外部通知或集成调用应在业务事务中只写入最小化 Outbox
+     * 事件，再异步投递。其他既有 WRITE 用法的契约不由本约束改变。</p>
+     *
      * @param context UI 数据源上下文
      * @param dataScopePlan 数据范围查询计划
      * @param configuration 数据源配置

@@ -51,8 +51,8 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^openListForm\\.',
     '^row\\.(customHandler|customMode|enabled|key|label|perm|sort|type)$'
   ]),
-  source('src/components/ActionRuleEditorDialog.vue', '实体配置', '按钮适用条件', [
-    '^rule\\.(unavailableBehavior|message)$'
+  source('src/components/ActionRuleEditorPanel.vue', '实体配置', '按钮适用条件', [
+    '^rule\\.disabledMessage$'
   ]),
   source('src/components/ActionRuleGroupEditor.vue', '实体配置', '按钮适用条件', [
     '^node\\.logic$',
@@ -176,8 +176,8 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
   'src/components/ListButtonConfigPanel.vue': [
     '^advancedDialogVisible$', '^openListDialogVisible$', '^buttonEventDialogVisible$'
   ],
-  'src/components/ActionRuleEditorDialog.vue': [
-    '^visible$', '^preset$'
+  'src/components/ActionRuleEditorPanel.vue': [
+    '^(visiblePreset|enabledPreset)$'
   ],
   'src/views/EntityFormList.vue': [
     '^dialogVisible$', '^previewVisible$'
@@ -371,15 +371,6 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   },
   {
     domain: '实体配置',
-    area: '按钮条件不满足策略',
-    source: 'src/components/ActionRuleEditorDialog.vue',
-    values: [
-      ['HIDE', '隐藏按钮', '条件不满足时按钮完全不展示。'],
-      ['DISABLE', '禁用并说明', '按钮保留但不可点击，并展示配置的禁用原因。']
-    ]
-  },
-  {
-    domain: '实体配置',
     area: '表单运行模式',
     source: 'src/shared/form-actions.js',
     values: [
@@ -412,22 +403,41 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   },
   {
     domain: '实体配置',
-    area: '统一事件继承方式',
+    area: '统一事件继承方式（非按钮目标）',
     source: 'src/components/ui-config/EventBindingEditor.vue',
     values: [
-      ['INHERIT', '继承并追加', '保留上级或平台处理，并按步骤位置合并当前事件链。'],
+      ['INHERIT', '继承并追加', '保留上级自定义步骤，并按步骤位置合并当前事件链。'],
       ['REPLACE', '替换上级', '当前层自定义链替换上级自定义链；平台处理是否被替代由步骤策略决定。'],
-      ['DISABLE', '禁用自定义', '当前层不执行自定义步骤，只保留平台默认处理。']
+      ['DISABLE', '禁用自定义', '清空截至当前层的自定义步骤；有平台默认动作的事件回到平台处理，下级精确目标仍可重新配置步骤。']
     ]
   },
   {
     domain: '实体配置',
-    area: '统一事件步骤位置',
+    area: '表单按钮 BUTTON 目标继承方式',
+    source: 'src/components/ui-config/EventBindingEditor.vue',
+    values: [
+      ['INHERIT', '继承并追加', '保留上级 FORM_BUTTON_CLICK 自定义步骤，并追加当前按钮步骤。'],
+      ['REPLACE', '仅使用当前层', '清除上级自定义步骤，只使用当前 BUTTON 目标的步骤；不表示替代平台动作。需停用按钮时应关闭按钮的启用开关。']
+    ]
+  },
+  {
+    domain: '实体配置',
+    area: '统一事件步骤位置（有平台默认动作）',
     source: 'src/components/ui-config/EventBindingEditor.vue',
     values: [
       ['BEFORE', '前置', '在平台默认处理前执行接口或字段映射。'],
       ['REPLACE', '替代平台处理', '用一个替代步骤取代平台默认处理；同一事件链最多保留一个。'],
       ['AFTER', '后置', '平台默认处理成功后再执行接口或字段映射。']
+    ]
+  },
+  {
+    domain: '实体配置',
+    area: '表单自定义按钮处理阶段',
+    source: 'src/components/ui-config/EventBindingEditor.vue',
+    values: [
+      ['BEFORE', '前置处理', '在表单按钮主处理前执行，用于校验、补充参数或转换输入。'],
+      ['REPLACE', '主处理', 'FORM_BUTTON_CLICK 没有平台默认动作；REPLACE 在此表示无条件主处理，最终有效链必须恰好包含一个。'],
+      ['AFTER', '后置处理', '在表单按钮主处理成功后执行，可读取主处理结果。']
     ]
   },
   {
@@ -825,12 +835,13 @@ const ENUM_LOCATION_BY_AREA = Object.freeze({
   '数据权限条件逻辑': '实体配置-实体-设计-数据权限-规则编辑',
   '列表数据范围模式': '实体配置-列表-编辑-列表设置-访问范围',
   '列表选择模式': '实体配置-列表-编辑-列表设置-选择行为',
-  '按钮条件不满足策略': '实体配置-列表或表单-按钮配置-适用条件',
   '表单运行模式': '实体配置-表单-编辑-表单设置-按钮与操作',
   '表单内置按钮': '实体配置-表单-编辑-表单设置-按钮与操作',
   '表单与列表发布方式': '实体配置-表单或列表-编辑-发布',
-  '统一事件继承方式': '实体配置或流程配置-对应设计器-事件绑定',
-  '统一事件步骤位置': '实体配置或流程配置-对应设计器-事件绑定-步骤配置',
+  '统一事件继承方式（非按钮目标）': '实体配置或流程配置-对应设计器-事件绑定',
+  '表单按钮 BUTTON 目标继承方式': '实体配置-表单-编辑-按钮与操作-事件绑定',
+  '统一事件步骤位置（有平台默认动作）': '实体配置或流程配置-对应设计器-事件绑定-步骤配置',
+  '表单自定义按钮处理阶段': '实体配置-表单-编辑-按钮与操作-事件绑定-步骤配置',
   '统一事件失败策略': '实体配置或流程配置-对应设计器-事件绑定-步骤配置',
   '用户任务办理人方式': '流程配置-流程-设计-用户任务属性-常用-执行人与多人办理',
   '服务任务实现方式': '流程配置-流程-设计-服务任务属性-常用-服务调用',
@@ -1018,14 +1029,20 @@ export const STRUCTURED_CONFIGURATIONS = Object.freeze([
     ['builtInOverrides.*.sort', '内置按钮顺序', 35, '按钮在底部操作栏按顺序值排列。'],
     ['builtInOverrides.*.buttonType', '内置按钮样式', 'primary', '只改变按钮视觉层级，不改变权限和动作语义。'],
     ['builtInOverrides.*.enabledModes', '内置按钮适用模式', '["edit"]', '按钮只在内置允许范围与配置模式交集内显示。'],
-    ['builtInOverrides.*.availabilityRule', '内置按钮适用条件', '{"root":{"type":"GROUP","logic":"AND","children":[]}}', '服务端重新校验条件，不满足时隐藏或禁用。'],
-    ['customButtons[].availabilityRule', '自定义按钮适用条件', '{"unavailableBehavior":"DISABLE"}', '条件不满足时按配置隐藏或禁用并给出原因。'],
-    ['customButtons[].eventBinding', '自定义按钮事件绑定', '{"eventCode":"FORM_BUTTON_CLICK"}', '点击时执行受管理 FORM_BUTTON_CLICK 接口链，不能执行任意脚本或 URL。']
+    ['builtInOverrides.*.availabilityRule', '内置按钮显示与启用条件', '{"version":2,"visibleWhen":{"type":"RELATION","relation":"CURRENT_USER_IS_CREATOR"},"enabledWhen":null}', '服务端先校验显示条件，再校验启用条件。'],
+    ['customButtons[].buttonAppearance', '自定义按钮外观', 'ROUND', '四种外观互斥；运行时仅启用对应的 Element Plus plain、round 或 circle 属性。'],
+    ['customButtons[].availabilityRule', '自定义按钮显示与启用条件', '{"version":2,"visibleWhen":null,"enabledWhen":{"type":"STATUS_CODE","operator":"EQ","value":"DRAFT"},"disabledMessage":"仅草稿可操作"}', '显示条件不满足时隐藏，启用条件不满足时禁用并给出原因。'],
+    ['customButtons[].eventBinding', '自定义按钮事件绑定', '{"eventCode":"FORM_BUTTON_CLICK"}', '点击时按前置处理、唯一且无条件的主处理（底层 REPLACE）、后置处理执行受管理的无副作用 READ 链；自定义按钮没有平台默认动作。']
   ].map(([binding, label, example, expectedEffect], index) => structured({
     id: `structured-action-bar-${index}`,
     domain: '实体配置',
     area: '表单操作栏结构',
     label,
+    location: binding === 'customButtons[].availabilityRule'
+      ? '实体配置-表单-编辑-表单设置-按钮与操作-自定义按钮-更多设置-显示与启用条件'
+      : binding === 'customButtons[].buttonAppearance'
+        ? '实体配置-表单-编辑-表单设置-按钮与操作-自定义按钮-更多设置-基础设置'
+        : undefined,
     binding: `actionBar.${binding}`,
     meaning: `配置${label}。`,
     configureWhen: `平台默认按钮不能满足当前表单的${label}需求时配置。`,
@@ -1044,7 +1061,7 @@ export const STRUCTURED_CONFIGURATIONS = Object.freeze([
     ['templateVersion', '列表按钮模板版本', 2, '运行时使用锁定的模板版本。'],
     ['localOverridesDocument', '列表按钮模板本地覆盖', '{"buttonLabel":"导出明细"}', '只覆盖允许的模板字段，未覆盖项继续继承模板快照。'],
     ['actionParams', '列表按钮动作参数', '{"targetListKey":"project_picker"}', '内置或打开列表动作按结构化参数执行。'],
-    ['availabilityRule', '列表按钮适用条件', '{"unavailableBehavior":"HIDE"}', '服务端按记录、用户、状态和流程条件重新校验按钮。']
+    ['availabilityRule', '列表按钮显示与启用条件', '{"version":2,"visibleWhen":{"type":"STATUS_CODE","operator":"EQ","value":"DRAFT"},"enabledWhen":null}', '服务端按显示优先、启用其次的顺序重新校验按钮。']
   ].map(([key, label, example, expectedEffect]) => structured({
     id: `structured-list-action-${key}`,
     domain: '实体配置',
@@ -1145,8 +1162,8 @@ const KEY_GUIDANCE = Object.freeze({
   failurePolicy: ['设置扩展步骤失败后的处理策略。', 'STOP', '决定停止主操作、继续后续步骤或返回空结果。'],
   maxRetries: ['设置流程动作失败后的最大重试次数。', 3, '可重试失败在达到次数前继续调度。'],
   eventCode: ['选择表单或列表的标准事件。', 'ENTITY_SELECTED', '事件发生时按当前发布版本执行绑定步骤。'],
-  inheritanceMode: ['设置事件绑定继承和覆盖方式。', 'MERGE', '决定当前配置与实体、模板或平台默认绑定如何合并。'],
-  strategy: ['设置事件步骤位于默认逻辑之前、替换或之后。', 'AFTER', '步骤按 BEFORE、REPLACE、AFTER 的顺序编排。'],
+  inheritanceMode: ['设置事件绑定如何继承上级自定义步骤。', 'INHERIT', 'BUTTON 目标的 REPLACE 显示为“仅使用当前层”，只覆盖上级自定义链；停用按钮应使用按钮启用开关。'],
+  strategy: ['设置事件步骤位于主处理或平台默认动作之前、中间或之后。', 'REPLACE', 'FORM_BUTTON_CLICK 将 BEFORE、REPLACE、AFTER 显示为“前置处理、主处理、后置处理”，且最终有效链必须恰好一个无执行条件的主处理；其他事件的 REPLACE 仍替代平台默认处理。'],
   serviceId: ['选择受管理接口服务。', '10001', '事件执行时调用该服务，权限和输入输出由服务定义约束。'],
   operationCode: ['选择接口服务中的操作。', 'resolveProject', '事件步骤执行该具体操作。'],
   calendarCode: ['设置工作日历稳定编码。', 'CN_STANDARD', 'SLA 和流程配置通过编码引用该日历。'],
@@ -1215,7 +1232,7 @@ const KEY_GUIDANCE = Object.freeze({
   recipientConfigJson: ['配置 SLA 通知或知会的接收人和渠道。', '{"includeAssignee":true,"channels":["IN_APP"]}', '升级动作按配置解析接收人并通过指定渠道发送。'],
   conditionOperator: ['选择事件步骤条件比较值、包含、为空等运算方式。', 'equals', '只有当前上下文值与配置值按该运算符比较为真时才执行步骤。'],
   conditionBoolean: ['设置事件步骤布尔条件期望为真还是为假。', true, '当来源值与该布尔值一致时步骤才执行。'],
-  unavailableBehavior: ['设置按钮适用条件不满足时隐藏，还是保留为禁用状态并说明原因。', 'DISABLE', '运行时按策略移除按钮或返回禁用原因，服务端仍会拒绝越权执行。'],
+  disabledMessage: ['设置按钮启用条件不满足时的禁用原因。', '仅本人未流转草稿可以删除', '按钮保持可见但不可点击，并向用户展示该原因；隐藏条件不使用此提示。'],
   relation: ['选择当前用户与记录或流程之间必须满足的关系。', 'CURRENT_USER_IS_CREATOR', '只有当前用户满足创建人、提交人或办理人关系时条件成立。'],
   modes: ['选择自定义表单按钮出现的新增、编辑、查看或审批模式。', ['view', 'edit'], '按钮只在发布配置允许且当前运行模式命中的表单中显示。'],
   placement: ['选择自定义表单按钮放在底部操作栏还是指定动作插槽。', 'FOOTER', '底部按钮进入统一操作栏；插槽按钮渲染到引用的 ACTION_SLOT。'],
@@ -1223,6 +1240,7 @@ const KEY_GUIDANCE = Object.freeze({
   sort: ['设置同一操作栏内按钮的显示顺序值。', 50, '按钮按顺序值从小到大排列，稳定键用于处理同值顺序。'],
   icon: ['选择按钮前显示的已注册 Element Plus 图标。', 'Document', '运行时在按钮名称前显示该图标；留空时只显示文字。'],
   buttonType: ['设置按钮默认、主要、成功、警告或危险视觉层级。', 'primary', '只改变视觉强调，不改变按钮动作、权限或确认策略。'],
+  buttonAppearance: ['选择按钮默认、朴素、圆角或圆形外观；四种外观互斥。', 'ROUND', '运行时仅映射对应的 Element Plus plain、round 或 circle 属性；不改变按钮类型、权限、事件或条件。'],
   validateBeforeExecute: ['决定自定义表单按钮执行事件前是否先校验当前表单。', true, '开启后必填或格式校验失败会阻止 FORM_BUTTON_CLICK 事件。'],
   mappingText: ['配置来源数据字段到当前记录或目标记录字段的映射。', '{"projectName":"name","projectCode":"code"}', '运行时只回写映射目标，未映射字段保持原值或由应用策略处理。'],
   usage: ['选择表单数据源在新增初始化、加载后处理还是提交前处理阶段执行。', 'BEFORE_SUBMIT', '运行时只在所选阶段调用数据源，并应用对应输入输出映射。'],
@@ -1600,11 +1618,11 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: 'DRAFT',
     expectedEffect: '记录字段或流程状态与 DRAFT 比较，结果参与按钮隐藏或禁用判断。'
   },
-  'src/components/ActionRuleEditorDialog.vue:rule.message': {
-    label: '按钮不可用原因',
-    meaning: '设置适用条件不成立且选择“禁用并说明”时向用户展示的原因。',
+  'src/components/ActionRuleEditorPanel.vue:rule.disabledMessage': {
+    label: '按钮禁用提示',
+    meaning: '设置启用条件不成立时向用户展示的禁用原因。',
     example: '仅本人未流转草稿可以删除',
-    expectedEffect: '按钮保留但禁用，悬停或操作提示中展示该原因；选择“隐藏按钮”时不显示。'
+    expectedEffect: '按钮在显示条件通过后保留但禁用，并在悬停或操作提示中展示该原因。'
   },
   'src/views/EntityFormDesignByEntity.vue:selectedField.isHidden': {
     label: '默认隐藏',
@@ -1862,6 +1880,12 @@ const CONTROL_OVERRIDES = Object.freeze({
     meaning: '设置自定义按钮开启二次确认后，执行事件链前显示的确认文案。',
     example: '确认生成报告？',
     expectedEffect: '用户确认后才继续校验和执行事件；取消确认不会触发按钮事件。'
+  },
+  'src/components/FormButtonConfigPanel.vue:advancedButton.buttonAppearance': {
+    label: '按钮外观',
+    meaning: '选择自定义按钮的默认、朴素、圆角或圆形外观；四种外观互斥。',
+    example: 'ROUND',
+    expectedEffect: '运行时只启用对应的 Element Plus 外观属性；不会改变按钮类型、权限、事件或显示与启用条件。'
   },
   'src/components/LinkageConfigPanel.vue:config.visibilityEnabled': {
     label: '启用显示条件'

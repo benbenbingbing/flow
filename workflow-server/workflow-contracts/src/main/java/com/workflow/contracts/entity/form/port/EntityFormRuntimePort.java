@@ -3,6 +3,7 @@ package com.workflow.contracts.entity.form.port;
 import com.workflow.contracts.entity.EntityFormBinding;
 import com.workflow.contracts.entity.EntityFormRuntimeContext;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 
 import java.util.Map;
 import java.util.Optional;
@@ -22,6 +23,21 @@ public interface EntityFormRuntimePort {
             EntityFormBinding binding,
             String processVersionHistoryId,
             UiRuntimePurpose purpose);
+
+    /**
+     * 使用可包含确切 ACTIVE_TASK 主体的可信上下文解析表单。
+     * 默认实现保留旧适配器兼容；实体模块实现应保留全部主体字段用于签发令牌。
+     */
+    default Map<String, Object> findFormByBinding(
+            EntityFormBinding binding,
+            UiRuntimeResolutionContext context) {
+        return findFormByBinding(
+                binding,
+                context == null ? null
+                        : context.processVersionHistoryId(),
+                context == null ? UiRuntimePurpose.HISTORICAL
+                        : context.purpose());
+    }
 
     void requireCurrentBindingForNewData(
             EntityFormBinding binding,

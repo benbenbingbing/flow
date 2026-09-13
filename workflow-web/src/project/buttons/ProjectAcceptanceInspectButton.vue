@@ -2,6 +2,8 @@
   <el-button
     :link="mode === 'row'"
     :type="mode === 'row' ? 'primary' : 'default'"
+    :disabled="disabled"
+    :title="reason"
     @click="inspect"
   >
     <el-icon><View /></el-icon>
@@ -16,10 +18,16 @@ import { View } from '@element-plus/icons-vue'
 const props = defineProps({
   mode: { type: String, default: 'toolbar' },
   row: { type: Object, default: null },
+  disabled: { type: Boolean, default: false },
+  reason: { type: String, default: '' },
   context: { type: Object, default: () => ({}) }
 })
 
 function inspect() {
+  if (props.disabled) {
+    ElMessage.warning(props.reason || '当前数据不可操作')
+    return
+  }
   const selectedCount = props.context.selectedRows?.length || 0
   const identity = props.row?.dataNo
     || props.row?.code

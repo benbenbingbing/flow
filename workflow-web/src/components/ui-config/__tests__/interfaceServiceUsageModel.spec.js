@@ -13,10 +13,12 @@ import {
   formatEffectiveContexts,
   groupInterfaceServiceReferences,
   inheritanceSourceLabel,
+  inheritanceModeLabel,
   interfaceServiceReferenceLifecycleOptions,
   isEffectiveChainAvailable,
   normalizeInterfaceServiceReference,
-  omitInterfaceServiceReferenceCache
+  omitInterfaceServiceReferenceCache,
+  stepStrategyLabel
 } from '../interfaceServiceUsageModel.js'
 
 const services = [
@@ -161,6 +163,38 @@ test('最终生效链按执行位置排列并解释继承来源', () => {
   }), false)
 })
 
+test('表单自定义按钮使用主处理语义且不虚构平台默认动作', () => {
+  const formButtonContext = {
+    eventCode: 'FORM_BUTTON_CLICK',
+    targetType: 'BUTTON',
+    activeReleasePresent: true,
+    publicationStatus: 'PUBLISHED_MATCH',
+    effectiveChain: [
+      { stepName: '参数校验', stepStrategy: 'BEFORE', stepOrder: 10 },
+      { stepName: '发起业务操作', stepStrategy: 'REPLACE', stepOrder: 20 },
+      { stepName: '刷新表单', stepStrategy: 'AFTER', stepOrder: 30 }
+    ]
+  }
+
+  assert.equal(stepStrategyLabel('REPLACE', formButtonContext), '主处理')
+  assert.equal(inheritanceModeLabel('REPLACE', formButtonContext), '仅使用当前层')
+  assert.deepEqual(
+    buildEffectiveChainItems(formButtonContext).map(item => item.label),
+    ['参数校验', '发起业务操作', '刷新表单']
+  )
+  assert.deepEqual(
+    buildEffectiveChainItems({ ...formButtonContext, effectiveChain: [] }),
+    []
+  )
+
+  // 其他事件继续沿用“替代平台处理/替换上级”的通用语义。
+  assert.equal(stepStrategyLabel('REPLACE', 'FORM_SAVE'), '替代平台处理')
+  assert.equal(inheritanceModeLabel('REPLACE', {
+    eventCode: 'TOOLBAR_BUTTON_CLICK',
+    targetType: 'BUTTON'
+  }), '替换上级')
+})
+
 test('列表和实体引用深链保留定位参数', () => {
   assert.equal(buildInterfaceServiceReferenceRoute({
     ownerType: 'LIST', ownerId: 41, bindingId: 201, eventCode: 'LIST_LOAD'
@@ -223,6 +257,9 @@ test('接口服务页只读展示使用情况，不再嵌入事件编辑器', ()
   assert.match(panelSource, /selectedServiceFailed/)
   assert.match(panelSource, /无法判断该服务是否存在引用/)
   assert.match(panelSource, /omitInterfaceServiceReferenceCache/)
+  assert.match(panelSource, /buildEffectiveChainItems\(context, row\.eventCode\)/)
+  assert.match(panelSource, /stepStrategyLabel\(row\.stepStrategy, row\.eventCode\)/)
+  assert.match(panelSource, /inheritanceModeLabel\(row\.inheritanceMode, row\)/)
   assert.doesNotMatch(panelSource, /\[String\(service\.id\)\]: \[\]/)
   assert.match(panelSource, /具体事件仍需在设计器中选择/)
   assert.match(editorSource, /v-if="editor\.id"/)

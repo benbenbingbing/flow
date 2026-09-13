@@ -593,7 +593,7 @@ final class EntityFormNodePropertyPolicy {
         result.put("FIELD", FIELD_PROPS);
         result.put("SUB_FORM", SUB_FORM_PROPS);
         result.put("REPEATER", SUB_FORM_PROPS);
-        result.put("ACTION_SLOT", Set.of("label"));
+        result.put("ACTION_SLOT", Set.of("label", "gridSpan"));
         return Map.copyOf(result);
     }
 
@@ -635,6 +635,9 @@ final class EntityFormNodePropertyPolicy {
             case "FIELD" -> validateFieldProps(props);
             case "SUB_FORM", "REPEATER" ->
                     validateSubFormProps(nodeType, props);
+            // 动作插槽与字段共享 24 栅格布局，但不携带任何字段绑定属性。
+            case "ACTION_SLOT" ->
+                    requireIntegerRange(props, "gridSpan", 1, 24);
             default -> {
             }
         }

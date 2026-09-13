@@ -2,8 +2,10 @@ package com.workflow.entity.data.application;
 
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.EntityFormReleaseContext;
+import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionActionService;
@@ -88,6 +90,7 @@ public class EntityDataActionService {
     private final EntityListPublishedRuntimeService publishedListRuntimeService;
     private final EntityActionCapabilityService capabilityService;
     private final EntityListScopeAuditService scopeAuditService;
+    private final EntityFormActionService formActionService;
     private final PublishedFormSubmissionService formSubmissionService;
     private final FormSubmissionTraceService formSubmissionTraceService;
     private final UiEventRuntimeService eventRuntimeService;
@@ -351,6 +354,13 @@ public class EntityDataActionService {
                         dto.getFormReleaseId(),
                         dto.getFormReleaseVersion(),
                         dto.getFormReleaseResolutionToken()));
+        requireFormMutationAction(
+                origin,
+                dto.getEntityCode(),
+                dto.getListKey(),
+                null,
+                "create",
+                actionKey(dto.getStartProcess()));
         if (origin == null) {
             AppliedSubmissionForm applied = applySubmissionForm(
                     null,
@@ -390,6 +400,14 @@ public class EntityDataActionService {
                                 Boolean.valueOf(String.valueOf(
                                         input.get("startProcess"))));
                     }
+                    // 发布事件可调整 startProcess；真正写入前必须按最终动作再次鉴权。
+                    requireFormMutationAction(
+                            origin,
+                            dto.getEntityCode(),
+                            dto.getListKey(),
+                            null,
+                            "create",
+                            actionKey(dto.getStartProcess()));
                     return mutateCreate(
                             dto,
                             applied.origin(),
@@ -485,6 +503,14 @@ public class EntityDataActionService {
                 config,
                 text(formData == null ? null : formData.get("formId")),
                 formReleaseContext(formData));
+        requireFormMutationAction(
+                origin,
+                entityCode,
+                effectiveListKey,
+                id,
+                "edit",
+                actionKey(formData == null
+                        ? null : formData.get("startProcess")));
         if (origin == null) {
             return updateDefault(
                     entityCode,
@@ -525,6 +551,15 @@ public class EntityDataActionService {
                                 "startProcess",
                                 input.get("startProcess"));
                     }
+                    // 发布事件可调整最终动作，不能沿用事件执行前的按钮判断。
+                    requireFormMutationAction(
+                            origin,
+                            entityCode,
+                            effectiveListKey,
+                            id,
+                            "edit",
+                            actionKey(updateRequest.get(
+                                    "startProcess")));
                     return mutateUpdate(
                             entityCode,
                             id,
@@ -1144,6 +1179,39 @@ public class EntityDataActionService {
             }
         }
         return listEventOrigin(list);
+    }
+
+    /**
+     * 表单保存类动作必须与后续提交处理使用同一固定发布坐标，并在写入前
+     * 重新执行对应内置按钮的显示、启用和权限判断。
+     */
+    private void requireFormMutationAction(
+            EventOrigin origin,
+            String entityCode,
+            String listKey,
+            String recordId,
+            String mode,
+            String actionKey) {
+        if (origin == null || !"FORM".equals(origin.configType())) {
+            return;
+        }
+        FormActionResolveRequest request = new FormActionResolveRequest();
+        request.setFormId(origin.configId());
+        request.setReleaseId(origin.releaseId());
+        request.setReleaseVersion(origin.releaseVersion());
+        request.setReleaseResolutionToken(
+                origin.releaseResolutionToken());
+        request.setEntityCode(entityCode);
+        request.setListKey(listKey);
+        request.setMode(mode);
+        request.setRecordId(recordId);
+        formActionService.requireBuiltInMutationAction(
+                request, actionKey);
+    }
+
+    private String actionKey(Object startProcess) {
+        return Boolean.parseBoolean(String.valueOf(startProcess))
+                ? "saveAndStart" : "save";
     }
 
     private EventOrigin listEventOrigin(EntityListConfig list) {

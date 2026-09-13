@@ -229,6 +229,7 @@ import {
 } from '@/shared/entity-selection-mapping'
 import {
   normalizeRecordSelection,
+  refreshRecordPageSelection,
   reconcileRecordPageSelection,
   recordSelectionIds,
   recordSelectionValues,
@@ -591,6 +592,10 @@ async function restoreCurrentPageSelection() {
   if (!props.multiple || !tableRef.value) return
   restoringPageSelection.value = true
   await nextTick()
+  selectedRows.value = refreshRecordPageSelection(
+    selectedRows.value,
+    tableData.value
+  )
   tableRef.value.clearSelection()
   const selectedIds = new Set(recordSelectionIds(selectedRows.value))
   tableData.value.forEach(row => {

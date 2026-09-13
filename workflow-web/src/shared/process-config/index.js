@@ -821,11 +821,32 @@ export function normalizeEmptyAssigneeStrategy(value = {}, allowInherit = true) 
     policy: value?.policy || (allowInherit ? 'INHERIT' : 'BLOCK_PUBLISH'),
     fallbackUser: value?.fallbackUser || '',
     fallbackGroup: value?.fallbackGroup || '',
-    maxRetries: Number(value?.maxRetries || 3),
-    initialDelaySeconds: Number(value?.initialDelaySeconds || 60),
-    backoffMultiplier: Number(value?.backoffMultiplier || 2),
-    responsibilityOwner: value?.responsibilityOwner || ''
+    maxRetries: Number(value?.maxRetries ?? 3),
+    initialDelaySeconds: Number(value?.initialDelaySeconds ?? 60),
+    backoffMultiplier: Number(value?.backoffMultiplier ?? 2),
+    responsibilityOwner: value?.responsibilityOwner || '',
+    // 类型随 BPMN 快照保存，仅用于选择器回显；事件归属仍使用原有标识字段。
+    responsibilityOwnerType: ['USER', 'GROUP'].includes(value?.responsibilityOwnerType)
+      ? value.responsibilityOwnerType : ''
   }
+}
+
+/** 流程和节点保存共用校验，阻止缺少选择或无效重试参数被写入 BPMN。 */
+export function validateEmptyAssigneeStrategy(value, allowInherit = true) {
+  const policy = normalizeEmptyAssigneeStrategy(value, allowInherit)
+  const strategies = ['BLOCK_PUBLISH', 'CREATE_INCIDENT', 'FALLBACK_GROUP', 'FALLBACK_USER', 'WAIT_AND_RETRY']
+  if (allowInherit) strategies.push('INHERIT')
+  if (!strategies.includes(policy.policy)) return '请选择有效的空办理人策略'
+  if (['INHERIT', 'BLOCK_PUBLISH'].includes(policy.policy)) return ''
+  if (policy.policy === 'FALLBACK_USER' && !String(policy.fallbackUser).trim()) return '请选择兜底用户'
+  if (policy.policy === 'FALLBACK_GROUP' && !String(policy.fallbackGroup).trim()) return '请选择兜底用户组'
+  if (!String(policy.responsibilityOwner).trim()) return '请选择责任人或值班组'
+  if (policy.policy === 'WAIT_AND_RETRY') {
+    if (!Number.isInteger(policy.maxRetries) || policy.maxRetries < 1 || policy.maxRetries > 20) return '最大重试次数必须为 1–20 的整数'
+    if (!Number.isInteger(policy.initialDelaySeconds) || policy.initialDelaySeconds < 5 || policy.initialDelaySeconds > 86400) return '首次等待必须为 5–86400 秒的整数'
+    if (!Number.isFinite(policy.backoffMultiplier) || policy.backoffMultiplier < 1 || policy.backoffMultiplier > 10) return '退避倍率必须在 1–10 之间'
+  }
+  return ''
 }
 
 const SIMPLE_NODE_OPERATION_KEYS = [

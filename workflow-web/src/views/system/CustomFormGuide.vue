@@ -437,6 +437,7 @@ const contractRows = [
   { name: 'readonly / mode', meaning: '整表单只读状态和 create/edit/approve/view 模式' },
   { name: 'linkageState', meaning: '显隐、禁用、必填、选项和值联动结果' },
   { name: 'dataSourceRuntime', meaning: '受控执行 FORM_INIT、FIELD_OPTIONS、SUBFORM_ROWS 等绑定' },
+  { name: 'formActionSlots / form-action', meaning: '按 slotKey 读取只读动作，并用 trigger(actionKey) 或 form-action 事件交回宿主统一鉴权执行' },
   { name: 'config', meaning: '管理员按 configSchema 保存的组件参数' },
   { name: 'context', meaning: '实体、整条记录、当前模式，以及 formUniqueness 唯一预检契约' }
 ]

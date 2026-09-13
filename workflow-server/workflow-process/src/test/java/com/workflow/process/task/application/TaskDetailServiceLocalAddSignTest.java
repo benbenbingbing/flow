@@ -1,7 +1,6 @@
 package com.workflow.process.task.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -87,7 +86,11 @@ class TaskDetailServiceLocalAddSignTest {
         EntityForm form = new EntityForm();
         form.setId("published-form");
         form.setFormName("源节点发布表单");
-        when(formRuntimeService.getByBinding(binding, "history-1", UiRuntimePurpose.ACTIVE_TASK)).thenReturn(form);
+        when(formRuntimeService.getByBinding(
+                org.mockito.ArgumentMatchers.same(binding),
+                org.mockito.ArgumentMatchers.any(
+                        com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext.class)))
+                .thenReturn(form);
 
         var detail = service.getTaskDetail("addsign-1");
 

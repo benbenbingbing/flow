@@ -3,7 +3,6 @@
     <el-card class="overview-card" shadow="never">
       <div class="overview">
         <div>
-          <h2>配置迁移</h2>
           <p>迁移实体、流程、系统实体 UI、工作日历和 SLA 策略的已发布快照，不包含业务数据、系统表结构和运行台账。</p>
         </div>
         <div class="overview-stats">
@@ -48,14 +47,14 @@
                 </el-select>
               </el-form-item>
               <el-form-item>
-                <el-button type="primary" @click="loadAssets">查询</el-button>
+                <el-button type="primary" @click="searchAssets">查询</el-button>
                 <el-button @click="resetAssetFilters">重置</el-button>
               </el-form-item>
             </el-form>
             <el-button
               type="primary"
               :disabled="selectedAssets.length === 0"
-              :loading="exporting"
+              :loading="exportPreparing || exporting"
               @click="openBatchExport"
             >
               批量下载（{{ selectedAssets.length }}）
@@ -72,6 +71,7 @@
           />
           <el-table
             v-else
+            ref="assetTableRef"
             v-loading="assetLoading"
             :data="assets"
             border
@@ -79,7 +79,12 @@
             row-key="id"
             @selection-change="selectedAssets = $event"
           >
-            <el-table-column type="selection" width="48" :selectable="row => row.snapshotCompleteness === 'COMPLETE'" />
+            <el-table-column
+              type="selection"
+              width="48"
+              reserve-selection
+              :selectable="row => row.snapshotCompleteness === 'COMPLETE'"
+            />
             <el-table-column prop="assetType" label="类型" width="120">
               <template #default="{ row }">
                 <el-tag :type="assetTypeTagType(row.assetType)">
@@ -137,6 +142,11 @@
               </template>
             </el-table-column>
           </el-table>
+          <ConfigMigrationPagination
+            v-if="!assetError"
+            v-model="assetPage"
+            @change="loadAssets"
+          />
         </el-tab-pane>
         <el-tab-pane label="发布包" name="exports">
           <div class="table-actions">
@@ -182,6 +192,11 @@
               </template>
             </el-table-column>
           </el-table>
+          <ConfigMigrationPagination
+            v-if="!exportError"
+            v-model="exportPage"
+            @change="loadExports"
+          />
         </el-tab-pane>
         <el-tab-pane label="导入与发布" name="imports">
           <div class="import-panel">
@@ -246,6 +261,11 @@
               </template>
             </el-table-column>
           </el-table>
+          <ConfigMigrationPagination
+            v-if="!importError"
+            v-model="importPage"
+            @change="loadImports"
+          />
         </el-tab-pane>
         <el-tab-pane label="影响对比" name="compare">
           <div class="compare-toolbar">
@@ -255,10 +275,10 @@
               clearable
               placeholder="选择导入批次"
               style="width: 420px"
-              @change="loadCompare"
+              @change="handleCompareImportChange"
             >
               <el-option
-                v-for="item in imports"
+                v-for="item in importOptions"
                 :key="item.id"
                 :label="`${item.migrationTag} · ${item.packageNo}`"
                 :value="item.id"
@@ -285,7 +305,7 @@
           />
           <el-table
             v-if="!compareError"
-            :data="compareData?.items || []"
+            :data="pagedCompareItems"
             border
             stripe
             v-loading="compareLoading"
@@ -327,6 +347,10 @@
             </el-table-column>
             <el-table-column prop="errorMessage" label="说明" min-width="240" show-overflow-tooltip />
           </el-table>
+          <ConfigMigrationPagination
+            v-if="!compareError"
+            v-model="comparePage"
+          />
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -479,11 +503,30 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { configMigrationApi } from '@/api/configMigration'
 import { generateMigrationTag } from '@/utils/migrationTag'
 import PageState from '@/components/PageState.vue'
+import ConfigMigrationPagination from '@/components/ConfigMigrationPagination.vue'
+import {
+  assetTypeLabel,
+  assetTypeTagType,
+  compareStatusText,
+  compareStatusType,
+  publishStatusText,
+  statusText,
+  statusType
+} from '@/shared/config-migration-display'
+import {
+  applyConfigMigrationPageResult,
+  createConfigMigrationPage,
+  paginateConfigMigrationRows,
+  shouldReloadConfigMigrationPage,
+  updateConfigMigrationClientPage
+} from '@/shared/config-migration-pagination'
 const activeTab = ref('assets')
 const assets = ref([])
+const assetPage = ref(createConfigMigrationPage())
 const assetLoading = ref(false)
 const assetError = ref('')
 const selectedAssets = ref([])
+const assetTableRef = ref()
 const assetFilters = reactive({
   assetType: '',
   businessKey: '',
@@ -491,10 +534,14 @@ const assetFilters = reactive({
   markForExport: true
 })
 const exportPackages = ref([])
+const exportPage = ref(createConfigMigrationPage())
 const exportLoading = ref(false)
 const exportError = ref('')
 const exporting = ref(false)
+const exportPreparing = ref(false)
 const imports = ref([])
+const importOptions = ref([])
+const importPage = ref(createConfigMigrationPage())
 const importLoading = ref(false)
 const importError = ref('')
 const uploading = ref(false)
@@ -524,22 +571,32 @@ const currentMappingImport = ref(null)
 const mappingRows = ref([])
 const compareImportId = ref('')
 const compareData = ref(null)
+const comparePage = ref(createConfigMigrationPage())
 const compareLoading = ref(false)
 const compareError = ref('')
-const assetStats = computed(() => ({
-  pending: assets.value.filter(item => item.markForExport && item.exportStatus !== 'EXPORTED').length,
-  exported: assets.value.filter(item => item.exportStatus === 'EXPORTED').length
-}))
-const importStats = computed(() => ({
-  blocked: imports.value.filter(item => item.status === 'BLOCKED').length
-}))
+// 快速翻页或切换批次时，只有同一数据源的最后一次请求可以提交状态。
+const requestVersions = {
+  assets: 0,
+  exports: 0,
+  imports: 0,
+  importOptions: 0,
+  stats: 0,
+  compare: 0,
+  snapshotDetail: 0,
+  dependencyDetail: 0,
+  exportDetail: 0
+}
+const assetStats = reactive({ pending: 0, exported: 0 })
+const importStats = reactive({ blocked: 0 })
+const compareItems = computed(() => Array.isArray(compareData.value?.items) ? compareData.value.items : [])
+const pagedCompareItems = computed(() => paginateConfigMigrationRows(compareItems.value, comparePage.value))
 const migrationStep = computed(() => {
   if (activeTab.value === 'assets') {
     return selectedAssets.value.length > 0 ? 1 : 0
   }
   if (activeTab.value === 'exports') return 2
   if (activeTab.value === 'compare') return 3
-  const selectedImport = imports.value.find(item => String(item.id) === String(compareImportId.value))
+  const selectedImport = importOptions.value.find(item => String(item.id) === String(compareImportId.value))
   return selectedImport?.status === 'PUBLISHED' || selectedImport?.status === 'ROLLED_BACK' ? 5 : 4
 })
 const sectionOptions = computed(() => {
@@ -597,41 +654,114 @@ const listOptions = computed(() => (exportSnapshot.value.lists || []).map(item =
   label: item.listName ? `${item.listName} (${item.listKey})` : item.listKey,
   value: item.listKey
 })).filter(item => item.value))
-const loadAssets = async () => {
+const loadAssets = async (pageOverride) => {
+  const requestVersion = ++requestVersions.assets
+  const requestedPage = Number.isFinite(Number(pageOverride?.pageNum)) ? pageOverride : assetPage.value
   assetLoading.value = true
   assetError.value = ''
   try {
-    const params = Object.fromEntries(
+    const filters = Object.fromEntries(
       Object.entries(assetFilters).filter(([, value]) => value !== '' && value !== null && value !== undefined)
     )
-    assets.value = await configMigrationApi.getAssets(params) || []
+    const result = await configMigrationApi.getAssetPage({
+      ...filters,
+      pageNum: requestedPage.pageNum,
+      pageSize: requestedPage.pageSize
+    })
+    if (requestVersion !== requestVersions.assets) return
+    const normalized = applyConfigMigrationPageResult(requestedPage, result)
+    assets.value = normalized.records
+    assetPage.value = normalized.page
+    if (shouldReloadConfigMigrationPage(requestedPage, normalized)) {
+      await loadAssets(normalized.page)
+    }
   } catch (error) {
-    assetError.value = error?.message || '无法读取可迁移配置，请检查权限或稍后重试。'
+    if (requestVersion === requestVersions.assets) {
+      assetError.value = error?.message || '无法读取可迁移配置，请检查权限或稍后重试。'
+    }
   } finally {
-    assetLoading.value = false
+    if (requestVersion === requestVersions.assets) assetLoading.value = false
   }
 }
-const loadExports = async () => {
+const loadExports = async (pageOverride) => {
+  const requestVersion = ++requestVersions.exports
+  const requestedPage = Number.isFinite(Number(pageOverride?.pageNum)) ? pageOverride : exportPage.value
   exportLoading.value = true
   exportError.value = ''
   try {
-    exportPackages.value = await configMigrationApi.getExportPackages() || []
+    const result = await configMigrationApi.getExportPackagePage({
+      pageNum: requestedPage.pageNum,
+      pageSize: requestedPage.pageSize
+    })
+    if (requestVersion !== requestVersions.exports) return
+    const normalized = applyConfigMigrationPageResult(requestedPage, result)
+    exportPackages.value = normalized.records
+    exportPage.value = normalized.page
+    if (shouldReloadConfigMigrationPage(requestedPage, normalized)) {
+      await loadExports(normalized.page)
+    }
   } catch (error) {
-    exportError.value = error?.message || '无法读取发布包记录，请稍后重试。'
+    if (requestVersion === requestVersions.exports) {
+      exportError.value = error?.message || '无法读取发布包记录，请稍后重试。'
+    }
   } finally {
-    exportLoading.value = false
+    if (requestVersion === requestVersions.exports) exportLoading.value = false
   }
 }
-const loadImports = async () => {
+const loadImports = async (pageOverride) => {
+  const requestVersion = ++requestVersions.imports
+  const requestedPage = Number.isFinite(Number(pageOverride?.pageNum)) ? pageOverride : importPage.value
   importLoading.value = true
   importError.value = ''
   try {
-    imports.value = await configMigrationApi.getImports() || []
+    const result = await configMigrationApi.getImportPage({
+      pageNum: requestedPage.pageNum,
+      pageSize: requestedPage.pageSize
+    })
+    if (requestVersion !== requestVersions.imports) return
+    const normalized = applyConfigMigrationPageResult(requestedPage, result)
+    imports.value = normalized.records
+    importPage.value = normalized.page
+    if (shouldReloadConfigMigrationPage(requestedPage, normalized)) {
+      await loadImports(normalized.page)
+    }
   } catch (error) {
-    importError.value = error?.message || '无法读取导入记录，请检查权限或稍后重试。'
+    if (requestVersion === requestVersions.imports) {
+      importError.value = error?.message || '无法读取导入记录，请检查权限或稍后重试。'
+    }
   } finally {
-    importLoading.value = false
+    if (requestVersion === requestVersions.imports) importLoading.value = false
   }
+}
+const loadImportOptions = async () => {
+  const requestVersion = ++requestVersions.importOptions
+  try {
+    const options = await configMigrationApi.getImportOptions() || []
+    if (requestVersion === requestVersions.importOptions) importOptions.value = options
+  } catch {
+    // 分页主表仍可独立使用；下拉读取失败时保留上一次成功的候选项。
+  }
+}
+const loadStats = async () => {
+  const requestVersion = ++requestVersions.stats
+  try {
+    const stats = await configMigrationApi.getStats()
+    if (requestVersion !== requestVersions.stats) return
+    assetStats.pending = Number(stats?.pending) || 0
+    assetStats.exported = Number(stats?.exported) || 0
+    importStats.blocked = Number(stats?.blocked) || 0
+  } catch {
+    // 统计卡失败不应阻断各 Tab 的核心查询和迁移操作。
+  }
+}
+const clearAssetSelection = () => {
+  assetTableRef.value?.clearSelection()
+  selectedAssets.value = []
+}
+const searchAssets = () => {
+  assetPage.value = { ...assetPage.value, pageNum: 1 }
+  clearAssetSelection()
+  loadAssets()
 }
 const resetAssetFilters = () => {
   Object.assign(assetFilters, {
@@ -640,12 +770,13 @@ const resetAssetFilters = () => {
     migrationTag: '',
     markForExport: true
   })
-  loadAssets()
+  searchAssets()
 }
 const handleTabChange = (name) => {
   if (name === 'assets') loadAssets()
   if (name === 'exports') loadExports()
-  if (name === 'imports' || name === 'compare') loadImports()
+  if (name === 'imports') loadImports()
+  if (name === 'compare') loadImportOptions()
 }
 const goToStage = (tab) => {
   activeTab.value = tab
@@ -665,34 +796,62 @@ const saveMark = async () => {
   await configMigrationApi.updateAssetMark(currentMarkAsset.value.id, { ...markForm })
   ElMessage.success('标记已更新')
   markDialogVisible.value = false
-  loadAssets()
+  clearAssetSelection()
+  await Promise.all([loadAssets(), loadStats()])
 }
-const showSnapshot = (row) => {
-  currentSnapshot.value = parseJson(row.snapshotJson, {})
+const showSnapshot = async (row) => {
+  const requestVersion = ++requestVersions.snapshotDetail
+  const detail = await configMigrationApi.getAsset(row.id)
+  if (requestVersion !== requestVersions.snapshotDetail) return
+  currentSnapshot.value = parseJson(detail?.snapshotJson, {})
   snapshotVisible.value = true
 }
-const showDependencies = (row) => {
-  currentDependencies.value = parseJson(row.dependenciesJson, [])
+const showDependencies = async (row) => {
+  const requestVersion = ++requestVersions.dependencyDetail
+  const detail = await configMigrationApi.getAsset(row.id)
+  if (requestVersion !== requestVersions.dependencyDetail) return
+  currentDependencies.value = parseJson(detail?.dependenciesJson, [])
   dependencyVisible.value = true
 }
-const openSingleExport = (row) => {
-  exportTargets.value = [row]
-  exportForm.migrationTag = row.migrationTag || generateMigrationTag()
-  exportForm.full = true
-  exportForm.sections = []
-  exportForm.formKeys = []
-  exportForm.listKeys = []
-  exportDialogVisible.value = true
-}
-const openBatchExport = () => {
-  exportTargets.value = [...selectedAssets.value]
-  const tags = new Set(exportTargets.value.map(item => item.migrationTag).filter(Boolean))
+const openExportDialog = (targets) => {
+  exportTargets.value = targets
+  const tags = new Set(targets.map(item => item.migrationTag).filter(Boolean))
   exportForm.migrationTag = tags.size === 1 ? [...tags][0] : generateMigrationTag()
   exportForm.full = true
   exportForm.sections = []
   exportForm.formKeys = []
   exportForm.listKeys = []
   exportDialogVisible.value = true
+}
+const openSingleExport = async (row) => {
+  // 分页列表只传输摘要；细粒度选项需要在打开弹窗时按需读取完整快照。
+  const requestVersion = ++requestVersions.exportDetail
+  exportPreparing.value = true
+  try {
+    const detail = await configMigrationApi.getAsset(row.id)
+    if (requestVersion !== requestVersions.exportDetail) return
+    openExportDialog([detail])
+  } finally {
+    if (requestVersion === requestVersions.exportDetail) exportPreparing.value = false
+  }
+}
+const openBatchExport = async () => {
+  // 单选批量入口同样开放细粒度导出，因此必须补取分页摘要中未携带的完整快照。
+  const targets = [...selectedAssets.value]
+  if (targets.length === 0) return
+  const requestVersion = ++requestVersions.exportDetail
+  exportPreparing.value = true
+  try {
+    if (targets.length === 1) {
+      const detail = await configMigrationApi.getAsset(targets[0].id)
+      if (requestVersion !== requestVersions.exportDetail) return
+      openExportDialog([detail])
+      return
+    }
+    openExportDialog(targets)
+  } finally {
+    if (requestVersion === requestVersions.exportDetail) exportPreparing.value = false
+  }
 }
 const confirmExport = async () => {
   if (!exportForm.migrationTag.trim()) {
@@ -726,7 +885,9 @@ const confirmExport = async () => {
     await downloadPackage(result)
     ElMessage.success('发布包已生成')
     exportDialogVisible.value = false
-    await Promise.all([loadAssets(), loadExports()])
+    exportPage.value = { ...exportPage.value, pageNum: 1 }
+    clearAssetSelection()
+    await Promise.all([loadAssets(), loadExports(), loadStats()])
   } finally {
     exporting.value = false
   }
@@ -758,7 +919,8 @@ const uploadPackage = async () => {
     ElMessage.success('发布包已上传并完成签名校验')
     pendingFile.value = null
     uploadRef.value?.clearFiles()
-    await loadImports()
+    importPage.value = { ...importPage.value, pageNum: 1 }
+    await Promise.all([loadImports(), loadImportOptions(), loadStats()])
   } finally {
     uploading.value = false
   }
@@ -772,7 +934,7 @@ const analyzeImport = async (row) => {
   ElMessage[result.blocked ? 'warning' : 'success'](
     result.blocked ? '分析完成，存在阻断项' : '分析通过，可以发布'
   )
-  await loadImports()
+  await Promise.all([loadImports(), loadImportOptions(), loadStats()])
   if (activeTab.value === 'compare') {
     compareImportId.value = row.id
     loadCompare()
@@ -781,22 +943,35 @@ const analyzeImport = async (row) => {
 const openCompare = async (row) => {
   activeTab.value = 'compare'
   compareImportId.value = row.id
+  comparePage.value = createConfigMigrationPage(comparePage.value.pageSize)
   await loadCompare()
 }
+const handleCompareImportChange = () => {
+  comparePage.value = createConfigMigrationPage(comparePage.value.pageSize)
+  loadCompare()
+}
 const loadCompare = async () => {
+  const requestVersion = ++requestVersions.compare
   if (!compareImportId.value) {
     compareData.value = null
+    comparePage.value = updateConfigMigrationClientPage(comparePage.value, 0)
     compareError.value = ''
+    compareLoading.value = false
     return
   }
   compareLoading.value = true
   compareError.value = ''
   try {
-    compareData.value = await configMigrationApi.compareImport(compareImportId.value)
+    const result = await configMigrationApi.compareImport(compareImportId.value)
+    if (requestVersion !== requestVersions.compare) return
+    compareData.value = result
+    comparePage.value = updateConfigMigrationClientPage(comparePage.value, compareItems.value.length)
   } catch (error) {
-    compareError.value = error?.message || '无法生成影响对比，请重新分析后再试。'
+    if (requestVersion === requestVersions.compare) {
+      compareError.value = error?.message || '无法生成影响对比，请重新分析后再试。'
+    }
   } finally {
-    compareLoading.value = false
+    if (requestVersion === requestVersions.compare) compareLoading.value = false
   }
 }
 const openMapping = async (row) => {
@@ -823,7 +998,8 @@ const saveMappings = async () => {
   await configMigrationApi.saveMappings(currentMappingImport.value.id, mappingRows.value)
   ElMessage.success('映射已保存并重新分析')
   mappingVisible.value = false
-  loadImports()
+  await Promise.all([loadImports(), loadImportOptions(), loadStats()])
+  if (String(compareImportId.value) === String(currentMappingImport.value.id)) loadCompare()
 }
 const publishImport = async (row) => {
   const confirmation = await ElMessageBox.prompt(
@@ -839,7 +1015,7 @@ const publishImport = async (row) => {
   if (confirmation.value !== row.migrationTag) return
   await configMigrationApi.publishImport(row.id)
   ElMessage.success('配置发布成功')
-  loadImports()
+  await Promise.all([loadImports(), loadImportOptions(), loadStats()])
 }
 const rollbackImport = async (row) => {
   const confirmation = await ElMessageBox.prompt(
@@ -855,63 +1031,8 @@ const rollbackImport = async (row) => {
   if (confirmation.value !== row.packageNo) return
   await configMigrationApi.rollbackImport(row.id)
   ElMessage.success('配置已回滚')
-  loadImports()
+  await Promise.all([loadImports(), loadImportOptions(), loadStats()])
 }
-const statusType = (status) => ({
-  UPLOADED: 'info',
-  ANALYZED: 'success',
-  BLOCKED: 'danger',
-  PUBLISHED: 'success',
-  ROLLED_BACK: 'warning'
-}[status] || 'info')
-const statusText = (status) => ({
-  UPLOADED: '已上传',
-  ANALYZED: '分析通过',
-  BLOCKED: '已阻断',
-  PUBLISHED: '已发布',
-  ROLLED_BACK: '已回滚'
-}[status] || '未知状态')
-const compareStatusType = (status) => ({
-  NEW: 'success',
-  CONSISTENT: 'success',
-  SOURCE_NEWER: 'primary',
-  LOCAL_CHANGED: 'warning',
-  CONFLICT: 'danger',
-  MISSING: 'danger',
-  FAILED: 'danger'
-}[status] || 'info')
-const compareStatusText = (status) => ({
-  NEW: '生产新增',
-  CONSISTENT: '一致',
-  SOURCE_NEWER: '来源更新',
-  LOCAL_CHANGED: '生产已修改',
-  CONFLICT: '双向冲突',
-  MISSING: '生产缺失',
-  FAILED: '失败'
-}[status] || '未知状态')
-const publishStatusText = (status) => ({
-  PENDING: '待发布',
-  PUBLISHING: '发布中',
-  SUCCESS: '发布成功',
-  FAILED: '发布失败',
-  ROLLED_BACK: '已回滚'
-}[status] || '未知状态')
-const assetTypeLabel = (assetType) => ({
-  ENTITY: '实体',
-  SYSTEM_ENTITY_UI: '系统实体 UI',
-  PROCESS: '流程',
-  DICTIONARY: '数据字典',
-  WORK_CALENDAR: '工作日历',
-  TASK_SLA_POLICY: 'SLA 策略'
-}[assetType] || assetType || '未知')
-const assetTypeTagType = (assetType) => ({
-  ENTITY: 'primary',
-  SYSTEM_ENTITY_UI: 'warning',
-  PROCESS: 'success',
-  DICTIONARY: 'primary',
-  WORK_CALENDAR: 'info',
-  TASK_SLA_POLICY: 'danger'
-}[assetType] || 'info')
 const parseJson = (value, fallback) => {
   if (!value) return fallback
   if (typeof value !== 'string') return value
@@ -924,166 +1045,7 @@ const parseJson = (value, fallback) => {
 const prettyJson = (value) => JSON.stringify(value || {}, null, 2)
 const formatDate = (value) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-'
 onMounted(async () => {
-  await Promise.all([loadAssets(), loadImports()])
+  await Promise.all([loadAssets(), loadImports(), loadImportOptions(), loadStats()])
 })
 </script>
-<style scoped lang="scss">
-.config-migration-page {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.overview-card {
-  border-top: 3px solid #409eff;
-}
-.migration-steps {
-  margin-top: 20px;
-  :deep(.el-step) {
-    cursor: pointer;
-  }
-}
-.overview {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  h2 {
-    margin: 0 0 8px;
-  }
-  p {
-    margin: 0;
-    color: #606266;
-  }
-}
-.overview-stats {
-  display: flex;
-  gap: 28px;
-  div {
-    min-width: 78px;
-    text-align: center;
-  }
-  strong {
-    display: block;
-    font-size: 26px;
-    color: #409eff;
-  }
-  span {
-    color: #909399;
-    font-size: 13px;
-  }
-}
-.toolbar,
-.table-actions,
-.import-panel,
-.compare-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.import-panel,
-.compare-toolbar {
-  justify-content: flex-start;
-}
-.compare-alert,
-.mapping-alert {
-  margin-bottom: 16px;
-}
-.json-view {
-  max-height: 620px;
-  overflow: auto;
-  padding: 16px;
-  margin: 0;
-  border-radius: 6px;
-  background: #111827;
-  color: #d1fae5;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.primary-line,
-.asset-title-line {
-  color: #303133;
-  font-weight: 600;
-}
-.asset-title-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.meta-line {
-  margin-top: 4px;
-  color: #909399;
-  font-size: 12px;
-}
-.error-line {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.technical-detail-button {
-  margin-top: 2px;
-  padding: 0;
-  font-size: 12px;
-}
-.technical-detail {
-  display: grid;
-  gap: 10px;
-  div {
-    display: grid;
-    gap: 4px;
-  }
-  code {
-    overflow-wrap: anywhere;
-  }
-}
-.migration-tag-line {
-  color: #606266;
-}
-.error-line {
-  margin-top: 4px;
-  color: #f56c6c;
-}
-:deep(.el-checkbox-group) {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 20px;
-}
-@media (max-width: 760px) {
-  .config-migration-page {
-    padding: 12px;
-  }
-  .overview {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .overview-stats {
-    width: 100%;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .migration-steps {
-    overflow-x: auto;
-  }
-  .migration-steps :deep(.el-steps--simple) {
-    min-width: 760px;
-  }
-  .toolbar,
-  .import-panel,
-  .compare-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .toolbar :deep(.el-form) {
-    display: grid;
-  }
-  .import-panel :deep(.el-input),
-  .compare-toolbar :deep(.el-select) {
-    width: 100% !important;
-  }
-  :deep(.el-checkbox-group) {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+<style scoped lang="scss" src="./ConfigMigration.scss"></style>

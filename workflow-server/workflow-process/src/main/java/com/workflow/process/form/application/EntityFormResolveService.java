@@ -5,6 +5,7 @@ import com.workflow.contracts.entity.EntityFormBinding;
 import com.workflow.contracts.entity.EntityFormRuntimeContext;
 import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -253,7 +254,11 @@ public class EntityFormResolveService {
                 null,
                 processInstance.getProcessDefinitionId(),
                 currentTask.getTaskDefinitionKey(),
-                UiRuntimePurpose.ACTIVE_TASK);
+                UiRuntimePurpose.ACTIVE_TASK,
+                currentTask.getId(),
+                processInstance.getId(),
+                entityCode,
+                entityDataId);
         log.info(
                 "查看数据表单解析完成: entityCode={}, recordId={}, processInstanceId={}, nodeId={}, formId={}, source={}",
                 LogValue.safe(entityCode),
@@ -361,6 +366,24 @@ public class EntityFormResolveService {
             String processDefinitionId,
             String nodeId,
             UiRuntimePurpose purpose) {
+        return getNodeBoundEntityForm(
+                processKey, processDefinitionId, nodeId, purpose,
+                null, null, null, null);
+    }
+
+    /**
+     * 活动任务解析额外携带服务端 Flowable task/instance/record 主体，签发的
+     * 发布令牌因此不能移植到同节点的另一业务实例。
+     */
+    private Map<String, Object> getNodeBoundEntityForm(
+            String processKey,
+            String processDefinitionId,
+            String nodeId,
+            UiRuntimePurpose purpose,
+            String taskId,
+            String processInstanceId,
+            String entityCode,
+            String recordId) {
         if (nodeId == null || nodeId.isBlank()) {
             return null;
         }
@@ -399,11 +422,23 @@ public class EntityFormResolveService {
                     binding,
                     processVersionHistoryId);
         }
+        // 只有 ACTIVE_TASK 需要新增的主体绑定重载；新建/历史路径继续调用旧
+        // 公共端口签名，保持外部适配器和既有行为兼容。
         Map<String, Object> result =
-                entityFormRuntimePort.findFormByBinding(
-                binding,
-                processVersionHistoryId,
-                purpose);
+                UiRuntimePurpose.ACTIVE_TASK.equals(purpose)
+                        ? entityFormRuntimePort.findFormByBinding(
+                                binding,
+                                UiRuntimeResolutionContext.activeTask(
+                                        processVersionHistoryId,
+                                        nodeId,
+                                        taskId,
+                                        processInstanceId,
+                                        entityCode,
+                                        recordId))
+                        : entityFormRuntimePort.findFormByBinding(
+                                binding,
+                                processVersionHistoryId,
+                                purpose);
         log.info(
                 "流程节点表单解析完成: processKey={}, processDefinitionId={}, historyId={}, nodeId={}, boundFormId={}, pinnedReleaseId={}, pinnedVersion={}, resolvedFormId={}, purpose={}",
                 LogValue.safe(processKey),

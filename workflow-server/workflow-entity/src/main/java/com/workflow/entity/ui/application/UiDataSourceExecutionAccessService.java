@@ -86,6 +86,9 @@ public class UiDataSourceExecutionAccessService {
             "releaseid",
             "releaseversion",
             "publishedreleaseid");
+    /** 仅表单按钮将待办坐标视作服务端身份，其他 UI 事件保留既有业务字段语义。 */
+    private static final Set<String> FORM_BUTTON_RESERVED_REQUEST_KEYS =
+            Set.of("taskid", "processinstanceid");
 
     private final UiConfigReleaseMapper releaseMapper;
     private final UiDataSourceBindingMatcher bindingMatcher;
@@ -208,6 +211,109 @@ public class UiDataSourceExecutionAccessService {
                 bindingPath,
                 target,
                 request);
+    }
+
+    /**
+     * 使用表单事件运行时已经验真的同一份有效快照授权钉版按钮 READ 操作。
+     *
+     * <p>与通用发布授权不同，本入口不会重新读取 ACTIVE 或基础发布记录；这样
+     * 标准发布切换和流程热修复都不能让按钮权限、事件链与 Provider 授权来自
+     * 不同制品。来源绑定身份由发布步骤携带的服务端字段精确匹配，普通客户端
+     * 无法通过 JSON 写入这些字段。用户、作用域和 DataScope 仍按当前服务端状态
+     * 重新计算。</p>
+     *
+     * @param definition 已通过独立哈希校验的钉版操作定义
+     * @param request 服务端构造的 FORM_BUTTON_CLICK 操作请求
+     * @param resolvedSnapshot 同一次事件解析得到的有效宿主快照
+     * @param expectedSnapshotHash 解析时验证过的有效快照哈希
+     * @return 精确绑定和当前数据权限组成的执行授权
+     */
+    public UiDataSourceExecutionAuthorization authorizeResolvedFormButton(
+            UiDataSourceDefinition definition,
+            UiDataSourceExecuteRequest request,
+            Map<String, Object> resolvedSnapshot,
+            String expectedSnapshotHash) {
+        if (request == null
+                || !FORM.equals(normalize(request.getConfigType()))
+                || !UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                        normalize(request.getUsage()))
+                || !request.isServerPinnedRelease()
+                || !StringUtils.hasText(
+                        request.getServerIdempotencyKey())) {
+            throw forbidden(
+                    "UI_DATA_SOURCE_TRUSTED_EXECUTION_REQUIRED",
+                    "表单按钮钉版操作只允许来自可信事件运行时");
+        }
+        if (!StringUtils.hasText(request.getReleaseId())
+                || request.getReleaseVersion() == null) {
+            throw conflict(
+                    "UI_DATA_SOURCE_PINNED_RELEASE_REQUIRED",
+                    "表单按钮钉版操作缺少基础发布身份");
+        }
+        requireResolvedBindingIdentity(request);
+        Origin origin = resolveOrigin(request);
+        rejectTrustedMetadata(request);
+        ConfigTarget target = requireTarget(origin);
+        releaseService.verifyResolvedEventSnapshot(
+                resolvedSnapshot, expectedSnapshotHash);
+        requireResolvedFormIdentity(origin, target, resolvedSnapshot);
+        String bindingPath = findPublishedBinding(
+                origin,
+                resolvedSnapshot,
+                normalize(request.getUsage()),
+                request.getServerBindingTargetType(),
+                request.getServerBindingTargetKey(),
+                definition.getId(),
+                definition.getOperationCode(),
+                request.getServerBindingOwnerType(),
+                request.getServerBindingOwnerId());
+        if (!StringUtils.hasText(bindingPath)) {
+            throw forbidden(
+                    "UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED",
+                    "可信有效快照未绑定该表单按钮接口步骤");
+        }
+        requireScopeCompatibility(definition, origin, target);
+        return authorization(
+                false,
+                origin,
+                request.getReleaseId(),
+                request.getReleaseVersion(),
+                bindingPath,
+                target,
+                request);
+    }
+
+    private void requireResolvedBindingIdentity(
+            UiDataSourceExecuteRequest request) {
+        String targetType = normalize(
+                request.getServerBindingTargetType());
+        if (!StringUtils.hasText(request.getServerBindingOwnerType())
+                || !StringUtils.hasText(request.getServerBindingOwnerId())
+                || !StringUtils.hasText(targetType)
+                || !"OWNER".equals(targetType)
+                && !StringUtils.hasText(
+                        request.getServerBindingTargetKey())) {
+            throw conflict(
+                    "UI_EVENT_PINNED_BINDING_INVALID",
+                    "表单按钮步骤缺少可信来源绑定身份");
+        }
+    }
+
+    private void requireResolvedFormIdentity(
+            Origin origin,
+            ConfigTarget target,
+            Map<String, Object> snapshot) {
+        Map<String, Object> form = snapshot == null
+                ? Map.of() : stringMap(snapshot.get("form"));
+        if (!FORM.equals(normalize(text(snapshot == null
+                ? null : snapshot.get("configType"))))
+                || !Objects.equals(origin.configId(), text(form.get("id")))
+                || !Objects.equals(target.entityId(), text(
+                        form.get("entityId")))) {
+            throw conflict(
+                    "UI_EVENT_EFFECTIVE_SNAPSHOT_CONFLICT",
+                    "表单按钮有效快照与请求表单或实体不一致");
+        }
     }
 
     private UiConfigRelease resolvePublishedRelease(
@@ -492,6 +598,28 @@ public class UiDataSourceExecutionAccessService {
             String targetKey,
             String sourceId,
             String operationCode) {
+        return findPublishedBinding(
+                origin,
+                snapshot,
+                usage,
+                targetType,
+                targetKey,
+                sourceId,
+                operationCode,
+                null,
+                null);
+    }
+
+    private String findPublishedBinding(
+            Origin origin,
+            Map<String, Object> snapshot,
+            String usage,
+            String targetType,
+            String targetKey,
+            String sourceId,
+            String operationCode,
+            String bindingOwnerType,
+            String bindingOwnerId) {
         String snapshotType = normalize(text(snapshot.get("configType")));
         if (!origin.configType().equals(snapshotType)) {
             throw conflict(
@@ -505,7 +633,9 @@ public class UiDataSourceExecutionAccessService {
                 targetType,
                 targetKey,
                 sourceId,
-                operationCode);
+                operationCode,
+                bindingOwnerType,
+                bindingOwnerId);
     }
 
     private void requirePreviewAccess(Origin origin) {
@@ -646,13 +776,17 @@ public class UiDataSourceExecutionAccessService {
         if (request == null) {
             return;
         }
-        String rejected = reservedKey(
-                request.getContext(),
-                request.getServerIdempotencyKey());
+        boolean formButton = UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                normalize(request.getUsage()));
+        String rejected = formButton
+                ? reservedFormButtonKey(
+                        request.getContext(),
+                        request.getServerIdempotencyKey())
+                : reservedKey(
+                        request.getContext(),
+                        request.getServerIdempotencyKey());
         if (!StringUtils.hasText(rejected)) {
-            rejected = reservedKey(
-                    request.getInput(),
-                    request.getServerIdempotencyKey());
+            rejected = reservedInputKey(request);
         }
         if (StringUtils.hasText(rejected)) {
             throw spoofed(
@@ -661,9 +795,22 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
-    private String reservedKey(
+    private static String reservedKey(
             Map<String, Object> value,
             String trustedIdempotencyKey) {
+        return reservedKey(value, trustedIdempotencyKey, false);
+    }
+
+    private static String reservedFormButtonKey(
+            Map<String, Object> value,
+            String trustedIdempotencyKey) {
+        return reservedKey(value, trustedIdempotencyKey, true);
+    }
+
+    private static String reservedKey(
+            Map<String, Object> value,
+            String trustedIdempotencyKey,
+            boolean includeFormButtonKeys) {
         if (value == null) {
             return null;
         }
@@ -673,7 +820,107 @@ public class UiDataSourceExecutionAccessService {
                 "$",
                 0,
                 new int[] {0},
-                Collections.newSetFromMap(new IdentityHashMap<>()));
+                Collections.newSetFromMap(new IdentityHashMap<>()),
+                true,
+                includeFormButtonKeys);
+    }
+
+    /**
+     * FORM_BUTTON_CLICK 的 input.form 是动态实体字段值容器，字段编码允许恰好为
+     * userId/entityCode/formId 等名称，不能据此当作身份伪造。该子树仍执行
+     * 深度、节点数和循环结构限制；Provider 必须只从 UiInvocationContext 读取身份。
+     * input 根层、其他子树以及全部 context 继续严格拒绝保留键。
+     */
+    private String reservedInputKey(
+            UiDataSourceExecuteRequest request) {
+        Map<String, Object> input = request.getInput();
+        if (input == null || input.isEmpty()
+                || !UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                        normalize(request.getUsage()))) {
+            return reservedKey(
+                    input, request.getServerIdempotencyKey());
+        }
+        return reservedFormButtonInputKey(
+                input, request.getServerIdempotencyKey());
+    }
+
+    /**
+     * 在事件条件和 inputMapping 读取客户端输入之前执行同一套 FORM_BUTTON_CLICK
+     * 结构与可信字段校验。否则恶意字段可先影响条件或被映射改名，再绕过 Provider
+     * 请求阶段的后置检查。
+     *
+     * @param input 客户端提交的原始事件 input
+     * @throws BusinessForbiddenException 包含保留身份、别名 form 容器或异常结构
+     */
+    static void validateFormButtonClientInput(
+            Map<String, Object> input) {
+        String rejected = reservedFormButtonInputKey(input, null);
+        if (StringUtils.hasText(rejected)) {
+            throw new BusinessForbiddenException(
+                    "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                    "表单按钮输入不能提交服务端保留的可信字段: "
+                            + rejected);
+        }
+    }
+
+    /**
+     * 兼容旧客户端在 context 根层携带 formId/listKey 等展示坐标：这些根字段会
+     * 被事件运行时丢弃；仍递归拒绝保留下来的业务 hint 内嵌套可信身份。
+     */
+    static void validateFormButtonClientContext(
+            Map<String, Object> context) {
+        if (context == null || context.isEmpty()) {
+            return;
+        }
+        Map<String, Object> retained = new LinkedHashMap<>();
+        context.forEach((key, value) -> {
+            if (!isReservedFormButtonRequestKey(key)) {
+                retained.put(key, value);
+            }
+        });
+        String rejected = reservedFormButtonKey(retained, null);
+        if (StringUtils.hasText(rejected)) {
+            throw new BusinessForbiddenException(
+                    "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                    "表单按钮上下文不能提交服务端保留的可信字段: "
+                            + rejected);
+        }
+    }
+
+    private static String reservedFormButtonInputKey(
+            Map<String, Object> input,
+            String trustedIdempotencyKey) {
+        if (input == null || input.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> strict = new LinkedHashMap<>();
+        Object businessForm = null;
+        for (Map.Entry<String, Object> entry : input.entrySet()) {
+            String normalized = normalizeRequestKey(entry.getKey());
+            if ("form".equals(entry.getKey())) {
+                businessForm = entry.getValue();
+            } else if ("form".equals(normalized)) {
+                // 只允许一个精确的 input.form 业务容器；大小写或分隔符别名
+                // 会造成多个规范化同名树并绕过深度/节点数检查，必须拒绝。
+                return "$." + entry.getKey();
+            } else {
+                strict.put(entry.getKey(), entry.getValue());
+            }
+        }
+        String rejected = reservedKey(
+                strict, trustedIdempotencyKey, true);
+        if (StringUtils.hasText(rejected) || businessForm == null) {
+            return rejected;
+        }
+        return reservedKey(
+                businessForm,
+                trustedIdempotencyKey,
+                "$.form",
+                1,
+                new int[] {0},
+                Collections.newSetFromMap(new IdentityHashMap<>()),
+                false,
+                true);
     }
 
     /**
@@ -681,15 +928,18 @@ public class UiDataSourceExecutionAccessService {
      *
      * <p>字段映射允许有限层级对象，如果只检查顶层，调用方可把 tenantId、
      * userId 等身份字段包在 payload/context 内交给 Provider。服务端幂等种子
-     * 只允许位于根层且必须精确匹配；嵌套同名字段仍视为伪造。</p>
+     * 只允许位于根层且必须精确匹配；除明确标记为纯业务值的 input.form 外，
+     * 嵌套同名字段仍视为伪造。</p>
      */
-    private String reservedKey(
+    private static String reservedKey(
             Object value,
             String trustedIdempotencyKey,
             String path,
             int depth,
             int[] visitedNodes,
-            Set<Object> visitedContainers) {
+            Set<Object> visitedContainers,
+            boolean inspectReservedKeys,
+            boolean includeFormButtonKeys) {
         if (value == null) {
             return null;
         }
@@ -713,9 +963,14 @@ public class UiDataSourceExecutionAccessService {
                         && StringUtils.hasText(trustedIdempotencyKey)
                         && Objects.equals(
                                 trustedIdempotencyKey,
-                                text(entry.getValue()));
-                if (!trustedRootSeed
-                        && RESERVED_REQUEST_KEYS.contains(normalized)) {
+                                entry.getValue() == null
+                                        ? null
+                                        : String.valueOf(entry.getValue()));
+                if (inspectReservedKeys && !trustedRootSeed
+                        && (RESERVED_REQUEST_KEYS.contains(normalized)
+                        || includeFormButtonKeys
+                        && FORM_BUTTON_RESERVED_REQUEST_KEYS.contains(
+                                normalized))) {
                     return path + "." + key;
                 }
                 String nested = reservedKey(
@@ -724,7 +979,9 @@ public class UiDataSourceExecutionAccessService {
                         path + "." + key,
                         depth + 1,
                         visitedNodes,
-                        visitedContainers);
+                        visitedContainers,
+                        inspectReservedKeys,
+                        includeFormButtonKeys);
                 if (StringUtils.hasText(nested)) {
                     return nested;
                 }
@@ -744,7 +1001,9 @@ public class UiDataSourceExecutionAccessService {
                         path + "[" + index++ + "]",
                         depth + 1,
                         visitedNodes,
-                        visitedContainers);
+                        visitedContainers,
+                        inspectReservedKeys,
+                        includeFormButtonKeys);
                 if (StringUtils.hasText(nested)) {
                     return nested;
                 }
@@ -764,15 +1023,47 @@ public class UiDataSourceExecutionAccessService {
             if (key == null) {
                 return;
             }
-            String normalizedKey = key.replace("_", "")
-                    .replace("-", "")
-                    .toLowerCase(Locale.ROOT);
-            if (!RESERVED_REQUEST_KEYS.contains(normalizedKey)) {
+            if (!isReservedRequestKey(key)) {
                 result.put(key, value);
             }
         });
         return Collections.unmodifiableMap(
                 new LinkedHashMap<>(result));
+    }
+
+    /**
+     * 判断客户端上下文键是否属于只能由服务端注入的可信元数据。
+     * 包内事件运行时复用此规则，在构造 Provider 请求前剥离前端展示上下文中的
+     * formId/listKey 等身份声明；嵌套或 input 中的伪造值仍由递归校验拒绝。
+     */
+    static boolean isReservedRequestKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        return RESERVED_REQUEST_KEYS.contains(normalizeRequestKey(key));
+    }
+
+    /** FORM_BUTTON_CLICK 额外保护服务端核验后的 task/process 坐标。 */
+    static boolean isReservedFormButtonRequestKey(String key) {
+        String normalized = normalizeRequestKey(key);
+        return RESERVED_REQUEST_KEYS.contains(normalized)
+                || FORM_BUTTON_RESERVED_REQUEST_KEYS.contains(normalized);
+    }
+
+    private static String normalizeRequestKey(String key) {
+        return key == null ? "" : key.replace("_", "")
+                .replace("-", "")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private Map<String, Object> stringMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, child) ->
+                result.put(String.valueOf(key), child));
+        return result;
     }
 
     private String firstText(Object... values) {

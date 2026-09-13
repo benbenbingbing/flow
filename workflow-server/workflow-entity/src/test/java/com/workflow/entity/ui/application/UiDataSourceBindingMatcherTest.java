@@ -216,4 +216,51 @@ class UiDataSourceBindingMatcherTest {
                 "service-a",
                 "anotherOperation"));
     }
+
+    @Test
+    void publishedEventCanMatchExactInheritedOwnerIdentity() {
+        Map<String, Object> snapshot = Map.of(
+                "eventBindings", List.of(
+                        Map.of(
+                                "ownerType", "ENTITY",
+                                "ownerId", "entity-1",
+                                "targetType", "OWNER",
+                                "targetKey", "",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "steps", List.of(Map.of(
+                                        "serviceId", "service-a",
+                                        "operationCode", "query"))),
+                        Map.of(
+                                "ownerType", "FORM",
+                                "ownerId", "form-1",
+                                "targetType", "BUTTON",
+                                "targetKey", "generate",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "steps", List.of(Map.of(
+                                        "serviceId", "service-a",
+                                        "operationCode", "query")))));
+
+        assertEquals(
+                "$.release.eventBindings[0].steps",
+                matcher.findPublished(
+                        "FORM",
+                        snapshot,
+                        "FORM_BUTTON_CLICK",
+                        "OWNER",
+                        "",
+                        "service-a",
+                        "query",
+                        "ENTITY",
+                        "entity-1"));
+        assertNull(matcher.findPublished(
+                "FORM",
+                snapshot,
+                "FORM_BUTTON_CLICK",
+                "OWNER",
+                "",
+                "service-a",
+                "query",
+                "FORM",
+                "form-1"));
+    }
 }

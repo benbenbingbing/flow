@@ -24,6 +24,7 @@ import com.workflow.contracts.ui.UiActionMutationCommand;
 import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
+import com.workflow.entity.ui.api.request.UiInterfaceOperationExecuteRequest;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -83,6 +84,26 @@ class UiDataSourceServiceTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> context(List.of()).service().save(request));
+    }
+
+    @Test
+    void boundOperationCannotBypassFormButtonRuntime() {
+        UiInterfaceOperationExecuteRequest request =
+                new UiInterfaceOperationExecuteRequest();
+        request.setOwnerType("FORM");
+        request.setOwnerId("form-1");
+        request.setBindingCode("FORM_BUTTON_CLICK");
+        request.setTargetType("BUTTON");
+        request.setTargetKey("generate-report");
+        request.setServiceId("service-1");
+        request.setOperationCode("generate");
+
+        BusinessForbiddenException error = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context(List.of()).service()
+                        .executeBoundOperation(request));
+
+        assertEquals("UI_EVENT_RUNTIME_REQUIRED", error.getErrorCode());
     }
 
     /** 测试保存时拒绝畸形 schema：验证 required 非字符串数组时抛出 IllegalArgumentException */
@@ -508,6 +529,169 @@ class UiDataSourceServiceTest {
                 anyMap());
     }
 
+    @Test
+    void isolatesCacheForTwoOperationsOnSameServiceAndRevision() {
+        AtomicInteger calls = new AtomicInteger();
+        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        when(provider.getCode()).thenReturn("safe-provider");
+        when(provider.getVersion()).thenReturn(1);
+        when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
+        when(provider.execute(any(), any(), anyMap(), anyMap()))
+                .thenAnswer(invocation -> {
+                    calls.incrementAndGet();
+                    return ((Map<?, ?>) invocation.getArgument(2))
+                            .get("marker");
+                });
+        TestContext context = context(List.of(provider));
+        authorize(context, plan("1=1", 7));
+        UiDataSourceDefinition definition = cachedProvider(
+                context.codec());
+        definition.setOperationsDocument(context.codec().write(
+                List.of(
+                        Map.of(
+                                "code", "first",
+                                "name", "第一步",
+                                "kind", "READ",
+                                "contextType", "LIST",
+                                "config", Map.of("marker", "first"),
+                                "inputSchema", Map.of(),
+                                "outputSchema", Map.of()),
+                        Map.of(
+                                "code", "second",
+                                "name", "第二步",
+                                "kind", "READ",
+                                "contextType", "LIST",
+                                "config", Map.of("marker", "second"),
+                                "inputSchema", Map.of(),
+                                "outputSchema", Map.of())),
+                "测试多操作接口"));
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+        UiDataSourceExecuteRequest request = request(Map.of(), null);
+
+        Object first = context.service().executeOperation(
+                "source-1", "first", request);
+        Object second = context.service().executeOperation(
+                "source-1", "second", request);
+
+        assertEquals("first", first);
+        assertEquals("second", second);
+        assertEquals(2, calls.get());
+    }
+
+    @Test
+    void isolatesPinnedCacheForDifferentFrozenDefinitions() {
+        AtomicInteger calls = new AtomicInteger();
+        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        when(provider.getCode()).thenReturn("safe-provider");
+        when(provider.getVersion()).thenReturn(1);
+        when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
+        when(provider.execute(any(), any(), anyMap(), anyMap()))
+                .thenAnswer(invocation -> {
+                    calls.incrementAndGet();
+                    return ((Map<?, ?>) invocation.getArgument(2))
+                            .get("marker");
+                });
+        TestContext context = context(List.of(provider));
+        authorize(context, plan("1=1", 7));
+        UiDataSourceDefinition definition = cachedProvider(
+                context.codec());
+        definition.setSourceCode("cached-source");
+        definition.setSourceName("缓存接口");
+        definition.setConfigDocument(context.codec().write(
+                Map.of("marker", "published-a"),
+                "第一份钉版配置"));
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+        UiDataSourceService.PublishedOperationSnapshot first =
+                context.service().freezeOperation(
+                        "source-1", "query");
+        definition.setConfigDocument(context.codec().write(
+                Map.of("marker", "published-b"),
+                "第二份钉版配置"));
+        UiDataSourceService.PublishedOperationSnapshot second =
+                context.service().freezeOperation(
+                        "source-1", "query");
+
+        Object firstResult = context.service().executePinnedOperation(
+                first.document(), first.hash(),
+                executeRequest(Map.of(), Map.of()));
+        Object secondResult = context.service().executePinnedOperation(
+                second.document(), second.hash(),
+                executeRequest(Map.of(), Map.of()));
+
+        assertEquals("published-a", firstResult);
+        assertEquals("published-b", secondResult);
+        assertEquals(2, calls.get());
+    }
+
+    @Test
+    void isolatesCacheForTrustedFormButtonContext() {
+        AtomicInteger calls = new AtomicInteger();
+        UiDataSourceProvider provider = provider(
+                calls,
+                Map.of("value", "ok"));
+        TestContext context = context(List.of(provider));
+        when(context.executionAccessService().authorizePublished(
+                any(), any()))
+                .thenReturn(new UiDataSourceExecutionAuthorization(
+                        false,
+                        "FORM",
+                        "form-1",
+                        "release-1",
+                        3,
+                        "$.release.eventBindings[0].steps",
+                        "FORM_BUTTON_CLICK",
+                        "entity-1",
+                        "expense",
+                        null,
+                        context.user(),
+                        plan("1=1", 7),
+                        Map.of(),
+                        "trusted-seed"));
+        UiDataSourceDefinition definition = cachedProvider(
+                context.codec());
+        definition.setOperationsDocument(operationDocument(
+                context.codec(),
+                "FORM",
+                Map.of(),
+                Map.of()));
+        when(context.mapper().selectById("source-1"))
+                .thenReturn(definition);
+
+        UiDataSourceExecuteRequest base = cachedFormButtonRequest(
+                "record-1", "approve", "task-1", "process-1");
+        context.service().executeOperation("source-1", "query", base);
+        context.service().executeOperation(
+                "source-1",
+                "query",
+                cachedFormButtonRequest(
+                        "record-1", "approve", "task-1", "process-1"));
+        context.service().executeOperation(
+                "source-1",
+                "query",
+                cachedFormButtonRequest(
+                        "record-2", "approve", "task-1", "process-1"));
+        context.service().executeOperation(
+                "source-1",
+                "query",
+                cachedFormButtonRequest(
+                        "record-1", "view", "task-1", "process-1"));
+        context.service().executeOperation(
+                "source-1",
+                "query",
+                cachedFormButtonRequest(
+                        "record-1", "approve", "task-2", "process-1"));
+        context.service().executeOperation(
+                "source-1",
+                "query",
+                cachedFormButtonRequest(
+                        "record-1", "approve", "task-1", "process-2"));
+
+        // 只有完全相同的可信上下文命中缓存；四种服务端身份变化均重新执行。
+        assertEquals(5, calls.get());
+    }
+
     /** 测试权限计划变化时缓存隔离：验证两次不同计划各执行一次 provider */
     @Test
     void isolatesCacheWhenPermissionPlanChanges() {
@@ -727,6 +911,25 @@ class UiDataSourceServiceTest {
         request.setConfigId("list-1");
         request.setReleaseId("release-1");
         request.setReleaseVersion(3);
+        return request;
+    }
+
+    /** 构造仅强类型可信上下文不同、业务输入相同的表单按钮请求。 */
+    private UiDataSourceExecuteRequest cachedFormButtonRequest(
+            String recordId,
+            String mode,
+            String taskId,
+            String processInstanceId) {
+        UiDataSourceExecuteRequest request = request(Map.of(), Map.of());
+        request.setUsage("FORM_BUTTON_CLICK");
+        request.setConfigType("FORM");
+        request.setConfigId("form-1");
+        request.setReleaseId("release-1");
+        request.setReleaseVersion(3);
+        request.setServerRecordId(recordId);
+        request.setServerFormMode(mode);
+        request.setServerTaskId(taskId);
+        request.setServerProcessInstanceId(processInstanceId);
         return request;
     }
 

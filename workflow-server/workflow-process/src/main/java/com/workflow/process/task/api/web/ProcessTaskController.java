@@ -14,6 +14,8 @@ import com.workflow.process.task.api.request.NextApproverOptionsRequest;
 import com.workflow.process.task.api.request.TaskCompleteRequest;
 import com.workflow.process.task.api.response.NextApprovalPreviewResponse;
 import com.workflow.process.task.api.response.NextApproverCandidateDTO;
+import com.workflow.entity.form.api.request.FormActionResolveRequest;
+import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskListFilter;
@@ -57,6 +59,7 @@ public class ProcessTaskController {
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
     private final org.flowable.engine.HistoryService historyService;
     private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
+    private final EntityFormActionService formActionService;
 
     @Autowired
     private NextApprovalPreviewService nextApprovalPreviewService;
@@ -213,6 +216,9 @@ public class ProcessTaskController {
             }
             boolean hasNextSelections = params.getNextApproverSelections() != null
                     && !params.getNextApproverSelections().isEmpty();
+            // 加签子任务同样由审批表单的 submitApproval 触发，不能在
+            // early-return 分支绕过已发布按钮条件。
+            requireSubmitApprovalAction(params);
             if (taskAddSignService.requireAddSignTaskAccess(taskId)) {
                 if (hasNextSelections) {
                     throw new IllegalArgumentException(
@@ -255,6 +261,23 @@ public class ProcessTaskController {
         } catch (Exception e) {
             return Result.error("审批失败: " + e.getMessage());
         }
+    }
+
+    /** 普通审批提交必须重新校验活动任务所绑定发布表单的内置提交按钮。 */
+    private void requireSubmitApprovalAction(TaskCompleteRequest params) {
+        FormActionResolveRequest request = new FormActionResolveRequest();
+        request.setFormId(params.getFormId());
+        request.setReleaseId(params.getFormReleaseId());
+        request.setReleaseVersion(params.getFormReleaseVersion());
+        request.setReleaseResolutionToken(
+                params.getFormReleaseResolutionToken());
+        request.setEntityCode(params.getEntityCode());
+        request.setListKey(params.getListKey());
+        request.setMode("approve");
+        request.setRecordId(params.getRecordId());
+        request.setTaskId(params.getTaskId());
+        formActionService.requireBuiltInMutationAction(
+                request, "submitApproval");
     }
 
     /**

@@ -236,6 +236,38 @@ class EntityFormNodeServicePropertyPolicyTest {
                 "props_document 必须持久化显式空 placeholder");
     }
 
+    /**
+     * 验证动作插槽修改栅格宽度后，服务层会将归一化结果写入 props_document。
+     */
+    @Test
+    void actionSlotGridSpanIsPersistedByPatch() {
+        EntityFormNode current = actionSlot();
+        EntityFormNodePatchRequest request =
+                new EntityFormNodePatchRequest();
+        request.setExpectedRevision(1);
+        request.setProps(Map.of(
+                "label", "页内动作",
+                "gridSpan", 11));
+
+        Fixture fixture = fixture(current);
+        assertDoesNotThrow(() ->
+                fixture.service().patch(
+                        "form-1", current.getId(), request));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<UpdateWrapper<EntityFormNode>> captor =
+                ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(fixture.nodeMapper()).update(
+                isNull(), captor.capture());
+        assertTrue(
+                captor.getValue().getParamNameValuePairs().values().stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .anyMatch(value ->
+                                value.contains("\"gridSpan\":11")),
+                "props_document 必须持久化动作插槽 gridSpan");
+    }
+
     /** 构造测试桩 Fixture：mock mapper 与访问策略，预置当前节点及 form-1 数据。 */
     private Fixture fixture(EntityFormNode current) {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
@@ -326,6 +358,27 @@ class EntityFormNodeServicePropertyPolicyTest {
                         "readonly", false,
                         "hidden", false),
                 "测试字段属性"));
+        node.setOrderKey(1_000_000L);
+        node.setRevision(1);
+        node.setDeleted(0);
+        return node;
+    }
+
+    /** 构造可参与 24 栅格布局的动作插槽节点。 */
+    private EntityFormNode actionSlot() {
+        JsonDocumentCodec codec =
+                new JsonDocumentCodec(new ObjectMapper());
+        EntityFormNode node = new EntityFormNode();
+        node.setId("action-slot-1");
+        node.setFormId("form-1");
+        node.setNodeKey("action_slot_primary");
+        node.setNodeType("ACTION_SLOT");
+        node.setBindingType("NONE");
+        node.setPropsDocument(codec.write(
+                Map.of(
+                        "label", "页内动作",
+                        "gridSpan", 24),
+                "测试动作插槽属性"));
         node.setOrderKey(1_000_000L);
         node.setRevision(1);
         node.setDeleted(0);

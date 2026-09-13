@@ -41,6 +41,24 @@ export const eventCodes = interfaceServiceUsageOptions
   .slice(9)
   .map(option => option.value)
 
+/**
+ * 表单自定义按钮执行链只允许无副作用的 READ 操作。写入实体应走平台保存
+ * 动作，外部副作用应由受控业务 Outbox 承担，因此未知 kind 也失败关闭。
+ */
+export function eventBindingReadOperations(operations = []) {
+  return (Array.isArray(operations) ? operations : []).filter(operation =>
+    String(operation?.kind || '').trim().toUpperCase() === 'READ'
+  )
+}
+
+/** 仅收窄表单自定义按钮；其他既有事件仍按服务端目录保留 WRITE 能力。 */
+export function eventBindingOperationsForEvent(operations = [], eventCode = '') {
+  const source = Array.isArray(operations) ? operations : []
+  return String(eventCode || '').trim().toUpperCase() === 'FORM_BUTTON_CLICK'
+    ? eventBindingReadOperations(source)
+    : source
+}
+
 const readOnlyUsages = new Set([
   'FORM_INIT', 'FIELD_OPTIONS', 'FIELD_DEFAULT', 'FIELD_COMPUTE',
   'SUBFORM_ROWS', 'LIST_QUERY', 'LIST_COLUMN', 'AFTER_LOAD',

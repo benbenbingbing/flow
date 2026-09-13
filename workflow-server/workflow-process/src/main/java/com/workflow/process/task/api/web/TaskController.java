@@ -9,6 +9,8 @@ import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.TaskAddSignService;
 import com.workflow.process.task.application.TaskService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
+import com.workflow.entity.form.api.request.FormActionResolveRequest;
+import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.process.workbench.api.response.TaskStatisticsVO;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ public class TaskController {
     private final TaskActionService taskActionService;
     private final TaskAddSignService taskAddSignService;
     private final ProcessInstanceAccessService processInstanceAccessService;
+    private final EntityFormActionService formActionService;
 
     /**
      * 获取待办任务统计
@@ -77,14 +80,61 @@ public class TaskController {
         String actionLabel = (String) params.get("actionLabel");
         
         String currentUser = UserContext.getUsername();
+        requireSubmitApprovalAction(params, taskId);
         if (taskAddSignService.isAddSignTask(taskId)) {
             taskAddSignService.completeAddSignTask(taskId, action, comment);
-        } else if (!taskAddSignService.handleSourceCompletion(
-                taskId, currentUser, action, comment, actionLabel, null)) {
-            taskActionService.completeTask(
-                    taskId, currentUser, action, comment, transferTo, actionLabel);
+        } else {
+            if (!taskAddSignService.handleSourceCompletion(
+                    taskId, currentUser, action, comment, actionLabel, null)) {
+                taskActionService.completeTask(
+                        taskId, currentUser, action, comment,
+                        transferTo, actionLabel);
+            }
         }
         return Result.success();
+    }
+
+    /** 旧任务入口同样必须携带并校验活动任务表单发布上下文。 */
+    private void requireSubmitApprovalAction(
+            Map<String, Object> params,
+            String taskId) {
+        FormActionResolveRequest request = approvalRequest(params, taskId);
+        formActionService.requireBuiltInMutationAction(
+                request, "submitApproval");
+    }
+
+    private FormActionResolveRequest approvalRequest(
+            Map<String, Object> params,
+            String taskId) {
+        FormActionResolveRequest request = new FormActionResolveRequest();
+        request.setFormId(text(params.get("formId")));
+        request.setReleaseId(text(params.get("formReleaseId")));
+        request.setReleaseVersion(integer(params.get(
+                "formReleaseVersion")));
+        request.setReleaseResolutionToken(text(params.get(
+                "formReleaseResolutionToken")));
+        request.setEntityCode(text(params.get("entityCode")));
+        request.setListKey(text(params.get("listKey")));
+        request.setMode("approve");
+        request.setRecordId(text(params.get("recordId")));
+        request.setTaskId(taskId);
+        return request;
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Integer integer(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "表单发布版本必须是整数");
+        }
     }
 
     /**

@@ -130,6 +130,10 @@ public class UiReleaseResolutionTokenService {
                 parentReleaseVersion,
                 depth,
                 UserContext.getUserId(),
+                context.taskId(),
+                context.processInstanceId(),
+                context.entityCode(),
+                context.recordId(),
                 embedSession == null ? null : embedSession.sessionId(),
                 embedSession == null ? null : embedSession.viewReleaseId(),
                 now,
@@ -432,16 +436,46 @@ public class UiReleaseResolutionTokenService {
             Integer parentReleaseVersion,
             int depth,
             String userId,
+            String taskId,
+            String processInstanceId,
+            String entityCode,
+            String recordId,
             String embedSessionId,
             String embedViewReleaseId,
             long issuedAt,
             long expiresAt) {
 
+        /** 兼容历史令牌与既有测试构造；审批按钮会拒绝这些未绑定任务主体的令牌。 */
+        public Claims(
+                UiRuntimePurpose purpose,
+                String processVersionHistoryId,
+                String nodeId,
+                String parentFormId,
+                String parentReleaseId,
+                Integer parentReleaseVersion,
+                int depth,
+                String userId,
+                String embedSessionId,
+                String embedViewReleaseId,
+                long issuedAt,
+                long expiresAt) {
+            this(purpose, processVersionHistoryId, nodeId,
+                    parentFormId, parentReleaseId,
+                    parentReleaseVersion, depth, userId,
+                    null, null, null, null,
+                    embedSessionId, embedViewReleaseId,
+                    issuedAt, expiresAt);
+        }
+
         public UiRuntimeResolutionContext context() {
             return new UiRuntimeResolutionContext(
                     purpose,
                     processVersionHistoryId,
-                    nodeId);
+                    nodeId,
+                    taskId,
+                    processInstanceId,
+                    entityCode,
+                    recordId);
         }
     }
 

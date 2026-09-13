@@ -3,6 +3,7 @@ package com.workflow.process.task.api.web;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.api.response.TaskVO;
 import com.workflow.process.task.api.request.TaskCompleteRequest;
@@ -59,7 +60,8 @@ class ProcessTaskControllerTest {
                 mock(TaskAddSignService.class),
                 mock(EntityDataDynamicService.class),
                 mock(HistoryService.class),
-                mock(SysUserService.class));
+                mock(SysUserService.class),
+                mock(EntityFormActionService.class));
         LocalDateTime responseDue = LocalDateTime.of(
                 2026, 8, 4, 2, 21, 20);
         LocalDateTime completionDue = responseDue.plusMinutes(1);
@@ -95,7 +97,8 @@ class ProcessTaskControllerTest {
                 mock(TaskAddSignService.class),
                 mock(EntityDataDynamicService.class),
                 mock(HistoryService.class),
-                mock(SysUserService.class));
+                mock(SysUserService.class),
+                mock(EntityFormActionService.class));
         UserContext.setCurrentUser("user-1", "admin");
 
         controller.withdrawProcess(Map.of(
@@ -176,7 +179,8 @@ class ProcessTaskControllerTest {
         when(addSignService.isAddSignTask("addsign-1")).thenReturn(true);
         ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class), detailService,
                 actionService, mock(ProcessInstanceAccessService.class), addSignService,
-                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class));
+                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
+                mock(EntityFormActionService.class));
         if (!authorized) {
             doThrow(new ForbiddenException("无加签审批权"))
                     .when(detailService).requireLocalAddSignTaskAccess("addsign-1");
@@ -196,7 +200,8 @@ class ProcessTaskControllerTest {
         TaskDetailService detailService = mock(TaskDetailService.class);
         ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class), detailService,
                 actionService, mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
-                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class));
+                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
+                mock(EntityFormActionService.class));
         doThrow(new ForbiddenException("无审批权")).when(actionService).requireTaskAccess("task-1");
 
         assertThrows(ForbiddenException.class, () -> controller.getTaskDetail("task-1"));
@@ -226,6 +231,7 @@ class ProcessTaskControllerTest {
     private ProcessTaskController controller(TaskActionService taskActionService) {
         return new ProcessTaskController(mock(ProcessTaskService.class), mock(TaskDetailService.class),
                 taskActionService, mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
-                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class));
+                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
+                mock(EntityFormActionService.class));
     }
 }

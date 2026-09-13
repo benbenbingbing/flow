@@ -57,8 +57,42 @@ assert.equal(action.expectedRevision, 3)
 assert.equal(action.orderKey, 150)
 assert.deepEqual(action.actionParams, { targetEntityCode: 'project' })
 assert.deepEqual(action.clearFields, [
-  'templateId', 'templateVersion', 'localOverridesDocument'
+  'templateId', 'templateVersion', 'localOverridesDocument',
+  'availabilityRuleDocument'
 ])
+assert.equal('unavailableBehavior' in action, false)
+assert.equal(action.availabilityRule, null)
+assert.deepEqual(
+  normalizeListActionForSave({
+    key: 'archive',
+    type: 'custom',
+    label: '归档',
+    availabilityRule: {
+      version: 2,
+      visibleWhen: { type: 'STATUS_CODE', operator: 'EQ', value: 'READY' },
+      enabledWhen: { type: 'RELATION', relation: 'CURRENT_USER_IS_CREATOR' },
+      disabledMessage: '仅创建人可以归档'
+    }
+  }, 'ROW').availabilityRule,
+  {
+    version: 2,
+    visibleWhen: { type: 'STATUS_CODE', operator: 'EQ', value: 'READY' },
+    enabledWhen: { type: 'RELATION', relation: 'CURRENT_USER_IS_CREATOR' },
+    disabledMessage: '仅创建人可以归档'
+  }
+)
+assert.equal(
+  normalizeListActionForSave({
+    key: 'archive',
+    availabilityRule: {
+      version: 2,
+      visibleWhen: null,
+      enabledWhen: null,
+      disabledMessage: ''
+    }
+  }, 'ROW').clearFields.includes('availabilityRuleDocument'),
+  false
+)
 assert.equal(getListButtonDefaultType('create'), 'primary')
 assert.equal(getListButtonDefaultType('batchDelete'), 'danger')
 assert.equal(getListButtonDefaultType('delete'), 'danger')

@@ -51,7 +51,9 @@ public class UiDataSourceBindingMatcher {
                 targetKey,
                 sourceId,
                 operationCode,
-                "$.draft.eventBindings");
+                "$.draft.eventBindings",
+                null,
+                null);
     }
 
     public String findPublished(
@@ -62,6 +64,32 @@ public class UiDataSourceBindingMatcher {
             String targetKey,
             String sourceId,
             String operationCode) {
+        return findPublished(
+                configType,
+                snapshot,
+                usage,
+                targetType,
+                targetKey,
+                sourceId,
+                operationCode,
+                null,
+                null);
+    }
+
+    /**
+     * 按事件步骤的可信来源所有者精确查找发布绑定。
+     * 所有者为空时保持通用接口调用的既有匹配行为。
+     */
+    public String findPublished(
+            String configType,
+            Map<String, Object> snapshot,
+            String usage,
+            String targetType,
+            String targetKey,
+            String sourceId,
+            String operationCode,
+            String bindingOwnerType,
+            String bindingOwnerId) {
         String eventPath = findEventBinding(
                 mapList(snapshot.get("eventBindings")),
                 usage,
@@ -69,7 +97,9 @@ public class UiDataSourceBindingMatcher {
                 targetKey,
                 sourceId,
                 operationCode,
-                "$.release.eventBindings");
+                "$.release.eventBindings",
+                bindingOwnerType,
+                bindingOwnerId);
         if (StringUtils.hasText(eventPath)) {
             return eventPath;
         }
@@ -342,9 +372,20 @@ public class UiDataSourceBindingMatcher {
             String targetKey,
             String sourceId,
             String operationCode,
-            String path) {
+            String path,
+            String bindingOwnerType,
+            String bindingOwnerId) {
         for (int index = 0; index < bindings.size(); index++) {
             Map<String, Object> binding = bindings.get(index);
+            if ((StringUtils.hasText(bindingOwnerType)
+                    || StringUtils.hasText(bindingOwnerId))
+                    && (!normalize(bindingOwnerType).equals(normalize(
+                    text(binding.get("ownerType"))))
+                    || !Objects.equals(
+                    text(bindingOwnerId),
+                    text(binding.get("ownerId"))))) {
+                continue;
+            }
             if (!usage.equals(normalize(
                     text(binding.get("eventCode"))))) {
                 continue;

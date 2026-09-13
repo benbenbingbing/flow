@@ -98,7 +98,7 @@ export const uiEventBindingApi = {
   execute(eventCode, data) {
     return request.post(
       `/ui-runtime/events/${eventCode}/execute`,
-      buildUiEventExecutionPayload(data)
+      buildUiEventExecutionPayload(data, eventCode)
     )
   }
 }

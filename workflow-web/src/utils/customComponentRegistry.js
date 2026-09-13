@@ -39,6 +39,11 @@
  *   - mode: 'create' | 'edit' | 'approve' | 'view'
  *   - config: viewConfig.customComponentProps
  *   - context: 当前模式、实体、表单和记录等场景上下文
+ *   - formActionSlots: 受控内嵌动作契约
+ *     - version: 当前为 1
+ *     - slots: { [slotKey]: FormAction[] }，只包含当前可见的 ACTION_SLOT 动作
+ *     - trigger(actionKey): 仅触发宿主已解析且当前启用的动作，返回是否受理
+ *   - 兼容事件 form-action: 可提交 actionKey；宿主仍会按上述白名单重新解析
  *     - context.formUniqueErrors: 当前字段唯一错误映射（兼容已有组件）
  *     - context.formUniqueness.errors: 当前字段唯一错误映射
  *     - context.formUniqueness.onFieldBlur(fieldOrCode): 输入失焦时按发布规则预检

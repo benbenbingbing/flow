@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 
 import {
   normalizeRecordSelection,
+  refreshRecordPageSelection,
   reconcileRecordPageSelection,
   recordSelectionIds,
   recordSelectionValues,
@@ -42,6 +43,45 @@ assert.deepEqual(
   recordSelectionIds(afterReturningFirstPage),
   ['project-b', 'project-c'],
   '返回前页取消记录时不能影响其他页选择'
+)
+
+const staleProjectB = {
+  ...projectB,
+  actionCapabilities: { batchDelete: { visible: true, enabled: true } }
+}
+const freshProjectB = {
+  ...projectB,
+  actionCapabilities: { batchDelete: { visible: true, enabled: false } }
+}
+const refreshedSelection = reconcileRecordPageSelection(
+  [staleProjectB, projectC],
+  [freshProjectB],
+  [freshProjectB]
+)
+assert.equal(
+  refreshedSelection[0],
+  freshProjectB,
+  '返回当前页后必须用最新记录替换同 ID 的旧选择对象'
+)
+assert.equal(
+  refreshedSelection[0].actionCapabilities.batchDelete.enabled,
+  false,
+  '选择集按钮必须读取本次查询返回的最新能力'
+)
+
+const restoredSelection = refreshRecordPageSelection(
+  [staleProjectB, projectC],
+  [freshProjectB]
+)
+assert.equal(
+  restoredSelection[0],
+  freshProjectB,
+  '表格屏蔽 selection-change 自动恢复勾选时也必须主动刷新当前页对象'
+)
+assert.equal(
+  restoredSelection[1],
+  projectC,
+  '自动恢复当前页选择时必须保留其他页对象'
 )
 
 assert.deepEqual(

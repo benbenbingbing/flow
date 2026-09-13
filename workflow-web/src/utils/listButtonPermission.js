@@ -16,8 +16,10 @@ export function hasButtonPermission(btnConfig, permissions) {
 
 export function getActionCapability(row, buttonKey) {
   return row?.actionCapabilities?.[buttonKey] || {
-    visible: true,
-    enabled: true,
+    // 已发布列表的行能力必须来自服务端；缺失时失败关闭，不能把 Provider
+    // 漏掉的能力数据解释成“允许操作”。
+    visible: false,
+    enabled: false,
     reason: ''
   }
 }
@@ -62,15 +64,30 @@ export function resolveActionableTaskId(row, buttonKey, options = {}) {
   return actionableTaskId == null ? '' : String(actionableTaskId).trim()
 }
 
+/**
+ * 汇总选择集按钮的可见与可用状态。
+ *
+ * 空选择时没有行能力可供判断，因此保留按钮并提示用户先选择数据；一旦存在选择，
+ * 必须先完成全部行的可见性判断，再汇总可用性，避免把 visibleWhen 不满足错误地
+ * 降级为“可见但禁用”。隐藏结果不透出原因，防止展示本应不可见动作的规则细节。
+ *
+ * @param {Array<Object>} rows 当前选择行
+ * @param {string} buttonKey 按钮键
+ * @returns {{visible: boolean, enabled: boolean, reason: string}} 选择集动作状态
+ */
 export function getSelectionActionState(rows, buttonKey) {
   if (!Array.isArray(rows) || rows.length === 0) {
-    return { enabled: false, reason: '请先选择数据' }
+    return { visible: true, enabled: false, reason: '请先选择数据' }
   }
-  const denied = rows.find(row => !canExecuteAction(row, buttonKey))
-  return denied
+  if (rows.some(row => !isActionVisible(row, buttonKey))) {
+    return { visible: false, enabled: false, reason: '' }
+  }
+  const disabled = rows.find(row => getActionCapability(row, buttonKey).enabled === false)
+  return disabled
     ? {
+        visible: true,
         enabled: false,
-        reason: getActionCapabilityReason(denied, buttonKey) || '选中数据中存在不可操作的数据'
+        reason: getActionCapabilityReason(disabled, buttonKey) || '选中数据中存在不可操作的数据'
       }
-    : { enabled: true, reason: '' }
+    : { visible: true, enabled: true, reason: '' }
 }

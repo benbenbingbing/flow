@@ -123,6 +123,19 @@ assert.match(
   /getNextApproverPreviewTraceKey\(\)[\s\S]*?completeTask\([\s\S]*?BUSINESS_TRACE_HEADER/,
   '正式审批必须复用当前预览的业务追踪键，保证相同输入命中相同无副作用结果'
 )
+;[
+  'entityCode: effectiveEntityCode.value',
+  'recordId: entityData.value?.id',
+  'formId: approvalActionFormContext.value.formId',
+  'formReleaseId: approvalActionFormContext.value.releaseId',
+  'formReleaseVersion: approvalActionFormContext.value.releaseVersion',
+  'formReleaseResolutionToken:'
+].forEach(marker => {
+  assert.ok(
+    dialog.includes(marker),
+    `正式审批缺少表单按钮最终条件复核坐标: ${marker}`
+  )
+})
 assert.match(
   dialog,
   /NEXT_APPROVER_DEFERRED_DEFAULT_REQUIRED[\s\S]*?status:\s*'BLOCKED'/,

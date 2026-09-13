@@ -2,6 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -11,6 +12,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.ui.api.request.UiEventBindingSaveRequest;
+import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
@@ -109,6 +111,237 @@ class UiEventBindingServiceRevisionTest {
     }
 
     @Test
+    void formButtonBindingRejectsWriteProviderBeforePublish() {
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
+        when(dataSourceService.operations("write-source"))
+                .thenReturn(List.of(Map.of(
+                        "code", "write-op",
+                        "contextType", "FORM",
+                        "kind", "WRITE")));
+        UiEventBindingSaveRequest request = formButtonRequest(List.of(
+                step("write-source", "write-op", 10)));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service(mapper, dataSourceService).save(request));
+
+        assertTrue(error.getMessage().contains("只允许 READ"));
+        assertTrue(error.getMessage().contains("Outbox"));
+    }
+
+    @Test
+    void buttonScopedFormButtonRejectsDisableButOwnerScopeKeepsIt() {
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        UiEventBindingSaveRequest buttonRequest = formButtonRequest(List.of());
+        buttonRequest.setInheritanceMode("DISABLE");
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> service(mapper).save(buttonRequest));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_DISABLE_UNSUPPORTED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("启用开关"));
+
+        UiEventBindingSaveRequest ownerRequest = formButtonRequest(List.of());
+        ownerRequest.setOwnerType("ENTITY");
+        ownerRequest.setOwnerId("entity-1");
+        ownerRequest.setTargetType("OWNER");
+        ownerRequest.setTargetKey(null);
+        ownerRequest.setInheritanceMode("DISABLE");
+        assertDoesNotThrow(() -> service(mapper).save(ownerRequest));
+    }
+
+    @Test
+    void buttonScopedFormButtonReplaceRequiresOneLocalMainStep() {
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        UiEventBindingSaveRequest request = formButtonRequest(List.of(Map.of(
+                "strategy", "BEFORE",
+                "failurePolicy", "STOP",
+                "order", 10,
+                "outputMapping", Map.of(
+                        "form.status", "input.form.status"))));
+        request.setInheritanceMode("REPLACE");
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> service(mapper).save(request));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("本层"));
+        assertTrue(error.getMessage().contains("当前为 0 个"));
+    }
+
+    @Test
+    void buttonScopedFormButtonRejectsMultipleLocalMainSteps() {
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        UiEventBindingSaveRequest request = formButtonRequest(List.of(
+                Map.of(
+                        "strategy", "REPLACE",
+                        "failurePolicy", "STOP",
+                        "order", 10,
+                        "outputMapping", Map.of(
+                                "form.status", "input.form.status")),
+                Map.of(
+                        "strategy", "REPLACE",
+                        "failurePolicy", "STOP",
+                        "order", 20,
+                        "outputMapping", Map.of(
+                                "form.code", "input.form.code"))));
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> service(mapper).save(request));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("当前为 2 个"));
+    }
+
+    @Test
+    void formButtonRejectsConditionalMainStepAtButtonAndOwnerScopes() {
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        List<Map<String, Object>> steps = List.of(Map.of(
+                "strategy", "REPLACE",
+                "failurePolicy", "STOP",
+                "order", 10,
+                "condition", Map.of(
+                        "path", "input.form.status",
+                        "equals", "DRAFT"),
+                "outputMapping", Map.of(
+                        "form.status", "input.form.status")));
+        UiEventBindingSaveRequest buttonRequest = formButtonRequest(steps);
+        buttonRequest.setInheritanceMode("REPLACE");
+
+        BusinessConflictException buttonError = assertThrows(
+                BusinessConflictException.class,
+                () -> service(mapper).save(buttonRequest));
+
+        assertEquals(
+                "UI_EVENT_FORM_BUTTON_MAIN_STEP_CONDITION_UNSUPPORTED",
+                buttonError.getErrorCode());
+        assertTrue(buttonError.getMessage().contains("必须无条件执行"));
+
+        UiEventBindingSaveRequest ownerRequest = formButtonRequest(steps);
+        ownerRequest.setOwnerType("ENTITY");
+        ownerRequest.setOwnerId("entity-1");
+        ownerRequest.setTargetType("OWNER");
+        ownerRequest.setTargetKey(null);
+        BusinessConflictException ownerError = assertThrows(
+                BusinessConflictException.class,
+                () -> service(mapper).save(ownerRequest));
+        assertEquals(
+                "UI_EVENT_FORM_BUTTON_MAIN_STEP_CONDITION_UNSUPPORTED",
+                ownerError.getErrorCode());
+    }
+
+    @Test
+    void nonFormButtonWriteProviderRemainsSupported() {
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
+        when(dataSourceService.operations("write-source"))
+                .thenReturn(List.of(Map.of(
+                        "code", "write-op",
+                        "contextType", "FORM",
+                        "kind", "WRITE")));
+        UiEventBindingSaveRequest request = sharedRequest(List.of(
+                step("write-source", "write-op", 10)));
+
+        assertDoesNotThrow(() ->
+                service(mapper, dataSourceService).save(request));
+    }
+
+    @Test
+    void publishedButtonInheritsOwnerStepWithTrustedSourceIdentity() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonDocumentCodec codec = new JsonDocumentCodec(objectMapper);
+        UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
+        EntityDefinitionMapper definitionMapper =
+                mock(EntityDefinitionMapper.class);
+        EntityFormMapper formMapper = mock(EntityFormMapper.class);
+        UiConfigReleaseService releaseService =
+                mock(UiConfigReleaseService.class);
+        EntityForm form = new EntityForm();
+        form.setId("form-1");
+        form.setEntityId("entity-1");
+        EntityDefinition entity = new EntityDefinition();
+        entity.setId("entity-1");
+        entity.setEntityCode("expense");
+        when(formMapper.selectById("form-1")).thenReturn(form);
+        when(definitionMapper.selectById("entity-1"))
+                .thenReturn(entity);
+        Map<String, Object> snapshot = Map.of(
+                "configType", "FORM",
+                "form", Map.of(
+                        "id", "form-1",
+                        "entityId", "entity-1"),
+                "eventBindings", List.of(
+                        Map.of(
+                                "ownerType", "ENTITY",
+                                "ownerId", "entity-1",
+                                "targetType", "OWNER",
+                                "targetKey", "",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "inheritanceMode", "INHERIT",
+                                "steps", List.of(Map.of(
+                                        "serviceId", "source-1",
+                                        "operationCode", "query",
+                                        "strategy", "REPLACE",
+                                        "order", 10))),
+                        Map.of(
+                                "ownerType", "FORM",
+                                "ownerId", "form-1",
+                                "targetType", "BUTTON",
+                                "targetKey", "generate",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "inheritanceMode", "INHERIT",
+                                "steps", List.of())));
+        when(releaseService.resolveRuntimeEventSnapshot(
+                "form-1", null, null, null))
+                .thenReturn(new UiConfigReleaseService
+                        .ResolvedUiEventSnapshot(
+                                snapshot,
+                                "release-1",
+                                1,
+                                "hotfix-2",
+                                true,
+                                "effective-hash"));
+        UiEventBindingService service = new UiEventBindingService(
+                mapper,
+                mock(UiConfigReleaseMapper.class),
+                definitionMapper,
+                formMapper,
+                mock(EntityListConfigMapper.class),
+                mock(EntityDefinitionAccessPolicy.class),
+                mock(UiConfigurationAccessService.class),
+                mock(UiDataSourceService.class),
+                mock(UiEventBindingSnapshotService.class),
+                releaseService,
+                codec,
+                objectMapper);
+        UiEventExecuteRequest request = new UiEventExecuteRequest();
+        request.setConfigType("FORM");
+        request.setConfigId("form-1");
+        request.setEventCode("FORM_BUTTON_CLICK");
+        request.setTargetType("BUTTON");
+        request.setTargetKey("generate");
+
+        UiEventBindingService.ResolvedEventChain chain =
+                service.resolvePublished(request);
+
+        assertEquals(1, chain.steps().size());
+        assertEquals("ENTITY", chain.steps().get(0).get(
+                "bindingOwnerType"));
+        assertEquals("OWNER", chain.steps().get(0).get(
+                "bindingTargetType"));
+        assertEquals("hotfix-2", chain.effectiveReleaseId());
+        assertEquals("effective-hash", chain.effectiveContentHash());
+    }
+
+    @Test
     void draftResolutionAndSnapshotApiProjectSharedEntityStepsByContext() {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonDocumentCodec codec = new JsonDocumentCodec(objectMapper);
@@ -120,9 +353,14 @@ class UiEventBindingServiceRevisionTest {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         EntityListConfigMapper listMapper =
                 mock(EntityListConfigMapper.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
         UiEventBindingSnapshotService snapshotService =
                 new UiEventBindingSnapshotService(
-                        mapper, sourceMapper, codec);
+                        mapper,
+                        sourceMapper,
+                        dataSourceService,
+                        codec);
         UiEventBindingService service = new UiEventBindingService(
                 mapper,
                 mock(UiConfigReleaseMapper.class),
@@ -131,7 +369,7 @@ class UiEventBindingServiceRevisionTest {
                 listMapper,
                 mock(EntityDefinitionAccessPolicy.class),
                 mock(UiConfigurationAccessService.class),
-                mock(UiDataSourceService.class),
+                dataSourceService,
                 snapshotService,
                 mock(UiConfigReleaseService.class),
                 codec,
@@ -230,6 +468,20 @@ class UiEventBindingServiceRevisionTest {
         request.setOwnerId("entity-1");
         request.setTargetType("OWNER");
         request.setEventCode("DETAIL_LOAD");
+        request.setInheritanceMode("INHERIT");
+        request.setSteps(steps);
+        request.setEnabled(true);
+        return request;
+    }
+
+    private UiEventBindingSaveRequest formButtonRequest(
+            List<Map<String, Object>> steps) {
+        UiEventBindingSaveRequest request = new UiEventBindingSaveRequest();
+        request.setOwnerType("FORM");
+        request.setOwnerId("form-1");
+        request.setTargetType("BUTTON");
+        request.setTargetKey("generate-report");
+        request.setEventCode("FORM_BUTTON_CLICK");
         request.setInheritanceMode("INHERIT");
         request.setSteps(steps);
         request.setEnabled(true);

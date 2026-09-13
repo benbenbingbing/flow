@@ -1,5 +1,7 @@
 package com.workflow.entity.form.application;
 
+import com.workflow.entity.permission.application.EntityActionRuleStructurePolicy;
+import com.workflow.entity.permission.application.EntityActionRuleBuiltInPolicy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -26,22 +28,19 @@ public class EntityFormActionConfigPolicy {
     private static final Set<String> BUTTON_TYPES =
             Set.of("default", "primary", "success", "warning", "danger",
                     "info");
+    private static final Set<String> BUTTON_APPEARANCES =
+            Set.of("DEFAULT", "PLAIN", "ROUND", "CIRCLE");
+    private static final Set<String> BUTTON_ICONS = Set.of(
+            "Check", "Close", "Document", "Download", "Edit", "Link",
+            "Message", "Plus", "Printer", "Promotion", "Refresh",
+            "RefreshLeft", "Select", "Setting", "Upload", "View");
     private static final Set<String> PLACEMENTS =
             Set.of("FOOTER", "ACTION_SLOT");
-    private static final Set<String> RULE_TYPES =
-            Set.of("GROUP", "RELATION", "PROCESS_STATE", "STATUS_CODE",
-                    "STATUS_CATEGORY", "FIELD", "USER_FIELD");
-    private static final Set<String> RULE_OPERATORS =
-            Set.of("EQ", "NE", "IN", "NOT_IN", "CONTAINS",
-                    "NOT_CONTAINS", "EMPTY", "NOT_EMPTY",
-                    "GT", "GTE", "LT", "LTE");
     private static final Pattern BUTTON_KEY =
             Pattern.compile("[a-z][a-z0-9_-]{0,63}");
     private static final Pattern PERMISSION_CODE =
             Pattern.compile("[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)+");
     private static final int MAX_CUSTOM_BUTTONS = 50;
-    private static final int MAX_RULE_DEPTH = 6;
-    private static final int MAX_RULE_NODES = 100;
 
     /**
      * 校验 viewConfig 中的动作栏配置。
@@ -53,9 +52,32 @@ public class EntityFormActionConfigPolicy {
             boolean requireExistingSlots,
             Set<String> boundButtonKeys,
             boolean requireBindings) {
+        normalizeAndValidate(
+                viewConfig,
+                systemEntity,
+                actionSlotKeys,
+                requireExistingSlots,
+                boundButtonKeys,
+                requireBindings);
+    }
+
+    /**
+     * 校验动作栏并返回包含 canonical v2 按钮规则的独立配置副本。
+     * 调用方在持久化时应写回返回值；只读校验不会修改传入对象。
+     */
+    public Map<String, Object> normalizeAndValidate(
+            Map<String, Object> viewConfig,
+            boolean systemEntity,
+            Set<String> actionSlotKeys,
+            boolean requireExistingSlots,
+            Set<String> boundButtonKeys,
+            boolean requireBindings) {
+        Map<String, Object> result = viewConfig == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(viewConfig);
         if (viewConfig == null || viewConfig.isEmpty()
                 || viewConfig.get("actionBar") == null) {
-            return;
+            return result;
         }
         Map<String, Object> actionBar =
                 map(viewConfig.get("actionBar"), "表单按钮配置");
@@ -65,16 +87,23 @@ public class EntityFormActionConfigPolicy {
             throw new IllegalArgumentException(
                     "不支持的表单按钮配置版本: " + version);
         }
-        validateBuiltInOverrides(
-                mapOrEmpty(actionBar.get("builtInOverrides")),
-                systemEntity);
-        validateCustomButtons(
-                list(actionBar.get("customButtons"), "自定义表单按钮"),
+        Map<String, Object> normalizedOverrides =
+                validateBuiltInOverrides(
+                        mapOrEmpty(actionBar.get("builtInOverrides")),
+                        systemEntity);
+        List<Map<String, Object>> normalizedButtons =
+                validateCustomButtons(
+                        list(actionBar.get("customButtons"),
+                                "自定义表单按钮"),
                 systemEntity,
                 actionSlotKeys == null ? Set.of() : actionSlotKeys,
                 requireExistingSlots,
                 boundButtonKeys == null ? Set.of() : boundButtonKeys,
                 requireBindings);
+        actionBar.put("builtInOverrides", normalizedOverrides);
+        actionBar.put("customButtons", normalizedButtons);
+        result.put("actionBar", actionBar);
+        return result;
     }
 
     /**
@@ -96,9 +125,10 @@ public class EntityFormActionConfigPolicy {
         return result;
     }
 
-    private void validateBuiltInOverrides(
+    private Map<String, Object> validateBuiltInOverrides(
             Map<String, Object> overrides,
             boolean systemEntity) {
+        Map<String, Object> normalized = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : overrides.entrySet()) {
             String key = entry.getKey();
             if (!BUILT_IN_KEYS.contains(key)) {
@@ -111,6 +141,10 @@ public class EntityFormActionConfigPolicy {
             }
             Map<String, Object> override =
                     map(entry.getValue(), "内置按钮覆盖配置");
+            if (override.containsKey("buttonAppearance")) {
+                throw new IllegalArgumentException(
+                        "按钮外观仅支持自定义表单按钮");
+            }
             optionalBoolean(override.get("enabled"), "内置按钮启用状态");
             optionalInteger(override.get("sort"), 0, 10_000,
                     "内置按钮排序");
@@ -118,11 +152,13 @@ public class EntityFormActionConfigPolicy {
                     "内置按钮样式");
             validateModes(override.get("enabledModes"), "内置按钮适用模式");
             validateLabels(override.get("labelByMode"));
-            validateRule(override.get("availabilityRule"));
+            normalizeAvailabilityRule(override);
+            normalized.put(key, override);
         }
+        return normalized;
     }
 
-    private void validateCustomButtons(
+    private List<Map<String, Object>> validateCustomButtons(
             List<Map<String, Object>> buttons,
             boolean systemEntity,
             Set<String> actionSlotKeys,
@@ -156,6 +192,20 @@ public class EntityFormActionConfigPolicy {
                     "自定义按钮排序");
             optionalEnum(button.get("buttonType"), BUTTON_TYPES,
                     "自定义按钮样式");
+            String buttonAppearance = normalize(
+                    button.getOrDefault("buttonAppearance", "DEFAULT"));
+            if (!BUTTON_APPEARANCES.contains(buttonAppearance)) {
+                throw new IllegalArgumentException(
+                        "自定义按钮外观不支持: "
+                                + button.get("buttonAppearance"));
+            }
+            // 圆形按钮在视觉层只展示图标；没有图标会形成不可识别的空按钮。
+            if ("CIRCLE".equals(buttonAppearance)
+                    && !isSupportedButtonIcon(button.get("icon"))) {
+                throw new IllegalArgumentException(
+                        "圆形自定义按钮必须配置受支持的图标: " + key);
+            }
+            button.put("buttonAppearance", buttonAppearance);
             validateModes(button.get("modes"), "自定义按钮适用模式");
             String placement = normalize(
                     button.getOrDefault("placement", "FOOTER"));
@@ -188,14 +238,24 @@ public class EntityFormActionConfigPolicy {
                     button.get("validateBeforeExecute"),
                     "自定义按钮执行前校验");
             validateConfirm(button.get("confirm"));
-            validateRule(button.get("availabilityRule"));
+            normalizeAvailabilityRule(button);
             if (enabled && requireBindings
                     && !boundButtonKeys.contains(key)) {
                 throw new IllegalArgumentException(
                         "启用的自定义按钮必须绑定 FORM_BUTTON_CLICK 事件: "
-                                + key);
+                        + key);
             }
         }
+        return buttons;
+    }
+
+    /**
+     * 判断图标是否能由平台标准表单按钮渲染器解析。
+     * 包可见供运行时兼容旧发布快照时复用，避免校验与输出白名单漂移。
+     */
+    static boolean isSupportedButtonIcon(Object configured) {
+        return configured instanceof String icon
+                && BUTTON_ICONS.contains(icon.trim());
     }
 
     private void validateLabels(Object value) {
@@ -240,74 +300,33 @@ public class EntityFormActionConfigPolicy {
         }
     }
 
-    private void validateRule(Object value) {
+    /**
+     * 校验单个按钮的 v2 显示/启用条件，空配置表示无额外限制。
+     *
+     * @param value availabilityRule 配置对象，可为 null
+     * @throws IllegalArgumentException 结构、版本或复杂度不合法时抛出
+     */
+    public void validateAvailabilityRule(Object value) {
         if (value == null) {
             return;
         }
-        Map<String, Object> rule = map(value, "按钮适用条件");
-        int version = integer(rule.getOrDefault("version", 1),
-                "按钮条件版本");
-        if (version != 1) {
-            throw new IllegalArgumentException("不支持的按钮条件版本");
-        }
-        String behavior = normalize(
-                rule.getOrDefault("unavailableBehavior", "HIDE"));
-        if (!Set.of("HIDE", "DISABLE").contains(behavior)) {
-            throw new IllegalArgumentException(
-                    "按钮不可用行为只能是 HIDE 或 DISABLE");
-        }
-        int[] count = {0};
-        validateRuleNode(rule.get("root"), 1, count);
+        Map<String, Object> rule =
+                EntityActionRuleStructurePolicy.normalizeAndValidate(value);
+        EntityActionRuleBuiltInPolicy.validate(rule, false);
     }
 
-    private void validateRuleNode(
-            Object value,
-            int depth,
-            int[] count) {
-        if (value == null) {
+    /** 校验并把按钮中的 availabilityRule 原位替换成 canonical v2。 */
+    private void normalizeAvailabilityRule(
+            Map<String, Object> button) {
+        if (!button.containsKey("availabilityRule")
+                || button.get("availabilityRule") == null) {
             return;
         }
-        if (depth > MAX_RULE_DEPTH || ++count[0] > MAX_RULE_NODES) {
-            throw new IllegalArgumentException("按钮条件规则过于复杂");
-        }
-        Map<String, Object> node = map(value, "按钮条件节点");
-        String type = normalize(node.get("type"));
-        if (!RULE_TYPES.contains(type)) {
-            throw new IllegalArgumentException(
-                    "不支持的按钮条件类型: " + type);
-        }
-        if ("GROUP".equals(type)) {
-            String logic = normalize(node.get("logic"));
-            if (!Set.of("AND", "OR").contains(logic)) {
-                throw new IllegalArgumentException(
-                        "按钮条件组逻辑只能是 AND 或 OR");
-            }
-            List<Map<String, Object>> children =
-                    list(node.get("children"), "按钮条件子节点");
-            if (children.isEmpty()) {
-                throw new IllegalArgumentException("按钮条件组不能为空");
-            }
-            for (Map<String, Object> child : children) {
-                validateRuleNode(child, depth + 1, count);
-            }
-            return;
-        }
-        if ("RELATION".equals(type)) {
-            requireText(node.get("relation"), 100,
-                    "按钮用户关系不能为空");
-            return;
-        }
-        requireText(node.get("operator"), 30,
-                "按钮条件运算符不能为空");
-        if (!RULE_OPERATORS.contains(normalize(node.get("operator")))) {
-            throw new IllegalArgumentException(
-                    "不支持的按钮条件运算符: "
-                            + node.get("operator"));
-        }
-        if (Set.of("FIELD", "USER_FIELD").contains(type)) {
-            requireText(node.get("field"), 100,
-                    "按钮条件字段不能为空");
-        }
+        Map<String, Object> normalized =
+                EntityActionRuleStructurePolicy.normalizeAndValidate(
+                        button.get("availabilityRule"));
+        EntityActionRuleBuiltInPolicy.validate(normalized, false);
+        button.put("availabilityRule", normalized);
     }
 
     @SuppressWarnings("unchecked")

@@ -156,6 +156,7 @@ import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import {
+  acquireFormActionExecution,
   executeCustomFormAction,
   resolveRuntimeFormActions
 } from '@/shared/form-action-runtime'
@@ -194,6 +195,7 @@ const dialogVisible = ref(false)
 const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
 const dialogTitle = ref('')
 const formActions = ref<any[]>([])
+const actionPendingKey = ref('')
 const actionLoadingKey = ref('')
 const formFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
 const basicFormFieldsRef = ref<InstanceType<typeof EntityDataFormFields>>()
@@ -580,15 +582,17 @@ async function confirmAction(action: any) {
 }
 
 async function handleFormAction(action: any) {
-  if (!action || action.enabled === false || actionLoadingKey.value) return
-  if (!(await confirmAction(action))) return
-  if (action.key === 'close') {
-    if (await confirmDiscardChanges()) dialogVisible.value = false
-    return
-  }
-  const loadingKey = String(action.runtimeKey || action.key || '')
-  actionLoadingKey.value = loadingKey
+  // 确认框本身也是异步窗口，必须先加锁再等待用户选择，避免快速双击进入
+  // 两条执行链并分别生成 requestId。
+  const releaseAction = acquireFormActionExecution(action, actionPendingKey)
+  if (!releaseAction) return
   try {
+    if (!(await confirmAction(action))) return
+    if (action.key === 'close') {
+      if (await confirmDiscardChanges()) dialogVisible.value = false
+      return
+    }
+    actionLoadingKey.value = String(action.runtimeKey || action.key || '')
     if (action.key === 'reset') {
       await handleReset()
       return
@@ -624,6 +628,7 @@ async function handleFormAction(action: any) {
     ElMessage.error(error.message || '按钮操作执行失败')
   } finally {
     actionLoadingKey.value = ''
+    releaseAction()
   }
 }
 

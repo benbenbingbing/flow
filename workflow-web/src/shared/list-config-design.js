@@ -106,17 +106,19 @@ export function normalizeListActionForSave(button, position) {
     handlerCode: button.customHandler || '',
     permissionCode: button.perm || '',
     enabled: button.enabled !== false,
-    unavailableBehavior: button.availabilityRule?.unavailableBehavior || '',
     sortOrder: Number(button.sort || 0),
     orderKey: button.orderKey || (Number(button.sort || 0) + 1) * 1000000,
     actionParams,
-    availabilityRule: button.availabilityRule || {},
+    availabilityRule: button.availabilityRule || null,
     templateId: button.templateId || null,
     templateVersion: button.templateVersion || null,
     localOverridesDocument: button.localOverridesDocument || button.localOverrides || null,
-    clearFields: button.templateId
-      ? []
-      : ['templateId', 'templateVersion', 'localOverridesDocument']
+    clearFields: [
+      ...(button.templateId
+        ? []
+        : ['templateId', 'templateVersion', 'localOverridesDocument']),
+      ...(!button.availabilityRule ? ['availabilityRuleDocument'] : [])
+    ]
   }
 }
 

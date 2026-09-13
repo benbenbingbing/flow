@@ -47,21 +47,21 @@ public class EntityActionRuleEvaluator {
     /**
      * 评估按钮可用性规则是否满足。
      *
-     * @param rule           规则定义，为空或无根节点时视为始终满足
+     * @param root           规则树根节点，为空时视为始终满足
      * @param row            当前数据行，可为 null
      * @param user           当前用户
      * @param statusCategory 数据所属状态分类，可为 null
      * @return 规则满足返回 true
      */
     public boolean evaluate(
-            EntityActionRuleDTO rule,
+            EntityActionRuleDTO.RuleNode root,
             EntityDataDTO row,
             SysUser user,
             String statusCategory) {
-        if (rule == null || rule.getRoot() == null) {
+        if (root == null) {
             return true;
         }
-        return evaluateNode(rule.getRoot(), row, user, statusCategory, false);
+        return evaluateNode(root, row, user, statusCategory, false);
     }
 
     /**
@@ -71,7 +71,7 @@ public class EntityActionRuleEvaluator {
      * 该上下文只扩展 CURRENT_USER_IS_ASSIGNEE，状态、字段和其他关系条件仍逐项评估。
      * 编辑、删除、转办以及任意自定义动作继续调用 evaluate，不能借用候选审批权。</p>
      *
-     * @param rule 审批按钮配置规则
+     * @param root 审批按钮的规则树根节点
      * @param row 当前业务记录
      * @param user 当前认证用户
      * @param statusCategory 记录状态分类
@@ -79,7 +79,7 @@ public class EntityActionRuleEvaluator {
      * @return 审批入口规则满足时为 true
      */
     public boolean evaluateForApproval(
-            EntityActionRuleDTO rule,
+            EntityActionRuleDTO.RuleNode root,
             EntityDataDTO row,
             SysUser user,
             String statusCategory,
@@ -87,10 +87,37 @@ public class EntityActionRuleEvaluator {
         if (!hasActionableTask || row == null || user == null) {
             return false;
         }
-        if (rule == null || rule.getRoot() == null) {
+        if (root == null) {
             return true;
         }
-        return evaluateNode(rule.getRoot(), row, user, statusCategory, hasActionableTask);
+        return evaluateNode(root, row, user, statusCategory, hasActionableTask);
+    }
+
+    /**
+     * 判断条件树是否可在没有数据行的列表工具栏上完整求值。
+     *
+     * <p>目前只有 USER_FIELD 不依赖行、状态或流程上下文；扩展节点默认
+     * 按依赖行处理，防止在信息不完整时做出错误的隐藏决策。</p>
+     *
+     * @param root 规则树根节点
+     * @return 无数据行也可完整求值时返回 true
+     */
+    public boolean isRowIndependent(
+            EntityActionRuleDTO.RuleNode root) {
+        if (root == null) {
+            return true;
+        }
+        String type = root.getType();
+        if (!StringUtils.hasText(type)) {
+            return false;
+        }
+        if ("GROUP".equalsIgnoreCase(type)) {
+            return root.getChildren() != null
+                    && !root.getChildren().isEmpty()
+                    && root.getChildren().stream()
+                    .allMatch(this::isRowIndependent);
+        }
+        return "USER_FIELD".equalsIgnoreCase(type);
     }
 
     private boolean evaluateNode(
@@ -237,13 +264,22 @@ public class EntityActionRuleEvaluator {
 
     private boolean compare(Object actual, String operator, Object expected) {
         String op = operator == null ? "EQ" : operator.toUpperCase(Locale.ROOT);
+        if ("EMPTY".equals(op)) {
+            return isEmpty(actual);
+        }
+        if ("NOT_EMPTY".equals(op)) {
+            return !isEmpty(actual);
+        }
+        // 缺少实际字段或比较值时必须失败关闭，尤其不能让 NE/NOT_IN/LT
+        // 这类取反或有序比较把“不存在”误判成满足条件。
+        if (actual == null || expected == null) {
+            return false;
+        }
         return switch (op) {
-            case "EMPTY" -> isEmpty(actual);
-            case "NOT_EMPTY" -> !isEmpty(actual);
             case "EQ" -> equalsValue(actual, expected);
             case "NE" -> !equalsValue(actual, expected);
-            case "IN" -> toCollection(expected).stream().anyMatch(value -> equalsValue(actual, value));
-            case "NOT_IN" -> toCollection(expected).stream().noneMatch(value -> equalsValue(actual, value));
+            case "IN" -> intersects(actual, expected);
+            case "NOT_IN" -> !intersects(actual, expected);
             case "CONTAINS" -> contains(actual, expected);
             case "NOT_CONTAINS" -> !contains(actual, expected);
             case "GT" -> compareOrdered(actual, expected) > 0;
@@ -276,10 +312,17 @@ public class EntityActionRuleEvaluator {
                 && String.valueOf(actual).contains(String.valueOf(expected));
     }
 
+    /** 集合型实际值（如当前用户 roleIds）按任一交集解释 IN。 */
+    private boolean intersects(Object actual, Object expected) {
+        Collection<?> expectedValues = toCollection(expected);
+        Collection<?> actualValues = actual instanceof Collection<?> values
+                ? values : List.of(actual);
+        return actualValues.stream().anyMatch(left ->
+                expectedValues.stream().anyMatch(right ->
+                        equalsValue(left, right)));
+    }
+
     private int compareOrdered(Object actual, Object expected) {
-        if (actual == null || expected == null) {
-            return -1;
-        }
         if (actual instanceof Number || expected instanceof Number) {
             try {
                 return new BigDecimal(String.valueOf(actual))

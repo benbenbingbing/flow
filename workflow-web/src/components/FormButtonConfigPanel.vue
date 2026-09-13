@@ -129,7 +129,7 @@
           <p>每个按钮必须配置稳定编码、权限码和事件链，不执行任意前端脚本或 URL。</p>
         </div>
         <el-button type="primary" :icon="Plus" @click="addCustomButton">
-          新增按钮
+          添加按钮
         </el-button>
       </div>
 
@@ -148,12 +148,20 @@
       <el-table :data="draft.customButtons" border size="small">
         <el-table-column label="启用" width="64" align="center">
           <template #default="{ row }">
-            <el-switch v-model="row.enabled" />
+            <el-switch
+              v-model="row.enabled"
+              :disabled="row.enabled === false
+                && (!formId || isLocallyCreatedButton(row))"
+              @change="handleEnabledChange(row, $event)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="按钮名称" min-width="150">
           <template #default="{ row }">
             <el-input v-model="row.label" size="small" placeholder="按钮名称" />
+            <div v-if="labelError(row)" class="validation-message">
+              {{ labelError(row) }}
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="稳定编码" min-width="180">
@@ -168,8 +176,12 @@
               v-model="row.key"
               size="small"
               placeholder="例如 generate_report"
+              :disabled="isKeyLocked(row)"
               :class="{ 'is-invalid': keyError(row) }"
             />
+            <div v-if="isKeyLocked(row)" class="stable-key-lock">
+              {{ keyLockReason(row) }}
+            </div>
             <div v-if="keyError(row)" class="validation-message">
               {{ keyError(row) }}
             </div>
@@ -197,6 +209,9 @@
                 :value="mode.value"
               />
             </el-select>
+            <div v-if="!row.modes?.length" class="validation-message">
+              必须选择适用模式
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="位置" min-width="160">
@@ -234,6 +249,12 @@
                 :value="slot.value"
               />
             </el-select>
+            <div
+              v-if="row.placement === 'ACTION_SLOT' && !validSlotKey(row.slotKey)"
+              class="validation-message"
+            >
+              请选择当前表单中的动作插槽
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="权限码" min-width="220">
@@ -260,8 +281,8 @@
                 :value="option.code"
               />
             </el-select>
-            <div v-if="row.enabled && !row.perm" class="validation-message">
-              启用时必须配置权限码
+            <div v-if="row.enabled && permissionError(row)" class="validation-message">
+              {{ permissionError(row) }}
             </div>
           </template>
         </el-table-column>
@@ -276,26 +297,39 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="配置" width="240" align="center" fixed="right">
+        <el-table-column label="配置" width="210" align="center" fixed="right">
           <template #header>
             <ConfigHelpLabel
               label="配置"
-              content="事件链定义点击后执行什么；条件控制按钮何时显示或可用；更多中配置图标、样式、表单校验和二次确认。"
+              content="事件链定义点击后执行什么；更多中统一配置图标、样式、表单校验、二次确认以及显示和启用条件。"
             />
           </template>
           <template #default="{ row }">
             <el-button
               link
               type="primary"
-              :disabled="!formId || Boolean(keyError(row))"
+              :disabled="isEventConfigurationBlocked(row)"
+              :title="isLocallyCreatedButton(row)
+                ? '先保存表单草稿，再配置事件链'
+                : '配置按钮点击事件链'"
               @click="configureEvent(row)"
             >
               事件链
             </el-button>
-            <el-button link type="primary" @click="configureCustomRule(row)">
-              条件
-            </el-button>
-            <el-button link type="primary" @click="openAdvanced(row)">
+            <el-tag
+              v-if="buttonBindings(row).length"
+              size="small"
+              type="success"
+              effect="plain"
+            >
+              {{ buttonBindings(row).length }} 条
+            </el-tag>
+            <el-button
+              link
+              type="primary"
+              :title="`更多设置（${ruleSummary(row)}）`"
+              @click="openAdvanced(row)"
+            >
               更多
             </el-button>
             <el-button link type="danger" @click="removeCustomButton(row)">
@@ -319,6 +353,7 @@
       ref="ruleEditorRef"
       :entity-fields="entityFields"
       :statuses="statuses"
+      :allow-custom-conditions="false"
       @save="saveRule"
     />
 
@@ -328,83 +363,116 @@
       :owner-id="formId || ''"
       owner-label="表单"
       :field-options="eventFieldOptions"
+      @changed="handleEventBindingsChanged"
     />
 
     <el-dialog
       v-model="advancedVisible"
       title="自定义按钮设置"
-      width="620px"
+      width="1180px"
+      top="5vh"
+      class="form-button-advanced-dialog"
+      :close-on-click-modal="false"
       append-to-body
+      @closed="resetAdvanced"
     >
-      <el-form v-if="advancedButton" label-width="110px">
-        <el-form-item label="图标">
-          <el-select
-            v-model="advancedButton.icon"
-            clearable
-            filterable
-            placeholder="不显示图标"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="icon in iconOptions"
-              :key="icon"
-              :label="icon"
-              :value="icon"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="按钮样式">
-          <template #label>
-            <ConfigHelpLabel
-              label="按钮样式"
-              content="只影响视觉强调程度，不改变权限、条件或事件执行逻辑。危险操作建议使用“危险”样式并开启二次确认。"
-            />
-          </template>
-          <el-select v-model="advancedButton.buttonType" style="width: 100%">
-            <el-option
-              v-for="option in buttonTypeOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="执行前校验">
-          <template #label>
-            <ConfigHelpLabel
-              label="执行前校验"
-              content="开启后先执行当前表单的必填和格式校验；校验通过后才运行按钮事件链。"
-            />
-          </template>
-          <el-switch v-model="advancedButton.validateBeforeExecute" />
-          <span class="field-help">开启后先校验当前表单，再执行事件链。</span>
-        </el-form-item>
-        <el-form-item label="二次确认">
-          <el-switch v-model="advancedButton.confirm.enabled" />
-        </el-form-item>
-        <el-form-item
-          v-if="advancedButton.confirm.enabled"
-          label="确认提示"
-        >
-          <el-input
-            v-model="advancedButton.confirm.message"
-            placeholder="确认执行该操作？"
-          />
-        </el-form-item>
-        <el-form-item label="适用条件">
-          <template #label>
-            <ConfigHelpLabel
-              label="适用条件"
-              content="根据字段值、实体状态或运行上下文控制按钮显示和可用状态；未配置时始终可操作。"
-            />
-          </template>
-          <el-button type="primary" text @click="configureCustomRule(advancedButton)">
-            {{ ruleSummary(advancedButton) }}
-          </el-button>
-        </el-form-item>
-      </el-form>
+      <div v-if="advancedButton" class="advanced-dialog-content">
+        <section class="advanced-basic-section" aria-label="基础设置">
+          <header class="advanced-section-heading">
+            <h3>基础设置</h3>
+            <p>设置按钮的视觉样式和执行前交互。</p>
+          </header>
+          <el-form label-width="110px" class="advanced-settings-form">
+            <el-form-item label="图标">
+              <el-select
+                v-model="advancedButton.icon"
+                clearable
+                filterable
+                placeholder="不显示图标"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="icon in iconOptions"
+                  :key="icon"
+                  :label="icon"
+                  :value="icon"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="按钮样式">
+              <template #label>
+                <ConfigHelpLabel
+                  label="按钮样式"
+                  content="只影响视觉强调程度，不改变权限、条件或事件执行逻辑。危险操作建议使用“危险”样式并开启二次确认。"
+                />
+              </template>
+              <el-select v-model="advancedButton.buttonType" style="width: 100%">
+                <el-option
+                  v-for="option in buttonTypeOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :error="buttonAppearanceError(advancedButton)">
+              <template #label>
+                <ConfigHelpLabel
+                  label="按钮外观"
+                  content="四种外观互斥；默认保持当前效果，圆形按钮仅显示图标，按钮名称仍用于提示和无障碍识别。"
+                />
+              </template>
+              <el-radio-group
+                v-model="advancedButton.buttonAppearance"
+                class="button-appearance-options"
+              >
+                <el-radio-button
+                  v-for="option in buttonAppearanceOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="执行前校验">
+              <template #label>
+                <ConfigHelpLabel
+                  label="执行前校验"
+                  content="开启后先执行当前表单的必填和格式校验；校验通过后才运行按钮事件链。"
+                />
+              </template>
+              <el-switch v-model="advancedButton.validateBeforeExecute" />
+              <span class="field-help">开启后先校验当前表单，再执行事件链。</span>
+            </el-form-item>
+            <el-form-item label="二次确认">
+              <el-switch v-model="advancedButton.confirm.enabled" />
+            </el-form-item>
+            <el-form-item
+              v-if="advancedButton.confirm.enabled"
+              label="确认提示"
+              class="advanced-settings-form__wide"
+            >
+              <el-input
+                v-model="advancedButton.confirm.message"
+                placeholder="确认执行该操作？"
+              />
+            </el-form-item>
+          </el-form>
+        </section>
+
+        <el-divider content-position="left">显示与启用条件</el-divider>
+        <ActionRuleEditorPanel
+          ref="advancedRuleEditorRef"
+          v-model="advancedRule"
+          :entity-fields="entityFields"
+          :statuses="statuses"
+          :allow-custom-conditions="false"
+        />
+      </div>
       <template #footer>
-        <el-button type="primary" @click="advancedVisible = false">完成</el-button>
+        <el-button @click="advancedVisible = false">取消</el-button>
+        <el-button type="primary" @click="completeAdvanced">保存设置</el-button>
       </template>
     </el-dialog>
   </div>
@@ -417,12 +485,24 @@ import { Plus } from '@element-plus/icons-vue'
 import { getEntityPermissionOptions } from '@/api/system/menu'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
+import { useFormButtonReferences } from '@/composables/useFormButtonReferences'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
+import ActionRuleEditorPanel from '@/components/ActionRuleEditorPanel.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import {
+  ACTION_RULE_VERSION,
+  createEmptyActionRule,
+  summarizeActionRule,
+  toEditableActionRuleRoot
+} from '@/shared/action-rules'
+import {
   FORM_ACTION_MODES,
+  FORM_ACTION_KEY_PATTERN,
+  FORM_ACTION_PERMISSION_PATTERN,
+  FORM_BUTTON_ICONS,
   FORM_BUILT_IN_ACTIONS,
+  isRegisteredFormButtonIcon,
   normalizeCustomButton,
   normalizeFormActionBar
 } from '@/shared/form-actions'
@@ -432,11 +512,17 @@ const props = defineProps({
   entityCode: { type: String, default: '' },
   entityFields: { type: Array, default: () => [] },
   formId: { type: [String, Number], default: '' },
+  activeReleaseId: { type: [String, Number], default: '' },
+  eventBindingRevision: { type: Number, default: 0 },
+  persistenceRevision: { type: Number, default: 0 },
+  persistedButtonKeys: { type: Array, default: () => [] },
   nodes: { type: Array, default: () => [] },
+  createActionSlot: { type: Function, default: null },
+  allowActionSlotCreate: { type: Boolean, default: true },
   systemEntity: Boolean
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'changed'])
 const draft = ref(normalizeFormActionBar(props.modelValue))
 const activeMode = ref(props.systemEntity ? 'view' : 'create')
 const permissionOptions = ref([])
@@ -445,6 +531,20 @@ const ruleEditorRef = ref()
 const eventBindingDialogRef = ref()
 const advancedVisible = ref(false)
 const advancedButton = ref(null)
+const advancedTarget = ref(null)
+const advancedRule = ref(createEmptyActionRule())
+const advancedRuleEditorRef = ref()
+const {
+  buttonBindings,
+  isKeyLocked,
+  isLocallyCreatedButton,
+  keyLockReason,
+  loadButtonReferences,
+  markLocallyCreated,
+  persistedButtonKeySet,
+  referenceLoadFailed,
+  referenceLoading
+} = useFormButtonReferences(props)
 
 const buttonTypeOptions = [
   { label: '默认', value: 'default' },
@@ -454,11 +554,13 @@ const buttonTypeOptions = [
   { label: '危险', value: 'danger' },
   { label: '信息', value: 'info' }
 ]
-const iconOptions = [
-  'Check', 'Close', 'Document', 'Download', 'Edit', 'Link',
-  'Message', 'Plus', 'Printer', 'Promotion', 'Refresh',
-  'RefreshLeft', 'Select', 'Setting', 'Upload', 'View'
+const buttonAppearanceOptions = [
+  { label: '默认', value: 'DEFAULT' },
+  { label: '朴素', value: 'PLAIN' },
+  { label: '圆角', value: 'ROUND' },
+  { label: '圆形', value: 'CIRCLE' }
 ]
+const iconOptions = [...FORM_BUTTON_ICONS]
 const modeOptions = computed(() =>
   (props.systemEntity
     ? FORM_ACTION_MODES.filter(mode => mode.value === 'view')
@@ -475,7 +577,7 @@ const actionSlotOptions = computed(() =>
     .filter(node => String(node?.nodeType || '').toUpperCase() === 'ACTION_SLOT')
     .map(node => ({
       value: node.nodeKey,
-      label: `${node.nodeLabel || node.label || '动作插槽'} (${node.nodeKey})`
+      label: `${node.nodeLabel || node.fieldLabel || node.label || '动作插槽'} (${node.nodeKey})`
     }))
     .filter(option => option.value)
 )
@@ -514,7 +616,6 @@ watch(
 
 onMounted(loadPermissionOptions)
 watch(() => props.entityCode, loadPermissionOptions)
-
 async function loadPermissionOptions() {
   if (!props.entityCode) {
     permissionOptions.value = []
@@ -624,21 +725,45 @@ function restoreBuiltIn(key) {
 
 function configureBuiltInRule(key) {
   const target = ensureBuiltInOverride(key)
-  ruleEditorRef.value?.open(target, 'HIDE')
+  ruleEditorRef.value?.open(target)
 }
 
+/**
+ * 新按钮统一放入底部操作栏；如需内嵌，用户再从位置列选择已有动作插槽。
+ * 新按钮默认停用，避免尚未配置事件链时形成可发布的空操作。
+ */
 function addCustomButton() {
   const button = normalizeCustomButton({
     key: uniqueButtonKey(),
     label: '自定义按钮',
     modes: [activeMode.value],
     sort: nextSort(),
-    perm: ''
+    perm: '',
+    enabled: false,
+    placement: 'FOOTER'
   }, draft.value.customButtons.length)
+  markLocallyCreated(button)
   draft.value.customButtons.push(button)
+  ElMessage.success('已添加按钮，请在“位置”列选择显示位置，保存草稿后配置事件链')
 }
 
 async function removeCustomButton(button) {
+  if (referenceLoading.value) {
+    ElMessage.info('正在检查按钮引用，请稍候')
+    return
+  }
+  if (referenceLoadFailed.value) {
+    ElMessage.warning('暂时无法确认按钮引用，为避免遗留事件绑定，当前不能删除')
+    return
+  }
+  const bindings = buttonBindings(button)
+  if (bindings.length) {
+    ElMessage.warning(
+      `按钮仍有 ${bindings.length} 条事件绑定，请先在“事件链”中删除绑定`
+    )
+    configureEvent(button)
+    return
+  }
   try {
     await ElMessageBox.confirm(
       `确认删除按钮“${button.label || button.key}”？`,
@@ -656,7 +781,8 @@ function uniqueButtonKey() {
   const prefix = 'custom_action'
   let index = draft.value.customButtons.length + 1
   let candidate = `${prefix}_${index}`
-  while (draft.value.customButtons.some(button => button.key === candidate)) {
+  while (draft.value.customButtons.some(button => button.key === candidate)
+      || persistedButtonKeySet.value.has(candidate)) {
     index += 1
     candidate = `${prefix}_${index}`
   }
@@ -671,11 +797,49 @@ function nextSort() {
 function keyError(button) {
   const key = String(button?.key || '')
   if (!key) return '请输入稳定编码'
-  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(key)) {
+  if (!FORM_ACTION_KEY_PATTERN.test(key)) {
     return '以小写字母开头，仅支持小写字母、数字、_、-'
+  }
+  if (Object.hasOwn(FORM_BUILT_IN_ACTIONS, key)) {
+    return '不能占用平台默认按钮编码'
   }
   const duplicates = draft.value.customButtons.filter(item => item.key === key)
   return duplicates.length > 1 ? '稳定编码不能重复' : ''
+}
+
+function permissionError(button) {
+  const permission = String(button?.perm || '').trim()
+  if (!permission) return '启用时必须配置权限码'
+  if (permission.length > 200
+      || !FORM_ACTION_PERMISSION_PATTERN.test(permission)) {
+    return '权限码至少包含一个冒号，仅支持字母、数字、_、-、.'
+  }
+  return ''
+}
+
+function labelError(button) {
+  const label = String(button?.label || '').trim()
+  if (!label) return '请输入按钮名称'
+  return label.length > 60 ? '按钮名称不能超过 60 个字符' : ''
+}
+
+function validSlotKey(slotKey) {
+  return actionSlotOptions.value.some(option =>
+    String(option.value) === String(slotKey || '')
+  )
+}
+
+function handleEnabledChange(button, enabled) {
+  if (enabled && (!props.formId || isLocallyCreatedButton(button))) {
+    button.enabled = false
+    ElMessage.warning('请先保存表单草稿并配置事件链，再启用按钮')
+  }
+}
+
+function isEventConfigurationBlocked(button) {
+  return !props.formId
+    || isLocallyCreatedButton(button)
+    || Boolean(keyError(button))
 }
 
 function handlePlacementChange(button) {
@@ -696,28 +860,85 @@ function configureEvent(button) {
     ElMessage.warning('请先保存表单草稿')
     return
   }
+  if (isLocallyCreatedButton(button)) {
+    ElMessage.warning('请先保存当前按钮，再配置事件链')
+    return
+  }
   eventBindingDialogRef.value?.openButton(button)
 }
 
-function configureCustomRule(button) {
-  ruleEditorRef.value?.open(button, 'HIDE')
+async function handleEventBindingsChanged() {
+  await loadButtonReferences()
+  emit('changed')
 }
 
 function saveRule({ button, rule }) {
-  button.availabilityRule = rule?.root ? rule : null
+  // 保留空 v2 规则，表示用户明确选择“始终显示且可用”，避免默认规则被再次回填。
+  button.availabilityRule = rule
 }
 
 function ruleSummary(target) {
-  if (!target?.availabilityRule?.root) return '始终可操作'
-  return target.availabilityRule.message || '已配置条件'
+  return summarizeActionRule(target?.availabilityRule)
 }
 
+/**
+ * “更多”使用独立按钮与条件草稿，只有完整校验并保存后才回写表格数据。
+ * 旧版规则不在此处转换，项目上线前由配置人员清理并按 v2 结构重设。
+ */
 function openAdvanced(button) {
-  if (!button.confirm) {
-    button.confirm = { enabled: false, message: '' }
+  const existingRule = button?.availabilityRule
+  if (existingRule && existingRule.version !== ACTION_RULE_VERSION) {
+    ElMessage.error('检测到旧版按钮条件，请先清理旧配置后再通过“更多”重新设置')
+    return
   }
-  advancedButton.value = button
+
+  const buttonDraft = cloneValue(button)
+  if (!buttonDraft.confirm) {
+    buttonDraft.confirm = { enabled: false, message: '' }
+  }
+  const ruleDraft = existingRule
+    ? cloneValue(existingRule)
+    : createEmptyActionRule()
+  ruleDraft.visibleWhen = toEditableActionRuleRoot(ruleDraft.visibleWhen)
+  ruleDraft.enabledWhen = toEditableActionRuleRoot(ruleDraft.enabledWhen)
+
+  advancedTarget.value = button
+  advancedButton.value = buttonDraft
+  advancedRule.value = ruleDraft
   advancedVisible.value = true
+}
+
+function completeAdvanced() {
+  const appearanceError = buttonAppearanceError(advancedButton.value)
+  if (appearanceError) {
+    ElMessage.warning(appearanceError)
+    return
+  }
+  const result = advancedRuleEditorRef.value?.buildValidatedRule()
+  if (!result || result.error) {
+    ElMessage.warning(result?.error || '按钮条件编辑器尚未就绪，请稍后重试')
+    return
+  }
+  if (!advancedTarget.value || !advancedButton.value) return
+
+  const savedButton = cloneValue(advancedButton.value)
+  savedButton.availabilityRule = result.rule
+  Object.assign(advancedTarget.value, savedButton)
+  advancedVisible.value = false
+}
+
+/** 圆形按钮只展示图标，保存前必须保证用户仍能看见可操作内容。 */
+function buttonAppearanceError(button) {
+  return button?.buttonAppearance === 'CIRCLE'
+    && !isRegisteredFormButtonIcon(button?.icon)
+    ? '圆形按钮必须选择平台支持的图标'
+    : ''
+}
+
+function resetAdvanced() {
+  advancedTarget.value = null
+  advancedButton.value = null
+  advancedRule.value = createEmptyActionRule()
 }
 
 function fingerprint(value) {
@@ -729,75 +950,4 @@ function cloneValue(value) {
 }
 </script>
 
-<style scoped>
-.form-button-config-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.mode-toolbar,
-.section-heading,
-.button-name-cell {
-  display: flex;
-  align-items: center;
-}
-
-.mode-toolbar {
-  gap: 12px;
-  justify-content: space-between;
-}
-
-.mode-tip,
-.config-section p,
-.field-help {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.config-section {
-  width: 100%;
-}
-
-.section-heading {
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.section-heading h3 {
-  margin: 0 0 4px;
-  font-size: 16px;
-}
-
-.section-heading p {
-  margin: 0;
-}
-
-.button-name-cell {
-  gap: 8px;
-}
-
-.section-alert {
-  margin-top: 12px;
-}
-
-.custom-button-guide {
-  margin-bottom: 12px;
-}
-
-.validation-message {
-  margin-top: 4px;
-  color: var(--el-color-danger);
-  font-size: 12px;
-  line-height: 1.3;
-}
-
-.is-invalid :deep(.el-input__wrapper) {
-  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
-}
-
-.field-help {
-  margin-left: 10px;
-}
-</style>
+<style scoped src="./FormButtonConfigPanel.scss"></style>

@@ -5,6 +5,10 @@ export const configMigrationApi = {
     return request.get('/config-migration/assets', { params })
   },
 
+  getAssetPage(params = {}) {
+    return request.get('/config-migration/assets/page', { params })
+  },
+
   getAsset(id) {
     return request.get(`/config-migration/assets/${id}`)
   },
@@ -17,8 +21,12 @@ export const configMigrationApi = {
     return request.post('/config-migration/packages/export', data)
   },
 
-  getExportPackages() {
-    return request.get('/config-migration/packages')
+  getExportPackages(params = {}) {
+    return request.get('/config-migration/packages', { params })
+  },
+
+  getExportPackagePage(params = {}) {
+    return request.get('/config-migration/packages/page', { params })
   },
 
   downloadPackage(id) {
@@ -36,8 +44,20 @@ export const configMigrationApi = {
     })
   },
 
-  getImports() {
-    return request.get('/config-migration/imports')
+  getImports(params = {}) {
+    return request.get('/config-migration/imports', { params })
+  },
+
+  getImportPage(params = {}) {
+    return request.get('/config-migration/imports/page', { params })
+  },
+
+  getImportOptions() {
+    return request.get('/config-migration/imports/options')
+  },
+
+  getStats() {
+    return request.get('/config-migration/stats')
   },
 
   getImportItems(id) {

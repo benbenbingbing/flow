@@ -693,10 +693,7 @@ const toolbarButtons = computed(() => {
     .map((button: any) => withListButtonTypeDefault(button))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
-    .filter((b: any) => {
-      if (b.key === 'batchDelete' || b.key === 'exportSelected') return true
-      return listConfig.value?.toolbarCapabilities?.[b.key]?.visible !== false
-    })
+    .filter((b: any) => listConfig.value?.toolbarCapabilities?.[b.key]?.visible !== false)
     .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
   return hasRelatedContentActionScope.value
     ? filterRelatedContentButtons(
@@ -1172,11 +1169,8 @@ const handleEventAction = async ({
       targetKey: String(button.key),
       recordId: row?.id,
       selectedIds: actionRows.map(item => item.id).filter(Boolean),
-      input: {
-        button,
-        row: row || null,
-        selectedRows: actionRows
-      },
+      // 按钮、记录与选择集由服务端按发布快照和 ID 重建；客户端不提交可伪造副本。
+      input: {},
       context: {
         ...(props.context || {}),
         listId: String(listConfig.value.id),

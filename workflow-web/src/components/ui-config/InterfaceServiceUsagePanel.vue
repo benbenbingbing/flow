@@ -156,7 +156,7 @@
                     class="effective-chain"
                   >
                     <template
-                      v-for="(item, itemIndex) in buildEffectiveChainItems(context)"
+                      v-for="(item, itemIndex) in buildEffectiveChainItems(context, row.eventCode)"
                       :key="`${item.kind}:${item.bindingId || 'platform'}:${item.stepIndex ?? itemIndex}`"
                     >
                       <span v-if="itemIndex" class="chain-arrow">→</span>
@@ -165,7 +165,7 @@
                           {{ item.label }}
                         </el-tag>
                         <span v-if="item.kind !== 'PLATFORM'" class="secondary-text">
-                          {{ stepStrategyLabel(item.stepStrategy) }}
+                          {{ stepStrategyLabel(item.stepStrategy, row.eventCode) }}
                           · {{ inheritanceSourceLabel(item.inheritanceSource || item.ownerType) }}
                           <template v-if="item.operationCode">· {{ item.operationCode }}</template>
                         </span>
@@ -216,7 +216,7 @@
             <template #default="{ row }">
               <div>{{ row.stepName || `步骤 ${row.stepIndex + 1}` }}</div>
               <div class="secondary-text">
-                {{ stepStrategyLabel(row.stepStrategy) }}
+                {{ stepStrategyLabel(row.stepStrategy, row.eventCode) }}
                 <template v-if="row.stepOrder != null"> · 顺序 {{ row.stepOrder }}</template>
               </div>
             </template>
@@ -244,7 +244,7 @@
           <el-table-column label="继承与生效" min-width="210">
             <template #default="{ row }">
               <el-tag effect="plain" size="small">
-                {{ inheritanceModeLabel(row.inheritanceMode) }}
+                {{ inheritanceModeLabel(row.inheritanceMode, row) }}
               </el-tag>
               <div
                 class="effective-state"

@@ -2,6 +2,7 @@ package com.workflow.entity.permission.application;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -50,6 +51,25 @@ public class CurrentProcessTaskAssigneeLookup {
         }
         return taskAccessPort.findActionableTaskId(
                 identity(user), row.getEntityCode(), row.getId(), row.getProcessInstanceId());
+    }
+
+    /**
+     * 将未受信 taskId 重新绑定到当前用户和已鉴权业务记录的真实活动待办。
+     */
+    public Optional<ActionableTaskContext> findActionableTaskContext(
+            EntityDataDTO row,
+            SysUser user,
+            String taskId) {
+        if (!hasLookupCoordinates(row, user)
+                || !StringUtils.hasText(taskId)
+                || !StringUtils.hasText(row.getEntityCode())
+                || !StringUtils.hasText(row.getId())
+                || !StringUtils.hasText(row.getProcessInstanceId())) {
+            return Optional.empty();
+        }
+        return taskAccessPort.findActionableTaskContext(
+                identity(user), taskId, row.getEntityCode(),
+                row.getId(), row.getProcessInstanceId());
     }
 
     /** 优先使用认证用户 ID；流程端口负责统一匹配 ID 与用户名别名。 */

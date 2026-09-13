@@ -188,6 +188,7 @@
                     :node-style-for="getNodeDesignStyle"
                     :legacy-node-type="legacyNodeType"
                     :node-label="nodeLabel"
+                    :action-buttons="viewConfig.actionBar.customButtons"
                     :can-drop-node="canDropNode"
                     :drag-disabled="reorderingNode"
                     @select="selectField"
@@ -1188,7 +1189,8 @@ import {
   getFormNodePropertySchema,
   mergeFormNodeFieldMetadata,
   normalizeFormFieldValidation,
-  resolveFormNodeBinding
+  resolveFormNodeBinding,
+  resolveFormNodeLayoutSpan
 } from '@/shared/form-node-property-schema'
 import {
   resolveFormContainerAppearance,
@@ -1235,7 +1237,8 @@ import {
   emptyFormActionBar,
   footerFormActions,
   normalizeFormActionBar,
-  resolveLocalFormActions
+  resolveLocalFormActions,
+  validateFormActionConfiguration
 } from '@/shared/form-actions'
 import {
   buildFormDraftRuntimeSnapshot,
@@ -1287,6 +1290,9 @@ const savingNode = ref(false)
 const reorderingNode = ref(false)
 const nodeBaselines = ref(new Map())
 const formBaseline = ref('')
+// 只在服务端确认 actionBar 已持久化后递增，供按钮面板解锁事件配置。
+const formActionPersistenceRevision = ref(0)
+const persistedFormButtonKeys = ref([])
 const showPreview = ref(false)
 const showFormSettings = ref(false)
 const activeFormSettingsTab = ref('basic')
@@ -1704,11 +1710,15 @@ function validateRendererForPublish() {
   return true
 }
 
+/**
+ * 在独立标签页打开表单扩展管理，避免离开设计器时丢失尚未保存的本地修改。
+ */
 function openExtensionManagement() {
-  router.push({
+  const extensionManagementRoute = router.resolve({
     path: '/dev/extensions',
     query: { type: 'UI_FORM' }
   })
+  window.open(extensionManagementRoute.href, '_blank', 'noopener,noreferrer')
 }
 
 async function loadExtensionDefinitions({ strict = false } = {}) {
@@ -2107,13 +2117,16 @@ const hasEventConfig = computed(() => {
 })
 
 provide(FORM_DESIGNER_CONTEXT_KEY, {
-  form, formRendererMode, rendererModeOptions,
+  form, formRendererMode, rendererModeOptions, isCustomRendererMode,
   viewConfig, isEdit, isSystemEntity,
   customFormButtonCount, entityInfo, entityFields, formFields,
   formDataSourceBindingCount, eventFieldOptions,
+  formActionPersistenceRevision,
+  persistedFormButtonKeys,
   selectedCustomFormSchema, customFormOptions,
   selectedCustomFormCatalogOption, showFormExtensionConfig,
   openFormDataSourceConfig, onEventBindingsChanged: loadDiff,
+  createActionSlotForButton,
   handleFormRendererModeChange,
   openExtensionManagement, refreshExtensionCatalog,
   selectedField, activeNodeSettingsTab, isFieldNode,
@@ -2220,19 +2233,16 @@ function isFieldInForm(entityField) {
 }
 
 function getNodeSpan(field, fallback = 24) {
-  return Number(field?.gridSpan || fallback || 24)
+  // 显式 GRID 容器中的子节点统一按 grid 规则计算，ACTION_SLOT 也能读取自己的宽度。
+  return resolveFormNodeLayoutSpan(field, 'grid', fallback)
 }
 
 function getNodeDesignStyle(field) {
-  const nodeType = String(field?.nodeType || legacyNodeType(field)).toUpperCase()
-  if (['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(nodeType)) {
-    return { width: '100%' }
-  }
-  const span = form.value.layoutType === 'vertical'
-    ? 24
-    : form.value.layoutType === 'horizontal'
-      ? 12
-      : getNodeSpan(field)
+  const span = resolveFormNodeLayoutSpan(
+    field,
+    form.value.layoutType,
+    24
+  )
   const width = `${(span / 24) * 100}%`
   return {
     width,
@@ -2439,7 +2449,11 @@ function isSubListField(field) {
     || componentType === 'sub_list'
 }
 
-async function loadSubListOptions(targetEntityId, targetField = selectedField.value) {
+async function loadSubListOptions(
+  targetEntityId,
+  targetField = selectedField.value,
+  { propagateError = false } = {}
+) {
   if (!targetEntityId) {
     subListOptions.value = []
     if (targetField === selectedField.value) {
@@ -2474,6 +2488,8 @@ async function loadSubListOptions(targetEntityId, targetField = selectedField.va
       subListOptions.value = []
     }
     console.error('加载子列表配置失败:', error)
+    // 交互式加载可降级为空选项；保存校验必须保留真实接口错误，不能误报为引用不存在。
+    if (propagateError) throw error
     return []
   }
 }
@@ -2597,7 +2613,9 @@ async function ensureSubListBinding(field) {
   if (!field.refListKey) {
     throw new Error('子列表必须选择一个已发布列表')
   }
-  const lists = await loadSubListOptions(targetEntityId, field)
+  const lists = await loadSubListOptions(targetEntityId, field, {
+    propagateError: true
+  })
   const selected = lists.find(item =>
     item.listKey === field.refListKey
   )
@@ -2816,6 +2834,8 @@ async function loadFormInfo({ strict = false } = {}) {
       form.value.entityId = data.entityId
     }
     rememberFormBaseline()
+    rememberPersistedFormButtonKeys()
+    formActionPersistenceRevision.value += 1
     await loadDiff({ strict })
   } catch (e) {
     console.error('加载表单信息失败:', e)
@@ -3144,7 +3164,8 @@ function nodeToField(node, fieldMetadata) {
         ),
     placeholder: props.placeholder ?? sourceField.placeholder,
     defaultValue: props.defaultValue ?? sourceField.defaultValue,
-    gridSpan: props.gridSpan ?? sourceField.gridSpan ?? 24,
+    // 旧发布曾使用 props.span；读取后统一投影成 gridSpan，下一次保存自动规范化。
+    gridSpan: props.gridSpan ?? props.span ?? sourceField.gridSpan ?? 24,
     childFormId:
       props.childFormId
       || props.refFormId
@@ -3284,6 +3305,13 @@ function formFingerprint() {
 
 function rememberFormBaseline() {
   formBaseline.value = formFingerprint()
+}
+
+/** 记录服务端已确认的按钮 key，避免未保存按钮先创建持久化事件绑定。 */
+function rememberPersistedFormButtonKeys() {
+  persistedFormButtonKeys.value = normalizeFormActionBar(
+    viewConfig.value.actionBar
+  ).customButtons.map(button => String(button.key || '').trim()).filter(Boolean)
 }
 
 function hasUnsavedLocalChanges() {
@@ -3711,6 +3739,36 @@ function handleAddNodeCommand(command) {
   addContainerNode(command)
 }
 
+/**
+ * 从按钮面板创建内嵌按钮时，同步建立一个稳定动作插槽。这里只修改同一份
+ * 本地草稿；随后“保存全部草稿”会一起持久化按钮定义和节点树。
+ */
+function createActionSlotForButton({ buttonKey, buttonLabel } = {}) {
+  if (isCustomRendererMode.value) {
+    ElMessage.warning('整页自定义组件请使用其受控 formActionSlots 契约展示已有动作')
+    return null
+  }
+  const normalizedButtonKey = String(buttonKey || 'custom_action')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_')
+  const baseKey = `action_slot_${normalizedButtonKey}`.slice(0, 64)
+  let nodeKey = baseKey
+  let suffix = 2
+  const usedKeys = new Set(formFields.value.map(node =>
+    String(node?.nodeKey || node?.id || '')
+  ))
+  while (usedKeys.has(nodeKey)) {
+    const suffixText = `_${suffix++}`
+    nodeKey = `${baseKey.slice(0, 64 - suffixText.length)}${suffixText}`
+  }
+  return addContainerNode('ACTION_SLOT', {
+    nodeKey,
+    label: `${buttonLabel || '自定义按钮'}操作区`,
+    openProperties: false,
+    notify: false
+  })
+}
+
 function addContainerNode(nodeType, options = {}) {
   const tabSetNodes = availableTabSetNodes.value
   if (nodeType === 'TAB' && tabSetNodes.length === 0) {
@@ -3735,7 +3793,14 @@ function addContainerNode(nodeType, options = {}) {
         ...(options.componentProps || {})
       }
     : (options.componentProps || {})
-  const stableId = `node_${nodeType.toLowerCase()}_${ts}`
+  let stableId = options.nodeKey || `node_${nodeType.toLowerCase()}_${ts}`
+  let collisionIndex = 2
+  while (formFields.value.some(node =>
+    String(node?.id) === String(stableId)
+    || String(node?.nodeKey) === String(stableId)
+  )) {
+    stableId = `node_${nodeType.toLowerCase()}_${ts}_${collisionIndex++}`
+  }
   const parentId = resolveDefaultParentId(nodeType)
   const placement = nextNodePlacement(parentId)
   const node = {
@@ -3767,12 +3832,15 @@ function addContainerNode(nodeType, options = {}) {
     sortOrder: placement.sortOrder
   }
   formFields.value.push(node)
-  openFieldProperties(node)
+  if (options.openProperties !== false) {
+    openFieldProperties(node)
+  }
   if (nodeType === 'TAB' && !node.parentId) {
     ElMessage.info('请选择“所属 Tab 集合”后再保存当前 Tab 页')
-  } else {
+  } else if (options.notify !== false) {
     ElMessage.success(`${nodeLabel}已添加`)
   }
+  return node
 }
 
 // 选择字段
@@ -4549,6 +4617,8 @@ async function ensureFormMetadata() {
     viewConfig: stringifyConfig(viewConfig.value)
   })
   form.value = { ...form.value, ...created }
+  rememberPersistedFormButtonKeys()
+  formActionPersistenceRevision.value += 1
   isEdit.value = true
   return created.id
 }
@@ -4634,6 +4704,48 @@ function validateNodeDataSourceMappings(field) {
   )
 }
 
+/**
+ * 保存与发布共用同一套按钮校验，并始终从服务端重新读取事件绑定，避免面板
+ * 缓存或并发修改让启用按钮在没有点击执行链时进入草稿/发布预检。
+ */
+async function validateFormActionsForPersistence() {
+  let eventBindings = []
+  const enabledCustomButtons = normalizeFormActionBar(
+    viewConfig.value.actionBar
+  ).customButtons.filter(button => button.enabled !== false)
+  if (!form.value.id && enabledCustomButtons.length) {
+    ElMessage.warning('新表单的自定义按钮请先停用；保存表单后配置事件链，再启用按钮')
+    openFormSettings('actions')
+    return false
+  }
+  if (form.value.id) {
+    try {
+      const rows = await uiEventBindingApi.list('FORM', String(form.value.id))
+      eventBindings = Array.isArray(rows) ? rows : []
+    } catch (error) {
+      console.error('校验表单按钮事件绑定失败:', error)
+      ElMessage.error('暂时无法校验按钮事件绑定，请稍后重试')
+      return false
+    }
+  }
+  const result = validateFormActionConfiguration({
+    actionBar: viewConfig.value.actionBar,
+    nodes: formFields.value,
+    eventBindings,
+    requireEventBindings: true
+  })
+  if (result.valid) return true
+
+  const messages = result.errors.slice(0, 3).map(item => item.message)
+  const remaining = result.errors.length - messages.length
+  ElMessage.warning({
+    message: `${messages.join('；')}${remaining > 0 ? `；另有 ${remaining} 项` : ''}`,
+    duration: 6500
+  })
+  openFormSettings('actions')
+  return false
+}
+
 async function handlePublish() {
   if (!form.value.id) {
     ElMessage.warning('请先保存草稿')
@@ -4647,6 +4759,7 @@ async function handlePublish() {
     ElMessage.warning('当前渲染配置仍有未保存修改，请先保存草稿后再发布')
     return
   }
+  if (!await validateFormActionsForPersistence()) return
   const diff = await getFormDiff(form.value.id)
   if (!diff.changed) {
     ElMessage.info('当前草稿与已发布版本一致')
@@ -4786,6 +4899,7 @@ async function handleSave() {
   }
 
   if (!validateRendererForSave()) return
+  if (!await validateFormActionsForPersistence()) return
 
   const persistNodes = shouldSaveCurrentFormNodes()
   let orderedFields = []
@@ -4835,6 +4949,8 @@ async function handleSave() {
         viewConfig: viewConfig.value
       })
       form.value = { ...form.value, ...updated }
+      rememberPersistedFormButtonKeys()
+      formActionPersistenceRevision.value += 1
       currentFormId = form.value.id
       draftChanged = true
     } else {

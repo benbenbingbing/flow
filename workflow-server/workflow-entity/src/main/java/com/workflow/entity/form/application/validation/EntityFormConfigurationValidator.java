@@ -96,7 +96,7 @@ public class EntityFormConfigurationValidator {
                 structuredConfigValidator.parseObject(
                         form.getViewConfig(),
                         "表单视图配置");
-        formActionConfigPolicy.validate(
+        viewConfig = formActionConfigPolicy.normalizeAndValidate(
                 viewConfig,
                 false,
                 Set.of(),
@@ -104,7 +104,10 @@ public class EntityFormConfigurationValidator {
                 Set.of(),
                 false);
         validateInputParameterSchema(viewConfig);
-        form.setViewConfig(blankToNull(form.getViewConfig()));
+        form.setViewConfig(StringUtils.hasText(form.getViewConfig())
+                ? structuredConfigValidator.writeJson(
+                        viewConfig, "表单视图配置")
+                : null);
         Map<String, Object> dataSourceBindings =
                 structuredConfigValidator.parseObject(
                         form.getDataSourceBindingsDocument(),

@@ -8,6 +8,8 @@ import com.workflow.core.error.ForbiddenException;
 import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.TaskAddSignService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
+import com.workflow.entity.form.api.request.FormActionResolveRequest;
+import com.workflow.entity.form.application.EntityFormActionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,6 +29,7 @@ public class TaskActionController {
     private final TaskActionService taskActionService;
     private final TaskAddSignService taskAddSignService;
     private final ProcessInstanceAccessService processInstanceAccessService;
+    private final EntityFormActionService formActionService;
 
     /**
      * 完成任务
@@ -49,6 +52,7 @@ public class TaskActionController {
         String transferTo = requestBody != null ? (String) requestBody.get("transferTo") : null;
         String actionLabel = requestBody != null ? (String) requestBody.get("actionLabel") : null;
 
+        requireSubmitApprovalAction(requestBody, taskId);
         if (taskAddSignService.isAddSignTask(taskId)) {
             taskAddSignService.completeAddSignTask(taskId, action, comment);
         } else {
@@ -58,6 +62,43 @@ public class TaskActionController {
             }
         }
         return Result.success(null);
+    }
+
+    /** 路径式兼容入口不能绕过发布表单内置审批按钮。 */
+    private void requireSubmitApprovalAction(
+            Map<String, Object> values,
+            String taskId) {
+        Map<String, Object> source = values == null ? Map.of() : values;
+        FormActionResolveRequest request = new FormActionResolveRequest();
+        request.setFormId(text(source.get("formId")));
+        request.setReleaseId(text(source.get("formReleaseId")));
+        request.setReleaseVersion(integer(source.get(
+                "formReleaseVersion")));
+        request.setReleaseResolutionToken(text(source.get(
+                "formReleaseResolutionToken")));
+        request.setEntityCode(text(source.get("entityCode")));
+        request.setListKey(text(source.get("listKey")));
+        request.setMode("approve");
+        request.setRecordId(text(source.get("recordId")));
+        request.setTaskId(taskId);
+        formActionService.requireBuiltInMutationAction(
+                request, "submitApproval");
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Integer integer(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "表单发布版本必须是整数");
+        }
     }
 
     /**

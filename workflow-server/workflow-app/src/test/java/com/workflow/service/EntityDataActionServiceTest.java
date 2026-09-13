@@ -7,6 +7,8 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
+import com.workflow.entity.form.api.request.FormActionResolveRequest;
+import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -93,6 +95,9 @@ class EntityDataActionServiceTest {
 
         @Mock
         private PublishedFormSubmissionService formSubmissionService;
+
+        @Mock
+        private EntityFormActionService formActionService;
 
         @Mock
         private FormSubmissionTraceService formSubmissionTraceService;
@@ -428,6 +433,7 @@ class EntityDataActionServiceTest {
                 dto.setEntityCode("asset");
                 dto.setFormId("form-1");
                 dto.setFormReleaseResolutionToken("signed-form-token");
+                dto.setStartProcess(false);
                 dto.setData(Map.of("name", "Laptop"));
                 EntityForm form = form("form-1", "entity-asset");
                 EntityDefinition asset = new EntityDefinition();
@@ -462,7 +468,18 @@ class EntityDataActionServiceTest {
                                                         "release-hotfix-8",
                                                         "hash-target-8",
                                                         "target-8"));
-                stubDefaultEventExecution();
+                when(eventRuntimeService.execute(any(), any()))
+                                .thenAnswer(invocation -> {
+                                        Function<Map<String, Object>, Object> handler =
+                                                        invocation.getArgument(1);
+                                        Map<String, Object> input = new LinkedHashMap<>(
+                                                        invocation.<com.workflow.entity.ui.api.request.UiEventExecuteRequest>
+                                                                        getArgument(0).getInput());
+                                        input.put("startProcess", true);
+                                        UiEventExecutionResult result = new UiEventExecutionResult();
+                                        result.setData(handler.apply(input));
+                                        return result;
+                                });
                 when(mutationPort.execute(
                                 any(EntityMutationCommand.class)))
                                 .thenReturn(mutationResult(
@@ -493,6 +510,18 @@ class EntityDataActionServiceTest {
                                                 anyString(),
                                                 anyMap(),
                                                 any());
+                ArgumentCaptor<FormActionResolveRequest> actionRequest =
+                                ArgumentCaptor.forClass(
+                                                FormActionResolveRequest.class);
+                verify(formActionService).requireBuiltInMutationAction(
+                                actionRequest.capture(), eq("save"));
+                verify(formActionService).requireBuiltInMutationAction(
+                                actionRequest.capture(), eq("saveAndStart"));
+                assertEquals("form-1",
+                                actionRequest.getAllValues().get(0).getFormId());
+                assertEquals("signed-form-token",
+                                actionRequest.getAllValues().get(1)
+                                                .getReleaseResolutionToken());
                 ArgumentCaptor<EntityMutationCommand> commandCaptor =
                                 ArgumentCaptor.forClass(EntityMutationCommand.class);
                 verify(mutationPort).execute(commandCaptor.capture());
@@ -806,6 +835,21 @@ class EntityDataActionServiceTest {
                                                 anyString(),
                                                 anyMap(),
                                                 any());
+                ArgumentCaptor<FormActionResolveRequest> actionRequest =
+                                ArgumentCaptor.forClass(
+                                                FormActionResolveRequest.class);
+                verify(formActionService, times(2))
+                                .requireBuiltInMutationAction(
+                                                actionRequest.capture(),
+                                                eq("save"));
+                assertEquals(List.of("form-1", "form-1"),
+                                actionRequest.getAllValues().stream()
+                                                .map(FormActionResolveRequest::getFormId)
+                                                .toList());
+                assertEquals(List.of("1", "1"),
+                                actionRequest.getAllValues().stream()
+                                                .map(FormActionResolveRequest::getRecordId)
+                                                .toList());
         }
 
         /** 构造一条包含 id 与 dataNo 的实体数据 DTO */

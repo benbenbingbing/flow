@@ -169,6 +169,7 @@ import {
   resolveApprovalFormConfig
 } from './entityApprovalDisplay.js'
 import {
+  acquireFormActionExecution,
   executeCustomFormAction,
   resolveRuntimeFormActions
 } from '@/shared/form-action-runtime'
@@ -234,6 +235,7 @@ const activeDialogTab = ref('basic')
 const approveSubmitLoading = ref(false)
 const approvalConflictMessage = ref('')
 const formActions = ref<any[]>([])
+const actionPendingKey = ref('')
 const actionLoadingKey = ref('')
 const currentTask = ref<any>(null)
 const isViewMode = ref(false)
@@ -351,6 +353,24 @@ const approvalNormalForm = computed(() => {
   return {
     ...sourceForm,
     fields
+  }
+})
+const approvalActionFormContext = computed(() => {
+  const form = approvalNormalForm.value || effectiveFormConfig.value || {}
+  return {
+    formId: form.id || form.formId || undefined,
+    releaseId:
+      form.runtimeReleaseId
+      || form.formReleaseId
+      || form.effectiveFormReleaseId
+      || formReleaseContext.value.releaseId,
+    releaseVersion:
+      form.runtimeReleaseVersion
+      ?? form.formReleaseVersion
+      ?? formReleaseContext.value.releaseVersion,
+    releaseResolutionToken:
+      form.releaseResolutionToken
+      || formReleaseContext.value.releaseResolutionToken
   }
 })
 const resolvedDiagnosticForm = computed(() =>
@@ -790,14 +810,17 @@ async function confirmAction(action: any) {
 }
 
 async function handleFormAction(action: any) {
-  if (!action || action.enabled === false || actionLoadingKey.value) return
-  if (!(await confirmAction(action))) return
-  actionLoadingKey.value = String(action.runtimeKey || action.key || '')
+  // 先占用动作锁再等待确认，确保页脚与自定义动作插槽的连续触发都只会
+  // 进入一次业务执行。
+  const releaseAction = acquireFormActionExecution(action, actionPendingKey)
+  if (!releaseAction) return
   try {
+    if (!(await confirmAction(action))) return
     if (action.key === 'close') {
       processDialogVisible.value = false
       return
     }
+    actionLoadingKey.value = String(action.runtimeKey || action.key || '')
     if (action.key === 'submitApproval') {
       await submitApprove()
       return
@@ -834,6 +857,7 @@ async function handleFormAction(action: any) {
     ElMessage.error(error.message || '按钮操作执行失败')
   } finally {
     actionLoadingKey.value = ''
+    releaseAction()
   }
 }
 
@@ -991,7 +1015,15 @@ const submitApprove = async () => {
       action: approveForm.action,
       actionLabel: selectedApprovalOption.value?.label,
       comment: approveForm.comment,
-      formData: entityData.value
+      formData: entityData.value,
+      entityCode: effectiveEntityCode.value,
+      recordId: entityData.value?.id,
+      listKey: props.listKey || undefined,
+      formId: approvalActionFormContext.value.formId,
+      formReleaseId: approvalActionFormContext.value.releaseId,
+      formReleaseVersion: approvalActionFormContext.value.releaseVersion,
+      formReleaseResolutionToken:
+        approvalActionFormContext.value.releaseResolutionToken
     }
     if (changedSelections.length > 0) {
       completePayload.nextApprovalScopeKey = nextApproverPreview.value.scopeKey

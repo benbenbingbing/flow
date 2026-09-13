@@ -29,7 +29,8 @@ const files = [
   'src/components/ui-config/ListColumnTemplateEditorDialog.vue',
   'src/components/NextApproverConfigEditor.vue',
   'src/components/ui-config/EntitySelectionMappingEditor.vue',
-  'src/components/ActionRuleEditorDialog.vue'
+  'src/components/ActionRuleEditorDialog.vue',
+  'src/components/ActionRuleEditorPanel.vue'
 ]
 
 for (const [key, content] of Object.entries(CONFIG_FIELD_HELP)) {
@@ -56,6 +57,11 @@ for (const required of [
   'process.personResolver',
   'process.flowActionHandler',
   'uiEvent.inheritanceMode',
+  'uiEvent.formButtonInheritanceMode',
+  'uiEvent.stepStrategy',
+  'uiEvent.formButtonStepStrategy',
+  'uiEvent.inputMapping',
+  'uiEvent.outputMapping',
   'uiDataSource.service',
   'interfaceService.backendImplementation',
   'interfaceService.debugService',
@@ -87,8 +93,23 @@ for (const required of [
   'embed.binding.externalSubject',
   'embed.operations.queryScope'
 ]) {
-  assert.ok(usedKeys.has(required), `关键复杂配置缺少问号帮助: ${required}`)
+  const formButtonHelp = required.startsWith('uiEvent.formButton')
+  assert.ok(
+    formButtonHelp ? CONFIG_FIELD_HELP[required] : usedKeys.has(required),
+    `关键复杂配置缺少问号帮助: ${required}`
+  )
 }
+
+assert.match(CONFIG_FIELD_HELP['uiEvent.formButtonInheritanceMode'], /仅使用当前层/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.formButtonInheritanceMode'], /“启用”开关/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.formButtonStepStrategy'], /没有平台默认动作/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.formButtonStepStrategy'], /恰好包含一个无执行条件的主处理/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.inputMapping'], /来源路径/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.inputMapping'], /接口参数路径/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.inputMapping'], /服务端上下文/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.outputMapping'], /回填路径/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.outputMapping'], /覆盖策略/)
+assert.match(CONFIG_FIELD_HELP['uiEvent.outputMapping'], /至少需要配置一条字段回填/)
 
 const interfaceServiceTestDialogSource = readFileSync(
   path.join(root, 'src/components/ui-config/InterfaceServiceTestDialog.vue'),

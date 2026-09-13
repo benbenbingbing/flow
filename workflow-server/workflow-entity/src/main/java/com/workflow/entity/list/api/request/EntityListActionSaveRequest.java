@@ -36,8 +36,6 @@ public class EntityListActionSaveRequest {
     private String permissionCode;
     /** 是否启用 */
     private Boolean enabled;
-    /** 不可用时的行为：HIDE / DISABLE */
-    private String unavailableBehavior;
     /** 排序序号 */
     private Integer sortOrder;
     /** 动作参数（透传给处理器） */

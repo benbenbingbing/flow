@@ -5,6 +5,7 @@ import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.ApiResponse;
+import com.workflow.core.result.PageResult;
 import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
 import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.migration.api.request.ConfigMigrationAssetQuery;
@@ -14,6 +15,7 @@ import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationA
 import com.workflow.migration.application.ConfigMigrationAssetService;
 import com.workflow.migration.application.ConfigMigrationImportApplyService;
 import com.workflow.migration.application.ConfigMigrationPackageService;
+import com.workflow.migration.application.ConfigMigrationReadService;
 import com.workflow.migration.application.DownloadFile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ContentDisposition;
@@ -49,9 +51,10 @@ public class ConfigMigrationController {
     private final ConfigMigrationAssetService assetService;
     private final ConfigMigrationPackageService packageService;
     private final ConfigMigrationImportApplyService importApplyService;
+    private final ConfigMigrationReadService readService;
 
     /**
-     * 分页/条件查询迁移资产列表。
+     * 按条件查询全部迁移资产，保留旧版数组响应兼容性。
      *
      * @param query 过滤条件(可选)
      * @return 资产列表
@@ -60,6 +63,19 @@ public class ConfigMigrationController {
     public ApiResponse<List<ConfigMigrationAsset>> assets(ConfigMigrationAssetQuery query) {
         require("config-migration:list");
         return ApiResponse.success(assetService.query(query));
+    }
+
+    /**
+     * 按条件分页查询迁移资产列表。
+     *
+     * @param query 过滤与分页条件
+     * @return 资产分页结果
+     */
+    @GetMapping("/assets/page")
+    public ApiResponse<PageResult<ConfigMigrationAsset>> assetPage(
+            ConfigMigrationAssetQuery query) {
+        require("config-migration:list");
+        return ApiResponse.success(readService.pageAssets(query));
     }
 
     /**
@@ -113,6 +129,22 @@ public class ConfigMigrationController {
     }
 
     /**
+     * 分页查询发布包摘要列表。
+     *
+     * @param pageNum  页码，默认 1
+     * @param pageSize 每页条数，默认 20，最大 100
+     * @return 发布包摘要分页结果
+     */
+    @GetMapping("/packages/page")
+    public ApiResponse<PageResult<Map<String, Object>>> exportPackagePage(
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "20") Integer pageSize) {
+        require("config-migration:list");
+        return ApiResponse.success(
+                readService.pageExports(pageNum, pageSize));
+    }
+
+    /**
      * 下载指定导出包的二进制文件。
      *
      * @param id 导出包ID
@@ -155,6 +187,44 @@ public class ConfigMigrationController {
     public ApiResponse<List<Map<String, Object>>> imports() {
         require("config-migration:list");
         return ApiResponse.success(packageService.listImports());
+    }
+
+    /**
+     * 分页查询导入批次摘要列表。
+     *
+     * @param pageNum  页码，默认 1
+     * @param pageSize 每页条数，默认 20，最大 100
+     * @return 导入批次摘要分页结果
+     */
+    @GetMapping("/imports/page")
+    public ApiResponse<PageResult<Map<String, Object>>> importPage(
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "20") Integer pageSize) {
+        require("config-migration:list");
+        return ApiResponse.success(
+                readService.pageImports(pageNum, pageSize));
+    }
+
+    /**
+     * 查询影响对比选择器使用的全量轻量导入批次选项。
+     *
+     * @return 不包含校验报告和发布包二进制数据的批次摘要列表
+     */
+    @GetMapping("/imports/options")
+    public ApiResponse<List<Map<String, Object>>> importOptions() {
+        require("config-migration:list");
+        return ApiResponse.success(readService.listImportOptions());
+    }
+
+    /**
+     * 查询配置迁移页面的全局概览统计。
+     *
+     * @return 待导出、已导出与阻断批次数量
+     */
+    @GetMapping("/stats")
+    public ApiResponse<Map<String, Long>> stats() {
+        require("config-migration:list");
+        return ApiResponse.success(readService.stats());
     }
 
     /**

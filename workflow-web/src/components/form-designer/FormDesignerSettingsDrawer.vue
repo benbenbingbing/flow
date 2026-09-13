@@ -84,8 +84,15 @@
             :entity-code="entityInfo.entityCode || ''"
             :entity-fields="entityFields"
             :form-id="form.id || ''"
+            :active-release-id="form.activeReleaseId || ''"
+            :event-binding-revision="eventBindingRevision"
+            :persistence-revision="formActionPersistenceRevision"
+            :persisted-button-keys="persistedFormButtonKeys"
             :nodes="formFields"
+            :create-action-slot="createActionSlotForButton"
+            :allow-action-slot-create="!isCustomRendererMode"
             :system-entity="isSystemEntity"
+            @changed="handleEventBindingsChanged"
           />
         </div>
       </el-tab-pane>
@@ -152,7 +159,7 @@
                 :owner-id="form.id || ''"
                 owner-label="表单"
                 :field-options="eventFieldOptions"
-                @changed="onEventBindingsChanged"
+                @changed="handleEventBindingsChanged"
               />
             </el-tab-pane>
           </el-tabs>
@@ -164,7 +171,7 @@
 </template>
 
 <script setup>
-import { computed, inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import FormInputParameterEditor from './FormInputParameterEditor.vue'
@@ -189,6 +196,7 @@ if (!context) {
 
 const {
   form,
+  isCustomRendererMode,
   viewConfig,
   isEdit,
   isSystemEntity,
@@ -198,9 +206,20 @@ const {
   formFields,
   formDataSourceBindingCount,
   eventFieldOptions,
+  formActionPersistenceRevision,
+  persistedFormButtonKeys,
+  createActionSlotForButton,
   openFormDataSourceConfig,
   onEventBindingsChanged
 } = context
+
+const eventBindingRevision = ref(0)
+
+/** 任一事件入口保存或删除后，同步刷新按钮引用缓存和发布差异。 */
+function handleEventBindingsChanged() {
+  eventBindingRevision.value += 1
+  return onEventBindingsChanged()
+}
 
 const activeBehaviorTab = computed({
   get: () => props.activeBehaviorTab,

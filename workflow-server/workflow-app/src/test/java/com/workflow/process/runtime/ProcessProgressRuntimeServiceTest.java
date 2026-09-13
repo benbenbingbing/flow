@@ -5,7 +5,6 @@ import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.core.error.ForbiddenException;
 
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
@@ -581,9 +580,10 @@ class ProcessProgressRuntimeServiceTest {
                             + "\"label\":\"热修复标题\"}");
             form.setNodes(List.of(node));
             when(entityFormRuntimeService.getByBinding(
-                    nodeForm,
-                    "history-1",
-                    UiRuntimePurpose.ACTIVE_TASK))
+                    org.mockito.ArgumentMatchers.same(nodeForm),
+                    org.mockito.ArgumentMatchers.any(
+                            com.workflow.contracts.ui.runtime
+                                    .UiRuntimeResolutionContext.class)))
                     .thenReturn(form);
         }
 

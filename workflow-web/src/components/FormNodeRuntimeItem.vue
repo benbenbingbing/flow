@@ -41,7 +41,7 @@
       <el-col
         v-for="child in children"
         :key="child.id"
-        :span="Number(child.props.gridSpan || child.props.span || node.props.defaultSpan || 12)"
+        :span="gridChildSpan(child)"
       >
         <FormNodeRuntimeItem
           v-bind="childProps(child)"
@@ -217,6 +217,7 @@ import {
   resolveFormContainerAppearance,
   supportsFormContainerAppearance
 } from '@/shared/form-container-appearance'
+import { resolveFormNodeLayoutSpan } from '@/shared/form-node-property-schema'
 
 defineOptions({ name: 'FormNodeRuntimeItem' })
 
@@ -590,13 +591,16 @@ function childProps(child) {
 }
 
 function childSpan(child) {
-  const nodeType = String(child.nodeType || '').toUpperCase()
-  if (['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(nodeType)) {
-    return 24
-  }
-  if (props.layoutType === 'vertical') return 24
-  if (props.layoutType === 'horizontal') return 12
-  return Number(child.props?.gridSpan || child.props?.span || 24)
+  return resolveFormNodeLayoutSpan(child, props.layoutType, 24)
+}
+
+/** GRID 子节点不受表单整体布局模式影响，直接使用容器自己的默认宽度。 */
+function gridChildSpan(child) {
+  return resolveFormNodeLayoutSpan(
+    child,
+    'grid',
+    Number(props.node.props?.defaultSpan || 12)
+  )
 }
 
 function collectDescendants(parentId) {

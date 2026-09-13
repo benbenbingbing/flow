@@ -710,11 +710,15 @@ function handlerLabel(action) {
   return handler?.displayName || action.interfaceName
 }
 
+/**
+ * 在独立标签页打开流程动作扩展管理，保留流程画布和节点配置中的本地编辑状态。
+ */
 function openExtensionManagement() {
-  router.push({
+  const extensionManagementRoute = router.resolve({
     path: '/dev/extensions',
     query: { type: 'FLOW_ACTION' }
   })
+  window.open(extensionManagementRoute.href, '_blank', 'noopener,noreferrer')
 }
 </script>
 

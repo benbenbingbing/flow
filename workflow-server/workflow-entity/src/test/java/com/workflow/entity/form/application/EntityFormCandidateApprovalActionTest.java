@@ -30,8 +30,6 @@ import com.workflow.entity.ui.application.UiConfigReleaseService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -160,7 +158,7 @@ class EntityFormCandidateApprovalActionTest {
 
     @Test
     void publishedOverrideStillRecognizesCandidateRelationAndRequiresStatusAndField() throws Exception {
-        setSubmitOverride(approvalOverride("DISABLE"));
+        setSubmitOverride(enabledApprovalOverride());
 
         FormActionRuntimeDTO ready = action("approve", "submitApproval");
         assertTrue(ready.isEnabled());
@@ -177,10 +175,9 @@ class EntityFormCandidateApprovalActionTest {
         assertTrue(action("approve", "submitApproval").isEnabled());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"HIDE", "DISABLE"})
-    void failedOverrideKeepsItsVisibilityPolicyAndDoesNotLeakTaskId(String behavior) throws Exception {
-        EntityActionRuleDTO override = approvalOverride(behavior);
+    @Test
+    void failedEnabledOverrideDisablesAndDoesNotLeakTaskId() throws Exception {
+        EntityActionRuleDTO override = enabledApprovalOverride();
         setSubmitOverride(override);
         row.setName("not-ready");
 
@@ -190,21 +187,22 @@ class EntityFormCandidateApprovalActionTest {
 
         assertFalse(capability.isEnabled());
         assertNull(capability.getActionableTaskId());
-        assertEquals("DISABLE".equals(behavior), capability.isVisible());
+        assertTrue(capability.isVisible());
         assertFalse(submit.isEnabled());
-        assertEquals("DISABLE".equals(behavior), submit.isVisible());
+        assertTrue(submit.isVisible());
     }
 
     @Test
-    void permissiveOverrideCannotBypassDefaultRunningProcessRequirement() throws Exception {
-        setSubmitOverride(approvalOverride("DISABLE"));
+    void mandatoryVisibleConditionRunsBeforeOverrideEnabledCondition() throws Exception {
+        setSubmitOverride(enabledApprovalOverride());
         row.setProcessEndTime(LocalDateTime.now());
+        row.setName("not-ready");
 
         FormActionRuntimeDTO submit = action("approve", "submitApproval");
 
         assertFalse(submit.isVisible());
         assertFalse(submit.isEnabled());
-        assertEquals("仅当前可审批用户可在流程运行中提交审批", submit.getReason());
+        assertEquals("当前数据不满足显示条件", submit.getReason());
     }
 
     @Test
@@ -242,13 +240,16 @@ class EntityFormCandidateApprovalActionTest {
         EntityActionRuleDTO.RuleNode relation = new EntityActionRuleDTO.RuleNode();
         relation.setType("RELATION");
         relation.setRelation("CURRENT_USER_IS_ASSIGNEE");
-        rule.setRoot(relation);
+        rule.setVisibleWhen(relation);
         return rule;
     }
 
-    /** 同一个覆盖规则同时限制候选身份、状态和业务字段，防止仅验证候选分支。 */
-    private EntityActionRuleDTO approvalOverride(String behavior) {
-        EntityActionRuleDTO rule = assignedRule();
+    /** 启用条件同时限制候选身份、状态和业务字段，防止仅验证候选分支。 */
+    private EntityActionRuleDTO enabledApprovalOverride() {
+        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        EntityActionRuleDTO.RuleNode assignee = new EntityActionRuleDTO.RuleNode();
+        assignee.setType("RELATION");
+        assignee.setRelation("CURRENT_USER_IS_ASSIGNEE");
         EntityActionRuleDTO.RuleNode status = new EntityActionRuleDTO.RuleNode();
         status.setType("STATUS_CODE");
         status.setOperator("EQ");
@@ -261,10 +262,9 @@ class EntityFormCandidateApprovalActionTest {
         EntityActionRuleDTO.RuleNode group = new EntityActionRuleDTO.RuleNode();
         group.setType("GROUP");
         group.setLogic("AND");
-        group.setChildren(List.of(rule.getRoot(), status, field));
-        rule.setRoot(group);
-        rule.setUnavailableBehavior(behavior);
-        rule.setMessage("只允许审批准备完成的待审记录");
+        group.setChildren(List.of(assignee, status, field));
+        rule.setEnabledWhen(group);
+        rule.setDisabledMessage("只允许审批准备完成的待审记录");
         return rule;
     }
 }

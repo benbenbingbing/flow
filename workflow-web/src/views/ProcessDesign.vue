@@ -185,7 +185,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Document, Check, Back, Right, Setting, Close, InfoFilled } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
-import { getNodeTypeDescription, getNodeTypeTag, getNodeTypeText } from '@/shared/process-config'
+import { getNodeTypeDescription, getNodeTypeTag, getNodeTypeText, normalizeEmptyAssigneeStrategy, validateEmptyAssigneeStrategy } from '@/shared/process-config'
 import { ensureBpmnLayout, hasCompleteBpmnDi } from '@/utils/bpmnLayout'
 import formatXML from 'xml-formatter'
 import NodeConfigPanel from '@/components/NodeConfigPanel.vue'
@@ -445,15 +445,7 @@ const emptyAssigneeDialogVisible = ref(false)
 const emptyAssigneeDefault = ref(createEmptyAssigneeDefault())
 
 function createEmptyAssigneeDefault(value = {}) {
-  return {
-    policy: value.policy || 'BLOCK_PUBLISH',
-    fallbackUser: value.fallbackUser || '',
-    fallbackGroup: value.fallbackGroup || '',
-    maxRetries: Number(value.maxRetries || 3),
-    initialDelaySeconds: Number(value.initialDelaySeconds || 60),
-    backoffMultiplier: Number(value.backoffMultiplier || 2),
-    responsibilityOwner: value.responsibilityOwner || ''
-  }
+  return normalizeEmptyAssigneeStrategy(value, false)
 }
 
 function xmlText(result) {
@@ -501,10 +493,7 @@ async function openEmptyAssigneePolicy() {
 }
 
 function validateEmptyAssigneeDefault(policy) {
-  if (policy.policy === 'FALLBACK_USER' && !policy.fallbackUser) return '请配置兜底用户 ID'
-  if (policy.policy === 'FALLBACK_GROUP' && !policy.fallbackGroup) return '请配置兜底用户组编码'
-  if (!['BLOCK_PUBLISH'].includes(policy.policy) && !policy.responsibilityOwner) return '请配置责任人或值班组'
-  return ''
+  return validateEmptyAssigneeStrategy(policy, false)
 }
 
 async function saveEmptyAssigneePolicy() {

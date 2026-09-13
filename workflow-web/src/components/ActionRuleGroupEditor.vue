@@ -19,6 +19,7 @@
         :depth="depth + 1"
         :fields="fields"
         :statuses="statuses"
+        :allow-custom-conditions="allowCustomConditions"
         removable
         @remove="node.children.splice(index, 1)"
       />
@@ -59,7 +60,11 @@
         </template>
 
         <template v-else-if="child.type === 'STATUS_CODE'">
-          <OperatorSelect v-model="child.operator" :operators="setOperators" />
+          <OperatorSelect
+            :model-value="child.operator"
+            :operators="setOperators"
+            @update:model-value="value => updateComparisonOperator(child, value)"
+          />
           <el-select
             v-model="child.value"
             :multiple="isSetOperator(child.operator)"
@@ -77,7 +82,11 @@
         </template>
 
         <template v-else-if="child.type === 'STATUS_CATEGORY'">
-          <OperatorSelect v-model="child.operator" :operators="setOperators" />
+          <OperatorSelect
+            :model-value="child.operator"
+            :operators="setOperators"
+            @update:model-value="value => updateComparisonOperator(child, value)"
+          />
           <el-select
             v-model="child.value"
             :multiple="isSetOperator(child.operator)"
@@ -96,13 +105,18 @@
           <el-select v-model="child.field" size="small" filterable style="width: 180px">
             <el-option v-for="field in fields" :key="field.value" :label="field.label" :value="field.value" />
           </el-select>
-          <OperatorSelect v-model="child.operator" :operators="fieldOperators" />
+          <OperatorSelect
+            :model-value="child.operator"
+            :operators="fieldOperators"
+            @update:model-value="value => updateComparisonOperator(child, value)"
+          />
           <el-input
             v-if="!['EMPTY', 'NOT_EMPTY'].includes(child.operator)"
-            v-model="child.value"
+            :model-value="comparisonInputValue(child.value)"
             size="small"
             placeholder="多个值用逗号分隔"
             style="width: 190px"
+            @update:model-value="value => child.value = value"
           />
         </template>
 
@@ -114,13 +128,18 @@
             <el-option label="组织ID" value="orgId" />
             <el-option label="角色ID集合" value="roleIds" />
           </el-select>
-          <OperatorSelect v-model="child.operator" :operators="fieldOperators" />
+          <OperatorSelect
+            :model-value="child.operator"
+            :operators="fieldOperators"
+            @update:model-value="value => updateComparisonOperator(child, value)"
+          />
           <el-input
             v-if="!['EMPTY', 'NOT_EMPTY'].includes(child.operator)"
-            v-model="child.value"
+            :model-value="comparisonInputValue(child.value)"
             size="small"
             placeholder="多个值用逗号分隔"
             style="width: 190px"
+            @update:model-value="value => child.value = value"
           />
         </template>
 
@@ -143,6 +162,7 @@
 
 <script setup>
 import { defineComponent, h, resolveComponent } from 'vue'
+import { normalizeActionRuleSelectValue } from '@/shared/action-rules'
 import { getEntityActionRuleCondition, getEntityActionRuleConditions } from '@/utils/entityActionRuleRegistry'
 
 defineOptions({ name: 'ActionRuleGroupEditor' })
@@ -152,12 +172,15 @@ const props = defineProps({
   depth: { type: Number, default: 1 },
   fields: { type: Array, default: () => [] },
   statuses: { type: Array, default: () => [] },
+  allowCustomConditions: { type: Boolean, default: true },
   removable: { type: Boolean, default: false }
 })
 
 defineEmits(['remove'])
 
-const customConditions = getEntityActionRuleConditions()
+const customConditions = props.allowCustomConditions
+  ? getEntityActionRuleConditions()
+  : []
 const simpleOperators = ['EQ', 'NE']
 const setOperators = ['EQ', 'NE', 'IN', 'NOT_IN']
 const fieldOperators = ['EQ', 'NE', 'IN', 'NOT_IN', 'CONTAINS', 'NOT_CONTAINS', 'EMPTY', 'NOT_EMPTY', 'GT', 'GTE', 'LT', 'LTE']
@@ -203,9 +226,7 @@ function addCondition() {
   props.node.children ||= []
   props.node.children.push({
     type: 'RELATION',
-    relation: 'CURRENT_USER_IS_CREATOR',
-    operator: 'EQ',
-    value: true
+    relation: 'CURRENT_USER_IS_CREATOR'
   })
 }
 
@@ -240,8 +261,19 @@ function isSetOperator(operator) {
   return ['IN', 'NOT_IN'].includes(operator)
 }
 
+function updateComparisonOperator(condition, operator) {
+  condition.operator = operator
+  condition.value = normalizeActionRuleSelectValue(condition.value, operator)
+}
+
+function comparisonInputValue(value) {
+  return Array.isArray(value) ? value.join(',') : (value ?? '')
+}
+
 function customDefinition(type) {
-  return getEntityActionRuleCondition(type)
+  return props.allowCustomConditions
+    ? getEntityActionRuleCondition(type)
+    : null
 }
 
 function updateCustomChild(index, value) {
@@ -261,6 +293,7 @@ function updateCustomChild(index, value) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .rule-item {
@@ -271,5 +304,24 @@ function updateCustomChild(index, value) {
   padding: 8px;
   background: var(--el-fill-color-light);
   border-radius: 4px;
+}
+
+.condition-row > :deep(.el-button:last-child) {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .rule-group {
+    padding: 10px;
+  }
+
+  .group-header {
+    align-items: flex-start;
+  }
+
+  .condition-row > :deep(.el-select),
+  .condition-row > :deep(.el-input) {
+    width: 100% !important;
+  }
 }
 </style>

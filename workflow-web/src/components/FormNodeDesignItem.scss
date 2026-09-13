@@ -1,0 +1,377 @@
+.form-node-design-item {
+  position: relative;
+  min-width: 0;
+  margin-bottom: 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s;
+}
+
+.form-node-design-item:hover {
+  border-color: var(--el-border-color);
+}
+
+.form-node-design-item.active {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 15%, transparent);
+}
+
+.form-node-design-item.is-grid-child {
+  margin-bottom: 0;
+}
+
+.design-section,
+.design-tabs,
+.design-collapse,
+.design-grid,
+.design-text,
+.design-container-shell {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.design-container-shell {
+  padding: 10px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-fill-color-extra-light);
+}
+
+/*
+ * 容器业务外观可以隐藏，但节点最外层的 hover/active 描边继续由
+ * .form-node-design-item 提供，避免无边框容器失去设计态可操作边界。
+ */
+.design-container-shell.is-container-paddingless,
+.nested-field-children.is-container-paddingless,
+.design-orphan-tab.is-container-paddingless {
+  padding: 0;
+}
+
+.design-container-shell.is-container-borderless,
+.nested-field-children.is-container-borderless,
+.design-orphan-tab.is-container-borderless {
+  border-width: 0;
+}
+
+.design-section.is-container-borderless {
+  border-width: 0;
+}
+
+.design-section.is-container-borderless :deep(.el-card__header) {
+  border-bottom-width: 0;
+}
+
+.design-section.is-container-paddingless :deep(.el-card__body) {
+  padding: 0;
+}
+
+.design-container-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  padding: 0 108px 8px 2px;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+}
+
+.design-container-caption strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.design-container-caption span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.design-tab-set-shell {
+  background: color-mix(in srgb, var(--el-color-primary) 4%, white);
+}
+
+.design-tab-set-shell.is-container-borderless .design-tabs {
+  border-width: 0;
+}
+
+.design-tab-set-shell.is-container-paddingless .design-tabs :deep(.el-tabs__content) {
+  padding: 0;
+}
+
+.design-container-empty {
+  width: 100%;
+  min-height: 48px;
+  padding: 14px;
+  border: 1px dashed var(--el-border-color-lighter);
+  border-radius: 4px;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+  text-align: center;
+}
+
+.design-node-children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 24px;
+}
+
+.design-node-children.is-empty {
+  min-height: 64px;
+}
+
+.design-grid :deep(.el-col) {
+  padding-bottom: 12px;
+}
+
+.design-form-item {
+  margin: 12px;
+}
+
+.design-field-node {
+  width: 100%;
+}
+
+.nested-field-children {
+  margin: 0 12px 12px;
+  padding: 10px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.nested-field-children .design-container-caption {
+  padding-right: 2px;
+}
+
+.design-tab-panel {
+  border: 0 dashed var(--el-border-color);
+  border-radius: 5px;
+}
+
+.design-tab-panel.is-container-bordered {
+  border-width: 1px;
+}
+
+.design-tab-panel.is-container-padded {
+  padding: 10px;
+}
+
+.design-text {
+  padding: 12px;
+  color: var(--el-text-color-regular);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.design-section-title {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 112px 0 12px;
+}
+
+.design-orphan-tab,
+.design-action-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.design-orphan-tab strong,
+.design-action-slot strong {
+  font-size: 13px;
+}
+
+.design-orphan-tab span,
+.design-action-slot span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.design-action-slot__identity,
+.design-action-slot__buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.design-action-slot__identity {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.design-action-slot__identity span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-action-slot__buttons {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-right: 102px;
+}
+
+.node-actions {
+  position: absolute;
+  z-index: 3;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+
+.form-node-design-item:hover > .node-actions,
+.form-node-design-item.active > .node-actions {
+  opacity: 1;
+}
+
+.form-node-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-bg-color);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.form-node-drag-handle:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+.form-node-drag-handle:active {
+  cursor: grabbing;
+}
+
+.design-tab-order-caption {
+  margin-bottom: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.design-tab-order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 36px;
+  margin-bottom: 10px;
+}
+
+.design-tab-order-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 5px;
+  background: var(--el-bg-color);
+}
+
+.design-tab-order-item.active {
+  border-color: var(--el-color-primary);
+  background: color-mix(in srgb, var(--el-color-primary) 8%, white);
+}
+
+.design-tab-order-label {
+  max-width: 180px;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 0;
+  color: var(--el-text-color-primary);
+  background: transparent;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-tabs :deep(.el-tabs__content) {
+  padding: 12px;
+}
+
+.design-tabs :deep(.el-tabs__header) {
+  display: none;
+}
+
+.design-collapse.is-container-borderless {
+  border-top-width: 0;
+  border-bottom-width: 0;
+}
+
+.design-collapse.is-container-borderless :deep(.el-collapse-item__wrap) {
+  border-bottom-width: 0;
+}
+
+.design-collapse.is-container-paddingless :deep(.el-collapse-item__content) {
+  padding-bottom: 0;
+}
+
+.tab-node-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  margin-bottom: 10px;
+  border-left: 3px solid var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+}
+
+.tab-node-toolbar.active {
+  border-left-color: var(--el-color-primary);
+  background: color-mix(in srgb, var(--el-color-primary) 8%, white);
+}
+
+.tab-node-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: var(--el-text-color-primary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab-node-title span {
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tab-node-title strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-node-children {
+  padding: 4px;
+}

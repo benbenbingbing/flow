@@ -14,6 +14,7 @@ import com.workflow.entity.permission.api.request.EntityListScopeSimulationReque
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityListScopeSimulationDTO;
 import com.workflow.entity.permission.api.response.PermissionPreviewDTO;
+import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiDataSourceService;
@@ -392,8 +393,10 @@ public class EntityListRuntimeService {
         eventInput.put("scene", scene);
         event.setInput(eventInput);
         Object result;
+        boolean replacedByPublishedEvent = false;
         if (compositionContext == null && !bypassPublishedUiEvents) {
-            result = uiEventRuntimeService.execute(
+            com.workflow.entity.ui.api.response.UiEventExecutionResult
+                    eventResult = uiEventRuntimeService.execute(
                     event,
                     input -> queryDefault(
                             config,
@@ -401,7 +404,9 @@ public class EntityListRuntimeService {
                             listKey,
                             scene,
                             safeRequest,
-                            input)).getData();
+                            input));
+            result = eventResult.getData();
+            replacedByPublishedEvent = eventResult.isReplaced();
         } else {
             // 关联内容令牌已经固定目标列表发布版本。现有 LIST_LOAD 事件解析器
             // 只认识父表单令牌，不能让它回退到当前 ACTIVE；这里直接执行同一
@@ -419,6 +424,17 @@ public class EntityListRuntimeService {
                 result,
                 Math.max(1, safeRequest.getPageNum()),
                 Math.max(1, Math.min(200, safeRequest.getPageSize())));
+        boolean systemEntity = systemEntityReadService.isSystemEntity(
+                entityCode);
+        if (systemEntity) {
+            normalizedResult = addSystemReadOnlyCapabilities(
+                    normalizedResult);
+        } else if (compositionContext == null
+                && (replacedByPublishedEvent
+                || usesCustomRecordQuery(config))) {
+            normalizedResult = secureListEventReplacement(
+                    config, entityCode, listKey, normalizedResult);
+        }
         if (compositionContext == null
                 || !usesCustomRecordQuery(config)) {
             return normalizedResult;
@@ -432,6 +448,96 @@ public class EntityListRuntimeService {
                 Math.max(1, safeRequest.getPageNum()),
                 Math.max(1, Math.min(
                         200, safeRequest.getPageSize())));
+    }
+
+    /** 系统实体列表只公开 view 能力，避免缺省能力被前端解释为可执行其它动作。 */
+    private PageResult<?> addSystemReadOnlyCapabilities(
+            PageResult<?> page) {
+        List<?> records = page.getRecords() == null
+                ? List.of() : page.getRecords();
+        List<Map<String, Object>> secured = records.stream()
+                .map(record -> {
+                    Map<String, Object> row;
+                    if (record instanceof Map<?, ?> map) {
+                        row = objectMapper.convertValue(
+                                map,
+                                new TypeReference<Map<String, Object>>() {});
+                    } else if (record instanceof EntityDataDTO data) {
+                        row = objectMapper.convertValue(
+                                data,
+                                new TypeReference<Map<String, Object>>() {});
+                    } else {
+                        throw new IllegalStateException(
+                                "系统实体列表返回了非法记录");
+                    }
+                    row.put("actionCapabilities", Map.of(
+                            "view", EntityActionCapabilityDTO.allowed()));
+                    return row;
+                })
+                .toList();
+        return new PageResult<>(
+                secured,
+                page.getTotal(),
+                page.getPageNum(),
+                page.getPageSize());
+    }
+
+    /**
+     * 对 LIST_LOAD 的 REPLACE 结果重新加载权威实体行并计算按钮能力。
+     *
+     * <p>Provider 只能决定本页候选数据及展示字段，不能声明
+     * actionCapabilities。每个候选 ID 都必须重新通过当前列表数据范围，随后
+     * 用已发布列表规则计算能力，再覆盖 Provider 的同名字段。</p>
+     */
+    private PageResult<?> secureListEventReplacement(
+            EntityListConfig config,
+            String entityCode,
+            String listKey,
+            PageResult<?> candidatePage) {
+        List<?> candidates = candidatePage.getRecords() == null
+                ? List.of() : candidatePage.getRecords();
+        if (candidates.isEmpty()) {
+            return candidatePage;
+        }
+        List<String> ids = candidates.stream()
+                .map(this::requireCandidateRecordId)
+                .toList();
+        Map<String, EntityDataDTO> authoritative = new LinkedHashMap<>();
+        for (String id : new LinkedHashSet<>(ids)) {
+            authoritative.put(id, dynamicService.findAccessibleById(
+                    entityCode, id, listKey));
+        }
+        actionCapabilityService.enrichRows(
+                entityCode, config,
+                new ArrayList<>(authoritative.values()));
+
+        List<Map<String, Object>> secured = new ArrayList<>();
+        for (int index = 0; index < candidates.size(); index++) {
+            Object candidate = candidates.get(index);
+            Map<String, Object> row;
+            if (candidate instanceof Map<?, ?> map) {
+                row = objectMapper.convertValue(
+                        map,
+                        new TypeReference<Map<String, Object>>() {});
+            } else if (candidate instanceof EntityDataDTO data) {
+                row = objectMapper.convertValue(
+                        data,
+                        new TypeReference<Map<String, Object>>() {});
+            } else {
+                throw new IllegalStateException(
+                        "LIST_LOAD 替换结果必须返回包含实体记录 ID 的对象");
+            }
+            row.remove("actionCapabilities");
+            row.put("actionCapabilities",
+                    authoritative.get(ids.get(index))
+                            .getActionCapabilities());
+            secured.add(row);
+        }
+        return new PageResult<>(
+                secured,
+                candidatePage.getTotal(),
+                candidatePage.getPageNum(),
+                candidatePage.getPageSize());
     }
 
     /**

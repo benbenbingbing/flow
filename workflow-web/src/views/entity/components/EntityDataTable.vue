@@ -3,21 +3,33 @@
     <div class="table-toolbar">
       <!-- 左侧扩展位与业务按钮分离，避免排障入口接收按钮点击事件。 -->
       <slot name="toolbar-leading" />
-      <template v-for="btn in toolbarButtons" :key="btn.key">
-        <component
+      <template v-for="btn in visibleToolbarButtons" :key="btn.key">
+        <span
           v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
-          :is="getListButtonComponent(btn.customHandler)"
-          mode="toolbar"
-          :context="{
-            ...runtimeContext,
-            selectedRows,
-            entityCode: entityCode,
-            entityDefinition: entityDefinition,
-            refresh,
-            canAction,
-            getActionReason
-          }"
-        />
+          class="custom-button-host"
+          :class="{ 'custom-button-host--disabled': isToolbarDisabled(btn) }"
+          :title="getToolbarReason(btn)"
+          :aria-disabled="isToolbarDisabled(btn)"
+          @click.capture="event => guardCustomComponentAction(event, isToolbarDisabled(btn), getToolbarReason(btn))"
+        >
+          <component
+            :is="getListButtonComponent(btn.customHandler)"
+            mode="toolbar"
+            :disabled="isToolbarDisabled(btn)"
+            :reason="getToolbarReason(btn)"
+            :context="{
+              ...runtimeContext,
+              selectedRows,
+              entityCode: entityCode,
+              entityDefinition: entityDefinition,
+              refresh,
+              canAction,
+              getActionReason,
+              disabled: isToolbarDisabled(btn),
+              reason: getToolbarReason(btn)
+            }"
+          />
+        </span>
         <el-button
           v-else
           :type="btn.buttonType || 'default'"
@@ -157,20 +169,32 @@
             版本
           </el-button>
           <template v-for="btn in visibleRowButtons(row)" :key="btn.key">
-            <component
+            <span
               v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
-              :is="getListButtonComponent(btn.customHandler)"
-              mode="row"
-              :row="row"
-              :context="{
-                ...runtimeContext,
-                entityCode: entityCode,
-                entityDefinition: entityDefinition,
-                refresh,
-                canAction,
-                getActionReason
-              }"
-            />
+              class="custom-button-host"
+              :class="{ 'custom-button-host--disabled': !canAction(row, btn.key) }"
+              :title="getActionReason(row, btn.key)"
+              :aria-disabled="!canAction(row, btn.key)"
+              @click.capture="event => guardCustomComponentAction(event, !canAction(row, btn.key), getActionReason(row, btn.key))"
+            >
+              <component
+                :is="getListButtonComponent(btn.customHandler)"
+                mode="row"
+                :row="row"
+                :disabled="!canAction(row, btn.key)"
+                :reason="getActionReason(row, btn.key)"
+                :context="{
+                  ...runtimeContext,
+                  entityCode: entityCode,
+                  entityDefinition: entityDefinition,
+                  refresh,
+                  canAction,
+                  getActionReason,
+                  disabled: !canAction(row, btn.key),
+                  reason: getActionReason(row, btn.key)
+                }"
+              />
+            </span>
             <el-button
               v-else
               :type="btn.buttonType || 'primary'"
@@ -255,6 +279,7 @@ import { getFieldModelPath } from '@/shared/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 import {
+  refreshRecordPageSelection,
   reconcileRecordPageSelection,
   recordSelectionIds
 } from '@/shared/entity-record-selection'
@@ -544,6 +569,12 @@ async function restoreCurrentPageSelection() {
   if (!['SINGLE', 'MULTIPLE'].includes(props.selectionMode || 'NONE')) return
   restoringPageSelection.value = true
   await nextTick()
+  // 恢复期间 selection-change 被主动屏蔽，因此先用本页最新记录刷新已选对象，
+  // 确保状态和动作能力不会继续引用翻页前的旧快照。
+  selectedRows.value = refreshRecordPageSelection(
+    selectedRows.value,
+    props.dataList
+  )
   tableRef.value?.clearSelection()
   const selectedIds = new Set(recordSelectionIds(selectedRows.value))
   props.dataList.forEach(row => {
@@ -661,6 +692,24 @@ const getActionReason = (row: any, buttonKey: string) => {
 const isSelectionButton = (buttonKey: string) =>
   buttonKey === 'batchDelete' || buttonKey === 'exportSelected'
 
+/**
+ * 工具栏先遵守列表级能力；选择集按钮再按当前选择行汇总 visibleWhen。
+ * 空选择由 getSelectionActionState 保持可见，按钮随后进入“请先选择数据”的禁用态。
+ */
+const isToolbarVisible = (btn: any) => {
+  if (props.toolbarCapabilities?.[btn.key]?.visible === false) {
+    return false
+  }
+  if (!isSelectionButton(btn.key)) {
+    return true
+  }
+  return getSelectionActionState(selectedRows.value, btn.key).visible
+}
+
+const visibleToolbarButtons = computed(() =>
+  props.toolbarButtons.filter(isToolbarVisible)
+)
+
 const isToolbarDisabled = (btn: any) => {
   if (!isSelectionButton(btn.key)) {
     return props.toolbarCapabilities?.[btn.key]?.enabled === false
@@ -674,6 +723,21 @@ const getToolbarReason = (btn: any) => {
   }
   return getSelectionActionState(selectedRows.value, btn.key).reason
 }
+
+/**
+ * 自定义组件可以拥有自己的 DOM 点击处理器，必须在宿主捕获阶段阻断禁用动作；
+ * disabled/reason props 是展示契约，不能替代平台这一层的强制守卫。
+ */
+const guardCustomComponentAction = (
+  event: MouseEvent,
+  disabled: boolean,
+  reason: string
+) => {
+  if (!disabled) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  ElMessage.warning(reason || '当前数据不可操作')
+}
 </script>
 
 <style scoped lang="scss">
@@ -682,6 +746,19 @@ const getToolbarReason = (btn: any) => {
   align-items: flex-start;
   justify-content: flex-end;
   margin-bottom: 8px;
+}
+
+.custom-button-host {
+  display: inline-flex;
+}
+
+.custom-button-host--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.custom-button-host--disabled :deep(*) {
+  pointer-events: none;
 }
 
 .pagination-container {

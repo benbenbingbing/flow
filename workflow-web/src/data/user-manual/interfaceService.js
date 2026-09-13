@@ -99,7 +99,7 @@ export default {
                 { option: '保存前校验或转换', meaning: '平台保存前调用接口校验状态、额度或转换提交结构。', when: '业务校验不能仅靠字段必填和本地规则完成。', notes: '使用 BEFORE，失败策略通常选停止执行；保留平台默认保存。' },
                 { option: '完全自定义保存', meaning: '由自定义 WRITE 操作替代平台实体新增或修改。', when: '主数据完全由外部系统维护，平台不能执行默认保存。', notes: '使用 REPLACE；接口需承担权限后的业务保存、幂等和标准结果返回。' },
                 { option: '选择实体后回填', meaning: '选择客户、项目等记录后，把电话、负责人等值写入其他字段。', when: '表单需要联动带回选择记录的附加信息。', notes: '绑定 ENTITY_SELECTED；已有选择结果可只做映射，信息不足时先调用详情操作。' },
-                { option: '按钮执行业务动作', meaning: '工具栏、行、表单或字段按钮触发接口操作。', when: '需要作废、同步、校验、生成文件、刷新列表等动作。', notes: '按钮只绑定事件，不填写前端函数名；写操作应选择 WRITE。' },
+                { option: '按钮执行业务动作', meaning: '工具栏、行、表单或字段按钮触发接口操作。', when: '需要作废、同步、校验、生成文件、刷新列表等动作。', notes: '按钮只绑定事件，不填写前端函数名；表单自定义按钮的接口步骤仅允许 READ，实体写入走平台动作，外部副作用走业务 Outbox。' },
                 { option: '静态选项、字典或上下文', meaning: '为字段提供固定选项、平台字典或当前用户上下文。', when: '下拉选项不需要自定义 Java 或 HTTP 调用。', notes: '分别使用平台静态数据、平台字典、运行时上下文。' }
               ]
             }
@@ -437,7 +437,7 @@ export default {
                 { option: 'SUBFORM_LOAD / SUBFORM_SAVE', meaning: '加载 / 保存子表。', when: '子表数据来自特殊来源或保存前后需处理。', notes: '注意父子记录 ID、批量数据量和事务边界。' },
                 { option: 'TOOLBAR_BUTTON_CLICK', meaning: '列表工具栏按钮点击。', when: '批量同步、导出任务、刷新或新增扩展动作。', notes: '可使用 selectedIds；无选中数据时条件应明确。' },
                 { option: 'ROW_BUTTON_CLICK', meaning: '列表行按钮点击。', when: '查看、编辑以外的单条业务动作。', notes: '使用 recordId 和当前行数据。' },
-                { option: 'FORM_BUTTON_CLICK', meaning: '表单自定义按钮点击。', when: '提交之外的校验、暂存、同步或生成动作。', notes: '按钮权限和适用条件仍先由页面运行时判断。' }
+                { option: 'FORM_BUTTON_CLICK', meaning: '表单自定义按钮点击，本身没有平台默认动作。', when: '提交之外的校验、计算、字段回填或读取生成结果。', notes: '最终有效链必须恰好包含一个无执行条件的主处理（底层 REPLACE）；接口步骤仅允许无副作用 READ，按钮权限、显示与启用条件和 requestId 幂等仍由运行时校验。' }
               ]
             }
           ]
@@ -451,15 +451,15 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '触发事件', meaning: '本条执行链的系统触发点。', when: '新增绑定时必选。', how: '从当前层级和位置允许的事件中选择。', effect: '创建后不可直接改事件，需要删除后重建。' },
-                { field: '继承方式：继承并追加 INHERIT', meaning: '保留上级自定义链，并追加当前层步骤。', when: '实体已有默认逻辑，特殊页面只增加额外校验或通知。', how: '选择“继承并追加”。', effect: '最终链由上级和本级共同组成。' },
-                { field: '继承方式：替换上级 REPLACE', meaning: '当前层替换上级自定义链。', when: '特殊页面需要完全不同的自定义步骤。', how: '选择“替换上级”。', effect: '是否保留平台默认处理仍由步骤中的 REPLACE 决定。' },
-                { field: '继承方式：禁用自定义 DISABLE', meaning: '忽略当前事件的自定义链，只保留平台默认处理。', when: '实体已有自定义默认，但某个页面必须回到平台行为。', how: '选择“禁用自定义”，无需步骤。', effect: '不是禁用整个业务事件。' },
+                { field: '继承方式：继承并追加 INHERIT', meaning: '保留上级自定义链，并追加当前层步骤。', when: '实体已有默认自定义步骤，特殊页面只增加额外处理。', how: '选择“继承并追加”。', effect: '最终自定义链由上级和本级共同组成。' },
+                { field: '继承方式：替换上级 REPLACE', meaning: '当前层清除上级自定义链，只使用当前层步骤。', when: '特殊页面需要完全不同的自定义步骤。', how: '非按钮目标选择“替换上级”；BUTTON 目标中同一底层值显示为“仅使用当前层”。', effect: '只影响上级自定义步骤；其他事件是否保留平台默认处理仍由步骤中的 REPLACE 决定。' },
+                { field: '继承方式：禁用自定义 DISABLE', meaning: '清空当前事件的自定义链。', when: '非按钮目标需要忽略上级自定义步骤、回到平台默认行为。', how: '选择“禁用自定义”，无需步骤。FORM_BUTTON_CLICK 的精确 BUTTON 目标不提供该选项；需要停用自定义按钮时，应关闭按钮的“启用”开关。', effect: '只关闭自定义事件链，不代表停用按钮或整个业务事件。' },
                 { field: '步骤名称', meaning: '执行链中给管理员看的步骤说明。', when: '建议每一步都填写。', how: '使用“校验客户状态”“同步 ERP”等动作名称。', effect: '显示在完整执行链和执行跟踪中。' },
-                { field: '执行位置 BEFORE', meaning: '在平台默认处理或替代步骤前执行。', when: '校验、补充参数、转换输入。', how: '选择“前置”。', effect: 'STOP 失败会阻止后续平台处理。' },
-                { field: '执行位置 REPLACE', meaning: '用本步骤替代平台默认处理。', when: '完全自定义查询、详情或保存。', how: '选择“替代平台处理”。', effect: '同一事件最多一个 REPLACE；配置后平台默认处理不执行。' },
-                { field: '执行位置 AFTER', meaning: '在主处理完成后执行。', when: '通知、同步、刷新提示等后置动作。', how: '选择“后置”。', effect: '外部系统不能加入本地数据库事务，应依赖幂等和补偿。' },
+                { field: '执行位置 BEFORE', meaning: '在主处理或平台默认处理前执行。', when: '校验、补充参数、转换输入。', how: '普通事件显示“前置”；FORM_BUTTON_CLICK 显示“前置处理”。', effect: 'STOP 失败会阻止后续主处理或平台默认处理。' },
+                { field: '执行位置 REPLACE', meaning: '普通事件用本步骤替代平台默认处理；FORM_BUTTON_CLICK 中表示自定义按钮的主处理。', when: '普通事件需要完全自定义查询、详情或保存，或表单自定义按钮配置主步骤。', how: '普通事件选择“替代平台处理”；FORM_BUTTON_CLICK 选择“主处理”，且主处理不配置执行条件。', effect: 'FORM_BUTTON_CLICK 没有平台默认动作，最终有效链必须恰好一个无条件主处理；其他事件最多一个 REPLACE，配置后平台默认处理不执行。' },
+                { field: '执行位置 AFTER', meaning: '在主处理或平台默认处理完成后执行。', when: '回填、刷新、提示等后置处理。', how: '普通事件显示“后置”；FORM_BUTTON_CLICK 显示“后置处理”。', effect: '后置步骤可以读取主处理结果；外部副作用仍应由受控业务 Outbox 处理。' },
                 { field: '接口服务', meaning: '本步骤调用的服务。', when: '步骤需要执行接口。', how: '选择已启用服务；留空表示只做字段映射。', effect: '留空时必须配置结果回填，否则无法保存。' },
-                { field: '接口操作', meaning: '服务中的具体 READ 或 WRITE 操作。', when: '选择接口服务后必填。', how: '从操作目录选择。', effect: '操作不存在或服务停用时执行失败。' },
+                { field: '接口操作', meaning: '服务中的具体 READ 或 WRITE 操作。', when: '选择接口服务后必填。', how: '从操作目录选择；FORM_BUTTON_CLICK 只显示 READ。', effect: '操作不存在、服务停用或表单按钮绑定 WRITE 时执行失败。' },
                 { field: '失败策略 STOP', meaning: '失败立即停止执行链。', when: '校验、主保存、删除等关键步骤。', how: '选择“停止执行”。', effect: '错误返回给当前业务操作。' },
                 { field: '失败策略 CONTINUE', meaning: '记录失败后继续后续步骤。', when: '非关键通知或可降级辅助查询。', how: '选择“记录后继续”。', effect: '当前步骤结果为 null，不阻断后续处理。' },
                 { field: '失败策略 EMPTY', meaning: '把当前步骤异常转换为空对象并继续。', when: '可接受无结果的辅助数据加载。', how: '选择“按空结果继续”。', effect: '后续映射必须能处理空值；关键权限、校验和写操作不建议使用。' },
@@ -476,7 +476,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '输入来源路径', meaning: '从事件状态读取值。', when: '接口参数不是完整原始 input，或参数名不同。', how: '例如 input.customerId、context.userId、selection.data.id、recordId、selectedIds。', effect: '路径不存在时得到 null。' },
+                { field: '输入来源路径', meaning: '从事件状态读取值。', when: '接口参数不是完整原始 input，或参数名不同。', how: '例如 input.customerId、input.form.amount、selection.data.id、recordId、selectedIds。用户、任务、流程和发布身份只能由 Provider 的可信调用上下文读取。', effect: '路径不存在时得到 null；不要把客户端 input/context 中的身份字段用于授权判断。' },
                 { field: '接口参数', meaning: '写入接口 input 的目标路径。', when: '把页面字段转换为接口契约。', how: '例如 customerId、filters.status。', effect: '当前输入映射按“目标路径 → 来源路径”保存；输入区应使用原值映射。' },
                 { field: '结果来源路径', meaning: '从接口结果或事件状态读取值。', when: '回填表单、构造页面效果或转换分页结果。', how: '调用接口后使用 data.xxx 或 response.xxx；只做映射时可使用 input、selection、context。', effect: '数组可通过数字下标访问，例如 data.records.0.id。' },
                 { field: '目标路径', meaning: '结果要写入的位置。', when: '字段回填或构造统一返回结构。', how: '表单字段使用 form.字段编码；列表分页可使用 records、total、pageNum、pageSize。', effect: '设计器显示中文字段名，保存后使用字段编码。' },
@@ -577,7 +577,8 @@ export default {
               items: [
                 { title: '先创建按钮', text: '在列表工具栏、操作列或表单按钮设计器中创建按钮并保存稳定编码。' },
                 { title: '选择按钮绑定位置', text: '在事件绑定选择列表或表单层级、按钮位置，并填写相同按钮编码。' },
-                { title: '选择点击事件', text: '工具栏用 TOOLBAR_BUTTON_CLICK，行按钮用 ROW_BUTTON_CLICK，表单按钮用 FORM_BUTTON_CLICK。' },
+                { title: '选择点击事件', text: '工具栏用 TOOLBAR_BUTTON_CLICK，行按钮用 ROW_BUTTON_CLICK，表单按钮用 FORM_BUTTON_CLICK；表单按钮只绑定无副作用 READ。' },
+                { title: '配置表单按钮主处理', text: 'FORM_BUTTON_CLICK 没有平台默认动作，最终有效链必须恰好包含一个无执行条件的“主处理”（底层 REPLACE）；业务条件放到按钮显示/启用规则，步骤条件只用于前置处理和后置处理。' },
                 { title: '映射业务参数', text: '工具栏批量操作使用 selectedIds，行按钮使用 recordId，表单按钮使用 input 或 form 数据。' },
                 { title: '配置页面效果', text: '接口可返回 message 和 effects，触发提示、刷新列表、回填表单、关闭弹窗、打开系统路由或下载任务。' },
                 { title: '验证权限与适用条件', text: '接口绑定不会取代按钮权限码和适用条件；使用不同角色和不同记录状态验证。' }

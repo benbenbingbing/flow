@@ -38,6 +38,8 @@
         :entity-definition="entityDefinition"
         :entity-fields="entityFields"
         :data-source-runtime="dataSourceRuntime"
+        :form-action-slots="customFormActionSlots"
+        @form-action="triggerCustomFormAction"
       />
     </template>
     <FormNodeRenderer
@@ -139,7 +141,11 @@ import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
-import { slotFormActions } from '@/shared/form-actions'
+import {
+  createCustomFormActionSlotContract,
+  formActionsForOwner,
+  slotFormActions
+} from '@/shared/form-actions'
 import { precheckFormFieldUnique } from '@/api/entityForm'
 import {
   createFormUniquePrecheckController,
@@ -267,19 +273,18 @@ const actionSlotKeys = computed(() =>
     .filter(Boolean)
 )
 const currentFormActions = computed(() => {
-  const formId = String(
-    props.form?.id
-    || props.form?.formId
-    || props.form?.entityFormId
-    || ''
-  )
-  return props.formActions.filter(action =>
-    action?.type === 'built-in'
-    || !formId
-    || !action?.ownerFormId
-    || String(action.ownerFormId) === formId
-  )
+  return formActionsForOwner(props.formActions, props.form)
 })
+const customFormActionSlots = computed(() =>
+  createCustomFormActionSlotContract(
+    currentFormActions.value,
+    action => emit('form-action', action)
+  )
+)
+
+function triggerCustomFormAction(actionOrKey) {
+  return customFormActionSlots.value.trigger(actionOrKey)
+}
 const runtimeContext = computed(() => ({
   ...props.context,
   mode: props.mode,

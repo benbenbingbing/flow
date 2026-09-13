@@ -1,7 +1,10 @@
 package com.workflow.process.task.application;
 
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
+import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -15,11 +18,59 @@ import java.util.Optional;
 public class ProcessTaskAccessAdapter implements ProcessTaskAccessPort {
 
     private final ProcessTaskMapper taskMapper;
+    private final ProcessPublishedSnapshotService publishedSnapshotService;
 
     @Override
     public Optional<String> findActionableTaskId(
             String userId, String entityCode, String entityDataId, String processInstanceId) {
         return findTask(userId, entityCode, entityDataId, processInstanceId, false);
+    }
+
+    @Override
+    public Optional<ActionableTaskContext> findActionableTaskContext(
+            String userId,
+            String taskId,
+            String entityCode,
+            String entityDataId,
+            String processInstanceId) {
+        if (!StringUtils.hasText(userId)
+                || !StringUtils.hasText(taskId)
+                || !StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(entityDataId)
+                || !StringUtils.hasText(processInstanceId)) {
+            return Optional.empty();
+        }
+        ProcessTask task = taskMapper.selectActionableTaskContext(
+                userId, taskId, entityCode, entityDataId,
+                processInstanceId);
+        if (task == null
+                || !StringUtils.hasText(task.getProcessDefinitionId())
+                || !StringUtils.hasText(task.getNodeId())) {
+            return Optional.empty();
+        }
+        // 流程定义 ID 先解析到不可变发布历史，避免拿当前流程配置版本做比较。
+        // 定义或历史在并发清理中失效时按无可办理上下文处理，不能把底层发布
+        // 查询细节泄露到审批按钮响应，也不能回退使用当前可变流程版本。
+        ProcessVersionHistory history;
+        try {
+            history = publishedSnapshotService
+                    .getVersionByProcessDefinitionId(
+                            task.getProcessDefinitionId());
+        } catch (RuntimeException exception) {
+            return Optional.empty();
+        }
+        String historyId = history == null ? null : history.getId();
+        if (!StringUtils.hasText(historyId)) {
+            return Optional.empty();
+        }
+        return Optional.of(new ActionableTaskContext(
+                task.getTaskId(),
+                task.getProcessInstanceId(),
+                task.getProcessDefinitionId(),
+                historyId,
+                task.getNodeId(),
+                task.getEntityCode(),
+                task.getEntityDataId()));
     }
 
     @Override

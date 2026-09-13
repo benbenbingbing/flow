@@ -16,6 +16,7 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActi
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListSceneMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.permission.application.EntityListActionRulePolicy;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import lombok.RequiredArgsConstructor;
@@ -53,7 +54,8 @@ public class EntityListRelationalConfigService {
     private static final Set<String> ACTION_CLEAR_FIELDS = Set.of(
             "templateId",
             "templateVersion",
-            "localOverridesDocument");
+            "localOverridesDocument",
+            "availabilityRuleDocument");
 
     private final EntityListActionMapper actionMapper;
     private final EntityListSceneMapper sceneMapper;
@@ -61,6 +63,7 @@ public class EntityListRelationalConfigService {
     private final EntityFormMapper formMapper;
     private final UiConfigReleaseMapper releaseMapper;
     private final JsonDocumentCodec codec;
+    private final EntityListActionRulePolicy actionRulePolicy;
 
     /**
      * 查询指定位置的按钮配置 Map 列表。
@@ -439,7 +442,6 @@ public class EntityListRelationalConfigService {
                 .set("handler_code", updated.getHandlerCode())
                 .set("permission_code", updated.getPermissionCode())
                 .set("enabled", updated.getEnabled())
-                .set("unavailable_behavior", updated.getUnavailableBehavior())
                 .set("action_params_document", updated.getActionParamsDocument())
                 .set("availability_rule_document", updated.getAvailabilityRuleDocument())
                 .set("template_id", updated.getTemplateId())
@@ -621,6 +623,8 @@ public class EntityListRelationalConfigService {
                 ? new LinkedHashMap<>(codec.readObject(
                         action.getActionParamsDocument(), "列表按钮扩展参数"))
                 : new LinkedHashMap<>();
+        // availabilityRule 以独立列为唯一事实来源，避免清空后被扩展参数旧副本带回。
+        button.remove("availabilityRule");
         button.put("key", action.getButtonKey());
         button.put("type", action.getButtonType());
         button.put("label", action.getButtonLabel());
@@ -684,11 +688,14 @@ public class EntityListRelationalConfigService {
                 localOverrides,
                 "列表按钮模板本地覆盖"));
         Object availabilityRule = button.get("availabilityRule");
-        if (availabilityRule instanceof Map<?, ?> rule) {
-            action.setUnavailableBehavior(text(rule.get("unavailableBehavior"), null));
-            action.setAvailabilityRuleDocument(codec.write(rule, "按钮适用条件"));
+        if (availabilityRule != null) {
+            action.setAvailabilityRuleDocument(codec.write(
+                    actionRulePolicy.normalizeDocument(availabilityRule),
+                    "按钮适用条件"));
         }
-        action.setActionParamsDocument(codec.write(button, "列表按钮配置"));
+        action.setActionParamsDocument(codec.write(
+                actionParamsWithoutAvailabilityRule(button),
+                "列表按钮配置"));
         action.setCreatedAt(LocalDateTime.now());
         action.setUpdatedAt(LocalDateTime.now());
         action.setDeleted(0);
@@ -712,9 +719,6 @@ public class EntityListRelationalConfigService {
                 && Objects.equals(left.getOrderKey(), right.getOrderKey())
                 && Objects.equals(left.getEnabled(), right.getEnabled())
                 && Objects.equals(
-                        left.getUnavailableBehavior(),
-                        right.getUnavailableBehavior())
-                && Objects.equals(
                         left.getAvailabilityRuleDocument(),
                         right.getAvailabilityRuleDocument())
                 && Objects.equals(left.getTemplateId(), right.getTemplateId())
@@ -736,7 +740,8 @@ public class EntityListRelationalConfigService {
         Map<String, Object> rightMap = StringUtils.hasText(right)
                 ? new LinkedHashMap<>(codec.readObject(right, "列表按钮配置"))
                 : new LinkedHashMap<>();
-        for (String transientKey : List.of("id", "revision", "orderKey")) {
+        for (String transientKey : List.of(
+                "id", "revision", "orderKey", "availabilityRule")) {
             leftMap.remove(transientKey);
             rightMap.remove(transientKey);
         }
@@ -770,17 +775,31 @@ public class EntityListRelationalConfigService {
             action.setPermissionCode(request.getPermissionCode());
         }
         if (request.getEnabled() != null) action.setEnabled(request.getEnabled());
-        if (request.getUnavailableBehavior() != null) {
-            action.setUnavailableBehavior(request.getUnavailableBehavior());
-        }
         if (request.getSortOrder() != null) action.setSortOrder(request.getSortOrder());
         if (request.getActionParams() != null) {
             action.setActionParamsDocument(
-                    codec.write(request.getActionParams(), "列表按钮参数"));
+                    codec.write(
+                            actionParamsWithoutAvailabilityRule(
+                                    request.getActionParams()),
+                            "列表按钮参数"));
         }
-        if (request.getAvailabilityRule() != null) {
+        if (clearFields.contains("availabilityRuleDocument")) {
+            action.setAvailabilityRuleDocument(null);
+            action.setActionParamsDocument(codec.write(
+                    actionParamsWithoutAvailabilityRule(
+                            StringUtils.hasText(
+                                    action.getActionParamsDocument())
+                                    ? codec.readObject(
+                                            action.getActionParamsDocument(),
+                                            "列表按钮参数")
+                                    : Map.of()),
+                    "列表按钮参数"));
+        } else if (request.getAvailabilityRule() != null) {
             action.setAvailabilityRuleDocument(
-                    codec.write(request.getAvailabilityRule(), "列表按钮适用条件"));
+                    codec.write(
+                            actionRulePolicy.normalizeDocument(
+                                    request.getAvailabilityRule()),
+                            "列表按钮适用条件"));
         }
         if (request.getOrderKey() != null) action.setOrderKey(request.getOrderKey());
         if (clearFields.contains("templateId")) {
@@ -807,6 +826,15 @@ public class EntityListRelationalConfigService {
         if (!StringUtils.hasText(action.getButtonType())) action.setButtonType("built-in");
         if (action.getLinkMode() == null) action.setLinkMode(false);
         if (action.getEnabled() == null) action.setEnabled(true);
+    }
+
+    /** 独立规则列是唯一事实来源，扩展参数不得重复保存规则。 */
+    private Map<String, Object> actionParamsWithoutAvailabilityRule(
+            Map<String, Object> source) {
+        Map<String, Object> result = new LinkedHashMap<>(
+                source == null ? Map.of() : source);
+        result.remove("availabilityRule");
+        return result;
     }
 
     private void validateAndSanitizeTargetForm(

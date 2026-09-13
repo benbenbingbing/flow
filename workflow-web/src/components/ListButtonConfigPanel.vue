@@ -397,6 +397,7 @@ import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry'
+import { ACTION_RULE_VERSION, summarizeActionRule } from '@/shared/action-rules'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { resolveListButtonType } from '@/shared/list-config-design'
 
@@ -806,63 +807,63 @@ function normalizeButtons() {
 /** 为未配置适用条件的内置按钮提供默认规则，编辑与删除采用相同的本人草稿/撤回限制。 */
 function defaultRule(key) {
   if (key === 'edit' || key === 'delete' || key === 'batchDelete') {
+    const ownershipAndState = {
+      type: 'GROUP',
+      logic: 'AND',
+      children: [
+        {
+          type: 'GROUP',
+          logic: 'OR',
+          children: [
+            { type: 'RELATION', relation: 'CURRENT_USER_IS_CREATOR' },
+            { type: 'RELATION', relation: 'CURRENT_USER_IS_SUBMITTER' }
+          ]
+        },
+        {
+          type: 'GROUP',
+          logic: 'OR',
+          children: [
+            {
+              type: 'GROUP',
+              logic: 'AND',
+              children: [
+                { type: 'PROCESS_STATE', operator: 'EQ', value: 'NOT_STARTED' },
+                { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'NEW' }
+              ]
+            },
+            { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'WITHDRAWN' }
+          ]
+        }
+      ]
+    }
+    const disabled = key === 'batchDelete'
     return {
-      version: 1,
-      unavailableBehavior: key === 'batchDelete' ? 'DISABLE' : 'HIDE',
-      message: key === 'batchDelete'
-        ? '选中数据中存在不可删除的数据'
-        : `仅本人未流转草稿或已撤回数据可以${key === 'edit' ? '编辑' : '删除'}`,
-      root: {
-        type: 'GROUP',
-        logic: 'AND',
-        children: [
-          {
-            type: 'GROUP',
-            logic: 'OR',
-            children: [
-              { type: 'RELATION', relation: 'CURRENT_USER_IS_CREATOR' },
-              { type: 'RELATION', relation: 'CURRENT_USER_IS_SUBMITTER' }
-            ]
-          },
-          {
-            type: 'GROUP',
-            logic: 'OR',
-            children: [
-              {
-                type: 'GROUP',
-                logic: 'AND',
-                children: [
-                  { type: 'PROCESS_STATE', operator: 'EQ', value: 'NOT_STARTED' },
-                  { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'NEW' }
-                ]
-              },
-              { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'WITHDRAWN' }
-            ]
-          }
-        ]
-      }
+      version: ACTION_RULE_VERSION,
+      visibleWhen: disabled ? null : ownershipAndState,
+      enabledWhen: disabled ? ownershipAndState : null,
+      disabledMessage: disabled ? '选中数据中存在不可删除的数据' : ''
     }
   }
   if (key === 'approve') {
     return {
-      version: 1,
-      unavailableBehavior: 'HIDE',
-      message: '仅当前任务办理人可以审批',
-      root: {
+      version: ACTION_RULE_VERSION,
+      visibleWhen: {
         type: 'GROUP',
         logic: 'AND',
         children: [
           { type: 'RELATION', relation: 'CURRENT_USER_IS_ASSIGNEE' },
           { type: 'PROCESS_STATE', operator: 'EQ', value: 'RUNNING' }
         ]
-      }
+      },
+      enabledWhen: null,
+      disabledMessage: ''
     }
   }
   return null
 }
 
 function configureRule(row) {
-  ruleEditorRef.value?.open(row, props.type === 'toolbar' ? 'DISABLE' : 'HIDE')
+  ruleEditorRef.value?.open(row)
 }
 
 function saveRule({ button, rule }) {
@@ -870,8 +871,7 @@ function saveRule({ button, rule }) {
 }
 
 function ruleSummary(row) {
-  if (!row.availabilityRule?.root) return '始终可操作'
-  return row.availabilityRule.message || '已配置条件'
+  return summarizeActionRule(row.availabilityRule)
 }
 </script>
 

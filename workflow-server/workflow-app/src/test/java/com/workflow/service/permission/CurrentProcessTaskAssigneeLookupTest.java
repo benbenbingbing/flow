@@ -104,7 +104,10 @@ class CurrentProcessTaskAssigneeLookupTest {
         when(mapper.selectActionableEntityDataIds(anyString(), anyString())).thenAnswer(invocation ->
                 executeMapperSql(recordSqlSource, Map.of(
                         "userId", invocation.getArgument(0), "entityCode", invocation.getArgument(1))));
-        taskAccess = new ProcessTaskAccessAdapter(mapper);
+        taskAccess = new ProcessTaskAccessAdapter(
+                mapper,
+                mock(com.workflow.process.publish.application
+                        .ProcessPublishedSnapshotService.class));
         lookup = new CurrentProcessTaskAssigneeLookup(taskAccess);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("EXPENSE")).thenReturn("wf_expense");

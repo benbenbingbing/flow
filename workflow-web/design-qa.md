@@ -95,6 +95,67 @@ final result: passed
 
 ---
 
+# Design QA：表单按钮外观与统一添加入口
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-45abf320-17c3-42b5-8050-268e3053f2e6.png` — 3152 × 1594 px，Element 按钮 `plain / round / circle` 属性参考。
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-af778e10-c5e4-44db-9da4-ccb155620401.png` — 2382 × 714 px，原“添加底部按钮 / 添加内嵌按钮”双入口参考。
+- Browser-rendered implementation:
+  - `design-qa-button-appearance-default.jpg` — 1280 × 720 px，默认外观与四选一设置。
+  - `design-qa-button-appearance-circle-dialog.jpg` — 1280 × 720 px，圆形外观选中状态。
+  - `design-qa-button-appearance-runtime.jpg` — 1280 × 720 px，圆形按钮运行态及统一“添加按钮”入口。
+  - `design-qa-button-add-position.jpg` — 1280 × 720 px，新增按钮后从底部操作栏切换到动作插槽。
+- Combined comparison evidence:
+  - `design-qa-button-appearance-comparison.jpg` — 1280 × 720 px，参考属性与实现设置并排对照。
+- Implementation CSS viewport: 1280 × 720；来源截图尺寸不同，组合对照中按等宽容器完整缩放，不据此比较绝对字号，只核验外观选项、互斥关系和信息层级。
+
+## Findings
+
+- 无剩余 P0 / P1 / P2 问题。
+- 外观设置位于“更多 > 基础设置”，与图标、按钮样式、执行前校验和二次确认处于同一信息区；下方显示与启用条件保持原有层级。
+- `默认 / 朴素 / 圆角 / 圆形` 使用单选组，避免 `plain / round / circle` 被组合成冲突状态；默认项保持原运行效果。
+- 圆形按钮仅显示图标，仍保留按钮名称作为 `aria-label` 和 `title`；无有效平台图标时保存被阻止，异常运行数据回退为带文本的默认按钮。
+- 自定义按钮区仅保留一个“添加按钮”入口；新按钮默认位于底部操作栏，位置列仍可切换为动作插槽并选择具体插槽。
+- 继续使用现有 Element Plus 字体、颜色、间距、圆角、按钮与图标资产，没有新增占位图、近似图标或自绘素材。
+
+## Interaction Verification
+
+- 在同一按钮上依次选择并保存 DEFAULT、PLAIN、ROUND、CIRCLE，运行按钮分别得到默认、`is-plain`、`is-round`、`is-circle` 且三种属性互斥。
+- CIRCLE 运行态按钮文本为空、`aria-label` 与 `title` 均为“生成报告”；清空或输入未知图标会阻止保存。
+- 在“更多”中选择新外观后取消，已保存外观不变。
+- 点击唯一“添加按钮”后，自定义按钮行从 1 条增至 2 条，新行初始位置为“底部操作栏”；将位置改为“动作插槽”后出现“报告操作区 (qa_slot)”插槽选择器。
+- 浏览器最终日志共 21 条，error / warning 均为 0。
+
+## Automated Verification
+
+- `node src/shared/__tests__/form-actions.spec.js`: passed.
+- `node src/shared/__tests__/config-field-help.spec.js`: passed（108 usages，118 definitions）。
+- `npm run build`: passed（admin + embed；仅既有动态导入优化警告）。
+- `EntityFormActionConfigPolicyTest` + `EntityFormActionServiceTest`: 32 tests passed，0 failure / error / skip。
+- `git diff --check`: passed.
+- `npm run test:configuration-reference`: blocked by pre-existing `NodeConfigPanel.vue:assigneeForm.relativePosition.anchor 配置含义过于泛化` assertion；与按钮外观及统一添加入口无关。
+
+## Comparison History
+
+1. 首次同屏对照确认参考中的 `plain / round / circle` 已被映射为带“默认”的四选一，不存在布尔属性组合冲突。
+2. 浏览器交互发现并补齐边缘一致性：图标名先统一去除首尾空格再查找组件，避免脏数据通过白名单后渲染回退。
+3. 用户追加双入口合并要求后再次渲染：顶部仅有一个“添加按钮”，新增默认底部操作栏，位置列切换动作插槽及 slotKey 联动均正常。
+
+## Implementation Checklist
+
+- [x] 默认、朴素、圆角、圆形四选一，默认选中默认。
+- [x] 前端配置、保存校验、后端规范化和运行态 DTO 使用同一枚举语义。
+- [x] CIRCLE 图标约束、无障碍名称与异常回退完整。
+- [x] 双添加入口合并为“添加按钮”，默认底部操作栏。
+- [x] 位置列仍支持切换动作插槽并绑定具体 slotKey。
+- [x] 1280 × 720 浏览器布局、交互与控制台复核通过。
+
+final result: passed
+
+---
+
 # 列快捷复制验收
 
 ## Evidence
@@ -1312,5 +1373,56 @@ final result: passed
 ## Comparison History
 
 - Pass 1: same-input source and implementation review confirmed that the mixed list-event catalog was replaced by clear form-only groups while retaining the established visual system. No correction loop was required.
+
+final result: passed
+
+---
+
+# Design QA：表单按钮“条件”合并入“更多”
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-d4e8178c-ffaf-4021-87d6-34e37cdd386d.png` — 2442 × 876 px，原自定义按钮表格状态。
+  - `/var/folders/vd/668ws5sn77l5xxnb85xd9mtc0000gn/T/codex-clipboard-68d51d52-447f-4a56-8506-2d5176f8ef71.png` — 2004 × 998 px，原条件编辑内容。
+- Browser-rendered implementation:
+  - `design-qa-form-more-table.png` — 1280 × 720 px，自定义按钮表格。
+  - `design-qa-form-more-top.png` — 1280 × 720 px，“更多”弹框顶部基础设置及显示条件开头。
+  - `design-qa-form-more-bottom.png` — 1280 × 720 px，“更多”弹框底部显示与启用条件。
+- Combined comparison evidence:
+  - `design-qa-form-more-comparison-table.png` — 2247 × 876 px，来源与实现的表格入口并排对照。
+  - `design-qa-form-more-comparison-rule.png` — 2247 × 876 px，原条件弹框与合并后条件区并排对照。
+- Implementation CSS viewport: 1280 × 720，devicePixelRatio 2；CUA 截图输出已归一到 1280 × 720 像素。来源图片未携带可用 CSS viewport / DPR 元数据，因此对照页按等宽容器缩放两侧图片，避免把像素密度差异误判为字号或间距问题。
+- State: 新增模式，一个动作插槽自定义按钮；“更多”弹框分别核验顶部与滚动到底部后的状态。
+
+## Findings
+
+- 无剩余 P0 / P1 / P2 问题。
+- 字体与排版：沿用 Element Plus 与现有页面字体、字重和帮助标签层级；标题、说明、字段标签没有异常换行或截断。
+- 间距与布局：表格中已移除独立“条件”入口，仅保留“事件链 / 更多 / 删除”；1180px 弹框内基础设置在上，显示与启用条件在下，页脚始终处于视口内。
+- 色彩与视觉 token：边框、浅色分区、信息提示、警告标签和主按钮全部复用现有 Element Plus token，与来源页面一致。
+- 图片与资产：本功能没有新增品牌图、插画或自定义图标；继续使用现有 Element Plus 图标和控件，无占位或近似资产。
+- 文案：显示条件明确“不满足则隐藏”，启用条件明确“不满足则禁用”，禁用提示独立配置；更多弹框中已去除“适用条件”二级跳转。
+
+## Interaction Verification
+
+- 点击自定义按钮“更多”可直接看到基础设置、显示条件和启用条件。
+- 添加一个空启用条件后点击“保存设置”，弹框保持打开并阻止保存；清空半成品后可正常保存并关闭。
+- 关闭或取消弹框不会把条件半成品写回按钮草稿。
+- 检查浏览器控制台，未发现 error 或 warning。
+
+## Comparison History
+
+1. 首次渲染发现 P2：scoped 样式中的 `:deep()` 没有命中 Teleport 后的弹框，1280 × 720 视口下弹框底部超出屏幕（dialog bottom 1031.77，footer 不可见）。
+2. 将 Teleport 弹框选择器改为 `:global()` 后复核：body max-height 530px、overflow-y auto，dialog bottom 675.33、footer bottom 659.33，均处于 720px 视口内；顶部和底部截图确认滚动内容与固定页脚均可用。
+3. 并排对照确认表格入口、基础设置和原条件编辑能力均按目标重组，没有新增可见偏差。
+
+## Implementation Checklist
+
+- [x] 自定义按钮行合并为单一“更多”入口。
+- [x] 更多弹框顶部保留原基础设置。
+- [x] 更多弹框底部完整展示显示条件、启用条件与禁用提示。
+- [x] 校验通过后才提交独立草稿。
+- [x] 1280 × 720 视口滚动与页脚可达。
 
 final result: passed

@@ -7,16 +7,18 @@
     <el-button
       v-for="action in visibleActions"
       :key="action.runtimeKey || action.key"
+      v-bind="appearanceProps(action)"
       :type="action.buttonType || 'default'"
       :disabled="action.enabled === false || disabled"
       :loading="loadingKey === (action.runtimeKey || action.key)"
-      :title="action.enabled === false ? action.reason : ''"
+      :aria-label="isCircleAction(action) ? action.label : undefined"
+      :title="actionTitle(action)"
       @click="$emit('action', action)"
     >
-      <el-icon v-if="action.icon && iconMap[action.icon]">
-        <component :is="iconMap[action.icon]" />
+      <el-icon v-if="hasRenderableIcon(action)">
+        <component :is="iconComponent(action)" />
       </el-icon>
-      {{ action.label }}
+      <span v-if="!isCircleAction(action)">{{ action.label }}</span>
     </el-button>
   </div>
 </template>
@@ -41,6 +43,11 @@ import {
   Upload,
   View
 } from '@element-plus/icons-vue'
+import {
+  isRegisteredFormButtonIcon,
+  normalizeFormButtonAppearance,
+  resolveFormButtonAppearanceProps
+} from '@/shared/form-actions'
 
 const props = defineProps({
   actions: { type: Array, default: () => [] },
@@ -72,6 +79,37 @@ const iconMap = {
   Setting,
   Upload,
   View
+}
+
+function hasRenderableIcon(action) {
+  return Boolean(iconComponent(action))
+}
+
+function iconComponent(action) {
+  const iconName = String(action?.icon || '').trim()
+  return isRegisteredFormButtonIcon(iconName)
+    ? iconMap[iconName] || null
+    : null
+}
+
+function isCircleAction(action) {
+  return normalizeFormButtonAppearance(action?.buttonAppearance) === 'CIRCLE'
+    && hasRenderableIcon(action)
+}
+
+/** 无有效图标的异常圆形配置回退默认外观，避免渲染空白按钮。 */
+function appearanceProps(action) {
+  const appearance = normalizeFormButtonAppearance(action?.buttonAppearance)
+  return resolveFormButtonAppearanceProps(
+    appearance === 'CIRCLE' && !hasRenderableIcon(action)
+      ? 'DEFAULT'
+      : appearance
+  )
+}
+
+function actionTitle(action) {
+  if (action?.enabled === false && action?.reason) return action.reason
+  return isCircleAction(action) ? action.label : ''
 }
 </script>
 

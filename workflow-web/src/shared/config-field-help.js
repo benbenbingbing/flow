@@ -41,8 +41,12 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '始终覆盖会替换目标现值；仅空值覆盖会保护用户已填写内容；覆盖前确认会在存在旧值时询问用户。',
   'entitySelection.clearOnEmpty':
     '控制来源字段为空或清除实体选择时，目标字段是同步清空还是保留原值。',
-  'actionRule.unavailableBehavior':
-    '条件不满足时可完全隐藏按钮，或保留为禁用状态并展示原因。需要让用户知道功能存在但当前不可用时选择“禁用并说明”。',
+  'actionRule.visibleWhen':
+    '按钮的第一层判断。显示条件不满足时直接隐藏按钮，不再评估启用条件；适合当前场景没有必要暴露的操作。',
+  'actionRule.enabledWhen':
+    '仅在按钮通过显示条件后判断。启用条件不满足时按钮仍然可见，但不可点击，并展示配置的禁用提示。',
+  'actionRule.disabledMessage':
+    '启用条件不满足时展示给用户的原因。请写清限制主体、当前状态或下一步，例如“仅本人未流转草稿可以删除”。',
   'process.multiInstanceType':
     '并行会同时创建多人任务；串行会按人员集合顺序逐个创建任务。并行或串行只表示创建顺序，不决定会签还是或签。',
   'process.multiInstanceDecision':
@@ -72,9 +76,17 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'process.personResolver':
     '后端自定义需实现 PersonResolver、加 @Component，并在 descriptor() 中声明唯一编码、适用场景和参数 Schema。',
   'uiEvent.inheritanceMode':
-    '继承并追加会保留上级事件链；替换上级只使用当前层自定义链；禁用自定义会清空当前层步骤但保留平台默认处理。',
+    '继承并追加会保留上级自定义事件链；替换上级只使用当前层自定义链；禁用自定义会清空自定义步骤。对存在平台默认动作的事件，是否替代该动作仍由步骤执行位置决定。',
+  'uiEvent.formButtonInheritanceMode':
+    '表单按钮目标中，“继承并追加”保留上级步骤，“仅使用当前层”清除上级步骤。自定义按钮没有平台默认动作；如需停用按钮，请关闭按钮的“启用”开关，不要用继承方式代替。',
   'uiEvent.stepStrategy':
     '前置在平台默认处理前执行；替代平台处理会取代默认逻辑且同一事件最多一个；后置在默认处理成功后执行。',
+  'uiEvent.formButtonStepStrategy':
+    'FORM_BUTTON_CLICK 没有平台默认动作。步骤按“前置处理 → 主处理 → 后置处理”执行；最终有效链必须恰好包含一个无执行条件的主处理（底层值为 REPLACE），主处理结果供后置步骤使用。条件请配置在按钮显示/启用规则或前置、后置步骤中。',
+  'uiEvent.inputMapping':
+    '把当前事件数据组装成接口入参：左侧填写来源路径，右侧填写接口参数路径，例如 input.form.customerId → customerId。不配置时会直接使用事件原始输入。用户、任务、流程等可信身份信息由服务端上下文提供，不要通过页面参数传入。',
+  'uiEvent.outputMapping':
+    '把接口结果或当前事件数据写入目标字段：左侧填写来源路径，右侧选择或填写回填路径，并可设置值转换和覆盖策略。未选择接口服务时，本步骤至少需要配置一条字段回填。',
   'uiEvent.failurePolicy':
     '停止执行会返回错误；记录后继续会跳过失败步骤；按空结果继续会把失败步骤当作空结果再执行后续映射。',
   'interfaceService.operationConfig':

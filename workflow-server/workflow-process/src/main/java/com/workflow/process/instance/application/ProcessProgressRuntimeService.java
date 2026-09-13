@@ -739,7 +739,8 @@ public class ProcessProgressRuntimeService {
                         formKey,
                         bpmnXml,
                         null,
-                        processKey);
+                        processKey,
+                        requestedTaskId);
             }
             // 4. 加载审批配置
             if (currentNodeId != null) {
@@ -813,7 +814,7 @@ public class ProcessProgressRuntimeService {
      */
     private void loadFormConfig(ProcessProgressDTO progress, String entityCode, String entityDataId,
             String currentNodeId, String formKeyFromVariable, String bpmnXml, String fallbackBpmnXml,
-            String processKey) {
+            String processKey, String requestedTaskId) {
         try {
             // 1. 获取实体定义
             com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entityDef = entityDefinitionMapper
@@ -855,8 +856,21 @@ public class ProcessProgressRuntimeService {
                     com.workflow.entity.form.infrastructure.persistence.record.EntityForm entityForm = entityFormRuntimeService
                             .getByBinding(
                                     nodeForm,
-                                    published.history().getId(),
-                                    purpose);
+                                    UiRuntimePurpose.ACTIVE_TASK.equals(purpose)
+                                            && StringUtils.hasText(requestedTaskId)
+                                            ? com.workflow.contracts.ui.runtime
+                                                    .UiRuntimeResolutionContext.activeTask(
+                                                            published.history().getId(),
+                                                            nodeForm.getNodeId(),
+                                                            requestedTaskId,
+                                                            progress.getProcessInstanceId(),
+                                                            entityCode,
+                                                            entityDataId)
+                                            : new com.workflow.contracts.ui.runtime
+                                                    .UiRuntimeResolutionContext(
+                                                            purpose,
+                                                            published.history().getId(),
+                                                            nodeForm.getNodeId()));
                     if (entityForm == null) {
                         throw new IllegalStateException(
                                 "流程发布快照绑定的表单不存在: formId="

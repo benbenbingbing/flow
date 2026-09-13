@@ -6,6 +6,7 @@ import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
+import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
@@ -20,6 +21,7 @@ import org.springframework.util.StringUtils;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -148,7 +150,12 @@ public class EntityActionCapabilityService {
             if (!StringUtils.hasText(key)) {
                 continue;
             }
-            capabilities.put(key, evaluateButton(entityCode, button, null, user, null));
+            capabilities.put(key,
+                    List.of("batchDelete", "exportSelected").contains(key)
+                            ? evaluateSelectionToolbarButton(
+                                    entityCode, button, user)
+                            : evaluateButton(
+                                    entityCode, button, null, user, null));
         }
         return capabilities;
     }
@@ -301,6 +308,116 @@ public class EntityActionCapabilityService {
     }
 
     /**
+     * 对已经从同一列表发布快照定位出的按钮执行最终能力校验。
+     *
+     * <p>自定义 key 不允许回退 UPDATE；它必须携带显式权限码。调用方负责从
+     * 已验证快照按位置和 key 找到按钮，并为行/选择动作传入服务端重载的数据。</p>
+     */
+    public void requirePublishedListButton(
+            String entityCode,
+            String actionKey,
+            Map<String, Object> button,
+            EntityDataDTO row) {
+        requirePublishedButtonIdentity(
+                entityCode, actionKey, button,
+                row == null ? null : row.getId());
+        EntityStatus status = row != null
+                && StringUtils.hasText(row.getStatus())
+                ? statusMapper.findByEntityAndCode(
+                        entityCode, row.getStatus())
+                : null;
+        EntityActionCapabilityDTO capability = evaluateButton(
+                entityCode,
+                button,
+                row,
+                currentUser(),
+                status == null ? null : status.getStatusCategory());
+        if (!capability.isVisible() || !capability.isEnabled()) {
+            deny(entityCode, actionKey,
+                    row == null ? null : row.getId(),
+                    capability.getReason());
+        }
+    }
+
+    /**
+     * 对选择集工具栏按钮按“全部显示、再全部启用”的顺序执行最终校验。
+     *
+     * <p>数据必须由调用方按当前列表数据范围重新加载。先遍历所有行的
+     * visibleWhen，再遍历 enabledWhen，避免先遇到禁用行时泄露后续本应
+     * 隐藏的记录状态。</p>
+     */
+    public void requirePublishedListButton(
+            String entityCode,
+            String actionKey,
+            Map<String, Object> button,
+            List<EntityDataDTO> rows) {
+        String recordId = rows == null || rows.isEmpty()
+                ? null : rows.get(0).getId();
+        requirePublishedButtonIdentity(
+                entityCode, actionKey, button, recordId);
+        EntityActionRuleDTO rule = actionConfigService.readRule(button);
+        SysUser user = currentUser();
+        List<EntityDataDTO> targets = rows == null || rows.isEmpty()
+                ? java.util.Collections.singletonList(null)
+                : rows;
+
+        for (EntityDataDTO row : targets) {
+            if (rule != null && !ruleEvaluator.evaluate(
+                    rule.getVisibleWhen(), row, user,
+                    statusCategory(entityCode, row))) {
+                deny(entityCode, actionKey,
+                        row == null ? null : row.getId(),
+                        "当前数据不满足显示条件");
+            }
+        }
+        for (EntityDataDTO row : targets) {
+            if (rule != null && !ruleEvaluator.evaluate(
+                    rule.getEnabledWhen(), row, user,
+                    statusCategory(entityCode, row))) {
+                deny(entityCode, actionKey,
+                        row == null ? null : row.getId(),
+                        StringUtils.hasText(rule.getDisabledMessage())
+                                ? rule.getDisabledMessage()
+                                : "当前数据不满足启用条件");
+            }
+        }
+    }
+
+    private void requirePublishedButtonIdentity(
+            String entityCode,
+            String actionKey,
+            Map<String, Object> button,
+            String recordId) {
+        if (button == null
+                || !Objects.equals(actionKey, asString(button.get("key")))
+                || Boolean.FALSE.equals(button.get("enabled"))) {
+            deny(entityCode, actionKey, recordId,
+                    "按钮不存在或未启用");
+        }
+        String permissionCode = actionConfigService.permissionFor(
+                entityCode, button);
+        if (EntityPermissionAction.fromButtonKey(actionKey) == null
+                && !StringUtils.hasText(permissionCode)) {
+            deny(entityCode, actionKey, recordId,
+                    "自定义按钮未配置权限");
+        }
+        if (!PermissionUtil.hasPermission(permissionCode)) {
+            deny(entityCode, actionKey, recordId, "无操作权限");
+        }
+    }
+
+    private String statusCategory(
+            String entityCode,
+            EntityDataDTO row) {
+        if (row == null || !StringUtils.hasText(row.getStatus())) {
+            return null;
+        }
+        EntityStatus status = statusMapper.findByEntityAndCode(
+                entityCode, row.getStatus());
+        return status == null ? null : status.getStatusCategory();
+    }
+
+    /**
      * 评估任意受控动作配置，供表单和列表共享权限与适用条件语义。
      *
      * @param entityCode    实体编码
@@ -325,23 +442,12 @@ public class EntityActionCapabilityService {
                                 entityCode,
                                 row.getStatus())
                         : null;
-        if (ruleEvaluator.evaluate(
-                rule,
+        return evaluateConditions(
+                new EntityActionRuleDTO[] {rule},
                 row,
                 user,
-                status == null
-                        ? null : status.getStatusCategory())) {
-            return EntityActionCapabilityDTO.allowed();
-        }
-        String reason =
-                rule != null && StringUtils.hasText(rule.getMessage())
-                        ? rule.getMessage()
-                        : "当前数据不满足操作条件";
-        return rule != null
-                && "DISABLE".equalsIgnoreCase(
-                        rule.getUnavailableBehavior())
-                ? EntityActionCapabilityDTO.disabled(reason)
-                : EntityActionCapabilityDTO.hidden(reason);
+                status == null ? null : status.getStatusCategory(),
+                false);
     }
 
     /**
@@ -355,7 +461,8 @@ public class EntityActionCapabilityService {
      * @param row 已通过记录访问校验的当前数据
      * @param mandatoryRule 内置审批规则，不受表单覆盖配置替换
      * @param overrideRule 已发布按钮的额外适用条件，可以为空
-     * @return 允许时携带当前用户的实际任务 ID；不满足条件时按对应规则隐藏或禁用
+     * @return 允许时携带当前用户的实际任务 ID；任一显示条件失败时隐藏，
+     *         否则任一启用条件失败时禁用
      */
     public EntityActionCapabilityDTO evaluateApprovalAction(
             String entityCode,
@@ -374,17 +481,29 @@ public class EntityActionCapabilityService {
         }
         EntityStatus status = row != null && StringUtils.hasText(row.getStatus())
                 ? statusMapper.findByEntityAndCode(entityCode, row.getStatus()) : null;
-        for (EntityActionRuleDTO rule : new EntityActionRuleDTO[] {mandatoryRule, overrideRule}) {
-            if (!ruleEvaluator.evaluateForApproval(rule, row, user,
-                    status == null ? null : status.getStatusCategory(), true)) {
-                String reason = rule != null && StringUtils.hasText(rule.getMessage())
-                        ? rule.getMessage() : "当前数据不满足操作条件";
-                return rule != null && "DISABLE".equalsIgnoreCase(rule.getUnavailableBehavior())
-                        ? EntityActionCapabilityDTO.disabled(reason)
-                        : EntityActionCapabilityDTO.hidden(reason);
-            }
+        EntityActionCapabilityDTO conditions = evaluateConditions(
+                new EntityActionRuleDTO[] {mandatoryRule, overrideRule},
+                row,
+                user,
+                status == null ? null : status.getStatusCategory(),
+                true);
+        if (!conditions.isVisible() || !conditions.isEnabled()) {
+            // 任务 ID 只会在所有条件通过后附加，失败能力不泄露待办标识。
+            return conditions;
         }
         return EntityActionCapabilityDTO.allowedForTask(actionableTaskId);
+    }
+
+    /**
+     * 返回与当前认证用户、已鉴权记录及确切 taskId 全部匹配的活动待办上下文。
+     * 调用方仍须先执行审批权限和规则判断；本方法只完成可信任务身份绑定。
+     */
+    public java.util.Optional<ActionableTaskContext>
+            findActionableApprovalTaskContext(
+                    EntityDataDTO row,
+                    String taskId) {
+        return assigneeLookup.findActionableTaskContext(
+                row, currentUser(), taskId);
     }
 
     private EntityActionCapabilityDTO evaluateButton(
@@ -404,33 +523,103 @@ public class EntityActionCapabilityService {
             actionableTaskId = assigneeLookup.findActionableTaskId(row, user).orElse(null);
             if (!StringUtils.hasText(actionableTaskId)) {
                 // 流程摘要可能指向兄弟任务或已过期；先绑定当前用户真实可审批的任务。
-                return unavailable(button, "当前用户没有可办理的审批任务");
+                return EntityActionCapabilityDTO.hidden(
+                        "当前用户没有可办理的审批任务");
             }
         }
-        // 审批入口允许真实候选人直接办理；其他动作仍只认实际办理人，
-        // 并且审批自身的状态、字段等条件不能被候选身份绕过。
-        boolean available = approveAction
-                ? ruleEvaluator.evaluateForApproval(rule, row, user, statusCategory, true)
-                : ruleEvaluator.evaluate(rule, row, user, statusCategory);
-        if (available) {
-            return approveAction
-                    ? EntityActionCapabilityDTO.allowedForTask(actionableTaskId)
-                    : EntityActionCapabilityDTO.allowed();
+        EntityActionCapabilityDTO conditions = evaluateConditions(
+                new EntityActionRuleDTO[] {rule},
+                row,
+                user,
+                statusCategory,
+                approveAction);
+        if (!conditions.isVisible() || !conditions.isEnabled()) {
+            return conditions;
         }
-        String reason = rule != null && StringUtils.hasText(rule.getMessage())
-                ? rule.getMessage()
-                : "当前数据不满足操作条件";
-        return unavailable(button, reason);
+        return approveAction
+                ? EntityActionCapabilityDTO.allowedForTask(actionableTaskId)
+                : EntityActionCapabilityDTO.allowed();
     }
 
-    /** 按发布按钮的不可用策略生成能力，且失败能力绝不携带任务 ID。 */
-    private EntityActionCapabilityDTO unavailable(
+    /**
+     * 计算依赖“当前选中行”的工具栏按钮初始能力。
+     *
+     * <p>列表级请求没有数据行，因此只校验权限和完全不依赖行的条件。
+     * 依赖行的 visibleWhen/enabledWhen 由 {@link #enrichRows} 为每行计算，
+     * 再由前端按当前选中集合聚合，避免用 {@code row=null} 将按钮永久隐藏。</p>
+     */
+    private EntityActionCapabilityDTO evaluateSelectionToolbarButton(
+            String entityCode,
             Map<String, Object> button,
-            String reason) {
-        return "DISABLE".equalsIgnoreCase(
-                actionConfigService.unavailableBehavior(button))
-                ? EntityActionCapabilityDTO.disabled(reason)
-                : EntityActionCapabilityDTO.hidden(reason);
+            SysUser user) {
+        String permissionCode =
+                actionConfigService.permissionFor(entityCode, button);
+        if (!PermissionUtil.hasPermission(permissionCode)) {
+            return EntityActionCapabilityDTO.hidden("无操作权限");
+        }
+        EntityActionRuleDTO rule = actionConfigService.readRule(button);
+        if (rule == null) {
+            return EntityActionCapabilityDTO.allowed();
+        }
+        if (ruleEvaluator.isRowIndependent(rule.getVisibleWhen())
+                && !ruleEvaluator.evaluate(
+                        rule.getVisibleWhen(), null, user, null)) {
+            return EntityActionCapabilityDTO.hidden(
+                    "当前用户不满足显示条件");
+        }
+        if (ruleEvaluator.isRowIndependent(rule.getEnabledWhen())
+                && !ruleEvaluator.evaluate(
+                        rule.getEnabledWhen(), null, user, null)) {
+            return EntityActionCapabilityDTO.disabled(
+                    rule.getDisabledMessage());
+        }
+        return EntityActionCapabilityDTO.allowed();
+    }
+
+    /**
+     * 以固定两阶段顺序计算一组按钮规则。
+     *
+     * <p>先完成所有 {@code visibleWhen} 判定，再执行任一
+     * {@code enabledWhen}。这使审批的强制规则和表单覆盖规则遵循
+     * 同一优先级，不会因为某条禁用条件先失败而暴露本应隐藏的按钮。</p>
+     */
+    private EntityActionCapabilityDTO evaluateConditions(
+            EntityActionRuleDTO[] rules,
+            EntityDataDTO row,
+            SysUser user,
+            String statusCategory,
+            boolean approval) {
+        for (EntityActionRuleDTO rule : rules) {
+            if (rule != null && !evaluateCondition(
+                    rule.getVisibleWhen(), row, user, statusCategory, approval)) {
+                return EntityActionCapabilityDTO.hidden(
+                        "当前数据不满足显示条件");
+            }
+        }
+        for (EntityActionRuleDTO rule : rules) {
+            if (rule != null && !evaluateCondition(
+                    rule.getEnabledWhen(), row, user, statusCategory, approval)) {
+                String reason = StringUtils.hasText(rule.getDisabledMessage())
+                        ? rule.getDisabledMessage()
+                        : "当前数据不满足启用条件";
+                return EntityActionCapabilityDTO.disabled(reason);
+            }
+        }
+        return EntityActionCapabilityDTO.allowed();
+    }
+
+    /** 审批入口允许真实候选人命中办理人关系，其他条件仍逐项计算。 */
+    private boolean evaluateCondition(
+            EntityActionRuleDTO.RuleNode condition,
+            EntityDataDTO row,
+            SysUser user,
+            String statusCategory,
+            boolean approval) {
+        return approval
+                ? ruleEvaluator.evaluateForApproval(
+                        condition, row, user, statusCategory, true)
+                : ruleEvaluator.evaluate(
+                        condition, row, user, statusCategory);
     }
 
     private SysUser currentUser() {

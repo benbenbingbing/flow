@@ -1,0 +1,148 @@
+.config-migration-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.migration-steps {
+  margin-top: 20px;
+  :deep(.el-step) {
+    cursor: pointer;
+  }
+}
+.overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  p {
+    margin: 0;
+    color: #606266;
+  }
+}
+.overview-stats {
+  display: flex;
+  gap: 28px;
+  div {
+    min-width: 78px;
+    text-align: center;
+  }
+  strong {
+    display: block;
+    font-size: 26px;
+    color: #409eff;
+  }
+  span {
+    color: #909399;
+    font-size: 13px;
+  }
+}
+.toolbar,
+.table-actions,
+.import-panel,
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.import-panel,
+.compare-toolbar {
+  justify-content: flex-start;
+}
+.compare-alert,
+.mapping-alert {
+  margin-bottom: 16px;
+}
+.json-view {
+  max-height: 620px;
+  overflow: auto;
+  padding: 16px;
+  margin: 0;
+  border-radius: 6px;
+  background: #111827;
+  color: #d1fae5;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.primary-line,
+.asset-title-line {
+  color: #303133;
+  font-weight: 600;
+}
+.asset-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.meta-line {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+}
+.error-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.technical-detail-button {
+  margin-top: 2px;
+  padding: 0;
+  font-size: 12px;
+}
+.technical-detail {
+  display: grid;
+  gap: 10px;
+  div {
+    display: grid;
+    gap: 4px;
+  }
+  code {
+    overflow-wrap: anywhere;
+  }
+}
+.migration-tag-line {
+  color: #606266;
+}
+.error-line {
+  margin-top: 4px;
+  color: #f56c6c;
+}
+:deep(.el-checkbox-group) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 20px;
+}
+@media (max-width: 760px) {
+  .overview {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .overview-stats {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .migration-steps {
+    overflow-x: auto;
+  }
+  .migration-steps :deep(.el-steps--simple) {
+    min-width: 760px;
+  }
+  .toolbar,
+  .import-panel,
+  .compare-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .toolbar :deep(.el-form) {
+    display: grid;
+  }
+  .import-panel :deep(.el-input),
+  .compare-toolbar :deep(.el-select) {
+    width: 100% !important;
+  }
+  :deep(.el-checkbox-group) {
+    grid-template-columns: 1fr;
+  }
+}

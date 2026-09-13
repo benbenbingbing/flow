@@ -50,8 +50,6 @@ public class EntityListAction {
     private Integer revision;
     /** 是否启用 */
     private Boolean enabled;
-    /** 按钮不可用时的行为（如 hidden/disabled 等） */
-    private String unavailableBehavior;
     /** 按钮参数配置（JSON） */
     private String actionParamsDocument;
     /** 可用性规则配置（JSON） */

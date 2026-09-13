@@ -16,4 +16,6 @@ public class ConfigMigrationAssetQuery {
     private Boolean markForExport;          // 是否标记待导出
     private String exportStatus;            // 导出状态
     private String snapshotCompleteness;    // 快照完整度
+    private Integer pageNum = 1;             // 页码，默认 1
+    private Integer pageSize = 20;           // 每页条数，默认 20，最大 100
 }

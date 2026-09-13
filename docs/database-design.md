@@ -1221,7 +1221,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 | `permission_code` | 功能权限码 | `varchar(200)` | 是 | `NULL` | 功能权限码。 | 现存 |
 | `sort_order` | 排序号 | `int` | 否 | `'0'` | 排序号。 | 现存 |
 | `enabled` | 是否启用 | `tinyint` | 否 | `'1'` | 是否启用。 | 现存 |
-| `unavailable_behavior` | 不可用行为 | `varchar(20)` | 是 | `NULL` | 不可用行为。 | 现存 |
+| `unavailable_behavior` | 历史不可用行为 | `varchar(20)` | 是 | `NULL` | 历史字段；v2 显示/启用规则不再读取，待数据库清理时移除。 | 现存（停用） |
 | `action_params_document` | 按钮扩展参数JSON文档 | `longtext` | 是 | `NULL`（隐式） | 按钮扩展参数JSON文档。 | 现存 |
 | `availability_rule_document` | 按钮适用条件JSON文档 | `longtext` | 是 | `NULL`（隐式） | 按钮适用条件JSON文档。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |

@@ -47,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -280,6 +281,41 @@ class UiDataSourceExecutionAccessServiceTest {
         assertEquals(
                 "server-seed",
                 authorization.idempotencySeed());
+    }
+
+    /** 非表单按钮事件继续允许 task/process 作为普通业务字段，避免扩大契约。 */
+    @Test
+    void nonFormButtonWriteKeepsTaskAndProcessBusinessFields() {
+        allowPublishedForm(
+                "release-1",
+                """
+                {"BEFORE_SUBMIT":{
+                  "serviceId":"source-1",
+                  "operationCode":"query"
+                }}
+                """);
+        UiDataSourceExecuteRequest request =
+                request("BEFORE_SUBMIT", "form-1", "release-1");
+        request.setInput(Map.of(
+                "taskId", "business-task",
+                "processInstanceId", "business-process"));
+        request.setContext(Map.of(
+                "taskId", "business-task",
+                "processInstanceId", "business-process"));
+
+        UiDataSourceExecutionAuthorization authorization =
+                context.service().authorizePublished(
+                        definition(
+                                "REGISTERED_PROVIDER",
+                                "GLOBAL",
+                                null),
+                        request);
+
+        assertEquals("business-task",
+                authorization.requestContext().get("taskId"));
+        assertEquals("business-process",
+                authorization.requestContext().get(
+                        "processInstanceId"));
     }
 
     /** 测试忽略客户端写入服务端幂等种子的尝试：验证反序列化后 serverIdempotencyKey 为 null */
@@ -592,6 +628,158 @@ class UiDataSourceExecutionAccessServiceTest {
                 exception.getErrorCode());
     }
 
+    @Test
+    void resolvedFormButtonAuthorizesExactInheritedOwnerWithoutReadingActive() {
+        allowFormTarget("active-release-changed");
+        allowPermissionPlan();
+        Map<String, Object> snapshot = resolvedButtonSnapshot();
+        UiDataSourceExecuteRequest request = resolvedButtonRequest();
+
+        UiDataSourceExecutionAuthorization authorization =
+                context.service().authorizeResolvedFormButton(
+                        definition("REGISTERED_PROVIDER", "GLOBAL", null),
+                        request,
+                        snapshot,
+                        "effective-hash");
+
+        assertEquals("base-release", authorization.releaseId());
+        assertEquals(
+                "$.release.eventBindings[0].steps",
+                authorization.bindingPath());
+        verify(context.releaseService()).verifyResolvedEventSnapshot(
+                snapshot, "effective-hash");
+        verifyNoInteractions(context.releaseMapper());
+    }
+
+    @Test
+    void formButtonAllowsReservedNamesInsideBusinessFormValues() {
+        allowFormTarget("active-release-changed");
+        allowPermissionPlan();
+        UiDataSourceExecuteRequest request = resolvedButtonRequest();
+        request.setInput(Map.of(
+                "form", Map.of(
+                        "userId", "business-field-value",
+                        "entityCode", "business-field-value",
+                        "formId", "business-field-value")));
+        request.setContext(Map.of("mode", "approve"));
+
+        UiDataSourceExecutionAuthorization authorization =
+                context.service().authorizeResolvedFormButton(
+                        definition("REGISTERED_PROVIDER", "GLOBAL", null),
+                        request,
+                        resolvedButtonSnapshot(),
+                        "effective-hash");
+
+        assertEquals("approve",
+                authorization.requestContext().get("mode"));
+        assertFalse(authorization.requestContext()
+                .containsKey("taskId"));
+    }
+
+    @Test
+    void formButtonRejectsClientTaskAndProcessIdentityFromProviderPayload() {
+        for (Map<String, Object> forged : List.<Map<String, Object>>of(
+                Map.of("taskId", "task-forged"),
+                Map.of("nested", Map.of(
+                        "processInstanceId", "process-forged")))) {
+            UiDataSourceExecuteRequest request = resolvedButtonRequest();
+            request.setContext(forged);
+
+            BusinessForbiddenException error = assertThrows(
+                    BusinessForbiddenException.class,
+                    () -> context.service().authorizeResolvedFormButton(
+                            definition("REGISTERED_PROVIDER", "GLOBAL", null),
+                            request,
+                            resolvedButtonSnapshot(),
+                            "effective-hash"));
+
+            assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                    error.getErrorCode());
+        }
+    }
+
+    @Test
+    void formButtonRejectsNormalizedAliasesOfBusinessFormContainer() {
+        UiDataSourceExecuteRequest request = resolvedButtonRequest();
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("form", Map.of(
+                "userId", "legitimate-business-field"));
+        input.put("f-orm", Map.of());
+        request.setInput(input);
+
+        BusinessForbiddenException error = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service().authorizeResolvedFormButton(
+                        definition("REGISTERED_PROVIDER", "GLOBAL", null),
+                        request,
+                        resolvedButtonSnapshot(),
+                        "effective-hash"));
+
+        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                error.getErrorCode());
+    }
+
+    @Test
+    void formButtonStillRejectsRootInputAndNestedContextIdentity() {
+        UiDataSourceExecuteRequest rootInput = resolvedButtonRequest();
+        rootInput.setInput(Map.of("userId", "forged-user"));
+        BusinessForbiddenException rootError = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service().authorizeResolvedFormButton(
+                        definition("REGISTERED_PROVIDER", "GLOBAL", null),
+                        rootInput,
+                        resolvedButtonSnapshot(),
+                        "effective-hash"));
+        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                rootError.getErrorCode());
+
+        UiDataSourceExecuteRequest nestedContext = resolvedButtonRequest();
+        nestedContext.setContext(Map.of(
+                "nested", Map.of("userId", "forged-user")));
+        BusinessForbiddenException contextError = assertThrows(
+                BusinessForbiddenException.class,
+                () -> context.service().authorizeResolvedFormButton(
+                        definition("REGISTERED_PROVIDER", "GLOBAL", null),
+                        nestedContext,
+                        resolvedButtonSnapshot(),
+                        "effective-hash"));
+        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                contextError.getErrorCode());
+    }
+
+    private Map<String, Object> resolvedButtonSnapshot() {
+        return Map.of(
+                "configType", "FORM",
+                "form", Map.of(
+                        "id", "form-1",
+                        "entityId", "entity-1"),
+                "eventBindings", List.of(Map.of(
+                        "ownerType", "ENTITY",
+                        "ownerId", "entity-1",
+                        "targetType", "OWNER",
+                        "targetKey", "",
+                        "eventCode", "FORM_BUTTON_CLICK",
+                        "inheritanceMode", "INHERIT",
+                        "steps", List.of(Map.of(
+                                "serviceId", "source-1",
+                                "operationCode", "query")))));
+    }
+
+    private UiDataSourceExecuteRequest resolvedButtonRequest() {
+        UiDataSourceExecuteRequest request = request(
+                "FORM_BUTTON_CLICK", "form-1", "base-release");
+        request.setReleaseVersion(3);
+        request.setTargetType("BUTTON");
+        request.setTargetKey("generate");
+        request.setServerPinnedRelease(true);
+        request.setServerIdempotencyKey("server-seed");
+        request.setServerBindingOwnerType("ENTITY");
+        request.setServerBindingOwnerId("entity-1");
+        request.setServerBindingTargetType("OWNER");
+        request.setServerBindingTargetKey("");
+        return request;
+    }
+
     /** 预置已发布表单授权：装配表单目标、激活发布与权限计划 */
     private void allowPublishedForm(
             String releaseId,
@@ -814,6 +1002,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 userService,
                 dataPermissionEngine,
                 configurationAccessService,
+                releaseService,
                 codec);
     }
 
@@ -829,6 +1018,7 @@ class UiDataSourceExecutionAccessServiceTest {
             SysUserService userService,
             DataPermissionEngine dataPermissionEngine,
             UiConfigurationAccessService configurationAccessService,
+            UiConfigReleaseService releaseService,
             JsonDocumentCodec codec) {
     }
 }

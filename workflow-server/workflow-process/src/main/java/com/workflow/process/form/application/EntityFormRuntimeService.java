@@ -63,10 +63,23 @@ public class EntityFormRuntimeService {
             ProcessNodeForm nodeForm,
             String processVersionHistoryId,
             UiRuntimePurpose purpose) {
-        ResolvedEntityFormRelease resolved = resolveByBinding(
+        return getByBinding(
                 nodeForm,
-                processVersionHistoryId,
-                purpose);
+                new UiRuntimeResolutionContext(
+                        purpose,
+                        processVersionHistoryId,
+                        nodeForm == null ? null : nodeForm.getNodeId()));
+    }
+
+    /**
+     * 使用包含可选活动任务主体的可信解析上下文读取节点表单。
+     * ACTIVE_TASK 页面必须传 task/process/record 坐标，签发的令牌才可用于审批按钮。
+     */
+    public EntityForm getByBinding(
+            ProcessNodeForm nodeForm,
+            UiRuntimeResolutionContext context) {
+        ResolvedEntityFormRelease resolved = resolveByBinding(
+                nodeForm, context);
         return resolved == null ? null : resolved.form();
     }
 
@@ -77,6 +90,22 @@ public class EntityFormRuntimeService {
             ProcessNodeForm nodeForm,
             String processVersionHistoryId,
             UiRuntimePurpose purpose) {
+        return resolveByBinding(
+                nodeForm,
+                new UiRuntimeResolutionContext(
+                        purpose,
+                        processVersionHistoryId,
+                        nodeForm == null ? null : nodeForm.getNodeId()));
+    }
+
+    /** 使用调用方已从流程引擎/待办读取的可信上下文解析并签发令牌。 */
+    public ResolvedEntityFormRelease resolveByBinding(
+            ProcessNodeForm nodeForm,
+            UiRuntimeResolutionContext context) {
+        String processVersionHistoryId = context == null
+                ? null : context.processVersionHistoryId();
+        UiRuntimePurpose purpose = context == null
+                ? UiRuntimePurpose.HISTORICAL : context.purpose();
         if (nodeForm == null || nodeForm.getFormId() == null) {
             log.info(
                     "流程节点表单运行时解析跳过: historyId={}, purpose={}, reason=EMPTY_BINDING",
@@ -92,17 +121,18 @@ public class EntityFormRuntimeService {
                 LogValue.safe(processVersionHistoryId),
                 LogValue.safe(nodeForm.getNodeId()),
                 LogValue.safe(purpose));
-        UiRuntimeResolutionContext context =
-                new UiRuntimeResolutionContext(
+        UiRuntimeResolutionContext effectiveContext = context == null
+                ? new UiRuntimeResolutionContext(
                         purpose,
                         processVersionHistoryId,
-                        nodeForm.getNodeId());
+                        nodeForm.getNodeId())
+                : context;
         ResolvedEntityFormRelease resolved =
                 releaseService.resolveRuntimeFormRelease(
                 nodeForm.getFormId(),
                 nodeForm.getFormReleaseId(),
                 nodeForm.getFormReleaseVersion(),
-                context);
+                effectiveContext);
         EntityForm form = resolved.form();
         if (form != null) {
             form.setRuntimeReleaseId(resolved.releaseId());
@@ -113,7 +143,7 @@ public class EntityFormRuntimeService {
             form.setHotfixApplied(resolved.hotfixApplied());
             form.setReleaseResolutionToken(
                     resolutionTokenService.issue(
-                            context,
+                            effectiveContext,
                             form.getId(),
                             resolved.releaseId(),
                             resolved.releaseVersion(),

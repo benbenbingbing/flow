@@ -5,6 +5,7 @@ import com.workflow.entity.form.api.response.FormConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.process.task.api.response.TaskDetailDTO;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -155,10 +156,18 @@ public class TaskDetailService {
                         : published.nodeForms()) {
                     EntityForm form = entityFormRuntimeService.getByBinding(
                             nodeForm,
-                            published.history().getId(),
                             historicalProcess
-                                    ? UiRuntimePurpose.HISTORICAL
-                                    : UiRuntimePurpose.ACTIVE_TASK);
+                                    ? new UiRuntimeResolutionContext(
+                                            UiRuntimePurpose.HISTORICAL,
+                                            published.history().getId(),
+                                            nodeForm.getNodeId())
+                                    : UiRuntimeResolutionContext.activeTask(
+                                            published.history().getId(),
+                                            nodeForm.getNodeId(),
+                                            taskId,
+                                            processInstanceId,
+                                            entityCode,
+                                            processTask.getEntityDataId()));
                     if (form != null) {
                         formConfigs.add(buildFormConfig(
                                 form,

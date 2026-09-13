@@ -1960,6 +1960,7 @@ import {
   isEntityUserReferenceField,
   relativeOrgPositionSummary,
   validateRelativeOrgPositionConfig,
+  validateEmptyAssigneeStrategy,
   validateNodeReferenceChain
 } from '@/shared/process-config'
 import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
@@ -4321,6 +4322,11 @@ function applyConfigurationSection(section) {
         updateDocumentation()
         break
       case 'assignee': {
+        const emptyPolicyError = validateEmptyAssigneeStrategy(assigneeForm.value.emptyAssigneeStrategy)
+        if (emptyPolicyError) {
+          ElMessage.warning(emptyPolicyError)
+          return false
+        }
         const modeling = getModeling()
         if (!modeling) {
           ElMessage.warning('模型未初始化')

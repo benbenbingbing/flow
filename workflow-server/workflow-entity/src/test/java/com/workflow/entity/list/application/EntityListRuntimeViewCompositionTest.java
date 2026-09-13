@@ -25,6 +25,7 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFiel
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
@@ -49,6 +50,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -59,6 +61,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
 
 class EntityListRuntimeViewCompositionTest {
 
@@ -70,6 +73,7 @@ class EntityListRuntimeViewCompositionTest {
     private EntityListConfigMapper listConfigMapper;
     private SysUserService sysUserService;
     private DataPermissionEngine dataPermissionEngine;
+    private EntityActionCapabilityService actionCapabilityService;
     private EntityListRelationalConfigService relationalConfigService;
     private EntityListPublishedRuntimeService publishedRuntimeService;
     private EntityListPageResultNormalizer pageResultNormalizer;
@@ -99,6 +103,8 @@ class EntityListRuntimeViewCompositionTest {
         listConfigMapper = mock(EntityListConfigMapper.class);
         sysUserService = mock(SysUserService.class);
         dataPermissionEngine = mock(DataPermissionEngine.class);
+        actionCapabilityService = mock(
+                EntityActionCapabilityService.class);
         relationalConfigService =
                 mock(EntityListRelationalConfigService.class);
         publishedRuntimeService =
@@ -123,7 +129,7 @@ class EntityListRuntimeViewCompositionTest {
                 sysUserService,
                 dataPermissionEngine,
                 mock(EntityListScopeAuditService.class),
-                mock(EntityActionCapabilityService.class),
+                actionCapabilityService,
                 objectMapper,
                 new JsonDocumentCodec(objectMapper),
                 mock(EntityListActionConfigService.class),
@@ -434,13 +440,17 @@ class EntityListRuntimeViewCompositionTest {
     }
 
     @Test
-    void ordinaryCustomProviderKeepsLegacyResultWithoutCompositionToken() {
+    void ordinaryCustomProviderRecomputesCapabilitiesFromAuthoritativeRows() {
         EntityListConfig published = publishedList();
         published.setQueryProviderCode("legacy-provider");
         configureActiveList(published);
         Map<String, Object> providerResult = Map.of(
                 "records", List.of(Map.of(
-                        "id", "foreign-1",
+                        "id", "record-1",
+                        "actionCapabilities", Map.of(
+                                "delete", Map.of(
+                                        "visible", true,
+                                        "enabled", true)),
                         "legacyField", "legacy-value")),
                 "total", 88);
         dataProviders.add(provider(
@@ -459,6 +469,19 @@ class EntityListRuntimeViewCompositionTest {
                                     .getInput()));
                     return result;
                 });
+        EntityDataDTO authoritative = record(
+                "record-1", "平台记录");
+        when(dynamicService.findAccessibleById(
+                "target_entity", "record-1", "default"))
+                .thenReturn(authoritative);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<EntityDataDTO> rows = invocation.getArgument(2);
+            rows.get(0).setActionCapabilities(Map.of(
+                    "view", EntityActionCapabilityDTO.allowed()));
+            return null;
+        }).when(actionCapabilityService).enrichRows(
+                eq("target_entity"), eq(published), anyList());
 
         PageResult<?> page = (PageResult<?>) service.query(
                 "target_entity",
@@ -470,10 +493,59 @@ class EntityListRuntimeViewCompositionTest {
                 "legacy-value",
                 ((Map<?, ?>) page.getRecords().get(0))
                         .get("legacyField"));
+        assertEquals(Set.of("view"),
+                ((Map<?, ?>) ((Map<?, ?>) page.getRecords().get(0))
+                        .get("actionCapabilities")).keySet());
+        verify(dynamicService).findAccessibleById(
+                "target_entity", "record-1", "default");
+        verify(actionCapabilityService).enrichRows(
+                eq("target_entity"), eq(published), anyList());
         verify(dataListService, never())
                 .findPageWithResolvedConfig(
                         any(), any(), any(), anyMap(),
                         anyLong(), anyLong());
+    }
+
+    @Test
+    void listLoadReplacementCannotSupplyActionCapabilities() {
+        EntityListConfig published = publishedList();
+        configureActiveList(published);
+        UiEventExecutionResult replacement =
+                new UiEventExecutionResult();
+        replacement.setReplaced(true);
+        replacement.setData(Map.of(
+                "records", List.of(Map.of(
+                        "id", "record-1",
+                        "actionCapabilities", Map.of(
+                                "delete", Map.of(
+                                        "visible", true,
+                                        "enabled", true)))),
+                "total", 1));
+        when(uiEventRuntimeService.execute(any(), any()))
+                .thenReturn(replacement);
+        EntityDataDTO authoritative = record(
+                "record-1", "平台记录");
+        when(dynamicService.findAccessibleById(
+                "target_entity", "record-1", "default"))
+                .thenReturn(authoritative);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<EntityDataDTO> rows = invocation.getArgument(2);
+            rows.get(0).setActionCapabilities(Map.of(
+                    "view", EntityActionCapabilityDTO.allowed()));
+            return null;
+        }).when(actionCapabilityService).enrichRows(
+                eq("target_entity"), eq(published), anyList());
+
+        PageResult<?> page = (PageResult<?>) service.query(
+                "target_entity", "default",
+                new EntityListQueryRequest());
+
+        Map<?, ?> capabilities = (Map<?, ?>) ((Map<?, ?>)
+                page.getRecords().get(0)).get("actionCapabilities");
+        assertEquals(Set.of("view"), capabilities.keySet());
+        verify(dynamicService).findAccessibleById(
+                "target_entity", "record-1", "default");
     }
 
     @Test
@@ -513,6 +585,8 @@ class EntityListRuntimeViewCompositionTest {
                 EntityDefinition.StorageMode.SYSTEM);
         when(definitionMapper.findByEntityCode("target_entity"))
                 .thenReturn(Optional.of(system));
+        when(systemEntityReadService.isSystemEntity("target_entity"))
+                .thenReturn(true);
         PageResult<EntityDataDTO> systemPage =
                 new PageResult<>(
                         List.of(record(
@@ -534,7 +608,15 @@ class EntityListRuntimeViewCompositionTest {
                 "default",
                 compositionRequest(1, 10));
 
-        assertEquals(systemPage, result);
+        assertEquals(1, result.getTotal());
+        Map<?, ?> row = (Map<?, ?>) result.getRecords().get(0);
+        Map<?, ?> capabilities =
+                (Map<?, ?>) row.get("actionCapabilities");
+        EntityActionCapabilityDTO view =
+                (EntityActionCapabilityDTO) capabilities.get("view");
+        assertTrue(view.isVisible());
+        assertTrue(view.isEnabled());
+        assertEquals(Set.of("view"), capabilities.keySet());
         verify(dataListService, never())
                 .findPageWithResolvedConfig(
                         any(), any(), any(), anyMap(),

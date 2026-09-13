@@ -12,6 +12,7 @@ import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.entity.ui.application.UiConfigSemanticPatchService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
+import com.workflow.entity.ui.application.UiDataSourceService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import com.workflow.entity.ui.application.UiViewCompositionService;
@@ -34,6 +35,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
+import com.workflow.entity.permission.application.EntityListActionRulePolicy;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigDraftDiscardResultDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
@@ -76,6 +78,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -95,6 +98,445 @@ import static org.mockito.Mockito.when;
  * 发布激活时的完整性校验、节点结构校验、跨表单嵌套校验、模板兼容性校验等场景。
  */
 class UiConfigReleaseServiceTest {
+
+    @Test
+    void listActivationRejectsV1AndAcceptsCompleteV2ActionRules() {
+        TestContext context = context();
+        EntityListConfigDTO list = listConfig(3);
+        Map<String, Object> rowButton = new LinkedHashMap<>(
+                list.getRowActionConfig().get(0));
+        rowButton.put("availabilityRule", Map.of(
+                "version", 1));
+        list.setRowActionConfig(List.of(rowButton));
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("list", list);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(),
+                        "validateSnapshotForActivation",
+                        UiConfigReleaseService.LIST,
+                        "list-1",
+                        snapshot));
+
+        rowButton.put("availabilityRule", Map.of(
+                "version", 2,
+                "visibleWhen", Map.of(
+                        "type", "STATUS_CATEGORY",
+                        "operator", "EQ",
+                        "value", "NEW"),
+                "enabledWhen", Map.of(
+                        "type", "STATUS_CODE",
+                        "operator", "IN",
+                        "value", List.of("DRAFT", "RETURNED")),
+                "disabledMessage", "当前状态不可编辑"));
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(
+                context.service(),
+                "validateSnapshotForActivation",
+                UiConfigReleaseService.LIST,
+                "list-1",
+                snapshot));
+    }
+
+    @Test
+    void formReleaseManagementResponseRedactsPinnedProviderDefinition() {
+        TestContext context = context();
+        UiConfigRelease release = new UiConfigRelease();
+        release.setId("release-secret");
+        release.setConfigType(UiConfigReleaseService.FORM);
+        release.setConfigId("form-1");
+        release.setPatchDocument("secret-patch-config");
+        release.setSnapshotDocument(context.codec().write(
+                Map.of(
+                        "configType", "FORM",
+                        "form", Map.of(
+                                "id", "form-1",
+                                "entityId", "entity-1"),
+                        "eventBindings", List.of(Map.of(
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "steps", List.of(Map.of(
+                                        "serviceId", "source-1",
+                                        "operationCode", "query",
+                                        "executableSnapshot",
+                                        "secret-provider-config")))),
+                        "viewCompositions", List.of(Map.of(
+                                "key", "legacy-composition",
+                                "nested", Map.of(
+                                        "executableSnapshot",
+                                        Map.of("configDocument",
+                                                "secret-view-config"))))),
+                "测试表单发布管理快照"));
+        when(context.releaseMapper().findReleases(
+                UiConfigReleaseService.FORM, "form-1"))
+                .thenReturn(List.of(release));
+
+        UiConfigRelease result = context.service().releases(
+                UiConfigReleaseService.FORM, "form-1").get(0);
+
+        assertFalse(result.getSnapshotDocument().contains(
+                "secret-provider-config"));
+        assertFalse(result.getSnapshotDocument().contains(
+                "secret-view-config"));
+        assertFalse(result.getSnapshotDocument().contains(
+                "executableSnapshot"));
+        assertNull(result.getPatchDocument());
+        assertTrue(release.getSnapshotDocument().contains(
+                "secret-provider-config"));
+        assertTrue(release.getSnapshotDocument().contains(
+                "secret-view-config"));
+        assertEquals("secret-patch-config", release.getPatchDocument());
+    }
+
+    @Test
+    void formDraftSnapshotRedactsPinnedViewCompositionProviderDefinition() {
+        TestContext context = context();
+        EntityForm draft = form();
+        draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1"))
+                .thenReturn(draft);
+        Map<String, Object> executable = new LinkedHashMap<>();
+        executable.put("configDocument", Map.of(
+                "apiToken", "draft-provider-secret"));
+        Map<String, Object> composition = new LinkedHashMap<>();
+        composition.put("key", "project_requirements");
+        composition.put("nested", Map.of(
+                "executableSnapshot", executable));
+        when(context.viewCompositionService().snapshot(
+                UiConfigReleaseService.FORM, "form-1"))
+                .thenReturn(List.of(composition));
+
+        Map<String, Object> result = context.service().draftSnapshot(
+                UiConfigReleaseService.FORM, "form-1");
+
+        assertFalse(String.valueOf(result).contains(
+                "draft-provider-secret"));
+        assertFalse(String.valueOf(result).contains(
+                "executableSnapshot"));
+        // 脱敏必须只修改出站深拷贝，发布依赖原件仍可继续固定与执行。
+        assertTrue(String.valueOf(composition).contains(
+                "draft-provider-secret"));
+    }
+
+    @Test
+    void formPublishRejectsOrphanButtonBindingIncludingDisableOverride() {
+        TestContext context = context();
+        EntityForm form = form();
+        form.setViewConfig("""
+                {"actionBar":{"version":1,"customButtons":[{
+                  "key":"generate_report",
+                  "label":"生成报告",
+                  "enabled":false,
+                  "placement":"FOOTER"
+                }]}}
+                """);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("form", form);
+        snapshot.put("nodes", List.of());
+        snapshot.put("eventBindings", List.of(Map.of(
+                "ownerType", "FORM",
+                "ownerId", "form-1",
+                "targetType", "BUTTON",
+                "targetKey", "deleted_button",
+                "eventCode", "FORM_BUTTON_CLICK",
+                "inheritanceMode", "DISABLE",
+                "steps", List.of())));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(),
+                        "validateFormActions",
+                        snapshot));
+
+        assertTrue(error.getMessage().contains("deleted_button"));
+        assertTrue(error.getMessage().contains("customButtons"));
+    }
+
+    @Test
+    void formPublishDoesNotTreatDisableOverrideAsExecutableButtonBinding() {
+        TestContext context = context();
+        EntityForm form = form();
+        form.setViewConfig("""
+                {"actionBar":{"version":1,"customButtons":[{
+                  "key":"generate_report",
+                  "label":"生成报告",
+                  "enabled":true,
+                  "placement":"FOOTER",
+                  "perm":"entity:expense:generate-report"
+                }]}}
+                """);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("form", form);
+        snapshot.put("nodes", List.of());
+        snapshot.put("eventBindings", List.of(Map.of(
+                "ownerType", "FORM",
+                "ownerId", "form-1",
+                "targetType", "BUTTON",
+                "targetKey", "generate_report",
+                "eventCode", "FORM_BUTTON_CLICK",
+                "inheritanceMode", "DISABLE",
+                "steps", List.of())));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(),
+                        "validateFormActions",
+                        snapshot));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("0 个"));
+    }
+
+    @Test
+    void formPublishAcceptsButtonInheritingNonEmptyOwnerChain() {
+        TestContext context = context();
+        EntityForm form = form();
+        form.setViewConfig("""
+                {"actionBar":{"version":1,"customButtons":[{
+                  "key":"generate_report","label":"生成报告",
+                  "enabled":true,"placement":"FOOTER",
+                  "perm":"entity:expense:generate-report"
+                }]}}
+                """);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("form", form);
+        snapshot.put("nodes", List.of());
+        snapshot.put("eventBindings", List.of(
+                Map.of(
+                        "ownerType", "ENTITY",
+                        "ownerId", "entity-1",
+                        "targetType", "OWNER",
+                        "targetKey", "",
+                        "eventCode", "FORM_BUTTON_CLICK",
+                        "inheritanceMode", "INHERIT",
+                        "steps", List.of(
+                                Map.of(
+                                        "name", "shared-prepare-a",
+                                        "strategy", "BEFORE",
+                                        "condition", Map.of(
+                                                "path", "input.form.status",
+                                                "equals", "DRAFT")),
+                                Map.of(
+                                        "name", "shared-prepare-b",
+                                        "strategy", "BEFORE"),
+                                Map.of(
+                                        "name", "shared-main",
+                                        "strategy", "REPLACE"),
+                                Map.of(
+                                        "name", "shared-finish-a",
+                                        "strategy", "AFTER",
+                                        "condition", Map.of(
+                                                "path", "result.ok",
+                                                "truthy", true)),
+                                Map.of(
+                                        "name", "shared-finish-b",
+                                        "strategy", "AFTER"))),
+                Map.of(
+                        "ownerType", "FORM",
+                        "ownerId", "form-1",
+                        "targetType", "BUTTON",
+                        "targetKey", "generate_report",
+                        "eventCode", "FORM_BUTTON_CLICK",
+                        "inheritanceMode", "INHERIT",
+                        "steps", List.of())));
+
+        ReflectionTestUtils.invokeMethod(
+                context.service(), "validateFormActions", snapshot);
+    }
+
+    @Test
+    void formPublishRejectsTrulyEmptyEffectiveButtonChain() {
+        TestContext context = context();
+        EntityForm form = form();
+        form.setViewConfig("""
+                {"actionBar":{"version":1,"customButtons":[{
+                  "key":"generate_report","label":"生成报告",
+                  "enabled":true,"placement":"FOOTER",
+                  "perm":"entity:expense:generate-report"
+                }]}}
+                """);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("form", form);
+        snapshot.put("nodes", List.of());
+        snapshot.put("eventBindings", List.of(Map.of(
+                "ownerType", "FORM",
+                "ownerId", "form-1",
+                "targetType", "BUTTON",
+                "targetKey", "generate_report",
+                "eventCode", "FORM_BUTTON_CLICK",
+                "inheritanceMode", "INHERIT",
+                "steps", List.of())));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(),
+                        "validateFormActions",
+                        snapshot));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("0 个"));
+    }
+
+    @Test
+    void formPublishRejectsNonEmptyButtonChainWithoutMainStep() {
+        TestContext context = context();
+        Map<String, Object> snapshot = formButtonActionSnapshot(List.of(
+                Map.of("name", "prepare", "strategy", "BEFORE"),
+                Map.of("name", "finish", "strategy", "AFTER")));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(), "validateFormActions", snapshot));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("generate_report（0 个）"));
+    }
+
+    @Test
+    void formPublishRejectsMultipleButtonMainSteps() {
+        TestContext context = context();
+        Map<String, Object> snapshot = formButtonActionSnapshot(List.of(
+                Map.of("name", "main-a", "strategy", "REPLACE"),
+                Map.of("name", "main-b", "strategy", "REPLACE")));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(), "validateFormActions", snapshot));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("generate_report（2 个）"));
+    }
+
+    @Test
+    void formPublishRejectsConditionalInheritedMainStep() {
+        TestContext context = context();
+        Map<String, Object> snapshot = formButtonActionSnapshotWithBindings(
+                List.of(
+                        Map.of(
+                                "ownerType", "FORM",
+                                "ownerId", "form-1",
+                                "targetType", "OWNER",
+                                "targetKey", "",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "inheritanceMode", "INHERIT",
+                                "steps", List.of(Map.of(
+                                        "name", "conditional-main",
+                                        "strategy", "REPLACE",
+                                        "condition", Map.of(
+                                                "path", "input.form.status",
+                                                "equals", "DRAFT")))),
+                        Map.of(
+                                "ownerType", "FORM",
+                                "ownerId", "form-1",
+                                "targetType", "BUTTON",
+                                "targetKey", "generate_report",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "inheritanceMode", "INHERIT",
+                                "steps", List.of())));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(), "validateFormActions", snapshot));
+
+        assertEquals(
+                "UI_EVENT_FORM_BUTTON_MAIN_STEP_CONDITION_UNSUPPORTED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("必须无条件执行"));
+        assertTrue(error.getMessage().contains("generate_report"));
+    }
+
+    @Test
+    void formPublishAcceptsButtonMainAfterFormOwnerClearsInheritedChain() {
+        TestContext context = context();
+        for (String formMode : List.of("REPLACE", "DISABLE")) {
+            Map<String, Object> snapshot = formButtonActionSnapshotWithBindings(
+                    List.of(
+                            Map.of(
+                                    "ownerType", "ENTITY",
+                                    "ownerId", "entity-1",
+                                    "targetType", "OWNER",
+                                    "targetKey", "",
+                                    "eventCode", "FORM_BUTTON_CLICK",
+                                    "inheritanceMode", "INHERIT",
+                                    "steps", List.of(Map.of(
+                                            "name", "entity-main",
+                                            "strategy", "REPLACE"))),
+                            Map.of(
+                                    "ownerType", "FORM",
+                                    "ownerId", "form-1",
+                                    "targetType", "OWNER",
+                                    "targetKey", "",
+                                    "eventCode", "FORM_BUTTON_CLICK",
+                                    "inheritanceMode", formMode,
+                                    "steps", List.of()),
+                            Map.of(
+                                    "ownerType", "FORM",
+                                    "ownerId", "form-1",
+                                    "targetType", "BUTTON",
+                                    "targetKey", "generate_report",
+                                    "eventCode", "FORM_BUTTON_CLICK",
+                                    "inheritanceMode", "INHERIT",
+                                    "steps", List.of(Map.of(
+                                            "name", "button-main",
+                                            "strategy", "REPLACE")))));
+
+            assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(
+                    context.service(), "validateFormActions", snapshot));
+        }
+    }
+
+    @Test
+    void formPublishRejectsTwoInheritedMainStepsAcrossLevels() {
+        TestContext context = context();
+        Map<String, Object> snapshot = formButtonActionSnapshotWithBindings(
+                List.of(
+                        Map.of(
+                                "ownerType", "ENTITY",
+                                "ownerId", "entity-1",
+                                "targetType", "OWNER",
+                                "targetKey", "",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "inheritanceMode", "INHERIT",
+                                "steps", List.of(Map.of(
+                                        "name", "entity-main",
+                                        "strategy", "REPLACE"))),
+                        Map.of(
+                                "ownerType", "FORM",
+                                "ownerId", "form-1",
+                                "targetType", "OWNER",
+                                "targetKey", "",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "inheritanceMode", "INHERIT",
+                                "steps", List.of(Map.of(
+                                        "name", "form-main",
+                                        "strategy", "REPLACE"))),
+                        Map.of(
+                                "ownerType", "FORM",
+                                "ownerId", "form-1",
+                                "targetType", "BUTTON",
+                                "targetKey", "generate_report",
+                                "eventCode", "FORM_BUTTON_CLICK",
+                                "inheritanceMode", "INHERIT",
+                                "steps", List.of())));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        context.service(), "validateFormActions", snapshot));
+
+        assertEquals("UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                error.getErrorCode());
+        assertTrue(error.getMessage().contains("generate_report（2 个）"));
+    }
 
     @Test
     void unchangedStandardFormPublishReusesRelease() {
@@ -274,6 +716,73 @@ class UiConfigReleaseServiceTest {
                                 UiConfigReleaseService.FORM),
                         org.mockito.ArgumentMatchers.eq("form-1"),
                         any());
+    }
+
+    @Test
+    void activationUsesPinnedFormButtonDefinitionAfterCurrentServiceDrifts() {
+        TestContext context = context();
+        Map<String, Object> snapshot = pinnedFormButtonSnapshot();
+        UiConfigRelease target = release(
+                context.codec(), "release-pinned-button", snapshot);
+        target.setPublishedBy("admin-1");
+        when(context.releaseMapper().selectById(
+                "release-pinned-button")).thenReturn(target);
+        when(context.releaseMapper().findActive(
+                UiConfigReleaseService.FORM, "form-1"))
+                .thenReturn(null);
+        when(context.releaseMapper().update(any(), any()))
+                .thenReturn(1);
+        // 当前服务已删除/改名；完整 v1 制品不允许再触碰该可变记录。
+        when(context.dataSourceDefinitionMapper().selectById(
+                "service-removed"))
+                .thenThrow(new AssertionError(
+                        "pinned activation reread current service"));
+
+        UiConfigRelease activated = context.service().activate(
+                UiConfigReleaseService.FORM,
+                "form-1",
+                "release-pinned-button");
+
+        assertEquals("release-pinned-button", activated.getId());
+        verify(context.dataSourceDefinitionMapper(), never())
+                .selectById("service-removed");
+        verify(context.dataSourceService()).validatePinnedReadOperation(
+                "pinned-operation-document",
+                "a".repeat(64),
+                "service-removed",
+                "REPORT_PROVIDER",
+                7,
+                "generate",
+                "FORM");
+    }
+
+    @Test
+    void activationRejectsPartiallyPinnedFormButtonWithoutLegacyFallback() {
+        TestContext context = context();
+        Map<String, Object> snapshot = pinnedFormButtonSnapshot();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> step = (Map<String, Object>) ((List<?>)
+                ((Map<?, ?>) ((List<?>) snapshot.get("eventBindings"))
+                        .get(0)).get("steps")).get(0);
+        step.remove("definitionHash");
+        UiConfigRelease target = release(
+                context.codec(), "release-damaged-pin", snapshot);
+        when(context.releaseMapper().selectById(
+                "release-damaged-pin")).thenReturn(target);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> context.service().activate(
+                        UiConfigReleaseService.FORM,
+                        "form-1",
+                        "release-damaged-pin"));
+
+        assertTrue(error.getMessage().contains("钉版操作版本或字段不完整"));
+        verify(context.dataSourceDefinitionMapper(), never())
+                .selectById("service-removed");
+        verify(context.dataSourceService(), never())
+                .validatePinnedReadOperation(
+                        any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -781,6 +1290,7 @@ class UiConfigReleaseServiceTest {
                 new UiEventBindingSnapshotService(
                         mapper,
                         mock(UiDataSourceDefinitionMapper.class),
+                        mock(UiDataSourceService.class),
                         codec);
         when(mapper.findByOwnerForUpdate("FORM", "form-1"))
                 .thenReturn(List.of());
@@ -868,6 +1378,8 @@ class UiConfigReleaseServiceTest {
         EntityForm form = form();
         when(formService.getById("form-1")).thenReturn(form);
 
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
                 mock(UiConfigHotfixTargetMapper.class),
@@ -878,6 +1390,7 @@ class UiConfigReleaseServiceTest {
                 new UiEventBindingSnapshotService(
                         mock(UiEventBindingMapper.class),
                         mock(UiDataSourceDefinitionMapper.class),
+                        mock(UiDataSourceService.class),
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
@@ -1379,6 +1892,7 @@ class UiConfigReleaseServiceTest {
                 new UiEventBindingSnapshotService(
                         mock(UiEventBindingMapper.class),
                         mock(UiDataSourceDefinitionMapper.class),
+                        mock(UiDataSourceService.class),
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
@@ -1513,6 +2027,49 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void activeRuntimeReleaseDoesNotExposePinnedProviderSnapshot() {
+        TestContext context = context();
+        Map<String, Object> snapshot = formSnapshot(List.of());
+        snapshot.put("eventBindings", List.of(Map.of(
+                "ownerType", "FORM",
+                "ownerId", "form-1",
+                "targetType", "BUTTON",
+                "targetKey", "generate-report",
+                "eventCode", "FORM_BUTTON_CLICK",
+                "steps", List.of(Map.of(
+                        "serviceId", "service-1",
+                        "operationCode", "generate",
+                        "operationSnapshotVersion", 1,
+                        "executableSnapshot", "{\"configDocument\":\"secret\"}")))));
+        snapshot.put("viewCompositions", List.of(Map.of(
+                "compositionKey", "legacy-related-content",
+                "nested", Map.of(
+                        "executableSnapshot", Map.of(
+                                "configDocument", Map.of(
+                                        "apiToken", "api-token-secret"))))));
+        UiConfigRelease active = release(
+                context.codec(), "release-active", snapshot);
+        active.setVersion(2);
+        active.setStatus("ACTIVE");
+        when(context.releaseMapper().findActive("FORM", "form-1"))
+                .thenReturn(active);
+
+        Map<String, Object> result = context.service().runtimeFormRelease(
+                "form-1", "release-active", 2);
+
+        Map<?, ?> runtimeSnapshot = (Map<?, ?>)
+                result.get("snapshotDocument");
+        assertFalse(runtimeSnapshot.containsKey("eventBindings"));
+        String serialized = String.valueOf(runtimeSnapshot);
+        assertFalse(serialized.contains("executableSnapshot"));
+        assertFalse(serialized.contains("configDocument"));
+        assertFalse(serialized.contains("secret"));
+        assertFalse(serialized.contains("api-token-secret"));
+        assertTrue(active.getSnapshotDocument().contains(
+                "api-token-secret"));
+    }
+
+    @Test
     void signedRuntimeReleaseKeepsParentTokenExpiryForDerivedContext() {
         TestContext context = context();
         UiConfigRelease pinned = release(
@@ -1608,6 +2165,122 @@ class UiConfigReleaseServiceTest {
                         resolved.form().getNodes().get(0)
                                 .getPropsDocument(),
                                 "测试节点属性").get("label"));
+    }
+
+    @Test
+    void approvalButtonTokenMustMatchActiveTaskProcessRelease() {
+        TestContext context = context();
+        when(context.resolutionTokenService().verify("active-task-token"))
+                .thenReturn(tokenClaims("approve-node"));
+
+        context.service().requireActiveTaskReleaseToken(
+                "active-task-token",
+                "form-1",
+                "release-2",
+                2,
+                "history-1",
+                "approve-node",
+                "task-r1",
+                "process-r1",
+                "expense",
+                "record-r1");
+
+        com.workflow.core.error.BusinessForbiddenException missing =
+                assertThrows(
+                        com.workflow.core.error.BusinessForbiddenException.class,
+                        () -> context.service()
+                                .requireActiveTaskReleaseToken(
+                                        null,
+                                        "form-1",
+                                        "release-2",
+                                        2,
+                                        "history-1",
+                                        "approve-node",
+                                        "task-r1",
+                                        "process-r1",
+                                        "expense",
+                                        "record-r1"));
+        assertEquals("UI_EVENT_APPROVAL_RELEASE_CONTEXT_REQUIRED",
+                missing.getErrorCode());
+    }
+
+    @Test
+    void approvalButtonRejectsTokenTransferredToAnotherTaskOrRecord() {
+        TestContext context = context();
+        when(context.resolutionTokenService().verify("task-a-token"))
+                .thenReturn(tokenClaims("approve-node"));
+
+        for (List<String> subject : List.of(
+                List.of("task-r2", "record-r1"),
+                List.of("task-r1", "record-r2"))) {
+            com.workflow.core.error.BusinessForbiddenException error =
+                    assertThrows(
+                            com.workflow.core.error.BusinessForbiddenException.class,
+                            () -> context.service()
+                                    .requireActiveTaskReleaseToken(
+                                            "task-a-token",
+                                            "form-1",
+                                            "release-2",
+                                            2,
+                                            "history-1",
+                                            "approve-node",
+                                            subject.get(0),
+                                            "process-r1",
+                                            "expense",
+                                            subject.get(1)));
+            assertEquals(
+                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_MISMATCH",
+                    error.getErrorCode());
+        }
+    }
+
+    @Test
+    void approvalButtonRejectsNewInstanceOrAnotherProcessVersionToken() {
+        TestContext context = context();
+        UiReleaseResolutionTokenService.Claims active =
+                tokenClaims("approve-node");
+        when(context.resolutionTokenService().verify("other-history-token"))
+                .thenReturn(active);
+        when(context.resolutionTokenService().verify("new-instance-token"))
+                .thenReturn(new UiReleaseResolutionTokenService.Claims(
+                        UiRuntimePurpose.NEW_INSTANCE,
+                        "history-1",
+                        "approve-node",
+                        "form-1",
+                        "release-2",
+                        2,
+                        0,
+                        "user-1",
+                        "task-r1",
+                        "process-r1",
+                        "expense",
+                        "record-r1",
+                        null,
+                        null,
+                        1L,
+                        Long.MAX_VALUE));
+
+        for (String token : List.of(
+                "other-history-token", "new-instance-token")) {
+            com.workflow.core.error.BusinessForbiddenException error =
+                    assertThrows(
+                            com.workflow.core.error.BusinessForbiddenException.class,
+                            () -> context.service()
+                                    .requireActiveTaskReleaseToken(
+                                            token,
+                                            "form-1",
+                                            "release-2",
+                                            2,
+                                            "history-r2",
+                                            "approve-node",
+                                            "task-r1",
+                                            "process-r1",
+                                            "expense",
+                                            "record-r1"));
+            assertEquals(
+                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_MISMATCH",
+                    error.getErrorCode());
+        }
     }
 
     @Test
@@ -2652,6 +3325,8 @@ class UiConfigReleaseServiceTest {
                 mock(UiDataSourceDefinitionMapper.class);
         UiReleaseResolutionTokenService resolutionTokenService =
                 mock(UiReleaseResolutionTokenService.class);
+        UiDataSourceService dataSourceService =
+                mock(UiDataSourceService.class);
         when(formMapper.selectByIdForUpdate("form-1"))
                 .thenReturn(form());
         when(formMapper.update(any(), any())).thenReturn(1);
@@ -2666,6 +3341,7 @@ class UiConfigReleaseServiceTest {
                 new UiEventBindingSnapshotService(
                         eventBindingMapper,
                         dataSourceDefinitionMapper,
+                        dataSourceService,
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 templateMapper,
@@ -2705,7 +3381,8 @@ class UiConfigReleaseServiceTest {
                         entityDefinitionMapper,
                         listConfigMapper,
                         mock(EntityListRelationalConfigService.class),
-                        List.of(),
+                        new EntityListActionRulePolicy(
+                                objectMapper, List.of()),
                         List.of()));
         return new TestContext(
                 service,
@@ -2721,6 +3398,7 @@ class UiConfigReleaseServiceTest {
                 processImpactPort,
                 eventBindingMapper,
                 dataSourceDefinitionMapper,
+                dataSourceService,
                 resolutionTokenService,
                 viewCompositionService,
                 codec);
@@ -2799,6 +3477,10 @@ class UiConfigReleaseServiceTest {
                 2,
                 0,
                 "user-1",
+                "task-r1",
+                "process-r1",
+                "expense",
+                "record-r1",
                 null,
                 null,
                 1L,
@@ -2919,6 +3601,73 @@ class UiConfigReleaseServiceTest {
         return snapshot;
     }
 
+    /** 构造启用按钮及其按钮级事件链，供主处理数量发布校验复用。 */
+    private Map<String, Object> formButtonActionSnapshot(
+            List<Map<String, Object>> steps) {
+        return formButtonActionSnapshotWithBindings(List.of(Map.of(
+                "ownerType", "FORM",
+                "ownerId", "form-1",
+                "targetType", "BUTTON",
+                "targetKey", "generate_report",
+                "eventCode", "FORM_BUTTON_CLICK",
+                "inheritanceMode", "INHERIT",
+                "steps", steps)));
+    }
+
+    /** 构造启用按钮及指定的多层事件绑定，供继承链发布校验复用。 */
+    private Map<String, Object> formButtonActionSnapshotWithBindings(
+            List<Map<String, Object>> eventBindings) {
+        EntityForm form = form();
+        form.setViewConfig("""
+                {"actionBar":{"version":1,"customButtons":[{
+                  "key":"generate_report","label":"生成报告",
+                  "enabled":true,"placement":"FOOTER",
+                  "perm":"entity:expense:generate-report"
+                }]}}
+                """);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("form", form);
+        snapshot.put("nodes", List.of());
+        snapshot.put("eventBindings", eventBindings);
+        return snapshot;
+    }
+
+    /** 构造可在当前接口服务已漂移后独立校验的表单按钮 v1 发布制品。 */
+    private Map<String, Object> pinnedFormButtonSnapshot() {
+        Map<String, Object> snapshot = formSnapshot(List.of());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> form = (Map<String, Object>) snapshot.get("form");
+        form.put("viewConfig", """
+                {"actionBar":{"version":1,"customButtons":[{
+                  "key":"generate","label":"生成报告","enabled":true,
+                  "placement":"FOOTER","perm":"entity:expense:generate",
+                  "modes":["edit"]
+                }]}}
+                """);
+        Map<String, Object> step = new LinkedHashMap<>();
+        step.put("strategy", "REPLACE");
+        step.put("serviceId", "service-removed");
+        step.put("operationCode", "generate");
+        step.put("operationSnapshotVersion", 1);
+        step.put("sourceCode", "REPORT_PROVIDER");
+        step.put("serviceRevision", 7);
+        step.put("executableSnapshot", "pinned-operation-document");
+        step.put("definitionHash", "a".repeat(64));
+        step.put("bindingOwnerType", "FORM");
+        step.put("bindingOwnerId", "form-1");
+        step.put("bindingTargetType", "BUTTON");
+        step.put("bindingTargetKey", "generate");
+        snapshot.put("eventBindings", List.of(Map.of(
+                "ownerType", "FORM",
+                "ownerId", "form-1",
+                "targetType", "BUTTON",
+                "targetKey", "generate",
+                "eventCode", "FORM_BUTTON_CLICK",
+                "inheritanceMode", "REPLACE",
+                "steps", List.of(step))));
+        return snapshot;
+    }
+
     private EntityListConfigDTO listConfig(int defaultVisibleCount) {
         Map<String, Object> search = new LinkedHashMap<>();
         search.put("defaultVisibleCount", defaultVisibleCount);
@@ -3032,6 +3781,7 @@ class UiConfigReleaseServiceTest {
             UiHotfixProcessImpactPort processImpactPort,
             UiEventBindingMapper eventBindingMapper,
             UiDataSourceDefinitionMapper dataSourceDefinitionMapper,
+            UiDataSourceService dataSourceService,
             UiReleaseResolutionTokenService resolutionTokenService,
             UiViewCompositionService viewCompositionService,
             JsonDocumentCodec codec) {

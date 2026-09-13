@@ -737,7 +737,7 @@ export default {
                 { option: 'FIELD', meaning: '可编辑显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、字段事件、模板、节点扩展和受控数据源。', notes: '仅允许 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度、格式和正则只对 STRING、TEXT 显示，数值范围只对 INTEGER、LONG、DECIMAL、DOUBLE 显示；组件切换会清理不兼容参数、规则和绑定。' },
                 { option: 'SUB_FORM', meaning: '可编辑显示标签、父容器、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源，用于引用一个子实体表单。', notes: '展示位置由父容器决定；仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
                 { option: 'REPEATER', meaning: '可编辑显示标签、父容器、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源，用于一对多重复明细。', notes: '展示位置由父容器决定；仅允许 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 的默认值、普通组件、字段校验、模式权限或字段事件。' },
-                { option: 'ACTION_SLOT', meaning: '仅可编辑父容器，用于在递归树中放置稳定的运行时动作插槽。', notes: '插槽标识只读；当前不开放动作、权限、位置、字段默认值、规则或数据源编辑。' }
+                { option: 'ACTION_SLOT', meaning: '可编辑父容器与栅格宽度，用于在递归树中放置稳定的运行时动作插槽。', notes: '栅格表单或 GRID 容器内支持 1–24 栅格；插槽标识只读，动作与权限仍在按钮配置中管理。' }
               ]
             },
             {
@@ -1153,7 +1153,7 @@ export default {
                 { field: 'Link', meaning: '行按钮是否使用链接样式。', defaultLimit: '位于“更多设置”；行自定义默认开启。', effect: '减少操作列视觉重量。', publish: '无权限影响。' },
                 { field: '模板', meaning: '绑定版本化按钮模板并支持显式升级。', defaultLimit: '位于“更多设置”；留空表示复制后独立。', effect: '复用按钮展示与扩展配置，不自动跟随模板升级。', publish: '升级前查看差异并保留本地覆盖。' },
                 { field: '权限码', meaning: '功能级授权标识。', defaultLimit: '可从标准/自定义权限选择，也可手工输入；内置按钮会自动归一为标准权限。', effect: '用户无权限时按钮不可用或不显示。', publish: '角色必须被授予相应 F 类型权限资源。' },
-                { field: '适用条件', meaning: '记录级或选择集级条件。', defaultLimit: '默认始终可操作，部分内置按钮有预设规则。', effect: '条件不满足时隐藏或禁用并说明。', publish: '与权限码、数据权限三者同时生效。' }
+                { field: '适用条件', meaning: '分别配置记录级或选择集级的显示条件与启用条件。', defaultLimit: '默认始终显示且可用，部分内置按钮有预设规则。', effect: '先判显示：不满足则隐藏；显示后再判启用：不满足则禁用并说明。', publish: '与权限码、数据权限三者同时生效。' }
               ]
             }
           ]
@@ -1208,10 +1208,10 @@ export default {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: '常用预设', meaning: '始终可操作、仅本人、仅本人未流转草稿、本人草稿或已撤回、当前办理人、流程进行中、本部门、指定状态。', notes: '应用预设会重建规则根节点，但保留“不满足时”行为。' },
-                { option: '不满足时 HIDE', meaning: '直接隐藏按钮。', notes: '适合无意义或不应暴露的操作。' },
-                { option: '不满足时 DISABLE', meaning: '保留按钮但禁用，并显示提示原因。', notes: '适合批量操作和需要解释规则的场景。' },
-                { option: '提示原因', meaning: '用户无法操作时看到的说明。', notes: '写清主体、状态和下一步，不要只写“无权限”。' },
+                { option: '显示条件', meaning: '条件满足时显示按钮；不满足时隐藏。', notes: '优先于启用条件，隐藏后不再进行启用判断。适合当前场景没有必要暴露的操作。' },
+                { option: '启用条件', meaning: '按钮显示后，条件满足时允许点击；不满足时禁用。', notes: '适合批量操作和需要向用户解释限制的场景。' },
+                { option: '常用预设', meaning: '显示条件可选择始终显示，启用条件可选择显示后始终启用；两侧也都支持仅本人、本人草稿或已撤回、当前办理人、流程进行中、本部门、指定状态等预设。', notes: '预设只重建当前区块的规则，不影响另一套条件。' },
+                { option: '禁用提示', meaning: '启用条件不满足时用户看到的说明。', notes: '写清主体、状态和下一步，不要只写“无权限”；隐藏按钮不会展示提示。' },
                 { option: '条件组', meaning: 'AND 全部满足 / OR 任一满足，可嵌套到 5 层。', notes: '复杂规则优先拆分为多个有语义的小组。' }
               ]
             },

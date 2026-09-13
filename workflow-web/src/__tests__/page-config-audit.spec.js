@@ -965,6 +965,27 @@ assert.deepEqual(
 const formDesigner = readFileSync(path.join(root, 'src/views/EntityFormDesignByEntity.vue'), 'utf8')
 assert.match(
   formDesigner,
+  /async function loadSubListOptions\([\s\S]*?propagateError = false[\s\S]*?if \(propagateError\) throw error[\s\S]*?async function ensureSubListBinding\(field\)[\s\S]*?loadSubListOptions\(targetEntityId, field, \{[\s\S]*?propagateError: true/,
+  '子列表保存校验必须透传加载失败，不能把接口异常误报为列表不存在'
+)
+const openExtensionManagementSource = formDesigner.match(
+  /function openExtensionManagement\(\) \{[\s\S]*?\n\}/
+)?.[0] || ''
+assert.ok(
+  openExtensionManagementSource.includes('router.resolve({')
+    && openExtensionManagementSource.includes("query: { type: 'UI_FORM' }")
+    && openExtensionManagementSource.includes(
+      "window.open(extensionManagementRoute.href, '_blank', 'noopener,noreferrer')"
+    ),
+  '表单扩展管理必须在新标签页打开，避免覆盖仍有未保存修改的设计器'
+)
+assert.equal(
+  openExtensionManagementSource.includes('router.push('),
+  false,
+  '表单扩展管理不得在当前设计器标签页内跳转'
+)
+assert.match(
+  formDesigner,
   /<EventBindingDialog[\s\S]*?@changed="loadDiff"[\s\S]*?\/>/,
   '表单事件绑定保存或删除后必须刷新未发布差异与撤销入口'
 )
@@ -1335,11 +1356,15 @@ const formNodeHierarchy = readFileSync(path.join(root, 'src/shared/form-node-hie
 const formPreviewLinkage = readFileSync(path.join(root, 'src/components/FormPreviewLinkage.vue'), 'utf8')
 const formNodeRenderer = readFileSync(path.join(root, 'src/components/FormNodeRenderer.vue'), 'utf8')
 const formNodeRuntimeItem = readFileSync(path.join(root, 'src/components/FormNodeRuntimeItem.vue'), 'utf8')
+const formNodePropertySchema = readFileSync(
+  path.join(root, 'src/shared/form-node-property-schema.js'),
+  'utf8'
+)
 const entityDataFormFields = readFileSync(
   path.join(root, 'src/views/entity/components/EntityDataFormFields.vue'),
   'utf8'
 )
-const formTreeRuntime = `${formNodeRenderer}\n${formNodeRuntimeItem}`
+const formTreeRuntime = `${formNodeRenderer}\n${formNodeRuntimeItem}\n${formNodePropertySchema}`
 
 assert.ok(
   entityDataFormFields.includes(':form="runtimeForm"')
@@ -1681,6 +1706,22 @@ assert.match(
 )
 
 const flowActionPanel = readFileSync(path.join(root, 'src/components/FlowActionConfigPanel.vue'), 'utf8')
+const openFlowExtensionManagementSource = flowActionPanel.match(
+  /function openExtensionManagement\(\) \{[\s\S]*?\n\}/
+)?.[0] || ''
+assert.ok(
+  openFlowExtensionManagementSource.includes('router.resolve({')
+    && openFlowExtensionManagementSource.includes("query: { type: 'FLOW_ACTION' }")
+    && openFlowExtensionManagementSource.includes(
+      "window.open(extensionManagementRoute.href, '_blank', 'noopener,noreferrer')"
+    ),
+  '流程动作扩展管理必须在新标签页打开，避免覆盖仍有未保存修改的流程设计器'
+)
+assert.equal(
+  openFlowExtensionManagementSource.includes('router.push('),
+  false,
+  '流程动作扩展管理不得在当前流程设计器标签页内跳转'
+)
 ;['triggerTiming', 'executionMode', 'failurePolicy', 'maxRetries'].forEach((field) => {
   assert.ok(flowActionPanel.includes(field), `流程动作配置缺少字段: ${field}`)
 })

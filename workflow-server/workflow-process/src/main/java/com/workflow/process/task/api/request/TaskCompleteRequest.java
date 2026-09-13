@@ -19,6 +19,15 @@ public class TaskCompleteRequest {
     private String transferTo;
     private String actionLabel;
     private Map<String, Object> formData;
+    /** 本次提交审批所使用的已发布表单及活动任务令牌。 */
+    private String formId;
+    private String formReleaseId;
+    private Integer formReleaseVersion;
+    private String formReleaseResolutionToken;
+    /** 客户端声明只用于与服务端任务/令牌联合校验，不能单独授权。 */
+    private String entityCode;
+    private String recordId;
+    private String listKey;
     private String nextApprovalScopeKey;
     private List<NextApproverSelectionRequest> nextApproverSelections;
 }

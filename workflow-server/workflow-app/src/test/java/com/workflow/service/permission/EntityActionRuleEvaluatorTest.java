@@ -78,10 +78,8 @@ class EntityActionRuleEvaluatorTest {
         assertFalse(evaluator.evaluate(assigneeRule(), row, lisi, "PROCESSING"));
     }
 
-    private EntityActionRuleDTO assigneeRule() {
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        rule.setRoot(relation("CURRENT_USER_IS_ASSIGNEE"));
-        return rule;
+    private EntityActionRuleDTO.RuleNode assigneeRule() {
+        return relation("CURRENT_USER_IS_ASSIGNEE");
     }
 
     /** 测试支持自定义字段条件：验证 amount > 100 的字段条件求值为真 */
@@ -89,18 +87,59 @@ class EntityActionRuleEvaluatorTest {
     void customFieldConditionsAreSupported() {
         EntityDataDTO row = row("user-1", "user-1", null, "DRAFT");
         row.setData(Map.of("amount", 120));
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
         EntityActionRuleDTO.RuleNode node = node("FIELD", "GT", 100);
         node.setField("amount");
-        rule.setRoot(node);
 
-        assertTrue(evaluator.evaluate(rule, row, user("user-1", "zhangsan", "dept-1"), "NEW"));
+        assertTrue(evaluator.evaluate(node, row, user("user-1", "zhangsan", "dept-1"), "NEW"));
+    }
+
+    /** 缺失字段只允许 EMPTY 命中，取反及有序比较不能借 null 绕过规则。 */
+    @Test
+    void missingActualValueFailsClosedForEveryComparisonExceptEmpty() {
+        EntityDataDTO row = row("user-1", "user-1", null, "DRAFT");
+        SysUser user = user("user-1", "zhangsan", "dept-1");
+
+        for (String operator : List.of(
+                "EQ", "NE", "IN", "NOT_IN", "CONTAINS",
+                "NOT_CONTAINS", "GT", "GTE", "LT", "LTE")) {
+            EntityActionRuleDTO.RuleNode condition =
+                    node("FIELD", operator,
+                            List.of("IN", "NOT_IN").contains(operator)
+                                    ? List.of("x") : "x");
+            condition.setField("missingField");
+            assertFalse(evaluator.evaluate(
+                    condition, row, user, "NEW"), operator);
+        }
+        EntityActionRuleDTO.RuleNode empty = node("FIELD", "EMPTY", null);
+        empty.setField("missingField");
+        EntityActionRuleDTO.RuleNode notEmpty =
+                node("FIELD", "NOT_EMPTY", null);
+        notEmpty.setField("missingField");
+        assertTrue(evaluator.evaluate(empty, row, user, "NEW"));
+        assertFalse(evaluator.evaluate(notEmpty, row, user, "NEW"));
+    }
+
+    /** roleIds 的集合运算按交集判断，NOT_IN 必须是完全无交集。 */
+    @Test
+    void userRoleCollectionUsesIntersectionForSetOperators() {
+        SysUser user = user("user-1", "zhangsan", "dept-1");
+        user.setRoleIds(List.of("role-a", "role-b"));
+        EntityActionRuleDTO.RuleNode in =
+                node("USER_FIELD", "IN", List.of("role-b", "role-c"));
+        in.setField("roleIds");
+        EntityActionRuleDTO.RuleNode notIn =
+                node("USER_FIELD", "NOT_IN", List.of("role-c"));
+        notIn.setField("roleIds");
+
+        assertTrue(evaluator.evaluate(in, null, user, null));
+        assertTrue(evaluator.evaluate(notIn, null, user, null));
+        notIn.setValue(List.of("role-a", "role-c"));
+        assertFalse(evaluator.evaluate(notIn, null, user, null));
     }
 
     /** 构造删除规则：归属人 + (未开始/新建 或 已撤回) */
-    private EntityActionRuleDTO deleteRule() {
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        rule.setRoot(group("AND",
+    private EntityActionRuleDTO.RuleNode deleteRule() {
+        return group("AND",
                 group("OR",
                         relation("CURRENT_USER_IS_CREATOR"),
                         relation("CURRENT_USER_IS_SUBMITTER")),
@@ -108,8 +147,7 @@ class EntityActionRuleEvaluatorTest {
                         group("AND",
                                 node("PROCESS_STATE", "EQ", "NOT_STARTED"),
                                 node("STATUS_CATEGORY", "EQ", "NEW")),
-                        node("STATUS_CATEGORY", "EQ", "WITHDRAWN"))));
-        return rule;
+                        node("STATUS_CATEGORY", "EQ", "WITHDRAWN")));
     }
 
     /** 构造逻辑分组节点（AND/OR），含子节点 */

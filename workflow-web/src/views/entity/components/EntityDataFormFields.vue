@@ -42,6 +42,8 @@
         releaseResolutionToken: defaultForm?.releaseResolutionToken
       }"
       :data-source-runtime="dataSourceRuntime"
+      :form-action-slots="customFormActionSlots"
+      @form-action="triggerCustomFormAction"
     />
   </div>
   <template v-else-if="hasConfiguredForm">
@@ -117,6 +119,10 @@ import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { parseJsonOptions } from '@/shared/list-runtime'
+import {
+  createCustomFormActionSlotContract,
+  formActionsForOwner
+} from '@/shared/form-actions'
 import { entityDataApi } from '@/api/entity.js'
 import { precheckFormFieldUnique } from '@/api/entityForm'
 import { getItemTreeByDictCode } from '@/api/system/dict'
@@ -160,7 +166,7 @@ const props = defineProps<{
   runtimeContext?: Record<string, any>
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'form-action': [action: any]
 }>()
 
@@ -172,6 +178,19 @@ const customFormRef = ref()
 const dictOptionMap = ref<Record<string, any[]>>({})
 const dataSourceOptionMap = ref<Record<string, any[]>>({})
 const runtimeMode = computed(() => props.isEdit ? 'edit' : 'create')
+const currentFormActions = computed(() =>
+  formActionsForOwner(props.formActions || [], props.defaultForm)
+)
+const customFormActionSlots = computed(() =>
+  createCustomFormActionSlotContract(
+    currentFormActions.value,
+    action => emit('form-action', action)
+  )
+)
+
+function triggerCustomFormAction(actionOrKey: any) {
+  return customFormActionSlots.value.trigger(actionOrKey)
+}
 const entityStatusOptions = computed(() => props.entityStatusOptions || [])
 const entityStatusMap = computed(() =>
   buildEntityStatusMap(entityStatusOptions.value)

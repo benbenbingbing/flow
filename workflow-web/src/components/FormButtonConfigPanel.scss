@@ -1,0 +1,146 @@
+.form-button-config-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mode-toolbar,
+.section-heading,
+.button-name-cell {
+  display: flex;
+  align-items: center;
+}
+
+.mode-toolbar {
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.mode-tip,
+.config-section p,
+.field-help {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.config-section {
+  width: 100%;
+}
+
+.section-heading {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.section-heading h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.section-heading p {
+  margin: 0;
+}
+
+.button-name-cell {
+  gap: 8px;
+}
+
+.section-alert {
+  margin-top: 12px;
+}
+
+.custom-button-guide {
+  margin-bottom: 12px;
+}
+
+.validation-message {
+  margin-top: 4px;
+  color: var(--el-color-danger);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.stable-key-lock {
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.is-invalid :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+}
+
+.field-help {
+  margin-left: 10px;
+}
+
+:global(.form-button-advanced-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
+:global(.form-button-advanced-dialog .el-dialog__body) {
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+  padding-top: 12px;
+}
+
+.advanced-dialog-content {
+  min-width: 0;
+}
+
+.advanced-basic-section {
+  padding: 16px 18px 2px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+}
+
+.advanced-section-heading {
+  margin-bottom: 16px;
+}
+
+.advanced-section-heading h3 {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.advanced-section-heading p {
+  margin: 4px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.advanced-settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+
+.advanced-settings-form__wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  :global(.form-button-advanced-dialog .el-dialog__body) {
+    max-height: calc(100vh - 160px);
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .advanced-basic-section {
+    padding: 14px 14px 0;
+  }
+
+  .advanced-settings-form {
+    display: block;
+  }
+
+  .field-help {
+    display: block;
+    margin: 4px 0 0;
+  }
+}

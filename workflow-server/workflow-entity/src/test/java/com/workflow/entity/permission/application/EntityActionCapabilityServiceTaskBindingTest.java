@@ -24,6 +24,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -196,8 +197,8 @@ class EntityActionCapabilityServiceTaskBindingTest {
         EntityActionRuleDTO.RuleNode all = new EntityActionRuleDTO.RuleNode();
         all.setType("GROUP");
         all.setLogic("AND");
-        all.setChildren(List.of(rule.getRoot(), status, field));
-        rule.setRoot(all);
+        all.setChildren(List.of(rule.getVisibleWhen(), status, field));
+        rule.setVisibleWhen(all);
         when(actionConfigService.readRule(approveButton)).thenReturn(rule);
 
         row.setStatus("DRAFT");
@@ -227,6 +228,107 @@ class EntityActionCapabilityServiceTaskBindingTest {
         verifyNoInteractions(assigneeLookup);
     }
 
+    @Test
+    void configuredActionEvaluatesVisibilityBeforeEnabledState() {
+        EntityDataDTO row = multiInstanceRow();
+        row.setData(new java.util.LinkedHashMap<>(Map.of(
+                "visible", false,
+                "enabled", false)));
+        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        rule.setVisibleWhen(fieldCondition("visible", true));
+        rule.setEnabledWhen(fieldCondition("enabled", true));
+        rule.setDisabledMessage("当前记录已锁定");
+
+        EntityActionCapabilityDTO hidden =
+                service.evaluateConfiguredAction(
+                        ENTITY_CODE, APPROVE_PERMISSION, rule, row);
+        assertFalse(hidden.isVisible());
+        assertNull(hidden.getActionableTaskId());
+
+        row.getData().put("visible", true);
+        EntityActionCapabilityDTO disabled =
+                service.evaluateConfiguredAction(
+                        ENTITY_CODE, APPROVE_PERMISSION, rule, row);
+        assertTrue(disabled.isVisible());
+        assertFalse(disabled.isEnabled());
+        assertEquals("当前记录已锁定", disabled.getReason());
+        assertNull(disabled.getActionableTaskId());
+    }
+
+    @Test
+    void selectionToolbarDefersRowConditionsToRowCapabilities() {
+        Map<String, Object> batchDelete = Map.of(
+                "key", "batchDelete",
+                "enabled", true);
+        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        rule.setVisibleWhen(fieldCondition("visible", true));
+        rule.setEnabledWhen(fieldCondition("enabled", true));
+        rule.setDisabledMessage("选中记录不可删除");
+        when(actionConfigService.resolveToolbarButtons(
+                listConfig, ENTITY_CODE))
+                .thenReturn(List.of(batchDelete));
+        when(actionConfigService.permissionFor(
+                ENTITY_CODE, batchDelete))
+                .thenReturn(APPROVE_PERMISSION);
+        when(actionConfigService.readRule(batchDelete))
+                .thenReturn(rule);
+
+        EntityActionCapabilityDTO toolbar =
+                service.evaluateToolbarActions(
+                        ENTITY_CODE, listConfig).get("batchDelete");
+        assertTrue(toolbar.isVisible());
+        assertTrue(toolbar.isEnabled());
+
+        EntityDataDTO row = multiInstanceRow();
+        row.setData(new java.util.LinkedHashMap<>(Map.of(
+                "visible", false,
+                "enabled", false)));
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        assertFalse(row.getActionCapabilities()
+                .get("batchDelete").isVisible());
+
+        row.getData().put("visible", true);
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        EntityActionCapabilityDTO rowCapability =
+                row.getActionCapabilities().get("batchDelete");
+        assertTrue(rowCapability.isVisible());
+        assertFalse(rowCapability.isEnabled());
+        assertEquals("选中记录不可删除",
+                rowCapability.getReason());
+    }
+
+    @Test
+    void publishedSelectionButtonChecksEveryVisibilityBeforeAnyEnabledState() {
+        Map<String, Object> button = Map.of(
+                "key", "exportSelected",
+                "enabled", true,
+                "perm", APPROVE_PERMISSION);
+        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        rule.setVisibleWhen(fieldCondition("visible", true));
+        rule.setEnabledWhen(fieldCondition("enabled", true));
+        rule.setDisabledMessage("选中记录不可导出");
+        when(actionConfigService.permissionFor(ENTITY_CODE, button))
+                .thenReturn(APPROVE_PERMISSION);
+        when(actionConfigService.readRule(button)).thenReturn(rule);
+        EntityDataDTO disabledFirst = multiInstanceRow();
+        disabledFirst.setData(Map.of(
+                "visible", true, "enabled", false));
+        EntityDataDTO hiddenSecond = multiInstanceRow();
+        hiddenSecond.setId("record-2");
+        hiddenSecond.setData(Map.of(
+                "visible", false, "enabled", true));
+
+        com.workflow.core.error.ForbiddenException failure = assertThrows(
+                com.workflow.core.error.ForbiddenException.class,
+                () -> service.requirePublishedListButton(
+                        ENTITY_CODE,
+                        "exportSelected",
+                        button,
+                        List.of(disabledFirst, hiddenSecond)));
+
+        assertEquals("当前数据不满足显示条件", failure.getMessage());
+    }
+
     /** 构造实体摘要指向其他会签人的兄弟任务。 */
     private EntityDataDTO multiInstanceRow() {
         EntityDataDTO row = new EntityDataDTO();
@@ -241,12 +343,23 @@ class EntityActionCapabilityServiceTaskBindingTest {
     /** 默认审批规则要求当前用户持有该记录的未完成待办。 */
     private EntityActionRuleDTO assigneeRule() {
         EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        rule.setMessage("仅当前任务办理人可以审批");
         EntityActionRuleDTO.RuleNode relation =
                 new EntityActionRuleDTO.RuleNode();
         relation.setType("RELATION");
         relation.setRelation("CURRENT_USER_IS_ASSIGNEE");
-        rule.setRoot(relation);
+        rule.setVisibleWhen(relation);
         return rule;
+    }
+
+    private EntityActionRuleDTO.RuleNode fieldCondition(
+            String field,
+            Object value) {
+        EntityActionRuleDTO.RuleNode node =
+                new EntityActionRuleDTO.RuleNode();
+        node.setType("FIELD");
+        node.setField(field);
+        node.setOperator("EQ");
+        node.setValue(value);
+        return node;
     }
 }

@@ -85,6 +85,7 @@ import org.springframework.util.StringUtils;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -184,7 +185,7 @@ public class UiConfigReleaseService {
         this.hotfixGovernanceService = hotfixGovernanceService;
     }
 
-    /** 注入列表按钮发布规范化服务，供 legacy 快照差异与恢复共用。 */
+    /** 注入列表按钮规则校验与发布规范化服务。 */
     @Autowired
     void setListActionConfigService(
             EntityListActionConfigService listActionConfigService) {
@@ -226,7 +227,66 @@ public class UiConfigReleaseService {
                         release.getReleaseMode()))
                 .forEach(release -> release.setRolloutStatus(
                         resolveRolloutStatus(release)));
-        return releases;
+        return FORM.equals(normalize(configType))
+                ? releases.stream()
+                        .map(this::formManagementRelease)
+                        .toList()
+                : releases;
+    }
+
+    /**
+     * FORM 发布管理响应的最小脱敏边界。
+     *
+     * <p>完整操作快照只用于服务端执行与完整性验证；仅具备表单配置权限的用户
+     * 不一定具备接口服务查看权限，因此出站副本从整个 FORM 快照树递归移除
+     * {@code executableSnapshot}，并不返回可能携带同一配置的语义补丁。这样也覆盖
+     * 历史扩展把 Provider 快照嵌入 viewCompositions 等位置的情况；数据库实体和
+     * LIST 既有响应保持不变。</p>
+     */
+    private UiConfigRelease managementRelease(
+            String configType,
+            UiConfigRelease release) {
+        return release == null || !FORM.equals(normalize(configType))
+                ? release : formManagementRelease(release);
+    }
+
+    private UiConfigRelease formManagementRelease(UiConfigRelease release) {
+        UiConfigRelease result = objectMapper.convertValue(
+                release, UiConfigRelease.class);
+        result.setPatchDocument(null);
+        if (!StringUtils.hasText(release.getSnapshotDocument())) {
+            return result;
+        }
+        try {
+            Map<String, Object> snapshot = codec.readObject(
+                    release.getSnapshotDocument(),
+                    "表单发布管理快照");
+            removeExecutableSnapshot(snapshot);
+            result.setSnapshotDocument(codec.write(
+                    snapshot, "表单发布管理脱敏快照"));
+        } catch (RuntimeException exception) {
+            // 旧损坏快照也不能因管理查询而泄露原始 Provider 配置。
+            result.setSnapshotDocument(null);
+            log.warn(
+                    "表单发布管理快照脱敏失败，已隐藏快照文档: releaseId={}, failureType={}",
+                    LogValue.safe(release.getId()),
+                    LogValue.failureType(exception));
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void removeExecutableSnapshot(Object value) {
+        if (value instanceof Map<?, ?> raw) {
+            Map<Object, Object> map = (Map<Object, Object>) raw;
+            map.remove("executableSnapshot");
+            new ArrayList<>(map.values())
+                    .forEach(this::removeExecutableSnapshot);
+            return;
+        }
+        if (value instanceof Collection<?> collection) {
+            collection.forEach(this::removeExecutableSnapshot);
+        }
     }
 
     /**
@@ -519,7 +579,9 @@ public class UiConfigReleaseService {
                         false);
         Map<String, Object> result = runtimeReleaseResult(
                 resolved,
-                verifiedSnapshot(release));
+                // 运行端只需要渲染态表单；完整发布制品中的事件步骤现已包含
+                // Provider 配置与策略快照，绝不能返回给普通页面调用方。
+                runtimeSnapshot(resolved.form()));
         log.info(
                 "表单运行时快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, source={}",
                 LogValue.safe(formId),
@@ -589,6 +651,62 @@ public class UiConfigReleaseService {
                 || Objects.equals(
                         expectedVersion,
                         claims.parentReleaseVersion()));
+    }
+
+    /**
+     * 校验审批按钮使用的表单发布令牌确实属于服务端回查到的活动待办。
+     *
+     * <p>普通表单解析令牌只负责固定发布版本；审批执行额外要求 ACTIVE_TASK、
+     * 精确流程历史与节点均和当前待办一致。这样 NEW_INSTANCE 令牌或历史任务
+     * 携带当前 ACTIVE 表单坐标都不能执行审批按钮。</p>
+     */
+    public void requireActiveTaskReleaseToken(
+            String releaseResolutionToken,
+            String formId,
+            String releaseId,
+            Integer releaseVersion,
+            String processVersionHistoryId,
+            String nodeId,
+            String taskId,
+            String processInstanceId,
+            String entityCode,
+            String recordId) {
+        if (!StringUtils.hasText(releaseResolutionToken)
+                || !StringUtils.hasText(formId)
+                || !StringUtils.hasText(releaseId)
+                || releaseVersion == null
+                || !StringUtils.hasText(processVersionHistoryId)
+                || !StringUtils.hasText(nodeId)
+                || !StringUtils.hasText(taskId)
+                || !StringUtils.hasText(processInstanceId)
+                || !StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(recordId)) {
+            throw new BusinessForbiddenException(
+                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_REQUIRED",
+                    "审批表单按钮缺少完整的活动任务发布上下文");
+        }
+        UiReleaseResolutionTokenService.Claims claims =
+                resolutionTokenService.verify(releaseResolutionToken);
+        if (claims.purpose() != UiRuntimePurpose.ACTIVE_TASK
+                || !Objects.equals(formId, claims.parentFormId())
+                || !Objects.equals(releaseId, claims.parentReleaseId())
+                || !Objects.equals(
+                        releaseVersion,
+                        claims.parentReleaseVersion())
+                || !Objects.equals(
+                        processVersionHistoryId,
+                        claims.processVersionHistoryId())
+                || !Objects.equals(nodeId, claims.nodeId())
+                || !Objects.equals(taskId, claims.taskId())
+                || !Objects.equals(
+                        processInstanceId,
+                        claims.processInstanceId())
+                || !Objects.equals(entityCode, claims.entityCode())
+                || !Objects.equals(recordId, claims.recordId())) {
+            throw new BusinessForbiddenException(
+                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_MISMATCH",
+                    "审批表单按钮与当前活动任务的发布上下文不一致");
+        }
     }
 
     /**
@@ -672,7 +790,8 @@ public class UiConfigReleaseService {
                     resolved.releaseId(),
                     resolved.releaseVersion(),
                     resolved.effectiveReleaseId(),
-                    resolved.hotfixApplied());
+                    resolved.hotfixApplied(),
+                    resolved.effectiveContentHash());
         }
 
         UiConfigRelease release =
@@ -727,7 +846,8 @@ public class UiConfigReleaseService {
                 release.getId(),
                 release.getVersion(),
                 release.getId(),
-                false);
+                false,
+                release.getContentHash());
     }
 
     private Map<String, Object> runtimeReleaseResult(
@@ -774,7 +894,13 @@ public class UiConfigReleaseService {
                 "viewCompositions",
                 form.getViewCompositions() == null
                         ? List.of() : form.getViewCompositions());
-        return snapshot;
+        Map<String, Object> outbound = objectMapper.convertValue(
+                snapshot,
+                new TypeReference<Map<String, Object>>() {});
+        // 运行态表单只消费渲染配置；历史关联内容中若残留 Provider
+        // 可执行快照，也必须在普通页面出站边界递归剥离。
+        removeExecutableSnapshot(outbound);
+        return outbound;
     }
 
     private boolean referencesChildRelease(
@@ -972,7 +1098,18 @@ public class UiConfigReleaseService {
      * @throws IllegalArgumentException 配置不存在时抛出
      */
     public Map<String, Object> draftSnapshot(String configType, String configId) {
-        return buildDraftSnapshot(configType, configId, false);
+        Map<String, Object> snapshot = buildDraftSnapshot(
+                configType, configId, false);
+        if (!FORM.equals(normalize(configType))) {
+            return snapshot;
+        }
+        Map<String, Object> outbound = objectMapper.convertValue(
+                snapshot,
+                new TypeReference<Map<String, Object>>() {});
+        // 草稿接口是管理出站边界，不参与发布制品生成。关联内容快照可能已固定
+        // Provider 配置，必须在副本上递归剥离，不能把密钥随表单设计权限下发。
+        removeExecutableSnapshot(outbound);
+        return outbound;
     }
 
     /**
@@ -1701,9 +1838,13 @@ public class UiConfigReleaseService {
                 LogValue.safe(UserContext.getUserId()));
         if (HOTFIX.equals(releaseMode)) {
             requireHotfixSupported(configType);
-            return publishHotfix(configType, configId, request);
+            return managementRelease(
+                    configType,
+                    publishHotfix(configType, configId, request));
         }
-        return publishStandard(configType, configId, request);
+        return managementRelease(
+                configType,
+                publishStandard(configType, configId, request));
     }
 
     private UiConfigRelease publishStandard(
@@ -2632,7 +2773,7 @@ public class UiConfigReleaseService {
                 targets.size(),
                 LogValue.safe(release.getStatus()),
                 LogValue.safe(UserContext.getUserId()));
-        return release;
+        return managementRelease(configType, release);
     }
 
     /**
@@ -2649,12 +2790,14 @@ public class UiConfigReleaseService {
             String configType,
             String configId,
             String releaseId) {
-        return activateInternal(
+        return managementRelease(
                 configType,
-                configId,
-                releaseId,
-                null,
-                null);
+                activateInternal(
+                        configType,
+                        configId,
+                        releaseId,
+                        null,
+                        null));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -2679,12 +2822,14 @@ public class UiConfigReleaseService {
             String reason,
             String expectedActiveReleaseId) {
         requireOperationReason(reason, "激活原因不能为空");
-        return activateInternal(
+        return managementRelease(
                 configType,
-                configId,
-                releaseId,
-                reason,
-                expectedActiveReleaseId);
+                activateInternal(
+                        configType,
+                        configId,
+                        releaseId,
+                        reason,
+                        expectedActiveReleaseId));
     }
 
     private UiConfigRelease activateInternal(
@@ -3098,17 +3243,14 @@ public class UiConfigReleaseService {
         if (!LIST.equals(configType)) {
             return activeSnapshot;
         }
-        if (listActionConfigService == null) {
-            throw new IllegalStateException(
-                    "列表按钮发布规范化服务未配置");
-        }
         EntityListConfigDTO publishedList = runtimeList(
                 activeSnapshot,
                 configId);
         EntityListConfigDTO currentList = runtimeList(
                 currentDraft,
                 configId);
-        listActionConfigService.normalizePublishedActionsForRestore(
+        requireListActionConfigService()
+                .normalizePublishedActionsForRestore(
                 publishedList,
                 currentList);
         Map<String, Object> normalized = new LinkedHashMap<>(
@@ -3117,6 +3259,15 @@ public class UiConfigReleaseService {
                 "list",
                 snapshotSupport.stableValue(publishedList));
         return normalized;
+    }
+
+    /** 发布、激活和恢复统一要求列表按钮规则服务已完成容器装配。 */
+    private EntityListActionConfigService requireListActionConfigService() {
+        if (listActionConfigService == null) {
+            throw new IllegalStateException(
+                    "列表按钮发布规范化服务未配置");
+        }
+        return listActionConfigService;
     }
 
     private DraftDiscardAssessment assessDraftDiscard(
@@ -3940,12 +4091,58 @@ public class UiConfigReleaseService {
         return verifiedSnapshot(release);
     }
 
+    /**
+     * 校验同一次运行时解析得到的有效快照仍与其可信内容哈希一致。
+     *
+     * <p>该方法不会回读 ACTIVE 或基础发布记录，专供已经通过
+     * {@link #resolveRuntimeEventSnapshot(String, String, Integer, String)}
+     * 得到的表单按钮执行链使用，从而同时覆盖标准发布与流程热修复的有效快照。</p>
+     *
+     * @param snapshot 已解析的完整有效快照
+     * @param expectedHash 解析时验证过的有效内容哈希
+     * @throws BusinessConflictException 快照缺失、被修改或哈希不完整时抛出
+     */
+    public void verifyResolvedEventSnapshot(
+            Map<String, Object> snapshot,
+            String expectedHash) {
+        if (snapshot == null || snapshot.isEmpty()
+                || !StringUtils.hasText(expectedHash)) {
+            throw new BusinessConflictException(
+                    "UI_EVENT_EFFECTIVE_SNAPSHOT_REQUIRED",
+                    "表单按钮执行缺少可信有效快照或内容哈希");
+        }
+        String actualHash = snapshotSupport.hash(
+                snapshotSupport.canonical(snapshot));
+        if (!Objects.equals(expectedHash, actualHash)) {
+            throw new BusinessConflictException(
+                    "UI_EVENT_EFFECTIVE_SNAPSHOT_TAMPERED",
+                    "表单按钮有效快照完整性校验失败");
+        }
+    }
+
     public record ResolvedUiEventSnapshot(
             Map<String, Object> snapshot,
             String releaseId,
             Integer releaseVersion,
             String effectiveReleaseId,
-            boolean hotfixApplied) {
+            boolean hotfixApplied,
+            String effectiveContentHash) {
+
+        /** 保留旧调用方构造兼容；运行时生产解析始终提供有效内容哈希。 */
+        public ResolvedUiEventSnapshot(
+                Map<String, Object> snapshot,
+                String releaseId,
+                Integer releaseVersion,
+                String effectiveReleaseId,
+                boolean hotfixApplied) {
+            this(
+                    snapshot,
+                    releaseId,
+                    releaseVersion,
+                    effectiveReleaseId,
+                    hotfixApplied,
+                    null);
+        }
     }
 
     /** 撤销草稿时补齐旧发布的节点配置，运行时读取仍保持原快照结构。 */
@@ -4339,7 +4536,8 @@ public class UiConfigReleaseService {
                             eventBindingSnapshotService.snapshot(
                                     FORM,
                                     configId,
-                                    form.getEntityId())));
+                                    form.getEntityId(),
+                                    pinRuntimeReferences)));
             snapshot.put(
                     "viewCompositions",
                     snapshotSupport.stableValue(
@@ -4361,7 +4559,8 @@ public class UiConfigReleaseService {
                         eventBindingSnapshotService.snapshot(
                                 LIST,
                                 configId,
-                                list.getEntityId())));
+                                list.getEntityId(),
+                                pinRuntimeReferences)));
         snapshot.put(
                 "viewCompositions",
                 snapshotSupport.stableValue(
@@ -4501,7 +4700,12 @@ public class UiConfigReleaseService {
             validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
-            dataSourceValidator.validate(snapshot);
+            Map<String, Object> referenceSnapshot =
+                    eventBindingSnapshotService
+                            .activationReferenceSnapshot(snapshot);
+            // 部分纯 Mock 调用方可能未定义新方法返回值；生产实现始终返回深拷贝。
+            dataSourceValidator.validate(referenceSnapshot == null
+                    ? snapshot : referenceSnapshot);
             requireViewCompositionService().validateReleaseSnapshot(
                     configType, configId, snapshot);
             return;
@@ -4509,6 +4713,8 @@ public class UiConfigReleaseService {
         EntityListConfigDTO list = objectMapper.convertValue(
                 snapshot.get("list"), EntityListConfigDTO.class);
         listConfigurationValidator.validate(list);
+        requireListActionConfigService()
+                .validateAvailabilityRules(list);
         validatePinnedListTargetForms(list);
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
@@ -4785,7 +4991,12 @@ public class UiConfigReleaseService {
             validateFormActions(snapshot);
             validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
-            dataSourceValidator.validate(snapshot);
+            Map<String, Object> referenceSnapshot =
+                    eventBindingSnapshotService
+                            .activationReferenceSnapshot(snapshot);
+            // 完整 v1 步骤按不可变制品校验；未钉版历史步骤仍回读当前定义。
+            dataSourceValidator.validate(referenceSnapshot == null
+                    ? snapshot : referenceSnapshot);
             requireViewCompositionService().validateReleaseSnapshot(
                     configType, configId, snapshot);
             return;
@@ -4793,6 +5004,8 @@ public class UiConfigReleaseService {
         EntityListConfigDTO list = objectMapper.convertValue(
                 snapshot.get("list"), EntityListConfigDTO.class);
         listConfigurationValidator.validate(list);
+        requireListActionConfigService()
+                .validateAvailabilityRules(list);
         validatePinnedListTargetForms(list);
         validateListTemplateReferences(list);
         dataSourceValidator.validate(snapshot);
@@ -5008,33 +5221,176 @@ public class UiConfigReleaseService {
                 .map(EntityFormNode::getNodeKey)
                 .filter(StringUtils::hasText)
                 .collect(java.util.stream.Collectors.toSet());
-        Set<String> boundButtonKeys = mapList(
-                snapshot.get("eventBindings")).stream()
-                .filter(binding -> "BUTTON".equals(
-                        normalize(text(binding.get("targetType")))))
-                .filter(binding -> UiDataSourceUsages
-                        .FORM_BUTTON_CLICK.equals(
-                        normalize(text(binding.get("eventCode")))))
-                .filter(binding -> !Boolean.FALSE.equals(
-                        binding.get("enabled")))
-                .map(binding -> text(binding.get("targetKey")))
-                .filter(StringUtils::hasText)
-                .collect(java.util.stream.Collectors.toSet());
+        List<Map<String, Object>> eventBindings = mapList(
+                snapshot.get("eventBindings"));
         Map<String, Object> viewConfig =
                 StringUtils.hasText(form.getViewConfig())
                         ? codec.readObject(
                                 form.getViewConfig(),
                                 "表单视图配置")
                         : Map.of();
-        new EntityFormActionConfigPolicy().validate(
+        EntityFormActionConfigPolicy actionPolicy =
+                new EntityFormActionConfigPolicy();
+        boolean systemEntity = definition != null
+                && definition.getStorageMode()
+                == EntityDefinition.StorageMode.SYSTEM;
+        // 先完成按钮本体与动作插槽的结构校验；事件主处理约束需要在下方按
+        // ENTITY OWNER → FORM OWNER → BUTTON 合并最终链后单独判断。
+        actionPolicy.validate(
                 viewConfig,
-                definition != null
-                        && definition.getStorageMode()
-                        == EntityDefinition.StorageMode.SYSTEM,
+                systemEntity,
                 actionSlotKeys,
                 true,
-                boundButtonKeys,
-                true);
+                Set.of(),
+                false);
+        List<Map<String, Object>> customButtons = mapList(
+                actionPolicy.actionBar(viewConfig)
+                        .get("customButtons"));
+        Set<String> customButtonKeys = customButtons.stream()
+                .map(button -> text(button.get("key")))
+                .filter(StringUtils::hasText)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> orphanBindingKeys = eventBindings.stream()
+                .filter(binding -> "BUTTON".equals(
+                        normalize(text(binding.get("targetType")))))
+                .filter(binding -> UiDataSourceUsages
+                        .FORM_BUTTON_CLICK.equals(
+                        normalize(text(binding.get("eventCode")))))
+                // DISABLE 继承覆盖也是按钮身份声明，不能成为
+                // 绕过按钮目录的孤儿绑定，因此这里不按模式过滤。
+                .map(binding -> text(binding.get("targetKey")))
+                .filter(key -> !customButtonKeys.contains(key))
+                .collect(java.util.stream.Collectors.toCollection(
+                        java.util.LinkedHashSet::new));
+        if (!orphanBindingKeys.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "FORM_BUTTON_CLICK 绑定必须引用 actionBar.customButtons: "
+                            + String.join(", ", orphanBindingKeys));
+        }
+        Map<String, Integer> invalidMainStepCounts = new LinkedHashMap<>();
+        Set<String> conditionalMainStepKeys = new LinkedHashSet<>();
+        customButtons.stream()
+                .filter(button -> !Boolean.FALSE.equals(
+                        button.get("enabled")))
+                .map(button -> text(button.get("key")))
+                .filter(StringUtils::hasText)
+                .forEach(key -> {
+                    List<Map<String, Object>> mainSteps =
+                            effectiveFormButtonMainSteps(
+                                    eventBindings, form, key);
+                    int count = mainSteps.size();
+                    if (count != 1) {
+                        invalidMainStepCounts.put(key, count);
+                    } else if (hasExecutionCondition(mainSteps.get(0))) {
+                        conditionalMainStepKeys.add(key);
+                    }
+                });
+        if (!invalidMainStepCounts.isEmpty()) {
+            String details = invalidMainStepCounts.entrySet().stream()
+                    .map(entry -> entry.getKey() + "（"
+                            + entry.getValue() + " 个）")
+                    .collect(java.util.stream.Collectors.joining(", "));
+            throw new BusinessConflictException(
+                    "UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                    "启用的表单自定义按钮最终有效链必须且只能包含一个主处理步骤："
+                            + details);
+        }
+        if (!conditionalMainStepKeys.isEmpty()) {
+            throw new BusinessConflictException(
+                    "UI_EVENT_FORM_BUTTON_MAIN_STEP_CONDITION_UNSUPPORTED",
+                    "表单自定义按钮的主处理步骤必须无条件执行，请移除主处理的执行条件："
+                            + String.join(", ", conditionalMainStepKeys));
+        }
+    }
+
+    /**
+     * 按运行时 ENTITY OWNER → FORM OWNER → BUTTON 的继承顺序解析有效步骤。
+     * 空 INHERIT 可以复用默认链；DISABLE/REPLACE 与运行时保持完全一致。
+     */
+    private List<Map<String, Object>> effectiveFormButtonMainSteps(
+            List<Map<String, Object>> bindings,
+            EntityForm form,
+            String buttonKey) {
+        List<Map<String, Object>> effective = new ArrayList<>();
+        applyFormButtonLevel(
+                effective,
+                findFormButtonBinding(
+                        bindings,
+                        "ENTITY",
+                        form.getEntityId(),
+                        "OWNER",
+                        null));
+        applyFormButtonLevel(
+                effective,
+                findFormButtonBinding(
+                        bindings,
+                        FORM,
+                        form.getId(),
+                        "OWNER",
+                        null));
+        applyFormButtonLevel(
+                effective,
+                findFormButtonBinding(
+                        bindings,
+                        FORM,
+                        form.getId(),
+                        "BUTTON",
+                        buttonKey));
+        // BEFORE/AFTER 可按需配置多个；只有 REPLACE 在 FORM_BUTTON_CLICK 中
+        // 承担唯一主处理职责，缺失或重复都会让按钮结果语义不确定。
+        return effective.stream()
+                .filter(step -> "REPLACE".equals(normalize(text(
+                        step.get("strategy")))))
+                .toList();
+    }
+
+    /** 空条件对象等同于未配置；非空条件会让主处理存在被跳过的路径。 */
+    private boolean hasExecutionCondition(Map<String, Object> step) {
+        return step != null
+                && step.get("condition") instanceof Map<?, ?> condition
+                && !condition.isEmpty();
+    }
+
+    private Map<String, Object> findFormButtonBinding(
+            List<Map<String, Object>> bindings,
+            String ownerType,
+            String ownerId,
+            String targetType,
+            String targetKey) {
+        return bindings.stream()
+                .filter(binding -> !Boolean.FALSE.equals(
+                        binding.get("enabled")))
+                .filter(binding -> ownerType.equals(normalize(text(
+                        binding.get("ownerType")))))
+                .filter(binding -> Objects.equals(
+                        ownerId, text(binding.get("ownerId"))))
+                .filter(binding -> targetType.equals(normalize(text(
+                        binding.getOrDefault("targetType", "OWNER")))))
+                .filter(binding -> Objects.equals(
+                        normalizedTargetKey(targetKey),
+                        normalizedTargetKey(text(binding.get("targetKey")))))
+                .filter(binding -> UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                        normalize(text(binding.get("eventCode")))))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void applyFormButtonLevel(
+            List<Map<String, Object>> effective,
+            Map<String, Object> binding) {
+        if (binding == null) {
+            return;
+        }
+        String mode = normalize(text(binding.getOrDefault(
+                "inheritanceMode", "INHERIT")));
+        if ("DISABLE".equals(mode)) {
+            effective.clear();
+            return;
+        }
+        if ("REPLACE".equals(mode)) {
+            effective.clear();
+        }
+        effective.addAll(mapList(binding.get("steps")));
     }
 
     private void validateTemplateReferences(Map<String, Object> snapshot) {
@@ -5634,6 +5990,10 @@ public class UiConfigReleaseService {
 
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String normalizedTargetKey(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "";
     }
 
     private String text(Object value) {

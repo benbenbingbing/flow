@@ -19,6 +19,7 @@ import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.contracts.migration.port.MigrationAssetHandler;
 import com.workflow.contracts.ui.CommonInvocationContext;
@@ -75,6 +76,43 @@ class ProjectCustomBackendExtensionsTest {
                     "项目",
                     "DYNAMIC",
                     1);
+
+    @Test
+    void keepsLegacyProcessTaskAccessPortImplementationsFailClosed() {
+        ProcessTaskAccessPort legacyAdapter = new ProcessTaskAccessPort() {
+            @Override
+            public Optional<String> findActionableTaskId(
+                    String userId,
+                    String entityCode,
+                    String entityDataId,
+                    String processInstanceId) {
+                return Optional.of("legacy-task");
+            }
+
+            @Override
+            public boolean isCurrentAssignee(
+                    String userId,
+                    String entityCode,
+                    String entityDataId,
+                    String processInstanceId) {
+                return true;
+            }
+
+            @Override
+            public List<String> findActionableEntityDataIds(
+                    String userId,
+                    String entityCode) {
+                return List.of("record-1");
+            }
+        };
+
+        assertTrue(legacyAdapter.findActionableTaskContext(
+                "user-1",
+                "legacy-task",
+                "project",
+                "record-1",
+                "process-1").isEmpty());
+    }
 
     @Test
     void registersComposableBackendExtensionPoints() {

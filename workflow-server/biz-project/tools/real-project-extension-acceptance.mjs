@@ -1947,11 +1947,10 @@ async function configureLists(entity, sources) {
           enabled: true,
           perm: permissionCode,
           availabilityRule: {
-            version: 1,
-            unavailableBehavior: 'DISABLE',
-            message:
+            version: 2,
+            disabledMessage:
               '仅全扩展或表单扩展场景可执行',
-            root: {
+            enabledWhen: {
               type: 'PROJECT:CUSTOM_CONDITION',
               field: 'acceptance_scene',
               operator: 'IN',

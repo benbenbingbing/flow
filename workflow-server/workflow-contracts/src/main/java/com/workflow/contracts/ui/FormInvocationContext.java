@@ -23,5 +23,29 @@ public record FormInvocationContext(
         /** 子表单或明细行所属的父记录 ID。 */
         String parentRecordId,
         /** 子表单或明细行的稳定行标识。 */
-        String rowKey) implements UiInvocationContext {
+        String rowKey,
+        /** 审批按钮经服务端核验的活动任务 ID；其他表单调用为空。 */
+        String taskId,
+        /** 审批按钮经服务端核验的流程实例 ID；其他表单调用为空。 */
+        String processInstanceId) implements UiInvocationContext {
+
+    /**
+     * 保留任务主体绑定加入前的公共构造签名，避免既有 Provider 源码扩展升级后
+     * 被迫改造；旧调用不会获得任务能力，新增字段安全地保持为空。
+     */
+    public FormInvocationContext(
+            CommonInvocationContext common,
+            EntityDescriptor entity,
+            String formId,
+            String formKey,
+            String formName,
+            String mode,
+            String recordId,
+            String fieldCode,
+            String parentRecordId,
+            String rowKey) {
+        this(common, entity, formId, formKey, formName, mode,
+                recordId, fieldCode, parentRecordId, rowKey,
+                null, null);
+    }
 }

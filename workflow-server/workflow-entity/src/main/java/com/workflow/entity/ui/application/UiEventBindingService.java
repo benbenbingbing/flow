@@ -101,6 +101,12 @@ public class UiEventBindingService {
             UiDataSourceUsages.SUBFORM_SAVE);
     private static final Set<String> FORM_BUTTON_EVENTS =
             Set.of(UiDataSourceUsages.FORM_BUTTON_CLICK);
+    private static final List<String> PINNED_BINDING_IDENTITY_FIELDS =
+            List.of(
+                    "bindingOwnerType",
+                    "bindingOwnerId",
+                    "bindingTargetType",
+                    "bindingTargetKey");
     private static final Set<String> LIST_BUTTON_EVENTS = Set.of(
             UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
             UiDataSourceUsages.ROW_BUTTON_CLICK);
@@ -206,7 +212,9 @@ public class UiEventBindingService {
                 request,
                 null,
                 null,
-                Map.of());
+                Map.of(),
+                null,
+                null);
         Map<String, Object> local = findBinding(
                 bindings,
                 normalizedOwner,
@@ -401,7 +409,9 @@ public class UiEventBindingService {
                     request,
                     resolved.releaseId(),
                     resolved.releaseVersion(),
-                    snapshot);
+                    snapshot,
+                    resolved.effectiveReleaseId(),
+                    resolved.effectiveContentHash());
             logResolvedChain(request, chain, "FORM_RELEASE");
             return chain;
         }
@@ -423,7 +433,9 @@ public class UiEventBindingService {
                 request,
                 resolved.releaseId(),
                 resolved.releaseVersion(),
-                snapshot);
+                snapshot,
+                resolved.releaseId(),
+                null);
         logResolvedChain(
                 request,
                 chain,
@@ -489,7 +501,9 @@ public class UiEventBindingService {
             UiEventExecuteRequest request,
             String releaseId,
             Integer releaseVersion,
-            Map<String, Object> snapshot) {
+            Map<String, Object> snapshot,
+            String effectiveReleaseId,
+            String effectiveContentHash) {
         String eventCode = normalize(request.getEventCode());
         if (!EVENTS.contains(eventCode)) {
             throw new IllegalArgumentException(
@@ -533,9 +547,34 @@ public class UiEventBindingService {
                         normalize(text(step.get("strategy")))))
                 .count();
         if (replacements > 1) {
+            if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)) {
+                // 损坏或历史发布快照也可能绕过当前保存/发布校验；表单按钮
+                // 在解析阶段仍使用面向业务的“主处理”概念返回一致错误。
+                throw new BusinessConflictException(
+                        "UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                        "启用的表单自定义按钮最终有效链必须且只能包含一个主处理步骤，当前为 "
+                                + replacements + " 个");
+            }
             throw new BusinessConflictException(
                     "UI_EVENT_MULTIPLE_REPLACE",
                     "同一事件的有效执行链最多只能包含一个 REPLACE 步骤");
+        }
+        if (replacements == 1
+                && "FORM".equals(normalize(request.getConfigType()))
+                && "BUTTON".equals(normalize(request.getTargetType()))
+                && UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)) {
+            Map<String, Object> mainStep = effective.stream()
+                    .filter(step -> "REPLACE".equals(normalize(text(
+                            step.get("strategy")))))
+                    .findFirst()
+                    .orElseThrow();
+            if (hasExecutionCondition(mainStep)) {
+                // 即使旧发布快照绕过保存与发布校验，精确按钮主处理也不能
+                // 因条件不满足而静默跳过。
+                throw new BusinessConflictException(
+                        "UI_EVENT_FORM_BUTTON_MAIN_STEP_CONDITION_UNSUPPORTED",
+                        "表单自定义按钮的主处理步骤必须无条件执行，请移除主处理的执行条件");
+            }
         }
         return new ResolvedEventChain(
                 List.copyOf(effective),
@@ -544,7 +583,9 @@ public class UiEventBindingService {
                 identity.entityId(),
                 identity.entityCode(),
                 identity.listKey(),
-                snapshot == null ? Map.of() : Map.copyOf(snapshot));
+                snapshot == null ? Map.of() : Map.copyOf(snapshot),
+                effectiveReleaseId,
+                effectiveContentHash);
     }
 
     private void applyLevel(
@@ -562,7 +603,56 @@ public class UiEventBindingService {
         if ("REPLACE".equals(mode)) {
             effective.clear();
         }
-        effective.addAll(mapList(binding.get("steps")));
+        for (Map<String, Object> step : mapList(binding.get("steps"))) {
+            Map<String, Object> executable = new LinkedHashMap<>(step);
+            if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(normalize(
+                    text(binding.get("eventCode"))))) {
+                attachTrustedBindingIdentity(executable, binding);
+            }
+            effective.add(executable);
+        }
+    }
+
+    /**
+     * 把步骤来源绑定保留到可信运行链，保证 OWNER 默认链仍按原绑定授权。
+     * 新版钉版步骤必须携带且匹配发布时身份；无版本标记的历史步骤在已验证
+     * 发布快照解析后补齐身份，以兼容旧发布。
+     */
+    private void attachTrustedBindingIdentity(
+            Map<String, Object> step,
+            Map<String, Object> binding) {
+        Map<String, Object> identity = new LinkedHashMap<>();
+        identity.put("bindingOwnerType", normalize(text(
+                binding.get("ownerType"))));
+        identity.put("bindingOwnerId", text(binding.get("ownerId")));
+        identity.put("bindingTargetType", normalize(text(
+                binding.getOrDefault("targetType", "OWNER"))));
+        identity.put("bindingTargetKey", normalizedTargetKey(text(
+                binding.get("targetKey"))));
+        if (step.containsKey("operationSnapshotVersion")) {
+            boolean matches = PINNED_BINDING_IDENTITY_FIELDS.stream()
+                    .allMatch(step::containsKey)
+                    && identity.entrySet().stream().allMatch(entry ->
+                            Objects.equals(
+                                    entry.getValue(),
+                                    "bindingOwnerType".equals(entry.getKey())
+                                            || "bindingTargetType".equals(
+                                            entry.getKey())
+                                            ? normalize(text(step.get(
+                                            entry.getKey())))
+                                            : "bindingTargetKey".equals(
+                                            entry.getKey())
+                                            ? normalizedTargetKey(text(
+                                            step.get(entry.getKey())))
+                                            : text(step.get(entry.getKey()))));
+            if (!matches) {
+                throw new BusinessConflictException(
+                        "UI_EVENT_PINNED_BINDING_INVALID",
+                        "表单按钮发布步骤的来源绑定身份不完整或不匹配");
+            }
+            return;
+        }
+        identity.forEach(step::put);
     }
 
     private Map<String, Object> findBinding(
@@ -619,6 +709,16 @@ public class UiEventBindingService {
             throw new IllegalArgumentException(
                     "不支持的继承模式: " + request.getInheritanceMode());
         }
+        if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
+                && "BUTTON".equals(targetType)
+                && "DISABLE".equals(inheritance)) {
+            // 按钮级 DISABLE 会把最终链清空，却仍保留一个可点击按钮配置；停用
+            // 必须使用按钮自身的 enabled 开关。OWNER 层仍允许清空上级公共链，
+            // 由更具体的 BUTTON 层重新提供主处理。
+            throw new BusinessConflictException(
+                    "UI_EVENT_FORM_BUTTON_DISABLE_UNSUPPORTED",
+                    "表单自定义按钮不支持“禁用自定义”；如需停用按钮，请关闭按钮的启用开关");
+        }
         List<Map<String, Object>> steps = request.getSteps() == null
                 ? List.of() : request.getSteps();
         Set<Integer> orders = new LinkedHashSet<>();
@@ -641,6 +741,15 @@ public class UiEventBindingService {
             if (!FAILURE_POLICIES.contains(failure)) {
                 throw new IllegalArgumentException(
                         "不支持的失败策略: " + failure);
+            }
+            if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
+                    && "REPLACE".equals(strategy)
+                    && hasExecutionCondition(step)) {
+                // FORM_BUTTON_CLICK 的每个层级都把 REPLACE 定义为主处理；带
+                // 条件会造成按钮已执行但主动作被静默跳过，保存时统一拒绝。
+                throw new BusinessConflictException(
+                        "UI_EVENT_FORM_BUTTON_MAIN_STEP_CONDITION_UNSUPPORTED",
+                        "表单自定义按钮的主处理步骤必须无条件执行，请移除主处理的执行条件");
             }
             if (!orders.add(order)) {
                 throw new IllegalArgumentException(
@@ -669,6 +778,13 @@ public class UiEventBindingService {
                                                         + operationCode));
                 operationContext = normalize(text(
                         operation.get("contextType")));
+                if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
+                        && !"READ".equals(normalize(text(
+                                operation.getOrDefault(
+                                        "kind", "READ"))))) {
+                    throw new IllegalArgumentException(
+                            "表单自定义按钮接口步骤只允许 READ 操作；实体写入必须走平台默认处理或受控命令计划，外部副作用必须由业务事务投递 Outbox");
+                }
             } else if (!(step.get("outputMapping") instanceof Map<?, ?>)
                     && !(step.get("outputMapping") instanceof List<?>)) {
                 throw new IllegalArgumentException(
@@ -691,6 +807,27 @@ public class UiEventBindingService {
                 entityReplaceCounts.merge(context, 1, Integer::sum);
             }
         }
+        if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
+                && "BUTTON".equals(targetType)
+                && "REPLACE".equals(inheritance)
+                && replaceCount != 1) {
+            // BUTTON 层选择“仅使用当前层”后不再可能继承主处理，因此草稿保存时
+            // 就必须保证本层主处理唯一，避免只能到发布阶段才发现空链。
+            throw new BusinessConflictException(
+                    "UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                    "表单自定义按钮使用“仅使用当前层”时，本层必须且只能包含一个主处理步骤，当前为 "
+                            + replaceCount + " 个");
+        }
+        if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
+                && "BUTTON".equals(targetType)
+                && replaceCount > 1) {
+            // 即使继续继承上级，BUTTON 已是最后一层，本层多个主处理也不可能
+            // 在后续合并中恢复为合法链，应在保存入口直接返回统一业务错误。
+            throw new BusinessConflictException(
+                    "UI_EVENT_FORM_BUTTON_MAIN_STEP_REQUIRED",
+                    "表单自定义按钮本层最多只能包含一个主处理步骤，当前为 "
+                            + replaceCount + " 个");
+        }
         if (!"ENTITY".equals(ownerType) && replaceCount > 1) {
             throw new IllegalArgumentException(
                     "一个事件绑定链最多只能有一个 REPLACE 步骤");
@@ -702,6 +839,13 @@ public class UiEventBindingService {
                                 + " 后最多只能有一个 REPLACE 步骤");
             }
         });
+    }
+
+    /** 空条件对象等同于未配置；只有会参与运行时判断的非空对象才算执行条件。 */
+    private boolean hasExecutionCondition(Map<String, Object> step) {
+        return step != null
+                && step.get("condition") instanceof Map<?, ?> condition
+                && !condition.isEmpty();
     }
 
     /**
@@ -942,6 +1086,29 @@ public class UiEventBindingService {
             String entityId,
             String entityCode,
             String listKey,
-            Map<String, Object> snapshot) {
+            Map<String, Object> snapshot,
+            String effectiveReleaseId,
+            String effectiveContentHash) {
+
+        /** 保留非表单按钮与现有测试构造兼容。 */
+        public ResolvedEventChain(
+                List<Map<String, Object>> steps,
+                String releaseId,
+                Integer releaseVersion,
+                String entityId,
+                String entityCode,
+                String listKey,
+                Map<String, Object> snapshot) {
+            this(
+                    steps,
+                    releaseId,
+                    releaseVersion,
+                    entityId,
+                    entityCode,
+                    listKey,
+                    snapshot,
+                    releaseId,
+                    null);
+        }
     }
 }

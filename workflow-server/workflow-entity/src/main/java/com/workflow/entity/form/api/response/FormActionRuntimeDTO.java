@@ -17,6 +17,8 @@ public class FormActionRuntimeDTO {
     private String label;
     private String icon;
     private String buttonType;
+    /** 自定义按钮外观；内置按钮与缺省配置统一返回 DEFAULT。 */
+    private String buttonAppearance;
     private Integer sort;
     private String placement;
     private String slotKey;

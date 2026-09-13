@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   applyRuntimeFieldDefaults,
@@ -303,17 +304,97 @@ const hiddenActionRow = {
     delete: { visible: false, enabled: false, reason: '仅本人草稿可以删除' }
   }
 }
+const allowedSelectionActionRow = {
+  actionCapabilities: {
+    batchDelete: { visible: true, enabled: true, reason: '' }
+  }
+}
+const hiddenSelectionActionRow = {
+  actionCapabilities: {
+    batchDelete: { visible: false, enabled: false, reason: '仅本人草稿可以批量删除' }
+  }
+}
+const disabledSelectionActionRow = {
+  actionCapabilities: {
+    batchDelete: { visible: true, enabled: false, reason: '选中数据中存在不可删除的数据' }
+  }
+}
 assert.equal(isActionVisible(allowedActionRow, 'delete'), true)
 assert.equal(canExecuteAction(allowedActionRow, 'delete'), true)
 assert.equal(isActionVisible(hiddenActionRow, 'delete'), false)
 assert.equal(canExecuteAction(hiddenActionRow, 'delete'), false)
+assert.equal(isActionVisible({}, 'delete'), false)
+assert.equal(canExecuteAction({}, 'delete'), false)
 assert.equal(getActionCapabilityReason(hiddenActionRow, 'delete'), '仅本人草稿可以删除')
 assert.deepEqual(getSelectionActionState([], 'batchDelete'), {
+  visible: true,
   enabled: false,
   reason: '请先选择数据'
 })
-assert.equal(getSelectionActionState([allowedActionRow], 'delete').enabled, true)
-assert.equal(getSelectionActionState([allowedActionRow, hiddenActionRow], 'delete').enabled, false)
+assert.deepEqual(getSelectionActionState([allowedSelectionActionRow], 'batchDelete'), {
+  visible: true,
+  enabled: true,
+  reason: ''
+})
+assert.deepEqual(
+  getSelectionActionState(
+    [allowedSelectionActionRow, disabledSelectionActionRow],
+    'batchDelete'
+  ),
+  {
+    visible: true,
+    enabled: false,
+    reason: '选中数据中存在不可删除的数据'
+  }
+)
+assert.deepEqual(
+  getSelectionActionState(
+    [disabledSelectionActionRow, hiddenSelectionActionRow],
+    'batchDelete'
+  ),
+  { visible: false, enabled: false, reason: '' },
+  '隐藏条件应优先于禁用条件，且不暴露隐藏原因'
+)
+
+const entityDataTableSource = readFileSync(
+  new URL('../views/entity/components/EntityDataTable.vue', import.meta.url),
+  'utf8'
+)
+assert.match(
+  entityDataTableSource,
+  /v-for="btn in visibleToolbarButtons"/,
+  '工具栏模板必须渲染经过 visibleWhen 过滤的按钮集合'
+)
+assert.match(
+  entityDataTableSource,
+  /const visibleToolbarButtons = computed\(\(\) =>[\s\S]*props\.toolbarButtons\.filter\(isToolbarVisible\)/,
+  '选择集按钮必须随当前选择行动态计算可见性'
+)
+assert.match(
+  entityDataTableSource,
+  /@click\.capture="event => guardCustomComponentAction/,
+  '自定义按钮组件必须由宿主在捕获阶段阻断禁用点击'
+)
+assert.match(
+  entityDataTableSource,
+  /:disabled="isToolbarDisabled\(btn\)"[\s\S]*:disabled="!canAction\(row, btn\.key\)"/,
+  '宿主必须向工具栏和行级自定义按钮组件传递禁用状态'
+)
+
+const entityDataListSource = readFileSync(
+  new URL('../views/entity/EntityDataList.vue', import.meta.url),
+  'utf8'
+)
+assert.doesNotMatch(
+  entityDataListSource,
+  /b\.key === 'batchDelete' \|\| b\.key === 'exportSelected'\) return true/,
+  '选择集按钮不得绕过列表级 visible 能力'
+)
+assert.doesNotMatch(
+  entityDataListSource,
+  /input:\s*\{\s*button,\s*row:/,
+  '列表按钮事件不得提交可伪造的按钮和记录副本'
+)
 
 assert.equal(
   resolveActionableTaskId({

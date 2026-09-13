@@ -49,10 +49,22 @@ const STEP_STRATEGY_LABELS = Object.freeze({
   AFTER: '后置'
 })
 
+const FORM_BUTTON_STEP_STRATEGY_LABELS = Object.freeze({
+  BEFORE: '前置处理',
+  REPLACE: '主处理',
+  AFTER: '后置处理'
+})
+
 const INHERITANCE_MODE_LABELS = Object.freeze({
   INHERIT: '继承并追加',
   REPLACE: '替换上级',
   DISABLE: '禁用自定义'
+})
+
+const BUTTON_INHERITANCE_MODE_LABELS = Object.freeze({
+  INHERIT: '继承并追加',
+  REPLACE: '仅使用当前层',
+  DISABLE: '清空事件链'
 })
 
 const EFFECTIVE_STATUS_LABELS = Object.freeze({
@@ -91,6 +103,23 @@ export const interfaceServiceReferenceLifecycleOptions = Object.freeze([
 
 function normalizeCode(value, fallback = '') {
   return String(value || fallback).trim().toUpperCase()
+}
+
+/** 兼容直接传事件编码或完整引用对象，用于场景化显示通用枚举。 */
+function contextEventCode(context) {
+  return normalizeCode(
+    context && typeof context === 'object' ? context.eventCode : context
+  )
+}
+
+function isFormButtonContext(context) {
+  return contextEventCode(context) === 'FORM_BUTTON_CLICK'
+}
+
+function isButtonTargetContext(context) {
+  return Boolean(context && typeof context === 'object'
+    && isFormButtonContext(context)
+    && normalizeCode(context.targetType) === 'BUTTON')
 }
 
 function normalizedText(value) {
@@ -347,14 +376,20 @@ export function lifecycleStatusTagType(value) {
   }[normalizeCode(value)] || 'info'
 }
 
-export function stepStrategyLabel(value) {
+export function stepStrategyLabel(value, context = '') {
   const code = normalizeCode(value)
-  return STEP_STRATEGY_LABELS[code] || code || '-'
+  const labels = isFormButtonContext(context)
+    ? FORM_BUTTON_STEP_STRATEGY_LABELS
+    : STEP_STRATEGY_LABELS
+  return labels[code] || code || '-'
 }
 
-export function inheritanceModeLabel(value) {
+export function inheritanceModeLabel(value, context = {}) {
   const code = normalizeCode(value)
-  return INHERITANCE_MODE_LABELS[code] || code || '-'
+  const labels = isButtonTargetContext(context)
+    ? BUTTON_INHERITANCE_MODE_LABELS
+    : INHERITANCE_MODE_LABELS
+  return labels[code] || code || '-'
 }
 
 export function inheritanceSourceLabel(value) {
@@ -392,10 +427,13 @@ export function effectiveChainUnavailableReason(context = {}) {
 }
 
 /**
- * 根据 BEFORE/REPLACE/AFTER 还原可读的最终链；没有 REPLACE 时明示平台默认步骤。
+ * 根据 BEFORE/REPLACE/AFTER 还原可读的最终链。只有存在平台
+ * 默认动作的事件才补齐平台节点；FORM_BUTTON_CLICK 的 REPLACE
+ * 是唯一主处理，不虚构平台动作。
  */
-export function buildEffectiveChainItems(context = {}) {
+export function buildEffectiveChainItems(context = {}, eventCode = '') {
   if (!isEffectiveChainAvailable(context)) return []
+  const formButton = isFormButtonContext(eventCode || context)
   const steps = (Array.isArray(context.effectiveChain) ? context.effectiveChain : [])
     .map((step, index) => ({
       ...step,
@@ -414,13 +452,16 @@ export function buildEffectiveChainItems(context = {}) {
   const toItem = step => ({
     ...step,
     kind: step.stepStrategy === 'REPLACE' ? 'REPLACE' : 'STEP',
-    label: step.stepName || step.operationCode || step.stepCode || '未命名步骤'
+    label: step.stepName || step.operationCode || step.stepCode || '未命名步骤',
+    strategyLabel: stepStrategyLabel(step.stepStrategy, eventCode || context)
   })
   return [
     ...before.map(toItem),
     ...(replacements.length
       ? replacements.map(toItem)
-      : [{ kind: 'PLATFORM', label: '平台默认处理', stepStrategy: 'PLATFORM' }]),
+      : (formButton
+          ? []
+          : [{ kind: 'PLATFORM', label: '平台默认处理', stepStrategy: 'PLATFORM' }])),
     ...after.map(toItem),
     ...unclassified.map(toItem)
   ]

@@ -42,6 +42,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EntityDataExportService {
 
+    private static final int MAX_SELECTED_EXPORT_ROWS = 5_000;
+
     private final EntityDataListConfigService listConfigService;
     private final EntityListPublishedRuntimeService publishedRuntimeService;
     private final EntityListFieldMapper fieldMapper;
@@ -66,6 +68,28 @@ public class EntityDataExportService {
             targetType = "ENTITY_RECORD",
             targetIdArg = 0)
     public void export(String entityCode, EntityDataExportRequest request, HttpServletResponse response) {
+        if (request == null) {
+            throw new IllegalArgumentException("导出请求不能为空");
+        }
+        boolean exportSelected = "SELECTED".equalsIgnoreCase(
+                request.getExportType());
+        if (exportSelected) {
+            List<String> selectedIds = request.getIds() == null
+                    ? List.of()
+                    : request.getIds().stream()
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .distinct()
+                    .toList();
+            if (selectedIds.isEmpty()) {
+                throw new IllegalArgumentException("请先选择需要导出的数据");
+            }
+            if (selectedIds.size() > MAX_SELECTED_EXPORT_ROWS) {
+                throw new IllegalArgumentException(
+                        "单次最多导出 " + MAX_SELECTED_EXPORT_ROWS + " 条选中数据");
+            }
+            request.setIds(selectedIds);
+        }
         EntityListConfig config = listConfigService.findListConfig(
                 entityCode,
                 request.getListKey(),
@@ -83,7 +107,6 @@ public class EntityDataExportService {
                             + request.getListKey());
         }
         // 1. 服务端根据导出类型决定权限，禁止信任客户端传入的权限码
-        boolean exportSelected = "SELECTED".equalsIgnoreCase(request.getExportType());
         actionCapabilityService.requireStandardPermission(
                 entityCode,
                 exportSelected ? EntityPermissionAction.EXPORT : EntityPermissionAction.EXPORT_ALL);

@@ -64,6 +64,13 @@ expectedComponents.forEach(relativePath => {
   )
 })
 
+const inspectButtonSource = readFileSync(
+  path.join(projectDir, 'buttons/ProjectAcceptanceInspectButton.vue'),
+  'utf8'
+)
+assert.match(inspectButtonSource, /:disabled="disabled"/)
+assert.match(inspectButtonSource, /if \(props\.disabled\)/)
+
 const scoreFieldSource = readFileSync(
   path.join(
     projectDir,

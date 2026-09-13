@@ -197,4 +197,72 @@ class UiInvocationContextFactoryTest {
         assertEquals("record-a", context.recordId());
         assertEquals("entity-a", context.common().ownerId());
     }
+
+    @Test
+    void formButtonUsesServerTrustedIdempotencySeedAsProviderRequestId() {
+        EntityDefinitionMapper definitionMapper =
+                mock(EntityDefinitionMapper.class);
+        EntityFormMapper formMapper = mock(EntityFormMapper.class);
+        UiInvocationContextFactory factory = new UiInvocationContextFactory(
+                definitionMapper,
+                formMapper,
+                mock(EntityListConfigMapper.class));
+        EntityDefinition entity = new EntityDefinition();
+        entity.setId("entity-a");
+        entity.setEntityCode("expense");
+        entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
+        when(definitionMapper.selectById("entity-a"))
+                .thenReturn(entity);
+        EntityForm form = new EntityForm();
+        form.setId("form-a");
+        when(formMapper.selectById("form-a")).thenReturn(form);
+        SysUser user = new SysUser();
+        user.setId("user-a");
+        UiDataSourceExecutionAuthorization authorization =
+                new UiDataSourceExecutionAuthorization(
+                        false,
+                        "FORM",
+                        "form-a",
+                        "release-a",
+                        4,
+                        "$.eventBindings[0]",
+                        "FORM_BUTTON_CLICK",
+                        "entity-a",
+                        "expense",
+                        null,
+                        user,
+                        new DataScopePlan(
+                                true,
+                                "1=1",
+                                Map.of(),
+                                List.of(),
+                                List.of(),
+                                "allowed",
+                                2),
+                        Map.of(),
+                        "ui-form-button:trusted-hash");
+        UiDataSourceDefinition definition = new UiDataSourceDefinition();
+        definition.setId("service-a");
+        definition.setOperationCode("generate");
+        definition.setOperationContextType("FORM");
+
+        UiDataSourceExecuteRequest request =
+                new UiDataSourceExecuteRequest();
+        request.setInput(Map.of(
+                "recordId", "forged-record-b",
+                "mode", "approve"));
+        request.setServerRecordId("authorized-record-a");
+        request.setServerFormMode("edit");
+        FormInvocationContext context = (FormInvocationContext)
+                factory.create(
+                        definition,
+                        authorization,
+                        request);
+
+        assertEquals(
+                "ui-form-button:trusted-hash",
+                context.common().requestId());
+        assertEquals("authorized-record-a", context.recordId());
+        assertEquals("edit", context.mode());
+    }
 }

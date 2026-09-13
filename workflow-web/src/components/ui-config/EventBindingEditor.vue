@@ -29,8 +29,17 @@
     </div>
 
     <el-alert
-      title="默认保留平台处理。只有执行链中加入 REPLACE 步骤，才会由自定义接口完全替代。"
+      v-if="!formButtonOnlyContext"
+      title="除表单自定义按钮外，事件默认保留平台处理；只有执行链中加入 REPLACE 步骤，才会由自定义接口完全替代。"
       type="info"
+      :closable="false"
+      show-icon
+      class="binding-hint"
+    />
+    <el-alert
+      v-if="formButtonOnlyContext || formButtonEventSelected"
+      title="表单自定义按钮没有平台默认动作，发布时最终继承链必须且只能包含一个主处理；主处理可使用无副作用查询或结果映射，实体写入请使用平台保存动作，外部副作用请由受控业务 Outbox 处理。"
+      type="warning"
       :closable="false"
       show-icon
       class="binding-hint"
@@ -72,7 +81,7 @@
       <el-table-column label="继承方式" width="130">
         <template #default="{ row }">
           <el-tag :type="inheritanceType(row.inheritanceMode)" effect="plain">
-            {{ inheritanceLabel(row.inheritanceMode) }}
+            {{ inheritanceLabel(row.inheritanceMode, row) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -185,6 +194,7 @@
               <ConfigHelpLabel
                 label="继承方式"
                 help-key="uiEvent.inheritanceMode"
+                :content="formButtonInheritanceHelp"
               />
             </template>
             <el-segmented
@@ -196,7 +206,11 @@
 
         <el-alert
           v-if="editor.inheritanceMode === 'DISABLE'"
-          title="禁用当前层的自定义链，仅保留平台默认处理。"
+          :title="formButtonExactTarget
+            ? '当前按钮事件链已被清空；启用按钮无法以空链发布，请关闭按钮本身或选择其他继承方式。'
+            : formButtonEventSelected
+              ? '清空当前层及上级的表单按钮公共链；具体按钮仍必须通过本层或下级配置形成主处理。'
+              : '禁用当前层的自定义链，仅保留平台默认处理。'"
           type="warning"
           :closable="false"
           class="editor-alert"
@@ -207,7 +221,9 @@
             <div>
               <div class="section-title">执行步骤</div>
               <div class="secondary-text">
-                前置接口先执行，平台默认处理居中，后置接口最后执行。
+                {{ formButtonEventSelected
+                  ? '按前置处理、主处理、后置处理三个阶段执行；表单自定义按钮本身没有平台默认动作。'
+                  : '前置接口先执行，平台默认处理居中，后置接口最后执行。' }}
               </div>
             </div>
             <el-button type="primary" plain @click="addStep">
@@ -241,7 +257,9 @@
 
           <el-empty
             v-if="editor.steps.length === 0"
-            description="尚未增加接口步骤，将直接执行平台默认处理"
+            :description="formButtonEventSelected
+              ? '本层尚无步骤，将继承上级事件链；发布时最终链必须且只能包含一个主处理'
+              : '尚未增加接口步骤，将直接执行平台默认处理'"
             :image-size="72"
           />
 
@@ -285,17 +303,21 @@
             </div>
 
             <div class="step-grid">
-              <el-form-item label="执行位置">
+              <el-form-item :label="stepStrategyFieldLabel">
                 <template #label>
                   <ConfigHelpLabel
-                    label="执行位置"
+                    :label="stepStrategyFieldLabel"
                     help-key="uiEvent.stepStrategy"
+                    :content="formButtonStepStrategyHelp"
                   />
                 </template>
                 <el-select v-model="step.strategy" @change="normalizeReplace(step)">
-                  <el-option label="前置" value="BEFORE" />
-                  <el-option label="替代平台处理" value="REPLACE" />
-                  <el-option label="后置" value="AFTER" />
+                  <el-option
+                    v-for="option in stepStrategyOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
+                  />
                 </el-select>
               </el-form-item>
               <el-form-item label="接口服务">
@@ -362,22 +384,59 @@
             </div>
 
             <el-collapse>
-              <el-collapse-item title="输入参数映射" name="input">
+              <el-collapse-item name="input">
+                <template #title>
+                  <ConfigHelpLabel
+                    label="输入参数映射"
+                    help-key="uiEvent.inputMapping"
+                  />
+                </template>
                 <EventMappingRows
                   v-model="step.inputRows"
                   mode="input"
                   :field-options="fieldOptions"
                 />
               </el-collapse-item>
-              <el-collapse-item title="结果回填" name="output">
+              <el-collapse-item name="output">
+                <template #title>
+                  <ConfigHelpLabel
+                    label="结果回填"
+                    help-key="uiEvent.outputMapping"
+                  />
+                </template>
                 <EventMappingRows
                   v-model="step.outputRows"
                   mode="output"
                   :field-options="fieldOptions"
                 />
               </el-collapse-item>
-              <el-collapse-item title="执行条件" name="condition">
-                <div class="condition-grid">
+              <el-collapse-item
+                :title="isFormButtonMainStep(step)
+                  ? hasStepCondition(step)
+                    ? '执行条件（主处理需清空）'
+                    : '执行条件（主处理固定无条件执行）'
+                  : '执行条件'"
+                name="condition"
+                :disabled="isFormButtonMainStep(step) && !hasStepCondition(step)"
+              >
+                <div
+                  v-if="isFormButtonMainStep(step) && hasStepCondition(step)"
+                  class="main-condition-cleanup"
+                >
+                  <el-alert
+                    title="主处理必须无条件执行，请清空当前执行条件后再保存。"
+                    type="warning"
+                    :closable="false"
+                    show-icon
+                  />
+                  <el-button type="warning" plain @click="clearStepCondition(step)">
+                    清空执行条件
+                  </el-button>
+                </div>
+                <div
+                  v-if="!isFormButtonMainStep(step) || hasStepCondition(step)"
+                  class="condition-grid"
+                >
                   <el-input
                     v-model="step.conditionPath"
                     placeholder="数据路径，例如 input.status"
@@ -432,10 +491,12 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
+import { getConfigFieldHelp } from '@/shared/config-field-help'
 import {
   eventGroupsForScope,
   eventsForScope
 } from '@/components/ui-config/uiEventScope'
+import { eventBindingOperationsForEvent } from '@/components/ui-config/interfaceServiceModel'
 import { uiDataSourceApi, uiEventBindingApi } from '@/api/uiConfig'
 
 const props = defineProps({
@@ -489,14 +550,30 @@ const platformDefaultDescriptions = {
   SUBFORM_LOAD: '加载当前子表数据',
   SUBFORM_SAVE: '校验并保存当前子表数据',
   TOOLBAR_BUTTON_CLICK: '执行该工具栏按钮原有的内置动作',
-  ROW_BUTTON_CLICK: '执行该行按钮原有的内置动作',
-  FORM_BUTTON_CLICK: '执行该表单按钮原有的内置动作'
+  ROW_BUTTON_CLICK: '执行该行按钮原有的内置动作'
 }
 
-const inheritanceOptions = [
+const defaultInheritanceOptions = [
   { label: '继承并追加', value: 'INHERIT' },
   { label: '替换上级', value: 'REPLACE' },
   { label: '禁用自定义', value: 'DISABLE' }
+]
+
+const formButtonInheritanceOptions = [
+  { label: '继承并追加', value: 'INHERIT' },
+  { label: '仅使用当前层', value: 'REPLACE' }
+]
+
+const defaultStepStrategyOptions = [
+  { label: '前置', value: 'BEFORE' },
+  { label: '替代平台处理', value: 'REPLACE' },
+  { label: '后置', value: 'AFTER' }
+]
+
+const formButtonStepStrategyOptions = [
+  { label: '前置处理', value: 'BEFORE' },
+  { label: '主处理', value: 'REPLACE' },
+  { label: '后置处理', value: 'AFTER' }
 ]
 
 const loading = ref(false)
@@ -553,6 +630,41 @@ const availableEventGroups = computed(() => {
 
 const availableEvents = computed(() =>
   availableEventGroups.value.flatMap(group => group.events))
+const formButtonEventSelected = computed(() =>
+  String(editor.eventCode || '').toUpperCase() === 'FORM_BUTTON_CLICK'
+)
+const formButtonOnlyContext = computed(() =>
+  availableEvents.value.length === 1
+  && isFormButtonEvent(availableEvents.value[0])
+)
+const formButtonExactTarget = computed(() =>
+  formButtonEventSelected.value
+  && String(props.ownerType || '').toUpperCase() === 'FORM'
+  && String(props.targetType || '').toUpperCase() === 'BUTTON'
+)
+const inheritanceOptions = computed(() =>
+  formButtonExactTarget.value
+    ? formButtonInheritanceOptions
+    : defaultInheritanceOptions
+)
+const stepStrategyFieldLabel = computed(() =>
+  formButtonEventSelected.value ? '执行阶段' : '执行位置'
+)
+const stepStrategyOptions = computed(() =>
+  formButtonEventSelected.value
+    ? formButtonStepStrategyOptions
+    : defaultStepStrategyOptions
+)
+const formButtonInheritanceHelp = computed(() =>
+  formButtonExactTarget.value
+    ? getConfigFieldHelp('uiEvent.formButtonInheritanceMode')
+    : ''
+)
+const formButtonStepStrategyHelp = computed(() =>
+  formButtonEventSelected.value
+    ? getConfigFieldHelp('uiEvent.formButtonStepStrategy')
+    : ''
+)
 
 const eventScopeHint = computed(() => {
   const owner = String(props.ownerType).toUpperCase()
@@ -589,6 +701,7 @@ const outOfScopeBindings = computed(() => [
 ])
 
 const editorChainItems = computed(() => chainItems({
+  eventCode: editor.eventCode,
   inheritanceMode: editor.inheritanceMode,
   stepsDocument: '',
   steps: editor.steps
@@ -711,9 +824,21 @@ async function openEdit(row) {
 
 function addStep() {
   editor.steps.push(normalizeStep({
-    strategy: 'BEFORE',
+    strategy: defaultNewStepStrategy(),
     failurePolicy: 'STOP'
   }, editor.steps.length))
+}
+
+/**
+ * 表单自定义按钮没有平台阶段：第一个步骤直接承担主处理；主处理存在后，
+ * 后续新增步骤默认接在其后，避免用户误把第二个步骤配置成另一个主处理。
+ */
+function defaultNewStepStrategy() {
+  if (!formButtonEventSelected.value) return 'BEFORE'
+  return editor.steps.some(step =>
+    String(step.strategy || '').toUpperCase() === 'REPLACE')
+    ? 'AFTER'
+    : 'REPLACE'
 }
 
 function moveStep(index, offset) {
@@ -725,14 +850,36 @@ function moveStep(index, offset) {
 
 function normalizeReplace(current) {
   if (current.strategy !== 'REPLACE') return
+  if (formButtonEventSelected.value) {
+    clearStepCondition(current)
+  }
   // 实体默认事件会分别投影到 FORM/LIST 执行链；两个上下文可以各自拥有
-  // 一个 REPLACE，由后端按实际投影链做最终校验。
-  if (String(props.ownerType || '').toUpperCase() === 'ENTITY') return
+  // 一个 REPLACE，由后端按实际投影链做最终校验。FORM_BUTTON_CLICK 只投影
+  // 到表单上下文，因此仍可在编辑器内直接维持唯一主处理。
+  if (String(props.ownerType || '').toUpperCase() === 'ENTITY'
+    && !formButtonEventSelected.value) return
   editor.steps.forEach(step => {
     if (step !== current && step.strategy === 'REPLACE') {
       step.strategy = 'BEFORE'
     }
   })
+}
+
+function isFormButtonMainStep(step) {
+  return formButtonEventSelected.value
+    && String(step?.strategy || '').toUpperCase() === 'REPLACE'
+}
+
+function hasStepCondition(step) {
+  return Boolean(step?.conditionPath)
+}
+
+/** 主处理定义按钮的确定性主结果，不能因客户端输入条件被整体跳过。 */
+function clearStepCondition(step) {
+  step.conditionPath = ''
+  step.conditionOperator = 'equals'
+  step.conditionValue = ''
+  step.conditionBoolean = false
 }
 
 async function onServiceChange(step) {
@@ -774,7 +921,7 @@ async function loadAvailableOperations(eventCode) {
     bindingCode: String(eventCode).toUpperCase()
   }).catch(() => [])
   const grouped = new Map()
-  ;(Array.isArray(rows) ? rows : []).forEach(item => {
+  eventBindingOperationsForEvent(rows, eventCode).forEach(item => {
     if (!grouped.has(item.serviceId)) {
       grouped.set(item.serviceId, {
         id: item.serviceId,
@@ -839,12 +986,43 @@ async function save() {
     ElMessage.warning('该事件不属于当前配置范围，请在正确的表单、列表、字段或按钮位置配置')
     return
   }
+  if (formButtonExactTarget.value && editor.inheritanceMode === 'DISABLE') {
+    ElMessage.warning('表单自定义按钮不能禁用事件链；如需停用，请关闭按钮本身')
+    return
+  }
   const steps = editor.inheritanceMode === 'DISABLE'
     ? []
     : editor.steps.map(serializeStep)
+  if (formButtonEventSelected.value && steps.some(step =>
+    step.strategy === 'REPLACE'
+    && Object.keys(step.condition || {}).length > 0)) {
+    ElMessage.warning('主处理必须无条件执行，请先清空执行条件')
+    return
+  }
+  if (formButtonExactTarget.value) {
+    const mainStepCount = steps.filter(step => step.strategy === 'REPLACE').length
+    if (editor.inheritanceMode === 'REPLACE' && mainStepCount !== 1) {
+      ElMessage.warning('仅使用当前层时，必须且只能配置一个主处理步骤')
+      return
+    }
+    if (editor.inheritanceMode === 'INHERIT' && mainStepCount > 1) {
+      ElMessage.warning('当前按钮层最多只能配置一个主处理步骤')
+      return
+    }
+  }
   for (const step of steps) {
     if (step.serviceId && !step.operationCode) {
       ElMessage.warning('已选择接口服务的步骤必须选择接口操作')
+      return
+    }
+    if (step.serviceId && !operationOptions(step.serviceId).some(operation =>
+      operation.code === step.operationCode
+    )) {
+      ElMessage.warning(
+        formButtonEventSelected.value
+          ? '表单自定义按钮事件链仅允许无副作用查询，请重新选择接口操作'
+          : '请选择当前事件可用的接口操作'
+      )
       return
     }
     if (!step.serviceId && !step.outputMapping.length) {
@@ -929,17 +1107,41 @@ function bindingTargetLabel(row) {
  */
 function platformDefaultHelp(eventCode) {
   const code = String(eventCode || '').toUpperCase()
+  if (isFormButtonEvent(code)) {
+    return '表单自定义按钮没有平台默认处理，最终继承链必须且只能包含一个主处理。'
+  }
   const action = platformDefaultDescriptions[code]
     || `执行“${eventLabel(code)}”原有的内置动作`
   return `平台默认处理：${action}。前置步骤在它之前执行；“替代平台处理”会跳过它；后置步骤在它成功后执行。`
 }
 
-function inheritanceLabel(mode) {
+function isFormButtonEvent(eventCode) {
+  return String(eventCode || '').toUpperCase() === 'FORM_BUTTON_CLICK'
+}
+
+function inheritanceLabel(mode, row = {}) {
+  if (mode === 'REPLACE' && isExactFormButtonBinding(row)) {
+    return '仅使用当前层'
+  }
   return {
     INHERIT: '继承并追加',
     REPLACE: '替换上级',
     DISABLE: '禁用自定义'
   }[mode] || mode
+}
+
+function isExactFormButtonBinding(row) {
+  return isFormButtonEvent(row?.eventCode)
+    && String(row?.ownerType || props.ownerType || '').toUpperCase() === 'FORM'
+    && String(row?.targetType || props.targetType || '').toUpperCase() === 'BUTTON'
+}
+
+function formButtonStageLabel(strategy) {
+  return {
+    BEFORE: '前置处理',
+    REPLACE: '主处理',
+    AFTER: '后置处理'
+  }[String(strategy || '').toUpperCase()] || strategy
 }
 
 function inheritanceType(mode) {
@@ -951,8 +1153,14 @@ function inheritanceType(mode) {
 }
 
 function chainItems(row) {
+  const formButton = isFormButtonEvent(row.eventCode)
+  const exactFormButton = isExactFormButtonBinding(row)
   if (row.inheritanceMode === 'DISABLE') {
-    return [{ kind: 'platform', label: '平台默认处理', type: 'success' }]
+    return formButton && exactFormButton
+      ? [{ kind: 'disabled', label: '清空继承链（空链不可发布）', type: 'danger' }]
+      : formButton
+        ? [{ kind: 'disabled', label: '清空截至当前层的公共步骤', type: 'info' }]
+      : [{ kind: 'platform', label: '平台默认处理', type: 'success' }]
   }
   const steps = row.steps || parseJson(row.stepsDocument, [])
   const before = steps.filter(step => step.strategy === 'BEFORE')
@@ -964,13 +1172,46 @@ function chainItems(row) {
       .find(item => item.code === step.operationCode)
     return step.name || operation?.name || service?.sourceName || '字段映射'
   }
-  return [
-    ...before.map(step => ({ kind: 'step', label: label(step), type: 'info' })),
+  const stagedLabel = (step, strategy) => formButton
+    ? `${formButtonStageLabel(strategy)}：${label(step)}`
+    : label(step)
+  const configured = [
+    ...before.map(step => ({
+      kind: 'step',
+      label: stagedLabel(step, 'BEFORE'),
+      type: 'info'
+    })),
     ...(replace.length
-      ? replace.map(step => ({ kind: 'replace', label: label(step), type: 'warning' }))
-      : [{ kind: 'platform', label: '平台默认处理', type: 'success' }]),
-    ...after.map(step => ({ kind: 'step', label: label(step), type: '' }))
+      ? replace.map(step => ({
+          kind: 'replace',
+          label: stagedLabel(step, 'REPLACE'),
+          type: 'warning'
+        }))
+      : (formButton
+          ? (exactFormButton && row.inheritanceMode === 'REPLACE'
+              ? [{
+                  kind: 'invalid',
+                  label: '当前层缺少主处理（不可发布）',
+                  type: 'danger'
+                }]
+              : [])
+          : [{ kind: 'platform', label: '平台默认处理', type: 'success' }])),
+    ...after.map(step => ({
+      kind: 'step',
+      label: stagedLabel(step, 'AFTER'),
+      type: ''
+    }))
   ]
+  if (configured.length || !formButton) return configured
+  return [{
+    kind: 'inherit',
+    label: exactFormButton
+      ? '继承上级步骤（发布时校验）'
+      : row.inheritanceMode === 'REPLACE'
+        ? '当前层不提供公共步骤，由具体按钮补充主处理'
+        : '继承上级公共步骤',
+    type: 'info'
+  }]
 }
 
 watch(
@@ -1097,6 +1338,17 @@ onMounted(load)
 
 .condition-grid {
   grid-template-columns: 2fr 1fr 1fr;
+}
+
+.main-condition-cleanup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.main-condition-cleanup .el-alert {
+  flex: 1;
 }
 
 .steps-header {

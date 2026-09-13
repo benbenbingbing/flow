@@ -73,7 +73,9 @@ class EntityFormNodePropertyPolicyTest {
                         "componentProps", Map.of(
                                 "showPadding", true,
                                 "showBorder", false)),
-                "ACTION_SLOT", Map.of("label", "底部动作"));
+                "ACTION_SLOT", Map.of(
+                        "label", "底部动作",
+                        "gridSpan", 12));
 
         assertEquals(
                 Set.of(
@@ -158,6 +160,32 @@ class EntityFormNodePropertyPolicyTest {
                         "TAB_SET",
                         Map.of("showBorder", 1),
                         false));
+    }
+
+    /**
+     * 验证动作插槽可参与 24 栅格布局，且只接受 1-24 范围内的整数宽度。
+     */
+    @Test
+    void actionSlotGridSpanUsesTwentyFourColumnRange() {
+        assertDoesNotThrow(() ->
+                EntityFormNodePropertyPolicy.normalizeProps(
+                        "ACTION_SLOT",
+                        Map.of("label", "动作", "gridSpan", 1),
+                        false));
+        assertDoesNotThrow(() ->
+                EntityFormNodePropertyPolicy.normalizeProps(
+                        "ACTION_SLOT",
+                        Map.of("label", "动作", "gridSpan", 24),
+                        false));
+
+        for (Object invalid : new Object[]{0, 25, 12.5, "12"}) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> EntityFormNodePropertyPolicy.normalizeProps(
+                            "ACTION_SLOT",
+                            Map.of("label", "动作", "gridSpan", invalid),
+                            false));
+        }
     }
 
     /**

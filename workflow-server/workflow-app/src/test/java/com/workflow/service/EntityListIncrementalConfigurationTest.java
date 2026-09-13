@@ -11,6 +11,7 @@ import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
+import com.workflow.entity.permission.application.EntityListActionRulePolicy;
 
 import com.workflow.entity.list.api.request.EntityListActionSaveRequest;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListAction;
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -176,7 +178,8 @@ class EntityListIncrementalConfigurationTest {
                         configMapper,
                         mock(com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper.class),
                         mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
-                        null);
+                        null,
+                        listActionRulePolicy());
         EntityListActionSaveRequest request = new EntityListActionSaveRequest();
         request.setPosition("TOOLBAR");
         request.setButtonKey("custom_review");
@@ -188,6 +191,176 @@ class EntityListIncrementalConfigurationTest {
 
         assertEquals(9, saved.getSortOrder());
         assertEquals(10_000_000L, saved.getOrderKey());
+    }
+
+    @Test
+    void actionCreateRejectsNonV2OrMalformedAvailabilityRule() {
+        EntityListActionMapper actionMapper =
+                mock(EntityListActionMapper.class);
+        EntityListConfigMapper configMapper =
+                mock(EntityListConfigMapper.class);
+        EntityListConfig config = new EntityListConfig();
+        config.setId("list-1");
+        when(configMapper.selectById("list-1")).thenReturn(config);
+        when(actionMapper.findByListAndPosition("list-1", "ROW"))
+                .thenReturn(List.of());
+        when(actionMapper.insert(any(EntityListAction.class)))
+                .thenReturn(1);
+        JsonDocumentCodec codec =
+                new JsonDocumentCodec(new ObjectMapper());
+        EntityListRelationalConfigService service =
+                new EntityListRelationalConfigService(
+                        actionMapper,
+                        mock(EntityListSceneMapper.class),
+                        configMapper,
+                        mock(EntityFormMapper.class),
+                        mock(UiConfigReleaseMapper.class),
+                        codec,
+                        listActionRulePolicy());
+        EntityListActionSaveRequest request =
+                new EntityListActionSaveRequest();
+        request.setPosition("ROW");
+        request.setButtonKey("review");
+        request.setButtonLabel("复核");
+
+        request.setAvailabilityRule(Map.of("version", 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createAction("list-1", request));
+
+        request.setAvailabilityRule(Map.of(
+                "version", 2,
+                "visibleWhen", Map.of(
+                        "type", "FIELD",
+                        "operator", "EQ",
+                        "value", "x"),
+                "disabledMessage", ""));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createAction("list-1", request));
+
+        request.setAvailabilityRule(Map.of(
+                "version", 2,
+                "visibleWhen", Map.of(
+                        "type", "GROUP",
+                        "logic", "AND",
+                        "children", List.of())));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createAction("list-1", request));
+
+        request.setAvailabilityRule(Map.of(
+                "version", 2,
+                "visibleWhen", Map.of(
+                        "type", "STATUS_CODE",
+                        "operator", "IN",
+                        "value", "DRAFT, REVIEW"),
+                "disabledMessage", ""));
+        EntityListAction saved = service.createAction("list-1", request);
+        Map<String, Object> normalized = codec.readObject(
+                saved.getAvailabilityRuleDocument(), "test");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> visibleWhen =
+                (Map<String, Object>) normalized.get("visibleWhen");
+        assertEquals(List.of("DRAFT", "REVIEW"),
+                visibleWhen.get("value"));
+    }
+
+    @Test
+    void actionPatchPayloadCanExplicitlyClearAvailabilityRule() {
+        EntityListRelationalConfigService service =
+                new EntityListRelationalConfigService(
+                        mock(EntityListActionMapper.class),
+                        mock(EntityListSceneMapper.class),
+                        mock(EntityListConfigMapper.class),
+                        mock(EntityFormMapper.class),
+                        mock(UiConfigReleaseMapper.class),
+                        new JsonDocumentCodec(new ObjectMapper()),
+                        listActionRulePolicy());
+        EntityListAction action = new EntityListAction();
+        action.setButtonKey("edit");
+        action.setButtonLabel("编辑");
+        action.setAvailabilityRuleDocument(
+                "{\"version\":2,\"visibleWhen\":null,"
+                        + "\"enabledWhen\":null,"
+                        + "\"disabledMessage\":\"\"}");
+        action.setActionParamsDocument(
+                "{\"availabilityRule\":{\"version\":2},"
+                        + "\"custom\":\"kept\"}");
+        EntityListActionSaveRequest patch =
+                new EntityListActionSaveRequest();
+        patch.setClearFields(Set.of("availabilityRuleDocument"));
+
+        ReflectionTestUtils.invokeMethod(
+                service, "applyAction", action, patch);
+
+        assertNull(action.getAvailabilityRuleDocument());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> button = ReflectionTestUtils.invokeMethod(
+                service, "toButton", action);
+        assertTrue(!button.containsKey("availabilityRule"));
+        assertEquals("kept", button.get("custom"));
+    }
+
+    @Test
+    void actionPatchRejectsInvalidAvailabilityRuleBeforeWrite() {
+        EntityListActionMapper actionMapper =
+                mock(EntityListActionMapper.class);
+        EntityListAction current = new EntityListAction();
+        current.setId("action-1");
+        current.setListConfigId("list-1");
+        current.setRevision(1);
+        current.setButtonKey("edit");
+        current.setButtonLabel("编辑");
+        when(actionMapper.selectById("action-1"))
+                .thenReturn(current);
+        EntityListRelationalConfigService service =
+                new EntityListRelationalConfigService(
+                        actionMapper,
+                        mock(EntityListSceneMapper.class),
+                        mock(EntityListConfigMapper.class),
+                        mock(EntityFormMapper.class),
+                        mock(UiConfigReleaseMapper.class),
+                        new JsonDocumentCodec(new ObjectMapper()),
+                        listActionRulePolicy());
+        EntityListActionSaveRequest patch =
+                new EntityListActionSaveRequest();
+        patch.setExpectedRevision(1);
+        patch.setAvailabilityRule(Map.of("version", 1));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.patchAction(
+                        "list-1", "action-1", patch));
+        verify(actionMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void actionReplaceRejectsInvalidAvailabilityRuleBeforeWrite() {
+        EntityListActionMapper actionMapper =
+                mock(EntityListActionMapper.class);
+        EntityListConfigMapper configMapper =
+                mock(EntityListConfigMapper.class);
+        EntityListConfig config = new EntityListConfig();
+        config.setId("list-1");
+        when(configMapper.selectById("list-1")).thenReturn(config);
+        when(actionMapper.findByListAndPosition("list-1", "ROW"))
+                .thenReturn(List.of());
+        EntityListRelationalConfigService service =
+                new EntityListRelationalConfigService(
+                        actionMapper,
+                        mock(EntityListSceneMapper.class),
+                        configMapper,
+                        mock(EntityFormMapper.class),
+                        mock(UiConfigReleaseMapper.class),
+                        new JsonDocumentCodec(new ObjectMapper()),
+                        listActionRulePolicy());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.replaceActions(
+                        "list-1", "ROW", List.of(Map.of(
+                                "key", "edit",
+                                "label", "编辑",
+                                "availabilityRule", Map.of(
+                                        "version", 1)))));
+        verify(actionMapper, never()).insert(
+                any(EntityListAction.class));
     }
 
     @Test
@@ -232,7 +405,8 @@ class EntityListIncrementalConfigurationTest {
                         configMapper,
                         formMapper,
                         releaseMapper,
-                        codec);
+                        codec,
+                        listActionRulePolicy());
         EntityListActionSaveRequest request =
                 new EntityListActionSaveRequest();
         request.setPosition("ROW");
@@ -318,7 +492,8 @@ class EntityListIncrementalConfigurationTest {
                         configMapper,
                         mock(EntityFormMapper.class),
                         mock(UiConfigReleaseMapper.class),
-                        new JsonDocumentCodec(new ObjectMapper()));
+                        new JsonDocumentCodec(new ObjectMapper()),
+                        listActionRulePolicy());
 
         service.replaceActionsForRelease(
                 "list-1",
@@ -379,7 +554,7 @@ class EntityListIncrementalConfigurationTest {
                         definitionMapper,
                         mock(EntityListConfigMapper.class),
                         relationalConfigService,
-                        List.of(),
+                        listActionRulePolicy(),
                         List.of());
         EntityListConfigDTO published = new EntityListConfigDTO();
         published.setId("list-1");
@@ -424,5 +599,10 @@ class EntityListIncrementalConfigurationTest {
                         buttons.size() == 1
                                 && "approve".equals(
                                 buttons.get(0).get("key"))));
+    }
+
+    private static EntityListActionRulePolicy listActionRulePolicy() {
+        return new EntityListActionRulePolicy(
+                new ObjectMapper(), List.of());
     }
 }

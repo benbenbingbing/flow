@@ -6,18 +6,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 实体列表按钮适用条件。
+ * 实体按钮的显示与启用条件。
+ *
+ * <p>两棵规则树互相独立：{@code visibleWhen} 决定按钮是否显示，
+ * {@code enabledWhen} 仅在按钮可见后决定是否可操作。空规则树表示无额外限制。</p>
  */
 @Data
 public class EntityActionRuleDTO {
     /** 结构化配置版本 */
-    private Integer version = 1;
-    /** 不满足条件时的行为：HIDE / DISABLE */
-    private String unavailableBehavior = "HIDE";
-    /** 不满足条件时的提示信息 */
-    private String message;
-    /** 规则树根节点 */
-    private RuleNode root;
+    private Integer version = 2;
+    /** 显示条件根节点；不满足时隐藏按钮 */
+    private RuleNode visibleWhen;
+    /** 启用条件根节点；不满足时禁用按钮 */
+    private RuleNode enabledWhen;
+    /** 启用条件不满足时的提示信息 */
+    private String disabledMessage = "";
 
     /**
      * 规则树节点，支持嵌套分组（GROUP）与单条条件（CONDITION）。

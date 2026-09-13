@@ -8,7 +8,8 @@ import {
   getFormNodeDataSourceUsages,
   getFormNodePropertySchema,
   mergeFormNodeFieldMetadata,
-  normalizeFormFieldValidation
+  normalizeFormFieldValidation,
+  resolveFormNodeLayoutSpan
 } from '../form-node-property-schema.js'
 import {
   getBuiltInFormFieldSupportedTypes,
@@ -161,8 +162,10 @@ const expectedSchemas = {
     }
   },
   ACTION_SLOT: {
-    editable: ['parentId'],
-    capabilities: {}
+    editable: ['parentId', 'gridSpan'],
+    capabilities: {
+      gridSpan: true
+    }
   }
 }
 
@@ -271,7 +274,7 @@ const structuralNodeCases = {
     showBorder: false
   },
   TEXT: { text: '只读说明' },
-  ACTION_SLOT: {}
+  ACTION_SLOT: { gridSpan: 11 }
 }
 
 Object.entries(structuralNodeCases).forEach(([nodeType, componentProps]) => {
@@ -329,6 +332,88 @@ Object.entries(structuralNodeCases).forEach(([nodeType, componentProps]) => {
       `${nodeType} must serialize editable config ${key}`
     )
   })
+})
+
+const actionSlotPayload = buildFormNodePayload(
+  {
+    id: 'node-action-slot-grid',
+    nodeType: 'ACTION_SLOT',
+    nodeKey: 'approval_actions',
+    fieldLabel: '审批动作',
+    gridSpan: 11
+  },
+  {
+    // 模拟重新加载后的旧 componentProps；滑块修改后的顶层值必须优先。
+    componentProps: { gridSpan: 24 }
+  }
+)
+assert.equal(
+  actionSlotPayload.props.gridSpan,
+  11,
+  'ACTION_SLOT gridSpan edited by the slider must be persisted'
+)
+
+assert.equal(
+  resolveFormNodeLayoutSpan(
+    { nodeType: 'ACTION_SLOT', gridSpan: 11 },
+    'grid'
+  ),
+  11,
+  'root ACTION_SLOT must honor gridSpan in grid forms'
+)
+assert.equal(
+  resolveFormNodeLayoutSpan(
+    { nodeType: 'ACTION_SLOT', props: { gridSpan: 8 } },
+    'grid',
+    12
+  ),
+  8,
+  'runtime ACTION_SLOT must read gridSpan from published props'
+)
+assert.equal(
+  resolveFormNodeLayoutSpan(
+    { nodeType: 'ACTION_SLOT', props: { span: 6 } },
+    'grid',
+    12
+  ),
+  6,
+  'legacy ACTION_SLOT props.span must remain readable'
+)
+assert.equal(
+  resolveFormNodeLayoutSpan(
+    { nodeType: 'ACTION_SLOT' },
+    'grid',
+    10
+  ),
+  10,
+  'ACTION_SLOT inside GRID must use the container fallback when unset'
+)
+assert.equal(
+  resolveFormNodeLayoutSpan(
+    { nodeType: 'ACTION_SLOT', gridSpan: 11 },
+    'vertical'
+  ),
+  24,
+  'vertical legacy ACTION_SLOT layout must stay full-width'
+)
+assert.equal(
+  resolveFormNodeLayoutSpan(
+    { nodeType: 'ACTION_SLOT', gridSpan: 11 },
+    'horizontal'
+  ),
+  24,
+  'horizontal legacy ACTION_SLOT layout must stay full-width'
+)
+;['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT'].forEach(nodeType => {
+  assert.equal(
+    resolveFormNodeLayoutSpan(
+      { nodeType, gridSpan: 8, props: { gridSpan: 8 } },
+      'grid',
+      8
+    ),
+    24,
+    `${nodeType} must remain a full-width structural node`
+  )
 })
 
 const fieldPayload = buildFormNodePayload(

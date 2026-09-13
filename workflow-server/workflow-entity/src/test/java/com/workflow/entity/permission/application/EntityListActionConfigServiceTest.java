@@ -32,7 +32,7 @@ class EntityListActionConfigServiceTest {
             mock(EntityDefinitionMapper.class),
             mock(EntityListConfigMapper.class),
             mock(EntityListRelationalConfigService.class),
-            List.of(),
+            new EntityListActionRulePolicy(objectMapper, List.of()),
             List.of());
     private final EntityActionRuleEvaluator evaluator = new EntityActionRuleEvaluator(List.of());
 
@@ -60,15 +60,19 @@ class EntityListActionConfigServiceTest {
         SysUser user = new SysUser();
         user.setId("u1");
 
-        assertEquals(objectMapper.valueToTree(delete.getRoot()), objectMapper.valueToTree(edit.getRoot()));
-        assertEquals("HIDE", edit.getUnavailableBehavior());
-        assertEquals("仅本人未流转草稿或已撤回数据可以编辑", edit.getMessage());
-        assertEquals(expected, evaluator.evaluate(edit, row, user, category));
-        assertEquals(expected, evaluator.evaluate(delete, row, user, category));
+        assertEquals(2, edit.getVersion());
+        assertEquals(
+                objectMapper.valueToTree(delete.getVisibleWhen()),
+                objectMapper.valueToTree(edit.getVisibleWhen()));
+        assertNull(edit.getEnabledWhen());
+        assertEquals(expected, evaluator.evaluate(
+                edit.getVisibleWhen(), row, user, category));
+        assertEquals(expected, evaluator.evaluate(
+                delete.getVisibleWhen(), row, user, category));
     }
 
     @Test
-    void savingLegacyButtonsAddsDefaultEditRule() throws Exception {
+    void savingButtonWithoutConditionsAddsDefaultEditRule() throws Exception {
         EntityListConfig config = new EntityListConfig();
         config.setEntityCode("expense");
         config.setPublishedSnapshot(true);
@@ -79,15 +83,19 @@ class EntityListActionConfigServiceTest {
         Map<?, ?> stored = (Map<?, ?>) objectMapper.readValue(config.getRowActionConfig(), List.class).get(0);
         assertTrue(stored.containsKey("availabilityRule"));
         EntityActionRuleDTO edit = rule(service.resolveRowButtons(config, "expense"), "edit");
-        assertEquals("仅本人未流转草稿或已撤回数据可以编辑", edit.getMessage());
+        assertEquals(2, edit.getVersion());
+        assertTrue(edit.getVisibleWhen() != null);
     }
 
     @Test
     void explicitCustomOrUnrestrictedEditRulesArePreserved() throws Exception {
         Map<String, Object> customRule = Map.of(
-                "unavailableBehavior", "DISABLE",
-                "message", "指定状态可以编辑",
-                "root", Map.of("type", "STATUS_CODE", "operator", "EQ", "value", "REVIEW"));
+                "version", 2,
+                "disabledMessage", "指定状态可以编辑",
+                "enabledWhen", Map.of(
+                        "type", "STATUS_CODE",
+                        "operator", "EQ",
+                        "value", "REVIEW"));
         Map<String, Object> customButton = Map.of(
                 "key", "edit", "type", "built-in", "availabilityRule", customRule);
         EntityListConfig config = new EntityListConfig();
@@ -98,22 +106,35 @@ class EntityListActionConfigServiceTest {
         service.normalizeForSave(config);
 
         EntityActionRuleDTO edit = rule(service.resolveRowButtons(config, "expense"), "edit");
-        assertEquals("指定状态可以编辑", edit.getMessage());
-        assertEquals("DISABLE", edit.getUnavailableBehavior());
-        assertEquals("STATUS_CODE", edit.getRoot().getType());
-        assertEquals("REVIEW", edit.getRoot().getValue());
+        assertEquals("指定状态可以编辑", edit.getDisabledMessage());
+        assertEquals("STATUS_CODE", edit.getEnabledWhen().getType());
+        assertEquals("REVIEW", edit.getEnabledWhen().getValue());
 
-        // 用户显式选择“始终可操作”时保留规则对象但清空 root，不应回填内置限制。
+        // 用户显式选择“始终显示且可操作”时保留规则对象，不应回填内置限制。
         Map<String, Object> unrestrictedButton = new LinkedHashMap<>(customButton);
         Map<String, Object> unrestrictedRule = new LinkedHashMap<>();
-        unrestrictedRule.put("version", 1);
-        unrestrictedRule.put("unavailableBehavior", "HIDE");
-        unrestrictedRule.put("message", "");
-        unrestrictedRule.put("root", null);
+        unrestrictedRule.put("version", 2);
+        unrestrictedRule.put("visibleWhen", null);
+        unrestrictedRule.put("enabledWhen", null);
+        unrestrictedRule.put("disabledMessage", null);
         unrestrictedButton.put("availabilityRule", unrestrictedRule);
         config.setRowActionConfig(objectMapper.writeValueAsString(List.of(unrestrictedButton)));
         service.normalizeForSave(config);
-        assertNull(rule(service.resolveRowButtons(config, "expense"), "edit").getRoot());
+        EntityActionRuleDTO unrestricted = rule(
+                service.resolveRowButtons(config, "expense"), "edit");
+        assertNull(unrestricted.getVisibleWhen());
+        assertNull(unrestricted.getEnabledWhen());
+    }
+
+    @Test
+    void defaultBatchDeleteUsesEnabledCondition() {
+        EntityActionRuleDTO rule = rule(
+                service.resolveToolbarButtons(null, "expense"),
+                "batchDelete");
+
+        assertNull(rule.getVisibleWhen());
+        assertTrue(rule.getEnabledWhen() != null);
+        assertEquals("选中数据中存在不可删除的数据", rule.getDisabledMessage());
     }
 
     private EntityActionRuleDTO rule(List<Map<String, Object>> buttons, String key) {

@@ -160,6 +160,24 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
             @Param("assignedOnly") boolean assignedOnly);
 
     /**
+     * 精确查询当前用户可办理的任务，并联合约束已鉴权记录与流程实例坐标。
+     */
+    @Select("<script>SELECT pt.* " + TODO_USER_SCOPE + """
+            AND pt.task_id = #{taskId}
+            AND pt.entity_code = #{entityCode}
+            AND pt.entity_data_id = #{entityDataId}
+            AND pt.process_instance_id = #{processInstanceId}
+            LIMIT 1
+            </script>
+            """)
+    ProcessTask selectActionableTaskContext(
+            @Param("userId") String userId,
+            @Param("taskId") String taskId,
+            @Param("entityCode") String entityCode,
+            @Param("entityDataId") String entityDataId,
+            @Param("processInstanceId") String processInstanceId);
+
+    /**
      * 查询已办列表（根据用户ID查询用户已完成的）
      */
     @Select("SELECT * FROM process_task pt WHERE (" +

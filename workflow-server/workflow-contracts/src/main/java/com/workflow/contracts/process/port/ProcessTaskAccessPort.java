@@ -24,6 +24,29 @@ public interface ProcessTaskAccessPort {
             String userId, String entityCode, String entityDataId, String processInstanceId);
 
     /**
+     * 按客户端声明的任务坐标回查当前用户真正可办理的服务端任务上下文。
+     *
+     * <p>该入口供审批表单按钮把短期发布令牌重新绑定到实际待办；实现必须同时
+     * 校验用户、任务、记录和流程实例，不能仅凭客户端 taskId 返回上下文。</p>
+     *
+     * @param userId 当前认证用户 ID 或用户名
+     * @param taskId 客户端声明、但尚未受信的任务 ID
+     * @param entityCode 已鉴权业务记录的实体编码
+     * @param entityDataId 已鉴权业务记录 ID
+     * @param processInstanceId 已鉴权业务记录上的流程实例 ID
+     * @return 完整、可办理且能定位不可变流程发布版的任务上下文
+     */
+    default Optional<ActionableTaskContext> findActionableTaskContext(
+            String userId,
+            String taskId,
+            String entityCode,
+            String entityDataId,
+            String processInstanceId) {
+        // 旧适配器没有精确任务上下文能力时必须安全拒绝审批按钮，不能降级成宽松的 taskId 查询。
+        return Optional.empty();
+    }
+
+    /**
      * 判断当前用户是否实际持有该记录的任务；候选关系不授予此办理人身份。
      *
      * @param userId 用户 ID 或用户名
@@ -43,4 +66,15 @@ public interface ProcessTaskAccessPort {
      * @return 去重记录 ID；无候选任务或参数无效时返回空集合，不返回 SQL 或表名
      */
     List<String> findActionableEntityDataIds(String userId, String entityCode);
+
+    /** 服务端从待办表和流程发布历史联合解析出的可信审批上下文。 */
+    record ActionableTaskContext(
+            String taskId,
+            String processInstanceId,
+            String processDefinitionId,
+            String processVersionHistoryId,
+            String nodeId,
+            String entityCode,
+            String entityDataId) {
+    }
 }

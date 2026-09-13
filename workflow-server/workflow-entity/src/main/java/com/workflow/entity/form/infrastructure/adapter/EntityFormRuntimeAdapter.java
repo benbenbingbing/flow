@@ -64,6 +64,22 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
             EntityFormBinding binding,
             String processVersionHistoryId,
             UiRuntimePurpose purpose) {
+        return findFormByBinding(
+                binding,
+                new UiRuntimeResolutionContext(
+                        purpose,
+                        processVersionHistoryId,
+                        binding == null ? null : binding.nodeId()));
+    }
+
+    @Override
+    public Map<String, Object> findFormByBinding(
+            EntityFormBinding binding,
+            UiRuntimeResolutionContext context) {
+        String processVersionHistoryId = context == null
+                ? null : context.processVersionHistoryId();
+        UiRuntimePurpose purpose = context == null
+                ? UiRuntimePurpose.HISTORICAL : context.purpose();
         if (binding == null || !StringUtils.hasText(binding.formId())) {
             log.info(
                     "流程表单绑定解析跳过: historyId={}, purpose={}, reason=EMPTY_BINDING",
@@ -79,16 +95,18 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
                 LogValue.safe(processVersionHistoryId),
                 LogValue.safe(binding.nodeId()),
                 LogValue.safe(purpose));
-        UiRuntimeResolutionContext context = new UiRuntimeResolutionContext(
-                purpose,
-                processVersionHistoryId,
-                binding.nodeId());
+        UiRuntimeResolutionContext effectiveContext = context == null
+                ? new UiRuntimeResolutionContext(
+                        purpose,
+                        processVersionHistoryId,
+                        binding.nodeId())
+                : context;
         ResolvedEntityFormRelease resolved =
                 releaseService.resolveRuntimeFormRelease(
                         binding.formId(),
                         binding.formReleaseId(),
                         binding.formReleaseVersion(),
-                        context);
+                        effectiveContext);
         EntityForm form = resolved.form();
         if (form == null) {
             log.info(
@@ -104,7 +122,7 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
         form.setEffectiveReleaseId(resolved.effectiveReleaseId());
         form.setHotfixApplied(resolved.hotfixApplied());
         form.setReleaseResolutionToken(resolutionTokenService.issue(
-                context,
+                effectiveContext,
                 form.getId(),
                 resolved.releaseId(),
                 resolved.releaseVersion(),

@@ -25,15 +25,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EntityListActionConfigService {
 
-    private static final int MAX_RULE_DEPTH = 6;
-    private static final int MAX_RULE_NODES = 100;
     private static final TypeReference<List<Map<String, Object>>> BUTTON_LIST_TYPE = new TypeReference<>() {};
 
     private final ObjectMapper objectMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final EntityListConfigMapper configMapper;
     private final EntityListRelationalConfigService relationalConfigService;
-    private final List<EntityActionRuleConditionProvider> conditionProviders;
+    private final EntityListActionRulePolicy rulePolicy;
     private final List<EntityPermissionOptionProvider> permissionOptionProviders;
 
     /**
@@ -313,7 +311,33 @@ public class EntityListActionConfigService {
         if (rawRule == null) {
             return null;
         }
-        return objectMapper.convertValue(rawRule, EntityActionRuleDTO.class);
+        return rulePolicy.read(rawRule);
+    }
+
+    /**
+     * 校验不可变列表快照中的所有按钮条件，不补默认按钮也不修改快照。
+     *
+     * <p>发布与历史版本激活必须调用该方法，确保旧 v1 或畸形 v2 条件
+     * 不会绕过草稿保存入口进入运行时。</p>
+     *
+     * @param config 待发布或激活的列表快照
+     */
+    public void validateAvailabilityRules(EntityListConfigDTO config) {
+        if (config == null) {
+            throw new IllegalArgumentException("列表配置不能为空");
+        }
+        validateAvailabilityRules(config.getToolbarConfig());
+        validateAvailabilityRules(config.getRowActionConfig());
+    }
+
+    private void validateAvailabilityRules(
+            List<Map<String, Object>> buttons) {
+        if (buttons == null) {
+            return;
+        }
+        for (Map<String, Object> button : buttons) {
+            readRule(button);
+        }
     }
 
     /**
@@ -333,20 +357,6 @@ public class EntityListActionConfigService {
         }
         EntityPermissionAction action = EntityPermissionAction.fromButtonKey(asString(button.get("key")));
         return action == null ? null : action.permissionCode(entityCode);
-    }
-
-    /**
-     * 解析按钮不可用时的展示行为：HIDE 隐藏或 DISABLE 禁用。
-     *
-     * @param button 按钮配置
-     * @return HIDE 或 DISABLE，工具栏按钮默认 DISABLE
-     */
-    public String unavailableBehavior(Map<String, Object> button) {
-        EntityActionRuleDTO rule = readRule(button);
-        if (rule != null && StringUtils.hasText(rule.getUnavailableBehavior())) {
-            return rule.getUnavailableBehavior().toUpperCase();
-        }
-        return isToolbarKey(asString(button == null ? null : button.get("key"))) ? "DISABLE" : "HIDE";
     }
 
     private List<Map<String, Object>> parseAndNormalize(
@@ -459,8 +469,6 @@ public class EntityListActionConfigService {
 
             EntityActionRuleDTO rule = readRule(button);
             if (rule != null) {
-                normalizeRuleValues(rule.getRoot());
-                validateRule(rule);
                 button.put("availabilityRule", objectMapper.convertValue(rule, Map.class));
             }
             result.add(button);
@@ -500,82 +508,6 @@ public class EntityListActionConfigService {
         }
     }
 
-    private void validateRule(EntityActionRuleDTO rule) {
-        if (rule.getVersion() == null || rule.getVersion() != 1) {
-            throw new IllegalArgumentException("不支持的按钮条件规则版本");
-        }
-        String behavior = rule.getUnavailableBehavior();
-        if (StringUtils.hasText(behavior)
-                && !"HIDE".equalsIgnoreCase(behavior)
-                && !"DISABLE".equalsIgnoreCase(behavior)) {
-            throw new IllegalArgumentException("不可用行为只能是 HIDE 或 DISABLE");
-        }
-        int[] count = {0};
-        validateNode(rule.getRoot(), 1, count);
-    }
-
-    private void normalizeRuleValues(EntityActionRuleDTO.RuleNode node) {
-        if (node == null) {
-            return;
-        }
-        if ("GROUP".equalsIgnoreCase(node.getType())) {
-            if (node.getChildren() != null) {
-                node.getChildren().forEach(this::normalizeRuleValues);
-            }
-            return;
-        }
-        if (("IN".equalsIgnoreCase(node.getOperator()) || "NOT_IN".equalsIgnoreCase(node.getOperator()))
-                && node.getValue() instanceof String text) {
-            node.setValue(java.util.Arrays.stream(text.split(","))
-                    .map(String::trim)
-                    .filter(StringUtils::hasText)
-                    .toList());
-        }
-    }
-
-    private void validateNode(EntityActionRuleDTO.RuleNode node, int depth, int[] count) {
-        if (node == null) {
-            return;
-        }
-        if (depth > MAX_RULE_DEPTH || ++count[0] > MAX_RULE_NODES) {
-            throw new IllegalArgumentException("按钮条件规则过于复杂");
-        }
-        String type = node.getType();
-        if (!StringUtils.hasText(type)) {
-            throw new IllegalArgumentException("按钮条件缺少类型");
-        }
-        switch (type.toUpperCase()) {
-            case "GROUP" -> {
-                if (!"AND".equalsIgnoreCase(node.getLogic()) && !"OR".equalsIgnoreCase(node.getLogic())) {
-                    throw new IllegalArgumentException("条件组逻辑只能是 AND 或 OR");
-                }
-                if (node.getChildren() == null || node.getChildren().isEmpty()) {
-                    throw new IllegalArgumentException("条件组不能为空");
-                }
-                for (EntityActionRuleDTO.RuleNode child : node.getChildren()) {
-                    validateNode(child, depth + 1, count);
-                }
-            }
-            case "RELATION" -> requireText(node.getRelation(), "用户关系不能为空");
-            case "PROCESS_STATE", "STATUS_CODE", "STATUS_CATEGORY" ->
-                    requireOperator(node.getOperator());
-            case "FIELD", "USER_FIELD" -> {
-                requireText(node.getField(), "字段条件缺少字段");
-                if (!node.getField().matches("[A-Za-z][A-Za-z0-9_]*")) {
-                    throw new IllegalArgumentException("字段条件包含非法字段名: " + node.getField());
-                }
-                requireOperator(node.getOperator());
-            }
-            default -> {
-                EntityActionRuleConditionProvider provider = findConditionProvider(type);
-                if (provider == null) {
-                    throw new IllegalArgumentException("不支持的条件类型: " + type);
-                }
-                provider.validate(node);
-            }
-        }
-    }
-
     private void validatePermission(String entityCode, String permissionCode, boolean strict) {
         if (!StringUtils.hasText(permissionCode)) {
             return;
@@ -598,28 +530,6 @@ public class EntityListActionConfigService {
             return;
         }
         throw new IllegalArgumentException("权限码不属于当前实体或未注册扩展提供器: " + permissionCode);
-    }
-
-    private EntityActionRuleConditionProvider findConditionProvider(String type) {
-        return conditionProviders.stream()
-                .filter(provider -> provider.getType().equalsIgnoreCase(type))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private void requireOperator(String operator) {
-        requireText(operator, "条件运算符不能为空");
-        if (!List.of("EQ", "NE", "IN", "NOT_IN", "CONTAINS", "NOT_CONTAINS",
-                        "EMPTY", "NOT_EMPTY", "GT", "GTE", "LT", "LTE")
-                .contains(operator.toUpperCase())) {
-            throw new IllegalArgumentException("不支持的条件运算符: " + operator);
-        }
-    }
-
-    private void requireText(String value, String message) {
-        if (!StringUtils.hasText(value)) {
-            throw new IllegalArgumentException(message);
-        }
     }
 
     private boolean isToolbarKey(String key) {
@@ -661,40 +571,44 @@ public class EntityListActionConfigService {
     }
 
     /**
-     * 为未显式配置适用条件的内置按钮提供默认规则，编辑与删除共享本人草稿或撤回限制。
+     * 为未显式配置条件的内置按钮提供默认规则。
+     *
+     * <p>行内编辑、删除和审批不满足时直接隐藏；批量删除需保留
+     * 工具栏入口，因此同一业务限制放入 {@code enabledWhen}。</p>
      *
      * @param buttonKey 列表按钮编码
      * @return 默认规则；无需限制的按钮返回 null，显式配置由调用方保留
      */
     private EntityActionRuleDTO defaultRule(String buttonKey) {
         if ("edit".equals(buttonKey)) {
-            return ownDraftOrWithdrawnRule("仅本人未流转草稿或已撤回数据可以编辑");
+            return visibleRule(ownDraftOrWithdrawnCondition());
         }
         if ("delete".equals(buttonKey)) {
-            return ownDraftOrWithdrawnRule("仅本人未流转草稿或已撤回数据可以删除");
+            return visibleRule(ownDraftOrWithdrawnCondition());
         }
         if ("batchDelete".equals(buttonKey)) {
-            EntityActionRuleDTO rule = ownDraftOrWithdrawnRule("选中数据中存在不可删除的数据");
-            rule.setUnavailableBehavior("DISABLE");
+            EntityActionRuleDTO rule = new EntityActionRuleDTO();
+            rule.setEnabledWhen(ownDraftOrWithdrawnCondition());
+            rule.setDisabledMessage("选中数据中存在不可删除的数据");
             return rule;
         }
         if ("approve".equals(buttonKey)) {
-            EntityActionRuleDTO rule = new EntityActionRuleDTO();
-            rule.setUnavailableBehavior("HIDE");
-            rule.setMessage("仅当前任务办理人可以审批");
-            rule.setRoot(group("AND",
+            return visibleRule(group("AND",
                     relation("CURRENT_USER_IS_ASSIGNEE"),
                     condition("PROCESS_STATE", "EQ", "RUNNING")));
-            return rule;
         }
         return null;
     }
 
-    private EntityActionRuleDTO ownDraftOrWithdrawnRule(String message) {
+    private EntityActionRuleDTO visibleRule(
+            EntityActionRuleDTO.RuleNode condition) {
         EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        rule.setUnavailableBehavior("HIDE");
-        rule.setMessage(message);
-        rule.setRoot(group("AND",
+        rule.setVisibleWhen(condition);
+        return rule;
+    }
+
+    private EntityActionRuleDTO.RuleNode ownDraftOrWithdrawnCondition() {
+        return group("AND",
                 group("OR",
                         relation("CURRENT_USER_IS_CREATOR"),
                         relation("CURRENT_USER_IS_SUBMITTER")),
@@ -702,8 +616,7 @@ public class EntityListActionConfigService {
                         group("AND",
                                 condition("PROCESS_STATE", "EQ", "NOT_STARTED"),
                                 condition("STATUS_CATEGORY", "EQ", "NEW")),
-                        condition("STATUS_CATEGORY", "EQ", "WITHDRAWN"))));
-        return rule;
+                        condition("STATUS_CATEGORY", "EQ", "WITHDRAWN")));
     }
 
     private EntityActionRuleDTO.RuleNode group(String logic, EntityActionRuleDTO.RuleNode... children) {

@@ -43,6 +43,7 @@
 import { computed, nextTick, ref } from 'vue'
 import FormNodeRuntimeItem from '@/components/FormNodeRuntimeItem.vue'
 import { safeParseConfig } from '@/shared/config-runtime'
+import { resolveFormNodeLayoutSpan } from '@/shared/form-node-property-schema'
 
 const props = defineProps({
   nodes: { type: Array, default: () => [] },
@@ -106,13 +107,7 @@ function childrenFor(parentId) {
 const rootGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
 
 function nodeSpan(node) {
-  const nodeType = String(node.nodeType || '').toUpperCase()
-  if (['SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'TEXT', 'ACTION_SLOT'].includes(nodeType)) {
-    return 24
-  }
-  if (props.layoutType === 'vertical') return 24
-  if (props.layoutType === 'horizontal') return 12
-  return Number(node.props?.gridSpan || node.props?.span || 24)
+  return resolveFormNodeLayoutSpan(node, props.layoutType, 24)
 }
 
 async function validate() {

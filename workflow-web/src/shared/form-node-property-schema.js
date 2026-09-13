@@ -32,6 +32,17 @@ const RANGE_VALIDATION_FIELD_TYPES = new Set([
 const FORMAT_VALIDATION_FIELD_TYPES = new Set(['STRING', 'TEXT'])
 const PATTERN_VALIDATION_FIELD_TYPES = new Set(['STRING', 'TEXT'])
 
+// 这些结构节点始终独占整行。ACTION_SLOT 是可布局的叶子节点，不能放进
+// 该集合，否则设计器虽然能保存 gridSpan，运行时仍会被强制成 24/24。
+const FIXED_FULL_WIDTH_NODE_TYPES = new Set([
+  'SECTION',
+  'GRID',
+  'TAB_SET',
+  'TAB',
+  'COLLAPSE',
+  'TEXT'
+])
+
 const schema = ({
   editable = [],
   configKeys = [],
@@ -189,7 +200,9 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     containerAppearance: true
   }),
   ACTION_SLOT: schema({
-    editable: ['parentId']
+    editable: ['parentId', 'gridSpan'],
+    configKeys: ['gridSpan'],
+    gridSpan: true
   })
 })
 
@@ -318,6 +331,45 @@ export function formNodeSupports(value, capability) {
 
 export function getFormNodeDataSourceUsages(value) {
   return [...getFormNodePropertySchema(value).dataSourceUsages]
+}
+
+/**
+ * 统一计算节点在表单行中的 24 栅格占位。
+ *
+ * ACTION_SLOT 在 grid 布局或显式 GRID 容器内读取 gridSpan；在 vertical /
+ * horizontal 布局下继续保持历史整行行为，避免旧表单升级后按钮位置突变。
+ */
+export function resolveFormNodeLayoutSpan(
+  node,
+  layoutType = 'vertical',
+  fallback = 24
+) {
+  const nodeType = normalizeFormNodeType(node)
+  if (FIXED_FULL_WIDTH_NODE_TYPES.has(nodeType)) return 24
+
+  const normalizedLayout = String(layoutType || 'vertical').toLowerCase()
+  if (nodeType === 'ACTION_SLOT' && normalizedLayout !== 'grid') return 24
+  if (normalizedLayout === 'vertical') return 24
+  if (normalizedLayout === 'horizontal') return 12
+
+  const props = node?.props && typeof node.props === 'object'
+    ? node.props
+    : {}
+  const configured = node?.gridSpan ?? props.gridSpan ?? props.span
+  return validGridSpan(configured, fallback)
+}
+
+function validGridSpan(value, fallback) {
+  const number = Number(value)
+  if (Number.isInteger(number) && number >= 1 && number <= 24) {
+    return number
+  }
+  const fallbackNumber = Number(fallback)
+  return Number.isInteger(fallbackNumber)
+    && fallbackNumber >= 1
+    && fallbackNumber <= 24
+    ? fallbackNumber
+    : 24
 }
 
 export function extractFormNodeComponentConfig(value, propsValue) {
@@ -469,6 +521,7 @@ function buildSubFormProps(field, componentProps) {
 
 export function buildFormNodeProps(field, componentPropsValue = {}) {
   const nodeType = normalizeFormNodeType(field?.nodeType || field?.fieldType)
+  const nodeSchema = getFormNodePropertySchema(nodeType)
   const parsedComponentProps = parseObject(componentPropsValue)
   const componentProps = nodeType === 'TEXT'
     ? extractFormNodeComponentConfig(nodeType, parsedComponentProps)
@@ -481,8 +534,12 @@ export function buildFormNodeProps(field, componentPropsValue = {}) {
   }
   const label = field.fieldLabel || field.fieldName || field.fieldCode || field.nodeKey
   const props = { label }
-  getFormNodePropertySchema(nodeType).configKeys.forEach(key => {
-    const value = componentProps[key]
+  nodeSchema.configKeys.forEach(key => {
+    // 栅格滑块编辑的是节点顶层投影；它必须覆盖加载时保留在 componentProps
+    // 里的旧值，否则 ACTION_SLOT 调整后保存仍会写回原宽度。
+    const value = key === 'gridSpan' && nodeSchema.gridSpan
+      ? (field.gridSpan ?? componentProps[key])
+      : componentProps[key]
     if (value !== undefined) props[key] = value
   })
   return cleanObject(props)

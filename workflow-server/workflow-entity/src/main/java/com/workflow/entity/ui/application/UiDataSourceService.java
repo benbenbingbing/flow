@@ -389,6 +389,14 @@ public class UiDataSourceService {
                         throw new IllegalArgumentException(
                                         "接口执行缺少 owner、binding、service 或 operation");
                 }
+                if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                                normalize(request.getBindingCode()))) {
+                        // 表单按钮必须经过按钮可用性/权限、幂等回执和钉版定义校验；
+                        // 通用绑定接口只能验证“引用存在”，不能替代完整事件运行时。
+                        throw new BusinessForbiddenException(
+                                        "UI_EVENT_RUNTIME_REQUIRED",
+                                        "FORM_BUTTON_CLICK 必须通过 UI 事件运行接口执行");
+                }
                 String targetType = normalize(request.getTargetType());
                 if (!"OWNER".equals(targetType)
                                 && !StringUtils.hasText(request.getTargetKey())) {
@@ -615,6 +623,52 @@ public class UiDataSourceService {
                                 executionAccessService.authorizePublished(
                                                 definition,
                                                 request);
+                requireOperationContext(
+                                definition,
+                                authorization.configType());
+                return executeAuthorized(
+                                definition,
+                                request,
+                                authorization);
+        }
+
+        /**
+         * 从同一次表单按钮事件解析出的可信宿主快照执行固定 READ 操作。
+         *
+         * <p>该入口不会再次解析 ACTIVE/历史基础发布，因此批准热修复和并发版本
+         * 切换都不会改变本次请求的绑定身份。宿主快照、操作快照各自独立验哈希，
+         * 并继续执行当前用户 DataScope。</p>
+         *
+         * @param snapshotDocument 钉版操作定义文档
+         * @param expectedHash 钉版操作定义哈希
+         * @param request 服务端构造的表单按钮操作请求
+         * @param resolvedHostSnapshot 同一次事件解析得到的有效表单快照
+         * @param expectedHostHash 有效表单快照的可信内容哈希
+         * @return Provider 的已校验结果
+         */
+        public Object executePinnedOperation(
+                        String snapshotDocument,
+                        String expectedHash,
+                        UiDataSourceExecuteRequest request,
+                        Map<String, Object> resolvedHostSnapshot,
+                        String expectedHostHash) {
+                UiDataSourceDefinition definition = readPinnedOperation(
+                                snapshotDocument,
+                                expectedHash);
+                requirePinnedReadFailurePolicy(definition);
+                requirePinnedProviderAvailable(definition);
+                if (request != null) {
+                        request.setOperationCode(
+                                        definition.getOperationCode());
+                }
+                requireUsage(request == null ? null : request.getUsage());
+                UiDataSourceExecutionAuthorization authorization =
+                                executionAccessService
+                                                .authorizeResolvedFormButton(
+                                                                definition,
+                                                                request,
+                                                                resolvedHostSnapshot,
+                                                                expectedHostHash);
                 requireOperationContext(
                                 definition,
                                 authorization.configType());
@@ -1274,7 +1328,8 @@ public class UiDataSourceService {
                 String cacheKey = cacheKey(
                                 definition,
                                 input,
-                                authorization);
+                                authorization,
+                                request);
                 int cacheSeconds = integer(policy.get("cacheSeconds"), 0);
                 CacheEntry cached = cache.get(cacheKey);
                 if (cacheSeconds > 0 && cached != null && cached.expiresAt() > System.currentTimeMillis()) {
@@ -1628,13 +1683,19 @@ public class UiDataSourceService {
         private String cacheKey(
                         UiDataSourceDefinition definition,
                         Map<String, Object> input,
-                        UiDataSourceExecutionAuthorization authorization) {
+                        UiDataSourceExecutionAuthorization authorization,
+                        UiDataSourceExecuteRequest request) {
                 Map<String, Object> key = new LinkedHashMap<>();
                 key.put("serviceId", definition.getId());
                 key.put("revision", definition.getRevision());
                 key.put("providerVersion", definition.getProviderVersion());
                 key.put("providerArtifactDigest",
                                 definition.getProviderArtifactDigest());
+                key.put("operationCode", definition.getOperationCode());
+                // revision 只能说明草稿版本，钉版宿主还可能在同一服务/修订下
+                // 固定不同操作或不同完整定义；独立指纹防止跨操作/跨制品串缓存。
+                key.put("operationDefinitionFingerprint",
+                                operationDefinitionFingerprint(definition));
                 key.put("usage", authorization.usage());
                 key.put("configType", authorization.configType());
                 key.put("configId", authorization.configId());
@@ -1644,6 +1705,21 @@ public class UiDataSourceService {
                 key.put("listKey", authorization.listKey());
                 key.put("userId", authorization.user().getId());
                 key.put("tenantId", authorization.user().getOrgId());
+                // FORM_BUTTON_CLICK 的强类型 Provider 上下文还包含服务端完成鉴权后
+                // 注入的表单/记录/待办坐标。它们不一定出现在 input/requestContext，
+                // 必须独立参与缓存键，避免不同审批任务或记录复用上一上下文的结果。
+                key.put("serverRecordId",
+                                request == null ? null
+                                                : request.getServerRecordId());
+                key.put("serverFormMode",
+                                request == null ? null
+                                                : request.getServerFormMode());
+                key.put("serverTaskId",
+                                request == null ? null
+                                                : request.getServerTaskId());
+                key.put("serverProcessInstanceId",
+                                request == null ? null
+                                                : request.getServerProcessInstanceId());
                 key.put("input", input);
                 key.put("context", authorization.requestContext());
                 key.put(
@@ -1653,6 +1729,35 @@ public class UiDataSourceService {
                 return codec.canonicalize(
                                 codec.write(key, "数据源缓存键"),
                                 "数据源缓存键");
+        }
+
+        private String operationDefinitionFingerprint(
+                        UiDataSourceDefinition definition) {
+                Map<String, Object> value = new LinkedHashMap<>();
+                value.put("serviceId", definition.getId());
+                value.put("sourceCode", definition.getSourceCode());
+                value.put("sourceType", definition.getSourceType());
+                value.put("providerCode", definition.getProviderCode());
+                value.put("providerVersion", definition.getProviderVersion());
+                value.put("providerArtifactDigest",
+                                definition.getProviderArtifactDigest());
+                value.put("scopeType", definition.getScopeType());
+                value.put("scopeId", definition.getScopeId());
+                value.put("revision", definition.getRevision());
+                value.put("operationCode", definition.getOperationCode());
+                value.put("operationContextType",
+                                definition.getOperationContextType());
+                value.put("operationKind", definition.getOperationKind());
+                value.put("configDocument", definition.getConfigDocument());
+                value.put("executionPolicyDocument",
+                                definition.getExecutionPolicyDocument());
+                value.put("inputSchemaDocument",
+                                definition.getOperationInputSchemaDocument());
+                value.put("outputSchemaDocument",
+                                definition.getOperationOutputSchemaDocument());
+                return sha256(codec.canonicalize(
+                                codec.write(value, "数据源操作定义缓存指纹"),
+                                "数据源操作定义缓存指纹"));
         }
 
         private Map<String, Object> dataScopeFingerprint(

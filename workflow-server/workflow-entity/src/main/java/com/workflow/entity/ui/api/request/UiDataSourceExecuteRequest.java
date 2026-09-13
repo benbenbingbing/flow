@@ -50,4 +50,36 @@ public class UiDataSourceExecuteRequest {
     /** 是否固定使用服务端指定的发布版本，不序列化给前端。 */
     @JsonIgnore
     private boolean serverPinnedRelease;
+
+    /** 已验证事件步骤的原始绑定所有者类型，仅供内部精确授权。 */
+    @JsonIgnore
+    private String serverBindingOwnerType;
+
+    /** 已验证事件步骤的原始绑定所有者 ID，仅供内部精确授权。 */
+    @JsonIgnore
+    private String serverBindingOwnerId;
+
+    /** 已验证事件步骤的原始绑定目标类型，仅供内部精确授权。 */
+    @JsonIgnore
+    private String serverBindingTargetType;
+
+    /** 已验证事件步骤的原始绑定目标键，仅供内部精确授权。 */
+    @JsonIgnore
+    private String serverBindingTargetKey;
+
+    /** FORM_BUTTON_CLICK 已鉴权的记录 ID；新增态允许为空。 */
+    @JsonIgnore
+    private String serverRecordId;
+
+    /** FORM_BUTTON_CLICK 已鉴权的 create/edit/view/approve 模式。 */
+    @JsonIgnore
+    private String serverFormMode;
+
+    /** FORM_BUTTON_CLICK 审批模式已核验的任务 ID；普通模式为空。 */
+    @JsonIgnore
+    private String serverTaskId;
+
+    /** FORM_BUTTON_CLICK 审批模式已核验的流程实例 ID；普通模式为空。 */
+    @JsonIgnore
+    private String serverProcessInstanceId;
 }

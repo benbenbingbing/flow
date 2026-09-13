@@ -12,6 +12,8 @@ import java.util.Map;
 @Data
 public class UiEventExecutionResult {
 
+    private String requestId;
+    private boolean replayed;
     private Object data;
     private String message;
     private boolean defaultExecuted;
