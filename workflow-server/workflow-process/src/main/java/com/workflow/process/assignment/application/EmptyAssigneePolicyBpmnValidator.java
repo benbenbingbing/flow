@@ -6,6 +6,8 @@ import com.workflow.contracts.identity.resolver.PersonPrincipalType;
 import com.workflow.process.assignment.domain.AssigneeResolutionResult;
 import com.workflow.process.assignment.domain.EmptyAssigneePolicy;
 import lombok.RequiredArgsConstructor;
+import org.flowable.bpmn.converter.BpmnXMLConverter;
+import org.flowable.bpmn.model.UserTask;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.w3c.dom.Document;
@@ -15,7 +17,9 @@ import org.w3c.dom.NodeList;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.stream.XMLInputFactory;
 import java.io.ByteArrayInputStream;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -55,6 +59,7 @@ public class EmptyAssigneePolicyBpmnValidator {
                 policy = policyResolver.resolve(
                         processDefault, effectiveConfig);
                 validateFallbackIdentity(policy, nodeId);
+                validateRetrySource(task, effectiveConfig, policy, bpmnXml);
                 validateStaticAssignment(
                         task,
                         effectiveConfig,
@@ -65,6 +70,43 @@ public class EmptyAssigneePolicyBpmnValidator {
                         "EMPTY_ASSIGNEE_POLICY_INVALID [" + nodeId + "]: "
                                 + error.getMessage(), error);
             }
+        }
+    }
+
+    /** 自动重试只能重放已配置的人员接口，提前阻止无法执行的重试计划。 */
+    private void validateRetrySource(
+            Element task, Map<String, Object> config, EmptyAssigneePolicy policy, String bpmnXml) {
+        if (policy.strategy() != EmptyAssigneePolicy.Strategy.WAIT_AND_RETRY) {
+            return;
+        }
+        boolean multiInstance = task.getElementsByTagNameNS(
+                "*", "multiInstanceLoopCharacteristics").getLength() > 0;
+        if (NodeAssignmentReferenceResolver.isEffectiveNodeReference(config, multiInstance)) {
+            // 与任务创建边界共用引用链解析，允许引用真实人员接口；单凭当前
+            // assigneeType 或残留 resolverCode 判断会误拒有效引用或误放静态来源。
+            try {
+                XMLInputFactory factory = XMLInputFactory.newFactory();
+                factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+                factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+                var reader = factory.createXMLStreamReader(new StringReader(bpmnXml));
+                try {
+                    var model = new BpmnXMLConverter().convertToBpmnModel(reader);
+                    var current = (UserTask) model.getMainProcess().getFlowElement(task.getAttribute("id"), true);
+                    var resolved = new NodeAssignmentReferenceResolver(objectMapper).resolve(model, current, config);
+                    config = resolved.assigneeConfig();
+                    multiInstance = resolved.sourceTask().hasMultiInstanceLoopCharacteristics();
+                } finally {
+                    reader.close();
+                }
+            } catch (Exception error) {
+                throw new IllegalArgumentException("等待并自动重试必须配置可重试的人员接口：" + error.getMessage(), error);
+            }
+        }
+        String resolverCode = LegacyMultiInstanceAssignmentParser
+                .effectiveResolver(config, multiInstance).resolverCode();
+        if (!StringUtils.hasText(resolverCode)) {
+            throw new IllegalArgumentException(
+                    "等待并自动重试必须配置可重试的人员接口；固定人员、用户组或表达式请使用运维事件或兜底策略");
         }
     }
 

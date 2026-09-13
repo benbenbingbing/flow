@@ -2497,7 +2497,8 @@ async function loadSubListOptions(
 async function loadSubListTargetFields(
   targetEntityId,
   listRef,
-  targetField = selectedField.value
+  targetField = selectedField.value,
+  { propagateError = false } = {}
 ) {
   const shouldUpdateUi =
     Boolean(targetField) && targetField === selectedField.value
@@ -2576,6 +2577,8 @@ async function loadSubListTargetFields(
       subListTargetFields.value = []
     }
     console.error('加载子列表目标字段失败:', error)
+    // 保存校验依赖真实 schema；加载失败不能被折叠成“目标字段不存在”。
+    if (propagateError) throw error
     return []
   } finally {
     if (shouldUpdateUi
@@ -2645,7 +2648,8 @@ async function ensureSubListBinding(field) {
   const targets = await loadSubListTargetFields(
     targetEntityId,
     selected,
-    null
+    null,
+    { propagateError: true }
   )
   const targetByCode = new Map(
     targets.map(item => [item.fieldCode, item])

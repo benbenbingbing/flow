@@ -178,7 +178,17 @@ public class AssigneeIncidentService {
 
     private Map<String, Object> retryResolver(Incident incident) {
         if (!StringUtils.hasText(incident.resolverCode())) {
-            throw new IllegalStateException("事件没有可重试的人员解析器");
+            // 历史部署可能为固定人员选择了自动重试。必须退出定时扫描，
+            // 否则相同请求号的失败审计会让事件永远停留在 RETRY_SCHEDULED。
+            jdbcTemplate.update("""
+                    UPDATE process_assignee_incident
+                    SET status = 'MANUAL_REQUIRED', next_retry_at = NULL,
+                        empty_reason_code = 'RESOLVER_CODE_MISSING',
+                        empty_reason_message = '事件没有可重试的人员接口，请人工补充办理人或转派用户组',
+                        resolution_action = 'RETRY_UNAVAILABLE', update_time = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """, incident.id());
+            return Map.of("requiresManualHandling", true);
         }
         if (!StringUtils.hasText(incident.taskId())) {
             return retryMultiInstanceNodeEntry(incident);

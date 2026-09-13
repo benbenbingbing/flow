@@ -968,6 +968,11 @@ assert.match(
   /async function loadSubListOptions\([\s\S]*?propagateError = false[\s\S]*?if \(propagateError\) throw error[\s\S]*?async function ensureSubListBinding\(field\)[\s\S]*?loadSubListOptions\(targetEntityId, field, \{[\s\S]*?propagateError: true/,
   '子列表保存校验必须透传加载失败，不能把接口异常误报为列表不存在'
 )
+assert.match(
+  formDesigner,
+  /async function loadSubListTargetFields\([\s\S]*?propagateError = false[\s\S]*?加载失败不能被折叠成“目标字段不存在”[\s\S]*?if \(propagateError\) throw error[\s\S]*?const targets = await loadSubListTargetFields\([\s\S]*?propagateError: true/,
+  '子列表保存校验必须透传 schema 加载失败，不能误报参数目标字段不存在'
+)
 const openExtensionManagementSource = formDesigner.match(
   /function openExtensionManagement\(\) \{[\s\S]*?\n\}/
 )?.[0] || ''

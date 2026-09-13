@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 /** 在任务创建边界执行五种空办理人策略。 */
 @Service
@@ -34,6 +35,9 @@ public class EmptyAssigneePolicyService {
             EmptyContext context,
             AssigneeResolutionResult resolution) {
         EmptyAssigneePolicy policy = policyResolver.resolve(bpmnModel, assigneeConfig);
+        // 无效旧执行人或候选组不能继续持有任务，否则兜底组成员仍可能无法认领，
+        // 事件等待期间也可能被原候选身份误操作。保留 owner 等非候选身份用于审计。
+        clearUnavailableAssignment(task);
         if (policy.strategy() == EmptyAssigneePolicy.Strategy.FALLBACK_USER) {
             AssigneeResolutionResult fallback = resolutionService.resolvePrincipals(
                     List.of(PersonPrincipal.user(policy.fallbackUser())),
@@ -82,6 +86,18 @@ public class EmptyAssigneePolicyService {
                 policy.strategy().name(), incidentId,
                 policy.strategy() == EmptyAssigneePolicy.Strategy.BLOCK_PUBLISH,
                 false, List.of());
+    }
+
+    /** 移除已被调用方确认无有效办理人的任务分配，再应用兜底或进入事件等待。 */
+    private void clearUnavailableAssignment(Task task) {
+        taskService.setAssignee(task.getId(), null);
+        var links = taskService.getIdentityLinksForTask(task.getId());
+        if (links == null) return;
+        for (var link : new ArrayList<>(links)) {
+            if (!"candidate".equals(link.getType())) continue;
+            if (link.getUserId() != null) taskService.deleteCandidateUser(task.getId(), link.getUserId());
+            if (link.getGroupId() != null) taskService.deleteCandidateGroup(task.getId(), link.getGroupId());
+        }
     }
 
     public record EmptyContext(

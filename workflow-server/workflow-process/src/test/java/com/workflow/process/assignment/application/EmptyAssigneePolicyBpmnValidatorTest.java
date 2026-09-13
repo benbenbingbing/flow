@@ -5,6 +5,8 @@ import com.workflow.process.assignment.domain.AssigneeResolutionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -187,5 +189,33 @@ class EmptyAssigneePolicyBpmnValidatorTest {
                 .replace("\"", "&quot;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"FALLBACK_USER", "FALLBACK_GROUP"})
+    void rejectsDisabledFallbackOrGroupWithoutEnabledMembers(String strategy) {
+        when(resolutionService.resolvePrincipals(anyList(), anyString()))
+                .thenReturn(AssigneeResolutionResult.empty("INVALID", "没有启用成员", null));
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(bpmn(
+                jsonAttribute("{\"policy\":\"" + strategy
+                        + "\",\"fallbackUser\":\"disabled\",\"fallbackGroup\":\"empty-group\"}"), "")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"user", "group", "expression", "node_reference"})
+    void rejectsRetryWithoutReplayableResolverEvenWithStaleResolverCode(String type) {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> validator.validate(bpmn(jsonAttribute("{\"policy\":\"WAIT_AND_RETRY\"}"),
+                        jsonAttribute("{\"assigneeType\":\"" + type + "\",\"resolverCode\":\"stale\"}"))));
+        assertTrue(error.getMessage().contains("等待并自动重试必须配置可重试的人员接口"));
+    }
+
+    @Test
+    void acceptsRetryForConfiguredAndLegacyMultiInstanceResolvers() {
+        String retry = jsonAttribute("{\"policy\":\"WAIT_AND_RETRY\"}");
+        assertDoesNotThrow(() -> validator.validate(bpmn(retry,
+                jsonAttribute("{\"assigneeType\":\"resolver\",\"resolverCode\":\"people\"}"))));
+        assertDoesNotThrow(() -> validator.validate(bpmn(retry, "",
+                jsonAttribute("{\"collectionSource\":\"resolver\",\"collectionResolverCode\":\"people\"}"), true)));
     }
 }

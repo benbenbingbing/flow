@@ -92,7 +92,8 @@ public class EmptyAssigneePolicyResolver {
                 throw new IllegalArgumentException(
                         "WAIT_AND_RETRY initialDelaySeconds 必须在 5-86400 之间");
             }
-            if (policy.backoffMultiplier() < 1.0 || policy.backoffMultiplier() > 10.0) {
+            if (!Double.isFinite(policy.backoffMultiplier())
+                    || policy.backoffMultiplier() < 1.0 || policy.backoffMultiplier() > 10.0) {
                 throw new IllegalArgumentException(
                         "WAIT_AND_RETRY backoffMultiplier 必须在 1-10 之间");
             }

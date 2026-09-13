@@ -35,6 +35,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -225,7 +226,13 @@ public class PersonResolverTaskAssignmentListener
             throw exception;
         }
         Map<String, Object> effectiveConfig =
-                resolvedAssignment.assigneeConfig();
+                new LinkedHashMap<>(resolvedAssignment.assigneeConfig());
+        // 引用只复用人员来源，空办理人策略属于当前节点。不能把源节点的
+        // 兜底、负责人或重试设置带过来，也不能丢失当前节点的显式覆盖。
+        effectiveConfig.remove("emptyAssigneeStrategy");
+        if (assigneeConfig.containsKey("emptyAssigneeStrategy")) {
+            effectiveConfig.put("emptyAssigneeStrategy", assigneeConfig.get("emptyAssigneeStrategy"));
+        }
         int effectiveVersion;
         try {
             effectiveVersion = assignmentConfigVersion(effectiveConfig);
@@ -292,22 +299,26 @@ public class PersonResolverTaskAssignmentListener
         }
         if (!"interface".equalsIgnoreCase(type)
                 && !"resolver".equalsIgnoreCase(type)) {
-            // 覆盖已在方法入口优先消费；此处仍无实际 assignee/candidate
-            // 表示首节点或不可预览路径没有任何人可办理，必须回滚任务创建。
-            if (strictAssignment) {
-                try {
-                    if (!hasCurrentAssignment(task)) {
-                        throw new RequiredAssignmentException(
-                                "安全关键节点没有有效的实际办理人或候选人",
-                                null);
-                    }
-                } catch (RequiredAssignmentException exception) {
-                    throw exception;
-                } catch (RuntimeException exception) {
-                    throw new RequiredAssignmentException(
-                            "校验安全关键节点实际办理人失败",
-                            exception);
+            // 未接入新策略的历史宽松节点保留原兼容行为；一旦节点或流程显式
+            // 配置策略，就与 v2 节点共用下方运行时校验。
+            if (!strictAssignment
+                    && !effectiveConfig.containsKey("emptyAssigneeStrategy")
+                    && !StringUtils.hasText(ConfiguredTaskPropertyReader.read(
+                            bpmnModel.getMainProcess(), "emptyAssigneeDefault"))) {
+                return;
+            }
+            // 固定人员和组同样可能停用或失去成员，必须走版本快照中的策略。
+            // 安全默认仍为 BLOCK_PUBLISH；显式配置的事件和兜底不应被 v2 强校验绕过。
+            try {
+                if (!hasCurrentAssignment(task)) {
+                    handleEmptyAssignment(task, bpmnModel, effectiveConfig, processConfigId, processKey,
+                            "EMPTY_STATIC_ASSIGNMENT", "节点没有有效的实际办理人或候选人");
                 }
+            } catch (RequiredAssignmentException exception) {
+                throw exception;
+            } catch (RuntimeException exception) {
+                throw new RequiredAssignmentException(
+                        "校验节点实际办理人失败", exception);
             }
             return;
         }

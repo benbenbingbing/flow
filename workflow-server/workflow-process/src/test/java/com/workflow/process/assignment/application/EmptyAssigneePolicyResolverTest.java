@@ -3,6 +3,8 @@ package com.workflow.process.assignment.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.assignment.domain.EmptyAssigneePolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 
@@ -92,5 +94,26 @@ class EmptyAssigneePolicyResolverTest {
                         Map.of("policy", "WAIT_AND_RETRY",
                                 "maxRetries", 21,
                                 "responsibilityOwner", "ops"))));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"NaN", "Infinity", "-Infinity", "0.5", "10.1"})
+    void rejectsNonFiniteOrOutOfRangeBackoff(String multiplier) {
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve((String) null,
+                Map.of(EmptyAssigneePolicyResolver.NODE_CONFIG_KEY,
+                        Map.of("policy", "WAIT_AND_RETRY", "backoffMultiplier", multiplier))));
+    }
+
+    @Test
+    void inheritIgnoresStaleFallbackAndResponsibilitySelections() {
+        EmptyAssigneePolicy resolved = resolver.resolve(
+                """
+                {"policy":"FALLBACK_GROUP","fallbackGroup":"finance","responsibilityOwner":"central-ops"}
+                """,
+                Map.of(EmptyAssigneePolicyResolver.NODE_CONFIG_KEY,
+                        Map.of("policy", "INHERIT", "fallbackGroup", "stale-group",
+                                "responsibilityOwner", "stale-user", "responsibilityOwnerType", "USER")));
+        assertEquals("finance", resolved.fallbackGroup());
+        assertEquals("central-ops", resolved.responsibilityOwner());
     }
 }

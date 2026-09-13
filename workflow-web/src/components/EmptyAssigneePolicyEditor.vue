@@ -12,10 +12,10 @@
       <div class="policy-hint">{{ policyHint }}</div>
     </el-form-item>
     <el-form-item v-if="policy.policy === 'FALLBACK_USER'" label="兜底用户" required>
-      <UserSelector :model-value="policy.fallbackUser" value-key="code" title="选择兜底用户" placeholder="请选择兜底用户" @update:model-value="update('fallbackUser', $event)" />
+      <EmptyAssigneeIdentitySelector entity-type="USER" :model-value="policy.fallbackUser" title="选择兜底用户" placeholder="请选择兜底用户" @update:model-value="update('fallbackUser', $event)" />
     </el-form-item>
     <el-form-item v-if="policy.policy === 'FALLBACK_GROUP'" label="兜底用户组" required>
-      <EntitySelector entity-type="GROUP" :model-value="policy.fallbackGroup" value-key="code" title="选择兜底用户组" placeholder="请选择兜底用户组" @update:model-value="update('fallbackGroup', $event)" />
+      <EmptyAssigneeIdentitySelector entity-type="GROUP" :model-value="policy.fallbackGroup" title="选择兜底用户组" placeholder="请选择兜底用户组" @update:model-value="update('fallbackGroup', $event)" />
     </el-form-item>
     <div v-if="policy.policy === 'WAIT_AND_RETRY'" class="retry-grid">
       <el-form-item label="最大重试次数">
@@ -34,11 +34,10 @@
           <el-radio-button value="USER">责任人</el-radio-button>
           <el-radio-button value="GROUP">值班组</el-radio-button>
         </el-radio-group>
-        <EntitySelector
+        <EmptyAssigneeIdentitySelector
           :key="ownerType"
           :entity-type="ownerType"
           :model-value="policy.responsibilityOwner"
-          value-key="code"
           :title="ownerType === 'USER' ? '选择责任人' : '选择值班组'"
           :placeholder="ownerType === 'USER' ? '请选择责任人' : '请选择值班组'"
           @update:model-value="updateOwner"
@@ -51,8 +50,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import UserSelector from '@/components/UserSelector.vue'
-import EntitySelector from '@/components/EntitySelector.vue'
+import EmptyAssigneeIdentitySelector from '@/components/EmptyAssigneeIdentitySelector.vue'
 import request from '@/utils/request'
 import { normalizeEmptyAssigneeStrategy } from '@/shared/process-config'
 
@@ -73,12 +71,18 @@ watch(() => [policy.value.responsibilityOwner, policy.value.responsibilityOwnerT
   legacyOwnerType.value = 'USER'
   if (!owner || type) return
   try {
-    const params = new URLSearchParams({ ids: owner, valueKey: 'code' })
-    const [users, groups] = await Promise.all([
-      request.get(`/entity-selector/USER/batch?${params}`),
-      request.get(`/entity-selector/GROUP/batch?${params}`)
-    ])
-    if (!stale && !users?.length && groups?.length) legacyOwnerType.value = 'GROUP'
+    for (const valueKey of ['code', 'id']) {
+      const params = new URLSearchParams({ ids: owner, valueKey })
+      const [users, groups] = await Promise.all([
+        request.get(`/entity-selector/USER/batch?${params}`),
+        request.get(`/entity-selector/GROUP/batch?${params}`)
+      ])
+      if (stale) return
+      if (users?.length || groups?.length) {
+        legacyOwnerType.value = users?.length ? 'USER' : 'GROUP'
+        return
+      }
+    }
   } catch {
     // 保留历史标识，目录暂时不可用时仍允许重新选择。
   }
