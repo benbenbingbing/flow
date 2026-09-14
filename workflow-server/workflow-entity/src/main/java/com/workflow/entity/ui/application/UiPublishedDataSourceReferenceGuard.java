@@ -9,12 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 /**
- * 阻止删除仍可能被发布运行时调用的接口服务。
+ * 阻止删除仍可能被发布运行时调用的接口扩展。
  *
  * <p>检查范围包含可被签名上下文或 Embed 固定的历史 FORM/LIST
  * 发布版本。该检查是全局完整性约束，不按操作者权限过滤；否则管理员
@@ -25,6 +27,9 @@ import java.util.Set;
 public class UiPublishedDataSourceReferenceGuard {
 
     private static final Set<String> REFERENCE_KEYS = Set.of(
+            "extensionId", "interfaceExtensionId",
+            "queryInterfaceExtensionId",
+            // 历史发布快照不可变，删除保护必须继续识别旧字段。
             "serviceId", "dataSourceId", "queryDataSourceId");
     private static final int MAX_EMBEDDED_JSON_DEPTH = 4;
 
@@ -33,35 +38,64 @@ public class UiPublishedDataSourceReferenceGuard {
     private final JsonDocumentCodec codec;
 
     /**
-     * 校验接口服务未被任一仍可执行的发布版本引用。
+     * 校验接口扩展未被任一仍可执行的发布版本引用。
      *
-     * @param serviceId 待删除接口服务 ID
+     * @param serviceId 待删除接口扩展 ID
      * @throws BusinessConflictException 存在线上引用，或候选快照无法可靠校验
      */
     public void requireNoExecutableReferences(String serviceId) {
+        requireNoExecutableReferences(serviceId, null);
+    }
+
+    /**
+     * 同时检查当前 extensionId 与迁移前 serviceId。
+     *
+     * <p>旧发布快照不会重算内容哈希，因此删除保护不能只用新主键
+     * 缩小候选集，否则会漏掉仍可执行的历史引用。</p>
+     */
+    public void requireNoExecutableReferences(
+            String serviceId,
+            String legacyServiceId) {
         if (!StringUtils.hasText(serviceId)) {
-            throw new IllegalArgumentException("接口服务ID不能为空");
+            throw new IllegalArgumentException("接口扩展ID不能为空");
         }
         String normalizedId = serviceId.trim();
-        for (UiConfigRelease release : safe(
-                releaseMapper.findExecutableDataSourceReferenceCandidates(
-                        normalizedId))) {
-            if (release == null) {
-                continue;
+        Set<String> referenceIds = new LinkedHashSet<>();
+        referenceIds.add(normalizedId);
+        if (StringUtils.hasText(legacyServiceId)) {
+            // 迁移数据可能暂时让新旧 ID 相同，去重后再扫描可避免删除校验自身异常。
+            referenceIds.add(legacyServiceId.trim());
+        }
+        Map<String, UiConfigRelease> candidates = new LinkedHashMap<>();
+        for (String referenceId : referenceIds) {
+            for (UiConfigRelease release : safe(
+                    releaseMapper.findExecutableDataSourceReferenceCandidates(
+                            referenceId))) {
+                if (release != null) {
+                    candidates.putIfAbsent(release.getId(), release);
+                }
             }
+        }
+        for (UiConfigRelease release : candidates.values()) {
             String path;
             try {
                 Map<String, Object> snapshot =
                         releaseService.verifiedReleaseSnapshot(release);
-                path = referencePath(
-                        snapshot, normalizedId, "$", 0);
+                path = null;
+                for (String referenceId : referenceIds) {
+                    path = referencePath(
+                            snapshot, referenceId, "$", 0);
+                    if (path != null) {
+                        break;
+                    }
+                }
             } catch (IllegalArgumentException exception) {
                 throw unverifiable("FORM/LIST 发布版本");
             }
             if (path != null) {
                 throw new BusinessConflictException(
-                        "UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
-                        "接口服务仍被可执行的发布版本引用，不能安全删除："
+                        "UI_INTERFACE_EXECUTABLE_RELEASE_REFERENCED",
+                        "接口扩展仍被可执行的发布版本引用，不能安全删除："
                                 + release.getConfigType() + "/"
                                 + release.getConfigId() + "@v"
                                 + release.getVersion() + " " + path);
@@ -127,8 +161,8 @@ public class UiPublishedDataSourceReferenceGuard {
 
     private BusinessConflictException unverifiable(String source) {
         return new BusinessConflictException(
-                "UI_DATA_SOURCE_PUBLISHED_REFERENCE_UNVERIFIABLE",
-                "发现可能引用该接口服务的" + source
+                "UI_INTERFACE_PUBLISHED_REFERENCE_UNVERIFIABLE",
+                "发现可能引用该接口扩展的" + source
                         + "，但文档无法可靠校验；请先修复发布版本后再删除");
     }
 

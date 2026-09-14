@@ -16,48 +16,51 @@ class ConfigMigrationDataSourceReferenceTest {
 
     /** 导出侧：应识别全部数据源ID键并正确映射为对应的编码键。 */
     @Test
-    void exportsAllSupportedDataSourceIdKeys() {
-        assertTrue(ConfigMigrationAssetService.isDataSourceIdKey("serviceId"));
-        assertTrue(ConfigMigrationAssetService.isDataSourceIdKey("dataSourceId"));
-        assertTrue(ConfigMigrationAssetService.isDataSourceIdKey("queryDataSourceId"));
-        assertFalse(ConfigMigrationAssetService.isDataSourceIdKey("sourceId"));
-        assertFalse(ConfigMigrationAssetService.isDataSourceIdKey("providerId"));
+    void exportsAllSupportedInterfaceExtensionIdKeys() {
+        assertTrue(ConfigMigrationAssetService.isInterfaceExtensionIdKey("serviceId"));
+        assertTrue(ConfigMigrationAssetService.isInterfaceExtensionIdKey("dataSourceId"));
+        assertTrue(ConfigMigrationAssetService.isInterfaceExtensionIdKey("extensionId"));
+        assertTrue(ConfigMigrationAssetService.isInterfaceExtensionIdKey("interfaceExtensionId"));
+        assertTrue(ConfigMigrationAssetService.isInterfaceExtensionIdKey("queryInterfaceExtensionId"));
+        assertFalse(ConfigMigrationAssetService.isInterfaceExtensionIdKey("sourceId"));
+        assertFalse(ConfigMigrationAssetService.isInterfaceExtensionIdKey("providerId"));
 
         assertEquals(
-                "serviceCode",
-                ConfigMigrationAssetService.dataSourceCodeKey("serviceId"));
+                "extensionCode",
+                ConfigMigrationAssetService.interfaceExtensionCodeKey("extensionId"));
         assertEquals(
-                "dataSourceCode",
-                ConfigMigrationAssetService.dataSourceCodeKey("dataSourceId"));
+                "interfaceExtensionCode",
+                ConfigMigrationAssetService.interfaceExtensionCodeKey(
+                        "interfaceExtensionId"));
         assertEquals(
-                "queryDataSourceCode",
-                ConfigMigrationAssetService.dataSourceCodeKey(
-                        "queryDataSourceId"));
+                "queryInterfaceExtensionCode",
+                ConfigMigrationAssetService.interfaceExtensionCodeKey(
+                        "queryInterfaceExtensionId"));
     }
 
     /** 导入侧：应识别全部数据源编码键并正确映射为对应的ID键。 */
     @Test
     void importsPortableCodesBackToMatchingIdFields() {
-        assertTrue(ConfigMigrationImportApplyService.isDataSourceCodeKey(
-                "serviceCode"));
-        assertTrue(ConfigMigrationImportApplyService.isDataSourceCodeKey(
-                "dataSourceCode"));
-        assertTrue(ConfigMigrationImportApplyService.isDataSourceCodeKey(
-                "queryDataSourceCode"));
-        assertFalse(ConfigMigrationImportApplyService.isDataSourceCodeKey(
+        assertTrue(ConfigMigrationImportApplyService.isInterfaceExtensionCodeKey(
+                "extensionCode"));
+        assertTrue(ConfigMigrationImportApplyService.isInterfaceExtensionCodeKey(
+                "interfaceExtensionCode"));
+        assertTrue(ConfigMigrationImportApplyService.isInterfaceExtensionCodeKey(
+                "queryInterfaceExtensionCode"));
+        assertFalse(ConfigMigrationImportApplyService.isInterfaceExtensionCodeKey(
                 "providerCode"));
 
         assertEquals(
-                "serviceId",
-                ConfigMigrationImportApplyService.dataSourceIdKey(
-                        "serviceCode"));
+                "extensionId",
+                ConfigMigrationImportApplyService.interfaceExtensionIdKey(
+                        "extensionCode"));
         assertEquals(
-                "dataSourceId",
-                ConfigMigrationImportApplyService.dataSourceIdKey(
-                        "dataSourceCode"));
+                "interfaceExtensionId",
+                ConfigMigrationImportApplyService.interfaceExtensionIdKey(
+                        "interfaceExtensionCode"));
         assertEquals(
-                "queryDataSourceId",
-                ConfigMigrationImportApplyService.dataSourceIdKey(
-                        "queryDataSourceCode"));
+                "queryInterfaceExtensionId",
+                ConfigMigrationImportApplyService.interfaceExtensionIdKey(
+                        "queryInterfaceExtensionCode"));
     }
 }

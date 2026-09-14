@@ -23,5 +23,15 @@ public record UiExtensionCatalogItem(
         Set<String> supportedBindings,
         Object configSchema,
         Map<String, Object> capabilities,
+        String implementationType,
+        String providerCode,
+        String scopeType,
+        String scopeId,
+        String interfaceKind,
+        String interfaceContextType,
+        Map<String, Object> implementationConfig,
+        Map<String, Object> executionPolicy,
+        Map<String, Object> inputSchema,
+        Map<String, Object> outputSchema,
         Integer revision) {
 }

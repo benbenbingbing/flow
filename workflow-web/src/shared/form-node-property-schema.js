@@ -551,17 +551,19 @@ function buildDataSourceBindings(field, allowedUsages) {
     parseObject(field.dataSourceBindings)
   ).reduce((result, [key, binding]) => {
     const usage = String(key || '').trim().toUpperCase()
-    if (allowed.has(usage) && hasMeaningfulValue(binding)) {
-      result[usage] = cloneValue(binding)
+    if (allowed.has(usage) && hasMeaningfulValue(binding)
+        && binding && typeof binding === 'object' && !Array.isArray(binding)) {
+      const normalized = cloneValue(binding)
+      delete normalized.serviceId
+      delete normalized.operationCode
+      // 历史 pair 只能读取；没有完成 ID 迁移的绑定不会被再次保存。
+      if (normalized.extensionId) result[usage] = normalized
     }
     return result
   }, {})
   const requestedUsage = String(field.dataSourceUsage || '').toUpperCase()
   const usage = allowed.has(requestedUsage) ? requestedUsage : ''
-  if (usage && field.dataSourceId) {
-    if (!field.dataSourceOperationCode) {
-      throw new Error('接口服务绑定缺少操作编码')
-    }
+  if (usage && field.interfaceExtensionId) {
     const existingBinding = existingBindings[usage]
     existingBindings[usage] = {
       ...(existingBinding
@@ -569,8 +571,7 @@ function buildDataSourceBindings(field, allowedUsages) {
         && !Array.isArray(existingBinding)
         ? existingBinding
         : {}),
-      serviceId: field.dataSourceId,
-      operationCode: field.dataSourceOperationCode,
+      extensionId: field.interfaceExtensionId,
       inputMapping: parseObject(field.dataSourceInputMappingText),
       outputMapping: parseObject(field.dataSourceOutputMappingText)
     }

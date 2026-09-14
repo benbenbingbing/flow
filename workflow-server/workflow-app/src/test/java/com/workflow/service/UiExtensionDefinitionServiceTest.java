@@ -12,9 +12,13 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -88,6 +92,22 @@ class UiExtensionDefinitionServiceTest {
                         .save(request));
     }
 
+    /** 接口扩展写入必须经过专用服务，通用组件目录不得接管或反向委派。 */
+    @Test
+    void rejectsInterfaceWriteOutsideDedicatedService() {
+        UiExtensionDefinitionSaveRequest request =
+                new UiExtensionDefinitionSaveRequest();
+        request.setExtensionType("INTERFACE");
+        request.setExtensionKey("project.query");
+        request.setDisplayName("项目查询");
+        request.setVersion(1);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service(mock(UiExtensionDefinitionMapper.class))
+                        .save(request));
+    }
+
     /** 测试缺失激活清单时拒绝：验证查不到激活清单时抛出 IllegalArgumentException */
     @Test
     void rejectsMissingActiveManifest() {
@@ -129,6 +149,90 @@ class UiExtensionDefinitionServiceTest {
                         .validateEntityScope(definition, "requirement"));
     }
 
+    /** 更新不能把既有 UI 组件转换为接口扩展。 */
+    @Test
+    void rejectsChangingUiExtensionToInterface() {
+        UiExtensionDefinitionMapper mapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiExtensionDefinition current = persisted("FORM", "project-form");
+        when(mapper.selectById(current.getId())).thenReturn(current);
+        UiExtensionDefinitionSaveRequest request = updateRequest(
+                current, "INTERFACE", current.getExtensionKey());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service(mapper).save(request));
+
+        verify(mapper, never()).insert(any(UiExtensionDefinition.class));
+        verify(mapper, never()).update(isNull(), any());
+    }
+
+    /** 更新不能把既有接口扩展伪装成 UI 组件。 */
+    @Test
+    void rejectsChangingInterfaceExtensionToUi() {
+        UiExtensionDefinitionMapper mapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiExtensionDefinition current = persisted(
+                "INTERFACE", "project.query");
+        when(mapper.selectById(current.getId())).thenReturn(current);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service(mapper).save(updateRequest(
+                        current, "LIST", current.getExtensionKey())));
+
+        verify(mapper, never()).insert(any(UiExtensionDefinition.class));
+        verify(mapper, never()).update(isNull(), any());
+    }
+
+    /** 稳定 extensionKey 不能通过普通更新重命名。 */
+    @Test
+    void rejectsChangingStableExtensionKey() {
+        UiExtensionDefinitionMapper mapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiExtensionDefinition current = persisted("FORM", "project-form");
+        when(mapper.selectById(current.getId())).thenReturn(current);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service(mapper).save(updateRequest(
+                        current, "FORM", "renamed-form")));
+
+        verify(mapper, never()).update(isNull(), any());
+    }
+
+    /** 带路径 ID 的更新找不到目标时必须失败，不能降级为新增。 */
+    @Test
+    void rejectsUnknownUpdateIdInsteadOfCreating() {
+        UiExtensionDefinitionMapper mapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiExtensionDefinition current = persisted("FORM", "project-form");
+        UiExtensionDefinitionSaveRequest request = updateRequest(
+                current, "FORM", current.getExtensionKey());
+        when(mapper.selectById(current.getId())).thenReturn(null);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service(mapper).save(request));
+
+        verify(mapper, never()).insert(any(UiExtensionDefinition.class));
+        verify(mapper, never()).update(isNull(), any());
+    }
+
+    /** 身份不变的 UI 扩展仍可正常更新。 */
+    @Test
+    void acceptsUpdateWithStableIdentity() {
+        UiExtensionDefinitionMapper mapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiExtensionDefinition current = persisted("FORM", "project-form");
+        when(mapper.selectById(current.getId())).thenReturn(current);
+        when(mapper.update(isNull(), any())).thenReturn(1);
+        UiExtensionDefinitionSaveRequest request = updateRequest(
+                current, "FORM", current.getExtensionKey());
+        request.setDisplayName("项目表单（已编辑）");
+
+        UiExtensionDefinition saved = service(mapper).save(request);
+
+        assertEquals("项目表单（已编辑）", saved.getDisplayName());
+        verify(mapper).update(isNull(), any());
+    }
+
     private UiExtensionDefinitionSaveRequest validFormRequest() {
         UiExtensionDefinitionSaveRequest request =
                 new UiExtensionDefinitionSaveRequest();
@@ -136,6 +240,32 @@ class UiExtensionDefinitionServiceTest {
         request.setExtensionKey("project-form");
         request.setDisplayName("项目表单");
         request.setVersion(1);
+        return request;
+    }
+
+    private UiExtensionDefinition persisted(String type, String key) {
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId("extension-1");
+        definition.setExtensionType(type);
+        definition.setExtensionKey(key);
+        definition.setDisplayName("项目扩展");
+        definition.setVersion(1);
+        definition.setSnapshotVersion(1);
+        definition.setRevision(1);
+        definition.setDeleted(0);
+        definition.setStatus("ACTIVE");
+        return definition;
+    }
+
+    private UiExtensionDefinitionSaveRequest updateRequest(
+            UiExtensionDefinition current,
+            String type,
+            String key) {
+        UiExtensionDefinitionSaveRequest request = validFormRequest();
+        request.setId(current.getId());
+        request.setExpectedRevision(current.getRevision());
+        request.setExtensionType(type);
+        request.setExtensionKey(key);
         return request;
     }
 

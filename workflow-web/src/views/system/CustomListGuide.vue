@@ -61,15 +61,15 @@ registerCustomListComponent('ProjectKanban', ProjectKanban, {
         <section id="item-config" class="guide-section">
           <h3>3. 列、按钮和场景的单项扩展</h3>
           <p>只需要新增一列、改变一个单元格或增加一个按钮时，不要接管整页。每个列表项目都有稳定 `id`、稀疏 `orderKey` 和独立 `revision`。</p>
-          <CodeCard title="PATCH 单个列表列" language="HTTP">
-            <pre v-pre><code>PATCH /api/entity-list-config/lst_order/fields/col_risk
+          <CodeCard title="保存单个列表列" language="HTTP">
+            <pre v-pre><code>POST /api/entity-list-config/lst_order/fields/col_risk/patch
 Content-Type: application/json
 
 {
   "expectedRevision": 12,
   "field": {
     "fieldName": "风险等级",
-    "dataSourceId": "ds_order_risk",
+    "interfaceExtensionId": "ext_order_risk",
     "renderComponent": "RiskBadgeCell"
   }
 }

@@ -3,10 +3,16 @@ package com.workflow.entity.ui.api.web;
 import com.workflow.core.security.AuthenticatedApi;
 
 import com.workflow.core.result.Result;
+import com.workflow.core.security.RequiresPermission;
+import com.workflow.entity.ui.api.request.UiExtensionDeleteRequest;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
+import com.workflow.entity.ui.api.response.UiAvailableInterface;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
+import com.workflow.entity.ui.application.UiAvailableInterfaceService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * UI 扩展定义管理控制器。
@@ -29,7 +36,17 @@ import java.util.List;
 public class UiExtensionDefinitionController {
 
     private final UiExtensionDefinitionService service;
+    private final UiInterfaceExtensionService interfaceService;
+    private final UiAvailableInterfaceService availableInterfaceService;
     private final UiConfigurationAccessService accessService;
+
+    /** 返回接口实现、上下文、用途与 Provider 目录。 */
+    @RequiresPermission("system:extension:list")
+    @GetMapping("/catalog")
+    public Result<Map<String, Object>> catalog() {
+        accessService.requireGlobalConfigurationAccess();
+        return Result.success(interfaceService.catalog());
+    }
 
     /**
      * 查询扩展定义列表。GET /api/ui-extensions
@@ -40,12 +57,27 @@ public class UiExtensionDefinitionController {
      * @return 匹配的扩展定义列表
      */
     @GetMapping
+    @RequiresPermission("system:extension:list")
     public Result<List<UiExtensionDefinition>> list(
             @RequestParam(required = false) String extensionType,
             @RequestParam(required = false) String extensionKey,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String scopeType,
+            @RequestParam(required = false) String scopeId,
+            @RequestParam(required = false) String implementationType) {
         return Result.success(service.list(
-                extensionType, extensionKey, status));
+                extensionType, extensionKey, status,
+                scopeType, scopeId, implementationType));
+    }
+
+    /** 查询一个绑定位置可选择的完整接口扩展。 */
+    @GetMapping("/available-interfaces")
+    public Result<List<UiAvailableInterface>> availableInterfaces(
+            @RequestParam String ownerType,
+            @RequestParam String ownerId,
+            @RequestParam String bindingCode) {
+        return Result.success(availableInterfaceService.available(
+                ownerType, ownerId, bindingCode));
     }
 
     /**
@@ -55,11 +87,12 @@ public class UiExtensionDefinitionController {
      * @return 保存后的扩展定义
      */
     @PostMapping
+    @RequiresPermission("system:extension:update")
     public Result<UiExtensionDefinition> create(
             @RequestBody UiExtensionDefinitionSaveRequest request) {
         accessService.requireGlobalConfigurationAccess();
         request.setId(null);
-        return Result.success(service.save(request));
+        return Result.success(saveByExtensionType(request));
     }
 
     /**
@@ -70,11 +103,51 @@ public class UiExtensionDefinitionController {
      * @return 保存后的扩展定义
      */
     @PostMapping("/{id}")
+    @RequiresPermission("system:extension:update")
     public Result<UiExtensionDefinition> update(
             @PathVariable String id,
             @RequestBody UiExtensionDefinitionSaveRequest request) {
         accessService.requireGlobalConfigurationAccess();
         request.setId(id);
-        return Result.success(service.save(request));
+        return Result.success(saveByExtensionType(request));
+    }
+
+    /** 删除一条接口扩展；仍被可执行发布版本引用时拒绝删除。 */
+    @PostMapping("/{id}/delete")
+    @RequiresPermission("system:extension:update")
+    public Result<Void> delete(
+            @PathVariable String id,
+            @RequestBody UiExtensionDeleteRequest request) {
+        accessService.requireGlobalConfigurationAccess();
+        interfaceService.delete(id, request.getExpectedRevision());
+        return Result.success();
+    }
+
+    /** 在管理上下文中调试一条完整接口扩展。 */
+    @PostMapping("/{id}/preview")
+    @RequiresPermission("system:extension:test")
+    public Result<Object> preview(
+            @PathVariable String id,
+            @RequestBody UiExtensionExecuteRequest request) {
+        accessService.requireGlobalConfigurationAccess();
+        return Result.success(interfaceService.preview(id, request));
+    }
+
+    /**
+     * 根据扩展类型把写命令交给对应的应用服务。
+     *
+     * <p>通用 UI 组件目录只负责 FORM/NODE/FIELD/LIST；INTERFACE 需要专门的
+     * 实现、作用域和执行契约校验。分派保留在统一 HTTP 入口，可避免目录查询服务
+     * 反向依赖接口运行服务，进而破坏发布链路的单向依赖。</p>
+     */
+    private UiExtensionDefinition saveByExtensionType(
+            UiExtensionDefinitionSaveRequest request) {
+        if (request != null
+                && request.getExtensionType() != null
+                && "INTERFACE".equalsIgnoreCase(
+                        request.getExtensionType().trim())) {
+            return interfaceService.save(request);
+        }
+        return service.save(request);
     }
 }

@@ -11,7 +11,7 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.application.EntitySelectionRuntimeService;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiEventBindingService;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiEventExecutionReceiptService;
@@ -75,7 +75,7 @@ class UiEventRuntimeServiceTest {
     @Mock
     private UiEventBindingService bindingService;
     @Mock
-    private UiDataSourceService dataSourceService;
+    private UiInterfaceExtensionService dataSourceService;
     @Mock
     private UiEventValueMapper valueMapper;
     @Mock
@@ -458,9 +458,9 @@ class UiEventRuntimeServiceTest {
 
         service.execute(request);
 
-        ArgumentCaptor<com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest>
+        ArgumentCaptor<com.workflow.entity.ui.api.request.UiExtensionExecuteRequest>
                 execute = ArgumentCaptor.forClass(
-                com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest.class);
+                com.workflow.entity.ui.api.request.UiExtensionExecuteRequest.class);
         verify(dataSourceService).executeOperation(
                 org.mockito.ArgumentMatchers.eq("service-archive"),
                 org.mockito.ArgumentMatchers.eq("archive"),
@@ -517,9 +517,9 @@ class UiEventRuntimeServiceTest {
 
         service.execute(request);
 
-        org.mockito.ArgumentCaptor<com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest>
+        org.mockito.ArgumentCaptor<com.workflow.entity.ui.api.request.UiExtensionExecuteRequest>
                 captor = org.mockito.ArgumentCaptor.forClass(
-                        com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest.class);
+                        com.workflow.entity.ui.api.request.UiExtensionExecuteRequest.class);
         verify(dataSourceService).executeOperation(
                 org.mockito.ArgumentMatchers.eq("service-1"),
                 org.mockito.ArgumentMatchers.eq("query"),
@@ -908,9 +908,9 @@ class UiEventRuntimeServiceTest {
 
         service.execute(request);
 
-        ArgumentCaptor<com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest>
+        ArgumentCaptor<com.workflow.entity.ui.api.request.UiExtensionExecuteRequest>
                 execute = ArgumentCaptor.forClass(
-                        com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest.class);
+                        com.workflow.entity.ui.api.request.UiExtensionExecuteRequest.class);
         verify(dataSourceService).executePinnedOperation(
                 org.mockito.ArgumentMatchers.eq("snapshot-json"),
                 org.mockito.ArgumentMatchers.eq("snapshot-hash"),
@@ -1024,8 +1024,8 @@ class UiEventRuntimeServiceTest {
                         "hotfix-2",
                         "effective-hash"));
         stubNewReceipt(request);
-        UiDataSourceService.PublishedOperationSnapshot frozen =
-                new UiDataSourceService.PublishedOperationSnapshot(
+        UiInterfaceExtensionService.PublishedOperationSnapshot frozen =
+                new UiInterfaceExtensionService.PublishedOperationSnapshot(
                         "service-legacy",
                         "legacy-source",
                         9,

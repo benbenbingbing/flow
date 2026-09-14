@@ -1,14 +1,14 @@
 package com.workflow.entity.form.application;
 
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 import com.workflow.contracts.entity.ui.port.UiHotfixObservationPort;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
@@ -43,9 +43,9 @@ public class PublishedFormSubmissionService {
     private final EntityFormMapper formMapper;
     private final EntityRelationMapper entityRelationMapper;
     private final UiConfigReleaseService releaseService;
-    private final UiDataSourceService dataSourceService;
+    private final UiInterfaceExtensionService dataSourceService;
     private final JsonDocumentCodec codec;
-    private final UiDataSourceDefinitionValidator schemaValidator;
+    private final UiExtensionDefinitionValidator schemaValidator;
     private final PublishedFormRequiredValidator requiredValidator;
     private EntityPublishedRelationService publishedRelationService;
     private UiHotfixObservationPort hotfixObservationPort;
@@ -796,15 +796,18 @@ public class PublishedFormSubmissionService {
                 ? list : List.of(configured);
         int bindingIndex = 0;
         for (Object value : values) {
-            String serviceId = serviceId(value);
+            String extensionId = interfaceExtensionId(value);
             String operationCode = operationCode(value);
-            if (!StringUtils.hasText(serviceId)) {
+            if (!StringUtils.hasText(extensionId)) {
                 throw new IllegalArgumentException(
-                        "BEFORE_SUBMIT 数据源绑定缺少 serviceId");
+                        "BEFORE_SUBMIT 接口绑定缺少 extensionId");
             }
-            if (!StringUtils.hasText(operationCode)) {
+            if (!hasUnifiedInterfaceReference(value)
+                    && !StringUtils.hasText(operationCode)) {
+                // 只有不可变历史快照才允许旧 serviceId，
+                // 必须搭配 operationCode 才能解析迁移后的单接口记录。
                 throw new IllegalArgumentException(
-                        "BEFORE_SUBMIT 数据源绑定缺少 operationCode");
+                        "BEFORE_SUBMIT 历史接口绑定缺少 operationCode");
             }
             if (executionMode
                     == BindingExecutionMode.SIDE_EFFECT_FREE_PREVIEW
@@ -826,7 +829,7 @@ public class PublishedFormSubmissionService {
                             form.getId(),
                             resolved.releaseId(),
                             effectiveOwnerKey,
-                            serviceId,
+                            extensionId,
                             bindingIndex,
                             bindingInputFingerprint(
                                     recordId,
@@ -834,8 +837,8 @@ public class PublishedFormSubmissionService {
                                     record,
                                     safeExecutionContext,
                                     nestedContext));
-            UiDataSourceExecuteRequest request =
-                    new UiDataSourceExecuteRequest();
+            UiExtensionExecuteRequest request =
+                    new UiExtensionExecuteRequest();
             request.setUsage(
                     UiDataSourceUsages.BEFORE_SUBMIT);
             request.setOperationCode(operationCode);
@@ -888,7 +891,7 @@ public class PublishedFormSubmissionService {
                     "bindingOwner",
                     effectiveOwnerKey);
             context.put("bindingIndex", bindingIndex);
-            context.put("serviceId", serviceId);
+            context.put("extensionId", extensionId);
             context.put("idempotencyKey", idempotencyKey);
             context.putAll(
                     nestedContext.runtimeValues());
@@ -926,8 +929,10 @@ public class PublishedFormSubmissionService {
                     "idempotencyKey",
                     idempotencyKey);
             request.setInput(trustedInput);
-            Object response = dataSourceService.execute(
-                    serviceId, request);
+            Object response = hasUnifiedInterfaceReference(value)
+                    ? dataSourceService.execute(extensionId, request)
+                    : dataSourceService.executeOperation(
+                            extensionId, operationCode, request);
             response = applyMapping(
                     mapping(value, "outputMapping"),
                     Map.of(
@@ -1033,13 +1038,22 @@ public class PublishedFormSubmissionService {
                 codec);
     }
 
-    private String serviceId(Object value) {
+    /** 新快照使用 extensionId，旧 serviceId 仅作不可变发布快照兼容。 */
+    private String interfaceExtensionId(Object value) {
         if (value instanceof Map<?, ?> map) {
-            Object serviceId = map.get("serviceId");
-            return serviceId == null
-                    ? null : String.valueOf(serviceId);
+            Object extensionId = map.get("extensionId");
+            if (extensionId == null) {
+                extensionId = map.get("serviceId");
+            }
+            return extensionId == null
+                    ? null : String.valueOf(extensionId);
         }
         return null;
+    }
+
+    private boolean hasUnifiedInterfaceReference(Object value) {
+        return value instanceof Map<?, ?> map
+                && StringUtils.hasText(text(map.get("extensionId")));
     }
 
     private String operationCode(Object value) {

@@ -78,7 +78,6 @@ const documentationRoutes = {
   '/manual/entity': ['EntityManual.vue', '实体配置手册'],
   '/manual/open-integration': ['OpenIntegrationManual.vue', '开放集成手册'],
   '/manual/embed-integration': ['EmbedIntegrationManual.vue', '嵌入集成手册'],
-  '/manual/interface-service': ['InterfaceServiceManual.vue', '接口服务手册'],
   '/dev/manual/list-field-extension': ['DevGuide.vue', '列表字段扩展'],
   '/dev/manual/list-field-extension-v2': ['ListFieldExtensionGuide.vue', '列表字段扩展2'],
   '/dev/manual/custom-list': ['CustomListGuide.vue', '自定义列表组件'],
@@ -114,24 +113,16 @@ const listFieldGuideMigration = readFileSync(
   )
 })
 
-const interfaceServiceManualMigration = readFileSync(
-  path.join(
-    backendRoot,
-    'workflow-db-migrator/src/main/resources/db/migration/V022__interface_service_manual_menu.sql'
-  ),
-  'utf8'
+assert.match(
+  routerSource,
+  /path:\s*'\/system\/interface-services'[\s\S]{0,100}redirect:\s*'\/dev\/extensions\?type=INTERFACE'/,
+  '旧接口服务地址必须无权限依赖地重定向到扩展接口目录'
 )
-;[
-  'user_manual_interface_service_001',
-  '/manual/interface-service',
-  'manual/InterfaceServiceManual',
-  'user-manual:interface-service:view'
-].forEach((marker) => {
-  assert.ok(
-    interfaceServiceManualMigration.includes(marker),
-    `接口服务用户手册菜单迁移缺少配置: ${marker}`
-  )
-})
+assert.match(
+  routerSource,
+  /path:\s*'\/manual\/interface-service'[\s\S]{0,100}redirect:\s*'\/dev\/extensions\?type=INTERFACE'/,
+  '旧接口服务手册地址必须重定向到扩展接口目录'
+)
 
 const embedIntegrationManualMigration = readFileSync(
   path.join(
@@ -2309,22 +2300,14 @@ for (const [file, markers] of Object.entries(guideExpectations)) {
 }
 
 const configurationArchitectureExpectations = {
-  'src/data/user-manual/interfaceService.js': [
-    '什么时候使用',
-    '怎么配置',
+  'src/components/ui-config/InterfaceExtensionEditorDialog.vue': [
+    '一条扩展记录就是一个可调用接口',
     'REGISTERED_PROVIDER',
-    '五种实现类型',
     'STRUCTURED_COMPUTE',
-    'LIST_LOAD',
-    'ENTITY_SELECTED',
-    'BEFORE',
-    'REPLACE',
-    'AFTER',
-    '输入参数映射',
-    '结果回填',
-    '调试接口操作',
-    '保存后页面没有变化',
-    '上线检查清单'
+    'providerOperationCode',
+    'inputSchema',
+    'outputSchema',
+    "extensionType: 'INTERFACE'"
   ],
   'src/data/user-manual/openIntegration.js': [
     '开放集成解决什么问题',
@@ -2497,12 +2480,6 @@ const retiredIntegrationManualMarkers = {
     'embed.launch'
   ],
   'src/data/user-manual/embedIntegration.js': ['scope=', 'embed.launch'],
-  'src/data/user-manual/interfaceService.js': [
-    'Webhook',
-    'INTEGRATION_CONNECTOR',
-    'Connector',
-    'connectorConfigId'
-  ],
   'src/data/user-manual/entity.js': ['INTEGRATION_CONNECTOR', 'Connector']
 }
 for (const [file, markers] of Object.entries(retiredIntegrationManualMarkers)) {
@@ -2748,7 +2725,7 @@ assert.ok(
     && listDesigner.includes("route.query.targetType")
     && listDesigner.includes('eventBindingDialogRef.value?.openButton')
     && listDesigner.includes('openListEventBindings()'),
-  '列表设计器必须消费使用情况页的事件配置深链'
+  '列表设计器必须消费历史事件配置深链'
 )
 
 const processManualSource = readFileSync(
@@ -2797,7 +2774,10 @@ assert.ok(
   'extensionCatalogApi.manage',
   'personResolverApi.saveConfig',
   'getManagedExtensionManifest',
-  'isPlatformBuiltInUiExtension'
+  'isPlatformBuiltInUiExtension',
+  'InterfaceExtensionEditorDialog',
+  'InterfaceExtensionTestDialog',
+  'decorateInterface'
 ].forEach((marker) => {
   assert.ok(
     extensionManagementSource.includes(marker),

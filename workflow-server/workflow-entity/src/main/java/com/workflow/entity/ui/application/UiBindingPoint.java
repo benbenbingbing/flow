@@ -14,8 +14,8 @@ public record UiBindingPoint(
         String targetKey,
         /** 绑定位置或事件编码。 */
         String bindingCode,
-        /** 接口服务 ID。 */
-        String serviceId,
-        /** 接口操作编码。 */
-        String operationCode) {
+        /** 可调用接口扩展 ID。 */
+        String extensionId,
+        /** Provider 内部路由编码，不属于设计器绑定身份。 */
+        String providerOperationCode) {
 }

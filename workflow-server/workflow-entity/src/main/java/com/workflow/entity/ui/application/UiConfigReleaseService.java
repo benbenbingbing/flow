@@ -148,7 +148,7 @@ public class UiConfigReleaseService {
     private final UiConfigReleaseMapper releaseMapper;
     private final UiConfigHotfixTargetMapper hotfixTargetMapper;
     private final UiConfigReleaseAuditMapper releaseAuditMapper;
-    private final UiConfigDataSourceReferenceValidator dataSourceValidator;
+    private final UiConfigInterfaceReferenceValidator dataSourceValidator;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final UiConfigSnapshotSupport snapshotSupport;
     private final UiComponentTemplateMapper templateMapper;
@@ -1630,27 +1630,16 @@ public class UiConfigReleaseService {
 
             Map<String, Object> special = mapValue(
                     config.get("specialHandling"));
-            Map<String, Object> service = mapValue(
-                    special.get("interfaceService"));
-            String serviceId = text(service.get("serviceId"));
-            String operationCode = text(service.get("operationCode"));
-            if (StringUtils.hasText(serviceId)
-                    && StringUtils.hasText(operationCode)) {
-                Map<String, Object> dependency = new LinkedHashMap<>();
-                dependency.put("type", "INTERFACE_SERVICE");
-                dependency.put("name", firstNonBlank(
-                        service.get("serviceName"),
-                        service.get("sourceCode"),
-                        serviceId));
-                dependency.put("key", operationCode);
-                dependency.put("version", service.get("serviceRevision"));
-                dependency.put("usedBy", compositionName);
-                addPublishDependency(
-                        result,
-                        seen,
-                        "SERVICE:" + serviceId + ":" + operationCode + ":"
-                                + text(service.get("serviceRevision")),
-                        dependency);
+            addInterfaceDependency(
+                    result,
+                    seen,
+                    mapValue(special.get("interfaceService")),
+                    compositionName);
+            // 一个关联内容可声明多个动作接口；发布确认必须完整展示，不能只看读取接口。
+            for (Map<String, Object> actionService : mapList(
+                    special.get("actionServices"))) {
+                addInterfaceDependency(
+                        result, seen, actionService, compositionName);
             }
 
             Map<String, Object> component = mapValue(
@@ -1673,6 +1662,61 @@ public class UiConfigReleaseService {
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * 汇总单接口扩展依赖；历史 serviceId + operationCode 仅用于旧快照兼容。
+     */
+    private void addInterfaceDependency(
+            List<Map<String, Object>> result,
+            Set<String> seen,
+            Map<String, Object> reference,
+            String compositionName) {
+        String extensionId = text(reference.get("extensionId"));
+        if (StringUtils.hasText(extensionId)) {
+            String extensionKey = text(reference.get("extensionKey"));
+            Object extensionRevision = reference.get("extensionRevision");
+            Map<String, Object> dependency = new LinkedHashMap<>();
+            // 保留既有预览 DTO 类型值，前端已将它展示为“扩展接口”。
+            dependency.put("type", "INTERFACE_SERVICE");
+            dependency.put("name", firstNonBlank(
+                    reference.get("interfaceName"),
+                    reference.get("extensionName"),
+                    extensionKey,
+                    extensionId));
+            dependency.put("key", firstNonBlank(extensionKey, extensionId));
+            dependency.put("version", extensionRevision);
+            dependency.put("usedBy", compositionName);
+            addPublishDependency(
+                    result,
+                    seen,
+                    "INTERFACE:" + extensionId + ":"
+                            + text(extensionRevision),
+                    dependency);
+            return;
+        }
+        String legacyServiceId = text(reference.get("serviceId"));
+        String operationCode = text(reference.get("operationCode"));
+        if (!StringUtils.hasText(legacyServiceId)
+                || !StringUtils.hasText(operationCode)) {
+            return;
+        }
+        Map<String, Object> dependency = new LinkedHashMap<>();
+        dependency.put("type", "INTERFACE_SERVICE");
+        dependency.put("name", firstNonBlank(
+                reference.get("serviceName"),
+                reference.get("sourceCode"),
+                legacyServiceId));
+        dependency.put("key", operationCode);
+        dependency.put("version", reference.get("serviceRevision"));
+        dependency.put("usedBy", compositionName);
+        addPublishDependency(
+                result,
+                seen,
+                "LEGACY_INTERFACE:" + legacyServiceId + ":"
+                        + operationCode + ":"
+                        + text(reference.get("serviceRevision")),
+                dependency);
     }
 
     private void addEntitySchemaDependency(

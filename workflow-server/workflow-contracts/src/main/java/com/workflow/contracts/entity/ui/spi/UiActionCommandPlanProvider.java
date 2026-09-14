@@ -13,7 +13,7 @@ import java.util.Map;
  */
 public interface UiActionCommandPlanProvider {
 
-    /** @return 与接口服务 providerCode 对应的稳定注册编码 */
+    /** @return 与接口扩展 providerCode 对应的稳定注册编码 */
     String getCode();
 
     /** @return 配置端展示名称 */

@@ -2,12 +2,12 @@ package com.workflow.entity.list.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.application.EntityDataDynamicService;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -45,7 +45,7 @@ public class EntityDataListConfigService {
     private final ListFieldConditionEvaluator conditionEvaluator;
     private final EntityActionCapabilityService actionCapabilityService;
     private final EntityListPublishedRuntimeService publishedRuntimeService;
-    private final UiDataSourceService uiDataSourceService;
+    private final UiInterfaceExtensionService uiDataSourceService;
 
     /**
      * 查询实体数据列表（带列表配置扩展）
@@ -199,7 +199,7 @@ public class EntityDataListConfigService {
             // 3. 筛选出非 ENTITY_FIELD 的字段。查询字段即使不展示，也必须补充值后再过滤。
             List<EntityListField> customFields = allFields.stream()
                     .filter(f -> Boolean.TRUE.equals(f.getShowInList()) || Boolean.TRUE.equals(f.getIsQuery()))
-                    .filter(f -> !StringUtils.hasText(f.getDataSourceId()))
+                    .filter(f -> !StringUtils.hasText(f.getInterfaceExtensionId()))
                     .filter(f -> !"ENTITY_FIELD".equals(f.getDataSourceType()) && f.getDataSourceType() != null)
                     .collect(Collectors.toList());
 
@@ -258,12 +258,12 @@ public class EntityDataListConfigService {
             List<EntityListField> fields,
             List<EntityDataDTO> records) {
         for (EntityListField field : fields) {
-            if (!StringUtils.hasText(field.getDataSourceId())
+            if (!StringUtils.hasText(field.getInterfaceExtensionId())
                     || (!Boolean.TRUE.equals(field.getShowInList())
                     && !Boolean.TRUE.equals(field.getIsQuery()))) {
                 continue;
             }
-            UiDataSourceExecuteRequest request = new UiDataSourceExecuteRequest();
+            UiExtensionExecuteRequest request = new UiExtensionExecuteRequest();
             request.setUsage(UiDataSourceUsages.LIST_COLUMN);
             request.setConfigType("LIST");
             request.setConfigId(field.getListConfigId());
@@ -271,7 +271,6 @@ public class EntityDataListConfigService {
             request.setReleaseVersion(config.getPublishedVersion());
             request.setServerPinnedRelease(
                     Boolean.TRUE.equals(config.getPinnedRelease()));
-            request.setOperationCode(field.getDataSourceOperationCode());
             request.setTargetType("COLUMN");
             request.setTargetKey(field.getFieldCode());
             request.setEntityCode(entityCode);
@@ -285,11 +284,11 @@ public class EntityDataListConfigService {
                     LogValue.safe(listKey),
                     LogValue.safe(field.getListConfigId()),
                     LogValue.safe(field.getFieldCode()),
-                    LogValue.safe(field.getDataSourceId()),
+                    LogValue.safe(field.getInterfaceExtensionId()),
                     records.size());
             try {
                 Object result = uiDataSourceService.execute(
-                        field.getDataSourceId(),
+                        field.getInterfaceExtensionId(),
                         request);
                 applyUnifiedColumnResult(field, records, result);
                 log.info(
@@ -297,7 +296,7 @@ public class EntityDataListConfigService {
                         LogValue.safe(entityCode),
                         LogValue.safe(listKey),
                         LogValue.safe(field.getFieldCode()),
-                        LogValue.safe(field.getDataSourceId()),
+                        LogValue.safe(field.getInterfaceExtensionId()),
                         result == null
                                 ? null
                                 : result.getClass().getSimpleName(),
@@ -308,7 +307,7 @@ public class EntityDataListConfigService {
                         LogValue.safe(entityCode),
                         LogValue.safe(listKey),
                         LogValue.safe(field.getFieldCode()),
-                        LogValue.safe(field.getDataSourceId()),
+                        LogValue.safe(field.getInterfaceExtensionId()),
                         LogValue.failureType(exception));
                 throw exception;
             }

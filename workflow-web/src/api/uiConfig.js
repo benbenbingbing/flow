@@ -23,50 +23,36 @@ export const uiConfigDraftApi = {
   }
 }
 
-export const uiDataSourceApi = {
+export const uiExtensionApi = {
   catalog() {
-    return request.get('/ui-data-sources/catalog')
+    return request.get('/ui-extensions/catalog')
   },
   list(params = {}) {
-    return request.get('/ui-data-sources', { params })
+    return request.get('/ui-extensions', { params })
   },
-  availableOperations(params) {
-    return request.get('/ui-data-sources/available-operations', { params })
+  availableInterfaces(params) {
+    return request.get('/ui-extensions/available-interfaces', { params })
   },
   create(data) {
-    return request.post('/ui-data-sources', data)
+    return request.post('/ui-extensions', data)
   },
   update(id, data) {
-    return request.post(`/ui-data-sources/${id}/update`, data)
+    return request.post(`/ui-extensions/${id}`, data)
   },
   remove(id, expectedRevision) {
-    return request.post(`/ui-data-sources/${id}/delete`, {
+    return request.post(`/ui-extensions/${id}/delete`, {
       expectedRevision
     })
   },
   preview(id, data) {
-    return request.post(`/ui-data-sources/${id}/preview`, data)
-  },
-  executeOperation(data) {
-    return request.post('/ui-runtime/interface-operations/execute', data)
-  },
-  validateBinding(id, usage) {
-    return request.post(`/ui-data-sources/${id}/bindings/${usage}/validate`)
-  },
-  operations(id) {
-    return request.get(`/ui-data-sources/${id}/operations`)
-  },
-  /**
-   * 查询单个接口服务在事件执行链中的只读引用。
-   */
-  references(id) {
-    return request.get(`/ui-data-sources/${id}/references`)
-  },
-  previewOperation(id, operationCode, data) {
-    return request.post(
-      `/ui-data-sources/${id}/operations/${operationCode}/preview`,
-      data
-    )
+    return request.post(`/ui-extensions/${id}/preview`, data)
+  }
+}
+
+/** 运行态只提交发布时固定的扩展接口 ID，不再透出后端方法。 */
+export const uiExtensionRuntimeApi = {
+  execute(data) {
+    return request.post('/ui-runtime/extensions/execute', data)
   }
 }
 
@@ -127,17 +113,5 @@ export const uiComponentTemplateApi = {
   },
   upgrade(id, data) {
     return request.post(`/ui-component-templates/${id}/upgrade`, data)
-  }
-}
-
-export const uiExtensionApi = {
-  list(params = {}) {
-    return request.get('/ui-extensions', { params })
-  },
-  create(data) {
-    return request.post('/ui-extensions', data)
-  },
-  update(id, data) {
-    return request.post(`/ui-extensions/${id}`, data)
   }
 }

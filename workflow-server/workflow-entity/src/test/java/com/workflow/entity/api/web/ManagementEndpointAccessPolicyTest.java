@@ -2,8 +2,9 @@ package com.workflow.entity.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
-import com.workflow.entity.ui.api.web.UiDataSourceController;
 import com.workflow.entity.ui.api.web.UiEventBindingController;
+import com.workflow.entity.ui.api.web.UiExtensionDefinitionController;
+import com.workflow.entity.ui.api.web.UiExtensionRuntimeController;
 import com.workflow.entity.version.api.web.EntityRecordVersionController;
 import com.workflow.entity.version.api.web.EntityVersionConfigurationController;
 import org.junit.jupiter.api.Test;
@@ -19,58 +20,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ManagementEndpointAccessPolicyTest {
 
     @Test
-    void interfaceServiceEndpointsUseMenuPermissions() {
+    void interfaceExtensionManagementEndpointsUseExtensionPermissions() {
         assertPermission(
-                UiDataSourceController.class,
+                UiExtensionDefinitionController.class,
                 "catalog",
-                "system:interface-service:list");
+                "system:extension:list");
         assertPermission(
-                UiDataSourceController.class,
+                UiExtensionDefinitionController.class,
                 "list",
-                "system:interface-service:list");
+                "system:extension:list");
         assertPermission(
-                UiDataSourceController.class,
-                "operations",
-                "system:interface-service:list");
-        assertPermission(
-                UiDataSourceController.class,
-                "references",
-                "system:interface-service:list");
-        assertPermission(
-                UiDataSourceController.class,
+                UiExtensionDefinitionController.class,
                 "create",
-                "system:interface-service:update");
+                "system:extension:update");
         assertPermission(
-                UiDataSourceController.class,
+                UiExtensionDefinitionController.class,
                 "update",
-                "system:interface-service:update");
+                "system:extension:update");
         assertPermission(
-                UiDataSourceController.class,
+                UiExtensionDefinitionController.class,
                 "delete",
-                "system:interface-service:update");
+                "system:extension:update");
         assertPermission(
-                UiDataSourceController.class,
-                "validateBinding",
-                "system:interface-service:update");
-        assertPermission(
-                UiDataSourceController.class,
+                UiExtensionDefinitionController.class,
                 "preview",
-                "system:interface-service:test");
-        assertPermission(
-                UiDataSourceController.class,
-                "previewOperation",
-                "system:interface-service:test");
+                "system:extension:test");
+    }
+
+    @Test
+    void interfaceExtensionSelectionAndRuntimeUseObjectAuthorization() {
+        assertObjectAuthorization(UiExtensionDefinitionController.class);
+        assertObjectAuthorization(UiExtensionRuntimeController.class);
     }
 
     @Test
     void eventBindingsDeclareObjectAuthorization() {
-        AuthenticatedApi policy =
-                AnnotatedElementUtils.findMergedAnnotation(
-                        UiEventBindingController.class,
-                        AuthenticatedApi.class);
-
-        assertNotNull(policy);
-        assertTrue(policy.objectAuthorization());
+        assertObjectAuthorization(UiEventBindingController.class);
     }
 
     @Test
@@ -121,6 +106,15 @@ class ManagementEndpointAccessPolicyTest {
                         RequiresPermission.class);
         assertNotNull(policy);
         assertArrayEquals(expected, policy.value());
+    }
+
+    private void assertObjectAuthorization(Class<?> controller) {
+        AuthenticatedApi policy =
+                AnnotatedElementUtils.findMergedAnnotation(
+                        controller,
+                        AuthenticatedApi.class);
+        assertNotNull(policy);
+        assertTrue(policy.objectAuthorization());
     }
 
     private void assertPermission(

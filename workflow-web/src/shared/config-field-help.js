@@ -23,8 +23,12 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '决定查询控件如何生成条件，例如等于、模糊、区间或多值匹配。可选项会按字段类型过滤。',
   'entityList.dataSourceType':
     '自定义列数据源需实现 ListFieldDataProvider、加 @Component，并用 getDataSourceType() 返回唯一编码；实体字段可直接读取记录值。',
-  'uiDataSource.service':
-    '后端自定义需实现 UiDataSourceProvider、加 @Component，并保证 getCode() 唯一；可参考 ProjectCustomFormUiDataSourceProvider，再到“接口服务”中新建“平台注册能力”。',
+  'entityList.interfaceExtension':
+    '选择一个已启用的列表扩展接口计算当前列。配置只保存接口 ID，输入输出结构由该接口自己的 Schema 约束。',
+  'entityList.queryInterfaceExtension':
+    '选择一个已启用的列表查询扩展接口接管数据查询。分页、筛选和排序作为统一输入传入，每次直接绑定一条完整接口。',
+  'entityForm.interfaceExtension':
+    '选择一个已启用的表单扩展接口作为数据源或字段能力。配置只保存接口 ID，不会在页面中拼装后端调用步骤。',
   'entityList.renderComponent':
     '只改变单元格如何展示，例如文本、状态标签、日期或已注册扩展组件，不改变原始字段值。',
   'uiConfig.releaseMode':
@@ -86,37 +90,33 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'uiEvent.inputMapping':
     '把当前事件数据组装成接口入参：左侧填写来源路径，右侧填写接口参数路径，例如 input.form.customerId → customerId。不配置时会直接使用事件原始输入。用户、任务、流程等可信身份信息由服务端上下文提供，不要通过页面参数传入。',
   'uiEvent.outputMapping':
-    '把接口结果或当前事件数据写入目标字段：左侧填写来源路径，右侧选择或填写回填路径，并可设置值转换和覆盖策略。未选择接口服务时，本步骤至少需要配置一条字段回填。',
+    '把接口结果或当前事件数据写入目标字段：左侧填写来源路径，右侧选择或填写回填路径，并可设置值转换和覆盖策略。未选择扩展接口时，本步骤至少需要配置一条字段回填。',
   'uiEvent.failurePolicy':
     '停止执行会返回错误；记录后继续会跳过失败步骤；按空结果继续会把失败步骤当作空结果再执行后续映射。',
-  'interfaceService.operationConfig':
-    '当前操作的静态配置，不是调用时传入的 input。执行时先加载服务基础配置，再用操作配置覆盖同名键；Provider 可从 context.common().operationCode() 读取操作编码。',
-  'interfaceService.backendImplementation':
-    '平台注册能力需实现 UiDataSourceProvider、加 @Component，并由 getCode() 返回唯一编码。',
-  'interfaceService.operationInputSchema':
-    '在调用 Provider 前校验当前操作最终收到的 input。支持 type、required、properties、items；填写空对象表示不校验。多操作服务运行时以操作级 Schema 为准。',
-  'interfaceService.operationOutputSchema':
-    '在接口执行后校验最终返回值，缓存命中结果和失败策略产生的回退结果也会校验。事件回填依赖固定结构时应配置；填写空对象表示不校验。',
-  'interfaceService.baseConfig':
-    '所有操作共享的静态配置。适合放 Provider 公共参数或字典编码；某个操作需要不同值时，在操作配置中使用同名键覆盖。',
-  'interfaceService.baseInputSchema':
-    '服务基础定义的输入契约，主要兼容没有操作目录的历史单操作服务。新建多操作服务应在每个操作中配置输入 Schema，操作级空对象表示该操作不校验。',
-  'interfaceService.baseOutputSchema':
-    '服务基础定义的输出契约，主要兼容没有操作目录的历史单操作服务。新建多操作服务应在每个操作中配置输出 Schema，操作级空对象表示该操作不校验。',
-  'interfaceService.debugService':
-    '含义：当前正在调试的接口服务，只读显示。使用方法：如需切换，关闭弹窗后从目标服务所在行点击“调试”。适用场景：服务保存后、正式绑定前，确认它能在真实页面上下文中运行。',
-  'interfaceService.debugOperation':
-    '含义：本次执行的具体操作，决定操作配置、输入输出 Schema 及 READ/WRITE 语义。使用方法：选择与未来绑定相同的操作；切换后业务上下文会按操作定义同步变化。适用场景：一个服务包含查询、详情、保存等多个操作时逐项联调；WRITE 操作会产生真实写入或外部副作用。',
-  'interfaceService.debugBusinessContext':
-    '含义：操作声明的 FORM、LIST 或 ENTITY 运行上下文，系统据此校验实体、权限和数据范围。使用方法：该项随所选操作自动确定；如不符合预期，请编辑操作的业务上下文。适用场景：模拟操作未来在表单、列表或实体变更中的真实执行环境。',
-  'interfaceService.debugConfigObject':
-    '含义：用于本次调试的具体表单、列表或实体。使用方法：选择最终计划绑定此操作的真实配置对象，系统会校验访问权限及服务作用范围。适用场景：同一服务用于多个页面时，分别选择各对象验证权限、字段和数据范围。',
-  'interfaceService.debugUsage':
-    '含义：“操作”决定调用哪个能力，“调用用途”决定该能力在何处或何时调用，并进入执行上下文和缓存键。使用方法：选择与未来绑定相同的编码，例如 FIELD_OPTIONS 加载字段选项、DETAIL_LOAD 加载详情、DATA_UPDATE 更新数据。适用场景：实现会按用途返回不同结构，或需要分别验证不同位置和事件的缓存、权限行为；调试不会创建绑定，正式运行时才按用途匹配已发布绑定。',
-  'interfaceService.debugInput':
-    '含义：传给操作的业务 JSON 对象，不包含系统身份等可信上下文。使用方法：填写合法 JSON，字段及类型须符合所选操作的输入 Schema；无参数时填写 {}。适用场景：传递查询条件、记录 ID、分页参数或待处理字段，并验证必填项和类型约束。',
-  'interfaceService.debugResult':
-    '含义：显示本次执行返回的格式化 JSON 或错误信息。使用方法：对照所选用途、输出 Schema 及后续结果映射核对结构；如提示“类型应为 array，实际为 object”，先确认用途是否选对，再检查实际返回与 Schema。适用场景：验证选项列表、分页结果、字段回填以及异常或空结果；内容不会自动保存为页面配置。',
+  'uiEvent.extensionInterface':
+    '直接选择本步骤调用的扩展接口。事件配置只保存接口 ID；具体后端实现、输入输出契约和执行策略都由该接口记录统一定义。',
+  'extensionInterface.backendImplementation':
+    '已注册 Provider 需实现平台接口并以唯一编码注册。每条扩展接口只绑定一个可调用能力，不在设计器中继续选择操作。',
+  'extensionInterface.providerOperationCode':
+    'Provider 内部能力编码只用于后端把这条接口记录路由到已有实现入口，属于高级实现配置，不会成为设计器的第二层选项。',
+  'extensionInterface.implementationConfig':
+    '该扩展接口自己的静态实现参数，不是页面每次调用时传入的 input。复杂组合逻辑应在后端 Provider 内封装。',
+  'extensionInterface.inputSchema':
+    '声明扩展接口接收的输入结构，用于设计映射提示和运行前校验。支持标准 JSON Schema；填写空对象表示不限制。',
+  'extensionInterface.outputSchema':
+    '声明扩展接口返回的稳定结构，用于字段映射提示和运行结果校验。发布后调整结构可能影响已绑定页面。',
+  'extensionInterface.debugInterface':
+    '含义：当前正在调试的单条扩展接口，只读显示。使用方法：如需切换，关闭弹窗后从目标接口所在行点击“调试”。适用场景：接口保存后、正式绑定前，确认它能在真实页面上下文中运行。',
+  'extensionInterface.debugBusinessContext':
+    '含义：接口声明的 FORM、LIST 或 ENTITY 运行上下文，系统据此校验实体、权限和数据范围。使用方法：该项随所选接口自动确定；如不符合预期，请编辑接口的业务上下文。适用场景：模拟接口未来在表单、列表或实体变更中的真实执行环境。',
+  'extensionInterface.debugConfigObject':
+    '含义：用于本次调试的具体表单、列表或实体。使用方法：选择最终计划绑定此接口的真实配置对象，系统会校验访问权限及接口作用范围。适用场景：同一接口可用于多个页面时，分别选择各对象验证权限、字段和数据范围。',
+  'extensionInterface.debugUsage':
+    '含义：调用用途表示接口未来在哪个位置或时机执行，并进入执行上下文和缓存键。使用方法：选择与未来绑定相同的编码，例如 FIELD_OPTIONS、DETAIL_LOAD 或 DATA_UPDATE。适用场景：验证不同调用位置下的权限、缓存和返回结构；调试不会创建正式绑定。',
+  'extensionInterface.debugInput':
+    '含义：传给接口的业务 JSON 对象，不包含系统身份等可信上下文。使用方法：填写合法 JSON，字段及类型须符合接口输入 Schema；无参数时填写 {}。适用场景：传递查询条件、记录 ID、分页参数或待处理字段，并验证必填项和类型约束。',
+  'extensionInterface.debugResult':
+    '含义：显示本次执行返回的格式化 JSON 或错误信息。使用方法：对照调用用途、输出 Schema 及后续结果映射核对结构。适用场景：验证选项列表、分页结果、字段回填以及异常或空结果；内容不会自动保存为页面配置。',
   'entityVersion.enabled':
     '启用后，保存的生成时机才会自动匹配数据变化，也允许具备权限的用户手工固化。停用会停止生成新版本，但不会删除已有历史版本。',
   'entityVersion.triggerType':

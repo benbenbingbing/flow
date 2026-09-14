@@ -8,7 +8,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
-import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
+import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,7 +48,7 @@ class EntityFormConfigurationValidatorTest {
             new EntityFormConfigurationValidator(
                     new StructuredConfigValidator(OBJECT_MAPPER),
                     new EntityFormActionConfigPolicy(),
-                    new UiDataSourceDefinitionValidator(
+                    new UiExtensionDefinitionValidator(
                             new JsonDocumentCodec(
                                     OBJECT_MAPPER)),
                     new PublishedFormConditionEvaluator(

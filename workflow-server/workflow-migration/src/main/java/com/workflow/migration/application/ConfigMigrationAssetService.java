@@ -35,7 +35,6 @@ import com.workflow.process.definition.infrastructure.persistence.record.Process
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.application.UiExtensionReferencePolicy;
 import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
@@ -77,7 +76,6 @@ import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.S
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetMapper;
 import lombok.RequiredArgsConstructor;
@@ -159,7 +157,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final SysUserMapper userMapper;
     private final SysOrganizationMapper organizationMapper;
     private final UiConfigReleaseMapper configReleaseMapper;
-    private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
     private final UiExtensionDefinitionMapper extensionDefinitionMapper;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
@@ -733,7 +730,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 portableEventBindings(
                         eventBindingSnapshotService.snapshotOwner(
                                 "ENTITY", entity.getId()));
-        collectDataSourceIds(
+        collectInterfaceExtensionIds(
                 entityEventBindings, dataSourceIds);
         List<Map<String, Object>> forms = new ArrayList<>();
         for (EntityForm form : formMapper.selectByEntityId(entity.getId())) {
@@ -758,7 +755,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 Map<String, Object> field = sanitizeMap(value);
                 field.put("isReadonly", 1);
                 referencedFields.add(fieldCode);
-                collectDataSourceIds(field, dataSourceIds);
+                collectInterfaceExtensionIds(field, dataSourceIds);
                 formFields.add(field);
             }
             formSnapshot.put("fields", formFields);
@@ -791,7 +788,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             componentName,
                             componentVersion));
                 }
-                collectDataSourceIds(node, dataSourceIds);
+                collectInterfaceExtensionIds(node, dataSourceIds);
                 nodes.add(node);
             }
             formSnapshot.put("nodes", nodes);
@@ -809,7 +806,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             entity.getEntityCode(),
                             extensionReferences,
                             dataSourceIds));
-            collectDataSourceIds(formSnapshot, dataSourceIds);
+            collectInterfaceExtensionIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
         List<Map<String, Object>> lists = new ArrayList<>();
@@ -850,7 +847,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                     field.remove("dataSourceConfig");
                 }
                 referencedFields.add(fieldCode);
-                collectDataSourceIds(field, dataSourceIds);
+                collectInterfaceExtensionIds(field, dataSourceIds);
                 listFields.add(field);
             }
             listSnapshot.put("fields", listFields);
@@ -868,27 +865,27 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             entity.getEntityCode(),
                             extensionReferences,
                             dataSourceIds));
-            collectDataSourceIds(listSnapshot, dataSourceIds);
+            collectInterfaceExtensionIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
-        Map<String, String> dataSourceCodes = dataSourceCodesById(dataSourceIds);
+        Map<String, String> dataSourceCodes = interfaceExtensionCodesById(dataSourceIds);
         snapshot.put(
                 "eventBindings",
-                rewriteDataSourceReferences(
+                rewriteInterfaceReferences(
                         entityEventBindings,
                         dataSourceCodes));
         snapshot.put(
                 "forms",
                 forms.stream()
                         .map(value -> mapValue(
-                                rewriteDataSourceReferences(
+                                rewriteInterfaceReferences(
                                         value, dataSourceCodes)))
                         .toList());
         snapshot.put(
                 "lists",
                 lists.stream()
                         .map(value -> mapValue(
-                                rewriteDataSourceReferences(
+                                rewriteInterfaceReferences(
                                         value, dataSourceCodes)))
                         .toList());
         snapshot.put(
@@ -898,8 +895,8 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 "extensions",
                 extensionSnapshots(extensionReferences));
         snapshot.put(
-                "dataSources",
-                dataSourceSnapshots(
+                "interfaceExtensions",
+                interfaceExtensionSnapshots(
                         dataSourceIds,
                         entity.getId(),
                         entity.getEntityCode()));
@@ -976,7 +973,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 portableEventBindings(
                         eventBindingSnapshotService.snapshotOwner(
                                 "ENTITY", entity.getId()));
-        collectDataSourceIds(
+        collectInterfaceExtensionIds(
                 entityEventBindings, dataSourceIds);
         for (EntityForm form : formMapper.selectByEntityId(entity.getId())) {
             UiConfigRelease activeRelease = configReleaseMapper.findActive("FORM", form.getId());
@@ -1037,7 +1034,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             node.getComponentName(),
                             node.getComponentVersion()));
                 }
-                collectDataSourceIds(nodeSnapshot, dataSourceIds);
+                collectInterfaceExtensionIds(nodeSnapshot, dataSourceIds);
                 nodeSnapshots.add(nodeSnapshot);
             }
             formSnapshot.put("nodes", nodeSnapshots);
@@ -1055,7 +1052,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             entity.getEntityCode(),
                             extensionReferences,
                             dataSourceIds));
-            collectDataSourceIds(formSnapshot, dataSourceIds);
+            collectInterfaceExtensionIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
         snapshot.put("forms", forms);
@@ -1092,33 +1089,33 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             entity.getEntityCode(),
                             extensionReferences,
                             dataSourceIds));
-            collectDataSourceIds(listSnapshot, dataSourceIds);
+            collectInterfaceExtensionIds(listSnapshot, dataSourceIds);
             lists.add(listSnapshot);
         }
         snapshot.put(
                 "extensions",
                 extensionSnapshots(extensionReferences));
-        Map<String, String> dataSourceCodesById = dataSourceCodesById(dataSourceIds);
+        Map<String, String> interfaceExtensionCodesById = interfaceExtensionCodesById(dataSourceIds);
         snapshot.put(
                 "eventBindings",
-                rewriteDataSourceReferences(
+                rewriteInterfaceReferences(
                         entityEventBindings,
-                        dataSourceCodesById));
+                        interfaceExtensionCodesById));
         snapshot.put(
                 "forms",
                 forms.stream()
-                        .map(value -> mapValue(rewriteDataSourceReferences(
-                                value, dataSourceCodesById)))
+                        .map(value -> mapValue(rewriteInterfaceReferences(
+                                value, interfaceExtensionCodesById)))
                         .toList());
         snapshot.put(
                 "lists",
                 lists.stream()
-                        .map(value -> mapValue(rewriteDataSourceReferences(
-                                value, dataSourceCodesById)))
+                        .map(value -> mapValue(rewriteInterfaceReferences(
+                                value, interfaceExtensionCodesById)))
                         .toList());
         snapshot.put(
-                "dataSources",
-                dataSourceSnapshots(
+                "interfaceExtensions",
+                interfaceExtensionSnapshots(
                         dataSourceIds,
                         entity.getId(),
                         entity.getEntityCode()));
@@ -1240,7 +1237,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
      *
      * <p>数据库 ID、releaseId 和修订号不会进入迁移包；目标内容改用
      * entityCode + contentType + contentKey，表单节点挂载点改用 nodeKey，
-     * 接口服务改用 serviceCode。导入端会根据这些业务编码重新解析目标环境 ID。</p>
+     * 接口扩展改用 extensionCode。导入端会根据这些业务编码重新解析目标环境 ID。</p>
      */
     private List<Map<String, Object>> portableViewCompositions(
             Map<String, Object> releaseSnapshot,
@@ -1283,30 +1280,99 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                     config.get("specialHandling"));
             if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
                 Map<String, Object> service = mapValue(rawService);
-                String serviceId = text(service.get("serviceId"));
-                UiDataSourceDefinition definition = StringUtils.hasText(serviceId)
-                        ? dataSourceDefinitionMapper.selectById(serviceId)
-                        : dataSourceDefinitionMapper.selectOne(
-                                new LambdaQueryWrapper<UiDataSourceDefinition>()
-                                        .eq(UiDataSourceDefinition::getSourceCode,
-                                                firstNonBlank(
-                                                        text(service.get("sourceCode")),
-                                                        text(service.get("serviceCode"))))
-                                        .eq(UiDataSourceDefinition::getDeleted, 0)
-                                        .last("LIMIT 1"));
+                String extensionId = firstNonBlank(
+                        text(service.get("extensionId")),
+                        text(service.get("serviceId")));
+                UiExtensionDefinition definition = StringUtils.hasText(extensionId)
+                        ? extensionDefinitionMapper.selectById(extensionId)
+                        : null;
+                if ((definition == null
+                        || !"INTERFACE".equalsIgnoreCase(
+                                definition.getExtensionType()))
+                        && StringUtils.hasText(text(service.get("serviceId")))
+                        && StringUtils.hasText(text(service.get("operationCode")))) {
+                    definition = extensionDefinitionMapper.selectOne(
+                            new LambdaQueryWrapper<UiExtensionDefinition>()
+                                    .eq(UiExtensionDefinition::getExtensionType,
+                                            "INTERFACE")
+                                    .eq(UiExtensionDefinition::getLegacyServiceId,
+                                            text(service.get("serviceId")))
+                                    .eq(UiExtensionDefinition::getProviderOperationCode,
+                                            text(service.get("operationCode")))
+                                    .eq(UiExtensionDefinition::getDeleted, 0));
+                }
+                if (definition == null) {
+                    String extensionCode = firstNonBlank(
+                            text(service.get("extensionCode")),
+                            firstNonBlank(
+                                    text(service.get("sourceCode")),
+                                    text(service.get("serviceCode"))));
+                    definition = extensionDefinitionMapper.selectOne(
+                            new LambdaQueryWrapper<UiExtensionDefinition>()
+                                    .eq(UiExtensionDefinition::getExtensionType,
+                                            "INTERFACE")
+                                    .eq(UiExtensionDefinition::getExtensionKey,
+                                            extensionCode)
+                                    .eq(UiExtensionDefinition::getDeleted, 0)
+                                    .last("LIMIT 1"));
+                }
                 if (definition == null
-                        || !StringUtils.hasText(definition.getSourceCode())) {
+                        || !StringUtils.hasText(definition.getExtensionKey())) {
                     throw new IllegalStateException(
-                            "关联内容引用的接口服务不存在: " + serviceId);
+                            "关联内容引用的接口扩展不存在: " + extensionId);
                 }
                 dataSourceIds.add(definition.getId());
+                service.remove("extensionId");
                 service.remove("serviceId");
                 service.remove("sourceCode");
+                service.remove("serviceCode");
+                service.remove("operationCode");
                 service.remove("serviceRevision");
                 service.remove("executableSnapshot");
                 service.remove("definitionHash");
-                service.put("serviceCode", definition.getSourceCode());
+                service.put("extensionCode", definition.getExtensionKey());
                 special.put("interfaceService", service);
+            }
+            if (special.get("actionServices") instanceof List<?> rawActions) {
+                List<Map<String, Object>> actions = new ArrayList<>();
+                for (Object rawAction : rawActions) {
+                    Map<String, Object> service = mapValue(rawAction);
+                    String id = firstNonBlank(
+                            text(service.get("extensionId")),
+                            text(service.get("serviceId")));
+                    UiExtensionDefinition definition = StringUtils.hasText(id)
+                            ? extensionDefinitionMapper.selectById(id) : null;
+                    if ((definition == null
+                            || !"INTERFACE".equalsIgnoreCase(
+                                    definition.getExtensionType()))
+                            && StringUtils.hasText(text(service.get("serviceId")))
+                            && StringUtils.hasText(text(service.get("operationCode")))) {
+                        definition = extensionDefinitionMapper.selectOne(
+                                new LambdaQueryWrapper<UiExtensionDefinition>()
+                                        .eq(UiExtensionDefinition::getExtensionType,
+                                                "INTERFACE")
+                                        .eq(UiExtensionDefinition::getLegacyServiceId,
+                                                text(service.get("serviceId")))
+                                        .eq(UiExtensionDefinition::getProviderOperationCode,
+                                                text(service.get("operationCode")))
+                                        .eq(UiExtensionDefinition::getDeleted, 0));
+                    }
+                    if (definition == null) {
+                        throw new IllegalStateException(
+                                "关联内容动作接口不存在: " + id);
+                    }
+                    dataSourceIds.add(definition.getId());
+                    service.remove("extensionId");
+                    service.remove("serviceId");
+                    service.remove("operationCode");
+                    service.remove("sourceCode");
+                    service.remove("serviceRevision");
+                    service.remove("executableSnapshot");
+                    service.remove("definitionHash");
+                    service.put("extensionCode", definition.getExtensionKey());
+                    actions.add(service);
+                }
+                special.put("actionServices", List.copyOf(actions));
             }
             if (special.get("customComponent") instanceof Map<?, ?> rawComponent) {
                 Map<String, Object> component = mapValue(rawComponent);
@@ -1493,28 +1559,56 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 props);
     }
 
-    private Map<String, String> dataSourceCodesById(Set<String> ids) {
+    private Map<String, String> interfaceExtensionCodesById(Set<String> ids) {
         Map<String, String> result = new LinkedHashMap<>();
         for (String id : ids) {
-            UiDataSourceDefinition definition = dataSourceDefinitionMapper.selectById(id);
-            if (definition == null || !StringUtils.hasText(
-                    definition.getSourceCode())) {
+            UiExtensionDefinition definition = extensionDefinitionMapper.selectById(id);
+            if (definition == null
+                    || !"INTERFACE".equalsIgnoreCase(
+                            definition.getExtensionType())
+                    || !StringUtils.hasText(
+                            definition.getExtensionKey())) {
                 throw new IllegalStateException(
-                        "表单引用的数据源不存在: " + id);
+                        "UI配置引用的接口扩展不存在: " + id);
             }
-            result.put(id, definition.getSourceCode());
+            result.put(id, definition.getExtensionKey());
         }
         return result;
     }
 
-    private List<Map<String, Object>> dataSourceSnapshots(
+    private List<Map<String, Object>> interfaceExtensionSnapshots(
             Set<String> ids,
             String entityId,
             String entityCode) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (String id : ids) {
-            UiDataSourceDefinition definition = dataSourceDefinitionMapper.selectById(id);
-            Map<String, Object> value = portableMap(definition);
+            UiExtensionDefinition definition = extensionDefinitionMapper.selectById(id);
+            if (definition == null
+                    || !"INTERFACE".equalsIgnoreCase(
+                            definition.getExtensionType())) {
+                throw new IllegalStateException(
+                        "UI配置引用的接口扩展不存在: " + id);
+            }
+            Map<String, Object> value = new LinkedHashMap<>();
+            value.put("extensionKey", definition.getExtensionKey());
+            value.put("displayName", definition.getDisplayName());
+            value.put("implementationType", definition.getImplementationType());
+            value.put("providerCode", definition.getProviderCode());
+            value.put("scopeType", definition.getScopeType());
+            value.put("implementationConfigDocument",
+                    definition.getImplementationConfigDocument());
+            value.put("executionPolicyDocument",
+                    definition.getExecutionPolicyDocument());
+            value.put("inputSchemaDocument",
+                    definition.getInputSchemaDocument());
+            value.put("outputSchemaDocument",
+                    definition.getOutputSchemaDocument());
+            value.put("interfaceKind", definition.getInterfaceKind());
+            value.put("interfaceContextType",
+                    definition.getInterfaceContextType());
+            value.put("providerOperationCode",
+                    definition.getProviderOperationCode());
+            value.put("status", definition.getStatus());
             String scopeType = definition.getScopeType();
             if ("ENTITY".equalsIgnoreCase(scopeType)
                     && entityId.equals(definition.getScopeId())) {
@@ -1526,6 +1620,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             "scopeRef",
                             entityCode + "/" + scopeForm.getFormKey());
                 }
+            } else if ("LIST".equalsIgnoreCase(scopeType)) {
+                EntityListConfig scopeList = listConfigMapper.selectById(
+                        definition.getScopeId());
+                if (scopeList != null) {
+                    value.put(
+                            "scopeRef",
+                            entityCode + "/" + scopeList.getListKey());
+                }
             }
             value.remove("scopeId");
             result.add(value);
@@ -1533,47 +1635,47 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
-    private void collectDataSourceIds(
+    private void collectInterfaceExtensionIds(
             Object value,
             Set<String> result) {
         if (value instanceof Map<?, ?> map) {
             map.forEach((key, child) -> {
-                if (isDataSourceIdKey(String.valueOf(key))
+                if (isInterfaceExtensionIdKey(String.valueOf(key))
                         && child instanceof String text
                         && StringUtils.hasText(text)) {
                     result.add(text);
                 }
-                collectDataSourceIds(child, result);
+                collectInterfaceExtensionIds(child, result);
             });
         } else if (value instanceof Collection<?> collection) {
-            collection.forEach(child -> collectDataSourceIds(child, result));
+            collection.forEach(child -> collectInterfaceExtensionIds(child, result));
         } else if (value instanceof String text
                 && (text.trim().startsWith("{")
                         || text.trim().startsWith("["))) {
             Object parsed = parseJson(text, null);
             if (parsed != null) {
-                collectDataSourceIds(parsed, result);
+                collectInterfaceExtensionIds(parsed, result);
             }
         }
     }
 
-    private Object rewriteDataSourceReferences(
+    private Object rewriteInterfaceReferences(
             Object value,
             Map<String, String> codesById) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> rewritten = new LinkedHashMap<>();
             map.forEach((key, child) -> {
                 String name = String.valueOf(key);
-                if (isDataSourceIdKey(name)
+                if (isInterfaceExtensionIdKey(name)
                         && child instanceof String text
                         && codesById.containsKey(text)) {
                     rewritten.put(
-                            dataSourceCodeKey(name),
+                            interfaceExtensionCodeKey(name),
                             codesById.get(text));
                 } else {
                     rewritten.put(
                             name,
-                            rewriteDataSourceReferences(
+                            rewriteInterfaceReferences(
                                     child, codesById));
                 }
             });
@@ -1581,7 +1683,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         if (value instanceof Collection<?> collection) {
             return collection.stream()
-                    .map(child -> rewriteDataSourceReferences(
+                    .map(child -> rewriteInterfaceReferences(
                             child, codesById))
                     .toList();
         }
@@ -1590,25 +1692,33 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                         || text.trim().startsWith("["))) {
             Object parsed = parseJson(text, null);
             if (parsed != null) {
-                return writeJson(rewriteDataSourceReferences(
+                return writeJson(rewriteInterfaceReferences(
                         parsed, codesById));
             }
         }
         return value;
     }
 
-    static boolean isDataSourceIdKey(String name) {
+    static boolean isInterfaceExtensionIdKey(String name) {
         return Set.of(
+                "extensionId",
+                "interfaceExtensionId",
+                "queryInterfaceExtensionId",
+                // 只为导出旧草稿/历史快照提供兼容。
                 "serviceId",
                 "dataSourceId",
                 "queryDataSourceId").contains(name);
     }
 
-    static String dataSourceCodeKey(String idKey) {
+    static String interfaceExtensionCodeKey(String idKey) {
         return switch (idKey) {
+            case "interfaceExtensionId" -> "interfaceExtensionCode";
+            case "queryInterfaceExtensionId" ->
+                    "queryInterfaceExtensionCode";
+            case "extensionId" -> "extensionCode";
+            // 旧包字段仅用于向后兼容导出。
             case "dataSourceId" -> "dataSourceCode";
-            case "queryDataSourceId" ->
-                    "queryDataSourceCode";
+            case "queryDataSourceId" -> "queryDataSourceCode";
             default -> "serviceCode";
         };
     }
@@ -2012,10 +2122,19 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                         Map<String, Object> service = mapValue(raw);
                         addDependency(
                                 dependencies,
-                                "INTERFACE_SERVICE",
-                                text(service.get("serviceCode")),
+                                "INTERFACE",
+                                text(service.get("extensionCode")),
                                 true,
-                                "关联内容接口服务");
+                                "关联内容接口扩展");
+                    }
+                    for (Map<String, Object> service : castList(
+                            special.get("actionServices"))) {
+                        addDependency(
+                                dependencies,
+                                "INTERFACE",
+                                text(service.get("extensionCode")),
+                                true,
+                                "关联内容动作接口扩展");
                     }
                     if (special.get("customComponent") instanceof Map<?, ?> raw) {
                         Map<String, Object> component = mapValue(raw);

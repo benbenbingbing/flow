@@ -20,14 +20,13 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.ui.api.request.UiViewCompositionSaveRequest;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionTestDTO;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiViewCompositionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiViewComposition;
 import org.junit.jupiter.api.Test;
@@ -138,6 +137,102 @@ class UiViewCompositionServiceTest {
                 update.getParamNameValuePairs().get(matcher.group(1)));
         assertEquals(4, result.getRevision());
         assertEquals(2, result.getOwnerRevision());
+    }
+
+    @Test
+    void legacyInterfaceDraftLoadsAndSavesAsExtensionIdOnly() {
+        Fixture fixture = fixture();
+        UiViewComposition current = existing(fixture.codec, 3);
+        current.setConfigDocument(fixture.codec.write(
+                legacyInterfaceConfig(), "legacy interface config"));
+        when(fixture.mapper.findByOwner("FORM", "form-1"))
+                .thenReturn(List.of(current));
+        UiExtensionDefinition migrated = interfaceDefinition(
+                "extension-1", "ACTIVE");
+        when(fixture.dataSourceService.resolveDefinitionReference(
+                "legacy-service", "resolveRequirements"))
+                .thenReturn(migrated);
+
+        UiViewCompositionDTO loaded = fixture.service.list(
+                "FORM", "form-1").get(0);
+        Map<?, ?> loadedSpecial = (Map<?, ?>) loaded.getConfig().get(
+                "specialHandling");
+        Map<?, ?> loadedBinding = (Map<?, ?>) loadedSpecial.get(
+                "interfaceService");
+        assertEquals("extension-1", loadedBinding.get("extensionId"));
+        assertFalse(loadedBinding.containsKey("serviceId"));
+        assertFalse(loadedBinding.containsKey("operationCode"));
+
+        when(fixture.mapper.selectByIdForUpdate("composition-1"))
+                .thenReturn(current);
+        when(fixture.mapper.findActiveByKey(
+                "FORM", "form-1", "project_requirements"))
+                .thenReturn(current);
+        when(fixture.mapper.update(isNull(), any())).thenReturn(1);
+        when(fixture.formMapper.update(isNull(), any())).thenReturn(1);
+        UiViewComposition saved = existing(fixture.codec, 4);
+        saved.setConfigDocument(fixture.codec.write(
+                loaded.getConfig(), "saved interface config"));
+        when(fixture.mapper.selectById("composition-1")).thenReturn(saved);
+        when(fixture.dataSourceService.requireExecutableDefinition(
+                "extension-1", null)).thenReturn(migrated);
+        UiViewCompositionSaveRequest update = request(3);
+        update.setConfig(loaded.getConfig());
+
+        fixture.service.update(
+                "FORM", "form-1", "composition-1", update);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<UpdateWrapper<UiViewComposition>> updateCaptor =
+                ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(fixture.mapper).update(isNull(), updateCaptor.capture());
+        String savedDocument = updateCaptor.getValue()
+                .getParamNameValuePairs().values().stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .filter(value -> value.contains("specialHandling"))
+                .findFirst()
+                .orElseThrow();
+        Map<String, Object> persisted = fixture.codec.readObject(
+                savedDocument, "persisted interface config");
+        Map<?, ?> persistedBinding = (Map<?, ?>) ((Map<?, ?>) persisted.get(
+                "specialHandling")).get("interfaceService");
+        assertEquals("extension-1", persistedBinding.get("extensionId"));
+        assertFalse(persistedBinding.containsKey("serviceId"));
+        assertFalse(persistedBinding.containsKey("operationCode"));
+    }
+
+    @Test
+    void restoreNormalizesDisabledLegacyInterfaceWithoutRequiringExecution() {
+        Fixture fixture = fixture();
+        UiExtensionDefinition disabled = interfaceDefinition(
+                "extension-1", "DISABLED");
+        when(fixture.dataSourceService.resolveDefinitionReference(
+                "legacy-service", "resolveRequirements"))
+                .thenReturn(disabled);
+
+        fixture.service.restoreForRelease(
+                "FORM",
+                "form-1",
+                List.of(Map.of(
+                        "id", "composition-1",
+                        "compositionKey", "project_requirements",
+                        "anchorType", "FORM_END",
+                        "orderKey", 1000,
+                        "config", legacyInterfaceConfig())));
+
+        ArgumentCaptor<UiViewComposition> captor =
+                ArgumentCaptor.forClass(UiViewComposition.class);
+        verify(fixture.mapper).insert(captor.capture());
+        Map<String, Object> restored = fixture.codec.readObject(
+                captor.getValue().getConfigDocument(), "restored config");
+        Map<?, ?> binding = (Map<?, ?>) ((Map<?, ?>) restored.get(
+                "specialHandling")).get("interfaceService");
+        assertEquals("extension-1", binding.get("extensionId"));
+        assertFalse(binding.containsKey("serviceId"));
+        assertFalse(binding.containsKey("operationCode"));
+        verify(fixture.dataSourceService, never())
+                .requireExecutableDefinition(anyString(), any());
     }
 
     @Test
@@ -523,25 +618,20 @@ class UiViewCompositionServiceTest {
     @Test
     void releaseSnapshotKeepsPinnedInterfaceWhenCurrentRevisionDrifts() {
         Fixture fixture = fixture();
-        UiDataSourceDefinition definition = new UiDataSourceDefinition();
+        UiExtensionDefinition definition = new UiExtensionDefinition();
         definition.setId("service-1");
         definition.setSourceCode("projectRequirements");
         definition.setRevision(3);
         definition.setEnabled(true);
         definition.setDeleted(0);
-        when(fixture.dataSourceService.operations("service-1"))
-                .thenReturn(List.of(Map.of(
-                        "code", "resolveRequirements",
-                        "kind", "READ",
-                        "contextType", "FORM")));
+        stubInterface(fixture, "READ");
         String executable = fixture.codec.canonicalize(
                 fixture.codec.write(Map.of(
                         "schemaVersion", 1,
                         "id", "service-1"), "pinned operation"),
                 "pinned operation");
-        when(fixture.dataSourceService.freezeOperation(
-                "service-1", "resolveRequirements"))
-                .thenReturn(new UiDataSourceService
+        when(fixture.dataSourceService.freezeExtension("service-1"))
+                .thenReturn(new UiInterfaceExtensionService
                         .PublishedOperationSnapshot(
                                 "service-1",
                                 "projectRequirements",
@@ -563,13 +653,12 @@ class UiViewCompositionServiceTest {
                         "FORM",
                         "form-1",
                         ownerSnapshot(compositions, List.of())));
-        verify(fixture.dataSourceService).validatePinnedReadOperation(
+        verify(fixture.dataSourceService).validatePinnedReadExtension(
                 executable,
                 sha256(executable),
                 "service-1",
                 "projectRequirements",
                 3,
-                "resolveRequirements",
                 "FORM");
     }
 
@@ -632,10 +721,9 @@ class UiViewCompositionServiceTest {
                         "salary", 999_999));
         when(fixture.entityDataService.findAccessibleById(
                 "project", "project-1", null)).thenReturn(source);
-        when(fixture.dataSourceService.operations("service-1"))
-                .thenReturn(List.of(readOperation()));
+        stubInterface(fixture, "READ");
         when(fixture.dataSourceService.previewRelatedContentReadOperation(
-                anyString(), anyString(), any()))
+                anyString(), any(), any()))
                 .thenReturn(Map.of("resolvedProjectId", "project-1"));
         EntityDataDTO target = record(
                 "requirement-1", "requirement", Map.of());
@@ -646,12 +734,12 @@ class UiViewCompositionServiceTest {
         UiViewCompositionTestDTO result = fixture.service.test(
                 "FORM", "form-1", config, "project-1");
 
-        ArgumentCaptor<UiDataSourceExecuteRequest> requestCaptor =
-                ArgumentCaptor.forClass(UiDataSourceExecuteRequest.class);
+        ArgumentCaptor<UiExtensionExecuteRequest> requestCaptor =
+                ArgumentCaptor.forClass(UiExtensionExecuteRequest.class);
         verify(fixture.dataSourceService)
                 .previewRelatedContentReadOperation(
                         org.mockito.ArgumentMatchers.eq("service-1"),
-                        org.mockito.ArgumentMatchers.eq("resolveRequirements"),
+                        org.mockito.ArgumentMatchers.isNull(),
                         requestCaptor.capture());
         assertEquals(
                 Map.of("criteria", Map.of("ownerId", "user-9")),
@@ -672,8 +760,7 @@ class UiViewCompositionServiceTest {
                 "project-1", "project", Map.of("ownerId", "user-9"));
         when(fixture.entityDataService.findAccessibleById(
                 "project", "project-1", null)).thenReturn(source);
-        when(fixture.dataSourceService.operations("service-1"))
-                .thenReturn(List.of(readOperation()));
+        stubInterface(fixture, "READ");
         UiExtensionDefinition component = new UiExtensionDefinition();
         component.setExtensionKey("project-timeline");
         component.setExtensionType("FORM");
@@ -682,19 +769,19 @@ class UiViewCompositionServiceTest {
                 null, "project-timeline", "ACTIVE"))
                 .thenReturn(List.of(component));
         when(fixture.dataSourceService.previewRelatedContentReadOperation(
-                anyString(), anyString(), any()))
+                anyString(), any(), any()))
                 .thenReturn(Map.of("matchNone", true));
 
         UiViewCompositionTestDTO result = fixture.service.test(
                 "FORM", "form-1", config, "project-1");
 
         assertEquals(0, result.getMatchedCount());
-        ArgumentCaptor<UiDataSourceExecuteRequest> requestCaptor =
-                ArgumentCaptor.forClass(UiDataSourceExecuteRequest.class);
+        ArgumentCaptor<UiExtensionExecuteRequest> requestCaptor =
+                ArgumentCaptor.forClass(UiExtensionExecuteRequest.class);
         verify(fixture.dataSourceService)
                 .previewRelatedContentReadOperation(
                         org.mockito.ArgumentMatchers.eq("service-1"),
-                        org.mockito.ArgumentMatchers.eq("resolveRequirements"),
+                        org.mockito.ArgumentMatchers.isNull(),
                         requestCaptor.capture());
         assertEquals(Map.of("recordId", "project-1"),
                 requestCaptor.getValue().getInput());
@@ -705,11 +792,7 @@ class UiViewCompositionServiceTest {
         Fixture fixture = fixture();
         Map<String, Object> config = interfaceSpecialConfig(
                 "INTERFACE_SERVICE", true, false);
-        when(fixture.dataSourceService.operations("service-1"))
-                .thenReturn(List.of(Map.of(
-                        "code", "resolveRequirements",
-                        "kind", "WRITE",
-                        "contextType", "FORM")));
+        stubInterface(fixture, "WRITE");
 
         IllegalArgumentException failure = assertThrows(
                 IllegalArgumentException.class,
@@ -731,10 +814,9 @@ class UiViewCompositionServiceTest {
                 "project-1", "project", Map.of("ownerId", "user-9"));
         when(fixture.entityDataService.findAccessibleById(
                 "project", "project-1", null)).thenReturn(source);
-        when(fixture.dataSourceService.operations("service-1"))
-                .thenReturn(List.of(readOperation()));
+        stubInterface(fixture, "READ");
         when(fixture.dataSourceService.previewRelatedContentReadOperation(
-                anyString(), anyString(), any()))
+                anyString(), any(), any()))
                 .thenReturn(Map.of(
                         "total", 100,
                         "records", List.of(Map.of("id", "hidden-1"))));
@@ -763,10 +845,9 @@ class UiViewCompositionServiceTest {
                 "project-1", "project", Map.of("ownerId", "user-9"));
         when(fixture.entityDataService.findAccessibleById(
                 "project", "project-1", null)).thenReturn(source);
-        when(fixture.dataSourceService.operations("service-1"))
-                .thenReturn(List.of(readOperation()));
+        stubInterface(fixture, "READ");
         when(fixture.dataSourceService.previewRelatedContentReadOperation(
-                anyString(), anyString(), any()))
+                anyString(), any(), any()))
                 .thenThrow(new BusinessConflictException(
                         "INTERFACE_TIMEOUT", "接口执行超时"));
 
@@ -787,10 +868,9 @@ class UiViewCompositionServiceTest {
                 "project-1", "project", Map.of("ownerId", "user-9"));
         when(fixture.entityDataService.findAccessibleById(
                 "project", "project-1", null)).thenReturn(source);
-        when(fixture.dataSourceService.operations("service-1"))
-                .thenReturn(List.of(readOperation()));
+        stubInterface(fixture, "READ");
         when(fixture.dataSourceService.previewRelatedContentReadOperation(
-                anyString(), anyString(), any()))
+                anyString(), any(), any()))
                 .thenReturn(Map.of("resolvedProjectId", "project-1"));
         when(fixture.entityDataService.findPage(
                 anyString(), anyString(), any(), anyLong(), anyLong()))
@@ -860,11 +940,11 @@ class UiViewCompositionServiceTest {
         EntityPublishedSnapshotService entitySnapshotService =
                 mock(EntityPublishedSnapshotService.class);
         UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
-        UiDataSourceDefinitionMapper dataSourceMapper =
-                mock(UiDataSourceDefinitionMapper.class);
+        UiExtensionDefinitionMapper dataSourceMapper =
+                mock(UiExtensionDefinitionMapper.class);
         UiConfigurationAccessService accessService =
                 mock(UiConfigurationAccessService.class);
-        UiDataSourceService dataSourceService = mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService = mock(UiInterfaceExtensionService.class);
         UiExtensionDefinitionService extensionService =
                 mock(UiExtensionDefinitionService.class);
         UiViewCompositionContainmentGuard containmentGuard =
@@ -1035,11 +1115,39 @@ class UiViewCompositionServiceTest {
                 "mode", "INTERFACE_SERVICE",
                 "failurePolicy", "ERROR",
                 "interfaceService", Map.of(
-                        "serviceId", "service-1",
-                        "operationCode", "resolveRequirements",
+                        "extensionId", "service-1",
                         "inputMappings", List.of(),
                         "outputMappings", List.of())));
         return config;
+    }
+
+    private Map<String, Object> legacyInterfaceConfig() {
+        Map<String, Object> config = new LinkedHashMap<>(config());
+        config.put("relation", Map.of("type", "INTERFACE_SERVICE"));
+        config.put("specialHandling", Map.of(
+                "mode", "INTERFACE_SERVICE",
+                "failurePolicy", "ERROR",
+                "interfaceService", Map.of(
+                        "serviceId", "legacy-service",
+                        "operationCode", "resolveRequirements",
+                        "serviceRevision", 2,
+                        "sourceCode", "projectRequirements",
+                        "inputMappings", List.of(),
+                        "outputMappings", List.of())));
+        return config;
+    }
+
+    private UiExtensionDefinition interfaceDefinition(
+            String id,
+            String status) {
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId(id);
+        definition.setExtensionType("INTERFACE");
+        definition.setInterfaceKind("READ");
+        definition.setInterfaceContextType("FORM");
+        definition.setStatus(status);
+        definition.setDeleted(0);
+        return definition;
     }
 
     private Map<String, Object> interfaceSpecialConfig(
@@ -1064,8 +1172,7 @@ class UiViewCompositionServiceTest {
         special.put("mode", mode);
         special.put("failurePolicy", "ERROR");
         special.put("interfaceService", Map.of(
-                "serviceId", "service-1",
-                "operationCode", "resolveRequirements",
+                "extensionId", "service-1",
                 "inputMappings", inputMappings,
                 "outputMappings", outputMappings));
         if (includeComponent) {
@@ -1079,11 +1186,16 @@ class UiViewCompositionServiceTest {
         return config;
     }
 
-    private Map<String, Object> readOperation() {
-        return Map.of(
-                "code", "resolveRequirements",
-                "kind", "READ",
-                "contextType", "FORM");
+    private void stubInterface(Fixture fixture, String kind) {
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId("service-1");
+        definition.setExtensionType("INTERFACE");
+        definition.setInterfaceKind(kind);
+        definition.setInterfaceContextType("FORM");
+        definition.setEnabled(true);
+        definition.setDeleted(0);
+        when(fixture.dataSourceService.requireExecutableDefinition(
+                "service-1", null)).thenReturn(definition);
     }
 
     private EntityDataDTO record(
@@ -1249,7 +1361,7 @@ class UiViewCompositionServiceTest {
             UiViewCompositionMapper mapper,
             EntityFormMapper formMapper,
             EntityDataDynamicService entityDataService,
-            UiDataSourceService dataSourceService,
+            UiInterfaceExtensionService dataSourceService,
             UiExtensionDefinitionService extensionService,
             UiViewCompositionContainmentGuard containmentGuard,
             JsonDocumentCodec codec,

@@ -30,7 +30,7 @@ import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionTokenService;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
@@ -78,7 +78,7 @@ class EntityListRuntimeViewCompositionTest {
     private EntityListPublishedRuntimeService publishedRuntimeService;
     private EntityListPageResultNormalizer pageResultNormalizer;
     private UiEventRuntimeService uiEventRuntimeService;
-    private UiDataSourceService uiDataSourceService;
+    private UiInterfaceExtensionService uiDataSourceService;
     private UiViewCompositionTokenService tokenService;
     private List<EntityListDataProvider> dataProviders;
     private List<EntityListSchemaProvider> schemaProviders;
@@ -111,7 +111,7 @@ class EntityListRuntimeViewCompositionTest {
                 mock(EntityListPublishedRuntimeService.class);
         pageResultNormalizer = new EntityListPageResultNormalizer();
         uiEventRuntimeService = mock(UiEventRuntimeService.class);
-        uiDataSourceService = mock(UiDataSourceService.class);
+        uiDataSourceService = mock(UiInterfaceExtensionService.class);
         tokenService = mock(UiViewCompositionTokenService.class);
         dataProviders = new ArrayList<>();
         schemaProviders = new ArrayList<>();
@@ -292,13 +292,10 @@ class EntityListRuntimeViewCompositionTest {
         when(tokenService.verifyListContext("signed-list-context"))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
-        published.setQueryDataSourceId("connector-query");
-        published.setQueryOperationCode("READ_PAGE");
+        published.setQueryInterfaceExtensionId("connector-query");
         configurePinnedList(published);
-        when(uiDataSourceService.executeOperation(
-                eq("connector-query"),
-                eq("READ_PAGE"),
-                any()))
+        when(uiDataSourceService.execute(
+                eq("connector-query"), any()))
                 .thenReturn(Map.of(
                         "records", List.of(
                                 Map.of("recordId", "foreign-1")),
@@ -553,8 +550,7 @@ class EntityListRuntimeViewCompositionTest {
         when(tokenService.verifyListContext("signed-list-context"))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
-        published.setQueryDataSourceId("connector-query");
-        published.setQueryOperationCode("READ_PAGE");
+        published.setQueryInterfaceExtensionId("connector-query");
         configurePinnedList(published);
         EntityDefinition system = definition(
                 EntityDefinition.StorageMode.SYSTEM);
@@ -568,7 +564,7 @@ class EntityListRuntimeViewCompositionTest {
                         "default",
                         compositionRequest(1, 10)));
         verify(uiDataSourceService, never())
-                .executeOperation(any(), any(), any());
+                .execute(any(), any());
         verify(dataListService, never())
                 .findPageWithResolvedConfig(
                         any(), any(), any(), anyMap(),
@@ -717,16 +713,15 @@ class EntityListRuntimeViewCompositionTest {
     @Test
     void embedPinnedQueryUsesPublishedDataSourceAndFieldExtension() {
         EntityListConfig published = publishedList();
-        published.setQueryDataSourceId("external-source");
-        published.setQueryOperationCode("search");
+        published.setQueryInterfaceExtensionId("external-source");
         EntityListField field = new EntityListField();
         field.setFieldCode("amount");
         field.setDataSourceType("CUSTOM_PROVIDER");
         field.setRenderComponent("native-rich-column");
         published.setRuntimeFields(List.of(field));
         configurePinnedList(published);
-        when(uiDataSourceService.executeOperation(
-                eq("external-source"), eq("search"), any()))
+        when(uiDataSourceService.execute(
+                eq("external-source"), any()))
                 .thenReturn(Map.of(
                         "records", List.of(Map.of("id", "record-1")),
                         "total", 1));
@@ -736,8 +731,8 @@ class EntityListRuntimeViewCompositionTest {
                 1, 20, Map.of(), Map.of());
 
         assertEquals(1, result.getTotal());
-        verify(uiDataSourceService).executeOperation(
-                eq("external-source"), eq("search"), any());
+        verify(uiDataSourceService).execute(
+                eq("external-source"), any());
         verify(dataListService, never()).findPageWithResolvedConfig(
                 any(), any(), any(), anyMap(), anyLong(), anyLong());
     }

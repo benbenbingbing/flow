@@ -11,8 +11,10 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFil
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
+import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.UiMutableInterfaceReferenceNormalizer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -63,11 +65,22 @@ public class EntityFormConfigurationValidator {
 
     private final StructuredConfigValidator structuredConfigValidator;
     private final EntityFormActionConfigPolicy formActionConfigPolicy;
-    private final UiDataSourceDefinitionValidator dataSourceDefinitionValidator;
+    private final UiExtensionDefinitionValidator dataSourceDefinitionValidator;
     private final PublishedFormConditionEvaluator conditionEvaluator;
     private final EntityFieldMapper entityFieldMapper;
     private final EntityFieldFileItemMapper fileItemMapper;
     private final FormUniqueRulePolicy uniqueRulePolicy;
+    private UiMutableInterfaceReferenceNormalizer interfaceReferenceNormalizer;
+
+    /**
+     * 可变表单草稿保存前统一清理历史服务身份和发布钉版字段。
+     * setter 形式保持现有纯单元测试构造方式兼容。
+     */
+    @Autowired(required = false)
+    public void setInterfaceReferenceNormalizer(
+            UiMutableInterfaceReferenceNormalizer value) {
+        this.interfaceReferenceNormalizer = value;
+    }
 
     /**
      * 校验表单整体配置。
@@ -112,10 +125,17 @@ public class EntityFormConfigurationValidator {
                 structuredConfigValidator.parseObject(
                         form.getDataSourceBindingsDocument(),
                         "表单级数据源绑定");
+        if (interfaceReferenceNormalizer != null) {
+            dataSourceBindings = interfaceReferenceNormalizer
+                    .normalizeBindings(dataSourceBindings);
+        }
         validateUniqueDataSourceOutputTargets(dataSourceBindings);
         form.setDataSourceBindingsDocument(
-                blankToNull(
-                        form.getDataSourceBindingsDocument()));
+                StringUtils.hasText(form.getDataSourceBindingsDocument())
+                        ? structuredConfigValidator.writeJson(
+                                dataSourceBindings,
+                                "表单级数据源绑定")
+                        : null);
         validateFields(form.getFields());
         List<EntityField> entityFields = entityFieldMapper.findByEntityId(
                 form.getEntityId());

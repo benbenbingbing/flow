@@ -15,9 +15,9 @@ import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityListScopeSimulationDTO;
 import com.workflow.entity.permission.api.response.PermissionPreviewDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionTokenService;
 
@@ -83,7 +83,7 @@ public class EntityListRuntimeService {
     private final EntityListPublishedRuntimeService publishedRuntimeService;
     private final EntityListPageResultNormalizer pageResultNormalizer;
     private final UiEventRuntimeService uiEventRuntimeService;
-    private final UiDataSourceService uiDataSourceService;
+    private final UiInterfaceExtensionService uiDataSourceService;
     private final CurrentUserRoleService currentUserRoleService;
     private final UiViewCompositionTokenService viewCompositionTokenService;
     private final List<EntityListContextResolver> contextResolvers;
@@ -629,7 +629,7 @@ public class EntityListRuntimeService {
 
     private boolean usesCustomRecordQuery(
             EntityListConfig config) {
-        return StringUtils.hasText(config.getQueryDataSourceId())
+        return StringUtils.hasText(config.getQueryInterfaceExtensionId())
                 || StringUtils.hasText(
                 config.getQueryProviderCode());
     }
@@ -911,7 +911,7 @@ public class EntityListRuntimeService {
             if (StringUtils.hasText(
                     config.getQueryProviderCode())
                     || StringUtils.hasText(
-                            config.getQueryDataSourceId())) {
+                            config.getQueryInterfaceExtensionId())) {
                 throw new IllegalStateException(
                         "平台系统表列表不能覆盖可信只读查询");
             }
@@ -933,17 +933,10 @@ public class EntityListRuntimeService {
                     text(tableConfig.get("defaultSortDirection")));
         }
         if (StringUtils.hasText(
-                config.getQueryDataSourceId())) {
-            if (!StringUtils.hasText(
-                    config.getQueryOperationCode())) {
-                throw new IllegalStateException(
-                        "列表查询接口缺少操作编码");
-            }
-            UiDataSourceExecuteRequest request =
-                    new UiDataSourceExecuteRequest();
+                config.getQueryInterfaceExtensionId())) {
+            UiExtensionExecuteRequest request =
+                    new UiExtensionExecuteRequest();
             request.setUsage(UiDataSourceUsages.LIST_QUERY);
-            request.setOperationCode(
-                    config.getQueryOperationCode());
             request.setConfigType("LIST");
             request.setConfigId(config.getId());
             request.setReleaseId(
@@ -976,10 +969,8 @@ public class EntityListRuntimeService {
             input.put("pageSize", pageSize);
             input.put("scene", scene);
             request.setInput(input);
-            return uiDataSourceService.executeOperation(
-                    config.getQueryDataSourceId(),
-                    config.getQueryOperationCode(),
-                    request);
+            return uiDataSourceService.execute(
+                    config.getQueryInterfaceExtensionId(), request);
         }
         if (StringUtils.hasText(config.getQueryProviderCode())) {
             EntityListDataProvider provider = dataProviders.stream()

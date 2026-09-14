@@ -13,7 +13,7 @@ import java.util.UUID;
  * 表单提交执行上下文，贯穿单次提交的追踪键、操作类型与附加属性。
  *
  * <p>提供基于业务追踪键的幂等键生成能力，保证同一提交内相同绑定来源的幂等键稳定且唯一，
- * 避免重复提交或重复执行数据源绑定。</p>
+ * 避免重复提交或重复执行接口扩展绑定。</p>
  *
  * @param businessTraceKey 业务追踪键，全局唯一，不可为空
  * @param operation        提交操作类型，为空时默认 FORM_SUBMIT
@@ -53,20 +53,20 @@ public record FormSubmissionExecutionContext(
      *
      * @param formId       表单ID
      * @param ownerKey     绑定归属 key
-     * @param serviceId    接口服务ID
+     * @param extensionId  接口扩展ID
      * @param bindingIndex 绑定序号
      * @return 以 fbs_ 为前缀的幂等键
      */
     public String bindingIdempotencyKey(
             String formId,
             String ownerKey,
-            String serviceId,
+            String extensionId,
             int bindingIndex) {
         return bindingIdempotencyKey(
                 formId,
                 null,
                 ownerKey,
-                serviceId,
+                extensionId,
                 bindingIndex);
     }
 
@@ -76,7 +76,7 @@ public record FormSubmissionExecutionContext(
      * @param formId         表单ID
      * @param formReleaseId  表单发布版本ID，可为 null
      * @param ownerKey       绑定归属 key
-     * @param serviceId      接口服务ID
+     * @param extensionId    接口扩展ID
      * @param bindingIndex   绑定序号
      * @return 以 fbs_ 为前缀的幂等键
      */
@@ -84,13 +84,13 @@ public record FormSubmissionExecutionContext(
             String formId,
             String formReleaseId,
             String ownerKey,
-            String serviceId,
+            String extensionId,
             int bindingIndex) {
         return bindingIdempotencyKey(
                 formId,
                 formReleaseId,
                 ownerKey,
-                serviceId,
+                extensionId,
                 bindingIndex,
                 null);
     }
@@ -104,7 +104,7 @@ public record FormSubmissionExecutionContext(
      * @param formId          表单ID
      * @param formReleaseId   表单发布版本ID，可为 null
      * @param ownerKey        绑定归属 key
-     * @param serviceId       接口服务ID
+     * @param extensionId     接口扩展ID
      * @param bindingIndex    绑定序号
      * @param inputFingerprint 规范化绑定输入指纹，可为 null
      * @return 以 fbs_ 为前缀的幂等键
@@ -113,7 +113,7 @@ public record FormSubmissionExecutionContext(
             String formId,
             String formReleaseId,
             String ownerKey,
-            String serviceId,
+            String extensionId,
             int bindingIndex,
             String inputFingerprint) {
         String material = String.join(
@@ -123,7 +123,7 @@ public record FormSubmissionExecutionContext(
                 value(formId),
                 value(formReleaseId),
                 value(ownerKey),
-                value(serviceId),
+                value(extensionId),
                 String.valueOf(bindingIndex),
                 value(inputFingerprint));
         return "fbs_" + sha256(material);

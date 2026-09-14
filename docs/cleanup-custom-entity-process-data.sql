@@ -277,14 +277,16 @@ FROM sys_dict d
 JOIN tmp_cleanup_entity_field f
   ON f.dict_type = d.dict_code COLLATE utf8mb4_unicode_ci;
 
--- 2. 自定义作用域数据源中的字典绑定。
+-- 2. 自定义作用域接口扩展中的字典绑定。
 INSERT IGNORE INTO tmp_cleanup_dict (id, dict_code)
 SELECT DISTINCT d.id, d.dict_code
 FROM sys_dict d
-JOIN ui_data_source_definition s
-  ON UPPER(s.source_type) = 'DICTIONARY'
+JOIN ui_extension_definition s
+  ON UPPER(s.extension_type) = 'INTERFACE'
+ AND UPPER(s.implementation_type) = 'DICTIONARY'
  AND JSON_UNQUOTE(JSON_EXTRACT(
-       IF(JSON_VALID(s.config_document), s.config_document, '{}'),
+       IF(JSON_VALID(s.implementation_config_document),
+          s.implementation_config_document, '{}'),
        '$.dictCode'
      )) COLLATE utf8mb4_unicode_ci
      = d.dict_code COLLATE utf8mb4_unicode_ci
@@ -851,7 +853,7 @@ cleanup_main: BEGIN
       ON e.entity_code
          = record.entity_code COLLATE utf8mb4_unicode_ci;
 
-    -- 9. 清理自定义实体表单/列表发布快照和作用域数据源。
+    -- 9. 清理自定义实体表单/列表发布快照和作用域接口扩展。
     DELETE FROM ui_config_release_audit
     WHERE (
             config_type = 'FORM'
@@ -872,31 +874,34 @@ cleanup_main: BEGIN
             AND config_id IN (SELECT id FROM tmp_cleanup_entity_list)
           );
 
-    DELETE data_source
-    FROM ui_data_source_definition data_source
-    WHERE (
-            UPPER(data_source.scope_type) = 'ENTITY'
+    DELETE interface_extension
+    FROM ui_extension_definition interface_extension
+    WHERE UPPER(interface_extension.extension_type) = 'INTERFACE'
+      AND (
+          (
+            UPPER(interface_extension.scope_type) = 'ENTITY'
             AND EXISTS (
                 SELECT 1
                 FROM tmp_cleanup_entity e
-                WHERE data_source.scope_id COLLATE utf8mb4_unicode_ci IN (
+                WHERE interface_extension.scope_id COLLATE utf8mb4_unicode_ci IN (
                     CAST(e.id AS CHAR) COLLATE utf8mb4_unicode_ci,
                     e.entity_code
                 )
             )
           )
-       OR (
-            UPPER(data_source.scope_type) = 'FORM'
-            AND data_source.scope_id IN (
+          OR (
+            UPPER(interface_extension.scope_type) = 'FORM'
+            AND interface_extension.scope_id IN (
                 SELECT id FROM tmp_cleanup_entity_form
             )
           )
-       OR (
-            UPPER(data_source.scope_type) = 'LIST'
-            AND data_source.scope_id IN (
+          OR (
+            UPPER(interface_extension.scope_type) = 'LIST'
+            AND interface_extension.scope_id IN (
                 SELECT id FROM tmp_cleanup_entity_list
             )
-          );
+          )
+      );
 
     -- 10. 清理列表数据范围。
     DELETE delegation

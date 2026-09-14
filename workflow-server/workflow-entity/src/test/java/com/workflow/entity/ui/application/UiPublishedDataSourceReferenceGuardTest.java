@@ -54,7 +54,7 @@ class UiPublishedDataSourceReferenceGuardTest {
                 BusinessConflictException.class,
                 () -> guard.requireNoExecutableReferences("source-1"));
 
-        assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
+        assertEquals("UI_INTERFACE_EXECUTABLE_RELEASE_REFERENCED",
                 error.getErrorCode());
     }
 
@@ -66,14 +66,14 @@ class UiPublishedDataSourceReferenceGuardTest {
                 .thenReturn(Map.of(
                         "list",
                         Map.of(
-                                "queryDataSourceId", "source-1",
+                                "queryInterfaceExtensionId", "source-1",
                                 "queryOperationCode", "query")));
 
         BusinessConflictException error = assertThrows(
                 BusinessConflictException.class,
                 () -> guard.requireNoExecutableReferences("source-1"));
 
-        assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
+        assertEquals("UI_INTERFACE_EXECUTABLE_RELEASE_REFERENCED",
                 error.getErrorCode());
     }
 
@@ -93,7 +93,7 @@ class UiPublishedDataSourceReferenceGuardTest {
                 BusinessConflictException.class,
                 () -> guard.requireNoExecutableReferences("source-1"));
 
-        assertEquals("UI_DATA_SOURCE_EXECUTABLE_RELEASE_REFERENCED",
+        assertEquals("UI_INTERFACE_EXECUTABLE_RELEASE_REFERENCED",
                 error.getErrorCode());
     }
 
@@ -121,7 +121,27 @@ class UiPublishedDataSourceReferenceGuardTest {
                 BusinessConflictException.class,
                 () -> guard.requireNoExecutableReferences("source-1"));
 
-        assertEquals("UI_DATA_SOURCE_PUBLISHED_REFERENCE_UNVERIFIABLE",
+        assertEquals("UI_INTERFACE_PUBLISHED_REFERENCE_UNVERIFIABLE",
+                error.getErrorCode());
+    }
+
+    @Test
+    void blocksUnifiedInterfaceReferencesAcrossEventAndListShapes() {
+        UiConfigRelease release = release("FORM", "form-2", 7);
+        candidates(release);
+        when(releaseService.verifiedReleaseSnapshot(release))
+                .thenReturn(Map.of(
+                        "eventBindings", List.of(Map.of(
+                                "steps", List.of(Map.of(
+                                        "extensionId", "extension-1")))),
+                        "fields", List.of(Map.of(
+                                "interfaceExtensionId", "extension-1"))));
+
+        BusinessConflictException error = assertThrows(
+                BusinessConflictException.class,
+                () -> guard.requireNoExecutableReferences("extension-1"));
+
+        assertEquals("UI_INTERFACE_EXECUTABLE_RELEASE_REFERENCED",
                 error.getErrorCode());
     }
 

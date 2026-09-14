@@ -129,10 +129,15 @@ class SchemaRequiredTablesTest {
         }
         assertTrue(sql.contains("INSERT IGNORE INTO `sys_menu`"));
         assertTrue(sql.contains("INSERT IGNORE INTO `sys_role_menu`"));
-        assertTrue(sql.contains("interface_service_menu_001"));
         assertTrue(sql.contains("entity_version_management_001"));
-        assertTrue(sql.contains("SET `menu_name` = '接口服务'"));
         assertTrue(sql.contains("SET `menu_name` = '数据版本'"));
+        assertFalse(sql.contains(
+                "('interface_service_menu_001','0','接口服务'"));
+        assertFalse(sql.contains("SET `menu_name` = '接口服务'"));
+        assertTrue(sql.contains(
+                "'extension_list_permission_001' AS `target_menu_id`"));
+        assertTrue(sql.contains("DELETE FROM `sys_role_menu`"));
+        assertTrue(sql.contains("DELETE FROM `sys_menu`"));
     }
 
     @Test
@@ -334,6 +339,55 @@ class SchemaRequiredTablesTest {
                 "DELETE FROM `sys_menu`\n"
                         + " WHERE `id` = "
                         + "'user_manual_open_integration_001';"));
+    }
+
+    @Test
+    void interfaceServicesAreFlattenedByForwardOnlyMigration()
+            throws Exception {
+        String migration = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V088__flatten_interface_services_into_extensions.sql"));
+
+        for (String column : List.of(
+                "`implementation_type`",
+                "`provider_code`",
+                "`scope_type`",
+                "`scope_id`",
+                "`implementation_config_document`",
+                "`execution_policy_document`",
+                "`input_schema_document`",
+                "`output_schema_document`",
+                "`interface_kind`",
+                "`interface_context_type`",
+                "`provider_operation_code`",
+                "`legacy_service_id`")) {
+            assertTrue(migration.contains(column),
+                    "missing interface extension column: " + column);
+        }
+        assertTrue(migration.contains("'INTERFACE'"));
+        assertTrue(migration.contains(
+                "DROP TABLE `ui_data_source_definition`"));
+        assertFalse(migration.contains("DROP TABLE `ui_event_binding`"));
+        assertTrue(migration.contains(
+                "`interface_extension_id`"));
+        assertTrue(migration.contains(
+                "`query_interface_extension_id`"));
+        assertTrue(migration.contains(
+                "DROP COLUMN `data_source_operation_code`"));
+        assertTrue(migration.contains(
+                "DROP COLUMN `query_operation_code`"));
+        assertTrue(migration.contains(
+                "JSON_SET(`step_document`, '$.extensionId'"));
+        assertFalse(migration.contains(
+                "UPDATE `ui_config_release`"));
+        assertFalse(migration.contains(
+                "UPDATE `ui_config_hotfix_target`"));
+        for (String permission : List.of(
+                "extension_list_permission_001",
+                "extension_update_permission_001",
+                "extension_test_permission_001")) {
+            assertTrue(migration.contains(permission),
+                    "missing migrated extension grant: " + permission);
+        }
     }
 
     @Test

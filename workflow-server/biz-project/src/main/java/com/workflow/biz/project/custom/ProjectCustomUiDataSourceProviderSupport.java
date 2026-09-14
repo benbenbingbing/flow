@@ -22,23 +22,23 @@ import java.util.Map;
  *
  * <p>需要特别区分两个概念：</p>
  * <ul>
- *     <li>GLOBAL、ENTITY、FORM、LIST 是接口服务定义中的作用范围，由平台在
+ *     <li>GLOBAL、ENTITY、FORM、LIST 是接口扩展定义中的作用范围，由平台在
  *     Provider 执行前完成发布绑定和权限校验。</li>
  *     <li>LIST_COLUMN、FORM_INIT、FIELD_OPTIONS、ROW_BUTTON_CLICK 等是本次
  *     调用的 usage，Provider 根据 usage 决定输入和输出结构。</li>
  * </ul>
  *
- * <p>Provider 接口本身不会收到接口服务定义的 scopeType，因此这里的
+ * <p>Provider 接口本身不会收到接口扩展定义的 scopeType，因此这里的
  * recommendedScope 只用于示例说明和日志定位，不能替代平台授权。</p>
  */
 abstract class ProjectCustomUiDataSourceProviderSupport
         implements UiDataSourceProvider {
 
-    /** 接口服务操作标识，只参与执行日志和诊断结果，不改变 usage 路由。 */
+    /** Provider 内部能力标识，只参与执行日志和诊断结果，不改变 usage 路由。 */
     private static final String OPERATION = "operation";
 
     /**
-     * 返回该 Provider 推荐配置的接口服务作用范围。
+     * 返回该 Provider 推荐配置的接口扩展作用范围。
      */
     protected abstract String recommendedScope();
 
@@ -242,7 +242,7 @@ abstract class ProjectCustomUiDataSourceProviderSupport
      * 构造字段默认值或字段计算结果。
      *
      * <p>前端同时兼容直接标量和 {@code {"value": ...}}；示例统一返回对象，
-     * 便于在接口服务中定义稳定的输出 Schema。</p>
+     * 便于在接口扩展中定义稳定的输出 Schema。</p>
      */
     protected Map<String, Object> fieldValue(
             Object value) {

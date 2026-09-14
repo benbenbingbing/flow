@@ -15,15 +15,20 @@ import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
+import com.workflow.entity.ui.application.UiAvailableInterfaceService;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
@@ -138,13 +143,72 @@ class UiConfigurationWriteAccessControllerTest {
                 new UiExtensionDefinitionSaveRequest();
         UiExtensionDefinitionController controller =
                 new UiExtensionDefinitionController(
-                        extensionService, accessService);
+                        extensionService,
+                        mock(UiInterfaceExtensionService.class),
+                        mock(UiAvailableInterfaceService.class),
+                        accessService);
 
         controller.create(request);
 
         InOrder order = inOrder(accessService, extensionService);
         order.verify(accessService).requireGlobalConfigurationAccess();
         order.verify(extensionService).save(request);
+    }
+
+    /** 接口类型写入必须由专用服务处理，不能重新连回通用目录服务。 */
+    @Test
+    void interfaceExtensionWriteUsesDedicatedService() {
+        UiExtensionDefinitionService extensionService =
+                mock(UiExtensionDefinitionService.class);
+        UiInterfaceExtensionService interfaceService =
+                mock(UiInterfaceExtensionService.class);
+        UiConfigurationAccessService accessService =
+                mock(UiConfigurationAccessService.class);
+        UiExtensionDefinitionSaveRequest request =
+                new UiExtensionDefinitionSaveRequest();
+        request.setExtensionType(" interface ");
+        UiExtensionDefinitionController controller =
+                new UiExtensionDefinitionController(
+                        extensionService,
+                        interfaceService,
+                        mock(UiAvailableInterfaceService.class),
+                        accessService);
+
+        controller.create(request);
+
+        InOrder order = inOrder(accessService, interfaceService);
+        order.verify(accessService).requireGlobalConfigurationAccess();
+        order.verify(interfaceService).save(request);
+        verify(extensionService, never()).save(request);
+    }
+
+    /** 接口扩展更新同样走专用服务，并以路径 ID 作为更新目标。 */
+    @Test
+    void interfaceExtensionUpdateUsesDedicatedServiceAndPathId() {
+        UiExtensionDefinitionService extensionService =
+                mock(UiExtensionDefinitionService.class);
+        UiInterfaceExtensionService interfaceService =
+                mock(UiInterfaceExtensionService.class);
+        UiConfigurationAccessService accessService =
+                mock(UiConfigurationAccessService.class);
+        UiExtensionDefinitionSaveRequest request =
+                new UiExtensionDefinitionSaveRequest();
+        request.setId("body-id");
+        request.setExtensionType("INTERFACE");
+        UiExtensionDefinitionController controller =
+                new UiExtensionDefinitionController(
+                        extensionService,
+                        interfaceService,
+                        mock(UiAvailableInterfaceService.class),
+                        accessService);
+
+        controller.update("path-id", request);
+
+        assertEquals("path-id", request.getId());
+        InOrder order = inOrder(accessService, interfaceService);
+        order.verify(accessService).requireGlobalConfigurationAccess();
+        order.verify(interfaceService).save(request);
+        verify(extensionService, never()).save(request);
     }
 
     /**
@@ -160,7 +224,10 @@ class UiConfigurationWriteAccessControllerTest {
                 .when(accessService).requireGlobalConfigurationAccess();
         UiExtensionDefinitionController controller =
                 new UiExtensionDefinitionController(
-                        extensionService, accessService);
+                        extensionService,
+                        mock(UiInterfaceExtensionService.class),
+                        mock(UiAvailableInterfaceService.class),
+                        accessService);
 
         assertThrows(
                 ForbiddenException.class,

@@ -37,7 +37,7 @@ import com.workflow.entity.ui.api.request.UiViewCompositionActionCapabilitiesReq
 import com.workflow.entity.ui.api.request.UiViewCompositionActionRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionLinkCandidatesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilitiesResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilityDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
@@ -101,7 +101,7 @@ public class UiViewCompositionActionService {
     private final EntityMutationPort mutationPort;
     private final EntityAggregateWriter aggregateWriter;
     private final UiViewCompositionActionReceiptService actionReceiptService;
-    private final UiDataSourceService dataSourceService;
+    private final UiInterfaceExtensionService dataSourceService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -482,7 +482,7 @@ public class UiViewCompositionActionService {
             ActionContext context,
             Map<String, Object> binding,
             Map<String, UiViewCompositionActionCapabilityDTO> capabilities) {
-        UiDataSourceService.ActionOperationDescriptor descriptor =
+        UiInterfaceExtensionService.ActionOperationDescriptor descriptor =
                 validateActionBinding(context, binding);
         EntityDataDTO source = readAccessible(
                 context.sourceEntity(),
@@ -493,10 +493,10 @@ public class UiViewCompositionActionService {
                 : readTargets(context, action.targetRecordIds(), true);
         Map<String, Object> input = actionInput(
                 context, binding, source, targets);
-        UiDataSourceExecuteRequest executeRequest = actionExecuteRequest(
+        UiExtensionExecuteRequest executeRequest = actionExecuteRequest(
                 action, context, binding, input);
 
-        if ("READ".equals(descriptor.operationKind())) {
+        if ("READ".equals(descriptor.interfaceKind())) {
             Object raw = dataSourceService.executePinnedOperation(
                     requiredField(
                             binding,
@@ -591,9 +591,9 @@ public class UiViewCompositionActionService {
         if (binding.isEmpty()) {
             return Map.of();
         }
-        UiDataSourceService.ActionOperationDescriptor descriptor =
+        UiInterfaceExtensionService.ActionOperationDescriptor descriptor =
                 validateActionBinding(context, binding);
-        if (!"READ".equals(descriptor.operationKind())) {
+        if (!"READ".equals(descriptor.interfaceKind())) {
             throw forbidden(
                     "VIEW_COMPOSITION_STANDARD_ACTION_WRITE_FORBIDDEN",
                     "标准选择、建立关联和解除关联必须由平台权威链执行；同名接口只能用于只读校验、计算或返回界面结果");
@@ -650,15 +650,14 @@ public class UiViewCompositionActionService {
                 .build();
     }
 
-    private UiDataSourceExecuteRequest actionExecuteRequest(
+    private UiExtensionExecuteRequest actionExecuteRequest(
             ValidatedAction action,
             ActionContext context,
             Map<String, Object> binding,
             Map<String, Object> input) {
-        UiDataSourceExecuteRequest request = new UiDataSourceExecuteRequest();
+        UiExtensionExecuteRequest request = new UiExtensionExecuteRequest();
         request.setUsage(UiDataSourceUsages.RELATED_CONTENT_ACTION);
-        request.setOperationCode(requiredField(
-                binding, "operationCode", "接口操作"));
+        request.setOperationCode(text(binding.get("operationCode")));
         request.setConfigType(context.claims().ownerType());
         request.setConfigId(context.claims().ownerId());
         request.setReleaseId(context.claims().releaseId());
@@ -676,23 +675,38 @@ public class UiViewCompositionActionService {
         return request;
     }
 
-    private UiDataSourceService.ActionOperationDescriptor
+    private UiInterfaceExtensionService.ActionOperationDescriptor
             validateActionBinding(
             ActionContext context,
             Map<String, Object> binding) {
+        String snapshot = requiredField(
+                binding, "executableSnapshot", "动作接口快照");
+        String hash = requiredField(
+                binding, "definitionHash", "动作接口哈希");
+        boolean extensionReference = StringUtils.hasText(
+                text(binding.get("extensionId")));
+        String sourceCode = requiredField(
+                binding,
+                extensionReference ? "extensionKey" : "sourceCode",
+                extensionReference ? "接口扩展编码" : "历史接口服务编码");
+        Integer revision = integer(binding.get(extensionReference
+                ? "extensionRevision" : "serviceRevision"));
+        if (extensionReference) {
+            return dataSourceService.validatePinnedActionExtension(
+                    snapshot,
+                    hash,
+                    requiredField(binding, "extensionId", "接口扩展"),
+                    sourceCode,
+                    revision,
+                    context.claims().ownerType());
+        }
         return dataSourceService.validatePinnedActionOperation(
-                requiredField(
-                        binding,
-                        "executableSnapshot",
-                        "动作接口操作快照"),
-                requiredField(
-                        binding,
-                        "definitionHash",
-                        "动作接口操作哈希"),
-                requiredField(binding, "serviceId", "接口服务"),
-                requiredField(binding, "sourceCode", "接口服务编码"),
-                integer(binding.get("serviceRevision")),
-                requiredField(binding, "operationCode", "接口操作"),
+                snapshot,
+                hash,
+                requiredField(binding, "serviceId", "历史接口服务"),
+                sourceCode,
+                revision,
+                requiredField(binding, "operationCode", "历史接口操作"),
                 context.claims().ownerType());
     }
 
@@ -1831,20 +1845,7 @@ public class UiViewCompositionActionService {
                 continue;
             }
             try {
-                dataSourceService.validatePinnedActionOperation(
-                        requiredField(
-                                binding,
-                                "executableSnapshot",
-                                "动作接口操作快照"),
-                        requiredField(
-                                binding,
-                                "definitionHash",
-                                "动作接口操作哈希"),
-                        requiredField(binding, "serviceId", "接口服务"),
-                        requiredField(binding, "sourceCode", "接口服务编码"),
-                        integer(binding.get("serviceRevision")),
-                        requiredField(binding, "operationCode", "接口操作"),
-                        context.claims().ownerType());
+                validateActionBinding(context, binding);
                 result.put(actionKey, allowed());
             } catch (RuntimeException exception) {
                 result.put(actionKey, denied(exception.getMessage()));

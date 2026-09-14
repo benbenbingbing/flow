@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,7 +30,7 @@ class ConfigMigrationViewCompositionPortabilityTest {
     }
 
     @Test
-    void fineGrainedFormExportCarriesEmbeddedServiceAndExactComponent() {
+    void legacyFineGrainedFormExportCarriesEmbeddedServiceAndExactComponent() {
         ConfigMigrationPackageCodec codec =
                 new ConfigMigrationPackageCodec(new ObjectMapper());
         Map<String, Object> composition = Map.of(
@@ -91,6 +92,76 @@ class ConfigMigrationViewCompositionPortabilityTest {
         assertTrue(dependencies.stream().anyMatch(value ->
                 "RequirementTimeline@3".equals(value.get("key"))
                         && Integer.valueOf(3).equals(value.get("version"))));
+    }
+
+    /** 当前格式按 extensionCode 裁剪接口扩展，并且不重新输出旧 dataSources。 */
+    @Test
+    void fineGrainedUiExportCarriesReferencedInterfaceExtensions() {
+        ConfigMigrationPackageCodec codec =
+                new ConfigMigrationPackageCodec(new ObjectMapper());
+        Map<String, Object> snapshot = Map.ofEntries(
+                Map.entry("schemaVersion", 1),
+                Map.entry("assetType", ConfigMigrationAssetService.ENTITY),
+                Map.entry("businessKey", "project"),
+                Map.entry("definition", Map.of("entityCode", "project")),
+                Map.entry("forms", List.of(Map.of(
+                        "formKey", "project_detail",
+                        "eventBindings", List.of(Map.of(
+                                "steps", List.of(Map.of(
+                                        "extensionCode", "project.load"))))))),
+                Map.entry("lists", List.of(Map.of(
+                        "listKey", "project_list",
+                        "queryInterfaceExtensionCode", "project.query",
+                        "fields", List.of(Map.of(
+                                "fieldCode", "ownerName",
+                                "interfaceExtensionCode", "user.options"))))),
+                Map.entry("interfaceExtensions", List.of(
+                        Map.of("extensionKey", "project.load"),
+                        Map.of("extensionKey", "project.query"),
+                        Map.of("extensionKey", "user.options"),
+                        Map.of("extensionKey", "unreferenced.api"))),
+                // 同时存在仅用于证明当前格式优先，结果不能回退到历史结构。
+                Map.entry("dataSources", List.of(Map.of(
+                        "sourceCode", "legacy.should.not.export"))),
+                Map.entry("dependencies", List.of(
+                        Map.of("type", "INTERFACE", "key", "project.load",
+                                "required", true),
+                        Map.of("type", "INTERFACE", "key", "project.query",
+                                "required", true),
+                        Map.of("type", "INTERFACE", "key", "user.options",
+                                "required", true),
+                        Map.of("type", "INTERFACE", "key", "unreferenced.api",
+                                "required", true))));
+
+        Map<String, Object> selected = codec.selectSnapshot(
+                snapshot,
+                Map.of(
+                        "full", false,
+                        "sections", List.of("forms", "lists"),
+                        "formKeys", List.of("project_detail"),
+                        "listKeys", List.of("project_list")));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> interfaces =
+                (List<Map<String, Object>>) selected.get(
+                        "interfaceExtensions");
+        assertEquals(
+                List.of("project.load", "project.query", "user.options"),
+                interfaces.stream()
+                        .map(value -> String.valueOf(
+                                value.get("extensionKey")))
+                        .toList());
+        assertFalse(selected.containsKey("dataSources"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> dependencies =
+                (List<Map<String, Object>>) selected.get("dependencies");
+        assertEquals(
+                List.of("project.load", "project.query", "user.options"),
+                dependencies.stream()
+                        .filter(value -> "INTERFACE".equals(
+                                value.get("type")))
+                        .map(value -> String.valueOf(value.get("key")))
+                        .toList());
     }
 
     @Test

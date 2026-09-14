@@ -51,8 +51,8 @@ export const RELATED_CONTENT_RELATION_OPTIONS = Object.freeze([
   },
   {
     value: 'INTERFACE_SERVICE',
-    label: '使用接口服务',
-    description: '普通关系无法表达复杂规则时，由已注册服务返回目标数据。'
+    label: '使用扩展接口',
+    description: '普通关系无法表达复杂规则时，由一个已注册扩展接口返回目标数据。'
   }
 ])
 
@@ -152,10 +152,8 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
       specialHandling: {
         mode: 'NONE',
         interfaceService: {
-          serviceId: '',
-          serviceName: '',
-          operationCode: '',
-          operationName: '',
+          extensionId: '',
+          extensionName: '',
           inputMappings: [],
           outputMappings: []
         },
@@ -170,6 +168,41 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
         failurePolicy: 'ERROR'
       }
     }
+  }
+}
+
+/** 把历史服务绑定读取为单接口模型，返回值不会携带旧二段字段。 */
+function normalizeInterfaceBinding(binding = {}, action = false) {
+  return {
+    ...(action ? { actionKey: binding?.actionKey || '' } : {}),
+    extensionId: binding?.extensionId || binding?.serviceId || '',
+    extensionName: binding?.extensionName || binding?.serviceName
+      || binding?.operationName || '',
+    inputMappings: Array.isArray(binding?.inputMappings)
+      ? clone(binding.inputMappings)
+      : [],
+    outputMappings: Array.isArray(binding?.outputMappings)
+      ? clone(binding.outputMappings)
+      : [],
+    ...(action ? { failurePolicy: binding?.failurePolicy || 'ERROR' } : {})
+  }
+}
+
+/**
+ * 持久化时只保留后端契约字段；extensionName 仅用于编辑态中文回显，
+ * 不能随配置写回，否则严格键校验会把它识别为未知字段。
+ */
+function serializeInterfaceBinding(binding = {}, action = false) {
+  return {
+    ...(action ? { actionKey: binding.actionKey || '' } : {}),
+    extensionId: binding.extensionId || '',
+    inputMappings: Array.isArray(binding.inputMappings)
+      ? clone(binding.inputMappings)
+      : [],
+    outputMappings: Array.isArray(binding.outputMappings)
+      ? clone(binding.outputMappings)
+      : [],
+    ...(action ? { failurePolicy: binding.failurePolicy || 'ERROR' } : {})
   }
 }
 
@@ -220,31 +253,12 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
     specialHandling: {
       ...empty.config.specialHandling,
       ...(rawConfig.specialHandling || {}),
-      interfaceService: {
-        ...empty.config.specialHandling.interfaceService,
-        ...(rawConfig.specialHandling?.interfaceService || {}),
-        inputMappings: Array.isArray(rawConfig.specialHandling?.interfaceService?.inputMappings)
-          ? clone(rawConfig.specialHandling.interfaceService.inputMappings)
-          : [],
-        outputMappings: Array.isArray(rawConfig.specialHandling?.interfaceService?.outputMappings)
-          ? clone(rawConfig.specialHandling.interfaceService.outputMappings)
-          : []
-      },
+      interfaceService: normalizeInterfaceBinding(
+        rawConfig.specialHandling?.interfaceService
+      ),
       actionServices: Array.isArray(rawConfig.specialHandling?.actionServices)
-        ? rawConfig.specialHandling.actionServices.map(binding => ({
-            actionKey: binding?.actionKey || '',
-            serviceId: binding?.serviceId || '',
-            serviceName: binding?.serviceName || '',
-            operationCode: binding?.operationCode || '',
-            operationName: binding?.operationName || '',
-            inputMappings: Array.isArray(binding?.inputMappings)
-              ? clone(binding.inputMappings)
-              : [],
-            outputMappings: Array.isArray(binding?.outputMappings)
-              ? clone(binding.outputMappings)
-              : [],
-            failurePolicy: binding?.failurePolicy || 'ERROR'
-          }))
+        ? rawConfig.specialHandling.actionServices.map(binding =>
+            normalizeInterfaceBinding(binding, true))
         : [],
       customComponent: {
         ...empty.config.specialHandling.customComponent,
@@ -274,12 +288,19 @@ export function buildRelatedContentPayload(value, ownerType, ownerId) {
     ownerType,
     sourceEntity: value?.config?.source || {}
   })
+  const config = clone(normalized.config)
+  config.specialHandling.interfaceService = serializeInterfaceBinding(
+    normalized.config.specialHandling.interfaceService
+  )
+  config.specialHandling.actionServices = (
+    normalized.config.specialHandling.actionServices || []
+  ).map(binding => serializeInterfaceBinding(binding, true))
   const result = {
     compositionKey: normalized.compositionKey || undefined,
     anchorType: normalized.anchorType,
     anchorKey: normalized.anchorKey,
     orderKey: normalized.orderKey,
-    config: clone(normalized.config)
+    config
   }
   if (normalized.id) {
     result.expectedRevision = normalized.revision
@@ -467,29 +488,23 @@ export function validateRelatedContent(value, ownerType = 'FORM') {
   const actionServices = Array.isArray(specialHandling.actionServices)
     ? specialHandling.actionServices
     : []
-  if (needsDataService && !specialHandling.interfaceService.serviceId) {
-    add(4, 'specialHandling.interfaceService.serviceId', '请选择接口服务')
+  if (needsDataService && !specialHandling.interfaceService.extensionId) {
+    add(4, 'specialHandling.interfaceService.extensionId', '请选择扩展接口')
   }
-  if (needsDataService && !specialHandling.interfaceService.operationCode) {
-    add(4, 'specialHandling.interfaceService.operationCode', '请选择接口操作')
-  }
-  if (usesService && !specialHandling.interfaceService.serviceId && !actionServices.length) {
-    add(4, 'specialHandling.actionServices', '请至少配置一个数据或动作接口服务')
+  if (usesService && !specialHandling.interfaceService.extensionId && !actionServices.length) {
+    add(4, 'specialHandling.actionServices', '请至少配置一个数据或动作扩展接口')
   }
   const actionKeys = new Set()
   actionServices.forEach((binding, index) => {
     if (!binding.actionKey) {
-      add(4, `specialHandling.actionServices.${index}.actionKey`, '请选择该接口操作用于哪个页面操作')
+      add(4, `specialHandling.actionServices.${index}.actionKey`, '请选择该扩展接口用于哪个页面操作')
     } else if (actionKeys.has(String(binding.actionKey).toUpperCase())) {
-      add(4, `specialHandling.actionServices.${index}.actionKey`, '同一个页面操作只能绑定一个接口服务')
+      add(4, `specialHandling.actionServices.${index}.actionKey`, '同一个页面操作只能绑定一个扩展接口')
     } else {
       actionKeys.add(String(binding.actionKey).toUpperCase())
     }
-    if (!binding.serviceId) {
-      add(4, `specialHandling.actionServices.${index}.serviceId`, '请选择动作接口服务')
-    }
-    if (!binding.operationCode) {
-      add(4, `specialHandling.actionServices.${index}.operationCode`, '请选择动作接口操作')
+    if (!binding.extensionId) {
+      add(4, `specialHandling.actionServices.${index}.extensionId`, '请选择动作扩展接口')
     }
     if (!['ERROR', 'PLACEHOLDER', 'HIDE'].includes(binding.failurePolicy)) {
       add(4, `specialHandling.actionServices.${index}.failurePolicy`, '请选择动作失败后的处理方式')
@@ -550,7 +565,7 @@ export function describeRelatedContentRelation(value) {
   if (relation.type === 'FIELD_MATCH') {
     return `当前记录的“${relation.sourceFieldName || relation.sourceField || '未选择'}”将匹配目标数据的“${relation.targetFieldName || relation.targetField || '未选择'}”。`
   }
-  return '目标数据将由所选接口服务按当前记录上下文查找。'
+  return '目标数据将由所选扩展接口按当前记录上下文查找。'
 }
 
 export function describeRelatedContentActions(value) {
@@ -563,11 +578,11 @@ export function describeRelatedContentSpecial(value) {
   if (special.mode === 'NONE') return '平台默认能力'
   const parts = []
   if (['INTERFACE_SERVICE', 'BOTH'].includes(special.mode)) {
-    if (special.interfaceService.serviceId) {
-      parts.push(special.interfaceService.serviceName || '数据接口服务')
+    if (special.interfaceService.extensionId) {
+      parts.push(special.interfaceService.extensionName || '数据扩展接口')
     }
     if (special.actionServices?.length) {
-      parts.push(`${special.actionServices.length} 个动作接口服务`)
+      parts.push(`${special.actionServices.length} 个动作扩展接口`)
     }
   }
   if (['CUSTOM_COMPONENT', 'BOTH'].includes(special.mode)) {

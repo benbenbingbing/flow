@@ -21,6 +21,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseM
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +47,27 @@ import java.util.Set;
 @Slf4j
 @RequiredArgsConstructor
 public class UiEventBindingService {
+
+    /** 发布制品字段只能由发布流程生成，草稿保存时一律剥离。 */
+    private static final Set<String> PINNED_INTERFACE_FIELDS = Set.of(
+            "serviceId",
+            "operationCode",
+            "serviceName",
+            "operationName",
+            "interfaceName",
+            "providerOperationCode",
+            "legacyServiceId",
+            "operationSnapshotVersion",
+            "sourceCode",
+            "serviceRevision",
+            "extensionKey",
+            "extensionRevision",
+            "executableSnapshot",
+            "definitionHash",
+            "bindingOwnerType",
+            "bindingOwnerId",
+            "bindingTargetType",
+            "bindingTargetKey");
 
     public static final Set<String> OWNER_TYPES =
             Set.of("ENTITY", "FORM", "LIST");
@@ -148,7 +170,7 @@ public class UiEventBindingService {
     private final EntityListConfigMapper listMapper;
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
     private final UiConfigurationAccessService configurationAccessService;
-    private final UiDataSourceService dataSourceService;
+    private final UiInterfaceExtensionService dataSourceService;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final UiConfigReleaseService releaseService;
     private final JsonDocumentCodec codec;
@@ -755,40 +777,27 @@ public class UiEventBindingService {
                 throw new IllegalArgumentException(
                         "事件步骤顺序重复: " + order);
             }
-            String serviceId = firstText(
-                    step.get("serviceId"));
+            String extensionId = firstText(
+                    step.get("extensionId"), step.get("serviceId"));
             String operationContext = "";
-            if (StringUtils.hasText(serviceId)) {
+            if (StringUtils.hasText(extensionId)) {
                 String operationCode = firstText(
                         step.get("operationCode"));
-                if (!StringUtils.hasText(operationCode)) {
-                    throw new IllegalArgumentException(
-                            "事件接口步骤缺少 operationCode");
-                }
-                Map<String, Object> operation =
-                        dataSourceService.operations(serviceId).stream()
-                                .filter(item -> Objects.equals(
-                                        operationCode,
-                                        text(item.get("code"))))
-                                .findFirst()
-                                .orElseThrow(() ->
-                                        new IllegalArgumentException(
-                                                "接口服务操作不存在: "
-                                                        + serviceId + "/"
-                                                        + operationCode));
-                operationContext = normalize(text(
-                        operation.get("contextType")));
+                UiExtensionDefinition definition = dataSourceService
+                        .requireExecutableDefinition(
+                                extensionId, operationCode);
+                operationContext = normalize(
+                        definition.getInterfaceContextType());
                 if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
-                        && !"READ".equals(normalize(text(
-                                operation.getOrDefault(
-                                        "kind", "READ"))))) {
+                        && !"READ".equals(normalize(
+                                definition.getInterfaceKind()))) {
                     throw new IllegalArgumentException(
-                            "表单自定义按钮接口步骤只允许 READ 操作；实体写入必须走平台默认处理或受控命令计划，外部副作用必须由业务事务投递 Outbox");
+                            "表单自定义按钮接口步骤只允许 READ 接口；实体写入必须走平台默认处理或受控命令计划，外部副作用必须由业务事务投递 Outbox");
                 }
             } else if (!(step.get("outputMapping") instanceof Map<?, ?>)
                     && !(step.get("outputMapping") instanceof List<?>)) {
                 throw new IllegalArgumentException(
-                        "事件步骤必须选择接口操作或配置纯映射");
+                    "事件步骤必须选择接口扩展或配置纯映射");
             }
             if (!"REPLACE".equals(strategy)) {
                 continue;
@@ -930,34 +939,20 @@ public class UiEventBindingService {
                 throw new IllegalArgumentException(
                         "平台系统表列表不能替换可信只读查询");
             }
-            String serviceId = firstText(
-                    step.get("serviceId"));
-            if (!StringUtils.hasText(serviceId)) {
+            String extensionId = firstText(
+                    step.get("extensionId"), step.get("serviceId"));
+            if (!StringUtils.hasText(extensionId)) {
                 continue;
             }
             String operationCode = firstText(
                     step.get("operationCode"));
-            if (!StringUtils.hasText(operationCode)) {
-                throw new IllegalArgumentException(
-                        "事件接口步骤缺少 operationCode");
-            }
-            Map<String, Object> operation =
-                    dataSourceService.operations(serviceId)
-                            .stream()
-                            .filter(item -> Objects.equals(
-                                    operationCode,
-                                    text(item.get("code"))))
-                            .findFirst()
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "接口服务操作不存在: "
-                                                    + serviceId
-                                                    + "/"
-                                                    + operationCode));
+            UiExtensionDefinition definition = dataSourceService
+                    .requireExecutableDefinition(
+                            extensionId, operationCode);
             if (!"READ".equals(normalize(
-                    text(operation.get("kind"))))) {
+                    definition.getInterfaceKind()))) {
                 throw new IllegalArgumentException(
-                        "平台系统表只允许调用 READ 类型数据源操作");
+                        "平台系统表只允许调用 READ 类型接口扩展");
             }
         }
     }
@@ -1019,7 +1014,38 @@ public class UiEventBindingService {
 
     private String writeSteps(List<Map<String, Object>> steps) {
         return steps == null || steps.isEmpty()
-                ? null : codec.write(steps, "UI事件步骤");
+                ? null : codec.write(
+                        normalizeInterfaceReferences(steps),
+                        "UI事件步骤");
+    }
+
+    /**
+     * 把事件草稿统一收敛为单一 {@code extensionId} 引用。
+     *
+     * <p>迁移前的编辑器可能仍提交 {@code serviceId + operationCode}；
+     * 该组合只在读入时用于解析迁移后的扩展记录，落库后立即移除，
+     * 防止新发布快照继续扩散多操作服务模型。</p>
+     */
+    private List<Map<String, Object>> normalizeInterfaceReferences(
+            List<Map<String, Object>> steps) {
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Map<String, Object> step : steps) {
+            Map<String, Object> copy = new LinkedHashMap<>(step);
+            PINNED_INTERFACE_FIELDS.forEach(copy::remove);
+            String referenceId = firstText(
+                    step.get("extensionId"), step.get("serviceId"));
+            if (StringUtils.hasText(referenceId)) {
+                UiExtensionDefinition definition = dataSourceService
+                        .requireExecutableDefinition(
+                                referenceId,
+                                firstText(step.get("operationCode")));
+                copy.put("extensionId", definition.getId());
+                copy.remove("serviceId");
+                copy.remove("operationCode");
+            }
+            normalized.add(copy);
+        }
+        return List.copyOf(normalized);
     }
 
     private List<Map<String, Object>> mapList(Object value) {

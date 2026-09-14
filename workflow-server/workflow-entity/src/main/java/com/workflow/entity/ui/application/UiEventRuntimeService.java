@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
@@ -50,11 +50,23 @@ import java.util.function.Function;
 @RequiredArgsConstructor
 public class UiEventRuntimeService {
 
-    private static final int OPERATION_SNAPSHOT_VERSION = 1;
+    private static final int OPERATION_SNAPSHOT_VERSION = 2;
     private static final int MAX_LIST_BUTTON_SELECTION = 200;
-    private static final List<String> PINNED_OPERATION_FIELDS = List.of(
+    private static final List<String> LEGACY_PINNED_OPERATION_FIELDS = List.of(
             "sourceCode",
             "serviceRevision",
+            "executableSnapshot",
+            "definitionHash");
+    private static final List<String> EXTENSION_PINNED_OPERATION_FIELDS = List.of(
+            "extensionKey",
+            "extensionRevision",
+            "executableSnapshot",
+            "definitionHash");
+    private static final Set<String> ALL_PINNED_OPERATION_FIELDS = Set.of(
+            "sourceCode",
+            "serviceRevision",
+            "extensionKey",
+            "extensionRevision",
             "executableSnapshot",
             "definitionHash");
     private static final List<String> PINNED_BINDING_IDENTITY_FIELDS = List.of(
@@ -94,7 +106,7 @@ public class UiEventRuntimeService {
             UiDataSourceUsages.FIELD_BUTTON_CLICK);
 
     private final UiEventBindingService bindingService;
-    private final UiDataSourceService dataSourceService;
+    private final UiInterfaceExtensionService dataSourceService;
     private final UiEventValueMapper valueMapper;
     private final EntitySelectionRuntimeService selectionRuntimeService;
     private final SystemAuditPort auditPort;
@@ -872,9 +884,9 @@ public class UiEventRuntimeService {
                 step.getOrDefault("failurePolicy", "STOP")));
         try {
             Object raw;
-            String serviceId = firstText(
-                    step.get("serviceId"));
-            if (StringUtils.hasText(serviceId)) {
+            String extensionId = firstText(
+                    step.get("extensionId"), step.get("serviceId"));
+            if (StringUtils.hasText(extensionId)) {
                 Object mappedInput = valueMapper.apply(
                         step.get("inputMapping"),
                         state,
@@ -883,15 +895,18 @@ public class UiEventRuntimeService {
                     throw new IllegalArgumentException(
                             "事件接口输入映射结果必须为对象");
                 }
-                UiDataSourceExecuteRequest execute =
-                        new UiDataSourceExecuteRequest();
+                UiExtensionExecuteRequest execute =
+                        new UiExtensionExecuteRequest();
                 execute.setUsage(normalize(request.getEventCode()));
                 execute.setOperationCode(firstText(
                         step.get("operationCode")));
-                if (!StringUtils.hasText(
-                        execute.getOperationCode())) {
+                if (!StringUtils.hasText(text(step.get("extensionId")))
+                        && !StringUtils.hasText(
+                                execute.getOperationCode())) {
+                    // 历史 serviceId 需要 operationCode 才能唯一解析；
+                    // 新 extensionId 本身就代表一个可调用接口。
                     throw new IllegalArgumentException(
-                            "事件接口步骤缺少 operationCode");
+                            "历史事件接口步骤缺少 operationCode");
                 }
                 execute.setConfigType(normalize(request.getConfigType()));
                 execute.setConfigId(request.getConfigId());
@@ -944,12 +959,12 @@ public class UiEventRuntimeService {
                     execute.setServerBindingTargetKey(text(
                             step.get("bindingTargetKey")));
                     raw = executeProviderStep(
-                            step, request, chain, serviceId, execute);
+                            step, request, chain, extensionId, execute);
                 } else {
                     // 非表单按钮事件保留既有 WRITE/READ Provider 契约，避免影响
                     // DATA_CREATE/UPDATE、列表按钮等已发布执行链。
                     raw = dataSourceService.executeOperation(
-                            serviceId,
+                            extensionId,
                             execute.getOperationCode(),
                             execute);
                 }
@@ -958,7 +973,7 @@ public class UiEventRuntimeService {
             }
             Object outputMapping = step.get("outputMapping");
             Map<String, Object> mappingSource =
-                    StringUtils.hasText(serviceId)
+                    StringUtils.hasText(extensionId)
                             ? Map.of(
                                     "data",
                                     raw == null ? Map.of() : raw,
@@ -1218,6 +1233,7 @@ public class UiEventRuntimeService {
     private String stepLabel(Map<String, Object> step) {
         return firstText(
                 step.get("name"),
+                step.get("extensionId"),
                 step.get("operationCode"),
                 step.get("serviceId"),
                 "MAPPING");
@@ -1290,14 +1306,14 @@ public class UiEventRuntimeService {
             Map<String, Object> step,
             UiEventExecuteRequest request,
             UiEventBindingService.ResolvedEventChain chain,
-            String serviceId,
-            UiDataSourceExecuteRequest execute) {
+            String extensionId,
+            UiExtensionExecuteRequest execute) {
         Object rawVersion = step.get("operationSnapshotVersion");
         boolean hasSnapshotVersion = step.containsKey(
                 "operationSnapshotVersion");
-        boolean hasPinnedField = PINNED_OPERATION_FIELDS.stream()
+        boolean hasPinnedField = ALL_PINNED_OPERATION_FIELDS.stream()
                 .anyMatch(step::containsKey);
-        UiDataSourceService.PublishedOperationSnapshot operation;
+        UiInterfaceExtensionService.PublishedOperationSnapshot operation;
         if (!hasSnapshotVersion) {
             if (hasPinnedField) {
                 throw invalidPinnedOperation(
@@ -1306,7 +1322,7 @@ public class UiEventRuntimeService {
             // 兼容标记上线前的发布制品：当次请求只读冻结，
             // 避免直接调用可能已漂移为 WRITE 的普通 Provider。
             operation = dataSourceService.freezeOperation(
-                    serviceId, execute.getOperationCode());
+                    extensionId, execute.getOperationCode());
             log.warn(
                     "UI历史事件步骤未固定接口定义，本次按当前READ定义兼容执行: configType={}, configId={}, releaseId={}, releaseVersion={}, eventCode={}, targetKey={}, serviceId={}, operationCode={}",
                     LogValue.safe(request.getConfigType()),
@@ -1315,36 +1331,54 @@ public class UiEventRuntimeService {
                     chain.releaseVersion(),
                     LogValue.safe(request.getEventCode()),
                     LogValue.safe(request.getTargetKey()),
-                    LogValue.safe(serviceId),
+                    LogValue.safe(extensionId),
                     LogValue.safe(execute.getOperationCode()));
         } else {
             Integer version = strictPositiveInteger(rawVersion);
-            if (!Integer.valueOf(OPERATION_SNAPSHOT_VERSION)
-                    .equals(version)
-                    || !PINNED_OPERATION_FIELDS.stream()
-                            .allMatch(step::containsKey)
+            List<String> expectedFields = Integer.valueOf(1).equals(version)
+                    ? LEGACY_PINNED_OPERATION_FIELDS
+                    : EXTENSION_PINNED_OPERATION_FIELDS;
+            if (!Set.of(1, OPERATION_SNAPSHOT_VERSION).contains(version)
+                    || !expectedFields.stream().allMatch(step::containsKey)
                     || !PINNED_BINDING_IDENTITY_FIELDS.stream()
                             .allMatch(step::containsKey)) {
                 throw invalidPinnedOperation(
                         "已发布事件步骤的固定操作版本或字段不完整");
             }
-            operation = new UiDataSourceService.PublishedOperationSnapshot(
-                    serviceId,
-                    firstText(step.get("sourceCode")),
-                    strictPositiveInteger(step.get("serviceRevision")),
-                    execute.getOperationCode(),
+            boolean currentExtensionSnapshot =
+                    Integer.valueOf(OPERATION_SNAPSHOT_VERSION)
+                            .equals(version);
+            operation = new UiInterfaceExtensionService.PublishedOperationSnapshot(
+                    extensionId,
+                    firstText(step.get(currentExtensionSnapshot
+                            ? "extensionKey" : "sourceCode")),
+                    strictPositiveInteger(step.get(currentExtensionSnapshot
+                            ? "extensionRevision" : "serviceRevision")),
+                    currentExtensionSnapshot
+                            ? null : execute.getOperationCode(),
                     firstText(step.get("executableSnapshot")),
                     firstText(step.get("definitionHash")));
         }
         // 先校验外层绑定身份，再从独立哈希保护的定义执行。
-        dataSourceService.validatePinnedReadOperation(
-                operation.document(),
-                operation.hash(),
-                operation.serviceId(),
-                operation.sourceCode(),
-                operation.serviceRevision(),
-                operation.operationCode(),
-                normalize(request.getConfigType()));
+        if (Integer.valueOf(OPERATION_SNAPSHOT_VERSION).equals(
+                strictPositiveInteger(rawVersion))) {
+            dataSourceService.validatePinnedReadExtension(
+                    operation.document(),
+                    operation.hash(),
+                    operation.extensionId(),
+                    operation.extensionKey(),
+                    operation.extensionRevision(),
+                    normalize(request.getConfigType()));
+        } else {
+            dataSourceService.validatePinnedReadOperation(
+                    operation.document(),
+                    operation.hash(),
+                    operation.extensionId(),
+                    operation.extensionKey(),
+                    operation.extensionRevision(),
+                    operation.providerOperationCode(),
+                    normalize(request.getConfigType()));
+        }
         return dataSourceService.executePinnedOperation(
                 operation.document(),
                 operation.hash(),

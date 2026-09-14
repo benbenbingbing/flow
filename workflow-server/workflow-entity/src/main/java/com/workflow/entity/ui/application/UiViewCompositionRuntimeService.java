@@ -25,7 +25,7 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionResolveResponse;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
@@ -51,7 +51,7 @@ import java.util.Set;
  * 已发布关联内容的可信运行时解析服务。
  *
  * <p>本服务只负责把宿主记录解析为目标 FORM 的唯一记录，或目标 LIST 的
- * 服务端固定条件。宿主与目标发布、实体关系、字段以及接口服务绑定均从服务端
+ * 服务端固定条件。宿主与目标发布、实体关系、字段以及接口扩展绑定均从服务端
  * 发布快照读取，客户端提交的整行数据、实体编码和筛选条件不会进入解析链。</p>
  */
 @Service
@@ -84,7 +84,7 @@ public class UiViewCompositionRuntimeService {
     private final EntityDataDynamicService dynamicDataService;
     private final SystemEntityReadService systemEntityReadService;
     private final EntityActionCapabilityService capabilityService;
-    private final UiDataSourceService dataSourceService;
+    private final UiInterfaceExtensionService dataSourceService;
     private final UiReleaseResolutionTokenService releaseTokenService;
     private final UiViewCompositionTokenService compositionTokenService;
     private final JsonDocumentCodec codec;
@@ -789,8 +789,8 @@ public class UiViewCompositionRuntimeService {
         // 动作接口和数据解析接口共用 special.mode，但只有显式配置了后者时
         // 才能参与 resolve；动作绑定由动作端点按 actionKey 独立执行。
         Map<String, Object> service = map(special.get("interfaceService"));
-        return StringUtils.hasText(text(service.get("serviceId")))
-                && StringUtils.hasText(text(service.get("operationCode")));
+        return StringUtils.hasText(firstText(
+                service.get("extensionId"), service.get("serviceId")));
     }
 
     /**
@@ -896,22 +896,23 @@ public class UiViewCompositionRuntimeService {
             EntityPublishedSnapshot targetSchema) {
         Map<String, Object> serviceBinding = map(
                 special.get("interfaceService"));
-        String serviceId = trim(text(serviceBinding.get("serviceId")));
+        String serviceId = trim(firstText(
+                serviceBinding.get("extensionId"),
+                serviceBinding.get("serviceId")));
         String operationCode = trim(text(
                 serviceBinding.get("operationCode")));
-        if (!StringUtils.hasText(serviceId)
-                || !StringUtils.hasText(operationCode)) {
+        if (!StringUtils.hasText(serviceId)) {
             throw new BusinessConflictException(
                     "VIEW_COMPOSITION_INTERFACE_BINDING_REQUIRED",
-                    "关联内容特殊处理未绑定接口服务和操作");
+                    "关联内容特殊处理未绑定接口扩展");
         }
         requirePublishedReadOperation(
                 request.ownerType(), serviceBinding,
                 serviceId, operationCode);
         Map<String, Object> input = mapInterfaceInput(
                 serviceBinding, sourceRecord);
-        UiDataSourceExecuteRequest executeRequest =
-                new UiDataSourceExecuteRequest();
+        UiExtensionExecuteRequest executeRequest =
+                new UiExtensionExecuteRequest();
         executeRequest.setUsage(
                 UiDataSourceUsages.RELATED_CONTENT_RESOLVE);
         executeRequest.setOperationCode(operationCode);
@@ -955,12 +956,12 @@ public class UiViewCompositionRuntimeService {
                     && !matchNone) {
                 throw new BusinessConflictException(
                         "VIEW_COMPOSITION_INTERFACE_OUTPUT_INVALID",
-                        "接口服务未返回目标记录、筛选条件或明确的空结果");
+                        "接口扩展未返回目标记录、筛选条件或明确的空结果");
             }
         } else if (filters.isEmpty() && !matchNone) {
             throw new BusinessConflictException(
                     "VIEW_COMPOSITION_INTERFACE_OUTPUT_INVALID",
-                    "接口服务不得把目标列表解析为无条件查询");
+                    "接口扩展不得把目标列表解析为无条件查询");
         }
         return new Resolution(
                 directRecordId,
@@ -973,24 +974,37 @@ public class UiViewCompositionRuntimeService {
             Map<String, Object> serviceBinding,
             String serviceId,
             String operationCode) {
-        Integer pinnedRevision = integer(
-                serviceBinding.get("serviceRevision"));
-        String sourceCode = trim(text(
-                serviceBinding.get("sourceCode")));
+        boolean extensionReference = StringUtils.hasText(text(
+                serviceBinding.get("extensionId")));
+        Integer pinnedRevision = integer(serviceBinding.get(
+                extensionReference
+                        ? "extensionRevision" : "serviceRevision"));
+        String sourceCode = trim(text(serviceBinding.get(
+                extensionReference ? "extensionKey" : "sourceCode")));
         if (pinnedRevision == null
                 || !StringUtils.hasText(sourceCode)) {
             throw new BusinessConflictException(
                     "VIEW_COMPOSITION_INTERFACE_SNAPSHOT_REQUIRED",
                     "关联内容绑定缺少已发布接口操作身份");
         }
-        dataSourceService.validatePinnedReadOperation(
-                text(serviceBinding.get("executableSnapshot")),
-                text(serviceBinding.get("definitionHash")),
-                serviceId,
-                sourceCode,
-                pinnedRevision,
-                operationCode,
-                ownerType);
+        if (extensionReference) {
+            dataSourceService.validatePinnedReadExtension(
+                    text(serviceBinding.get("executableSnapshot")),
+                    text(serviceBinding.get("definitionHash")),
+                    serviceId,
+                    sourceCode,
+                    pinnedRevision,
+                    ownerType);
+        } else {
+            dataSourceService.validatePinnedReadOperation(
+                    text(serviceBinding.get("executableSnapshot")),
+                    text(serviceBinding.get("definitionHash")),
+                    serviceId,
+                    sourceCode,
+                    pinnedRevision,
+                    operationCode,
+                    ownerType);
+        }
     }
 
     private Map<String, Object> mapInterfaceInput(
@@ -1035,7 +1049,7 @@ public class UiViewCompositionRuntimeService {
         if (source.isEmpty()) {
             throw new BusinessConflictException(
                     "VIEW_COMPOSITION_INTERFACE_OUTPUT_INVALID",
-                    "接口服务返回值必须是对象");
+                    "接口扩展返回值必须是对象");
         }
         List<Map<String, Object>> mappings = mapList(
                 serviceBinding.get("outputMappings"));
@@ -1090,7 +1104,7 @@ public class UiViewCompositionRuntimeService {
             Map<String, Object> filters) {
         if (filters.size() > MAX_INTERFACE_FILTERS) {
             throw invalidMapping(
-                    "接口服务返回的目标筛选条件不能超过 "
+                    "接口扩展返回的目标筛选条件不能超过 "
                             + MAX_INTERFACE_FILTERS + " 项");
         }
         for (Map.Entry<String, Object> entry : filters.entrySet()) {
@@ -1100,7 +1114,7 @@ public class UiViewCompositionRuntimeService {
                 String operator = normalize(text(entry.getValue()));
                 if (!FILTER_OPERATORS.contains(operator)) {
                     throw invalidMapping(
-                            "接口服务返回了不支持的筛选操作符: "
+                            "接口扩展返回了不支持的筛选操作符: "
                                     + operator);
                 }
                 continue;
@@ -1111,7 +1125,7 @@ public class UiViewCompositionRuntimeService {
     }
 
     /**
-     * 接口服务未显式声明操作符时按安全精确匹配补齐，避免字符串条件被底层
+     * 接口扩展未显式声明操作符时按安全精确匹配补齐，避免字符串条件被底层
      * 列表默认解释为 LIKE；集合只允许转换成有界 IN，范围必须同时提供两端。
      */
     private Map<String, Object> normalizeInterfaceFilters(
@@ -1129,7 +1143,7 @@ public class UiViewCompositionRuntimeService {
             boolean range = start != null || end != null;
             if (range && (start == null || end == null)) {
                 throw invalidMapping(
-                        "接口服务范围筛选必须同时返回起始值和结束值: "
+                        "接口扩展范围筛选必须同时返回起始值和结束值: "
                                 + base);
             }
             String operator = normalize(text(
@@ -1143,26 +1157,26 @@ public class UiViewCompositionRuntimeService {
             }
             if (range && !"BETWEEN".equals(operator)) {
                 throw invalidMapping(
-                        "接口服务范围筛选只能使用 BETWEEN: " + base);
+                        "接口扩展范围筛选只能使用 BETWEEN: " + base);
             }
             if (!range && "BETWEEN".equals(operator)) {
                 throw invalidMapping(
-                        "接口服务 BETWEEN 筛选必须返回起始值和结束值: "
+                        "接口扩展 BETWEEN 筛选必须返回起始值和结束值: "
                                 + base);
             }
             if (!range && value == null) {
                 throw invalidMapping(
-                        "接口服务筛选条件缺少字段值: " + base);
+                        "接口扩展筛选条件缺少字段值: " + base);
             }
             if (value instanceof Collection<?>
                     && !"IN".equals(operator)) {
                 throw invalidMapping(
-                        "接口服务集合筛选只能使用 IN: " + base);
+                        "接口扩展集合筛选只能使用 IN: " + base);
             }
             if ("IN".equals(operator)
                     && !(value instanceof Collection<?>)) {
                 throw invalidMapping(
-                        "接口服务 IN 筛选必须返回简单值数组: " + base);
+                        "接口扩展 IN 筛选必须返回简单值数组: " + base);
             }
         }
         return unmodifiable(result);
@@ -1176,17 +1190,17 @@ public class UiViewCompositionRuntimeService {
                 || value instanceof Collection<?> collection
                 && collection.size() > MAX_INTERFACE_IN_VALUES) {
             throw invalidMapping(
-                    "接口服务筛选值无效或数量超过限制: " + key);
+                    "接口扩展筛选值无效或数量超过限制: " + key);
         }
         if (value instanceof Collection<?> collection) {
             if (collection.isEmpty()) {
                 throw invalidMapping(
-                        "接口服务空集合应返回 matchNone=true: " + key);
+                        "接口扩展空集合应返回 matchNone=true: " + key);
             }
             for (Object item : collection) {
                 if (!simpleFilterValue(item)) {
                     throw invalidMapping(
-                            "接口服务筛选集合只能包含简单值: " + key);
+                            "接口扩展筛选集合只能包含简单值: " + key);
                 }
             }
             return;
@@ -1194,11 +1208,11 @@ public class UiViewCompositionRuntimeService {
         if (value instanceof String text
                 && !StringUtils.hasText(text)) {
             throw invalidMapping(
-                    "接口服务筛选值不能为空字符串: " + key);
+                    "接口扩展筛选值不能为空字符串: " + key);
         }
         if (!simpleFilterValue(value)) {
             throw invalidMapping(
-                    "接口服务筛选值只能是字符串、数字或布尔值: " + key);
+                    "接口扩展筛选值只能是字符串、数字或布尔值: " + key);
         }
     }
 
@@ -1210,14 +1224,14 @@ public class UiViewCompositionRuntimeService {
 
     private String filterBase(String key) {
         if (!StringUtils.hasText(key)) {
-            throw invalidMapping("接口服务筛选字段不能为空");
+            throw invalidMapping("接口扩展筛选字段不能为空");
         }
         for (String suffix : List.of("_start", "_end", "_op")) {
             if (key.endsWith(suffix)) {
                 String base = key.substring(
                         0, key.length() - suffix.length());
                 if (!StringUtils.hasText(base)) {
-                    throw invalidMapping("接口服务筛选字段不能为空");
+                    throw invalidMapping("接口扩展筛选字段不能为空");
                 }
                 return base;
             }

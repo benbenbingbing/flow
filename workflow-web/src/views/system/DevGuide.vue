@@ -233,7 +233,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="unified-data-source" class="guide-section">
-          <h3>8. 统一数据源目录</h3>
+          <h3>8. 统一扩展接口目录</h3>
           <el-table :data="dataSourceTypes" border size="small">
             <el-table-column prop="type" label="sourceType" width="230" />
             <el-table-column prop="capability" label="能力与安全限制" />
@@ -246,10 +246,11 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <li>禁止任意 SQL、JavaScript、Groovy、SpEL、动态类名和外网 URL；外部调用只能封装在已注册 Provider 中，凭据由服务端安全管理。</li>
             <li>`FORM_INIT` 是表单级绑定；FIELD 仅允许 `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / AFTER_LOAD / BEFORE_SUBMIT`。</li>
             <li>SUB_FORM 与 REPEATER 仅允许 `SUBFORM_ROWS / AFTER_LOAD / BEFORE_SUBMIT`，不能借用 FIELD Usage 配置选项、默认值或字段计算。</li>
+            <li>一个 `INTERFACE` 扩展记录对应一个完整可调用接口；页面只保存 `extensionId`，不再选择“服务 + 操作”。</li>
             <li>配置 Schema、输入映射、输出映射、分页、超时、缓存和失败策略在预览与发布时统一校验。</li>
             <li>所有实体查询、LIST_QUERY 和 LIST_COLUMN 都接收不可绕过的 `DataScopePlan`；缓存键必须包含用户、权限版本和发布版本。</li>
             <li>`AFTER_LOAD` 不得重新拼回未授权字段，`BEFORE_SUBMIT` 的关键校验失败策略必须为 FAIL。</li>
-            <li>运行时组件调用 `POST /api/ui-runtime/interface-operations/execute`，只提交绑定声明和业务输入；管理员调试使用操作 `/preview`。嵌套 `SUB_FORM/REPEATER` 必须为每条行记录传入独立业务数据，表单和实体身份由服务端解析。</li>
+            <li>运行时组件调用 `POST /api/ui-runtime/extensions/execute`，只提交已发布的 `extensionId` 和业务输入；管理员调试使用 `/api/ui-extensions/{id}/preview`。嵌套 `SUB_FORM/REPEATER` 必须为每条行记录传入独立业务数据，表单和实体身份由服务端解析。</li>
           </ul>
         </section>
 
@@ -279,7 +280,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
           <ul class="check-list">
             <li>自定义实现加 `@Component`（或显式声明 `@Bean`）；Provider 的 `getCode()` 必须全局唯一。</li>
             <li>同一 `getCode() + getVersion()` 对应的实现必须保持不可变；逻辑或依赖变化时提升版本。默认摘要覆盖实现类字节码，依赖额外模型、脚本或资源时必须覆盖 `getArtifactDigest()`，返回整个受审制品的稳定 SHA-256。</li>
-            <li>表单事件 Provider 可参考 `ProjectCustomFormUiDataSourceProvider`，操作编码从 `context.common().operationCode()` 读取。</li>
+            <li>表单事件 Provider 可参考 `ProjectCustomFormUiDataSourceProvider`。已有多入口 Provider 可在扩展管理高级配置中填写内部实现入口；该值只供后端路由，不暴露给设计器。</li>
             <li>`UiInvocationContext` 按 FORM、LIST、ENTITY 分型，只暴露服务端解析的用户、实体、页面、发布版本和绑定位置等可信元数据。</li>
             <li>现有 `EntityListDataProvider` 和 `ListFieldDataProvider` 通过适配器接入 `LIST_QUERY`、`LIST_COLUMN`，保持已有扩展兼容。</li>
             <li>Provider 必须支持超时、批量、取消、可观测 traceId 和结构化错误，不得按行发起 N+1 远程请求。</li>

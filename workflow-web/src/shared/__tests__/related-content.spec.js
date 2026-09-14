@@ -137,6 +137,37 @@ assert.equal('ownerId' in payload, false)
 assert.equal(payload.expectedRevision, 3)
 assert.equal(payload.expectedOwnerRevision, 8)
 assert.equal(payload.config.target.contentId, 'project-form')
+assert.equal(
+  'extensionName' in payload.config.specialHandling.interfaceService,
+  false,
+  'NONE 模式的空接口默认值不能提交仅供 UI 回显的名称'
+)
+
+configured.config.specialHandling.mode = 'INTERFACE_SERVICE'
+Object.assign(configured.config.specialHandling.interfaceService, {
+  extensionId: 'interface-read-project',
+  extensionName: '查询项目'
+})
+configured.config.specialHandling.actionServices = [{
+  actionKey: 'EDIT',
+  extensionId: 'interface-update-project',
+  extensionName: '更新项目',
+  inputMappings: [],
+  outputMappings: [],
+  failurePolicy: 'ERROR'
+}]
+const interfacePayload = buildRelatedContentPayload(configured, 'FORM', 'form-1')
+assert.equal(interfacePayload.config.specialHandling.interfaceService.extensionId,
+  'interface-read-project')
+assert.equal(
+  'extensionName' in interfacePayload.config.specialHandling.interfaceService,
+  false
+)
+assert.equal(
+  'extensionName' in interfacePayload.config.specialHandling.actionServices[0],
+  false,
+  '动作接口也只能持久化 extensionId 和映射契约'
+)
 
 const listAnchor = createEmptyRelatedContent({ ownerType: 'LIST', sourceEntity })
 assert.equal(listAnchor.anchorType, 'ROW_ACTION')
@@ -182,8 +213,7 @@ assert.ok(invalidResult.errors.some(error => error.field === 'target.entityId'))
 
 configured.config.relation.type = 'INTERFACE_SERVICE'
 configured.config.specialHandling.mode = 'INTERFACE_SERVICE'
-configured.config.specialHandling.interfaceService.serviceId = ''
-configured.config.specialHandling.interfaceService.operationCode = ''
+configured.config.specialHandling.interfaceService.extensionId = ''
 const serviceValidation = validateRelatedContent(configured, 'FORM')
 assert.equal(serviceValidation.valid, false)
 assert.ok(serviceValidation.errors.some(error => error.step === 4))

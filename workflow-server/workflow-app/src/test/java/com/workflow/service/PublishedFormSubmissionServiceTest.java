@@ -8,15 +8,15 @@ import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
@@ -57,8 +57,8 @@ class PublishedFormSubmissionServiceTest {
     void sideEffectFreePreviewUsesAuthoritativeMappingWithoutWriting() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service = service(
                 releaseService, dataSourceService);
         EntityForm form = new EntityForm();
@@ -69,8 +69,7 @@ class PublishedFormSubmissionServiceTest {
         field.setDataSourceBindings(Map.of(
                 "BEFORE_SUBMIT",
                 Map.of(
-                        "serviceId", "source-1",
-                        "operationCode", "deriveRoute",
+                        "extensionId", "source-1",
                         "sideEffectFree", true,
                         "outputMapping", Map.of(
                                 "routeBucket", "data.bucket"))));
@@ -118,9 +117,9 @@ class PublishedFormSubmissionServiceTest {
         assertEquals(
                 Map.of("amount", 2000, "routeBucket", "HIGH"),
                 result);
-        ArgumentCaptor<UiDataSourceExecuteRequest> requests =
+        ArgumentCaptor<UiExtensionExecuteRequest> requests =
                 ArgumentCaptor.forClass(
-                        UiDataSourceExecuteRequest.class);
+                        UiExtensionExecuteRequest.class);
         verify(dataSourceService, times(3)).execute(
                 eq("source-1"), requests.capture());
         assertNotEquals(
@@ -137,8 +136,8 @@ class PublishedFormSubmissionServiceTest {
     void ordinaryBeforeSubmitDefersPreviewBeforeExecutingDataSource() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service = service(
                 releaseService, dataSourceService);
         EntityForm form = new EntityForm();
@@ -149,8 +148,7 @@ class PublishedFormSubmissionServiceTest {
         field.setDataSourceBindings(Map.of(
                 "BEFORE_SUBMIT",
                 Map.of(
-                        "serviceId", "source-1",
-                        "operationCode", "mutatingValidation")));
+                        "extensionId", "source-1")));
         form.setFields(List.of(field));
         form.setNodes(List.of());
         when(releaseService.resolveRuntimeFormRelease(
@@ -178,8 +176,8 @@ class PublishedFormSubmissionServiceTest {
     void validatesRequiredRulesAfterBeforeSubmitBindings() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormRequiredValidator requiredValidator =
                 mock(PublishedFormRequiredValidator.class);
         PublishedFormSubmissionService service = service(
@@ -197,8 +195,7 @@ class PublishedFormSubmissionServiceTest {
         field.setDataSourceBindings(Map.of(
                 "BEFORE_SUBMIT",
                 Map.of(
-                        "serviceId", "source-1",
-                        "operationCode", "normalize")));
+                        "extensionId", "source-1")));
         form.setFields(List.of(field));
         form.setNodes(List.of());
         when(releaseService.resolveRuntimeFormRelease(
@@ -234,8 +231,8 @@ class PublishedFormSubmissionServiceTest {
     void executesNodeBeforeSubmitOnceAndMergesResponse() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service =
                 service(releaseService, dataSourceService);
 
@@ -246,16 +243,14 @@ class PublishedFormSubmissionServiceTest {
         derivedField.setDataSourceBindings(Map.of(
                 "BEFORE_SUBMIT",
                 Map.of(
-                        "serviceId", "source-1",
-                        "operationCode", "beforeSubmit")));
+                        "extensionId", "source-1")));
         EntityFormNode node = new EntityFormNode();
         node.setId("node-1");
         node.setNodeKey("amount-node");
         node.setDataSourceBindingsDocument(
                 """
                 {"BEFORE_SUBMIT":{
-                  "serviceId":"source-1",
-                  "operationCode":"beforeSubmit",
+                  "extensionId":"source-1",
                   "inputMapping":{
                     "payload.amount":"data.amount",
                     "payload.mode":"context.mode"
@@ -292,15 +287,13 @@ class PublishedFormSubmissionServiceTest {
         assertEquals(
                 Map.of("amount", 88, "normalized", true),
                 result);
-        ArgumentCaptor<UiDataSourceExecuteRequest> captor =
+        ArgumentCaptor<UiExtensionExecuteRequest> captor =
                 ArgumentCaptor.forClass(
-                        UiDataSourceExecuteRequest.class);
+                        UiExtensionExecuteRequest.class);
         verify(dataSourceService, times(1))
                 .execute(eq("source-1"), captor.capture());
         assertEquals("BEFORE_SUBMIT", captor.getValue().getUsage());
-        assertEquals(
-                "beforeSubmit",
-                captor.getValue().getOperationCode());
+        assertEquals(null, captor.getValue().getOperationCode());
         assertEquals("NODE", captor.getValue().getTargetType());
         assertEquals(
                 "amount-node",
@@ -336,8 +329,8 @@ class PublishedFormSubmissionServiceTest {
     void executesFieldBindingsWhenPublishedNodesAreAbsent() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service =
                 service(releaseService, dataSourceService);
 
@@ -348,8 +341,7 @@ class PublishedFormSubmissionServiceTest {
         field.setDataSourceBindings(Map.of(
                 "BEFORE_SUBMIT",
                 Map.of(
-                        "serviceId", "source-1",
-                        "operationCode", "beforeSubmit")));
+                        "extensionId", "source-1")));
         form.setFields(List.of(field));
         form.setNodes(List.of());
         when(releaseService.resolveRuntimeFormRelease(
@@ -393,7 +385,7 @@ class PublishedFormSubmissionServiceTest {
                         mock(EntityDefinitionMapper.class),
                         relationMapper,
                         releaseService,
-                        mock(UiDataSourceService.class));
+                        mock(UiInterfaceExtensionService.class));
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -446,7 +438,7 @@ class PublishedFormSubmissionServiceTest {
                         mock(EntityDefinitionMapper.class),
                         relationMapper,
                         releaseService,
-                        mock(UiDataSourceService.class));
+                        mock(UiInterfaceExtensionService.class));
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
@@ -495,8 +487,8 @@ class PublishedFormSubmissionServiceTest {
     void reusesBindingIdempotencyKeyForSameBusinessSubmission() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service =
                 service(releaseService, dataSourceService);
 
@@ -540,9 +532,9 @@ class PublishedFormSubmissionServiceTest {
                 Map.of("amount", 88),
                 context);
 
-        ArgumentCaptor<UiDataSourceExecuteRequest> captor =
+        ArgumentCaptor<UiExtensionExecuteRequest> captor =
                 ArgumentCaptor.forClass(
-                        UiDataSourceExecuteRequest.class);
+                        UiExtensionExecuteRequest.class);
         verify(dataSourceService, times(4))
                 .execute(eq("source-1"), captor.capture());
         String firstAttemptFirstBinding =
@@ -569,8 +561,8 @@ class PublishedFormSubmissionServiceTest {
     void preservesFailClosedDataSourceFailure() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service =
                 service(releaseService, dataSourceService);
 
@@ -614,17 +606,19 @@ class PublishedFormSubmissionServiceTest {
     void resolvesAndExecutesTheExactPinnedRelease() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service =
                 service(releaseService, dataSourceService);
 
         EntityForm form = new EntityForm();
         form.setId("form-1");
         form.setEntityId("entity-1");
-        form.setNodes(List.of(node(
-                "node-1",
-                "source-1")));
+        EntityFormNode legacyNode = node("node-1", "source-1");
+        legacyNode.setDataSourceBindingsDocument(
+                "{\"BEFORE_SUBMIT\":{\"serviceId\":\"source-1\","
+                        + "\"operationCode\":\"beforeSubmit\"}}");
+        form.setNodes(List.of(legacyNode));
         when(releaseService.resolveRuntimeFormRelease(
                 "form-1",
                 "release-7",
@@ -634,8 +628,9 @@ class PublishedFormSubmissionServiceTest {
                         "release-7",
                         7,
                         true));
-        when(dataSourceService.execute(
+        when(dataSourceService.executeOperation(
                 eq("source-1"),
+                eq("beforeSubmit"),
                 org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
 
@@ -649,11 +644,12 @@ class PublishedFormSubmissionServiceTest {
                 Map.of("amount", 88),
                 executionContext("trace-pinned"));
 
-        ArgumentCaptor<UiDataSourceExecuteRequest> captor =
+        ArgumentCaptor<UiExtensionExecuteRequest> captor =
                 ArgumentCaptor.forClass(
-                        UiDataSourceExecuteRequest.class);
-        verify(dataSourceService).execute(
+                        UiExtensionExecuteRequest.class);
+        verify(dataSourceService).executeOperation(
                 eq("source-1"),
+                eq("beforeSubmit"),
                 captor.capture());
         assertEquals(
                 "release-7",
@@ -662,6 +658,7 @@ class PublishedFormSubmissionServiceTest {
                 7,
                 captor.getValue().getReleaseVersion());
         assertTrue(captor.getValue().isServerPinnedRelease());
+        assertEquals("beforeSubmit", captor.getValue().getOperationCode());
     }
 
     /** 测试执行表单级 beforeSubmit 绑定：验证表单级数据源被触发且绑定目标为表单所有者 */
@@ -669,8 +666,8 @@ class PublishedFormSubmissionServiceTest {
     void executesFormLevelBeforeSubmitBinding() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         PublishedFormSubmissionService service =
                 service(releaseService, dataSourceService);
 
@@ -680,8 +677,7 @@ class PublishedFormSubmissionServiceTest {
         form.setDataSourceBindingsDocument(
                 """
                 {"BEFORE_SUBMIT":{
-                  "serviceId":"form-source",
-                  "operationCode":"beforeSubmit"
+                  "extensionId":"form-source"
                 }}
                 """);
         form.setNodes(List.of());
@@ -712,15 +708,13 @@ class PublishedFormSubmissionServiceTest {
                         "amount", 88,
                         "normalized", true),
                 result);
-        ArgumentCaptor<UiDataSourceExecuteRequest> captor =
+        ArgumentCaptor<UiExtensionExecuteRequest> captor =
                 ArgumentCaptor.forClass(
-                        UiDataSourceExecuteRequest.class);
+                        UiExtensionExecuteRequest.class);
         verify(dataSourceService).execute(
                 eq("form-source"),
                 captor.capture());
-        assertEquals(
-                "beforeSubmit",
-                captor.getValue().getOperationCode());
+        assertEquals(null, captor.getValue().getOperationCode());
         assertEquals("OWNER", captor.getValue().getTargetType());
         assertEquals(null, captor.getValue().getTargetKey());
     }
@@ -733,8 +727,8 @@ class PublishedFormSubmissionServiceTest {
     void recursivelyProcessesSubFormRowsWithTrustedParameters() {
         UiConfigReleaseService releaseService =
                 mock(UiConfigReleaseService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         EntityDefinitionMapper definitionMapper =
                 mock(EntityDefinitionMapper.class);
         PublishedFormSubmissionService service =
@@ -774,8 +768,7 @@ class PublishedFormSubmissionServiceTest {
                 """
                 {
                   "BEFORE_SUBMIT": {
-                    "serviceId": "child-source",
-                    "operationCode": "beforeSubmit",
+                    "extensionId": "child-source",
                     "sideEffectFree": true,
                     "inputMapping": {
                       "projectId": "params.projectId",
@@ -853,7 +846,7 @@ class PublishedFormSubmissionServiceTest {
                 eq("child-source"),
                 org.mockito.ArgumentMatchers.any()))
                 .thenAnswer(invocation -> {
-                    UiDataSourceExecuteRequest request =
+                    UiExtensionExecuteRequest request =
                             invocation.getArgument(1);
                     return Map.of(
                             "processedProject",
@@ -935,14 +928,14 @@ class PublishedFormSubmissionServiceTest {
                 .remove(previewMembers.get(1))
                 .isEmpty());
 
-        ArgumentCaptor<UiDataSourceExecuteRequest> captor =
+        ArgumentCaptor<UiExtensionExecuteRequest> captor =
                 ArgumentCaptor.forClass(
-                        UiDataSourceExecuteRequest.class);
+                        UiExtensionExecuteRequest.class);
         verify(dataSourceService, times(4))
                 .execute(
                         eq("child-source"),
                         captor.capture());
-        List<UiDataSourceExecuteRequest> requests =
+        List<UiExtensionExecuteRequest> requests =
                 captor.getAllValues();
         assertEquals(
                 "project-actual",
@@ -960,9 +953,7 @@ class PublishedFormSubmissionServiceTest {
         assertNotEquals(
                 idempotencyKey(requests.get(0)),
                 idempotencyKey(requests.get(1)));
-        assertEquals(
-                "beforeSubmit",
-                requests.get(0).getOperationCode());
+        assertEquals(null, requests.get(0).getOperationCode());
         assertEquals(
                 requests.get(0).getInput().get("idempotencyKey"),
                 requests.get(0).getServerIdempotencyKey());
@@ -971,19 +962,18 @@ class PublishedFormSubmissionServiceTest {
     /** 构造带 beforeSubmit 数据源绑定的节点 */
     private EntityFormNode node(
             String id,
-            String serviceId) {
+            String extensionId) {
         EntityFormNode node = new EntityFormNode();
         node.setId(id);
         node.setDataSourceBindingsDocument(
-                "{\"BEFORE_SUBMIT\":{\"serviceId\":\""
-                        + serviceId
-                        + "\",\"operationCode\":\"beforeSubmit\"}}");
+                "{\"BEFORE_SUBMIT\":{\"extensionId\":\""
+                        + extensionId + "\"}}");
         return node;
     }
 
     private PublishedFormSubmissionService service(
             UiConfigReleaseService releaseService,
-            UiDataSourceService dataSourceService) {
+            UiInterfaceExtensionService dataSourceService) {
         return service(
                 mock(EntityDefinitionMapper.class),
                 releaseService,
@@ -993,7 +983,7 @@ class PublishedFormSubmissionServiceTest {
     private PublishedFormSubmissionService service(
             EntityDefinitionMapper definitionMapper,
             UiConfigReleaseService releaseService,
-            UiDataSourceService dataSourceService) {
+            UiInterfaceExtensionService dataSourceService) {
         return service(
                 definitionMapper,
                 mock(EntityRelationMapper.class),
@@ -1005,7 +995,7 @@ class PublishedFormSubmissionServiceTest {
             EntityDefinitionMapper definitionMapper,
             EntityRelationMapper relationMapper,
             UiConfigReleaseService releaseService,
-            UiDataSourceService dataSourceService) {
+            UiInterfaceExtensionService dataSourceService) {
         return service(
                 definitionMapper,
                 relationMapper,
@@ -1018,7 +1008,7 @@ class PublishedFormSubmissionServiceTest {
             EntityDefinitionMapper definitionMapper,
             EntityRelationMapper relationMapper,
             UiConfigReleaseService releaseService,
-            UiDataSourceService dataSourceService,
+            UiInterfaceExtensionService dataSourceService,
             PublishedFormRequiredValidator requiredValidator) {
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
@@ -1029,7 +1019,7 @@ class PublishedFormSubmissionServiceTest {
                 releaseService,
                 dataSourceService,
                 codec,
-                new UiDataSourceDefinitionValidator(codec),
+                new UiExtensionDefinitionValidator(codec),
                 requiredValidator);
     }
 
@@ -1070,7 +1060,7 @@ class PublishedFormSubmissionServiceTest {
 
     /** 从数据源执行请求中提取幂等键 */
     private String idempotencyKey(
-            UiDataSourceExecuteRequest request) {
+            UiExtensionExecuteRequest request) {
         return String.valueOf(
                 request.getInput().get("idempotencyKey"));
     }

@@ -199,18 +199,28 @@ public class ExtensionCatalogService {
     private ExtensionCatalogItem uiItem(UiExtensionCatalogItem source) {
         ExtensionCatalogItem item = new ExtensionCatalogItem();
         item.setId(source.id());
-        item.setCapabilityType("UI_" + normalize(source.extensionType()));
+        boolean interfaceExtension = "INTERFACE".equals(
+                normalize(source.extensionType()));
+        item.setCapabilityType(interfaceExtension
+                ? "INTERFACE"
+                : "UI_" + normalize(source.extensionType()));
         item.setKey(source.extensionKey());
         item.setDisplayName(source.displayName());
         item.setImplementationVersion(source.version());
         item.setSnapshotVersion(source.snapshotVersion());
         item.setContractVersion(1);
-        item.setSourceType("FRONTEND_BUNDLE");
+        item.setSourceType(interfaceExtension
+                ? normalize(source.implementationType())
+                : "FRONTEND_BUNDLE");
+        item.setSourceName(interfaceExtension
+                ? source.providerCode() : null);
         item.setStatus(normalize(source.status()));
         item.setConfigured(true);
         item.setAvailable(true);
         item.setEnabled("ACTIVE".equals(normalize(source.status())));
-        item.setVisibilityScope(StringUtils.hasText(source.visibilityScope())
+        item.setVisibilityScope(interfaceExtension
+                ? normalize(source.scopeType())
+                : StringUtils.hasText(source.visibilityScope())
                 ? normalize(source.visibilityScope())
                 : "GLOBAL");
         item.setEntityCodes(source.entityCodes() == null
@@ -227,6 +237,18 @@ public class ExtensionCatalogService {
         item.setDynamicExtraParams(Boolean.TRUE.equals(
                 capabilities.get("dynamicExtraParams")));
         item.setRevision(source.revision());
+        item.setImplementationType(source.implementationType());
+        item.setProviderCode(source.providerCode());
+        item.setScopeType(source.scopeType());
+        item.setScopeId(source.scopeId());
+        item.setInterfaceKind(source.interfaceKind());
+        item.setInterfaceContextType(source.interfaceContextType());
+        item.setImplementationConfig(valueOrEmpty(
+                source.implementationConfig()));
+        item.setExecutionPolicy(valueOrEmpty(
+                source.executionPolicy()));
+        item.setInputSchema(valueOrEmpty(source.inputSchema()));
+        item.setOutputSchema(valueOrEmpty(source.outputSchema()));
         return item;
     }
 

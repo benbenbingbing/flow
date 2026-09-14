@@ -178,35 +178,10 @@ CREATE TABLE IF NOT EXISTS `ui_event_binding` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='统一UI事件绑定链';
 
 INSERT IGNORE INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `is_frame`, `is_cache`, `query`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`, `entity_code`, `resource_type`, `list_key`) VALUES
-('interface_service_menu_001','0','接口服务','C','Connection',72,'/system/interface-services','system/InterfaceServices','system:interface-service:list','0','0','0','0',NULL,'0','1','统一接口服务与事件绑定管理',0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL),
-('interface_service_list_001','interface_service_menu_001','查看接口服务','F',NULL,1,'','','system:interface-service:list','0','0','0','0',NULL,'0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL),
-('interface_service_update_001','interface_service_menu_001','维护接口服务','F',NULL,2,'','','system:interface-service:update','0','0','0','0',NULL,'0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL),
-('interface_service_test_001','interface_service_menu_001','测试接口服务','F',NULL,3,'','','system:interface-service:test','0','0','0','0',NULL,'0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL),
 ('entity_version_management_001','0','数据版本','C','Clock',74,'/system/entity-versions','system/EntityVersionManagement','entity:version:config:list','0','0','0','0',NULL,'0','1','实体数据版本策略、发布与比较',0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL),
 ('entity_version_config_list_001','entity_version_management_001','查看数据版本配置','F',NULL,1,'','','entity:version:config:list','0','0','0','0',NULL,'0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL),
 ('entity_version_config_update_001','entity_version_management_001','维护数据版本配置','F',NULL,2,'','','entity:version:config:update','0','0','0','0',NULL,'0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL),
 ('entity_version_config_publish_001','entity_version_management_001','发布数据版本配置','F',NULL,3,'','','entity:version:config:publish','0','0','0','0',NULL,'0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,NULL,NULL,NULL);
-
-UPDATE `sys_menu`
-SET `menu_name` = '接口服务',
-    `remark` = '统一接口服务与事件绑定管理',
-    `update_time` = CURRENT_TIMESTAMP
-WHERE `id` = 'interface_service_menu_001';
-
-UPDATE `sys_menu`
-SET `menu_name` = '查看接口服务',
-    `update_time` = CURRENT_TIMESTAMP
-WHERE `id` = 'interface_service_list_001';
-
-UPDATE `sys_menu`
-SET `menu_name` = '维护接口服务',
-    `update_time` = CURRENT_TIMESTAMP
-WHERE `id` = 'interface_service_update_001';
-
-UPDATE `sys_menu`
-SET `menu_name` = '测试接口服务',
-    `update_time` = CURRENT_TIMESTAMP
-WHERE `id` = 'interface_service_test_001';
 
 UPDATE `sys_menu`
 SET `menu_name` = '数据版本',
@@ -236,12 +211,66 @@ SELECT
   MD5(CONCAT('1:', `id`)), '1', `id`, CURRENT_TIMESTAMP
 FROM `sys_menu`
 WHERE `id` IN (
-  'interface_service_menu_001',
-  'interface_service_list_001',
-  'interface_service_update_001',
-  'interface_service_test_001',
   'entity_version_management_001',
   'entity_version_config_list_001',
   'entity_version_config_update_001',
   'entity_version_config_publish_001'
 );
+
+-- 旧兼容补丁曾重复补建“接口服务”菜单。先把角色能力等价迁到扩展管理，
+-- 再幂等清理旧入口，避免 V088 后应用重启将已退役菜单复活。
+INSERT IGNORE INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`)
+SELECT
+  MD5(CONCAT(role_grant.`role_id`, ':', permission_map.`target_menu_id`)),
+  role_grant.`role_id`,
+  permission_map.`target_menu_id`,
+  CURRENT_TIMESTAMP
+FROM `sys_role_menu` role_grant
+JOIN (
+  SELECT 'interface_service_menu_001' AS `source_menu_id`,
+         'extension_list_permission_001' AS `target_menu_id`
+  UNION ALL
+  SELECT 'interface_service_list_001',
+         'extension_list_permission_001' AS `target_menu_id`
+  UNION ALL
+  SELECT 'interface_service_update_001',
+         'extension_update_permission_001'
+  UNION ALL
+  SELECT 'interface_service_test_001',
+         'extension_test_permission_001'
+) permission_map
+  ON permission_map.`source_menu_id` = role_grant.`menu_id`
+JOIN `sys_menu` target_menu
+  ON target_menu.`id` = permission_map.`target_menu_id`;
+
+DELETE FROM `sys_role_menu`
+WHERE `menu_id` IN (
+  'interface_service_menu_001',
+  'interface_service_list_001',
+  'interface_service_update_001',
+  'interface_service_test_001',
+  'user_manual_interface_service_001'
+);
+
+DELETE FROM `sys_menu`
+WHERE `id` IN (
+  'interface_service_menu_001',
+  'interface_service_list_001',
+  'interface_service_update_001',
+  'interface_service_test_001',
+  'user_manual_interface_service_001'
+)
+   OR `perm` IN (
+     'system:interface-service:list',
+     'system:interface-service:update',
+     'system:interface-service:test',
+     'user-manual:interface-service:view'
+   )
+   OR `path` IN (
+     '/system/interface-services',
+     '/manual/interface-service'
+   )
+   OR `component` IN (
+     'system/InterfaceServices',
+     'manual/InterfaceServiceManual'
+   );

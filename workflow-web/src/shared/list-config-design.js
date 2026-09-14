@@ -19,8 +19,7 @@ export function listMetadataFingerprint(config, viewConfig) {
     contextBindingConfig: config.contextBindingConfig || '',
     viewConfig,
     queryProviderCode: config.queryProviderCode || '',
-    queryDataSourceId: config.queryDataSourceId || '',
-    queryOperationCode: config.queryOperationCode || ''
+    queryInterfaceExtensionId: config.queryInterfaceExtensionId || ''
   })
 }
 
@@ -48,8 +47,11 @@ export function listMetadataDetailEntries(config, viewConfig) {
     { key: 'customComponent', label: '列表设置：自定义列表组件', value: config.customComponent || '' },
     { key: 'customComponentProps', label: '列表设置：组件参数', value: viewConfig.customComponentProps },
     { key: 'queryProviderCode', label: '列表设置：安全查询提供者', value: config.queryProviderCode || '' },
-    { key: 'queryDataSourceId', label: '列表设置：查询接口服务', value: config.queryDataSourceId || '' },
-    { key: 'queryOperationCode', label: '列表设置：查询接口操作', value: config.queryOperationCode || '' }
+    {
+      key: 'queryInterfaceExtensionId',
+      label: '列表设置：查询扩展接口',
+      value: config.queryInterfaceExtensionId || ''
+    }
   ]
 }
 

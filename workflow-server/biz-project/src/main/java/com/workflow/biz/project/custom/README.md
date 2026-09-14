@@ -23,10 +23,10 @@
 | `ProjectExtensionAcceptanceFlowActionHandler` | `FlowActionHandler` | 项目扩展验收流程的流程/节点/连线动作 | Bean `projectExtensionAcceptanceFlowActionHandler` |
 | `ProjectCustomFlowActionTriggerProvider` | `FlowActionTriggerProvider` | 流程动作触发时机 | `PROJECT_CUSTOM_MANUAL_EVENT` |
 | `ProjectCustomPersonResolver` | `PersonResolver` | 定制开发 -> 扩展管理 -> 人员接口 | `projectCustomPersonResolver` |
-| `ProjectCustomUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，ENTITY 作用范围/复合上下文 | `PROJECT_CUSTOM_UI_DATA_SOURCE` |
-| `ProjectCustomEntityUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，ENTITY 作用范围/字段数据 | `PROJECT_CUSTOM_UI_ENTITY` |
-| `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，FORM 作用范围 | `PROJECT_CUSTOM_UI_FORM` |
-| `ProjectCustomListUiDataSourceProvider` | `UiDataSourceProvider` | 接口服务，LIST 作用范围 | `PROJECT_CUSTOM_UI_LIST` |
+| `ProjectCustomUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，ENTITY 作用范围/复合上下文 | `PROJECT_CUSTOM_UI_DATA_SOURCE` |
+| `ProjectCustomEntityUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，ENTITY 作用范围/字段数据 | `PROJECT_CUSTOM_UI_ENTITY` |
+| `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，FORM 作用范围 | `PROJECT_CUSTOM_UI_FORM` |
+| `ProjectCustomListUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，LIST 作用范围 | `PROJECT_CUSTOM_UI_LIST` |
 | `ProjectCustomListFieldDataProvider` | `ListFieldDataProvider` | 列表字段高级配置 -> 数据源 | `PROJECT_CUSTOM_FIELD` |
 | `ProjectCustomPermissionOptionProvider` | `EntityPermissionOptionProvider` | 实体列表按钮权限选择器 | `entity:{entity}:custom:project-review` |
 
@@ -50,17 +50,17 @@
 主题。文件存储可用 `file.storage.type=PROJECT_LOG_ONLY` 验证调用，但不能用于
 保存真实文件。
 
-## 统一数据源 Provider
+## 接口扩展 Provider
 
-统一数据源的作用范围和执行位置是两层配置：
+接口扩展的作用范围和执行上下文是两项约束：
 
 | 配置层 | 可选值 | 作用 |
 | --- | --- | --- |
-| 接口服务作用范围 | `GLOBAL / ENTITY / FORM / LIST` | 限制服务允许绑定到哪些发布配置 |
-| 操作上下文 | `FORM / LIST / ENTITY` | 决定 Provider 可读取的强类型运行上下文 |
+| 接口扩展作用范围 | `GLOBAL / ENTITY / FORM / LIST` | 限制接口允许绑定到哪些发布配置 |
+| 接口上下文 | `FORM / LIST / ENTITY` | 决定 Provider 可读取的强类型运行上下文 |
 
 Provider 接口只收到已经过平台授权的 `UiInvocationContext`、`DataScopePlan`、
-服务配置和调用输入，不会直接收到接口服务定义的 `scopeType`。因此以下
+接口实现配置和调用输入，不会直接收到接口扩展定义的 `scopeType`。因此以下
 `RECOMMENDED_SCOPE` 是配置建议；真正的 scopeId 匹配、发布版本校验和权限校验
 由 `UiDataSourceExecutionAccessService` 在调用 Provider 前完成。
 
@@ -71,11 +71,13 @@ Provider 接口只收到已经过平台授权的 `UiInvocationContext`、`DataSc
 | `PROJECT_CUSTOM_UI_FORM` | `FORM` | `FORM_INIT / AFTER_LOAD / BEFORE_SUBMIT / FIELD_* / SUBFORM_ROWS / FORM_BUTTON_CLICK` | 表单字段补丁、空子表集合或事件消息 |
 | `PROJECT_CUSTOM_UI_LIST` | `LIST` | `LIST_QUERY / LIST_COLUMN / LIST_LOAD / LIST_EXPORT / TOOLBAR_BUTTON_CLICK / ROW_BUTTON_CLICK` | 一条不落库的验收记录、记录 ID 到列值映射或事件消息 |
 
-配置时在“系统管理 -> 接口服务”新增服务，类型选择
-`REGISTERED_PROVIDER`，再选择上表中的 Provider。FORM 和 LIST 范围的
-`scopeId` 必须填写真实表单 ID 或列表配置 ID；ENTITY 范围需要选择实体 ID。
-保存接口服务后，还需在对应表单、字段、列表列或按钮事件中绑定，并重新发布
-表单或列表。所有示例日志都以“项目统一数据源”开头，可同时按
+配置时在“定制开发 -> 扩展管理 -> 接口”新增接口扩展，类型选择
+`REGISTERED_PROVIDER`，再选择上表中的 Provider。一条扩展记录就是一个可调用
+接口；同一 Provider 若承载多个业务调用，应分别创建多条接口扩展，并用隐藏的
+Provider 能力编码区分实现入口，不再创建“服务后追加多个操作”。FORM 和 LIST
+范围的 `scopeId` 必须填写真实表单 ID 或列表配置 ID；ENTITY 范围需要选择实体
+ID。保存后，在对应表单、字段、列表列或按钮事件中直接选择该接口扩展，并重新
+发布表单或列表。所有示例日志都以“项目统一数据源”开头，可同时按
 `providerCode`、`recommendedScope` 和 `usage` 检索。
 
 Provider 的 `getCode() + getVersion()` 必须唯一且不可变；修改实现语义时应提升

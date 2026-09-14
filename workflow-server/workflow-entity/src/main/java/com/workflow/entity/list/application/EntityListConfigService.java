@@ -596,8 +596,7 @@ public class EntityListConfigService {
         candidate.setFixedFilterConfig(source.getFixedFilterConfig());
         candidate.setContextBindingConfig(source.getContextBindingConfig());
         candidate.setQueryProviderCode(source.getQueryProviderCode());
-        candidate.setQueryDataSourceId(source.getQueryDataSourceId());
-        candidate.setQueryOperationCode(source.getQueryOperationCode());
+        candidate.setQueryInterfaceExtensionId(source.getQueryInterfaceExtensionId());
         candidate.setFields(source.getFields());
         return candidate;
     }
@@ -650,8 +649,7 @@ public class EntityListConfigService {
                 candidate.getContextBindingConfig(),
                 "上下文绑定配置"));
         config.setQueryProviderCode(candidate.getQueryProviderCode());
-        config.setQueryDataSourceId(candidate.getQueryDataSourceId());
-        config.setQueryOperationCode(candidate.getQueryOperationCode());
+        config.setQueryInterfaceExtensionId(candidate.getQueryInterfaceExtensionId());
         applyConfigDefaults(config);
         return config;
     }
@@ -705,10 +703,8 @@ public class EntityListConfigService {
                 .set("context_binding_config",
                         config.getContextBindingConfig())
                 .set("query_provider_code", config.getQueryProviderCode())
-                .set("query_data_source_id",
-                        config.getQueryDataSourceId())
-                .set("query_operation_code",
-                        config.getQueryOperationCode());
+                .set("query_interface_extension_id",
+                        config.getQueryInterfaceExtensionId());
     }
     private UpdateWrapper<EntityListConfig> configRevisionCondition(
             EntityListConfig current) {
@@ -768,9 +764,7 @@ public class EntityListConfigService {
         target.setAlign(source.getAlign());
         target.setDataSourceType(source.getDataSourceType());
         target.setDataSourceConfig(source.getDataSourceConfig());
-        target.setDataSourceId(source.getDataSourceId());
-        target.setDataSourceOperationCode(
-                source.getDataSourceOperationCode());
+        target.setInterfaceExtensionId(source.getInterfaceExtensionId());
         target.setRenderComponent(source.getRenderComponent());
         target.setFormatter(source.getFormatter());
         target.setColumnConfig(source.getColumnConfig());
@@ -840,7 +834,7 @@ public class EntityListConfigService {
                 || StringUtils.hasText(
                         config.getQueryProviderCode())
                 || StringUtils.hasText(
-                        config.getQueryDataSourceId())) {
+                        config.getQueryInterfaceExtensionId())) {
             throw new IllegalArgumentException(
                     "平台系统表列表只能使用可信只读查询");
         }

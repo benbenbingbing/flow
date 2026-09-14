@@ -4,10 +4,10 @@ package com.workflow.contracts.ui;
  * 表单、列表和实体接口调用共享的可信元数据。
  */
 public record CommonInvocationContext(
-        /** 当前执行的接口服务 ID。 */
-        String serviceId,
-        /** 当前执行的接口操作编码。 */
-        String operationCode,
+        /** 当前执行的接口扩展 ID。 */
+        String extensionId,
+        /** Provider 内部实现路由；不作为设计器中的二级接口选项。 */
+        String providerOperationCode,
         /** 绑定位置编码，例如 FIELD_OPTIONS、LIST_COLUMN。 */
         String bindingCode,
         /** 绑定所有者类型：FORM、LIST 或 ENTITY。 */

@@ -417,7 +417,7 @@
                 </SettingsSection>
                 <SettingsSection
                   title="查询实现"
-                  description="配置固定条件、可信上下文，以及替代平台查询的接口服务"
+                  description="配置固定条件、可信上下文，以及替代平台查询的扩展接口"
                   :default-expanded="false"
                 >
                   <template #summary>
@@ -465,40 +465,25 @@
                     </div>
 
                     <div class="list-query-interface__grid">
-                      <el-form-item label="接口服务">
+                      <el-form-item label="扩展接口">
                         <template #label>
                           <ConfigHelpLabel
-                            label="接口服务"
-                            help-key="uiDataSource.service"
+                            label="扩展接口"
+                            help-key="entityList.queryInterfaceExtension"
                           />
                         </template>
                         <el-select
-                          v-model="configInfo.queryDataSourceId"
+                          v-model="configInfo.queryInterfaceExtensionId"
                           clearable
                           filterable
                           placeholder="留空使用平台默认查询"
-                          @change="handleQueryServiceChange"
+                          @change="handleQueryInterfaceChange"
                         >
                           <el-option
-                            v-for="source in listQuerySources"
-                            :key="source.id"
-                            :label="`${source.sourceName} (${source.sourceCode})`"
-                            :value="source.id"
-                          />
-                        </el-select>
-                      </el-form-item>
-                      <el-form-item label="查询操作">
-                        <el-select
-                          v-model="configInfo.queryOperationCode"
-                          :disabled="!configInfo.queryDataSourceId"
-                          filterable
-                          placeholder="选择只读查询操作"
-                        >
-                          <el-option
-                            v-for="operation in queryOperationOptions"
-                            :key="operation.code"
-                            :label="`${operation.name} (${operation.code})`"
-                            :value="operation.code"
+                            v-for="item in listQueryInterfaces"
+                            :key="item.extensionId"
+                            :label="`${item.displayName} (${item.extensionKey})`"
+                            :value="item.extensionId"
                           />
                         </el-select>
                       </el-form-item>
@@ -835,45 +820,25 @@
                   </el-select>
                   <div class="form-tip">只列出当前实体可用的数据源。没写适用范围的数据源对全部实体可见。</div>
                 </el-form-item>
-                <el-form-item label="统一数据源">
+                <el-form-item label="扩展接口">
                   <template #label>
                     <ConfigHelpLabel
-                      label="统一数据源"
-                      help-key="uiDataSource.service"
+                      label="扩展接口"
+                      help-key="entityList.interfaceExtension"
                     />
                   </template>
                   <el-select
-                    v-model="editingField.dataSourceId"
+                    v-model="editingField.interfaceExtensionId"
                     clearable
                     filterable
-                    placeholder="可选：LIST_COLUMN 数据源"
-                    style="width: 100%"
-                    @change="handleColumnServiceChange"
-                  >
-                    <el-option
-                      v-for="source in listColumnSources"
-                      :key="source.id"
-                      :label="`${source.sourceName} (${source.sourceType})`"
-                      :value="source.id"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item
-                  v-if="editingField.dataSourceId"
-                  label="接口操作"
-                  required
-                >
-                  <el-select
-                    v-model="editingField.dataSourceOperationCode"
-                    filterable
-                    placeholder="选择列表列操作"
+                    placeholder="可选：LIST_COLUMN 扩展接口"
                     style="width: 100%"
                   >
                     <el-option
-                      v-for="operation in columnOperationOptions"
-                      :key="operation.code"
-                      :label="`${operation.name} (${operation.code})`"
-                      :value="operation.code"
+                      v-for="item in listColumnInterfaces"
+                      :key="item.extensionId"
+                      :label="`${item.displayName} (${item.extensionKey})`"
+                      :value="item.extensionId"
                     />
                   </el-select>
                 </el-form-item>
@@ -1034,11 +999,14 @@ import {
 } from '@/shared/runtime-code-generator'
 import {
   uiConfigDraftApi,
-  uiDataSourceApi,
   uiEventBindingApi,
-  uiComponentTemplateApi
+  uiComponentTemplateApi,
+  uiExtensionApi
 } from '@/api/uiConfig'
-import { serviceOperations } from '@/components/ui-config/interfaceServiceModel'
+import {
+  normalizeInterfaceExtensions,
+  resolveInterfaceExtensionId
+} from '@/components/ui-config/interfaceExtensionModel'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import { applyListColumnTemplateSnapshot } from '@/shared/list-column-template'
@@ -1104,8 +1072,8 @@ const previewPageNum = ref(1)
 const previewPageSize = ref(10)
 const previewTotal = ref(0)
 const savingAll = ref(false)
-const availableListColumnOperations = ref([])
-const availableListQueryOperations = ref([])
+const availableListColumnInterfaces = ref([])
+const availableListQueryInterfaces = ref([])
 const eventFieldOptions = computed(() =>
   entityFields.value
     .filter(field => field.uiConfigurable !== false)
@@ -1239,73 +1207,21 @@ const selectedDataSourceOption = computed(() =>
 const selectedCellDescriptor = computed(() =>
   getCellDescriptor(editingField.value?.renderComponent || 'DefaultText')
 )
-const listColumnSources = computed(() =>
-  groupAvailableOperations(availableListColumnOperations.value)
+const listColumnInterfaces = computed(() =>
+  normalizeInterfaceExtensions(availableListColumnInterfaces.value)
 )
-const listQuerySources = computed(() =>
-  groupAvailableOperations(availableListQueryOperations.value)
+const listQueryInterfaces = computed(() =>
+  normalizeInterfaceExtensions(availableListQueryInterfaces.value)
 )
-
-const selectedColumnService = computed(() =>
-  listColumnSources.value.find(source =>
-    String(source.id) === String(editingField.value?.dataSourceId)))
-
-const columnOperationOptions = computed(() =>
-  selectedColumnService.value
-    ? serviceOperations(selectedColumnService.value)
-    : []
+const selectedQueryInterface = computed(() =>
+  listQueryInterfaces.value.find(item =>
+    String(item.extensionId) === String(
+      configInfo.value.queryInterfaceExtensionId))
 )
-
-const selectedQueryService = computed(() =>
-  listQuerySources.value.find(source =>
-    String(source.id) === String(
-      configInfo.value.queryDataSourceId))
-)
-
-const queryOperationOptions = computed(() =>
-  selectedQueryService.value
-    ? serviceOperations(selectedQueryService.value)
-        .filter(operation =>
-          String(operation.kind || 'READ').toUpperCase() === 'READ')
-    : []
-)
-
-function groupAvailableOperations(rows = []) {
-  const services = new Map()
-  rows.forEach((item) => {
-    if (!item?.serviceId || !item?.operationCode) return
-    if (!services.has(item.serviceId)) {
-      services.set(item.serviceId, {
-        id: item.serviceId,
-        sourceCode: item.serviceCode,
-        sourceName: item.serviceName,
-        sourceType: item.sourceType,
-        scopeType: item.scopeType,
-        scopeId: item.scopeId,
-        enabled: true,
-        operations: []
-      })
-    }
-    services.get(item.serviceId).operations.push({
-      code: item.operationCode,
-      name: item.operationName,
-      kind: item.kind,
-      contextType: item.contextType
-    })
-  })
-  return [...services.values()].map(service => ({
-    ...service,
-    operationsDocument: JSON.stringify(service.operations)
-  }))
-}
 
 const queryInterfaceSummary = computed(() => {
-  if (configInfo.value.queryDataSourceId) {
-    const operation = queryOperationOptions.value.find(item =>
-      item.code === configInfo.value.queryOperationCode)
-    return operation?.name
-      || selectedQueryService.value?.sourceName
-      || '自定义查询接口'
+  if (configInfo.value.queryInterfaceExtensionId) {
+    return selectedQueryInterface.value?.displayName || '自定义查询接口'
   }
   if (configInfo.value.queryProviderCode) return '安全查询 Provider'
   return '平台默认查询'
@@ -1625,36 +1541,37 @@ async function loadData(options = {}) {
       viewConfig.value = mergeViewConfig(safeParseConfig(configRes.viewConfig))
       await loadDiff({ strict })
     }
-    const [columnOperations, queryOperations] = await Promise.all([
+    const [columnInterfaces, queryInterfaces] = await Promise.all([
       (strict
-        ? uiDataSourceApi.availableOperations({
+        ? uiExtensionApi.availableInterfaces({
             ownerType: 'LIST',
             ownerId: configId,
             bindingCode: 'LIST_COLUMN'
           })
-        : uiDataSourceApi.availableOperations({
+        : uiExtensionApi.availableInterfaces({
             ownerType: 'LIST',
             ownerId: configId,
             bindingCode: 'LIST_COLUMN'
           }).catch(() => [])),
       (strict
-        ? uiDataSourceApi.availableOperations({
+        ? uiExtensionApi.availableInterfaces({
             ownerType: 'LIST',
             ownerId: configId,
             bindingCode: 'LIST_QUERY'
           })
-        : uiDataSourceApi.availableOperations({
+        : uiExtensionApi.availableInterfaces({
             ownerType: 'LIST',
             ownerId: configId,
             bindingCode: 'LIST_QUERY'
           }).catch(() => []))
     ])
-    availableListColumnOperations.value = Array.isArray(columnOperations)
-      ? columnOperations
-      : []
-    availableListQueryOperations.value = Array.isArray(queryOperations)
-      ? queryOperations
-      : []
+    availableListColumnInterfaces.value = normalizeInterfaceExtensions(columnInterfaces)
+    availableListQueryInterfaces.value = normalizeInterfaceExtensions(queryInterfaces)
+    configInfo.value.queryInterfaceExtensionId = resolveInterfaceExtensionId({
+      extensionId: configRes?.queryInterfaceExtensionId,
+      dataSourceId: configRes?.queryDataSourceId,
+      operationCode: configRes?.queryOperationCode
+    }, availableListQueryInterfaces.value)
     // 加载实体信息
     const entityRes = await entityApi.getById(entityId.value)
     if (entityRes) {
@@ -1672,8 +1589,7 @@ async function loadData(options = {}) {
         configInfo.value.dataScopeMode = 'INHERIT'
         configInfo.value.customComponent = ''
         configInfo.value.queryProviderCode = ''
-        configInfo.value.queryDataSourceId = ''
-        configInfo.value.queryOperationCode = ''
+        configInfo.value.queryInterfaceExtensionId = ''
         dataSourceOptions.value = dataSourceOptions.value.filter(option =>
           ['ENTITY_FIELD', 'REFERENCE'].includes(option.value)
         )
@@ -1702,16 +1618,8 @@ async function loadData(options = {}) {
   }
 }
 
-function handleQueryServiceChange(serviceId) {
-  if (!serviceId) {
-    configInfo.value.queryOperationCode = ''
-    return
-  }
-  configInfo.value.queryProviderCode = ''
-  const operations = queryOperationOptions.value
-  configInfo.value.queryOperationCode = operations.length === 1
-    ? operations[0].code
-    : ''
+function handleQueryInterfaceChange(extensionId) {
+  if (extensionId) configInfo.value.queryProviderCode = ''
 }
 
 function mergeFieldConfig(savedFields) {
@@ -1734,8 +1642,11 @@ function mergeFieldConfig(savedFields) {
       align: saved?.align || 'left',
       dataSourceType: saved?.dataSourceType || 'ENTITY_FIELD',
       dataSourceConfig: saved?.dataSourceConfig || '',
-      dataSourceId: saved?.dataSourceId || '',
-      dataSourceOperationCode: saved?.dataSourceOperationCode || '',
+      interfaceExtensionId: resolveInterfaceExtensionId({
+        extensionId: saved?.interfaceExtensionId,
+        dataSourceId: saved?.dataSourceId,
+        operationCode: saved?.dataSourceOperationCode
+      }, availableListColumnInterfaces.value),
       templateId: saved?.templateId,
       templateVersion: saved?.templateVersion,
       localOverridesDocument: saved?.localOverridesDocument || '',
@@ -1821,8 +1732,7 @@ function addVirtualField() {
     sortOrder: fieldConfigList.value.length,
     orderKey: (fieldConfigList.value.length + 1) * 1000000,
     revision: 0,
-    dataSourceId: '',
-    dataSourceOperationCode: ''
+    interfaceExtensionId: ''
   })
 }
 async function removeVirtualField(field) {
@@ -1866,16 +1776,6 @@ function handleDataSourceChange(field) {
     schema,
     safeParseConfig(field.dataSourceConfig)
   ))
-}
-function handleColumnServiceChange(serviceId) {
-  if (!serviceId) {
-    editingField.value.dataSourceOperationCode = ''
-    return
-  }
-  const operations = columnOperationOptions.value
-  editingField.value.dataSourceOperationCode = operations.length === 1
-    ? operations[0].code
-    : ''
 }
 function openFieldConfig(field) {
   editingField.value = field
@@ -2250,10 +2150,7 @@ function normalizeFieldForSave(field, index = fieldConfigList.value.indexOf(fiel
     align: field.align,
     dataSourceType: field.dataSourceType || 'ENTITY_FIELD',
     dataSourceConfig: field.dataSourceConfig || '',
-    dataSourceId: field.dataSourceId || null,
-    dataSourceOperationCode: field.dataSourceId
-      ? field.dataSourceOperationCode || null
-      : null,
+    interfaceExtensionId: field.interfaceExtensionId || null,
     renderComponent: field.renderComponent || '',
     formatter: field.formatter || '',
     columnConfig: field.columnConfig || '',
@@ -2321,8 +2218,10 @@ function handleRevisionConflict(error, target) {
 }
 async function saveCurrentField(field, options = {}) {
   if (!field) return
-  if (field.dataSourceId && !field.dataSourceOperationCode) {
-    ElMessage.warning('请选择列表列使用的接口操作')
+  if (field.interfaceExtensionId && !listColumnInterfaces.value.some(item =>
+    item.extensionId === field.interfaceExtensionId
+  )) {
+    ElMessage.warning('请选择当前列表可用的扩展接口')
     return false
   }
   field._saving = true
@@ -2362,9 +2261,11 @@ async function refreshConfigRevision() {
 
 async function saveListMetadata(options = {}) {
   try {
-    if (configInfo.value.queryDataSourceId
-      && !configInfo.value.queryOperationCode) {
-      ElMessage.warning('请选择列表查询使用的接口操作')
+    if (configInfo.value.queryInterfaceExtensionId
+      && !listQueryInterfaces.value.some(item =>
+        item.extensionId === configInfo.value.queryInterfaceExtensionId
+      )) {
+      ElMessage.warning('请选择当前列表可用的查询扩展接口')
       return false
     }
     const saved = await entityListConfigApi.patchMetadata(configId, {
@@ -2399,23 +2300,16 @@ async function saveListMetadata(options = {}) {
       queryProviderCode: isSystemEntity.value
         ? ''
         : configInfo.value.queryProviderCode || '',
-      queryDataSourceId: isSystemEntity.value
+      queryInterfaceExtensionId: isSystemEntity.value
         ? ''
-        : configInfo.value.queryDataSourceId || '',
-      queryOperationCode: isSystemEntity.value
-        ? ''
-        : configInfo.value.queryDataSourceId
-          ? configInfo.value.queryOperationCode || ''
-          : ''
+        : configInfo.value.queryInterfaceExtensionId || ''
     })
     if (entityCode.value && configInfo.value.listKey && !isSystemEntity.value) {
       await saveScopeBindings({ silent: true })
     }
     configInfo.value.revision = saved.revision
-    configInfo.value.queryDataSourceId =
-      saved.queryDataSourceId || ''
-    configInfo.value.queryOperationCode =
-      saved.queryOperationCode || ''
+    configInfo.value.queryInterfaceExtensionId =
+      saved.queryInterfaceExtensionId || ''
     rememberMetadataBaseline()
     await loadDiff()
     if (!options.silent) {
@@ -2753,7 +2647,7 @@ function openListEventBindings() {
 }
 
 /**
- * 消费接口服务“使用情况”的深链，直接落到当前列表唯一的事件编辑入口。
+ * 兼容历史书签中的事件深链，直接落到当前列表唯一的事件编辑入口。
  */
 function openLinkedListEventBindings() {
   if (String(route.query.events || '') !== '1' || isSystemEntity.value) return

@@ -69,12 +69,11 @@
             {{ formatDate(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <div class="table-row-actions">
               <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
               <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-              <el-button link type="info" @click="handleViewVersions(row)">历史</el-button>
               <el-button
                 v-if="row.status === 'DRAFT' || row.status === 'DISABLED'"
                 link
@@ -91,7 +90,21 @@
               >
                 禁用
               </el-button>
-              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+              <el-dropdown trigger="click" placement="bottom-end">
+                <el-button link type="primary" aria-label="更多流程操作" title="更多流程操作">
+                  <el-icon><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="handleViewVersions(row)">
+                      <span class="more-action-info">历史</span>
+                    </el-dropdown-item>
+                    <el-dropdown-item divided @click="handleDelete(row)">
+                      <span class="more-action-danger">删除</span>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </template>
         </el-table-column>
@@ -347,7 +360,7 @@ import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
-import { Search } from '@element-plus/icons-vue'
+import { Search, MoreFilled } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
 import { processActionApi } from '@/api/processAction'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
@@ -714,6 +727,14 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.more-action-info {
+  color: var(--el-color-info);
+}
+
+.more-action-danger {
+  color: var(--el-color-danger);
 }
 
 .field-help {

@@ -616,7 +616,7 @@ const sectionOptions = computed(() => {
     return [
       { label: '表单', value: 'forms' },
       { label: '列表', value: 'lists' },
-      { label: '只读数据源', value: 'dataSources' },
+      { label: '扩展接口', value: 'interfaceExtensions' },
       { label: 'UI 扩展', value: 'extensions' }
     ]
   }

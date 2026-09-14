@@ -12,7 +12,7 @@ import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -20,7 +20,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
@@ -144,7 +144,7 @@ class UiDataSourceExecutionAccessServiceTest {
                   "operationCode":"query"
                 }}
                 """);
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("FIELD_OPTIONS", "form-1", "release-1");
 
         BusinessConflictException exception = assertThrows(
@@ -161,7 +161,7 @@ class UiDataSourceExecutionAccessServiceTest {
     /** 测试拒绝连接器客户端伪造租户元数据：验证 input 含 orgId 时抛出上下文伪造异常 */
     @Test
     void rejectsConnectorClientSpoofingTenantMetadata() {
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", null);
         request.setInput(Map.of(
                 "orgId",
@@ -185,7 +185,7 @@ class UiDataSourceExecutionAccessServiceTest {
     /** 嵌套映射也不能绕过可信元数据检查，包含数组中的对象同样应被拒绝。 */
     @Test
     void rejectsNestedTrustedMetadataInMappedPayload() {
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", null);
         request.setInput(Map.of(
                 "payload", Map.of(
@@ -211,7 +211,7 @@ class UiDataSourceExecutionAccessServiceTest {
     /** 来源记录身份不能藏在嵌套上下文中交由 Provider 当作授权依据。 */
     @Test
     void rejectsNestedSourceRecordIdentity() {
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("FIELD_OPTIONS", "form-1", null);
         request.setContext(Map.of(
                 "payload", Map.of(
@@ -232,7 +232,7 @@ class UiDataSourceExecutionAccessServiceTest {
     /** 测试拒绝连接器客户端伪造幂等键：验证 input 含 idempotencyKey 时抛出上下文伪造异常 */
     @Test
     void rejectsConnectorClientSpoofingIdempotencyKey() {
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", null);
         request.setInput(Map.of(
                 "idempotencyKey",
@@ -263,7 +263,7 @@ class UiDataSourceExecutionAccessServiceTest {
                   "operationCode":"query"
                 }}
                 """);
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", "release-1");
         request.setServerIdempotencyKey("server-seed");
         request.setInput(Map.of(
@@ -294,7 +294,7 @@ class UiDataSourceExecutionAccessServiceTest {
                   "operationCode":"query"
                 }}
                 """);
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", "release-1");
         request.setInput(Map.of(
                 "taskId", "business-task",
@@ -321,7 +321,7 @@ class UiDataSourceExecutionAccessServiceTest {
     /** 测试忽略客户端写入服务端幂等种子的尝试：验证反序列化后 serverIdempotencyKey 为 null */
     @Test
     void ignoresClientAttemptToWriteServerIdempotencySeed() throws Exception {
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 new ObjectMapper().readValue(
                         """
                         {
@@ -329,7 +329,7 @@ class UiDataSourceExecutionAccessServiceTest {
                           "serverIdempotencyKey":"client-forged"
                         }
                         """,
-                        UiDataSourceExecuteRequest.class);
+                        UiExtensionExecuteRequest.class);
 
         assertNull(request.getServerIdempotencyKey());
     }
@@ -338,7 +338,7 @@ class UiDataSourceExecutionAccessServiceTest {
     @Test
     void ignoresClientAttemptToEnablePinnedReleaseExecution()
             throws Exception {
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 new ObjectMapper().readValue(
                         """
                         {
@@ -346,7 +346,7 @@ class UiDataSourceExecutionAccessServiceTest {
                           "serverPinnedRelease":true
                         }
                         """,
-                        UiDataSourceExecuteRequest.class);
+                        UiExtensionExecuteRequest.class);
 
         assertFalse(request.isServerPinnedRelease());
     }
@@ -367,7 +367,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 """);
         when(context.releaseMapper().selectById("release-3"))
                 .thenReturn(historical);
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request(
                         "BEFORE_SUBMIT",
                         "form-1",
@@ -410,7 +410,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 """);
         when(context.releaseMapper().selectById("release-3"))
                 .thenReturn(historical);
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request(
                         "BEFORE_SUBMIT",
                         "form-1",
@@ -519,7 +519,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 }}
                 """);
         allowPermissionPlan();
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("FIELD_OPTIONS", "form-1", "release-1");
         request.setEntityCode("expense");
         request.setContext(Map.of(
@@ -551,7 +551,7 @@ class UiDataSourceExecutionAccessServiceTest {
                   "operationCode":"query"
                 }}
                 """);
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("FIELD_OPTIONS", "form-1", "release-1");
         Map<String, Object> runtimeContext = new LinkedHashMap<>();
         runtimeContext.put("mode", "edit");
@@ -582,7 +582,7 @@ class UiDataSourceExecutionAccessServiceTest {
     /** 测试所有接口类型都拒绝客户端伪造用户身份：验证静态数据源也不能提交 userId */
     @Test
     void rejectsTrustedIdentityMetadataForEverySourceType() {
-        UiDataSourceExecuteRequest request =
+        UiExtensionExecuteRequest request =
                 request("FIELD_OPTIONS", "form-1", null);
         request.setContext(Map.of(
                 "userId", "forged-user"));
@@ -633,7 +633,7 @@ class UiDataSourceExecutionAccessServiceTest {
         allowFormTarget("active-release-changed");
         allowPermissionPlan();
         Map<String, Object> snapshot = resolvedButtonSnapshot();
-        UiDataSourceExecuteRequest request = resolvedButtonRequest();
+        UiExtensionExecuteRequest request = resolvedButtonRequest();
 
         UiDataSourceExecutionAuthorization authorization =
                 context.service().authorizeResolvedFormButton(
@@ -655,7 +655,7 @@ class UiDataSourceExecutionAccessServiceTest {
     void formButtonAllowsReservedNamesInsideBusinessFormValues() {
         allowFormTarget("active-release-changed");
         allowPermissionPlan();
-        UiDataSourceExecuteRequest request = resolvedButtonRequest();
+        UiExtensionExecuteRequest request = resolvedButtonRequest();
         request.setInput(Map.of(
                 "form", Map.of(
                         "userId", "business-field-value",
@@ -682,7 +682,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 Map.of("taskId", "task-forged"),
                 Map.of("nested", Map.of(
                         "processInstanceId", "process-forged")))) {
-            UiDataSourceExecuteRequest request = resolvedButtonRequest();
+            UiExtensionExecuteRequest request = resolvedButtonRequest();
             request.setContext(forged);
 
             BusinessForbiddenException error = assertThrows(
@@ -700,7 +700,7 @@ class UiDataSourceExecutionAccessServiceTest {
 
     @Test
     void formButtonRejectsNormalizedAliasesOfBusinessFormContainer() {
-        UiDataSourceExecuteRequest request = resolvedButtonRequest();
+        UiExtensionExecuteRequest request = resolvedButtonRequest();
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("form", Map.of(
                 "userId", "legitimate-business-field"));
@@ -721,7 +721,7 @@ class UiDataSourceExecutionAccessServiceTest {
 
     @Test
     void formButtonStillRejectsRootInputAndNestedContextIdentity() {
-        UiDataSourceExecuteRequest rootInput = resolvedButtonRequest();
+        UiExtensionExecuteRequest rootInput = resolvedButtonRequest();
         rootInput.setInput(Map.of("userId", "forged-user"));
         BusinessForbiddenException rootError = assertThrows(
                 BusinessForbiddenException.class,
@@ -733,7 +733,7 @@ class UiDataSourceExecutionAccessServiceTest {
         assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
                 rootError.getErrorCode());
 
-        UiDataSourceExecuteRequest nestedContext = resolvedButtonRequest();
+        UiExtensionExecuteRequest nestedContext = resolvedButtonRequest();
         nestedContext.setContext(Map.of(
                 "nested", Map.of("userId", "forged-user")));
         BusinessForbiddenException contextError = assertThrows(
@@ -765,8 +765,8 @@ class UiDataSourceExecutionAccessServiceTest {
                                 "operationCode", "query")))));
     }
 
-    private UiDataSourceExecuteRequest resolvedButtonRequest() {
-        UiDataSourceExecuteRequest request = request(
+    private UiExtensionExecuteRequest resolvedButtonRequest() {
+        UiExtensionExecuteRequest request = request(
                 "FORM_BUTTON_CLICK", "form-1", "base-release");
         request.setReleaseVersion(3);
         request.setTargetType("BUTTON");
@@ -856,12 +856,12 @@ class UiDataSourceExecutionAccessServiceTest {
     }
 
     /** 构造表单类型的数据源执行请求 */
-    private UiDataSourceExecuteRequest request(
+    private UiExtensionExecuteRequest request(
             String usage,
             String formId,
             String releaseId) {
-        UiDataSourceExecuteRequest request =
-                new UiDataSourceExecuteRequest();
+        UiExtensionExecuteRequest request =
+                new UiExtensionExecuteRequest();
         request.setUsage(usage);
         request.setOperationCode("query");
         request.setConfigType("FORM");
@@ -875,9 +875,9 @@ class UiDataSourceExecutionAccessServiceTest {
     }
 
     /** 构造列表类型的数据源执行请求 */
-    private UiDataSourceExecuteRequest listRequest() {
-        UiDataSourceExecuteRequest request =
-                new UiDataSourceExecuteRequest();
+    private UiExtensionExecuteRequest listRequest() {
+        UiExtensionExecuteRequest request =
+                new UiExtensionExecuteRequest();
         request.setUsage("LIST_QUERY");
         request.setOperationCode("query");
         request.setConfigType("LIST");
@@ -891,12 +891,12 @@ class UiDataSourceExecutionAccessServiceTest {
     }
 
     /** 构造带类型与作用域的数据源定义 */
-    private UiDataSourceDefinition definition(
+    private UiExtensionDefinition definition(
             String sourceType,
             String scopeType,
             String scopeId) {
-        UiDataSourceDefinition definition =
-                new UiDataSourceDefinition();
+        UiExtensionDefinition definition =
+                new UiExtensionDefinition();
         definition.setId("source-1");
         definition.setSourceType(sourceType);
         definition.setScopeType(scopeType);

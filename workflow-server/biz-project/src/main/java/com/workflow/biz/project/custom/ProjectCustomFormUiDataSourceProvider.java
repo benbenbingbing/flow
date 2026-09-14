@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * FORM 作用范围的统一数据源扩展示例。
  *
- * <p>推荐在接口服务中配置 {@code scopeType=FORM}，scopeId 填写表单 ID。
+ * <p>推荐在接口扩展中配置 {@code scopeType=FORM}，scopeId 填写表单 ID。
  * 示例覆盖表单初始化、加载后处理、提交前处理、表单内字段数据源、子表行加载
  * 和表单/字段按钮事件。</p>
  */

@@ -2,10 +2,10 @@ package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,7 +36,7 @@ class UiEventBindingSnapshotServiceTest {
 
             assertNotNull(context.getBean(
                     UiEventBindingSnapshotService.class));
-            assertNotNull(context.getBean(UiDataSourceService.class));
+            assertNotNull(context.getBean(UiInterfaceExtensionService.class));
         }
     }
 
@@ -43,15 +44,15 @@ class UiEventBindingSnapshotServiceTest {
     void snapshotOwnerOnlyReadsNormalizedLocalOwner() {
         UiEventBindingMapper bindingMapper =
                 mock(UiEventBindingMapper.class);
-        UiDataSourceDefinitionMapper dataSourceMapper =
-                mock(UiDataSourceDefinitionMapper.class);
+        UiExtensionDefinitionMapper dataSourceMapper =
+                mock(UiExtensionDefinitionMapper.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
         UiEventBindingSnapshotService service =
                 new UiEventBindingSnapshotService(
                         bindingMapper,
                         dataSourceMapper,
-                        mock(UiDataSourceService.class),
+                        mock(UiInterfaceExtensionService.class),
                         codec);
         UiEventBinding binding = new UiEventBinding();
         binding.setId("binding-1");
@@ -81,27 +82,26 @@ class UiEventBindingSnapshotServiceTest {
     void sharedEntityEventKeepsOnlyStepsForPublishedPageContext() {
         UiEventBindingMapper bindingMapper =
                 mock(UiEventBindingMapper.class);
-        UiDataSourceDefinitionMapper dataSourceMapper =
-                mock(UiDataSourceDefinitionMapper.class);
+        UiExtensionDefinitionMapper dataSourceMapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
         UiEventBindingSnapshotService service =
                 new UiEventBindingSnapshotService(
                         bindingMapper,
                         dataSourceMapper,
-                        mock(UiDataSourceService.class),
+                        dataSourceService,
                         codec);
-        UiDataSourceDefinition source = new UiDataSourceDefinition();
-        source.setId("source-mixed");
-        source.setOperationsDocument(codec.write(
-                List.of(
-                        Map.of(
-                                "code", "formDetail",
-                                "contextType", "FORM"),
-                        Map.of(
-                                "code", "listDetail",
-                                "contextType", "LIST")),
-                "测试接口操作"));
+        UiExtensionDefinition formInterface = new UiExtensionDefinition();
+        formInterface.setId("form-interface");
+        formInterface.setExtensionType("INTERFACE");
+        formInterface.setInterfaceContextType("FORM");
+        UiExtensionDefinition listInterface = new UiExtensionDefinition();
+        listInterface.setId("list-interface");
+        listInterface.setExtensionType("INTERFACE");
+        listInterface.setInterfaceContextType("LIST");
         UiEventBinding binding = new UiEventBinding();
         binding.setId("binding-entity");
         binding.setOwnerType("ENTITY");
@@ -125,8 +125,16 @@ class UiEventBindingSnapshotServiceTest {
                                 "stepCode", "mapping-step",
                                 "outputMapping", Map.of("name", "result.name"))),
                 "测试事件步骤"));
-        when(dataSourceMapper.selectById("source-mixed"))
-                .thenReturn(source);
+        when(dataSourceService.resolveDefinitionReference(
+                "source-mixed", "formDetail"))
+                .thenReturn(formInterface);
+        when(dataSourceService.resolveDefinitionReference(
+                "source-mixed", "listDetail"))
+                .thenReturn(listInterface);
+        when(dataSourceService.requireExecutableDefinition(
+                "form-interface", null)).thenReturn(formInterface);
+        when(dataSourceService.requireExecutableDefinition(
+                "list-interface", null)).thenReturn(listInterface);
         when(bindingMapper.findForSnapshot(
                 "FORM", "form-1", "entity-1"))
                 .thenReturn(List.of(binding));
@@ -152,10 +160,10 @@ class UiEventBindingSnapshotServiceTest {
     void publishedSnapshotPinsExecutableOperationAndIdentity() {
         UiEventBindingMapper bindingMapper =
                 mock(UiEventBindingMapper.class);
-        UiDataSourceDefinitionMapper dataSourceMapper =
-                mock(UiDataSourceDefinitionMapper.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiExtensionDefinitionMapper dataSourceMapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
         UiEventBindingSnapshotService service =
@@ -175,23 +183,27 @@ class UiEventBindingSnapshotServiceTest {
         binding.setRevision(2);
         binding.setStepsDocument(codec.write(
                 List.of(Map.of(
-                        "serviceId", "service-1",
-                        "operationCode", "generate",
+                        "extensionId", "interface-1",
                         "strategy", "REPLACE")),
                 "测试事件步骤"));
         when(bindingMapper.findForSnapshot(
                 "FORM", "form-1", "entity-1"))
                 .thenReturn(List.of(binding));
-        UiDataSourceService.PublishedOperationSnapshot operation =
-                new UiDataSourceService.PublishedOperationSnapshot(
-                        "service-1",
+        UiInterfaceExtensionService.PublishedOperationSnapshot operation =
+                new UiInterfaceExtensionService.PublishedOperationSnapshot(
+                        "interface-1",
                         "report-service",
                         7,
                         "generate",
                         "{\"schemaVersion\":2}",
                         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-        when(dataSourceService.freezeOperation(
-                "service-1", "generate"))
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId("interface-1");
+        definition.setExtensionType("INTERFACE");
+        definition.setInterfaceContextType("FORM");
+        when(dataSourceService.resolveDefinitionReference(
+                "interface-1", null)).thenReturn(definition);
+        when(dataSourceService.freezeExtension("interface-1"))
                 .thenReturn(operation);
 
         List<Map<String, Object>> snapshot = service.snapshot(
@@ -199,28 +211,31 @@ class UiEventBindingSnapshotServiceTest {
 
         Map<String, Object> step = (Map<String, Object>)
                 ((List<?>) snapshot.get(0).get("steps")).get(0);
-        assertEquals(1, step.get("operationSnapshotVersion"));
-        assertEquals("report-service", step.get("sourceCode"));
-        assertEquals(7, step.get("serviceRevision"));
+        assertEquals(2, step.get("operationSnapshotVersion"));
+        assertEquals("interface-1", step.get("extensionId"));
+        assertEquals("report-service", step.get("extensionKey"));
+        assertEquals(7, step.get("extensionRevision"));
+        assertEquals(false, step.containsKey("operationCode"));
+        assertEquals(false, step.containsKey("sourceCode"));
+        assertEquals(false, step.containsKey("serviceRevision"));
         assertEquals(operation.document(), step.get("executableSnapshot"));
         assertEquals(operation.hash(), step.get("definitionHash"));
-        verify(dataSourceService).validatePinnedReadOperation(
+        verify(dataSourceService).validatePinnedReadExtension(
                 operation.document(),
                 operation.hash(),
-                "service-1",
+                "interface-1",
                 "report-service",
                 7,
-                "generate",
                 "FORM");
     }
 
     @Test
     @SuppressWarnings("unchecked")
-    void nonFormButtonPublishedSnapshotKeepsLegacyOperationReference() {
+    void nonFormButtonPublishedSnapshotNormalizesLegacyReference() {
         UiEventBindingMapper bindingMapper =
                 mock(UiEventBindingMapper.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
         UiEventBinding binding = new UiEventBinding();
@@ -245,10 +260,17 @@ class UiEventBindingSnapshotServiceTest {
         when(bindingMapper.findForSnapshot(
                 "LIST", "list-1", "entity-1"))
                 .thenReturn(List.of(binding));
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId("interface-write");
+        definition.setExtensionType("INTERFACE");
+        definition.setInterfaceContextType("LIST");
+        when(dataSourceService.resolveDefinitionReference(
+                "service-write", "write-op"))
+                .thenReturn(definition);
         UiEventBindingSnapshotService service =
                 new UiEventBindingSnapshotService(
                         bindingMapper,
-                        mock(UiDataSourceDefinitionMapper.class),
+                        mock(UiExtensionDefinitionMapper.class),
                         dataSourceService,
                         codec);
 
@@ -257,15 +279,15 @@ class UiEventBindingSnapshotServiceTest {
 
         Map<String, Object> step = (Map<String, Object>)
                 ((List<?>) snapshot.get(0).get("steps")).get(0);
-        assertEquals("service-write", step.get("serviceId"));
-        assertEquals("write-op", step.get("operationCode"));
-        assertEquals(99, step.get("operationSnapshotVersion"));
-        assertEquals("legacy-extension", step.get("sourceCode"));
-        assertEquals(12, step.get("serviceRevision"));
-        assertEquals("legacy-document", step.get("executableSnapshot"));
-        assertEquals("legacy-hash", step.get("definitionHash"));
-        verify(dataSourceService, never()).freezeOperation(
-                "service-write", "write-op");
+        assertEquals("interface-write", step.get("extensionId"));
+        assertEquals(false, step.containsKey("serviceId"));
+        assertEquals(false, step.containsKey("operationCode"));
+        assertEquals(false, step.containsKey("operationSnapshotVersion"));
+        assertEquals(false, step.containsKey("sourceCode"));
+        assertEquals(false, step.containsKey("serviceRevision"));
+        assertEquals(false, step.containsKey("executableSnapshot"));
+        assertEquals(false, step.containsKey("definitionHash"));
+        verify(dataSourceService, never()).freezeExtension(any());
     }
 
     @Test
@@ -281,23 +303,35 @@ class UiEventBindingSnapshotServiceTest {
         binding.setOwnerId("form-1");
         binding.setEventCode("FORM_BUTTON_CLICK");
         binding.setStepsDocument(codec.write(
-                List.of(Map.of(
-                        "serviceId", "service-1",
-                        "operationCode", "generate",
-                        "operationSnapshotVersion", 1,
-                        "sourceCode", "published-source",
-                        "serviceRevision", 7,
-                        "executableSnapshot", "published-snapshot",
-                        "definitionHash", "published-hash")),
+                List.of(Map.ofEntries(
+                        Map.entry("serviceId", "service-1"),
+                        Map.entry("operationCode", "generate"),
+                        Map.entry("serviceName", "历史服务名称"),
+                        Map.entry("operationName", "历史操作名称"),
+                        Map.entry("providerOperationCode", "internal-route"),
+                        Map.entry("legacyServiceId", "legacy-service"),
+                        Map.entry("operationSnapshotVersion", 1),
+                        Map.entry("sourceCode", "published-source"),
+                        Map.entry("serviceRevision", 7),
+                        Map.entry("executableSnapshot", "published-snapshot"),
+                        Map.entry("definitionHash", "published-hash"))),
                 "测试事件步骤"));
         when(bindingMapper.findForSnapshot(
                 "FORM", "form-1", "entity-1"))
                 .thenReturn(List.of(binding));
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId("interface-1");
+        definition.setExtensionType("INTERFACE");
+        when(dataSourceService.resolveDefinitionReference(
+                "service-1", "generate"))
+                .thenReturn(definition);
         UiEventBindingSnapshotService service =
                 new UiEventBindingSnapshotService(
                         bindingMapper,
-                        mock(UiDataSourceDefinitionMapper.class),
-                        mock(UiDataSourceService.class),
+                        mock(UiExtensionDefinitionMapper.class),
+                        dataSourceService,
                         codec);
 
         List<Map<String, Object>> snapshot = service.snapshot(
@@ -305,13 +339,18 @@ class UiEventBindingSnapshotServiceTest {
 
         Map<String, Object> step = (Map<String, Object>)
                 ((List<?>) snapshot.get(0).get("steps")).get(0);
-        assertEquals("service-1", step.get("serviceId"));
-        assertEquals("generate", step.get("operationCode"));
+        assertEquals("interface-1", step.get("extensionId"));
+        assertEquals(false, step.containsKey("serviceId"));
+        assertEquals(false, step.containsKey("operationCode"));
         assertEquals(false, step.containsKey("operationSnapshotVersion"));
         assertEquals(false, step.containsKey("sourceCode"));
         assertEquals(false, step.containsKey("serviceRevision"));
         assertEquals(false, step.containsKey("executableSnapshot"));
         assertEquals(false, step.containsKey("definitionHash"));
+        assertEquals(false, step.containsKey("serviceName"));
+        assertEquals(false, step.containsKey("operationName"));
+        assertEquals(false, step.containsKey("providerOperationCode"));
+        assertEquals(false, step.containsKey("legacyServiceId"));
     }
 
     @Test
@@ -320,11 +359,19 @@ class UiEventBindingSnapshotServiceTest {
                 mock(UiEventBindingMapper.class);
         JsonDocumentCodec codec =
                 new JsonDocumentCodec(new ObjectMapper());
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId("interface-1");
+        definition.setExtensionType("INTERFACE");
+        when(dataSourceService.resolveDefinitionReference(
+                "service-1", "generate"))
+                .thenReturn(definition);
         UiEventBindingSnapshotService service =
                 new UiEventBindingSnapshotService(
                         bindingMapper,
-                        mock(UiDataSourceDefinitionMapper.class),
-                        mock(UiDataSourceService.class),
+                        mock(UiExtensionDefinitionMapper.class),
+                        dataSourceService,
                         codec);
 
         service.restoreLocalBindingsForRelease(
@@ -353,7 +400,9 @@ class UiEventBindingSnapshotServiceTest {
         Map<?, ?> step = (Map<?, ?>) codec.readArray(
                 restored.getValue().getStepsDocument(),
                 "恢复步骤测试").get(0);
-        assertEquals("service-1", step.get("serviceId"));
+        assertEquals("interface-1", step.get("extensionId"));
+        assertEquals(false, step.containsKey("serviceId"));
+        assertEquals(false, step.containsKey("operationCode"));
         assertEquals(false, step.containsKey("operationSnapshotVersion"));
         assertEquals(false, step.containsKey("sourceCode"));
         assertEquals(false, step.containsKey("serviceRevision"));
@@ -382,8 +431,8 @@ class UiEventBindingSnapshotServiceTest {
         }
 
         @Bean
-        UiDataSourceDefinitionMapper dataSourceDefinitionMapper() {
-            return mock(UiDataSourceDefinitionMapper.class);
+        UiExtensionDefinitionMapper dataSourceDefinitionMapper() {
+            return mock(UiExtensionDefinitionMapper.class);
         }
 
         @Bean
@@ -392,10 +441,10 @@ class UiEventBindingSnapshotServiceTest {
         }
 
         @Bean
-        UiDataSourceService uiDataSourceService(
+        UiInterfaceExtensionService uiDataSourceService(
                 UiEventBindingSnapshotService snapshotService) {
             assertNotNull(snapshotService);
-            return mock(UiDataSourceService.class);
+            return mock(UiInterfaceExtensionService.class);
         }
 
         @Bean

@@ -135,7 +135,7 @@ const expectedFormActionContracts = [
   "providerSchema.viewConfig?.projectCustomSchema",
   "rows(schemaPage)",
   "item.nodeType === 'ACTION_SLOT'",
-  "fullFormBindings[usage]?.serviceId",
+  "fullFormBindings[usage]?.extensionId",
   "processActions.length"
 ]
 

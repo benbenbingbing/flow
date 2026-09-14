@@ -1,6 +1,6 @@
 <template>
   <div class="manual-page">
-    <header class="manual-hero">
+    <header v-if="showHeader" class="manual-hero">
       <div class="manual-hero__copy">
         <div class="manual-eyebrow">{{ manual.eyebrow || '用户手册' }}</div>
         <h1>{{ manual.title }}</h1>
@@ -190,6 +190,10 @@ const props = defineProps({
   manual: {
     type: Object,
     required: true
+  },
+  showHeader: {
+    type: Boolean,
+    default: true
   }
 })
 

@@ -6,13 +6,13 @@ import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
 import com.workflow.entity.form.application.validation.EntityFormConfigurationValidator;
 import com.workflow.entity.list.application.EntityListConfigService;
-import com.workflow.entity.ui.application.UiConfigDataSourceReferenceValidator;
+import com.workflow.entity.ui.application.UiConfigInterfaceReferenceValidator;
 import com.workflow.entity.ui.application.UiConfigSnapshotSupport;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.entity.ui.application.UiConfigSemanticPatchService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import com.workflow.entity.ui.application.UiViewCompositionService;
@@ -48,7 +48,7 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTempl
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigReleaseAudit;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -59,7 +59,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTa
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseAuditMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.application.UiHotfixGovernanceService;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
 import org.junit.jupiter.api.Test;
@@ -596,17 +596,17 @@ class UiConfigReleaseServiceTest {
     @Test
     void standardPublishPreviewExplainsPinnedRelatedContentDependencies() {
         TestContext context = context();
-        UiDataSourceDefinition serviceDefinition =
-                new UiDataSourceDefinition();
-        serviceDefinition.setId("service-1");
-        serviceDefinition.setEnabled(true);
-        serviceDefinition.setDeleted(0);
-        serviceDefinition.setScopeType("GLOBAL");
-        serviceDefinition.setOperationsDocument("""
-                [{"code":"query","contextType":"FORM","kind":"READ"}]
-                """);
+        UiExtensionDefinition serviceDefinition = executableInterface(
+                "service-1", "query");
         when(context.dataSourceDefinitionMapper().selectById("service-1"))
                 .thenReturn(serviceDefinition);
+        when(context.dataSourceDefinitionMapper().selectById(
+                "service-action-1"))
+                .thenReturn(executableInterface(
+                        "service-action-1", "recalculate"));
+        when(context.dataSourceDefinitionMapper().selectOne(any()))
+                .thenReturn(executableInterface(
+                        "legacy-interface", "check"));
         EntityForm draft = form();
         draft.setDataSourceBindingsDocument(null);
         when(context.formService().getById("form-1"))
@@ -653,11 +653,20 @@ class UiConfigReleaseServiceTest {
                                                 "schemaHash", "b".repeat(64))),
                                 "specialHandling", Map.of(
                                         "interfaceService", Map.of(
-                                                "serviceId", "service-1",
-                                                "serviceName", "需求聚合服务",
-                                                "sourceCode", "REQ_AGG",
-                                                "operationCode", "query",
-                                                "serviceRevision", 3),
+                                                "extensionId", "service-1",
+                                                "extensionKey", "REQ_AGG.query",
+                                                "extensionRevision", 3),
+                                        "actionServices", List.of(
+                                                Map.of(
+                                                        "actionKey", "recalculate",
+                                                        "extensionId", "service-action-1",
+                                                        "extensionKey", "REQ_AGG.recalculate",
+                                                        "extensionRevision", 5),
+                                                Map.of(
+                                                        "actionKey", "legacyCheck",
+                                                        "serviceId", "legacy-service",
+                                                        "operationCode", "check",
+                                                        "serviceRevision", 2)),
                                         "customComponent", Map.of(
                                                 "name", "requirement-board",
                                                 "displayName", "需求看板",
@@ -670,7 +679,7 @@ class UiConfigReleaseServiceTest {
                 "form-1",
                 request);
 
-        assertEquals(5, preview.getDependencies().size());
+        assertEquals(7, preview.getDependencies().size());
         assertTrue(preview.getDependencies().stream().anyMatch(item ->
                 "ENTITY_SCHEMA".equals(item.get("type"))
                         && "project".equals(item.get("key"))
@@ -684,7 +693,16 @@ class UiConfigReleaseServiceTest {
                         && Integer.valueOf(7).equals(item.get("version"))));
         assertTrue(preview.getDependencies().stream().anyMatch(item ->
                 "INTERFACE_SERVICE".equals(item.get("type"))
+                        && "REQ_AGG.query".equals(item.get("key"))
                         && Integer.valueOf(3).equals(item.get("version"))));
+        assertTrue(preview.getDependencies().stream().anyMatch(item ->
+                "INTERFACE_SERVICE".equals(item.get("type"))
+                        && "REQ_AGG.recalculate".equals(item.get("key"))
+                        && Integer.valueOf(5).equals(item.get("version"))));
+        assertTrue(preview.getDependencies().stream().anyMatch(item ->
+                "INTERFACE_SERVICE".equals(item.get("type"))
+                        && "check".equals(item.get("key"))
+                        && Integer.valueOf(2).equals(item.get("version"))));
         assertTrue(preview.getDependencies().stream().anyMatch(item ->
                 "CUSTOM_COMPONENT".equals(item.get("type"))
                         && Integer.valueOf(2).equals(item.get("version"))));
@@ -1289,8 +1307,8 @@ class UiConfigReleaseServiceTest {
         UiEventBindingSnapshotService service =
                 new UiEventBindingSnapshotService(
                         mapper,
-                        mock(UiDataSourceDefinitionMapper.class),
-                        mock(UiDataSourceService.class),
+                        mock(UiExtensionDefinitionMapper.class),
+                        mock(UiInterfaceExtensionService.class),
                         codec);
         when(mapper.findByOwnerForUpdate("FORM", "form-1"))
                 .thenReturn(List.of());
@@ -1378,19 +1396,19 @@ class UiConfigReleaseServiceTest {
         EntityForm form = form();
         when(formService.getById("form-1")).thenReturn(form);
 
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
                 mock(UiConfigHotfixTargetMapper.class),
                 mock(UiConfigReleaseAuditMapper.class),
-                new UiConfigDataSourceReferenceValidator(
-                        mock(UiDataSourceDefinitionMapper.class),
+                new UiConfigInterfaceReferenceValidator(
+                        mock(UiExtensionDefinitionMapper.class),
                         codec),
                 new UiEventBindingSnapshotService(
                         mock(UiEventBindingMapper.class),
-                        mock(UiDataSourceDefinitionMapper.class),
-                        mock(UiDataSourceService.class),
+                        mock(UiExtensionDefinitionMapper.class),
+                        mock(UiInterfaceExtensionService.class),
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
@@ -1886,13 +1904,13 @@ class UiConfigReleaseServiceTest {
                 releaseMapper,
                 mock(UiConfigHotfixTargetMapper.class),
                 mock(UiConfigReleaseAuditMapper.class),
-                new UiConfigDataSourceReferenceValidator(
-                        mock(UiDataSourceDefinitionMapper.class),
+                new UiConfigInterfaceReferenceValidator(
+                        mock(UiExtensionDefinitionMapper.class),
                         codec),
                 new UiEventBindingSnapshotService(
                         mock(UiEventBindingMapper.class),
-                        mock(UiDataSourceDefinitionMapper.class),
-                        mock(UiDataSourceService.class),
+                        mock(UiExtensionDefinitionMapper.class),
+                        mock(UiInterfaceExtensionService.class),
                         codec),
                 new UiConfigSnapshotSupport(codec, objectMapper),
                 mock(UiComponentTemplateMapper.class),
@@ -3321,12 +3339,12 @@ class UiConfigReleaseServiceTest {
                 mock(UiHotfixProcessImpactPort.class);
         UiEventBindingMapper eventBindingMapper =
                 mock(UiEventBindingMapper.class);
-        UiDataSourceDefinitionMapper dataSourceDefinitionMapper =
-                mock(UiDataSourceDefinitionMapper.class);
+        UiExtensionDefinitionMapper dataSourceDefinitionMapper =
+                mock(UiExtensionDefinitionMapper.class);
         UiReleaseResolutionTokenService resolutionTokenService =
                 mock(UiReleaseResolutionTokenService.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         when(formMapper.selectByIdForUpdate("form-1"))
                 .thenReturn(form());
         when(formMapper.update(any(), any())).thenReturn(1);
@@ -3335,7 +3353,7 @@ class UiConfigReleaseServiceTest {
                 releaseMapper,
                 hotfixTargetMapper,
                 mock(UiConfigReleaseAuditMapper.class),
-                new UiConfigDataSourceReferenceValidator(
+                new UiConfigInterfaceReferenceValidator(
                         dataSourceDefinitionMapper,
                         codec),
                 new UiEventBindingSnapshotService(
@@ -3780,8 +3798,8 @@ class UiConfigReleaseServiceTest {
             EntityDefinitionMapper entityDefinitionMapper,
             UiHotfixProcessImpactPort processImpactPort,
             UiEventBindingMapper eventBindingMapper,
-            UiDataSourceDefinitionMapper dataSourceDefinitionMapper,
-            UiDataSourceService dataSourceService,
+            UiExtensionDefinitionMapper dataSourceDefinitionMapper,
+            UiInterfaceExtensionService dataSourceService,
             UiReleaseResolutionTokenService resolutionTokenService,
             UiViewCompositionService viewCompositionService,
             JsonDocumentCodec codec) {
@@ -3832,5 +3850,23 @@ class UiConfigReleaseServiceTest {
         node.setUpdatedAt(LocalDateTime.now());
         form.setNodes(List.of(node));
         return form;
+    }
+
+    /** 构造可通过发布接口引用校验的单接口扩展。 */
+    private UiExtensionDefinition executableInterface(
+            String id,
+            String providerOperationCode) {
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId(id);
+        definition.setExtensionType("INTERFACE");
+        definition.setEnabled(true);
+        definition.setDeleted(0);
+        definition.setScopeType("GLOBAL");
+        definition.setProviderOperationCode(providerOperationCode);
+        definition.setInterfaceContextType("FORM");
+        definition.setInterfaceKind("READ");
+        definition.setInputSchemaDocument("{}");
+        definition.setOutputSchemaDocument("{}");
+        return definition;
     }
 }

@@ -15,8 +15,7 @@ import {
 const config = {
   listName: '项目列表',
   selectionMode: 'SINGLE',
-  queryDataSourceId: 'service-1',
-  queryOperationCode: 'queryPage'
+  queryInterfaceExtensionId: 'project-page-interface'
 }
 const viewConfig = {
   search: { defaultVisibleCount: 4, collapsible: true, labelWidth: 100 },
@@ -35,13 +34,13 @@ assert.equal(
 )
 assert.equal(
   JSON.parse(listMetadataFingerprint(config, viewConfig))
-    .queryOperationCode,
-  'queryPage'
+    .queryInterfaceExtensionId,
+  'project-page-interface'
 )
 assert.equal(
   listMetadataDetailEntries(config, viewConfig)
-    .find(item => item.key === 'queryDataSourceId')?.value,
-  'service-1'
+    .find(item => item.key === 'queryInterfaceExtensionId')?.value,
+  'project-page-interface'
 )
 
 const action = normalizeListActionForSave({

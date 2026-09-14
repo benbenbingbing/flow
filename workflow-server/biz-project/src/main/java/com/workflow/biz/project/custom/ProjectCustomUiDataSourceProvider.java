@@ -13,10 +13,10 @@ import java.util.Set;
 /**
  * ENTITY 作用范围的复合上下文统一数据源扩展示例。
  *
- * <p>接口服务中选择“注册 Provider”，Provider 选择 {@value #CODE}，
+ * <p>接口扩展中选择“注册 Provider”，Provider 选择 {@value #CODE}，
  * 作用范围选择具体实体后，可绑定到该实体的已发布表单或列表。该实现覆盖列表列、
- * 表单初始化、字段选项/默认值/计算和按钮事件等常见绑定位置，适合验证一个
- * Provider 复用多个 FORM/LIST 操作的全链路。
+ * 表单初始化、字段选项/默认值/计算和按钮事件等常见绑定位置，适合验证同一
+ * Provider 通过多条扩展接口记录复用到不同 FORM/LIST 业务调用的全链路。
  * </p>
  */
 @Slf4j

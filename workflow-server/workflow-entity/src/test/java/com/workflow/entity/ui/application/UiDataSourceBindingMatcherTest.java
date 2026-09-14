@@ -91,37 +91,35 @@ class UiDataSourceBindingMatcherTest {
     }
 
     @Test
-    void listColumnAndListQueryRequireConfiguredOperation() {
+    void listColumnAndListQueryMatchSingleExtensionIdWithoutOperation() {
         Map<String, Object> list = Map.of(
-                "queryDataSourceId", "query-service",
-                "queryOperationCode", "query-page");
+                "queryInterfaceExtensionId", "query-interface");
         List<Map<String, Object>> fields = List.of(
                 Map.of(
                         "fieldCode", "riskLevel",
-                        "dataSourceId", "service-a",
-                        "dataSourceOperationCode", "calculateRisk"));
+                        "interfaceExtensionId", "risk-interface"));
 
         assertEquals(
-                "$.release.list.fields[0].dataSourceId",
+                "$.release.list.fields[0].interfaceExtensionId",
                 matcher.findList(
                         list,
                         fields,
                         "LIST_COLUMN",
                         "COLUMN",
                         "riskLevel",
-                        "service-a",
-                        "calculateRisk",
+                        "risk-interface",
+                        null,
                         "$.release.list"));
         assertEquals(
-                "$.release.list.queryDataSourceId",
+                "$.release.list.queryInterfaceExtensionId",
                 matcher.findList(
                         list,
                         fields,
                         "LIST_QUERY",
                         "OWNER",
                         null,
-                        "query-service",
-                        "query-page",
+                        "query-interface",
+                        null,
                         "$.release.list"));
         assertNull(matcher.findList(
                 list,
@@ -129,9 +127,29 @@ class UiDataSourceBindingMatcherTest {
                 "LIST_QUERY",
                 "OWNER",
                 null,
-                "query-service",
-                "other-operation",
+                "another-interface",
+                null,
                 "$.release.list"));
+    }
+
+    @Test
+    void historicalListPairStillRequiresExactOperation() {
+        Map<String, Object> list = Map.of(
+                "queryDataSourceId", "legacy-query",
+                "queryOperationCode", "query-page");
+        List<Map<String, Object>> fields = List.of(Map.of(
+                "fieldCode", "riskLevel",
+                "dataSourceId", "legacy-risk",
+                "dataSourceOperationCode", "calculateRisk"));
+
+        assertEquals(
+                "$.release.list.fields[0].interfaceExtensionId",
+                matcher.findList(
+                        list, fields, "LIST_COLUMN", "COLUMN", "riskLevel",
+                        "legacy-risk", "calculateRisk", "$.release.list"));
+        assertNull(matcher.findList(
+                list, fields, "LIST_COLUMN", "COLUMN", "riskLevel",
+                "legacy-risk", "other", "$.release.list"));
     }
 
     @Test

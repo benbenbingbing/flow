@@ -878,7 +878,7 @@ function listFieldConfig(list, entityField, current, index, config = {}) {
     align: config.align || 'left',
     dataSourceType: 'ENTITY_FIELD',
     dataSourceConfig: jsonConfig(config.dataSourceConfig || {}),
-    dataSourceId: null,
+    interfaceExtensionId: null,
     renderComponent: config.renderComponent || '',
     formatter: config.formatter || '',
     columnConfig: jsonConfig(config.columnConfig || {}),

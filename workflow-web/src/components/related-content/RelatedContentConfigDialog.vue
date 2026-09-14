@@ -217,7 +217,7 @@
               <template #label>
                 <ConfigHelpLabel
                   label="关联方式"
-                  content="是什么：平台从当前记录找到目标数据的方法。何时使用：优先选择系统推荐项；只有复杂规则才使用接口服务。结果：该条件只能缩小目标数据范围，不能绕过权限。"
+                  content="是什么：平台从当前记录找到目标数据的方法。何时使用：优先选择系统推荐项；只有复杂规则才使用扩展接口。结果：该条件只能缩小目标数据范围，不能绕过权限。"
                 />
               </template>
               <div class="relation-methods">
@@ -343,7 +343,7 @@
 
             <el-alert
               v-if="editor.config.relation.type === 'INTERFACE_SERVICE'"
-              title="请在第 4 步选择负责查找目标数据的接口服务。普通关联失败时不会自动调用接口服务。"
+              title="请在第 4 步选择负责查找目标数据的扩展接口。普通关联失败时不会自动调用扩展接口。"
               type="info"
               :closable="false"
               show-icon
@@ -562,7 +562,7 @@
           <StepHeading
             number="4"
             title="特殊情况怎么处理"
-            description="普通配置无法满足时，选择开发人员已经注册的接口服务或自定义组件。"
+            description="普通配置无法满足时，选择开发人员已经注册的扩展接口或自定义组件。"
           />
           <el-alert
             v-if="specialMode === 'NONE'"
@@ -586,7 +586,7 @@
                     :model-value="useInterfaceService"
                     :disabled="editor.config.relation.type === 'INTERFACE_SERVICE'"
                     @change="toggleSpecial('INTERFACE_SERVICE', $event)"
-                  >使用数据或动作接口服务</el-checkbox>
+                  >使用数据或动作扩展接口</el-checkbox>
                   <small>复杂查询、计算、聚合或受控业务操作。</small>
                 </label>
                 <label class="special-choice" :class="{ 'is-selected': useCustomComponent }">
@@ -601,7 +601,7 @@
               <div v-if="useInterfaceService" class="special-config-card">
                 <div class="special-config-card__heading">
                   <div>
-                    <strong>数据或动作接口服务</strong>
+                    <strong>数据或动作扩展接口</strong>
                     <span>只能选择已注册能力，页面不能填写地址、密钥、脚本或 SQL。</span>
                   </div>
                   <el-tag effect="plain">服务端重新鉴权</el-tag>
@@ -617,52 +617,26 @@
                     <el-form-item required>
                       <template #label>
                         <ConfigHelpLabel
-                          label="接口服务"
-                          content="是什么：开发人员注册并声明输入输出的受控业务能力。何时使用：普通关系无法表达复杂查询、计算或外部系统调用时。结果：运行时按当前用户权限调用固定版本。"
+                          label="扩展接口"
+                          content="是什么：开发人员注册并声明输入输出的完整业务接口。何时使用：普通关系无法表达复杂查询、计算或外部系统调用时。结果：运行时按当前用户权限调用固定接口。"
                         />
                       </template>
                       <el-select
-                        v-model="editor.config.specialHandling.interfaceService.serviceId"
+                        v-model="editor.config.specialHandling.interfaceService.extensionId"
                         filterable
-                        placeholder="选择已注册接口服务"
+                        placeholder="选择已注册扩展接口"
                         style="width: 100%"
-                        @change="handleServiceChange"
+                        @change="handleDataInterfaceChange"
                       >
                         <el-option
-                          v-for="service in availableServices"
-                          :key="service.id"
-                          :label="service.sourceName || service.sourceCode"
-                          :value="service.id"
+                          v-for="item in dataInterfaces"
+                          :key="item.extensionId"
+                          :label="item.displayName || item.extensionKey"
+                          :value="item.extensionId"
                         >
                           <div class="business-option">
-                            <span>{{ service.sourceName || service.sourceCode }}</span>
-                            <small>{{ service.sourceCode }} · {{ serviceScopeLabel(service) }}</small>
-                          </div>
-                        </el-option>
-                      </el-select>
-                    </el-form-item>
-                    <el-form-item required>
-                      <template #label>
-                        <ConfigHelpLabel
-                          label="接口操作"
-                          content="是什么：接口服务中一个明确的只读查询动作。何时使用：普通关系无法确定目标记录或筛选条件时。结果：只能使用该操作已声明的输入和输出字段，不会执行数据修改。"
-                        />
-                      </template>
-                      <el-select
-                        v-model="editor.config.specialHandling.interfaceService.operationCode"
-                        placeholder="选择操作"
-                        style="width: 100%"
-                        @change="handleOperationChange"
-                      >
-                        <el-option
-                          v-for="operation in selectedServiceOperations"
-                          :key="operation.code"
-                          :label="operation.name || operation.code"
-                          :value="operation.code"
-                        >
-                          <div class="business-option">
-                            <span>{{ operation.name || operation.code }}</span>
-                            <small>只读查询 · {{ operation.code }}</small>
+                            <span>{{ item.displayName || item.extensionKey }}</span>
+                            <small>{{ item.extensionKey }} · {{ interfaceScopeLabel(item) }}</small>
                           </div>
                         </el-option>
                       </el-select>
@@ -672,18 +646,18 @@
                   <ServiceMappingEditor
                     v-model="editor.config.specialHandling.interfaceService.inputMappings"
                     title="输入字段映射"
-                    description="把当前记录字段传给接口操作。只有接口声明过的参数可选。"
+                    description="把当前记录字段传给扩展接口。只有接口声明过的参数可选。"
                     :left-options="sourceFieldOptions"
-                    :right-options="operationInputOptions"
+                    :right-options="interfaceInputOptions"
                     left-label="当前字段"
                     right-label="接口参数"
-                    empty-text="该操作暂无输入映射"
+                    empty-text="该接口暂无输入映射"
                   />
                   <ServiceMappingEditor
                     v-model="editor.config.specialHandling.interfaceService.outputMappings"
                     title="关联结果映射"
                     description="告诉平台接口返回的哪一项代表目标记录、目标筛选条件或明确的空结果。"
-                    :left-options="operationOutputOptions"
+                    :left-options="interfaceOutputOptions"
                     :right-options="interfaceResultOptions"
                     left-label="返回结果"
                     right-label="用于查找目标数据"
@@ -696,7 +670,7 @@
                   <div class="special-config-card__heading">
                     <div>
                       <strong>操作接口（可选）</strong>
-                      <span>把已注册接口操作绑定到页面操作；运行时只使用发布时固定的服务和字段映射。</span>
+                      <span>把一个已注册扩展接口绑定到页面操作；运行时只使用发布时固定的接口和字段映射。</span>
                     </div>
                     <el-button type="primary" plain :icon="Plus" @click="addActionService">
                       增加操作接口
@@ -725,48 +699,26 @@
                         <el-form-item required>
                           <template #label>
                             <ConfigHelpLabel
-                              label="接口服务"
-                              content="是什么：开发人员注册的受控业务能力。何时使用：页面标准操作不能完成复杂校验、计算或批量写入时。结果：发布后固定服务定义，不能由浏览器临时替换。"
+                              label="扩展接口"
+                              content="是什么：开发人员注册的完整受控业务接口。何时使用：页面标准操作不能完成复杂校验、计算或批量写入时。结果：发布后固定接口定义，不能由浏览器临时替换。"
                             />
                           </template>
                           <el-select
-                            v-model="binding.serviceId"
+                            v-model="binding.extensionId"
                             filterable
-                            placeholder="选择已注册接口服务"
+                            placeholder="选择已注册扩展接口"
                             style="width: 100%"
-                            @change="handleActionServiceChange(binding)"
+                            @change="handleActionInterfaceChange(binding)"
                           >
                             <el-option
-                              v-for="service in availableServices"
-                              :key="service.id"
-                              :label="service.sourceName || service.sourceCode"
-                              :value="service.id"
-                            />
-                          </el-select>
-                        </el-form-item>
-                        <el-form-item required>
-                          <template #label>
-                            <ConfigHelpLabel
-                              label="接口操作"
-                              content="是什么：服务中一个明确的读取或写入操作。何时使用：选择与当前页面上下文一致的业务操作。结果：只读同步返回；本地写入进入平台受控变更链；外部写入当前不可发布。"
-                            />
-                          </template>
-                          <el-select
-                            v-model="binding.operationCode"
-                            placeholder="选择接口操作"
-                            style="width: 100%"
-                            @change="handleActionOperationChange(binding)"
-                          >
-                            <el-option
-                              v-for="operation in actionOperations(binding)"
-                              :key="operation.code"
-                              :label="operation.name || operation.code"
-                              :value="operation.code"
-                              :disabled="actionOperationUnavailable(binding, operation)"
+                              v-for="item in actionInterfaces"
+                              :key="item.extensionId"
+                              :label="item.displayName || item.extensionKey"
+                              :value="item.extensionId"
                             >
                               <div class="business-option">
-                                <span>{{ operation.name || operation.code }}</span>
-                                <small>{{ actionOperationDescription(binding, operation) }}</small>
+                                <span>{{ item.displayName || item.extensionKey }}</span>
+                                <small>{{ actionInterfaceDescription(item) }}</small>
                               </div>
                             </el-option>
                           </el-select>
@@ -775,7 +727,7 @@
                           <template #label>
                             <ConfigHelpLabel
                               label="用于操作"
-                              content="是什么：用户执行哪个页面操作时调用该接口。何时使用：可选择已启用的标准操作，或使用接口操作自己的业务名称作为独立操作。结果：自定义组件只能调用这里明确发布的操作。"
+                              content="是什么：用户执行哪个页面操作时调用该接口。何时使用：可选择已启用的标准操作，或使用扩展接口自己的业务名称作为独立操作。结果：自定义组件只能调用这里明确发布的接口。"
                             />
                           </template>
                           <el-select v-model="binding.actionKey" placeholder="选择页面操作" style="width: 100%">
@@ -907,7 +859,7 @@
                   <template #label>
                     <ConfigHelpLabel
                       label="失败时"
-                      content="是什么：接口服务或组件不可用时的页面表现。何时使用：所有特殊处理都必须明确选择。结果：只显示错误、占位或隐藏，不会退化为查询全部或忽略权限。"
+                      content="是什么：扩展接口或组件不可用时的页面表现。何时使用：所有特殊处理都必须明确选择。结果：只显示错误、占位或隐藏，不会退化为查询全部或忽略权限。"
                     />
                   </template>
                   <el-radio-group v-model="editor.config.specialHandling.failurePolicy">
@@ -981,8 +933,11 @@ import { getFormsByEntity, getEntityFields, getFormFields } from '@/api/entityFo
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityRelationApi } from '@/api/entityRelation'
 import { uiCompositionApi } from '@/api/uiComposition'
-import { uiDataSourceApi } from '@/api/uiConfig'
-import { serviceOperations } from '@/components/ui-config/interfaceServiceModel'
+import { uiExtensionApi } from '@/api/uiConfig'
+import {
+  normalizeInterfaceExtension,
+  normalizeInterfaceExtensions
+} from '@/components/ui-config/interfaceExtensionModel'
 import {
   getCustomFormComponentOptions,
   getCustomFormComponentVersionOptions,
@@ -1132,8 +1087,8 @@ const targetLists = ref([])
 const targetFields = ref([])
 const targetContentFields = ref([])
 const sourceRelations = ref([])
-const services = ref([])
-const dataSourceCatalog = ref({ actionCommandPlanProviders: [] })
+const dataInterfaceOptions = ref([])
+const actionInterfaceOptions = ref([])
 const recommendedRelation = ref({ type: '' })
 const recommendationText = ref('')
 const testResult = ref(null)
@@ -1222,17 +1177,25 @@ const compatibleTargetFieldOptions = computed(() => {
   return targetFieldOptions.value.filter(option =>
     String(option.raw?.fieldType || '').toUpperCase() === String(source.fieldType).toUpperCase())
 })
-const availableServices = computed(() => services.value.filter(service => service.enabled !== false))
-const selectedService = computed(() => availableServices.value.find(service =>
-  String(service.id) === String(editor.config.specialHandling.interfaceService.serviceId)))
-const selectedServiceOperations = computed(() => selectedService.value
-  ? serviceOperations(selectedService.value).filter(operation =>
-      String(operation.kind || 'READ').toUpperCase() === 'READ')
-  : [])
-const selectedOperation = computed(() => selectedServiceOperations.value.find(operation =>
-  operation.code === editor.config.specialHandling.interfaceService.operationCode))
-const operationInputOptions = computed(() => schemaFieldOptions(selectedOperation.value?.inputSchema))
-const operationOutputOptions = computed(() => schemaFieldOptions(selectedOperation.value?.outputSchema))
+const dataInterfaces = computed(() =>
+  normalizeInterfaceExtensions(dataInterfaceOptions.value)
+    .filter(item => item.enabled && item.interfaceKind === 'READ')
+)
+const actionInterfaces = computed(() =>
+  normalizeInterfaceExtensions(actionInterfaceOptions.value)
+    .filter(item => item.enabled)
+)
+const selectedDataInterface = computed(() => dataInterfaces.value.find(item =>
+  String(item.extensionId) === String(
+    editor.config.specialHandling.interfaceService.extensionId
+  )
+))
+const interfaceInputOptions = computed(() =>
+  schemaFieldOptions(selectedDataInterface.value?.inputSchema)
+)
+const interfaceOutputOptions = computed(() =>
+  schemaFieldOptions(selectedDataInterface.value?.outputSchema)
+)
 const actionInputSourceOptions = computed(() => [
   ...sourceReadableFieldOptions.value.map(option => ({
     value: `source.${option.value}`,
@@ -1283,7 +1246,7 @@ const selectedCustomComponentSchema = computed(() => {
 const specialMode = computed(() => editor.config.specialHandling.mode || 'NONE')
 const useInterfaceService = computed(() => ['INTERFACE_SERVICE', 'BOTH'].includes(specialMode.value))
 const useDataInterfaceService = computed(() => editor.config.relation.type === 'INTERFACE_SERVICE'
-  || Boolean(editor.config.specialHandling.interfaceService.serviceId))
+  || Boolean(editor.config.specialHandling.interfaceService.extensionId))
 const useCustomComponent = computed(() => ['CUSTOM_COMPONENT', 'BOTH'].includes(specialMode.value))
 const supportsRelationshipMutation = computed(() => [
   'REFERENCE_FIELD',
@@ -1374,28 +1337,37 @@ function normalizeRows(response) {
   return []
 }
 
-function serviceScopeLabel(service) {
+function interfaceScopeLabel(item) {
   return {
     GLOBAL: '全部页面可用',
     ENTITY: '指定实体可用',
     FORM: '指定表单可用',
     LIST: '指定列表可用'
-  }[service.scopeType] || '受控范围'
+  }[item.scopeType] || '受控范围'
 }
 
 async function loadCommonCatalog() {
   catalogLoading.value = true
   try {
-    const [relations, serviceRows, catalog] = await Promise.all([
+    const [relations, dataRows, actionRows] = await Promise.all([
       props.sourceEntity.id
         ? entityRelationApi.list(props.sourceEntity.id).catch(() => [])
         : Promise.resolve([]),
-      uiDataSourceApi.list().catch(() => []),
-      uiDataSourceApi.catalog().catch(() => ({ actionCommandPlanProviders: [] }))
+      uiExtensionApi.availableInterfaces({
+        ownerType: String(props.ownerType).toUpperCase(),
+        ownerId: String(props.ownerId),
+        bindingCode: 'RELATED_CONTENT_RESOLVE'
+      }).catch(() => []),
+      uiExtensionApi.availableInterfaces({
+        ownerType: String(props.ownerType).toUpperCase(),
+        ownerId: String(props.ownerId),
+        bindingCode: 'RELATED_CONTENT_ACTION'
+      }).catch(() => [])
     ])
     sourceRelations.value = normalizeRows(relations)
-    services.value = normalizeRows(serviceRows)
-    dataSourceCatalog.value = catalog || { actionCommandPlanProviders: [] }
+    // 两种 bindingCode 由服务端分别按上下文和读写能力筛选，不能在前端合并后串用。
+    dataInterfaceOptions.value = normalizeRows(dataRows)
+    actionInterfaceOptions.value = normalizeRows(actionRows)
   } finally {
     catalogLoading.value = false
   }
@@ -1606,10 +1578,8 @@ function toggleSpecial(type, checked) {
   if (type === 'INTERFACE_SERVICE') {
     if (!checked) {
       Object.assign(editor.config.specialHandling.interfaceService, {
-        serviceId: '',
-        serviceName: '',
-        operationCode: '',
-        operationName: '',
+        extensionId: '',
+        extensionName: '',
         inputMappings: [],
         outputMappings: []
       })
@@ -1627,10 +1597,8 @@ function toggleDataInterfaceService(checked) {
     return
   }
   Object.assign(editor.config.specialHandling.interfaceService, {
-    serviceId: '',
-    serviceName: '',
-    operationCode: '',
-    operationName: '',
+    extensionId: '',
+    extensionName: '',
     inputMappings: [],
     outputMappings: []
   })
@@ -1640,10 +1608,8 @@ function addActionService() {
   updateSpecialMode({ service: true, component: useCustomComponent.value })
   editor.config.specialHandling.actionServices.push({
     actionKey: '',
-    serviceId: '',
-    serviceName: '',
-    operationCode: '',
-    operationName: '',
+    extensionId: '',
+    extensionName: '',
     inputMappings: [],
     outputMappings: [],
     failurePolicy: 'ERROR'
@@ -1654,114 +1620,66 @@ function removeActionService(index) {
   editor.config.specialHandling.actionServices.splice(index, 1)
 }
 
-function actionService(binding) {
-  return availableServices.value.find(service => String(service.id) === String(binding.serviceId))
+function actionInterface(binding) {
+  return actionInterfaces.value.find(item =>
+    String(item.extensionId) === String(binding.extensionId))
 }
 
-function actionOperations(binding) {
-  const service = actionService(binding)
-  return service ? serviceOperations(service).filter(operation =>
-    String(operation.contextType || '').toUpperCase() === String(props.ownerType || '').toUpperCase()) : []
-}
-
-function actionOperation(binding) {
-  return actionOperations(binding).find(operation => operation.code === binding.operationCode)
-}
-
-function actionPlanProviderCodes() {
-  return new Set((dataSourceCatalog.value.actionCommandPlanProviders || [])
-    .map(item => String(item.code || '').toUpperCase()))
-}
-
-function actionOperationUnavailable(binding, operation) {
-  if (String(operation?.kind || 'READ').toUpperCase() !== 'WRITE') return false
-  const service = actionService(binding)
-  return String(service?.sourceType || '').toUpperCase() !== 'REGISTERED_PROVIDER'
-    || !actionPlanProviderCodes().has(String(service?.providerCode || '').toUpperCase())
-}
-
-function actionOperationDescription(binding, operation) {
-  if (String(operation?.kind || 'READ').toUpperCase() === 'READ') {
+function actionInterfaceDescription(value) {
+  const item = normalizeInterfaceExtension(value)
+  if (item.interfaceKind === 'READ') {
     return '同步读取、校验或计算'
   }
-  return actionOperationUnavailable(binding, operation)
-    ? '外部或普通写入需异步任务，当前不可发布'
-    : '本地受控写入 · 重新鉴权并持久化回执'
+  return '受控写入 · 服务端重新鉴权并校验发布能力'
 }
 
 function actionKeyOptions(binding) {
   const enabled = actionOptions.filter(option =>
     ['VIEW', 'SELECT', 'LINK', 'UNLINK'].includes(option.value)
       && editor.config.actions.includes(option.value))
-  const operation = actionOperation(binding)
+  const item = actionInterface(binding)
   return [
     ...enabled,
-    ...(operation?.code ? [{
-      value: operation.code,
-      label: `${operation.name || operation.code}（独立操作）`
+    ...(item?.extensionKey ? [{
+      value: item.extensionKey,
+      label: `${item.displayName || item.extensionKey}（独立操作）`
     }] : [])
   ].filter((item, index, rows) => rows.findIndex(row => row.value === item.value) === index)
 }
 
 function actionInputOptions(binding) {
-  return schemaFieldOptions(actionOperation(binding)?.inputSchema)
+  return schemaFieldOptions(actionInterface(binding)?.inputSchema)
 }
 
 function actionOutputOptions(binding) {
-  return schemaFieldOptions(actionOperation(binding)?.outputSchema)
+  return schemaFieldOptions(actionInterface(binding)?.outputSchema)
 }
 
 function actionFailureOptions(binding) {
-  return String(actionOperation(binding)?.kind || 'READ').toUpperCase() === 'WRITE'
+  return actionInterface(binding)?.interfaceKind === 'WRITE'
     ? failureOptions.filter(option => option.value === 'ERROR')
     : failureOptions
 }
 
-function handleActionServiceChange(binding) {
-  const service = actionService(binding)
+function handleActionInterfaceChange(binding) {
+  const item = actionInterface(binding)
   Object.assign(binding, {
-    serviceName: service?.sourceName || service?.sourceCode || '',
-    operationCode: '',
-    operationName: '',
-    actionKey: '',
+    extensionName: item?.displayName || item?.extensionKey || '',
+    actionKey: item?.extensionKey || '',
     inputMappings: [],
     outputMappings: [],
     failurePolicy: 'ERROR'
   })
 }
 
-function handleActionOperationChange(binding) {
-  const operation = actionOperation(binding)
-  binding.operationName = operation?.name || operation?.code || ''
-  binding.actionKey = operation?.code || ''
-  binding.inputMappings = []
-  binding.outputMappings = []
-  if (String(operation?.kind || 'READ').toUpperCase() === 'WRITE') {
-    binding.failurePolicy = 'ERROR'
-  }
-}
-
-function handleServiceChange(id) {
-  const service = availableServices.value.find(item => String(item.id) === String(id))
+function handleDataInterfaceChange(id) {
+  const item = dataInterfaces.value.find(value =>
+    String(value.extensionId) === String(id))
   Object.assign(editor.config.specialHandling.interfaceService, {
-    serviceName: service?.sourceName || service?.sourceCode || '',
-    operationCode: '',
-    operationName: '',
+    extensionName: item?.displayName || item?.extensionKey || '',
     inputMappings: [],
     outputMappings: []
   })
-  const operations = service ? serviceOperations(service) : []
-  if (operations.length === 1) {
-    editor.config.specialHandling.interfaceService.operationCode = operations[0].code
-    editor.config.specialHandling.interfaceService.operationName = operations[0].name || operations[0].code
-  }
-}
-
-function handleOperationChange(code) {
-  const operation = selectedServiceOperations.value.find(item => item.code === code)
-  editor.config.specialHandling.interfaceService.operationName = operation?.name || code || ''
-  editor.config.specialHandling.interfaceService.inputMappings = []
-  editor.config.specialHandling.interfaceService.outputMappings = []
 }
 
 function handleCustomComponentChange(name) {

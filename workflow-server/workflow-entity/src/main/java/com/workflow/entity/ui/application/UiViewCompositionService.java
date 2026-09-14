@@ -20,16 +20,15 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.ui.api.request.UiViewCompositionSaveRequest;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionMutationResultDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionTestDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionValidationDTO;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiViewCompositionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiViewComposition;
 import lombok.RequiredArgsConstructor;
@@ -91,9 +90,9 @@ public class UiViewCompositionService {
     private final EntityPublishedSnapshotService entitySnapshotService;
     private final UiConfigReleaseMapper releaseMapper;
     /** 保留定义 Mapper 作为设计态服务组件，钉版运行不依赖它。 */
-    private final UiDataSourceDefinitionMapper dataSourceMapper;
+    private final UiExtensionDefinitionMapper dataSourceMapper;
     private final UiConfigurationAccessService accessService;
-    private final UiDataSourceService dataSourceService;
+    private final UiInterfaceExtensionService dataSourceService;
     private final UiExtensionDefinitionService extensionService;
     private final UiViewCompositionConfigValidator configValidator;
     private final UiViewCompositionContainmentGuard containmentGuard;
@@ -156,6 +155,7 @@ public class UiViewCompositionService {
             Map<String, Object> config = configValidator.validate(
                     readConfig(source.getConfigDocument()))
                     .normalizedConfig();
+            normalizeDraftInterfaceReferences(config);
             validateAnchorPlacement(type, anchorType, config);
 
             UiViewComposition copied = new UiViewComposition();
@@ -320,10 +320,12 @@ public class UiViewCompositionService {
         OwnerState owner = requireOwner(ownerType, ownerId, false);
         UiViewCompositionConfigValidator.ValidationResult validated =
                 configValidator.validate(config);
-        validateReferences(owner, validated.normalizedConfig());
+        Map<String, Object> normalized = validated.normalizedConfig();
+        normalizeDraftInterfaceReferences(normalized);
+        validateReferences(owner, normalized);
         return UiViewCompositionValidationDTO.builder()
                 .valid(true)
-                .normalizedConfig(validated.normalizedConfig())
+                .normalizedConfig(normalized)
                 .summary(validated.summary())
                 .warnings(validated.warnings())
                 .build();
@@ -334,7 +336,7 @@ public class UiViewCompositionService {
      *
      * <p>来源和目标查询都经过实体数据权限引擎。任何必填关系值缺失都会返回
      * “无法形成查询条件”，不会退化为无条件查询；响应只暴露最小记录标识。
-     * 接口服务关联通过管理预览入口执行已注册 READ 操作。</p>
+     * 接口扩展关联通过管理预览入口执行已注册的 READ 接口。</p>
      */
     @Transactional(readOnly = true)
     public UiViewCompositionTestDTO test(
@@ -345,8 +347,9 @@ public class UiViewCompositionService {
         OwnerState owner = requireOwner(ownerType, ownerId, false);
         UiViewCompositionConfigValidator.ValidationResult validated =
                 configValidator.validate(config);
-        validateReferences(owner, validated.normalizedConfig());
         Map<String, Object> normalized = validated.normalizedConfig();
+        normalizeDraftInterfaceReferences(normalized);
+        validateReferences(owner, normalized);
         EntityDefinition sourceDefinition = requireDefinition(owner.entityId());
         EntityDataDTO source = loadAccessibleSourceSample(
                 sourceDefinition.getEntityCode(), sourceRecordId);
@@ -449,7 +452,7 @@ public class UiViewCompositionService {
     /**
      * 将历史发布中的关联内容投影为“按当前依赖重新钉定”的稳定比较副本。
      *
-     * <p>撤销预检需要区分用户草稿变更和目标资产/接口服务的依赖漂移。本方法
+     * <p>撤销预检需要区分用户草稿变更和目标资产/接口扩展的依赖漂移。本方法
      * 不写数据库，保留关联内容自身稳定字段，只把目标 ACTIVE release 和当前
      * 接口 revision 换成权威值，使 projected hash 与恢复后再次调用
      * {@link #snapshot(String, String)} 的结果一致。</p>
@@ -653,6 +656,8 @@ public class UiViewCompositionService {
                     item.get("config"), "关联内容发布快照配置");
             Map<String, Object> normalizedConfig = configValidator.validate(config)
                     .normalizedConfig();
+            // 撤销恢复必须允许已停用的历史接口先回到草稿；重新发布时再校验 ACTIVE。
+            normalizeReadableInterfaceReferences(normalizedConfig);
             validateAnchorPlacement(type, anchorType, normalizedConfig);
 
             UiViewComposition value = new UiViewComposition();
@@ -675,7 +680,7 @@ public class UiViewCompositionService {
     /**
      * 用配置迁移包中的便携描述替换目标宿主草稿。
      *
-     * <p>迁移调用方必须先把实体编码、内容编码、节点编码和接口服务编码解析为
+     * <p>迁移调用方必须先把实体编码、内容编码、节点编码和接口扩展编码解析为
      * 目标环境 ID。本方法会重新校验目标环境中的表单、列表、接口与组件，且始终
      * 为关联内容生成新的数据库身份；源环境 ID、revision 和发布版本均不会复用。
      * 整个宿主只递增一次 revision，便于随后重新发布一个完整版本。</p>
@@ -717,6 +722,7 @@ public class UiViewCompositionService {
             Map<String, Object> normalizedConfig = configValidator.validate(
                     requireMap(item.get("config"), "关联内容迁移配置"))
                     .normalizedConfig();
+            normalizeDraftInterfaceReferences(normalizedConfig);
             validateAnchorPlacement(owner.type(), anchorType, normalizedConfig);
             validateReferences(owner, normalizedConfig);
 
@@ -755,14 +761,15 @@ public class UiViewCompositionService {
         }
         UiViewCompositionConfigValidator.ValidationResult validated =
                 configValidator.validate(request.getConfig());
-        validateAnchorPlacement(owner.type(), anchorType,
-                validated.normalizedConfig());
-        validateReferences(owner, validated.normalizedConfig());
+        Map<String, Object> normalized = validated.normalizedConfig();
+        normalizeDraftInterfaceReferences(normalized);
+        validateAnchorPlacement(owner.type(), anchorType, normalized);
+        validateReferences(owner, normalized);
         return new ValidatedDraft(
                 compositionKey,
                 anchorType,
                 anchorKey,
-                validated.normalizedConfig(),
+                normalized,
                 orderKey);
     }
 
@@ -817,6 +824,79 @@ public class UiViewCompositionService {
                 config.get("specialHandling"), "特殊处理"));
     }
 
+    /**
+     * 将关联内容草稿中的接口引用收敛为 extensionId。
+     *
+     * <p>旧 serviceId + operationCode 仅用来查找 V088 迁移产生的扩展记录；
+     * 新增、修改、复制、撤销恢复与迁移导入落库前都经过该方法，
+     * 因此可变配置不会再写回多操作服务形状。</p>
+     */
+    private void normalizeDraftInterfaceReferences(
+            Map<String, Object> config) {
+        normalizeInterfaceReferences(config, true);
+    }
+
+    private void normalizeReadableInterfaceReferences(
+            Map<String, Object> config) {
+        normalizeInterfaceReferences(config, false);
+    }
+
+    private void normalizeInterfaceReferences(
+            Map<String, Object> config,
+            boolean executableRequired) {
+        Map<String, Object> special = stringMap(
+                requireMap(config.get("specialHandling"), "特殊处理"));
+        if (special.get("interfaceService") instanceof Map<?, ?> raw) {
+            special.put(
+                    "interfaceService",
+                    normalizeDraftInterfaceReference(
+                            stringMap(raw), executableRequired));
+        }
+        if (special.get("actionServices") instanceof List<?> rawActions) {
+            List<Map<String, Object>> actions = new ArrayList<>();
+            for (Object rawAction : rawActions) {
+                actions.add(normalizeDraftInterfaceReference(
+                        stringMap(requireMap(rawAction, "动作接口")),
+                        executableRequired));
+            }
+            special.put("actionServices", List.copyOf(actions));
+        }
+        config.put("specialHandling", special);
+    }
+
+    private Map<String, Object> normalizeDraftInterfaceReference(
+            Map<String, Object> reference,
+            boolean executableRequired) {
+        String extensionId = blankToNull(reference.get("extensionId"));
+        String referenceId = firstNonBlank(
+                extensionId, reference.get("serviceId"));
+        if (!StringUtils.hasText(referenceId)) {
+            return reference;
+        }
+        String legacyOperationCode = blankToNull(
+                reference.get("operationCode"));
+        // 新配置的 extensionId 已是唯一引用；存在旧 serviceId 时才需要
+        // legacy pair 查询。真正的可执行性仍由 validateSpecialHandling 校验。
+        if (!StringUtils.hasText(extensionId)) {
+            UiExtensionDefinition definition = executableRequired
+                    ? dataSourceService.requireExecutableDefinition(
+                            referenceId, legacyOperationCode)
+                    : dataSourceService.resolveDefinitionReference(
+                            referenceId, legacyOperationCode);
+            extensionId = definition.getId();
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>(reference);
+        normalized.put("extensionId", extensionId);
+        for (String legacy : List.of(
+                "serviceId", "operationCode", "sourceCode", "serviceName",
+                "serviceRevision", "extensionKey", "extensionRevision",
+                "operationName", "executableSnapshot",
+                "definitionHash")) {
+            normalized.remove(legacy);
+        }
+        return normalized;
+    }
+
     private EntityDataDTO loadAccessibleSourceSample(
             String entityCode,
             String sourceRecordId) {
@@ -837,18 +917,21 @@ public class UiViewCompositionService {
         Map<String, Object> special = requireMap(
                 config.get("specialHandling"), "特殊处理");
         Map<String, Object> service = requireMap(
-                special.get("interfaceService"), "接口服务");
-        UiDataSourceExecuteRequest request = new UiDataSourceExecuteRequest();
+                special.get("interfaceService"), "接口扩展");
+        String extensionId = firstNonBlank(
+                service.get("extensionId"), service.get("serviceId"));
+        String operationCode = blankToNull(service.get("operationCode"));
+        UiExtensionExecuteRequest request = new UiExtensionExecuteRequest();
         request.setUsage(UiDataSourceUsages.RELATED_CONTENT_RESOLVE);
-        request.setOperationCode(String.valueOf(service.get("operationCode")));
+        request.setOperationCode(operationCode);
         request.setConfigType(owner.type());
         request.setConfigId(owner.id());
         request.setEntityCode(source.getEntityCode());
         request.setTargetType("OWNER");
         request.setInput(mapInterfaceInput(service, source));
         Object response = dataSourceService.previewRelatedContentReadOperation(
-                String.valueOf(service.get("serviceId")),
-                String.valueOf(service.get("operationCode")),
+                extensionId,
+                operationCode,
                 request);
         InterfaceTestResolution resolution = resolveInterfaceTestTarget(
                 config, service, response);
@@ -876,9 +959,8 @@ public class UiViewCompositionService {
         if (!(special.get("interfaceService") instanceof Map<?, ?> raw)) {
             return false;
         }
-        return StringUtils.hasText(blankToNull(raw.get("serviceId")))
-                && StringUtils.hasText(blankToNull(
-                raw.get("operationCode")));
+        return StringUtils.hasText(firstNonBlank(
+                raw.get("extensionId"), raw.get("serviceId")));
     }
 
     /**
@@ -948,11 +1030,11 @@ public class UiViewCompositionService {
         if (matchNone) {
             if (StringUtils.hasText(directRecordId) || !filters.isEmpty()) {
                 throw interfaceOutputFailure(
-                        "接口服务不能同时返回空结果和目标记录或筛选条件");
+                        "接口扩展不能同时返回空结果和目标记录或筛选条件");
             }
             return new InterfaceTestResolution(
                     0, List.of(), Map.of(),
-                    "接口服务已执行，并明确返回没有匹配数据");
+                    "接口扩展已执行，并明确返回没有匹配数据");
         }
 
         if ("FORM".equals(contentType)
@@ -963,7 +1045,7 @@ public class UiViewCompositionService {
                     1,
                     List.of(record.getId()),
                     Map.of(),
-                    "接口服务已执行，并在当前用户权限下匹配到 1 条目标数据");
+                    "接口扩展已执行，并在当前用户权限下匹配到 1 条目标数据");
         }
 
         if ("LIST".equals(contentType)
@@ -973,7 +1055,7 @@ public class UiViewCompositionService {
         }
         if (filters.isEmpty()) {
             throw interfaceOutputFailure(
-                    "接口服务未返回目标记录、筛选条件或明确的空结果，平台不会执行无条件查询");
+                    "接口扩展未返回目标记录、筛选条件或明确的空结果，平台不会执行无条件查询");
         }
 
         Map<String, Object> safeFilters = normalizeInterfaceFilters(
@@ -986,7 +1068,7 @@ public class UiViewCompositionService {
                 "FORM".equals(contentType) ? 2 : 10);
         if ("FORM".equals(contentType) && page.getTotal() > 1) {
             throw interfaceOutputFailure(
-                    "接口服务筛选条件匹配到多条目标数据，请改用列表或收紧条件");
+                    "接口扩展筛选条件匹配到多条目标数据，请改用列表或收紧条件");
         }
         List<String> ids = page.getRecords().stream()
                 .map(EntityDataDTO::getId)
@@ -998,8 +1080,8 @@ public class UiViewCompositionService {
                 ids,
                 safeFilters,
                 page.getTotal() == 0
-                        ? "接口服务已执行，但当前用户权限下没有匹配的目标数据"
-                        : "接口服务已执行，并在当前用户权限下匹配到 "
+                        ? "接口扩展已执行，但当前用户权限下没有匹配的目标数据"
+                        : "接口扩展已执行，并在当前用户权限下匹配到 "
                         + page.getTotal() + " 条目标数据");
     }
 
@@ -1007,7 +1089,7 @@ public class UiViewCompositionService {
             Map<String, Object> service,
             Object response) {
         if (!(response instanceof Map<?, ?> rawResponse)) {
-            throw interfaceOutputFailure("接口服务返回值必须是对象");
+            throw interfaceOutputFailure("接口扩展返回值必须是对象");
         }
         Map<String, Object> source = stringMap(rawResponse);
         List<Map<String, Object>> mappings = mappingList(
@@ -1122,7 +1204,7 @@ public class UiViewCompositionService {
             Map<String, Object> source) {
         if (source.size() > MAX_INTERFACE_FILTERS) {
             throw interfaceMappingFailure(
-                    "接口服务筛选条件不能超过 "
+                    "接口扩展筛选条件不能超过 "
                             + MAX_INTERFACE_FILTERS + " 项");
         }
         EntityPublishedSnapshot schema = entitySnapshotService
@@ -1138,7 +1220,7 @@ public class UiViewCompositionService {
                         Objects.equals(base, field.getFieldCode()));
                 if (!exists) {
                     throw interfaceMappingFailure(
-                            "接口服务返回了目标实体不存在的筛选字段: " + base);
+                            "接口扩展返回了目标实体不存在的筛选字段: " + base);
                 }
             }
             bases.add(base);
@@ -1150,7 +1232,7 @@ public class UiViewCompositionService {
             boolean range = start != null || end != null;
             if (range && (start == null || end == null)) {
                 throw interfaceMappingFailure(
-                        "接口服务范围筛选必须同时返回起始值和结束值: " + base);
+                        "接口扩展范围筛选必须同时返回起始值和结束值: " + base);
             }
             String operator = normalize(String.valueOf(
                     source.getOrDefault(base + "_op", "")));
@@ -1161,27 +1243,27 @@ public class UiViewCompositionService {
             }
             if (!INTERFACE_FILTER_OPERATORS.contains(operator)) {
                 throw interfaceMappingFailure(
-                        "接口服务返回了不支持的筛选操作符: " + operator);
+                        "接口扩展返回了不支持的筛选操作符: " + operator);
             }
             result.put(base + "_op", operator);
             if (range != "BETWEEN".equals(operator)) {
                 throw interfaceMappingFailure(range
-                        ? "接口服务范围筛选只能使用 BETWEEN: " + base
-                        : "接口服务 BETWEEN 筛选必须返回起始值和结束值: " + base);
+                        ? "接口扩展范围筛选只能使用 BETWEEN: " + base
+                        : "接口扩展 BETWEEN 筛选必须返回起始值和结束值: " + base);
             }
             if (!range && value == null) {
                 throw interfaceMappingFailure(
-                        "接口服务筛选条件缺少字段值: " + base);
+                        "接口扩展筛选条件缺少字段值: " + base);
             }
             if (value instanceof Collection<?>
                     && !"IN".equals(operator)) {
                 throw interfaceMappingFailure(
-                        "接口服务集合筛选只能使用 IN: " + base);
+                        "接口扩展集合筛选只能使用 IN: " + base);
             }
             if ("IN".equals(operator)
                     && !(value instanceof Collection<?>)) {
                 throw interfaceMappingFailure(
-                        "接口服务 IN 筛选必须返回简单值数组: " + base);
+                        "接口扩展 IN 筛选必须返回简单值数组: " + base);
             }
         }
         for (Map.Entry<String, Object> entry : result.entrySet()) {
@@ -1198,18 +1280,18 @@ public class UiViewCompositionService {
             Object value) {
         if (value == null || value instanceof Map<?, ?>) {
             throw interfaceMappingFailure(
-                    "接口服务筛选值无效: " + key);
+                    "接口扩展筛选值无效: " + key);
         }
         if (value instanceof Collection<?> collection) {
             if (collection.isEmpty()
                     || collection.size() > MAX_INTERFACE_IN_VALUES) {
                 throw interfaceMappingFailure(
-                        "接口服务筛选集合为空或数量超过限制: " + key);
+                        "接口扩展筛选集合为空或数量超过限制: " + key);
             }
             for (Object item : collection) {
                 if (!simpleInterfaceFilterValue(item)) {
                     throw interfaceMappingFailure(
-                            "接口服务筛选集合只能包含简单值: " + key);
+                            "接口扩展筛选集合只能包含简单值: " + key);
                 }
             }
             return;
@@ -1218,7 +1300,7 @@ public class UiViewCompositionService {
                 || value instanceof String text
                 && !StringUtils.hasText(text)) {
             throw interfaceMappingFailure(
-                    "接口服务筛选值只能是非空字符串、数字或布尔值: " + key);
+                    "接口扩展筛选值只能是非空字符串、数字或布尔值: " + key);
         }
     }
 
@@ -1230,13 +1312,13 @@ public class UiViewCompositionService {
 
     private String interfaceFilterBase(String key) {
         if (!StringUtils.hasText(key)) {
-            throw interfaceMappingFailure("接口服务筛选字段不能为空");
+            throw interfaceMappingFailure("接口扩展筛选字段不能为空");
         }
         for (String suffix : List.of("_start", "_end", "_op")) {
             if (key.endsWith(suffix)) {
                 String base = key.substring(0, key.length() - suffix.length());
                 if (!StringUtils.hasText(base)) {
-                    throw interfaceMappingFailure("接口服务筛选字段不能为空");
+                    throw interfaceMappingFailure("接口扩展筛选字段不能为空");
                 }
                 return base;
             }
@@ -1438,42 +1520,37 @@ public class UiViewCompositionService {
             Map<String, Object> special) {
         if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
             Map<String, Object> service = stringMap(rawService);
-            String serviceId = String.valueOf(service.get("serviceId"));
-            String operationCode = String.valueOf(service.get("operationCode"));
-            Map<String, Object> operation = dataSourceService.operations(serviceId)
-                    .stream()
-                    .filter(item -> Objects.equals(
-                            operationCode, String.valueOf(item.get("code"))))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "接口服务操作不存在: " + operationCode));
-            String kind = normalize(String.valueOf(
-                    operation.getOrDefault("kind", "READ")));
+            UiExtensionDefinition definition = dataSourceService
+                    .requireExecutableDefinition(
+                            firstNonBlank(
+                                    service.get("extensionId"),
+                                    service.get("serviceId")),
+                            blankToNull(service.get("operationCode")));
+            String kind = normalize(definition.getInterfaceKind());
             if (!"READ".equals(kind)) {
                 throw new IllegalArgumentException(
-                        "关联内容特殊处理只允许选择 READ 接口操作");
+                        "关联内容特殊处理只允许选择 READ 接口");
             }
-            String contextType = normalize(String.valueOf(
-                    operation.get("contextType")));
+            String contextType = normalize(
+                    definition.getInterfaceContextType());
             if (!ownerType.equals(contextType)) {
                 throw new IllegalArgumentException(
-                        "接口操作上下文必须与当前" + ownerType + "配置一致");
+                        "接口上下文必须与当前" + ownerType + "配置一致");
             }
         }
         for (Map<String, Object> service : mappingList(
                 special.get("actionServices"))) {
-            UiDataSourceService.ActionOperationDescriptor operation =
-                    dataSourceService.validateActionOperation(
-                            String.valueOf(service.get("serviceId")),
-                            String.valueOf(service.get("operationCode")),
+            UiInterfaceExtensionService.ActionOperationDescriptor operation =
+                    dataSourceService.validateActionExtension(
+                            firstNonBlank(service.get("extensionId")),
                             ownerType);
-            if ("WRITE".equals(operation.operationKind())
+            if ("WRITE".equals(operation.interfaceKind())
                     && !"ERROR".equals(normalize(String.valueOf(
                     service.getOrDefault("failurePolicy", "ERROR"))))) {
                 throw new IllegalArgumentException(
                         "本地写入失败时必须停止操作，不能隐藏错误或显示占位");
             }
-            if ("WRITE".equals(operation.operationKind())
+            if ("WRITE".equals(operation.interfaceKind())
                     && Set.of("VIEW", "SELECT", "CREATE", "EDIT",
                     "LINK", "UNLINK", "SAVE_WITH_FORM").contains(
                     normalize(String.valueOf(service.get("actionKey"))))) {
@@ -1629,17 +1706,17 @@ public class UiViewCompositionService {
         }
         for (Map<String, Object> service : mappingList(
                 special.get("actionServices"))) {
-            UiDataSourceService.ActionOperationDescriptor operation =
+            UiInterfaceExtensionService.ActionOperationDescriptor operation =
                     validatePinnedActionService(
                             ownerType, service, label);
-            if ("WRITE".equals(operation.operationKind())
+            if ("WRITE".equals(operation.interfaceKind())
                     && !"ERROR".equals(normalize(String.valueOf(
                     service.getOrDefault("failurePolicy", "ERROR"))))) {
                 throw new BusinessConflictException(
                         "UI_VIEW_COMPOSITION_WRITE_FAILURE_POLICY_INVALID",
                         label + "本地写入失败时必须停止操作");
             }
-            if ("WRITE".equals(operation.operationKind())
+            if ("WRITE".equals(operation.interfaceKind())
                     && Set.of("VIEW", "SELECT", "CREATE", "EDIT",
                     "LINK", "UNLINK", "SAVE_WITH_FORM").contains(
                     normalize(String.valueOf(service.get("actionKey"))))) {
@@ -2262,19 +2339,23 @@ public class UiViewCompositionService {
             String ownerType,
             Map<String, Object> service,
             String label) {
-        String serviceId = requireText(
-                service.get("serviceId"), 64, label + "接口服务");
+        boolean extensionReference = StringUtils.hasText(
+                blankToNull(service.get("extensionId")));
+        String identityKey = extensionReference
+                ? "extensionKey" : "sourceCode";
+        String revisionKey = extensionReference
+                ? "extensionRevision" : "serviceRevision";
         String sourceCode = requireText(
-                service.get("sourceCode"), 100, label + "接口服务编码");
-        if (!(service.get("serviceRevision") instanceof Number number)
+                service.get(identityKey), 255,
+                label + (extensionReference ? "接口扩展编码" : "历史接口服务编码"));
+        if (!(service.get(revisionKey) instanceof Number number)
                 || number.intValue() < 1
                 || number.doubleValue() != number.intValue()) {
             throw new IllegalArgumentException(
-                    label + "接口服务修订号必须为正整数");
+                    label + (extensionReference ? "接口扩展" : "历史接口服务")
+                            + "修订号必须为正整数");
         }
         int serviceRevision = number.intValue();
-        String operationCode = requireText(
-                service.get("operationCode"), 100, label + "接口操作");
         String snapshot = requireText(
                 service.get("executableSnapshot"),
                 JsonDocumentCodec.DEFAULT_MAX_LENGTH,
@@ -2283,13 +2364,26 @@ public class UiViewCompositionService {
                 service.get("definitionHash"),
                 64,
                 label + "接口操作哈希");
+        if (extensionReference) {
+            dataSourceService.validatePinnedReadExtension(
+                    snapshot,
+                    hash,
+                    requireText(service.get("extensionId"), 64,
+                            label + "接口扩展"),
+                    sourceCode,
+                    serviceRevision,
+                    ownerType);
+            return;
+        }
         dataSourceService.validatePinnedReadOperation(
                 snapshot,
                 hash,
-                serviceId,
+                requireText(service.get("serviceId"), 64,
+                        label + "历史接口服务"),
                 sourceCode,
                 serviceRevision,
-                operationCode,
+                requireText(service.get("operationCode"), 100,
+                        label + "历史接口操作"),
                 ownerType);
     }
 
@@ -2450,12 +2544,16 @@ public class UiViewCompositionService {
                 config.get("specialHandling"), "特殊处理");
         if (special.get("interfaceService") instanceof Map<?, ?> raw) {
             Map<String, Object> service = stringMap(raw);
-            UiDataSourceService.PublishedOperationSnapshot operation =
-                    dataSourceService.freezeOperation(
-                            String.valueOf(service.get("serviceId")),
-                            String.valueOf(service.get("operationCode")));
-            service.put("sourceCode", operation.sourceCode());
-            service.put("serviceRevision", operation.serviceRevision());
+            UiInterfaceExtensionService.PublishedOperationSnapshot operation =
+                    dataSourceService.freezeExtension(
+                            firstNonBlank(service.get("extensionId")));
+            service.put("extensionId", operation.extensionId());
+            service.remove("serviceId");
+            service.remove("operationCode");
+            service.remove("sourceCode");
+            service.remove("serviceRevision");
+            service.put("extensionKey", operation.extensionKey());
+            service.put("extensionRevision", operation.extensionRevision());
             service.put("executableSnapshot", operation.document());
             service.put("definitionHash", operation.hash());
             special.put("interfaceService", service);
@@ -2464,13 +2562,17 @@ public class UiViewCompositionService {
             List<Map<String, Object>> pinnedActions = new ArrayList<>();
             for (Object rawAction : rawActions) {
                 Map<String, Object> service = stringMap(
-                        requireMap(rawAction, "动作接口服务"));
-                UiDataSourceService.PublishedOperationSnapshot operation =
-                        dataSourceService.freezeActionOperation(
-                                String.valueOf(service.get("serviceId")),
-                                String.valueOf(service.get("operationCode")));
-                service.put("sourceCode", operation.sourceCode());
-                service.put("serviceRevision", operation.serviceRevision());
+                        requireMap(rawAction, "动作接口扩展"));
+                UiInterfaceExtensionService.PublishedOperationSnapshot operation =
+                        dataSourceService.freezeActionExtension(
+                                firstNonBlank(service.get("extensionId")));
+                service.put("extensionId", operation.extensionId());
+                service.remove("serviceId");
+                service.remove("operationCode");
+                service.remove("sourceCode");
+                service.remove("serviceRevision");
+                service.put("extensionKey", operation.extensionKey());
+                service.put("extensionRevision", operation.extensionRevision());
                 service.put("executableSnapshot", operation.document());
                 service.put("definitionHash", operation.hash());
                 pinnedActions.add(service);
@@ -2506,7 +2608,7 @@ public class UiViewCompositionService {
         }
     }
 
-    private UiDataSourceService.ActionOperationDescriptor
+    private UiInterfaceExtensionService.ActionOperationDescriptor
             validatePinnedActionService(
             String ownerType,
             Map<String, Object> service,
@@ -2519,8 +2621,21 @@ public class UiViewCompositionService {
                 service.get("definitionHash"),
                 64,
                 label + "动作接口操作哈希");
-        Integer revision = service.get("serviceRevision") instanceof Number value
+        boolean extensionReference = StringUtils.hasText(
+                blankToNull(service.get("extensionId")));
+        Object revisionValue = service.get(extensionReference
+                ? "extensionRevision" : "serviceRevision");
+        Integer revision = revisionValue instanceof Number value
                 ? value.intValue() : null;
+        if (extensionReference) {
+            return dataSourceService.validatePinnedActionExtension(
+                    snapshot,
+                    hash,
+                    String.valueOf(service.get("extensionId")),
+                    String.valueOf(service.get("extensionKey")),
+                    revision,
+                    ownerType);
+        }
         return dataSourceService.validatePinnedActionOperation(
                 snapshot,
                 hash,
@@ -2827,6 +2942,9 @@ public class UiViewCompositionService {
         if (value == null) {
             throw new IllegalStateException("关联内容保存后未能重新读取");
         }
+        Map<String, Object> config = readConfig(value.getConfigDocument());
+        // 旧草稿回显时保留已停用接口供用户修正，但不允许其真正执行或发布。
+        normalizeReadableInterfaceReferences(config);
         return UiViewCompositionDTO.builder()
                 .id(value.getId())
                 .ownerType(value.getOwnerType())
@@ -2834,7 +2952,7 @@ public class UiViewCompositionService {
                 .compositionKey(value.getCompositionKey())
                 .anchorType(value.getAnchorType())
                 .anchorKey(value.getAnchorKey())
-                .config(readConfig(value.getConfigDocument()))
+                .config(config)
                 .orderKey(value.getOrderKey())
                 .revision(value.getRevision())
                 .ownerRevision(ownerRevision)

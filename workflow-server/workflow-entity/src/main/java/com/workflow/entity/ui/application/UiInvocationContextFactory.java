@@ -13,8 +13,8 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapp
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -38,9 +38,9 @@ public class UiInvocationContextFactory {
     private final EntityListConfigMapper listMapper;
 
     public UiInvocationContext create(
-            UiDataSourceDefinition definition,
+            UiExtensionDefinition definition,
             UiDataSourceExecutionAuthorization authorization,
-            UiDataSourceExecuteRequest request) {
+            UiExtensionExecuteRequest request) {
         Map<String, Object> input = request == null || request.getInput() == null
                 ? Map.of()
                 : request.getInput();
@@ -61,7 +61,7 @@ public class UiInvocationContextFactory {
                         : authorization.dataScopePlan().releaseVersion());
         CommonInvocationContext common = new CommonInvocationContext(
                 definition.getId(),
-                definition.getOperationCode(),
+                definition.getProviderOperationCode(),
                 authorization.usage(),
                 normalizedOwnerType(authorization.configType()),
                 authorization.configId(),
@@ -95,7 +95,7 @@ public class UiInvocationContextFactory {
                     normalize(authorization.usage()),
                     text(input.get("recordId")));
             default -> throw new IllegalStateException(
-                    "接口操作上下文类型无效: "
+                    "接口扩展上下文类型无效: "
                             + definition.getOperationContextType());
         };
     }
@@ -104,7 +104,7 @@ public class UiInvocationContextFactory {
             CommonInvocationContext common,
             EntityDescriptor entity,
             UiDataSourceExecutionAuthorization authorization,
-            UiDataSourceExecuteRequest request,
+            UiExtensionExecuteRequest request,
             Map<String, Object> input) {
         EntityForm form = formMapper.selectById(authorization.configId());
         if (form == null) {
@@ -156,7 +156,7 @@ public class UiInvocationContextFactory {
             CommonInvocationContext common,
             EntityDescriptor entity,
             UiDataSourceExecutionAuthorization authorization,
-            UiDataSourceExecuteRequest request,
+            UiExtensionExecuteRequest request,
             Map<String, Object> input) {
         EntityListConfig list = listMapper.selectById(
                 authorization.configId());

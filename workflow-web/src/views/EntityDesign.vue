@@ -2157,7 +2157,7 @@ watch(showSystemFields, (visible) => {
   }
 })
 
-// 支持“使用情况”等外部页面深链到默认事件，同时阻止只读用户和系统实体进入编辑区域。
+// 兼容历史书签深链到默认事件，同时阻止只读用户和系统实体进入编辑区域。
 watch(() => route.query.tab, (value) => {
   const requestedTab = normalizeEntityDesignTab(value)
   activeDesignTab.value = requestedTab === 'events'

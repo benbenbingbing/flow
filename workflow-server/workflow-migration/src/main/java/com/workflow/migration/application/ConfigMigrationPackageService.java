@@ -12,9 +12,7 @@ import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.migration.infrastructure.persistence.record.ConfigAssetBaseline;
 import com.workflow.migration.infrastructure.persistence.record.ConfigEnvironmentMapping;
@@ -86,7 +84,6 @@ public class ConfigMigrationPackageService {
     private final EntityFieldMapper fieldMapper;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final EntityFormMapper formMapper;
-    private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
     private final UiExtensionDefinitionMapper extensionDefinitionMapper;
     private final ProcessDefinitionConfigMapper processMapper;
     private final SysDictMapper dictMapper;
@@ -865,28 +862,37 @@ public class ConfigMigrationPackageService {
             }
             return hasMapping(type, key);
         }
-        if ("INTERFACE_SERVICE".equals(type)) {
+        if ("INTERFACE".equals(type) || "INTERFACE_SERVICE".equals(type)) {
             if (packageAssets.values().stream().anyMatch(asset ->
                     dependencyProvidedBySnapshot(
                             asset.snapshot(), dependency, type, key))) {
                 return true;
             }
-            return dataSourceDefinitionMapper.selectOne(
-                    new LambdaQueryWrapper<UiDataSourceDefinition>()
-                            .eq(UiDataSourceDefinition::getSourceCode, key)
-                            .eq(UiDataSourceDefinition::getDeleted, 0)
+            return extensionDefinitionMapper.selectOne(
+                    new LambdaQueryWrapper<UiExtensionDefinition>()
+                            .eq(UiExtensionDefinition::getExtensionType,
+                                    "INTERFACE")
+                            .eq(UiExtensionDefinition::getExtensionKey, key)
+                            .eq(UiExtensionDefinition::getDeleted, 0)
                             .last("LIMIT 1")) != null;
         }
         return true;
     }
 
-    /** 判断接口服务或组件是否已作为所属实体快照的内嵌定义随包迁移。 */
+    /** 判断接口扩展或组件是否已作为所属实体快照的内嵌定义随包迁移。 */
     private boolean dependencyProvidedBySnapshot(
             Map<String, Object> snapshot,
             Map<String, Object> dependency,
             String type,
             String key) {
+        if ("INTERFACE".equals(type)) {
+            return documents.readMapList(
+                            snapshot.get("interfaceExtensions")).stream()
+                    .anyMatch(value -> Objects.equals(
+                            key, String.valueOf(value.get("extensionKey"))));
+        }
         if ("INTERFACE_SERVICE".equals(type)) {
+            // 旧迁移包仅作读取兼容。
             return documents.readMapList(snapshot.get("dataSources")).stream()
                     .anyMatch(value -> Objects.equals(
                             key, String.valueOf(value.get("sourceCode"))));

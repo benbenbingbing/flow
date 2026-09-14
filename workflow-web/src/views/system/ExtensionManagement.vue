@@ -56,9 +56,22 @@
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
-        <el-button v-if="canUpdate" type="primary" @click="openCreateUi">
+        <el-button
+          v-if="canUpdate && (!filters.capabilityType || filters.capabilityType === 'INTERFACE')"
+          type="primary"
+          @click="openCreateInterface"
+        >
           <el-icon><Plus /></el-icon>
-          新增 UI 目录版本
+          新增扩展接口
+        </el-button>
+        <el-button
+          v-if="canUpdate && filters.capabilityType !== 'INTERFACE'"
+          type="primary"
+          plain
+          @click="openCreateUi"
+        >
+          <el-icon><Plus /></el-icon>
+          新增 UI 扩展
         </el-button>
       </div>
 
@@ -106,11 +119,17 @@
           </el-table-column>
           <el-table-column label="版本" width="120">
             <template #default="{ row }">
-              <div>实现 v{{ row.implementationVersion || 1 }}</div>
-              <div v-if="isUi(row)" class="meta-line">
+              <template v-if="isInterface(row)">
+                <div>接口定义</div>
+                <div class="meta-line">修订 {{ row.revision ?? 0 }}</div>
+              </template>
+              <template v-else>
+                <div>实现 v{{ row.implementationVersion || 1 }}</div>
+              </template>
+              <div v-if="!isInterface(row) && isUi(row)" class="meta-line">
                 快照 v{{ row.snapshotVersion || 1 }}
               </div>
-              <div v-else class="meta-line">
+              <div v-else-if="!isInterface(row)" class="meta-line">
                 契约 v{{ row.contractVersion || 1 }}
               </div>
             </template>
@@ -144,9 +163,17 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="132" fixed="right" align="center">
+          <el-table-column label="操作" width="210" fixed="right" align="center">
             <template #default="{ row }">
               <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+              <el-button
+                v-if="isInterface(row) && canTest"
+                link
+                type="primary"
+                @click="openTestInterface(row)"
+              >
+                调试
+              </el-button>
               <el-button
                 v-if="canUpdate && row.available !== false"
                 link
@@ -154,6 +181,14 @@
                 @click="openEdit(row)"
               >
                 {{ row.configured ? '编辑' : '纳管' }}
+              </el-button>
+              <el-button
+                v-if="isInterface(row) && canUpdate"
+                link
+                type="danger"
+                @click="removeInterface(row)"
+              >
+                删除
               </el-button>
             </template>
           </el-table-column>
@@ -172,180 +207,7 @@
       </template>
     </el-card>
 
-    <el-dialog
-      v-model="editorVisible"
-      :title="editorTitle"
-      width="760px"
-      append-to-body
-      destroy-on-close
-      :close-on-click-modal="false"
-    >
-      <el-form :model="editor" label-width="104px">
-        <template v-if="editor.kind === 'FLOW_ACTION'">
-          <el-form-item label="动作名称" required>
-            <el-input v-model="editor.displayName" />
-          </el-form-item>
-          <el-form-item label="用途说明">
-            <el-input v-model="editor.description" type="textarea" :rows="3" />
-          </el-form-item>
-          <el-form-item label="可见范围" required>
-            <el-segmented
-              v-model="editor.visibilityScope"
-              :options="visibilityOptions"
-            />
-          </el-form-item>
-          <el-form-item
-            v-if="editor.visibilityScope === 'ENTITY'"
-            label="指定实体"
-            required
-          >
-            <EntityDefinitionPicker
-              v-model="editor.entityCodes"
-              multiple
-              value-key="entityCode"
-              value-case="lower"
-              title="选择动作适用实体"
-              placeholder="选择可使用该动作的实体"
-            />
-          </el-form-item>
-          <el-form-item label="允许配置">
-            <el-switch v-model="editor.enabled" />
-          </el-form-item>
-        </template>
-
-        <template v-else-if="editor.kind === 'PERSON_RESOLVER'">
-          <el-form-item label="接口名称" required>
-            <el-input v-model="editor.displayName" />
-          </el-form-item>
-          <el-form-item label="用途说明">
-            <el-input v-model="editor.description" type="textarea" :rows="3" />
-          </el-form-item>
-          <el-form-item label="固定用途">
-            <el-checkbox-group v-model="editor.supportedUsages" disabled>
-              <el-checkbox
-                v-for="usage in personUsageOptions"
-                :key="usage.value"
-                :value="usage.value"
-              >
-                {{ usage.label }}
-              </el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-          <el-form-item label="允许配置">
-            <el-switch v-model="editor.enabled" />
-          </el-form-item>
-        </template>
-
-        <template v-else>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="扩展类型" required>
-                <el-select
-                  v-model="editor.extensionType"
-                  :disabled="Boolean(editor.id)"
-                  style="width: 100%"
-                >
-                  <el-option label="自定义表单" value="FORM" />
-                  <el-option label="自定义列表" value="LIST" />
-                  <el-option label="表单节点" value="NODE" />
-                  <el-option label="表单字段" value="FIELD" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="注册名" required>
-                <el-input v-model="editor.key" :disabled="Boolean(editor.id)" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="显示名称" required>
-                <el-input v-model="editor.displayName" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="6">
-              <el-form-item label="实现版本" required>
-                <el-input-number
-                  v-model="editor.implementationVersion"
-                  :min="1"
-                  :disabled="Boolean(editor.id)"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="6">
-              <el-form-item label="快照版本" required>
-                <el-input-number v-model="editor.snapshotVersion" :min="1" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="24">
-              <el-form-item label="运行模式">
-                <el-select
-                  v-model="editor.supportedModes"
-                  multiple
-                  clearable
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="mode in modeOptions"
-                    :key="mode"
-                    :label="mode"
-                    :value="mode"
-                  />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col v-if="editor.extensionType === 'FORM'" :span="24">
-              <el-form-item label="适用范围" required>
-                <el-segmented
-                  v-model="editor.visibilityScope"
-                  :options="visibilityOptions"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col
-              v-if="editor.extensionType === 'FORM'
-                && editor.visibilityScope === 'ENTITY'"
-              :span="24"
-            >
-              <el-form-item label="指定实体" required>
-                <EntityDefinitionPicker
-                  v-model="editor.entityCodes"
-                  multiple
-                  value-key="entityCode"
-                  title="选择表单组件适用实体"
-                  placeholder="选择一个或多个已发布实体"
-                  :query="{ status: 'PUBLISHED', storageMode: 'DYNAMIC' }"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="24">
-              <el-form-item label="配置 Schema">
-                <el-input v-model="editor.configSchemaText" type="textarea" :rows="6" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="24">
-              <el-form-item label="能力声明">
-                <el-input v-model="editor.capabilitiesText" type="textarea" :rows="4" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="24">
-              <el-form-item label="目录状态">
-                <el-segmented
-                  v-model="editor.status"
-                  :options="uiStatusOptions"
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </template>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="editorVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveEditor">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
+    <ExtensionCatalogEditorDialog ref="catalogEditorRef" @saved="load" />
 
     <el-drawer
       v-model="detailVisible"
@@ -385,6 +247,19 @@
         </section>
       </div>
     </el-drawer>
+
+    <InterfaceExtensionEditorDialog
+      ref="interfaceEditorRef"
+      :catalog="interfaceCatalog"
+      @saved="load"
+    />
+    <InterfaceExtensionTestDialog
+      ref="interfaceTestRef"
+      :forms="testForms"
+      :lists="testLists"
+      :entity-id="testEntityId"
+      :entity-code="testEntityCode"
+    />
   </div>
 </template>
 
@@ -392,18 +267,24 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowDown, ArrowUp, Plus, Refresh, Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageState from '@/components/PageState.vue'
-import { extensionCatalogApi, personResolverApi } from '@/api/system/extension'
-import { processActionApi } from '@/api/processAction'
+import { extensionCatalogApi } from '@/api/system/extension'
 import { uiExtensionApi } from '@/api/uiConfig'
-import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import { entityApi } from '@/api/entity'
+import { getFormById, getFormsByEntity } from '@/api/entityForm'
+import { entityListConfigApi } from '@/api/entityListConfig'
+import ExtensionCatalogEditorDialog from '@/components/ui-config/ExtensionCatalogEditorDialog.vue'
+import InterfaceExtensionEditorDialog from '@/components/ui-config/InterfaceExtensionEditorDialog.vue'
+import InterfaceExtensionTestDialog from '@/components/ui-config/InterfaceExtensionTestDialog.vue'
+import { normalizeInterfaceExtension } from '@/components/ui-config/interfaceExtensionModel'
 import {
   getManagedExtensionManifest,
   isPlatformBuiltInUiExtension
 } from '@/extensions/manifest'
 import { useUserStore } from '@/stores/user'
 const typeOptions = [
+  { value: 'INTERFACE', label: '扩展接口' },
   { value: 'FLOW_ACTION', label: '流程动作' },
   { value: 'PERSON_RESOLVER', label: '人员接口' },
   { value: 'UI_FORM', label: '自定义表单' },
@@ -418,20 +299,14 @@ const personUsageOptions = [
   { value: 'MULTI_INSTANCE', label: '会签人员' },
   { value: 'CC', label: '知会人员' }
 ]
-const modeOptions = ['CREATE', 'EDIT', 'APPROVE', 'VIEW']
-const visibilityOptions = [
-  { label: '全部实体', value: 'GLOBAL' },
-  { label: '指定实体', value: 'ENTITY' }
-]
-const uiStatusOptions = [
-  { label: '启用', value: 'ACTIVE' },
-  { label: '停用', value: 'DISABLED' }
-]
 const route = useRoute()
 const userStore = useUserStore()
 const canUpdate = computed(() => userStore.isSuperAdmin
   || userStore.permissions.includes('*')
   || userStore.permissions.includes('system:extension:update'))
+const canTest = computed(() => userStore.isSuperAdmin
+  || userStore.permissions.includes('*')
+  || userStore.permissions.includes('system:extension:test'))
 const localManifest = getManagedExtensionManifest()
 const filters = reactive({
   capabilityType: normalizeRouteType(route.query.type),
@@ -443,49 +318,21 @@ const rows = ref([])
 const loading = ref(false)
 const loadError = ref('')
 const searchExpanded = ref(false)
-const editorVisible = ref(false)
-const saving = ref(false)
-const editor = reactive(emptyEditor())
 const detailVisible = ref(false)
 const detail = ref(null)
-const editorTitle = computed(() => {
-  if (editor.kind === 'FLOW_ACTION') return editor.configured ? '编辑流程动作目录' : '纳管流程动作'
-  if (editor.kind === 'PERSON_RESOLVER') return editor.configured ? '编辑人员接口目录' : '纳管人员接口'
-  return editor.id ? '编辑 UI 扩展目录' : '新增 UI 扩展版本'
-})
-function emptyEditor() {
-  return {
-    kind: 'UI_FORM',
-    id: null,
-    configured: false,
-    sourceName: '',
-    key: '',
-    displayName: '',
-    description: '',
-    visibilityScope: 'GLOBAL',
-    entityCodes: [],
-    enabled: false,
-    supportedUsages: [],
-    extensionType: 'FORM',
-    implementationVersion: 1,
-    snapshotVersion: 1,
-    supportedModes: [],
-    supportedNodeTypes: [],
-    supportedBindings: [],
-    configSchemaText: '[]',
-    capabilitiesText: '{}',
-    status: 'ACTIVE',
-    revision: null
-  }
-}
-function resetEditor(value = {}) {
-  Object.assign(editor, emptyEditor(), value)
-}
+const interfaceCatalog = ref({})
+const catalogEditorRef = ref(null)
+const interfaceEditorRef = ref(null)
+const interfaceTestRef = ref(null)
+const testForms = ref([])
+const testLists = ref([])
+const testEntityId = ref('')
+const testEntityCode = ref('')
 async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [result, allUiDefinitions] = await Promise.all([
+    const [result, allDefinitions, catalog] = await Promise.all([
       extensionCatalogApi.manage({
         capabilityType: filters.capabilityType || undefined,
         keyword: filters.keyword?.trim() || undefined,
@@ -493,23 +340,53 @@ async function load() {
         pageNum: pageInfo.pageNum,
         pageSize: pageInfo.pageSize
       }),
-      uiExtensionApi.list()
+      uiExtensionApi.list(),
+      uiExtensionApi.catalog()
     ])
-    const remoteRows = (result?.list || [])
+    interfaceCatalog.value = catalog || {}
+    const interfaceDefinitionById = new Map((allDefinitions || [])
+      .filter(item => item.extensionType === 'INTERFACE')
+      .map(item => [String(item.id || item.extensionId), item]))
+    const managedRows = (result?.list || [])
       .filter(row => !isPlatformBuiltInUiExtension(
         row.capabilityType, row.key))
-      .map(decorateRemote)
-    const remoteUiKeys = new Set((allUiDefinitions || []).map(item =>
+      .map(row => {
+        if (row.capabilityType !== 'INTERFACE') return decorateRemote(row)
+        const raw = interfaceDefinitionById.get(
+          String(row.id || row.extensionId)
+        ) || {}
+        // 管理目录负责统一筛选和分页；定义详情只补齐编辑接口所需的内部实现字段。
+        return decorateInterface({ ...row, ...raw })
+      })
+    const remoteUiKeys = new Set((allDefinitions || []).map(item =>
       `UI_${item.extensionType}:${item.extensionKey}:${item.version || 1}`))
     const localRows = pageInfo.pageNum === 1
       ? localOnlyRows(remoteUiKeys)
       : []
-    rows.value = [...localRows, ...remoteRows]
+    rows.value = [...localRows, ...managedRows]
     pageInfo.total = Number(result?.total || 0) + localRows.length
   } catch (error) {
     loadError.value = error?.message || '无法读取扩展目录，请重试。'
   } finally {
     loading.value = false
+  }
+}
+
+function decorateInterface(value) {
+  const item = normalizeInterfaceExtension(value)
+  return {
+    ...item,
+    id: item.extensionId,
+    rowKey: `INTERFACE:${item.extensionId}`,
+    capabilityType: 'INTERFACE',
+    key: item.extensionKey,
+    sourceType: item.implementationType,
+    sourceName: item.providerCode,
+    implementationClass: item.providerCode || item.implementationType,
+    configSchema: item.inputSchema,
+    configured: true,
+    available: true,
+    description: ''
   }
 }
 
@@ -604,131 +481,72 @@ function handleSizeChange() {
 }
 
 async function openEdit(row) {
-  if (row.capabilityType === 'FLOW_ACTION') {
-    resetEditor({
-      kind: 'FLOW_ACTION',
-      configured: row.configured,
-      sourceName: row.sourceName,
-      key: row.key,
-      displayName: row.configured ? row.displayName : '',
-      description: row.description || '',
-      visibilityScope: row.visibilityScope || 'ENTITY',
-      entityCodes: row.entityCodes || [],
-      enabled: row.configured ? row.enabled !== false : false
-    })
-  } else if (row.capabilityType === 'PERSON_RESOLVER') {
-    resetEditor({
-      kind: 'PERSON_RESOLVER',
-      configured: row.configured,
-      key: row.key,
-      displayName: row.displayName || '',
-      description: row.description || '',
-      supportedUsages: [...(row.supportedUsages || [])],
-      enabled: row.configured ? row.enabled !== false : false
-    })
-  } else {
-    resetEditor({
-      kind: row.capabilityType,
-      id: row.id,
-      configured: row.configured,
-      key: row.key,
-      displayName: row.displayName || '',
-      extensionType: row.capabilityType.replace(/^UI_/, ''),
-      implementationVersion: row.implementationVersion || 1,
-      snapshotVersion: row.snapshotVersion || 1,
-      visibilityScope: row.visibilityScope || 'GLOBAL',
-      entityCodes: [...(row.entityCodes || [])],
-      supportedModes: [...(row.supportedModes || [])],
-      supportedNodeTypes: [...(row.supportedNodeTypes || [])],
-      supportedBindings: [...(row.supportedBindings || [])],
-      configSchemaText: formatJson(row.configSchema || []),
-      capabilitiesText: formatJson(row.capabilities || {}),
-      status: row.status === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
-      revision: row.revision
-    })
+  if (isInterface(row)) {
+    await interfaceEditorRef.value?.openEdit(row)
+    return
   }
-  editorVisible.value = true
+  catalogEditorRef.value?.open(row)
 }
 
 function openCreateUi() {
-  resetEditor()
-  editorVisible.value = true
+  catalogEditorRef.value?.openCreateUi()
 }
 
-async function saveEditor() {
-  if (!editor.displayName?.trim()) {
-    ElMessage.warning('请填写显示名称')
-    return
-  }
-  saving.value = true
+function openCreateInterface() {
+  interfaceEditorRef.value?.openCreate()
+}
+
+/** 调试必须携带一个真实配置对象，以复用运行态的范围与权限校验。 */
+async function openTestInterface(row) {
   try {
-    if (editor.kind === 'FLOW_ACTION') {
-      if (editor.visibilityScope === 'ENTITY' && !editor.entityCodes.length) {
-        ElMessage.warning('指定实体范围至少选择一个实体')
-        return
-      }
-      await processActionApi.saveHandlerConfig(editor.sourceName, {
-        displayName: editor.displayName.trim(),
-        description: editor.description?.trim() || '',
-        visibilityScope: editor.visibilityScope,
-        entityCodes: editor.visibilityScope === 'ENTITY' ? editor.entityCodes : [],
-        enabled: editor.enabled
-      })
-    } else if (editor.kind === 'PERSON_RESOLVER') {
-      await personResolverApi.saveConfig(editor.key, {
-        displayName: editor.displayName.trim(),
-        description: editor.description?.trim() || '',
-        enabled: editor.enabled
-      })
-    } else {
-      if (!editor.key?.trim()) {
-        ElMessage.warning('请填写扩展注册名')
-        return
-      }
-      if (editor.extensionType === 'FORM'
-          && editor.visibilityScope === 'ENTITY'
-          && !editor.entityCodes.length) {
-        ElMessage.warning('指定实体范围至少选择一个实体')
-        return
-      }
-      const payload = {
-        extensionType: editor.extensionType,
-        extensionKey: editor.key.trim(),
-        displayName: editor.displayName.trim(),
-        version: editor.implementationVersion,
-        snapshotVersion: editor.snapshotVersion,
-        visibilityScope: editor.extensionType === 'FORM'
-          ? editor.visibilityScope
-          : 'GLOBAL',
-        entityCodes: editor.extensionType === 'FORM'
-          && editor.visibilityScope === 'ENTITY'
-          ? editor.entityCodes
-          : [],
-        supportedModes: editor.supportedModes,
-        supportedNodeTypes: editor.supportedNodeTypes,
-        supportedBindings: editor.supportedBindings,
-        configSchema: parseJson(editor.configSchemaText, []),
-        capabilities: parseJson(editor.capabilitiesText, {}),
-        status: editor.status,
-        expectedRevision: editor.revision
-      }
-      if (editor.id) {
-        await uiExtensionApi.update(editor.id, payload)
-      } else {
-        await uiExtensionApi.create(payload)
-      }
+    const item = normalizeInterfaceExtension(row)
+    let entityId = ''
+    if (item.scopeType === 'FORM' && item.scopeId) {
+      entityId = (await getFormById(item.scopeId))?.entityId || ''
+    } else if (item.scopeType === 'LIST' && item.scopeId) {
+      entityId = (await entityListConfigApi.getById(item.scopeId))?.entityId || ''
+    } else if (item.scopeType === 'ENTITY') {
+      entityId = item.scopeId || ''
     }
-    ElMessage.success('扩展目录已保存')
-    editorVisible.value = false
+    if (!entityId) {
+      const result = await entityApi.getOptions({
+        pageNum: 1,
+        pageSize: 1,
+        storageMode: 'DYNAMIC'
+      })
+      const candidates = result?.list || result?.records || result || []
+      entityId = candidates[0]?.id || ''
+    }
+    const entity = entityId ? await entityApi.getById(entityId) : null
+    const [forms, lists] = entityId
+      ? await Promise.all([
+          getFormsByEntity(entityId),
+          entityListConfigApi.getByEntityId(entityId)
+        ])
+      : [[], []]
+    testEntityId.value = entityId
+    testEntityCode.value = entity?.entityCode || ''
+    testForms.value = Array.isArray(forms) ? forms : []
+    testLists.value = Array.isArray(lists) ? lists : []
+    interfaceTestRef.value?.open(item)
+  } catch (error) {
+    ElMessage.error(error?.message || '无法准备扩展接口调试上下文')
+  }
+}
+
+async function removeInterface(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除扩展接口“${row.displayName || row.key}”？仍被已发布配置引用时服务端会拒绝删除。`,
+      '删除扩展接口',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+    await uiExtensionApi.remove(row.id, row.revision)
+    ElMessage.success('扩展接口已删除')
     await load()
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      ElMessage.error('Schema 或能力声明不是合法 JSON')
-    } else {
-      ElMessage.error(error?.message || '扩展目录保存失败')
-    }
-  } finally {
-    saving.value = false
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(error?.message || '删除扩展接口失败')
   }
 }
 
@@ -741,12 +559,24 @@ function isUi(row) {
   return String(row?.capabilityType || '').startsWith('UI_')
 }
 
+function isInterface(row) {
+  return row?.capabilityType === 'INTERFACE'
+}
+
 function typeLabel(value) {
   return typeMap[value] || value || '-'
 }
 
 function sourceLabel(value) {
-  return value === 'FRONTEND_BUNDLE' ? '前端构建' : '后端 Bean'
+  return {
+    FRONTEND_BUNDLE: '前端构建',
+    BACKEND_BEAN: '后端 Bean',
+    DICTIONARY: '平台字典',
+    STATIC_OPTIONS: '平台静态数据',
+    REGISTERED_PROVIDER: '已注册 Provider',
+    RUNTIME_CONTEXT: '运行时上下文',
+    STRUCTURED_COMPUTE: '结构化计算'
+  }[value] || value || '-'
 }
 
 function statusLabel(value) {
@@ -768,6 +598,12 @@ function statusType(value) {
 }
 
 function scopeSummary(row) {
+  if (isInterface(row)) {
+    if (row.scopeType === 'GLOBAL') return '全局'
+    const label = { ENTITY: '实体', FORM: '表单', LIST: '列表' }[row.scopeType]
+      || row.scopeType
+    return `${label} · ${row.scopeId || '未指定'}`
+  }
   if (row.capabilityType === 'FLOW_ACTION') {
     if (row.visibilityScope === 'GLOBAL') return '全部实体'
     return row.entityCodes?.length ? `${row.entityCodes.length} 个实体` : '尚未指定实体'
@@ -783,6 +619,15 @@ function scopeSummary(row) {
 }
 
 function capabilitySummary(row) {
+  if (isInterface(row)) {
+    const kind = row.interfaceKind === 'WRITE' ? '写接口' : '读接口'
+    const context = {
+      FORM: '表单上下文',
+      LIST: '列表上下文',
+      ENTITY: '实体上下文'
+    }[row.interfaceContextType] || row.interfaceContextType
+    return [kind, context].filter(Boolean).join(' · ')
+  }
   if (row.capabilityType === 'PERSON_RESOLVER') {
     return [...(row.supportedUsages || [])]
       .map(value => personUsageOptions.find(item => item.value === value)?.label || value)
@@ -795,7 +640,9 @@ function capabilitySummary(row) {
 }
 
 function schemaSize(row) {
-  const schema = row.configSchema ?? row.extraParamSchema
+  const schema = isInterface(row)
+    ? row.inputSchema
+    : row.configSchema ?? row.extraParamSchema
   if (Array.isArray(schema)) return schema.length
   if (schema && typeof schema === 'object') {
     if (schema.properties && typeof schema.properties === 'object') {
@@ -807,6 +654,20 @@ function schemaSize(row) {
 }
 
 function contractDetail(row) {
+  if (isInterface(row)) {
+    return {
+      interfaceKind: row.interfaceKind,
+      interfaceContextType: row.interfaceContextType,
+      scopeType: row.scopeType,
+      scopeId: row.scopeId || null,
+      implementationType: row.implementationType,
+      providerCode: row.providerCode || null,
+      providerOperationCode: row.providerOperationCode || null,
+      executionPolicy: row.executionPolicy || {},
+      inputSchema: row.inputSchema || {},
+      outputSchema: row.outputSchema || {}
+    }
+  }
   return {
     contractVersion: row.contractVersion || 1,
     supportedUsages: row.supportedUsages || [],
@@ -825,10 +686,6 @@ function formatJson(value) {
   return JSON.stringify(value ?? {}, null, 2)
 }
 
-function parseJson(value, fallback) {
-  if (!value?.trim()) return fallback
-  return JSON.parse(value)
-}
 watch(
   () => route.query.type,
   (value) => {

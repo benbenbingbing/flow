@@ -458,17 +458,14 @@ assert.equal(
 )
 
 const normalBeforeSubmitBinding = {
-  serviceId: 'normal-source',
-  operationCode: 'validate-normal'
+  extensionId: 'normal-before-submit-interface'
 }
 const incompleteClientBinding = {
-  serviceId: 'incomplete-source',
-  operationCode: 'validate-incomplete',
+  extensionId: 'incomplete-before-submit-interface',
   clientPrevalidate: true
 }
 const safeClientBinding = {
-  serviceId: 'safe-source',
-  operationCode: 'validate-safe',
+  extensionId: 'safe-before-submit-interface',
   clientPrevalidate: true,
   sideEffectFree: true
 }
@@ -515,8 +512,7 @@ await browserRuntime.prevalidateBeforeSubmit({
   }]
 })
 assert.equal(browserExecutions.length, 1)
-assert.equal(browserExecutions[0].serviceId, 'safe-source')
-assert.equal(browserExecutions[0].operationCode, 'validate-safe')
+assert.equal(browserExecutions[0].extensionId, 'safe-before-submit-interface')
 assert.equal(browserExecutions[0].bindingCode, 'BEFORE_SUBMIT')
 assert.deepEqual(browserExecutions[0].input.formData, { amount: 88 })
 assert.deepEqual(browserRecord, { amount: 88 })
@@ -565,8 +561,7 @@ const signedChildViewDataSourceRequest = buildFormDataSourceExecutionRequest({
   bindingCode: 'FIELD_OPTIONS',
   targetType: 'FIELD',
   targetKey: 'priority',
-  serviceId: 'priority-source',
-  operationCode: 'load-options',
+  extensionId: 'priority-options-interface',
   input: { fieldCode: 'priority', mode: 'view' }
 })
 assert.deepEqual(signedChildViewDataSourceRequest, {
@@ -575,8 +570,7 @@ assert.deepEqual(signedChildViewDataSourceRequest, {
   bindingCode: 'FIELD_OPTIONS',
   targetType: 'FIELD',
   targetKey: 'priority',
-  serviceId: 'priority-source',
-  operationCode: 'load-options',
+  extensionId: 'priority-options-interface',
   input: { fieldCode: 'priority', mode: 'view' },
   releaseId: 'child-release',
   releaseVersion: 7,
@@ -607,8 +601,7 @@ const unsignedDataSourceRequest = buildFormDataSourceExecutionRequest({
   bindingCode: 'FORM_INIT',
   targetType: 'OWNER',
   targetKey: '',
-  serviceId: 'draft-source',
-  operationCode: 'initialize',
+  extensionId: 'draft-init-interface',
   input: {}
 })
 assert.equal(unsignedDataSourceRequest.releaseId, undefined)
@@ -642,8 +635,7 @@ const contextBoundDataSourceRequest = buildFormDataSourceExecutionRequest({
   bindingCode: 'AFTER_LOAD',
   targetType: 'OWNER',
   targetKey: '',
-  serviceId: 'context-child-source',
-  operationCode: 'load',
+  extensionId: 'context-child-load-interface',
   input: { mode: 'edit' }
 })
 assert.equal(contextBoundDataSourceRequest.releaseId, 'context-child-release')
@@ -667,12 +659,10 @@ const initializationForm = {
   releaseResolutionToken: 'signed-form-release-1',
   dataSourceBindingsDocument: JSON.stringify({
     FORM_INIT: {
-      serviceId: 'form-init-source',
-      operationCode: 'initialize-form'
+      extensionId: 'form-init-interface'
     },
     AFTER_LOAD: {
-      serviceId: 'form-after-load-source',
-      operationCode: 'load-form'
+      extensionId: 'form-after-load-interface'
     }
   })
 }
@@ -683,7 +673,7 @@ const initializationRuntime = createFormDataSourceRuntime({
   getMode: () => 'create',
   executeDataSource: async request => {
     initializationExecutions.push(request)
-    return request.serviceId === 'form-init-source'
+    return request.extensionId === 'form-init-interface'
       ? { data: { initialized: true } }
       : { data: { afterLoaded: true } }
   }
@@ -698,8 +688,8 @@ await initializationRuntime.initialize({
   }
 })
 assert.deepEqual(
-  initializationExecutions.map(request => request.serviceId),
-  ['form-init-source', 'form-after-load-source']
+  initializationExecutions.map(request => request.extensionId),
+  ['form-init-interface', 'form-after-load-interface']
 )
 assert.deepEqual(
   initializationExecutions.map(request => ({
@@ -784,8 +774,8 @@ const orderedInitializationRuntime = createFormDataSourceRuntime({
   getRecord: () => orderedInitializationRecord,
   getMode: () => 'create',
   executeDataSource: async request => {
-    orderedInitializationExecutions.push(request.serviceId)
-    return { data: { [request.serviceId]: true } }
+    orderedInitializationExecutions.push(request.extensionId)
+    return { data: { [request.extensionId]: true } }
   }
 })
 await orderedInitializationRuntime.initialize({
@@ -793,8 +783,8 @@ await orderedInitializationRuntime.initialize({
     id: 'ordered-form',
     dataSourceBindings: {
       FORM_INIT: [
-        { serviceId: 'step-one', operationCode: 'load' },
-        { serviceId: 'step-two', operationCode: 'load' }
+        { extensionId: 'step-one' },
+        { extensionId: 'step-two' }
       ]
     }
   }
@@ -810,7 +800,7 @@ const nestedOutputRuntime = createFormDataSourceRuntime({
   getRecord: () => nestedOutputRecord,
   getMode: () => 'create',
   executeDataSource: async request => ({
-    data: request.serviceId === 'owner-name'
+    data: request.extensionId === 'owner-name'
       ? { value: '张三' }
       : { value: 28 }
   })
@@ -821,13 +811,11 @@ await nestedOutputRuntime.initialize({
     dataSourceBindings: {
       FORM_INIT: [
         {
-          serviceId: 'owner-name',
-          operationCode: 'load',
+          extensionId: 'owner-name',
           outputMapping: { 'owner.name': 'data.value' }
         },
         {
-          serviceId: 'owner-age',
-          operationCode: 'load',
+          extensionId: 'owner-age',
           outputMapping: { 'owner.age': 'data.value' }
         }
       ]
@@ -850,12 +838,10 @@ const nestedForm = {
   releaseResolutionToken: 'signed-child-form-release-1',
   dataSourceBindings: {
     FORM_INIT: {
-      serviceId: 'child-form-init-source',
-      operationCode: 'initialize-child'
+      extensionId: 'child-form-init-interface'
     },
     AFTER_LOAD: {
-      serviceId: 'child-form-after-load-source',
-      operationCode: 'load-child'
+      extensionId: 'child-form-after-load-interface'
     }
   }
 }
@@ -866,7 +852,7 @@ const nestedRuntime = createFormDataSourceRuntime({
   getMode: () => 'edit',
   executeDataSource: async request => {
     nestedInitializationExecutions.push(request)
-    return request.serviceId === 'child-form-init-source'
+    return request.extensionId === 'child-form-init-interface'
       ? { data: { initializedForChild: request.input.formData.rowKey } }
       : { data: { afterLoadedForChild: request.input.formData.rowKey } }
   }
@@ -895,8 +881,8 @@ assert.deepEqual(childRowTwo, {
 })
 assert.deepEqual(parentRecord, { parentOnly: true })
 assert.deepEqual(
-  nestedInitializationExecutions.map(request => request.serviceId),
-  ['child-form-after-load-source', 'child-form-after-load-source']
+  nestedInitializationExecutions.map(request => request.extensionId),
+  ['child-form-after-load-interface', 'child-form-after-load-interface']
 )
 assert.equal(nestedInitializationExecutions.length, 2)
 assert.equal(nestedInitializationExecutions[0].ownerId, 'child-form-1')

@@ -9,7 +9,7 @@ import com.workflow.entity.form.application.FormUniqueRulePolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
-import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
+import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 import org.junit.jupiter.api.Test;
 
@@ -112,7 +112,7 @@ class EntityFormConfigurationValidatorConditionTest {
         return new EntityFormConfigurationValidator(
                 new StructuredConfigValidator(OBJECT_MAPPER),
                 new EntityFormActionConfigPolicy(),
-                new UiDataSourceDefinitionValidator(
+                new UiExtensionDefinitionValidator(
                         new JsonDocumentCodec(OBJECT_MAPPER)),
                 evaluator,
                 mock(EntityFieldMapper.class),

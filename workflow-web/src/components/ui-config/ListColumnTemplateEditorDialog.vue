@@ -73,44 +73,28 @@
                   {{ selectedDataSource.description }}
                 </div>
               </el-form-item>
-              <el-form-item label="接口数据源">
+              <el-form-item label="扩展接口">
                 <template #label>
                   <ConfigHelpLabel
-                    label="接口数据源"
-                    help-key="uiDataSource.service"
+                    label="扩展接口"
+                    help-key="entityList.interfaceExtension"
                   />
                 </template>
                 <el-select
-                  v-model="form.dataSourceId"
+                  v-model="form.interfaceExtensionId"
                   clearable
                   filterable
-                  placeholder="可选：绑定 LIST_COLUMN 接口数据源"
-                  style="width: 100%"
-                  @change="handleInterfaceServiceChange"
-                >
-                  <el-option
-                    v-for="source in listInterfaceServices"
-                    :key="source.id"
-                    :label="`${source.sourceName} (${source.sourceCode})`"
-                    :value="source.id"
-                  />
-                </el-select>
-                <div class="field-help">只有需要统一接口服务取值时才选择；普通实体字段留空。</div>
-              </el-form-item>
-              <el-form-item v-if="form.dataSourceId" label="接口操作" required>
-                <el-select
-                  v-model="form.dataSourceOperationCode"
-                  filterable
-                  placeholder="选择 LIST 上下文只读操作"
+                  placeholder="可选：绑定 LIST_COLUMN 扩展接口"
                   style="width: 100%"
                 >
                   <el-option
-                    v-for="operation in interfaceOperationOptions"
-                    :key="operation.code"
-                    :label="`${operation.name} (${operation.code})`"
-                    :value="operation.code"
+                    v-for="item in interfaceExtensions"
+                    :key="item.extensionId"
+                    :label="`${item.displayName} (${item.extensionKey})`"
+                    :value="item.extensionId"
                   />
                 </el-select>
+                <div class="field-help">一个选项就是一个完整可调用接口；普通实体字段留空。</div>
               </el-form-item>
             </div>
 
@@ -338,12 +322,12 @@ import {
   createListColumnTemplateEditor,
   LIST_COLUMN_TEMPLATE_TYPE
 } from '@/shared/list-column-template'
-import { serviceOperations } from './interfaceServiceModel'
+import { interfacesForUsage } from './interfaceExtensionModel'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
 
 const props = defineProps({
   dataSourceOptions: { type: Array, default: () => [] },
-  unifiedDataSources: { type: Array, default: () => [] }
+  interfaceOptions: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['saved'])
 
@@ -461,22 +445,8 @@ const dialogTitle = computed(() => ({
 const selectedDataSource = computed(() =>
   props.dataSourceOptions.find(item => item.value === form.dataSourceType)
 )
-const selectedInterfaceService = computed(() =>
-  props.unifiedDataSources.find(item =>
-    String(item.id) === String(form.dataSourceId))
-)
-const listInterfaceServices = computed(() =>
-  props.unifiedDataSources.filter(source =>
-    serviceOperations(source).some(operation =>
-      String(operation.contextType).toUpperCase() === 'LIST'
-      && String(operation.kind || 'READ').toUpperCase() === 'READ'))
-)
-const interfaceOperationOptions = computed(() =>
-  selectedInterfaceService.value
-    ? serviceOperations(selectedInterfaceService.value).filter(operation =>
-        String(operation.contextType).toUpperCase() === 'LIST'
-        && String(operation.kind || 'READ').toUpperCase() === 'READ')
-    : []
+const interfaceExtensions = computed(() =>
+  interfacesForUsage(props.interfaceOptions, 'LIST_COLUMN')
 )
 const selectedRenderer = computed(() =>
   getCellDescriptor(form.renderComponent || 'DefaultText')
@@ -560,17 +530,6 @@ function handleDataSourceChange() {
   if (selectedDataSource.value?.supportsQuery === false) form.isQuery = false
 }
 
-function handleInterfaceServiceChange(serviceId) {
-  if (!serviceId) {
-    form.dataSourceOperationCode = ''
-    return
-  }
-  const operations = interfaceOperationOptions.value
-  form.dataSourceOperationCode = operations.length === 1
-    ? operations[0].code
-    : ''
-}
-
 function handleRendererChange() {
   form.renderConfig = applySchemaDefaults(selectedRenderer.value?.configSchema || [], {})
 }
@@ -582,9 +541,6 @@ function updateObjectConfig(target, key, value) {
 async function saveTemplate() {
   try {
     await formRef.value?.validate()
-    if (form.dataSourceId && !form.dataSourceOperationCode) {
-      throw new Error('请选择列表列模板使用的接口操作')
-    }
     validateRequiredSchema(selectedDataSource.value?.configSchema, form.dataSourceConfig)
     validateRequiredSchema(selectedRenderer.value?.configSchema, form.renderConfig)
   } catch (error) {

@@ -18,7 +18,10 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Locates exact interface-operation bindings in draft and release snapshots.
+ * Locates exact interface-extension bindings in draft and release snapshots.
+ *
+ * <p>新配置只匹配 extensionId；历史不可变快照仍可用
+ * serviceId/dataSourceId + operationCode 精确匹配。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -266,11 +269,14 @@ public class UiDataSourceBindingMatcher {
         if ("OWNER".equals(normalize(targetType))) {
             if (UiDataSourceUsages.LIST_QUERY.equals(
                     normalize(usage))
-                    && sourceId.equals(text(
-                            list.get("queryDataSourceId")))
-                    && operationCode.equals(text(
-                            list.get("queryOperationCode")))) {
-                return basePath + ".queryDataSourceId";
+                    && matchesDirectReference(
+                            list,
+                            sourceId,
+                            operationCode,
+                            "queryInterfaceExtensionId",
+                            "queryDataSourceId",
+                            "queryOperationCode")) {
+                return basePath + ".queryInterfaceExtensionId";
             }
             String ownerBinding = findOwnerBinding(
                     list,
@@ -291,12 +297,15 @@ public class UiDataSourceBindingMatcher {
                 continue;
             }
             if (UiDataSourceUsages.LIST_COLUMN.equals(usage)
-                    && sourceId.equals(text(
-                            field.get("dataSourceId")))
-                    && operationCode.equals(text(
-                            field.get("dataSourceOperationCode")))) {
+                    && matchesDirectReference(
+                            field,
+                            sourceId,
+                            operationCode,
+                            "interfaceExtensionId",
+                            "dataSourceId",
+                            "dataSourceOperationCode")) {
                 return basePath
-                        + ".fields[" + index + "].dataSourceId";
+                        + ".fields[" + index + "].interfaceExtensionId";
             }
             String bindingPath = findOwnerBinding(
                     field,
@@ -503,13 +512,44 @@ public class UiDataSourceBindingMatcher {
             Map<?, ?> binding,
             String sourceId,
             String operationCode) {
-        return sourceId.equals(serviceId(binding))
-                && operationCode.equals(text(
-                        binding.get("operationCode")));
+        String extensionId = firstText(
+                binding.get("extensionId"),
+                binding.get("interfaceExtensionId"),
+                binding.get("queryInterfaceExtensionId"));
+        if (StringUtils.hasText(extensionId)) {
+            return Objects.equals(sourceId, extensionId.trim());
+        }
+        return Objects.equals(sourceId, legacyReferenceId(binding))
+                && Objects.equals(
+                        operationCode,
+                        firstText(
+                                binding.get("operationCode"),
+                                binding.get("dataSourceOperationCode"),
+                                binding.get("queryOperationCode")));
     }
 
-    private String serviceId(Map<?, ?> binding) {
-        String value = text(binding.get("serviceId"));
+    private boolean matchesDirectReference(
+            Map<?, ?> binding,
+            String sourceId,
+            String operationCode,
+            String extensionKey,
+            String legacyIdKey,
+            String legacyOperationKey) {
+        String extensionId = text(binding.get(extensionKey));
+        if (StringUtils.hasText(extensionId)) {
+            return Objects.equals(sourceId, extensionId.trim());
+        }
+        return Objects.equals(sourceId, text(binding.get(legacyIdKey)))
+                && Objects.equals(
+                        operationCode,
+                        text(binding.get(legacyOperationKey)));
+    }
+
+    private String legacyReferenceId(Map<?, ?> binding) {
+        String value = firstText(
+                binding.get("serviceId"),
+                binding.get("dataSourceId"),
+                binding.get("queryDataSourceId"));
         return StringUtils.hasText(value)
                 ? value.trim()
                 : null;

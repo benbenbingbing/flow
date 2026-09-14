@@ -302,7 +302,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '事件绑定只有一个主编辑入口',
-              text: '实体默认事件在实体设计器维护；表单、列表、字段和按钮事件分别在对应设计器维护。接口服务页面只读展示引用、继承结果及草稿/发布状态，并通过“前往配置”返回这些入口。'
+              text: '实体默认事件在实体设计器维护；表单、列表、字段和按钮事件分别在对应设计器维护。每个步骤直接选择一条扩展接口，接口本身统一在“扩展管理”中维护。'
             }
           ]
         }
@@ -895,7 +895,7 @@ export default {
                 { field: '输出映射', meaning: '把返回结构映射到字段、选项、列表列或子表行。', defaultLimit: '按目标绑定 Schema 校验。', effect: '隔离外部结构变化。', publish: '必填目标缺失时按失败策略处理。' },
                 { field: '分页 / 超时 / 缓存', meaning: '控制请求规模与生产稳定性。', defaultLimit: '超时和最大页大小必须有平台上限。', effect: '避免慢源拖垮表单和列表。', publish: '涉及用户权限的缓存键必须包含权限版本和用户上下文。' },
                 { field: '失败策略', meaning: 'FAIL、EMPTY 或 NULL。需要默认值时使用 FIELD_DEFAULT 数据源或输入映射显式配置。', defaultLimit: '提交前关键校验默认 FAIL。', effect: '决定错误提示以及是否返回空集合或空值。', publish: '不得用 EMPTY/NULL 掩盖权限、Schema 或 Provider 未部署问题。' },
-                { field: '执行接口', meaning: '线上表单调用 /api/ui-runtime/interface-operations/execute；设计态管理员使用操作 /preview。', defaultLimit: '运行请求只提交绑定声明和业务输入。', effect: '运行能力与管理能力分离。', publish: '自定义组件不得直接调用 /preview。' }
+                { field: '执行接口', meaning: '线上表单调用 /api/ui-runtime/extensions/execute；设计态管理员使用扩展接口 /preview。', defaultLimit: '运行请求只提交 extensionId 和业务输入，不提交后端操作编码。', effect: '运行能力与管理能力分离。', publish: '自定义组件不得直接调用 /preview。' }
               ]
             }
           ]
@@ -916,7 +916,7 @@ export default {
               rows: [
                 { field: '显示条件', meaning: '条件组满足时显示当前字段。', defaultLimit: '默认关闭；可添加条件和嵌套条件组，每组可选全部满足 AND 或任一满足 OR；支持 ==、!=、>、<、>=、<=、contains、empty、notEmpty。', effect: '表单值变化时动态显示或隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
-                { field: '历史接口兼容', meaning: '保留旧 apiUrl、apiParams、apiResultField 的查看与迁移入口。', defaultLimit: '位于“值与计算 / 受控数据源 / 高级兼容”，默认折叠；不建议新增任意地址。', effect: '旧配置可继续识别；新生产场景应改用统一数据源目录中的 Provider。', publish: 'Provider 必须统一处理数据权限、超时和审计，禁止通过自由 URL 绕过。' },
+                { field: '历史接口兼容', meaning: '保留旧 apiUrl、apiParams、apiResultField 的查看与迁移入口。', defaultLimit: '位于“值与计算 / 受控数据源 / 高级兼容”，默认折叠；不建议新增任意地址。', effect: '旧配置可继续识别；新生产场景应在扩展管理中注册接口，设计器只保存 extensionId。', publish: 'Provider 必须统一处理数据权限、超时和审计，禁止通过自由 URL 绕过。' },
                 { field: '值联动：公式', meaning: '根据其他字段计算。', defaultLimit: '支持 + - * / ( )，使用 ${fieldCode}。', effect: '字段变化时重新计算。', publish: '空值、除零和字符串转数字必须测试。' }
               ]
             }
@@ -1067,7 +1067,7 @@ export default {
         {
           id: 'entity-list-dynamic-fields',
           title: '动态字段与虚拟列',
-      lead: '动态列通过统一数据源目录补充当前行数据，虚拟列不对应实体物理字段；既有 Provider 通过适配器继续可用。',
+      lead: '动态列通过扩展接口或已注册列 Provider 补充当前行数据，虚拟列不对应实体物理字段；既有 Provider 通过适配器继续可用。',
           blocks: [
             {
               type: 'table',

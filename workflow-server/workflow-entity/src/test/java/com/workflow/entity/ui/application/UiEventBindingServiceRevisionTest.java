@@ -14,9 +14,9 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.ui.api.request.UiEventBindingSaveRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -76,12 +76,16 @@ class UiEventBindingServiceRevisionTest {
     @Test
     void entitySharedEventAllowsOneReplacePerProjectedContext() {
         UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
-        when(dataSourceService.operations("form-source"))
-                .thenReturn(List.of(operation("form-op", "FORM")));
-        when(dataSourceService.operations("list-source"))
-                .thenReturn(List.of(operation("list-op", "LIST")));
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
+        when(dataSourceService.requireExecutableDefinition(
+                "form-source", null))
+                .thenReturn(interfaceDefinition(
+                        "form-source", "FORM", "READ"));
+        when(dataSourceService.requireExecutableDefinition(
+                "list-source", null))
+                .thenReturn(interfaceDefinition(
+                        "list-source", "LIST", "READ"));
         UiEventBindingSaveRequest request = sharedRequest(List.of(
                 step("form-source", "form-op", 10),
                 step("list-source", "list-op", 20)));
@@ -93,12 +97,16 @@ class UiEventBindingServiceRevisionTest {
     @Test
     void entitySharedEventRejectsTwoReplacesInSameProjectedContext() {
         UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
-        when(dataSourceService.operations("form-source-a"))
-                .thenReturn(List.of(operation("form-op-a", "FORM")));
-        when(dataSourceService.operations("form-source-b"))
-                .thenReturn(List.of(operation("form-op-b", "FORM")));
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
+        when(dataSourceService.requireExecutableDefinition(
+                "form-source-a", null))
+                .thenReturn(interfaceDefinition(
+                        "form-source-a", "FORM", "READ"));
+        when(dataSourceService.requireExecutableDefinition(
+                "form-source-b", null))
+                .thenReturn(interfaceDefinition(
+                        "form-source-b", "FORM", "READ"));
         UiEventBindingSaveRequest request = sharedRequest(List.of(
                 step("form-source-a", "form-op-a", 10),
                 step("form-source-b", "form-op-b", 20)));
@@ -113,13 +121,12 @@ class UiEventBindingServiceRevisionTest {
     @Test
     void formButtonBindingRejectsWriteProviderBeforePublish() {
         UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
-        when(dataSourceService.operations("write-source"))
-                .thenReturn(List.of(Map.of(
-                        "code", "write-op",
-                        "contextType", "FORM",
-                        "kind", "WRITE")));
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
+        when(dataSourceService.requireExecutableDefinition(
+                "write-source", null))
+                .thenReturn(interfaceDefinition(
+                        "write-source", "FORM", "WRITE"));
         UiEventBindingSaveRequest request = formButtonRequest(List.of(
                 step("write-source", "write-op", 10)));
 
@@ -240,13 +247,12 @@ class UiEventBindingServiceRevisionTest {
     @Test
     void nonFormButtonWriteProviderRemainsSupported() {
         UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
-        when(dataSourceService.operations("write-source"))
-                .thenReturn(List.of(Map.of(
-                        "code", "write-op",
-                        "contextType", "FORM",
-                        "kind", "WRITE")));
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
+        when(dataSourceService.requireExecutableDefinition(
+                "write-source", null))
+                .thenReturn(interfaceDefinition(
+                        "write-source", "FORM", "WRITE"));
         UiEventBindingSaveRequest request = sharedRequest(List.of(
                 step("write-source", "write-op", 10)));
 
@@ -317,7 +323,7 @@ class UiEventBindingServiceRevisionTest {
                 mock(EntityListConfigMapper.class),
                 mock(EntityDefinitionAccessPolicy.class),
                 mock(UiConfigurationAccessService.class),
-                mock(UiDataSourceService.class),
+                mock(UiInterfaceExtensionService.class),
                 mock(UiEventBindingSnapshotService.class),
                 releaseService,
                 codec,
@@ -346,15 +352,15 @@ class UiEventBindingServiceRevisionTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonDocumentCodec codec = new JsonDocumentCodec(objectMapper);
         UiEventBindingMapper mapper = mock(UiEventBindingMapper.class);
-        UiDataSourceDefinitionMapper sourceMapper =
-                mock(UiDataSourceDefinitionMapper.class);
+        UiExtensionDefinitionMapper sourceMapper =
+                mock(UiExtensionDefinitionMapper.class);
         EntityDefinitionMapper definitionMapper =
                 mock(EntityDefinitionMapper.class);
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         EntityListConfigMapper listMapper =
                 mock(EntityListConfigMapper.class);
-        UiDataSourceService dataSourceService =
-                mock(UiDataSourceService.class);
+        UiInterfaceExtensionService dataSourceService =
+                mock(UiInterfaceExtensionService.class);
         UiEventBindingSnapshotService snapshotService =
                 new UiEventBindingSnapshotService(
                         mapper,
@@ -386,13 +392,14 @@ class UiEventBindingServiceRevisionTest {
                                 "operationCode", "list-op",
                                 "order", 20)),
                 "测试事件步骤"));
-        UiDataSourceDefinition source = new UiDataSourceDefinition();
-        source.setId("source-mixed");
-        source.setOperationsDocument(codec.write(
-                List.of(
-                        operation("form-op", "FORM"),
-                        operation("list-op", "LIST")),
-                "测试接口操作"));
+        UiExtensionDefinition formInterface = new UiExtensionDefinition();
+        formInterface.setId("form-interface");
+        formInterface.setExtensionType("INTERFACE");
+        formInterface.setInterfaceContextType("FORM");
+        UiExtensionDefinition listInterface = new UiExtensionDefinition();
+        listInterface.setId("list-interface");
+        listInterface.setExtensionType("INTERFACE");
+        listInterface.setInterfaceContextType("LIST");
         EntityForm form = new EntityForm();
         form.setId("form-1");
         form.setEntityId("entity-1");
@@ -410,8 +417,18 @@ class UiEventBindingServiceRevisionTest {
         when(mapper.findForSnapshot(
                 "LIST", "list-1", "entity-1"))
                 .thenReturn(List.of(binding));
-        when(sourceMapper.selectById("source-mixed"))
-                .thenReturn(source);
+        when(dataSourceService.resolveDefinitionReference(
+                "source-mixed", "form-op"))
+                .thenReturn(formInterface);
+        when(dataSourceService.resolveDefinitionReference(
+                "source-mixed", "list-op"))
+                .thenReturn(listInterface);
+        when(dataSourceService.requireExecutableDefinition(
+                "form-interface", null))
+                .thenReturn(formInterface);
+        when(dataSourceService.requireExecutableDefinition(
+                "list-interface", null))
+                .thenReturn(listInterface);
         when(formMapper.selectById("form-1")).thenReturn(form);
         when(definitionMapper.selectById("entity-1"))
                 .thenReturn(entity);
@@ -426,13 +443,13 @@ class UiEventBindingServiceRevisionTest {
         Map<String, Object> listResolved = service.resolveDraft(
                 "list", "list-1", "DETAIL_LOAD");
 
-        assertEquals(List.of("form-op"), operationCodes(
+        assertEquals(List.of("form-interface"), extensionIds(
                 formSnapshot.get(0).get("steps")));
-        assertEquals(List.of("list-op"), operationCodes(
+        assertEquals(List.of("list-interface"), extensionIds(
                 listSnapshot.get(0).get("steps")));
-        assertEquals(List.of("form-op"), operationCodes(
+        assertEquals(List.of("form-interface"), extensionIds(
                 formResolved.get("steps")));
-        assertEquals(List.of("list-op"), operationCodes(
+        assertEquals(List.of("list-interface"), extensionIds(
                 listResolved.get("steps")));
         assertEquals("INHERITED", formResolved.get("source"));
         assertEquals("INHERITED", listResolved.get("source"));
@@ -440,12 +457,12 @@ class UiEventBindingServiceRevisionTest {
 
     private UiEventBindingService service(
             UiEventBindingMapper mapper) {
-        return service(mapper, mock(UiDataSourceService.class));
+        return service(mapper, mock(UiInterfaceExtensionService.class));
     }
 
     private UiEventBindingService service(
             UiEventBindingMapper mapper,
-            UiDataSourceService dataSourceService) {
+            UiInterfaceExtensionService dataSourceService) {
         return new UiEventBindingService(
                 mapper,
                 mock(UiConfigReleaseMapper.class),
@@ -489,33 +506,40 @@ class UiEventBindingServiceRevisionTest {
     }
 
     private Map<String, Object> step(
-            String serviceId,
+            String extensionId,
             String operationCode,
             int order) {
         return Map.of(
-                "serviceId", serviceId,
-                "operationCode", operationCode,
+                "extensionId", extensionId,
                 "strategy", "REPLACE",
                 "failurePolicy", "STOP",
                 "order", order);
     }
 
-    private Map<String, Object> operation(
-            String code,
-            String contextType) {
-        return Map.of(
-                "code", code,
-                "contextType", contextType);
+    private UiExtensionDefinition interfaceDefinition(
+            String id,
+            String contextType,
+            String kind) {
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId(id);
+        definition.setExtensionType("INTERFACE");
+        definition.setInterfaceContextType(contextType);
+        definition.setInterfaceKind(kind);
+        definition.setEnabled(true);
+        definition.setDeleted(0);
+        return definition;
     }
 
-    private List<String> operationCodes(Object value) {
+    private List<String> extensionIds(Object value) {
         if (!(value instanceof List<?> steps)) {
             return List.of();
         }
         return steps.stream()
                 .filter(Map.class::isInstance)
                 .map(Map.class::cast)
-                .map(step -> String.valueOf(step.get("operationCode")))
+                .map(step -> step.get("extensionId"))
+                .filter(java.util.Objects::nonNull)
+                .map(String::valueOf)
                 .toList();
     }
 

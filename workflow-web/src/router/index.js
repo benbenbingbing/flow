@@ -10,6 +10,8 @@ const legacyMenuRouteRedirects = [
   { path: '/system/group', redirect: '/config/process-user-groups' },
   { path: '/system/list-column-templates', redirect: '/config/list-column-templates' },
   { path: '/system/extensions', redirect: '/dev/extensions' },
+  { path: '/system/interface-services', redirect: '/dev/extensions?type=INTERFACE' },
+  { path: '/manual/interface-service', redirect: '/dev/extensions?type=INTERFACE' },
   { path: '/system/dev-guide', redirect: '/dev/manual/list-field-extension' },
   { path: '/system/list-field-guide', redirect: '/dev/manual/list-field-extension-v2' },
   { path: '/system/custom-list-guide', redirect: '/dev/manual/custom-list' },
@@ -121,7 +123,13 @@ const routes = [
       // 用户手册
       {
         path: '/manual',
-        redirect: '/manual/entity'
+        redirect: '/manual/quick-start'
+      },
+      {
+        path: '/manual/quick-start',
+        name: 'QuickStartManual',
+        component: () => import('@/views/manual/QuickStartManual.vue'),
+        meta: { title: '快速开始' }
       },
       {
         path: '/manual/entity',
@@ -146,12 +154,6 @@ const routes = [
         name: 'EmbedIntegrationManual',
         component: () => import('@/views/manual/EmbedIntegrationManual.vue'),
         meta: { title: '嵌入集成手册' }
-      },
-      {
-        path: '/manual/interface-service',
-        name: 'InterfaceServiceManual',
-        component: () => import('@/views/manual/InterfaceServiceManual.vue'),
-        meta: { title: '接口服务手册' }
       },
       // 流程进度查看
       {
@@ -292,15 +294,6 @@ const routes = [
             'system:embed:identity-manage',
             'system:embed:session-revoke'
           ]
-        }
-      },
-      {
-        path: '/system/interface-services',
-        name: 'InterfaceServices',
-        component: () => import('@/views/system/InterfaceServices.vue'),
-        meta: {
-          title: '接口服务',
-          requiredPermissions: ['system:interface-service:list']
         }
       },
       {

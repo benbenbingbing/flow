@@ -47,7 +47,7 @@ public class UiConfigDraftMetadataService {
     private final EntityListRelationalConfigService relationalConfigService;
     private final JsonDocumentCodec codec;
     /** 当前列表绑定位置可用接口操作查询服务。 */
-    private final UiAvailableOperationService availableOperationService;
+    private final UiAvailableInterfaceService availableOperationService;
 
     /**
      * 按补丁请求更新表单元数据，基于乐观锁更新并维护默认表单唯一性。
@@ -198,21 +198,13 @@ public class UiConfigDraftMetadataService {
             updated.setQueryProviderCode(clear.contains("queryProviderCode")
                     ? null : blankToNull(request.getQueryProviderCode()));
         }
-        if (request.getQueryDataSourceId() != null
-                || clear.contains("queryDataSourceId")) {
-            updated.setQueryDataSourceId(
-                    clear.contains("queryDataSourceId")
+        if (request.getQueryInterfaceExtensionId() != null
+                || clear.contains("queryInterfaceExtensionId")) {
+            updated.setQueryInterfaceExtensionId(
+                    clear.contains("queryInterfaceExtensionId")
                             ? null
                             : blankToNull(
-                                    request.getQueryDataSourceId()));
-        }
-        if (request.getQueryOperationCode() != null
-                || clear.contains("queryOperationCode")) {
-            updated.setQueryOperationCode(
-                    clear.contains("queryOperationCode")
-                            ? null
-                            : blankToNull(
-                                    request.getQueryOperationCode()));
+                                    request.getQueryInterfaceExtensionId()));
         }
         listValidator.validate(updated);
         validateListQueryOperation(listId, updated);
@@ -232,10 +224,8 @@ public class UiConfigDraftMetadataService {
                 .set("context_binding_config", write(updated.getContextBindingConfig(), "上下文绑定配置"))
                 .set("view_config", write(updated.getViewConfig(), "列表视图配置"))
                 .set("query_provider_code", updated.getQueryProviderCode())
-                .set("query_data_source_id",
-                        updated.getQueryDataSourceId())
-                .set("query_operation_code",
-                        updated.getQueryOperationCode())
+                .set("query_interface_extension_id",
+                        updated.getQueryInterfaceExtensionId())
                 .set("revision", current.getRevision() + 1)
                 .set("draft_hash", null)
                 .set("update_time", LocalDateTime.now());
@@ -260,7 +250,7 @@ public class UiConfigDraftMetadataService {
             String listId,
             EntityListConfigDTO config) {
         if (!StringUtils.hasText(
-                config.getQueryDataSourceId())) {
+                config.getQueryInterfaceExtensionId())) {
             return;
         }
         boolean available = availableOperationService
@@ -271,11 +261,8 @@ public class UiConfigDraftMetadataService {
                 .stream()
                 .anyMatch(operation ->
                         Objects.equals(
-                                operation.serviceId(),
-                                config.getQueryDataSourceId())
-                                && Objects.equals(
-                                        operation.operationCode(),
-                                        config.getQueryOperationCode()));
+                                operation.extensionId(),
+                                config.getQueryInterfaceExtensionId()));
         if (!available) {
             throw new IllegalArgumentException(
                     "所选接口操作不适用于当前列表查询");

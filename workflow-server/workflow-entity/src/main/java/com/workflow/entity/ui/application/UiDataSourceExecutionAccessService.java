@@ -8,7 +8,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.contracts.entity.list.DataScopePlan;
 import com.workflow.contracts.ui.UiDataSourceUsages;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -17,7 +17,7 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
@@ -114,8 +114,8 @@ public class UiDataSourceExecutionAccessService {
      * @throws BusinessConflictException  来源配置不存在或数据源作用域不匹配时抛出
      */
     public UiDataSourceExecutionAuthorization authorizePreview(
-            UiDataSourceDefinition definition,
-            UiDataSourceExecuteRequest request) {
+            UiExtensionDefinition definition,
+            UiExtensionExecuteRequest request) {
         Origin origin = resolveOrigin(request);
         requirePreviewAccess(origin);
         rejectTrustedMetadata(request);
@@ -128,6 +128,19 @@ public class UiDataSourceExecutionAccessService {
                 request.getTargetKey(),
                 definition.getId(),
                 definition.getOperationCode());
+        if (!StringUtils.hasText(bindingPath)
+                && StringUtils.hasText(definition.getLegacyServiceId())) {
+            // 关联内容等深层草稿可能未由 SQL 重写；旧 pair
+            // 只用于读取兼容，下次保存会规范化为 extensionId。
+            bindingPath = findDraftBinding(
+                    origin,
+                    target,
+                    normalize(request.getUsage()),
+                    request.getTargetType(),
+                    request.getTargetKey(),
+                    definition.getLegacyServiceId(),
+                    definition.getOperationCode());
+        }
         if (!StringUtils.hasText(bindingPath)) {
             throw forbidden(
                     "UI_DATA_SOURCE_DRAFT_BINDING_REQUIRED",
@@ -149,8 +162,8 @@ public class UiDataSourceExecutionAccessService {
      * 但不要求先把待调试操作绑定到该草稿。
      */
     public UiDataSourceExecutionAuthorization authorizeManagementPreview(
-            UiDataSourceDefinition definition,
-            UiDataSourceExecuteRequest request) {
+            UiExtensionDefinition definition,
+            UiExtensionExecuteRequest request) {
         configurationAccessService.requireGlobalConfigurationAccess();
         Origin origin = resolveOrigin(request);
         requirePreviewAccess(origin);
@@ -177,8 +190,8 @@ public class UiDataSourceExecutionAccessService {
      * @throws BusinessConflictException  发布版本不存在、过期或数据源作用域不匹配时抛出
      */
     public UiDataSourceExecutionAuthorization authorizePublished(
-            UiDataSourceDefinition definition,
-            UiDataSourceExecuteRequest request) {
+            UiExtensionDefinition definition,
+            UiExtensionExecuteRequest request) {
         Origin origin = resolveOrigin(request);
         rejectTrustedMetadata(request);
         ConfigTarget target = requireTarget(origin);
@@ -197,6 +210,17 @@ public class UiDataSourceExecutionAccessService {
                 request.getTargetKey(),
                 definition.getId(),
                 definition.getOperationCode());
+        if (!StringUtils.hasText(bindingPath)
+                && StringUtils.hasText(definition.getLegacyServiceId())) {
+            bindingPath = findPublishedBinding(
+                    origin,
+                    snapshot,
+                    normalize(request.getUsage()),
+                    request.getTargetType(),
+                    request.getTargetKey(),
+                    definition.getLegacyServiceId(),
+                    definition.getOperationCode());
+        }
         if (!StringUtils.hasText(bindingPath)) {
             throw forbidden(
                     "UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED",
@@ -229,8 +253,8 @@ public class UiDataSourceExecutionAccessService {
      * @return 精确绑定和当前数据权限组成的执行授权
      */
     public UiDataSourceExecutionAuthorization authorizeResolvedFormButton(
-            UiDataSourceDefinition definition,
-            UiDataSourceExecuteRequest request,
+            UiExtensionDefinition definition,
+            UiExtensionExecuteRequest request,
             Map<String, Object> resolvedSnapshot,
             String expectedSnapshotHash) {
         if (request == null
@@ -267,6 +291,19 @@ public class UiDataSourceExecutionAccessService {
                 definition.getOperationCode(),
                 request.getServerBindingOwnerType(),
                 request.getServerBindingOwnerId());
+        if (!StringUtils.hasText(bindingPath)
+                && StringUtils.hasText(definition.getLegacyServiceId())) {
+            bindingPath = findPublishedBinding(
+                    origin,
+                    resolvedSnapshot,
+                    normalize(request.getUsage()),
+                    request.getServerBindingTargetType(),
+                    request.getServerBindingTargetKey(),
+                    definition.getLegacyServiceId(),
+                    definition.getOperationCode(),
+                    request.getServerBindingOwnerType(),
+                    request.getServerBindingOwnerId());
+        }
         if (!StringUtils.hasText(bindingPath)) {
             throw forbidden(
                     "UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED",
@@ -284,7 +321,7 @@ public class UiDataSourceExecutionAccessService {
     }
 
     private void requireResolvedBindingIdentity(
-            UiDataSourceExecuteRequest request) {
+            UiExtensionExecuteRequest request) {
         String targetType = normalize(
                 request.getServerBindingTargetType());
         if (!StringUtils.hasText(request.getServerBindingOwnerType())
@@ -319,7 +356,7 @@ public class UiDataSourceExecutionAccessService {
     private UiConfigRelease resolvePublishedRelease(
             Origin origin,
             ConfigTarget target,
-            UiDataSourceExecuteRequest request) {
+            UiExtensionExecuteRequest request) {
         if (request.isServerPinnedRelease()) {
             if (!StringUtils.hasText(request.getServerIdempotencyKey())) {
                 throw new BusinessForbiddenException(
@@ -391,7 +428,7 @@ public class UiDataSourceExecutionAccessService {
             Integer releaseVersion,
             String bindingPath,
             ConfigTarget target,
-            UiDataSourceExecuteRequest request) {
+            UiExtensionExecuteRequest request) {
         requireClaimConsistency(request, origin, target);
         SysUser user = currentUser();
         DataScopePlan plan = permissionPlan(
@@ -417,7 +454,7 @@ public class UiDataSourceExecutionAccessService {
                 request.getServerIdempotencyKey());
     }
 
-    private Origin resolveOrigin(UiDataSourceExecuteRequest request) {
+    private Origin resolveOrigin(UiExtensionExecuteRequest request) {
         if (request == null) {
             throw originRequired();
         }
@@ -682,7 +719,7 @@ public class UiDataSourceExecutionAccessService {
     }
 
     private void requireScopeCompatibility(
-            UiDataSourceDefinition definition,
+            UiExtensionDefinition definition,
             Origin origin,
             ConfigTarget target) {
         String scopeType = normalize(definition.getScopeType());
@@ -705,7 +742,7 @@ public class UiDataSourceExecutionAccessService {
     }
 
     private void requireClaimConsistency(
-            UiDataSourceExecuteRequest request,
+            UiExtensionExecuteRequest request,
             Origin origin,
             ConfigTarget target) {
         if (StringUtils.hasText(request.getEntityCode())
@@ -772,7 +809,7 @@ public class UiDataSourceExecutionAccessService {
     }
 
     private void rejectTrustedMetadata(
-            UiDataSourceExecuteRequest request) {
+            UiExtensionExecuteRequest request) {
         if (request == null) {
             return;
         }
@@ -832,7 +869,7 @@ public class UiDataSourceExecutionAccessService {
      * input 根层、其他子树以及全部 context 继续严格拒绝保留键。
      */
     private String reservedInputKey(
-            UiDataSourceExecuteRequest request) {
+            UiExtensionExecuteRequest request) {
         Map<String, Object> input = request.getInput();
         if (input == null || input.isEmpty()
                 || !UiDataSourceUsages.FORM_BUTTON_CLICK.equals(

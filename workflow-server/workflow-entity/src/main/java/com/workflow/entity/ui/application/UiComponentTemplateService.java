@@ -12,6 +12,8 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTempl
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplateVersion;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateVersionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.dao.DuplicateKeyException;
@@ -62,6 +64,8 @@ public class UiComponentTemplateService {
     private final UiComponentTemplateMapper templateMapper;
     private final UiComponentTemplateVersionMapper versionMapper;
     private final JsonDocumentCodec codec;
+    /** 只用于把不可变历史列模板中的 service + operation 引用解析为新扩展 ID。 */
+    private final UiExtensionDefinitionMapper extensionMapper;
 
     /**
      * 按类型查询模板列表。
@@ -110,7 +114,108 @@ public class UiComponentTemplateService {
         if (currentRevision == null || currentRevision < 1) {
             throw new IllegalArgumentException("模板当前快照不存在");
         }
-        return snapshot(templateId, currentRevision);
+        Map<String, Object> current = snapshot(templateId, currentRevision);
+        if (!isInitializationOnlyTemplate(template)) {
+            return current;
+        }
+        // 先校验原文哈希、再转换返回副本；数据库快照及 content_hash 始终保持不变。
+        return normalizeLegacyInterfaceReferences(current);
+    }
+
+    /**
+     * 将历史列表列模板中的“服务 + 操作”二级引用转换为单一接口扩展 ID。
+     *
+     * <p>该方法仅作用于通过完整性校验后反序列化出的返回值，绝不更新历史
+     * {@code snapshot_document}，也不重算 {@code content_hash}。</p>
+     */
+    private Map<String, Object> normalizeLegacyInterfaceReferences(
+            Map<String, Object> snapshot) {
+        return stringMap(normalizeLegacyInterfaceValue(snapshot));
+    }
+
+    private Object normalizeLegacyInterfaceValue(Object value) {
+        if (value instanceof Map<?, ?> raw) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            raw.forEach((key, child) -> result.put(
+                    String.valueOf(key),
+                    normalizeLegacyInterfaceValue(child)));
+            normalizeLegacyPair(result,
+                    "dataSourceId", "dataSourceOperationCode",
+                    "interfaceExtensionId");
+            normalizeLegacyPair(result,
+                    "queryDataSourceId", "queryOperationCode",
+                    "queryInterfaceExtensionId");
+            normalizeLegacyPair(result,
+                    "serviceId", "operationCode", "extensionId");
+            return result;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(this::normalizeLegacyInterfaceValue)
+                    .toList();
+        }
+        return value;
+    }
+
+    private void normalizeLegacyPair(
+            Map<String, Object> value,
+            String legacyIdKey,
+            String legacyOperationKey,
+            String extensionIdKey) {
+        String legacyId = text(value.get(legacyIdKey));
+        String operationCode = text(value.get(legacyOperationKey));
+        if (!StringUtils.hasText(legacyId)
+                || !StringUtils.hasText(operationCode)) {
+            return;
+        }
+        UiExtensionDefinition definition = extensionMapper.selectById(
+                legacyId.trim());
+        if (!isMatchingInterface(definition, operationCode)) {
+            definition = extensionMapper.selectOne(
+                    new LambdaQueryWrapper<UiExtensionDefinition>()
+                            .eq(UiExtensionDefinition::getExtensionType,
+                                    "INTERFACE")
+                            .eq(UiExtensionDefinition::getLegacyServiceId,
+                                    legacyId.trim())
+                            .eq(UiExtensionDefinition::getProviderOperationCode,
+                                    operationCode.trim())
+                            .eq(UiExtensionDefinition::getDeleted, 0));
+        }
+        if (!isMatchingInterface(definition, operationCode)) {
+            throw new IllegalArgumentException(
+                    "历史列表列模板引用的接口扩展未完成迁移: "
+                            + legacyId + "/" + operationCode);
+        }
+        value.put(extensionIdKey, definition.getId());
+        value.remove(legacyIdKey);
+        value.remove(legacyOperationKey);
+    }
+
+    private boolean isMatchingInterface(
+            UiExtensionDefinition definition,
+            String operationCode) {
+        return definition != null
+                && "INTERFACE".equalsIgnoreCase(
+                        definition.getExtensionType())
+                && !Integer.valueOf(1).equals(definition.getDeleted())
+                && (!StringUtils.hasText(
+                        definition.getProviderOperationCode())
+                    || definition.getProviderOperationCode().equals(
+                            operationCode.trim()));
+    }
+
+    private Map<String, Object> stringMap(Object value) {
+        if (!(value instanceof Map<?, ?> raw)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        raw.forEach((key, child) -> result.put(
+                String.valueOf(key), child));
+        return result;
+    }
+
+    private String text(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     /**
@@ -411,10 +516,52 @@ public class UiComponentTemplateService {
                         "列表列模板不得包含具体字段身份或排序属性: " + key);
             }
         }
+        String legacyReferencePath = legacyInterfaceReferencePath(
+                snapshot, "$");
+        if (legacyReferencePath != null) {
+            // 历史快照只在读取副本时转换；新版本绝不能继续制造二级服务引用。
+            throw new IllegalArgumentException(
+                    "新列表列模板只能使用 interfaceExtensionId，不能保存历史服务操作引用: "
+                            + legacyReferencePath);
+        }
         validateObjectDocument(field.get("dataSourceConfig"), "数据源配置");
         validateObjectDocument(field.get("queryConfig"), "查询配置");
         validateObjectDocument(field.get("columnConfig"), "列展示配置");
         validateObjectDocument(field.get("renderConfig"), "渲染配置");
+    }
+
+    /** 查找新模板中仍存在的历史 service/operation pair，不误伤普通业务字段。 */
+    private String legacyInterfaceReferencePath(Object value, String path) {
+        if (value instanceof Map<?, ?> map) {
+            boolean legacyColumn = map.containsKey("dataSourceId")
+                    && map.containsKey("dataSourceOperationCode");
+            boolean legacyQuery = map.containsKey("queryDataSourceId")
+                    && map.containsKey("queryOperationCode");
+            boolean legacyService = map.containsKey("serviceId")
+                    && map.containsKey("operationCode");
+            boolean secondaryOperation = map.containsKey("extensionId")
+                    && map.containsKey("operationCode");
+            if (legacyColumn || legacyQuery || legacyService
+                    || secondaryOperation) {
+                return path;
+            }
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String found = legacyInterfaceReferencePath(
+                        entry.getValue(), path + "." + entry.getKey());
+                if (found != null) {
+                    return found;
+                }
+            }
+        } else if (value instanceof List<?> list) {
+            for (int index = 0; index < list.size(); index++) {
+                String found = legacyInterfaceReferencePath(
+                        list.get(index), path + "[" + index + "]");
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     private void validateObjectDocument(Object value, String label) {

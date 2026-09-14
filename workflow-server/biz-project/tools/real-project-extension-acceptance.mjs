@@ -61,7 +61,6 @@ const evidence = {
   acceptanceBatch: activeAcceptanceBatch,
   entity: {},
   extensions: [],
-  dataSources: [],
   forms: [],
   lists: [],
   eventBindings: [],
@@ -165,20 +164,20 @@ function today(offsetDays = 0) {
   ].join('-')
 }
 
-function operation(
-  code,
-  name,
-  kind,
-  contextType,
+function interfaceCapability(
+  providerOperationCode,
+  displayName,
+  interfaceKind,
+  interfaceContextType,
   outputSchema = objectOutputSchema,
-  config = {}
+  implementationConfig = {}
 ) {
   return {
-    code,
-    name,
-    kind,
-    contextType,
-    config,
+    providerOperationCode,
+    displayName,
+    interfaceKind,
+    interfaceContextType,
+    implementationConfig,
     inputSchema: emptyObjectSchema,
     outputSchema
   }
@@ -433,6 +432,26 @@ async function ensureUiExtension(definition) {
     configSchema: definition.configSchema || [],
     capabilities: definition.capabilities || {},
     status: 'ACTIVE',
+    ...(definition.extensionType === 'INTERFACE'
+      ? {
+          implementationType: definition.implementationType,
+          providerCode: definition.providerCode,
+          scopeType: definition.scopeType,
+          scopeId: definition.scopeId,
+          implementationConfig:
+            definition.implementationConfig || {},
+          executionPolicy: definition.executionPolicy || {},
+          inputSchema:
+            definition.inputSchema || emptyObjectSchema,
+          outputSchema:
+            definition.outputSchema || objectOutputSchema,
+          interfaceKind: definition.interfaceKind,
+          interfaceContextType:
+            definition.interfaceContextType,
+          providerOperationCode:
+            definition.providerOperationCode
+        }
+      : {}),
     ...(current
       ? { expectedRevision: current.revision }
       : {})
@@ -445,7 +464,21 @@ async function ensureUiExtension(definition) {
     type: saved.extensionType,
     key: saved.extensionKey,
     version: saved.version,
-    status: saved.status
+    status: saved.status,
+    ...(saved.extensionType === 'INTERFACE'
+      ? {
+          implementationType: saved.implementationType,
+          providerCode: saved.providerCode,
+          scopeType: saved.scopeType,
+          scopeId: saved.scopeId,
+          interfaceKind: saved.interfaceKind,
+          interfaceContextType:
+            saved.interfaceContextType,
+          providerOperationCode:
+            saved.providerOperationCode,
+          revision: saved.revision
+        }
+      : {})
   })
   return saved
 }
@@ -601,48 +634,50 @@ async function ensureForm(entity, formKey, payload) {
   return api('GET', `/entity-form/${saved.id}`)
 }
 
-async function ensureDataSource(definition) {
-  const list = await api('GET', '/ui-data-sources')
-  const current = list.find(item =>
-    item.sourceCode === definition.sourceCode
-  )
-  const payload = {
-    sourceCode: definition.sourceCode,
-    sourceName: definition.sourceName,
-    sourceType: definition.sourceType,
-    providerCode: definition.providerCode,
-    scopeType: definition.scopeType,
-    scopeId: definition.scopeId,
-    config: definition.config || {},
-    executionPolicy: {
-      timeoutMs: 5000,
-      cacheSeconds: 0,
-      failurePolicy: 'FAIL',
-      ...(definition.executionPolicy || {})
-    },
-    operations: definition.operations,
-    enabled: true,
-    ...(current
-      ? { expectedRevision: current.revision }
-      : {})
+/**
+ * 把旧数据源下的每个 operation 注册为独立 INTERFACE 扩展。
+ * extensionKey 使用 sourceCode.providerOperationCode，重复执行脚本时可稳定更新
+ * 同一条扩展；Provider 路由只保存在 providerOperationCode 中，宿主绑定只引用 ID。
+ */
+async function ensureInterfaceExtensions(definition) {
+  const savedByProviderOperation = {}
+  for (const capability of definition.interfaces) {
+    const saved = await ensureUiExtension({
+      extensionType: 'INTERFACE',
+      extensionKey:
+        `${definition.sourceCode}.${capability.providerOperationCode}`,
+      displayName:
+        `${definition.sourceName} / ${capability.displayName}`,
+      implementationType: definition.implementationType,
+      providerCode: definition.providerCode,
+      scopeType: definition.scopeType,
+      scopeId: definition.scopeId,
+      implementationConfig: {
+        ...(definition.implementationConfig || {}),
+        ...(capability.implementationConfig || {})
+      },
+      executionPolicy: {
+        timeoutMs: 5000,
+        cacheSeconds: 0,
+        failurePolicy: 'FAIL',
+        ...(definition.executionPolicy || {}),
+        ...(capability.executionPolicy || {})
+      },
+      inputSchema:
+        capability.inputSchema || emptyObjectSchema,
+      outputSchema:
+        capability.outputSchema || objectOutputSchema,
+      interfaceKind: capability.interfaceKind,
+      interfaceContextType:
+        capability.interfaceContextType,
+      providerOperationCode:
+        capability.providerOperationCode
+    })
+    savedByProviderOperation[
+      capability.providerOperationCode
+    ] = saved
   }
-  const saved = current
-    ? await api(
-        'POST',
-        `/ui-data-sources/${current.id}/update`,
-        payload
-      )
-    : await api('POST', '/ui-data-sources', payload)
-  evidence.dataSources.push({
-    id: saved.id,
-    code: saved.sourceCode,
-    type: saved.sourceType,
-    providerCode: saved.providerCode,
-    scopeType: saved.scopeType,
-    scopeId: saved.scopeId,
-    revision: saved.revision
-  })
-  return saved
+  return savedByProviderOperation
 }
 
 async function updateFormBindings(form, payload) {
@@ -850,14 +885,14 @@ async function ensureEventBinding(definition) {
   return saved
 }
 
-function eventStep(service, operationCode, strategy, order) {
+function eventStep(interfaceExtension, strategy, order) {
   return {
-    stepCode: `${operationCode}_${order}`,
+    stepCode:
+      `${interfaceExtension.providerOperationCode}_${order}`,
     strategy,
     order,
     failurePolicy: 'STOP',
-    serviceId: service.id,
-    operationCode,
+    extensionId: interfaceExtension.id,
     inputMapping: {},
     outputMapping: []
   }
@@ -926,53 +961,53 @@ async function configureForms(entity) {
     }
   )
 
-  const fullSource = await ensureDataSource({
+  const fullInterfaces = await ensureInterfaceExtensions({
     sourceCode: 'PROJECT_ACCEPTANCE_FULL_FORM_SOURCE',
     sourceName: '项目扩展验收整表单数据源',
-    sourceType: 'REGISTERED_PROVIDER',
+    implementationType: 'REGISTERED_PROVIDER',
     providerCode: 'PROJECT_CUSTOM_UI_FORM',
     scopeType: 'FORM',
     scopeId: fullForm.id,
-    config: {
+    implementationConfig: {
       messagePrefix: '整表单 Provider',
       targetField: 'provider_trace',
       defaultValue: 'FULL_FORM_DEFAULT'
     },
-    operations: [
-      operation(
+    interfaces: [
+      interfaceCapability(
         'FORM_INIT',
         '整表单初始化',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'AFTER_LOAD',
         '整表单加载后处理',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'BEFORE_SUBMIT',
         '整表单提交前处理',
         'WRITE',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FORM_OPEN',
         '整表单打开事件',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FORM_SAVE',
         '整表单保存事件',
         'WRITE',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FORM_BUTTON_CLICK',
         '整表单按钮事件',
-        'WRITE',
+        'READ',
         'FORM'
       )
     ]
@@ -981,16 +1016,13 @@ async function configureForms(entity) {
     fields: fullForm.fields,
     dataSourceBindings: {
       FORM_INIT: {
-        serviceId: fullSource.id,
-        operationCode: 'FORM_INIT'
+        extensionId: fullInterfaces.FORM_INIT.id
       },
       AFTER_LOAD: {
-        serviceId: fullSource.id,
-        operationCode: 'AFTER_LOAD'
+        extensionId: fullInterfaces.AFTER_LOAD.id
       },
       BEFORE_SUBMIT: {
-        serviceId: fullSource.id,
-        operationCode: 'BEFORE_SUBMIT'
+        extensionId: fullInterfaces.BEFORE_SUBMIT.id
       }
     }
   })
@@ -1086,64 +1118,64 @@ async function configureForms(entity) {
     }
   )
 
-  const entitySource = await ensureDataSource({
+  const entityInterfaces = await ensureInterfaceExtensions({
     sourceCode: 'PROJECT_ACCEPTANCE_ENTITY_SOURCE',
     sourceName: '项目扩展验收实体统一数据源',
-    sourceType: 'REGISTERED_PROVIDER',
+    implementationType: 'REGISTERED_PROVIDER',
     providerCode: 'PROJECT_CUSTOM_UI_ENTITY',
     scopeType: 'ENTITY',
     scopeId: entity.id,
-    config: {
+    implementationConfig: {
       optionLabelPrefix: '验收级别',
       defaultValue: 'A',
       computedPrefix: '节点计算',
       targetField: 'event_trace'
     },
-    operations: [
-      operation(
+    interfaces: [
+      interfaceCapability(
         'FIELD_OPTIONS',
         '字段选项',
         'READ',
         'FORM',
         arrayOutputSchema
       ),
-      operation(
+      interfaceCapability(
         'FIELD_DEFAULT',
         '字段默认值',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FIELD_COMPUTE',
         '字段计算',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'AFTER_LOAD',
         '字段加载后处理',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FIELD_CHANGE',
         '字段变化事件',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'ENTITY_SELECTED',
         '实体选择事件',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FORM_OPEN',
         '实体级表单打开事件',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FIELD_BUTTON_CLICK',
         '字段按钮事件',
         'WRITE',
@@ -1152,53 +1184,53 @@ async function configureForms(entity) {
     ]
   })
 
-  const matrixFormSource = await ensureDataSource({
+  const matrixFormInterfaces = await ensureInterfaceExtensions({
     sourceCode: 'PROJECT_ACCEPTANCE_MATRIX_FORM_SOURCE',
     sourceName: '项目扩展验收节点表单数据源',
-    sourceType: 'REGISTERED_PROVIDER',
+    implementationType: 'REGISTERED_PROVIDER',
     providerCode: 'PROJECT_CUSTOM_UI_FORM',
     scopeType: 'FORM',
     scopeId: matrixForm.id,
-    config: {
+    implementationConfig: {
       messagePrefix: '节点矩阵表单',
       targetField: 'provider_trace',
       defaultValue: 'MATRIX_FORM_DEFAULT'
     },
-    operations: [
-      operation(
+    interfaces: [
+      interfaceCapability(
         'FORM_INIT',
         '节点表单初始化',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'AFTER_LOAD',
         '节点表单加载后处理',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'BEFORE_SUBMIT',
         '节点表单提交前处理',
         'WRITE',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FORM_OPEN',
         '节点表单打开事件',
         'READ',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FORM_SAVE',
         '节点表单保存事件',
         'WRITE',
         'FORM'
       ),
-      operation(
+      interfaceCapability(
         'FORM_BUTTON_CLICK',
         '节点表单按钮事件',
-        'WRITE',
+        'READ',
         'FORM'
       )
     ]
@@ -1208,16 +1240,13 @@ async function configureForms(entity) {
     fields: matrixForm.fields,
     dataSourceBindings: {
       FORM_INIT: {
-        serviceId: matrixFormSource.id,
-        operationCode: 'FORM_INIT'
+        extensionId: matrixFormInterfaces.FORM_INIT.id
       },
       AFTER_LOAD: {
-        serviceId: matrixFormSource.id,
-        operationCode: 'AFTER_LOAD'
+        extensionId: matrixFormInterfaces.AFTER_LOAD.id
       },
       BEFORE_SUBMIT: {
-        serviceId: matrixFormSource.id,
-        operationCode: 'BEFORE_SUBMIT'
+        extensionId: matrixFormInterfaces.BEFORE_SUBMIT.id
       }
     }
   })
@@ -1317,12 +1346,12 @@ async function configureForms(entity) {
         fieldComponentName: 'project_acceptance_level',
         dataSourceBindings: {
           FIELD_OPTIONS: {
-            serviceId: entitySource.id,
-            operationCode: 'FIELD_OPTIONS'
+            extensionId:
+              entityInterfaces.FIELD_OPTIONS.id
           },
           FIELD_DEFAULT: {
-            serviceId: entitySource.id,
-            operationCode: 'FIELD_DEFAULT'
+            extensionId:
+              entityInterfaces.FIELD_DEFAULT.id
           }
         }
       }
@@ -1337,8 +1366,8 @@ async function configureForms(entity) {
         gridSpan: 24,
         dataSourceBindings: {
           AFTER_LOAD: {
-            serviceId: entitySource.id,
-            operationCode: 'AFTER_LOAD'
+            extensionId:
+              entityInterfaces.AFTER_LOAD.id
           }
         }
       }
@@ -1365,8 +1394,8 @@ async function configureForms(entity) {
         title: '扩展执行摘要',
         dataSourceBindings: {
           FIELD_COMPUTE: {
-            serviceId: entitySource.id,
-            operationCode: 'FIELD_COMPUTE'
+            extensionId:
+              entityInterfaces.FIELD_COMPUTE.id
           }
         }
       }
@@ -1432,8 +1461,7 @@ async function configureForms(entity) {
     eventCode: 'FORM_OPEN',
     steps: [
       eventStep(
-        entitySource,
-        'FORM_OPEN',
+        entityInterfaces.FORM_OPEN,
         'AFTER',
         10
       )
@@ -1447,8 +1475,7 @@ async function configureForms(entity) {
     eventCode: 'FIELD_CHANGE',
     steps: [
       eventStep(
-        entitySource,
-        'FIELD_CHANGE',
+        entityInterfaces.FIELD_CHANGE,
         'AFTER',
         10
       )
@@ -1462,8 +1489,7 @@ async function configureForms(entity) {
     eventCode: 'FIELD_BUTTON_CLICK',
     steps: [
       eventStep(
-        entitySource,
-        'FIELD_BUTTON_CLICK',
+        entityInterfaces.FIELD_BUTTON_CLICK,
         'BEFORE',
         10
       )
@@ -1477,8 +1503,7 @@ async function configureForms(entity) {
     eventCode: 'FORM_BUTTON_CLICK',
     steps: [
       eventStep(
-        matrixFormSource,
-        'FORM_BUTTON_CLICK',
+        matrixFormInterfaces.FORM_BUTTON_CLICK,
         'BEFORE',
         10
       )
@@ -1492,8 +1517,7 @@ async function configureForms(entity) {
     eventCode: 'FORM_BUTTON_CLICK',
     steps: [
       eventStep(
-        matrixFormSource,
-        'FORM_BUTTON_CLICK',
+        matrixFormInterfaces.FORM_BUTTON_CLICK,
         'BEFORE',
         10
       )
@@ -1525,8 +1549,7 @@ async function configureForms(entity) {
     readonlyForm: await api(
       'GET',
       `/entity-form/${readonlyForm.id}`
-    ),
-    entitySource
+    )
   }
 }
 
@@ -1549,9 +1572,8 @@ function listField(fields, fieldCode, index, overrides = {}) {
       overrides.dataSourceConfig
         ? json(overrides.dataSourceConfig)
         : null,
-    dataSourceId: overrides.dataSourceId || null,
-    dataSourceOperationCode:
-      overrides.dataSourceOperationCode || null,
+    interfaceExtensionId:
+      overrides.interfaceExtensionId || null,
     renderComponent: overrides.renderComponent || '',
     formatter: overrides.formatter || '',
     columnConfig: json(
@@ -1578,8 +1600,7 @@ function virtualListField(fieldCode, fieldName, index, overrides = {}) {
     align: overrides.align || 'left',
     dataSourceType: overrides.dataSourceType,
     dataSourceConfig: json(overrides.dataSourceConfig || {}),
-    dataSourceId: null,
-    dataSourceOperationCode: null,
+    interfaceExtensionId: null,
     renderComponent: overrides.renderComponent || '',
     formatter: '',
     columnConfig: json({
@@ -1650,10 +1671,8 @@ async function ensureList(entity, listKey, payload) {
       payload.contextBindingConfig || {},
     queryProviderCode:
       payload.queryProviderCode || '',
-    queryDataSourceId:
-      payload.queryDataSourceId || '',
-    queryOperationCode:
-      payload.queryOperationCode || '',
+    queryInterfaceExtensionId:
+      payload.queryInterfaceExtensionId || '',
     fields
   }
   return api('POST', '/entity-list-config/save', request)
@@ -1671,7 +1690,8 @@ async function publishList(list, description) {
     listName: list.listName,
     customComponent: list.customComponent,
     queryProviderCode: list.queryProviderCode,
-    queryDataSourceId: list.queryDataSourceId,
+    queryInterfaceExtensionId:
+      list.queryInterfaceExtensionId,
     releaseId: release.id,
     releaseVersion: release.version,
     route: `/entity-list/${entityCode}/${list.listKey}`
@@ -1679,7 +1699,7 @@ async function publishList(list, description) {
   return release
 }
 
-async function configureLists(entity, sources) {
+async function configureLists(entity) {
   const fields = fieldMap(entity)
   const builtInToolbar = [
     {
@@ -2050,43 +2070,43 @@ async function configureLists(entity, sources) {
     }
   )
 
-  const matrixSource = await ensureDataSource({
+  const matrixInterfaces = await ensureInterfaceExtensions({
     sourceCode: 'PROJECT_ACCEPTANCE_MATRIX_LIST_SOURCE',
     sourceName: '项目扩展验收标准列表数据源',
-    sourceType: 'REGISTERED_PROVIDER',
+    implementationType: 'REGISTERED_PROVIDER',
     providerCode: 'PROJECT_CUSTOM_UI_LIST',
     scopeType: 'LIST',
     scopeId: matrix.id,
-    config: {
+    implementationConfig: {
       columnPrefix: '统一列表列',
       messagePrefix: '标准列表事件'
     },
-    operations: [
-      operation(
+    interfaces: [
+      interfaceCapability(
         'LIST_COLUMN',
         '统一虚拟列',
         'READ',
         'LIST'
       ),
-      operation(
+      interfaceCapability(
         'LIST_LOAD',
         '列表加载事件',
         'READ',
         'LIST'
       ),
-      operation(
+      interfaceCapability(
         'LIST_EXPORT',
         '列表导出事件',
         'READ',
         'LIST'
       ),
-      operation(
+      interfaceCapability(
         'TOOLBAR_BUTTON_CLICK',
         '工具栏按钮事件',
         'WRITE',
         'LIST'
       ),
-      operation(
+      interfaceCapability(
         'ROW_BUTTON_CLICK',
         '行按钮事件',
         'WRITE',
@@ -2103,9 +2123,8 @@ async function configureLists(entity, sources) {
         field.fieldCode === 'provider_trace'
           ? {
               ...field,
-              dataSourceId: matrixSource.id,
-              dataSourceOperationCode:
-                'LIST_COLUMN'
+              interfaceExtensionId:
+                matrixInterfaces.LIST_COLUMN.id
             }
           : field
       )
@@ -2119,8 +2138,7 @@ async function configureLists(entity, sources) {
     eventCode: 'LIST_LOAD',
     steps: [
       eventStep(
-        matrixSource,
-        'LIST_LOAD',
+        matrixInterfaces.LIST_LOAD,
         'AFTER',
         10
       )
@@ -2134,8 +2152,7 @@ async function configureLists(entity, sources) {
     eventCode: 'TOOLBAR_BUTTON_CLICK',
     steps: [
       eventStep(
-        matrixSource,
-        'TOOLBAR_BUTTON_CLICK',
+        matrixInterfaces.TOOLBAR_BUTTON_CLICK,
         'BEFORE',
         10
       )
@@ -2149,8 +2166,7 @@ async function configureLists(entity, sources) {
     eventCode: 'ROW_BUTTON_CLICK',
     steps: [
       eventStep(
-        matrixSource,
-        'ROW_BUTTON_CLICK',
+        matrixInterfaces.ROW_BUTTON_CLICK,
         'AFTER',
         10
       )
@@ -2243,28 +2259,28 @@ async function configureLists(entity, sources) {
     }
   )
 
-  const unifiedSource = await ensureDataSource({
+  const unifiedInterfaces = await ensureInterfaceExtensions({
     sourceCode: 'PROJECT_ACCEPTANCE_UNIFIED_LIST_SOURCE',
     sourceName: '项目扩展验收 LIST 查询数据源',
-    sourceType: 'REGISTERED_PROVIDER',
+    implementationType: 'REGISTERED_PROVIDER',
     providerCode: 'PROJECT_CUSTOM_UI_LIST',
     scopeType: 'LIST',
     scopeId: unified.id,
-    config: {
+    implementationConfig: {
       columnPrefix: '统一查询列',
       messagePrefix: '统一查询列表',
       pageNum: 1,
       pageSize: 20
     },
-    operations: [
-      operation(
+    interfaces: [
+      interfaceCapability(
         'LIST_QUERY',
         '列表统一查询',
         'READ',
         'LIST',
         pageOutputSchema
       ),
-      operation(
+      interfaceCapability(
         'LIST_COLUMN',
         '列表统一列',
         'READ',
@@ -2277,8 +2293,8 @@ async function configureLists(entity, sources) {
     listKeys.unified,
     {
       ...unified,
-      queryDataSourceId: unifiedSource.id,
-      queryOperationCode: 'LIST_QUERY',
+      queryInterfaceExtensionId:
+        unifiedInterfaces.LIST_QUERY.id,
       fields: unified.fields
     }
   )
@@ -3207,8 +3223,8 @@ async function verifyRuntime(lists, forms, process, fixtures) {
   )
   ;['FORM_INIT', 'AFTER_LOAD', 'BEFORE_SUBMIT'].forEach(usage => {
     assert.ok(
-      fullFormBindings[usage]?.serviceId,
-      `整表单缺少 ${usage} 数据源绑定`
+      fullFormBindings[usage]?.extensionId,
+      `整表单缺少 ${usage} 接口扩展绑定`
     )
   })
   assert.ok(
@@ -3265,8 +3281,8 @@ async function verifyRuntime(lists, forms, process, fixtures) {
   )
   ;['FIELD_OPTIONS', 'FIELD_DEFAULT'].forEach(usage => {
     assert.ok(
-      levelBindings[usage]?.serviceId,
-      `复核级别字段缺少 ${usage} 数据源绑定`
+      levelBindings[usage]?.extensionId,
+      `复核级别字段缺少 ${usage} 接口扩展绑定`
     )
   })
   assert.equal(
@@ -3283,8 +3299,8 @@ async function verifyRuntime(lists, forms, process, fixtures) {
     '摘要节点 configSchema 配置没有按 componentProps 契约落库'
   )
   assert.ok(
-    summaryBindings.FIELD_COMPUTE?.serviceId,
-    '摘要节点缺少 FIELD_COMPUTE 数据源绑定'
+    summaryBindings.FIELD_COMPUTE?.extensionId,
+    '摘要节点缺少 FIELD_COMPUTE 接口扩展绑定'
   )
   assert.ok(
     findEventBinding(
@@ -3504,7 +3520,7 @@ async function main() {
       false
     )
   ]
-  const lists = await configureLists(entity, forms)
+  const lists = await configureLists(entity)
   await verifyRuntime(lists, forms, process, fixtures)
 
   const evidencePath = writeEvidence('PASS')

@@ -22,9 +22,8 @@ final class EntityListFieldPropertySupport {
         if (source.getAlign() != null) target.setAlign(source.getAlign());
         if (source.getDataSourceType() != null) target.setDataSourceType(source.getDataSourceType());
         if (source.getDataSourceConfig() != null) target.setDataSourceConfig(source.getDataSourceConfig());
-        setOrClear(source.getDataSourceId(), clearFields, "dataSourceId", target::setDataSourceId);
-        setOrClear(source.getDataSourceOperationCode(), clearFields,
-                "dataSourceOperationCode", target::setDataSourceOperationCode);
+        setOrClear(source.getInterfaceExtensionId(), clearFields,
+                "interfaceExtensionId", target::setInterfaceExtensionId);
         if (source.getRenderComponent() != null) target.setRenderComponent(source.getRenderComponent());
         if (source.getFormatter() != null) target.setFormatter(source.getFormatter());
         if (source.getColumnConfig() != null) target.setColumnConfig(source.getColumnConfig());
@@ -43,8 +42,7 @@ final class EntityListFieldPropertySupport {
                 .set("query_type", field.getQueryType()).set("align", field.getAlign())
                 .set("data_source_type", field.getDataSourceType())
                 .set("data_source_config", field.getDataSourceConfig())
-                .set("data_source_id", field.getDataSourceId())
-                .set("data_source_operation_code", field.getDataSourceOperationCode())
+                .set("interface_extension_id", field.getInterfaceExtensionId())
                 .set("render_component", field.getRenderComponent()).set("formatter", field.getFormatter())
                 .set("column_config", field.getColumnConfig()).set("query_config", field.getQueryConfig())
                 .set("render_config", field.getRenderConfig()).set("template_id", field.getTemplateId())
@@ -65,8 +63,7 @@ final class EntityListFieldPropertySupport {
                 && Objects.equals(left.getAlign(), right.getAlign())
                 && Objects.equals(left.getDataSourceType(), right.getDataSourceType())
                 && Objects.equals(left.getDataSourceConfig(), right.getDataSourceConfig())
-                && Objects.equals(left.getDataSourceId(), right.getDataSourceId())
-                && Objects.equals(left.getDataSourceOperationCode(), right.getDataSourceOperationCode())
+                && Objects.equals(left.getInterfaceExtensionId(), right.getInterfaceExtensionId())
                 && Objects.equals(left.getRenderComponent(), right.getRenderComponent())
                 && Objects.equals(left.getFormatter(), right.getFormatter())
                 && Objects.equals(left.getColumnConfig(), right.getColumnConfig())

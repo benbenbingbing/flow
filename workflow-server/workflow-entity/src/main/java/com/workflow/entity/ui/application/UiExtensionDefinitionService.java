@@ -28,15 +28,17 @@ import java.util.regex.Pattern;
 /**
  * UI 扩展组件定义服务，负责扩展注册、查询、版本管理和兼容性校验。
  *
- * <p>扩展类型包括 FORM、NODE、FIELD、LIST，每个扩展以 key+version 唯一标识，
- * 支持运行模式、节点类型和绑定类型的兼容范围声明。</p>
+ * <p>该物理表保存 FORM、NODE、FIELD、LIST 和 INTERFACE 类型；每个扩展以
+ * key+version 唯一标识。UI 组件声明运行模式、节点与绑定兼容范围，INTERFACE
+ * 则由专用服务校验实现方式、作用域与输入输出契约。管理端聚合展示的流程动作、
+ * 人员解析器来自各自能力目录，并不作为本表类型持久化。</p>
  */
 @Service
 @RequiredArgsConstructor
 public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
 
-    /** 允许的扩展类型。 */
-    private static final Set<String> TYPES =
+    /** 本服务负责写入的 UI 组件扩展类型；接口扩展由专用服务维护。 */
+    private static final Set<String> UI_TYPES =
             Set.of("FORM", "NODE", "FIELD", "LIST");
     /** 允许的扩展状态。 */
     private static final Set<String> STATUSES =
@@ -48,7 +50,7 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
     private static final Set<String> VISIBILITY_SCOPES =
             Set.of("GLOBAL", "ENTITY");
     private static final Pattern KEY =
-            Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,99}");
+            Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,254}");
 
     private final UiExtensionDefinitionMapper mapper;
     private final EntityDefinitionMapper entityDefinitionMapper;
@@ -66,6 +68,19 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
             String extensionType,
             String extensionKey,
             String status) {
+        return list(extensionType, extensionKey, status, null, null, null);
+    }
+
+    /**
+     * 查询统一扩展目录；作用域和实现类型过滤仅对 INTERFACE 条目生效。
+     */
+    public List<UiExtensionDefinition> list(
+            String extensionType,
+            String extensionKey,
+            String status,
+            String scopeType,
+            String scopeId,
+            String implementationType) {
         LambdaQueryWrapper<UiExtensionDefinition> query =
                 new LambdaQueryWrapper<>();
         if (StringUtils.hasText(extensionType)) {
@@ -82,6 +97,17 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
             query.eq(
                     UiExtensionDefinition::getStatus,
                     normalize(status));
+        }
+        if (StringUtils.hasText(scopeType)) {
+            query.eq(UiExtensionDefinition::getScopeType,
+                    normalize(scopeType));
+        }
+        if (StringUtils.hasText(scopeId)) {
+            query.eq(UiExtensionDefinition::getScopeId, scopeId.trim());
+        }
+        if (StringUtils.hasText(implementationType)) {
+            query.eq(UiExtensionDefinition::getImplementationType,
+                    normalize(implementationType));
         }
         return mapper.selectList(query
                 .eq(UiExtensionDefinition::getDeleted, 0)
@@ -150,11 +176,14 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
     @Transactional(rollbackFor = Exception.class)
     public UiExtensionDefinition save(
             UiExtensionDefinitionSaveRequest request) {
+        UiExtensionDefinition current = existingForUpdate(request);
+        String requestedType = request == null
+                ? "" : normalize(request.getExtensionType());
+        if (current != null) {
+            requireStableIdentity(current, requestedType,
+                    request.getExtensionKey());
+        }
         validate(request);
-        UiExtensionDefinition current =
-                StringUtils.hasText(request.getId())
-                        ? mapper.selectById(request.getId())
-                        : null;
         if (current != null
                 && !current.getRevision().equals(request.getExpectedRevision())) {
             throw new RevisionConflictException(
@@ -227,6 +256,43 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
             }
         }
         return mapper.selectById(value.getId());
+    }
+
+    /**
+     * 按请求路径 ID 读取更新目标。带 ID 的保存只能更新既有记录，不能因记录
+     * 不存在而退化为新增，避免客户端使用陈旧 ID 意外创建第二条扩展。
+     */
+    private UiExtensionDefinition existingForUpdate(
+            UiExtensionDefinitionSaveRequest request) {
+        if (request == null || !StringUtils.hasText(request.getId())) {
+            return null;
+        }
+        UiExtensionDefinition current = mapper.selectById(
+                request.getId().trim());
+        if (current == null || Integer.valueOf(1).equals(
+                current.getDeleted())) {
+            throw new IllegalArgumentException("扩展定义不存在");
+        }
+        return current;
+    }
+
+    /**
+     * 扩展类型和 key 是持久化身份的一部分。更新时只允许修改展示、配置和状态，
+     * 禁止借保存接口把 UI 组件转换为接口扩展，或把稳定 key 重命名。
+     */
+    private void requireStableIdentity(
+            UiExtensionDefinition current,
+            String requestedType,
+            String requestedKey) {
+        if (!normalize(current.getExtensionType()).equals(requestedType)) {
+            throw new IllegalArgumentException("更新时不能修改扩展类型");
+        }
+        String normalizedKey = StringUtils.hasText(requestedKey)
+                ? requestedKey.trim() : "";
+        if (!String.valueOf(current.getExtensionKey()).equals(
+                normalizedKey)) {
+            throw new IllegalArgumentException("更新时不能修改扩展注册名");
+        }
     }
 
     /**
@@ -323,7 +389,7 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
 
     private void validate(UiExtensionDefinitionSaveRequest request) {
         if (request == null
-                || !TYPES.contains(normalize(request.getExtensionType()))) {
+                || !UI_TYPES.contains(normalize(request.getExtensionType()))) {
             throw new IllegalArgumentException("扩展类型不合法");
         }
         if (!StringUtils.hasText(request.getExtensionKey())
@@ -487,6 +553,24 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 readMap(
                         definition.getCapabilitiesDocument(),
                         "扩展能力"),
+                definition.getImplementationType(),
+                definition.getProviderCode(),
+                definition.getScopeType(),
+                definition.getScopeId(),
+                definition.getInterfaceKind(),
+                definition.getInterfaceContextType(),
+                readMap(
+                        definition.getImplementationConfigDocument(),
+                        "接口实现配置"),
+                readMap(
+                        definition.getExecutionPolicyDocument(),
+                        "接口执行策略"),
+                readMap(
+                        definition.getInputSchemaDocument(),
+                        "接口输入Schema"),
+                readMap(
+                        definition.getOutputSchemaDocument(),
+                        "接口输出Schema"),
                 definition.getRevision());
     }
 

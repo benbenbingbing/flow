@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 /**
  * “关联内容”配置文档白名单校验器。
  *
- * <p>配置只允许四步引导能够生成的声明式字段。接口服务和组件必须使用注册
+ * <p>配置只允许四步引导能够生成的声明式字段。接口扩展和组件必须使用注册
  * 标识，不接受脚本、SQL、动态 URL、类名或 Bean 名；配置缺失或特殊处理失败
  * 时由调用方按显式失败策略终止，不存在隐式回退。</p>
  */
@@ -52,11 +52,13 @@ public class UiViewCompositionConfigValidator {
             "mode", "interfaceService", "actionServices", "customComponent",
             "failurePolicy");
     private static final Set<String> INTERFACE_SERVICE_KEYS = Set.of(
+            "extensionId", "extensionKey", "extensionRevision",
             "serviceId", "sourceCode", "serviceName", "serviceRevision",
             "operationCode", "operationName", "inputMappings",
             "outputMappings", "executableSnapshot", "definitionHash");
     private static final Set<String> ACTION_SERVICE_KEYS = Set.of(
-            "actionKey", "serviceId", "sourceCode", "serviceName",
+            "actionKey", "extensionId", "extensionKey", "extensionRevision",
+            "serviceId", "sourceCode", "serviceName",
             "serviceRevision", "operationCode", "operationName",
             "inputMappings", "outputMappings", "failurePolicy",
             "executableSnapshot", "definitionHash");
@@ -343,21 +345,22 @@ public class UiViewCompositionConfigValidator {
                 FAILURE_POLICIES,
                 "失败处理");
         Map<String, Object> rawService = optionalMap(
-                value.get("interfaceService"), "接口服务");
+                value.get("interfaceService"), "接口扩展");
         Map<String, Object> rawComponent = optionalMap(
                 value.get("customComponent"), "自定义组件");
         List<Map<String, Object>> rawActionServices = mapListValue(
-                value.get("actionServices"), "动作接口服务");
-        requireAllowedKeys(rawService, INTERFACE_SERVICE_KEYS, "接口服务");
+                value.get("actionServices"), "动作接口扩展");
+        requireAllowedKeys(rawService, INTERFACE_SERVICE_KEYS, "接口扩展");
         requireAllowedKeys(rawComponent, CUSTOM_COMPONENT_KEYS, "自定义组件");
         boolean serviceConfigured = hasTextValue(
-                rawService.get("serviceId"))
+                rawService.get("extensionId"))
+                || hasTextValue(rawService.get("serviceId"))
                 || hasTextValue(rawService.get("operationCode"))
                 || !rawActionServices.isEmpty();
         boolean componentConfigured = hasTextValue(rawComponent.get("name"));
         if ("NONE".equals(mode) && (serviceConfigured || componentConfigured)) {
             throw new IllegalArgumentException(
-                    "已选择接口服务或自定义组件时，必须显式启用特殊处理");
+                    "已选择接口扩展或自定义组件时，必须显式启用特殊处理");
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("mode", mode);
@@ -381,11 +384,11 @@ public class UiViewCompositionConfigValidator {
 
         boolean hasService = result.containsKey("interfaceService")
                 || !mapListValue(result.get("actionServices"),
-                "动作接口服务").isEmpty();
+                "动作接口扩展").isEmpty();
         boolean hasComponent = result.containsKey("customComponent");
         if (("INTERFACE_SERVICE".equals(mode) || "BOTH".equals(mode))
                 && !hasService) {
-            throw new IllegalArgumentException("特殊处理必须选择接口服务");
+            throw new IllegalArgumentException("特殊处理必须选择接口扩展");
         }
         if (("CUSTOM_COMPONENT".equals(mode) || "BOTH".equals(mode))
                 && !hasComponent) {
@@ -394,12 +397,12 @@ public class UiViewCompositionConfigValidator {
         return result;
     }
 
-    /** 规范化按 actionKey 显式绑定的数据或动作接口服务。 */
+    /** 规范化按 actionKey 显式绑定的数据或动作接口扩展。 */
     private List<Map<String, Object>> normalizeActionServices(
             List<Map<String, Object>> values) {
         if (values.size() > MAX_ACTION_SERVICES) {
             throw new IllegalArgumentException(
-                    "动作接口服务不能超过 " + MAX_ACTION_SERVICES + " 项");
+                    "动作接口扩展不能超过 " + MAX_ACTION_SERVICES + " 项");
         }
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         List<Map<String, Object>> result = new ArrayList<>();
@@ -407,14 +410,14 @@ public class UiViewCompositionConfigValidator {
             Map<String, Object> value = values.get(index);
             requireAllowedKeys(
                     value, ACTION_SERVICE_KEYS,
-                    "动作接口服务第 " + (index + 1) + " 项");
+                    "动作接口扩展第 " + (index + 1) + " 项");
             Map<String, Object> normalized = new LinkedHashMap<>();
             String actionKey = requireText(
-                    value.get("actionKey"), 100, "动作接口服务对应操作");
-            requireBusinessKey(actionKey, "动作接口服务对应操作");
+                    value.get("actionKey"), 100, "动作接口扩展对应操作");
+            requireBusinessKey(actionKey, "动作接口扩展对应操作");
             if (!keys.add(actionKey)) {
                 throw new IllegalArgumentException(
-                        "同一个操作只能绑定一个接口服务: " + actionKey);
+                        "同一个操作只能绑定一个接口扩展: " + actionKey);
             }
             normalized.put("actionKey", actionKey);
             Map<String, Object> serviceValue = new LinkedHashMap<>();
@@ -427,7 +430,7 @@ public class UiViewCompositionConfigValidator {
             normalized.put("failurePolicy", requireEnum(
                     value.getOrDefault("failurePolicy", "ERROR"),
                     FAILURE_POLICIES,
-                    "动作接口服务失败处理"));
+                    "动作接口扩展失败处理"));
             result.add(normalized);
         }
         return List.copyOf(result);
@@ -435,20 +438,33 @@ public class UiViewCompositionConfigValidator {
 
     private Map<String, Object> normalizeInterfaceService(
             Map<String, Object> value) {
-        requireAllowedKeys(value, INTERFACE_SERVICE_KEYS, "接口服务");
+        requireAllowedKeys(value, INTERFACE_SERVICE_KEYS, "接口扩展");
         Map<String, Object> result = new LinkedHashMap<>();
-        putRequiredText(result, "serviceId", value.get("serviceId"), 64,
-                "接口服务");
-        putOptionalBusinessKey(
-                result, "sourceCode", value.get("sourceCode"));
-        putOptionalText(result, "serviceName", value.get("serviceName"), 200);
-        if (value.get("serviceRevision") != null) {
-            result.put("serviceRevision", requirePositiveInteger(
-                    value.get("serviceRevision"), "接口服务修订号"));
+        if (hasTextValue(value.get("extensionId"))) {
+            putRequiredText(result, "extensionId", value.get("extensionId"), 64,
+                    "接口扩展");
+            putOptionalBusinessKey(
+                    result, "extensionKey", value.get("extensionKey"));
+            if (value.get("extensionRevision") != null) {
+                result.put("extensionRevision", requirePositiveInteger(
+                        value.get("extensionRevision"), "接口扩展修订号"));
+            }
+        } else {
+            // 旧字段只为读取已存草稿和不可变发布快照；
+            // 应用服务在下次写入前会解析并收敛为 extensionId。
+            putRequiredText(result, "serviceId", value.get("serviceId"), 64,
+                    "历史接口服务");
+            putRequiredBusinessKey(
+                    result, "operationCode", value.get("operationCode"),
+                    "历史接口操作");
+            putOptionalBusinessKey(
+                    result, "sourceCode", value.get("sourceCode"));
+            if (value.get("serviceRevision") != null) {
+                result.put("serviceRevision", requirePositiveInteger(
+                        value.get("serviceRevision"), "历史接口服务修订号"));
+            }
         }
-        putRequiredBusinessKey(
-                result, "operationCode", value.get("operationCode"),
-                "接口操作");
+        putOptionalText(result, "serviceName", value.get("serviceName"), 200);
         putOptionalText(result, "operationName", value.get("operationName"), 200);
         result.put("inputMappings", normalizeMappings(
                 value.get("inputMappings"), "接口输入映射", true));
@@ -699,7 +715,7 @@ public class UiViewCompositionConfigValidator {
                 && !(special.get("interfaceService")
                 instanceof Map<?, ?>)) {
             throw new IllegalArgumentException(
-                    "通过接口服务关联数据时，必须在特殊处理中单独选择数据解析接口");
+                    "通过接口扩展关联数据时，必须在特殊处理中单独选择数据解析接口");
         }
     }
 

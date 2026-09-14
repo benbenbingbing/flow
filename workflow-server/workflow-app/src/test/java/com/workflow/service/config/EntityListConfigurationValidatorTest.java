@@ -1,9 +1,11 @@
 package com.workflow.service.config;
 
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
+import com.workflow.entity.ui.application.UiConfigInterfaceReferenceValidator;
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -16,9 +18,15 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -40,7 +48,8 @@ class EntityListConfigurationValidatorTest {
                 new StructuredConfigValidator(new ObjectMapper()),
                 new JsonDocumentCodec(new ObjectMapper()),
                 new ListFieldDataProviderRegistry(List.of(), new ObjectMapper()),
-                entityFieldMapper);
+                entityFieldMapper,
+                mock(UiConfigInterfaceReferenceValidator.class));
         EntityListField field = new EntityListField();
         field.setFieldId("field-1");
         field.setFieldCode("riskScore");
@@ -63,25 +72,68 @@ class EntityListConfigurationValidatorTest {
         assertNull(field.getRenderConfig());
     }
 
-    /** 列表查询接口服务与操作编码必须成对保存。 */
+    /** mutable 列表只保存直接 extensionId，不再要求旧 operationCode。 */
     @Test
-    void rejectsIncompleteListQueryOperationBinding() {
-        EntityListConfigurationValidator validator =
-                validator(mock(EntityFieldMapper.class));
+    void acceptsDirectListQueryExtensionIdWithoutOperation() {
+        UiConfigInterfaceReferenceValidator referenceValidator =
+                mock(UiConfigInterfaceReferenceValidator.class);
+        EntityListConfigurationValidator validator = validator(
+                mock(EntityFieldMapper.class), referenceValidator);
         EntityListConfigDTO dto = new EntityListConfigDTO();
+        dto.setId("list-1");
         dto.setEntityId("entity-1");
         dto.setEntityCode("demo_project");
         dto.setListKey("default");
-        dto.setQueryDataSourceId("service-1");
+        dto.setQueryInterfaceExtensionId("extension-1");
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> validator.validate(dto));
+        assertDoesNotThrow(() -> validator.validate(dto));
+        verify(referenceValidator).validateListDraft(
+                eq("list-1"),
+                eq("entity-1"),
+                eq("extension-1"),
+                isNull());
+    }
+
+    /** 新列表 DTO 只接受并输出 extensionId 身份，不再把旧服务 ID 当作扩展 ID。 */
+    @Test
+    void mutableListDtoExposesOnlyExtensionIdentity() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        EntityListField field = new EntityListField();
+        field.setInterfaceExtensionId("column-extension");
+        EntityListConfigDTO dto = new EntityListConfigDTO();
+        dto.setQueryInterfaceExtensionId("query-extension");
+        dto.setFields(List.of(field));
+
+        String json = mapper.writeValueAsString(dto);
+
+        assertTrue(json.contains("\"queryInterfaceExtensionId\""));
+        assertTrue(json.contains("\"interfaceExtensionId\""));
+        assertFalse(json.contains("\"queryDataSourceId\""));
+        assertFalse(json.contains("\"dataSourceId\""));
+        assertFalse(json.contains("\"queryOperationCode\""));
+        assertFalse(json.contains("\"dataSourceOperationCode\""));
+        assertThrows(JsonProcessingException.class,
+                () -> mapper.readValue(
+                        "{\"queryDataSourceId\":\"legacy-service\"}",
+                        EntityListConfigDTO.class));
+        assertThrows(JsonProcessingException.class,
+                () -> mapper.readValue(
+                        "{\"dataSourceId\":\"legacy-service\","
+                                + "\"dataSourceOperationCode\":\"query\"}",
+                        EntityListField.class));
     }
 
     /** 创建列表配置校验器测试实例。 */
     private EntityListConfigurationValidator validator(
             EntityFieldMapper entityFieldMapper) {
+        return validator(
+                entityFieldMapper,
+                mock(UiConfigInterfaceReferenceValidator.class));
+    }
+
+    private EntityListConfigurationValidator validator(
+            EntityFieldMapper entityFieldMapper,
+            UiConfigInterfaceReferenceValidator referenceValidator) {
         return new EntityListConfigurationValidator(
                 new StructuredConfigValidator(
                         new ObjectMapper()),
@@ -90,6 +142,7 @@ class EntityListConfigurationValidatorTest {
                 new ListFieldDataProviderRegistry(
                         List.of(),
                         new ObjectMapper()),
-                entityFieldMapper);
+                entityFieldMapper,
+                referenceValidator);
     }
 }

@@ -295,9 +295,9 @@ Object.entries(structuralNodeCases).forEach(([nodeType, componentProps]) => {
       validationRules: { required: true },
       extensionConfig: { arbitrary: true },
       dataSourceBindings: {
-        FIELD_OPTIONS: { serviceId: 'forbidden-source' }
+        FIELD_OPTIONS: { extensionId: 'forbidden-extension' }
       },
-      dataSourceId: 'forbidden-source',
+      interfaceExtensionId: 'forbidden-extension',
       dataSourceUsage: 'FIELD_OPTIONS',
       templateId: 'forbidden-template',
       templateVersion: 7,
@@ -447,16 +447,14 @@ const fieldPayload = buildFormNodePayload(
     },
     dataSourceBindings: {
       FIELD_OPTIONS: {
-        serviceId: 'option-source',
-        operationCode: 'queryOptions'
+        extensionId: 'option-interface'
       },
       SUBFORM_ROWS: {
-        serviceId: 'must-be-filtered'
+        extensionId: 'must-be-filtered'
       }
     },
     dataSourceUsage: 'FIELD_DEFAULT',
-    dataSourceId: 'default-source',
-    dataSourceOperationCode: 'queryDefault',
+    interfaceExtensionId: 'default-interface',
     dataSourceInputMappingText: '{"entityId":"$context.entityId"}',
     dataSourceOutputMappingText: '{"value":"amount"}',
     templateId: 'field-template',
@@ -537,12 +535,10 @@ assert.deepEqual(Object.keys(fieldPayload.dataSourceBindings).sort(), [
   'FIELD_OPTIONS'
 ])
 assert.deepEqual(fieldPayload.dataSourceBindings.FIELD_OPTIONS, {
-  serviceId: 'option-source',
-  operationCode: 'queryOptions'
+  extensionId: 'option-interface'
 })
 assert.deepEqual(fieldPayload.dataSourceBindings.FIELD_DEFAULT, {
-  serviceId: 'default-source',
-  operationCode: 'queryDefault',
+  extensionId: 'default-interface',
   inputMapping: {
     entityId: '$context.entityId'
   },
@@ -586,27 +582,23 @@ assert.deepEqual(fieldPayload.localOverrides, {
       },
       dataSourceBindings: {
         SUBFORM_ROWS: {
-          serviceId: 'row-source',
-          operationCode: 'queryRows'
+          extensionId: 'row-interface'
         },
         AFTER_LOAD: {
-          serviceId: 'after-load-source',
-          operationCode: 'afterLoad'
+          extensionId: 'after-load-interface'
         },
         BEFORE_SUBMIT: {
-          serviceId: 'before-submit-source',
-          operationCode: 'beforeSubmit'
+          extensionId: 'before-submit-interface'
         },
         FIELD_OPTIONS: {
-          serviceId: 'must-be-filtered'
+          extensionId: 'must-be-filtered'
         },
         FIELD_DEFAULT: {
-          serviceId: 'must-also-be-filtered'
+          extensionId: 'must-also-be-filtered'
         }
       },
       dataSourceUsage: nodeType === 'SUB_FORM' ? 'FIELD_OPTIONS' : 'BEFORE_SUBMIT',
-      dataSourceId: `${nodeType.toLowerCase()}-source`,
-      dataSourceOperationCode: 'selectedOperation',
+      interfaceExtensionId: `${nodeType.toLowerCase()}-interface`,
       dataSourceInputMappingText: '{"recordId":"$context.recordId"}',
       dataSourceOutputMappingText: '{"rows":"items"}',
       templateId: 'subform-template',
@@ -642,13 +634,9 @@ assert.deepEqual(fieldPayload.localOverrides, {
   )
   if (nodeType === 'REPEATER') {
     assert.equal(
-      payload.dataSourceBindings.BEFORE_SUBMIT.serviceId,
-      'repeater-source',
+      payload.dataSourceBindings.BEFORE_SUBMIT.extensionId,
+      'repeater-interface',
       'only the selected REPEATER usage should be updated'
-    )
-    assert.equal(
-      payload.dataSourceBindings.BEFORE_SUBMIT.operationCode,
-      'selectedOperation'
     )
   }
   assert.equal(payload.childFormId, 'child-form-1')
@@ -925,28 +913,24 @@ const multiBindingPatch = buildFormNodePayload(
     componentType: 'select',
     dataSourceBindings: {
       FIELD_OPTIONS: {
-        serviceId: 'options-source',
-        operationCode: 'queryOptions',
+        extensionId: 'options-interface',
         cache: {
           ttlSeconds: 60
         }
       },
       FIELD_DEFAULT: {
-        serviceId: 'old-default-source',
-        operationCode: 'oldDefault',
+        extensionId: 'old-default-interface',
         timeoutMs: 800
       },
       AFTER_LOAD: {
-        serviceId: 'after-load-source',
-        operationCode: 'afterLoad'
+        extensionId: 'after-load-interface'
       },
       SUBFORM_ROWS: {
-        serviceId: 'unsupported-source'
+        extensionId: 'unsupported-interface'
       }
     },
     dataSourceUsage: 'FIELD_DEFAULT',
-    dataSourceId: 'new-default-source',
-    dataSourceOperationCode: 'newDefault',
+    interfaceExtensionId: 'new-default-interface',
     dataSourceInputMappingText: '{"recordId":"$context.recordId"}',
     dataSourceOutputMappingText: '{"value":"defaultValue"}'
   },
@@ -960,19 +944,16 @@ assert.deepEqual(
   'PATCH must preserve all existing allowed data source usages'
 )
 assert.deepEqual(multiBindingPatch.dataSourceBindings.FIELD_OPTIONS, {
-  serviceId: 'options-source',
-  operationCode: 'queryOptions',
+  extensionId: 'options-interface',
   cache: {
     ttlSeconds: 60
   }
 })
 assert.deepEqual(multiBindingPatch.dataSourceBindings.AFTER_LOAD, {
-  serviceId: 'after-load-source',
-  operationCode: 'afterLoad'
+  extensionId: 'after-load-interface'
 })
 assert.deepEqual(multiBindingPatch.dataSourceBindings.FIELD_DEFAULT, {
-  serviceId: 'new-default-source',
-  operationCode: 'newDefault',
+  extensionId: 'new-default-interface',
   timeoutMs: 800,
   inputMapping: {
     recordId: '$context.recordId'
@@ -996,16 +977,14 @@ const removeSelectedBindingPatch = buildFormNodePayload(
     componentType: 'select',
     dataSourceBindings: {
       FIELD_OPTIONS: {
-        serviceId: 'options-source',
-        operationCode: 'queryOptions'
+        extensionId: 'options-interface'
       },
       FIELD_DEFAULT: {
-        serviceId: 'default-source',
-        operationCode: 'queryDefault'
+        extensionId: 'default-interface'
       }
     },
     dataSourceUsage: 'FIELD_DEFAULT',
-    dataSourceId: ''
+    interfaceExtensionId: ''
   },
   {
     forPatch: true
@@ -1013,8 +992,7 @@ const removeSelectedBindingPatch = buildFormNodePayload(
 )
 assert.deepEqual(removeSelectedBindingPatch.dataSourceBindings, {
   FIELD_OPTIONS: {
-    serviceId: 'options-source',
-    operationCode: 'queryOptions'
+    extensionId: 'options-interface'
   }
 })
 assert.equal(
@@ -1195,8 +1173,7 @@ const immutableField = {
   },
   dataSourceBindings: {
     FIELD_OPTIONS: {
-      serviceId: 'immutable-source',
-      operationCode: 'queryOptions',
+      extensionId: 'immutable-interface',
       inputMapping: {
         tenantId: '$context.tenantId'
       }

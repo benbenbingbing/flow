@@ -169,7 +169,7 @@ class UiEventBindingScopeTest {
                 mock(EntityListConfigMapper.class),
                 mock(EntityDefinitionAccessPolicy.class),
                 mock(UiConfigurationAccessService.class),
-                mock(UiDataSourceService.class),
+                mock(UiInterfaceExtensionService.class),
                 mock(UiEventBindingSnapshotService.class),
                 mock(UiConfigReleaseService.class),
                 new JsonDocumentCodec(objectMapper),

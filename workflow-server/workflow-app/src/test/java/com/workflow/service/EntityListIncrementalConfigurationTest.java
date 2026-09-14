@@ -130,7 +130,7 @@ class EntityListIncrementalConfigurationTest {
                 null, null, null);
         EntityListField source = new EntityListField();
         EntityListField target = new EntityListField();
-        target.setDataSourceId("source-1");
+        target.setInterfaceExtensionId("source-1");
         target.setTemplateId("template-1");
         target.setTemplateVersion(3);
         target.setLocalOverridesDocument("{}");
@@ -144,12 +144,12 @@ class EntityListIncrementalConfigurationTest {
                 source,
                 target,
                 Set.of(
-                        "dataSourceId",
+                        "interfaceExtensionId",
                         "templateId",
                         "templateVersion",
                         "localOverridesDocument"));
 
-        assertNull(target.getDataSourceId());
+        assertNull(target.getInterfaceExtensionId());
         assertNull(target.getTemplateId());
         assertNull(target.getTemplateVersion());
         assertNull(target.getLocalOverridesDocument());

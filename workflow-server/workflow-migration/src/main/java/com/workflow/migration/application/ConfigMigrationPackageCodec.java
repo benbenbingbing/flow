@@ -437,20 +437,22 @@ public class ConfigMigrationPackageCodec {
         boolean uiSectionSelected = selected.containsKey("forms")
                 || selected.containsKey("lists");
         if (!uiSectionSelected
+                && !sections.contains("interfaceExtensions")
                 && !sections.contains("dataSources")
                 && !sections.contains("extensions")) {
             return;
         }
-        Set<String> dataSourceCodes = new LinkedHashSet<>();
+        Set<String> interfaceExtensionCodes = new LinkedHashSet<>();
         collectValuesForKeys(selected, Set.of(
-                "serviceCode", "dataSourceCode", "queryDataSourceCode"), dataSourceCodes);
-        if (sections.contains("dataSources")) {
-            copyIfPresent(source, selected, "dataSources");
-        } else if (!dataSourceCodes.isEmpty()) {
-            selected.put("dataSources", castMapList(source.get("dataSources")).stream()
-                    .filter(value -> dataSourceCodes.contains(String.valueOf(value.get("sourceCode"))))
-                    .toList());
-        }
+                "extensionCode",
+                "interfaceExtensionCode",
+                "queryInterfaceExtensionCode",
+                // 历史包引用键仅用于读取兼容。
+                "serviceCode",
+                "dataSourceCode",
+                "queryDataSourceCode"), interfaceExtensionCodes);
+        addSelectedInterfaceExtensions(
+                source, selected, sections, interfaceExtensionCodes);
 
         Set<String> extensionKeys = new LinkedHashSet<>();
         collectValuesForKeys(selected, Set.of(
@@ -470,6 +472,49 @@ public class ConfigMigrationPackageCodec {
             selected.put("referencedFields", castStringList(source.get("referencedFields")).stream()
                     .filter(referencedFieldCodes::contains)
                     .toList());
+        }
+    }
+
+    /**
+     * 细粒度包优先携带“一条扩展=一个接口”的 interfaceExtensions。
+     *
+     * <p>dataSources 只在读取不含新分区的历史快照时保留；旧的
+     * dataSources 选择项也视为接口分区别名，不能让当前格式退回旧结构。</p>
+     */
+    private void addSelectedInterfaceExtensions(
+            Map<String, Object> source,
+            Map<String, Object> selected,
+            Set<String> sections,
+            Set<String> referencedCodes) {
+        boolean entireSectionSelected =
+                sections.contains("interfaceExtensions")
+                        || sections.contains("dataSources");
+        if (source.containsKey("interfaceExtensions")) {
+            if (entireSectionSelected) {
+                copyIfPresent(
+                        source, selected, "interfaceExtensions");
+            } else if (!referencedCodes.isEmpty()) {
+                selected.put(
+                        "interfaceExtensions",
+                        castMapList(source.get("interfaceExtensions")).stream()
+                                .filter(value -> referencedCodes.contains(
+                                        String.valueOf(value.get(
+                                                "extensionKey"))))
+                                .toList());
+            }
+            // 当前格式存在时绝不同时输出已退役的 dataSources。
+            selected.remove("dataSources");
+            return;
+        }
+        if (entireSectionSelected) {
+            copyIfPresent(source, selected, "dataSources");
+        } else if (!referencedCodes.isEmpty()) {
+            selected.put(
+                    "dataSources",
+                    castMapList(source.get("dataSources")).stream()
+                            .filter(value -> referencedCodes.contains(
+                                    String.valueOf(value.get("sourceCode"))))
+                            .toList());
         }
     }
 

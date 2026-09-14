@@ -93,7 +93,7 @@ class UiViewCompositionActionServiceTest {
     @Mock
     private UiViewCompositionActionReceiptService actionReceiptService;
     @Mock
-    private UiDataSourceService dataSourceService;
+    private UiInterfaceExtensionService dataSourceService;
 
     private UiViewCompositionActionService service;
 
@@ -1262,7 +1262,7 @@ class UiViewCompositionActionServiceTest {
                 1,
                 "execute",
                 "FORM"))
-                .thenReturn(new UiDataSourceService.ActionOperationDescriptor(
+                .thenReturn(new UiInterfaceExtensionService.ActionOperationDescriptor(
                         "service-action",
                         "service.action",
                         1,

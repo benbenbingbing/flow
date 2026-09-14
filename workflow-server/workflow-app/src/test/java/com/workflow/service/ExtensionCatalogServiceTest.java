@@ -59,6 +59,16 @@ class ExtensionCatalogServiceTest {
                 Set.of(),
                 List.of(),
                 Map.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
                 1);
     }
 }

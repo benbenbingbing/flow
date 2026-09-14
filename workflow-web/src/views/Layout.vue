@@ -81,6 +81,7 @@
           </el-breadcrumb>
         </div>
         <div class="header-right">
+          <MenuSearch :menus="menuTree" :loading="menusLoading" />
           <el-dropdown @command="handleCommand">
             <span class="user-info">
               <el-avatar 
@@ -142,6 +143,7 @@ import { useUserStore } from '@/stores/user'
 import { getPermissions, logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
 import SidebarMenuItem from '@/components/SidebarMenuItem.vue'
+import MenuSearch from '@/components/MenuSearch.vue'
 import {
   SIDEBAR_MENU_REFRESH_EVENT,
   SIDEBAR_MENU_REVISION_KEY
@@ -183,6 +185,7 @@ const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726
 
 // 菜单树
 const menuTree = ref([])
+const menusLoading = ref(false)
 
 const activeMenuPath = computed(() => getActiveMenuPath(route))
 const breadcrumb = computed(() => buildBreadcrumb(menuTree.value, route))
@@ -290,6 +293,7 @@ const collectDisabledPaths = (menus) => {
 
 // 加载菜单
 const loadMenus = async () => {
+  menusLoading.value = true
   try {
     const permissions = await getPermissions()
     userStore.setPermissions(permissions || [])
@@ -316,7 +320,11 @@ const loadMenus = async () => {
     const cleaned = clean(res)
     menuTree.value = cleaned
   } catch (error) {
+    // 授权菜单刷新失败时清除旧数据，避免搜索继续使用过期的授权结果。
+    menuTree.value = []
     console.error('加载菜单失败:', error)
+  } finally {
+    menusLoading.value = false
   }
 }
 
@@ -504,6 +512,7 @@ async function handleCommand(command) {
   display: flex;
   flex-shrink: 0;
   align-items: center;
+  gap: 20px;
   margin-left: 16px;
 }
 
@@ -579,6 +588,11 @@ async function handleCommand(command) {
   .user-info {
     gap: 4px;
     font-size: 0;
+  }
+
+  .header-right {
+    gap: 10px;
+    margin-left: 8px;
   }
 
   .user-info .el-icon {

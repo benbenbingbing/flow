@@ -4,7 +4,7 @@ import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
-import com.workflow.entity.ui.application.UiAvailableOperationService;
+import com.workflow.entity.ui.application.UiAvailableInterfaceService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -55,7 +55,7 @@ class UiConfigDraftMetadataServiceTest {
                         mock(EntityListRelationalConfigService.class),
                         new JsonDocumentCodec(
                                 new ObjectMapper()),
-                        mock(UiAvailableOperationService.class));
+                        mock(UiAvailableInterfaceService.class));
 
         EntityForm current = new EntityForm();
         current.setId("form-1");

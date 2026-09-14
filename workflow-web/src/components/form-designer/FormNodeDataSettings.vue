@@ -59,7 +59,7 @@
       <div class="data-source-editor-heading">
         <strong>{{ selectedNodeDataSourceUsageLabel }}</strong>
         <el-button
-          v-if="selectedField.dataSourceId"
+          v-if="selectedField.interfaceExtensionId"
           link
           type="danger"
           @click="clearSelectedNodeDataSourceBinding"
@@ -67,48 +67,28 @@
           清除当前绑定
         </el-button>
       </div>
-      <el-form-item label="数据源">
+      <el-form-item label="扩展接口">
         <template #label>
           <ConfigHelpLabel
-            label="数据源"
-            help-key="uiDataSource.service"
+            label="扩展接口"
+            help-key="entityForm.interfaceExtension"
           />
         </template>
         <el-select
-          v-model="selectedField.dataSourceId"
+          v-model="selectedField.interfaceExtensionId"
           clearable
           filterable
           placeholder="不绑定"
           style="width: 100%"
-          @change="handleNodeDataSourceChange"
         >
           <el-option
-            v-for="source in selectedNodeDataSources"
-            :key="source.id"
-            :label="`${source.sourceName} (${source.sourceType})`"
-            :value="source.id"
+            v-for="item in selectedNodeInterfaces"
+            :key="item.extensionId"
+            :label="`${item.displayName} (${item.extensionKey})`"
+            :value="item.extensionId"
           />
         </el-select>
-        <div class="form-tip">仅可选择受控实体、字典或 Provider。</div>
-      </el-form-item>
-      <el-form-item
-        v-if="selectedField.dataSourceId"
-        label="接口操作"
-        required
-      >
-        <el-select
-          v-model="selectedField.dataSourceOperationCode"
-          filterable
-          placeholder="选择当前用途使用的操作"
-          style="width: 100%"
-        >
-          <el-option
-            v-for="operation in selectedNodeOperationOptions"
-            :key="operation.code"
-            :label="`${operation.name} (${operation.code})`"
-            :value="operation.code"
-          />
-        </el-select>
+        <div class="form-tip">仅显示当前用途和表单范围可用的完整接口。</div>
       </el-form-item>
       <details class="property-advanced">
         <summary>输入与输出映射</summary>
@@ -439,9 +419,7 @@ const {
   isNodeDataSourceUsageConfigured,
   selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel,
-  selectedNodeDataSources,
-  selectedNodeOperationOptions,
-  handleNodeDataSourceChange,
+  selectedNodeInterfaces,
   clearSelectedNodeDataSourceBinding,
   canConfigureSelectedNodeRelations,
   isSubFormField,

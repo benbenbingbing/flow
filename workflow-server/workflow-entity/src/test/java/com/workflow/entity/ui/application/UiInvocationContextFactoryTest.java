@@ -10,8 +10,8 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
-import com.workflow.entity.ui.api.request.UiDataSourceExecuteRequest;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -84,14 +84,14 @@ class UiInvocationContextFactoryTest {
                         Map.of(),
                         null);
 
-        UiDataSourceDefinition definition =
-                new UiDataSourceDefinition();
+        UiExtensionDefinition definition =
+                new UiExtensionDefinition();
         definition.setId("service-a");
         definition.setOperationCode("queryApprovers");
         definition.setOperationContextType("FORM");
 
-        UiDataSourceExecuteRequest request =
-                new UiDataSourceExecuteRequest();
+        UiExtensionExecuteRequest request =
+                new UiExtensionExecuteRequest();
         request.setTargetType("FIELD");
         request.setTargetKey("approverId");
         request.setInput(Map.of(
@@ -175,14 +175,14 @@ class UiInvocationContextFactoryTest {
                         Map.of(),
                         null);
 
-        UiDataSourceDefinition definition =
-                new UiDataSourceDefinition();
+        UiExtensionDefinition definition =
+                new UiExtensionDefinition();
         definition.setId("service-a");
         definition.setOperationCode("validateExpense");
         definition.setOperationContextType("ENTITY");
 
-        UiDataSourceExecuteRequest request =
-                new UiDataSourceExecuteRequest();
+        UiExtensionExecuteRequest request =
+                new UiExtensionExecuteRequest();
         request.setInput(Map.of(
                 "recordId", "record-a",
                 "operation", "DELETE"));
@@ -241,13 +241,13 @@ class UiInvocationContextFactoryTest {
                                 2),
                         Map.of(),
                         "ui-form-button:trusted-hash");
-        UiDataSourceDefinition definition = new UiDataSourceDefinition();
+        UiExtensionDefinition definition = new UiExtensionDefinition();
         definition.setId("service-a");
         definition.setOperationCode("generate");
         definition.setOperationContextType("FORM");
 
-        UiDataSourceExecuteRequest request =
-                new UiDataSourceExecuteRequest();
+        UiExtensionExecuteRequest request =
+                new UiExtensionExecuteRequest();
         request.setInput(Map.of(
                 "recordId", "forged-record-b",
                 "mode", "approve"));

@@ -9,7 +9,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiDataSourceDefinitionValidator;
+import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 
@@ -32,7 +32,7 @@ final class PublishedSubFormSubmissionProcessor {
 
     private final EntityDefinitionMapper entityDefinitionMapper;
     private final UiConfigReleaseService releaseService;
-    private final UiDataSourceDefinitionValidator schemaValidator;
+    private final UiExtensionDefinitionValidator schemaValidator;
     private final JsonDocumentCodec codec;
 
     void apply(

@@ -14,8 +14,8 @@ const files = [
   'src/components/NodeConfigPanel.vue',
   'src/components/FlowActionConfigPanel.vue',
   'src/components/ui-config/EventBindingEditor.vue',
-  'src/components/ui-config/InterfaceServiceEditorDialog.vue',
-  'src/components/ui-config/InterfaceServiceTestDialog.vue',
+  'src/components/ui-config/InterfaceExtensionEditorDialog.vue',
+  'src/components/ui-config/InterfaceExtensionTestDialog.vue',
   'src/views/system/EntityVersionManagement.vue',
   'src/views/system/WorkCalendarManagement.vue',
   'src/views/system/embed-management/EmbedViewWorkspace.vue',
@@ -62,15 +62,21 @@ for (const required of [
   'uiEvent.formButtonStepStrategy',
   'uiEvent.inputMapping',
   'uiEvent.outputMapping',
-  'uiDataSource.service',
-  'interfaceService.backendImplementation',
-  'interfaceService.debugService',
-  'interfaceService.debugOperation',
-  'interfaceService.debugBusinessContext',
-  'interfaceService.debugConfigObject',
-  'interfaceService.debugUsage',
-  'interfaceService.debugInput',
-  'interfaceService.debugResult',
+  'uiEvent.extensionInterface',
+  'entityForm.interfaceExtension',
+  'entityList.interfaceExtension',
+  'entityList.queryInterfaceExtension',
+  'extensionInterface.backendImplementation',
+  'extensionInterface.providerOperationCode',
+  'extensionInterface.implementationConfig',
+  'extensionInterface.inputSchema',
+  'extensionInterface.outputSchema',
+  'extensionInterface.debugInterface',
+  'extensionInterface.debugBusinessContext',
+  'extensionInterface.debugConfigObject',
+  'extensionInterface.debugUsage',
+  'extensionInterface.debugInput',
+  'extensionInterface.debugResult',
   'entityList.dataSourceType',
   'entityVersion.enabled',
   'entityVersion.triggerType',
@@ -111,26 +117,25 @@ assert.match(CONFIG_FIELD_HELP['uiEvent.outputMapping'], /回填路径/)
 assert.match(CONFIG_FIELD_HELP['uiEvent.outputMapping'], /覆盖策略/)
 assert.match(CONFIG_FIELD_HELP['uiEvent.outputMapping'], /至少需要配置一条字段回填/)
 
-const interfaceServiceTestDialogSource = readFileSync(
-  path.join(root, 'src/components/ui-config/InterfaceServiceTestDialog.vue'),
+const interfaceExtensionTestDialogSource = readFileSync(
+  path.join(root, 'src/components/ui-config/InterfaceExtensionTestDialog.vue'),
   'utf8'
 )
 const debugHelpFields = Object.freeze({
-  '接口服务': 'interfaceService.debugService',
-  '操作': 'interfaceService.debugOperation',
-  '业务上下文': 'interfaceService.debugBusinessContext',
-  '配置对象': 'interfaceService.debugConfigObject',
-  '调用用途': 'interfaceService.debugUsage',
-  '输入参数': 'interfaceService.debugInput',
-  '执行结果': 'interfaceService.debugResult'
+  '扩展接口': 'extensionInterface.debugInterface',
+  '业务上下文': 'extensionInterface.debugBusinessContext',
+  '配置对象': 'extensionInterface.debugConfigObject',
+  '调用用途': 'extensionInterface.debugUsage',
+  '输入参数': 'extensionInterface.debugInput',
+  '执行结果': 'extensionInterface.debugResult'
 })
-const debugHelpTags = interfaceServiceTestDialogSource.match(
+const debugHelpTags = interfaceExtensionTestDialogSource.match(
   /<ConfigHelpLabel\b[^>]*\/>/g
 ) || []
 
 assert.equal(debugHelpTags.length, Object.keys(debugHelpFields).length,
   '调试接口操作的每个字段都应提供一个问号帮助')
-const groupedDebugFormItems = interfaceServiceTestDialogSource.match(
+const groupedDebugFormItems = interfaceExtensionTestDialogSource.match(
   /<el-form-item\b[^>]*\bfor=""/g
 ) || []
 assert.equal(groupedDebugFormItems.length, Object.keys(debugHelpFields).length,
@@ -145,8 +150,8 @@ for (const [label, key] of Object.entries(debugHelpFields)) {
   }
 }
 for (const label of Object.keys(debugHelpFields).filter(item => item !== '执行结果')) {
-  assert.ok(interfaceServiceTestDialogSource.includes(`aria-label="${label}"`),
-    `调试接口操作控件缺少无障碍名称: ${label}`)
+  assert.ok(interfaceExtensionTestDialogSource.includes(`aria-label="${label}"`),
+    `调试扩展接口控件缺少无障碍名称: ${label}`)
 }
 
 console.log(`config field help audit passed: ${usedKeys.size} usages, ${Object.keys(CONFIG_FIELD_HELP).length} definitions`)

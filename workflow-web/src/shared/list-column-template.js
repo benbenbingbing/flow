@@ -10,7 +10,10 @@ const TEMPLATE_IDENTITY_KEYS = new Set([
   'templateId',
   'templateVersion',
   'localOverridesDocument',
-  'revision'
+  'revision',
+  // 历史快照只在解析时读取，任何新模板都只写 interfaceExtensionId。
+  'dataSourceId',
+  'dataSourceOperationCode'
 ])
 
 const DEFAULT_FIELD_CONFIG = Object.freeze({
@@ -20,8 +23,7 @@ const DEFAULT_FIELD_CONFIG = Object.freeze({
   width: 160,
   align: 'left',
   dataSourceType: 'ENTITY_FIELD',
-  dataSourceId: null,
-  dataSourceOperationCode: null,
+  interfaceExtensionId: null,
   renderComponent: 'DefaultText',
   formatter: '',
   dataSourceConfig: '',
@@ -63,8 +65,7 @@ export function createListColumnTemplateEditor(seed = {}) {
     width: Number(field.width) > 0 ? Number(field.width) : 160,
     align: field.align || 'left',
     dataSourceType: field.dataSourceType || 'ENTITY_FIELD',
-    dataSourceId: field.dataSourceId || '',
-    dataSourceOperationCode: field.dataSourceOperationCode || '',
+    interfaceExtensionId: field.interfaceExtensionId || '',
     renderComponent: field.renderComponent || 'DefaultText',
     formatter: field.formatter || '',
     dataSourceConfig: parseObjectConfig(field.dataSourceConfig),
@@ -91,11 +92,16 @@ export function parseListColumnTemplateSnapshot(snapshotDocument) {
   const field = snapshot.field && typeof snapshot.field === 'object'
     ? snapshot.field
     : snapshot
+  const normalizedField = sanitizeTemplateFieldConfig(field)
+  normalizedField.interfaceExtensionId = normalizedField.interfaceExtensionId
+    || field.interfaceExtensionId
+    || field.dataSourceId
+    || null
   return {
     metadata: snapshot.metadata && typeof snapshot.metadata === 'object'
       ? snapshot.metadata
       : {},
-    field: sanitizeTemplateFieldConfig(field)
+    field: normalizedField
   }
 }
 
@@ -118,10 +124,7 @@ export function buildListColumnTemplateSnapshot(editor) {
     width: Number(editor.width) > 0 ? Number(editor.width) : 160,
     align: editor.align || 'left',
     dataSourceType: editor.dataSourceType || 'ENTITY_FIELD',
-    dataSourceId: editor.dataSourceId || null,
-    dataSourceOperationCode: editor.dataSourceId
-      ? editor.dataSourceOperationCode || null
-      : null,
+    interfaceExtensionId: editor.interfaceExtensionId || null,
     renderComponent: editor.renderComponent || 'DefaultText',
     formatter: editor.formatter || '',
     dataSourceConfig: stringifyObjectConfig(editor.dataSourceConfig),

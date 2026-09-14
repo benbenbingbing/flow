@@ -160,17 +160,9 @@ public class EntityListConfig {
     @TableField("query_provider_code")
     private String queryProviderCode;
 
-    /**
-     * 列表查询绑定的接口服务 ID
-     */
-    @TableField("query_data_source_id")
-    private String queryDataSourceId;
-
-    /**
-     * 列表查询绑定的接口操作编码
-     */
-    @TableField("query_operation_code")
-    private String queryOperationCode;
+    /** 列表查询绑定的可调用接口扩展 ID。 */
+    @TableField("query_interface_extension_id")
+    private String queryInterfaceExtensionId;
 
     /**
      * 已发布版本

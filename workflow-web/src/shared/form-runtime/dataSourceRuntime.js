@@ -1,4 +1,4 @@
-import { uiDataSourceApi } from '@/api/uiConfig'
+import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { safeParseConfig } from '@/shared/config-runtime'
 
 function parseBindings(value) {
@@ -11,7 +11,8 @@ function normalizeBinding(binding, usage) {
   }
   return {
     ...binding,
-    serviceId: binding.serviceId,
+    // 旧 serviceId 只用于读取尚未迁移的发布快照；新请求始终发送 extensionId。
+    extensionId: binding.extensionId || binding.serviceId || '',
     usage: binding.usage || usage
   }
 }
@@ -24,9 +25,7 @@ function bindingsFor(owner, usage) {
   if (!configured) return []
   return (Array.isArray(configured) ? configured : [configured])
     .map(binding => normalizeBinding(binding, usage))
-    .filter(binding =>
-      binding?.serviceId
-      && binding?.operationCode)
+    .filter(binding => binding?.extensionId)
 }
 
 export function isClientPrevalidationBinding(binding) {
@@ -153,8 +152,7 @@ export function buildFormDataSourceExecutionRequest({
   bindingCode,
   targetType,
   targetKey,
-  serviceId,
-  operationCode,
+  extensionId,
   input
 }) {
   const contextualForm = runtimeContext.form
@@ -213,8 +211,7 @@ export function buildFormDataSourceExecutionRequest({
     bindingCode,
     targetType,
     targetKey,
-    serviceId,
-    operationCode,
+    extensionId,
     input
   }
 
@@ -258,11 +255,8 @@ export function createFormDataSourceRuntime(options) {
 
   async function execute(binding, runtimeContext = {}) {
     const normalized = normalizeBinding(binding, runtimeContext.usage)
-    if (!normalized?.serviceId) {
-      throw new Error('数据源绑定缺少 serviceId')
-    }
-    if (!normalized.operationCode) {
-      throw new Error('数据源绑定缺少 operationCode')
+    if (!normalized?.extensionId) {
+      throw new Error('数据接口绑定缺少 extensionId')
     }
     const usage = runtimeContext.usage || normalized.usage
     if (usage === 'BEFORE_SUBMIT' && !isClientPrevalidationBinding(normalized)) {
@@ -306,7 +300,7 @@ export function createFormDataSourceRuntime(options) {
       rawInput
     )
     const executeDataSource = options.executeDataSource
-      || uiDataSourceApi.executeOperation
+      || uiExtensionRuntimeApi.execute
     const response = await executeDataSource(buildFormDataSourceExecutionRequest({
       options,
       runtimeContext,
@@ -316,8 +310,7 @@ export function createFormDataSourceRuntime(options) {
       bindingCode: usage,
       targetType: runtimeContext.targetType || normalized.targetType || 'OWNER',
       targetKey: runtimeContext.targetKey || normalized.targetKey || '',
-      serviceId: normalized.serviceId,
-      operationCode: normalized.operationCode,
+      extensionId: normalized.extensionId,
       input
     }))
     return applyMapping(

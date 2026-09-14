@@ -2,7 +2,7 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.entity.ui.api.request.UiDataSourceDeleteRequest;
+import com.workflow.entity.ui.api.request.UiExtensionDeleteRequest;
 import com.workflow.entity.ui.api.request.UiEventBindingSaveRequest;
 import com.workflow.entity.ui.application.UiEventBindingService;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
@@ -70,7 +70,7 @@ public class UiEventBindingController {
     @PostMapping("/{id}/delete")
     public Result<Void> delete(
             @PathVariable String id,
-            @RequestBody UiDataSourceDeleteRequest request) {
+            @RequestBody UiExtensionDeleteRequest request) {
         bindingService.delete(id, request.getExpectedRevision());
         return Result.success();
     }

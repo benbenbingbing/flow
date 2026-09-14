@@ -46,7 +46,7 @@ public class UiConfigSemanticPatchService {
             "fieldCode", "fieldType", "nodeKey", "nodeType", "bindingType",
             "bindingRef", "parentId", "componentType", "renderComponent",
             "dataSourceId", "dataSourceOperationCode",
-            "queryDataSourceId", "queryOperationCode",
+            "queryInterfaceExtensionId", "queryOperationCode",
             "dataSourceBindingsDocument", "accessPermissionCode",
             "permissionCode", "queryType", "isQuery", "handlerCode",
             "actionCode", "customMode", "linkMode", "targetEntityCode",

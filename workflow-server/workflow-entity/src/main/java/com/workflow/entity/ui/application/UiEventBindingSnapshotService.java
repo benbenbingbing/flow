@@ -4,9 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.time.LocalDateTime;
 
 /**
@@ -28,8 +29,8 @@ import java.time.LocalDateTime;
 @Slf4j
 public class UiEventBindingSnapshotService {
 
-    private static final int OPERATION_SNAPSHOT_VERSION = 1;
-    private static final List<String> PINNED_OPERATION_FIELDS = List.of(
+    private static final int OPERATION_SNAPSHOT_VERSION = 2;
+    private static final List<String> LEGACY_PINNED_OPERATION_FIELDS = List.of(
             "operationSnapshotVersion",
             "sourceCode",
             "serviceRevision",
@@ -39,6 +40,31 @@ public class UiEventBindingSnapshotService {
             "bindingOwnerId",
             "bindingTargetType",
             "bindingTargetKey");
+    private static final List<String> EXTENSION_PINNED_OPERATION_FIELDS = List.of(
+            "operationSnapshotVersion",
+            "extensionKey",
+            "extensionRevision",
+            "executableSnapshot",
+            "definitionHash",
+            "bindingOwnerType",
+            "bindingOwnerId",
+            "bindingTargetType",
+            "bindingTargetKey");
+    private static final Set<String> ALL_PINNED_OPERATION_FIELDS = Set.of(
+            "operationSnapshotVersion",
+            "sourceCode",
+            "serviceRevision",
+            "extensionKey",
+            "extensionRevision",
+            "executableSnapshot",
+            "definitionHash",
+            "bindingOwnerType",
+            "bindingOwnerId",
+            "bindingTargetType",
+            "bindingTargetKey");
+    private static final Set<String> MUTABLE_ONLY_IDENTITY_FIELDS = Set.of(
+            "serviceId", "operationCode", "serviceName", "operationName",
+            "interfaceName", "providerOperationCode", "legacyServiceId");
 
     /**
      * 为激活期的通用接口引用校验构造副本。
@@ -82,8 +108,8 @@ public class UiEventBindingSnapshotService {
     }
 
     private final UiEventBindingMapper bindingMapper;
-    private final UiDataSourceDefinitionMapper dataSourceMapper;
-    private final UiDataSourceService dataSourceService;
+    private final UiExtensionDefinitionMapper dataSourceMapper;
+    private final UiInterfaceExtensionService dataSourceService;
     private final JsonDocumentCodec codec;
 
     /**
@@ -92,8 +118,8 @@ public class UiEventBindingSnapshotService {
      */
     public UiEventBindingSnapshotService(
             UiEventBindingMapper bindingMapper,
-            UiDataSourceDefinitionMapper dataSourceMapper,
-            @Lazy UiDataSourceService dataSourceService,
+            UiExtensionDefinitionMapper dataSourceMapper,
+            @Lazy UiInterfaceExtensionService dataSourceService,
             JsonDocumentCodec codec) {
         this.bindingMapper = bindingMapper;
         this.dataSourceMapper = dataSourceMapper;
@@ -121,7 +147,7 @@ public class UiEventBindingSnapshotService {
             String entityId,
             boolean pinOperationReferences) {
         String normalizedConfigType = normalize(configType);
-        Map<String, UiDataSourceDefinition> sourceCache =
+        Map<String, UiExtensionDefinition> sourceCache =
                 new LinkedHashMap<>();
         return bindingMapper.findForSnapshot(
                         configType,
@@ -344,26 +370,19 @@ public class UiEventBindingSnapshotService {
     }
 
     private String operationContext(
-            UiDataSourceDefinition definition,
+            UiExtensionDefinition definition,
             String operationCode) {
-        if (definition == null
-                || !StringUtils.hasText(
-                        definition.getOperationsDocument())) {
+        if (definition == null) {
             return null;
         }
-        return codec.readArray(
-                        definition.getOperationsDocument(),
-                        "接口服务操作定义")
-                .stream()
-                .filter(Map.class::isInstance)
-                .map(Map.class::cast)
-                .filter(operation -> operationCode.equals(
-                        text(operation.get("code"))))
-                .map(operation -> normalize(
-                        text(operation.get("contextType"))))
-                .filter(StringUtils::hasText)
-                .findFirst()
-                .orElse(null);
+        if (StringUtils.hasText(operationCode)
+                && StringUtils.hasText(
+                        definition.getProviderOperationCode())
+                && !operationCode.equals(
+                        definition.getProviderOperationCode())) {
+            return null;
+        }
+        return normalize(definition.getInterfaceContextType());
     }
 
     private Map<String, Object> snapshotValue(UiEventBinding binding) {
@@ -396,7 +415,7 @@ public class UiEventBindingSnapshotService {
     private Map<String, Object> snapshotValue(
             UiEventBinding binding,
             String configType,
-            Map<String, UiDataSourceDefinition> sourceCache,
+            Map<String, UiExtensionDefinition> sourceCache,
             boolean pinOperationReferences) {
         Map<String, Object> value = snapshotValue(binding);
         List<Map<String, Object>> steps = new ArrayList<>();
@@ -428,31 +447,31 @@ public class UiEventBindingSnapshotService {
             Map<String, Object> step,
             UiEventBinding binding,
             String configType) {
-        String serviceId = text(step.get("serviceId"));
-        if (!StringUtils.hasText(serviceId)) {
+        String extensionId = firstText(
+                step.get("extensionId"), step.get("serviceId"));
+        if (!StringUtils.hasText(extensionId)) {
             return;
         }
-        String operationCode = text(step.get("operationCode"));
-        if (!StringUtils.hasText(operationCode)) {
-            // 缺失引用仍交由统一发布校验器报告精确路径。
-            return;
-        }
-        UiDataSourceService.PublishedOperationSnapshot operation =
-                dataSourceService.freezeOperation(
-                        serviceId, operationCode);
+        UiInterfaceExtensionService.PublishedOperationSnapshot operation =
+                dataSourceService.freezeExtension(extensionId);
         // 表单按钮 Provider 只能做无副作用的读取、校验和结果映射；实体写入必须
         // 继续走平台默认处理或受控命令计划，外部投递则由业务事务写 Outbox。
-        dataSourceService.validatePinnedReadOperation(
+        dataSourceService.validatePinnedReadExtension(
                 operation.document(),
                 operation.hash(),
-                operation.serviceId(),
-                operation.sourceCode(),
-                operation.serviceRevision(),
-                operation.operationCode(),
+                operation.extensionId(),
+                operation.extensionKey(),
+                operation.extensionRevision(),
                 configType);
-        step.put("operationSnapshotVersion", 1);
-        step.put("sourceCode", operation.sourceCode());
-        step.put("serviceRevision", operation.serviceRevision());
+        step.put("operationSnapshotVersion", OPERATION_SNAPSHOT_VERSION);
+        step.put("extensionId", operation.extensionId());
+        // v2 的宿主引用只保存 extensionId，Provider 内部路由在验哈希快照中。
+        step.remove("serviceId");
+        step.remove("operationCode");
+        step.remove("sourceCode");
+        step.remove("serviceRevision");
+        step.put("extensionKey", operation.extensionKey());
+        step.put("extensionRevision", operation.extensionRevision());
         step.put("executableSnapshot", operation.document());
         step.put("definitionHash", operation.hash());
         step.put("bindingOwnerType", normalize(binding.getOwnerType()));
@@ -471,7 +490,7 @@ public class UiEventBindingSnapshotService {
             Map<?, ?> binding) {
         Map<String, Object> step = (Map<String, Object>) rawStep;
         boolean hasVersion = step.containsKey("operationSnapshotVersion");
-        boolean hasPinnedField = PINNED_OPERATION_FIELDS.stream()
+        boolean hasPinnedField = ALL_PINNED_OPERATION_FIELDS.stream()
                 .filter(field -> !"operationSnapshotVersion".equals(field))
                 .anyMatch(step::containsKey);
         if (!hasVersion) {
@@ -483,34 +502,54 @@ public class UiEventBindingSnapshotService {
         }
         Integer version = positiveInteger(
                 step.get("operationSnapshotVersion"));
-        if (!Integer.valueOf(OPERATION_SNAPSHOT_VERSION).equals(version)
-                || !PINNED_OPERATION_FIELDS.stream()
-                        .allMatch(step::containsKey)) {
+        List<String> expectedFields = Integer.valueOf(1).equals(version)
+                ? LEGACY_PINNED_OPERATION_FIELDS
+                : EXTENSION_PINNED_OPERATION_FIELDS;
+        if (!Set.of(1, OPERATION_SNAPSHOT_VERSION).contains(version)
+                || !expectedFields.stream().allMatch(step::containsKey)) {
             throw new IllegalArgumentException(
                     "表单按钮发布步骤的钉版操作版本或字段不完整");
         }
-        String serviceId = requiredText(step, "serviceId");
-        String operationCode = requiredText(step, "operationCode");
-        String sourceCode = requiredText(step, "sourceCode");
-        Integer serviceRevision = positiveInteger(
-                step.get("serviceRevision"));
         String document = requiredText(step, "executableSnapshot");
         String hash = requiredText(step, "definitionHash");
-        if (serviceRevision == null) {
-            throw new IllegalArgumentException(
-                    "表单按钮发布步骤的接口服务修订号无效");
-        }
         requirePinnedBindingIdentity(step, binding);
-        dataSourceService.validatePinnedReadOperation(
-                document,
-                hash,
-                serviceId,
-                sourceCode,
-                serviceRevision,
-                operationCode,
-                "FORM");
-        // 通用校验器会回读 serviceId；完整钉版步骤已经由上面的不可变定义校验。
-        step.remove("serviceId");
+        if (Integer.valueOf(1).equals(version)) {
+            String sourceCode = requiredText(step, "sourceCode");
+            Integer serviceRevision = positiveInteger(
+                    step.get("serviceRevision"));
+            if (serviceRevision == null) {
+                throw new IllegalArgumentException(
+                        "表单按钮发布步骤的历史接口服务修订号无效");
+            }
+            String serviceId = requiredText(step, "serviceId");
+            String operationCode = requiredText(step, "operationCode");
+            dataSourceService.validatePinnedReadOperation(
+                    document,
+                    hash,
+                    serviceId,
+                    sourceCode,
+                    serviceRevision,
+                    operationCode,
+                    "FORM");
+            step.remove("serviceId");
+        } else {
+            String extensionKey = requiredText(step, "extensionKey");
+            Integer extensionRevision = positiveInteger(
+                    step.get("extensionRevision"));
+            if (extensionRevision == null) {
+                throw new IllegalArgumentException(
+                        "表单按钮发布步骤的接口扩展修订号无效");
+            }
+            String extensionId = requiredText(step, "extensionId");
+            dataSourceService.validatePinnedReadExtension(
+                    document,
+                    hash,
+                    extensionId,
+                    extensionKey,
+                    extensionRevision,
+                    "FORM");
+            step.remove("extensionId");
+        }
     }
 
     private void requirePinnedBindingIdentity(
@@ -561,10 +600,7 @@ public class UiEventBindingSnapshotService {
         }
     }
 
-    /**
-     * 表单按钮的不可变执行定义属于发布制品，恢复到草稿或导出可编辑绑定时
-     * 必须剥离。其他事件的同名扩展字段保持原样，避免改变既有通用事件契约。
-     */
+    /** 所有事件恢复为可编辑草稿时都只保留 extensionId 和业务映射/策略。 */
     private List<Map<String, Object>> draftSteps(
             Object rawSteps,
             String eventCode) {
@@ -579,10 +615,11 @@ public class UiEventBindingSnapshotService {
             Map<String, Object> copy = new LinkedHashMap<>();
             step.forEach((key, value) ->
                     copy.put(String.valueOf(key), value));
-            if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
-                    normalize(eventCode))) {
-                PINNED_OPERATION_FIELDS.forEach(copy::remove);
-            }
+            // 可编辑绑定不保存任何发布钉定字段；FORM_BUTTON_CLICK 发布时会
+            // 再从权威扩展定义生成 v2 快照，其他事件也不能透传旧服务身份。
+            normalizeDraftInterfaceReference(copy);
+            ALL_PINNED_OPERATION_FIELDS.forEach(copy::remove);
+            MUTABLE_ONLY_IDENTITY_FIELDS.forEach(copy::remove);
             result.add(copy);
         }
         return List.copyOf(result);
@@ -591,19 +628,53 @@ public class UiEventBindingSnapshotService {
     private boolean appliesToConfig(
             Map<?, ?> step,
             String configType,
-            Map<String, UiDataSourceDefinition> sourceCache) {
-        String serviceId = text(step.get("serviceId"));
+            Map<String, UiExtensionDefinition> sourceCache) {
+        String serviceId = firstText(
+                step.get("extensionId"), step.get("serviceId"));
         String operationCode = text(step.get("operationCode"));
         if (!StringUtils.hasText(serviceId)) {
             return true;
         }
-        UiDataSourceDefinition definition = sourceCache.computeIfAbsent(
-                serviceId,
-                dataSourceMapper::selectById);
+        String cacheKey = serviceId + "\u0000" + text(operationCode);
+        UiExtensionDefinition definition = sourceCache.computeIfAbsent(
+                cacheKey,
+                ignored -> {
+                    try {
+                        return dataSourceService.requireExecutableDefinition(
+                                serviceId, operationCode);
+                    } catch (RuntimeException exception) {
+                        return null;
+                    }
+                });
         String context = operationContext(definition, operationCode);
         // 缺失或损坏的引用继续进入快照，由发布校验器给出精确错误。
         return !StringUtils.hasText(context)
                 || Objects.equals(configType, context);
+    }
+
+    /** 恢复或导出为可编辑草稿时，历史 pair 也立即规范化为 extensionId。 */
+    private void normalizeDraftInterfaceReference(
+            Map<String, Object> step) {
+        String referenceId = firstText(
+                step.get("extensionId"), step.get("serviceId"));
+        if (!StringUtils.hasText(referenceId)) {
+            return;
+        }
+        UiExtensionDefinition definition = dataSourceService
+                .resolveDefinitionReference(
+                        referenceId, text(step.get("operationCode")));
+        step.put("extensionId", definition.getId());
+        step.remove("serviceId");
+        step.remove("operationCode");
+    }
+
+    private String firstText(Object... values) {
+        for (Object value : values) {
+            if (StringUtils.hasText(text(value))) {
+                return text(value);
+            }
+        }
+        return null;
     }
 
     private String text(Object value) {

@@ -35,7 +35,6 @@ const backendGrandfatheredLimits = new Map([
   ['workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java', 1417],
   ['workflow-entity/src/main/java/com/workflow/entity/definition/application/EntityDefinitionService.java', 1291],
   ['workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java', 1223],
-  ['workflow-entity/src/main/java/com/workflow/entity/ui/application/UiDataSourceService.java', 1132],
   ['workflow-process/src/main/java/com/workflow/process/instance/application/ProcessProgressRuntimeService.java', 1122],
   ['workflow-entity/src/main/java/com/workflow/entity/data/application/EntityDataDynamicService.java', 1029],
   ['workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListConfigService.java', 922],

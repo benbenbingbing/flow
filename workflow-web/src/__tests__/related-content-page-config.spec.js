@@ -40,7 +40,7 @@ const publishDialog = read('src/components/UiConfigPublishDialog.vue')
   '选择结果回填',
   '新增后自动建立关联',
   'actionSettings',
-  '接口服务',
+  '数据或动作扩展接口',
   '自定义组件',
   '组件版本',
   'failurePolicy'

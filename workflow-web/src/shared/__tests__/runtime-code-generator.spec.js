@@ -13,8 +13,7 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
     formName: '项目审批表单',
     dataSourceBindingsDocument: JSON.stringify({
       FORM_INIT: {
-        serviceId: 'form-source-1',
-        operationCode: 'initializeForm'
+        extensionId: 'form-init-interface'
       }
     }),
     viewConfig: '{"actionBar":{"customButtons":[{"key":"submit","placement":"FOOTER"},{"key":"inline_review","placement":"ACTION_SLOT","slotKey":"record_actions"}]}}'
@@ -33,8 +32,7 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
     }),
     dataSourceBindingsDocument: JSON.stringify({
       FIELD_OPTIONS: {
-        serviceId: 'source-1',
-        operationCode: 'queryOptions'
+        extensionId: 'field-options-interface'
       }
     }),
     _saving: true
@@ -52,8 +50,7 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
     targetType: 'OWNER',
     stepsDocument: JSON.stringify([{
       strategy: 'BEFORE',
-      serviceId: 'service-1',
-      operationCode: 'validateForm',
+      extensionId: 'validate-form-interface',
       executableSnapshot: JSON.stringify({
         configDocument: { apiToken: 'server-secret' }
       }),
@@ -63,14 +60,14 @@ const formSnapshot = buildFormDraftRuntimeSnapshot({
 })
 
 assert.equal(
-  formSnapshot.form.dataSourceBindings.FORM_INIT.serviceId,
-  'form-source-1'
+  formSnapshot.form.dataSourceBindings.FORM_INIT.extensionId,
+  'form-init-interface'
 )
 assert.equal(formSnapshot.nodes[0].props.label, '项目')
 assert.equal(formSnapshot.nodes[0].rules.validation.required, true)
 assert.equal(
-  formSnapshot.nodes[0].dataSourceBindings.FIELD_OPTIONS.serviceId,
-  'source-1'
+  formSnapshot.nodes[0].dataSourceBindings.FIELD_OPTIONS.extensionId,
+  'field-options-interface'
 )
 assert.equal(formSnapshot.nodes[0]._saving, undefined)
 assert.equal(formSnapshot.eventBindings[0].steps.length, 1)
@@ -195,7 +192,7 @@ const listSnapshot = buildListDraftRuntimeSnapshot({
   scenes: [{ sceneCode: 'PAGE' }, { sceneCode: 'EMBEDDED' }],
   eventBindings: [{
     eventCode: 'LIST_LOAD',
-    steps: [{ strategy: 'REPLACE', serviceId: 'service-2' }]
+    steps: [{ strategy: 'REPLACE', extensionId: 'list-load-interface' }]
   }]
 })
 

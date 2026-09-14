@@ -1,6 +1,7 @@
 package com.workflow.entity.list.application.validation;
 
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
+import com.workflow.entity.ui.application.UiConfigInterfaceReferenceValidator;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
@@ -54,6 +55,8 @@ public class EntityListConfigurationValidator {
     private final JsonDocumentCodec jsonDocumentCodec;
     private final ListFieldDataProviderRegistry providerRegistry;
     private final EntityFieldMapper entityFieldMapper;
+    /** 校验列表草稿引用的接口状态、上下文、作用域和 LIST_* 契约。 */
+    private final UiConfigInterfaceReferenceValidator interfaceReferenceValidator;
 
     /**
      * 校验列表配置整体。
@@ -94,6 +97,11 @@ public class EntityListConfigurationValidator {
         validateStructured(dto.getContextBindingConfig(), "上下文绑定配置");
 
         List<EntityListField> fields = dto.getFields();
+        interfaceReferenceValidator.validateListDraft(
+                dto.getId(),
+                dto.getEntityId(),
+                dto.getQueryInterfaceExtensionId(),
+                fields);
         if (fields == null) {
             return;
         }
@@ -112,24 +120,18 @@ public class EntityListConfigurationValidator {
     }
 
     /**
-     * 校验列表查询接口绑定：服务与操作必须成对出现，且不能和内部查询 Provider 同时配置。
+     * 校验列表查询接口绑定不能和内部查询 Provider 同时配置。
      *
      * @param dto 列表配置 DTO
      */
     private void validateQuerySource(EntityListConfigDTO dto) {
         boolean hasService =
-                StringUtils.hasText(dto.getQueryDataSourceId());
-        boolean hasOperation =
-                StringUtils.hasText(dto.getQueryOperationCode());
-        if (hasService != hasOperation) {
-            throw new IllegalArgumentException(
-                    "列表查询接口服务和操作编码必须同时配置");
-        }
+                StringUtils.hasText(dto.getQueryInterfaceExtensionId());
         if (hasService
                 && StringUtils.hasText(
                         dto.getQueryProviderCode())) {
             throw new IllegalArgumentException(
-                    "列表查询接口服务和自定义查询提供者不能同时配置");
+                    "列表查询接口扩展和自定义查询提供者不能同时配置");
         }
     }
 

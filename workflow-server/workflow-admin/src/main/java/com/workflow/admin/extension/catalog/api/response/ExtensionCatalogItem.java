@@ -40,6 +40,16 @@ public class ExtensionCatalogItem {
     private Object configSchema;
     private Map<String, Object> extraParamSchema;
     private Map<String, Object> capabilities;
+    private String implementationType;
+    private String providerCode;
+    private String scopeType;
+    private String scopeId;
+    private String interfaceKind;
+    private String interfaceContextType;
+    private Map<String, Object> implementationConfig;
+    private Map<String, Object> executionPolicy;
+    private Map<String, Object> inputSchema;
+    private Map<String, Object> outputSchema;
     private Boolean dynamicExtraParams;
     private Integer revision;
 }

@@ -104,15 +104,9 @@ public class EntityListField {
     @TableField("data_source_config")
     private String dataSourceConfig;
 
-    /**
-     * 统一数据源ID
-     */
-    private String dataSourceId;
-
-    /**
-     * 统一数据源操作编码
-     */
-    private String dataSourceOperationCode;
+    /** 可调用接口扩展 ID；一条扩展即一个完整接口。 */
+    @TableField("interface_extension_id")
+    private String interfaceExtensionId;
 
     /**
      * 前端渲染组件名

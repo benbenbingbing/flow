@@ -70,45 +70,25 @@
               />
             </el-select>
           </el-form-item>
-          <el-form-item label="数据源">
+          <el-form-item label="扩展接口">
             <template #label>
               <ConfigHelpLabel
-                label="数据源"
-                help-key="uiDataSource.service"
+                label="扩展接口"
+                help-key="entityForm.interfaceExtension"
               />
             </template>
             <el-select
-              v-model="binding.serviceId"
+              v-model="binding.extensionId"
               clearable
               filterable
-              placeholder="选择受控数据源"
-              style="width: 100%"
-              @change="handleSourceChange(binding)"
-            >
-              <el-option
-                v-for="source in sourcesForUsage(binding.usage)"
-                :key="source.id"
-                :label="`${source.sourceName} (${source.sourceType})`"
-                :value="source.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item
-            v-if="binding.serviceId"
-            label="接口操作"
-            required
-          >
-            <el-select
-              v-model="binding.operationCode"
-              filterable
-              placeholder="选择接口操作"
+              placeholder="选择一个完整接口"
               style="width: 100%"
             >
               <el-option
-                v-for="operation in operationsFor(binding)"
-                :key="operation.code"
-                :label="`${operation.name} (${operation.code})`"
-                :value="operation.code"
+                v-for="item in interfacesFor(binding.usage)"
+                :key="item.extensionId"
+                :label="`${item.displayName} (${item.extensionKey})`"
+                :value="item.extensionId"
               />
             </el-select>
           </el-form-item>
@@ -173,12 +153,14 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { patchFormMetadata } from '@/api/entityForm'
-import { uiDataSourceApi } from '@/api/uiConfig'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
-import { serviceOperations } from './interfaceServiceModel'
+import {
+  normalizeMutableInterfaceBinding,
+  normalizeInterfaceExtensions,
+} from './interfaceExtensionModel'
 import {
   FORM_DATA_SOURCE_USAGE_OPTIONS,
   assertUniqueFormDataSourceOutputTargets,
@@ -187,7 +169,7 @@ import {
 
 const props = defineProps({
   form: { type: Object, required: true },
-  dataSourcesByUsage: { type: Object, default: () => ({}) }
+  interfacesByUsage: { type: Object, default: () => ({}) }
 })
 
 const emit = defineEmits(['saved', 'error'])
@@ -201,8 +183,7 @@ function newRow(value = {}) {
   return {
     rowKey: `form_source_${++rowSequence}`,
     usage: value.usage || 'FORM_INIT',
-    serviceId: value.serviceId || '',
-    operationCode: value.operationCode || '',
+    extensionId: value.extensionId || '',
     inputMappingText: stringifyConfig(value.inputMapping || {}),
     outputMappingText: stringifyConfig(value.outputMapping || {}),
     clientPrevalidate: value.clientPrevalidate === true,
@@ -221,28 +202,13 @@ function open() {
   Object.entries(bindings).forEach(([usage, configured]) => {
     const items = Array.isArray(configured) ? configured : [configured]
     items.filter(Boolean).forEach(value => {
-      const normalized = value && typeof value === 'object'
-        ? { ...value }
-        : {}
-      const {
-        serviceId,
-        operationCode,
-        inputMapping,
-        outputMapping,
-        clientPrevalidate,
-        sideEffectFree,
-        usage: ignoredUsage,
-        ...extra
-      } = normalized
+      const normalized = normalizeMutableInterfaceBinding(
+        value,
+        interfacesFor(usage)
+      )
       values.push(newRow({
         usage,
-        serviceId,
-        operationCode,
-        inputMapping,
-        outputMapping,
-        clientPrevalidate,
-        sideEffectFree,
-        extra
+        ...normalized
       }))
     })
   })
@@ -284,37 +250,18 @@ function moveBinding(index, direction) {
   rows.value = nextRows
 }
 
-function sourcesForUsage(usage) {
-  return props.dataSourcesByUsage?.[usage] || []
-}
-
-function operationsFor(binding) {
-  const source = sourcesForUsage(binding.usage).find(item =>
-    String(item.id) === String(binding.serviceId))
-  return source ? serviceOperations(source) : []
+function interfacesFor(usage) {
+  return normalizeInterfaceExtensions(props.interfacesByUsage?.[usage] || [])
 }
 
 function handleUsageChange(binding) {
-  binding.serviceId = ''
-  binding.operationCode = ''
-}
-
-function handleSourceChange(binding) {
-  if (!binding.serviceId) {
-    binding.operationCode = ''
-    return
-  }
-  const operations = operationsFor(binding)
-  binding.operationCode = operations.length === 1
-    ? operations[0].code
-    : ''
+  binding.extensionId = ''
 }
 
 function serialize() {
   const bindings = {}
   const serializedRows = rows.value.map(row => {
-    if (!row.serviceId) throw new Error('初始化与数据处理的数据源不能为空')
-    if (!row.operationCode) throw new Error('初始化与数据处理必须选择接口操作')
+    if (!row.extensionId) throw new Error('初始化与数据处理的扩展接口不能为空')
     if (row.usage === 'BEFORE_SUBMIT'
       && row.clientPrevalidate
       && !row.sideEffectFree) {
@@ -326,8 +273,7 @@ function serialize() {
       sideEffectFree: row.sideEffectFree === true,
       binding: {
         ...(row.extra || {}),
-        serviceId: row.serviceId,
-        operationCode: row.operationCode,
+        extensionId: row.extensionId,
         inputMapping: parseJsonConfig(row.inputMappingText, {
           fieldName: '请求参数映射'
         }),
@@ -366,8 +312,6 @@ async function save() {
   saving.value = true
   try {
     const bindings = serialize()
-    await Promise.all(rows.value.map(row =>
-      uiDataSourceApi.validateBinding(row.serviceId, row.usage)))
     const updated = await patchFormMetadata(props.form.id, {
       expectedRevision: props.form.revision,
       dataSourceBindings: bindings

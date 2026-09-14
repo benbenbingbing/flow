@@ -22,7 +22,6 @@ import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
-import com.workflow.entity.ui.api.request.UiDataSourceSaveRequest;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
@@ -45,7 +44,7 @@ import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeFo
 import com.workflow.admin.authorization.menu.infrastructure.persistence.record.SysMenu;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiDataSourceDefinition;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.migration.infrastructure.persistence.record.ConfigAssetBaseline;
 import com.workflow.migration.infrastructure.persistence.record.ConfigEnvironmentMapping;
 import com.workflow.migration.infrastructure.persistence.record.ConfigImportItem;
@@ -64,7 +63,7 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiDataSourceDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigAssetBaselineMapper;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigEnvironmentMappingMapper;
@@ -79,7 +78,7 @@ import com.workflow.entity.form.application.EntityFormNodeService;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.action.application.FlowActionService;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
@@ -165,8 +164,8 @@ public class ConfigMigrationImportApplyService {
     private final TaskSlaPolicyService taskSlaPolicyService;
     private final TaskSlaPolicyMapper taskSlaPolicyMapper;
     private final UiExtensionDefinitionService extensionDefinitionService;
-    private final UiDataSourceService dataSourceService;
-    private final UiDataSourceDefinitionMapper dataSourceDefinitionMapper;
+    private final UiInterfaceExtensionService dataSourceService;
+    private final UiExtensionDefinitionMapper extensionDefinitionMapper;
     private final UiConfigReleaseMapper uiConfigReleaseMapper;
     private final UiConfigReleaseService uiConfigReleaseService;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
@@ -887,24 +886,30 @@ public class ConfigMigrationImportApplyService {
         if (snapshot.containsKey("extensions")) {
             applyExtensions(mapList(snapshot.get("extensions")));
         }
-        if (snapshot.containsKey("dataSources")) {
-            Map<String, String> dataSourceIds = applyDataSources(
+        if (snapshot.containsKey("interfaceExtensions")
+                || snapshot.containsKey("dataSources")) {
+            List<Map<String, Object>> interfaces = interfaceExtensionValues(snapshot);
+            ensureInterfaceScopeOwners(
                     entity,
-                    mapList(snapshot.get("dataSources")));
+                    interfaces,
+                    mapList(snapshot.get("forms")),
+                    mapList(snapshot.get("lists")));
+            Map<String, String> dataSourceIds = applyInterfaceExtensions(
+                    entity, interfaces);
             snapshot.put(
                     "forms",
-                    rewriteDataSourceReferences(
+                    rewriteInterfaceReferences(
                             snapshot.get("forms"),
                             dataSourceIds));
             snapshot.put(
                     "lists",
-                    rewriteDataSourceReferences(
+                    rewriteInterfaceReferences(
                             snapshot.get("lists"),
                             dataSourceIds));
             if (snapshot.containsKey("eventBindings")) {
                 snapshot.put(
                         "eventBindings",
-                        rewriteDataSourceReferences(
+                        rewriteInterfaceReferences(
                                 snapshot.get("eventBindings"),
                                 dataSourceIds));
             }
@@ -1092,29 +1097,32 @@ public class ConfigMigrationImportApplyService {
         if (snapshot.containsKey("extensions")) {
             applyExtensions(mapList(snapshot.get("extensions")));
         }
-        if (snapshot.containsKey("dataSources")) {
-            ensureDataSourceScopeForms(
+        if (snapshot.containsKey("interfaceExtensions")
+                || snapshot.containsKey("dataSources")) {
+            List<Map<String, Object>> interfaces = interfaceExtensionValues(snapshot);
+            ensureInterfaceScopeOwners(
                     entity,
-                    mapList(snapshot.get("dataSources")),
-                    mapList(snapshot.get("forms")));
+                    interfaces,
+                    mapList(snapshot.get("forms")),
+                    mapList(snapshot.get("lists")));
             Map<String, String> dataSourceIds =
-                    applyDataSources(
+                    applyInterfaceExtensions(
                             entity,
-                            mapList(snapshot.get("dataSources")));
+                            interfaces);
             snapshot.put(
                     "forms",
-                    rewriteDataSourceReferences(
+                    rewriteInterfaceReferences(
                             snapshot.get("forms"),
                             dataSourceIds));
             snapshot.put(
                     "lists",
-                    rewriteDataSourceReferences(
+                    rewriteInterfaceReferences(
                             snapshot.get("lists"),
                             dataSourceIds));
             if (snapshot.containsKey("eventBindings")) {
                 snapshot.put(
                         "eventBindings",
-                        rewriteDataSourceReferences(
+                        rewriteInterfaceReferences(
                                 snapshot.get("eventBindings"),
                                 dataSourceIds));
             }
@@ -1145,50 +1153,132 @@ public class ConfigMigrationImportApplyService {
         permissionCatalogService.synchronizeEntity(entityMapper.selectById(entity.getId()));
     }
 
-    private void ensureDataSourceScopeForms(
+    /**
+     * 在接口扩展落库前预建其 FORM/LIST 作用域宿主。
+     *
+     * <p>迁移包中的接口扩展先于完整表单、列表配置恢复；新环境此时没有可写入
+     * scope_id 的目标记录。这里只建立同事务内的最小 shell，后续 applyForms/
+     * applyLists 会按稳定业务 key 复用并补全，任何后续失败都会随导入事务回滚。</p>
+     */
+    void ensureInterfaceScopeOwners(
             EntityDefinition entity,
-            List<Map<String, Object>> dataSources,
-            List<Map<String, Object>> forms) {
+            List<Map<String, Object>> interfaces,
+            List<Map<String, Object>> forms,
+            List<Map<String, Object>> lists) {
         Map<String, Map<String, Object>> formsByKey = forms.stream()
                 .collect(java.util.stream.Collectors.toMap(
                         value -> text(value.get("formKey"), ""),
                         value -> value,
                         (left, right) -> left,
                         LinkedHashMap::new));
-        for (Map<String, Object> dataSource : dataSources) {
-            if (!"FORM".equalsIgnoreCase(
-                    text(dataSource.get("scopeType"), "GLOBAL"))) {
-                continue;
-            }
-            String scopeRef = text(dataSource.get("scopeRef"), null);
+        Map<String, Map<String, Object>> listsByKey = lists.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        value -> text(value.get("listKey"), ""),
+                        value -> value,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        for (Map<String, Object> interfaceDefinition : interfaces) {
+            String scopeType = text(
+                    interfaceDefinition.get("scopeType"), "GLOBAL");
+            String scopeRef = text(
+                    interfaceDefinition.get("scopeRef"), null);
             if (!StringUtils.hasText(scopeRef)) {
                 continue;
             }
             String[] parts = scopeRef.split("/", 2);
-            String formKey = parts.length == 2 ? parts[1] : parts[0];
-            if (formMapper.selectByEntityIdAndFormKey(
-                    entity.getId(), formKey) != null) {
-                continue;
+            String ownerKey = parts.length == 2 ? parts[1] : parts[0];
+            if ("FORM".equalsIgnoreCase(scopeType)) {
+                ensureInterfaceScopeForm(
+                        entity,
+                        ownerKey,
+                        scopeRef,
+                        formsByKey.get(ownerKey),
+                        interfaceDefinition);
+            } else if ("LIST".equalsIgnoreCase(scopeType)) {
+                ensureInterfaceScopeList(
+                        entity,
+                        ownerKey,
+                        scopeRef,
+                        listsByKey.get(ownerKey),
+                        interfaceDefinition);
             }
-            Map<String, Object> incoming = formsByKey.get(formKey);
-            if (incoming == null) {
-                throw new IllegalStateException(
-                        "表单作用域数据源缺少同包表单配置: " + scopeRef);
-            }
-            EntityForm shell = new EntityForm();
-            shell.setEntityId(entity.getId());
-            shell.setFormKey(formKey);
-            shell.setFormName(text(incoming.get("formName"), formKey));
-            shell.setDescription(text(incoming.get("description"), null));
-            shell.setLayoutType(text(incoming.get("layoutType"), "vertical"));
-            shell.setIsDefault(false);
-            shell.setStatus(1);
-            entityFormService.saveForm(shell);
-            log.info("为表单作用域数据源预创建表单，entityCode={}，formKey={}，sourceCode={}",
-                    entity.getEntityCode(),
-                    formKey,
-                    text(dataSource.get("sourceCode"), null));
         }
+    }
+
+    private void ensureInterfaceScopeForm(
+            EntityDefinition entity,
+            String formKey,
+            String scopeRef,
+            Map<String, Object> incoming,
+            Map<String, Object> interfaceDefinition) {
+        if (formMapper.selectByEntityIdAndFormKey(
+                entity.getId(), formKey) != null) {
+            return;
+        }
+        if (incoming == null) {
+            throw new IllegalStateException(
+                    "表单作用域接口扩展缺少同包表单配置: " + scopeRef);
+        }
+        EntityForm shell = new EntityForm();
+        shell.setEntityId(entity.getId());
+        shell.setFormKey(formKey);
+        shell.setFormName(text(incoming.get("formName"), formKey));
+        shell.setDescription(text(incoming.get("description"), null));
+        shell.setLayoutType(text(incoming.get("layoutType"), "vertical"));
+        shell.setIsDefault(false);
+        shell.setStatus(1);
+        entityFormService.saveForm(shell);
+        log.info("为表单作用域接口扩展预创建表单，entityCode={}，formKey={}，extensionKey={}",
+                entity.getEntityCode(),
+                formKey,
+                interfaceKey(interfaceDefinition));
+    }
+
+    private void ensureInterfaceScopeList(
+            EntityDefinition entity,
+            String listKey,
+            String scopeRef,
+            Map<String, Object> incoming,
+            Map<String, Object> interfaceDefinition) {
+        if (listConfigMapper.findByEntityIdAndListKey(
+                entity.getId(), listKey) != null) {
+            return;
+        }
+        if (incoming == null) {
+            throw new IllegalStateException(
+                    "列表作用域接口扩展缺少同包列表配置: " + scopeRef);
+        }
+        EntityListConfig shell = new EntityListConfig();
+        shell.setId(java.util.UUID.randomUUID()
+                .toString().replace("-", ""));
+        shell.setEntityId(entity.getId());
+        shell.setEntityCode(entity.getEntityCode());
+        shell.setListKey(listKey);
+        shell.setListName(text(incoming.get("listName"), listKey));
+        shell.setDescription(text(incoming.get("description"), null));
+        shell.setIsDefault(false);
+        shell.setDeleted(0);
+        shell.setPublishedVersion(0);
+        shell.setRevision(1);
+        shell.setCreatedAt(LocalDateTime.now());
+        shell.setUpdatedAt(LocalDateTime.now());
+        listConfigMapper.insert(shell);
+        log.info("为列表作用域接口扩展预创建列表，entityCode={}，listKey={}，extensionKey={}",
+                entity.getEntityCode(), listKey,
+                interfaceKey(interfaceDefinition));
+    }
+
+    private String interfaceKey(Map<String, Object> definition) {
+        return text(definition.get("extensionKey"),
+                text(definition.get("sourceCode"), null));
+    }
+
+    /** 新包优先读 interfaceExtensions，仅在其缺失时兼容旧 dataSources。 */
+    private List<Map<String, Object>> interfaceExtensionValues(
+            Map<String, Object> snapshot) {
+        return snapshot.containsKey("interfaceExtensions")
+                ? mapList(snapshot.get("interfaceExtensions"))
+                : mapList(snapshot.get("dataSources"));
     }
 
     private List<EntityFieldDTO> toEntityFieldDtos(EntityDefinition entity,
@@ -1431,68 +1521,129 @@ public class ConfigMigrationImportApplyService {
     }
 
     /**
-     * 应用数据源定义并返回 sourceCode -> 保存后ID 的映射，供后续表单/列表引用重写。
+     * 应用“一条扩展=一个接口”定义并返回业务编码到新 ID 的映射。
      *
-     * @param entity 所属实体
-     * @param values 数据源定义列表
-     * @return sourceCode -> 数据源ID
+     * <p>新包使用 interfaceExtensions；旧 dataSources 仅在导入时按
+     * operationsDocument 拆分为多条接口扩展，绝不重建多操作服务。</p>
      */
-    private Map<String, String> applyDataSources(
+    Map<String, String> applyInterfaceExtensions(
             EntityDefinition entity,
             List<Map<String, Object>> values) {
         Map<String, String> idsByCode = new LinkedHashMap<>();
         for (Map<String, Object> value : values) {
-            String sourceCode = text(value.get("sourceCode"), null);
-            if (!StringUtils.hasText(sourceCode)) {
-                throw new IllegalStateException(
-                        "迁移数据源缺少 sourceCode");
+            String extensionKey = text(value.get("extensionKey"), null);
+            if (StringUtils.hasText(extensionKey)) {
+                UiExtensionDefinition saved = saveInterfaceExtension(
+                        entity, value, extensionKey, null, false);
+                idsByCode.put(extensionKey, saved.getId());
+                continue;
             }
-            UiDataSourceDefinition existing =
-                    dataSourceDefinitionMapper.selectOne(
-                            new LambdaQueryWrapper<UiDataSourceDefinition>()
-                                    .eq(
-                                            UiDataSourceDefinition::getSourceCode,
-                                            sourceCode)
-                                    .eq(
-                                            UiDataSourceDefinition::getDeleted,
-                                            0)
-                                    .last("LIMIT 1"));
-            UiDataSourceSaveRequest request =
-                    new UiDataSourceSaveRequest();
-            request.setId(existing == null ? null : existing.getId());
-            request.setExpectedRevision(
-                    existing == null ? null : existing.getRevision());
-            request.setSourceCode(sourceCode);
-            request.setSourceName(
-                    text(value.get("sourceName"), sourceCode));
-            request.setSourceType(
-                    text(value.get("sourceType"), null));
-            request.setProviderCode(
-                    mappedKey(
-                            "DATA_PROVIDER",
-                            text(value.get("providerCode"), null)));
-            request.setScopeType(
-                    text(value.get("scopeType"), "GLOBAL"));
-            request.setScopeId(resolveDataSourceScopeId(
-                    entity,
-                    request.getScopeType(),
-                    text(value.get("scopeRef"), null)));
-            request.setConfig(documentMap(
-                    value.get("configDocument")));
-            request.setExecutionPolicy(documentMap(
-                    value.get("executionPolicyDocument")));
-            request.setOperations(documentMapList(
-                    value.get("operationsDocument")));
-            request.setEnabled(
-                    booleanObject(value.get("enabled")));
-            UiDataSourceDefinition saved =
-                    dataSourceService.save(request);
-            idsByCode.put(sourceCode, saved.getId());
+            String legacyCode = text(value.get("sourceCode"), null);
+            List<Map<String, Object>> operations = documentMapList(
+                    value.get("operationsDocument"));
+            if (!StringUtils.hasText(legacyCode) || operations.isEmpty()) {
+                throw new IllegalStateException(
+                        "历史接口迁移定义缺少 sourceCode 或 operationsDocument");
+            }
+            for (Map<String, Object> operation : operations) {
+                String operationCode = text(operation.get("code"), null);
+                if (!StringUtils.hasText(operationCode)) {
+                    throw new IllegalStateException("历史接口操作缺少 code");
+                }
+                String migratedKey = legacyCode + "." + operationCode;
+                UiExtensionDefinition saved = saveInterfaceExtension(
+                        entity, value, migratedKey, operation, true);
+                idsByCode.put(migratedKey, saved.getId());
+                if (operations.size() == 1) {
+                    idsByCode.put(legacyCode, saved.getId());
+                }
+            }
         }
         return idsByCode;
     }
 
-    private String resolveDataSourceScopeId(
+    private UiExtensionDefinition saveInterfaceExtension(
+            EntityDefinition entity,
+            Map<String, Object> value,
+            String extensionKey,
+            Map<String, Object> legacyOperation,
+            boolean legacy) {
+        UiExtensionDefinition existing = extensionDefinitionMapper.selectOne(
+                new LambdaQueryWrapper<UiExtensionDefinition>()
+                        .eq(UiExtensionDefinition::getExtensionType, "INTERFACE")
+                        .eq(UiExtensionDefinition::getExtensionKey, extensionKey)
+                        .eq(UiExtensionDefinition::getDeleted, 0)
+                        .last("LIMIT 1"));
+        UiExtensionDefinitionSaveRequest request =
+                new UiExtensionDefinitionSaveRequest();
+        request.setId(existing == null ? null : existing.getId());
+        request.setExpectedRevision(
+                existing == null ? null : existing.getRevision());
+        request.setExtensionType("INTERFACE");
+        request.setExtensionKey(extensionKey);
+        request.setDisplayName(legacy
+                ? text(value.get("sourceName"), extensionKey) + " / "
+                        + text(legacyOperation.get("name"),
+                                text(legacyOperation.get("code"), extensionKey))
+                : text(value.get("displayName"), extensionKey));
+        request.setVersion(integerObject(value.get("version")) == null
+                ? 1 : integerObject(value.get("version")));
+        request.setSnapshotVersion(integerObject(
+                value.get("snapshotVersion")) == null
+                ? 1 : integerObject(value.get("snapshotVersion")));
+        request.setImplementationType(text(
+                value.get(legacy ? "sourceType" : "implementationType"), null));
+        request.setProviderCode(mappedKey(
+                "DATA_PROVIDER", text(value.get("providerCode"), null)));
+        request.setScopeType(text(value.get("scopeType"), "GLOBAL"));
+        request.setScopeId(resolveInterfaceScopeId(
+                entity,
+                request.getScopeType(),
+                text(value.get("scopeRef"), null)));
+        Map<String, Object> config = documentMap(value.get(
+                legacy ? "configDocument" : "implementationConfigDocument"));
+        Map<String, Object> policy = documentMap(
+                value.get("executionPolicyDocument"));
+        if (legacy) {
+            config = mergeDocuments(config, legacyOperation.get("config"));
+            policy = mergeDocuments(
+                    policy, legacyOperation.get("executionPolicy"));
+        }
+        request.setImplementationConfig(config);
+        request.setExecutionPolicy(policy);
+        request.setInputSchema(legacy
+                ? mapValue(legacyOperation.get("inputSchema"))
+                : documentMap(value.get("inputSchemaDocument")));
+        request.setOutputSchema(legacy
+                ? mapValue(legacyOperation.get("outputSchema"))
+                : documentMap(value.get("outputSchemaDocument")));
+        request.setInterfaceKind(text(
+                legacy ? legacyOperation.get("kind")
+                        : value.get("interfaceKind"), "READ"));
+        request.setInterfaceContextType(text(
+                legacy ? legacyOperation.get("contextType")
+                        : value.get("interfaceContextType"), null));
+        request.setProviderOperationCode(text(
+                legacy ? legacyOperation.get("code")
+                        : value.get("providerOperationCode"), extensionKey));
+        request.setStatus(legacy
+                ? Boolean.FALSE.equals(booleanObject(value.get("enabled")))
+                        ? "DISABLED" : "ACTIVE"
+                : text(value.get("status"), "ACTIVE"));
+        return dataSourceService.save(request);
+    }
+
+    private Map<String, Object> mergeDocuments(
+            Map<String, Object> base,
+            Object override) {
+        Map<String, Object> result = new LinkedHashMap<>(base);
+        if (override instanceof Map<?, ?>) {
+            result.putAll(mapValue(override));
+        }
+        return result;
+    }
+
+    String resolveInterfaceScopeId(
             EntityDefinition entity,
             String scopeType,
             String scopeRef) {
@@ -1515,11 +1666,24 @@ public class ConfigMigrationImportApplyService {
             }
             return form.getId();
         }
+        if ("LIST".equalsIgnoreCase(scopeType)
+                && StringUtils.hasText(scopeRef)) {
+            String[] parts = scopeRef.split("/", 2);
+            String listKey = parts.length == 2
+                    ? parts[1] : parts[0];
+            EntityListConfig list = listConfigMapper
+                    .findByEntityIdAndListKey(entity.getId(), listKey);
+            if (list == null) {
+                throw new IllegalStateException(
+                        "接口扩展作用域列表不存在: " + scopeRef);
+            }
+            return list.getId();
+        }
         throw new IllegalStateException(
-                "迁移暂不支持的数据源作用域: " + scopeType);
+                "迁移暂不支持的接口扩展作用域: " + scopeType);
     }
 
-    private Object rewriteDataSourceReferences(
+    private Object rewriteInterfaceReferences(
             Object value,
             Map<String, String> idsByCode) {
         if (value instanceof Map<?, ?> map) {
@@ -1530,18 +1694,37 @@ public class ConfigMigrationImportApplyService {
             map.forEach((key, child) ->
                     entries.put(String.valueOf(key), child));
             rewritten.clear();
+            String legacyOperationCode = text(
+                    entries.get("operationCode"),
+                    text(entries.get("dataSourceOperationCode"),
+                            text(entries.get("queryOperationCode"), null)));
+            boolean legacyCodePresent = entries.keySet().stream().anyMatch(
+                    key -> Set.of("serviceCode", "dataSourceCode",
+                            "queryDataSourceCode").contains(key));
             for (Map.Entry<String, Object> entry :
                     entries.entrySet()) {
-                if (isDataSourceCodeKey(entry.getKey())
-                        && entry.getValue() instanceof String code
-                        && idsByCode.containsKey(code)) {
+                if (isInterfaceExtensionCodeKey(entry.getKey())
+                        && entry.getValue() instanceof String code) {
+                    String id = StringUtils.hasText(legacyOperationCode)
+                            ? idsByCode.get(code + "." + legacyOperationCode)
+                            : null;
+                    if (!StringUtils.hasText(id)) {
+                        id = idsByCode.get(code);
+                    }
+                    if (!StringUtils.hasText(id)) {
+                        throw new IllegalStateException(
+                                "迁移包引用的接口扩展不存在: " + code);
+                    }
                     rewritten.put(
-                            dataSourceIdKey(entry.getKey()),
-                            idsByCode.get(code));
+                            interfaceExtensionIdKey(entry.getKey()), id);
+                } else if (legacyCodePresent && Set.of(
+                        "operationCode", "dataSourceOperationCode",
+                        "queryOperationCode").contains(entry.getKey())) {
+                    // 旧 pair 已解析为单个 extensionId，新草稿不再落库操作编码。
                 } else {
                     rewritten.put(
                             entry.getKey(),
-                            rewriteDataSourceReferences(
+                            rewriteInterfaceReferences(
                                     entry.getValue(), idsByCode));
                 }
             }
@@ -1549,7 +1732,7 @@ public class ConfigMigrationImportApplyService {
         }
         if (value instanceof Collection<?> collection) {
             return collection.stream()
-                    .map(child -> rewriteDataSourceReferences(
+                    .map(child -> rewriteInterfaceReferences(
                             child, idsByCode))
                     .toList();
         }
@@ -1558,7 +1741,7 @@ public class ConfigMigrationImportApplyService {
                 || text.trim().startsWith("["))) {
             Object parsed = parseJsonDocument(text);
             if (parsed != null) {
-                return writeJson(rewriteDataSourceReferences(
+                return writeJson(rewriteInterfaceReferences(
                         parsed, idsByCode));
             }
         }
@@ -1571,8 +1754,11 @@ public class ConfigMigrationImportApplyService {
      * @param name 字段名
      * @return 是否为数据源编码键
      */
-    static boolean isDataSourceCodeKey(String name) {
+    static boolean isInterfaceExtensionCodeKey(String name) {
         return Set.of(
+                "extensionCode",
+                "interfaceExtensionCode",
+                "queryInterfaceExtensionCode",
                 "serviceCode",
                 "dataSourceCode",
                 "queryDataSourceCode").contains(name);
@@ -1584,12 +1770,13 @@ public class ConfigMigrationImportApplyService {
      * @param codeKey 数据源编码键
      * @return 对应的数据源ID键
      */
-    static String dataSourceIdKey(String codeKey) {
+    static String interfaceExtensionIdKey(String codeKey) {
         return switch (codeKey) {
-            case "dataSourceCode" -> "dataSourceId";
-            case "queryDataSourceCode" ->
-                    "queryDataSourceId";
-            default -> "serviceId";
+            case "interfaceExtensionCode", "dataSourceCode" ->
+                    "interfaceExtensionId";
+            case "queryInterfaceExtensionCode", "queryDataSourceCode" ->
+                    "queryInterfaceExtensionId";
+            default -> "extensionId";
         };
     }
 
@@ -1698,7 +1885,7 @@ public class ConfigMigrationImportApplyService {
     /**
      * 恢复实体快照中的便携关联内容草稿。
      *
-     * <p>调用时目标环境的表单、列表、节点、接口服务和扩展必须已经就绪。
+     * <p>调用时目标环境的表单、列表、节点和接口扩展必须已经就绪。
      * 解析仅使用业务编码，不接受源环境数据库 ID 或 releaseId；实际发布在所有
      * 实体草稿恢复完成后统一执行。</p>
      */
@@ -1841,24 +2028,62 @@ public class ConfigMigrationImportApplyService {
         Map<String, Object> special = mapValue(config.get("specialHandling"));
         if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
             Map<String, Object> service = mapValue(rawService);
-            if (!StringUtils.hasText(text(service.get("serviceId"), null))) {
-                String serviceCode = text(service.get("serviceCode"), null);
-                UiDataSourceDefinition definition = dataSourceDefinitionMapper.selectOne(
-                        new LambdaQueryWrapper<UiDataSourceDefinition>()
-                                .eq(UiDataSourceDefinition::getSourceCode, serviceCode)
-                                .eq(UiDataSourceDefinition::getDeleted, 0)
+            if (!StringUtils.hasText(text(service.get("extensionId"), null))) {
+                String serviceCode = text(service.get("extensionCode"),
+                        text(service.get("serviceCode"), null));
+                UiExtensionDefinition definition = extensionDefinitionMapper.selectOne(
+                        new LambdaQueryWrapper<UiExtensionDefinition>()
+                                .eq(UiExtensionDefinition::getExtensionType,
+                                        "INTERFACE")
+                                .eq(UiExtensionDefinition::getExtensionKey, serviceCode)
+                                .eq(UiExtensionDefinition::getDeleted, 0)
                                 .last("LIMIT 1"));
                 if (definition == null) {
                     throw new IllegalStateException(
-                            "关联内容接口服务不存在: " + serviceCode);
+                            "关联内容接口扩展不存在: " + serviceCode);
                 }
-                service.put("serviceId", definition.getId());
+                service.put("extensionId", definition.getId());
+                service.remove("extensionCode");
                 service.remove("serviceCode");
             }
+            service.remove("serviceId");
+            service.remove("operationCode");
             service.remove("serviceRevision");
             service.remove("executableSnapshot");
             service.remove("definitionHash");
             special.put("interfaceService", service);
+        }
+        if (special.get("actionServices") instanceof List<?> rawActions) {
+            List<Map<String, Object>> actions = new ArrayList<>();
+            for (Object rawAction : rawActions) {
+                Map<String, Object> service = mapValue(rawAction);
+                if (!StringUtils.hasText(text(service.get("extensionId"), null))) {
+                    String extensionCode = text(service.get("extensionCode"),
+                            text(service.get("serviceCode"), null));
+                    UiExtensionDefinition definition = extensionDefinitionMapper
+                            .selectOne(new LambdaQueryWrapper<UiExtensionDefinition>()
+                                    .eq(UiExtensionDefinition::getExtensionType,
+                                            "INTERFACE")
+                                    .eq(UiExtensionDefinition::getExtensionKey,
+                                            extensionCode)
+                                    .eq(UiExtensionDefinition::getDeleted, 0)
+                                    .last("LIMIT 1"));
+                    if (definition == null) {
+                        throw new IllegalStateException(
+                                "关联内容动作接口不存在: " + extensionCode);
+                    }
+                    service.put("extensionId", definition.getId());
+                }
+                service.remove("extensionCode");
+                service.remove("serviceCode");
+                service.remove("serviceId");
+                service.remove("operationCode");
+                service.remove("serviceRevision");
+                service.remove("executableSnapshot");
+                service.remove("definitionHash");
+                actions.add(service);
+            }
+            special.put("actionServices", List.copyOf(actions));
         }
         if (special.get("customComponent") instanceof Map<?, ?> rawComponent) {
             Map<String, Object> component = mapValue(rawComponent);

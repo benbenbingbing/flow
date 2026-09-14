@@ -96,7 +96,7 @@
     <ListColumnTemplateEditorDialog
       ref="editorRef"
       :data-source-options="dataSourceOptions"
-      :unified-data-sources="unifiedDataSources"
+      :interface-options="interfaceOptions"
       @saved="loadAll"
     />
   </div>
@@ -116,7 +116,8 @@ import { ElMessage } from 'element-plus'
 import ListColumnTemplateEditorDialog
   from '@/components/ui-config/ListColumnTemplateEditorDialog.vue'
 import { entityListConfigApi } from '@/api/entityListConfig'
-import { uiComponentTemplateApi, uiDataSourceApi } from '@/api/uiConfig'
+import { uiComponentTemplateApi, uiExtensionApi } from '@/api/uiConfig'
+import { normalizeInterfaceExtensions } from '@/components/ui-config/interfaceExtensionModel'
 import { useUserStore } from '@/stores/user'
 import {
   createListColumnTemplateEditor,
@@ -136,7 +137,7 @@ const dataSourceOptions = ref([{
   supportsQuery: true,
   configSchema: []
 }])
-const unifiedDataSources = ref([])
+const interfaceOptions = ref([])
 const editorRef = ref()
 
 const canManage = computed(() =>
@@ -162,14 +163,12 @@ async function loadAll() {
     const [templates, extensions, sources] = await Promise.all([
       uiComponentTemplateApi.list({ templateType: LIST_COLUMN_TEMPLATE_TYPE }),
       entityListConfigApi.getExtensionOptions().catch(() => []),
-      uiDataSourceApi.list().catch(() => [])
+      uiExtensionApi.list({ extensionType: 'INTERFACE' }).catch(() => [])
     ])
     if (Array.isArray(extensions) && extensions.length) {
       dataSourceOptions.value = extensions
     }
-    unifiedDataSources.value = Array.isArray(sources)
-      ? sources.filter(source => source.enabled !== false)
-      : []
+    interfaceOptions.value = normalizeInterfaceExtensions(sources)
     rows.value = await Promise.all((templates || []).map(loadTemplateRow))
   } catch (error) {
     ElMessage.error(error?.message || '加载列表列模板失败')

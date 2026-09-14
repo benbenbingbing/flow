@@ -51,19 +51,18 @@ assert.equal(
   '空值保留策略应进入发布步骤'
 )
 
-const serviceStep = {
+const interfaceStep = {
   name: '检查客户状态',
   strategy: 'BEFORE',
-  serviceId: 'service-1',
-  operationCode: 'check',
+  extensionId: 'customer-status-interface',
   outputMapping: []
 }
 const merged = mergeEntitySelectionMappings(
-  [serviceStep],
+  [interfaceStep],
   entitySelectionMappings(firstFormBinding)
 )
 assert.equal(merged.length, 2)
-assert.equal(merged[0].serviceId, 'service-1')
+assert.equal(merged[0].extensionId, 'customer-status-interface')
 assert.equal(merged[1].stepCode, ENTITY_SELECTION_FILL_STEP_CODE)
 assert.deepEqual(
   merged.map(step => step.order),

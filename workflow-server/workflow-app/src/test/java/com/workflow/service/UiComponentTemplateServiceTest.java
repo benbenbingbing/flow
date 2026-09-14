@@ -10,6 +10,8 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTempl
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplateVersion;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateVersionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -53,10 +55,37 @@ class UiComponentTemplateServiceTest {
                 () -> new UiComponentTemplateService(
                         mock(UiComponentTemplateMapper.class),
                         mock(UiComponentTemplateVersionMapper.class),
-                        new JsonDocumentCodec(objectMapper))
+                        new JsonDocumentCodec(objectMapper),
+                        mock(UiExtensionDefinitionMapper.class))
                         .save(request));
 
         assertTrue(error.getMessage().contains("fieldCode"));
+    }
+
+    /** 新模板保存只能使用单一扩展 ID，不能重新写入旧 service/operation pair。 */
+    @Test
+    void listColumnTemplateRejectsLegacyInterfacePairOnSave() {
+        UiComponentTemplateSaveRequest request =
+                new UiComponentTemplateSaveRequest();
+        request.setTemplateKey("COMMON_REMOTE_COLUMN");
+        request.setTemplateName("远程列");
+        request.setTemplateType("LIST_COLUMN_GROUP");
+        request.setSnapshot(Map.of(
+                "field", Map.of(
+                        "dataSourceId", "legacy-service",
+                        "dataSourceOperationCode", "lookup",
+                        "width", 140)));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> new UiComponentTemplateService(
+                        mock(UiComponentTemplateMapper.class),
+                        mock(UiComponentTemplateVersionMapper.class),
+                        new JsonDocumentCodec(new ObjectMapper()),
+                        mock(UiExtensionDefinitionMapper.class))
+                        .save(request));
+
+        assertTrue(error.getMessage().contains("interfaceExtensionId"));
     }
 
     /**
@@ -99,7 +128,9 @@ class UiComponentTemplateServiceTest {
         Map<String, Object> result = new UiComponentTemplateService(
                 templateMapper,
                 versionMapper,
-                codec).upgrade("tpl-1", request);
+                codec,
+                mock(UiExtensionDefinitionMapper.class))
+                .upgrade("tpl-1", request);
         Map<?, ?> merged = (Map<?, ?>) result.get("mergedSnapshot");
 
         assertEquals("本地标题", merged.get("title"));
@@ -126,7 +157,8 @@ class UiComponentTemplateServiceTest {
                 () -> new UiComponentTemplateService(
                         templateMapper,
                         mock(UiComponentTemplateVersionMapper.class),
-                        new JsonDocumentCodec(new ObjectMapper()))
+                        new JsonDocumentCodec(new ObjectMapper()),
+                        mock(UiExtensionDefinitionMapper.class))
                         .upgrade("tpl-1", new UiComponentTemplateUpgradeRequest()));
 
         assertTrue(error.getMessage().contains("一次性初始化"));
@@ -154,7 +186,8 @@ class UiComponentTemplateServiceTest {
         UiComponentTemplateService service = new UiComponentTemplateService(
                 templateMapper,
                 versionMapper,
-                codec);
+                codec,
+                mock(UiExtensionDefinitionMapper.class));
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> service.versions("tpl-1"));
@@ -162,6 +195,51 @@ class UiComponentTemplateServiceTest {
 
         Map<String, Object> snapshot = service.currentSnapshot("tpl-1");
         assertEquals(140, ((Map<?, ?>) snapshot.get("field")).get("width"));
+    }
+
+    /**
+     * 旧列模板保持原始文档和哈希不变，但读取结果会转换成单一接口扩展引用。
+     */
+    @Test
+    void currentListColumnSnapshotNormalizesLegacyInterfacePairAfterHashCheck() {
+        JsonDocumentCodec codec = new JsonDocumentCodec(new ObjectMapper());
+        UiComponentTemplateMapper templateMapper =
+                mock(UiComponentTemplateMapper.class);
+        UiComponentTemplateVersionMapper versionMapper =
+                mock(UiComponentTemplateVersionMapper.class);
+        UiExtensionDefinitionMapper extensionMapper =
+                mock(UiExtensionDefinitionMapper.class);
+        UiComponentTemplate template = new UiComponentTemplate();
+        template.setId("tpl-1");
+        template.setCurrentVersion(1);
+        template.setDeleted(0);
+        template.setTemplateType("LIST_COLUMN_GROUP");
+        when(templateMapper.selectById("tpl-1")).thenReturn(template);
+        Map<String, Object> stored = Map.of(
+                "field", Map.of(
+                        "dataSourceId", "legacy-service",
+                        "dataSourceOperationCode", "lookup",
+                        "width", 140));
+        UiComponentTemplateVersion storedVersion = version(codec, 1, stored);
+        when(versionMapper.selectOne(any())).thenReturn(storedVersion);
+        UiExtensionDefinition migrated = new UiExtensionDefinition();
+        migrated.setId("interface-1");
+        migrated.setExtensionType("INTERFACE");
+        migrated.setLegacyServiceId("legacy-service");
+        migrated.setProviderOperationCode("lookup");
+        migrated.setDeleted(0);
+        when(extensionMapper.selectOne(any())).thenReturn(migrated);
+
+        Map<String, Object> result = new UiComponentTemplateService(
+                templateMapper, versionMapper, codec, extensionMapper)
+                .currentSnapshot("tpl-1");
+        Map<?, ?> field = (Map<?, ?>) result.get("field");
+
+        assertEquals("interface-1", field.get("interfaceExtensionId"));
+        assertTrue(!field.containsKey("dataSourceId"));
+        assertTrue(!field.containsKey("dataSourceOperationCode"));
+        assertEquals(codec.write(stored, "模板快照"),
+                storedVersion.getSnapshotDocument());
     }
 
     /** 构造带完整性哈希的模板版本对象 */

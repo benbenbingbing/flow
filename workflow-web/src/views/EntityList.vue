@@ -85,7 +85,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="390" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <div class="table-row-actions">
               <el-button link type="primary" @click="handleDesign(row)">
@@ -120,32 +120,40 @@
                   重新发布
                 </el-button>
                 <el-button link type="primary" @click="handleStatusConfig(row)">状态</el-button>
-                <el-button
-                  v-if="row.lifecycleMode === 'STANDALONE'"
-                  link
-                  type="primary"
-                  @click="handleUpgradeWorkflow(row)"
-                >
-                  升级
-                </el-button>
-                <el-button
-                  v-if="row.lifecycleMode === 'WORKFLOW'"
-                  link
-                  type="primary"
-                  @click="handleBindWorkflow(row)"
-                >
-                  {{ row.processDefinitionId ? '换绑' : '绑定' }}
-                </el-button>
-                <el-button
-                  v-if="row.lifecycleMode === 'WORKFLOW' && row.processDefinitionId"
-                  link
-                  type="warning"
-                  @click="handleUnbindWorkflow(row)"
-                >
-                  解绑
-                </el-button>
-                <el-button link type="info" @click="handleViewHistory(row)">历史</el-button>
-                <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+                <!-- 次要操作按实体类型和绑定状态显示，收起后仍沿用原有业务入口。 -->
+                <el-dropdown trigger="click" placement="bottom-end">
+                  <el-button link type="primary" aria-label="更多实体操作" title="更多实体操作">
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        v-if="row.lifecycleMode === 'STANDALONE'"
+                        @click="handleUpgradeWorkflow(row)"
+                      >
+                        <span class="more-action-primary">升级</span>
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        v-if="row.lifecycleMode === 'WORKFLOW'"
+                        @click="handleBindWorkflow(row)"
+                      >
+                        <span class="more-action-primary">{{ row.processDefinitionId ? '换绑' : '绑定' }}</span>
+                      </el-dropdown-item>
+                      <el-dropdown-item
+                        v-if="row.lifecycleMode === 'WORKFLOW' && row.processDefinitionId"
+                        @click="handleUnbindWorkflow(row)"
+                      >
+                        <span class="more-action-warning">解绑</span>
+                      </el-dropdown-item>
+                      <el-dropdown-item @click="handleViewHistory(row)">
+                        <span class="more-action-info">历史</span>
+                      </el-dropdown-item>
+                      <el-dropdown-item divided @click="handleDelete(row)">
+                        <span class="more-action-danger">删除</span>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
               </template>
             </div>
           </template>
@@ -635,7 +643,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Rank, View, ArrowRight, ArrowDown, Search } from '@element-plus/icons-vue'
+import { Plus, Rank, View, ArrowRight, ArrowDown, Search, MoreFilled } from '@element-plus/icons-vue'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
@@ -1303,6 +1311,18 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.more-action-primary {
+  color: var(--el-color-primary);
+}
+.more-action-warning {
+  color: var(--el-color-warning);
+}
+.more-action-info {
+  color: var(--el-color-info);
+}
+.more-action-danger {
+  color: var(--el-color-danger);
 }
 .status-config-header {
   display: flex;

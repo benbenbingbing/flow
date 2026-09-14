@@ -3,7 +3,7 @@ package com.workflow.service;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.list.application.EntityDataListConfigService;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
-import com.workflow.entity.ui.application.UiDataSourceService;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -50,7 +50,7 @@ class EntityDataListConfigServiceTest {
         EntityActionCapabilityService capabilityService = mock(EntityActionCapabilityService.class);
         EntityListPublishedRuntimeService publishedRuntimeService =
                 mock(EntityListPublishedRuntimeService.class);
-        UiDataSourceService uiDataSourceService = mock(UiDataSourceService.class);
+        UiInterfaceExtensionService uiDataSourceService = mock(UiInterfaceExtensionService.class);
         EntityDataListConfigService service = new EntityDataListConfigService(
                 dynamicService,
                 configMapper,
@@ -127,7 +127,7 @@ class EntityDataListConfigServiceTest {
         EntityActionCapabilityService capabilityService = mock(EntityActionCapabilityService.class);
         EntityListPublishedRuntimeService publishedRuntimeService =
                 mock(EntityListPublishedRuntimeService.class);
-        UiDataSourceService uiDataSourceService = mock(UiDataSourceService.class);
+        UiInterfaceExtensionService uiDataSourceService = mock(UiInterfaceExtensionService.class);
         EntityDataListConfigService service = new EntityDataListConfigService(
                 dynamicService,
                 configMapper,
@@ -235,7 +235,7 @@ class EntityDataListConfigServiceTest {
                 new ListFieldConditionEvaluator(),
                 mock(EntityActionCapabilityService.class),
                 publishedRuntimeService,
-                mock(UiDataSourceService.class));
+                mock(UiInterfaceExtensionService.class));
         return new ServiceFixture(service, dynamicService);
     }
 

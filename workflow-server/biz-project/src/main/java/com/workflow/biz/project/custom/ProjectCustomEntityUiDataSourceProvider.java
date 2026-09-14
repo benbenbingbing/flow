@@ -14,8 +14,8 @@ import java.util.Set;
 /**
  * ENTITY 作用范围的统一数据源扩展示例。
  *
- * <p>推荐在接口服务中配置 {@code scopeType=ENTITY}，scopeId 选择实体 ID。
- * 同一实体下的多个表单和列表都可以复用该服务。示例重点展示字段选项、字段
+ * <p>推荐在接口扩展中配置 {@code scopeType=ENTITY}，scopeId 选择实体 ID。
+ * 同一实体下的多个表单和列表都可以复用该接口。示例重点展示字段选项、字段
  * 默认值、字段计算，以及字段变化、实体选择和字段按钮事件。</p>
  */
 @Slf4j

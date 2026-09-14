@@ -787,8 +787,8 @@ async function executeSelectionAction(
 
 /**
  * 平台只向审核过的一方可信组件提供宿主发布快照已声明的 actionKey；这层
- * bridge 不是任意第三方代码的强沙箱。payload 中的 serviceId、operationCode、
- * input 等字段全部忽略，服务端从签名宿主版本恢复钉定接口和字段映射。
+ * bridge 不是任意第三方代码的强沙箱。payload 中的 extensionId、input 等接口
+ * 执行字段全部忽略，服务端从签名宿主版本恢复钉定接口和字段映射。
  */
 async function executeBoundAction(action, payload = {}) {
   const actionKey = String(action || '').trim().toUpperCase()

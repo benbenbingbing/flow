@@ -18,12 +18,14 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.ui.application.UiExtensionReferencePolicy;
+import com.workflow.entity.ui.application.UiMutableInterfaceReferenceNormalizer;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -123,6 +125,17 @@ public class EntityFormNodeService {
         private final EntityFieldMapper fieldMapper;
         private final SystemEntityFieldPolicy systemEntityFieldPolicy;
         private final JsonDocumentCodec codec;
+        private UiMutableInterfaceReferenceNormalizer interfaceReferenceNormalizer;
+
+        /**
+         * 节点草稿落库前把历史 service/operation pair 迁移为 extensionId。
+         * 使用可选 setter 以兼容不启动 Spring 的节点策略单元测试。
+         */
+        @Autowired(required = false)
+        public void setInterfaceReferenceNormalizer(
+                        UiMutableInterfaceReferenceNormalizer value) {
+                this.interfaceReferenceNormalizer = value;
+        }
 
         /**
          * 查询表单的所有节点。
@@ -1295,6 +1308,10 @@ public class EntityFormNodeService {
                         Map<String, Object> normalizedBindings = EntityFormNodePropertyPolicy
                                         .normalizeDataSourceBindings(
                                                         nodeType, bindings);
+                        if (interfaceReferenceNormalizer != null) {
+                                normalizedBindings = interfaceReferenceNormalizer
+                                                .normalizeBindings(normalizedBindings);
+                        }
                         node.setDataSourceBindingsDocument(write(
                                         normalizedBindings, "表单节点数据源绑定"));
                 } catch (IllegalArgumentException exception) {

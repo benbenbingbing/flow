@@ -76,7 +76,7 @@ class UiViewCompositionRuntimeServiceTest {
     @Mock
     private EntityActionCapabilityService capabilityService;
     @Mock
-    private UiDataSourceService dataSourceService;
+    private UiInterfaceExtensionService dataSourceService;
     @Mock
     private UiReleaseResolutionTokenService releaseTokenService;
     @Mock

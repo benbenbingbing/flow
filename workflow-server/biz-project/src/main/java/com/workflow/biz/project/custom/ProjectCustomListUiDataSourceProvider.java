@@ -18,7 +18,7 @@ import java.util.Set;
 /**
  * LIST 作用范围的统一数据源扩展示例。
  *
- * <p>推荐在接口服务中配置 {@code scopeType=LIST}，scopeId 填写列表配置 ID。
+ * <p>推荐在接口扩展中配置 {@code scopeType=LIST}，scopeId 填写列表配置 ID。
  * 示例覆盖 LIST_QUERY、LIST_COLUMN、列表加载/导出、数据动作，以及工具栏按钮
  * 和行按钮事件。</p>
  */

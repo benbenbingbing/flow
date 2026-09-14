@@ -320,50 +320,35 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="接口服务">
+              <el-form-item label="扩展接口">
                 <template #label>
                   <ConfigHelpLabel
-                    label="接口服务"
-                    help-key="uiDataSource.service"
+                    label="扩展接口"
+                    help-key="uiEvent.extensionInterface"
                   />
                 </template>
                 <el-select
-                  v-model="step.serviceId"
+                  v-model="step.extensionId"
                   filterable
                   clearable
                   placeholder="留空表示只做字段映射"
-                  @change="onServiceChange(step)"
                 >
                   <el-option
-                    v-for="service in services"
-                    :key="service.id"
-                    :label="`${service.sourceName} (${service.sourceCode})`"
-                    :value="service.id"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="接口操作">
-                <el-select
-                  v-model="step.operationCode"
-                  :disabled="!step.serviceId"
-                  placeholder="选择操作"
-                >
-                  <el-option
-                    v-for="operation in operationOptions(step.serviceId)"
-                    :key="operation.code"
-                    :label="`${operation.name} (${operation.code}) · ${operationContextLabel(operation.contextType)}`"
-                    :value="operation.code"
+                    v-for="item in interfaces"
+                    :key="item.extensionId"
+                    :label="`${item.displayName} (${item.extensionKey}) · ${operationContextLabel(item.interfaceContextType)}`"
+                    :value="item.extensionId"
                   >
-                    <span>{{ operation.name }}</span>
+                    <span>{{ item.displayName }}</span>
                     <el-tag
                       class="operation-kind"
                       size="small"
-                      :type="operation.kind === 'WRITE' ? 'warning' : 'info'"
+                      :type="item.interfaceKind === 'WRITE' ? 'warning' : 'info'"
                     >
-                      {{ operation.kind === 'WRITE' ? '写操作' : '查询' }}
+                      {{ item.interfaceKind === 'WRITE' ? '写接口' : '读接口' }}
                     </el-tag>
                     <el-tag class="operation-kind" size="small" effect="plain">
-                      {{ operationContextLabel(operation.contextType) }}
+                      {{ operationContextLabel(item.interfaceContextType) }}
                     </el-tag>
                   </el-option>
                 </el-select>
@@ -496,8 +481,11 @@ import {
   eventGroupsForScope,
   eventsForScope
 } from '@/components/ui-config/uiEventScope'
-import { eventBindingOperationsForEvent } from '@/components/ui-config/interfaceServiceModel'
-import { uiDataSourceApi, uiEventBindingApi } from '@/api/uiConfig'
+import {
+  interfacesForEvent,
+  resolveInterfaceExtensionId
+} from '@/components/ui-config/interfaceExtensionModel'
+import { uiEventBindingApi, uiExtensionApi } from '@/api/uiConfig'
 
 const props = defineProps({
   ownerType: { type: String, required: true },
@@ -580,9 +568,8 @@ const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
 const bindings = ref([])
-const services = ref([])
+const interfaces = ref([])
 const catalog = ref({ events: [] })
-const operationCache = reactive({})
 let rowSequence = 0
 
 const editor = reactive(emptyEditor())
@@ -741,8 +728,10 @@ function normalizeStep(step, index) {
     rowKey: `step_${++rowSequence}`,
     name: step.name || '',
     strategy: String(step.strategy || 'BEFORE').toUpperCase(),
-    serviceId: step.serviceId || '',
-    operationCode: step.operationCode || '',
+    extensionId: step.extensionId || '',
+    // 仅保留到本次编辑会话，用于把迁移前草稿解析到新接口 ID；序列化不会写回。
+    legacyServiceId: step.serviceId || '',
+    legacyOperationCode: step.operationCode || '',
     order: Number(step.order ?? index * 10),
     failurePolicy: String(step.failurePolicy || 'STOP').toUpperCase(),
     inputRows: mappingRows(step.inputMapping, 'input'),
@@ -803,7 +792,7 @@ async function openCreate() {
     eventCode: availableEvents.value[0] || '',
     steps: []
   })
-  await loadAvailableOperations(editor.eventCode)
+  await loadAvailableInterfaces(editor.eventCode)
   dialogVisible.value = true
 }
 
@@ -818,7 +807,14 @@ async function openEdit(row) {
     enabled: row.enabled !== false,
     steps: steps.map(normalizeStep)
   })
-  await loadAvailableOperations(editor.eventCode)
+  await loadAvailableInterfaces(editor.eventCode)
+  editor.steps.forEach(step => {
+    step.extensionId = resolveInterfaceExtensionId({
+      extensionId: step.extensionId,
+      serviceId: step.legacyServiceId,
+      operationCode: step.legacyOperationCode
+    }, interfaces.value)
+  })
   dialogVisible.value = true
 }
 
@@ -882,19 +878,6 @@ function clearStepCondition(step) {
   step.conditionBoolean = false
 }
 
-async function onServiceChange(step) {
-  step.operationCode = ''
-  if (!step.serviceId) return
-  const operations = operationOptions(step.serviceId)
-  step.operationCode = operations.length === 1
-    ? operations[0].code
-    : ''
-}
-
-function operationOptions(serviceId) {
-  return operationCache[serviceId] || []
-}
-
 function operationContextLabel(contextType) {
   return {
     FORM: '表单',
@@ -905,43 +888,20 @@ function operationContextLabel(contextType) {
 
 async function handleEventChange(eventCode) {
   editor.steps.forEach(step => {
-    step.serviceId = ''
-    step.operationCode = ''
+    step.extensionId = ''
   })
-  await loadAvailableOperations(eventCode)
+  await loadAvailableInterfaces(eventCode)
 }
 
-async function loadAvailableOperations(eventCode) {
-  services.value = []
-  Object.keys(operationCache).forEach(key => delete operationCache[key])
+async function loadAvailableInterfaces(eventCode) {
+  interfaces.value = []
   if (!props.ownerId || !eventCode) return
-  const rows = await uiDataSourceApi.availableOperations({
+  const rows = await uiExtensionApi.availableInterfaces({
     ownerType: String(props.ownerType).toUpperCase(),
     ownerId: String(props.ownerId),
     bindingCode: String(eventCode).toUpperCase()
   }).catch(() => [])
-  const grouped = new Map()
-  eventBindingOperationsForEvent(rows, eventCode).forEach(item => {
-    if (!grouped.has(item.serviceId)) {
-      grouped.set(item.serviceId, {
-        id: item.serviceId,
-        sourceCode: item.serviceCode,
-        sourceName: item.serviceName,
-        sourceType: item.sourceType,
-        operations: []
-      })
-    }
-    grouped.get(item.serviceId).operations.push({
-      code: item.operationCode,
-      name: item.operationName,
-      kind: item.kind,
-      contextType: item.contextType
-    })
-  })
-  services.value = [...grouped.values()]
-  services.value.forEach(service => {
-    operationCache[service.id] = service.operations
-  })
+  interfaces.value = interfacesForEvent(rows, eventCode)
 }
 
 function serializeCondition(step) {
@@ -965,8 +925,7 @@ function serializeStep(step, index) {
     stepCode: step.stepCode || undefined,
     name: step.name || undefined,
     strategy: step.strategy,
-    serviceId: step.serviceId || undefined,
-    operationCode: step.serviceId ? step.operationCode : undefined,
+    extensionId: step.extensionId || undefined,
     order: (index + 1) * 10,
     condition: serializeCondition(step),
     inputMapping: Object.fromEntries(
@@ -1011,22 +970,18 @@ async function save() {
     }
   }
   for (const step of steps) {
-    if (step.serviceId && !step.operationCode) {
-      ElMessage.warning('已选择接口服务的步骤必须选择接口操作')
-      return
-    }
-    if (step.serviceId && !operationOptions(step.serviceId).some(operation =>
-      operation.code === step.operationCode
+    if (step.extensionId && !interfaces.value.some(item =>
+      item.extensionId === step.extensionId
     )) {
       ElMessage.warning(
         formButtonEventSelected.value
-          ? '表单自定义按钮事件链仅允许无副作用查询，请重新选择接口操作'
-          : '请选择当前事件可用的接口操作'
+          ? '表单自定义按钮事件链仅允许无副作用读接口，请重新选择扩展接口'
+          : '请选择当前事件可用的扩展接口'
       )
       return
     }
-    if (!step.serviceId && !step.outputMapping.length) {
-      ElMessage.warning('未选择接口服务的步骤必须配置结果回填')
+    if (!step.extensionId && !step.outputMapping.length) {
+      ElMessage.warning('未选择扩展接口的步骤必须配置结果回填')
       return
     }
   }
@@ -1167,10 +1122,9 @@ function chainItems(row) {
   const replace = steps.filter(step => step.strategy === 'REPLACE')
   const after = steps.filter(step => step.strategy === 'AFTER')
   const label = step => {
-    const service = services.value.find(item => item.id === step.serviceId)
-    const operation = operationOptions(step.serviceId)
-      .find(item => item.code === step.operationCode)
-    return step.name || operation?.name || service?.sourceName || '字段映射'
+    const item = interfaces.value.find(option =>
+      option.extensionId === step.extensionId)
+    return step.name || item?.displayName || '字段映射'
   }
   const stagedLabel = (step, strategy) => formButton
     ? `${formButtonStageLabel(strategy)}：${label(step)}`

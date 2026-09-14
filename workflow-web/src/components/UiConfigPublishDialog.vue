@@ -281,7 +281,8 @@ function dependencyTypeLabel(type) {
     ENTITY_SCHEMA: '实体定义',
     FORM: '目标表单',
     LIST: '目标列表',
-    INTERFACE_SERVICE: '接口服务',
+    INTERFACE_SERVICE: '扩展接口',
+    INTERFACE_EXTENSION: '扩展接口',
     CUSTOM_COMPONENT: '自定义组件'
   }[String(type || '').toUpperCase()] || '关联依赖'
 }

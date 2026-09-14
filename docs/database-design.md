@@ -90,11 +90,11 @@ V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前�
   - [7.9 process_task_sla_pause 任务时效暂停历史表](#79-process_task_sla_pause-任务时效暂停历史表)
   - [7.10 process_task_sla_event 时效到期执行事件表](#710-process_task_sla_event-时效到期执行事件表)
 - [8. UI扩展与发布](#8-ui扩展与发布)
-  - [8.1 ui_data_source_definition 受控接口服务目录表](#81-ui_data_source_definition-受控接口服务目录表)
+  - [8.1 ui_data_source_definition 已退役接口服务表](#81-ui_data_source_definition-已退役接口服务表)
   - [8.2 ui_event_binding 统一UI事件绑定表](#82-ui_event_binding-统一ui事件绑定表)
   - [8.3 ui_component_template UI组件模板目录表](#83-ui_component_template-ui组件模板目录表)
   - [8.4 ui_component_template_version UI组件模板版本表](#84-ui_component_template_version-ui组件模板版本表)
-  - [8.5 ui_extension_definition 受控UI扩展组件表](#85-ui_extension_definition-受控ui扩展组件表)
+  - [8.5 ui_extension_definition 统一扩展定义目录表](#85-ui_extension_definition-统一扩展定义目录表)
   - [8.6 ui_config_release 表单列表发布快照表](#86-ui_config_release-表单列表发布快照表)
   - [8.7 ui_config_release_audit UI发布审计表](#87-ui_config_release_audit-ui发布审计表)
   - [8.8 ui_config_hotfix_target UI热修复目标快照表](#88-ui_config_hotfix_target-ui热修复目标快照表)
@@ -897,7 +897,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 
 `id` 用于其他配置引用，业务上按“实体 + 列表标识”定位。创建后的普通保存保留 `entity_id`、`entity_code` 和 `list_key`，只修改列表内容。实际业务记录由实体查询或已注册的查询扩展提供。
 
-物理属性：InnoDB；字符集 `utf8mb4`；排序规则 `utf8mb4_unicode_ci`。共 33 个字段、1 个主键、1 个联合唯一索引和 1 个普通索引。
+物理属性：InnoDB；字符集 `utf8mb4`；排序规则 `utf8mb4_unicode_ci`。共 32 个字段、1 个主键、1 个联合唯一索引和 1 个普通索引。
 
 #### 2.3.2 配置存储边界
 
@@ -912,7 +912,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 
 #### 2.3.3 字段字典
 
-本表共 33 个字段。数据库可空性与界面必填规则分别管理，应用补充的默认配置在业务说明中列出。
+本表共 32 个字段。数据库可空性与界面必填规则分别管理，应用补充的默认配置在业务说明中列出。
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -931,9 +931,8 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 | `selection_config` | 选数配置 | `longtext` | 是 | `NULL`（隐式） | JSON 对象，描述是否允许选数、主值字段及选中记录的返回映射 | 现存 |
 | `context_binding_config` | 上下文扩展配置 | `longtext` | 是 | `NULL`（隐式） | JSON 对象，随已发布 Schema 返回，供组件或查询扩展解释。默认动态查询不会自动将此对象转换为关联过滤条件 | 扩展保留 |
 | `fixed_filter_config` | 固定查询条件 | `longtext` | 是 | `NULL`（隐式） | JSON 对象。运行时将已发布固定条件合并到查询条件中，页面输入不能覆盖同名固定条件 | 现存 |
-| `query_provider_code` | 查询提供者编码 | `varchar(100)` | 是 | `NULL` | 已注册 `EntityListDataProvider` 的编码，用于自定义列表查询；不能与接口服务查询同时配置 | 现存 |
-| `query_data_source_id` | 查询接口服务 ID | `varchar(64)` | 是 | `NULL` | 逻辑关联 `ui_data_source_definition.id`；配置后通过统一接口服务执行列表查询 | 现存 |
-| `query_operation_code` | 查询接口操作编码 | `varchar(100)` | 是 | `NULL` | 指定上述服务中的操作，服务 ID 与操作编码必须成对配置。操作来自服务的 `operations_document`，不是独立操作表的主键 | 现存 |
+| `query_provider_code` | 查询提供者编码 | `varchar(100)` | 是 | `NULL` | 已注册 `EntityListDataProvider` 的编码，用于自定义列表查询；不能与接口扩展查询同时配置 | 现存 |
+| `query_interface_extension_id` | 查询接口扩展 ID | `varchar(64)` | 是 | `NULL` | 逻辑关联 `ui_extension_definition.id`，且目标必须是可用于 `LIST_QUERY` 的活动 `INTERFACE` 扩展；一条记录即一个完整接口，无需再选择操作 | 现存 |
 | `access_permission_code` | 列表访问权限码 | `varchar(200)` | 是 | `NULL` | 控制进入列表的权限；空值回退为 `entity:{entity_code}:list`。访问权限与可见记录范围分别校验 | 现存 |
 | `data_scope_mode` | 数据范围模式 | `varchar(20)` | 否 | `INHERIT` | 允许 `INHERIT`、`NARROW`、`OVERRIDE`；保留的模式标识。当前执行语义的限制见 2.4.4，不能仅凭字段名认定存在三套范围合并算法 | 旧语义待统一 |
 | `unbound_scope_policy` | 未绑定允许规则时的策略 | `varchar(30)` | 否 | `DENY_ALL` | 没有已启用且在有效期内的 ALLOW 绑定时，采用拒绝全部、本人数据或显式全量可见的默认范围 | 现存 |
@@ -950,7 +949,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 | `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 数据库提供插入默认时间，普通保存流程也会设置创建时间 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 含 `ON UPDATE CURRENT_TIMESTAMP`，应用更新时也会设置；不能当作发布时间或修订号 | 现存 |
 
-不配置接口服务和查询提供者时，普通动态实体采用平台默认查询。接口查询以 `LIST_QUERY` 用途调用统一服务；系统实体具有单独的只读查询限制，不应将普通动态实体的扩展规则套用到所有实体。
+不配置接口扩展和查询提供者时，普通动态实体采用平台默认查询。接口查询以 `LIST_QUERY` 用途调用所选扩展；系统实体具有单独的只读查询限制，不应将普通动态实体的扩展规则套用到所有实体。
 
 `published_version` 在 V001 的初始默认值为 `1`，V041 已调整为 `0`，当前创建代码也显式设置为 `0`。文档采用迁移后的值。
 
@@ -1056,7 +1055,7 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 - `uk_entity_list_key`：联合唯一索引；`entity_id, list_key, deleted`；保证同一实体、列表标识、删除标记组合唯一；正常记录统一 `deleted = 0` 时保证实体内列表标识唯一。
 - `idx_entity_id`：普通索引；`entity_id`；支持按所属实体查询列表配置。
 
-三个索引均来自现有结构。本表没有声明物理外键或 CHECK 约束，枚举值、实体一致性、服务与操作成对配置等规则主要由应用维护。字符列采用大小写不敏感排序规则，列表标识不应依靠大小写区分。
+三个索引均来自现有结构。本表没有声明物理外键或 CHECK 约束，枚举值、实体一致性、接口扩展适用性等规则主要由应用维护。字符列采用大小写不敏感排序规则，列表标识不应依靠大小写区分。
 
 常见查询包括按 `id` 查询、按 `entity_id + list_key + deleted` 查询、按实体列出全部列表，以及按 `entity_code + list_key + deleted` 定位。最后一种查询目前没有对应的复合索引；是否补充应结合实际记录规模与执行计划评估。
 
@@ -1067,7 +1066,7 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 - `entity_list_action`：子表 `list_config_id` 对应本表 `id`；一个列表有零到多个工具栏或行内按钮。
 - `entity_list_scene`：子表 `list_config_id` 对应本表 `id`；一个列表有零到多个场景配置项；还存在本表 JSON 回退逻辑。
 - `ui_config_release`：快照 `config_type = 'LIST'` 且 `config_id = 本表.id`；一个列表有零到多个历史快照；本表 `active_release_id` 指向当前激活版本。
-- `ui_data_source_definition`：本表 `query_data_source_id` 对应服务 `id`；一个列表可绑定零或一个查询接口服务，一个服务可被多个列表使用。
+- `ui_extension_definition`：本表 `query_interface_extension_id` 对应一条 `INTERFACE` 扩展；一个列表可绑定零或一个查询接口，同一接口扩展可被多个列表使用。
 - 数据范围绑定与发布配置：按 `entity_code + list_key` 关联列表，发布快照通常按实体管理；决定该列表实际可见记录范围；其版本不使用本表 `published_version`。
 
 ```mermaid
@@ -1077,7 +1076,7 @@ erDiagram
     entity_list_config ||--o{ entity_list_action : "配置按钮"
     entity_list_config ||--o{ entity_list_scene : "配置场景"
     entity_list_config ||--o{ ui_config_release : "LIST 类型历史快照"
-    ui_data_source_definition o|--o{ entity_list_config : "可选查询服务"
+    ui_extension_definition o|--o{ entity_list_config : "可选查询接口扩展"
 ```
 
 图中只表达与本表有关的业务关系，不表示数据库已经创建外键，也不展开其他表的字段设计。
@@ -1118,11 +1117,12 @@ erDiagram
 #### 2.3.9 核对依据与迁移说明
 
 - [V001 建表定义](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)：初始 27 个字段、索引、关联对象的物理定义。
-- [V034 接口操作上下文调整](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)、[V035 列表查询接口绑定](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V035__list_query_interface_operation.sql)：查询服务 ID 曾被删除后重新引入；最终仍保留服务与操作两个字段。
+- [V034 接口操作上下文调整](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)、[V035 列表查询接口绑定](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V035__list_query_interface_operation.sql)：历史上以服务 ID 与操作编码成对保存列表查询绑定。
 - [V039 查询绑定清理](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V039__reset_list_query_interface_binding.sql)：当时已有的查询接口绑定被置空，不表示字段已删除。
 - [V041 发布状态修复](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V041__repair_list_release_state.sql)：发布版本默认值改为 0，并校准存量发布指针和版本。
 - [V049 数据范围安全默认值](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V049__entity_list_scope_secure_defaults.sql)：新增 6 个安全策略字段，以及存量观察期初始化。
 - [V074 排序规则统一](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V074__unify_database_collation.sql)：数据库、表和字符列统一至 `utf8mb4_unicode_ci`。
+- [V088 接口扩展扁平化](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V088__flatten_interface_services_into_extensions.sql)：将历史服务操作迁移成单条 `INTERFACE` 扩展，把查询绑定收敛为 `query_interface_extension_id`。
 - [EntityListConfig](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/record/EntityListConfig.java)、[EntityListConfigMapper](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/mapper/EntityListConfigMapper.java)：ORM 字段映射、UUID、逻辑删除、查询与行锁。
 - [EntityListConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListConfigService.java)、[EntityListConfigurationValidator](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/validation/EntityListConfigurationValidator.java)：默认值、不可变识别字段、保存校验、草稿修订与删除。
 - [EntityListRelationalConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRelationalConfigService.java)、[EntityListActionConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/EntityListActionConfigService.java)：按钮和场景关系表、JSON 回退、增量编辑。
@@ -1137,7 +1137,7 @@ erDiagram
 
 逐项定义列表展示列和查询字段，包括字段来源、查询方式、宽度、渲染及模板引用。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 28 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 27 个。
 
 #### 2.4.2 字段设计
 
@@ -1166,8 +1166,7 @@ erDiagram
 | `render_config` | 单元格渲染配置JSON | `longtext` | 是 | `NULL`（隐式） | 单元格渲染配置JSON。 | 现存 |
 | `revision` | 修订号 | `int` | 否 | `'1'` | 字段草稿修订号。 | 现存 |
 | `order_key` | 稀疏排序键 | `bigint` | 否 | `'1000000'` | 稀疏排序键。 | 现存 |
-| `data_source_id` | 统一数据源ID | `varchar(64)` | 是 | `NULL` | 统一数据源ID。 | 现存 |
-| `data_source_operation_code` | 统一数据源操作编码 | `varchar(100)` | 是 | `NULL` | 统一数据源操作编码。 | 现存 |
+| `interface_extension_id` | 列接口扩展 ID | `varchar(64)` | 是 | `NULL` | 逻辑关联一条可用于 `LIST_COLUMN` 的 `INTERFACE` 扩展；无需再保存操作编码。 | 现存 |
 | `template_id` | 来源模板ID | `varchar(64)` | 是 | `NULL` | 来源模板ID。 | 现存 |
 | `template_version` | 锁定模板版本 | `int` | 是 | `NULL` | 锁定模板版本。 | 现存 |
 | `local_overrides_document` | 模板实例本地覆盖JSON文档 | `longtext` | 是 | `NULL`（隐式） | 模板实例本地覆盖JSON文档。 | 现存 |
@@ -1184,6 +1183,7 @@ erDiagram
 
 - `list_config_id` → [entity_list_config](#23-entity_list_config-实体列表配置表).`id`。
 - `field_id` → [entity_field](#12-entity_field-实体字段定义表).`id`；两端物理类型不同。
+- `interface_extension_id` → [ui_extension_definition](#85-ui_extension_definition-统一扩展定义目录表).`id`；由应用校验类型、状态、作用域和绑定用途，没有物理外键。
 
 #### 2.4.4 业务规则
 
@@ -1191,7 +1191,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 
 #### 2.4.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V034__interface_operation_context.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)。
+结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V034__interface_operation_context.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)、[V088__flatten_interface_services_into_extensions.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V088__flatten_interface_services_into_extensions.sql)。
 
 实现定位：[EntityListFieldMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/mapper/EntityListFieldMapper.java)、[EntityListField.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/record/EntityListField.java)、[ConfigMigrationAssetService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
 
@@ -3902,51 +3902,20 @@ exception_id 归属指定日历例外，不能直接与星期模板混用。
 
 ## 8. UI扩展与发布
 
-### 8.1 ui_data_source_definition 受控接口服务目录表
+### 8.1 ui_data_source_definition 已退役接口服务表
 
-#### 8.1.1 业务说明
+#### 8.1.1 退役说明
 
-定义可在 UI 事件、选项、列表查询或变更步骤中引用的接口服务及其操作契约。
+该表曾以“一个服务包含多个操作”的形式管理 UI 可调用能力。
+[V088__flatten_interface_services_into_extensions.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V088__flatten_interface_services_into_extensions.sql)
+将每个历史操作迁移为一条 `INTERFACE` 扩展记录，同步迁移可变绑定与权限，
+随后删除该表。当前结构不应再创建或读写它。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
+#### 8.1.2 兼容原则
 
-#### 8.1.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 数据源ID。 | 现存 |
-| `source_code` | 稳定编码 | `varchar(100)` | 否 | 无 | 稳定编码。 | 现存 |
-| `source_name` | 名称 | `varchar(200)` | 否 | 无 | 名称。 | 现存 |
-| `source_type` | 来源类型 | `varchar(30)` | 否 | 无 | 来源类型。 | 现存 |
-| `provider_code` | Provider注册编码 | `varchar(100)` | 是 | `NULL` | Provider注册编码。 | 现存 |
-| `scope_type` | 范围类型 | `varchar(20)` | 否 | `'GLOBAL'` | 范围类型。 | 现存 |
-| `scope_id` | 作用域资源ID | `varchar(64)` | 是 | `NULL` | 作用域资源ID。 | 现存 |
-| `config_document` | 受控配置JSON文档 | `longtext` | 是 | `NULL`（隐式） | 受控配置JSON文档。 | 现存 |
-| `execution_policy_document` | 分页、超时、缓存和失败策略JSON文档 | `longtext` | 是 | `NULL`（隐式） | 分页、超时、缓存和失败策略JSON文档。 | 现存 |
-| `operations_document` | 接口服务操作定义JSON数组 | `longtext` | 是 | `NULL`（隐式） | 接口服务操作定义JSON数组。 | 现存 |
-| `revision` | 修订号 | `int` | 否 | `'1'` | 修订号。 | 现存 |
-| `enabled` | 是否启用 | `tinyint` | 否 | `'1'` | 是否启用。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
-| `deleted` | 逻辑删除标记 | `tinyint` | 否 | `'0'` | 逻辑删除标志：0 未删除，1 已删除。 | 现存 |
-
-#### 8.1.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_ui_data_source_code` (`source_code`,`deleted`)``。
-- ``KEY `idx_ui_data_source_catalog` (`source_type`,`scope_type`,`scope_id`,`enabled`,`deleted`)``。
-
-本表未声明物理外键。
-
-#### 8.1.4 业务规则
-
-operations_document 保存各操作及其输入输出契约。
-
-#### 8.1.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V031__remove_entity_query_source_type.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V031__remove_entity_query_source_type.sql)、[V034__interface_operation_context.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V034__interface_operation_context.sql)、[V084__remove_retired_open_integration_features.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V084__remove_retired_open_integration_features.sql)。
-
-实现定位：[UiDataSourceDefinitionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiDataSourceDefinitionMapper.java)、[CurrentBaselineSchemaUpgrade.java](../workflow-server/workflow-app/src/main/java/com/workflow/config/CurrentBaselineSchemaUpgrade.java)、[ConfigMigrationAssetService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
+不可变的已发布 UI 快照不改写内容和哈希；迁移后的扩展记录保留
+`legacy_service_id + provider_operation_code` 仅用于解析这类历史快照。
+新建和新修订的表单、列表、节点及事件绑定只保存 `extensionId`。
 
 ### 8.2 ui_event_binding 统一UI事件绑定表
 
@@ -3990,7 +3959,7 @@ owner_type + owner_id 与 target_type + target_key 分别定位归属和目标�
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[UiEventBindingMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiEventBindingMapper.java)、[UiDataSourceReferenceService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiDataSourceReferenceService.java)、[UiEventBindingService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiEventBindingService.java)。
+实现定位：[UiEventBindingMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiEventBindingMapper.java)、[UiEventBindingService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiEventBindingService.java)、[UiEventRuntimeService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiEventRuntimeService.java)。
 
 ### 8.3 ui_component_template UI组件模板目录表
 
@@ -4073,21 +4042,24 @@ owner_type + owner_id 与 target_type + target_key 分别定位归属和目标�
 
 实现定位：[UiComponentTemplateVersionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiComponentTemplateVersionMapper.java)、[UiComponentTemplateVersion.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/record/UiComponentTemplateVersion.java)、[UiComponentTemplateService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiComponentTemplateService.java)。
 
-### 8.5 ui_extension_definition 受控UI扩展组件表
+### 8.5 ui_extension_definition 统一扩展定义目录表
 
 #### 8.5.1 业务说明
 
-登记扩展组件、渲染组件等受控 UI 扩展的类型、配置契约和实体可见范围。
+作为统一扩展管理目录的持久化组成，登记受控 UI 组件与可调用接口扩展；
+流程动作和人员解析器由各自目录提供，再由管理层聚合展示，不写入本表。
+`INTERFACE` 类型遵循“一条记录 = 一个完整接口”，设计器只选择
+`extensionId`，不再二次选择服务操作。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 18 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 30 个。
 
 #### 8.5.2 字段设计
 
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `id` | 主键ID | `varchar(64)` | 否 | 无 | 扩展定义ID。 | 现存 |
-| `extension_type` | 扩展类型 | `varchar(20)` | 否 | 无 | 扩展类型。 | 现存 |
-| `extension_key` | 前端或后端稳定注册名 | `varchar(100)` | 否 | 无 | 前端或后端稳定注册名。 | 现存 |
+| `extension_type` | 扩展类型 | `varchar(20)` | 否 | 无 | 本表取值为 `FORM`/`NODE`/`FIELD`/`LIST`/`INTERFACE`；管理层展示时把前四类投影为 `UI_*`，并聚合另表中的流程动作和人员解析器。 | 现存 |
+| `extension_key` | 扩展稳定编码 | `varchar(255)` | 否 | 无 | 完整能力的唯一稳定编码。 | 现存 |
 | `display_name` | 显示名称 | `varchar(200)` | 否 | 无 | 显示名称。 | 现存 |
 | `version` | 版本号 | `int` | 否 | 无 | 扩展实现版本。 | 现存 |
 | `snapshot_version` | 配置快照协议版本 | `int` | 否 | `'1'` | 配置快照协议版本。 | 现存 |
@@ -4098,6 +4070,18 @@ owner_type + owner_id 与 target_type + target_key 分别定位归属和目标�
 | `supported_bindings_document` | 支持的绑定类型JSON数组 | `longtext` | 是 | `NULL`（隐式） | 支持的绑定类型JSON数组。 | 现存 |
 | `config_schema_document` | 配置Schema JSON文档 | `longtext` | 是 | `NULL`（隐式） | 配置Schema JSON文档。 | 现存 |
 | `capabilities_document` | 扩展能力声明JSON文档 | `longtext` | 是 | `NULL`（隐式） | 扩展能力声明JSON文档。 | 现存 |
+| `implementation_type` | 接口实现类型 | `varchar(30)` | 是 | `NULL` | 字典、静态数据、Provider、运行时上下文或结构化计算。 | 现存 |
+| `provider_code` | Provider编码 | `varchar(100)` | 是 | `NULL` | 已注册 Provider 的稳定编码。 | 现存 |
+| `scope_type` | 接口作用域 | `varchar(20)` | 是 | `NULL` | `GLOBAL`/`ENTITY`/`FORM`/`LIST`。 | 现存 |
+| `scope_id` | 作用域资源ID | `varchar(64)` | 是 | `NULL` | 非全局接口对应的实体、表单或列表 ID。 | 现存 |
+| `implementation_config_document` | 接口实现配置 | `longtext` | 是 | `NULL`（隐式） | 受控实现配置 JSON。 | 现存 |
+| `execution_policy_document` | 接口执行策略 | `longtext` | 是 | `NULL`（隐式） | 超时、缓存、失败回退等策略 JSON。 | 现存 |
+| `input_schema_document` | 输入 Schema | `longtext` | 是 | `NULL`（隐式） | 接口输入 JSON Schema。 | 现存 |
+| `output_schema_document` | 输出 Schema | `longtext` | 是 | `NULL`（隐式） | 接口输出 JSON Schema。 | 现存 |
+| `interface_kind` | 接口读写类型 | `varchar(20)` | 是 | `NULL` | `READ`/`WRITE`。 | 现存 |
+| `interface_context_type` | 调用上下文 | `varchar(20)` | 是 | `NULL` | `FORM`/`LIST`/`ENTITY`。 | 现存 |
+| `provider_operation_code` | Provider内部路由 | `varchar(100)` | 是 | `NULL` | 仅供后端实现分派，不是设计器的第二层选项。 | 现存 |
+| `legacy_service_id` | 历史服务ID | `varchar(64)` | 是 | `NULL` | 仅用于不可变历史快照兼容，新契约不输出。 | 现存 |
 | `status` | 状态 | `varchar(20)` | 否 | `'ACTIVE'` | 状态。 | 现存 |
 | `revision` | 修订号 | `int` | 否 | `'1'` | 定义修订号。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
@@ -4109,18 +4093,21 @@ owner_type + owner_id 与 target_type + target_key 分别定位归属和目标�
 - ``PRIMARY KEY (`id`)``。
 - ``UNIQUE KEY `uk_ui_extension_version` (`extension_type`,`extension_key`,`version`,`deleted`)``。
 - ``KEY `idx_ui_extension_catalog` (`extension_type`,`extension_key`,`status`,`deleted`)``。
+- ``UNIQUE KEY `uk_ui_extension_legacy_interface` (`legacy_service_id`,`provider_operation_code`,`deleted`)``。
 
 本表未声明物理外键。
 
 #### 8.5.4 业务规则
 
-目录记录仍通过通用 ORM 维护；适用范围与实际注册实现共同决定运行能力。
+目录记录通过通用 ORM 维护；适用范围与实际注册实现共同决定运行能力。
+接口扩展的输入输出、执行策略和后端路由均属于同一条记录；
+表单、列表、实体事件与列表字段只引用该记录 ID。
 
 #### 8.5.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V021__ui_extension_entity_scope.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V021__ui_extension_entity_scope.sql)。
+结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V021__ui_extension_entity_scope.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V021__ui_extension_entity_scope.sql)、[V088__flatten_interface_services_into_extensions.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V088__flatten_interface_services_into_extensions.sql)。
 
-实现定位：[UiExtensionDefinitionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiExtensionDefinitionMapper.java)、[UiExtensionDefinition.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/record/UiExtensionDefinition.java)、[UiExtensionDefinitionService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiExtensionDefinitionService.java)。
+实现定位：[UiExtensionDefinitionMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiExtensionDefinitionMapper.java)、[UiExtensionDefinition.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/record/UiExtensionDefinition.java)、[UiExtensionDefinitionService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiExtensionDefinitionService.java)、[UiInterfaceExtensionService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiInterfaceExtensionService.java)。
 
 ### 8.6 ui_config_release 表单列表发布快照表
 
