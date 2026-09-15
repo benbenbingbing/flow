@@ -23,6 +23,8 @@ public class FlowActionHandlerOption {
     private String beanName;
     /** 处理器实现类全名 */
     private String className;
+    /** 实现归属：PLATFORM、CUSTOM，无法可靠识别时为 UNKNOWN */
+    private String implementationOrigin;
     /** 中文展示名 */
     private String displayName;
     /** 动作描述 */

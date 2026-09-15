@@ -1,5 +1,6 @@
 package com.workflow.process.assignment.extension;
 
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
@@ -31,6 +32,11 @@ public class ProcessInitiatorPersonResolver implements PersonResolver {
                             PersonResolveUsage.CC),
                     Map.of(),
                     false);
+
+    @Override
+    public ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.PLATFORM;
+    }
 
     @Override
     public PersonResolverDescriptor descriptor() {

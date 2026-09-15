@@ -155,6 +155,8 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final TaskSlaPolicyMapper taskSlaPolicyMapper;
     private final TaskSlaEscalationStepMapper taskSlaEscalationStepMapper;
     private final SysUserMapper userMapper;
+    private final com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper groupMapper;
+    private final com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper roleMapper;
     private final SysOrganizationMapper organizationMapper;
     private final UiConfigReleaseMapper configReleaseMapper;
     private final UiExtensionDefinitionMapper extensionDefinitionMapper;
@@ -621,13 +623,8 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 || value.startsWith("wf-user://")) {
             return value;
         }
-        SysUser user = userMapper.selectById(value);
-        if (user == null) {
-            user = userMapper.selectByUsername(value);
-        }
-        return user == null
-                ? "wf-user://missing/" + value
-                : "wf-user://" + user.getUsername();
+        // 源环境查询只用于把本地 ID 转为登录名；账号是否存在由目标环境校验。
+        return "wf-user://" + portableAssignmentKey("USER", value);
     }
 
     private void rewriteSlaUserReferences(
@@ -1758,6 +1755,10 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 : Integer.parseInt(String.valueOf(value));
     }
 
+    /**
+     * 保存完整发布配置并从 BPMN 权威声明提取人员依赖。
+     * 人员目录属于目标环境前置条件，发布快照只记录登录名/稳定编码与每个节点的引用位置。
+     */
     private Map<String, Object> buildProcessSnapshot(ProcessDefinitionConfig config, ProcessVersionHistory history) {
         Map<String, Object> snapshot = baseSnapshot(PROCESS, config.getProcessKey(), config.getProcessName());
         Map<String, Object> definition = new LinkedHashMap<>();
@@ -1776,19 +1777,22 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             portableForms.put(nodeForm.getFormId(), portableForm);
             nodeFormSnapshots.add(nodeFormSnapshot);
         }
-        Map<String, String> portableAssignees = new LinkedHashMap<>();
         List<Map<String, Object>> nodes = new ArrayList<>();
         for (NodeConfig node : nodeConfigMapper.findByProcessConfigId(config.getId())) {
             Map<String, Object> nodeSnapshot = portableMap(node);
+            nodeSnapshot.put("configJson", ConfigMigrationAssignmentSupport.rewriteNodeConfig(
+                    node.getConfigJson(), Map.of("nodeId", node.getNodeId()),
+                    (type, key, context) -> portableAssignmentKey(type, key)));
             List<Map<String, Object>> assignees = new ArrayList<>();
             for (AssigneeConfig assignee : assigneeConfigMapper.findByNodeConfigId(node.getId())) {
                 Map<String, Object> assigneeSnapshot = portableMap(assignee);
                 String portableValue = portableAssigneeValue(assignee);
                 assigneeSnapshot.put("assigneeValue", portableValue);
-                if (StringUtils.hasText(assignee.getAssigneeValue())
-                        && StringUtils.hasText(portableValue)
-                        && !assignee.getAssigneeValue().equals(portableValue)) {
-                    portableAssignees.put(assignee.getAssigneeValue(), portableValue);
+                if (assignee.getAssigneeType() == AssigneeConfig.AssigneeType.ROLE) {
+                    // 管理表沿用 ROLE 表示 candidateGroups；迁移文档显式区分组和角色。
+                    boolean role = portableValue != null && portableValue.startsWith("ROLE_");
+                    assigneeSnapshot.put("assigneeType", role ? "ROLE" : "GROUP");
+                    assigneeSnapshot.put("assigneeValue", role ? portableValue.substring(5) : portableValue);
                 }
                 assignees.add(assigneeSnapshot);
             }
@@ -1796,7 +1800,22 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             nodes.add(nodeSnapshot);
         }
         String portableBpmn = replacePortableForms(redactSensitiveXml(history.getBpmnXml()), portableForms);
-        portableBpmn = replacePortableForms(portableBpmn, portableAssignees);
+        List<Map<String, Object>> dependencies = new ArrayList<>();
+        portableBpmn = ConfigMigrationAssignmentSupport.rewriteBpmn(
+                portableBpmn, config.getProcessKey(), (type, key, context) -> {
+                    String portable = portableAssignmentKey(type, key);
+                    Map<String, Object> dependency = new LinkedHashMap<>();
+                    dependency.put("type", type);
+                    dependency.put("key", portable);
+                    dependency.put("required", true);
+                    dependency.put("targetOnly", !ENTITY.equals(type));
+                    dependency.put("source", "流程 " + config.getProcessKey() + " / 节点 "
+                            + context.get("nodeName") + " (" + context.get("nodeId") + ") / "
+                            + context.get("location"));
+                    dependency.put("references", List.of(new LinkedHashMap<>(context)));
+                    dependencies.add(dependency);
+                    return portable;
+                });
         snapshot.put("bpmnXml", portableBpmn);
         snapshot.put("nodes", nodes);
         snapshot.put("nodeForms", nodeFormSnapshots);
@@ -1804,20 +1823,6 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         List<FlowAction> actions = flowActionMapper.findPublishedActionsByVersionId(history.getId());
         snapshot.put("flowActions", portableList(actions));
         snapshot.put("statusMappings", portableList(statusMappingMapper.findByProcessConfigId(config.getId())));
-        List<Map<String, Object>> dependencies = new ArrayList<>();
-        for (Map<String, Object> node : nodes) {
-            for (Map<String, Object> assignee : castMapList(node.get("assignees"))) {
-                String type = String.valueOf(assignee.get("assigneeType"));
-                String value = String.valueOf(assignee.get("assigneeValue"));
-                if ("USER".equals(type)) {
-                    addDependency(dependencies, "USER", stripPortablePrefix(value), true, "节点办理人");
-                } else if ("DEPT".equals(type)) {
-                    addDependency(dependencies, "DEPT", stripPortablePrefix(value), true, "节点办理部门");
-                } else if ("ROLE".equals(type)) {
-                    addDependency(dependencies, "ROLE", value, true, "节点办理角色");
-                }
-            }
-        }
         for (String formRef : new LinkedHashSet<>(portableForms.values())) {
             if (StringUtils.hasText(formRef)) {
                 addDependency(dependencies, "FORM", formRef, true, "节点表单");
@@ -1984,16 +1989,45 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
             return assignee.getAssigneeValue();
         }
         if (assignee.getAssigneeType() == AssigneeConfig.AssigneeType.USER) {
-            SysUser user = userMapper.selectById(assignee.getAssigneeValue());
-            return user == null ? "wf-user://missing/" + assignee.getAssigneeValue()
-                    : "wf-user://" + user.getUsername();
+            return portableAssignmentKey("USER", assignee.getAssigneeValue());
         }
         if (assignee.getAssigneeType() == AssigneeConfig.AssigneeType.DEPT) {
-            SysOrganization organization = organizationMapper.selectById(assignee.getAssigneeValue());
-            return organization == null ? "wf-dept://missing/" + assignee.getAssigneeValue()
-                    : "wf-dept://" + organization.getOrgCode();
+            return portableAssignmentKey("DEPT", assignee.getAssigneeValue());
+        }
+        if (assignee.getAssigneeType() == AssigneeConfig.AssigneeType.ROLE) {
+            String key = assignee.getAssigneeValue();
+            return key.startsWith("ROLE_") ? "ROLE_" + portableAssignmentKey("ROLE", key.substring(5))
+                    : portableAssignmentKey("GROUP", key);
         }
         return assignee.getAssigneeValue();
+    }
+
+    /**
+     * 将已有本地 ID 投影为跨环境编码。未知登录名/编码原样保留，不在源环境拒绝导出；
+     * 目标分析只按登录名/编码解析，不能误用恰好相同的目标主键。
+     */
+    private String portableAssignmentKey(String type, String key) {
+        if ("USER".equals(type)) {
+            SysUser user = userMapper.selectByUsername(key);
+            if (user == null) user = userMapper.selectById(key);
+            return user == null ? key : user.getUsername();
+        }
+        if ("DEPT".equals(type)) {
+            SysOrganization organization = organizationMapper.selectByCode(key);
+            if (organization == null) organization = organizationMapper.selectById(key);
+            return organization == null ? key : organization.getOrgCode();
+        }
+        if ("GROUP".equals(type)) {
+            var group = groupMapper.selectByGroupCode(key);
+            if (group == null) group = groupMapper.selectById(key);
+            return group == null ? key : group.getGroupCode();
+        }
+        if ("ROLE".equals(type)) {
+            if (roleMapper.existsRoleCode(key, "")) return key;
+            var role = roleMapper.selectById(key);
+            return role == null ? key : role.getRoleCode();
+        }
+        return key;
     }
 
     private String stripPortablePrefix(String value) {
@@ -2156,6 +2190,10 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 登记稳定编码依赖；系统实体由目标环境提供，只保留存在性校验，
+     * 避免引用字段或状态映射触发系统表结构导出。
+     */
     private void addDependency(List<Map<String, Object>> dependencies,
             String type,
             String key,
@@ -2169,15 +2207,20 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         dependency.put("key", key);
         dependency.put("required", required);
         dependency.put("source", source);
+        if (ConfigMigrationAssignmentSupport.TARGET_TYPES.contains(type)) {
+            dependency.put(ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY, true);
+        }
+        if (ENTITY.equals(type) && entityMapper.findByEntityCode(key)
+                .filter(entity -> entity.getStorageMode()
+                        == EntityDefinition.StorageMode.SYSTEM)
+                .isPresent()) {
+            dependency.put(ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY, true);
+        }
         dependencies.add(dependency);
     }
 
     private List<Map<String, Object>> deduplicateDependencies(List<Map<String, Object>> dependencies) {
-        Map<String, Map<String, Object>> values = new LinkedHashMap<>();
-        for (Map<String, Object> dependency : dependencies) {
-            values.put(dependency.get("type") + ":" + dependency.get("key"), dependency);
-        }
-        return new ArrayList<>(values.values());
+        return ConfigMigrationAssignmentSupport.mergeDependencies(dependencies);
     }
 
     private String effectiveDescription(ConfigMigrationPublishRequest request, String fallback) {

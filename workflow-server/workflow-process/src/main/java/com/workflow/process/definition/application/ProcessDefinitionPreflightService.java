@@ -1,5 +1,11 @@
 package com.workflow.process.definition.application;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
+import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
+import com.workflow.process.task.application.nextapproval.NextApproverSelectionNormalizer;
+import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import com.workflow.process.definition.application.port.FlowActionDesignPort;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
@@ -34,6 +40,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -89,6 +96,7 @@ public class ProcessDefinitionPreflightService {
             nodeOperationPolicyBpmnValidator;
     private final ProcessPublishHistoryService publishHistoryService;
     private final RuntimeService runtimeService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 对当前持久化草稿执行完整发布预检。
@@ -252,11 +260,8 @@ public class ProcessDefinitionPreflightService {
             List<FlowEdge> nodeOutgoing = outgoing.getOrDefault(nodeId, List.of());
             if ("exclusiveGateway".equals(type) && nodeOutgoing.size() > 1) {
                 String defaultFlow = entry.getValue().getAttribute("default");
-                if (!StringUtils.hasText(defaultFlow)) {
-                    addIssue(issues, "GATEWAY_DEFAULT_FLOW_MISSING", Severity.BLOCKER, nodeId, type,
-                            "排他网关存在多个出口但未配置默认分支",
-                            "请选择一条连线作为默认分支", config.getId());
-                }
+                // 默认分支是所有条件未命中时的可选兜底；条件已覆盖业务取值时无需配置。
+                // 预检不推断表达式覆盖范围，仅校验非默认出线必须明确配置条件。
                 for (FlowEdge edge : nodeOutgoing) {
                     if (!edge.id().equals(defaultFlow) && !edge.hasCondition()) {
                         addIssue(issues, "GATEWAY_CONDITION_MISSING", Severity.BLOCKER, edge.id(), "sequenceFlow",
@@ -508,12 +513,23 @@ public class ProcessDefinitionPreflightService {
             if (isAlwaysSkipped(entry.getValue())) {
                 continue;
             }
-            if (hasXmlAssignment(entry.getValue()) || hasStoredAssignment(nodeConfig)) {
+            try {
+                Element userTask = entry.getValue();
+                // 扩展配置属于当前草稿的权威来源；清空或切换类型后，不能让旧表中的
+                // 静态办理人记录掩盖缺失。仅未使用扩展配置的历史节点保留表记录兜底。
+                if (hasXmlAssignment(userTask)
+                        || (!hasAssignmentConfig(userTask) && hasStoredAssignment(nodeConfig))) {
+                    continue;
+                }
+            } catch (IllegalArgumentException exception) {
+                addIssue(issues, "USER_TASK_ASSIGNMENT_CONFIG_INVALID", Severity.BLOCKER,
+                        entry.getKey(), "userTask", "办理人配置无效: " + safeMessage(exception),
+                        "请重新检查并保存该节点的办理人配置", config.getId());
                 continue;
             }
             addIssue(issues, "USER_TASK_ASSIGNEE_MISSING", Severity.BLOCKER,
                     entry.getKey(), "userTask", "用户任务没有配置办理人来源",
-                    "请配置用户、角色、部门、动态解析器或明确的空办理人策略", config.getId());
+                    "请配置固定人员、用户组、角色、人员接口、节点审批人引用或有效表达式", config.getId());
         }
     }
 
@@ -592,31 +608,114 @@ public class ProcessDefinitionPreflightService {
                 value.getAssigneeType() != null && StringUtils.hasText(value.getAssigneeValue()));
     }
 
+    /**
+     * 按运行时使用的基础配置及历史多实例优先级识别办理人来源。
+     * 这里只检查声明，不调用人员接口；目录、用途、参数和节点引用图仍由发布净化器校验。
+     */
     private boolean hasXmlAssignment(Element userTask) {
-        if (hasAssignmentAttribute(userTask)) {
+        Map<String, Object> assignment = LegacyMultiInstanceAssignmentParser.mergeConfigs(
+                readAssignmentConfig(userTask, "assigneeConfig"),
+                readAssignmentConfig(userTask, "multiInstanceConfig"));
+        Element loop = null;
+        for (Node child = userTask.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child instanceof Element element
+                    && "multiInstanceLoopCharacteristics".equals(localName(element))) {
+                loop = element;
+                break;
+            }
+        }
+        boolean multiInstance = loop != null;
+        if (multiInstance && hasEditableIndependentSource(assignment)) {
+            // 前序人工改选的独立受控范围可提供会签参与人，不要求预填默认人员。
             return true;
         }
-        NodeList descendants = userTask.getElementsByTagName("*");
-        for (int index = 0; index < descendants.getLength(); index++) {
-            if (hasAssignmentAttribute((Element) descendants.item(index))) {
-                return true;
-            }
+        if (LegacyMultiInstanceAssignmentParser.usesLegacyMultiInstanceAssignment(assignment, multiInstance)) {
+            var legacy = LegacyMultiInstanceAssignmentParser.parse(assignment);
+            return !legacy.resolver() || StringUtils.hasText(legacy.resolverCode());
         }
-        return false;
+        if (NodeAssignmentReferenceResolver.isNodeReference(assignment)) {
+            return StringUtils.hasText(NodeAssignmentReferenceResolver.referencedNodeId(assignment));
+        }
+        String type = String.valueOf(assignment.getOrDefault("assigneeType", ""))
+                .trim().toLowerCase(Locale.ROOT);
+        if (Set.of("interface", "resolver").contains(type)) {
+            // 实体用户关系字段、相对组织职务在保存时同样投影为 interface + resolverCode。
+            return LegacyMultiInstanceAssignmentParser.effectiveResolver(assignment, multiInstance).configured();
+        }
+        if (multiInstance && !type.isEmpty()) {
+            boolean configured = switch (type) {
+                case "user", "candidate" -> hasConfiguredValues(assignment.get("assigneeValue"))
+                        || hasConfiguredValues(assignment.get("candidateUsers"))
+                        || hasConfiguredValues(assignment.get("candidateGroups"));
+                case "group", "role" -> hasConfiguredValues(assignment.get("assigneeValue"))
+                        || hasConfiguredValues(assignment.get("candidateGroups"));
+                default -> false;
+            };
+            if (configured || "2".equals(String.valueOf(assignment.get("assignmentConfigVersion")))
+                    || !Set.of("user", "candidate", "group", "role").contains(type)) {
+                return configured;
+            }
+            // 历史多实例可从部署 XML 的字面量用户/组恢复；v2 只认基础 JSON，
+            // 不能再借用残留的旧候选人或 collection 绕过空配置检查。
+        }
+
+        String assignee = attributeByLocalName(userTask, "assignee");
+        String elementVariable = loop == null ? null : attributeByLocalName(loop, "elementVariable");
+        boolean iterationAssignee = StringUtils.hasText(elementVariable)
+                && StringUtils.hasText(assignee)
+                && (assignee.trim().equals("${" + elementVariable + "}")
+                || assignee.trim().equals("#{" + elementVariable + "}"));
+        if ((!iterationAssignee && StringUtils.hasText(assignee))
+                || hasConfiguredValues(attributeByLocalName(userTask, "candidateUsers"))
+                || hasConfiguredValues(attributeByLocalName(userTask, "candidateGroups"))) {
+            return true;
+        }
+        // 只保留原生业务 collection 兼容；系统生成的空集合和循环元素变量不是人员来源。
+        String collection = loop == null ? null : attributeByLocalName(loop, "collection");
+        return StringUtils.hasText(collection)
+                && !collection.contains(MultiInstanceVariableNames.COLLECTION_VARIABLE_PREFIX)
+                && !collection.contains(MultiInstanceVariableNames.ENTRY_DYNAMIC_COLLECTION_LITERAL);
     }
 
-    private boolean hasAssignmentAttribute(Element element) {
-        NamedNodeMap attributes = element.getAttributes();
-        for (int index = 0; index < attributes.getLength(); index++) {
-            Node attribute = attributes.item(index);
-            String name = localName(attribute).toLowerCase(Locale.ROOT);
-            if ((name.contains("assignee") || name.contains("candidate")
-                    || name.contains("resolver") || name.equals("collection"))
-                    && StringUtils.hasText(attribute.getNodeValue())) {
-                return true;
-            }
+    private boolean hasAssignmentConfig(Element userTask) {
+        return extensionPropertyValue(userTask, "assigneeConfig") != null
+                || extensionPropertyValue(userTask, "multiInstanceConfig") != null;
+    }
+
+    /** 空属性视为未填；非法 JSON 定位为节点配置问题，避免误报整个 BPMN 无法解析。 */
+    private Map<String, Object> readAssignmentConfig(Element userTask, String propertyName) {
+        String document = extensionPropertyValue(userTask, propertyName);
+        if (!StringUtils.hasText(document)) {
+            return Map.of();
         }
-        return false;
+        try {
+            Map<String, Object> config = objectMapper.readValue(document, new TypeReference<>() { });
+            if (config == null) {
+                throw new IllegalArgumentException(propertyName + " 必须是 JSON 对象");
+            }
+            return config;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new IllegalArgumentException(propertyName + " 必须是合法 JSON 对象", exception);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean hasEditableIndependentSource(Map<String, Object> assignment) {
+        if (!(assignment.get("nextApproverSelection") instanceof Map<?, ?> raw)) {
+            return false;
+        }
+        var selection = NextApproverSelectionNormalizer.normalize((Map<String, Object>) raw);
+        return selection.visible() && selection.editable()
+                && ("SCOPE".equalsIgnoreCase(selection.sourceType())
+                || "RESOLVER".equalsIgnoreCase(selection.sourceType()));
+    }
+
+    private boolean hasConfiguredValues(Object value) {
+        if (value instanceof Collection<?> values) {
+            return values.stream().anyMatch(this::hasConfiguredValues);
+        }
+        return value instanceof String text
+                && java.util.Arrays.stream(text.split(",")).anyMatch(StringUtils::hasText);
     }
 
     private ProcessDefinitionDiffDTO buildDiff(

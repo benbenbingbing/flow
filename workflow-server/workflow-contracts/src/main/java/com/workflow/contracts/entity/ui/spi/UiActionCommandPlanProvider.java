@@ -1,5 +1,6 @@
 package com.workflow.contracts.entity.ui.spi;
 
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.ui.UiActionCommandPlan;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.contracts.ui.UiProviderArtifactIdentity;
@@ -12,6 +13,15 @@ import java.util.Map;
  * <p>该 SPI 仅构造结构化实体变更意图，不能绕过宿主的权限、审计和持久化边界。</p>
  */
 public interface UiActionCommandPlanProvider {
+
+    /**
+     * 返回扩展实现归属。
+     *
+     * <p>第三方 Provider 默认视为项目自定义；平台实现必须显式覆盖。</p>
+     */
+    default ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.CUSTOM;
+    }
 
     /** @return 与接口扩展 providerCode 对应的稳定注册编码 */
     String getCode();

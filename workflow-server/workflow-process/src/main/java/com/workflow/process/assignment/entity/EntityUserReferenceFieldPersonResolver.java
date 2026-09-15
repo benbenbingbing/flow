@@ -4,6 +4,7 @@ import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserRefe
 import com.workflow.contracts.entity.port.EntityUserReferencePort.UserReferenceField;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.contracts.entity.port.EntityUserReferencePort;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
@@ -66,6 +67,11 @@ public class EntityUserReferenceFieldPersonResolver
             EntityCodeCatalogPort entityCodeCatalogPort) {
         this.referencePort = referencePort;
         this.entityCodeCatalogPort = entityCodeCatalogPort;
+    }
+
+    @Override
+    public ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.PLATFORM;
     }
 
     @Override

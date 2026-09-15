@@ -9,6 +9,7 @@ import com.workflow.admin.extension.person.api.response.PersonResolverOption;
 import com.workflow.admin.extension.person.infrastructure.persistence.mapper.PersonResolverDefinitionMapper;
 import com.workflow.admin.extension.person.infrastructure.persistence.record.PersonResolverDefinition;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
 import lombok.RequiredArgsConstructor;
@@ -173,6 +174,13 @@ public class PersonResolverCatalogService {
         option.setClassName(resolverBean == null
                 ? null
                 : resolverBean.resolver().getClass().getName());
+        ExtensionImplementationOrigin implementationOrigin =
+                resolverBean == null
+                        ? null
+                        : resolverBean.resolver().implementationOrigin();
+        option.setImplementationOrigin(implementationOrigin == null
+                ? ExtensionImplementationOrigin.UNKNOWN.name()
+                : implementationOrigin.name());
         option.setDisplayName(definition != null
                 ? definition.getDisplayName()
                 : descriptor.displayName());

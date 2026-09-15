@@ -93,6 +93,7 @@ public class ConfigMigrationPackageService {
     private final SysGroupMapper groupMapper;
     private final FlowActionCatalogPort flowActionCatalogPort;
     private final ConfigMigrationPackageDocumentSupport documents;
+    private final ConfigMigrationAssignmentTargetValidator assignmentTargetValidator;
     /**
      * 生成配置导出包。
      *
@@ -340,7 +341,16 @@ public class ConfigMigrationPackageService {
             List<Map<String, Object>> dependencies = documents.readMapList(item.getDependenciesJson());
             DependencyResolution dependencyResolution = resolveDependencies(dependencies, packageAssets);
             item.setMappingStatus(dependencyResolution.resolved() ? "RESOLVED" : "UNRESOLVED");
-            List<Map<String, Object>> risks = analyzeRisks(item);
+            List<Map<String, Object>> risks = new ArrayList<>(analyzeRisks(item));
+            if ("PROCESS".equals(item.getAssetType())) {
+                try {
+                    ConfigMigrationAssignmentSupport.validateBpmn(
+                            ConfigMigrationAssignmentSupport.text(documents.readMap(item.getSnapshotJson()).get("bpmnXml")));
+                } catch (IllegalArgumentException exception) {
+                    risks.add(Map.of("level", "BLOCKING", "code", "ASSIGNMENT_CONFIG_INVALID",
+                            "message", exception.getMessage()));
+                }
+            }
             boolean itemBlocked = !dependencyResolution.resolved()
                     || "CONFLICT".equals(item.getComparisonStatus())
                     || "LOCAL_CHANGED".equals(item.getComparisonStatus())
@@ -446,7 +456,8 @@ public class ConfigMigrationPackageService {
     /**
      * 展开所选资产的全部硬依赖(BFS)，返回去重后按类型+编码排序的资产列表。
      *
-     * <p>硬依赖缺失会抛异常；validateOnlyDependencies 中的依赖仅校验存在性而不打包。</p>
+     * <p>可打包的配置硬依赖缺失会抛异常；人员目录、解析器和系统实体依赖留到目标环境校验，
+     * validateOnlyDependencies 中的依赖仅校验存在性而不打包。</p>
      */
     private ExpandedExport expandDependencies(ConfigExportRequest request) {
         Map<String, ConfigMigrationAsset> selected = new LinkedHashMap<>();
@@ -480,6 +491,15 @@ public class ConfigMigrationPackageService {
                 }
                 String type = String.valueOf(dependency.get("type"));
                 String key = String.valueOf(dependency.get("key"));
+                // 兼容尚未带 targetOnly 标记的历史快照：系统实体没有 ENTITY 发布资产，
+                // 仍保留包中的 required 依赖，由导入预检确认目标环境存在该实体。
+                if (ConfigMigrationAssetService.ENTITY.equals(type)
+                        && entityMapper.findByEntityCode(key)
+                                .filter(entity -> entity.getStorageMode()
+                                        == EntityDefinition.StorageMode.SYSTEM)
+                                .isPresent()) {
+                    continue;
+                }
                 if (dependencyProvidedBySnapshot(
                         selectedSnapshot, dependency, type, key)) {
                     continue;
@@ -766,16 +786,47 @@ public class ConfigMigrationPackageService {
             String type = String.valueOf(dependency.get("type"));
             String sourceKey = String.valueOf(dependency.get("key"));
             String targetKey = mappedKey(type, sourceKey);
-            if (!isDependencyResolved(dependency, type, targetKey, packageAssets)) {
+            boolean resolved;
+            String reason = null;
+            try {
+                resolved = isDependencyResolved(dependency, type, targetKey, packageAssets);
+            } catch (IllegalArgumentException | com.workflow.contracts.identity.position.OrganizationPositionDirectoryException exception) {
+                resolved = false;
+                reason = exception.getMessage();
+            }
+            if (!resolved) {
                 Map<String, Object> value = new LinkedHashMap<>(dependency);
                 value.put("targetKey", targetKey);
+                value.put("reason", reason == null ? "目标系统不存在对应编码或配置不可用" : reason);
                 missing.add(value);
             }
         }
         return new DependencyResolution(missing.isEmpty(), missing);
     }
+
+    /** 发布前重查目标依赖，防止分析通过后账号、目录或映射已被删除或修改。 */
+    @Transactional(readOnly = true)
+    public void requireResolvedDependencies(List<ConfigImportItem> items) {
+        Map<String, PackageAsset> assets = items.stream().collect(java.util.stream.Collectors.toMap(
+                item -> item.getAssetType() + ":" + item.getBusinessKey(),
+                item -> new PackageAsset(item.getAssetType(), item.getBusinessKey(),
+                        documents.readMap(item.getSnapshotJson())), (left, right) -> left));
+        for (ConfigImportItem item : items) {
+            if ("PROCESS".equals(item.getAssetType())) {
+                ConfigMigrationAssignmentSupport.validateBpmn(
+                        ConfigMigrationAssignmentSupport.text(documents.readMap(item.getSnapshotJson()).get("bpmnXml")));
+            }
+            DependencyResolution resolution = resolveDependencies(
+                    documents.readMapList(item.getDependenciesJson()), assets);
+            if (!resolution.resolved()) {
+                Map<String, Object> missing = resolution.missing().get(0);
+                throw new IllegalStateException("目标依赖校验失败: " + missing.get("type") + ":"
+                        + missing.get("targetKey") + "；" + missing.get("source") + "；" + missing.get("reason"));
+            }
+        }
+    }
     /**
-     * 判断单个依赖在目标环境是否已满足：包内含或本地存在或存在环境映射。
+     * 判断单个依赖在目标环境是否已满足。人员映射必须落到真实登录名/编码，不能以映射记录代替目标对象。
      *
      * <p>支持 ENTITY/PROCESS/FORM/DICTIONARY/USER/ROLE/DEPT/GROUP/
      * FLOW_ACTION_HANDLER/CUSTOM_COMPONENT/DATA_PROVIDER 等类型。</p>
@@ -825,16 +876,20 @@ public class ConfigMigrationPackageService {
                     || dictMapper.existsDictCode(key, "");
         }
         if ("USER".equals(type)) {
-            return userMapper.selectByUsername(key) != null || hasMapping(type, key);
+            return userMapper.selectByUsername(key) != null;
         }
         if ("ROLE".equals(type)) {
-            return roleMapper.existsRoleCode(key, "") || hasMapping(type, key);
+            return roleMapper.existsRoleCode(key, "");
         }
         if ("DEPT".equals(type)) {
-            return organizationMapper.selectByCode(key) != null || hasMapping(type, key);
+            return organizationMapper.selectByCode(key) != null;
         }
         if ("GROUP".equals(type)) {
-            return groupMapper.selectByGroupCode(key) != null || hasMapping(type, key);
+            return groupMapper.selectByGroupCode(key) != null;
+        }
+        if (Set.of("PERSON_RESOLVER", "POSITION", "ORG_BUSINESS_LEVEL", "ENTITY_USER_FIELD").contains(type)) {
+            return assignmentTargetValidator.resolved(dependency, type, key, this::mappedKey,
+                    coordinate -> findTargetUserField(coordinate, packageAssets));
         }
         if ("FLOW_ACTION_HANDLER".equals(type)) {
             return flowActionCatalogPort.isConfiguredAndAvailable(key);
@@ -877,6 +932,42 @@ public class ConfigMigrationPackageService {
                             .last("LIMIT 1")) != null;
         }
         return true;
+    }
+
+    /** 同包字段优先于目标旧字段；只接受用户单选/多选关系，不把普通字符串字段当成人员。 */
+    private Map<String, Object> findTargetUserField(String coordinate, Map<String, PackageAsset> packageAssets) {
+        String[] parts = coordinate.split("/", 2);
+        if (parts.length != 2) return Map.of();
+        String entityCode = parts[0];
+        for (PackageAsset asset : packageAssets.values()) {
+            // 引用映射不等于重命名包内实体，只有实际将发布到该编码的字段才能满足依赖。
+            if ("ENTITY".equals(asset.assetType())
+                    && entityCode.equals(asset.businessKey())
+                    && asset.snapshot().containsKey("fields")) {
+                return documents.readMapList(asset.snapshot().get("fields")).stream()
+                        .filter(field -> parts[1].equals(field.get("fieldCode")))
+                        .filter(this::isUserReferenceField).findFirst().orElse(Map.of());
+            }
+        }
+        EntityDefinition entity = entityMapper.findByEntityCode(entityCode).orElse(null);
+        if (entity == null) return Map.of();
+        EntityField field = fieldMapper.findByEntityIdAndFieldCode(entity.getId(), parts[1]);
+        if (field == null || !Boolean.TRUE.equals(field.getIsPublished())) return Map.of();
+        String referenceCode = field.getRefEntityCode();
+        if (StringUtils.hasText(field.getRefEntityId())) {
+            EntityDefinition referenced = entityMapper.selectById(field.getRefEntityId());
+            referenceCode = referenced == null ? "" : referenced.getEntityCode();
+        }
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("fieldType", String.valueOf(field.getFieldType()));
+        value.put("refEntityCode", referenceCode);
+        return isUserReferenceField(value) ? value : Map.of();
+    }
+
+    private boolean isUserReferenceField(Map<String, Object> field) {
+        String type = String.valueOf(field.get("fieldType"));
+        return "USER".equals(type) || (Set.of("REFERENCE", "MULTI_REFERENCE").contains(type)
+                && "sys_user".equals(field.get("refEntityCode")));
     }
 
     /** 判断接口扩展或组件是否已作为所属实体快照的内嵌定义随包迁移。 */

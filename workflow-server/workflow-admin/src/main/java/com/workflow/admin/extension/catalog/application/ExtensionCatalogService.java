@@ -5,10 +5,14 @@ import com.workflow.admin.extension.action.application.FlowActionCatalogService;
 import com.workflow.admin.extension.catalog.api.response.ExtensionCatalogItem;
 import com.workflow.admin.extension.person.api.response.PersonResolverOption;
 import com.workflow.admin.extension.person.application.PersonResolverCatalogService;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
 import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
+import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
+import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
+import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
 import com.workflow.core.result.PageResult;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -29,11 +33,17 @@ public class ExtensionCatalogService {
     private final FlowActionCatalogService flowActionCatalogService;
     private final PersonResolverCatalogService personResolverCatalogService;
     private final UiExtensionCatalogPort uiExtensionCatalogPort;
+    /** 延迟解析 Provider，避免扩展目录参与业务 Provider 的初始化依赖图。 */
+    private final ObjectProvider<UiDataSourceProvider> dataSourceProviders;
+    /** WRITE 接口使用独立的受控命令计划 Provider。 */
+    private final ObjectProvider<UiActionCommandPlanProvider>
+            actionCommandPlanProviders;
 
     public PageResult<ExtensionCatalogItem> manage(
             String capabilityType,
             String keyword,
             String status,
+            String implementationOrigin,
             Integer pageNum,
             Integer pageSize) {
         int currentPage = pageNum == null ? 1 : Math.max(1, pageNum);
@@ -43,12 +53,16 @@ public class ExtensionCatalogService {
         String normalizedType = normalize(capabilityType);
         String normalizedKeyword = lower(keyword);
         String normalizedStatus = normalize(status);
+        String normalizedOrigin = normalize(implementationOrigin);
 
         List<ExtensionCatalogItem> matched = allItems().stream()
                 .filter(item -> !StringUtils.hasText(normalizedType)
                         || normalizedType.equals(item.getCapabilityType()))
                 .filter(item -> !StringUtils.hasText(normalizedStatus)
                         || normalizedStatus.equals(item.getStatus()))
+                .filter(item -> !StringUtils.hasText(normalizedOrigin)
+                        || normalizedOrigin.equals(
+                                item.getImplementationOrigin()))
                 .filter(item -> matchesKeyword(item, normalizedKeyword))
                 .sorted(Comparator
                         .comparing(ExtensionCatalogItem::getCapabilityType)
@@ -137,6 +151,7 @@ public class ExtensionCatalogService {
         item.setKey(source.getActionCode());
         item.setDisplayName(source.getDisplayName());
         item.setDescription(source.getDescription());
+        item.setImplementationOrigin(source.getImplementationOrigin());
         item.setImplementationVersion(1);
         item.setContractVersion(1);
         item.setSourceType("SPRING");
@@ -173,6 +188,7 @@ public class ExtensionCatalogService {
         item.setKey(source.getResolverCode());
         item.setDisplayName(source.getDisplayName());
         item.setDescription(source.getDescription());
+        item.setImplementationOrigin(source.getImplementationOrigin());
         item.setImplementationVersion(source.getImplementationVersion());
         item.setContractVersion(source.getContractVersion());
         item.setSourceType("SPRING");
@@ -204,6 +220,8 @@ public class ExtensionCatalogService {
         item.setCapabilityType(interfaceExtension
                 ? "INTERFACE"
                 : "UI_" + normalize(source.extensionType()));
+        item.setImplementationOrigin(uiImplementationOrigin(
+                source, interfaceExtension));
         item.setKey(source.extensionKey());
         item.setDisplayName(source.displayName());
         item.setImplementationVersion(source.version());
@@ -250,6 +268,56 @@ public class ExtensionCatalogService {
         item.setInputSchema(valueOrEmpty(source.inputSchema()));
         item.setOutputSchema(valueOrEmpty(source.outputSchema()));
         return item;
+    }
+
+    /**
+     * UI 组件目录当前只收项目注册实现；接口扩展则按执行机制与 Provider 声明判定。
+     */
+    private String uiImplementationOrigin(
+            UiExtensionCatalogItem source,
+            boolean interfaceExtension) {
+        if (!interfaceExtension) {
+            return ExtensionImplementationOrigin.CUSTOM.name();
+        }
+        return switch (normalize(source.implementationType())) {
+            case "DICTIONARY", "STATIC_OPTIONS", "RUNTIME_CONTEXT",
+                    "STRUCTURED_COMPUTE" ->
+                    ExtensionImplementationOrigin.PLATFORM.name();
+            case "REGISTERED_PROVIDER" -> registeredProviderOrigin(source);
+            default -> ExtensionImplementationOrigin.UNKNOWN.name();
+        };
+    }
+
+    /**
+     * 根据接口读写类型查找对应 Provider；未加载或归属声明冲突时返回 UNKNOWN。
+     */
+    private String registeredProviderOrigin(UiExtensionCatalogItem source) {
+        if (!StringUtils.hasText(source.providerCode())) {
+            return ExtensionImplementationOrigin.UNKNOWN.name();
+        }
+        Set<ExtensionImplementationOrigin> origins;
+        if ("WRITE".equals(normalize(source.interfaceKind()))) {
+            origins = actionCommandPlanProviders.stream()
+                    .filter(provider -> sameProviderCode(
+                            provider.getCode(), source.providerCode()))
+                    .map(UiActionCommandPlanProvider::implementationOrigin)
+                    .collect(java.util.stream.Collectors.toSet());
+        } else {
+            origins = dataSourceProviders.stream()
+                    .filter(provider -> sameProviderCode(
+                            provider.getCode(), source.providerCode()))
+                    .map(UiDataSourceProvider::implementationOrigin)
+                    .collect(java.util.stream.Collectors.toSet());
+        }
+        return origins.size() == 1 && !origins.contains(null)
+                ? origins.iterator().next().name()
+                : ExtensionImplementationOrigin.UNKNOWN.name();
+    }
+
+    private boolean sameProviderCode(String left, String right) {
+        return StringUtils.hasText(left)
+                && StringUtils.hasText(right)
+                && left.trim().equalsIgnoreCase(right.trim());
     }
 
     private boolean matchesEntityScope(

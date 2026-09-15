@@ -15,8 +15,11 @@ import com.workflow.process.configuration.infrastructure.persistence.record.Node
 import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.publish.application.ProcessUiReleaseBindingService;
+import org.flowable.bpmn.converter.BpmnXMLConverter;
+import org.flowable.common.engine.impl.util.io.StringStreamSource;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.runtime.ProcessInstanceQuery;
+import org.flowable.validation.ProcessValidatorFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,7 +70,7 @@ class ProcessDefinitionPreflightServiceTest {
     void setUp() {
         service = new ProcessDefinitionPreflightService(
                 processMapper, versionMapper, nodeConfigMapper, assigneeConfigMapper,
-                actionDesignPort, sanitizer, publishHistoryService, runtimeService);
+                actionDesignPort, sanitizer, publishHistoryService, runtimeService, new ObjectMapper());
         service.setEmptyAssigneePolicyBpmnValidator(
                 emptyAssigneePolicyValidator);
         process = new ProcessDefinitionConfig();
@@ -139,7 +142,7 @@ class ProcessDefinitionPreflightServiceTest {
                 mock(ProcessUiReleaseBindingService.class), new ObjectMapper());
         ProcessDefinitionPreflightService target = new ProcessDefinitionPreflightService(
                 processMapper, versionMapper, nodeConfigMapper, assigneeConfigMapper,
-                actionDesignPort, sanitizer, realPublishHistoryService, runtimeService);
+                actionDesignPort, sanitizer, realPublishHistoryService, runtimeService, new ObjectMapper());
         target.setEmptyAssigneePolicyBpmnValidator(emptyAssigneePolicyValidator);
 
         // 普通直接调用不会应用 @Transactional；通过 Spring 代理验证实际事务边界和 JDBC 提交。
@@ -250,9 +253,9 @@ class ProcessDefinitionPreflightServiceTest {
                         && !issue.blocking()));
     }
 
-    /** 验证无办理人和无默认分支都定位为阻断问题。 */
+    /** 默认分支可选，但取消该限制不能放过未配置办理人的任务。 */
     @Test
-    void invalidGatewayAndAssignmentAreBlocking() {
+    void missingAssignmentRemainsBlockingWithoutGatewayDefault() {
         process.setBpmnXml(invalidXml());
 
         ProcessPublishPreviewDTO preview = service.preview(process);
@@ -261,10 +264,57 @@ class ProcessDefinitionPreflightServiceTest {
         assertTrue(preview.issues().stream().anyMatch(issue ->
                 issue.code().equals("USER_TASK_ASSIGNEE_MISSING")
                         && "ApproveTask".equals(issue.elementId())));
-        assertTrue(preview.issues().stream().anyMatch(issue ->
-                issue.code().equals("GATEWAY_DEFAULT_FLOW_MISSING")
-                        && "Decision".equals(issue.elementId())));
+        assertFalse(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("GATEWAY_DEFAULT_FLOW_MISSING")));
         assertTrue(preview.issues().stream().allMatch(issue -> issue.fixRoute() != null));
+    }
+
+    /** 三路条件覆盖负数、零和正数时，无默认分支也应同时通过预检和 Flowable 原生模型校验。 */
+    @Test
+    void exhaustiveGatewayConditionsArePublishableWithoutDefault() {
+        process.setBpmnXml(threeWayGatewayXml());
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertTrue(preview.publishable());
+        assertEquals(0, preview.blockerCount());
+        assertFalse(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("GATEWAY_DEFAULT_FLOW_MISSING")));
+        var model = new BpmnXMLConverter().convertToBpmnModel(
+                new StringStreamSource(process.getBpmnXml()), false, false);
+        var engineIssues = new ProcessValidatorFactory()
+                .createDefaultProcessValidator().validate(model);
+        assertTrue(engineIssues.isEmpty(), () -> "Flowable 模型校验失败: " + engineIssues);
+    }
+
+    /** 不强制兜底分支后，遗漏连线条件仍需定位并阻断，避免意外走入无条件分支。 */
+    @Test
+    void missingNonDefaultConditionStillBlocksPublishing() {
+        process.setBpmnXml(threeWayGatewayXml().replace(
+                "<bpmn:conditionExpression>${amount == 0}</bpmn:conditionExpression>", ""));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.publishable());
+        assertEquals(1, preview.blockerCount());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("GATEWAY_CONDITION_MISSING")
+                        && issue.blocking()
+                        && "FlowZero".equals(issue.elementId())));
+    }
+
+    /** 显式选择的默认分支仍允许不填写条件，保持原有兜底配置兼容。 */
+    @Test
+    void explicitDefaultFlowDoesNotRequireCondition() {
+        process.setBpmnXml(threeWayGatewayXml()
+                .replace("<bpmn:exclusiveGateway id=\"Decision\"/>",
+                        "<bpmn:exclusiveGateway id=\"Decision\" default=\"FlowZero\"/>")
+                .replace("<bpmn:conditionExpression>${amount == 0}</bpmn:conditionExpression>", ""));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertTrue(preview.publishable());
+        assertEquals(0, preview.blockerCount());
     }
 
     @Test
@@ -463,6 +513,32 @@ class ProcessDefinitionPreflightServiceTest {
                     <bpmn:endEvent id="End"/>
                     <bpmn:sequenceFlow id="Flow1" sourceRef="Start" targetRef="ApproveTask"/>
                     <bpmn:sequenceFlow id="Flow2" sourceRef="ApproveTask" targetRef="End"/>
+                  </bpmn:process>
+                </bpmn:definitions>
+                """;
+    }
+
+    private String threeWayGatewayXml() {
+        return """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                                  targetNamespace="http://workflow.test/gateway">
+                  <bpmn:process id="expense_flow" isExecutable="true">
+                    <bpmn:startEvent id="Start"/>
+                    <bpmn:exclusiveGateway id="Decision"/>
+                    <bpmn:endEvent id="Negative"/>
+                    <bpmn:endEvent id="Zero"/>
+                    <bpmn:endEvent id="Positive"/>
+                    <bpmn:sequenceFlow id="FlowStart" sourceRef="Start" targetRef="Decision"/>
+                    <bpmn:sequenceFlow id="FlowNegative" sourceRef="Decision" targetRef="Negative">
+                      <bpmn:conditionExpression>${amount &lt; 0}</bpmn:conditionExpression>
+                    </bpmn:sequenceFlow>
+                    <bpmn:sequenceFlow id="FlowZero" sourceRef="Decision" targetRef="Zero">
+                      <bpmn:conditionExpression>${amount == 0}</bpmn:conditionExpression>
+                    </bpmn:sequenceFlow>
+                    <bpmn:sequenceFlow id="FlowPositive" sourceRef="Decision" targetRef="Positive">
+                      <bpmn:conditionExpression>${amount &gt; 0}</bpmn:conditionExpression>
+                    </bpmn:sequenceFlow>
                   </bpmn:process>
                 </bpmn:definitions>
                 """;

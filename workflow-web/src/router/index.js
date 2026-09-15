@@ -213,6 +213,15 @@ const routes = [
         meta: { title: '字典设置' }
       },
       {
+        path: '/system/settings',
+        name: 'GlobalSettings',
+        component: () => import('@/views/system/GlobalSettings.vue'),
+        meta: {
+          title: '全局设置',
+          requiredPermissions: ['system:setting:view', 'system:setting:manage']
+        }
+      },
+      {
         path: '/system/external-systems',
         name: 'ExternalSystemManagement',
         component: () => import('@/views/system/ExternalSystem.vue'),

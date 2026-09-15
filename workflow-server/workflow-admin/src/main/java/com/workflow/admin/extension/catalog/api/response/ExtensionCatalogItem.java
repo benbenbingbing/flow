@@ -17,6 +17,8 @@ public class ExtensionCatalogItem {
     private String key;
     private String displayName;
     private String description;
+    /** 实现归属：PLATFORM、CUSTOM 或 UNKNOWN。 */
+    private String implementationOrigin;
     private Integer implementationVersion;
     private Integer snapshotVersion;
     private Integer contractVersion;

@@ -569,9 +569,11 @@ public class ConfigMigrationPackageCodec {
         Map<String, Object> searchable = new LinkedHashMap<>(selected);
         searchable.remove("dependencies");
         searchable.remove(SELECTION_METADATA);
+        // 人员依赖含有 entity/field 复合坐标，不一定是文档中的连续字符串，必须按所属配置段保留。
         List<Map<String, Object>> dependencies = castMapList(source.get("dependencies")).stream()
-                .filter(dependency -> containsReference(
-                        searchable, String.valueOf(dependency.get("key"))))
+                .filter(dependency -> !castMapList(dependency.get("references")).isEmpty()
+                        ? sections.contains("bpmnXml") || sections.contains("nodes")
+                        : containsReference(searchable, String.valueOf(dependency.get("key"))))
                 .map(dependency -> (Map<String, Object>)
                         new LinkedHashMap<String, Object>(dependency))
                 .toList();
@@ -716,11 +718,7 @@ public class ConfigMigrationPackageCodec {
     }
 
     private List<Map<String, Object>> deduplicateDependencies(List<Map<String, Object>> dependencies) {
-        Map<String, Map<String, Object>> values = new LinkedHashMap<>();
-        for (Map<String, Object> dependency : dependencies) {
-            values.put(dependency.get("type") + ":" + dependency.get("key"), dependency);
-        }
-        return new ArrayList<>(values.values());
+        return ConfigMigrationAssignmentSupport.mergeDependencies(dependencies);
     }
 
     private String assetPath(ConfigMigrationAsset asset) {

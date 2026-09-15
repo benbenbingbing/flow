@@ -61,6 +61,7 @@ class ConfigMigrationReadServiceTest {
         ConfigMigrationAsset asset = new ConfigMigrationAsset();
         asset.setId("asset-1");
         asset.setBusinessKey("expense");
+        asset.setVersionDescription("补充报销申请人字段和审批表单");
         when(assetMapper.selectPage(any(Page.class), any()))
                 .thenAnswer(invocation -> {
                     Page<ConfigMigrationAsset> page = invocation.getArgument(0);
@@ -71,6 +72,7 @@ class ConfigMigrationReadServiceTest {
                     String selectedColumns = wrapper.getSqlSelect();
                     assertTrue(selectedColumns.contains("asset_name"));
                     assertTrue(selectedColumns.contains("dependency_count"));
+                    assertTrue(selectedColumns.contains("version_description"));
                     assertFalse(selectedColumns.contains("snapshot_json"));
                     assertFalse(selectedColumns.contains("dependencies_json"));
                     String sql = wrapper.getSqlSegment();
@@ -108,6 +110,8 @@ class ConfigMigrationReadServiceTest {
         PageResult<ConfigMigrationAsset> result = service.pageAssets(query);
 
         assertEquals(List.of(asset), result.getRecords());
+        assertEquals("补充报销申请人字段和审批表单",
+                result.getRecords().get(0).getVersionDescription());
         assertEquals(23, result.getTotal());
         assertEquals(1, result.getPageNum());
         assertEquals(20, result.getPageSize());

@@ -97,6 +97,9 @@
             <el-table-column prop="sourceVersion" label="版本" width="80">
               <template #default="{ row }">v{{ row.sourceVersion }}</template>
             </el-table-column>
+            <el-table-column prop="versionDescription" label="发布说明" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.versionDescription || '-' }}</template>
+            </el-table-column>
             <el-table-column prop="migrationTag" label="迁移标记" min-width="160" />
             <el-table-column prop="snapshotCompleteness" label="快照" width="100">
               <template #default="{ row }">
@@ -473,7 +476,7 @@
     </el-dialog>
     <el-dialog v-model="mappingVisible" title="环境依赖映射" width="900px">
       <el-alert
-        title="组件、数据提供者、用户、角色或部门在生产环境编码不一致时，在这里建立映射。"
+        title="按目标系统的登录名、用户组、角色、组织、职务、人员接口或实体/字段编码建立映射；保存后会校验目标是否存在。"
         type="warning"
         :closable="false"
         class="mapping-alert"
@@ -481,6 +484,7 @@
       <el-table :data="mappingRows" border>
         <el-table-column prop="sourceType" label="类型" width="170" />
         <el-table-column prop="sourceKey" label="来源编码" min-width="230" />
+        <el-table-column prop="reason" label="校验问题" min-width="230" />
         <el-table-column label="生产编码" min-width="260">
           <template #default="{ row }">
             <el-input v-model="row.targetKey" placeholder="输入生产环境注册名或业务编码" />
@@ -985,6 +989,7 @@ const openMapping = async (row) => {
     sourceKey: item.key,
     targetKey: item.targetKey || item.key,
     description: item.source || '',
+    reason: item.reason || '',
     enabled: true
   }))
   mappingRows.value = [...unique.values()]
@@ -995,7 +1000,8 @@ const saveMappings = async () => {
     ElMessage.warning('生产编码不能为空')
     return
   }
-  await configMigrationApi.saveMappings(currentMappingImport.value.id, mappingRows.value)
+  await configMigrationApi.saveMappings(currentMappingImport.value.id,
+    mappingRows.value.map(({ reason, ...mapping }) => mapping))
   ElMessage.success('映射已保存并重新分析')
   mappingVisible.value = false
   await Promise.all([loadImports(), loadImportOptions(), loadStats()])

@@ -3,6 +3,7 @@ package com.workflow.process.coordination.application;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionExecutionMode;
 import com.workflow.contracts.action.FlowActionFailurePolicy;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Command;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Operation;
@@ -28,6 +29,11 @@ public class RelatedProcessCoordinationFlowActionHandler
 
     private final RelatedProcessCoordinationPlanService planService;
     private final RelatedProcessCoordinationPublisher publisher;
+
+    @Override
+    public ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.PLATFORM;
+    }
 
     @Override
     public Class<Command> getParamType() {

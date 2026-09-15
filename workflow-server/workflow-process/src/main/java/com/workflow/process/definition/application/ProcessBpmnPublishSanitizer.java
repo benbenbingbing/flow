@@ -1277,7 +1277,7 @@ public class ProcessBpmnPublishSanitizer {
     private void validateEditableMultiInstanceCollections(
             String bpmnXml) {
         Pattern tasks = Pattern.compile(
-                "(?is)<(?:[A-Za-z0-9_]+:)?userTask\\b([^>]*)>(.*?)</(?:[A-Za-z0-9_]+:)?userTask>");
+                "(?is)<(?:[A-Za-z0-9_]+:)?userTask\\b([^>]*)(?<!/)>(.*?)</(?:[A-Za-z0-9_]+:)?userTask>");
         Matcher matcher = tasks.matcher(bpmnXml);
         Map<String, String> owners = new LinkedHashMap<>();
         Set<String> editableCollections = new java.util.LinkedHashSet<>();
@@ -2475,8 +2475,10 @@ public class ProcessBpmnPublishSanitizer {
             String tagName,
             String propertyName,
             ConfiguredElementRewriter rewriter) {
+        // 自闭合节点没有配置内容，必须跳过；否则会吞入下一个同类型节点，
+        // 将其办理人、多人或其他执行配置错误归属到前一个节点。
         Pattern pattern = Pattern.compile(
-                "(?i)<(bpmn:)?" + tagName + "\\b([^>]*)>([\\s\\S]*?)</\\1" + tagName + ">",
+                "(?i)<(bpmn:)?" + tagName + "\\b([^>]*)(?<!/)>([\\s\\S]*?)</\\1" + tagName + ">",
                 Pattern.DOTALL);
         Matcher matcher = pattern.matcher(bpmnXml);
         StringBuffer result = new StringBuffer();
@@ -3053,7 +3055,7 @@ public class ProcessBpmnPublishSanitizer {
 
     private String fixMultiInstanceAssignee(String bpmnXml) {
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "(?i)<(bpmn:)?userTask\\b([^>]*)>([\\s\\S]*?)</\\1userTask>",
+                "(?i)<(bpmn:)?userTask\\b([^>]*)(?<!/)>([\\s\\S]*?)</\\1userTask>",
                 java.util.regex.Pattern.DOTALL);
         java.util.regex.Matcher matcher = pattern.matcher(bpmnXml);
         StringBuffer sb = new StringBuffer();
@@ -3102,7 +3104,7 @@ public class ProcessBpmnPublishSanitizer {
      */
     private String processSkipNodeTasks(String bpmnXml) {
         Pattern pattern = Pattern.compile(
-                "(?i)<((?:bpmn:)?userTask)\\b([^>]*)>([\\s\\S]*?)</\\1\\s*>",
+                "(?i)<((?:bpmn:)?userTask)\\b([^>]*)(?<!/)>([\\s\\S]*?)</\\1\\s*>",
                 Pattern.DOTALL);
         Matcher matcher = pattern.matcher(bpmnXml);
         StringBuffer result = new StringBuffer();

@@ -1,5 +1,6 @@
 package com.workflow.process.assignment.relative;
 
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.identity.position.InitiatorOrganizationSnapshot;
 import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
 import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
@@ -61,6 +62,11 @@ public class RelativeOrgPositionPersonResolver
             InitiatorOrganizationSnapshotService snapshotService) {
         this.directoryPort = directoryPort;
         this.snapshotService = snapshotService;
+    }
+
+    @Override
+    public ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.PLATFORM;
     }
 
     @Override

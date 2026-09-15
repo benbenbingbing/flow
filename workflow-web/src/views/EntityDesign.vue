@@ -67,23 +67,11 @@
     </el-tabs>
 
     <div v-show="!loadError && activeDesignTab === 'fields'" class="design-body">
-      <!-- 字段类型面板 -->
-      <div v-if="!isSystemEntity" class="field-types-panel">
-        <div class="panel-title">字段类型</div>
-        <div class="field-type-list">
-          <div
-            v-for="type in fieldTypes.filter(t => !['RADIO', 'CHECKBOX'].includes(t.value))"
-            :key="type.value"
-            class="field-type-item"
-            draggable="true"
-            @dragstart="handleDragStart(type)"
-            @click="handleAddField(type)"
-          >
-            <el-icon><component :is="type.icon" /></el-icon>
-            <span>{{ type.label }}</span>
-          </div>
-        </div>
-      </div>
+      <EntityFieldTypePanel
+        v-if="!isSystemEntity"
+        @add-field="handleAddField"
+        @drag-start="handleDragStart"
+      />
 
       <!-- 字段列表 -->
       <div class="fields-panel">
@@ -1062,30 +1050,12 @@
     </div>
   </el-dialog>
 
-  <el-dialog v-model="quickDictVisible" title="新建代码表并绑定字段" width="560px">
-    <el-form label-width="100px">
-      <el-form-item label="代码表名称" required>
-        <el-input v-model="quickDictForm.dictName" placeholder="例如：报销类型" />
-      </el-form-item>
-      <el-form-item label="代码表编码" required>
-        <el-input v-model="quickDictForm.dictCode" placeholder="例如：expense_type" />
-      </el-form-item>
-      <el-form-item label="代码项" required>
-        <el-input
-          v-model="quickDictForm.itemsText"
-          type="textarea"
-          :rows="6"
-          placeholder="每行格式：编码:名称"
-        />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="quickDictVisible = false">取消</el-button>
-      <el-button type="primary" :loading="quickDictSaving" @click="createAndBindDict">
-        创建并绑定
-      </el-button>
-    </template>
-  </el-dialog>
+  <QuickDictDialog
+    v-model="quickDictVisible"
+    :dict-name="quickDictForm.dictName"
+    :dict-code="quickDictForm.dictCode"
+    @created="handleQuickDictCreated"
+  />
 </template>
 
 <script setup>
@@ -1100,13 +1070,15 @@ import { getEntityStatusList } from '@/api/entityStatus'
 import { getEnabledRoles } from '@/api/system/role'
 import { getEnabledOrgList } from '@/api/system/org'
 import { getEnabledGroups } from '@/api/system/group'
-import { getDictList, createDictWithItems } from '@/api/system/dict'
+import { getDictList } from '@/api/system/dict'
 import { useUserStore } from '@/stores/user'
+import EntityFieldTypePanel from '@/views/entity/components/EntityFieldTypePanel.vue'
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import EntityDefaultEventPanel from '@/views/entity/components/EntityDefaultEventPanel.vue'
 import EntityRelationManagement from '@/views/entity/components/EntityRelationManagement.vue'
+import QuickDictDialog from '@/views/entity/components/QuickDictDialog.vue'
 import EntityValidationRuleEditor from '@/components/EntityValidationRuleEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
@@ -1227,8 +1199,7 @@ const refEntityFields = ref([])
 const subListOptions = ref([])
 const dictOptions = ref([])
 const quickDictVisible = ref(false)
-const quickDictSaving = ref(false)
-const quickDictForm = ref({ dictName: '', dictCode: '', itemsText: '' })
+const quickDictForm = ref({ dictName: '', dictCode: '' })
 
 // 编码规则配置
 const createCodeRuleDraft = (entityCode = '') => ({
@@ -1576,47 +1547,17 @@ const openQuickDictDialog = () => {
   const fieldCode = selectedField.value?.fieldCode || ''
   quickDictForm.value = {
     dictName: selectedField.value?.fieldName || '',
-    dictCode: fieldCode ? `${entityData.value.entityCode}_${fieldCode}`.toLowerCase() : '',
-    itemsText: ''
+    dictCode: fieldCode ? `${entityData.value.entityCode}_${fieldCode}`.toLowerCase() : ''
   }
   quickDictVisible.value = true
 }
 
-const createAndBindDict = async () => {
-  const form = quickDictForm.value
-  const items = form.itemsText.split('\n').map(line => {
-    const separator = line.indexOf(':')
-    if (separator < 1) return null
-    const itemCode = line.slice(0, separator).trim()
-    const itemLabel = line.slice(separator + 1).trim()
-    return itemCode && itemLabel ? { itemCode, itemLabel } : null
-  }).filter(Boolean)
-  if (!form.dictName || !form.dictCode || !items.length) {
-    ElMessage.warning('请填写代码表名称、编码和至少一个有效代码项')
-    return
-  }
-  quickDictSaving.value = true
-  try {
-    const dict = await createDictWithItems({
-      dict: {
-        dictName: form.dictName,
-        dictCode: form.dictCode,
-        status: '0'
-      },
-      items
-    })
-    await loadDictOptions()
-    selectedField.value.optionSource = 'DICT'
-    selectedField.value.dictType = dict.dictCode
-    selectedField.value.optionsJson = null
-    quickDictVisible.value = false
-    ElMessage.success('代码表已创建并绑定')
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('创建代码表失败')
-  } finally {
-    quickDictSaving.value = false
-  }
+/** 新代码表创建后更新当前字段草稿，并刷新可选代码表；字段仍由原有保存流程持久化。 */
+const handleQuickDictCreated = async (dict) => {
+  selectedField.value.optionSource = 'DICT'
+  selectedField.value.dictType = dict.dictCode
+  selectedField.value.optionsJson = null
+  await loadDictOptions()
 }
 
 const applySubListEntitySelection = async (entity, resetListKey) => {
@@ -2273,17 +2214,6 @@ onMounted(async () => {
   gap: 16px;
 }
 
-/* ===== 左侧字段类型面板 ===== */
-.field-types-panel {
-  width: 200px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-}
-
 .panel-title {
   font-size: 15px;
   font-weight: 600;
@@ -2296,57 +2226,6 @@ onMounted(async () => {
   align-items: center;
 }
 
-.field-type-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.field-type-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.field-type-list::-webkit-scrollbar-thumb {
-  background: #c0c4cc;
-  border-radius: 2px;
-}
-
-.field-type-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 14px 8px;
-  background: #fafbfc;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-}
-
-.field-type-item:hover {
-  background: #fff;
-  border-color: #409eff;
-  color: #409eff;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.25);
-  transform: translateY(-2px);
-}
-
-.field-type-item .el-icon {
-  font-size: 22px;
-  margin-bottom: 6px;
-  transition: transform 0.2s;
-}
-
-.field-type-item:hover .el-icon {
-  transform: scale(1.1);
-}
-
-.field-type-item span {
-  font-size: 12px;
-  font-weight: 500;
-}
 
 /* ===== 中间字段列表面板 ===== */
 .fields-panel {
@@ -2758,16 +2637,11 @@ onMounted(async () => {
     padding: 0 12px;
   }
 
-  .field-types-panel,
   .fields-panel,
   .property-panel {
     width: 100%;
     min-width: 0;
     flex-shrink: 0;
-  }
-
-  .field-types-panel {
-    max-height: 280px;
   }
 
   .fields-panel,

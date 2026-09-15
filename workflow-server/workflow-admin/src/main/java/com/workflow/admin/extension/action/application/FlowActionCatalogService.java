@@ -9,6 +9,7 @@ import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.contracts.action.FlowActionDefinitionDescriptor;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.admin.extension.action.api.request.FlowActionDefinitionRequest;
 import com.workflow.admin.extension.action.api.response.FlowActionHandlerOption;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinition;
@@ -261,6 +262,11 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         option.setActionCode(definition == null ? beanName : definition.getActionCode());
         option.setBeanName(beanName);
         option.setClassName(handler == null ? null : handler.getClass().getName());
+        ExtensionImplementationOrigin implementationOrigin = handler == null
+                ? null : handler.implementationOrigin();
+        option.setImplementationOrigin(implementationOrigin == null
+                ? ExtensionImplementationOrigin.UNKNOWN.name()
+                : implementationOrigin.name());
         option.setDisplayName(definition == null ? beanName : definition.getDisplayName());
         option.setDescription(definition == null ? null : definition.getDescription());
         option.setVisibilityScope(definition == null

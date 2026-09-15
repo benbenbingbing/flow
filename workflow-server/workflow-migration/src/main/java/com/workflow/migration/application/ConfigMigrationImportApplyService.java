@@ -176,6 +176,7 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationAssetService assetService;
     private final ConfigMigrationMenuImporter menuImporter;
     private final ConfigMigrationPackageCodec packageCodec;
+    private final ConfigMigrationPackageService packageService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -214,6 +215,8 @@ public class ConfigMigrationImportApplyService {
         if (items.isEmpty()) {
             throw new IllegalArgumentException("没有可发布的导入项目");
         }
+        // 分析与发布之间目录可能变化，实际写入前再次确认映射目标仍满足依赖。
+        packageService.requireResolvedDependencies(items);
         log.info("开始原子发布配置迁移包，importId={}，packageNo={}，itemCount={}",
                 importId, importPackage.getPackageNo(), items.size());
         for (ConfigImportItem item : items) {
@@ -2864,7 +2867,7 @@ public class ConfigMigrationImportApplyService {
     }
 
     /**
-     * 将 BPMN 中的可移植表单引用与办理人引用替换为目标环境的实际 ID。
+     * 将表单引用还原为目标 ID，人员声明按字段映射为目标登录名/编码。
      */
     private String resolvePortableBpmn(String bpmnXml, Map<String, Object> snapshot) {
         String result = bpmnXml;
@@ -2874,18 +2877,9 @@ public class ConfigMigrationImportApplyService {
                 result = result.replace(formRef, resolveFormId(formRef));
             }
         }
-        for (Map<String, Object> node : mapList(snapshot.get("nodes"))) {
-            for (Map<String, Object> assignee : mapList(node.get("assignees"))) {
-                String portableValue = text(assignee.get("assigneeValue"), null);
-                if (!StringUtils.hasText(portableValue)) {
-                    continue;
-                }
-                String type = text(assignee.get("assigneeType"), null);
-                String targetValue = resolveAssigneeValue(type, portableValue);
-                result = result.replace(portableValue, targetValue);
-            }
-        }
-        return result;
+        return ConfigMigrationAssignmentSupport.rewriteBpmn(
+                result, text(snapshot.get("businessKey"), ""),
+                (type, key, context) -> resolveAssigneeValue(type, key));
     }
 
     /**
@@ -2913,35 +2907,28 @@ public class ConfigMigrationImportApplyService {
     }
 
     /**
-     * 将可移植办理人引用解析为目标环境的实际 ID/编码(USER→用户ID，DEPT→部门ID，ROLE→角色编码)。
+     * 按目标目录解析人员声明。Flowable 的办理人标识使用登录名，不能写入本地用户 ID。
      *
      * @throws IllegalStateException 用户或部门不存在
      */
     private String resolveAssigneeValue(String type, String portableValue) {
         if ("USER".equals(type)) {
-            String username = portableValue.startsWith("wf-user://")
-                    ? portableValue.substring("wf-user://".length()) : portableValue;
-            username = mappedKey("USER", username);
+            String username = mappedKey("USER", portableValue);
             SysUser user = userMapper.selectByUsername(username);
             if (user == null) {
                 throw new IllegalStateException("流程办理用户不存在: " + username);
             }
-            return user.getId();
+            return user.getUsername();
         }
         if ("DEPT".equals(type)) {
-            String orgCode = portableValue.startsWith("wf-dept://")
-                    ? portableValue.substring("wf-dept://".length()) : portableValue;
-            orgCode = mappedKey("DEPT", orgCode);
+            String orgCode = mappedKey("DEPT", portableValue);
             SysOrganization organization = organizationMapper.selectByCode(orgCode);
             if (organization == null) {
                 throw new IllegalStateException("流程办理部门不存在: " + orgCode);
             }
-            return organization.getId();
+            return organization.getOrgCode();
         }
-        if ("ROLE".equals(type)) {
-            return mappedKey("ROLE", portableValue);
-        }
-        return portableValue;
+        return mappedKey(type, portableValue);
     }
 
     private String mappedKey(String type, String sourceKey) {

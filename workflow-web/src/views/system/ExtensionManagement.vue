@@ -33,6 +33,17 @@
             <el-option label="实现缺失" value="MISSING" />
           </el-select>
         </el-form-item>
+        <el-form-item v-if="searchExpanded" label="实现归属" class="filter-select">
+          <el-select
+            v-model="filters.implementationOrigin"
+            clearable
+            placeholder="全部归属"
+          >
+            <el-option label="平台内置" value="PLATFORM" />
+            <el-option label="项目自定义" value="CUSTOM" />
+            <el-option label="暂无法识别" value="UNKNOWN" />
+          </el-select>
+        </el-form-item>
         <el-form-item class="search-actions">
           <el-button type="primary" native-type="submit">
             <el-icon><Search /></el-icon>
@@ -99,6 +110,18 @@
               <el-tag effect="plain" type="info">
                 {{ typeLabel(row.capabilityType) }}
               </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="实现归属" width="116" align="center">
+            <template #default="{ row }">
+              <el-tooltip
+                :content="originDescription(row.implementationOrigin)"
+                placement="top"
+              >
+                <el-tag :type="originTagType(row.implementationOrigin)" effect="plain">
+                  {{ originLabel(row.implementationOrigin) }}
+                </el-tag>
+              </el-tooltip>
             </template>
           </el-table-column>
           <el-table-column label="名称" min-width="210">
@@ -202,7 +225,7 @@
           layout="total, sizes, prev, pager, next, jumper"
           class="pagination"
           @size-change="handleSizeChange"
-          @current-change="load"
+          @current-change="handleCurrentChange"
         />
       </template>
     </el-card>
@@ -219,6 +242,9 @@
         <el-descriptions :column="2" border>
           <el-descriptions-item label="类型">
             {{ typeLabel(detail.capabilityType) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="实现归属">
+            {{ originLabel(detail.implementationOrigin) }}
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             {{ statusLabel(detail.status) }}
@@ -283,6 +309,10 @@ import {
   isPlatformBuiltInUiExtension
 } from '@/extensions/manifest'
 import { useUserStore } from '@/stores/user'
+import {
+  loadAllExtensionCatalogRows,
+  paginateExtensionCatalogRows
+} from '@/shared/extension-catalog-pagination'
 const typeOptions = [
   { value: 'INTERFACE', label: '扩展接口' },
   { value: 'FLOW_ACTION', label: '流程动作' },
@@ -311,10 +341,12 @@ const localManifest = getManagedExtensionManifest()
 const filters = reactive({
   capabilityType: normalizeRouteType(route.query.type),
   keyword: '',
-  status: ''
+  status: '',
+  implementationOrigin: ''
 })
 const pageInfo = reactive({ pageNum: 1, pageSize: 20, total: 0 })
 const rows = ref([])
+const allCatalogRows = ref([])
 const loading = ref(false)
 const loadError = ref('')
 const searchExpanded = ref(false)
@@ -328,26 +360,50 @@ const testForms = ref([])
 const testLists = ref([])
 const testEntityId = ref('')
 const testEntityCode = ref('')
+let catalogLoadSequence = 0
+
+function filterSnapshot() {
+  return {
+    capabilityType: filters.capabilityType || undefined,
+    keyword: filters.keyword?.trim() || undefined,
+    status: filters.status || undefined,
+    implementationOrigin: filters.implementationOrigin || undefined
+  }
+}
+
+function applyCatalogPagination() {
+  const page = paginateExtensionCatalogRows(
+    allCatalogRows.value,
+    pageInfo.pageNum,
+    pageInfo.pageSize
+  )
+  rows.value = page.list
+  pageInfo.total = page.total
+  pageInfo.pageNum = page.pageNum
+  pageInfo.pageSize = page.pageSize
+}
+
 async function load() {
+  const sequence = ++catalogLoadSequence
+  const currentFilters = filterSnapshot()
   loading.value = true
   loadError.value = ''
   try {
-    const [result, allDefinitions, catalog] = await Promise.all([
-      extensionCatalogApi.manage({
-        capabilityType: filters.capabilityType || undefined,
-        keyword: filters.keyword?.trim() || undefined,
-        status: filters.status || undefined,
-        pageNum: pageInfo.pageNum,
-        pageSize: pageInfo.pageSize
-      }),
+    const [catalogRows, allDefinitions, catalog] = await Promise.all([
+      loadAllExtensionCatalogRows(
+        params => extensionCatalogApi.manage(params),
+        currentFilters
+      ),
       uiExtensionApi.list(),
       uiExtensionApi.catalog()
     ])
+    // 只允许最后一次查询提交数据，防止慢响应覆盖新的筛选结果。
+    if (sequence !== catalogLoadSequence) return
     interfaceCatalog.value = catalog || {}
     const interfaceDefinitionById = new Map((allDefinitions || [])
       .filter(item => item.extensionType === 'INTERFACE')
       .map(item => [String(item.id || item.extensionId), item]))
-    const managedRows = (result?.list || [])
+    const managedRows = catalogRows
       .filter(row => !isPlatformBuiltInUiExtension(
         row.capabilityType, row.key))
       .map(row => {
@@ -355,20 +411,23 @@ async function load() {
         const raw = interfaceDefinitionById.get(
           String(row.id || row.extensionId)
         ) || {}
-        // 管理目录负责统一筛选和分页；定义详情只补齐编辑接口所需的内部实现字段。
+        // 管理目录负责筛选；定义详情只补齐编辑接口所需的内部实现字段。
         return decorateInterface({ ...row, ...raw })
       })
     const remoteUiKeys = new Set((allDefinitions || []).map(item =>
       `UI_${item.extensionType}:${item.extensionKey}:${item.version || 1}`))
-    const localRows = pageInfo.pageNum === 1
-      ? localOnlyRows(remoteUiKeys)
-      : []
-    rows.value = [...localRows, ...managedRows]
-    pageInfo.total = Number(result?.total || 0) + localRows.length
+    allCatalogRows.value = [
+      ...localOnlyRows(remoteUiKeys, currentFilters),
+      ...managedRows
+    ]
+    applyCatalogPagination()
   } catch (error) {
+    if (sequence !== catalogLoadSequence) return
     loadError.value = error?.message || '无法读取扩展目录，请重试。'
   } finally {
-    loading.value = false
+    if (sequence === catalogLoadSequence) {
+      loading.value = false
+    }
   }
 }
 
@@ -404,7 +463,7 @@ function decorateRemote(row) {
   }
 }
 
-function localOnlyRows(remoteKeys) {
+function localOnlyRows(remoteKeys, currentFilters) {
   return localManifest
     .filter(item => ['FORM', 'LIST', 'NODE', 'FIELD'].includes(item.type))
     .map(item => ({
@@ -420,6 +479,7 @@ function localOnlyRows(remoteKeys) {
       sourceType: 'FRONTEND_BUNDLE',
       sourceName: item.source,
       implementationClass: '',
+      implementationOrigin: 'CUSTOM',
       status: 'DISCOVERED',
       configured: false,
       available: true,
@@ -436,10 +496,13 @@ function localOnlyRows(remoteKeys) {
     }))
     .filter(row => !remoteKeys.has(
       `${row.capabilityType}:${row.key}:${row.implementationVersion || 1}`))
-    .filter(row => !filters.capabilityType
-      || row.capabilityType === filters.capabilityType)
-    .filter(row => !filters.status || row.status === filters.status)
-    .filter(row => matchesKeyword(row, filters.keyword))
+    .filter(row => !currentFilters.capabilityType
+      || row.capabilityType === currentFilters.capabilityType)
+    .filter(row => !currentFilters.status
+      || row.status === currentFilters.status)
+    .filter(row => !currentFilters.implementationOrigin
+      || row.implementationOrigin === currentFilters.implementationOrigin)
+    .filter(row => matchesKeyword(row, currentFilters.keyword))
 }
 
 function findLocal(row) {
@@ -470,14 +533,25 @@ function handleSearch() {
 }
 
 function handleReset() {
-  Object.assign(filters, { capabilityType: '', keyword: '', status: '' })
+  Object.assign(filters, {
+    capabilityType: '',
+    keyword: '',
+    status: '',
+    implementationOrigin: ''
+  })
   pageInfo.pageNum = 1
   load()
 }
 
-function handleSizeChange() {
+function handleSizeChange(pageSize) {
+  pageInfo.pageSize = pageSize
   pageInfo.pageNum = 1
-  load()
+  applyCatalogPagination()
+}
+
+function handleCurrentChange(pageNum) {
+  pageInfo.pageNum = pageNum
+  applyCatalogPagination()
 }
 
 async function openEdit(row) {
@@ -577,6 +651,30 @@ function sourceLabel(value) {
     RUNTIME_CONTEXT: '运行时上下文',
     STRUCTURED_COMPUTE: '结构化计算'
   }[value] || value || '-'
+}
+
+function originLabel(value) {
+  return {
+    PLATFORM: '平台内置',
+    CUSTOM: '项目自定义',
+    UNKNOWN: '暂无法识别'
+  }[value] || value || '-'
+}
+
+function originTagType(value) {
+  return {
+    PLATFORM: 'primary',
+    CUSTOM: 'success',
+    UNKNOWN: 'info'
+  }[value] || 'info'
+}
+
+function originDescription(value) {
+  return {
+    PLATFORM: '底层执行实现由流程平台提供，不代表这条配置由平台创建',
+    CUSTOM: '底层执行实现由项目或二次开发代码提供',
+    UNKNOWN: '当前实现未加载、未声明归属或存在归属冲突，暂时无法可靠判断'
+  }[value] || '未声明实现归属'
 }
 
 function statusLabel(value) {

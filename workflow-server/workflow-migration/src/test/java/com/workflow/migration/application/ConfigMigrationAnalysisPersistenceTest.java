@@ -23,6 +23,8 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -92,6 +94,36 @@ class ConfigMigrationAnalysisPersistenceTest {
 
     @InjectMocks
     private ConfigMigrationPackageService service;
+
+    /** 导出跳过系统结构后，新旧依赖仍必须在目标环境校验，不能静默丢弃。 */
+    @ParameterizedTest
+    @CsvSource({"false,true", "false,false", "true,true", "true,false"})
+    void analyzeRequiresReferencedSystemEntityInTarget(boolean targetOnly, boolean entityExists) {
+        ConfigImportPackage importPackage = new ConfigImportPackage();
+        importPackage.setId("import-system-ref");
+        ConfigImportItem item = new ConfigImportItem();
+        item.setId("item-system-ref");
+        item.setImportPackageId(importPackage.getId());
+        item.setAssetType("ENTITY");
+        item.setBusinessKey("expense");
+        item.setSourceVersion(1);
+        item.setSnapshotJson("{}");
+        item.setDependenciesJson(documents.writeJson(List.of(Map.of(
+                "type", "ENTITY", "key", "sys_user", "required", true,
+                "targetOnly", targetOnly))));
+        when(importPackageMapper.selectById(importPackage.getId())).thenReturn(importPackage);
+        when(importItemMapper.selectList(any())).thenReturn(List.of(item));
+        EntityDefinition systemEntity = new EntityDefinition();
+        systemEntity.setEntityCode("sys_user");
+        systemEntity.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
+        when(entityMapper.findByEntityCode("sys_user"))
+                .thenReturn(entityExists ? Optional.of(systemEntity) : Optional.empty());
+
+        Map<String, Object> report = service.analyze(importPackage.getId());
+
+        assertEquals(!entityExists, report.get("blocked"));
+        assertEquals(entityExists ? "RESOLVED" : "UNRESOLVED", item.getMappingStatus());
+    }
 
     @Test
     void analyzeClearsResolvedItemAndPackageErrors() {

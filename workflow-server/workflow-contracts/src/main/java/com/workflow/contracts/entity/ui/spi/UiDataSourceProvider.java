@@ -1,6 +1,7 @@
 package com.workflow.contracts.entity.ui.spi;
 
 import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.ui.UiInvocationContext;
 import com.workflow.contracts.ui.UiProviderArtifactIdentity;
 
@@ -11,6 +12,15 @@ import java.util.Map;
  * 由实体 UI 宿主发现并按编码标识选择具体实现。
  */
 public interface UiDataSourceProvider {
+
+    /**
+     * 返回扩展实现归属。
+     *
+     * <p>第三方 Provider 默认视为项目自定义；平台实现必须显式覆盖。</p>
+     */
+    default ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.CUSTOM;
+    }
 
     /** @return 数据源编码 */
     String getCode();

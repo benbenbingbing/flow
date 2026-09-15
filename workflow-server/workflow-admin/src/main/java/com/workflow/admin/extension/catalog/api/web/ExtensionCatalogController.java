@@ -34,6 +34,7 @@ public class ExtensionCatalogController {
             @RequestParam(required = false) String capabilityType,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String implementationOrigin,
             @RequestParam(required = false) Integer pageNum,
             @RequestParam(required = false) Integer pageSize) {
         requireListAccess();
@@ -41,6 +42,7 @@ public class ExtensionCatalogController {
                 capabilityType,
                 keyword,
                 status,
+                implementationOrigin,
                 pageNum,
                 pageSize));
     }

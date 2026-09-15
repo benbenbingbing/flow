@@ -134,7 +134,6 @@
       ref="editorRef"
       class="editor-content"
       :contenteditable="!disabled"
-      v-html="innerValue"
       @input="onInput"
       @blur="onBlur"
       @keydown="onKeydown"
@@ -177,19 +176,22 @@ const sanitizeRichText = value => DOMPurify.sanitize(value || '', {
   FORBID_ATTR: ['srcdoc']
 })
 
-const innerValue = ref(sanitizeRichText(props.modelValue))
 const color = ref('#000000')
 const bgColor = ref('#ffffff')
 const headingValue = ref('p')
 const fontSizeValue = ref('3')
 const isFullscreen = ref(false)
 
-watch(() => props.modelValue, (val) => {
-  const sanitized = sanitizeRichText(val)
-  if (sanitized !== editorRef.value?.innerHTML) {
-    innerValue.value = sanitized
+// contenteditable 的输入由浏览器直接改写 DOM，不能依赖 v-html 的旧渲染值判断是否需要重置。
+// 同时监听编辑区挂载和外部值，确保首次显示、连续新增、重置及切换记录都同步到实际内容。
+watch([() => props.modelValue, editorRef], ([value, editor]) => {
+  if (!editor) return
+  const sanitized = sanitizeRichText(value)
+  // 输入回传的值通常与 DOM 一致，此时不重写节点，保留正在编辑的光标位置。
+  if (sanitized !== editor.innerHTML) {
+    editor.innerHTML = sanitized
   }
-})
+}, { flush: 'post' })
 
 const onInput = () => {
   if (props.disabled || !editorRef.value) return

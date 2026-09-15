@@ -15,6 +15,8 @@ public class PersonResolverOption {
     private String resolverCode;
     private String beanName;
     private String className;
+    /** 实现归属：PLATFORM、CUSTOM，无法可靠识别时为 UNKNOWN */
+    private String implementationOrigin;
     private String displayName;
     private String description;
     private Integer implementationVersion;

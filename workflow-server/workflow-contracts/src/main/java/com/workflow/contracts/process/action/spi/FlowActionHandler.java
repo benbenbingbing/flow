@@ -2,6 +2,7 @@ package com.workflow.contracts.process.action.spi;
 
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.action.FlowActionExecutionMode;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import java.util.Map;
 import java.util.Set;
 
@@ -12,6 +13,15 @@ import java.util.Set;
  * “流程动作”中引用，并通过能力声明限制支持的触发时机和执行方式。</p>
  */
 public interface FlowActionHandler {
+
+    /**
+     * 返回扩展实现归属。
+     *
+     * <p>SPI 默认视为项目自定义；平台内置处理器必须显式覆盖，避免按包名猜测。</p>
+     */
+    default ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.CUSTOM;
+    }
 
     /**
      * 执行流程动作。

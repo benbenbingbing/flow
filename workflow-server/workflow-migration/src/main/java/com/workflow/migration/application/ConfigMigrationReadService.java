@@ -57,6 +57,7 @@ public class ConfigMigrationReadService {
                                 ConfigMigrationAsset::getBusinessKey,
                                 ConfigMigrationAsset::getAssetName,
                                 ConfigMigrationAsset::getSourceVersion,
+                                ConfigMigrationAsset::getVersionDescription,
                                 ConfigMigrationAsset::getMigrationTag,
                                 ConfigMigrationAsset::getMarkForExport,
                                 ConfigMigrationAsset::getSnapshotCompleteness,

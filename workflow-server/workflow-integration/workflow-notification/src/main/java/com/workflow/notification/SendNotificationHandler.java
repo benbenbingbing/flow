@@ -1,6 +1,7 @@
 package com.workflow.notification;
 
 import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,11 @@ import java.util.Set;
 @Slf4j
 @Component("sendNotificationHandler")
 public class SendNotificationHandler implements FlowActionHandler {
+
+    @Override
+    public ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.PLATFORM;
+    }
 
     /**
      * 返回该动作支持的执行时机。

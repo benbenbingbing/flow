@@ -3689,7 +3689,8 @@ function addField(entityField) {
   }
 
   formFields.value.push(newField)
-  openFieldProperties(newField)
+  // 连续添加字段时仅选中新节点，避免自动展开属性抽屉打断画布操作。
+  selectField(newField)
   if (['REFERENCE', 'MULTI_REFERENCE'].includes((newField.componentType || '').toUpperCase())) {
     loadReferenceLists(newField.refEntityId, false)
   }
@@ -3833,7 +3834,7 @@ function selectField(field) {
   }
 }
 
-// 双击已有节点或新增节点后打开属性
+// 手动打开节点属性或新增容器节点时展开抽屉；新增实体字段仅选中。
 function openFieldProperties(field) {
   selectedField.value = field
   propertyDrawerVisible.value = true

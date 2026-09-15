@@ -3,11 +3,21 @@ package com.workflow.contracts.process.assignment.spi;
 import com.workflow.contracts.identity.resolver.PersonResolveRequest;
 import com.workflow.contracts.identity.resolver.PersonResolveResult;
 import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
+import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 
 /**
  * 流程人员解析器 SPI。
  */
 public interface PersonResolver {
+
+    /**
+     * 返回扩展实现归属。
+     *
+     * <p>SPI 默认视为项目自定义；平台内置解析器必须显式覆盖，避免按包名猜测。</p>
+     */
+    default ExtensionImplementationOrigin implementationOrigin() {
+        return ExtensionImplementationOrigin.CUSTOM;
+    }
 
     /**
      * 返回解析器的稳定描述信息。
