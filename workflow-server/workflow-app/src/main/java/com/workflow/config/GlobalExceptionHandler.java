@@ -21,7 +21,11 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import java.sql.SQLException;
 
 /**
- * 全局异常处理器
+ * 全局异常处理器。
+ *
+ * <p>请求处理失败时以 ERROR 记录异常对象，保留调用堆栈和根因，避免内部发布错误
+ * 被归类为参数或业务异常后丢失诊断信息；客户端响应仍使用各分支约定的提示。
+ * 限流、资源不存在和客户端断连沿用各自的常规处理。</p>
  */
 @Slf4j
 @RestControllerAdvice
@@ -38,7 +42,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnreadableRequestBody(
             HttpMessageNotReadableException exception) {
-        log.warn("请求体格式不正确: {}", exception.getClass().getSimpleName());
+        log.error("请求体格式不正确: {}", exception.getClass().getSimpleName(), exception);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(400, "请求体格式不正确"));
     }
@@ -65,7 +69,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(BusinessConflictException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessConflictException(BusinessConflictException e) {
-        log.warn("业务状态冲突: errorCode={}, message={}", e.getErrorCode(), e.getMessage());
+        log.error("业务状态冲突: errorCode={}, message={}", e.getErrorCode(), e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(409, e.getErrorCode(), e.getMessage()));
     }
@@ -79,7 +83,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RevisionConflictException.class)
     public ResponseEntity<ApiResponse<Object>> handleRevisionConflictException(
             RevisionConflictException e) {
-        log.warn("配置修订冲突: {}", e.getMessage());
+        log.error("配置修订冲突: {}", e.getMessage(), e);
         ApiResponse<Object> response =
                 ApiResponse.error(409, "CONFIG_REVISION_CONFLICT", e.getMessage());
         response.setData(e.getCurrentData());
@@ -96,7 +100,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ApiResponse<Void>> handleForbiddenException(ForbiddenException e) {
-        log.warn("访问拒绝: {}", e.getMessage());
+        log.error("访问拒绝: {}", e.getMessage(), e);
         if (e instanceof BusinessForbiddenException businessException) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(ApiResponse.error(
@@ -120,7 +124,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleArgumentTypeMismatch(
             MethodArgumentTypeMismatchException exception) {
-        log.warn("请求参数格式不正确: parameter={}", exception.getName());
+        log.error("请求参数格式不正确: parameter={}", exception.getName(), exception);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(400, "请求参数格式不正确"));
     }
@@ -133,7 +137,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException e) {
-        log.warn("请求参数异常: {}", e.getMessage());
+        log.error("请求参数异常: {}", e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(400, e.getMessage()));
     }
@@ -154,7 +158,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler({DuplicateKeyException.class, DataIntegrityViolationException.class})
     public ApiResponse<Void> handleDuplicateKeyException(Exception e) {
-        log.warn("数据完整性异常: {}", e.getMessage());
+        log.error("数据完整性异常: {}", e.getMessage(), e);
         
         String message = e.getMessage();
         if (message != null) {
@@ -208,7 +212,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(RuntimeException.class)
     public ApiResponse<Void> handleRuntimeException(RuntimeException e) {
-        log.warn("业务异常: {}", e.getMessage());
+        log.error("业务异常: {}", e.getMessage(), e);
         return ApiResponse.error(e.getMessage());
     }
 

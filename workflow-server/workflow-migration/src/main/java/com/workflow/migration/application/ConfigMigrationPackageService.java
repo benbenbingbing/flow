@@ -125,12 +125,17 @@ public class ConfigMigrationPackageService {
                 + "-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase(Locale.ROOT);
         ConfigMigrationPackageCodec.EncodedPackage encoded = packageCodec.encode(
                 packageNo, migrationTag, assets, expanded.selections());
+        // 文件名突出用户选中的主体，依赖补齐后的包内容仍由原有清单和签名记录。
+        Set<String> requestedIds = new LinkedHashSet<>(request.getAssetIds());
+        List<ConfigMigrationAsset> selectedAssets = assets.stream()
+                .filter(asset -> requestedIds.contains(asset.getId()))
+                .toList();
         log.info("生成配置迁移包，packageNo={}，assetCount={}，selections={}",
                 packageNo, assets.size(), expanded.selections());
         ConfigExportPackage exportPackage = new ConfigExportPackage();
         exportPackage.setPackageNo(packageNo);
         exportPackage.setMigrationTag(migrationTag);
-        exportPackage.setFileName(encoded.fileName());
+        exportPackage.setFileName(ConfigMigrationExportFileName.create(packageNo, selectedAssets));
         exportPackage.setChecksum(encoded.checksum());
         exportPackage.setSignatureValue(encoded.signature());
         exportPackage.setStatus("READY");

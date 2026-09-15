@@ -100,6 +100,7 @@ class ConfigMigrationSystemEntityExportTest {
     @Test
     void includesPublishedBusinessEntityDependencyEvenWithSystemLikeCode() throws Exception {
         ConfigMigrationAsset asset = asset("expense", "sys_custom", false);
+        asset.setAssetName("费用申请");
         ConfigMigrationAsset dependency = asset("sys_custom", null, false);
         when(assetService.getRequired(asset.getId())).thenReturn(asset);
         when(entityMapper.findByEntityCode("sys_custom"))
@@ -111,6 +112,12 @@ class ConfigMigrationSystemEntityExportTest {
         assertEquals(2, summary.get("assetCount"));
         ArgumentCaptor<ConfigExportPackage> captor = ArgumentCaptor.forClass(ConfigExportPackage.class);
         verify(exportPackageMapper).insert(captor.capture());
+        // 自动补齐的实体依赖不应将单项导出命名为批量；列表和再次下载须使用同一文件名。
+        String expectedFileName = "实体-费用申请-expense-v1_" + summary.get("packageNo") + ".wfpack";
+        assertEquals(expectedFileName, summary.get("fileName"));
+        assertEquals(expectedFileName, captor.getValue().getFileName());
+        when(exportPackageMapper.selectById("export-test")).thenReturn(captor.getValue());
+        assertEquals(expectedFileName, service.downloadExport("export-test").fileName());
         assertEquals(List.of("expense", "sys_custom"),
                 packageCodec.decode(captor.getValue().getPackageData()).assets().stream()
                         .map(ConfigMigrationPackageCodec.DecodedAsset::businessKey).toList());
