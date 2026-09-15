@@ -1,6 +1,9 @@
 package com.workflow.migration.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.workflow.admin.setting.application.GlobalSettingService;
+import static com.workflow.admin.setting.application.GlobalSettingRegistry.MIGRATION_SIGNING_KEY;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.migration.api.request.ConfigExportRequest;
@@ -51,7 +54,7 @@ class ConfigMigrationSystemEntityExportTest {
     private EntityDefinitionMapper entityMapper;
     @Spy
     private ConfigMigrationPackageCodec packageCodec =
-            new ConfigMigrationPackageCodec(objectMapper);
+            new ConfigMigrationPackageCodec(objectMapper, org.mockito.Mockito.mock(GlobalSettingService.class));
     @Spy
     private ConfigMigrationPackageDocumentSupport documents =
             new ConfigMigrationPackageDocumentSupport(objectMapper);
@@ -60,8 +63,8 @@ class ConfigMigrationSystemEntityExportTest {
 
     @BeforeEach
     void configurePackageCodec() {
-        ReflectionTestUtils.setField(packageCodec, "signingKey",
-                "system-entity-export-test-signing-key-2026");
+        org.mockito.Mockito.lenient().when(((GlobalSettingService) ReflectionTestUtils.getField(packageCodec, "globalSettings"))
+                .readSystemValue(MIGRATION_SIGNING_KEY)).thenReturn(TextNode.valueOf("system-entity-export-test-signing-key-2026"));
         ReflectionTestUtils.setField(packageCodec, "environmentName", "test");
     }
 

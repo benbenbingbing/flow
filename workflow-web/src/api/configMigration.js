@@ -35,10 +35,11 @@ export const configMigrationApi = {
     })
   },
 
-  uploadPackage(file, sourceEnvironment) {
+  uploadPackage(file, sourceEnvironment, confirmedChecksum) {
     const formData = new FormData()
     formData.append('file', file)
     if (sourceEnvironment) formData.append('sourceEnvironment', sourceEnvironment)
+    if (confirmedChecksum) formData.append('confirmedChecksum', confirmedChecksum)
     return request.post('/config-migration/imports', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })

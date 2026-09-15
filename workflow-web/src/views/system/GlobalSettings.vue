@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>全局设置</h2>
-        <p>调整系统默认偏好。用户已保存的个人设置会继续优先生效。</p>
+        <p>维护系统配置和默认偏好。支持个人覆盖的设置，仍以用户已保存的偏好为准。</p>
       </div>
       <el-button :loading="loading" @click="loadSettings">刷新</el-button>
     </div>
@@ -15,7 +15,7 @@
           <h3>{{ item.name }}</h3>
           <el-tag size="small" type="info">{{ SETTING_VALUE_TYPE_LABELS[item.settingValueType] }}</el-tag>
           <el-tag size="small" :type="item.source === 'DEFAULT' ? 'info' : 'success'">
-            {{ item.source === 'DEFAULT' ? '程序默认值' : '系统设置值' }}
+            {{ item.sensitive ? (item.configured ? '已配置' : '未配置') : item.source === 'DEFAULT' ? '程序默认值' : '系统设置值' }}
           </el-tag>
         </div>
         <p class="setting-remark">{{ item.remark }}</p>
@@ -33,16 +33,19 @@
           <template v-else>
             <el-input
               v-model="drafts[item.settingKey]"
-              :type="item.settingValueType === 'JSON' ? 'textarea' : 'text'"
+              :type="item.sensitive ? 'password' : item.settingValueType === 'JSON' ? 'textarea' : 'text'"
+              :show-password="item.sensitive"
+              autocomplete="off"
               :inputmode="item.settingValueType === 'NUMBER' ? 'decimal' : 'text'"
-              :placeholder="item.settingValueType === 'JSON' ? '请输入 JSON 对象或数组' : item.settingValueType === 'NUMBER' ? '请输入数字' : '请输入字符串'"
+              :placeholder="item.sensitive ? '输入新密钥以替换当前值，留空不修改' : item.settingValueType === 'JSON' ? '请输入 JSON 对象或数组' : item.settingValueType === 'NUMBER' ? '请输入数字' : '请输入字符串'"
               :rows="3"
               :aria-label="item.name"
               :disabled="!canManage || Boolean(savingKey)"
             />
-            <el-button v-if="canManage" type="primary" :disabled="Boolean(savingKey)" @click="saveText(item)">保存</el-button>
+            <el-button v-if="canManage && item.sensitive" :disabled="Boolean(savingKey)" @click="generateKey(item)">生成新密钥</el-button>
+            <el-button v-if="canManage" type="primary" :disabled="Boolean(savingKey) || (item.sensitive && !drafts[item.settingKey])" @click="saveText(item)">保存</el-button>
           </template>
-          <el-button v-if="canManage && item.override" :disabled="Boolean(savingKey)" @click="reset(item)">恢复程序默认值</el-button>
+          <el-button v-if="canManage && item.override && !item.sensitive" :disabled="Boolean(savingKey)" @click="reset(item)">恢复程序默认值</el-button>
         </div>
       </el-card>
     </div>
@@ -110,6 +113,13 @@ function save(item, value) {
 
 function saveText(item) {
   return save(item, drafts.value[item.settingKey])
+}
+
+/** 只生成待保存的新值，管理员可展开查看并复制至其他环境；点击保存才生效。 */
+function generateKey(item) {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  drafts.value[item.settingKey] = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  ElMessage.info('已生成新密钥，保存后生效；如需用于其他环境，请先复制保存')
 }
 
 function reset(item) {

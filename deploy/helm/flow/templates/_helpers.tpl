@@ -61,11 +61,6 @@ app.kubernetes.io/component: {{ .component }}
     secretKeyRef:
       name: {{ .Values.global.existingSecret }}
       key: jwt-secret
-- name: CONFIG_MIGRATION_SIGNING_KEY
-  valueFrom:
-    secretKeyRef:
-      name: {{ .Values.global.existingSecret }}
-      key: config-migration-signing-key
 - name: FILE_STORAGE_S3_ACCESS_KEY
   valueFrom:
     secretKeyRef:

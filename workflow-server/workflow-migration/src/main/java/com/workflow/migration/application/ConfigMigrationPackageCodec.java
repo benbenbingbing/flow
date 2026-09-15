@@ -4,7 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import lombok.RequiredArgsConstructor;
-import jakarta.annotation.PostConstruct;
+import com.workflow.admin.setting.application.GlobalSettingService;
+import static com.workflow.admin.setting.application.GlobalSettingRegistry.MIGRATION_SIGNING_KEY;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -49,28 +50,10 @@ public class ConfigMigrationPackageCodec {
     static final String TARGET_ONLY_DEPENDENCY = "targetOnly";
 
     private final ObjectMapper objectMapper;
-
-    @Value("${config.migration.signing-key}")
-    private String signingKey;            // 发布包 HMAC 签名密钥
+    private final GlobalSettingService globalSettings;
 
     @Value("${config.migration.environment-name:local}")
     private String environmentName;       // 当前环境名称(写入清单)
-
-    @PostConstruct
-    void validateSigningKey() {
-        if (!StringUtils.hasText(signingKey)
-                || signingKey.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException(
-                    "CONFIG_MIGRATION_SIGNING_KEY must contain at least 32 bytes");
-        }
-        String normalized = signingKey.trim().toLowerCase(Locale.ROOT);
-        if (normalized.contains("workflow-config-migration")
-                || normalized.contains("replace-with")
-                || normalized.contains("changeme")) {
-            throw new IllegalStateException(
-                    "CONFIG_MIGRATION_SIGNING_KEY cannot use a public example value");
-        }
-    }
 
     /**
      * 将迁移资产列表编码为 wfpack 发布包。
@@ -153,11 +136,12 @@ public class ConfigMigrationPackageCodec {
      * 解码 wfpack 发布包二进制为结构化资产数据。
      *
      * <p>依次校验：非空与大小上限、zip 解压条目数/单条目大小/总大小/路径合法性、
-     * 清单存在性、HMAC 签名、每个条目的校验和、清单格式版本，最终还原资产列表。</p>
+     * 清单存在性、每个条目的校验和、清单格式版本，最终还原资产列表并返回 HMAC 验签状态。
+     * 签名不一致由导入服务要求人工确认；格式或内容损坏始终拒绝。</p>
      *
      * @param packageData 发布包二进制内容
      * @return 解码后的发布包数据
-     * @throws IllegalArgumentException 包内容为空、超限、签名或校验失败、格式不支持等
+     * @throws IllegalArgumentException 包内容为空、超限、文件校验失败、格式不支持等
      */
     public DecodedPackage decode(byte[] packageData) {
         if (packageData == null || packageData.length == 0) {
@@ -171,12 +155,18 @@ public class ConfigMigrationPackageCodec {
         byte[] manifestBytes = requiredEntry(entries, "manifest.json");
         byte[] checksumBytes = requiredEntry(entries, "checksums.json");
         String signature = new String(requiredEntry(entries, "signature.sig"), StandardCharsets.UTF_8).trim();
-        if (!MessageDigest.isEqual(signature.getBytes(StandardCharsets.UTF_8),
-                hmac(checksumBytes).getBytes(StandardCharsets.UTF_8))) {
-            throw new IllegalArgumentException("发布包签名校验失败");
+        if (!signature.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("发布包签名格式不合法");
         }
 
         Map<String, String> checksums = readMap(checksumBytes, new TypeReference<>() {});
+        // 人工确认只能豁免来源认证，不能使未列入校验清单的文件绕过完整性检查。
+        Set<String> contentPaths = new java.util.HashSet<>(entries.keySet());
+        contentPaths.remove("checksums.json");
+        contentPaths.remove("signature.sig");
+        if (!contentPaths.equals(checksums.keySet())) {
+            throw new IllegalArgumentException("发布包文件与校验清单不一致");
+        }
         checksums.forEach((path, expected) -> {
             byte[] value = requiredEntry(entries, path);
             String actual = sha256(value);
@@ -226,6 +216,8 @@ public class ConfigMigrationPackageCodec {
                 String.valueOf(manifest.getOrDefault("sourceEnvironment", "")),
                 sha256(packageData),
                 signature,
+                MessageDigest.isEqual(signature.getBytes(StandardCharsets.UTF_8),
+                        hmac(checksumBytes).getBytes(StandardCharsets.UTF_8)),
                 manifest,
                 assets);
     }
@@ -820,7 +812,9 @@ public class ConfigMigrationPackageCodec {
         return value;
     }
 
+    /** 每次签名或验签读取最新系统密钥，避免修改设置后仍使用旧的进程级缓存。 */
     private String hmac(byte[] value) {
+        String signingKey = globalSettings.readSystemValue(MIGRATION_SIGNING_KEY).textValue();
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(signingKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
@@ -896,12 +890,13 @@ public class ConfigMigrationPackageCodec {
                                  Map<String, Object> manifest) {
     }
 
-    /** 解码后的发布包数据(编号、标签、源环境、校验和、签名、清单、资产列表)。 */
+    /** 解码后的完整包及来源验签状态；signatureVerified=false 的包必须经人工确认才能入库。 */
     public record DecodedPackage(String packageNo,
                                  String migrationTag,
                                  String sourceEnvironment,
                                  String checksum,
                                  String signature,
+                                 boolean signatureVerified,
                                  Map<String, Object> manifest,
                                  List<DecodedAsset> assets) {
     }

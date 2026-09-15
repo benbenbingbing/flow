@@ -214,6 +214,9 @@ public class ConfigMigrationReadService {
                         ConfigImportPackage::getMigrationTag,
                         ConfigImportPackage::getFileName,
                         ConfigImportPackage::getChecksum,
+                        ConfigImportPackage::getSignatureStatus,
+                        ConfigImportPackage::getSignatureConfirmedBy,
+                        ConfigImportPackage::getSignatureConfirmedAt,
                         ConfigImportPackage::getStatus,
                         ConfigImportPackage::getImportedBy,
                         ConfigImportPackage::getImportedAt,
@@ -245,6 +248,9 @@ public class ConfigMigrationReadService {
         result.put("id", value.getId());
         result.put("packageNo", value.getPackageNo());
         result.put("sourceEnvironment", value.getSourceEnvironment());
+        result.put("signatureStatus", value.getSignatureStatus());
+        result.put("signatureConfirmedBy", value.getSignatureConfirmedBy());
+        result.put("signatureConfirmedAt", value.getSignatureConfirmedAt());
         result.put("migrationTag", value.getMigrationTag());
         result.put("fileName", value.getFileName());
         result.put("checksum", value.getChecksum());

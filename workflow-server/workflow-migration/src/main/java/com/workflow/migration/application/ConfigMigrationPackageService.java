@@ -201,12 +201,13 @@ public class ConfigMigrationPackageService {
     /**
      * 上传并导入 wfpack 发布包。
      *
-     * <p>解码校验通过后，若同校验和批次已存在则直接返回；否则新建导入批次，
+     * <p>包体校验通过、签名通过或已人工确认后，若同校验和批次已存在则直接返回；否则新建导入批次，
      * 为每个资产生成导入条目并初始化比较状态、依赖映射状态与发布状态。</p>
      *
      * @param file              发布包文件
      * @param sourceEnvironment 源环境名称(可选，覆盖包内信息)
-     * @return 导入批次摘要
+     * @param confirmedChecksum 用户确认信任的文件摘要；未确认时为空，必须与本次上传文件完全匹配
+     * @return 导入批次摘要，或尚未入库的签名确认提示
      * @throws IllegalArgumentException 文件为空或解码失败
      */
     @Transactional
@@ -217,12 +218,22 @@ public class ConfigMigrationPackageService {
             risk = AuditRiskLevel.CRITICAL,
             required = true,
             targetType = "CONFIG_MIGRATION_PACKAGE")
-    public Map<String, Object> importPackage(MultipartFile file, String sourceEnvironment) {
+    public Map<String, Object> importPackage(MultipartFile file, String sourceEnvironment, String confirmedChecksum) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("请选择 wfpack 文件");
         }
         try {
-            ConfigMigrationPackageCodec.DecodedPackage decoded = packageCodec.decode(file.getBytes());
+            byte[] packageData = file.getBytes();
+            ConfigMigrationPackageCodec.DecodedPackage decoded = packageCodec.decode(packageData);
+            // 先完成包体校验，再要求人工确认来源。确认绑定完整文件摘要，不能用于另一份包。
+            if (StringUtils.hasText(confirmedChecksum) && !decoded.checksum().equals(confirmedChecksum)) {
+                throw new IllegalArgumentException("确认的文件与本次上传不一致，请重新上传并确认");
+            }
+            if (!decoded.signatureVerified() && !decoded.checksum().equals(confirmedChecksum)) {
+                return Map.of("confirmationRequired", true,
+                        "checksum", decoded.checksum(), "packageNo", decoded.packageNo(),
+                        "message", "发布包签名校验未通过，可能是两端环境密钥不同，也可能是文件被修改。请确认来源可信后继续导入。");
+            }
             ConfigImportPackage existing = importPackageMapper.selectOne(
                     new LambdaQueryWrapper<ConfigImportPackage>()
                             .eq(ConfigImportPackage::getChecksum, decoded.checksum())
@@ -238,9 +249,14 @@ public class ConfigMigrationPackageService {
             importPackage.setFileName(file.getOriginalFilename());
             importPackage.setChecksum(decoded.checksum());
             importPackage.setStatus("UPLOADED");
-            importPackage.setPackageData(file.getBytes());
+            importPackage.setPackageData(packageData);
             importPackage.setImportedBy(UserContext.getUsername());
             importPackage.setImportedAt(LocalDateTime.now());
+            importPackage.setSignatureStatus(decoded.signatureVerified() ? "VERIFIED" : "MISMATCH_CONFIRMED");
+            if (!decoded.signatureVerified()) {
+                importPackage.setSignatureConfirmedBy(importPackage.getImportedBy());
+                importPackage.setSignatureConfirmedAt(importPackage.getImportedAt());
+            }
             importPackage.setDeleted(0);
             importPackageMapper.insert(importPackage);
             Map<String, PackageAsset> packageAssets = decoded.assets().stream()
@@ -270,8 +286,9 @@ public class ConfigMigrationPackageService {
                 item.setUpdatedAt(LocalDateTime.now());
                 importItemMapper.insert(item);
             }
-            log.info("导入配置迁移包，importId={}，packageNo={}，assetCount={}",
-                    importPackage.getId(), importPackage.getPackageNo(), decoded.assets().size());
+            log.info("导入配置迁移包，importId={}，packageNo={}，assetCount={}，signatureStatus={}，confirmedBy={}，checksum={}",
+                    importPackage.getId(), importPackage.getPackageNo(), decoded.assets().size(),
+                    importPackage.getSignatureStatus(), importPackage.getSignatureConfirmedBy(), decoded.checksum());
             return importSummary(importPackage);
         } catch (IllegalArgumentException e) {
             throw e;
@@ -1288,6 +1305,9 @@ public class ConfigMigrationPackageService {
         result.put("id", value.getId());
         result.put("packageNo", value.getPackageNo());
         result.put("sourceEnvironment", value.getSourceEnvironment());
+        result.put("signatureStatus", value.getSignatureStatus());
+        result.put("signatureConfirmedBy", value.getSignatureConfirmedBy());
+        result.put("signatureConfirmedAt", value.getSignatureConfirmedAt());
         result.put("migrationTag", value.getMigrationTag());
         result.put("fileName", value.getFileName());
         result.put("checksum", value.getChecksum());

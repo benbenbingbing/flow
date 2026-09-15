@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.workflow.admin.setting.api.GlobalSettingException;
 import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -20,19 +22,23 @@ public class GlobalSettingRegistry {
     public static final String SYSTEM = "SYSTEM";
     public static final String USER = "USER";
     public static final String FIELD_TYPES_COLLAPSED = "ui.entity_design.field_types_collapsed";
+    public static final String MIGRATION_SIGNING_KEY = "config.migration.signing_key";
     private static final int MAX_VALUE_BYTES = 16 * 1024;
     private final ObjectMapper json = new ObjectMapper();
     private final List<Definition> definitions = List.of(new Definition(
             FIELD_TYPES_COLLAPSED, "实体设计字段类型面板收起状态",
             "true 表示收起，false 表示展开，默认展开。同一账号在所有实体设计页共用；用户设置优先于系统设置，删除个人记录后恢复继承。切换状态自动保存，不影响实体未保存状态和发布。",
-            ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true));
+            ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
+            MIGRATION_SIGNING_KEY, "配置迁移签名密钥",
+            "用于配置迁移包的 HMAC-SHA256 签名与验签。初始化时生成随机密钥；可将需要互认的环境设置为相同值。输入 32 至 256 字节的密钥，不能包含首尾空白。保存后立即生效，已生成的包保留原签名；签名不一致时需确认来源后导入。已保存的密钥不回显，也不支持个人覆盖或恢复默认值。",
+            ValueType.STRING, NullNode.instance, Set.of(SYSTEM), false, true));
 
     /** JSON 专用于对象/数组，前三种标量类型各自单独校验。 */
     public enum ValueType { BOOLEAN, NUMBER, STRING, JSON }
 
-    /** clientReadable 显式限制哪些系统值可返回普通用户页面。 */
+    /** clientReadable 限制个人接口，sensitive 要求系统接口也不回显值且禁止删除恢复默认。 */
     public record Definition(String key, String name, String remark, ValueType valueType,
-                             JsonNode defaultValue, Set<String> scopes, boolean clientReadable) { }
+                             JsonNode defaultValue, Set<String> scopes, boolean clientReadable, boolean sensitive) { }
 
     public List<Definition> all() { return definitions; }
 
@@ -47,7 +53,18 @@ public class GlobalSettingRegistry {
      * 返回保留原始业务类型的节点，不依赖任何数据库 JSON 能力。
      */
     public JsonNode parse(Definition definition, String text) {
-        return parse(definition.valueType(), text);
+        JsonNode value = parse(definition.valueType(), text);
+        if (MIGRATION_SIGNING_KEY.equals(definition.key())) {
+            String key = value.textValue();
+            int bytes = key.getBytes(StandardCharsets.UTF_8).length;
+            String normalized = key.toLowerCase(Locale.ROOT);
+            if (bytes < 32 || bytes > 256 || !key.equals(key.strip())
+                    || normalized.contains("workflow-config-migration")
+                    || normalized.contains("replace-with") || normalized.contains("changeme")) {
+                throw GlobalSettingException.invalid("迁移签名密钥须为 32 至 256 字节，不能包含首尾空白或使用公开示例值");
+            }
+        }
+        return value;
     }
 
     /** 按持久化类型解析文本；数字必须有限，JSON 必须是对象或数组。 */

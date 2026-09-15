@@ -17,8 +17,6 @@ import com.workflow.contracts.audit.AuditRiskLevel;
 import com.workflow.contracts.audit.SystemAudit;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
-import com.workflow.entity.permission.application.EntityActionCapabilityService;
-import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,7 +59,6 @@ public class TaskActionService {
     private final com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper operationLogMapper;
     private final SysUserService sysUserService;
     private final NodeFormSubmissionService nodeFormSubmissionService;
-    private final EntityActionCapabilityService entityActionCapabilityService;
     private final EntityRecordPort entityRecordPort;
     /** 抄送/知会服务：用于统计未读抄送数等 */
     private final ProcessCcService processCcService;
@@ -218,6 +215,8 @@ public class TaskActionService {
         }
 
         if (checkAccess) {
+            // 待办办理人/候选身份授予当前任务的审批权，无需额外实体菜单权限；
+            // 提交前必须重新检查归属，提交字段仍由节点表单约束。
             requireTaskProcessingAccess(task);
         }
 
@@ -232,7 +231,6 @@ public class TaskActionService {
             } else {
                 processTaskService.synchronizeClaimedTask(taskId, processInstanceId, assignee);
             }
-            requireEntityApprovalAccess(task);
         } else if (!StringUtils.hasText(assignee)) {
             taskService.setAssignee(taskId, userId);
         }
@@ -463,16 +461,6 @@ public class TaskActionService {
 
     private BusinessConflictException taskAlreadyCompleted() {
         return new BusinessConflictException("TASK_ALREADY_COMPLETED", "任务不存在或已被处理，请刷新待办列表");
-    }
-
-    private void requireEntityApprovalAccess(Task task) {
-        String entityCode = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityCode"));
-        String entityDataId = asString(runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId"));
-        if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
-            entityActionCapabilityService.requireStandardPermission(
-                    entityCode,
-                    EntityPermissionAction.APPROVE);
-        }
     }
 
     private void claimTaskForCurrentUser(Task task, String currentIdentity) {

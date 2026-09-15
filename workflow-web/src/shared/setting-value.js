@@ -2,6 +2,8 @@ export const SETTING_VALUE_TYPE_LABELS = Object.freeze({ BOOLEAN: '布尔', NUMB
 
 /** 字符串输入框展示原文；数字和 JSON 使用序列化文本，布尔由开关展示。 */
 export function settingInputText(setting) {
+  // 敏感设置只允许输入新值，不能将掩码或服务端意外返回的值写回数据库。
+  if (setting.sensitive) return ''
   return setting.settingValueType === 'STRING' ? setting.value : JSON.stringify(setting.value)
 }
 

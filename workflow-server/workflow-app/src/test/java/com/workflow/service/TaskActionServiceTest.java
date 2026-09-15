@@ -20,8 +20,6 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
-import com.workflow.entity.permission.application.EntityActionCapabilityService;
-import com.workflow.entity.permission.application.EntityPermissionAction;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -89,9 +87,6 @@ class TaskActionServiceTest {
     private NodeFormSubmissionService nodeFormSubmissionService;
 
     @Mock
-    private EntityActionCapabilityService entityActionCapabilityService;
-
-    @Mock
     private EntityRecordPort entityRecordPort;
 
     @Mock
@@ -132,7 +127,6 @@ class TaskActionServiceTest {
                 operationLogMapper,
                 sysUserService,
                 nodeFormSubmissionService,
-                entityActionCapabilityService,
                 entityRecordPort,
                 processCcService,
                 nextApproverOverrideService,
@@ -258,14 +252,13 @@ class TaskActionServiceTest {
         verify(taskService).complete(eq("task-1"), anyMap());
     }
 
-    /** 测试候选人在无实体审批权限时仍可查看任务：验证不触发实体权限校验与 claim */
+    /** 候选人凭待办身份查看任务，打开详情不能自动认领 */
     @Test
     void candidateCanReadTaskWithoutEntityApprovalCapability() {
         mockCandidateTask("task-1");
 
         service.requireTaskAccess("task-1");
 
-        verifyNoInteractions(entityActionCapabilityService);
         verify(taskService, never()).claim(any(), any());
     }
 
@@ -311,26 +304,38 @@ class TaskActionServiceTest {
         verifyNoInteractions(nodeFormSubmissionService, processTaskService, operationLogMapper);
     }
 
-    /** 测试候选人完成时先认领再校验实体审批权限：验证 claim、同步、权限校验、complete 的顺序，以及操作日志与记录写入 */
+    /** 候选人凭待办身份完成审批：先认领并同步，再完成任务、写入操作日志 */
     @Test
-    void candidateCompletionClaimsBeforeCheckingEntityApprovalCapability() {
+    void candidateCompletionClaimsAndCompletesWithoutEntityApprovalPermission() {
         mockCandidateTask("task-1");
         when(task.getProcessInstanceId()).thenReturn("proc-1");
         when(runtimeService.getVariable("proc-1", "entityCode")).thenReturn("expense");
         when(runtimeService.getVariable("proc-1", "entityDataId")).thenReturn("record-1");
         service.completeTask("task-1", "admin", "approve", "同意", null, null);
 
-        var ordered = inOrder(taskService, processTaskService, entityActionCapabilityService);
+        var ordered = inOrder(taskService, processTaskService);
         ordered.verify(taskService).claim("task-1", "admin");
         ordered.verify(processTaskService).synchronizeClaimedTask("task-1", "proc-1", "admin");
-        ordered.verify(entityActionCapabilityService)
-                .requireStandardPermission(
-                        "expense",
-                        EntityPermissionAction.APPROVE);
         ordered.verify(taskService).complete(eq("task-1"), anyMap());
         verify(operationLogMapper).insert(any(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog.class));
         verify(entityRecordPort).recordActivity(
                 "expense", "record-1", "CLAIM", "认领任务", "proc-1", "task-1");
+    }
+
+    /** 与管理员流转给 lisi 的场景一致：普通办理人可完成本人任务。 */
+    @Test
+    void assignedUserCanApproveTheirOwnTaskWithoutEntityPermissions() {
+        UserContext.setCurrentUser("lisi-id", "lisi");
+        mockTask("task-lisi", "proc-1", "lisi");
+        when(runtimeService.getVariable("proc-1", "entityCode")).thenReturn("expense");
+        when(runtimeService.getVariable("proc-1", "entityDataId")).thenReturn("record-1");
+
+        service.completeTask("task-lisi", "lisi", "approve", "同意", null, null);
+
+        verify(taskService, never()).claim(any(), any());
+        verify(taskService).complete(eq("task-lisi"), anyMap());
+        verify(processTaskService).completeTask("task-lisi", "approve", "同意", null);
+        verify(nodeFormSubmissionService).applyEditableData(task, null);
     }
 
     /** 测试并发认领时另一用户抢先认领返回冲突：验证抛出业务冲突异常且不触发同步认领 */

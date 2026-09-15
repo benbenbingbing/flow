@@ -561,8 +561,8 @@ class EntityFormActionServiceTest {
         when(definitionMapper.selectById("entity-1"))
                 .thenReturn(definition);
         EntityDataDTO row = approvalRow();
-        when(dataService.findAccessibleById(
-                "work_order", "record-1", null))
+        when(dataService.findById(
+                "work_order", "record-1"))
                 .thenReturn(row);
         when(capabilityService.evaluateApprovalAction(
                 eq("work_order"), same(row),
@@ -607,8 +607,8 @@ class EntityFormActionServiceTest {
         when(definitionMapper.selectById("entity-1"))
                 .thenReturn(definition);
         EntityDataDTO row = approvalRow();
-        when(dataService.findAccessibleById(
-                "work_order", "record-1", null))
+        when(dataService.findById(
+                "work_order", "record-1"))
                 .thenReturn(row);
         // 能力摘要可只带同记录的最近待办；执行必须以显式 taskId 精确回查。
         when(capabilityService.evaluateApprovalAction(
@@ -651,8 +651,8 @@ class EntityFormActionServiceTest {
         when(definitionMapper.selectById("entity-1"))
                 .thenReturn(definition);
         EntityDataDTO row = approvalRow();
-        when(dataService.findAccessibleById(
-                "work_order", "record-1", null))
+        when(dataService.findById(
+                "work_order", "record-1"))
                 .thenReturn(row);
         when(capabilityService.evaluateApprovalAction(
                 eq("work_order"), same(row),
@@ -687,8 +687,8 @@ class EntityFormActionServiceTest {
         when(definitionMapper.selectById("entity-1"))
                 .thenReturn(definition);
         EntityDataDTO row = approvalRow();
-        when(dataService.findAccessibleById(
-                "work_order", "record-1", null))
+        when(dataService.findById(
+                "work_order", "record-1"))
                 .thenReturn(row);
         when(releaseService.resolveRuntimeEventSnapshot(
                 "form-1", null, null, null))

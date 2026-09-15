@@ -180,6 +180,9 @@ class ConfigMigrationReadServiceTest {
     @Test
     void pageImportsUsesSummaryProjectionWithoutReportOrPackageBlob() {
         ConfigImportPackage value = importPackage();
+        value.setSignatureStatus("MISMATCH_CONFIRMED");
+        value.setSignatureConfirmedBy("operator");
+        value.setSignatureConfirmedAt(value.getImportedAt());
         when(importPackageMapper.selectPage(any(Page.class), any()))
                 .thenAnswer(invocation -> {
                     Page<ConfigImportPackage> page = invocation.getArgument(0);
@@ -189,6 +192,8 @@ class ConfigMigrationReadServiceTest {
                     assertEquals(20, page.getSize());
                     String selectedColumns = wrapper.getSqlSelect();
                     assertTrue(selectedColumns.contains("source_environment"));
+                    assertTrue(selectedColumns.contains("signature_status"));
+                    assertTrue(selectedColumns.contains("signature_confirmed_by"));
                     assertFalse(selectedColumns.contains("package_data"));
                     assertFalse(selectedColumns.contains(
                             "validation_report_json"));
@@ -203,6 +208,9 @@ class ConfigMigrationReadServiceTest {
         Map<String, Object> summary = result.getRecords().get(0);
         assertEquals("BLOCKED", summary.get("status"));
         assertEquals("missing dependency", summary.get("errorMessage"));
+        assertEquals("MISMATCH_CONFIRMED", summary.get("signatureStatus"));
+        assertEquals("operator", summary.get("signatureConfirmedBy"));
+        assertEquals(value.getImportedAt(), summary.get("signatureConfirmedAt"));
         assertFalse(summary.containsKey("packageData"));
         assertFalse(summary.containsKey("validationReportJson"));
     }

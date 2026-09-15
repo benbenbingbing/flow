@@ -12,8 +12,11 @@ const packageFile = path.join(
   resourcesRoot,
   "project-config/packages/project-f01-f07-v3.wfpack"
 );
-const signingKey = process.env.CONFIG_MIGRATION_SIGNING_KEY
-  || "workflow-config-migration-development-key";
+// 包体检查始终执行；离线验签需显式提供与生成包相同的密钥。
+const keyFileIndex = process.argv.indexOf("--signing-key-file");
+const signingKey = keyFileIndex >= 0
+  ? fs.readFileSync(process.argv[keyFileIndex + 1], "utf8").trim()
+  : null;
 
 const systemFields = new Set([
   "id", "code", "name", "status", "createdBy", "createdAt", "updatedBy",
@@ -295,11 +298,13 @@ const manifest = JSON.parse(unzip("manifest.json").toString("utf8"));
 const checksumsBytes = unzip("checksums.json");
 const checksums = JSON.parse(checksumsBytes.toString("utf8"));
 const signature = unzip("signature.sig").toString("utf8").trim();
-const expectedSignature = crypto.createHmac("sha256", signingKey)
-  .update(checksumsBytes)
-  .digest("hex");
-
-assert(signature === expectedSignature, "发布包 HMAC 签名不一致");
+assert(/^[0-9a-f]{64}$/.test(signature), "发布包签名格式不合法");
+if (signingKey !== null) {
+  const expectedSignature = crypto.createHmac("sha256", signingKey).update(checksumsBytes).digest("hex");
+  assert(signature === expectedSignature, "发布包 HMAC 签名不一致");
+} else {
+  console.warn("未提供 --signing-key-file，仅检查配置与文件完整性，不验证包来源签名。");
+}
 for (const [entry, expected] of Object.entries(checksums)) {
   assert(sha256(unzip(entry)) === expected, `发布包文件校验失败: ${entry}`);
 }

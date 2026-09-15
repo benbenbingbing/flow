@@ -99,17 +99,8 @@ public class EntityFormActionService {
         EntityDataDTO row = loadRow(
                 definition,
                 request.getRecordId(),
-                request.getListKey());
-        if ("approve".equals(mode)) {
-            EntityActionCapabilityDTO approval =
-                    capabilityService.evaluateApprovalAction(
-                            definition.getEntityCode(), row,
-                            approvalRule(), null);
-            requireApprovalTaskBinding(
-                    request.getTaskId(),
-                    request.getReleaseResolutionToken(),
-                    source, definition, row, approval);
-        }
+                request.getListKey(), mode, request.getTaskId(),
+                request.getReleaseResolutionToken(), source).row();
         return resolveTrustedPublishedSnapshot(
                 source.form(), definition, mode, row);
     }
@@ -164,7 +155,8 @@ public class EntityFormActionService {
      *
      * <p>该入口供同一服务进程内的受信任运行时适配器使用，避免再次按 ACTIVE 指针
      * 解析表单而让历史会话漂移。{@code authorizedRow} 必须已经过当前 Flow 用户的
-     * 对象权限、DataScope 以及调用方固定上下文校验；本方法只复用平台统一的按钮
+     * 普通模式的对象权限/DataScope，或审批模式的真实待办与发布令牌绑定，
+     * 以及调用方固定上下文校验；本方法只复用平台统一的按钮
      * 配置、权限和可用性规则求值。</p>
      *
      * @param publishedForm 当前会话固定的已发布表单快照
@@ -310,8 +302,8 @@ public class EntityFormActionService {
      *
      * <p>调用方必须传入 {@code resolveRuntimeEventSnapshot} 的原始结果；本方法
      * 不再读取 ACTIVE 或热修复目标，避免权限按钮与随后执行的事件链来自不同制品。
-     * 记录读取仍走 {@link EntityDataDynamicService}，继续执行对象权限和 DataScope
-     * 校验。</p>
+     * 普通模式继续执行对象权限和 DataScope 校验；审批模式以当前用户的真实
+     * 待办和固定发布令牌授权记录访问，自定义按钮权限仍独立校验。</p>
      *
      * @param request 表单按钮执行请求
      * @param verifiedSnapshot 已校验的完整有效发布快照
@@ -383,12 +375,14 @@ public class EntityFormActionService {
         if (Boolean.FALSE.equals(button.get("enabled"))) {
             throw new ForbiddenException("表单按钮未启用");
         }
-        EntityDataDTO row = loadRow(
+        AuthorizedRecord record = loadRow(
                 definition,
                 request.getRecordId(),
-                request.getListKey());
+                request.getListKey(), requestedMode(request), request.getTaskId(),
+                request.getReleaseResolutionToken(), source);
         String mode = authorizedRequestMode(
-                request, source, definition, row);
+                request, definition, record);
+        EntityDataDTO row = record.row();
         if (!modes(button).contains(mode)) {
             throw new ForbiddenException(
                     "当前表单模式不能执行该按钮");
@@ -504,20 +498,60 @@ public class EntityFormActionService {
         }
     }
 
-    private EntityDataDTO loadRow(
+    /**
+     * 按运行模式加载并鉴权记录。审批任务本身授予其业务记录的办理访问权，
+     * 不要求办理人另有实体列表权限或命中列表 DataScope。
+     *
+     * <p>审批分支读取的记录仅用于服务端联合校验；只有当前用户、确切任务、
+     * 记录、流程实例和发布令牌全部匹配后才返回，不能仅凭 mode/taskId 放行。
+     * 其余模式保持原有实体数据权限校验。</p>
+     *
+     * @param mode 已归一化的表单运行模式
+     * @param taskId 审批请求声明的确切任务 ID，不能用实体任务摘要替代
+     * @param releaseResolutionToken 绑定当前用户、任务及发布版本的签名令牌
+     * @return 已鉴权记录及审批任务上下文；新增模式的记录为空
+     * @throws BusinessForbiddenException 审批上下文缺失、失效或与记录不匹配
+     */
+    private AuthorizedRecord loadRow(
             EntityDefinition definition,
             String recordId,
-            String listKey) {
+            String listKey,
+            String mode,
+            String taskId,
+            String releaseResolutionToken,
+            RuntimeSource source) {
+        if ("approve".equals(mode)) {
+            if (!StringUtils.hasText(recordId)
+                    || !StringUtils.hasText(taskId)
+                    || definition.getStorageMode()
+                    == EntityDefinition.StorageMode.SYSTEM) {
+                throw new BusinessForbiddenException(
+                        "UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH",
+                        "审批表单按钮缺少有效的记录和任务上下文");
+            }
+            EntityDataDTO row = dataService.findById(
+                    definition.getEntityCode(), recordId);
+            EntityActionCapabilityDTO approval =
+                    capabilityService.evaluateApprovalAction(
+                            definition.getEntityCode(), row,
+                            approvalRule(), null);
+            ActionableTaskContext task = requireApprovalTaskBinding(
+                    taskId, releaseResolutionToken, source, definition, row, approval);
+            return new AuthorizedRecord(row, task);
+        }
         if (!StringUtils.hasText(recordId)
                 || definition.getStorageMode()
                 == EntityDefinition.StorageMode.SYSTEM) {
-            return null;
+            return new AuthorizedRecord(null, null);
         }
-        return dataService.findAccessibleById(
+        return new AuthorizedRecord(dataService.findAccessibleById(
                 definition.getEntityCode(),
                 recordId,
-                listKey);
+                listKey), null);
     }
+
+    /** 审批任务上下文仅在记录和发布令牌联合校验通过后附加。 */
+    private record AuthorizedRecord(EntityDataDTO row, ActionableTaskContext task) {}
 
     private EntityActionCapabilityDTO builtInCapability(
             String key,
@@ -835,22 +869,9 @@ public class EntityFormActionService {
      */
     private String authorizedRequestMode(
             UiEventExecuteRequest request,
-            RuntimeSource source,
             EntityDefinition definition,
-            EntityDataDTO row) {
-        Object contextMode = request.getContext() == null
-                ? null : request.getContext().get("mode");
-        Object inputMode = request.getInput() == null
-                ? null : request.getInput().get("mode");
-        if (contextMode != null && inputMode != null
-                && !Objects.equals(
-                        normalizeMode(text(contextMode)),
-                        normalizeMode(text(inputMode)))) {
-            throw new ForbiddenException(
-                    "表单运行模式声明不一致");
-        }
-        String mode = requireMode(text(
-                contextMode != null ? contextMode : inputMode));
+            AuthorizedRecord record) {
+        String mode = requestedMode(request);
         boolean create = !StringUtils.hasText(request.getRecordId());
         if (create != "create".equals(mode)) {
             throw new ForbiddenException(
@@ -867,26 +888,7 @@ public class EntityFormActionService {
                     definition.getEntityCode(),
                     EntityPermissionAction.VIEW);
             case "approve" -> {
-                EntityActionCapabilityDTO approval =
-                        capabilityService.evaluateApprovalAction(
-                                definition.getEntityCode(),
-                                row,
-                                approvalRule(),
-                                null);
-                if (approval == null
-                        || !approval.isVisible()
-                        || !approval.isEnabled()) {
-                    throw new ForbiddenException(
-                            approval == null
-                                    || !StringUtils.hasText(
-                                    approval.getReason())
-                                    ? "当前用户没有可办理的审批任务"
-                                    : approval.getReason());
-                }
-                ActionableTaskContext task = requireApprovalTaskBinding(
-                        request.getTaskId(),
-                        request.getReleaseResolutionToken(),
-                        source, definition, row, approval);
+                ActionableTaskContext task = record.task();
                 // 只有服务端已联合校验的任务/实例身份可以继续传入事件链。
                 request.setServerTaskId(task.taskId());
                 request.setServerProcessInstanceId(
@@ -901,8 +903,9 @@ public class EntityFormActionService {
     /**
      * 将审批模式绑定到当前用户真实待办、业务记录和流程发布版。
      *
-     * <p>taskId 是公开请求坐标，只有与能力查询结果一致并经流程端口联合回查后
-     * 才可信；发布令牌必须为该任务的 ACTIVE_TASK 历史/节点，不能省略后回退
+     * <p>taskId 是公开请求坐标，只有通过能力判断并经流程端口精确联合回查后
+     * 才可信；会签时不能要求它等于能力摘要中的另一待办。发布令牌必须为该任务的
+     * ACTIVE_TASK 历史/节点，不能省略后回退
      * 当前 ACTIVE，也不能用 NEW_INSTANCE 或另一流程版本的令牌替代。</p>
      */
     private ActionableTaskContext requireApprovalTaskBinding(
@@ -927,7 +930,8 @@ public class EntityFormActionService {
                 .orElseThrow(() -> new BusinessForbiddenException(
                         "UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH",
                         "审批表单按钮与当前可办理任务不一致"));
-        if (!Objects.equals(row.getId(), task.entityDataId())
+        if (!Objects.equals(requestedTaskId, task.taskId())
+                || !Objects.equals(row.getId(), task.entityDataId())
                 || !Objects.equals(
                         row.getProcessInstanceId(),
                         task.processInstanceId())
@@ -950,6 +954,22 @@ public class EntityFormActionService {
                 task.entityCode(),
                 task.entityDataId());
         return task;
+    }
+
+    /** 统一解析模式声明，防止记录鉴权与按钮执行使用相互冲突的模式。 */
+    private String requestedMode(UiEventExecuteRequest request) {
+        Object contextMode = request.getContext() == null
+                ? null : request.getContext().get("mode");
+        Object inputMode = request.getInput() == null
+                ? null : request.getInput().get("mode");
+        if (contextMode != null && inputMode != null
+                && !Objects.equals(
+                        normalizeMode(text(contextMode)),
+                        normalizeMode(text(inputMode)))) {
+            throw new ForbiddenException("表单运行模式声明不一致");
+        }
+        return requireMode(text(
+                contextMode != null ? contextMode : inputMode));
     }
 
     private String normalizeMode(String mode) {

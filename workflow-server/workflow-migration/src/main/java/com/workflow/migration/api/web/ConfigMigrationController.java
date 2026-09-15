@@ -168,14 +168,16 @@ public class ConfigMigrationController {
      *
      * @param file              发布包文件
      * @param sourceEnvironment 源环境名称(可选，覆盖包内信息)
-     * @return 导入批次摘要
+     * @param confirmedChecksum 用户明确确认来源可信的文件摘要，可选
+     * @return 导入批次摘要或要求用户确认的提示；提示阶段不创建导入批次
      */
     @PostMapping(value = "/imports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<Map<String, Object>> importPackage(
             @RequestPart("file") MultipartFile file,
-            @RequestParam(required = false) String sourceEnvironment) {
+            @RequestParam(required = false) String sourceEnvironment,
+            @RequestParam(required = false) String confirmedChecksum) {
         require("config-migration:import");
-        return ApiResponse.success(packageService.importPackage(file, sourceEnvironment));
+        return ApiResponse.success(packageService.importPackage(file, sourceEnvironment, confirmedChecksum));
     }
 
     /**

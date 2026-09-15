@@ -14,6 +14,8 @@ assert.equal(serializeSettingInput('STRING', ''), '""')
 assert.equal(serializeSettingInput('STRING', 'true'), '"true"')
 assert.equal(serializeSettingInput('STRING', '  中文\n"引号"'), JSON.stringify('  中文\n"引号"'))
 assert.equal(settingInputText({ settingValueType: 'STRING', value: '原文' }), '原文')
+assert.equal(settingInputText({ settingValueType: 'STRING', sensitive: true, value: null }), '')
+assert.equal(settingInputText({ settingValueType: 'STRING', sensitive: true, value: 'must-not-echo' }), '')
 assert.equal(serializeSettingInput('JSON', '{"width":240}'), '{"width":240}')
 assert.equal(serializeSettingInput('JSON', '[1, false, "中文"]'), '[1,false,"中文"]')
 for (const input of ['null', 'true', '12', '"text"', '{', '[] {}']) {

@@ -36,10 +36,12 @@ node tools/build-project-config-package.mjs
 src/main/resources/project-config/packages/project-f01-f07-v3.wfpack
 ```
 
-生产或共享环境使用非默认签名密钥时：
+离线构建默认生成一次性随机签名密钥，目标系统导入时需要确认来源。
+后端密钥在“系统管理 → 全局设置 → 配置迁移签名密钥”中维护，不读取环境变量。
+如需直接通过目标系统验签，将同一个自选密钥保存到目标全局设置和本地受限文件，再显式传入：
 
 ```bash
-CONFIG_MIGRATION_SIGNING_KEY=... node tools/build-project-config-package.mjs
+node tools/build-project-config-package.mjs --signing-key-file /secure/path/migration-key.txt
 ```
 
 ## 校验配置
@@ -47,6 +49,9 @@ CONFIG_MIGRATION_SIGNING_KEY=... node tools/build-project-config-package.mjs
 ```bash
 node tools/validate-project-config.mjs
 ```
+
+校验脚本默认只检查配置与文件完整性；追加 `--signing-key-file /secure/path/migration-key.txt`
+可验证包来源签名。密钥文件不能提交到仓库。
 
 校验覆盖：
 

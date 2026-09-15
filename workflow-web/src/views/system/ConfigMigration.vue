@@ -203,9 +203,10 @@
         </el-tab-pane>
         <el-tab-pane label="导入与发布" name="imports">
           <div class="import-panel">
-            <el-input v-model="sourceEnvironment" placeholder="来源环境，如 TEST" style="width: 220px" />
+            <el-input v-model="sourceEnvironment" :disabled="uploading" placeholder="来源环境，如 TEST" style="width: 220px" />
             <el-upload
               ref="uploadRef"
+              :disabled="uploading"
               :auto-upload="false"
               :limit="1"
               accept=".wfpack"
@@ -250,7 +251,12 @@
               <template #default="{ row }">
                 <div>{{ row.importedBy || '-' }} · {{ formatDate(row.importedAt) }}</div>
                 <div v-if="row.errorMessage" class="error-line" :title="row.errorMessage">{{ row.errorMessage }}</div>
-                <div v-else class="meta-line">校验和与签名已验证</div>
+                <div v-if="row.signatureStatus === 'VERIFIED'" class="meta-line">文件校验与签名已通过</div>
+                <template v-else-if="row.signatureStatus === 'MISMATCH_CONFIRMED'">
+                  <el-tag size="small" type="warning">签名未通过，已人工确认</el-tag>
+                  <div class="meta-line">{{ row.signatureConfirmedBy }} · {{ formatDate(row.signatureConfirmedAt) }}</div>
+                </template>
+                <div v-else class="meta-line">未记录签名校验结果</div>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="270" fixed="right">
@@ -505,6 +511,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { configMigrationApi } from '@/api/configMigration'
+import { uploadWithSignatureConfirmation } from '@/shared/config-migration-upload'
 import { generateMigrationTag } from '@/utils/migrationTag'
 import PageState from '@/components/PageState.vue'
 import ConfigMigrationPagination from '@/components/ConfigMigrationPagination.vue'
@@ -913,14 +920,31 @@ const handleFileRemove = () => {
   pendingFile.value = null
 }
 const uploadPackage = async () => {
+  if (uploading.value || !pendingFile.value) return
   if (!sourceEnvironment.value.trim()) {
     ElMessage.warning('请填写来源环境，便于后续识别配置来源')
     return
   }
   uploading.value = true
   try {
-    await configMigrationApi.uploadPackage(pendingFile.value, sourceEnvironment.value)
-    ElMessage.success('发布包已上传并完成签名校验')
+    const result = await uploadWithSignatureConfirmation(
+      pendingFile.value, sourceEnvironment.value, configMigrationApi.uploadPackage,
+      async message => {
+        try {
+          await ElMessageBox.confirm(message, '确认发布包来源', {
+            type: 'warning', confirmButtonText: '确认来源可信，继续导入',
+            cancelButtonText: '取消', closeOnClickModal: false, autofocus: false
+          })
+          return true
+        } catch (error) {
+          if (error === 'cancel' || error === 'close') return false
+          throw error
+        }
+      }
+    )
+    if (!result) return
+    ElMessage.success(result.signatureStatus === 'MISMATCH_CONFIRMED'
+      ? '已确认发布包来源并导入，请继续分析依赖' : '发布包已导入，请继续分析依赖')
     pendingFile.value = null
     uploadRef.value?.clearFiles()
     importPage.value = { ...importPage.value, pageNum: 1 }

@@ -82,7 +82,7 @@ validate_start_environment() {
     for name in \
         DB_USERNAME DB_PASSWORD \
         SCHEMA_DB_USERNAME SCHEMA_DB_PASSWORD \
-        JWT_SECRET CONFIG_MIGRATION_SIGNING_KEY \
+        JWT_SECRET \
         WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD; do
         value="${!name:-}"
         [[ -n "$value" ]] || fail "$name is required in .env"

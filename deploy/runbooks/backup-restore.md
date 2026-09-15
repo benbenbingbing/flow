@@ -3,8 +3,10 @@
 ## Recovery objectives
 
 Define and test RPO/RTO before production. A database snapshot alone is not a
-complete backup: uploaded objects and configuration-package signing keys are
-part of the same recovery set.
+complete backup: uploaded objects and external credentials are part of the same
+recovery set. The configuration-package signing key is included in the database
+backup (`sys_global_setting`, `config.migration.signing_key`); restoring that row
+restores the signing identity. It is no longer supplied by an environment file.
 
 ## Backup
 

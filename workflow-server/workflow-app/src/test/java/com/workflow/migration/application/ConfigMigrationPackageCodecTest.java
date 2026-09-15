@@ -1,6 +1,10 @@
 package com.workflow.migration.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.workflow.admin.setting.application.GlobalSettingService;
+import static com.workflow.admin.setting.application.GlobalSettingRegistry.MIGRATION_SIGNING_KEY;
+import static org.mockito.Mockito.*;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -17,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 配置迁移包编解码器测试。
  *
  * <p>被测对象：{@link ConfigMigrationPackageCodec}，覆盖签名迁移包的编解码往返、
- * 不同环境签名密钥下迁移包被拒绝等场景。
+ * 不同环境签名密钥下返回待确认状态等场景。
  */
 class ConfigMigrationPackageCodecTest {
 
@@ -154,9 +158,9 @@ class ConfigMigrationPackageCodecTest {
                 asset.getSnapshotJson(), selection).isBlank());
     }
 
-    /** 测试不同环境签名的迁移包被拒绝：验证目标环境用不同密钥解码时抛出 IllegalArgumentException */
+    /** 不同密钥不阻止包体解析，由导入服务按返回的验签状态要求人工确认。 */
     @Test
-    void packageSignedByDifferentEnvironmentIsRejected() {
+    void packageSignedByDifferentEnvironmentRequiresConfirmation() {
         ConfigMigrationPackageCodec source = codec("source-key");
         ConfigMigrationPackageCodec target = codec("target-key");
         byte[] data = source.encode(
@@ -165,15 +169,7 @@ class ConfigMigrationPackageCodecTest {
                 List.of(entityAsset()),
                 Map.of()).data();
 
-        assertThrows(IllegalArgumentException.class, () -> target.decode(data));
-    }
-
-    @Test
-    void publicOrWeakSigningKeyIsRejectedAtStartup() {
-        ConfigMigrationPackageCodec codec = codec(
-                "workflow-config-migration-development-key");
-
-        assertThrows(IllegalStateException.class, codec::validateSigningKey);
+        assertFalse(target.decode(data).signatureVerified());
     }
 
     @Test
@@ -246,11 +242,12 @@ class ConfigMigrationPackageCodecTest {
                         .toList());
     }
 
-    /** 构造指定签名密钥的编解码器，通过反射注入密钥与环境名 */
+    /** 使用模拟的数据库全局设置提供密钥，环境名仅用于包来源标注。 */
     private ConfigMigrationPackageCodec codec(String signingKey) {
+        GlobalSettingService settings = mock(GlobalSettingService.class);
+        when(settings.readSystemValue(MIGRATION_SIGNING_KEY)).thenReturn(TextNode.valueOf(signingKey));
         ConfigMigrationPackageCodec codec = new ConfigMigrationPackageCodec(
-                new ObjectMapper().findAndRegisterModules());
-        ReflectionTestUtils.setField(codec, "signingKey", signingKey);
+                new ObjectMapper().findAndRegisterModules(), settings);
         ReflectionTestUtils.setField(codec, "environmentName", "TEST");
         return codec;
     }

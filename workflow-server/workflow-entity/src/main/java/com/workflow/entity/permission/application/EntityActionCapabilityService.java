@@ -451,14 +451,16 @@ public class EntityActionCapabilityService {
     }
 
     /**
-     * 评估内置提交审批按钮，同时保留标准审批权限、真实任务绑定和发布规则约束。
+     * 按真实待办身份评估审批表单按钮，并保留发布规则约束。
      *
      * <p>候选人打开审批表单时尚未认领；只在此审批入口把办理人关系解释为已验证的
      * 可审批身份。默认规则与覆盖规则必须同时满足，覆盖不能取消流程状态等前置条件。
-     * 普通保存、编辑和自定义动作继续使用 evaluateConfiguredAction。</p>
+     * 待办办理人不需要额外的实体 APPROVE 权限；实体列表审批入口仍由
+     * evaluateButton 校验该权限。普通保存、编辑和自定义动作继续使用
+     * evaluateConfiguredAction，待办身份不能扩展为这些动作的权限。</p>
      *
-     * @param entityCode 实体编码，用于校验 APPROVE 标准权限
-     * @param row 已通过记录访问校验的当前数据
+     * @param entityCode 实体编码，用于查询记录状态类别
+     * @param row 服务端读取的当前数据，调用方仍须将请求任务与记录及发布令牌联合绑定
      * @param mandatoryRule 内置审批规则，不受表单覆盖配置替换
      * @param overrideRule 已发布按钮的额外适用条件，可以为空
      * @return 允许时携带当前用户的实际任务 ID；任一显示条件失败时隐藏，
@@ -469,10 +471,6 @@ public class EntityActionCapabilityService {
             EntityDataDTO row,
             EntityActionRuleDTO mandatoryRule,
             EntityActionRuleDTO overrideRule) {
-        String permissionCode = EntityPermissionAction.APPROVE.permissionCode(entityCode);
-        if (!PermissionUtil.hasPermission(permissionCode)) {
-            return EntityActionCapabilityDTO.hidden("缺少权限：" + permissionCode);
-        }
         SysUser user = currentUser();
         String actionableTaskId = assigneeLookup.findActionableTaskId(row, user).orElse(null);
         if (!StringUtils.hasText(actionableTaskId)) {
@@ -496,7 +494,7 @@ public class EntityActionCapabilityService {
 
     /**
      * 返回与当前认证用户、已鉴权记录及确切 taskId 全部匹配的活动待办上下文。
-     * 调用方仍须先执行审批权限和规则判断；本方法只完成可信任务身份绑定。
+     * 调用方仍须先执行审批待办能力和规则判断；本方法只完成可信任务身份绑定。
      */
     public java.util.Optional<ActionableTaskContext>
             findActionableApprovalTaskContext(

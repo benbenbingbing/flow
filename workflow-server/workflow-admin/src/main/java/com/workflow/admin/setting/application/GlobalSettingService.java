@@ -49,6 +49,21 @@ public class GlobalSettingService {
                 .map(item -> resolve(item, rows.get(item.key()), null, SYSTEM)).toList();
     }
 
+    /**
+     * 服务端读取系统有效值，不要求登录身份、不经过面向页面的脱敏视图。
+     * 每次访问数据库以使密钥修改立即生效；未配置且没有默认值时拒绝业务操作。
+     * 仅供内部业务调用，禁止将返回值透传至公共接口或日志。
+     */
+    @Transactional(readOnly = true)
+    public JsonNode readSystemValue(String key) {
+        Definition definition = registry.require(key);
+        requireScope(definition, SYSTEM);
+        JsonNode value = validValue(definition, mapper.find(SYSTEM, "0", key));
+        if (value == null) value = definition.defaultValue();
+        if (value.isNull()) throw GlobalSettingException.invalid("请先在全局设置中配置有效的" + definition.name());
+        return value.deepCopy();
+    }
+
     /** 保存当前用户的覆盖值；未知键、仅系统设置或过期版本均拒绝写入。 */
     @Transactional(rollbackFor = Exception.class)
     public GlobalSettingView saveMine(String key, GlobalSettingRequests.Save request) {
@@ -113,9 +128,11 @@ public class GlobalSettingService {
             source = "DEFAULT";
         }
         return new GlobalSettingView(definition.key(), definition.name(), definition.remark(),
-                definition.valueType().name(), value, definition.defaultValue().deepCopy(), source,
+                definition.valueType().name(), definition.sensitive() ? null : value,
+                definition.sensitive() ? null : definition.defaultValue().deepCopy(), source,
                 definition.scopes().contains(USER), current == null ? null
-                : new GlobalSettingView.StoredVersion(current.getId(), current.getVersion()));
+                : new GlobalSettingView.StoredVersion(current.getId(), current.getVersion()),
+                definition.sensitive(), !value.isNull());
     }
 
     private JsonNode validValue(Definition definition, GlobalSettingRecord row) {
@@ -125,7 +142,7 @@ public class GlobalSettingService {
             if (!definition.valueType().name().equals(row.getSettingValueType())) {
                 throw GlobalSettingException.invalid("设置值类型与注册定义不一致");
             }
-            return registry.parse(ValueType.valueOf(row.getSettingValueType()), row.getSettingValue());
+            return registry.parse(definition, row.getSettingValue());
         } catch (GlobalSettingException exception) {
             // 历史或手工写入的非法文本不影响页面加载，不记录具体设置内容。
             log.warn("忽略非法设置值: key={}, scope={}, id={}", definition.key(), row.getScopeType(), row.getId());
@@ -168,6 +185,8 @@ public class GlobalSettingService {
 
     private void reset(Definition definition, String scope, String owner, GlobalSettingRequests.Reset request) {
         requireScope(definition, scope);
+        // 密钥没有通用默认值，恢复默认会使导出和验签失去稳定的系统身份。
+        if (definition.sensitive()) throw GlobalSettingException.invalid("敏感设置不支持恢复默认值，请直接保存新值");
         if (request == null) throw GlobalSettingException.invalid("请求不能为空");
         GlobalSettingRecord current = mapper.find(scope, owner, definition.key());
         checkExpected(current, request.expectedId(), request.expectedVersion());

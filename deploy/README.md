@@ -23,10 +23,16 @@ through External Secrets, Sealed Secrets, or the platform secret manager:
 | `db-username`, `db-password` | DML-only runtime identity |
 | `schema-db-username`, `schema-db-password` | Migration and DDL identity |
 | `jwt-secret` | JWT signing secret |
-| `config-migration-signing-key` | Configuration package signing |
 | `bootstrap-admin-password` | Initial administrator activation |
 | `s3-access-key`, `s3-secret-key` | Shared object storage |
 | `open-api-private-key`, `open-api-public-key` | Current Open Integration RSA signing pair when `openApi.enabled=true` |
+
+The configuration migration signing key is stored in `sys_global_setting` and
+managed under **系统管理 → 全局设置 → 配置迁移签名密钥**. V091 initializes a
+random key per database. Changes take effect immediately; packages generated
+before a change keep their original signature. A signature mismatch requires
+explicit source confirmation before import; file integrity checks still apply.
+Environment variables and Helm Secrets no longer provide this key.
 
 Do not reuse the runtime and schema database users. Rotate application secrets
 through the secret manager and a controlled rolling deployment.

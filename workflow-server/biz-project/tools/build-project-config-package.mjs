@@ -11,8 +11,15 @@ const output = path.join(
   resourcesRoot,
   "project-config/packages/project-f01-f07-v3.wfpack"
 );
-const signingKey = process.env.CONFIG_MIGRATION_SIGNING_KEY
-  || "workflow-config-migration-development-key";
+// 离线样例默认使用一次性随机密钥；目标系统可确认来源后导入。
+// 需要预先互认时显式提供本地密钥文件，不读取服务端环境配置。
+const keyFileIndex = process.argv.indexOf("--signing-key-file");
+const signingKey = keyFileIndex >= 0
+  ? fs.readFileSync(process.argv[keyFileIndex + 1], "utf8").trim()
+  : crypto.randomBytes(32).toString("hex");
+if (Buffer.byteLength(signingKey) < 32 || Buffer.byteLength(signingKey) > 256) {
+  throw new Error("签名密钥须为 32 至 256 字节");
+}
 const stage = fs.mkdtempSync(path.join(os.tmpdir(), "project-wfpack-"));
 
 const discoverAssets = (assetType, relativeDirectory) => {

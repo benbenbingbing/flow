@@ -9,7 +9,6 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.cc.application.ProcessCcService;
@@ -137,7 +136,7 @@ class TaskCandidateApprovalTransactionIntegrationTest {
         TaskActionService target = new TaskActionService(
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(),
                 projectionService, engine.getRepositoryService(), operationLogMapper, userService,
-                mock(NodeFormSubmissionService.class), mock(EntityActionCapabilityService.class),
+                mock(NodeFormSubmissionService.class),
                 mock(EntityRecordPort.class), mock(ProcessCcService.class),
                 mock(NextApproverOverrideService.class),
                 new MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(),

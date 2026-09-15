@@ -173,7 +173,7 @@ class GlobalSettingServiceTest {
     void systemOnlySettingIgnoresIllegalPersonalRowsAndRefusesPersonalWrite() {
         Definition original = registry.require(KEY);
         Definition systemOnly = new Definition(KEY, original.name(), original.remark(), original.valueType(),
-                original.defaultValue(), Set.of(SYSTEM), true);
+                original.defaultValue(), Set.of(SYSTEM), true, false);
         doReturn(systemOnly).when(registry).require(KEY);
         when(mapper.find(SYSTEM, "0", KEY)).thenReturn(row("sys", SYSTEM, "true", 0));
         assertTrue(service.readMine(KEY).value().booleanValue());
@@ -186,7 +186,7 @@ class GlobalSettingServiceTest {
     void nonPublicSettingCannotBeReadThroughPersonalEndpoint() {
         Definition original = registry.require(KEY);
         doReturn(new Definition(KEY, original.name(), original.remark(), original.valueType(),
-                original.defaultValue(), Set.of(SYSTEM), false)).when(registry).require(KEY);
+                original.defaultValue(), Set.of(SYSTEM), false, false)).when(registry).require(KEY);
         assertEquals(403, assertThrows(GlobalSettingException.class, () -> service.readMine(KEY)).status());
     }
 

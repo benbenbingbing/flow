@@ -26,6 +26,9 @@ public class ConfigImportPackage {
     private String migrationTag;               // 迁移标签
     private String fileName;                   // 上传的原始文件名
     private String checksum;                   // 发布包整体校验和
+    private String signatureStatus;            // VERIFIED/MISMATCH_CONFIRMED/UNKNOWN(历史记录)
+    private String signatureConfirmedBy;       // 签名不匹配时确认来源的操作人
+    private LocalDateTime signatureConfirmedAt; // 人工确认时间，后续分析不覆盖
     private String status;                     // 批次状态(UPLOADED/ANALYZED/BLOCKED/PUBLISHED/ROLLED_BACK)
     private String validationReportJson;       // 分析校验报告(JSON)
     @TableField("package_data")

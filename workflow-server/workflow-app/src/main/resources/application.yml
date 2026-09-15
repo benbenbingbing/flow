@@ -142,6 +142,8 @@ logging:
   level:
     root: INFO
     com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}
+    # 全局设置包含签名密钥，禁止 MyBatis DEBUG 参数日志输出设置值。
+    com.workflow.admin.setting.infrastructure.persistence.mapper.GlobalSettingMapper: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-system}] %-5level %logger{36} - %msg%n"
 
@@ -289,5 +291,4 @@ jwt:
 
 config:
   migration:
-    signing-key: ${CONFIG_MIGRATION_SIGNING_KEY}
     environment-name: ${CONFIG_MIGRATION_ENVIRONMENT_NAME:local}

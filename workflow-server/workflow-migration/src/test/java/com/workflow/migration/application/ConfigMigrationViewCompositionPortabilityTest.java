@@ -32,7 +32,7 @@ class ConfigMigrationViewCompositionPortabilityTest {
     @Test
     void legacyFineGrainedFormExportCarriesEmbeddedServiceAndExactComponent() {
         ConfigMigrationPackageCodec codec =
-                new ConfigMigrationPackageCodec(new ObjectMapper());
+                new ConfigMigrationPackageCodec(new ObjectMapper(), org.mockito.Mockito.mock(com.workflow.admin.setting.application.GlobalSettingService.class));
         Map<String, Object> composition = Map.of(
                 "compositionKey", "requirements",
                 "anchorType", "OWNER",
@@ -98,7 +98,7 @@ class ConfigMigrationViewCompositionPortabilityTest {
     @Test
     void fineGrainedUiExportCarriesReferencedInterfaceExtensions() {
         ConfigMigrationPackageCodec codec =
-                new ConfigMigrationPackageCodec(new ObjectMapper());
+                new ConfigMigrationPackageCodec(new ObjectMapper(), org.mockito.Mockito.mock(com.workflow.admin.setting.application.GlobalSettingService.class));
         Map<String, Object> snapshot = Map.ofEntries(
                 Map.entry("schemaVersion", 1),
                 Map.entry("assetType", ConfigMigrationAssetService.ENTITY),

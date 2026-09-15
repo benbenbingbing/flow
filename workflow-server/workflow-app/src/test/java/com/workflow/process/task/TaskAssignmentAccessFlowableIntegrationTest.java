@@ -11,7 +11,6 @@ import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.identity.IdentityUser;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
@@ -126,7 +125,7 @@ class TaskAssignmentAccessFlowableIntegrationTest {
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(),
                 processTaskService, engine.getRepositoryService(),
                 mock(ProcessOperationLogMapper.class), mock(SysUserService.class),
-                mock(NodeFormSubmissionService.class), mock(EntityActionCapabilityService.class),
+                mock(NodeFormSubmissionService.class),
                 mock(EntityRecordPort.class), mock(ProcessCcService.class),
                 mock(NextApproverOverrideService.class),
                 new MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(),

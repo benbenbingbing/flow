@@ -72,6 +72,28 @@ class ConfigMigrationControllerTest {
         UserContext.clear();
     }
 
+    /** 预检提示保持结构化响应；人工确认摘要通过 multipart 传给后端，不依赖前端跳过异常。 */
+    @Test
+    void uploadReturnsConfirmationAndForwardsExplicitFileChecksum() throws Exception {
+        var file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "test.wfpack", "application/octet-stream", new byte[]{1});
+        when(packageService.importPackage(any(), org.mockito.ArgumentMatchers.eq("DEV"),
+                org.mockito.ArgumentMatchers.isNull())).thenReturn(
+                Map.of("confirmationRequired", true, "checksum", "file-hash"));
+        when(packageService.importPackage(any(), org.mockito.ArgumentMatchers.eq("DEV"),
+                org.mockito.ArgumentMatchers.eq("file-hash"))).thenReturn(
+                Map.of("id", "import-1", "signatureStatus", "MISMATCH_CONFIRMED"));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/config-migration/imports").file(file).param("sourceEnvironment", "DEV"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.confirmationRequired").value(true));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/config-migration/imports").file(file).param("sourceEnvironment", "DEV")
+                        .param("confirmedChecksum", "file-hash"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.signatureStatus").value("MISMATCH_CONFIRMED"));
+    }
+
     @Test
     void legacyListEndpointsKeepArrayResponses() throws Exception {
         when(assetService.query(any())).thenReturn(List.of());

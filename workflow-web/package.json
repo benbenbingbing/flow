@@ -11,7 +11,7 @@
     "test:empty-assignee": "node src/shared/__tests__/empty-assignee-policy.spec.js",
     "test:extension-catalog-pagination": "node src/shared/__tests__/extension-catalog-pagination.spec.js",
     "test:group": "node src/views/system/__tests__/groupManagement.spec.js",
-    "test:config-migration": "node src/shared/__tests__/config-migration-pagination.spec.js && node src/views/system/__tests__/configMigrationPagination.spec.js",
+    "test:config-migration": "node src/shared/__tests__/config-migration-pagination.spec.js && node src/views/system/__tests__/configMigrationPagination.spec.js && node src/shared/__tests__/config-migration-upload.spec.js",
     "test:action-rules": "node src/shared/__tests__/action-rules.spec.js",
     "test:settings": "node src/shared/__tests__/boolean-preference.spec.js && node src/shared/__tests__/setting-value.spec.js",
     "pretest:unit": "npm run test:settings && npm run test:empty-assignee && npm run test:extension-catalog-pagination && node src/components/__tests__/nodeFormBindingModel.spec.js && node src/shared/__tests__/workflow-operation-guards.spec.js && node src/shared/__tests__/workflow-task-actions.spec.js",

@@ -1,6 +1,9 @@
 package com.workflow.migration.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.workflow.admin.setting.application.GlobalSettingService;
+import static com.workflow.admin.setting.application.GlobalSettingRegistry.MIGRATION_SIGNING_KEY;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
@@ -51,13 +54,14 @@ class ConfigMigrationAssignmentExportImportTest {
     @Mock SysRoleMapper roleMapper;
     @Mock SysOrganizationMapper organizationMapper;
     @Mock ConfigMigrationAssignmentTargetValidator assignmentTargetValidator;
-    @Spy ConfigMigrationPackageCodec packageCodec = new ConfigMigrationPackageCodec(json);
+    @Spy ConfigMigrationPackageCodec packageCodec = new ConfigMigrationPackageCodec(json, org.mockito.Mockito.mock(GlobalSettingService.class));
     @Spy ConfigMigrationPackageDocumentSupport documents = new ConfigMigrationPackageDocumentSupport(json);
     @InjectMocks ConfigMigrationPackageService service;
 
     @BeforeEach
     void configureCodec() {
-        ReflectionTestUtils.setField(packageCodec, "signingKey", "assignment-export-import-test-key-2026");
+        org.mockito.Mockito.lenient().when(((GlobalSettingService) ReflectionTestUtils.getField(packageCodec, "globalSettings"))
+                .readSystemValue(MIGRATION_SIGNING_KEY)).thenReturn(TextNode.valueOf("assignment-export-import-test-key-2026"));
         ReflectionTestUtils.setField(packageCodec, "environmentName", "source");
     }
 

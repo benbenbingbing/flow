@@ -17,6 +17,9 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.api.response.FormActionRuntimeDTO;
+import com.workflow.entity.form.api.request.FormActionResolveRequest;
+import com.workflow.core.error.BusinessForbiddenException;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -27,6 +30,7 @@ import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityActionRuleEvaluator;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
+import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,9 +45,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -57,6 +64,10 @@ class EntityFormCandidateApprovalActionTest {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final ProcessTaskAccessPort taskAccessPort = mock(ProcessTaskAccessPort.class);
     private final SysMenuMapper menuMapper = mock(SysMenuMapper.class);
+    private final EntityFormMapper formMapper = mock(EntityFormMapper.class);
+    private final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
+    private final EntityDataDynamicService dataService = mock(EntityDataDynamicService.class);
+    private final UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
     private EntityActionCapabilityService capabilityService;
     private EntityFormActionService formActionService;
     private EntityDefinition definition;
@@ -79,9 +90,9 @@ class EntityFormCandidateApprovalActionTest {
                 mock(EntityListActionConfigService.class), new EntityActionRuleEvaluator(List.of(), lookup),
                 mock(EntityStatusMapper.class), userService, lookup);
         formActionService = new EntityFormActionService(
-                mock(EntityFormMapper.class), mock(EntityFormNodeMapper.class), mock(EntityDefinitionMapper.class),
-                mock(EntityDataDynamicService.class), capabilityService, new EntityFormActionConfigPolicy(),
-                mock(UiConfigReleaseService.class), mock(ProcessCatalogPort.class),
+                formMapper, mock(EntityFormNodeMapper.class), definitionMapper,
+                dataService, capabilityService, new EntityFormActionConfigPolicy(),
+                releaseService, mock(ProcessCatalogPort.class),
                 new JsonDocumentCodec(objectMapper), objectMapper);
         definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -125,18 +136,142 @@ class EntityFormCandidateApprovalActionTest {
     }
 
     @Test
-    void candidateCannotUseSubmitApprovalWithoutStandardApprovePermission() {
-        when(menuMapper.selectPermsByUserId("alice-id")).thenReturn(Set.of("entity:work_order:update"));
+    void candidateCanUseSubmitApprovalWithoutEntityPermissions() {
+        when(menuMapper.selectPermsByUserId("alice-id")).thenReturn(Set.of());
 
         EntityActionCapabilityDTO capability = capabilityService.evaluateApprovalAction(
                 ENTITY_CODE, row, assignedRule(), null);
         FormActionRuntimeDTO submit = action("approve", "submitApproval");
 
-        assertFalse(capability.isVisible());
-        assertNull(capability.getActionableTaskId());
-        assertFalse(submit.isVisible());
-        assertEquals("缺少权限：" + APPROVE_PERMISSION, submit.getReason());
-        verifyNoInteractions(taskAccessPort);
+        assertTrue(capability.isVisible());
+        assertEquals("candidate-task", capability.getActionableTaskId());
+        assertTrue(submit.isVisible());
+        assertTrue(submit.isEnabled());
+    }
+
+    /** 重现待办可打开、但按钮解析被实体 DataScope 拦截的完整服务调用路径。 */
+    @Test
+    void assignedUserWithoutEntityPermissionsCanResolveAndSubmitPinnedApproval() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+
+        List<FormActionRuntimeDTO> actions = formActionService.resolve(request);
+        formActionService.requireBuiltInMutationAction(request, "submitApproval");
+
+        assertEquals(List.of("close", "submitApproval"),
+                actions.stream().map(FormActionRuntimeDTO::getKey).toList());
+        assertTrue(actions.stream().allMatch(FormActionRuntimeDTO::isEnabled));
+        verify(dataService, never()).findAccessibleById(anyString(), anyString(), any());
+    }
+
+    @Test
+    void taskPermissionDoesNotGrantOrdinaryViewOrEditAccess() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        for (String mode : List.of("view", "edit")) {
+            request.setMode(mode);
+            assertThrows(ForbiddenException.class, () -> formActionService.resolve(request));
+        }
+        verify(dataService, never()).findById(anyString(), anyString());
+    }
+
+    @Test
+    void approvalTaskDoesNotGrantCustomButtonPermission() {
+        form.setViewConfig("""
+                {"actionBar":{"version":1,"builtInOverrides":{},"customButtons":[
+                  {"key":"generate","label":"生成","enabled":true,
+                   "modes":["approve"],"perm":"entity:work_order:generate"}]}}
+                """);
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        FormActionRuntimeDTO custom = formActionService.resolve(request).stream()
+                .filter(button -> "generate".equals(button.getKey())).findFirst().orElseThrow();
+
+        assertFalse(custom.isVisible());
+        assertFalse(custom.isEnabled());
+        UiEventExecuteRequest execute = new UiEventExecuteRequest();
+        execute.setConfigId(form.getId());
+        execute.setEntityCode(ENTITY_CODE);
+        execute.setRecordId(row.getId());
+        execute.setTaskId(request.getTaskId());
+        execute.setReleaseId(request.getReleaseId());
+        execute.setReleaseVersion(request.getReleaseVersion());
+        execute.setReleaseResolutionToken(request.getReleaseResolutionToken());
+        execute.setTargetKey("generate");
+        execute.setContext(Map.of("mode", "approve"));
+        assertThrows(ForbiddenException.class, () -> formActionService.requireCustomButton(execute));
+    }
+
+    @Test
+    void transferredOrCompletedTaskCannotResolveApprovalWithAnOldToken() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        when(taskAccessPort.findActionableTaskContext(
+                "alice-id", "candidate-task", ENTITY_CODE, "record-1", "process-1"))
+                .thenReturn(Optional.empty());
+
+        BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class,
+                () -> formActionService.resolve(request));
+
+        assertEquals("UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH", error.getErrorCode());
+        verify(releaseService, never()).requireActiveTaskReleaseToken(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void approvalTaskMustMatchEveryRequestedCoordinate() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        for (int mismatchedCoordinate : List.of(0, 1, 2, 3)) {
+            when(taskAccessPort.findActionableTaskContext(
+                    "alice-id", "candidate-task", ENTITY_CODE, "record-1", "process-1"))
+                    .thenReturn(Optional.of(new ProcessTaskAccessPort.ActionableTaskContext(
+                            mismatchedCoordinate == 0 ? "other-task" : "candidate-task",
+                            mismatchedCoordinate == 1 ? "other-process" : "process-1",
+                            "definition-1", "history-1", "node-1",
+                            mismatchedCoordinate == 2 ? "other_entity" : ENTITY_CODE,
+                            mismatchedCoordinate == 3 ? "other-record" : "record-1")));
+
+            BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class,
+                    () -> formActionService.resolve(request));
+            assertEquals("UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH", error.getErrorCode());
+        }
+        verify(releaseService, never()).requireActiveTaskReleaseToken(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void missingTaskCoordinateCannotReadApprovalData() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        request.setTaskId(null);
+
+        assertThrows(BusinessForbiddenException.class, () -> formActionService.resolve(request));
+        verify(dataService, never()).findById(anyString(), anyString());
+    }
+
+    /** 使用真实能力服务模拟没有任何实体权限、仅持有当前待办的用户。 */
+    private FormActionResolveRequest pinnedApprovalRequest() {
+        when(menuMapper.selectPermsByUserId("alice-id")).thenReturn(Set.of());
+        when(formMapper.selectById(form.getId())).thenReturn(form);
+        when(definitionMapper.selectById(definition.getId())).thenReturn(definition);
+        when(dataService.findAccessibleById(ENTITY_CODE, row.getId(), null))
+                .thenThrow(new ForbiddenException("数据不存在或无权访问"));
+        when(dataService.findById(ENTITY_CODE, row.getId())).thenReturn(row);
+        when(releaseService.resolveRuntimeEventSnapshot(form.getId(), "release-1", 1, "task-token"))
+                .thenReturn(new UiConfigReleaseService.ResolvedUiEventSnapshot(
+                        Map.of("form", objectMapper.convertValue(form, Map.class),
+                                "nodes", List.of(), "eventBindings", List.of()),
+                        "release-1", 1, "release-1", false, "hash-1"));
+        when(taskAccessPort.findActionableTaskContext(
+                "alice-id", "candidate-task", ENTITY_CODE, "record-1", "process-1"))
+                .thenReturn(Optional.of(new ProcessTaskAccessPort.ActionableTaskContext(
+                        "candidate-task", "process-1", "definition-1", "history-1", "node-1",
+                        ENTITY_CODE, "record-1")));
+        FormActionResolveRequest request = new FormActionResolveRequest();
+        request.setFormId(form.getId());
+        request.setEntityCode(ENTITY_CODE);
+        request.setRecordId(row.getId());
+        request.setTaskId("candidate-task");
+        request.setMode("approve");
+        request.setReleaseId("release-1");
+        request.setReleaseVersion(1);
+        request.setReleaseResolutionToken("task-token");
+        return request;
     }
 
     @Test
