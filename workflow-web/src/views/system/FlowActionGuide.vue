@@ -164,7 +164,7 @@
         <div class="section-title">五、动作参数字段类型</div>
         <div class="section-content">
           <p class="section-intro">
-            参数配置最终保存为 <code>paramsJson</code>。平台在动作触发时解析变量和表达式，再通过 <code>ctx.getCustomParams()</code> 传给处理器。
+            参数配置最终保存为 <code>paramsJson</code>。平台在动作触发时解析流程变量引用，再通过 <code>ctx.getExtraParams()</code> 传给处理器。
           </p>
           <el-table :data="paramTypeList" border>
             <el-table-column prop="label" label="界面类型" width="130" />
@@ -254,7 +254,7 @@ public class SendNotificationHandler implements FlowActionHandler {
     public void execute(FlowActionContext ctx) {
         String idempotencyKey = ctx.getIdempotencyKey();
         String taskId = ctx.getTaskId();
-        Map&lt;String, Object&gt; params = ctx.getCustomParams();
+        Map&lt;String, Object&gt; params = ctx.getExtraParams();
         // 调用通知服务或外部接口
     }
 }</code></pre>
@@ -445,7 +445,7 @@ const fieldList = [
     type: 'Map<String, Object> / JSON',
     required: '否',
     meaning: '传递给 Handler 的业务参数集合，支持静态值、流程变量和表达式。',
-    notes: '运行时解析后通过 ctx.getCustomParams() 获取；类型化 Handler 会自动映射为参数类。'
+    notes: '运行时解析后通过 ctx.getExtraParams() 获取；类型化 Handler 会自动映射为参数类。'
   },
   {
     label: '参数名',
@@ -714,7 +714,7 @@ const contextList = [
   { method: 'getTargetNodeId()/Name()', returnType: 'String', availability: 'TRANSITION_TAKEN', desc: '本次实际经过连线的目标节点。' },
   { method: 'getEndReason()', returnType: 'String', availability: '撤回/终止', desc: '撤回原因、取消原因或终止事件编码；正常完成为空。' },
   { method: 'getIdempotencyKey()', returnType: 'String', availability: '全部时机', desc: '稳定执行幂等键，提交后调用外部系统时必须传递。' },
-  { method: 'getCustomParams()', returnType: 'Map<String, Object>', availability: '全部时机', desc: 'paramsJson 解析变量和表达式后的业务参数。' },
+  { method: 'getExtraParams()', returnType: 'Map<String, Object>', availability: '全部时机', desc: 'paramsJson 解析流程变量引用后的业务参数。' },
   { method: 'getVariables()', returnType: 'Map<String, Object>', availability: '全部时机', desc: '事件变量与流程变量合并后的快照；流程结束时自动回退历史变量。' },
   { method: 'getVariable(name)', returnType: 'Object', availability: '全部时机', desc: '读取单个流程变量，优先使用事件快照。' },
   { method: 'getTriggerTask()', returnType: 'Task', availability: 'TASK_*', desc: '按 taskId 查询触发任务；任务删除后可能为空。' },

@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * 文件存储策略接口
- * 当前内置本地存储实现，其他存储后端需提供完整策略后再启用。
+ * 内置 local、s3 和 minio 实现，由 file.storage.type 选择。
  */
 public interface FileStorageStrategy {
 

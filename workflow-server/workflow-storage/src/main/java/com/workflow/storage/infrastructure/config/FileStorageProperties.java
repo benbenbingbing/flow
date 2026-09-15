@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 public class FileStorageProperties {
 
     /**
-     * 存储类型：local
+     * 存储类型：local、s3、minio，也可使用已注册的业务扩展策略标识。
      */
     private String type = "local";
 
@@ -23,6 +23,25 @@ public class FileStorageProperties {
     private LocalConfig local = new LocalConfig();
 
     private S3Config s3 = new S3Config();
+
+    private MinioConfig minio = new MinioConfig();
+
+    /**
+     * MinIO 独立配置；通过 S3 协议访问，固定使用路径式桶寻址。
+     */
+    @Data
+    public static class MinioConfig {
+        /** MinIO 对象 API 地址（通常为 9000 端口），不是控制台地址。 */
+        private String endpoint;
+        /** 用于请求签名，需与服务端区域一致。 */
+        private String region = "us-east-1";
+        /** 已创建的存储桶；应用不会自动建桶或修改桶的访问策略。 */
+        private String bucket;
+        private String accessKey;
+        private String secretKey;
+        /** 可选的对象访问前缀；为空时返回稳定的 s3://bucket/key 文件标识。 */
+        private String accessUrl;
+    }
 
     /**
      * 本地存储相关配置。

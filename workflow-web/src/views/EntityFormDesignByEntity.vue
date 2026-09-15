@@ -626,6 +626,25 @@
               </SettingsSection>
 
               <SettingsSection
+                v-if="canConfigureSelectedNodeCrossField"
+                v-show="activeNodeSettingsTab === 'rules'"
+                title="跨字段校验"
+                description="比较当前字段与同一实体中的其他字段"
+              >
+                <template #summary>
+                  <el-tag size="small" :type="selectedCrossFieldRuleCount ? 'success' : 'info'">
+                    {{ selectedCrossFieldRuleCount ? `${selectedCrossFieldRuleCount} 项规则` : '未配置' }}
+                  </el-tag>
+                </template>
+                <FormCrossFieldRuleEditor
+                  :field="selectedField"
+                  :fields="crossFieldCandidateFields"
+                  :model-value="selectedValidationConfig.crossField"
+                  @update:model-value="updateValidationConfig('crossField', $event)"
+                />
+              </SettingsSection>
+
+              <SettingsSection
                 v-if="canConfigureSelectedNodeUniqueness"
                 v-show="activeNodeSettingsTab === 'rules'"
                 title="唯一性"
@@ -1140,6 +1159,8 @@ import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerSettingsDrawer.vue'
 import FormCustomRendererWorkspace from '@/components/form-designer/FormCustomRendererWorkspace.vue'
 import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
+import FormCrossFieldRuleEditor from '@/components/form-designer/FormCrossFieldRuleEditor.vue'
+import { supportsCrossFieldValidation, validateCrossFieldConfiguration } from '@/shared/form-cross-field-validation'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
@@ -1956,6 +1977,23 @@ const canConfigureSelectedNodeUniqueness = computed(() =>
   selectedNodePropertySchema.value.rules
     && supportsFormFieldUniqueness(selectedField.value)
 )
+// 只开放当前实体 FIELD；布局容器不影响作用域，子表容器内节点不进入候选列表。
+const crossFieldCandidateFields = computed(() => formFields.value.filter(field => {
+  if (nodeTypeOf(field) !== 'FIELD' || !entityFieldForFormField(field)) return false
+  const visited = new Set()
+  let parent = nodeById(field.parentId)
+  while (parent && !visited.has(parent.id)) {
+    if (['SUB_FORM', 'REPEATER'].includes(nodeTypeOf(parent))) return false
+    visited.add(parent.id)
+    parent = nodeById(parent.parentId)
+  }
+  return true
+}).map(field => ({ ...field, fieldType: entityFieldForFormField(field).fieldType })))
+const canConfigureSelectedNodeCrossField = computed(() => isFieldNode.value
+  && (crossFieldCandidateFields.value.some(field => field.id === selectedField.value?.id)
+    && supportsCrossFieldValidation(selectedField.value?.fieldType)
+    || selectedValidationConfig.value.crossField != null))
+const selectedCrossFieldRuleCount = computed(() => selectedValidationConfig.value.crossField?.rules?.length || 0)
 const canConfigureSelectedNodeModeAccess = computed(() =>
   selectedNodePropertySchema.value.editable.includes('modeAccess')
 )
@@ -1999,6 +2037,7 @@ const availableNodeSettingsTabs = computed(() => {
   const tabs = [{ value: 'basic', label: '基础与布局' }]
   if (isFieldNode.value
       && (canConfigureSelectedNodeValidation.value
+        || canConfigureSelectedNodeCrossField.value
         || canConfigureSelectedNodeModeAccess.value)) {
     tabs.push({ value: 'rules', label: '状态与校验' })
   }
@@ -4270,6 +4309,8 @@ function validateNodeValidationRules(field) {
   const label =
     field?.fieldLabel || field?.fieldName || field?.fieldCode || '当前字段'
   if (patternError) throw new Error(`“${label}”${patternError}`)
+  const crossFieldErrors = validateCrossFieldConfiguration(config.crossField, field, crossFieldCandidateFields.value)
+  if (crossFieldErrors.length) throw new Error(`“${label}”${crossFieldErrors[0]}`)
   if (!config.uniqueness) return
   const uniquenessValidation = validateFormFieldUniqueness(
     config.uniqueness,

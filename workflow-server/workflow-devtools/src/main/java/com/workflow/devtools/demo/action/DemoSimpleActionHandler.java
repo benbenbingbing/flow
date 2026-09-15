@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 /**
  * Demo：不带类型化参数的流程动作处理器。
  *
- * <p>通过 {@link FlowActionContext#getCustomParams()} 直接读取前端传入的业务参数。</p>
+ * <p>通过 {@link FlowActionContext#getExtraParams()} 直接读取前端传入的业务参数。</p>
  */
 @Slf4j
 @Component("demoSimpleActionHandler")
@@ -30,7 +30,7 @@ public class DemoSimpleActionHandler implements FlowActionHandler {
         log.info("BPMN元素ID: {}", ctx.getElementId());
         log.info("源节点ID: {}, 源节点名称: {}", ctx.getSourceNodeId(), ctx.getSourceNodeName());
         log.info("目标节点ID: {}, 目标节点名称: {}", ctx.getTargetNodeId(), ctx.getTargetNodeName());
-        log.info("自定义参数: {}", ctx.getCustomParams());
+        log.info("自定义参数: {}", ctx.getExtraParams());
         log.info("流程变量: {}", ctx.getVariables());
         log.info("实体数据: {}", ctx.getEntityData());
         log.info("当前任务: {}", ctx.getCurrentTask());

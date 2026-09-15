@@ -5,7 +5,7 @@ import com.workflow.contracts.action.FlowActionContext;
 /**
  * 带类型化业务参数的流程动作处理器扩展点。
  *
- * <p>平台会将 {@link FlowActionContext#getCustomParams()} 转换为参数类型 T 的实例。</p>
+ * <p>平台会将 {@link FlowActionContext#getExtraParams()} 转换为参数类型 T 的实例。</p>
  *
  * @param <T> 业务参数类型
  */

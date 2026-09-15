@@ -11,7 +11,7 @@ const preview = source('../../../../../components/FormPreviewLinkage.vue')
 
 assert.match(
   dialog,
-  /validateApprovalForms[\s\S]*?name:\s*tab\.name[\s\S]*?label:\s*tab\.label/,
+  /approvalValidationTargets[\s\S]*?name:\s*tab\.name[\s\S]*?label:\s*tab\.label/,
   '审批多页签校验必须保留页签位置和名称'
 )
 assert.match(
@@ -55,7 +55,7 @@ assert.match(
 )
 assert.match(
   preview,
-  /getValidationError:\s*\(\)\s*=>\s*firstUniqueError\.value/,
+  /getValidationError:\s*\(\)\s*=>\s*firstCrossFieldError\.value\s*\|\|\s*firstUniqueError\.value/,
   'FormPreview 必须暴露当前表单作用域的首个唯一错误'
 )
 

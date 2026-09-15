@@ -239,7 +239,7 @@ public class FlowActionExecutionService {
         if (execution.getStartedAt() == null) {
             execution.setStartedAt(LocalDateTime.now());
         }
-        execution.setResolvedParamsJson(writeJson(sanitize(context.getCustomParams())));
+        execution.setResolvedParamsJson(writeJson(sanitize(context.getExtraParams())));
         appendTrace(
                 execution,
                 "HANDLER_STARTED",
@@ -259,7 +259,7 @@ public class FlowActionExecutionService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void captureContext(FlowActionExecution execution, FlowActionContext context) {
-        execution.setResolvedParamsJson(writeJson(sanitize(context.getCustomParams())));
+        execution.setResolvedParamsJson(writeJson(sanitize(context.getExtraParams())));
         if (context.getExecutionResult() != null) {
             execution.setResultJson(writeJson(sanitize(context.getExecutionResult())));
         }

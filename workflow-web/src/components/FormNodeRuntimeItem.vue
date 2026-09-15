@@ -137,7 +137,7 @@
     :label="node.props.label || runtimeField.fieldLabel || runtimeField.fieldName"
     :prop="fieldKey"
     :rules="fieldRules"
-    :error="uniquePrecheckContext?.errorFor?.(fieldKey) || ''"
+    :error="uniquePrecheckContext?.errorFor?.(fieldKey) || crossFieldErrors[fieldKey]?.message || ''"
     :required="required"
     class="node-field"
   >
@@ -233,6 +233,7 @@ const props = defineProps({
   childrenFor: { type: Function, required: true },
   layoutType: { type: String, default: 'vertical' },
   revealFieldCode: { type: String, default: '' },
+  crossFieldErrors: { type: Object, default: () => ({}) },
   actionSlots: { type: Object, default: () => ({}) }
 })
 
@@ -586,6 +587,7 @@ function childProps(child) {
     childrenFor: props.childrenFor,
     layoutType: props.layoutType,
     revealFieldCode: props.revealFieldCode,
+    crossFieldErrors: props.crossFieldErrors,
     actionSlots: props.actionSlots
   }
 }

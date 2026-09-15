@@ -5,6 +5,7 @@ import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
 import com.workflow.entity.form.application.FormUniqueRulePolicy;
+import com.workflow.entity.form.application.FormCrossFieldRulePolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
@@ -146,6 +147,27 @@ public class EntityFormConfigurationValidator {
         uniqueRulePolicy.validatePublished(
                 form.getFields(),
                 persistentEntityProperties(entityFields));
+        validateCrossFieldRules(form, entityFields == null ? List.of() : entityFields);
+    }
+
+    /** 跨字段引用必须同时属于当前表单和真实实体，类型以实体元数据为准。 */
+    private void validateCrossFieldRules(EntityForm form, List<EntityField> entityFields) {
+        Map<String, String> entityTypes = new LinkedHashMap<>();
+        entityFields.forEach(field -> {
+            if (field.getFieldType() != null) entityTypes.put(field.getFieldCode(), field.getFieldType().name());
+        });
+        Map<String, String> fieldTypes = new LinkedHashMap<>();
+        FormCrossFieldRulePolicy.boundFields(form).forEach(field -> {
+            if (entityTypes.containsKey(field.getFieldCode())) fieldTypes.put(field.getFieldCode(), entityTypes.get(field.getFieldCode()));
+        });
+        for (EntityFormField field : form.getFields() == null ? List.<EntityFormField>of() : form.getFields()) {
+            Map<String, Object> validation = structuredConfigValidator.parseObject(field.getValidationRules(), "字段校验规则");
+            try {
+                FormCrossFieldRulePolicy.validateReferences(validation.get("crossField"), field.getFieldCode(), fieldTypes);
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalArgumentException(fieldLabel(field) + exception.getMessage(), exception);
+            }
+        }
     }
 
     /**
@@ -355,6 +377,7 @@ public class EntityFormConfigurationValidator {
         field.setValidationRules(blankToNull(field.getValidationRules()));
         field.setExtensionConfig(blankToNull(field.getExtensionConfig()));
         validateValidationRules(validation);
+        FormCrossFieldRulePolicy.parse(validation.get("crossField"), field.getFieldType());
         validateModeAccess(extension);
         if (field.getGridSpan() != null && (field.getGridSpan() < 1 || field.getGridSpan() > 24)) {
             throw new IllegalArgumentException("字段栅格宽度必须在 1 到 24 之间");

@@ -2186,6 +2186,48 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void processReadContextAcceptsHistoricalAndActiveTaskTokens() {
+        TestContext context = context();
+        long now = Instant.now().getEpochSecond();
+        for (UiRuntimePurpose purpose : List.of(UiRuntimePurpose.HISTORICAL, UiRuntimePurpose.ACTIVE_TASK)) {
+            when(context.resolutionTokenService().verify("process-read-token"))
+                    .thenReturn(new UiReleaseResolutionTokenService.Claims(purpose, "history-1", "node-1",
+                            "form-1", "release-2", 2, 0, "user-1", null, null, now, now + 300));
+
+            assertEquals(new UiRuntimeResolutionContext(purpose, "history-1", "node-1"),
+                    context.service().findProcessReadContext("process-read-token", "form-1", "release-2", 2)
+                            .orElseThrow());
+        }
+    }
+
+    @Test
+    void standaloneNewAndUnboundHistoricalTokensCannotGrantProcessReadAccess() {
+        TestContext context = context();
+        assertTrue(context.service().findProcessReadContext(null, "form-1", "release-2", 2).isEmpty());
+        long now = Instant.now().getEpochSecond();
+        for (UiRuntimePurpose purpose : List.of(
+                UiRuntimePurpose.STANDALONE, UiRuntimePurpose.NEW_INSTANCE, UiRuntimePurpose.HISTORICAL)) {
+            when(context.resolutionTokenService().verify("plain-token"))
+                    .thenReturn(new UiReleaseResolutionTokenService.Claims(purpose, null, null,
+                            "form-1", "release-2", 2, 0, "user-1", null, null, now, now + 300));
+
+            assertTrue(context.service().findProcessReadContext("plain-token", "form-1", "release-2", 2).isEmpty());
+        }
+    }
+
+    @Test
+    void processReadTokenMustMatchTheResolvedFormRelease() {
+        TestContext context = context();
+        when(context.resolutionTokenService().verify("read-token")).thenReturn(tokenClaims("node-1"));
+        for (int mismatch : List.of(0, 1, 2)) {
+            assertThrows(com.workflow.core.error.BusinessForbiddenException.class,
+                    () -> context.service().findProcessReadContext("read-token",
+                            mismatch == 0 ? "other-form" : "form-1",
+                            mismatch == 1 ? "other-release" : "release-2", mismatch == 2 ? 99 : 2));
+        }
+    }
+
+    @Test
     void approvalButtonTokenMustMatchActiveTaskProcessRelease() {
         TestContext context = context();
         when(context.resolutionTokenService().verify("active-task-token"))

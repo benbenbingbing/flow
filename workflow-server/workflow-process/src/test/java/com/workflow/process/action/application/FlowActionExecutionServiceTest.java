@@ -27,6 +27,37 @@ import org.mockito.ArgumentCaptor;
 class FlowActionExecutionServiceTest {
 
     @Test
+    void persistsCurrentExtraParamsAtHandlerStartAndCapture() throws Exception {
+        FlowActionExecutionMapper executionMapper = mock(FlowActionExecutionMapper.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        FlowActionExecutionService service = new FlowActionExecutionService(
+                executionMapper,
+                mock(FlowActionMapper.class),
+                objectMapper,
+                mock(FlowActionCatalogPort.class),
+                mock(SystemAuditPort.class));
+        FlowActionExecution execution = new FlowActionExecution();
+        FlowActionContext context = new FlowActionContext();
+        context.setExtraParams(Map.of("key1", "value", "token", "private-value"));
+
+        service.markHandlerStarted(execution, context);
+
+        assertEquals(
+                objectMapper.valueToTree(Map.of("key1", "value", "token", "******")),
+                objectMapper.readTree(execution.getResolvedParamsJson()));
+        assertEquals("private-value", context.getExtraParams().get("token"));
+
+        // 模拟处理器整体替换参数，确保最终快照与处理器读取的唯一入口一致。
+        context.setExtraParams(Map.of("key1", "updated"));
+        service.captureContext(execution, context);
+
+        assertEquals(
+                objectMapper.valueToTree(Map.of("key1", "updated")),
+                objectMapper.readTree(execution.getResolvedParamsJson()));
+        verify(executionMapper, org.mockito.Mockito.times(2)).updateById(execution);
+    }
+
+    @Test
     void capturesHandlerTraceUsingStableContractFields()
             throws Exception {
         FlowActionExecutionMapper executionMapper =

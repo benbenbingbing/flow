@@ -15,7 +15,7 @@ Flow 是一个面向企业内部业务的流程配置平台。它将实体建模
 - 待办、审批、驳回、撤回、重提、加签、知会和流程进度
 - 用户、角色、组织、用户组、菜单、权限码和数据范围
 - 流程动作、异步执行、重试、死信、Outbox 和状态补偿
-- 文件上传、访问控制和幂等重试，支持本地存储和 S3 兼容对象存储
+- 文件上传、访问控制和幂等重试，支持本地存储、S3 和 MinIO 对象存储
 - 带签名的 `.wfpack` 配置导入、差异分析、发布与回滚
 - 系统操作审计、健康检查、Prometheus 指标和部署告警规则
 
@@ -29,7 +29,7 @@ Flow 是一个面向企业内部业务的流程配置平台。它将实体建模
 | 后端 | Spring Boot 3.5、Flowable 7.2、MyBatis-Plus、Flyway |
 | 前端 | Vue 3、Vite 8、Element Plus、Pinia、bpmn-js |
 | 数据库 | MySQL 8.4，字符集 `utf8mb4` |
-| 文件存储 | 本地文件系统或 S3 兼容对象存储 |
+| 文件存储 | 本地文件系统、S3 或 MinIO 对象存储 |
 | 构建环境 | JDK 21、Maven 3.9、Node.js 22、npm |
 | Java 兼容级别 | Maven 当前编译目标为 Java 17；CI 和容器统一使用 JDK/JRE 21 |
 | 部署 | Docker Compose 单机部署；Helm/Kubernetes 多副本部署 |
@@ -163,6 +163,39 @@ docker compose --env-file .env ps
 
 Helm 部署从外部 Secret 的 `bootstrap-admin-password` 键读取该值。Bootstrap 只负责
 首次激活，不会覆盖已经修改过的管理员密码。
+
+### MinIO 文件存储
+
+应用支持独立的 `minio` 存储策略。使用 `start.sh` 启动时，在 `.env` 中配置以下变量；
+直接启动 Java 进程时，将它们注入进程环境：
+
+```dotenv
+FILE_STORAGE_TYPE=minio
+FILE_STORAGE_MINIO_ENDPOINT=http://localhost:9000
+FILE_STORAGE_MINIO_REGION=us-east-1
+FILE_STORAGE_MINIO_BUCKET=flow-files
+FILE_STORAGE_MINIO_ACCESS_KEY=replace-with-a-minio-access-key
+FILE_STORAGE_MINIO_SECRET_KEY=replace-with-a-minio-secret-key
+FILE_STORAGE_MINIO_ACCESS_URL=
+```
+
+- `ENDPOINT` 是 MinIO 对象 API 的 HTTP(S) 根地址，通常使用 9000 端口；不要填写
+  9001 控制台地址，也不要追加桶名。容器内应使用应用可达的 MinIO 服务地址。
+- 先创建 `BUCKET` 指定的桶，并为应用账号授予该桶所需的对象读取、写入和删除权限。
+  应用不会自动创建桶或改变桶的访问策略。区域须与 MinIO 服务端配置一致。
+- 策略复用现有 AWS S3 SDK，固定采用路径式寻址（`endpoint/bucket/key`），
+  无需配置桶子域名。MinIO 使用 S3 兼容协议，参见
+  [MinIO 架构说明](https://min.io/resources/docs/CPG-MinIO-reference-architecture.pdf)和
+  [AWS SDK 路径式寻址说明](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/examples-s3.html)。
+- `ACCESS_URL` 可留空，此时上传返回稳定的 `s3://bucket/key` 存储标识；浏览器通过
+  `/api/file/preview?url=...` 预览或下载，继续执行文件归属鉴权。
+  该标识不是浏览器可直接打开的 HTTP 地址。需要自定义访问前缀时，填写包含桶路径或
+  对应代理路径的完整前缀；设置前缀不会自动开放桶权限。
+- 旧的 `s3` 策略仍可连接 MinIO。切换为 `minio` 时保留相同的 endpoint、bucket 和
+  access-url，即可继续使用原有文件标识；更换桶或前缀需要另行处理历史文件。
+
+`production` profile 支持 `s3` 和 `minio`。现有生产部署模板继续默认使用 `s3`；
+启用独立 MinIO 策略时，需要同步向应用容器注入上述环境变量。
 
 ## 构建与验证
 

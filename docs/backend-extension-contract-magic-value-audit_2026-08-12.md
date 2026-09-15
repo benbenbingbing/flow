@@ -6,6 +6,9 @@
 > `workflow-integration`、`workflow-open-api` 中的扩展契约消费者  
 > 本阶段交付：仅文档，不修改代码
 
+> 2026-09-15 更新：A2 已完成，流程动作参数统一为 `extraParams`，旧字段及访问接口已移除。
+> 下文其余首批范围与暂缓结论仍为 2026-08-12 的盘点记录。
+
 ## 1. 结论摘要
 
 本次盘点不建议对后端字符串做全局清扫，也不建议把所有字符串值改成枚举。
@@ -28,7 +31,7 @@
 
 以下事项不应在首批贸然修改：
 
-- 删除或合并 `FlowActionContext.customParams` 与 `extraParams`。
+- 删除或合并流程动作参数双字段（A2 已于 2026-09-15 完成，见下文）。
 - 把开放的 `usage`、`operation`、`scene`、Provider code 改成封闭枚举。
 - 为所有 Map 建立通用 Schema 框架或批量增加泛型 SPI。
 - 将业务实体字段、流程变量或 connector payload 提取为平台常量。
@@ -70,7 +73,7 @@
 | 编号 | 候选项 | 当前用途与重复位置 | 值是否封闭 | 兼容风险 | 建议 | 首批 |
 | --- | --- | --- | --- | --- | --- | --- |
 | A1 | 动作轨迹 `stage/message/details` | `FlowActionContext` 写入，`FlowActionExecutionService` 读取 | key 封闭，value 开放 | 低 | 契约包字段常量或只读轨迹对象 | 是 |
-| A2 | `customParams/extraParams` | 上下文双字段、组装双写、消费者混用 | 不适用 | 高 | 先确定规范字段并保留别名 | 否 |
+| A2 | 流程动作参数 | 已统一为 `extraParams`，移除双字段、双写和合并读取 | 不适用 | 旧访问接口已移除 | 仓库外扩展需改用 `getExtraParams()/setExtraParams()` 并重新编译 | 已完成（2026-09-15） |
 | A3 | 固定形状流程动作参数 | Schema 与执行代码重复 key | key 固定，value 多数开放 | 中低 | 复用 `TypedFlowActionHandler` | 部分 |
 | A4 | 自定义触发时机 | 标准枚举与自定义 Provider 并存 | 不封闭 | 高 | 保持 `String` | 否 |
 | P1 | 人员解析器 `userKeys` 等 | Schema 与解析逻辑重复 key | key 固定，用户值开放 | 低 | 实现内常量或参数对象 | 是 |
@@ -133,40 +136,24 @@
 
 **首批结论：建议进入。**
 
-#### A2. `customParams` 与 `extraParams` 重复语义
+#### A2. 流程动作参数统一为 `extraParams`（2026-09-15 已完成）
+
+原有 `customParams` 与 `extraParams` 指向同一份参数，现已按明确的清理要求移除
+`customParams` 字段及 getter/setter，不保留兼容别名。
 
 **当前契约与用途**
 
-`FlowActionContext` 同时包含：
+- 前端仍将动作配置保存为 `paramsJson`；运行时解析流程变量引用后，仅写入 `extraParams`。
+- 普通处理器、通知动作和 devtools 示例统一读取 `getExtraParams()`。
+- 类型化处理器通过 `convertExtraParams()` 转换同一份参数。
+- `FlowActionExecutionService` 从 `extraParams` 获取参数，脱敏后写入现有 `resolvedParamsJson`。
+- 实体写入只传递 `extraParams`，保留必要的参数快照复制，移除双字段合并读取。
+- 上下文序列化和日志仅展示 `extraParams`；前端使用指南同步更新。
 
-- `customParams`：注释为前端 `paramsJson` 解析后的业务参数。
-- `extraParams`：注释为新契约统一命名，并明确与 `customParams` 双写。
+**扩展升级要求**
 
-**位置**
-
-- `workflow-contracts/.../action/FlowActionContext.java:101-109`
-- `workflow-process/.../action/application/FlowActionExecutor.java:165-168`
-
-`FlowActionExecutor` 当前把同一个 Map 同时写入两个字段。消费者仍然混用：
-
-- `FlowActionExecutionService` 持久化时读取 `customParams`。
-- 新的 project 动作多读取 `extraParams`。
-- `SendNotificationHandler`、devtools 示例仍读取 `customParams`。
-- `CreateSystemAssetHandler` 和 `ProjectEntityMutationExecutor` 会合并读取两个字段。
-
-**兼容风险**
-
-高。删除任一字段都会影响已有 Handler、日志记录和外部扩展实现；简单合并读取还可能
-改变 key 冲突时的覆盖顺序。
-
-**建议**
-
-- 文档层面明确 `extraParams` 是新代码的规范入口。
-- `customParams` 作为兼容别名保留。
-- 后续若治理，应先增加兼容测试，覆盖双字段 setter、序列化、持久化和手工构造上下文。
-- 不在首批删除字段，不批量替换所有调用。
-
-**首批结论：暂缓。**
+仓库外依赖旧访问接口的扩展需改用 `getExtraParams()/setExtraParams()`，并针对新版契约重新编译。
+动作配置和执行日志的数据库字段不变，无需迁移数据。
 
 ### 4.2 流程动作参数
 
@@ -593,7 +580,6 @@ project 示例 Provider 在 `configurationSchema()` 与执行代码中重复使�
 
 | 项目 | 暂缓原因 | 继续前需要的证据 |
 | --- | --- | --- |
-| 删除 `customParams` | 存在旧消费者和持久化依赖 | 全部读写点、序列化和兼容周期 |
 | 把 executionTrace 改成强类型列表 | 会改变公开字段类型 | JSON 兼容测试和外部扩展影响 |
 | UI 标准输出 DTO | 前后端和 output Schema 共同依赖 | 前端消费者清单与快照测试 |
 | 全部 SPI 泛型化 | 当前实现数量少，收益不足 | 至少多个真实实现和重复转换证据 |

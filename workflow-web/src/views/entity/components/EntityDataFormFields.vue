@@ -9,8 +9,8 @@
   />
   <div v-if="showCustomForm">
     <el-alert
-      v-if="firstCustomUniqueError"
-      :title="firstCustomUniqueError"
+      v-if="firstCustomCrossFieldError || firstCustomUniqueError"
+      :title="firstCustomCrossFieldError || firstCustomUniqueError"
       type="error"
       :closable="false"
       show-icon
@@ -25,7 +25,8 @@
       :entityFields="runtimeEntityFields"
       :fields="runtimeFormFields"
       :linkageState="linkageState"
-      v-model="formData.data"
+      :model-value="formData.data"
+      @update:model-value="handleCustomCrossFieldUpdate"
       :readonly="false"
       :mode="isEdit ? 'edit' : 'create'"
       :config="formViewConfig.customComponentProps || {}"
@@ -114,6 +115,8 @@
 import { ref, computed, watch, nextTick, provide } from 'vue'
 import { ElMessage } from 'element-plus'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldValidation'
+import { CROSS_FIELD_ERROR_CODE } from '@/shared/form-cross-field-validation'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
@@ -601,8 +604,31 @@ const renderFields = computed(() => {
 })
 
 // 暴露校验方法
+const customCrossValidation = useFormCrossFieldValidation({
+  getForm: () => showCustomForm.value ? { ...props.defaultForm, fields: formFields.value } : {},
+  getRecord: () => formData.value.data || {},
+  getEntityFields: () => runtimeEntityFields.value,
+  getMode: () => runtimeMode.value,
+  getContext: () => ({ ...props.runtimeContext, record: formData.value })
+})
+const { firstError: firstCustomCrossFieldError } = customCrossValidation
+
+/** 自定义组件更新也标记参与字段，平台校验不依赖组件自行实现 validate。 */
+function handleCustomCrossFieldUpdate(value: Record<string, unknown>) {
+  customCrossValidation.touchChanged(formData.value.data, value)
+  formData.value.data = value
+}
+
+async function applyServerValidationError(error: any) {
+  if (!showCustomForm.value) return await previewRef.value?.applyServerValidationError?.(error)
+  if (error?.errorCode !== CROSS_FIELD_ERROR_CODE) return false
+  const result = customCrossValidation.applyServerErrors(error.currentData?.fieldErrors || [])
+  return result.errors.length > 0
+}
+
 async function validate() {
   if (showCustomForm.value) {
+    if (!(await customCrossValidation.validate()).valid) return false
     // 自定义组件可能把上次唯一错误纳入自身 validate；先执行提交级新鲜预检，
     // 避免旧冲突已解除后仍被组件提前拦截。
     const uniqueResult = await customUniquePrecheckController.checkAll(
@@ -654,6 +680,7 @@ function refreshLinkage() {
 
 defineExpose({
   validate,
+  applyServerValidationError,
   refreshLinkage
 })
 

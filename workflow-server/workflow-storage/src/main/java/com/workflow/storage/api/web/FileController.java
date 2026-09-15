@@ -30,7 +30,7 @@ import java.util.Map;
 
 /**
  * 文件上传控制器
- * 当前使用本地文件存储策略。
+ * 通过存储策略工厂选择后端，统一执行文件归属鉴权与上传幂等控制。
  */
 @Slf4j
 @RequiresPermission("storage:file:read")
@@ -238,7 +238,7 @@ public class FileController {
 
     /**
      * 预览/下载文件
-     * 本地存储模式下直接读取文件流
+     * 通过当前存储策略流式读取文件，适用于本地、S3 和 MinIO 后端。
      *
      * @param fileUrl  文件访问URL
      * @param response HTTP 响应，用于写出文件流

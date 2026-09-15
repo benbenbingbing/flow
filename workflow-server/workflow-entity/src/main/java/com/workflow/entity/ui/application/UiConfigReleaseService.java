@@ -710,6 +710,36 @@ public class UiConfigReleaseService {
     }
 
     /**
+     * 提取已验签且与本次发布快照一致的流程只读上下文。
+     *
+     * <p>没有流程历史/节点绑定的普通表单仍走实体权限。返回上下文仅证明表单来源，
+     * 调用方必须继续校验当前用户的实例读取权限及记录绑定，不能将发布令牌视为数据权限。</p>
+     *
+     * @return 流程表单上下文；无令牌或普通独立/新建表单返回空
+     * @throws BusinessForbiddenException 令牌无效或发布坐标不匹配
+     */
+    public java.util.Optional<UiRuntimeResolutionContext> findProcessReadContext(
+            String releaseResolutionToken, String formId, String releaseId, Integer releaseVersion) {
+        if (!StringUtils.hasText(releaseResolutionToken)) {
+            return java.util.Optional.empty();
+        }
+        var claims = resolutionTokenService.verify(releaseResolutionToken);
+        if (!Objects.equals(formId, claims.parentFormId())
+                || !Objects.equals(releaseId, claims.parentReleaseId())
+                || !Objects.equals(releaseVersion, claims.parentReleaseVersion())) {
+            throw new BusinessForbiddenException("UI_EVENT_RELEASE_CONTEXT_MISMATCH",
+                    "查看表单的发布版本与运行时上下文不一致");
+        }
+        if ((claims.purpose() != UiRuntimePurpose.HISTORICAL
+                && claims.purpose() != UiRuntimePurpose.ACTIVE_TASK)
+                || !StringUtils.hasText(claims.processVersionHistoryId())
+                || !StringUtils.hasText(claims.nodeId())) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(claims.context());
+    }
+
+    /**
      * 解析表单事件运行时必须使用的精确发布快照。
      *
      * <p>流程表单携带服务端签名令牌时，事件绑定与字段定义必须从流程当前

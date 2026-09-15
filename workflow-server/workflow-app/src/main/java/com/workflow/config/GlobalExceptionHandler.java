@@ -1,6 +1,7 @@
 package com.workflow.config;
 
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.core.error.FormCrossFieldValidationException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.RevisionConflictException;
@@ -72,6 +73,14 @@ public class GlobalExceptionHandler {
         log.error("业务状态冲突: errorCode={}, message={}", e.getErrorCode(), e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(409, e.getErrorCode(), e.getMessage()));
+    }
+
+    /** 跨字段错误保留字段与规则标识，前端可定位原表单并保留用户输入。 */
+    @ExceptionHandler(FormCrossFieldValidationException.class)
+    public ResponseEntity<ApiResponse<Object>> handleFormCrossFieldValidationException(FormCrossFieldValidationException e) {
+        ApiResponse<Object> response = ApiResponse.error(409, e.getErrorCode(), e.getMessage());
+        response.setData(java.util.Map.of("fieldErrors", e.getFieldErrors()));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
     /**

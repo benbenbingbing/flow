@@ -12,9 +12,10 @@ public class ProductionStorageConfigurationGuard {
 
     public ProductionStorageConfigurationGuard(
             FileStorageProperties properties) {
-        if (!"s3".equalsIgnoreCase(properties.getType())) {
+        if (!"s3".equalsIgnoreCase(properties.getType())
+                && !"minio".equalsIgnoreCase(properties.getType())) {
             throw new IllegalStateException(
-                    "Production requires shared S3-compatible file storage");
+                    "Production requires shared S3-compatible file storage (s3 or minio)");
         }
     }
 }

@@ -60,8 +60,8 @@ public class SendNotificationHandler implements FlowActionHandler {
     @Override
     public void execute(FlowActionContext ctx) {
         // 读取自定义通知参数
-        Object templateCode = ctx.getCustomParams().get("templateCode");
-        Object notifyType = ctx.getCustomParams().get("notifyType");
+        Object templateCode = ctx.getExtraParams().get("templateCode");
+        Object notifyType = ctx.getExtraParams().get("notifyType");
         log.info(
                 "[流程动作] 发送通知, templateCode={}, notifyType={},"
                         + " processInstanceId={}, entityCode={}, entityDataId={}",

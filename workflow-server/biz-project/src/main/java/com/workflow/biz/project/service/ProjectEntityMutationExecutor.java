@@ -175,20 +175,13 @@ public class ProjectEntityMutationExecutor {
                 + UUID.randomUUID();
     }
 
+    /** 进入会话时复制动作参数，保证多步实体写入使用同一份参数快照；无上下文时为空。 */
     private Map<String, Object> mutationExtraParams(
             FlowActionContext context) {
-        if (context == null) {
+        if (context == null || context.getExtraParams() == null) {
             return Map.of();
         }
-        Map<String, Object> result =
-                new LinkedHashMap<>();
-        if (context.getCustomParams() != null) {
-            result.putAll(context.getCustomParams());
-        }
-        if (context.getExtraParams() != null) {
-            result.putAll(context.getExtraParams());
-        }
-        return result;
+        return new LinkedHashMap<>(context.getExtraParams());
     }
 
     private record MutationSession(

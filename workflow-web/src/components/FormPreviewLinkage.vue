@@ -15,8 +15,8 @@
     
     <template v-if="form?.customComponent && hasCustomFormComponent(form.customComponent)">
       <el-alert
-        v-if="firstUniqueError"
-        :title="firstUniqueError"
+        v-if="firstCrossFieldError || firstUniqueError"
+        :title="firstCrossFieldError || firstUniqueError"
         type="error"
         :closable="false"
         show-icon
@@ -58,6 +58,7 @@
       :layout-type="form?.layoutType || 'vertical'"
       :root-parent-id="nodeRootParentId"
       :excluded-node-ids="excludedNodeIds"
+      :cross-field-errors="crossFieldErrors"
       @update:model-value="handleCustomFormUpdate"
     >
       <template
@@ -97,13 +98,14 @@
           :label="field.fieldLabel || field.fieldName"
           :prop="getFieldKey(field)"
           :rules="getFieldRules(field)"
-          :error="uniqueErrorFor(field)"
+          :error="crossValidation.errorFor(field) || uniqueErrorFor(field)"
           :required="isFieldRequired(field)"
         >
           <FormFieldRendererLinkage
             :ref="instance => setFieldRendererRef(field, instance)"
             :field="field"
             v-model="formData[getFieldKey(field)]"
+            @update:model-value="crossValidation.touch(getFieldKey(field))"
             :disabled="isFieldDisabled(field)"
             :options="linkageState.options[getFieldKey(field)] || field.options"
             :context="{ ...runtimeContext, field }"
@@ -139,6 +141,8 @@ import FormActionBar from './FormActionBar.vue'
 import RelatedContentRuntime from './related-content/RelatedContentRuntime.vue'
 import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
+import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldValidation'
+import { CROSS_FIELD_ERROR_CODE } from '@/shared/form-cross-field-validation'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
 import {
@@ -237,6 +241,7 @@ const previewStyle = computed(() => ({
 
 // 自定义表单组件数据更新回调
 function handleCustomFormUpdate(val) {
+  crossValidation.touchChanged(formData.value, val)
   formData.value = { ...val }
   emit('update:modelValue', formData.value)
 }
@@ -258,6 +263,17 @@ const customFormRef = ref(null)
 const nodeFormRef = ref(null)
 const fieldRendererRefs = ref({})
 const formData = ref(props.modelValue || {})
+const crossValidation = useFormCrossFieldValidation({
+  getForm: () => props.form,
+  getRecord: () => formData.value,
+  getEntityFields: () => props.entityFields,
+  getMode: () => props.mode,
+  getReadonly: () => props.readonly,
+  getContext: () => props.context,
+  getRootParentId: () => props.nodeRootParentId,
+  getExcludedNodeIds: () => props.excludedNodeIds
+})
+const { errors: crossFieldErrors, firstError: firstCrossFieldError } = crossValidation
 const linkageState = ref({
   visibility: {},
   disabled: {},
@@ -646,6 +662,11 @@ onMounted(() => {
 
 // 验证表单
 async function validate() {
+  const crossResult = await crossValidation.validate()
+  if (!crossResult.valid) {
+    await revealCrossFieldError(crossResult.errors[0]?.fieldCode)
+    return false
+  }
   // 提交级查重必须先于 Element Form 的整表校验。后者也会执行 BLUR 规则；若先前
   // 缓存过“重复”，先跑整表校验会被旧结果拦住，用户即使消除冲突也无法再次提交。
   const uniqueResult = await uniquePrecheckController.checkAll(
@@ -672,11 +693,25 @@ async function validate() {
   return true
 }
 
+/** 复用布局定位；字段平铺时滚动到字段，服务端错误与本地错误采用同一入口。 */
+async function revealCrossFieldError(fieldCode) {
+  if (nodeFormRef.value) await nodeFormRef.value.revealValidationField?.(fieldCode)
+  else { await nextTick(); formRef.value?.scrollToField?.(fieldCode) }
+}
+
+async function applyServerValidationError(error) {
+  if (error?.errorCode !== CROSS_FIELD_ERROR_CODE) return false
+  const result = crossValidation.applyServerErrors(error.currentData?.fieldErrors || [])
+  if (result.errors.length) await revealCrossFieldError(result.errors[0].fieldCode)
+  return result.errors.length > 0
+}
+
 // 暴露方法
 defineExpose({
   validate,
+  applyServerValidationError,
   getData: () => formData.value,
-  getValidationError: () => firstUniqueError.value
+  getValidationError: () => firstCrossFieldError.value || firstUniqueError.value
 })
 </script>
 

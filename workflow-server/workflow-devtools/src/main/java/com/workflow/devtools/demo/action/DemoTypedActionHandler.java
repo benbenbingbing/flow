@@ -43,7 +43,7 @@ public class DemoTypedActionHandler implements TypedFlowActionHandler<DemoAction
         log.info("目标节点ID: {}, 目标节点名称: {}", ctx.getTargetNodeId(), ctx.getTargetNodeName());
         log.info("类型化参数: message={}, notifyUser={}, priority={}",
                 params.getMessage(), params.getNotifyUser(), params.getPriority());
-        log.info("自定义参数(原始): {}", ctx.getCustomParams());
+        log.info("自定义参数(原始): {}", ctx.getExtraParams());
         log.info("流程变量: {}", ctx.getVariables());
         log.info("实体数据: {}", ctx.getEntityData());
         log.info("当前任务: {}", ctx.getCurrentTask());

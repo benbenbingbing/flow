@@ -341,6 +341,27 @@ class EntityFormConfigurationValidatorTest {
         return form;
     }
 
+    /** 完整保存/发布使用真实实体字段类型，拒绝删除参照字段或伪造表单类型。 */
+    @Test
+    void crossFieldReferencesMustExistInFormAndMatchEntityTypes() {
+        EntityForm form = new EntityForm();
+        form.setEntityId("entity-1"); form.setFormName("范围表单"); form.setFormKey("rangeForm");
+        EntityFormField start = field(); start.setFieldCode("start"); start.setFieldType("INTEGER"); start.setComponentType("number");
+        EntityFormField end = field(); end.setFieldCode("end"); end.setFieldType("INTEGER"); end.setComponentType("number");
+        end.setValidationRules(writeJson(Map.of("crossField", Map.of("version", 1, "rules", List.of(
+                Map.of("id", "range", "operator", "GE", "targetFieldCode", "start"))))));
+        form.setFields(List.of(start, end));
+        EntityField actualStart = entityField("s", "start", EntityField.FieldType.INTEGER);
+        EntityField actualEnd = entityField("e", "end", EntityField.FieldType.INTEGER);
+        when(entityFieldMapper.findByEntityId("entity-1")).thenReturn(List.of(actualStart, actualEnd));
+        assertDoesNotThrow(() -> validator.validateForm(form));
+        actualStart.setFieldType(EntityField.FieldType.DATE);
+        assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form));
+        actualStart.setFieldType(EntityField.FieldType.INTEGER);
+        form.setFields(List.of(end)); end.setIsHidden(1);
+        assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form));
+    }
+
     private EntityField entityField(
             String id,
             String code,

@@ -13,6 +13,7 @@ import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimServ
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.Preparation;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
+import com.workflow.entity.form.application.PublishedFormCrossFieldMutationValidator;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,7 @@ public class EntityMutationTransactionExecutor {
     private final EntityRelatedVersionCaptureService relatedVersionCaptureService;
     private final EntityMutationReceiptService receiptService;
     private final EntityFormUniqueClaimService formUniqueClaimService;
+    private final PublishedFormCrossFieldMutationValidator crossFieldValidator;
     private final ObjectMapper objectMapper;
 
     @Transactional(
@@ -107,6 +109,7 @@ public class EntityMutationTransactionExecutor {
                 command,
                 current,
                 prepared);
+        crossFieldValidator.validate(command, current);
     }
 
     @Transactional(
@@ -237,6 +240,8 @@ public class EntityMutationTransactionExecutor {
                 effectiveCommand,
                 afterRecord,
                 prepared);
+        // 锁内读取真实落库值，防止分别合法的并发补丁合并后违反跨字段关系。
+        crossFieldValidator.validate(effectiveCommand, afterRecord);
         relatedVersionCaptureService.requireRootsLocked(
                 effectiveCommand,
                 lockedRelatedRoots,

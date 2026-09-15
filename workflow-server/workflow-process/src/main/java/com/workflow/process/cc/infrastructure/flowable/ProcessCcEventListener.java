@@ -6,11 +6,11 @@ import com.workflow.process.cc.application.ProcessCcConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
+import org.flowable.common.engine.api.delegate.event.FlowableEntityEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
-import org.flowable.engine.delegate.event.impl.FlowableEntityEventImpl;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -48,7 +48,9 @@ public class ProcessCcEventListener implements FlowableEventListener {
      */
     @Override
     public void onEvent(FlowableEvent event) {
-        if (!(event instanceof FlowableEntityEventImpl entityEvent)) {
+        // TASK_CREATED 来自 task-service，流程/完成事件来自 BPMN 引擎；两者的
+        // 实现类不同，必须按公共事件接口识别，否则创建时的知会会被静默跳过。
+        if (!(event instanceof FlowableEntityEvent entityEvent)) {
             return;
         }
         String eventType = event.getType() == null ? "" : event.getType().name();
@@ -113,9 +115,12 @@ public class ProcessCcEventListener implements FlowableEventListener {
         if (config == null) {
             return;
         }
-        ProcessInfo process = processInfo(processInstance.getId(), processInstance.getProcessDefinitionId());
+        // PROCESS_STARTED 的实体可能是启动节点的子执行；其 id 是执行 ID，
+        // 只有 processInstanceId 才能关联首页流程详情、业务编码和历史变量。
+        String processInstanceId = processInstance.getProcessInstanceId();
+        ProcessInfo process = processInfo(processInstanceId, processInstance.getProcessDefinitionId());
         ccRuntimeService.trigger(new CcRuntimeContext(
-                processInstance.getId(),
+                processInstanceId,
                 processInstance.getProcessDefinitionId(),
                 process.key(),
                 process.name(),
@@ -124,7 +129,7 @@ public class ProcessCcEventListener implements FlowableEventListener {
                 process.name(),
                 timing,
                 process.startUserId(),
-                variables(processInstance.getId())), config);
+                variables(processInstanceId)), config);
     }
 
     /**

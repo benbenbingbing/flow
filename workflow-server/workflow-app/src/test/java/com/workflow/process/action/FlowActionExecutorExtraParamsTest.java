@@ -51,7 +51,7 @@ class FlowActionExecutorExtraParamsTest {
     }
 
     @Test
-    void exposesResolvedParamsThroughNewAndLegacyNames() {
+    void exposesResolvedParamsThroughExtraParams() {
         ApplicationContext applicationContext =
                 mock(ApplicationContext.class);
         FlowActionRuntimeAdapter helper = mock(FlowActionRuntimeAdapter.class);
@@ -88,7 +88,6 @@ class FlowActionExecutorExtraParamsTest {
                 "idempotency-1");
 
         assertSame(result, captured.get());
-        assertSame(result.getExtraParams(), result.getCustomParams());
         assertEquals(
                 Map.of(
                         "fixed", "value",

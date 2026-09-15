@@ -91,6 +91,21 @@ class EntityFormFieldProjectionTest {
         assertEquals("another", projection.derive("form-1", result).get(0).getFieldCode());
     }
 
+    /** 复制/恢复通过节点投影往返规则；清空后不得从旧发布字段重新继承。 */
+    @Test
+    void crossFieldRulesRoundTripAndExplicitClearOverridesSnapshot() {
+        EntityFormField previous = field();
+        previous.setValidationRules("{\"crossField\":{\"version\":1,\"rules\":[{\"id\":\"range\",\"operator\":\"GE\",\"targetFieldCode\":\"minimum\"}]}}");
+        var copiedNodes = projection.materialize("copy-form", List.of(previous), List.of());
+        var copy = projection.derive("copy-form", copiedNodes).get(0);
+        assertEquals(codec.readObject(previous.getValidationRules(), "旧规则"), codec.readObject(copy.getValidationRules(), "复制规则"));
+        EntityFormNode clear = node();
+        clear.setRulesDocument("{\"validation\":{\"crossField\":{\"version\":1,\"rules\":[]}}}");
+        var restored = projection.derive("form-1", projection.materialize("form-1", List.of(previous), List.of(clear))).get(0);
+        var config = (java.util.Map<?, ?>) codec.readObject(restored.getValidationRules(), "清空规则").get("crossField");
+        assertEquals(List.of(), config.get("rules"));
+    }
+
     private EntityFormNode node() {
         EntityFormNode node = new EntityFormNode();
         node.setId("node-1");

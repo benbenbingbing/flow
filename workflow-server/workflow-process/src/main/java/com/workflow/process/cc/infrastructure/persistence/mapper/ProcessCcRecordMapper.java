@@ -54,6 +54,7 @@ public interface ProcessCcRecordMapper extends BaseMapper<ProcessCcRecord> {
             WHERE cc_user_id = #{userId} AND deleted = 0
             <if test='keyword != null and keyword != ""'>
               AND (process_name LIKE CONCAT('%', #{keyword}, '%')
+                OR data_name LIKE CONCAT('%', #{keyword}, '%')
                 OR node_name LIKE CONCAT('%', #{keyword}, '%')
                 OR business_key LIKE CONCAT('%', #{keyword}, '%')
                 OR comment LIKE CONCAT('%', #{keyword}, '%'))
@@ -82,6 +83,7 @@ public interface ProcessCcRecordMapper extends BaseMapper<ProcessCcRecord> {
             WHERE cc_user_id = #{userId} AND deleted = 0
             <if test='keyword != null and keyword != ""'>
               AND (process_name LIKE CONCAT('%', #{keyword}, '%')
+                OR data_name LIKE CONCAT('%', #{keyword}, '%')
                 OR node_name LIKE CONCAT('%', #{keyword}, '%')
                 OR business_key LIKE CONCAT('%', #{keyword}, '%')
                 OR comment LIKE CONCAT('%', #{keyword}, '%'))

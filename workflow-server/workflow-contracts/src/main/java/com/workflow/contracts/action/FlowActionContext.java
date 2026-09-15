@@ -102,12 +102,8 @@ public class FlowActionContext {
     private Map<String, Object> variablesSnapshot;
 
     /**
-     * 前端 paramsJson 解析后的业务参数
-     */
-    private Map<String, Object> customParams;
-
-    /**
-     * 扩展动作自定义参数。与 customParams 双写，作为新契约的统一命名。
+     * 流程动作业务参数的唯一入口，由前端 paramsJson 解析并替换流程变量引用后生成。
+     * 普通处理器直接读取此 Map，类型化处理器通过 convertExtraParams 转换。
      */
     private Map<String, Object> extraParams;
 

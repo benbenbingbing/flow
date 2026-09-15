@@ -9,6 +9,9 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.process.port.ProcessCatalogPort;
+import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -50,6 +53,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,6 +72,7 @@ class EntityFormCandidateApprovalActionTest {
     private final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
     private final EntityDataDynamicService dataService = mock(EntityDataDynamicService.class);
     private final UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
+    private final ProcessRecordReadAccessPort processReadAccess = mock(ProcessRecordReadAccessPort.class);
     private EntityActionCapabilityService capabilityService;
     private EntityFormActionService formActionService;
     private EntityDefinition definition;
@@ -92,7 +97,7 @@ class EntityFormCandidateApprovalActionTest {
         formActionService = new EntityFormActionService(
                 formMapper, mock(EntityFormNodeMapper.class), definitionMapper,
                 dataService, capabilityService, new EntityFormActionConfigPolicy(),
-                releaseService, mock(ProcessCatalogPort.class),
+                releaseService, mock(ProcessCatalogPort.class), processReadAccess,
                 new JsonDocumentCodec(objectMapper), objectMapper);
         definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -171,6 +176,76 @@ class EntityFormCandidateApprovalActionTest {
             assertThrows(ForbiddenException.class, () -> formActionService.resolve(request));
         }
         verify(dataService, never()).findById(anyString(), anyString());
+    }
+
+    /** 已办/知会复用流程读取授权，运行中与已结束实例都只能呈现只读按钮。 */
+    @Test
+    void processReaderWithoutEntityPermissionsCanResolveViewActions() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        request.setMode("view");
+        request.setTaskId(null);
+        for (UiRuntimePurpose purpose : List.of(UiRuntimePurpose.HISTORICAL, UiRuntimePurpose.ACTIVE_TASK)) {
+            when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+                    .thenReturn(Optional.of(new UiRuntimeResolutionContext(purpose, "history-1", "node-1")));
+
+            List<FormActionRuntimeDTO> actions = formActionService.resolve(request);
+
+            assertEquals(List.of("close"), actions.stream().map(FormActionRuntimeDTO::getKey).toList());
+            assertTrue(actions.get(0).isEnabled());
+        }
+        verify(processReadAccess, org.mockito.Mockito.times(2))
+                .requireReadAccess(ENTITY_CODE, "record-1", "process-1", "history-1");
+        verify(dataService, never()).findAccessibleById(anyString(), anyString(), any());
+    }
+
+    @Test
+    void signedProcessContextCannotReplaceActualInstanceReadPermission() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        request.setMode("view");
+        when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+                .thenReturn(Optional.of(UiRuntimeResolutionContext.historical("history-1", "node-1")));
+        doThrow(new ForbiddenException("无权访问该流程实例")).when(processReadAccess)
+                .requireReadAccess(ENTITY_CODE, "record-1", "process-1", "history-1");
+
+        assertThrows(ForbiddenException.class, () -> formActionService.resolve(request));
+        verify(dataService, never()).findAccessibleById(anyString(), anyString(), any());
+    }
+
+    @Test
+    void taskBoundReadTokenCannotBeReusedForAnotherRecordOrProcess() {
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        request.setMode("view");
+        for (int mismatch : List.of(0, 1, 2)) {
+            when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+                    .thenReturn(Optional.of(UiRuntimeResolutionContext.activeTask("history-1", "node-1", "task-1",
+                            mismatch == 0 ? "other-process" : "process-1",
+                            mismatch == 1 ? "other_entity" : ENTITY_CODE,
+                            mismatch == 2 ? "other-record" : "record-1")));
+
+            BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class,
+                    () -> formActionService.resolve(request));
+            assertEquals("PROCESS_FORM_READ_CONTEXT_MISMATCH", error.getErrorCode());
+        }
+        org.mockito.Mockito.verifyNoInteractions(processReadAccess);
+    }
+
+    @Test
+    void processReadPermissionDoesNotEnableCustomViewButtons() {
+        form.setViewConfig("""
+                {"actionBar":{"version":1,"builtInOverrides":{},"customButtons":[
+                  {"key":"generate","label":"生成","enabled":true,
+                   "modes":["view"],"perm":"entity:work_order:generate"}]}}
+                """);
+        FormActionResolveRequest request = pinnedApprovalRequest();
+        request.setMode("view");
+        when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+                .thenReturn(Optional.of(UiRuntimeResolutionContext.historical("history-1", "node-1")));
+
+        FormActionRuntimeDTO custom = formActionService.resolve(request).stream()
+                .filter(button -> "generate".equals(button.getKey())).findFirst().orElseThrow();
+
+        assertFalse(custom.isVisible());
+        assertFalse(custom.isEnabled());
     }
 
     @Test

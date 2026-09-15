@@ -12,6 +12,7 @@ import com.workflow.entity.form.api.request.EntityFormMetadataPatchRequest;
 import com.workflow.entity.form.api.request.EntityFormSaveRequest;
 import com.workflow.entity.form.api.request.FormUniquePrecheckRequest;
 import com.workflow.entity.form.api.response.FormUniquePrecheckResponse;
+import com.workflow.entity.form.api.response.EntityFormResponse;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.PublishedFormUniquePrecheckService;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
@@ -43,52 +44,54 @@ public class EntityFormController {
      * 查询所有表单列表
      */
     @GetMapping("/list")
-    public Result<List<EntityForm>> list() {
+    public Result<List<EntityFormResponse>> list() {
         accessService.requireGlobalConfigurationAccess();
-        return Result.success(formService.list());
+        return Result.success(formService.list().stream()
+                .map(EntityFormResponse::from).toList());
     }
     
     /**
      * 查询实体的表单列表
      */
     @GetMapping("/entity/{entityId}")
-    public Result<List<EntityForm>> listByEntity(@PathVariable String entityId) {
+    public Result<List<EntityFormResponse>> listByEntity(@PathVariable String entityId) {
         accessService.requireEntityFormAccess(entityId);
-        return Result.success(formService.getFormsByEntityId(entityId));
+        return Result.success(formService.getFormsByEntityId(entityId).stream()
+                .map(EntityFormResponse::from).toList());
     }
     
     /**
      * 根据ID查询表单
      */
     @GetMapping("/{id}")
-    public Result<EntityForm> getById(@PathVariable String id) {
+    public Result<EntityFormResponse> getById(@PathVariable String id) {
         accessService.requireFormAccess(id);
-        return Result.success(formService.getById(id));
+        return Result.success(EntityFormResponse.from(formService.getById(id)));
     }
     
     /**
      * 新增表单
      */
     @PostMapping
-    public Result<EntityForm> save(@Validated @RequestBody EntityForm form) {
+    public Result<EntityFormResponse> save(@Validated @RequestBody EntityForm form) {
         if (StringUtils.hasText(form.getId())) {
             throw new IllegalArgumentException("新增表单不能携带 id");
         }
         accessService.requireNewFormAccess(form);
-        return Result.success(formService.saveForm(form));
+        return Result.success(EntityFormResponse.from(formService.saveForm(form)));
     }
     
     /**
      * 更新表单
      */
     @PostMapping("/{id}/update")
-    public Result<EntityForm> update(
+    public Result<EntityFormResponse> update(
             @PathVariable String id,
             @RequestBody EntityFormSaveRequest request) {
         accessService.requireFormAccess(id);
-        return Result.success(formService.saveForm(
+        return Result.success(EntityFormResponse.from(formService.saveForm(
                 request.toEntity(id),
-                request.getExpectedRevision()));
+                request.getExpectedRevision())));
     }
 
     /**
@@ -99,11 +102,11 @@ public class EntityFormController {
      * @return 更新后的表单
      */
     @PostMapping("/{id}/patch")
-    public Result<EntityForm> patch(
+    public Result<EntityFormResponse> patch(
             @PathVariable String id,
             @RequestBody EntityFormMetadataPatchRequest request) {
         accessService.requireFormAccess(id);
-        return Result.success(metadataService.patchForm(id, request));
+        return Result.success(EntityFormResponse.from(metadataService.patchForm(id, request)));
     }
     
     /**
@@ -156,27 +159,27 @@ public class EntityFormController {
      * 获取实体的默认表单
      */
     @GetMapping("/entity/{entityId}/default")
-    public Result<EntityForm> getDefaultForm(@PathVariable String entityId) {
+    public Result<EntityFormResponse> getDefaultForm(@PathVariable String entityId) {
         accessService.requireEntityFormAccess(entityId);
         EntityForm form = formService.getDefaultForm(entityId);
         if (form == null) {
             return Result.success(null);
         }
-        return Result.success(form);
+        return Result.success(EntityFormResponse.from(form));
     }
     
     /**
      * 复制表单
      */
     @PostMapping("/{id}/copy")
-    public Result<EntityForm> copyForm(
+    public Result<EntityFormResponse> copyForm(
             @PathVariable String id,
             @RequestBody(required = false) EntityFormCopyRequest request) {
         accessService.requireFormAccess(id);
-        return Result.success(formService.copyForm(
+        return Result.success(EntityFormResponse.from(formService.copyForm(
                 id,
                 request == null ? null : request.getFormName(),
-                request == null ? null : request.getFormKey()));
+                request == null ? null : request.getFormKey())));
     }
     
     /**

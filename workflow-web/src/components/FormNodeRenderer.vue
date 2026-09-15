@@ -24,6 +24,7 @@
           :children-for="childrenFor"
           :layout-type="layoutType"
           :reveal-field-code="revealFieldCode"
+          :cross-field-errors="crossFieldErrors"
           :action-slots="$slots"
           @update:model-value="$emit('update:modelValue', $event)"
         >
@@ -56,6 +57,7 @@ const props = defineProps({
   dataSourceRuntime: { type: Object, default: null },
   rootParentId: { type: [String, Number], default: '' },
   excludedNodeIds: { type: Array, default: () => [] },
+  crossFieldErrors: { type: Object, default: () => ({}) },
   labelWidth: { type: String, default: '100px' },
   labelPosition: { type: String, default: 'right' },
   layoutType: { type: String, default: 'vertical' }

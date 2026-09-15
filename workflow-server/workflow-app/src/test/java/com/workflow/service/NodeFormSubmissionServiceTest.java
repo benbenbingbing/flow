@@ -428,7 +428,8 @@ class NodeFormSubmissionServiceTest {
         FormSubmissionTraceService traceService =
                 mock(FormSubmissionTraceService.class);
         FormSubmissionExecutionContext executionContext =
-                executionContext();
+                com.workflow.entity.form.application.FormCrossFieldRuntimeContext.withReadonlyForms(
+                        executionContext(), List.of("form-1"));
         when(traceService.current(
                 eq("PROCESS_APPROVAL_SUBMIT"),
                 eq("task:task-1"),

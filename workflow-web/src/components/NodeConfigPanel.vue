@@ -1578,6 +1578,7 @@
                 <el-option v-if="isUserTask" label="任务完成时" value="TASK_COMPLETE" />
                 <el-option v-if="isServiceTask || isSendTask" label="执行到知会节点" value="EXPLICIT" />
               </el-select>
+              <div v-if="isUserTask" class="form-tip">流程实际到达此节点并创建任务、或完成此节点任务时触发知会。</div>
             </el-form-item>
             <el-form-item label="通知渠道">
               <el-checkbox-group v-model="ccForm.channels">
@@ -1587,6 +1588,7 @@
             </el-form-item>
             <el-form-item label="包含当前办理人">
               <el-switch v-model="ccForm.includeOperator" />
+              <div class="form-tip">关闭时，收件人规则中的当前办理人也会被排除；需要本人接收知会时请开启。</div>
             </el-form-item>
             <el-form-item v-if="isUserTask" label="允许手工知会">
               <template #label>

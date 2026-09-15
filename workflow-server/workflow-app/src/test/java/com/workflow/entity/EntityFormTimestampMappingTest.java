@@ -1,7 +1,6 @@
 package com.workflow.entity;
 
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
-import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -14,27 +13,25 @@ import java.lang.reflect.Method;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 实体表单时间戳字段映射单元测试。
  *
- * <p>被测对象为 {@link EntityForm}、{@link EntityFormField} 与 {@link EntityFormMapper}，
+ * <p>被测对象为 {@link EntityForm} 与 {@link EntityFormMapper}，
  * 验证时间戳字段显式声明了数据库列名，且 Mapper 查询不含可能引发歧义的 create_time 排序。</p>
  */
 class EntityFormTimestampMappingTest {
 
     /**
-     * 表单与表单字段的时间戳字段应使用规范的数据库列名。
+     * 持久化表单的时间戳字段应使用规范的数据库列名。
      *
      * <p>断言 createTime 映射到 create_time、updateTime 映射到 update_time。</p>
+     * <p>EntityFormField 已改为节点或快照生成的运行视图，不再要求数据库列映射。</p>
      */
     @Test
     void formTimestampsUseSchemaColumnNames() throws Exception {
         assertColumn(EntityForm.class, "createTime", "create_time");
         assertColumn(EntityForm.class, "updateTime", "update_time");
-        assertColumn(EntityFormField.class, "createTime", "create_time");
-        assertColumn(EntityFormField.class, "updateTime", "update_time");
     }
 
     /**

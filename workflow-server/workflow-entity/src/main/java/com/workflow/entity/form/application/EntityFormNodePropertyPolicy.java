@@ -55,7 +55,7 @@ final class EntityFormNodePropertyPolicy {
     private static final Set<String> VALID_FORMATS = Set.of(
             "EMAIL", "PHONE", "URL");
     private static final Set<String> STRUCTURED_VALIDATION_KEYS = Set.of(
-            "minLength", "maxLength", "min", "max", "format", "pattern");
+            "minLength", "maxLength", "min", "max", "format", "pattern", "crossField");
     private static final Map<String, Set<String>>
             BUILT_IN_COMPONENT_FIELD_TYPES = Map.ofEntries(
                     Map.entry("input", Set.of("STRING")),
@@ -300,6 +300,7 @@ final class EntityFormNodePropertyPolicy {
                 "pattern",
                 PATTERN_VALIDATION_FIELD_TYPES);
         validateValidationValues(validation);
+        FormCrossFieldRulePolicy.parse(validation.get("crossField"), fieldType);
         if (wrappedValidation) {
             if (validation.isEmpty()) {
                 active.remove("validation");
@@ -912,7 +913,8 @@ final class EntityFormNodePropertyPolicy {
             return result;
         }
         for (Map.Entry<String, Object> entry : source.entrySet()) {
-            Object value = pruneValue(entry.getValue());
+            Object value = "crossField".equals(entry.getKey())
+                    ? copyValue(entry.getValue()) : pruneValue(entry.getValue());
             if (meaningful(value)) {
                 result.put(entry.getKey(), value);
             }
@@ -924,7 +926,10 @@ final class EntityFormNodePropertyPolicy {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
-                Object nested = pruneValue(entry.getValue());
+                // rules=[] 是清空跨字段规则的显式值，不能被通用空值裁剪变成失效协议。
+                // 保留完整配置也让未知键/空规则对象能够被契约校验拒绝，而非静默修正。
+                Object nested = "crossField".equals(entry.getKey())
+                        ? copyValue(entry.getValue()) : pruneValue(entry.getValue());
                 if (meaningful(nested)) {
                     result.put(String.valueOf(entry.getKey()), nested);
                 }

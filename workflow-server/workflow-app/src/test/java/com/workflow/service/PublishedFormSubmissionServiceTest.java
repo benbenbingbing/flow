@@ -1020,7 +1020,31 @@ class PublishedFormSubmissionServiceTest {
                 dataSourceService,
                 codec,
                 new UiExtensionDefinitionValidator(codec),
-                requiredValidator);
+                requiredValidator,
+                new com.workflow.entity.form.application.PublishedFormCrossFieldValidator(
+                        mock(com.workflow.entity.data.application.EntityDataDynamicService.class),
+                        new ObjectMapper(), codec,
+                        new com.workflow.entity.form.application.PublishedFormConditionEvaluator(new ObjectMapper())));
+    }
+
+    /** 提交扩展改变值后必须重新比较，不能依赖浏览器预检的旧值。 */
+    @Test
+    void rejectsCrossFieldFailureIntroducedByBeforeSubmit() {
+        var releases = mock(UiConfigReleaseService.class);
+        var extensions = mock(UiInterfaceExtensionService.class);
+        var service = service(mock(EntityDefinitionMapper.class), mock(EntityRelationMapper.class), releases, extensions);
+        EntityForm form = new EntityForm(); form.setId("form-1"); form.setEntityId("entity-1");
+        EntityFormField start = new EntityFormField(); start.setFieldCode("start"); start.setFieldType("INTEGER");
+        EntityFormField end = new EntityFormField(); end.setFieldCode("end"); end.setFieldType("INTEGER");
+        end.setValidationRules("{\"crossField\":{\"version\":1,\"rules\":[{\"id\":\"range\",\"operator\":\"GE\",\"targetFieldCode\":\"start\"}]}}");
+        end.setDataSourceBindings(Map.of("BEFORE_SUBMIT", Map.of("extensionId", "source-1")));
+        form.setFields(List.of(start, end)); form.setNodes(List.of());
+        when(releases.resolveRuntimeFormRelease("form-1", null, null)).thenReturn(resolution(form, "release-1", 1));
+        when(extensions.execute(eq("source-1"), org.mockito.ArgumentMatchers.any())).thenReturn(Map.of("end", 5));
+        var error = assertThrows(com.workflow.core.error.FormCrossFieldValidationException.class,
+                () -> service.applyForm("form-1", "expense", null, "edit", Map.of("start", 10, "end", 20)));
+        assertEquals("end", error.getFieldErrors().get(0).fieldCode());
+        assertEquals("range", error.getFieldErrors().get(0).ruleId());
     }
 
     /** 构造携带 traceKey 的表单提交执行上下文 */

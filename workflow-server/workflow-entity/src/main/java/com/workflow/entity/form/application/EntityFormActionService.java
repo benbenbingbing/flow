@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.port.ProcessCatalogPort;
+import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
@@ -68,6 +69,7 @@ public class EntityFormActionService {
     private final EntityFormActionConfigPolicy configPolicy;
     private final UiConfigReleaseService releaseService;
     private final ProcessCatalogPort processCatalogPort;
+    private final ProcessRecordReadAccessPort processRecordReadAccessPort;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 
@@ -155,7 +157,8 @@ public class EntityFormActionService {
      *
      * <p>该入口供同一服务进程内的受信任运行时适配器使用，避免再次按 ACTIVE 指针
      * 解析表单而让历史会话漂移。{@code authorizedRow} 必须已经过当前 Flow 用户的
-     * 普通模式的对象权限/DataScope，或审批模式的真实待办与发布令牌绑定，
+     * 普通模式的对象权限/DataScope、流程查看模式的实例读取权限与发布绑定，
+     * 或审批模式的真实待办与发布令牌绑定，
      * 以及调用方固定上下文校验；本方法只复用平台统一的按钮
      * 配置、权限和可用性规则求值。</p>
      *
@@ -302,7 +305,7 @@ public class EntityFormActionService {
      *
      * <p>调用方必须传入 {@code resolveRuntimeEventSnapshot} 的原始结果；本方法
      * 不再读取 ACTIVE 或热修复目标，避免权限按钮与随后执行的事件链来自不同制品。
-     * 普通模式继续执行对象权限和 DataScope 校验；审批模式以当前用户的真实
+     * 普通模式继续执行对象权限和 DataScope 校验；流程查看复用实例读取权限；审批模式以当前用户的真实
      * 待办和固定发布令牌授权记录访问，自定义按钮权限仍独立校验。</p>
      *
      * @param request 表单按钮执行请求
@@ -504,7 +507,7 @@ public class EntityFormActionService {
      *
      * <p>审批分支读取的记录仅用于服务端联合校验；只有当前用户、确切任务、
      * 记录、流程实例和发布令牌全部匹配后才返回，不能仅凭 mode/taskId 放行。
-     * 其余模式保持原有实体数据权限校验。</p>
+     * 流程查看以实例只读权限和实际记录/版本绑定鉴权，其余模式保持原有实体数据权限。</p>
      *
      * @param mode 已归一化的表单运行模式
      * @param taskId 审批请求声明的确切任务 ID，不能用实体任务摘要替代
@@ -543,6 +546,29 @@ public class EntityFormActionService {
                 || definition.getStorageMode()
                 == EntityDefinition.StorageMode.SYSTEM) {
             return new AuthorizedRecord(null, null);
+        }
+        if ("view".equals(mode)) {
+            var processContext = releaseService.findProcessReadContext(
+                    releaseResolutionToken, source.form().getId(), source.releaseId(), source.releaseVersion());
+            if (processContext.isPresent()) {
+                var context = processContext.get();
+                EntityDataDTO row = dataService.findById(definition.getEntityCode(), recordId);
+                // 历史进度令牌可能没有任务/记录坐标；此时仍由流程端口回查实例实际绑定。
+                // 带有这些坐标的活动任务令牌必须保持精确匹配，不能跨记录复用。
+                if (row == null
+                        || StringUtils.hasText(context.processInstanceId())
+                        && !Objects.equals(context.processInstanceId(), row.getProcessInstanceId())
+                        || StringUtils.hasText(context.entityCode())
+                        && !Objects.equals(context.entityCode(), definition.getEntityCode())
+                        || StringUtils.hasText(context.recordId())
+                        && !Objects.equals(context.recordId(), row.getId())) {
+                    throw new BusinessForbiddenException("PROCESS_FORM_READ_CONTEXT_MISMATCH",
+                            "查看表单与流程实例的业务记录不一致");
+                }
+                processRecordReadAccessPort.requireReadAccess(definition.getEntityCode(), row.getId(),
+                        row.getProcessInstanceId(), context.processVersionHistoryId());
+                return new AuthorizedRecord(row, null);
+            }
         }
         return new AuthorizedRecord(dataService.findAccessibleById(
                 definition.getEntityCode(),

@@ -328,9 +328,8 @@
 
       <el-table v-else :data="ccList" v-loading="loading" stripe empty-text="当前条件下没有知会记录">
         <el-table-column prop="processName" label="流程名称" min-width="150" />
-        <el-table-column prop="nodeName" label="知会节点" min-width="130" />
-        <el-table-column prop="operatorName" label="知会人" width="140" />
-        <el-table-column prop="comment" label="知会说明" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="dataName" label="流程数据名称" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="comment" label="知会说明" min-width="310" show-overflow-tooltip />
         <el-table-column label="知会时间" width="170">
           <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
         </el-table-column>
@@ -723,11 +722,12 @@ onMounted(() => {
   loadTodoList()
 })
 
-// 监听 Tab 切换
+// 工作流可能在其他页签或页面继续流转，每次切换都读取最新列表和未读数量。
 watch(activeTab, () => {
   queryParams.pageNum = 1
   selectedTodoRows.value = []
-  loadActiveTab()
+  loadActiveTab(true)
+  loadStatistics()
 })
 
 function buildQueryParams() {
@@ -1154,6 +1154,9 @@ function viewProgress(row) {
 
 // 审批成功回调
 function onApprovalSuccess() {
+  // 审批会触发当前节点完成、下一节点创建的知会，不能继续展示此前缓存的收件箱。
+  loadedTabs.cc = false
+  if (activeTab.value === 'cc') loadCcList()
   loadTodoList()
   loadDoneList()
   loadStatistics()
@@ -1316,6 +1319,9 @@ async function submitCc() {
     await ccTask(ccForm.taskId, { userIds: ccForm.userIds, comment: ccForm.comment })
     ElMessage.success('知会成功')
     ccDialogVisible.value = false
+    loadedTabs.cc = false
+    if (activeTab.value === 'cc') await loadCcList()
+    await loadStatistics()
   } finally {
     operationLoading.value = false
   }

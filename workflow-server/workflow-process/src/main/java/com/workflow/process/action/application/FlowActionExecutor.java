@@ -190,10 +190,8 @@ public class FlowActionExecutor {
         ctx.setExecutionMode(action.getExecutionMode());
         ctx.setFailurePolicy(action.getFailurePolicy());
         ctx.setVariablesSnapshot(event.getVariables());
-        Map<String, Object> extraParams =
-                resolveCustomParams(action.getParamsJson(), event.getVariables());
-        ctx.setCustomParams(extraParams);
-        ctx.setExtraParams(extraParams);
+        ctx.setExtraParams(
+                resolveExtraParams(action.getParamsJson(), event.getVariables()));
         return ctx;
     }
 
@@ -202,9 +200,10 @@ public class FlowActionExecutor {
      *
      * @param paramsJson 参数 JSON 字符串
      * @param variables  流程变量集合
-     * @return 解析后的参数 map；解析失败时返回空 map 并记录警告
+     * @return 解析后的参数 map；未配置参数时返回空 map
+     * @throws IllegalArgumentException JSON 无法解析，或参数包含不支持的变量引用表达式
      */
-    private Map<String, Object> resolveCustomParams(String paramsJson, Map<String, Object> variables) {
+    private Map<String, Object> resolveExtraParams(String paramsJson, Map<String, Object> variables) {
         Map<String, Object> params = new HashMap<>();
         if (!StringUtils.hasText(paramsJson)) {
             return params;

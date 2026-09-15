@@ -854,8 +854,12 @@ public class TaskActionService {
         double avgHours = doneTasks.isEmpty() ? 0 : (totalDuration / doneTasks.size() / 1000.0 / 60 / 60);
         statistics.put("avgProcessTime", Math.round(avgHours * 10) / 10.0);
 
-        // 未读抄送数：仅统计未读的抄送/知会记录，用于"抄送我的"页签徽标显示数量
-        statistics.put("unreadCcCount", processCcService.countUnreadCc(userId));
+        // 任务统计入口通常传业务用户 ID，自动知会和收件箱接口则使用用户名。
+        // 先统一收件身份，避免已有知会记录但首页未读徽标始终为零；兼容直接传用户名的调用。
+        var ccUser = sysUserService.getById(userId);
+        String ccUsername = ccUser != null && StringUtils.hasText(ccUser.getUsername())
+                ? ccUser.getUsername() : userId;
+        statistics.put("unreadCcCount", processCcService.countUnreadCc(ccUsername));
 
         return statistics;
     }

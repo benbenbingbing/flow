@@ -161,15 +161,15 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimeAccess {
      * 将业务参数 map 转换为目标类型实例。
      *
      * @param <T>         目标类型
-     * @param customParams 业务参数 map；为 null 时使用空 map
-     * @param targetType   目标类型 Class
+     * @param extraParams 业务参数 map；为 null 时使用空 map
+     * @param targetType  目标类型 Class
      * @return 转换后的参数实例
      */
     @Override
-    public <T> T convertParams(Map<String, Object> customParams, Class<T> targetType) {
-        if (customParams == null) {
+    public <T> T convertParams(Map<String, Object> extraParams, Class<T> targetType) {
+        if (extraParams == null) {
             return objectMapper.convertValue(new java.util.HashMap<>(), targetType);
         }
-        return objectMapper.convertValue(customParams, targetType);
+        return objectMapper.convertValue(extraParams, targetType);
     }
 }

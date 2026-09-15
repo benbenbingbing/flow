@@ -47,6 +47,7 @@ public class PublishedFormSubmissionService {
     private final JsonDocumentCodec codec;
     private final UiExtensionDefinitionValidator schemaValidator;
     private final PublishedFormRequiredValidator requiredValidator;
+    private final PublishedFormCrossFieldValidator crossFieldValidator;
     private EntityPublishedRelationService publishedRelationService;
     private UiHotfixObservationPort hotfixObservationPort;
 
@@ -662,6 +663,13 @@ public class PublishedFormSubmissionService {
                 recordId,
                 mode,
                 result);
+        // 扩展处理结束后校验最终补丁；仅处理根实体，子表仍走原有提交链路。
+        if (depth == 0 && !FormCrossFieldRuntimeContext.isReadonly(
+                executionContext == null ? Map.of() : executionContext.attributes(), form.getId())
+                && crossFieldValidator.hasRules(form)) {
+            crossFieldValidator.validateRecord(form, mode,
+                    crossFieldValidator.finalRecord(entityCode, recordId, result));
+        }
         return result;
     }
 

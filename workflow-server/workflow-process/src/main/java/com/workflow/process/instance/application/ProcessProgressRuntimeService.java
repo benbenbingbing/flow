@@ -357,10 +357,12 @@ public class ProcessProgressRuntimeService {
                                             .singleResult();
                                     actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
                                 }
-                                // 兼容旧数据：修复前 actionLabel 曾作为流程实例变量保存
+                                // 兼容旧数据中的流程根变量。按实例 ID 查询也会包含任务/执行局部变量，
+                                // 自动跳过任务没有自身操作名称，必须排除局部变量，避免多行异常或串用其他任务的值。
                                 if (actionLabel == null) {
                                     var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
                                             .processInstanceId(processInstanceId)
+                                            .excludeLocalVariables()
                                             .variableName("actionLabel")
                                             .singleResult();
                                     actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
@@ -562,10 +564,13 @@ public class ProcessProgressRuntimeService {
                         .taskId(task.getId()).variableName("actionLabel").singleResult();
                 actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
             }
-            // 兼容旧数据：修复前 actionLabel 曾作为流程实例变量保存
+            // 仅兼容读取旧流程根变量，排除任务和执行局部变量；自动跳过任务无自身名称时，
+            // 同一实例中的其他任务名称不能参与单值查询或作为该节点的显示文本。
             if (actionLabel == null) {
                 var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
-                        .processInstanceId(processInstanceId).variableName("actionLabel").singleResult();
+                        .processInstanceId(processInstanceId)
+                        .excludeLocalVariables()
+                        .variableName("actionLabel").singleResult();
                 actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
             }
             info.setAction(normalizeAction(action));

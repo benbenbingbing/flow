@@ -199,6 +199,7 @@ function resolveRenderedValidationError() {
 
 defineExpose({
   validate,
+  applyServerValidationError: (error: any) => formPreviewRef.value?.applyServerValidationError?.(error),
   getValidationError: () => lastValidationError.value
 })
 </script>

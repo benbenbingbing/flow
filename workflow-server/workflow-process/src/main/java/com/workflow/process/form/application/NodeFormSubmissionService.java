@@ -17,6 +17,7 @@ import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
+import com.workflow.entity.form.application.FormCrossFieldRuntimeContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
@@ -152,6 +153,8 @@ public class NodeFormSubmissionService {
         mutationExtraParams.putAll(
                 FormUniqueMutationContext.encodeReferences(
                         applied.formReferences()));
+        mutationExtraParams.put(FormCrossFieldRuntimeContext.READONLY_FORM_IDS,
+                readonlyFormIds(projection.published().nodeForms()));
         EntityMutationContext mutationContext =
                 EntityMutationContext.builder(
                                 EntityMutationSourceType.APPROVAL_TASK,
@@ -294,6 +297,16 @@ public class NodeFormSubmissionService {
         }
     }
 
+    /** 同一表单若存在可编辑绑定，仍需执行该表单的比较规则。 */
+    private List<String> readonlyFormIds(List<ProcessNodeForm> nodeForms) {
+        Set<String> editable = nodeForms.stream()
+                .filter(form -> !Integer.valueOf(1).equals(form.getIsReadonly()))
+                .map(ProcessNodeForm::getFormId).collect(java.util.stream.Collectors.toSet());
+        return nodeForms.stream().filter(form -> Integer.valueOf(1).equals(form.getIsReadonly()))
+                .map(ProcessNodeForm::getFormId).filter(java.util.Objects::nonNull)
+                .filter(id -> !editable.contains(id)).distinct().sorted().toList();
+    }
+
     private AppliedFormSubmission applyBeforeSubmitInternal(
             List<ProcessNodeForm> nodeForms,
             String processVersionHistoryId,
@@ -303,6 +316,9 @@ public class NodeFormSubmissionService {
             Map<String, Object> submittedValues,
             FormSubmissionExecutionContext executionContext,
             boolean sideEffectFreePreview) {
+        // 只读绑定仍保留已有提交处理；跨字段校验单独遵守整表只读状态。
+        executionContext = FormCrossFieldRuntimeContext.withReadonlyForms(executionContext,
+                readonlyFormIds(nodeForms));
         Map<String, Object> result =
                 new HashMap<>(submittedValues);
         List<FormUniqueMutationContext.Reference> formReferences =

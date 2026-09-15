@@ -34,9 +34,12 @@ public class ProcessCcRecord {
     private String processKey;
     
     /**
-     * 流程名称
+     * 知会创建时的流程名称快照，列表不关联流程配置查询。
      */
     private String processName;
+
+    /** 知会创建时的流程数据名称快照，业务数据后续改名不影响已生成的知会。 */
+    private String dataName;
     
     /**
      * 业务Key

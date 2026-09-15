@@ -63,6 +63,8 @@ class EntityMutationTransactionExecutorTest {
     private EntityMutationReceiptService receiptService;
     @Mock
     private EntityFormUniqueClaimService formUniqueClaimService;
+    @Mock
+    private com.workflow.entity.form.application.PublishedFormCrossFieldMutationValidator crossFieldValidator;
 
     private EntityMutationTransactionExecutor executor;
     private PreparedUniqueClaims prepared;
@@ -86,6 +88,7 @@ class EntityMutationTransactionExecutorTest {
                 relatedVersionCaptureService,
                 receiptService,
                 formUniqueClaimService,
+                crossFieldValidator,
                 new ObjectMapper());
     }
 
@@ -380,6 +383,27 @@ class EntityMutationTransactionExecutorTest {
                 exception.getErrorCode());
         verify(writer, never()).lock(any(), any());
         verify(writer, never()).apply(any(), any());
+    }
+
+    /** 并发补丁在锁后改变参照值时，落库终检失败不能生成版本或完成幂等收据。 */
+    @Test
+    void crossFieldFailureChecksLockedFinalRecordBeforeCompletingMutation() {
+        var command = command(Map.of("data", Map.of("end", 10)), Map.of());
+        EntityDataDTO before = record("before"); before.setData(Map.of("start", 5, "end", 8));
+        EntityDataDTO after = record("after"); after.setData(Map.of("start", 12, "end", 10));
+        when(queryService.findById("asset", "record-1")).thenReturn(before, before, before, after);
+        when(writer.apply(command, prepared)).thenReturn(new EntityAggregateWriter.WriteResult("record-1", after));
+        var failure = new com.workflow.core.error.FormCrossFieldValidationException(List.of(
+                new com.workflow.core.error.FormCrossFieldValidationException.FieldError("end", "range", "start", "结束不得早于开始")));
+        org.mockito.Mockito.doThrow(failure).when(crossFieldValidator).validate(eq(command), anyMap());
+        assertEquals(failure, assertThrows(com.workflow.core.error.FormCrossFieldValidationException.class, () -> executor.execute(command)));
+        InOrder order = inOrder(writer, crossFieldValidator);
+        order.verify(writer).lock("asset", "record-1");
+        order.verify(writer).apply(command, prepared);
+        order.verify(crossFieldValidator).validate(eq(command), org.mockito.ArgumentMatchers.argThat(value ->
+                value.get("data") instanceof Map<?, ?> data && Integer.valueOf(12).equals(data.get("start"))));
+        verifyNoInteractions(versionService, policyMatcher);
+        verify(receiptService, never()).complete(any(), any());
     }
 
     private EntityMutationCommand command(

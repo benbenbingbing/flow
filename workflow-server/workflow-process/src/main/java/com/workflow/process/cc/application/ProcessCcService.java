@@ -25,17 +25,20 @@ import java.util.List;
 public class ProcessCcService {
     
     private final ProcessCcRecordMapper ccRecordMapper;
+    private final ProcessCcSnapshotService snapshotService;
     
     /**
      * 创建抄送记录（单条）。
      *
-     * <p>新建的抄送记录默认为"未读"状态，并记录创建时间。
+     * <p>插入前保存流程及业务数据名称快照；新记录默认为"未读"，并记录创建时间。
      *
      * @param record 抄送记录信息（含流程实例ID、抄送用户ID等）
      * @return 已持久化的抄送记录
      */
     @Transactional(rollbackFor = Exception.class)
     public ProcessCcRecord createCcRecord(ProcessCcRecord record) {
+        // 自动、人工和显式知会共用写入口，名称只在创建时补齐；读列表不回查业务表。
+        snapshotService.captureNames(record);
         record.setCreateTime(LocalDateTime.now());
         record.setUpdateTime(LocalDateTime.now());
         record.setReadStatus("UNREAD");

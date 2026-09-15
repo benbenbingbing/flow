@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.ProcessCatalogItem;
 import com.workflow.contracts.process.port.ProcessCatalogPort;
+import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.core.error.ForbiddenException;
@@ -70,7 +71,7 @@ class EntityFormActionServiceTest {
         service = new EntityFormActionService(
                 formMapper, formNodeMapper, definitionMapper, dataService,
                 capabilityService, new EntityFormActionConfigPolicy(),
-                releaseService, processCatalogPort,
+                releaseService, processCatalogPort, mock(ProcessRecordReadAccessPort.class),
                 new JsonDocumentCodec(objectMapper), objectMapper);
         definition = new EntityDefinition();
         definition.setId("entity-1");

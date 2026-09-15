@@ -3,8 +3,10 @@ package com.workflow.storage.infrastructure.s3;
 import com.workflow.storage.application.FileStorageStrategy;
 import com.workflow.storage.application.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
+import jakarta.annotation.PreDestroy;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -39,7 +41,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 @ConditionalOnProperty(
         name = "file.storage.type",
         havingValue = "s3")
-public class S3FileStorageStrategy implements FileStorageStrategy {
+public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable {
 
     private final FileStorageProperties.S3Config config;
     private final S3Client client;
@@ -49,7 +51,13 @@ public class S3FileStorageStrategy implements FileStorageStrategy {
         this(properties.getS3(), null);
     }
 
-    S3FileStorageStrategy(
+    /**
+     * 供 S3 兼容策略复用对象读写；未传客户端时按配置创建，策略销毁时关闭客户端。
+     *
+     * @param config 对象存储配置，桶和区域必填，显式凭证须成对提供
+     * @param client 可选的专用客户端，其生命周期由该策略管理
+     */
+    protected S3FileStorageStrategy(
             FileStorageProperties.S3Config config,
             S3Client client) {
         this.config = config;
@@ -86,7 +94,8 @@ public class S3FileStorageStrategy implements FileStorageStrategy {
         String contentType = StringUtils.hasText(file.getContentType())
                 ? file.getContentType()
                 : "application/octet-stream";
-        try {
+        // SDK 同步消费请求体，上传结束后由调用方关闭 MultipartFile 打开的流。
+        try (InputStream stream = file.getInputStream()) {
             client.putObject(
                     PutObjectRequest.builder()
                             .bucket(config.getBucket())
@@ -98,7 +107,7 @@ public class S3FileStorageStrategy implements FileStorageStrategy {
                                             file.getOriginalFilename())))
                             .build(),
                     RequestBody.fromInputStream(
-                            file.getInputStream(),
+                            stream,
                             file.getSize()));
         } catch (IOException exception) {
             throw new IllegalStateException(
@@ -174,6 +183,13 @@ public class S3FileStorageStrategy implements FileStorageStrategy {
     @Override
     public String getStorageType() {
         return "s3";
+    }
+
+    /** 释放 SDK 的 HTTP 连接池，避免应用关闭或配置上下文重建时泄漏连接。 */
+    @PreDestroy
+    @Override
+    public void close() {
+        client.close();
     }
 
     private String objectKey(String originalName) {

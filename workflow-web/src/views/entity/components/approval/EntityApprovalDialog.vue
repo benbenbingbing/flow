@@ -757,12 +757,20 @@ interface ApprovalFormValidationResult {
   message?: string
 }
 
-/**
- * 逐页签校验并保留失败位置。唯一预检可能在非当前页签中失败，
- * 若只返回 boolean，用户既看不到错误字段，也只能得到误导性的“必填项”提示。
- */
-async function validateApprovalForms(): Promise<ApprovalFormValidationResult> {
-  const targets = [
+/** 把服务端字段错误分发到所有表单页签，并定位第一个可操作的错误。 */
+async function showServerValidationErrors(error: any) {
+  let firstTab = ''
+  for (const target of approvalValidationTargets()) {
+    if (await target.formRef.applyServerValidationError?.(error)) {
+      firstTab ||= target.name || ''
+    }
+  }
+  if (firstTab) activeDialogTab.value = firstTab
+}
+
+/** 包含未激活的表单页签，供本地校验与服务端错误定位共用。 */
+function approvalValidationTargets() {
+  return [
     ...(approvalShowBasicTab.value && basicInfoRef.value
       ? [{ name: 'basic', label: '基本信息', formRef: basicInfoRef.value }]
       : []),
@@ -774,7 +782,14 @@ async function validateApprovalForms(): Promise<ApprovalFormValidationResult> {
       }))
       .filter(target => Boolean(target.formRef))
   ]
-  for (const target of targets) {
+}
+
+/**
+ * 逐页签校验并保留失败位置。唯一预检可能在非当前页签中失败，
+ * 若只返回 boolean，用户既看不到错误字段，也只能得到误导性的“必填项”提示。
+ */
+async function validateApprovalForms(): Promise<ApprovalFormValidationResult> {
+  for (const target of approvalValidationTargets()) {
     if ((await target.formRef.validate?.()) !== false) continue
     activeDialogTab.value = target.name
     await nextTick()
@@ -854,6 +869,7 @@ async function handleFormAction(action: any) {
       ElMessage.success(result.message)
     }
   } catch (error: any) {
+    await showServerValidationErrors(error)
     ElMessage.error(error.message || '按钮操作执行失败')
   } finally {
     actionLoadingKey.value = ''
@@ -1041,6 +1057,7 @@ const submitApprove = async () => {
     emit('success')
   } catch (e: any) {
     console.error('审批失败:', e)
+    await showServerValidationErrors(e)
     const conflictMessage = taskApprovalConflictMessage(e)
     if (conflictMessage) {
       // 其他候选人可能已抢先提交；保留当前输入及弹窗，不能通过刷新详情覆盖未提交内容。

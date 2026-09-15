@@ -1,5 +1,7 @@
 package com.workflow.biz.project.contracts.action;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.action.FlowActionContext;
 import com.workflow.contracts.process.action.port.FlowActionRuntimeAccess;
 import com.workflow.contracts.action.FlowActionTraceFields;
@@ -11,10 +13,28 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 class FlowActionContextTest {
+
+    @Test
+    void serializesAndLogsActionParametersOnlyAsExtraParams() {
+        FlowActionContext context = new FlowActionContext();
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("key1", "value");
+        params.put("optional", null);
+        context.setExtraParams(params);
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        JsonNode json = objectMapper.valueToTree(context);
+
+        assertEquals(objectMapper.valueToTree(params), json.get("extraParams"));
+        assertFalse(json.has("customParams"));
+        assertTrue(context.toString().contains("extraParams={key1=value, optional=null}"));
+        assertFalse(context.toString().contains("customParams="));
+    }
 
     @Test
     void writesProcessVariablesAndRefreshesSnapshot() {

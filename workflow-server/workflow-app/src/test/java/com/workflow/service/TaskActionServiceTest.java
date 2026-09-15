@@ -16,6 +16,7 @@ import com.workflow.process.task.application.operation.NodeOperationPolicy;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
@@ -146,6 +147,35 @@ class TaskActionServiceTest {
     @AfterEach
     void tearDown() {
         UserContext.clear();
+    }
+
+    /** 首页传入业务用户 ID，但自动知会以用户名保存，未读徽标必须使用同一收件身份。 */
+    @Test
+    void statisticsCountsCcByUsernameWhenCalledWithUserId() {
+        SysUser user = new SysUser();
+        user.setId("admin-id");
+        user.setUsername("admin");
+        when(sysUserService.getById("admin-id")).thenReturn(user);
+        HistoricProcessInstanceQuery query = mock(HistoricProcessInstanceQuery.class);
+        when(historyService.createHistoricProcessInstanceQuery()).thenReturn(query);
+        when(query.startedBy("admin-id")).thenReturn(query);
+        when(processCcService.countUnreadCc("admin")).thenReturn(2L);
+
+        assertEquals(2L, service.getTaskStatistics("admin-id").get("unreadCcCount"));
+        verify(processCcService).countUnreadCc("admin");
+        verify(processCcService, never()).countUnreadCc("admin-id");
+    }
+
+    /** 兼容其他任务统计入口直接传用户名，目录按 ID 未命中时仍使用原用户名查询。 */
+    @Test
+    void statisticsAcceptsUsernameForCc() {
+        HistoricProcessInstanceQuery query = mock(HistoricProcessInstanceQuery.class);
+        when(historyService.createHistoricProcessInstanceQuery()).thenReturn(query);
+        when(query.startedBy("admin")).thenReturn(query);
+        when(processCcService.countUnreadCc("admin")).thenReturn(1L);
+
+        assertEquals(1L, service.getTaskStatistics("admin").get("unreadCcCount"));
+        verify(processCcService).countUnreadCc("admin");
     }
 
     /** 测试完成任务接受 APPROVED 状态值：验证触发 Flowable complete、本地任务完成与任务同步 */

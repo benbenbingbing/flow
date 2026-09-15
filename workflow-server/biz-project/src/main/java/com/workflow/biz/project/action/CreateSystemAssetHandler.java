@@ -123,6 +123,10 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
         context.addExecutionTrace("CREATED", "Created system asset and linked it to the application.", result);
     }
 
+    /**
+     * 为审批生效的每一步实体写入生成独立幂等键，并传递流程动作参数。
+     * EntityMutationContext 在构建时复制参数，避免后续写入与动作上下文共享可变 Map。
+     */
     private EntityMutationCommand mutationCommand(
             FlowActionContext flowContext,
             int sequence,
@@ -138,16 +142,6 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
                         + flowContext.getActionId();
         String idempotencyKey =
                 baseKey + ":mutation:" + sequence;
-        Map<String, Object> extraParams =
-                new LinkedHashMap<>();
-        if (flowContext.getCustomParams() != null) {
-            extraParams.putAll(
-                    flowContext.getCustomParams());
-        }
-        if (flowContext.getExtraParams() != null) {
-            extraParams.putAll(
-                    flowContext.getExtraParams());
-        }
         EntityMutationContext mutationContext =
                 EntityMutationContext.builder(
                                 EntityMutationSourceType.FLOW_ACTION,
@@ -167,7 +161,7 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
                         .trace(
                                 flowContext.getProcessInstanceId(),
                                 idempotencyKey)
-                        .extraParams(extraParams)
+                        .extraParams(flowContext.getExtraParams())
                         .build();
         return new EntityMutationCommand(
                 idempotencyKey,

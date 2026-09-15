@@ -625,6 +625,7 @@ async function handleFormAction(action: any) {
       ElMessage.success(result.message)
     }
   } catch (error: any) {
+    await showServerValidationErrors(error)
     ElMessage.error(error.message || '按钮操作执行失败')
   } finally {
     actionLoadingKey.value = ''
@@ -780,7 +781,19 @@ const openEdit = async (row: any, options: any = {}) => {
   discardGuard.markSaved()
 }
 
-async function validateRuntimeForms() {
+/** 把服务端字段错误分发到所有表单页签，并定位第一个可操作的错误。 */
+async function showServerValidationErrors(error: any) {
+  let firstTab = ''
+  for (const target of runtimeValidationTargets()) {
+    if (await target.instance.applyServerValidationError?.(error)) {
+      firstTab ||= target.tabName || ''
+    }
+  }
+  if (firstTab) activeTab.value = firstTab
+}
+
+/** 收集当前已挂载的全部表单实例，保留所属页签以便定位错误。 */
+function runtimeValidationTargets() {
   const formRefs: Array<{
     instance: InstanceType<typeof EntityDataFormFields>
     tabName?: string
@@ -804,7 +817,11 @@ async function validateRuntimeForms() {
     })
   }
 
-  for (const formRef of formRefs) {
+  return formRefs
+}
+
+async function validateRuntimeForms() {
+  for (const formRef of runtimeValidationTargets()) {
     if ((await formRef.instance.validate()) === false) {
       // 唯一性或普通字段错误可能位于未激活页签，切过去才能让用户看到就地提示。
       if (formRef.tabName) activeTab.value = formRef.tabName
@@ -822,11 +839,10 @@ async function validateRuntimeForms() {
 
 // 提交
 const handleSubmit = async (startProcess = false) => {
-  const valid = await validateRuntimeForms()
-  if (!valid) return
-
-  formData.startProcess = startProcess
   try {
+    const valid = await validateRuntimeForms()
+    if (!valid) return
+    formData.startProcess = startProcess
     const submittedData = filterRuntimeFormSubmissionData(
       formData.data,
       runtimeForm.value,
@@ -902,6 +918,7 @@ const handleSubmit = async (startProcess = false) => {
     dialogVisible.value = false
     emit('success', result)
   } catch (error: any) {
+    await showServerValidationErrors(error)
     ElMessage.error(error.message || '操作失败')
   }
 }

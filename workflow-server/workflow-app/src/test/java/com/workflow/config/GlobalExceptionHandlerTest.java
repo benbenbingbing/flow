@@ -32,6 +32,28 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class GlobalExceptionHandlerTest {
 
+    /** 通过 MVC 分派确认专用异常处理器保留字段数据，而非被通用冲突处理器吞掉。 */
+    @Test
+    void crossFieldErrorsKeepFieldIdentityInConflictResponse() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new CrossFieldController())
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc.perform(get("/cross-field-test"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("FORM_CROSS_FIELD_VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.data.fieldErrors[0].fieldCode").value("end"))
+                .andExpect(jsonPath("$.data.fieldErrors[0].ruleId").value("range"))
+                .andExpect(jsonPath("$.data.fieldErrors[0].targetFieldCode").value("start"));
+    }
+
+    @RestController
+    static class CrossFieldController {
+        @GetMapping("/cross-field-test")
+        public void fail() {
+            throw new com.workflow.core.error.FormCrossFieldValidationException(java.util.List.of(
+                    new com.workflow.core.error.FormCrossFieldValidationException.FieldError("end", "range", "start", "结束不得早于开始")));
+        }
+    }
+
     /** 被测异常处理器实例 */
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
