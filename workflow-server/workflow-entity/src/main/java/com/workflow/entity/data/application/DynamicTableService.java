@@ -72,7 +72,11 @@ public class DynamicTableService {
      * 获取当前数据库中表的列信息
      */
     public List<ColumnInfo> getTableColumns(String entityCode) {
-        String tableName = getTableName(entityCode);
+        return getTableColumnsByName(getTableName(entityCode));
+    }
+
+    /** 只接收经 tableResolver 校验的物理表名，查询结构时不再依赖实体元数据的事务可见性。 */
+    private List<ColumnInfo> getTableColumnsByName(String tableName) {
         String sql = "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT " +
                 "FROM information_schema.COLUMNS " +
                 "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?";
@@ -100,7 +104,11 @@ public class DynamicTableService {
      * 检查表是否存在
      */
     public boolean tableExists(String entityCode) {
-        String tableName = getTableName(entityCode);
+        return tableExistsByName(getTableName(entityCode));
+    }
+
+    /** 物理表不存在是首次发布的正常状态；调用方负责先通过 tableResolver 校验表名。 */
+    private boolean tableExistsByName(String tableName) {
         String sql = "SELECT COUNT(*) FROM information_schema.TABLES " +
                 "WHERE table_schema = DATABASE() AND table_name = ?";
         Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tableName);
@@ -113,10 +121,9 @@ public class DynamicTableService {
      */
     @Transactional(rollbackFor = Exception.class)
     public String createEntityTable(EntityDefinition entityDefinition) {
-        String entityCode = entityDefinition.getEntityCode();
         String tableName = tableResolver.resolve(entityDefinition);
 
-        if (tableExists(entityCode)) {
+        if (tableExistsByName(tableName)) {
             ensureMultiValueTable(tableName);
             log.info("表 {} 已存在，跳过创建", tableName);
             return null;
@@ -158,13 +165,12 @@ public class DynamicTableService {
      * 仅当 information_schema 与目标字段定义不一致时才生成 MODIFY，避免无变更重复锁表。
      */
     public List<String> planEntityTableStructure(EntityDefinition entityDefinition) {
-        String entityCode = entityDefinition.getEntityCode();
         String tableName = tableResolver.resolve(entityDefinition);
         List<EntityField> fields = entityFieldMapper.findByEntityId(entityDefinition.getId());
-        if (!tableExists(entityCode)) {
+        if (!tableExistsByName(tableName)) {
             return List.of(buildCreateTableSql(tableName, fields, entityDefinition.getEntityName()));
         }
-        Map<String, ColumnInfo> existing = getTableColumns(entityCode).stream()
+        Map<String, ColumnInfo> existing = getTableColumnsByName(tableName).stream()
                 .collect(Collectors.toMap(ColumnInfo::getName, Function.identity(), (left, right) -> left));
         List<String> plan = new ArrayList<>();
         for (EntityField field : fields) {
@@ -183,13 +189,17 @@ public class DynamicTableService {
         return plan;
     }
 
-    /** 返回目标元数据与实际表之间可供发布拦截和修复预览使用的真实列级差异。 */
+    /**
+     * 返回目标元数据与实际表的列级差异。使用调用方已加载的定义，允许在独立事务中
+     * 检查同一迁移尚未提交的新实体；表名合法性和系统实体限制仍由 tableResolver 校验。
+     */
     public List<String> inspectSchemaDrift(EntityDefinition entity, List<EntityField> fields) {
-        if (!tableExists(entity.getEntityCode())) {
-            return List.of("物理表不存在: " + getTableName(entity.getEntityCode()));
+        String tableName = tableResolver.resolve(entity);
+        if (!tableExistsByName(tableName)) {
+            return List.of("物理表不存在: " + tableName);
         }
         Set<String> expected = expectedColumns(fields);
-        Set<String> actual = getTableColumns(entity.getEntityCode()).stream()
+        Set<String> actual = getTableColumnsByName(tableName).stream()
                 .map(ColumnInfo::getName)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         List<String> drift = new ArrayList<>();
@@ -207,10 +217,19 @@ public class DynamicTableService {
 
     /** 实际指纹直接读取 information_schema；表不存在时返回稳定的缺失指纹。 */
     public String actualSchemaFingerprint(String entityCode) {
-        if (!tableExists(entityCode)) {
-            return sha256("TABLE_MISSING:" + getTableName(entityCode));
+        return actualSchemaFingerprintByName(getTableName(entityCode));
+    }
+
+    /** 根据已加载的实体读取实际结构指纹，供新实体尚未提交时的独立结构校验使用。 */
+    public String actualSchemaFingerprint(EntityDefinition entity) {
+        return actualSchemaFingerprintByName(tableResolver.resolve(entity));
+    }
+
+    private String actualSchemaFingerprintByName(String tableName) {
+        if (!tableExistsByName(tableName)) {
+            return sha256("TABLE_MISSING:" + tableName);
         }
-        Set<String> columns = getTableColumns(entityCode).stream()
+        Set<String> columns = getTableColumnsByName(tableName).stream()
                 .map(ColumnInfo::getName)
                 .collect(Collectors.toSet());
         return fingerprint(columns);
@@ -218,25 +237,36 @@ public class DynamicTableService {
 
     /** 使用 information_schema 的表统计值评估 DDL 影响量级。 */
     public long estimateRows(String entityCode) {
-        if (!tableExists(entityCode)) {
+        return estimateRowsByName(getTableName(entityCode));
+    }
+
+    /** 根据已加载的实体评估数据量；首次发布时物理表尚不存在，返回零。 */
+    public long estimateRows(EntityDefinition entity) {
+        return estimateRowsByName(tableResolver.resolve(entity));
+    }
+
+    private long estimateRowsByName(String tableName) {
+        if (!tableExistsByName(tableName)) {
             return 0L;
         }
         Long rows = jdbcTemplate.queryForObject(
                 "SELECT COALESCE(TABLE_ROWS, 0) FROM information_schema.TABLES "
                         + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
                 Long.class,
-                getTableName(entityCode));
+                tableName);
         return rows == null ? 0L : rows;
     }
 
     /**
      * 发布唯一约束前扫描存量重复值。运行期并发写入仍由 entity_unique_value 主键串行化。
+     * 使用已加载实体解析物理表名，使独立事务也能检查新实体的建表前后状态。
      */
     public List<String> scanUniqueConflicts(EntityDefinition entity, List<EntityField> fields) {
-        if (!tableExists(entity.getEntityCode())) {
+        String physicalTableName = tableResolver.resolve(entity);
+        if (!tableExistsByName(physicalTableName)) {
             return List.of();
         }
-        String tableName = quoteIdentifier(getTableName(entity.getEntityCode()));
+        String tableName = quoteIdentifier(physicalTableName);
         List<String> conflicts = new ArrayList<>();
         for (EntityField field : fields) {
             if (!Boolean.TRUE.equals(field.getIsUnique()) || !isPhysicalDynamicField(field)) {

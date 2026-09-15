@@ -128,7 +128,7 @@ public class EntitySchemaOperationService {
             EntityDefinition entity,
             List<EntityField> fields) {
         List<String> drift = dynamicTableService.inspectSchemaDrift(entity, fields);
-        String actualFingerprint = dynamicTableService.actualSchemaFingerprint(entity.getEntityCode());
+        String actualFingerprint = dynamicTableService.actualSchemaFingerprint(entity);
         if (!drift.isEmpty()) {
             throw new BusinessConflictException(
                     "ENTITY_SCHEMA_DRIFT_DETECTED",
@@ -195,7 +195,9 @@ public class EntitySchemaOperationService {
             List<String> plan) {
         List<String> safePlan = plan == null ? List.of() : List.copyOf(plan);
         String planHash = sha256(String.join("\n-- next --\n", safePlan));
-        long rows = dynamicTableService.estimateRows(entity.getEntityCode());
+        // 迁移可在外层事务内新建实体；prepare/complete 的独立事务看不到未提交元数据。
+        // 所有结构检查复用已加载的定义与登记表名，避免按编码重查导致“实体不存在”。
+        long rows = dynamicTableService.estimateRows(entity);
         List<String> drift = dynamicTableService.inspectSchemaDrift(entity, fields);
         List<String> conflicts = dynamicTableService.scanUniqueConflicts(entity, fields);
         Risk risk = assessRisk(safePlan, rows, drift, conflicts);
@@ -207,7 +209,7 @@ public class EntitySchemaOperationService {
         dto.setIdempotencyKey("entity-schema:" + entity.getId() + ":" + planHash);
         dto.setPlan(safePlan);
         dto.setTargetFingerprint(dynamicTableService.targetSchemaFingerprint(entity, fields));
-        dto.setActualFingerprint(dynamicTableService.actualSchemaFingerprint(entity.getEntityCode()));
+        dto.setActualFingerprint(dynamicTableService.actualSchemaFingerprint(entity));
         dto.setDrift(drift);
         dto.setUniqueConflicts(conflicts);
         dto.setRiskLevel(risk.level());
