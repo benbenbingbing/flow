@@ -89,6 +89,9 @@ public class UiDataSourceExecutionAccessService {
     /** 仅表单按钮将待办坐标视作服务端身份，其他 UI 事件保留既有业务字段语义。 */
     private static final Set<String> FORM_BUTTON_RESERVED_REQUEST_KEYS =
             Set.of("taskid", "processinstanceid");
+    /** 字段事件协议中的业务值容器，不可作为认证用户或配置身份使用。 */
+    private static final Set<String> FORM_FIELD_INPUT_CONTAINERS =
+            Set.of("form", "selection", "value");
 
     private final UiConfigReleaseMapper releaseMapper;
     private final UiDataSourceBindingMatcher bindingMatcher;
@@ -268,11 +271,45 @@ public class UiDataSourceExecutionAccessService {
                     "UI_DATA_SOURCE_TRUSTED_EXECUTION_REQUIRED",
                     "表单按钮钉版操作只允许来自可信事件运行时");
         }
+        return authorizeResolvedFormEvent(definition, request, resolvedSnapshot, expectedSnapshotHash);
+    }
+
+    /**
+     * 按本次字段事件已验真的有效快照授权接口调用，包含流程热修复后的新增/修改绑定。
+     * 只接受内部事件请求和精确来源绑定；仍验快照哈希、表单归属、作用域及当前数据权限。
+     *
+     * @param definition 当前启用的接口定义，字段事件沿用现有接口版本契约
+     * @param request 已完成事件版本和操作权限校验的内部请求
+     * @param resolvedSnapshot 事件解析使用的完整有效表单快照
+     * @param expectedSnapshotHash 事件解析时验证过的有效快照哈希
+     * @return 当前接口调用的授权凭证
+     */
+    public UiDataSourceExecutionAuthorization authorizeResolvedFormFieldEvent(
+            UiExtensionDefinition definition,
+            UiExtensionExecuteRequest request,
+            Map<String, Object> resolvedSnapshot,
+            String expectedSnapshotHash) {
+        if (request == null
+                || !isFormFieldEvent(request.getConfigType(), request.getTargetType(), request.getUsage())
+                || !request.isServerPinnedRelease()
+                || !StringUtils.hasText(request.getServerIdempotencyKey())) {
+            throw forbidden("UI_DATA_SOURCE_TRUSTED_EXECUTION_REQUIRED",
+                    "表单字段接口只允许来自可信事件运行时");
+        }
+        return authorizeResolvedFormEvent(definition, request, resolvedSnapshot, expectedSnapshotHash);
+    }
+
+    /** 复用同一有效制品验证绑定，禁止重新读取 ACTIVE 或基础版本造成跨版本授权。 */
+    private UiDataSourceExecutionAuthorization authorizeResolvedFormEvent(
+            UiExtensionDefinition definition,
+            UiExtensionExecuteRequest request,
+            Map<String, Object> resolvedSnapshot,
+            String expectedSnapshotHash) {
         if (!StringUtils.hasText(request.getReleaseId())
                 || request.getReleaseVersion() == null) {
             throw conflict(
                     "UI_DATA_SOURCE_PINNED_RELEASE_REQUIRED",
-                    "表单按钮钉版操作缺少基础发布身份");
+                    "表单事件接口操作缺少基础发布身份");
         }
         requireResolvedBindingIdentity(request);
         Origin origin = resolveOrigin(request);
@@ -307,7 +344,7 @@ public class UiDataSourceExecutionAccessService {
         if (!StringUtils.hasText(bindingPath)) {
             throw forbidden(
                     "UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED",
-                    "可信有效快照未绑定该表单按钮接口步骤");
+                    "本次有效表单版本未绑定该事件接口步骤");
         }
         requireScopeCompatibility(definition, origin, target);
         return authorization(
@@ -332,7 +369,7 @@ public class UiDataSourceExecutionAccessService {
                         request.getServerBindingTargetKey())) {
             throw conflict(
                     "UI_EVENT_PINNED_BINDING_INVALID",
-                    "表单按钮步骤缺少可信来源绑定身份");
+                    "表单事件步骤缺少可信来源绑定身份");
         }
     }
 
@@ -349,7 +386,7 @@ public class UiDataSourceExecutionAccessService {
                         form.get("entityId")))) {
             throw conflict(
                     "UI_EVENT_EFFECTIVE_SNAPSHOT_CONFLICT",
-                    "表单按钮有效快照与请求表单或实体不一致");
+                    "表单事件有效快照与请求表单或实体不一致");
         }
     }
 
@@ -863,14 +900,19 @@ public class UiDataSourceExecutionAccessService {
     }
 
     /**
-     * FORM_BUTTON_CLICK 的 input.form 是动态实体字段值容器，字段编码允许恰好为
-     * userId/entityCode/formId 等名称，不能据此当作身份伪造。该子树仍执行
+     * 表单按钮的 input.form，以及表单字段事件的 input.form/selection/value
+     * 都是业务值容器，允许出现 deptId/userId 等字段编码，不能据此当作身份伪造。仍执行
      * 深度、节点数和循环结构限制；Provider 必须只从 UiInvocationContext 读取身份。
      * input 根层、其他子树以及全部 context 继续严格拒绝保留键。
      */
     private String reservedInputKey(
             UiExtensionExecuteRequest request) {
         Map<String, Object> input = request.getInput();
+        if (isFormFieldEvent(request.getConfigType(),
+                request.getTargetType(), request.getUsage())) {
+            return reservedFormFieldInputKey(
+                    input, request.getServerIdempotencyKey());
+        }
         if (input == null || input.isEmpty()
                 || !UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
                         normalize(request.getUsage()))) {
@@ -879,6 +921,57 @@ public class UiDataSourceExecutionAccessService {
         }
         return reservedFormButtonInputKey(
                 input, request.getServerIdempotencyKey());
+    }
+
+    /** 仅对表单字段事件启用业务容器语义，其他接口用途仍沿用原有校验。 */
+    static boolean isFormFieldEvent(
+            String configType, String targetType, String eventCode) {
+        return FORM.equals(normalize(configType))
+                && "FIELD".equals(normalize(targetType))
+                && Set.of(UiDataSourceUsages.FIELD_CHANGE,
+                        UiDataSourceUsages.ENTITY_SELECTED,
+                        UiDataSourceUsages.FIELD_BUTTON_CLICK)
+                .contains(normalize(eventCode));
+    }
+
+    /**
+     * 字段事件在条件和参数映射之前校验原始输入，防止保留身份被映射改名后绕过校验。
+     * 业务字段仅能放在协议约定的 form/selection/value 容器内。
+     *
+     * @param input 客户端原始字段事件输入
+     * @throws BusinessForbiddenException 输入包含身份声明、容器别名或异常结构
+     */
+    static void validateFormFieldClientInput(Map<String, Object> input) {
+        String rejected = reservedFormFieldInputKey(input, null);
+        if (StringUtils.hasText(rejected)) {
+            throw new BusinessForbiddenException(
+                    "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
+                    "表单字段事件输入不能提交服务端保留的可信字段: " + rejected);
+        }
+    }
+
+    private static String reservedFormFieldInputKey(
+            Map<String, Object> input, String trustedIdempotencyKey) {
+        // 对完整输入共用结构预算，不能通过拆分多个业务容器绕过深度、大小和循环限制。
+        String rejected = reservedKey(input, trustedIdempotencyKey, "$", 0,
+                new int[] {0}, Collections.newSetFromMap(new IdentityHashMap<>()),
+                false, false);
+        if (StringUtils.hasText(rejected) || input == null) {
+            return rejected;
+        }
+        Map<String, Object> strict = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : input.entrySet()) {
+            if (FORM_FIELD_INPUT_CONTAINERS.contains(
+                    normalizeRequestKey(entry.getKey()))) {
+                // 精确匹配协议键，避免 Form/sele_ction 等别名造成解释歧义。
+                if (!FORM_FIELD_INPUT_CONTAINERS.contains(entry.getKey())) {
+                    return "$." + entry.getKey();
+                }
+            } else {
+                strict.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return reservedKey(strict, trustedIdempotencyKey);
     }
 
     /**
@@ -965,7 +1058,7 @@ public class UiDataSourceExecutionAccessService {
      *
      * <p>字段映射允许有限层级对象，如果只检查顶层，调用方可把 tenantId、
      * userId 等身份字段包在 payload/context 内交给 Provider。服务端幂等种子
-     * 只允许位于根层且必须精确匹配；除明确标记为纯业务值的 input.form 外，
+     * 只允许位于根层且必须精确匹配；除明确标记为纯业务值的协议容器外，
      * 嵌套同名字段仍视为伪造。</p>
      */
     private static String reservedKey(
@@ -1117,7 +1210,7 @@ public class UiDataSourceExecutionAccessService {
         return value == null ? null : String.valueOf(value);
     }
 
-    private String normalize(String value) {
+    private static String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : "";

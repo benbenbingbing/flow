@@ -2,6 +2,9 @@ package com.workflow.entity.form.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -72,5 +75,28 @@ class FormCrossFieldRulePolicyTest {
             assertEquals(document, normalized.active());
         }
         assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeRules("FIELD", Map.of("validation", Map.of("crossField", Map.of("version", 1, "rules", List.of(Map.of())))), Map.of("fieldType", "DATETIME"), false));
+    }
+
+    @Test
+    void legacyEntityBindingStillExcludesVirtualContextAndChildFields() {
+        EntityFormField field = new EntityFormField();
+        field.setId("node-end"); field.setFieldId("entity-end"); field.setFieldCode("endTime");
+        EntityFormNode node = new EntityFormNode(); node.setId(field.getId()); node.setNodeType("FIELD");
+        EntityForm form = new EntityForm(); form.setFields(List.of(field)); form.setNodes(List.of(node));
+        for (String binding : new String[] {null, "", "NONE", "ENTITY_FIELD"}) {
+            node.setBindingType(binding);
+            assertEquals(List.of(field), FormCrossFieldRulePolicy.boundFields(form));
+        }
+        node.setBindingType("CONTEXT");
+        assertTrue(FormCrossFieldRulePolicy.boundFields(form).isEmpty());
+        node.setBindingType("NONE"); field.setFieldId(null);
+        assertTrue(FormCrossFieldRulePolicy.boundFields(form).isEmpty());
+        field.setFieldId("entity-end");
+        EntityFormNode parent = new EntityFormNode(); parent.setId("parent"); node.setParentId("parent");
+        form.setNodes(List.of(parent, node));
+        for (String type : List.of("SUB_FORM", "REPEATER")) {
+            parent.setNodeType(type);
+            assertTrue(FormCrossFieldRulePolicy.boundFields(form).isEmpty());
+        }
     }
 }

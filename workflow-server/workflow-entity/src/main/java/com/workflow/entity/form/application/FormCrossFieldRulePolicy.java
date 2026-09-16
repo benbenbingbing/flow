@@ -3,6 +3,7 @@ package com.workflow.entity.form.application;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
+import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -42,7 +43,13 @@ public final class FormCrossFieldRulePolicy {
         form.getNodes().forEach(node -> byId.put(node.getId(), node));
         return fields.stream().filter(field -> {
             EntityFormNode node = byId.get(field.getId());
-            if (node == null || !"FIELD".equals(node.getNodeType()) || !"ENTITY_FIELD".equals(node.getBindingType())) return false;
+            if (node == null || !"FIELD".equals(node.getNodeType())) return false;
+            // 旧设计器曾将真实实体字段保存为 NONE，投影中的 fieldId/fieldCode 才保留了绑定。
+            // 这里只兼容占位绑定；发布时仍需与真实实体元数据取交集，不能接纳虚拟或上下文字段。
+            boolean legacyEntityBinding = (!StringUtils.hasText(node.getBindingType()) || "NONE".equals(node.getBindingType()))
+                    && StringUtils.hasText(field.getFieldId()) && StringUtils.hasText(field.getFieldCode())
+                    && !StringUtils.hasText(field.getRelationCode());
+            if (!"ENTITY_FIELD".equals(node.getBindingType()) && !legacyEntityBinding) return false;
             Set<String> visited = new HashSet<>();
             while (node != null) {
                 if (!visited.add(node.getId()) || "SUB_FORM".equals(node.getNodeType()) || "REPEATER".equals(node.getNodeType())) return false;

@@ -857,21 +857,23 @@ assert.equal(
   false,
   '系统属性不能被单字段保存逻辑整体禁用'
 )
+const entityCodeRuleDialog = readFileSync(
+  path.join(root, 'src/views/entity/components/EntityCodeRuleDialog.vue'),
+  'utf8'
+)
 ;[
-  'const initializeEntityDesign = async () => {',
-  'await loadEntity()',
-  'await loadCodeRule(entityData.value?.entityCode)',
+  'loadCodeRule(props.entity.entityCode)',
   'const buildCodeRuleSavePayload = () => ({',
   'await codeRuleApi.save(payload, { silentError: true })',
   'await loadCodeRule(payload.entityCode)'
 ].forEach((marker) => {
   assert.ok(
-    entitySettingsDesigner.includes(marker),
+    entityCodeRuleDialog.includes(marker),
     `实体编码规则缺少防止新实体保存主键冲突的处理: ${marker}`
   )
 })
 assert.equal(
-  entitySettingsDesigner.includes('codeRuleApi.save(codeRule.value)'),
+  entityCodeRuleDialog.includes('codeRuleApi.save(codeRule.value)'),
   false,
   '实体编码规则保存不得把客户端规则主键和序列状态原样回传'
 )
@@ -1150,7 +1152,7 @@ assert.ok(
   assert.ok(formDesigner.includes(marker), `表单设计器缺少动态项目能力: ${marker}`)
 })
 ;[
-  'v-if="modeOption.editable !== false"',
+  ':disabled="modeOption.editable === false"',
   "{ value: 'view', label: '查看', editable: false }",
   '审批可编辑：字段在审批办理时的默认编辑权限，流程节点开启“强制整表只读”后本配置不生效。',
   '查看模式固定只读，仅控制字段是否显示。'
@@ -1173,19 +1175,19 @@ assert.ok(
 assert.equal(
   formFieldRegistrySource.includes("key: 'maxlength'"),
   false,
-  '最大长度只能在状态与校验中配置，不能在复用与扩展中重复出现'
+  '最大长度只能在数据校验中配置，不能在复用与扩展中重复出现'
 )
 assert.equal(
   formFieldRegistrySource.includes("key: 'showWordLimit'"),
   false,
-  '显示字数应由状态与校验直接配置，不能继续留在组件参数中'
+  '显示字数应由数据校验直接配置，不能继续留在组件参数中'
 )
 ;[
-  'v-if="canConfigureSelectedWordLimit"',
+  ':disabled="!canConfigureSelectedWordLimit"',
   'label="显示字数"',
   "updateSelectedNodeConfig('showWordLimit', $event)"
 ].forEach((marker) => {
-  assert.ok(formDesigner.includes(marker), `状态与校验缺少字数显示配置: ${marker}`)
+  assert.ok(formDesigner.includes(marker), `数据校验缺少字数显示配置: ${marker}`)
 })
 ;[
   'selectedValidationMaxLength',
@@ -1208,7 +1210,7 @@ assert.ok(
     && wordLimitIndex > validationMaxLengthIndex
     && regexIndex > wordLimitIndex
     && extensionSettingsIndex > regexIndex,
-  '显示字数与正则应位于状态与校验中，并在复用与扩展之前'
+  '显示字数与正则应位于数据校验中，并在复用与扩展之前'
 )
 ;[
   'getRuntimeRegexPatternError',
@@ -1243,7 +1245,7 @@ const textFieldSource = readFileSync(
 )
 assert.ok(
   textFieldSource.includes('resolveTextFieldMaxLength(props.field, parsedComponentProps.value)'),
-  '文本运行时必须优先使用状态与校验中的最大长度'
+  '文本运行时必须优先使用数据校验中的最大长度'
 )
 ;[
   'childFormReleaseId',
@@ -1265,7 +1267,6 @@ assert.ok(
 ;[
   'v-if="!isCustomRendererMode" class="design-body"',
   '<FormCustomRendererWorkspace',
-  '默认布局已保留',
   'if (persistNodes)',
   'shouldPersistFormNodes'
 ].forEach((marker) => {
@@ -1277,13 +1278,15 @@ assert.ok(
 ;[
   'title="基础属性"',
   'title="布局与层级"',
-  'title="字段数据"',
   'title="数据源绑定"',
-  'title="默认状态"',
   'title="校验规则"',
   'title="运行模式权限"',
-  'title="实体关系与子表"',
-  'title="联动与事件"',
+  'title="子表单配置"',
+  'title="参数传递"',
+  'title="子列表配置"',
+  'title="引用选择配置"',
+  'title="值与计算"',
+  'title="事件与回填"',
   'title="复用与扩展"'
 ].forEach((marker) => {
   assert.ok(
@@ -1299,8 +1302,8 @@ const layoutHierarchyIndex = formDesigner.indexOf('title="布局与层级"')
 assert.ok(
   basicPropertiesIndex >= 0
     && parentSelectorIndex > basicPropertiesIndex
-    && layoutHierarchyIndex > parentSelectorIndex,
-  '父容器应直接位于基础属性中，不能单独占用布局与层级分组'
+    && parentSelectorIndex > layoutHierarchyIndex,
+  '父容器应位于布局与层级卡片内'
 )
 ;[
   '表单设置',
@@ -1315,7 +1318,7 @@ assert.ok(
   'canConfigureSelectedNodeModeAccess',
   'canConfigureSelectedNodeRelations',
   'selectedNodeDataSourceBindingCount',
-  '条件显示、条件禁用和条件必填'
+  'FormNodeStateConditions'
 ].forEach((marker) => {
   assert.ok(formDesignerSurface.includes(marker), `表单设计器缺少重组后的统一配置入口: ${marker}`)
 })
@@ -2182,19 +2185,17 @@ const configSchemaEditor = readFileSync(path.join(root, 'src/components/ConfigSc
 ].forEach((marker) => {
   assert.ok(configSchemaEditor.includes(marker), `扩展配置 Schema 缺少分组、排序或条件显示能力: ${marker}`)
 })
-const linkageConfigPanel = readFileSync(path.join(root, 'src/components/LinkageConfigPanel.vue'), 'utf8')
+const inlineValueLinkage = readFileSync(path.join(root, 'src/components/form-designer/FormNodeValueLinkage.vue'), 'utf8')
 ;[
-  'label="显示与状态"',
-  'label="值与计算"',
-  'label="选项"',
-  '受控 Provider',
-  'LinkageConditionRuleEditor',
-  'visibilityConditionConfig',
-  'disabledConditionConfig',
-  'requiredConditionConfig'
+  'title="值与计算"',
+  'title="事件与回填"',
+  'FormNodeValueLinkage',
+  'FormNodeAttachmentConditions'
 ].forEach((marker) => {
-  assert.ok(linkageConfigPanel.includes(marker), `字段联动缺少合并页签或受控数据源提示: ${marker}`)
+  assert.ok(formDesigner.includes(marker), `字段联动缺少独立卡片或内联配置: ${marker}`)
 })
+assert.ok(inlineValueLinkage.includes('启用值联动') && inlineValueLinkage.includes('启用选项联动'), '值与计算应内联值联动和选项联动')
+assert.equal(formDesigner.includes('showLinkageConfig'), false, '字段联动不再通过弹窗编辑')
 const linkageConditionRuleEditor = readFileSync(
   path.join(root, 'src/components/LinkageConditionRuleEditor.vue'),
   'utf8'
@@ -2372,9 +2373,9 @@ const configurationArchitectureExpectations = {
     '配置迁移幂等与兼容',
     '运行时回退',
     '常用配置优先',
-    '基础与布局、状态与校验、数据与关系、联动与事件、复用与扩展',
+    '基础与布局、数据校验、联动与事件、子页面、数据与扩展',
     '访问范围、选择行为、查询实现',
-    '显示与状态、值与计算、选项',
+    '值与计算、事件与回填',
     '更多设置'
   ],
   'src/data/user-manual/process.js': [
@@ -2658,6 +2659,17 @@ assert.doesNotMatch(
 const entityFormListSource = readFileSync(
   path.join(root, 'src/views/EntityFormList.vue'),
   'utf8'
+)
+assert.ok(
+  entityFormListSource.includes('label="渲染方式"')
+    && entityFormListSource.includes('capability-type="UI_FORM"')
+    && !formDesigner.includes('handleFormRendererModeChange')
+    && !formCustomRendererWorkspace.includes('ExtensionCapabilityPicker'),
+  '渲染方式和组件选择必须统一在外层表单编辑面板维护'
+)
+assert.ok(
+  formCustomRendererWorkspace.includes('默认布局保留 {{ inactiveNodeCount }} 个节点'),
+  '自定义表单工作区应继续显示保留的默认布局节点'
 )
 ;[
   [

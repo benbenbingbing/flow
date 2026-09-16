@@ -208,6 +208,8 @@ export function registerProjectExtensions() {
       ],
       capabilities: {
         emitsChange: true,
+        // 该评分组件有独立按钮并实际发送 FIELD_BUTTON_CLICK，设计器据此开放事件。
+        supportedEvents: ['FIELD_BUTTON_CLICK'],
         supportsReadonly: true
       }
     }

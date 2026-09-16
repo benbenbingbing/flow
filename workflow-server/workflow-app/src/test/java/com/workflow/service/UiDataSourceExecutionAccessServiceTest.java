@@ -5,6 +5,36 @@ import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiDataSourceBindingMatcher;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAuthorization;
+import com.workflow.entity.ui.application.EntitySelectionRuntimeService;
+import com.workflow.entity.ui.application.UiConfigSnapshotSupport;
+import com.workflow.entity.ui.application.UiEventBindingService;
+import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
+import com.workflow.entity.ui.application.UiEventExecutionReceiptService;
+import com.workflow.entity.ui.application.UiEventRuntimeService;
+import com.workflow.entity.ui.application.UiEventValueMapper;
+import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.UiInterfaceExtensionService;
+import com.workflow.entity.ui.application.UiInvocationContextFactory;
+import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.SystemEntityReadService;
+import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
+import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
+import com.workflow.entity.definition.application.SystemEntityService;
+import com.workflow.entity.form.application.EntityFormActionService;
+import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
+import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
+import com.workflow.entity.ui.api.response.UiEventExecutionResult;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTargetMapper;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
+import com.workflow.admin.dictionary.application.SysDictItemService;
+import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
+import com.workflow.contracts.ui.UiInvocationContext;
+import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -33,7 +63,14 @@ import com.workflow.entity.permission.application.DataPermissionEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,9 +79,14 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -745,6 +787,368 @@ class UiDataSourceExecutionAccessServiceTest {
                         "effective-hash"));
         assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
                 contextError.getErrorCode());
+    }
+
+    /** 业务部门/用户字段可传给 Provider，但认证身份仍取自服务端当前用户。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"ENTITY_SELECTED", "FIELD_CHANGE", "FIELD_BUTTON_CLICK"})
+    void formFieldEventsAllowBusinessIdentityNames(String eventCode) {
+        allowFormTarget();
+        allowPermissionPlan();
+        UiConfigRelease release = release("release-1", 3, "{}");
+        release.setSnapshotDocument(context.codec().write(Map.of(
+                "configType", "FORM",
+                "form", Map.of("id", "form-1", "entityId", "entity-1"),
+                "eventBindings", List.of(Map.of(
+                        "ownerType", "FORM", "ownerId", "form-1",
+                        "targetType", "FIELD", "targetKey", "field-1",
+                        "eventCode", eventCode,
+                        "steps", List.of(Map.of("extensionId", "source-1"))))),
+                "字段事件发布快照"));
+        when(context.releaseMapper().findActive("FORM", "form-1"))
+                .thenReturn(release);
+        UiExtensionExecuteRequest request = fieldEventRequest(eventCode);
+        Map<String, Object> businessValues = Map.of(
+                "deptId", "selected-dept", "userId", "selected-user",
+                "userName", "selected-name", "formId", "business-form");
+        request.setInput(Map.of(
+                "form", businessValues,
+                "selection", List.of(Map.of("data", businessValues)),
+                "value", businessValues));
+        request.setContext(Map.of("eventState", Map.of("selectionPresent", true)));
+
+        UiDataSourceExecutionAuthorization authorization = context.service()
+                .authorizePublished(definition("REGISTERED_PROVIDER", "GLOBAL", null), request);
+
+        assertEquals("user-1", authorization.user().getId());
+        assertEquals("dept-1", authorization.user().getDeptId());
+        assertEquals(businessValues, request.getInput().get("form"));
+        assertEquals("$.release.eventBindings[0].steps", authorization.bindingPath());
+    }
+
+    @Test
+    void formFieldEventsStillRejectIdentityOutsideBusinessContainers() {
+        for (Map<String, Object> input : List.<Map<String, Object>>of(
+                Map.of("deptId", "forged-dept"),
+                Map.of("payload", Map.of("userId", "forged-user")),
+                Map.of("form", Map.of(), "Form", Map.of()),
+                Map.of("sele_ction", Map.of()),
+                Map.of("Value", Map.of()))) {
+            UiExtensionExecuteRequest request = fieldEventRequest("ENTITY_SELECTED");
+            request.setInput(input);
+            assertSpoofedFieldEvent(request);
+        }
+        UiExtensionExecuteRequest request = fieldEventRequest("ENTITY_SELECTED");
+        request.setContext(Map.of("eventState", Map.of(
+                "input", Map.of("form", Map.of("deptId", "forged-dept")))));
+        assertSpoofedFieldEvent(request);
+        verifyNoInteractions(context.releaseMapper());
+    }
+
+    /** 多个业务容器共用结构限制，允许字段名不能成为超深/循环输入的绕过路径。 */
+    @Test
+    void formFieldBusinessContainersStillEnforceStructureLimits() {
+        Map<String, Object> cycle = new LinkedHashMap<>();
+        cycle.put("self", cycle);
+        Map<String, Object> deep = Map.of("deptId", "dept");
+        for (int index = 0; index < 13; index++) {
+            deep = Map.of("nested", deep);
+        }
+        List<String> values = new ArrayList<>();
+        for (int index = 0; index < 2100; index++) {
+            values.add("value");
+        }
+        for (Map<String, Object> input : List.<Map<String, Object>>of(
+                Map.of("form", cycle), Map.of("selection", deep),
+                Map.of("form", values, "selection", values))) {
+            UiExtensionExecuteRequest request = fieldEventRequest("ENTITY_SELECTED");
+            request.setInput(input);
+            assertSpoofedFieldEvent(request);
+        }
+    }
+
+    @Test
+    void businessContainerExceptionDoesNotApplyToOtherUsagesOrTargets() {
+        UiExtensionExecuteRequest otherUsage = fieldEventRequest("FIELD_OPTIONS");
+        otherUsage.setInput(Map.of("form", Map.of("deptId", "dept")));
+        assertSpoofedFieldEvent(otherUsage);
+        UiExtensionExecuteRequest otherTarget = fieldEventRequest("ENTITY_SELECTED");
+        otherTarget.setTargetType("OWNER");
+        otherTarget.setInput(Map.of("form", Map.of("deptId", "dept")));
+        assertSpoofedFieldEvent(otherTarget);
+    }
+
+    private UiExtensionExecuteRequest fieldEventRequest(String eventCode) {
+        UiExtensionExecuteRequest request = request(eventCode, "form-1", "release-1");
+        request.setTargetType("FIELD");
+        return request;
+    }
+
+    /** 串联真实令牌校验、事件解析、接口授权和 Provider 回填，覆盖普通及固定版本页面。 */
+    @ParameterizedTest
+    @CsvSource({
+            "ENTITY_SELECTED, false, false",
+            "ENTITY_SELECTED, true, false",
+            "ENTITY_SELECTED, true, true",
+            "FIELD_CHANGE, true, true",
+            "FIELD_BUTTON_CLICK, true, true"
+    })
+    void fieldEventExecutesProviderThroughReleaseAuthorization(
+            String eventCode, boolean signed, boolean historical) throws Exception {
+        try (FieldEventFlow flow = fieldEventFlow(eventCode, signed, historical)) {
+            UiEventExecutionResult result = flow.runtime().execute(flow.request());
+
+            ArgumentCaptor<UiInvocationContext> invocation =
+                    ArgumentCaptor.forClass(UiInvocationContext.class);
+            verify(flow.provider()).execute(invocation.capture(), any(), any(),
+                    eq(flow.request().getInput()));
+            assertEquals("user-1", invocation.getValue().common().userId());
+            assertEquals("dept-1", invocation.getValue().common().departmentId());
+            assertEquals("release-1", invocation.getValue().common().releaseId());
+            assertEquals(3, invocation.getValue().common().releaseVersion());
+            assertEquals(1, result.getEffects().size());
+            assertEquals("FIELD_MAPPING", result.getEffects().get(0).get("type"));
+            assertEquals(Map.of("form", Map.of("name", "周大伟", "myText", "ZDW")),
+                    result.getEffects().get(0).get("data"));
+            if (signed) {
+                assertNotNull(flow.request().getServerIdempotencyKey());
+                assertFalse(flow.request().getServerIdempotencyKey().equals(
+                        flow.request().getRequestId()));
+                verify(context.releaseMapper(), org.mockito.Mockito.never())
+                        .findActive(anyString(), anyString());
+            }
+        }
+    }
+
+    /** 原始发布没有接口绑定，只有热修复有效快照包含绑定；不能回查原始发布授权。 */
+    @ParameterizedTest
+    @CsvSource({
+            "ENTITY_SELECTED, FIELD",
+            "ENTITY_SELECTED, FORM_OWNER",
+            "ENTITY_SELECTED, ENTITY_OWNER",
+            "FIELD_CHANGE, FIELD",
+            "FIELD_BUTTON_CLICK, FIELD"
+    })
+    void fieldEventUsesEffectiveHotfixBinding(String eventCode, String bindingScope) throws Exception {
+        try (FieldEventFlow flow = fieldEventFlow(eventCode, true, true, true, bindingScope)) {
+            UiEventExecutionResult result = flow.runtime().execute(flow.request());
+
+            verify(flow.provider()).execute(any(), any(), any(), eq(flow.request().getInput()));
+            assertEquals(Map.of("form", Map.of("name", "周大伟", "myText", "ZDW")),
+                    result.getEffects().get(0).get("data"));
+            // 有效快照已由事件解析器验真，后续不能再读取基础版或 ACTIVE 的事件绑定。
+            verify(context.releaseMapper(), org.mockito.Mockito.never()).selectById(anyString());
+            verify(context.releaseMapper(), org.mockito.Mockito.never()).findActive(anyString(), anyString());
+        }
+    }
+
+    /** 使用有效快照不降低授权要求：来源、完整性、表单身份和绑定都必须匹配。 */
+    @ParameterizedTest
+    @CsvSource({
+            "missing-seed, UI_DATA_SOURCE_TRUSTED_EXECUTION_REQUIRED",
+            "missing-hash, UI_EVENT_EFFECTIVE_SNAPSHOT_REQUIRED",
+            "tampered, UI_EVENT_EFFECTIVE_SNAPSHOT_TAMPERED",
+            "wrong-form, UI_EVENT_EFFECTIVE_SNAPSHOT_CONFLICT",
+            "missing-binding, UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED",
+            "wrong-owner, UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED"
+    })
+    void resolvedFieldEventStillRejectsInvalidAuthorization(String problem, String expectedCode) {
+        allowFormTarget();
+        UiConfigSnapshotSupport snapshots = new UiConfigSnapshotSupport(context.codec(), new ObjectMapper());
+        ReflectionTestUtils.setField(context.releaseService(), "snapshotSupport", snapshots);
+        doCallRealMethod().when(context.releaseService()).verifyResolvedEventSnapshot(any(), any());
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("configType", "FORM");
+        snapshot.put("form", Map.of("id", "form-1", "entityId", "entity-1"));
+        snapshot.put("eventBindings", List.of(Map.of(
+                "ownerType", "FORM", "ownerId", "form-1", "targetType", "FIELD",
+                "targetKey", "field-1", "eventCode", "ENTITY_SELECTED",
+                "steps", List.of(Map.of("extensionId", "source-1")))));
+        if ("wrong-form".equals(problem)) {
+            snapshot.put("form", Map.of("id", "different-form", "entityId", "entity-1"));
+        } else if ("missing-binding".equals(problem)) {
+            snapshot.put("eventBindings", List.of());
+        }
+        String expectedHash = "missing-hash".equals(problem) ? null
+                : snapshots.hash(snapshots.canonical(snapshot));
+        if ("tampered".equals(problem)) {
+            snapshot.put("eventBindings", List.of());
+        }
+        UiExtensionExecuteRequest request = fieldEventRequest("ENTITY_SELECTED");
+        request.setReleaseVersion(3);
+        request.setServerPinnedRelease(true);
+        request.setServerIdempotencyKey("missing-seed".equals(problem) ? null : "server-seed");
+        request.setServerBindingOwnerType("FORM");
+        request.setServerBindingOwnerId("wrong-owner".equals(problem) ? "different-form" : "form-1");
+        request.setServerBindingTargetType("FIELD");
+        request.setServerBindingTargetKey("field-1");
+
+        RuntimeException error = assertThrows(RuntimeException.class,
+                () -> context.service().authorizeResolvedFormFieldEvent(
+                        definition("REGISTERED_PROVIDER", "GLOBAL", null), request, snapshot, expectedHash));
+        String actualCode = error instanceof BusinessForbiddenException forbidden ? forbidden.getErrorCode()
+                : error instanceof BusinessConflictException conflict ? conflict.getErrorCode() : null;
+        assertEquals(expectedCode, actualCode);
+        verifyNoInteractions(context.releaseMapper());
+    }
+
+    /** 无效/越界令牌与权限拒绝必须在生成内部凭证和执行 Provider 之前终止。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"invalid-token", "wrong-release", "wrong-version", "denied"})
+    void fieldEventRejectsUntrustedReleaseBeforeProviderExecution(String rejection) throws Exception {
+        try (FieldEventFlow flow = fieldEventFlow("ENTITY_SELECTED", true, true)) {
+            switch (rejection) {
+                case "invalid-token" -> flow.request().setReleaseResolutionToken("forged-token");
+                case "wrong-release" -> flow.request().setReleaseId("different-release");
+                case "wrong-version" -> flow.request().setReleaseVersion(99);
+                case "denied" -> doThrow(new BusinessForbiddenException("DENIED", "禁止访问"))
+                        .when(flow.permissions()).requireStandardPermission(
+                                "expense", EntityPermissionAction.LIST);
+            }
+
+            assertThrows(BusinessForbiddenException.class,
+                    () -> flow.runtime().execute(flow.request()));
+            assertNull(flow.request().getServerIdempotencyKey());
+            verify(flow.provider(), org.mockito.Mockito.never()).execute(any(), any(), any(), any());
+        }
+    }
+
+    /**
+     * 仅替换持久化、权限外部依赖及流程版本查找；签名验证、快照验哈希、事件解析、
+     * 接口授权、调用上下文和结果映射都使用生产实现，避免服务间契约被 Mock 掩盖。
+     */
+    private FieldEventFlow fieldEventFlow(String eventCode, boolean signed, boolean historical) {
+        return fieldEventFlow(eventCode, signed, historical, false, "FIELD");
+    }
+
+    private FieldEventFlow fieldEventFlow(String eventCode, boolean signed, boolean historical,
+                                         boolean hotfix, String bindingScope) {
+        allowFormTarget(historical ? "new-active-release" : "release-1");
+        allowPermissionPlan();
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        UiConfigSnapshotSupport snapshots = new UiConfigSnapshotSupport(context.codec(), objectMapper);
+        UiReleaseResolutionTokenService tokens = new UiReleaseResolutionTokenService(objectMapper);
+        ReflectionTestUtils.setField(tokens, "secret", "field-event-integration-test-secret");
+        Map<String, Object> snapshot = Map.of(
+                "configType", "FORM",
+                "form", Map.of("id", "form-1", "entityId", "entity-1"),
+                "eventBindings", List.of(Map.of(
+                        "ownerType", "ENTITY_OWNER".equals(bindingScope) ? "ENTITY" : "FORM",
+                        "ownerId", "ENTITY_OWNER".equals(bindingScope) ? "entity-1" : "form-1",
+                        "targetType", "FIELD".equals(bindingScope) ? "FIELD" : "OWNER",
+                        "targetKey", "FIELD".equals(bindingScope) ? "field-1" : "", "eventCode", eventCode,
+                        "steps", List.of(Map.of(
+                                "strategy", "AFTER", "extensionId", "source-1",
+                                "outputMapping", List.of(
+                                        Map.of("sourcePath", "data.userName", "targetPath", "form.name"),
+                                        Map.of("sourcePath", "data.userCode", "targetPath", "form.myText")))))));
+        UiConfigRelease release = release("release-1", 3, "{}");
+        Map<String, Object> baseSnapshot = new LinkedHashMap<>(snapshot);
+        if (hotfix) {
+            baseSnapshot.put("eventBindings", List.of());
+        }
+        release.setSnapshotDocument(snapshots.canonical(baseSnapshot));
+        release.setContentHash(snapshots.hash(release.getSnapshotDocument()));
+        when(context.releaseMapper().selectById("release-1")).thenReturn(release);
+        when(context.releaseMapper().findActive("FORM", "form-1"))
+                .thenReturn(historical ? release("new-active-release", 4, "{}") : release);
+        ReflectionTestUtils.setField(context.releaseService(), "releaseMapper", context.releaseMapper());
+        ReflectionTestUtils.setField(context.releaseService(), "codec", context.codec());
+        ReflectionTestUtils.setField(context.releaseService(), "snapshotSupport", snapshots);
+        ReflectionTestUtils.setField(context.releaseService(), "resolutionTokenService", tokens);
+        doCallRealMethod().when(context.releaseService())
+                .resolveRuntimeEventSnapshot(any(), any(), any(), any());
+        doCallRealMethod().when(context.releaseService()).verifiedReleaseSnapshot(any());
+        doCallRealMethod().when(context.releaseService()).verifyResolvedEventSnapshot(any(), any());
+        String effectiveHash = snapshots.hash(snapshots.canonical(snapshot));
+        if (hotfix) {
+            UiConfigHotfixTarget target = new UiConfigHotfixTarget();
+            target.setId("hotfix-target-1");
+            target.setStatus("ACTIVE");
+            target.setEffectiveSnapshotDocument(snapshots.canonical(snapshot));
+            target.setEffectiveContentHash(effectiveHash);
+            UiConfigHotfixTargetMapper hotfixes = mock(UiConfigHotfixTargetMapper.class);
+            when(hotfixes.selectById("hotfix-target-1")).thenReturn(target);
+            ReflectionTestUtils.setField(context.releaseService(), "hotfixTargetMapper", hotfixes);
+        }
+        EntityForm form = context.formMapper().selectById("form-1");
+        when(context.releaseService().resolveRuntimeFormRelease(
+                anyString(), anyString(), anyInt(), any(UiRuntimeResolutionContext.class)))
+                .thenReturn(new ResolvedEntityFormRelease(
+                        form, "release-1", 3, true,
+                        hotfix ? "hotfix-release-1" : "release-1", effectiveHash,
+                        hotfix ? "hotfix-target-1" : null,
+                        com.workflow.contracts.ui.runtime.UiRuntimePurpose.NEW_INSTANCE));
+
+        UiExtensionDefinition extension = definition("REGISTERED_PROVIDER", "GLOBAL", null);
+        extension.setExtensionType("INTERFACE");
+        extension.setExtensionKey("backfill-user");
+        extension.setDisplayName("用户回填");
+        extension.setProviderCode("backfill-provider");
+        extension.setInterfaceContextType("FORM");
+        extension.setInterfaceKind("READ");
+        UiExtensionDefinitionMapper extensions = mock(UiExtensionDefinitionMapper.class);
+        when(extensions.selectById("source-1")).thenReturn(extension);
+        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        when(provider.getCode()).thenReturn("backfill-provider");
+        when(provider.getVersion()).thenReturn(1);
+        when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
+        when(provider.execute(any(), any(), any(), any()))
+                .thenReturn(Map.of("userName", "周大伟", "userCode", "ZDW"));
+        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor();
+        UiInterfaceExtensionService interfaces = new UiInterfaceExtensionService(
+                extensions, context.formMapper(), context.listMapper(),
+                mock(EntityDefinitionAccessPolicy.class), mock(EntityUiConfigurationPolicy.class),
+                mock(SysDictItemService.class), context.service(),
+                new UiInvocationContextFactory(context.definitionMapper(), context.formMapper(), context.listMapper()),
+                new UiExtensionDefinitionValidator(context.codec()), List.of(provider), context.codec(), executor);
+        UiEventBindingService bindings = new UiEventBindingService(
+                mock(UiEventBindingMapper.class), context.releaseMapper(), context.definitionMapper(),
+                context.formMapper(), context.listMapper(), mock(EntityDefinitionAccessPolicy.class),
+                context.configurationAccessService(), interfaces, mock(UiEventBindingSnapshotService.class),
+                context.releaseService(), context.codec(), objectMapper);
+        EntityDataDynamicService entityData = mock(EntityDataDynamicService.class);
+        EntityActionCapabilityService permissions = mock(EntityActionCapabilityService.class);
+        UiEventRuntimeService runtime = new UiEventRuntimeService(
+                bindings, interfaces, new UiEventValueMapper(),
+                new EntitySelectionRuntimeService(entityData, mock(SystemEntityService.class),
+                        mock(SystemEntityReadService.class), context.definitionMapper(), objectMapper),
+                mock(SystemAuditPort.class), permissions, mock(EntityFormActionService.class),
+                mock(UiEventExecutionReceiptService.class), entityData, objectMapper);
+        UiEventExecuteRequest request = new UiEventExecuteRequest();
+        request.setConfigType("FORM");
+        request.setConfigId("form-1");
+        request.setTargetType("FIELD");
+        request.setTargetKey("field-1");
+        request.setEventCode(eventCode);
+        request.setReleaseId("release-1");
+        request.setReleaseVersion(3);
+        if (signed) {
+            request.setReleaseResolutionToken(tokens.issue(
+                    UiRuntimeResolutionContext.standalone(), "form-1", "release-1", 3, 0));
+        }
+        request.setInput(Map.of("form", Map.of("deptId", "business-dept"),
+                "selection", Map.of("id", "selected-user", "userName", "selected-name"),
+                "value", "selected-user"));
+        request.setSelection(Map.of("id", "selected-user"));
+        request.setContext(Map.of("mode", "create"));
+        return new FieldEventFlow(runtime, request, provider, permissions, executor);
+    }
+
+    private record FieldEventFlow(UiEventRuntimeService runtime, UiEventExecuteRequest request,
+                                  UiDataSourceProvider provider, EntityActionCapabilityService permissions,
+                                  SimpleAsyncTaskExecutor executor) implements AutoCloseable {
+        @Override
+        public void close() {
+            executor.close();
+        }
+    }
+
+    private void assertSpoofedFieldEvent(UiExtensionExecuteRequest request) {
+        BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class,
+                () -> context.service().authorizePublished(
+                        definition("REGISTERED_PROVIDER", "GLOBAL", null), request));
+        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED", error.getErrorCode());
     }
 
     private Map<String, Object> resolvedButtonSnapshot() {

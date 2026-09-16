@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.definition.application.SystemEntityService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -31,9 +32,20 @@ public class EntitySelectionRuntimeService {
 
     private final EntityDataDynamicService entityDataService;
     private final SystemEntityService systemEntityService;
+    private final SystemEntityReadService systemEntityReadService;
     private final EntityDefinitionMapper definitionMapper;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 根据表单快照中的引用配置，补查单选实体事件使用的权威数据。
+     *
+     * <p>仅在配置了事件步骤时加载；清空选择返回 null，多选沿用原始选择。
+     * 查询权限或记录不可用的异常直接向上传递，不能退回客户端提交的数据。</p>
+     *
+     * @param request 事件请求，仅使用其中的选择 ID 定位权威记录
+     * @param chain 已解析的事件链，包含可信的表单配置快照
+     * @return 供事件映射读取的选择数据，保留 selectionData 扩展上下文
+     */
     public Object resolve(
             UiEventExecuteRequest request,
             UiEventBindingService.ResolvedEventChain chain) {
@@ -70,8 +82,11 @@ public class EntitySelectionRuntimeService {
                 throw new IllegalArgumentException(
                         "单选实体字段未配置有效的关联实体");
             }
-            EntityDataDTO detail =
-                    entityDataService.findAccessibleById(
+            // CUSTOM 表示通过实体目录引用，也可能指向 sys_user 等系统实体。
+            // 与选择器使用同一只读服务，保留权限和字段过滤，并兼容已发布的引用配置。
+            EntityDataDTO detail = systemEntityReadService.isSystemEntity(entityCode)
+                    ? systemEntityReadService.findById(entityCode, selectedId)
+                    : entityDataService.findAccessibleById(
                             entityCode,
                             selectedId,
                             reference.listKey());

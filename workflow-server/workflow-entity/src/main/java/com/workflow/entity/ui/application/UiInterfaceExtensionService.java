@@ -548,6 +548,33 @@ public class UiInterfaceExtensionService {
         }
 
         /**
+         * 执行字段事件接口，授权绑定使用事件解析时的同一份有效表单快照。
+         * 流程热修复新增的回填步骤可能不在基础发布中，不能重新查询基础版判断是否绑定。
+         *
+         * @param id 已发布事件步骤引用的接口 ID
+         * @param operationCode 历史接口路由编码，当前 extensionId 引用可为空
+         * @param request 已完成版本及操作权限校验的内部字段事件请求
+         * @param resolvedHostSnapshot 已验真的有效表单快照
+         * @param expectedHostHash 解析时确认的快照哈希
+         * @return Provider 的已校验输出
+         */
+        public Object executeResolvedFormFieldOperation(
+                        String id,
+                        String operationCode,
+                        UiExtensionExecuteRequest request,
+                        Map<String, Object> resolvedHostSnapshot,
+                        String expectedHostHash) {
+                UiExtensionDefinition definition = resolveOperationDefinition(
+                                requireExecutableDefinition(id, operationCode), operationCode);
+                requireUsage(request == null ? null : request.getUsage());
+                UiDataSourceExecutionAuthorization authorization =
+                                executionAccessService.authorizeResolvedFormFieldEvent(
+                                                definition, request, resolvedHostSnapshot, expectedHostHash);
+                requireOperationContext(definition, authorization.configType());
+                return executeAuthorized(definition, request, authorization);
+        }
+
+        /**
          * 在管理端调试指定接口扩展，不要求该接口已经绑定到发布页面。
          */
         public Object previewOperation(

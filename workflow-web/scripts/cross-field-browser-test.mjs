@@ -14,18 +14,19 @@ import 'element-plus/dist/index.css'
 import Preview from '/src/components/FormPreviewLinkage.vue'
 import Editor from '/src/components/form-designer/FormCrossFieldRuleEditor.vue'
 const rule = { version:1, rules:[{id:'range',operator:'GE',targetFieldCode:'start',message:'结束不得早于开始'}] }
-const fields = [{id:'s',fieldCode:'start',fieldLabel:'开始',fieldType:'INTEGER',componentType:'number'}, {id:'e',fieldCode:'end',fieldLabel:'结束',fieldType:'INTEGER',componentType:'number',validationRules:{crossField:rule}}]
-const state = reactive({record:{start:10,end:5}, readonly:false, form:{id:'fixture',formName:'跨字段校验验收',layoutType:'vertical', fields, nodes:[
+const fields = [{id:'s',fieldCode:'start',fieldLabel:'开始',fieldType:'INTEGER',componentType:'number'}, {id:'e',fieldCode:'end',fieldLabel:'结束',fieldType:'INTEGER',componentType:'number',validationRules:{min:0,crossField:rule}}]
+// 测试表单不提供业务 ID，真实输入变化不会触发后端 FIELD_CHANGE 事件请求。
+const state = reactive({record:{start:10,end:5}, readonly:false, nodeTree:true, form:{formName:'跨字段校验验收',layoutType:'vertical', fields, nodes:[
  {id:'tabs',nodeType:'TAB_SET',propsDocument:{label:'时间范围'}},
  {id:'tab-a',parentId:'tabs',nodeType:'TAB_PANE',propsDocument:{label:'开始'}},
  {id:'tab-b',parentId:'tabs',nodeType:'TAB_PANE',propsDocument:{label:'结束'}},
  {id:'s',parentId:'tab-a',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'start',propsDocument:{fieldType:'INTEGER',componentType:'number',label:'开始'}},
- {id:'e',parentId:'tab-b',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'end',propsDocument:{fieldType:'INTEGER',componentType:'number',label:'结束'},rulesDocument:{validation:{crossField:rule}}}
+ {id:'e',parentId:'tab-b',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'end',propsDocument:{fieldType:'INTEGER',componentType:'number',label:'结束'},rulesDocument:{validation:{min:0,crossField:rule}}}
 ]}})
 const preview = ref()
 const app = createApp({ setup() {return () => h('main',{style:'padding:32px;max-width:900px'},[
  h('h2','跨字段比较'), h('section',{id:'editor'},[h(Editor,{field:state.form.fields[1],fields:state.form.fields,modelValue:state.form.fields[1].validationRules.crossField,'onUpdate:modelValue':value=>{state.form.fields[1].validationRules.crossField=value;state.form.nodes[4].rulesDocument.validation.crossField=value}})]),
- h('section',{id:'runtime',style:'margin-top:32px'},[h(Preview,{ref:preview,form:state.form,modelValue:state.record,mode:'edit',readonly:state.readonly,'onUpdate:modelValue':value=>state.record=value})])
+ h('section',{id:'runtime',style:'margin-top:32px'},[h(Preview,{ref:preview,form:{...state.form,nodes:state.nodeTree?state.form.nodes:[]},modelValue:state.record,mode:'edit',readonly:state.readonly,'onUpdate:modelValue':value=>state.record=value})])
 ])}})
 app.use(createPinia()).use(ElementPlus).mount('#app')
 window.crossFieldTest={state, getError(){return preview.value.getValidationError()},async validate(){return preview.value.validate()},async serverError(){return preview.value.applyServerValidationError({errorCode:'FORM_CROSS_FIELD_VALIDATION_FAILED',currentData:{fieldErrors:[{fieldCode:'end',ruleId:'range',targetFieldCode:'start',message:'服务器最终值不符合要求'}]}})}, async settle(){await nextTick();await nextTick();await new Promise(r=>setTimeout(r,450))}}
@@ -74,6 +75,14 @@ try {
   await evaluate('crossFieldTest.settle()')
   assert.equal(await evaluate(`document.querySelector('#runtime .el-tabs__item.is-active')?.textContent`),'结束','提交后定位错误所在页签')
   assert.match(await evaluate(`document.querySelector('#runtime .el-form-item__error')?.textContent`),/结束不得早于开始/)
+  // 单字段 min=0 校验会在 blur 时通过，但不能覆盖尚未修正的跨字段提示。
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await evaluate(`(()=>{const input=[...document.querySelectorAll('#runtime input')].at(-1);input.focus();input.blur()})()`)
+    await evaluate('crossFieldTest.settle()')
+    assert.match(await evaluate(`document.querySelector('#runtime .el-form-item__error')?.textContent`),/结束不得早于开始/,'反复失焦仍保留跨字段提示')
+    assert.equal(await evaluate(`Boolean([...document.querySelectorAll('#runtime input')].at(-1).closest('.el-form-item').classList.contains('is-error'))`),true,'失焦后保留字段错误样式')
+    assert.equal(await evaluate('crossFieldTest.validate()'),false,'重复提交仍然拦截')
+  }
   // 通过真实输入事件修正所属字段，不直接调用校验器。
   await evaluate(`(()=>{const input=[...document.querySelectorAll('#runtime input')].at(-1);input.value='10';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur()})()`)
   await evaluate('crossFieldTest.settle()')
@@ -93,6 +102,16 @@ try {
   assert.match(await evaluate(`document.querySelector('#runtime .el-form-item__error')?.textContent`),/服务器最终值/)
   await evaluate('crossFieldTest.state.record.end=21;crossFieldTest.settle()')
   assert.equal(await evaluate(`document.querySelectorAll('#runtime .el-form-item__error').length`),0)
+  // 无节点的历史平铺表单使用另一条模板分支，也必须保留相同的错误生命周期。
+  await evaluate('crossFieldTest.state.nodeTree=false;crossFieldTest.state.record.end=5;crossFieldTest.settle()')
+  assert.equal(await evaluate('crossFieldTest.validate()'),false)
+  await evaluate(`(()=>{const input=[...document.querySelectorAll('#runtime input')].at(-1);input.focus();input.blur()})()`)
+  await evaluate('crossFieldTest.settle()')
+  assert.match(await evaluate(`document.querySelector('#runtime .el-form-item__error')?.textContent`),/结束不得早于开始/,'平铺表单失焦后保留提示')
+  await evaluate('crossFieldTest.state.record.end=11;crossFieldTest.settle()')
+  assert.equal(await evaluate(`document.querySelectorAll('#runtime .el-form-item__error').length`),0,'平铺表单修正为相等后清除提示')
+  assert.equal(await evaluate('crossFieldTest.validate()'),true)
+  await evaluate('crossFieldTest.state.nodeTree=true;crossFieldTest.settle()')
   // 编辑器不包含填写关系、启用开关或模式选择；删除保存为显式空规则。
   const editorText=await evaluate(`document.querySelector('#editor').textContent`)
   assert.ok(!editorText.includes('至少填写一项')&&!editorText.includes('适用模式'))
@@ -103,7 +122,7 @@ try {
   assert.match(await evaluate('crossFieldTest.state.form.fields[1].validationRules.crossField.rules[0].id'),/^cf_[A-Za-z0-9_-]+$/)
   assert.equal(await evaluate('crossFieldTest.state.form.fields[1].validationRules.crossField.rules[0].operator'),'GE')
   assert.deepEqual(browserErrors,[])
-  console.log('cross-field browser acceptance passed: editor, native input, hidden tab reveal, reference update, readonly, hidden, empty values, server errors, rule removal')
+  console.log('cross-field browser acceptance passed: editor, native input, repeated blur/submit, flat form, hidden tab reveal, reference update, readonly, hidden, empty values, server errors, rule removal')
 } finally {
   ws?.close();browser?.kill();await server?.close()
   await sleep(200)

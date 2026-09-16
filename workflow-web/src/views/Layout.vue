@@ -144,6 +144,7 @@ import { getPermissions, logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
 import SidebarMenuItem from '@/components/SidebarMenuItem.vue'
 import MenuSearch from '@/components/MenuSearch.vue'
+import { provideBreadcrumbParents } from '@/composables/useBreadcrumbParents'
 import {
   SIDEBAR_MENU_REFRESH_EVENT,
   SIDEBAR_MENU_REVISION_KEY
@@ -188,7 +189,8 @@ const menuTree = ref([])
 const menusLoading = ref(false)
 
 const activeMenuPath = computed(() => getActiveMenuPath(route))
-const breadcrumb = computed(() => buildBreadcrumb(menuTree.value, route))
+const breadcrumbParents = provideBreadcrumbParents()
+const breadcrumb = computed(() => buildBreadcrumb(menuTree.value, route, breadcrumbParents.value))
 
 const saveSidebarLayout = () => {
   persistSidebarLayout({

@@ -62,7 +62,7 @@ export const LinkageEngine = {
       'disabledConditionConfig', 'disabledRule',
       'requiredConditionConfig', 'requiredRule',
       'calculationFormula', 'calculationPrecision', 'calculationEditable',
-      'optionsLinkage', 'valueFormula', 'attachmentItemRequiredRules'
+      'optionsLinkage', 'valueFormula', 'valueMapping', 'valueApi', 'attachmentItemRequiredRules'
     ]
 
     // 1. 优先读取直接挂在字段根属性上的规则

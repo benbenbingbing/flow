@@ -11,7 +11,7 @@
       :show-word-limit="showWordLimit"
       v-on="customEventListeners"
       @change="handleChange"
-      @input="handleChange"
+      @input="handleInput"
       @blur="handleBlur"
       @focus="handleFocus"
     />
@@ -25,7 +25,7 @@
       clearable
       v-on="customEventListeners"
       @change="handleChange"
-      @input="handleChange"
+      @input="handleInput"
       @blur="handleBlur"
       @focus="handleFocus"
     />
@@ -51,6 +51,7 @@ const {
   placeholder,
   isDisabled,
   handleChange,
+  handleInput,
   handleBlur,
   handleFocus,
   customEventListeners,

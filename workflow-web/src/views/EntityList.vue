@@ -85,7 +85,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="330" fixed="right">
           <template #default="{ row }">
             <div class="table-row-actions">
               <el-button link type="primary" @click="handleDesign(row)">
@@ -120,6 +120,7 @@
                   重新发布
                 </el-button>
                 <el-button link type="primary" @click="handleStatusConfig(row)">状态</el-button>
+                <el-button link type="primary" @click="handleCodeRuleConfig(row)">编码</el-button>
                 <!-- 次要操作按实体类型和绑定状态显示，收起后仍沿用原有业务入口。 -->
                 <el-dropdown trigger="click" placement="bottom-end">
                   <el-button link type="primary" aria-label="更多实体操作" title="更多实体操作">
@@ -171,6 +172,12 @@
         @current-change="handleCurrentChange"
       />
     </el-card>
+    <EntityCodeRuleDialog
+      v-if="codeRuleEntity"
+      :key="codeRuleEntity.entityCode"
+      :entity="codeRuleEntity"
+      @close="codeRuleEntity = null"
+    />
     <!-- 新建/编辑对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
@@ -659,6 +666,7 @@ import {
 } from '@/shared/entity-history-pagination'
 import Sortable from 'sortablejs'
 import PageState from '@/components/PageState.vue'
+import EntityCodeRuleDialog from '@/views/entity/components/EntityCodeRuleDialog.vue'
 const router = useRouter()
 const loading = ref(false)
 const fetchError = ref('')
@@ -681,6 +689,17 @@ const submitting = ref(false)
 const bindLoading = ref(false)
 const selectedProcessId = ref('')
 const currentEntity = ref(null)
+const codeRuleEntity = ref(null)
+
+/** 打开当前业务实体的编码配置；独立弹窗实例避免取消后将草稿带到其他实体。 */
+const handleCodeRuleConfig = (row) => {
+  if (row.storageMode === 'SYSTEM') return
+  if (!row.entityCode) {
+    ElMessage.warning('实体编码不能为空')
+    return
+  }
+  codeRuleEntity.value = { entityCode: row.entityCode, entityName: row.entityName }
+}
 const formRef = ref()
 const formData = ref({
   entityName: '',

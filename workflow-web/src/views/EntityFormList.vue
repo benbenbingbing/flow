@@ -104,6 +104,7 @@
       v-model="dialogVisible"
       :title="isEdit ? '编辑表单' : '新建表单'"
       width="min(680px, 92vw)"
+      destroy-on-close
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="表单名称" prop="formName">
@@ -130,7 +131,35 @@
               : '实体编码为固定前缀，将与输入内容一起保存，创建后不可修改。' }}
           </div>
         </el-form-item>
-        <el-form-item label="布局类型">
+        <el-form-item label="渲染方式">
+          <el-segmented
+            v-model="formRendererMode"
+            :options="rendererModeOptions"
+            :disabled="isSystemEntity || !entityInfo.entityCode"
+          />
+          <div class="field-help">保存为草稿，发布后生效；切换渲染方式会保留原有表单布局。</div>
+        </el-form-item>
+        <template v-if="isCustomRendererMode">
+          <el-form-item label="自定义组件" prop="customComponent" required>
+            <ExtensionCapabilityPicker
+              :model-value="form.customComponent"
+              placeholder="请选择自定义表单组件"
+              capability-type="UI_FORM"
+              :context-params="formExtensionContext"
+              :local-options="customFormOptions"
+              :current-option="selectedCustomFormCatalogOption"
+              @selected="handleCustomFormSelection"
+            />
+          </el-form-item>
+          <el-form-item v-if="form.customComponent" label="组件版本">
+            <div class="component-versions">
+              <el-tag>实现 v{{ form.customComponentVersion }}</el-tag>
+              <el-tag type="info">快照 v{{ form.customComponentSnapshotVersion }}</el-tag>
+            </div>
+            <div class="field-help">组件参数在设计页中配置。</div>
+          </el-form-item>
+        </template>
+        <el-form-item v-else label="布局类型">
           <el-radio-group v-model="form.layoutType">
             <el-radio value="vertical">垂直</el-radio>
             <el-radio value="horizontal">水平</el-radio>
@@ -149,8 +178,8 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
-          {{ isEdit ? '保存基本信息' : '创建表单' }}
+        <el-button type="primary" @click="handleSubmit" :loading="submitLoading" :disabled="!entityInfo.entityCode">
+          {{ isEdit ? '保存草稿' : '创建表单' }}
         </el-button>
       </template>
     </el-dialog>
@@ -191,8 +220,20 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
+import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import { entityApi } from '@/api/entity'
-import { getFormsByEntity, getFormById, createForm, updateForm, deleteForm, getFormFields, setDefaultForm, copyForm } from '@/api/entityForm'
+import { getFormsByEntity, getFormById, createForm, patchFormMetadata, deleteForm, getFormFields, setDefaultForm, copyForm } from '@/api/entityForm'
+import {
+  getCustomFormComponentOptions,
+  getCustomFormDescriptor,
+  hasCustomFormComponent
+} from '@/utils/customComponentRegistry'
+import {
+  FORM_RENDERER_MODE_CUSTOM,
+  FORM_RENDERER_MODE_DEFAULT,
+  FORM_RENDERER_MODE_OPTIONS,
+  resolveFormRendererMode
+} from '@/shared/form-renderer-mode'
 import {
   formatFormDataSourceBindingSummary,
   totalFormDataSourceBindings
@@ -222,6 +263,20 @@ const copyFormRef = ref(null)
 const copySourceFormId = ref('')
 
 const entityInfo = ref({})
+const isSystemEntity = computed(() => entityInfo.value.storageMode === 'SYSTEM')
+const formRendererMode = ref(FORM_RENDERER_MODE_DEFAULT)
+const rendererModeOptions = FORM_RENDERER_MODE_OPTIONS
+const isCustomRendererMode = computed(() =>
+  !isSystemEntity.value && formRendererMode.value === FORM_RENDERER_MODE_CUSTOM
+)
+const customFormOptions = getCustomFormComponentOptions()
+const formExtensionContext = computed(() => ({
+  entityCode: entityInfo.value.entityCode || ''
+}))
+const selectedCustomFormCatalogOption = computed(() => {
+  const option = customFormOptions.find(item => item.value === form.customComponent)
+  return option ? { key: option.value, displayName: option.label } : null
+})
 const formList = ref([])
 const previewForm = ref(null)
 const formKeyPrefix = computed(() =>
@@ -238,7 +293,11 @@ const form = reactive({
   formKey: '',
   layoutType: 'vertical',
   status: 1,
-  description: ''
+  description: '',
+  revision: null,
+  customComponent: '',
+  customComponentVersion: null,
+  customComponentSnapshotVersion: null
 })
 
 const copyFormData = reactive({
@@ -248,6 +307,18 @@ const copyFormData = reactive({
 
 const rules = {
   formName: [{ required: true, message: '请输入表单名称', trigger: 'blur' }],
+  customComponent: [{
+    validator: (_rule, value, callback) => {
+      if (isCustomRendererMode.value && !value) {
+        callback(new Error('请选择自定义表单组件'))
+      } else if (isCustomRendererMode.value && !hasCustomFormComponent(value)) {
+        callback(new Error('当前前端未注册该自定义表单组件'))
+      } else {
+        callback()
+      }
+    },
+    trigger: 'change'
+  }],
   formKey: [
     { required: true, message: '请输入表单标识', trigger: 'blur' },
     { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '必须以字母开头，只能包含字母、数字、下划线', trigger: 'blur' }
@@ -299,11 +370,37 @@ function handleCreate() {
   dialogVisible.value = true
 }
 
-function handleEdit(row) {
-  isEdit.value = true
-  resetForm()
-  Object.assign(form, row)
-  dialogVisible.value = true
+/** 编辑前读取最新草稿和修订号，且只回填面板字段，避免将设计配置带入下一次新建。 */
+async function handleEdit(row) {
+  try {
+    const current = await getFormById(row.id)
+    isEdit.value = true
+    resetForm()
+    for (const key of Object.keys(form)) {
+      if (current[key] !== undefined) form[key] = current[key]
+    }
+    formRendererMode.value = isSystemEntity.value
+      ? FORM_RENDERER_MODE_DEFAULT
+      : resolveFormRendererMode(form.customComponent)
+    dialogVisible.value = true
+  } catch (error) {
+    ElMessage.error(error.message || '加载表单失败')
+  }
+}
+
+/** 仅主动更换组件时锁定目录版本；打开编辑或临时切换模式不升级已保存版本。 */
+function handleCustomFormSelection(option) {
+  const componentName = option?.key || ''
+  if (componentName === form.customComponent) return
+  const descriptor = getCustomFormDescriptor(componentName)
+  form.customComponent = componentName
+  form.customComponentVersion = componentName
+    ? option?.implementationVersion || descriptor?.version || 1
+    : null
+  form.customComponentSnapshotVersion = componentName
+    ? option?.snapshotVersion || descriptor?.snapshotVersion || 1
+    : null
+  formRef.value?.clearValidate('customComponent')
 }
 
 function handleDesign(row) {
@@ -356,19 +453,37 @@ async function handlePreview(row) {
   }
 }
 
+/** 只更新基本信息和渲染配置，布局节点、组件参数及数据源继续由设计页维护。 */
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
   submitLoading.value = true
   try {
+    const metadata = {
+      formName: form.formName,
+      description: form.description,
+      layoutType: form.layoutType,
+      status: form.status,
+      customComponent: isCustomRendererMode.value ? form.customComponent : '',
+      customComponentVersion: isCustomRendererMode.value ? form.customComponentVersion : null,
+      customComponentSnapshotVersion: isCustomRendererMode.value ? form.customComponentSnapshotVersion : null
+    }
     if (isEdit.value) {
-      await updateForm(form.id, form)
-      ElMessage.success('更新成功')
+      await patchFormMetadata(form.id, {
+        ...metadata,
+        expectedRevision: form.revision,
+        // 补丁接口将 null 视为未提交，切回默认模式必须显式清空组件与两个版本。
+        clearFields: isCustomRendererMode.value ? [] : [
+          'customComponent', 'customComponentVersion', 'customComponentSnapshotVersion'
+        ]
+      })
+      ElMessage.success('草稿保存成功，发布后生效')
     } else {
       // 新增时只让用户维护后缀，提交前再合成稳定的实体级表单标识。
       await createForm({
-        ...form,
+        ...metadata,
+        entityId,
         formKey: buildEntityConfigKey(entityInfo.value.entityCode, form.formKey)
       })
       ElMessage.success('创建成功')
@@ -468,6 +583,12 @@ function resetForm() {
   form.layoutType = 'vertical'
   form.status = 1
   form.description = ''
+  form.revision = null
+  form.customComponent = ''
+  form.customComponentVersion = null
+  form.customComponentSnapshotVersion = null
+  formRendererMode.value = FORM_RENDERER_MODE_DEFAULT
+  formRef.value?.clearValidate()
 }
 
 onMounted(() => {
@@ -499,10 +620,16 @@ onMounted(() => {
 }
 
 .field-help {
+  width: 100%;
   margin-top: 4px;
   color: #909399;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.component-versions {
+  display: flex;
+  gap: 8px;
 }
 
 .title {

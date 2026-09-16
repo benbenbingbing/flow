@@ -137,7 +137,9 @@
     :label="node.props.label || runtimeField.fieldLabel || runtimeField.fieldName"
     :prop="fieldKey"
     :rules="fieldRules"
-    :error="uniquePrecheckContext?.errorFor?.(fieldKey) || crossFieldErrors[fieldKey]?.message || ''"
+    :error="uniquePrecheckContext?.errorFor?.(fieldKey) || ''"
+    :show-message="!crossFieldError"
+    :class="{ 'is-error': Boolean(crossFieldError) }"
     :required="required"
     class="node-field"
   >
@@ -152,6 +154,10 @@
       :attachment-item-required-state="attachmentItemRequiredState"
       @update:model-value="updateField"
     />
+    <!-- 跨字段错误由表单控制器管理；普通 blur/change 校验成功不能清空其提示和红框。 -->
+    <div v-if="crossFieldError" class="el-form-item__error" role="alert">
+      {{ crossFieldError }}
+    </div>
   </el-form-item>
 
   <div v-else-if="node.nodeType === 'ACTION_SLOT'" class="node-action-slot">
@@ -510,6 +516,7 @@ const runtimeField = computed(() => {
 })
 
 const fieldKey = computed(() => getFieldKey(runtimeField.value || props.node))
+const crossFieldError = computed(() => props.crossFieldErrors[fieldKey.value]?.message || '')
 const modeAccess = computed(() => getFieldModeAccess(runtimeField.value, props.mode))
 const visible = computed(() =>
   modeAccess.value.visible

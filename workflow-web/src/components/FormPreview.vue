@@ -25,7 +25,8 @@
           class="preview-form-item"
         >
           <FormFieldRenderer 
-            :field="field" 
+            :field="field"
+            :context="{ getFormData: () => formData, scriptFields: form.fields }"
             v-model="formData[field.fieldCode || `field_${field.id}`]"
             :disabled="readonly || field.isReadonly === 1"
           />

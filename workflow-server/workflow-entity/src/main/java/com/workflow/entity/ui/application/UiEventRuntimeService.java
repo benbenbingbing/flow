@@ -138,6 +138,12 @@ public class UiEventRuntimeService {
             requireExecutableFormButtonChain(request, chain);
             requireExecutionPermission(request, chain);
             canonicalizeFormButtonRequest(request);
+            if (UiDataSourceExecutionAccessService.isFormFieldEvent(
+                    request.getConfigType(), request.getTargetType(), request.getEventCode())) {
+                UiDataSourceExecutionAccessService.validateFormFieldClientInput(
+                        request.getInput());
+            }
+            bindTrustedPinnedExecution(request, chain);
             UiEventExecutionResult result =
                     UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
                             normalize(request.getEventCode()))
@@ -496,6 +502,42 @@ public class UiEventRuntimeService {
                 "ui-list-button:" + UUID.nameUUIDFromBytes(
                         material.getBytes(StandardCharsets.UTF_8))
                         .toString().replace("-", ""));
+    }
+
+    /**
+     * 为已通过发布版本校验和操作权限检查的事件补齐内部执行种子。
+     *
+     * <p>字段回填等事件同样可能固定表单版本，Provider 授权层要求钉版标记与
+     * 服务端种子同时存在。字段事件即使来自 ACTIVE，也使用同次解析快照授权。
+     * 必须在 resolvePublished 和权限检查之后调用；不能
+     * 仅凭客户端带了令牌就授予钉版执行权。按钮回执和内部提交已有的种子保持原值，
+     * 无稳定 requestId 的交互使用随机 nonce，避免不同次字段选择共享执行标识。</p>
+     */
+    private void bindTrustedPinnedExecution(
+            UiEventExecuteRequest request,
+            UiEventBindingService.ResolvedEventChain chain) {
+        if ((!StringUtils.hasText(request.getReleaseResolutionToken())
+                && !UiDataSourceExecutionAccessService.isFormFieldEvent(
+                        request.getConfigType(), request.getTargetType(), request.getEventCode()))
+                || StringUtils.hasText(request.getServerIdempotencyKey())
+                || UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                        normalize(request.getEventCode()))) {
+            return;
+        }
+        String requestSeed = UiEventExecutionReceiptService
+                .validRequestIdOrNull(request.getRequestId());
+        if (!StringUtils.hasText(requestSeed)) {
+            requestSeed = UUID.randomUUID().toString();
+        }
+        String material = String.join("|",
+                "ui-event", text(UserContext.getUserId()),
+                normalize(request.getConfigType()), text(request.getConfigId()),
+                text(chain.releaseId()), String.valueOf(chain.releaseVersion()),
+                text(chain.effectiveReleaseId()), text(chain.effectiveContentHash()),
+                normalize(request.getEventCode()), normalize(request.getTargetType()),
+                text(request.getTargetKey()), text(request.getRecordId()), requestSeed);
+        request.setServerIdempotencyKey("ui-event:" + UUID.nameUUIDFromBytes(
+                material.getBytes(StandardCharsets.UTF_8)).toString().replace("-", ""));
     }
 
     /** 用发布按钮和服务端记录覆盖所有列表按钮保留输入。 */
@@ -921,6 +963,8 @@ public class UiEventRuntimeService {
                 execute.setListKey(chain.listKey());
                 boolean formButton = UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
                         normalize(request.getEventCode()));
+                boolean formField = UiDataSourceExecutionAccessService.isFormFieldEvent(
+                        request.getConfigType(), request.getTargetType(), request.getEventCode());
                 boolean listButton = isListButtonEvent(request);
                 execute.setInput(formButton
                         ? trustedFormButtonInput(
@@ -942,14 +986,9 @@ public class UiEventRuntimeService {
                 execute.setServerPinnedRelease(
                         StringUtils.hasText(
                                 request.getReleaseResolutionToken()));
-                if (formButton) {
+                if (formButton || formField) {
+                    // 字段与按钮都按本次已验真的有效快照授权，并保留 OWNER 默认绑定的来源身份。
                     execute.setServerPinnedRelease(true);
-                    execute.setServerRecordId(request.getRecordId());
-                    execute.setServerFormMode(
-                            request.getServerAuthorizedMode());
-                    execute.setServerTaskId(request.getServerTaskId());
-                    execute.setServerProcessInstanceId(
-                            request.getServerProcessInstanceId());
                     execute.setServerBindingOwnerType(text(
                             step.get("bindingOwnerType")));
                     execute.setServerBindingOwnerId(text(
@@ -958,11 +997,20 @@ public class UiEventRuntimeService {
                             step.get("bindingTargetType")));
                     execute.setServerBindingTargetKey(text(
                             step.get("bindingTargetKey")));
+                }
+                if (formButton) {
+                    execute.setServerRecordId(request.getRecordId());
+                    execute.setServerFormMode(request.getServerAuthorizedMode());
+                    execute.setServerTaskId(request.getServerTaskId());
+                    execute.setServerProcessInstanceId(request.getServerProcessInstanceId());
                     raw = executeProviderStep(
                             step, request, chain, extensionId, execute);
+                } else if (formField) {
+                    raw = dataSourceService.executeResolvedFormFieldOperation(
+                            extensionId, execute.getOperationCode(), execute,
+                            chain.snapshot(), chain.effectiveContentHash());
                 } else {
-                    // 非表单按钮事件保留既有 WRITE/READ Provider 契约，避免影响
-                    // DATA_CREATE/UPDATE、列表按钮等已发布执行链。
+                    // 其他事件沿用其既有调用契约。
                     raw = dataSourceService.executeOperation(
                             extensionId,
                             execute.getOperationCode(),
@@ -1138,6 +1186,9 @@ public class UiEventRuntimeService {
         context.put("eventState",
                 UiDataSourceUsages.FORM_BUTTON_CLICK.equals(normalize(
                         request.getEventCode()))
+                        || UiDataSourceExecutionAccessService.isFormFieldEvent(
+                                request.getConfigType(), request.getTargetType(),
+                                request.getEventCode())
                         ? providerEventState(state)
                         : state);
         return context;
@@ -1146,6 +1197,7 @@ public class UiEventRuntimeService {
     /**
      * Provider 已通过独立 input 接收映射后的业务值；可信 context 不再重复嵌套
      * 原始 input/context/result，以免动态字段名被误认为身份元数据或被实现方错用。
+     * 表单按钮和字段事件使用此摘要；完整 state 仍留在事件引擎内供条件与回填映射使用。
      */
     private Map<String, Object> providerEventState(
             Map<String, Object> state) {

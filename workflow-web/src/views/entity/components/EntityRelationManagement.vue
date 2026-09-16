@@ -532,7 +532,7 @@ function ownershipTypeLabel(value) {
 .relation-management {
   flex: 1;
   min-height: 0;
-  margin: 0 16px 16px;
+  margin: var(--entity-design-panel-gap, 16px) 0;
   padding: 20px;
   overflow: auto;
   border-radius: 8px;
@@ -615,7 +615,6 @@ code {
 
 @media (max-width: 768px) {
   .relation-management {
-    margin: 0 10px 10px;
     padding: 14px;
   }
 

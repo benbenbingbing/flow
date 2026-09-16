@@ -6,6 +6,7 @@
         <div class="rule-description">{{ description }}</div>
       </div>
       <el-switch
+        :aria-label="`启用${title}`"
         :model-value="enabled"
         :disabled="disabled"
         @update:model-value="$emit('update:enabled', $event)"

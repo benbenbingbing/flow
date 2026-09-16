@@ -24,11 +24,13 @@
 </template>
 
 <script setup>
+import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
 import { computed, inject, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { resolveFieldComponent, TextField } from '@/components/form-fields'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { getFormId } from '@/shared/form-action-runtime'
+import { isEntitySelectionEventField } from '@/components/ui-config/uiFieldEventCapabilities'
 import {
   FORM_UNIQUE_PRECHECK_CONTEXT_KEY,
   resolveFormUniqueValidationTrigger
@@ -66,6 +68,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
+provideFieldScriptContext(() => props.context)
 const fieldComponentRef = ref(null)
 const uniquePrecheckContext = inject(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, null)
 
@@ -74,22 +77,11 @@ const resolvedComponent = computed(() => {
   return component || TextField
 })
 
-function isEntityReferenceField() {
-  const type = String(
-    props.field?.fieldType || props.field?.componentType || ''
-  ).toUpperCase()
-  return [
-    'REFERENCE',
-    'MULTI_REFERENCE',
-    'ENTITY',
-    'ENTITY_SELECTOR'
-  ].includes(type) || Boolean(props.field?.refEntityId)
-}
-
 async function handleRuntimeChange(value) {
   emit('change', value)
   await executeRuntimeEvent('FIELD_CHANGE', value, null)
-  if (isEntityReferenceField()) {
+  // 与设计器的事件能力判断一致，系统用户/部门引用也必须触发已开放的选择事件。
+  if (isEntitySelectionEventField(props.field)) {
     await executeRuntimeEvent('ENTITY_SELECTED', value, value)
   }
   // 事件回填可能修改条件字段，必须用全部 effect 落地后的最终数据预检。
@@ -154,6 +146,7 @@ async function executeRuntimeEvent(eventCode, value, selection) {
 }
 
 function currentFormData() {
+  if (props.context?.getFormData) return props.context.getFormData()
   const record = props.context?.record
   return record?.data && typeof record.data === 'object'
     ? record.data

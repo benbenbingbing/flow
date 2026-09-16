@@ -220,6 +220,44 @@ export function interfacesForEvent(values = [], eventCode = '') {
     : items
 }
 
+/**
+ * 事件扩展统一使用 UiDataSourceProvider；随事件、宿主及已选实现说明实际约束。
+ * 复用接口适用范围，避免提示把 ENTITY 默认绑定误说成 EntityInvocationContext，
+ * 或要求平台内置实现也编写 Java Provider。
+ */
+export function eventInterfaceImplementationHelp(eventCode, ownerType, selectedInterface) {
+  const event = String(eventCode || '').trim().toUpperCase()
+  const owner = String(ownerType || '').trim().toUpperCase()
+  const selected = selectedInterface ? normalizeInterfaceExtension(selectedInterface) : null
+  const contexts = selected?.interfaceContextType
+    ? [selected.interfaceContextType]
+    : owner === 'ENTITY'
+      ? [formEventUsages.has(event) && 'FORM', listEventUsages.has(event) && 'LIST'].filter(Boolean)
+      : [owner].filter(Boolean)
+  const contextNames = { FORM: 'FormInvocationContext', LIST: 'ListInvocationContext', ENTITY: 'EntityInvocationContext' }
+  const kind = event === 'FORM_BUTTON_CLICK' || readOnlyUsages.has(event)
+    ? '只读接口（READ）'
+    : writeOnlyUsages.has(event) ? '写接口（WRITE）' : '读或写接口（READ / WRITE）'
+  const implementation = interfaceImplementationTypeOptions.find(option =>
+    option.value === selected?.implementationType && option.value !== 'REGISTERED_PROVIDER')
+  const help = [
+    event ? `当前事件 ${event} 使用${kind}。` : '选择触发事件后显示接口要求。',
+    contexts.length ? `运行上下文：${contexts.map(context => contextNames[context] || context).join(' 或 ')}。` : '',
+    implementation
+      ? `当前选择“${implementation.label}”，由平台内置实现提供，无需编写 Java Provider。`
+      : '自定义 Java 实现统一使用 com.workflow.contracts.entity.ui.spi.UiDataSourceProvider；实现 getCode()、getDisplayName() 和 execute(context, dataScopePlan, configuration, input)，加 @Component 注册。在“扩展管理”选择“已注册 Provider”，Provider 编码对应 getCode()。',
+    !implementation && selected?.providerCode ? `当前 Provider 编码：${selected.providerCode}。` : '',
+    !implementation && event ? `通过 context.usage() 识别 ${event}，输入参数映射传给 input，返回值用于结果回填。` : ''
+  ]
+  if (event === 'FORM_BUTTON_CLICK') {
+    help.push('表单按钮接口只能读取、校验或计算，不得直接写库或产生外部副作用。')
+  }
+  help.push(event === 'ENTITY_SELECTED'
+    ? '仅将所选实体属性回填到表单时可留空，直接配置“结果回填”。'
+    : '留空时只执行字段映射，需配置“结果回填”。')
+  return help.filter(Boolean).join(' ')
+}
+
 export function defaultInterfaceDebugUsage(value = {}) {
   const item = normalizeInterfaceExtension(value)
   const interfaceCode = String(item.extensionKey || '').split('.').at(-1).toUpperCase()

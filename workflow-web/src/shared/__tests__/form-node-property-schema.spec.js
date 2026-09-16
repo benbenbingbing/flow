@@ -9,7 +9,8 @@ import {
   getFormNodePropertySchema,
   mergeFormNodeFieldMetadata,
   normalizeFormFieldValidation,
-  resolveFormNodeLayoutSpan
+  resolveFormNodeLayoutSpan,
+  resolveFormNodeBinding
 } from '../form-node-property-schema.js'
 import {
   getBuiltInFormFieldSupportedTypes,
@@ -1238,5 +1239,48 @@ assert.equal(
   'currentUser.id',
   'serializer must preserve the persisted explicit binding reference during editing'
 )
+
+for (const bindingType of [undefined, 'NONE', 'ENTITY_FIELD']) {
+  const payload = buildFormNodePayload({
+    nodeType: 'FIELD', fieldId: 'entity-end', fieldCode: 'processEndTime',
+    fieldType: 'DATETIME', bindingType, bindingRef: null
+  })
+  assert.equal(payload.bindingType, 'ENTITY_FIELD', '新实体字段不能沿用旧的 NONE 占位绑定')
+  assert.equal(payload.bindingRef, 'processEndTime')
+}
+assert.equal(buildFormNodePayload({
+  nodeType: 'FIELD', fieldCode: 'virtualDate', fieldType: 'DATETIME', bindingType: 'NONE'
+}).bindingType, 'NONE', '没有实体字段 ID 的虚拟字段保持未绑定')
+assert.equal(buildFormNodePayload({
+  nodeType: 'FIELD', fieldId: 'entity-end', fieldCode: 'processEndTime',
+  fieldType: 'DATETIME', bindingType: 'CONTEXT', bindingRef: 'context.end'
+}).bindingType, 'CONTEXT', '有效的显式非实体绑定不被实体元数据覆盖')
+
+// 复现历史节点“加载 → 编辑普通属性 → 保存全部草稿”的链路。
+// NONE 由旧版持久化，不能在前端自动升级后触发后端的绑定身份锁。
+for (const revision of [1, '3']) {
+  const persisted = {
+    id: 'legacy-name-node', nodeType: 'FIELD', nodeKey: 'name', revision,
+    fieldId: 'entity-name', fieldCode: 'name', fieldType: 'STRING',
+    componentType: 'input', bindingType: 'NONE', bindingRef: null
+  }
+  const loaded = { ...persisted, ...resolveFormNodeBinding(persisted) }
+  loaded.fieldLabel = '新的显示名称'
+  loaded.gridSpan = 12
+  const payload = buildFormNodePayload(loaded, {
+    componentProps: { linkageRules: { valueFormula: '${other}' } }
+  })
+  assert.equal(payload.bindingType, persisted.bindingType, '全量保存不得改变历史节点绑定类型')
+  assert.equal(payload.bindingRef, persisted.bindingRef, '全量保存不得凭字段编码补写历史绑定引用')
+  assert.equal(payload.props.label, '新的显示名称')
+  assert.equal(payload.props.gridSpan, 12)
+  assert.equal(payload.props.componentProps.linkageRules.valueFormula, '${other}')
+  const patch = buildFormNodePayload(loaded, { forPatch: true })
+  assert.equal('bindingType' in patch, false, '单节点属性保存也不修改绑定类型')
+}
+assert.equal(resolveFormNodeBinding({
+  nodeType: 'FIELD', revision: 0, bindingType: 'NONE',
+  fieldId: 'entity-new', fieldCode: 'newField'
+}).bindingType, 'ENTITY_FIELD', '新节点仍应创建正确的实体字段绑定')
 
 console.log('form node property schema tests passed')

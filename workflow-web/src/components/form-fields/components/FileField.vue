@@ -92,12 +92,10 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 
-const { fieldValue, isDisabled, handleChange, getEventCode, executeEvent, parsedComponentProps } = useFormField(props, emit)
+const { fieldValue, isDisabled, handleChange, parsedComponentProps } = useFormField(props, emit)
 
 function handleFileValueChange(val) {
-  emit('update:modelValue', val)
-  executeEvent(getEventCode('onChange'), val)
-  emit('change', val)
+  return handleChange(val)
 }
 
 const isImage = computed(() => {

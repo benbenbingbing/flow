@@ -153,7 +153,10 @@ export function normalizeFormFieldUniqueness(value, fieldCode = '') {
   return normalized
 }
 
+/** 判断字段是否支持单值唯一性；设计器尚未选择字段时返回 false。 */
 export function supportsFormFieldUniqueness(field = {}) {
+  // 默认参数只处理 undefined，初始化与取消选择传入的 null 需显式跳过。
+  if (!field) return false
   const fieldType = String(field.fieldType || '').trim().toUpperCase()
   const componentType = String(field.componentType || '').trim().toUpperCase()
   return Boolean(resolveFormFieldKey(field))

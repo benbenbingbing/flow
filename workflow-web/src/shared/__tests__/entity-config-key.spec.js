@@ -44,11 +44,11 @@ assert.ok(
   '新建表单必须展示实体编码前缀并提交合成后的完整 formKey'
 )
 assert.ok(
-  formListSource.includes('await updateForm(form.id, form)')
+  formListSource.includes('await patchFormMetadata(form.id, {')
     && !formListSource.includes(
       'form.formKey = buildEntityConfigKey'
     ),
-  '编辑表单必须继续提交原 formKey，新增失败重试也不得污染后缀模型'
+  '编辑表单使用元数据补丁保留原 formKey，新增失败重试也不得污染后缀模型'
 )
 assert.ok(
   listConfigSource.includes('<template #prepend>{{ listKeyPrefix }}</template>')

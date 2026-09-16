@@ -10,16 +10,9 @@
 
       <el-scrollbar class="custom-config-scrollbar">
         <el-form label-position="top" class="custom-config-form">
-          <el-form-item label="自定义组件" required>
-            <ExtensionCapabilityPicker
-              :model-value="customComponent"
-              placeholder="请选择自定义表单组件"
-              capability-type="UI_FORM"
-              :context-params="formExtensionContext"
-              :local-options="customFormOptions"
-              :current-option="selectedCustomFormCatalogOption"
-              @update:model-value="$emit('update:customComponent', $event)"
-            />
+          <el-form-item label="自定义组件">
+            <span>{{ selectedCustomFormCatalogOption?.displayName || customComponent }}</span>
+            <div class="renderer-help">渲染方式和组件请在表单管理的“编辑”中修改。</div>
           </el-form-item>
 
           <template v-if="customComponent">
@@ -131,17 +124,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import { ArrowRight, Setting } from '@element-plus/icons-vue'
-import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 
-const props = defineProps({
+defineProps({
   customComponent: { type: String, default: '' },
   customComponentVersion: { type: [String, Number], default: null },
   customComponentSnapshotVersion: { type: [String, Number], default: null },
-  customFormOptions: { type: Array, default: () => [] },
   selectedCustomFormCatalogOption: { type: Object, default: null },
   selectedCustomFormSchema: { type: Array, default: () => [] },
   customFormAvailable: { type: Boolean, default: false },
@@ -159,7 +149,6 @@ const props = defineProps({
 })
 
 defineEmits([
-  'update:customComponent',
   'update:previewMode',
   'open-form-settings',
   'open-form-extension-config',
@@ -167,13 +156,15 @@ defineEmits([
   'refresh-extension-catalog',
   'preview-action'
 ])
-
-const formExtensionContext = computed(() => ({
-  entityCode: props.entityInfo?.entityCode || ''
-}))
 </script>
 
 <style scoped>
+.renderer-help {
+  width: 100%;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
 .custom-renderer-workspace {
   flex: 1;
   min-height: 0;

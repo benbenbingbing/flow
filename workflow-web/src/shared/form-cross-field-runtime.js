@@ -1,6 +1,7 @@
 import { getFieldModeAccess, isFieldReadonlyForMode, resolveRuntimeNodeFieldRules, safeParseConfig } from './config-runtime/index.js'
 import LinkageEngine from '../utils/linkageEngine.js'
 import { buildCrossFieldDependencyIndex, evaluateCrossField, getCrossFieldConfig } from './form-cross-field-validation.js'
+import { resolveFormNodeBinding } from './form-node-property-schema.js'
 
 const flag = value => value === true || value === 1 || value === '1'
 const nodeProps = node => safeParseConfig(node?.propsDocument ?? node?.props)
@@ -16,7 +17,14 @@ export function collectCrossFieldRuntimeFields(form = {}, entityFields = []) {
   if (!nodes.length) return fields.map(field => ({ ...metadata(field), ...field, validationRules: field.validationRules }))
   const byId = new Map(nodes.map(node => [String(node.id), node]))
   return nodes.filter(node => {
-    if (node.nodeType !== 'FIELD' || node.bindingType !== 'ENTITY_FIELD') return false
+    if (node.nodeType !== 'FIELD') return false
+    const props = nodeProps(node)
+    const field = fields.find(item => String(item.id) === String(node.id)) || {}
+    // 与设计器共用绑定推断，兼容旧快照的 NONE + 实体字段 ID；不修改发布快照。
+    const { bindingType } = resolveFormNodeBinding({
+      ...field, ...props, bindingType: node.bindingType, bindingRef: node.bindingRef
+    }, 'FIELD')
+    if (bindingType !== 'ENTITY_FIELD') return false
     let current = node
     const seen = new Set()
     while (current) {

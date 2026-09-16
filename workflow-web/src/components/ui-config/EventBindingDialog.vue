@@ -16,6 +16,7 @@
       :target-type="targetType"
       :target-key="targetKey"
       :target-name="targetName"
+      :target-field="targetField"
       :allowed-events="allowedEvents"
       :field-options="fieldOptions"
       :title="`${ownerLabel}执行链`"
@@ -42,6 +43,7 @@ const visible = ref(false)
 const targetType = ref('OWNER')
 const targetKey = ref('')
 const targetName = ref('')
+const targetField = ref(null)
 
 const allowedEvents = computed(() =>
   props.ownerEvents.length
@@ -49,6 +51,7 @@ const allowedEvents = computed(() =>
     : eventsForScope(props.ownerType, targetType.value))
 
 function openOwner(name = '') {
+  targetField.value = null
   targetType.value = 'OWNER'
   targetKey.value = ''
   targetName.value = name
@@ -56,6 +59,7 @@ function openOwner(name = '') {
 }
 
 function openField(field) {
+  targetField.value = field || null
   targetType.value = 'FIELD'
   targetKey.value = field?.fieldCode || ''
   targetName.value = field?.fieldLabel || field?.fieldName || field?.fieldCode || ''
@@ -63,6 +67,7 @@ function openField(field) {
 }
 
 function openButton(button) {
+  targetField.value = null
   targetType.value = 'BUTTON'
   targetKey.value = button?.key || ''
   targetName.value = button?.label || button?.key || ''

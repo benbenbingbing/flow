@@ -1,27 +1,76 @@
 <template>
   <div class="node-data-settings">
     <SettingsSection
-      v-if="isFieldNode"
-      v-show="activeNodeSettingsTab === 'data'"
-      title="字段数据"
-      description="静态初始值与受控动态数据使用同一字段配置"
-      :collapsible="false"
-      primary
+      :disabled="!isReferenceFieldNode"
+      disabled-reason="仅实体引用字段支持此配置"
+      v-show="activeNodeSettingsTab === 'extension'"
+      title="引用选择配置"
+      description="配置引用数据的选择列表，查看引用类型和目标实体"
     >
-      <el-form-item label="静态默认值">
-        <el-input
-          v-model="selectedField.defaultValue"
-          placeholder="留空表示不设置静态默认值"
-        />
+      <template #summary>
+        <el-tag size="small" type="info">实体引用</el-tag>
+      </template>
+
+      <SettingsFormItem
+        :disabled="!((selectedField.refEntityType || '').toUpperCase() === 'CUSTOM')" disabled-reason="仅用户自定义实体引用支持此配置"
+        label="选择列表"
+      >
+        <el-select
+          :model-value="selectedField.refListKey" @update:model-value="isReferenceFieldNode && (selectedField.refListKey = $event)"
+          clearable
+          placeholder="留空使用旧选择器"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="list in referenceListOptions"
+            :key="list.listKey"
+            :label="`${list.listName || list.listKey} (${list.listKey})`"
+            :value="list.listKey"
+          />
+        </el-select>
         <div class="form-tip">
-          需要从接口、实体或 Provider 动态取得默认值时，请在下方配置“字段默认值”数据源。
+          配置后使用统一列表运行时，字段、范围、排序和选择模式均继承该 listKey。
         </div>
+      </SettingsFormItem>
+      <el-form-item label="引用类型">
+        <el-select
+          :model-value="selectedField.refEntityType" @update:model-value="isReferenceFieldNode && (selectedField.refEntityType = $event)"
+          :disabled="!isReferenceFieldNode || !!selectedField.fieldId"
+          placeholder="选择引用类型"
+          style="width: 100%"
+        >
+          <el-option label="用户自定义实体" value="CUSTOM" />
+          <el-option label="系统用户" value="USER" />
+          <el-option label="系统部门" value="DEPT" />
+          <el-option label="系统角色" value="ROLE" />
+          <el-option label="系统用户组" value="GROUP" />
+          <el-option label="系统菜单" value="MENU" />
+          <el-option label="系统字典" value="DICT" />
+          <el-option label="系统字典项" value="DICT_ITEM" />
+        </el-select>
       </el-form-item>
+      <SettingsFormItem
+        :disabled="!((selectedField.refEntityType || '').toUpperCase() === 'CUSTOM')" disabled-reason="仅用户自定义实体引用支持此配置"
+        label="目标实体"
+      >
+        <EntityDefinitionPicker
+          class="reference-entity-picker"
+          :model-value="isReferenceFieldNode ? selectedField.refEntityId : undefined" @update:model-value="isReferenceFieldNode && (selectedField.refEntityId = $event)"
+          :disabled="!isReferenceFieldNode || !!selectedField.fieldId"
+          placeholder="选择目标实体"
+          value-key="id"
+          title="选择目标实体"
+          :query="{ status: 'PUBLISHED' }"
+          @selected="handleReferenceEntitySelected"
+          @resolved="rememberEntityOption"
+        />
+      </SettingsFormItem>
     </SettingsSection>
 
     <SettingsSection
-      v-if="canConfigureSelectedNodeDataSource"
-      v-show="activeNodeSettingsTab === 'data'"
+      :disabled="!canConfigureSelectedNodeDataSource"
+      disabled-reason="当前节点不支持数据源绑定"
+      v-show="activeNodeSettingsTab === 'extension'"
       title="数据源绑定"
       description="按用途分别配置选项、默认值、计算、加载和提交处理"
     >
@@ -38,10 +87,12 @@
 
       <div class="data-source-usage-list">
         <button
-          v-for="usage in availableNodeDataSourceUsages"
+          v-for="usage in nodeDataSourceUsageOptions"
           :key="usage.value"
           type="button"
           class="data-source-usage-row"
+          :disabled="usage.disabled"
+          :title="usage.disabled ? '当前节点不支持此数据源用途' : usage.label"
           :class="{ active: selectedField.dataSourceUsage === usage.value }"
           @click="selectNodeDataSourceUsage(usage.value)"
         >
@@ -51,11 +102,12 @@
             :type="isNodeDataSourceUsageConfigured(usage.value) ? 'success' : 'info'"
             effect="plain"
           >
-            {{ isNodeDataSourceUsageConfigured(usage.value) ? '已配置' : '未配置' }}
+            {{ usage.disabled ? '不适用' : isNodeDataSourceUsageConfigured(usage.value) ? '已配置' : '未配置' }}
           </el-tag>
         </button>
       </div>
 
+      <SettingsCapability :disabled="!canEditSelectedDataSourceUsage" reason="请先选择当前节点支持的数据源用途">
       <div class="data-source-editor-heading">
         <strong>{{ selectedNodeDataSourceUsageLabel }}</strong>
         <el-button
@@ -129,256 +181,207 @@
           </el-form-item>
         </div>
       </details>
+      </SettingsCapability>
+    </SettingsSection>
+
+    <!-- 固定保留三个子页面入口，各卡片独立判断能力并复用统一的折叠、禁用逻辑。 -->
+    <SettingsSection
+      :disabled="!isSubFormField(selectedField)"
+      disabled-reason="仅子表单和明细表节点支持此配置"
+      v-show="activeNodeSettingsTab === 'child-pages'"
+      title="子表单配置"
+      description="查看子实体关系，配置子表单布局、表单和发布版本"
+    >
+      <template #summary>
+        <el-tag size="small" type="info">子表关系</el-tag>
+      </template>
+
+      <div class="relation-summary">
+        <div>
+          <span>子实体</span>
+          <strong>
+            {{ getEntityNameById(selectedField.childEntityId || selectedField.refEntityId) || '-' }}
+          </strong>
+        </div>
+        <div>
+          <span>关系</span>
+          <strong>
+            {{ selectedField.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多' }}
+          </strong>
+        </div>
+        <div>
+          <span>外键</span>
+          <strong>
+            {{ selectedField.childRefFieldCode || selectedField.refFieldCode || '-' }}
+          </strong>
+        </div>
+      </div>
+
+      <el-form-item label="布局">
+        <template #label>
+          <ConfigHelpLabel
+            label="布局"
+            help-key="formNode.subFormLayout"
+          />
+        </template>
+        <el-radio-group :model-value="selectedField.layout" @update:model-value="isSubFormField(selectedField) && (selectedField.layout = $event)">
+          <el-radio-button value="form">分行</el-radio-button>
+          <el-radio-button value="table">表格</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item label="子表表单">
+        <el-select
+          :model-value="selectedField.refFormId" @update:model-value="isSubFormField(selectedField) && (selectedField.refFormId = $event)"
+          placeholder="默认表单"
+          clearable
+          style="width: 100%"
+          @change="handleChildFormChange"
+        >
+          <el-option
+            v-for="fm in formListByEntity"
+            :key="fm.id"
+            :label="fm.formName"
+            :value="fm.id"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="发布版本">
+        <el-select
+          :model-value="selectedField.childFormReleaseId" @update:model-value="isSubFormField(selectedField) && (selectedField.childFormReleaseId = $event)"
+          placeholder="选择已发布版本"
+          clearable
+          filterable
+          :disabled="!selectedField.refFormId"
+          :loading="childFormReleaseLoading"
+          style="width: 100%"
+          @change="handleChildFormReleaseChange"
+        >
+          <el-option
+            v-for="release in childFormReleases"
+            :key="release.id"
+            :label="formatChildFormReleaseLabel(release)"
+            :value="release.id"
+          />
+        </el-select>
+        <div class="form-tip">
+          运行时固定读取所选 release 快照；子表单草稿不会影响已发布父表单。
+        </div>
+      </el-form-item>
     </SettingsSection>
 
     <SettingsSection
-      v-if="canConfigureSelectedNodeRelations"
-      v-show="activeNodeSettingsTab === 'data'"
-      title="实体关系与子表"
-      description="业务关系只读展示，允许配置子表展示或引用选择方式"
+      :disabled="!isSubFormField(selectedField)"
+      disabled-reason="仅子表单和明细表节点支持参数传递"
+      v-show="activeNodeSettingsTab === 'child-pages'"
+      title="参数传递"
+      description="配置父表单传入的运行参数和子字段初始值"
     >
       <template #summary>
-        <el-tag size="small" type="info">
-          {{ isSubFormField(selectedField)
-            ? '子表关系'
-            : isSubListField(selectedField)
-              ? '子列表'
-              : '实体引用' }}
+        <el-tag size="small" :type="selectedParameterMappingCount ? 'success' : 'info'">
+          {{ selectedParameterMappingCount ? `${selectedParameterMappingCount} 项映射` : '未配置' }}
         </el-tag>
       </template>
 
-      <template v-if="isSubFormField(selectedField)">
-        <div class="relation-summary">
-          <div>
-            <span>子实体</span>
-            <strong>
-              {{ getEntityNameById(selectedField.childEntityId || selectedField.refEntityId) || '-' }}
-            </strong>
-          </div>
-          <div>
-            <span>关系</span>
-            <strong>
-              {{ selectedField.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多' }}
-            </strong>
-          </div>
-          <div>
-            <span>外键</span>
-            <strong>
-              {{ selectedField.childRefFieldCode || selectedField.refFieldCode || '-' }}
-            </strong>
-          </div>
-        </div>
+      <SubFormParameterMappingEditor
+        v-model="selectedParameterContract"
+        :parameter-options="selectedChildInputParameters"
+        :child-field-options="selectedChildFieldOptions"
+        :parent-fields="entityFields"
+        :child-ref-field-code="selectedField.childRefFieldCode || selectedField.refFieldCode || ''"
+      />
+    </SettingsSection>
 
-        <el-form-item label="布局">
-          <template #label>
-            <ConfigHelpLabel
-              label="布局"
-              help-key="formNode.subFormLayout"
-            />
-          </template>
-          <el-radio-group v-model="selectedField.layout">
-            <el-radio-button value="form">分行</el-radio-button>
-            <el-radio-button value="table">表格</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="子表表单">
-          <el-select
-            v-model="selectedField.refFormId"
-            placeholder="默认表单"
-            clearable
-            style="width: 100%"
-            @change="handleChildFormChange"
-          >
-            <el-option
-              v-for="fm in formListByEntity"
-              :key="fm.id"
-              :label="fm.formName"
-              :value="fm.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="发布版本">
-          <el-select
-            v-model="selectedField.childFormReleaseId"
-            placeholder="选择已发布版本"
-            clearable
-            filterable
-            :disabled="!selectedField.refFormId"
-            :loading="childFormReleaseLoading"
-            style="width: 100%"
-            @change="handleChildFormReleaseChange"
-          >
-            <el-option
-              v-for="release in childFormReleases"
-              :key="release.id"
-              :label="formatChildFormReleaseLabel(release)"
-              :value="release.id"
-            />
-          </el-select>
-          <div class="form-tip">
-            运行时固定读取所选 release 快照；子表单草稿不会影响已发布父表单。
-          </div>
-        </el-form-item>
-        <div class="property-subheading">参数传递</div>
-        <SubFormParameterMappingEditor
-          v-model="selectedParameterContract"
-          :parameter-options="selectedChildInputParameters"
-          :child-field-options="selectedChildFieldOptions"
+    <SettingsSection
+      :disabled="!isSubListField(selectedField)"
+      disabled-reason="仅子列表字段支持此配置"
+      v-show="activeNodeSettingsTab === 'child-pages'"
+      title="子列表配置"
+      description="选择已发布列表，配置查询参数和列表展示方式"
+    >
+      <template #summary>
+        <el-tag size="small" :type="selectedField.refListKey ? 'success' : 'info'">
+          {{ selectedField.refListKey ? '已配置' : '未配置' }}
+        </el-tag>
+      </template>
+
+      <div class="relation-summary">
+        <div>
+          <span>目标实体</span>
+          <strong>
+            {{ getEntityNameById(selectedField.refEntityId) || '-' }}
+          </strong>
+        </div>
+        <div>
+          <span>运行方式</span>
+          <strong>已发布列表</strong>
+        </div>
+      </div>
+
+      <el-form-item label="目标列表">
+        <el-select
+          :model-value="selectedField.refListKey" @update:model-value="isSubListField(selectedField) && (selectedField.refListKey = $event)"
+          placeholder="选择已发布列表"
+          filterable
+          style="width: 100%"
+          :disabled="!selectedField.refEntityId"
+          @change="handleSubListChange"
+        >
+          <el-option
+            v-for="list in subListOptions"
+            :key="list.listKey"
+            :label="`${list.listName || list.listKey} (${list.listKey})`"
+            :value="list.listKey"
+          />
+        </el-select>
+        <div class="form-tip">
+          仅可选择允许“嵌入”场景的已发布列表。运行时复用其字段、排序、数据范围和访问权限，不向父表单写入列表数据。
+        </div>
+      </el-form-item>
+      <el-form-item label="参数传递" class="sub-list-parameter-item">
+        <SubListParameterMappingEditor
+          v-model="selectedSubListParameterContract"
+          :target-fields="subListTargetFields"
           :parent-fields="entityFields"
-          :child-ref-field-code="selectedField.childRefFieldCode || selectedField.refFieldCode || ''"
+          :parent-entity-id="entityInfo.id || ''"
+          v-loading="subListTargetFieldsLoading"
         />
-      </template>
-
-      <template v-if="isSubListField(selectedField)">
-        <div class="relation-summary">
-          <div>
-            <span>目标实体</span>
-            <strong>
-              {{ getEntityNameById(selectedField.refEntityId) || '-' }}
-            </strong>
-          </div>
-          <div>
-            <span>运行方式</span>
-            <strong>已发布列表</strong>
-          </div>
+      </el-form-item>
+      <el-form-item label="显示查询">
+        <el-switch :model-value="selectedField.subListShowSearch" @update:model-value="isSubListField(selectedField) && (selectedField.subListShowSearch = $event)" />
+      </el-form-item>
+      <el-form-item label="显示分页">
+        <el-switch :model-value="selectedField.subListShowPagination" @update:model-value="isSubListField(selectedField) && (selectedField.subListShowPagination = $event)" />
+      </el-form-item>
+      <el-form-item label="显示工具栏">
+        <el-switch :model-value="selectedField.subListShowToolbar" @update:model-value="isSubListField(selectedField) && (selectedField.subListShowToolbar = $event)" />
+        <div class="form-tip">
+          复用目标列表已发布的工具栏按钮及其权限配置；新增时会自动带入上方参数。
         </div>
-
-        <el-form-item label="目标列表">
-          <el-select
-            v-model="selectedField.refListKey"
-            placeholder="选择已发布列表"
-            filterable
-            style="width: 100%"
-            :disabled="!selectedField.refEntityId"
-            @change="handleSubListChange"
-          >
-            <el-option
-              v-for="list in subListOptions"
-              :key="list.listKey"
-              :label="`${list.listName || list.listKey} (${list.listKey})`"
-              :value="list.listKey"
-            />
-          </el-select>
-          <div class="form-tip">
-            仅可选择允许“嵌入”场景的已发布列表。运行时复用其字段、排序、数据范围和访问权限，不向父表单写入列表数据。
-          </div>
-        </el-form-item>
-        <el-form-item label="参数传递" class="sub-list-parameter-item">
-          <SubListParameterMappingEditor
-            v-model="selectedSubListParameterContract"
-            :target-fields="subListTargetFields"
-            :parent-fields="entityFields"
-            :parent-entity-id="entityInfo.id || ''"
-            v-loading="subListTargetFieldsLoading"
-          />
-        </el-form-item>
-        <el-form-item label="显示查询">
-          <el-switch v-model="selectedField.subListShowSearch" />
-        </el-form-item>
-        <el-form-item label="显示分页">
-          <el-switch v-model="selectedField.subListShowPagination" />
-        </el-form-item>
-        <el-form-item label="显示工具栏">
-          <el-switch v-model="selectedField.subListShowToolbar" />
-          <div class="form-tip">
-            复用目标列表已发布的工具栏按钮及其权限配置；新增时会自动带入上方参数。
-          </div>
-        </el-form-item>
-        <el-form-item label="显示操作列">
-          <el-switch v-model="selectedField.subListShowRowActions" />
-          <div class="form-tip">
-            复用目标列表已发布的查看、编辑、审批、删除和自定义操作，仍受动作权限控制。
-          </div>
-        </el-form-item>
-        <el-form-item label="每页条数">
-          <el-input-number
-            v-model="selectedField.subListPageSize"
-            :min="1"
-            :max="200"
-            controls-position="right"
-          />
-        </el-form-item>
-        <el-form-item label="最大高度">
-          <el-input-number
-            v-model="selectedField.subListMaxHeight"
-            :min="120"
-            :max="2000"
-            :step="20"
-            controls-position="right"
-          />
-          <span class="number-unit">px</span>
-        </el-form-item>
-      </template>
-
-      <template v-if="isReferenceFieldNode">
-        <el-form-item label="引用类型">
-          <el-select
-            v-model="selectedField.refEntityType"
-            :disabled="!!selectedField.fieldId"
-            placeholder="选择引用类型"
-            style="width: 100%"
-          >
-            <el-option label="用户自定义实体" value="CUSTOM" />
-            <el-option label="系统用户" value="USER" />
-            <el-option label="系统部门" value="DEPT" />
-            <el-option label="系统角色" value="ROLE" />
-            <el-option label="系统用户组" value="GROUP" />
-            <el-option label="系统菜单" value="MENU" />
-            <el-option label="系统字典" value="DICT" />
-            <el-option label="系统字典项" value="DICT_ITEM" />
-          </el-select>
-        </el-form-item>
-        <el-form-item
-          v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'"
-          label="目标实体"
-        >
-          <EntityDefinitionPicker
-            v-model="selectedField.refEntityId"
-            :disabled="!!selectedField.fieldId"
-            placeholder="选择目标实体"
-            value-key="id"
-            title="选择目标实体"
-            :query="{ status: 'PUBLISHED' }"
-            @selected="handleReferenceEntitySelected"
-            @resolved="rememberEntityOption"
-          />
-          <div class="form-tip">
-            {{ getEntityReferenceSelectionHint(selectedField.fieldType || selectedField.componentType) }}
-          </div>
-          <div v-if="selectedField.refEntityId" class="form-tip">
-            当前目标：{{ getEntityNameById(selectedField.refEntityId) }}
-          </div>
-        </el-form-item>
-        <el-form-item
-          v-if="(selectedField.refEntityType || '').toUpperCase() === 'CUSTOM'"
-          label="选择列表"
-        >
-          <el-select
-            v-model="selectedField.refListKey"
-            clearable
-            placeholder="留空使用旧选择器"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="list in referenceListOptions"
-              :key="list.listKey"
-              :label="`${list.listName || list.listKey} (${list.listKey})`"
-              :value="list.listKey"
-            />
-          </el-select>
-          <div class="form-tip">
-            配置后使用统一列表运行时，字段、范围、排序和选择模式均继承该 listKey。
-          </div>
-        </el-form-item>
-        <el-form-item label="兼容接口">
-          <el-button plain @click="openLinkageConfig('value-calculation')">
-            配置历史接口
-          </el-button>
-          <div class="form-tip">
-            历史 apiUrl、apiParams 和 apiResultField 继续保留；新配置推荐使用上方受控数据源。
-          </div>
-        </el-form-item>
-      </template>
+      </el-form-item>
+      <el-form-item label="显示操作列">
+        <el-switch :model-value="selectedField.subListShowRowActions" @update:model-value="isSubListField(selectedField) && (selectedField.subListShowRowActions = $event)" />
+        <div class="form-tip">
+          复用目标列表已发布的查看、编辑、审批、删除和自定义操作，仍受动作权限控制。
+        </div>
+      </el-form-item>
+      <el-form-item label="每页条数">
+        <el-input-number
+          :model-value="selectedField.subListPageSize" @update:model-value="isSubListField(selectedField) && (selectedField.subListPageSize = $event)"
+          :min="1"
+          :max="200"
+          controls-position="right"
+        />
+      </el-form-item>
+      <el-form-item label="最大高度">
+        <el-input-number
+          :model-value="selectedField.subListMaxHeight" @update:model-value="isSubListField(selectedField) && (selectedField.subListMaxHeight = $event)"
+          :min="120"
+          :max="2000"
+          :step="20"
+          controls-position="right"
+        />
+        <span class="number-unit">px</span>
+      </el-form-item>
     </SettingsSection>
   </div>
 </template>
@@ -389,6 +392,8 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import SettingsCapability from '@/components/SettingsCapability.vue'
+import SettingsFormItem from '@/components/SettingsFormItem.vue'
 import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
 import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
@@ -412,16 +417,15 @@ const {
   entityInfo,
   entityFields,
   activeNodeSettingsTab,
-  isFieldNode,
   canConfigureSelectedNodeDataSource,
   selectedNodeDataSourceBindingCount,
   availableNodeDataSourceUsages,
+  nodeDataSourceUsageOptions,
   isNodeDataSourceUsageConfigured,
   selectNodeDataSourceUsage,
   selectedNodeDataSourceUsageLabel,
   selectedNodeInterfaces,
   clearSelectedNodeDataSourceBinding,
-  canConfigureSelectedNodeRelations,
   isSubFormField,
   isSubListField,
   getEntityNameById,
@@ -438,10 +442,12 @@ const {
   isReferenceFieldNode,
   handleReferenceEntitySelected,
   rememberEntityOption,
-  getEntityReferenceSelectionHint,
-  referenceListOptions,
-  openLinkageConfig
+  referenceListOptions
 } = context
+
+const canEditSelectedDataSourceUsage = computed(() =>
+  availableNodeDataSourceUsages.value.some(usage => usage.value === selectedField.value?.dataSourceUsage)
+)
 
 const selectedChildRelease = computed(() =>
   childFormReleases.value.find(item =>
@@ -476,7 +482,8 @@ const selectedParameterContract = computed({
     )
   },
   set(value) {
-    if (!selectedField.value) return
+    // 非子表节点仅展示禁用配置，不接收编辑器初始化时的规范化回写。
+    if (!selectedField.value || !isSubFormField(selectedField.value)) return
     const componentProps = safeParseConfig(
       selectedField.value.componentProps
     )
@@ -490,6 +497,11 @@ const selectedParameterContract = computed({
   }
 })
 
+const selectedParameterMappingCount = computed(() =>
+  Object.keys(selectedParameterContract.value.parameterMapping).length
+    + Object.keys(selectedParameterContract.value.fieldInitializationMapping).length
+)
+
 const selectedSubListParameterContract = computed({
   get() {
     const componentProps = safeParseConfig(
@@ -500,7 +512,8 @@ const selectedSubListParameterContract = computed({
     )
   },
   set(value) {
-    if (!selectedField.value) return
+    // 禁用的参数编辑器仍会挂载，忽略其规范化回写，避免污染其他节点的配置。
+    if (!selectedField.value || !isSubListField(selectedField.value)) return
     const componentProps = safeParseConfig(
       selectedField.value.componentProps
     )
@@ -516,6 +529,18 @@ const selectedSubListParameterContract = computed({
 </script>
 
 <style scoped>
+/* 引用配置中的实体名称和编码同排显示，仅收紧当前入口，不影响其他实体选择器。 */
+.reference-entity-picker :deep(.picker-trigger) {
+  min-height: 24px;
+  padding: 0 7px;
+}
+
+.reference-entity-picker :deep(.trigger-content) {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
 .form-tip {
   width: 100%;
   margin-top: 4px;
@@ -578,10 +603,16 @@ const selectedSubListParameterContract = computed({
   text-align: left;
 }
 
-.data-source-usage-row:hover,
+.data-source-usage-row:not(:disabled):hover,
 .data-source-usage-row.active {
   border-color: var(--el-color-primary);
   color: var(--el-color-primary);
+}
+
+.data-source-usage-row:disabled {
+  color: var(--el-text-color-disabled);
+  background: var(--el-fill-color-light);
+  cursor: not-allowed;
 }
 
 .data-source-usage-row.active {
@@ -625,14 +656,5 @@ const selectedSubListParameterContract = computed({
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.property-subheading {
-  padding-top: 14px;
-  margin: 14px 0 10px;
-  border-top: 1px solid var(--el-border-color-lighter);
-  color: var(--el-text-color-primary);
-  font-size: 14px;
-  font-weight: 600;
 }
 </style>

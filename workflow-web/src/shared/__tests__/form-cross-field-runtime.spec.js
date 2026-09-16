@@ -81,3 +81,35 @@ for (const crossField of [config, { version: 1, rules: [] }]) {
   const validation = normalizeFormFieldValidation('INTEGER', { crossField, min: 0 })
   assert.deepEqual(validation.crossField, crossField, '保存与显式清空跨字段配置应保留')
 }
+
+// 实际草稿曾以 NONE 保存实体字段；发布后的规则仍需按节点属性参与校验。
+const dateConfig = { version: 1, rules: [{ id: 'dates', operator: 'GE', targetFieldCode: 'processStartTime' }] }
+const legacyNodes = ['processStartTime', 'processEndTime'].map(code => ({
+  id: code, nodeType: 'FIELD', bindingType: 'NONE', bindingRef: null,
+  props: { fieldId: `entity-${code}`, fieldCode: code, fieldType: 'DATETIME' },
+  rules: code === 'processEndTime' ? { validation: { crossField: dateConfig } } : {}
+}))
+const legacyForm = { nodes: legacyNodes }
+const legacyFields = collectCrossFieldRuntimeFields(legacyForm)
+assert.equal(legacyFields.length, 2, 'NONE 占位绑定下的实体日期时间字段仍需识别')
+const dates = { processStartTime: '2026-09-16 10:00:00', processEndTime: '2026-09-16 09:00:00' }
+const legacyController = createCrossFieldController({
+  getFields: () => legacyFields, getRecord: () => dates,
+  getState: field => resolveCrossFieldRuntimeState(field, { form: legacyForm, record: dates, mode: 'edit' })
+})
+assert.equal(legacyController.validate().valid, false, '结束时间早于开始时间必须拦截')
+dates.processEndTime = dates.processStartTime
+assert.equal(legacyController.validate().valid, true, '相等允许提交')
+for (const bindingType of [undefined, null, 'NONE']) {
+  assert.equal(collectCrossFieldRuntimeFields({ nodes: legacyNodes.map(node => ({ ...node, bindingType })) }).length, 2)
+}
+assert.equal(collectCrossFieldRuntimeFields({ nodes: legacyNodes.map(node => ({
+  ...node, props: { ...node.props, fieldId: null }
+})) }).length, 0, '没有实体字段 ID 的未绑定字段不参与')
+assert.equal(collectCrossFieldRuntimeFields({ nodes: legacyNodes.map(node => ({
+  ...node, bindingType: 'CONTEXT'
+})) }).length, 0, '上下文绑定不参与实体字段比较')
+assert.equal(collectCrossFieldRuntimeFields({ nodes: [
+  { id: 'child-form', nodeType: 'SUB_FORM' },
+  ...legacyNodes.map(node => ({ ...node, parentId: 'child-form' }))
+] }).length, 0, '历史绑定兼容不能引入子表字段')

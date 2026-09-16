@@ -1,14 +1,19 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    title="字段事件配置"
+    title="前端脚本事件"
     width="800px"
     destroy-on-close
     :close-on-click-modal="false"
   >
     <div class="event-config-panel">
       <el-alert type="info" :closable="false" class="event-tip">
-        在代码中可使用 <code>value</code>（当前值）和 <code>field</code>（字段配置）两个变量
+        <div>可使用 <code>value</code>（当前值）、<code>field</code>（字段配置快照）、
+          <code>selection</code>（实体选中记录，清空时为 null）和 <code>event.name</code>。</div>
+        <div>用 <code>setValue(value)</code> 修改当前值，<code>getFieldValue('字段编码')</code> 读取表单值，
+          <code>setFieldValue('字段编码', value)</code> 回填其他字段。实体字段的 value 是 ID，selection 是记录。</div>
+        <div>支持 await；值变化脚本完成后再执行事件链。异步等待最多 5 秒，返回值不会自动回填。
+          脚本在当前浏览器页面执行；嵌入页面不支持此功能。</div>
       </el-alert>
 
       <el-tabs v-model="activeTab" type="border-card">
@@ -22,18 +27,21 @@
             <div class="editor-label">
               {{ item.label }}
               <el-button
-                v-if="!item.builtin"
+                v-if="!item.builtin || (field && !fieldScriptEventSupported(field, item.name) && eventCodes[item.name])"
                 type="danger"
                 link
                 size="small"
                 class="del-btn"
                 @click="removeEvent(item.name)"
               >
-                删除
+                {{ item.builtin ? '清空脚本' : '删除' }}
               </el-button>
             </div>
+            <el-alert v-if="field && !fieldScriptEventSupported(field, item.name)"
+              title="当前组件未接入此事件，已有脚本保留但不会触发" type="warning" :closable="false" />
             <codemirror
               v-model="eventCodes[item.name]"
+              :disabled="!!field && !fieldScriptEventSupported(field, item.name)"
               :extensions="extensions"
               :style="editorStyle"
             />
@@ -74,10 +82,10 @@
       <el-form-item label="事件名称" required>
         <el-input
           v-model="addForm.name"
-          placeholder="如：onSelect、onDoubleClick"
+          placeholder="如：onSelect、onClear"
           @keyup.enter="confirmAddEvent"
         />
-        <div class="form-tip">建议以 on 开头，如 onSelect、onDoubleClick</div>
+        <div class="form-tip">建议以 on 开头，如 onSelect、onClear</div>
       </el-form-item>
       <el-form-item label="描述">
         <el-input
@@ -101,8 +109,10 @@ import { Plus } from '@element-plus/icons-vue'
 import { Codemirror } from 'vue-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { compileFieldScript, fieldScriptEventSupported } from '@/shared/field-event-scripts'
 
 const props = defineProps({
+  field: { type: Object, default: null },
   modelValue: {
     type: Object,
     default: () => ({})
@@ -116,6 +126,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'update:visible', 'save'])
 
 const builtinEvents = [
+  { name: 'onInput', label: '文本输入中触发，不执行值变化事件链', builtin: true },
   { name: 'onChange', label: '值变化时触发', builtin: true },
   { name: 'onBlur', label: '失焦时触发', builtin: true },
   { name: 'onFocus', label: '聚焦时触发', builtin: true }
@@ -171,8 +182,8 @@ watch(() => props.modelValue, (val) => {
 
 function confirmAddEvent() {
   const name = addForm.value.name.trim()
-  if (!name) {
-    ElMessage.warning('请输入事件名称')
+  if (!/^on[A-Z][A-Za-z0-9]*$/.test(name)) {
+    ElMessage.warning('事件名须以 on 加大写字母开头，例如 onSelect')
     return
   }
   if (eventList.value.find(e => e.name === name)) {
@@ -192,6 +203,10 @@ function confirmAddEvent() {
 }
 
 function removeEvent(name) {
+  if (builtinEvents.some(event => event.name === name)) {
+    eventCodes.value[name] = ''
+    return
+  }
   const idx = eventList.value.findIndex(e => e.name === name)
   if (idx > -1) {
     eventList.value.splice(idx, 1)
@@ -203,6 +218,15 @@ function removeEvent(name) {
 }
 
 function handleSave() {
+  // 编译校验只检查语法，不在设计器保存时运行用户代码。
+  for (const [eventName, code] of Object.entries(eventCodes.value)) {
+    if (!code?.trim()) continue
+    try { compileFieldScript(code) } catch (error) {
+      activeTab.value = eventName
+      ElMessage.error(`${eventName} 脚本语法错误：${error.message}`)
+      return
+    }
+  }
   emit('save', { ...eventCodes.value })
   dialogVisible.value = false
 }

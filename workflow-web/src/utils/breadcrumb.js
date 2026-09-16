@@ -55,7 +55,8 @@ const findLongestPrefixMenuChain = (menus, targetPath, parents = []) => {
 export const getActiveMenuPath = route =>
   normalizePath(route?.meta?.activeMenu || route?.path)
 
-export const buildBreadcrumb = (menus, route) => {
+/** 将菜单层级、页面提供的中间父级和当前路由标题组合为完整导航。 */
+export const buildBreadcrumb = (menus, route, parents = []) => {
   const currentPath = normalizePath(route?.path)
   if (!currentPath) return []
 
@@ -63,9 +64,10 @@ export const buildBreadcrumb = (menus, route) => {
   if (exactChain) return exactChain
 
   const activeMenuPath = getActiveMenuPath(route)
-  const baseChain = findDeepestMenuChain(menus, activeMenuPath)
+  const menuChain = findDeepestMenuChain(menus, activeMenuPath)
     || findLongestPrefixMenuChain(menus, currentPath)
     || []
+  const baseChain = [...menuChain, ...parents]
   const title = String(route?.meta?.title || '').trim()
 
   if (!title) return baseChain

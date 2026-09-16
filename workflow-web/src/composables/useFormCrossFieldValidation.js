@@ -20,8 +20,14 @@ export function useFormCrossFieldValidation(options) {
     getState: field => resolveCrossFieldRuntimeState(field, runtimeOptions()),
     onErrorsChange: value => { errors.value = value }
   })
-  watch(() => [options.getForm()?.id, options.getForm()?.runtimeReleaseId || options.getForm()?.formReleaseId,
-    options.getContext?.()?.recordId || options.getContext?.()?.record?.id, options.getContext?.()?.initializationKey],
+  // 使用多来源监听逐项比较身份值。父组件切换保存 loading 时会重建 form/context，
+  // getter 每次返回的新数组不能代表一次初始化，否则刚产生的校验提示会被清空。
+  watch([
+    () => options.getForm()?.id,
+    () => options.getForm()?.runtimeReleaseId || options.getForm()?.formReleaseId,
+    () => options.getContext?.()?.recordId || options.getContext?.()?.record?.id,
+    () => options.getContext?.()?.initializationKey
+  ],
   () => controller.reset())
   watch(() => [fields.value, runtimeOptions()], () => controller.refresh(), { deep: true, flush: 'post' })
   return {

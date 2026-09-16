@@ -1008,6 +1008,7 @@ import {
   resolveInterfaceExtensionId
 } from '@/components/ui-config/interfaceExtensionModel'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { useBreadcrumbParents } from '@/composables/useBreadcrumbParents'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import { applyListColumnTemplateSnapshot } from '@/shared/list-column-template'
 import {
@@ -1037,6 +1038,12 @@ const scopeDefault = ref({
   confirmationNote: ''
 })
 const entityId = ref('')
+useBreadcrumbParents(() => [{
+  id: 'entity-list-config',
+  menuName: '实体列表配置',
+  // 使用配置自身的实体归属，直接打开设计页时也能返回对应配置列表。
+  path: entityId.value ? `/entity-list-config/${encodeURIComponent(entityId.value)}` : ''
+}])
 const entityFields = ref([])
 const entityDefinition = ref({})
 const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')

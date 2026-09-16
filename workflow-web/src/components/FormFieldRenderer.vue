@@ -14,10 +14,12 @@
 </template>
 
 <script setup>
+import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
 import { computed } from 'vue'
 import { resolveFieldComponent, TextField } from '@/components/form-fields'
 
 const props = defineProps({
+  context: { type: Object, default: () => ({}) },
   field: {
     type: Object,
     required: true
@@ -33,6 +35,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
+provideFieldScriptContext(() => props.context)
 
 const resolvedComponent = computed(() => {
   const component = resolveFieldComponent(props.field)

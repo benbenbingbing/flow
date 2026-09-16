@@ -70,6 +70,22 @@ assert.deepEqual(
   '专用配置应合并进现有 ENTITY_SELECTED 执行链'
 )
 
+const afterInterface = { ...interfaceStep, strategy: 'AFTER', name: '接口补充信息' }
+const updated = mergeEntitySelectionMappings([merged[1], afterInterface], [{
+  sourcePath: 'selection.name', targetPath: 'form.name'
+}])
+assert.equal(updated[0].stepCode, ENTITY_SELECTION_FILL_STEP_CODE, '快捷保存不能把回填从接口之前移到之后')
+assert.equal(updated[1].extensionId, afterInterface.extensionId)
+assert.deepEqual(mergeEntitySelectionMappings(updated, []), [{ ...afterInterface, order: 10 }], '清空快捷映射只删除快捷步骤，保留接口步骤')
+
+const convertedStep = { ...merged[1], extensionId: 'provider-fill', outputMapping: [{ sourcePath: 'data.userName', targetPath: 'form.name' }] }
+assert.deepEqual(entitySelectionMappings({ steps: [convertedStep] }), [], '接口返回值映射不能当成实体选择快捷映射编辑')
+const retained = mergeEntitySelectionMappings([convertedStep], [{ sourcePath: 'selection.code', targetPath: 'form.code' }])
+const { stepCode: managedCode, ...customStep } = convertedStep
+assert.deepEqual(retained[0], { ...customStep, order: 10 }, '转换为接口的旧快捷步骤必须完整保留，只解除快捷管理标记')
+assert.equal(retained[1].stepCode, ENTITY_SELECTION_FILL_STEP_CODE)
+assert.equal(mergeEntitySelectionMappings(retained, []).length, 1, '清空快捷映射不能删除接口回填')
+
 assert.deepEqual(
   buildEntitySelectionSourceFields('CUSTOM', [{
     fieldCode: 'phone',

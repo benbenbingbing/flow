@@ -51,7 +51,7 @@ defineProps({
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px;
+  padding: var(--entity-design-panel-gap, 16px) 0;
 }
 
 .event-panel-card {

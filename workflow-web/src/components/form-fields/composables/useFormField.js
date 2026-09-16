@@ -1,4 +1,5 @@
-import { computed, watch } from 'vue'
+import { computed, watch, inject, getCurrentInstance, onBeforeUnmount, nextTick } from 'vue'
+import { FIELD_SCRIPT_CONTEXT, readFieldScripts, runFieldScript } from '../../../shared/field-event-scripts.js'
 
 export function normalizeFieldDefaultValue(field, value) {
   if (value == null) return value
@@ -29,6 +30,14 @@ export function normalizeFieldCollectionValue(value) {
  * @returns {Object} 字段渲染所需的响应式状态和方法
  */
 export function useFormField(props, emit) {
+  const scriptContext = getCurrentInstance() ? inject(FIELD_SCRIPT_CONTEXT, null) : null
+  // 新输入使旧异步脚本失效；同一事件再次触发也会替代前次，避免迟到回填覆盖新值。
+  let valueRevision = 0
+  let disposed = false
+  const eventRevisions = new Map()
+  if (getCurrentInstance()) onBeforeUnmount(() => { disposed = true })
+  watch(() => props.field, () => { valueRevision++ }, { flush: 'sync' })
+
   // 渲染类型：优先使用 componentType，其次使用 fieldType
   const renderType = computed(() => {
     const type = props.field?.componentType || props.field?.fieldType || ''
@@ -73,6 +82,7 @@ export function useFormField(props, emit) {
       return val
     },
     set(val) {
+      valueRevision++
       emit('update:modelValue', val)
     }
   })
@@ -143,78 +153,100 @@ export function useFormField(props, emit) {
 
   // ========== 自定义事件脚本 ==========
 
-  // 收集字段上配置的所有事件脚本
-  function getAllEvents() {
-    const field = props.field
-    const result = {}
-    if (!field) return result
-
-    // 从根属性读取 eventOnXxx
-    Object.keys(field).forEach(key => {
-      if (key.startsWith('eventOn') && field[key]) {
-        const eventName = 'on' + key.slice(7)
-        result[eventName] = field[key]
-      }
-    })
-
-    // 从 componentProps.events 读取
-    if (parsedComponentProps.value.events) {
-      Object.keys(parsedComponentProps.value.events).forEach(key => {
-        if (!result[key]) {
-          result[key] = parsedComponentProps.value.events[key]
-        }
-      })
-    }
-
-    return result
-  }
-
-  // 获取指定类型的事件脚本代码
   function getEventCode(eventType) {
-    const suffix = eventType.startsWith('on') ? eventType.slice(2) : eventType
-    const rootKey = 'eventOn' + suffix.charAt(0).toUpperCase() + suffix.slice(1)
-    const field = props.field
-    if (!field) return ''
+    return readFieldScripts(props.field)[eventType] || ''
+  }
 
-    if (field[rootKey]) return field[rootKey]
-    if (parsedComponentProps.value.events?.[eventType]) {
-      return parsedComponentProps.value.events[eventType]
+  // 快照避免脚本直接修改响应式字段配置；业务赋值通过 helper 走原有表单更新通道。
+  function snapshot(value) {
+    if (value == null || typeof value !== 'object') return value
+    if (value instanceof Date) return new Date(value)
+    if (Array.isArray(value)) return value.map(snapshot)
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item)]))
+  }
+
+  /** 等待脚本（含 await）结束；错误只提示，不阻断正常 change 和后续事件链。 */
+  async function executeEvent(code, value, eventName = 'onChange', selection = null) {
+    const revision = valueRevision
+    const eventRevision = (eventRevisions.get(eventName) || 0) + 1
+    eventRevisions.set(eventName, eventRevision)
+    const isCurrent = () => !disposed && !props.disabled && revision === valueRevision
+      && eventRevisions.get(eventName) === eventRevision
+    let finalValue = value
+    const setValue = nextValue => {
+      finalValue = nextValue
+      emit('update:modelValue', nextValue)
     }
-    return ''
+    if (code && !props.disabled) {
+      try {
+        await runFieldScript(code, {
+          value: snapshot(value), field: snapshot(props.field), selection: snapshot(selection),
+          event: Object.freeze({ name: eventName }), isCurrent, setValue,
+          getFieldValue: key => snapshot(scriptContext?.getFieldValue(key)),
+          setFieldValue: (key, nextValue) => {
+            if (key === (props.field?.fieldCode || props.field?.fieldKey)) return setValue(nextValue)
+            if (!scriptContext) throw new Error('当前字段没有表单上下文，请使用 setValue 修改当前值')
+            scriptContext.setFieldValue(key, nextValue)
+          }
+        })
+      } catch (error) {
+        if (isCurrent()) {
+          const message = `字段“${fieldLabel.value || props.field?.fieldCode || ''}”的 ${eventName} 脚本执行失败：${error?.message || String(error)}`
+          if (scriptContext) scriptContext.reportError(message, error)
+          else console.error(message, error)
+        }
+      }
+    }
+    // setValue 产生的 v-model 更新先落地，事件链读取到脚本处理后的表单值。
+    await nextTick()
+    return { current: isCurrent(), value: finalValue }
   }
 
-  // Production builds do not execute configuration-provided JavaScript.
-  function executeEvent(code, value) {
-    if (!code) return
-    console.warn('字段事件脚本已禁用，请使用声明式联动规则')
-  }
-
-  // 标准事件处理器
-  function handleChange(val) {
+  async function handleChange(val) {
     fieldValue.value = val
-    executeEvent(getEventCode('onChange'), val)
-    emit('change', val)
+    const result = await executeEvent(getEventCode('onChange'), val)
+    if (result.current) emit('change', result.value)
   }
 
-  function handleBlur() {
-    executeEvent(getEventCode('onBlur'), fieldValue.value)
-    emit('blur', fieldValue.value)
+  /** 实体选择的模型保存 ID，事件携带完整记录；两者不能互相覆盖。 */
+  async function handleSelectionChange(selection) {
+    const revision = valueRevision
+    await nextTick()
+    if (revision !== valueRevision || disposed) return
+    const result = await executeEvent(getEventCode('onChange'), fieldValue.value, 'onChange', selection)
+    if (!result.current) return
+    // 脚本允许清空或改选 ID，后续选择事件不能仍携带旧记录去执行回填。
+    const records = Array.isArray(selection) ? selection : [selection]
+    const recordFor = id => records.find(item => item && String(item.id) === String(id)) || { id }
+    const nextSelection = Array.isArray(result.value)
+      ? result.value.map(recordFor)
+      : result.value == null || result.value === '' ? null : recordFor(result.value)
+    emit('change', nextSelection)
   }
 
-  function handleFocus() {
-    executeEvent(getEventCode('onFocus'), fieldValue.value)
-    emit('focus', fieldValue.value)
+  // 文本 input 只执行输入脚本；提交变化时才执行 onChange 和服务端事件链。
+  function handleInput(val) {
+    valueRevision++
+    return executeEvent(getEventCode('onInput'), val, 'onInput')
   }
 
-  // 自定义 DOM 事件监听器（排除已手动处理的 change/blur/focus）
+  async function handleBlur() {
+    const result = await executeEvent(getEventCode('onBlur'), fieldValue.value, 'onBlur')
+    if (result.current) emit('blur', result.value)
+  }
+
+  async function handleFocus() {
+    const result = await executeEvent(getEventCode('onFocus'), fieldValue.value, 'onFocus')
+    if (result.current) emit('focus', result.value)
+  }
+
   const customEventListeners = computed(() => {
     const listeners = {}
-    const events = getAllEvents()
-    Object.keys(events).forEach(key => {
-      if (['onChange', 'onBlur', 'onFocus'].includes(key)) return
-      const domEvent = key.startsWith('on') ? key.slice(2) : key
-      const eventName = domEvent.charAt(0).toLowerCase() + domEvent.slice(1)
-      listeners[eventName] = () => executeEvent(events[key], fieldValue.value)
+    Object.entries(readFieldScripts(props.field)).forEach(([key, code]) => {
+      if (['onChange', 'onBlur', 'onFocus', 'onInput'].includes(key)) return
+      const name = key.startsWith('on') ? key.slice(2) : key
+      const eventName = name.charAt(0).toLowerCase() + name.slice(1)
+      listeners[eventName] = () => executeEvent(code, fieldValue.value, key)
     })
     return listeners
   })
@@ -241,6 +273,8 @@ export function useFormField(props, emit) {
     placeholder,
     isDisabled,
     handleChange,
+    handleInput,
+    handleSelectionChange,
     handleBlur,
     handleFocus,
     customEventListeners,

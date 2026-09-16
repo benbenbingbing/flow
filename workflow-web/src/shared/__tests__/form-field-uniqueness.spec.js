@@ -85,6 +85,10 @@ assert.equal(
   true
 )
 assert.equal(supportsFormFieldUniqueness(uniqueField()), true)
+// 初始化和取消选中节点时没有字段，能力判断应返回 false，不能中断设计器 setup。
+for (const emptyField of [null, undefined, {}]) {
+  assert.equal(supportsFormFieldUniqueness(emptyField), false)
+}
 for (const fieldType of [
   'FILE',
   'IMAGE',

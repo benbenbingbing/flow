@@ -99,4 +99,21 @@ class PublishedFormCrossFieldValidatorTest {
         assertTrue(cleared.containsKey("end")); assertNull(cleared.get("end"));
         assertDoesNotThrow(() -> validator.validateRecord(form(), "edit", cleared));
     }
+
+    @Test
+    void legacyNoneBindingStillEnforcesDatetimeComparison() {
+        EntityForm form = form();
+        List<EntityFormNode> nodes = form.getFields().stream().map(field -> {
+            EntityFormNode node = new EntityFormNode();
+            node.setId(field.getId()); node.setNodeType("FIELD"); node.setBindingType("NONE");
+            field.setFieldId("entity-" + field.getFieldCode()); field.setFieldType("DATETIME");
+            return node;
+        }).toList();
+        form.setNodes(nodes);
+        Map<String, Object> invalid = Map.of("start", "2026-09-16 10:00:00", "end", "2026-09-16 09:00:00");
+        assertThrows(FormCrossFieldValidationException.class, () -> validator.validateRecord(form, "edit", invalid));
+        assertDoesNotThrow(() -> validator.validateRecord(form, "edit", Map.of("start", "2026-09-16 10:00:00", "end", "2026-09-16 10:00:00")));
+        form.getFields().get(1).setIsHidden(1);
+        assertDoesNotThrow(() -> validator.validateRecord(form, "edit", invalid));
+    }
 }

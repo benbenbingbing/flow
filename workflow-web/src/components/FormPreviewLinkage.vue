@@ -98,7 +98,9 @@
           :label="field.fieldLabel || field.fieldName"
           :prop="getFieldKey(field)"
           :rules="getFieldRules(field)"
-          :error="crossValidation.errorFor(field) || uniqueErrorFor(field)"
+          :error="uniqueErrorFor(field)"
+          :show-message="!crossValidation.errorFor(field)"
+          :class="{ 'is-error': Boolean(crossValidation.errorFor(field)) }"
           :required="isFieldRequired(field)"
         >
           <FormFieldRendererLinkage
@@ -112,6 +114,10 @@
             :data-source-runtime="dataSourceRuntime"
             :attachment-item-required-state="attachmentItemRequiredState(field)"
           />
+          <!-- 独立保留跨字段提示，避免 Element FormItem 的失焦校验覆盖外部错误状态。 -->
+          <div v-if="crossValidation.errorFor(field)" class="el-form-item__error" role="alert">
+            {{ crossValidation.errorFor(field) }}
+          </div>
         </el-form-item>
       </div>
     </el-form>
@@ -303,6 +309,9 @@ function triggerCustomFormAction(actionOrKey) {
 }
 const runtimeContext = computed(() => ({
   ...props.context,
+  getFormData: () => formData.value,
+  setFormFieldValue: handleFieldChange,
+  scriptFields: processedFields.value,
   mode: props.mode,
   form: props.form,
   readonly: props.readonly,

@@ -4170,7 +4170,7 @@ public class UiConfigReleaseService {
      *
      * <p>该方法不会回读 ACTIVE 或基础发布记录，专供已经通过
      * {@link #resolveRuntimeEventSnapshot(String, String, Integer, String)}
-     * 得到的表单按钮执行链使用，从而同时覆盖标准发布与流程热修复的有效快照。</p>
+     * 得到的表单按钮和字段事件链使用，同时覆盖标准发布与流程热修复的有效快照。</p>
      *
      * @param snapshot 已解析的完整有效快照
      * @param expectedHash 解析时验证过的有效内容哈希
@@ -4183,14 +4183,14 @@ public class UiConfigReleaseService {
                 || !StringUtils.hasText(expectedHash)) {
             throw new BusinessConflictException(
                     "UI_EVENT_EFFECTIVE_SNAPSHOT_REQUIRED",
-                    "表单按钮执行缺少可信有效快照或内容哈希");
+                    "表单事件执行缺少可信有效快照或内容哈希");
         }
         String actualHash = snapshotSupport.hash(
                 snapshotSupport.canonical(snapshot));
         if (!Objects.equals(expectedHash, actualHash)) {
             throw new BusinessConflictException(
                     "UI_EVENT_EFFECTIVE_SNAPSHOT_TAMPERED",
-                    "表单按钮有效快照完整性校验失败");
+                    "表单事件有效快照完整性校验失败");
         }
     }
 

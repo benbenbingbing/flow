@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.definition.application.SystemEntityService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -12,18 +13,22 @@ import com.workflow.entity.ui.application.EntitySelectionRuntimeService;
 import com.workflow.entity.ui.application.UiEventBindingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -33,6 +38,7 @@ class EntitySelectionRuntimeServiceTest {
 
     private EntityDataDynamicService dataService;
     private SystemEntityService systemEntityService;
+    private SystemEntityReadService systemEntityReadService;
     private EntityDefinitionMapper definitionMapper;
     private EntitySelectionRuntimeService service;
 
@@ -40,12 +46,94 @@ class EntitySelectionRuntimeServiceTest {
     void setUp() {
         dataService = mock(EntityDataDynamicService.class);
         systemEntityService = mock(SystemEntityService.class);
+        systemEntityReadService = mock(SystemEntityReadService.class);
         definitionMapper = mock(EntityDefinitionMapper.class);
         service = new EntitySelectionRuntimeService(
                 dataService,
                 systemEntityService,
+                systemEntityReadService,
                 definitionMapper,
                 new ObjectMapper().findAndRegisterModules());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true, false", "true, true", "false, false", "false, true"})
+    void reloadsSystemEntityThroughCustomReferenceWithoutChangingMappingShape(
+            boolean referenceById,
+            boolean legacySnapshot) {
+        if (referenceById) {
+            EntityDefinition definition = new EntityDefinition();
+            definition.setId("system-user-entity");
+            definition.setEntityCode("sys_user");
+            definition.setStorageMode(EntityDefinition.StorageMode.SYSTEM);
+            when(definitionMapper.selectById("system-user-entity"))
+                    .thenReturn(definition);
+        }
+        when(systemEntityReadService.isSystemEntity("sys_user"))
+                .thenReturn(true);
+        EntityDataDTO detail = new EntityDataDTO();
+        detail.setId("user-1");
+        detail.setName("二级审批人");
+        detail.setCode("approver");
+        detail.setData(Map.of(
+                "username", "approver",
+                "nickname", "二级审批人"));
+        when(systemEntityReadService.findById("sys_user", "user-1"))
+                .thenReturn(detail);
+        Map<String, Object> snapshot = referenceSnapshot(
+                "REFERENCE",
+                "CUSTOM",
+                referenceById ? "system-user-entity" : null,
+                referenceById ? null : "sys_user",
+                "picker");
+        if (legacySnapshot) {
+            // 已发布的旧表单仍从 legacyFields 读取引用配置，无需重新保存或发布。
+            Map<?, ?> node = (Map<?, ?>) ((List<?>) snapshot.get("nodes")).get(0);
+            snapshot = Map.of(
+                    "nodes", List.of(),
+                    "legacyFields", List.of(node.get("propsDocument")));
+        }
+
+        Map<?, ?> selection = (Map<?, ?>) service.resolve(
+                request(Map.of(
+                        "id", "user-1",
+                        "name", "伪造名称",
+                        "code", "fake",
+                        "data", Map.of("username", "fake", "password", "fake"),
+                        "selectionData", Map.of("display", "所选用户"))),
+                chain(snapshot));
+
+        assertEquals("user-1", selection.get("id"));
+        assertEquals("二级审批人", selection.get("name"));
+        assertEquals("approver", selection.get("code"));
+        assertEquals("CUSTOM", selection.get("entityType"));
+        assertEquals(detail.getData(), selection.get("data"));
+        assertFalse(((Map<?, ?>) selection.get("data")).containsKey("password"));
+        assertEquals(Map.of("display", "所选用户"), selection.get("selectionData"));
+        verify(systemEntityReadService).findById("sys_user", "user-1");
+        verifyNoInteractions(dataService, systemEntityService);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"sys_menu, 无权访问", "sys_user, 数据不存在或无权访问"})
+    void systemReferenceReadFailureDoesNotFallBackToClientOrDynamicData(
+            String entityCode,
+            String message) {
+        when(systemEntityReadService.isSystemEntity(entityCode))
+                .thenReturn(true);
+        ForbiddenException failure = new ForbiddenException(message);
+        when(systemEntityReadService.findById(entityCode, "denied"))
+                .thenThrow(failure);
+
+        ForbiddenException actual = assertThrows(
+                ForbiddenException.class,
+                () -> service.resolve(
+                        request(Map.of("id", "denied", "name", "伪造名称")),
+                        chain(referenceSnapshot(
+                                "REFERENCE", "CUSTOM", null, entityCode, null))));
+
+        assertSame(failure, actual);
+        verifyNoInteractions(dataService, systemEntityService);
     }
 
     @Test
@@ -134,6 +222,7 @@ class EntitySelectionRuntimeServiceTest {
                         null)));
 
         assertNull(resolved);
+        verifyNoInteractions(systemEntityReadService, systemEntityService);
         verify(dataService, never()).findAccessibleById(
                 "customer",
                 "",
@@ -155,6 +244,7 @@ class EntitySelectionRuntimeServiceTest {
                         null)));
 
         assertSame(selected, resolved);
+        verifyNoInteractions(systemEntityReadService, systemEntityService);
         verify(dataService, never()).findAccessibleById(
                 "customer",
                 "customer-1",
@@ -183,6 +273,7 @@ class EntitySelectionRuntimeServiceTest {
                 ((Map<?, ?>) resolved).get("name"));
         verify(systemEntityService)
                 .selectById("DEPT", "dept-1");
+        verifyNoInteractions(systemEntityReadService, dataService);
     }
 
     private UiEventExecuteRequest request(Object selection) {

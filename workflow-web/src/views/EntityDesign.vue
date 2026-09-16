@@ -2,9 +2,6 @@
   <div class="entity-design">
     <div class="design-header">
       <div class="header-left">
-        <el-button @click="$router.back()">
-          <el-icon><ArrowLeft /></el-icon>返回
-        </el-button>
         <span class="entity-name">{{ entityData.entityName || '实体设计' }}</span>
         <el-tag :type="isWorkflowEntityMode ? 'success' : 'info'" effect="plain">
           {{ isWorkflowEntityMode ? '流程实体' : '独立业务实体' }}
@@ -13,21 +10,23 @@
         <el-tag v-else-if="isDirty" type="warning" effect="plain">未保存</el-tag>
         <el-tag v-else type="success" effect="plain">已保存</el-tag>
       </div>
-      <div class="header-right">
-        <el-button v-if="!isSystemEntity" @click="codeRuleVisible = true">
-          <el-icon><Ticket /></el-icon>编码规则
-        </el-button>
-        <el-button v-if="!isSystemEntity" @click="permissionVisible = true">
-          <el-icon><Lock /></el-icon>数据权限
-        </el-button>
-        <el-button
-          v-if="!isSystemEntity && activeDesignTab === 'fields'"
-          type="primary"
-          @click="handleSave"
-        >
-          <el-icon><Check /></el-icon>保存
-        </el-button>
-      </div>
+      <el-tabs
+        v-if="!loadError"
+        v-model="activeDesignTab"
+        class="design-tabs"
+      >
+        <el-tab-pane label="字段设计" name="fields" />
+        <el-tab-pane
+          :label="relationCount ? `实体关系 ${relationCount}` : '实体关系'"
+          name="relations"
+        />
+        <el-tab-pane
+          v-if="canConfigureEntityDefaultEvents"
+          label="默认事件"
+          name="events"
+        />
+        <el-tab-pane v-if="!isSystemEntity" label="数据权限" name="permissions" />
+      </el-tabs>
     </div>
 
     <el-alert
@@ -48,23 +47,6 @@
       retryable
       @retry="initializeEntityDesign"
     />
-
-    <el-tabs
-      v-if="!loadError"
-      v-model="activeDesignTab"
-      class="design-tabs"
-    >
-      <el-tab-pane label="字段设计" name="fields" />
-      <el-tab-pane
-        :label="relationCount ? `实体关系 ${relationCount}` : '实体关系'"
-        name="relations"
-      />
-      <el-tab-pane
-        v-if="canConfigureEntityDefaultEvents"
-        label="默认事件"
-        name="events"
-      />
-    </el-tabs>
 
     <div v-show="!loadError && activeDesignTab === 'fields'" class="design-body">
       <EntityFieldTypePanel
@@ -91,6 +73,17 @@
             <el-button v-if="!isSystemEntity" type="primary" size="small" @click="handleAddField()">
               <el-icon><Plus /></el-icon>添加
             </el-button>
+            <el-tooltip
+              v-if="!isSystemEntity"
+              content="批量保存字段修改及列表增删、排序；已单独保存的属性无需重复保存"
+              placement="top"
+            >
+              <span>
+                <el-button type="primary" size="small" :disabled="!isDirty" @click="handleSave">
+                  <el-icon><Check /></el-icon>保存全部字段
+                </el-button>
+              </span>
+            </el-tooltip>
           </div>
         </div>
         <div class="fields-list">
@@ -145,36 +138,11 @@
       <!-- 字段属性配置 -->
       <div class="property-panel" :class="{ 'readonly-panel': isSystemEntity }">
         <div class="panel-title">
-          <span>属性配置</span>
-          <el-tooltip
-            v-if="selectedField && !isSystemEntity"
-            content="只保存当前字段属性，不会提交其他字段或实体设置中的未保存修改"
-            placement="top"
-          >
-            <span>
-              <el-button
-                type="primary"
-                size="small"
-                :loading="savingSelectedField"
-                :disabled="!isSelectedFieldDirty"
-                @click="handleSaveSelectedField"
-              >
-                <el-icon><Check /></el-icon>保存当前属性
-              </el-button>
-            </span>
-          </el-tooltip>
-        </div>
-        <div v-if="selectedField" class="selected-field-summary">
-          <div class="selected-field-summary__main">
-            <div class="selected-field-summary__identity">
-              <strong>{{ selectedField.fieldName || '未命名字段' }}</strong>
-              <span>{{ selectedField.fieldCode || '尚未设置字段编码' }}</span>
-            </div>
-            <el-tag size="small" :type="getFieldTypeTag(selectedField.fieldType)">
+          <span class="property-panel__title" :title="selectedFieldTitle">{{ selectedFieldTitle }}</span>
+          <div v-if="selectedField" class="property-panel__tags">
+            <el-tag size="small" :type="getFieldTypeTag(selectedField.fieldType)" effect="plain">
               {{ getFieldTypeLabel(selectedField.fieldType) }}
             </el-tag>
-          </div>
-          <div class="selected-field-summary__status">
             <el-tag
               v-if="isSelectedFieldDirty"
               type="warning"
@@ -534,9 +502,27 @@
           <el-button v-if="!isSystemEntity" type="primary" @click="handleAddField()">
             <el-icon><Plus /></el-icon>添加业务字段
           </el-button>
-          <el-button v-if="!isSystemEntity" @click="permissionVisible = true">
+          <el-button v-if="!isSystemEntity" @click="activeDesignTab = 'permissions'">
             <el-icon><Lock /></el-icon>配置数据权限
           </el-button>
+        </div>
+        <div v-if="selectedField && !isSystemEntity" class="property-panel__footer">
+          <span class="property-panel__save-hint">只保存当前字段属性，其他未保存修改继续保留。</span>
+          <el-tooltip
+            content="只保存当前字段属性，不会提交其他字段或实体设置中的未保存修改"
+            placement="top"
+          >
+            <span class="property-panel__save">
+              <el-button
+                type="primary"
+                :loading="savingSelectedField"
+                :disabled="!isSelectedFieldDirty"
+                @click="handleSaveSelectedField"
+              >
+                <el-icon><Check /></el-icon>保存当前属性
+              </el-button>
+            </span>
+          </el-tooltip>
         </div>
       </div>
     </div>
@@ -557,164 +543,105 @@
       :field-options="entityEventFieldOptions"
     />
 
-    <!-- 编码规则配置对话框 -->
-    <el-dialog v-model="codeRuleVisible" title="数据编码规则配置" width="550px">
-      <el-form :model="codeRule" label-width="100px" size="default">
-        <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-          配置实体数据的自动编码规则，默认格式：前缀 + 日期 + 序列号
-        </el-alert>
-        
-        <el-form-item label="编码前缀">
-          <el-input v-model="codeRule.prefix" placeholder="如：CG、DD、ORDER" maxlength="20" show-word-limit />
-          <div class="form-tip">建议使用大写字母，如采购单用CG，订单用DD</div>
-        </el-form-item>
-        
-        <el-form-item label="日期格式">
-          <el-select v-model="codeRule.dateFormat" placeholder="选择日期格式" style="width: 100%">
-            <el-option label="yyyyMMdd (如：20240101)" value="yyyyMMdd" />
-            <el-option label="yyyy-MM-dd (如：2024-01-01)" value="yyyy-MM-dd" />
-            <el-option label="yyyy/MM/dd (如：2024/01/01)" value="yyyy/MM/dd" />
-            <el-option label="yyyyMM (如：202401)" value="yyyyMM" />
-            <el-option label="yyMMdd (如：240101)" value="yyMMdd" />
-          </el-select>
-        </el-form-item>
-        
-        <el-form-item label="序列号位数">
-          <el-slider v-model="codeRule.seqLength" :min="3" :max="10" show-stops />
-          <div class="form-tip">当前：{{ codeRule.seqLength }}位（格式：{{ '0'.repeat(codeRule.seqLength) }}1）</div>
-        </el-form-item>
-        
-        <el-form-item label="重置周期">
-          <el-radio-group v-model="codeRule.seqType">
-            <el-radio-button value="DAY">按天</el-radio-button>
-            <el-radio-button value="MONTH">按月</el-radio-button>
-            <el-radio-button value="YEAR">按年</el-radio-button>
-            <el-radio-button value="NEVER">不重置</el-radio-button>
-          </el-radio-group>
-          <div class="form-tip">
-            <span v-if="codeRule.seqType === 'DAY'">每天从000001开始编号</span>
-            <span v-if="codeRule.seqType === 'MONTH'">每月从000001开始编号</span>
-            <span v-if="codeRule.seqType === 'YEAR'">每年从000001开始编号</span>
-            <span v-if="codeRule.seqType === 'NEVER'">永远不重置，持续递增</span>
-          </div>
-        </el-form-item>
-        
-        <el-divider />
-        
-        <el-form-item label="编码示例">
-          <el-input v-model="codeRule.example" readonly>
-            <template #append>
-              <el-button @click="previewCode">刷新</el-button>
-            </template>
-          </el-input>
-          <div class="form-tip">根据上述配置生成的编码示例</div>
-        </el-form-item>
-      </el-form>
-      
-      <template #footer>
-        <el-button @click="codeRuleVisible = false">取消</el-button>
-        <el-button type="primary" :loading="codeRuleSaving" @click="saveCodeRule">保存</el-button>
-      </template>
-    </el-dialog>
-  </div>
-
-  <!-- 数据权限配置对话框 -->
-  <el-dialog
-    v-model="permissionVisible"
-    title="数据权限配置"
-    width="min(1440px, 94vw)"
-    top="3vh"
-    class="entity-permission-dialog"
-    :close-on-click-modal="false"
-  >
-    <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-      这里只维护规则目录。把规则绑到哪个列表，请到该列表的「访问范围」中设置。列表绑定保存后立即生效。列表未绑定任何允许规则时，将执行该列表配置的安全默认策略；新列表默认拒绝全部数据。
-    </el-alert>
-    <el-alert type="warning" :closable="false" style="margin-bottom: 16px">
-      相关人只认 team 表已发生的参与；存在待办只认 process_task 未完成待办。列表分别绑定。尚未生成任务的下一审批人不会进入这两条规则。
-    </el-alert>
-    <div class="permission-header">
-      <el-button type="primary" size="small" @click="handleAddPermission">
-        <el-icon><Plus /></el-icon>添加规则
-      </el-button>
-      <UserSelector
-        v-model="simulationUserId"
-        placeholder="选择模拟用户"
-        title="选择模拟用户"
-        value-key="id"
-        style="width: 220px"
-      />
-      <el-button size="small" @click="handlePreviewPermissionSql('')">
-        <el-icon><View /></el-icon>模拟可见范围
-      </el-button>
-    </div>
-    <PageState
-      v-if="permissionError"
-      type="error"
-      title="规则目录加载失败"
-      :description="permissionError"
-      retryable
-      compact
-      @retry="loadPermissions"
-    />
-    <template v-else>
-    <el-table
-      v-if="availableListConfigs.length"
-      :data="availableListConfigs"
-      border
-      size="small"
-      style="margin-top: 12px"
+    <!-- 数据权限直接作为页签内容展示，滚动范围独立于顶部导航。 -->
+    <section
+      v-if="!loadError && !isSystemEntity && activeDesignTab === 'permissions'"
+      class="entity-permission-panel"
+      aria-labelledby="entity-permission-title"
     >
-      <el-table-column prop="listName" label="列表" min-width="140" />
-      <el-table-column prop="listKey" label="列表 Key" min-width="130" />
-      <el-table-column label="范围模式" width="130">
-        <template #default="{ row }">
-          <el-tag :type="row.dataScopeMode === 'OVERRIDE' ? 'danger' : row.dataScopeMode === 'NARROW' ? 'warning' : 'info'">
-            {{ getScopeModeLabel(row.dataScopeMode) }}
-          </el-tag>
+      <div v-loading="permissionLoading" class="permission-panel-card">
+        <h2 id="entity-permission-title">数据权限</h2>
+        <el-alert type="info" :closable="false" style="margin-bottom: 16px">
+          这里只维护规则目录。把规则绑到哪个列表，请到该列表的「访问范围」中设置。列表绑定保存后立即生效。列表未绑定任何允许规则时，将执行该列表配置的安全默认策略；新列表默认拒绝全部数据。
+        </el-alert>
+        <el-alert type="warning" :closable="false" style="margin-bottom: 16px">
+          相关人只认 team 表已发生的参与；存在待办只认 process_task 未完成待办。列表分别绑定。尚未生成任务的下一审批人不会进入这两条规则。
+        </el-alert>
+        <div class="permission-header">
+          <el-button type="primary" size="small" :disabled="permissionLoading || !entityData.entityCode" @click="handleAddPermission">
+            <el-icon><Plus /></el-icon>添加规则
+          </el-button>
+          <UserSelector
+            v-model="simulationUserId"
+            placeholder="选择模拟用户"
+            title="选择模拟用户"
+            value-key="id"
+            style="width: 220px"
+          />
+          <el-button size="small" :disabled="permissionLoading || !entityData.entityCode" @click="handlePreviewPermissionSql('')">
+            <el-icon><View /></el-icon>模拟可见范围
+          </el-button>
+        </div>
+        <PageState
+          v-if="permissionError"
+          type="error"
+          title="规则目录加载失败"
+          :description="permissionError"
+          retryable
+          compact
+          @retry="loadPermissions"
+        />
+        <template v-else>
+          <el-table
+            v-if="availableListConfigs.length"
+            :data="availableListConfigs"
+            border
+            size="small"
+            style="margin-top: 12px"
+          >
+            <el-table-column prop="listName" label="列表" min-width="140" />
+            <el-table-column prop="listKey" label="列表 Key" min-width="130" />
+            <el-table-column label="范围模式" width="130">
+              <template #default="{ row }">
+                <el-tag :type="row.dataScopeMode === 'OVERRIDE' ? 'danger' : row.dataScopeMode === 'NARROW' ? 'warning' : 'info'">
+                  {{ getScopeModeLabel(row.dataScopeMode) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="已绑定规则" min-width="180">
+              <template #default="{ row }">{{ formatListBoundRules(row.listKey) }}</template>
+            </el-table-column>
+          </el-table>
+          <el-table :data="permissionList" border size="small" style="margin-top: 12px">
+            <el-table-column prop="ruleName" label="规则名称" width="140" />
+            <el-table-column label="已绑定列表" min-width="160">
+              <template #default="{ row }">
+                <span>{{ formatBoundLists(row.boundListKeys) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="匹配范围" min-width="160">
+              <template #default="{ row }">
+                <span>{{ formatMatchSummary(row) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="效果" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="数据范围" width="120" align="center">
+              <template #default="{ row }">
+                <el-tag :type="getFilterTypeTag(row.filterType)" size="small">{{ getFilterTypeLabel(row.filterType) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="启用" width="70" align="center">
+              <template #default="{ row }">
+                <el-switch v-model="row.enabled" :active-value="1" :inactive-value="0" @change="togglePermission(row)" />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="200" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button type="primary" size="small" text @click="handleEditPermission(row)">编辑</el-button>
+                <el-button size="small" text @click="handlePreviewPermissionSql(row.listKey)">模拟</el-button>
+                <el-button type="danger" size="small" text @click="handleDeletePermission(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
         </template>
-      </el-table-column>
-      <el-table-column label="已绑定规则" min-width="180">
-        <template #default="{ row }">{{ formatListBoundRules(row.listKey) }}</template>
-      </el-table-column>
-    </el-table>
-    <el-table :data="permissionList" border size="small" style="margin-top: 12px">
-      <el-table-column prop="ruleName" label="规则名称" width="140" />
-      <el-table-column label="已绑定列表" min-width="160">
-        <template #default="{ row }">
-          <span>{{ formatBoundLists(row.boundListKeys) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="匹配范围" min-width="160">
-        <template #default="{ row }">
-          <span>{{ formatMatchSummary(row) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="效果" width="80" align="center">
-        <template #default="{ row }">
-          <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="数据范围" width="120" align="center">
-        <template #default="{ row }">
-          <el-tag :type="getFilterTypeTag(row.filterType)" size="small">{{ getFilterTypeLabel(row.filterType) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="启用" width="70" align="center">
-        <template #default="{ row }">
-          <el-switch v-model="row.enabled" :active-value="1" :inactive-value="0" @change="togglePermission(row)" />
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" align="center" fixed="right">
-        <template #default="{ row }">
-          <el-button type="primary" size="small" text @click="handleEditPermission(row)">编辑</el-button>
-          <el-button size="small" text @click="handlePreviewPermissionSql(row.listKey)">模拟</el-button>
-          <el-button type="danger" size="small" text @click="handleDeletePermission(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    </template>
-  </el-dialog>
+      </div>
+    </section>
+
+  </div>
 
   <!-- 规则编辑对话框 -->
   <el-dialog
@@ -1060,10 +987,9 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi } from '@/api/entity'
-import { codeRuleApi } from '@/api/codeRule'
 import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { getEntityStatusList } from '@/api/entityStatus'
@@ -1101,7 +1027,6 @@ import {
 } from '@/shared/sub-list'
 
 const route = useRoute()
-const router = useRouter()
 const userStore = useUserStore()
 const entityId = route.params.id
 
@@ -1110,7 +1035,7 @@ const entityId = route.params.id
  */
 function normalizeEntityDesignTab(value) {
   const tab = String(value || '').trim().toLowerCase()
-  return ['fields', 'relations', 'events'].includes(tab) ? tab : 'fields'
+  return ['fields', 'relations', 'events', 'permissions'].includes(tab) ? tab : 'fields'
 }
 
 const activeDesignTab = ref(normalizeEntityDesignTab(route.query.tab))
@@ -1128,6 +1053,10 @@ const loadError = ref('')
 const showSystemFields = ref(true)
 const entityBaseline = ref('')
 const selectedField = ref(null)
+// 标题跟随当前字段及其草稿更新，未选中字段时保留通用标题。
+const selectedFieldTitle = computed(() => selectedField.value
+  ? `${selectedField.value.fieldName || '未命名字段'}（${selectedField.value.fieldCode || '尚未设置字段编码'}）`
+  : '属性配置')
 const isSystemEntity = computed(() => entityData.value?.storageMode === 'SYSTEM')
 const canConfigureEntityDefaultEvents = computed(() => Boolean(entityData.value?.id)
   && canManageEntityDefinition.value
@@ -1201,21 +1130,8 @@ const dictOptions = ref([])
 const quickDictVisible = ref(false)
 const quickDictForm = ref({ dictName: '', dictCode: '' })
 
-// 编码规则配置
-const createCodeRuleDraft = (entityCode = '') => ({
-  entityCode,
-  prefix: entityCode.toUpperCase(),
-  dateFormat: 'yyyyMMdd',
-  seqLength: 6,
-  seqType: 'DAY',
-  example: ''
-})
-const codeRuleVisible = ref(false)
-const codeRuleSaving = ref(false)
-const codeRule = ref(createCodeRuleDraft())
-
 // 数据权限配置
-const permissionVisible = ref(false)
+const permissionLoading = ref(false)
 const permissionList = ref([])
 const permissionError = ref('')
 const permissionEditVisible = ref(false)
@@ -1397,84 +1313,8 @@ const loadEntity = async () => {
   }
 }
 
-// 加载编码规则
-const loadCodeRule = async (entityCode) => {
-  const normalizedEntityCode = String(entityCode || '').trim()
-  if (!normalizedEntityCode) {
-    codeRule.value = createCodeRuleDraft()
-    return
-  }
-
-  codeRule.value = createCodeRuleDraft(normalizedEntityCode)
-  try {
-    const data = await codeRuleApi.getByEntityCode(normalizedEntityCode)
-    if (data) {
-      codeRule.value = {
-        ...createCodeRuleDraft(normalizedEntityCode),
-        ...data,
-        entityCode: normalizedEntityCode
-      }
-    } else {
-      await previewCode()
-    }
-  } catch (error) {
-    console.error('加载编码规则失败:', error)
-  }
-}
-
-// 预览编码
-const previewCode = async () => {
-  try {
-    const preview = await codeRuleApi.preview(codeRule.value)
-    codeRule.value.example = preview
-  } catch (error) {
-    // 本地计算示例
-    const date = new Date()
-    const format = codeRule.value.dateFormat || 'yyyyMMdd'
-    const dateStr = format
-      .replace('yyyy', date.getFullYear())
-      .replace('MM', String(date.getMonth() + 1).padStart(2, '0'))
-      .replace('dd', String(date.getDate()).padStart(2, '0'))
-      .replace(/-/g, '')
-      .replace(/\//g, '')
-    const seqStr = '1'.padStart(codeRule.value.seqLength || 6, '0')
-    codeRule.value.example = (codeRule.value.prefix || '') + dateStr + seqStr
-  }
-}
-
-const buildCodeRuleSavePayload = () => ({
-  entityCode: String(entityData.value?.entityCode || '').trim(),
-  prefix: codeRule.value.prefix,
-  dateFormat: codeRule.value.dateFormat,
-  seqLength: codeRule.value.seqLength,
-  seqType: codeRule.value.seqType
-})
-
-// 保存编码规则
-const saveCodeRule = async () => {
-  const payload = buildCodeRuleSavePayload()
-  if (!payload.entityCode) {
-    ElMessage.error('实体编码不能为空')
-    return
-  }
-
-  codeRuleSaving.value = true
-  try {
-    await codeRuleApi.save(payload, { silentError: true })
-    await loadCodeRule(payload.entityCode)
-    ElMessage.success('编码规则保存成功')
-    codeRuleVisible.value = false
-  } catch (error) {
-    console.error(error)
-    ElMessage.error(error?.message || '编码规则保存失败')
-  } finally {
-    codeRuleSaving.value = false
-  }
-}
-
 const initializeEntityDesign = async () => {
   await loadEntity()
-  await loadCodeRule(entityData.value?.entityCode)
 }
 
 // 添加字段
@@ -1684,8 +1524,10 @@ const handleSave = async (options = {}) => {
 }
 
 // ============ 数据权限方法 ============
+/** 读取当前实体的规则目录及列表绑定，供数据权限页签展示；失败时保留重试入口。 */
 const loadPermissions = async () => {
-  if (!entityData.value.entityCode) return
+  if (!entityData.value.entityCode || isSystemEntity.value) return
+  permissionLoading.value = true
   permissionError.value = ''
   try {
     const [permissionData, listConfigData] = await Promise.all([
@@ -1720,6 +1562,8 @@ const loadPermissions = async () => {
   } catch (error) {
     console.error('加载权限规则失败:', error)
     permissionError.value = error?.message || '无法读取规则目录，请检查权限或稍后重试。'
+  } finally {
+    permissionLoading.value = false
   }
 }
 
@@ -2079,11 +1923,16 @@ const handleDragStart = (type) => {
   draggedType.value = type
 }
 
-watch(permissionVisible, (val) => {
-  if (val) {
-    loadPermissions()
-  }
-})
+// 同时监听实体加载结果，确保直接通过 ?tab=permissions 进入时也能读取目录。
+watch(
+  [activeDesignTab, () => entityData.value.entityCode, isSystemEntity, loadError],
+  ([tab, entityCode, systemEntity, error]) => {
+    if (tab === 'permissions' && entityCode && !systemEntity && !error) {
+      void loadPermissions()
+    }
+  },
+  { immediate: true }
+)
 
 const createAttachmentItemKey = () => {
   const randomPart = typeof globalThis.crypto?.randomUUID === 'function'
@@ -2098,20 +1947,21 @@ watch(showSystemFields, (visible) => {
   }
 })
 
-// 兼容历史书签深链到默认事件，同时阻止只读用户和系统实体进入编辑区域。
+// 兼容页签深链；默认事件检查管理权限，系统实体不开放数据权限配置。
 watch(() => route.query.tab, (value) => {
   const requestedTab = normalizeEntityDesignTab(value)
-  activeDesignTab.value = requestedTab === 'events'
-    && entityData.value?.id
-    && !canConfigureEntityDefaultEvents.value
+  activeDesignTab.value = entityData.value?.id
+    && ((requestedTab === 'events' && !canConfigureEntityDefaultEvents.value)
+      || (requestedTab === 'permissions' && isSystemEntity.value))
     ? 'fields'
     : requestedTab
 })
 
 watch(
-  [() => Boolean(entityData.value?.id), canConfigureEntityDefaultEvents],
-  ([entityLoaded, canConfigure]) => {
-    if (entityLoaded && activeDesignTab.value === 'events' && !canConfigure) {
+  [() => Boolean(entityData.value?.id), canConfigureEntityDefaultEvents, isSystemEntity],
+  ([entityLoaded, canConfigure, systemEntity]) => {
+    if (entityLoaded && ((activeDesignTab.value === 'events' && !canConfigure)
+      || (activeDesignTab.value === 'permissions' && systemEntity))) {
       activeDesignTab.value = 'fields'
     }
   }
@@ -2127,6 +1977,8 @@ onMounted(async () => {
 
 <style scoped>
 .entity-design {
+  /* 页签内容共用上下间距，左右边界与顶部导航保持对齐。 */
+  --entity-design-panel-gap: 16px;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -2135,12 +1987,15 @@ onMounted(async () => {
 
 /* ===== 头部样式 ===== */
 .design-header {
-  height: 60px;
+  min-height: 45px;
+  flex-shrink: 0;
   background: #fff;
   border-bottom: 1px solid #dcdfe6;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  column-gap: 24px;
   padding: 0 24px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   z-index: 10;
@@ -2148,58 +2003,38 @@ onMounted(async () => {
 
 .header-left {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
-}
-
-.header-left :deep(.el-button) {
-  background: #fff;
-  border: 1px solid #dcdfe6;
-  color: #606266;
-  transition: all 0.3s;
-}
-
-.header-left :deep(.el-button:hover) {
-  background: #ecf5ff;
-  border-color: #409eff;
+  min-width: 0;
+  padding: 6px 0;
 }
 
 .entity-name {
-  font-size: 18px;
+  font-size: var(--el-font-size-base);
   font-weight: 600;
   color: #303133;
-}
-
-.header-right {
-  display: flex;
-  gap: 12px;
-}
-
-.header-right :deep(.el-button) {
-  border-radius: 6px;
-  padding: 8px 20px;
-}
-
-.header-right :deep(.el-button:first-child) {
-  background: rgba(255, 255, 255, 0.9);
-  border: none;
-  color: #606266;
-}
-
-.header-right :deep(.el-button:first-child:hover) {
-  background: #fff;
-  color: #409eff;
+  overflow-wrap: anywhere;
 }
 
 /* ===== 主体布局 ===== */
 .design-tabs {
   flex: 0 0 auto;
-  padding: 0 20px;
+  max-width: 100%;
+  margin-left: auto;
   background: #fff;
 }
 
 .design-tabs :deep(.el-tabs__header) {
   margin: 0;
+}
+
+.design-tabs :deep(.el-tabs__item) {
+  height: 45px;
+}
+
+.design-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
 }
 
 .design-tabs :deep(.el-tabs__content) {
@@ -2210,7 +2045,7 @@ onMounted(async () => {
   flex: 1;
   display: flex;
   overflow: hidden;
-  padding: 16px;
+  padding: var(--entity-design-panel-gap) 0;
   gap: 16px;
 }
 
@@ -2230,7 +2065,7 @@ onMounted(async () => {
 /* ===== 中间字段列表面板 ===== */
 .fields-panel {
   flex: 1;
-  min-width: 450px;
+  min-width: 0;
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
@@ -2244,6 +2079,8 @@ onMounted(async () => {
   padding: 16px 20px;
   background: #fafbfc;
   border-bottom: 1px solid #ebeef5;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .fields-list {
@@ -2257,6 +2094,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 14px 16px;
   margin-bottom: 10px;
   background: #fff;
@@ -2282,6 +2120,7 @@ onMounted(async () => {
 .field-info {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   flex: 1;
@@ -2312,6 +2151,7 @@ onMounted(async () => {
 
 .field-actions {
   display: flex;
+  flex-shrink: 0;
   gap: 8px;
   opacity: 1;
   align-items: center;
@@ -2352,7 +2192,8 @@ onMounted(async () => {
 
 /* ===== 右侧属性面板 ===== */
 .property-panel {
-  width: 360px;
+  /* 桌面端按视口分配三分之一宽度，剩余空间由业务字段列表自适应占用。 */
+  width: calc(100vw / 3);
   flex-shrink: 0;
   background: #fff;
   border-radius: 8px;
@@ -2367,55 +2208,54 @@ onMounted(async () => {
   padding: 16px 20px;
   background: #fafbfc;
   border-bottom: 1px solid #ebeef5;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
 
-.selected-field-summary {
-  padding: 14px 16px;
-  border-bottom: 1px solid #ebeef5;
-  background: #fff;
-}
-
-.selected-field-summary__main,
-.selected-field-summary__status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.selected-field-summary__main {
-  justify-content: space-between;
-}
-
-.selected-field-summary__identity {
-  display: flex;
+.property-panel__title {
+  flex: 1 1 160px;
   min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.selected-field-summary__identity strong,
-.selected-field-summary__identity span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.selected-field-summary__identity strong {
-  color: #303133;
-  font-size: 14px;
+.property-panel__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 100%;
+  margin-left: auto;
+  gap: 8px;
 }
 
-.selected-field-summary__identity span {
-  color: #909399;
+/* 保存操作独立于表单滚动区域，长配置内容不会将按钮推离面板底部。 */
+.property-panel__footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #ebeef5;
+  background: #fff;
+}
+
+.property-panel__save-hint {
+  color: var(--el-text-color-secondary);
   font-size: 12px;
+  line-height: 18px;
 }
 
-.selected-field-summary__status {
-  margin-top: 8px;
+.property-panel__save {
+  flex-shrink: 0;
 }
 
 .property-panel :deep(.el-form) {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
 }
@@ -2484,7 +2324,11 @@ onMounted(async () => {
 
 .field-list-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+  max-width: 100%;
+  margin-left: auto;
   gap: 8px;
 }
 
@@ -2537,14 +2381,37 @@ onMounted(async () => {
 }
 
 /* ===== 数据权限配置样式 ===== */
+.entity-permission-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--entity-design-panel-gap) 0;
+}
+
+.permission-panel-card {
+  min-width: 0;
+  padding: 20px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.permission-panel-card h2 {
+  margin: 0 0 16px;
+  color: var(--el-text-color-primary);
+  font-size: 18px;
+}
+
 .permission-header {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   margin-bottom: 8px;
 }
 
-.entity-permission-dialog :deep(.el-dialog__body),
 .entity-permission-edit-dialog :deep(.el-dialog__body) {
   max-height: calc(92vh - 140px);
   overflow-y: auto;
@@ -2606,23 +2473,16 @@ onMounted(async () => {
 }
 
 /* ===== 响应式调整 ===== */
-@media (max-width: 1200px) {
-  .property-panel {
-    width: 320px;
-  }
-}
-
 @media (max-width: 900px) {
-  .design-header {
-    height: auto;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 12px;
+  .entity-design {
+    --entity-design-panel-gap: 12px;
   }
 
-  .header-left,
-  .header-right {
+  .design-header {
+    padding: 0 12px;
+  }
+
+  .header-left {
     width: 100%;
     flex-wrap: wrap;
   }
@@ -2630,11 +2490,10 @@ onMounted(async () => {
   .design-body {
     overflow: auto;
     flex-direction: column;
-    padding: 12px;
   }
 
-  .design-tabs {
-    padding: 0 12px;
+  .design-tabs :deep(.el-tabs__item) {
+    height: 33px;
   }
 
   .fields-panel,

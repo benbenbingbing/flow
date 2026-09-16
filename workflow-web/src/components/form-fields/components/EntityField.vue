@@ -1,5 +1,5 @@
 <template>
-  <div class="entity-field" @click="handleClick">
+  <div class="entity-field" @focusin="onFocusIn" @focusout="onFocusOut">
     <EntitySelector
       v-model="fieldValue"
       :entity-type="entityType"
@@ -12,7 +12,8 @@
       :multiple="isMultiple"
       :placeholder="placeholder"
       :disabled="isDisabled"
-      @change="handleEntityChange"
+      @change="handleSelectionChange"
+      v-on="customEventListeners"
     />
   </div>
 </template>
@@ -31,7 +32,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 
-const { fieldValue, placeholder, handleChange, parsedComponentProps } = useFormField(
+const { fieldValue, placeholder, handleSelectionChange, handleFocus, handleBlur, customEventListeners, parsedComponentProps } = useFormField(
   props,
   emit
 )
@@ -102,15 +103,13 @@ const apiUrl = computed(() => {
   return props.field?.apiUrl || null
 })
 
-function handleEntityChange(val) {
-  // EntitySelector 的 change 事件传递的是选中对象/对象数组
-  // v-model 已经通过 update:modelValue 传递了正确的 ID/ID 数组
-  // 这里只触发外部 change 事件（供自定义脚本使用），不再重复 emit update:modelValue
-  emit('change', val)
+// 复合选择器以输入区域为焦点边界，内部按钮之间移动不重复触发。
+function onFocusIn(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) handleFocus()
 }
 
-function handleClick() {
-  // no-op，保留以兼容模板@click
+function onFocusOut(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) handleBlur()
 }
 </script>
 

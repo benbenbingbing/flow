@@ -4,6 +4,7 @@ import com.workflow.entity.form.application.validation.EntityFormConfigurationVa
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.application.FormUniqueRulePolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
+import com.workflow.entity.form.application.EntityFormFieldProjection;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
@@ -15,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -359,6 +361,40 @@ class EntityFormConfigurationValidatorTest {
         assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form));
         actualStart.setFieldType(EntityField.FieldType.INTEGER);
         form.setFields(List.of(end)); end.setIsHidden(1);
+        assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form));
+    }
+
+    /** 复现发布预检：历史节点为 NONE，但 props 中保存了真实 DATETIME 实体字段。 */
+    @Test
+    void acceptsLegacyDatetimeNodesWithoutExplicitEntityBinding() {
+        EntityForm form = new EntityForm();
+        form.setEntityId("entity-1"); form.setFormName("流程时间"); form.setFormKey("processTimes");
+        List<EntityFormNode> nodes = List.of("processStartTime", "processEndTime").stream().map(code -> {
+            EntityFormNode node = new EntityFormNode();
+            node.setId("node-" + code); node.setNodeKey(code); node.setNodeType("FIELD"); node.setBindingType("NONE");
+            node.setPropsDocument(writeJson(Map.of("fieldId", "entity-" + code, "fieldCode", code,
+                    "fieldType", "DATETIME", "componentType", "datetime", "label", code)));
+            if ("processEndTime".equals(code)) {
+                node.setRulesDocument(writeJson(Map.of("validation", Map.of("crossField", Map.of(
+                        "version", 1, "rules", List.of(Map.of("id", "range", "operator", "GE", "targetFieldCode", "processStartTime")))))));
+            }
+            return node;
+        }).toList();
+        form.setNodes(nodes);
+        form.setFields(new EntityFormFieldProjection(new JsonDocumentCodec(OBJECT_MAPPER)).derive(form, nodes));
+        EntityField start = entityField("entity-processStartTime", "processStartTime", EntityField.FieldType.DATETIME);
+        EntityField end = entityField("entity-processEndTime", "processEndTime", EntityField.FieldType.DATETIME);
+        when(entityFieldMapper.findByEntityId("entity-1")).thenReturn(List.of(start, end));
+        assertDoesNotThrow(() -> validator.validateForm(form));
+
+        // 兼容 NONE 不放宽真实实体校验：缺少实体参照或伪造类型仍应阻止发布。
+        when(entityFieldMapper.findByEntityId("entity-1")).thenReturn(List.of(end));
+        assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form));
+        when(entityFieldMapper.findByEntityId("entity-1")).thenReturn(List.of(start, end));
+        start.setFieldType(EntityField.FieldType.STRING);
+        assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form));
+        start.setFieldType(EntityField.FieldType.DATETIME);
+        form.getFields().get(1).setFieldId(null);
         assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form));
     }
 

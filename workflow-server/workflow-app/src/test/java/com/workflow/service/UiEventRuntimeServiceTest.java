@@ -1166,6 +1166,84 @@ class UiEventRuntimeServiceTest {
                 "快照哈希不匹配"));
     }
 
+    /** 模拟选人后调用扩展并回填：业务值保持完整，Provider 上下文只携带事件摘要。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"ENTITY_SELECTED", "FIELD_CHANGE", "FIELD_BUTTON_CLICK"})
+    void fieldProviderReceivesBusinessInputAndBackfillsWithoutDuplicatingState(String eventCode) {
+        service = new UiEventRuntimeService(
+                bindingService, dataSourceService, new UiEventValueMapper(),
+                selectionRuntimeService, auditPort, actionCapabilityService,
+                formActionService, executionReceiptService, entityDataService, objectMapper);
+        UiEventExecuteRequest request = request(eventCode, "singleUser");
+        request.setConfigType("FORM");
+        request.setConfigId("form-1");
+        request.setTargetType("FIELD");
+        request.setInput(Map.of(
+                "form", Map.of("deptId", "business-dept", "name", ""),
+                "selection", Map.of("id", "selected-user", "userName", "selected-name"),
+                "value", "selected-user"));
+        request.setContext(Map.of("mode", "create"));
+        Map<String, Object> step = map(
+                "strategy", "AFTER", "extensionId", "source-1",
+                "condition", Map.of("path", "input.form.deptId", "equals", "business-dept"),
+                "outputMapping", List.of(
+                        Map.of("sourcePath", "data.userName", "targetPath", "form.name"),
+                        Map.of("sourcePath", "data.userCode", "targetPath", "form.myText"),
+                        Map.of("sourcePath", "state.selection.deptId", "targetPath", "form.deptId")));
+        when(bindingService.resolvePublished(request)).thenReturn(
+                new UiEventBindingService.ResolvedEventChain(
+                        List.of(step), "release-1", 1, "entity-1", "expense",
+                        null, formSnapshot(), "release-1", null));
+        when(selectionRuntimeService.resolve(any(), any()))
+                .thenReturn(Map.of("deptId", "selected-dept"));
+        when(dataSourceService.executeResolvedFormFieldOperation(any(), any(), any(), any(), any()))
+                .thenReturn(Map.of("userName", "周大伟 userName", "userCode", "周大伟 userCode"));
+
+        UiEventExecutionResult result = service.execute(request);
+
+        ArgumentCaptor<com.workflow.entity.ui.api.request.UiExtensionExecuteRequest> provider =
+                ArgumentCaptor.forClass(com.workflow.entity.ui.api.request.UiExtensionExecuteRequest.class);
+        verify(dataSourceService).executeResolvedFormFieldOperation(
+                org.mockito.ArgumentMatchers.eq("source-1"),
+                org.mockito.ArgumentMatchers.isNull(), provider.capture(),
+                org.mockito.ArgumentMatchers.eq(formSnapshot()), org.mockito.ArgumentMatchers.isNull());
+        verify(dataSourceService, never()).executeOperation(any(), any(), any());
+        assertEquals(request.getInput(), provider.getValue().getInput());
+        Map<?, ?> summary = (Map<?, ?>) provider.getValue().getContext().get("eventState");
+        assertFalse(summary.containsKey("input"));
+        assertFalse(summary.containsKey("data"));
+        assertFalse(summary.containsKey("context"));
+        assertFalse(summary.containsKey("selection"));
+        assertFalse(summary.containsKey("result"));
+        assertEquals(true, summary.get("selectionPresent"));
+        assertEquals(1, result.getEffects().size());
+        assertEquals("FIELD_MAPPING", result.getEffects().get(0).get("type"));
+        assertEquals(Map.of("form", Map.of(
+                        "name", "周大伟 userName", "myText", "周大伟 userCode", "deptId", "selected-dept")),
+                result.getEffects().get(0).get("data"));
+    }
+
+    /** 原始身份声明不能通过条件或输入映射改名成为普通参数。 */
+    @Test
+    void fieldEventRejectsForgedRootIdentityBeforeMapping() {
+        UiEventExecuteRequest request = request("ENTITY_SELECTED", "singleUser");
+        request.setConfigType("FORM");
+        request.setConfigId("form-1");
+        request.setTargetType("FIELD");
+        request.setInput(Map.of("userId", "forged-user"));
+        stubPublishedChain(request);
+
+        BusinessForbiddenException error = assertThrows(
+                BusinessForbiddenException.class, () -> service.execute(request));
+
+        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED", error.getErrorCode());
+        verify(selectionRuntimeService, never()).resolve(any(), any());
+        verify(valueMapper, never()).matches(any(), any());
+        verify(valueMapper, never()).apply(any(), any(), any());
+        verify(dataSourceService, never()).executeOperation(any(), any(), any());
+        verify(dataSourceService, never()).executeResolvedFormFieldOperation(any(), any(), any(), any(), any());
+    }
+
     private UiEventExecuteRequest request(String eventCode, String targetKey) {
         UiEventExecuteRequest request = new UiEventExecuteRequest();
         request.setEventCode(eventCode);

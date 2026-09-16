@@ -4,7 +4,8 @@
     :class="{
       'is-expanded': expanded,
       'is-collapsible': collapsible,
-      'is-primary': primary
+      'is-primary': primary,
+      'is-disabled': disabled
     }"
   >
     <button
@@ -19,7 +20,10 @@
         <small v-if="description">{{ description }}</small>
       </span>
       <span class="settings-section__summary">
-        <slot name="summary" />
+        <el-tooltip v-if="disabled" :content="disabledReason" placement="top">
+          <el-tag size="small" type="info">不适用</el-tag>
+        </el-tooltip>
+        <slot v-else name="summary" />
         <el-icon class="settings-section__arrow"><ArrowDown /></el-icon>
       </span>
     </button>
@@ -29,11 +33,15 @@
         <strong>{{ title }}</strong>
         <small v-if="description">{{ description }}</small>
       </span>
-      <slot name="summary" />
+      <el-tag v-if="disabled" size="small" type="info">不适用</el-tag>
+      <slot v-else name="summary" />
     </div>
 
     <div v-show="expanded" class="settings-section__body">
-      <slot />
+      <p v-if="disabled" class="settings-section__disabled-reason">{{ disabledReason }}</p>
+      <SettingsCapability :disabled="disabled" :reason="disabledReason">
+        <slot />
+      </SettingsCapability>
     </div>
   </section>
 </template>
@@ -41,8 +49,11 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
+import SettingsCapability from './SettingsCapability.vue'
 
 const props = defineProps({
+  disabled: { type: Boolean, default: false },
+  disabledReason: { type: String, default: '当前类型不支持此配置' },
   title: {
     type: String,
     required: true
@@ -170,5 +181,15 @@ button.settings-section__header:focus-visible {
 
 .settings-section.is-primary .settings-section__body {
   border-top-color: #d9ecff;
+}
+
+.settings-section.is-disabled .settings-section__heading strong {
+  color: var(--el-text-color-secondary);
+}
+
+.settings-section__disabled-reason {
+  margin: 0 0 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 </style>

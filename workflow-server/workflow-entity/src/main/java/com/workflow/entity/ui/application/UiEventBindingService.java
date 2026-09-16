@@ -627,8 +627,9 @@ public class UiEventBindingService {
         }
         for (Map<String, Object> step : mapList(binding.get("steps"))) {
             Map<String, Object> executable = new LinkedHashMap<>(step);
-            if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(normalize(
-                    text(binding.get("eventCode"))))) {
+            String eventCode = normalize(text(binding.get("eventCode")));
+            if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
+                    || FORM_FIELD_EVENTS.contains(eventCode)) {
                 attachTrustedBindingIdentity(executable, binding);
             }
             effective.add(executable);
@@ -670,7 +671,7 @@ public class UiEventBindingService {
             if (!matches) {
                 throw new BusinessConflictException(
                         "UI_EVENT_PINNED_BINDING_INVALID",
-                        "表单按钮发布步骤的来源绑定身份不完整或不匹配");
+                        "表单事件发布步骤的来源绑定身份不完整或不匹配");
             }
             return;
         }

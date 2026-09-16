@@ -1,17 +1,25 @@
 <template>
-  <div class="event-binding-editor">
+  <div class="event-binding-editor" :class="{ 'is-compact': compact }">
     <div class="binding-toolbar">
-      <div>
+      <div v-if="!compact">
         <div class="binding-title">{{ title }}</div>
         <div class="binding-scope">
           {{ ownerTypeLabel }} / {{ ownerId || '未选择配置对象' }}
           <span v-if="targetType !== 'OWNER'"> / {{ targetLabel }}</span>
         </div>
       </div>
+      <div v-else class="toolbar-context">
+        <slot name="toolbar-context" />
+        <ConfigHelpLabel
+          label="事件绑定"
+          content="同一字段的同一触发事件只配置一条绑定，可在其中增加多个步骤。快捷回填维护选择实体后事件中的回填步骤，与接口步骤共同执行。保存绑定后需发布表单生效；默认保留平台处理，REPLACE 步骤会替代平台处理。"
+        />
+      </div>
       <div class="toolbar-actions">
+        <slot name="toolbar-actions" />
         <el-button
           :loading="loading"
-          :disabled="!ownerId"
+          :disabled="!canEdit"
           title="刷新事件绑定"
           @click="load"
         >
@@ -19,7 +27,8 @@
         </el-button>
         <el-button
           type="primary"
-          :disabled="!ownerId"
+          :disabled="!canEdit || loading || !creatableEvents.length"
+          :title="!creatableEvents.length ? '可用事件均已配置，请编辑已有绑定增加步骤' : '新增事件绑定'"
           @click="openCreate"
         >
           <el-icon><Plus /></el-icon>
@@ -29,7 +38,7 @@
     </div>
 
     <el-alert
-      v-if="!formButtonOnlyContext"
+      v-if="!compact && !formButtonOnlyContext"
       title="除表单自定义按钮外，事件默认保留平台处理；只有执行链中加入 REPLACE 步骤，才会由自定义接口完全替代。"
       type="info"
       :closable="false"
@@ -46,8 +55,9 @@
     />
 
     <el-empty
-      v-if="!ownerId"
-      description="请先选择实体、表单或列表"
+      v-if="!canEdit"
+      :description="disabledReason || '请先选择实体、表单或列表'"
+      :image-size="compact ? 48 : 160"
     />
     <el-alert
       v-if="ownerId && outOfScopeBindings.length"
@@ -55,16 +65,17 @@
       :closable="false"
       show-icon
       class="scope-warning"
-      :title="`检测到 ${outOfScopeBindings.length} 条历史绑定与当前${ownerTypeLabel}范围不匹配，已禁止继续编辑；请删除后到正确的配置位置重建。`"
+      :title="`检测到 ${outOfScopeBindings.length} 条绑定不适用于当前配置，已禁止编辑；可删除或调整字段组件后再编辑。`"
     />
     <el-table
-      v-if="ownerId"
+      v-if="canEdit"
       v-loading="loading"
       :data="visibleBindings"
       row-key="id"
       border
+      :empty-text="compact ? '暂无事件绑定，可配置快捷回填或新增绑定' : '暂无事件绑定'"
     >
-      <el-table-column label="触发事件" min-width="180">
+      <el-table-column label="触发事件" :min-width="compact ? 140 : 180">
         <template #default="{ row }">
           <div class="event-name-line">
             <span class="primary-text">{{ eventLabel(row.eventCode) }}</span>
@@ -73,19 +84,20 @@
               size="small"
               type="danger"
               effect="plain"
-            >范围不匹配</el-tag>
+              :title="eventDisabledReason(row.eventCode)"
+            >不适用</el-tag>
           </div>
           <div class="secondary-text">{{ row.eventCode }}</div>
         </template>
       </el-table-column>
-      <el-table-column label="继承方式" width="130">
+      <el-table-column label="继承方式" :width="compact ? 112 : 130">
         <template #default="{ row }">
           <el-tag :type="inheritanceType(row.inheritanceMode)" effect="plain">
             {{ inheritanceLabel(row.inheritanceMode, row) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="完整执行链" min-width="360">
+      <el-table-column label="完整执行链" :min-width="compact ? 210 : 360">
         <template #default="{ row }">
           <div class="chain-preview">
             <template
@@ -111,14 +123,14 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="90" align="center">
+      <el-table-column label="状态" :width="compact ? 70 : 90" align="center">
         <template #default="{ row }">
           <el-tag :type="row.enabled === false ? 'info' : 'success'">
             {{ row.enabled === false ? '停用' : '启用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="130" fixed="right" align="center">
+      <el-table-column label="操作" :width="compact ? 110 : 130" fixed="right" align="center">
         <template #default="{ row }">
           <el-button
             link
@@ -126,7 +138,7 @@
             :disabled="!isEventAllowed(row.eventCode)"
             :title="isEventAllowed(row.eventCode)
               ? '编辑事件绑定'
-              : '该历史绑定与当前配置范围不匹配，请删除后到正确位置重新配置'"
+              : eventDisabledReason(row.eventCode)"
             @click="openEdit(row)"
           >编辑</el-button>
           <el-button link type="danger" @click="remove(row)">删除</el-button>
@@ -184,7 +196,14 @@
                   :key="event"
                   :label="`${eventLabel(event)} (${event})`"
                   :value="event"
-                />
+                  :disabled="Boolean(eventOptionDisabledReason(event))"
+                  :title="eventOptionDisabledReason(event)"
+                >
+                  <span>{{ eventLabel(event) }} ({{ event }})</span>
+                  <small v-if="eventOptionDisabledReason(event)" class="event-option-reason">
+                    {{ eventOptionDisabledReason(event) }}
+                  </small>
+                </el-option>
               </el-option-group>
             </el-select>
             <div class="event-scope-hint">{{ eventScopeHint }}</div>
@@ -325,6 +344,7 @@
                   <ConfigHelpLabel
                     label="扩展接口"
                     help-key="uiEvent.extensionInterface"
+                    :content="extensionInterfaceHelp(step)"
                   />
                 </template>
                 <el-select
@@ -465,7 +485,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
@@ -476,12 +496,15 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
+import { getFormFieldComponentDescriptor } from '@/components/form-fields'
+import { fieldEventDisabledReason } from './uiFieldEventCapabilities'
 import { getConfigFieldHelp } from '@/shared/config-field-help'
 import {
   eventGroupsForScope,
   eventsForScope
 } from '@/components/ui-config/uiEventScope'
 import {
+  eventInterfaceImplementationHelp,
   interfacesForEvent,
   resolveInterfaceExtensionId
 } from '@/components/ui-config/interfaceExtensionModel'
@@ -495,6 +518,9 @@ const props = defineProps({
   targetName: { type: String, default: '' },
   title: { type: String, default: '事件绑定' },
   allowedEvents: { type: Array, default: () => [] },
+  targetField: { type: Object, default: null },
+  compact: { type: Boolean, default: false },
+  disabledReason: { type: String, default: '' },
   fieldOptions: { type: Array, default: () => [] }
 })
 
@@ -571,6 +597,8 @@ const bindings = ref([])
 const interfaces = ref([])
 const catalog = ref({ events: [] })
 let rowSequence = 0
+let loadSequence = 0
+let interfaceSequence = 0
 
 const editor = reactive(emptyEditor())
 
@@ -582,6 +610,13 @@ const ownerTypeLabel = computed(() => ({
 
 const targetLabel = computed(() =>
   props.targetName || `${props.targetType}:${props.targetKey}`)
+const canEdit = computed(() => Boolean(props.ownerId) && !props.disabledReason)
+const fieldCapabilities = computed(() => {
+  const field = props.targetField
+  return getFormFieldComponentDescriptor(field?.fieldComponentName
+    || (field?.componentExtensionType === 'FIELD' ? field?.componentName : '')
+    || field?.componentType)?.capabilities || {}
+})
 
 const visibleBindings = computed(() =>
   bindings.value.filter(row =>
@@ -616,7 +651,8 @@ const availableEventGroups = computed(() => {
 })
 
 const availableEvents = computed(() =>
-  availableEventGroups.value.flatMap(group => group.events))
+  availableEventGroups.value.flatMap(group => group.events).filter(isEventAllowed))
+const creatableEvents = computed(() => availableEvents.value.filter(event => !existingBinding(event)))
 const formButtonEventSelected = computed(() =>
   String(editor.eventCode || '').toUpperCase() === 'FORM_BUTTON_CLICK'
 )
@@ -656,7 +692,7 @@ const formButtonStepStrategyHelp = computed(() =>
 const eventScopeHint = computed(() => {
   const owner = String(props.ownerType).toUpperCase()
   const target = String(props.targetType || 'OWNER').toUpperCase()
-  if (target === 'FIELD') return '仅显示字段相关事件。'
+  if (target === 'FIELD') return '不适用或已配置的事件置灰；已有绑定请在列表中编辑，同一绑定可增加多个步骤。'
   if (target === 'BUTTON') {
     return owner === 'LIST'
       ? '仅显示列表工具栏或行按钮事件。'
@@ -768,8 +804,10 @@ function mappingRows(mapping, mode) {
 }
 
 async function load() {
-  if (!props.ownerId) {
+  const sequence = ++loadSequence
+  if (!canEdit.value) {
     bindings.value = []
+    loading.value = false
     return
   }
   loading.value = true
@@ -778,26 +816,32 @@ async function load() {
       uiEventBindingApi.list(props.ownerType, String(props.ownerId)),
       uiEventBindingApi.catalog()
     ])
+    // 内嵌列表随字段切换，丢弃旧字段/旧刷新的迟到响应，避免串用绑定。
+    if (sequence !== loadSequence) return
     bindings.value = Array.isArray(bindingRows) ? bindingRows : []
     catalog.value = bindingCatalog || {}
   } catch (error) {
-    ElMessage.error(error.message || '加载事件绑定失败')
+    if (sequence === loadSequence) ElMessage.error(error.message || '加载事件绑定失败')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
   }
 }
 
 async function openCreate() {
+  if (!canEdit.value || loading.value || !creatableEvents.value.length) return
+  const sequence = loadSequence
   resetEditor({
-    eventCode: availableEvents.value[0] || '',
+    eventCode: creatableEvents.value.includes('ENTITY_SELECTED')
+      ? 'ENTITY_SELECTED' : creatableEvents.value[0],
     steps: []
   })
   await loadAvailableInterfaces(editor.eventCode)
-  dialogVisible.value = true
+  if (sequence === loadSequence) dialogVisible.value = true
 }
 
 async function openEdit(row) {
-  if (!isEventAllowed(row.eventCode)) return
+  if (!canEdit.value || !isEventAllowed(row.eventCode)) return
+  const sequence = loadSequence
   const steps = parseJson(row.stepsDocument, row.steps || [])
   resetEditor({
     id: row.id,
@@ -808,6 +852,7 @@ async function openEdit(row) {
     steps: steps.map(normalizeStep)
   })
   await loadAvailableInterfaces(editor.eventCode)
+  if (sequence !== loadSequence) return
   editor.steps.forEach(step => {
     step.extensionId = resolveInterfaceExtensionId({
       extensionId: step.extensionId,
@@ -886,6 +931,13 @@ function operationContextLabel(contextType) {
   }[String(contextType || '').toUpperCase()] || contextType || '未知上下文'
 }
 
+/** 按当前事件和本步骤已选接口即时生成说明，切换事件或接口后不沿用旧提示。 */
+function extensionInterfaceHelp(step) {
+  const selected = interfaces.value.find(item =>
+    String(item.extensionId) === String(step.extensionId))
+  return eventInterfaceImplementationHelp(editor.eventCode, props.ownerType, selected)
+}
+
 async function handleEventChange(eventCode) {
   editor.steps.forEach(step => {
     step.extensionId = ''
@@ -894,6 +946,7 @@ async function handleEventChange(eventCode) {
 }
 
 async function loadAvailableInterfaces(eventCode) {
+  const sequence = ++interfaceSequence
   interfaces.value = []
   if (!props.ownerId || !eventCode) return
   const rows = await uiExtensionApi.availableInterfaces({
@@ -901,7 +954,7 @@ async function loadAvailableInterfaces(eventCode) {
     ownerId: String(props.ownerId),
     bindingCode: String(eventCode).toUpperCase()
   }).catch(() => [])
-  interfaces.value = interfacesForEvent(rows, eventCode)
+  if (sequence === interfaceSequence) interfaces.value = interfacesForEvent(rows, eventCode)
 }
 
 function serializeCondition(step) {
@@ -937,12 +990,13 @@ function serializeStep(step, index) {
 }
 
 async function save() {
+  if (!canEdit.value) return
   if (!editor.eventCode) {
     ElMessage.warning('请选择触发事件')
     return
   }
-  if (!isEventAllowed(editor.eventCode)) {
-    ElMessage.warning('该事件不属于当前配置范围，请在正确的表单、列表、字段或按钮位置配置')
+  if (eventOptionDisabledReason(editor.eventCode)) {
+    ElMessage.warning(eventOptionDisabledReason(editor.eventCode))
     return
   }
   if (formButtonExactTarget.value && editor.inheritanceMode === 'DISABLE') {
@@ -1015,6 +1069,7 @@ async function save() {
 }
 
 async function remove(row) {
+  if (!canEdit.value) return
   await ElMessageBox.confirm(
     `确认删除“${eventLabel(row.eventCode)}”绑定？`,
     '删除事件绑定',
@@ -1031,11 +1086,29 @@ function eventLabel(code) {
 }
 
 function isEventAllowed(code) {
+  return !eventDisabledReason(code)
+}
+
+/** 能力限制不隐藏目录；新建时额外禁止重复事件，编辑保留原绑定身份。 */
+function eventDisabledReason(code) {
   const normalized = String(code || '').toUpperCase()
-  return scopeEvents.value.includes(normalized)
+  const inScope = scopeEvents.value.includes(normalized)
     && (props.allowedEvents.length === 0
       || props.allowedEvents.some(item =>
         String(item).toUpperCase() === normalized))
+  if (!inScope) return '该事件不属于当前配置范围'
+  return String(props.targetType).toUpperCase() === 'FIELD'
+    ? fieldEventDisabledReason(props.targetField, code, fieldCapabilities.value)
+    : ''
+}
+
+function existingBinding(code) {
+  return visibleBindings.value.find(row => String(row.eventCode).toUpperCase() === String(code).toUpperCase())
+}
+
+function eventOptionDisabledReason(code) {
+  return eventDisabledReason(code)
+    || (!editor.id && existingBinding(code) ? '已配置，请编辑已有绑定增加步骤' : '')
 }
 
 function isScopeContractAllowed(row) {
@@ -1153,7 +1226,7 @@ function chainItems(row) {
     ...after.map(step => ({
       kind: 'step',
       label: stagedLabel(step, 'AFTER'),
-      type: ''
+      type: 'primary'
     }))
   ]
   if (configured.length || !formButton) return configured
@@ -1169,17 +1242,42 @@ function chainItems(row) {
 }
 
 watch(
-  () => [props.ownerType, props.ownerId, props.targetType, props.targetKey],
-  load,
+  () => [props.ownerType, props.ownerId, props.targetType, props.targetKey, props.disabledReason],
+  () => {
+    dialogVisible.value = false
+    interfaces.value = []
+    interfaceSequence++
+    bindings.value = []
+    load()
+  },
   { immediate: true }
 )
 
-onMounted(load)
+defineExpose({ reload: load })
 </script>
 
 <style scoped>
 .event-binding-editor {
   width: 100%;
+  min-width: 0;
+}
+
+.is-compact .binding-toolbar,
+.is-compact .toolbar-actions,
+.toolbar-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.is-compact .toolbar-actions { margin-left: auto; }
+.is-compact .toolbar-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.is-compact .chain-preview { flex-wrap: wrap; }
+.is-compact .secondary-text { overflow-wrap: anywhere; }
+.event-option-reason {
+  margin-left: 12px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .binding-toolbar,

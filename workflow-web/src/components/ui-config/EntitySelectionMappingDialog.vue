@@ -12,7 +12,7 @@
       :form-id="String(formId || '')"
       :field="field"
       :form-fields="formFields"
-      @changed="$emit('changed')"
+      @changed="handleChanged"
     />
   </el-dialog>
 </template>
@@ -21,6 +21,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import EntitySelectionMappingEditor from './EntitySelectionMappingEditor.vue'
+import { isSingleEntitySelectionEventField } from './uiFieldEventCapabilities'
 import {
   isPersistedEntitySelectionField,
   resolveEntitySelectionRefConfig
@@ -31,11 +32,15 @@ const props = defineProps({
   formFields: { type: Array, default: () => [] }
 })
 
-defineEmits(['changed'])
+const emit = defineEmits(['changed'])
 const visible = ref(false)
 const field = ref(null)
 
 function open(targetField) {
+  if (!isSingleEntitySelectionEventField(targetField)) {
+    ElMessage.warning('仅单选实体引用字段支持快捷回填')
+    return
+  }
   if (!props.formId) {
     ElMessage.warning('请先保存表单草稿')
     return
@@ -55,6 +60,11 @@ function open(targetField) {
   }
   field.value = targetField
   visible.value = true
+}
+
+function handleChanged() {
+  visible.value = false
+  emit('changed')
 }
 
 defineExpose({ open })

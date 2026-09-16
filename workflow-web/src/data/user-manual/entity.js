@@ -685,7 +685,7 @@ export default {
                 { field: '节点拖拽', meaning: '悬停或选中节点后，拖拽右上角手柄调整同级顺序，或移动到区块、栅格、Tab 页、折叠面板、子表和明细表等兼容容器。Tab 页使用 Tab 集合内的页签拖拽手柄。', defaultLimit: 'TAB 只能进入 TAB_SET；普通节点不能直接进入 TAB_SET；禁止放入自身、后代或形成超过 8 层的结构。排序保存期间暂时禁用再次拖拽。', effect: '已保存节点立即通过独立排序接口携带 expectedRevision 写入草稿；未保存节点先更新本地树，点击“保存草稿”后落库。失败或 409 时重新加载服务器节点和 revision。', publish: '拖拽只修改草稿位置，不影响当前激活发布版本；发布前应在草稿预览中核对嵌套布局。' },
                 { field: '表单设置三页签', meaning: '“表单设置”统一收纳基本与布局、按钮与操作、初始化与数据处理。', defaultLimit: '关闭抽屉不清除编辑值；布局按钮和设置页读写同一个 layoutType。', effect: '表单身份、默认状态、按钮、生命周期数据源和事件不再散落在画布顶部；渲染方式及扩展配置保留在表单设计工作区。', publish: '只调整编辑入口，继续保存原 viewConfig、数据源绑定、事件绑定和扩展字段。' },
                 { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；顶部只读展示名称、类型、绑定、编码、父级和保存状态。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '抽屉底部只保存当前节点；页面顶部只保存全部草稿，两个入口职责分离。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
-                { field: '节点类型动态页签', meaning: '属性按“基础与布局、状态与校验、数据与关系、联动与事件、复用与扩展”组织。', defaultLimit: '按 nodeType 能力 Schema 只显示适用页签；后台已有兼容配置不会因页签隐藏而删除。', effect: '字段可同时维护多个用途的数据源；条件状态、值计算、选择回填和事件链进入统一交互中心；扩展页只保留模板、组件和扩展能力。', publish: '分组和编辑方式不改变草稿、发布快照或运行时优先级。' },
+                { field: '节点属性页签', meaning: '属性按“基础与布局、数据校验、联动与事件、子页面、数据与扩展”组织。', defaultLimit: '所有配置项保持显示，不适用的配置置灰；已有兼容配置继续保留。', effect: '基础页维护默认值和条件状态；联动页直接维护值、选项和事件；子页面维护子表单、参数传递和子列表；数据与扩展维护引用选择、数据源、模板和组件扩展。', publish: '分组和编辑方式不改变草稿、发布快照或运行时优先级。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
                 { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定；历史 RELATION 缺少 bindingRef 时先迁移修复，普通编辑不会自动解除绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
                 { field: '统一栅格布局', meaning: '垂直布局默认每项 24 栅格，水平布局默认每项 12 栅格，网格布局按节点 gridSpan 排列。', defaultLimit: 'gridSpan 范围 1–24；兼容历史 span。', effect: '显式 GRID 容器优先决定其子节点排列，设计画布、草稿预览和发布运行时使用同一规则。', publish: '修改跨度后检查窄屏、长标签及嵌套 GRID。' },
@@ -907,8 +907,8 @@ export default {
             {
               type: 'callout',
               tone: 'info',
-              title: '联动页签已合并',
-              text: '联动面板统一为“显示与状态、值与计算、选项”三个页签。显隐与禁用/必填放在一起，值映射与计算公式放在一起，减少在五个窄页签之间来回切换。'
+              title: '联动配置直接在属性卡片中编辑',
+              text: '“联动与事件”包含“值与计算、事件与回填、前端脚本事件”三个卡片。事件与回填直接显示当前字段的事件绑定列表，工具栏提供配置快捷回填和新增绑定；同一触发事件只建一条绑定，可编辑增加步骤。不适用的事件置灰并说明原因，快捷回填仅用于单选实体，并合并到选择实体后事件中；保存绑定后发布表单生效。值联动和选项联动随节点保存，前端脚本事件独立配置浏览器脚本，随节点保存并发布生效，嵌入页面不执行脚本；条件状态在基础与布局配置，附件项条件在数据校验配置。'
             },
             {
               type: 'table',
@@ -916,7 +916,7 @@ export default {
               rows: [
                 { field: '显示条件', meaning: '条件组满足时显示当前字段。', defaultLimit: '默认关闭；可添加条件和嵌套条件组，每组可选全部满足 AND 或任一满足 OR；支持 ==、!=、>、<、>=、<=、contains、empty、notEmpty。', effect: '表单值变化时动态显示或隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
-                { field: '历史接口兼容', meaning: '保留旧 apiUrl、apiParams、apiResultField 的查看与迁移入口。', defaultLimit: '位于“值与计算 / 受控数据源 / 高级兼容”，默认折叠；不建议新增任意地址。', effect: '旧配置可继续识别；新生产场景应在扩展管理中注册接口，设计器只保存 extensionId。', publish: 'Provider 必须统一处理数据权限、超时和审计，禁止通过自由 URL 绕过。' },
+                { field: '历史接口兼容', meaning: '已有历史接口参数继续保留，新配置使用受控数据源。', defaultLimit: '在“数据与扩展 → 数据源绑定”中选择接口；字段联动不再提供自由 URL 配置。', effect: '旧配置可继续识别；新生产场景应在扩展管理中注册接口，设计器只保存 extensionId。', publish: 'Provider 必须统一处理数据权限、超时和审计，禁止通过自由 URL 绕过。' },
                 { field: '值联动：公式', meaning: '根据其他字段计算。', defaultLimit: '支持 + - * / ( )，使用 ${fieldCode}。', effect: '字段变化时重新计算。', publish: '空值、除零和字符串转数字必须测试。' }
               ]
             }
@@ -931,7 +931,7 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '选项联动', meaning: '依赖字段不同值时，只显示指定选项。', defaultLimit: '默认关闭；配置依赖字段和多条 dependValue → allowedOptions。', effect: '动态过滤下拉、单选或复选选项。', publish: 'allowedOptions 使用选项 value；删除 value 前维护规则。' },
-                { field: '计算字段', meaning: '按公式自动计算当前字段。', defaultLimit: '默认关闭；精度默认 2，范围 0–10；可编辑默认关闭。', effect: '自动写入计算结果；可编辑关闭时用户不能覆盖。', publish: '公式字段应与实体类型、精度和后端计算保持一致。' },
+                { field: '计算公式', meaning: '在值联动中按公式计算当前字段，不再单独配置计算字段。', defaultLimit: '位于“联动与事件 → 值与计算 → 值联动”，选择计算公式；已有计算规则兼容读取。', effect: '根据字段值自动计算并填充。', publish: '公式字段应与实体类型和后端计算保持一致。' },
                 { field: '禁用条件', meaning: '条件组满足时禁用当前字段。', defaultLimit: '默认关闭；可独立添加条件和嵌套条件组，每组可选 AND 或 OR。', effect: '字段可见但不可编辑。', publish: '不能把安全控制只放前端，后端仍需校验。' },
                 { field: '必填条件', meaning: '条件组满足时动态必填。', defaultLimit: '默认关闭；可独立添加条件和嵌套条件组，每组可选 AND 或 OR。', effect: '提交时要求填写。', publish: '条件字段隐藏或为空时要验证逻辑。' },
                 { field: '保存 / 重置', meaning: '保存只 PATCH 当前节点的结构化规则；重置只清空当前节点草稿。', defaultLimit: '请求携带 expectedRevision。', effect: '表单预览即时读取该节点新草稿，其他节点不变。', publish: '409 时先合并服务器当前节点；保存后仍需发布才影响线上。' }
@@ -941,17 +941,19 @@ export default {
         },
         {
           id: 'entity-field-events',
-          title: '字段事件',
+          title: '前端脚本事件',
           blocks: [
             {
               type: 'table',
               columns: optionColumns,
               rows: [
-                { option: 'onChange', meaning: '字段值变化时触发。', notes: '适合轻量联动和提示；复杂数据联动优先使用结构化联动。' },
+                { option: 'onInput', meaning: '文本输入过程中触发。', notes: '不触发服务端值变化事件链。' },
+                { option: 'onChange', meaning: '字段提交变化时触发，脚本完成后再执行事件链。', notes: '适合轻量联动和提示；复杂数据联动优先使用结构化联动。' },
                 { option: 'onBlur', meaning: '字段失焦时触发。', notes: '适合延迟校验或格式化。' },
                 { option: 'onFocus', meaning: '字段获得焦点时触发。', notes: '避免执行耗时请求。' },
                 { option: '自定义事件', meaning: '添加任意事件名与描述，建议以 on 开头。', notes: '只有渲染组件真正触发该事件时脚本才会运行。' },
-                { option: '脚本变量', meaning: '代码中可使用 value 当前值和 field 字段配置。', notes: '事件脚本是前端代码，不能作为唯一权限或数据完整性保障；禁止写入敏感密钥。' }
+                { option: '赋值与异步', meaning: 'setValue 修改当前值，getFieldValue/setFieldValue 按字段编码读写表单。支持 await，异步等待最多 5 秒。', notes: '返回值不自动回填；失效请求的 helper 不再写入，脚本错误会提示并继续事件链。嵌入页面禁止执行脚本。' },
+                { option: '脚本变量', meaning: 'value 是当前值（实体字段为 ID），selection 是选中记录；field 是配置快照，event.name 是事件名。', notes: '事件脚本是前端代码，不能作为唯一权限或数据完整性保障；禁止写入敏感密钥。' }
               ]
             },
             {

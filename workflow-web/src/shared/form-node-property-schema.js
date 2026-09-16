@@ -651,7 +651,12 @@ export function resolveFormNodeBinding(field, nodeTypeValue) {
   const inferredBindingType = field?.relationCode
     ? 'RELATION'
     : (field?.fieldId ? 'ENTITY_FIELD' : 'NONE')
-  const bindingType = explicitBindingType || inferredBindingType
+  // 只为尚未保存的新实体字段补齐占位绑定。历史节点的 NONE 是已持久化的身份，
+  // 加载或全量保存时改成 ENTITY_FIELD 会触发后端绑定锁；历史字段由运行时兼容读取。
+  const newEntityBinding = !(Number(field?.revision) > 0)
+    && nodeType === 'FIELD' && explicitBindingType === 'NONE'
+    && field?.fieldId && field?.fieldCode && !field?.relationCode
+  const bindingType = newEntityBinding ? 'ENTITY_FIELD' : (explicitBindingType || inferredBindingType)
   const inferredBindingRef = bindingType === 'RELATION'
     ? field?.relationCode
     : field?.fieldCode
@@ -659,7 +664,7 @@ export function resolveFormNodeBinding(field, nodeTypeValue) {
     bindingType,
     bindingRef: bindingType === 'NONE'
       ? null
-      : (explicitBindingRef || inferredBindingRef || null)
+      : (newEntityBinding ? field.fieldCode : (explicitBindingRef || inferredBindingRef || null))
   }
 }
 
