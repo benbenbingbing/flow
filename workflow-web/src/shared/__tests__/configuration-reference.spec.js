@@ -14,6 +14,12 @@ const root = process.cwd()
 const entries = buildConfigurationReference()
 const ids = new Set()
 
+assert.equal(
+  entries.some(entry => /(?:^|\.)(apiUrl|apiParams|apiResultField|valueApi)$/.test(entry.binding)),
+  false,
+  '已下线的自由接口参数不能再作为可配置项生成文档'
+)
+
 assert.ok(CONFIGURATION_SOURCES.length >= 20, '配置审计应覆盖主要实体、表单、列表和流程设计源')
 assert.ok(entries.length >= 250, `逐字段配置目录数量异常，仅发现 ${entries.length} 项`)
 

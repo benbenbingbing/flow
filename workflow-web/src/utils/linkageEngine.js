@@ -62,7 +62,7 @@ export const LinkageEngine = {
       'disabledConditionConfig', 'disabledRule',
       'requiredConditionConfig', 'requiredRule',
       'calculationFormula', 'calculationPrecision', 'calculationEditable',
-      'optionsLinkage', 'valueFormula', 'valueMapping', 'valueApi', 'attachmentItemRequiredRules'
+      'optionsLinkage', 'valueFormula', 'valueMapping', 'attachmentItemRequiredRules'
     ]
 
     // 1. 优先读取直接挂在字段根属性上的规则
@@ -94,6 +94,8 @@ export const LinkageEngine = {
       }
     }
 
+    // 自由接口值联动已下线，旧嵌套配置也不能再透传到编辑器和保存载荷。
+    delete rules.valueApi
     return rules
   },
 

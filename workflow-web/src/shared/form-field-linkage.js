@@ -5,11 +5,12 @@ import { isFlowConditionGroupComplete, parseFlowConditionConfig } from '../utils
 const VALUE_KEYS = ['valueMapping', 'valueFormula', 'calculationFormula', 'calculationPrecision', 'calculationEditable']
 const clone = value => JSON.parse(JSON.stringify(value))
 
-/** 只替换当前编辑器负责的键，保留状态条件、历史接口和其他组件参数。 */
+/** 只替换当前编辑器负责的键，保留状态条件和其他组件参数，移除废弃接口规则。 */
 export function patchFieldLinkageRules(field, keys, patch) {
   if (!field) return
   const rules = { ...LinkageEngine.getFieldLinkageRules(field) }
   const componentProps = { ...safeParseConfig(field.componentProps) }
+  delete field.valueApi
   for (const key of keys) {
     delete rules[key]
     delete field[key]

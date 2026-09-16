@@ -5,7 +5,6 @@
       :entity-type="entityType"
       :entity-code="entityCode"
       :ref-entity-id="refEntityId"
-      :api-url="apiUrl"
       :list-key="listKey"
       :runtime-entity-code="runtimeEntityCode"
       :context="pickerContext"
@@ -94,13 +93,6 @@ const pickerContext = computed(() => {
 
 const refEntityId = computed(() => {
   return props.field?.refEntityId || ''
-})
-
-const apiUrl = computed(() => {
-  if (parsedComponentProps.value.refConfig?.apiUrl) {
-    return parsedComponentProps.value.refConfig.apiUrl
-  }
-  return props.field?.apiUrl || null
 })
 
 // 复合选择器以输入区域为焦点边界，内部按钮之间移动不重复触发。

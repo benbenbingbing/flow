@@ -376,7 +376,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '单选与多选',
-              text: 'REFERENCE 只保存一个目标，MULTI_REFERENCE 保存多个目标。CUSTOM 引用可继续选择目标 listKey：配置后使用统一列表运行时，列、查询、排序、数据范围和选择能力均来自该列表；留空时使用旧选择器。“数据接口”只用于仍需兼容的定制查询。'
+              text: 'REFERENCE 只保存一个目标，MULTI_REFERENCE 保存多个目标。CUSTOM 引用可选择目标 listKey：配置后使用统一列表运行时，列、查询、排序、数据范围和选择能力均来自该列表；留空时使用默认实体选择器。需要定制查询范围时，请配置并发布选择列表。'
             }
           ]
         }
@@ -916,7 +916,7 @@ export default {
               rows: [
                 { field: '显示条件', meaning: '条件组满足时显示当前字段。', defaultLimit: '默认关闭；可添加条件和嵌套条件组，每组可选全部满足 AND 或任一满足 OR；支持 ==、!=、>、<、>=、<=、contains、empty、notEmpty。', effect: '表单值变化时动态显示或隐藏。', publish: '被依赖字段编码必须稳定；隐藏字段是否清值需按运行时验证。' },
                 { field: '值联动：字段值', meaning: '源字段值映射到当前字段目标值。', defaultLimit: '默认关闭；来源默认 field；可配置多条 sourceValue → targetValue。', effect: '源字段命中映射后自动填值。', publish: '映射使用存储值，不是显示 label。' },
-                { field: '历史接口兼容', meaning: '已有历史接口参数继续保留，新配置使用受控数据源。', defaultLimit: '在“数据与扩展 → 数据源绑定”中选择接口；字段联动不再提供自由 URL 配置。', effect: '旧配置可继续识别；新生产场景应在扩展管理中注册接口，设计器只保存 extensionId。', publish: 'Provider 必须统一处理数据权限、超时和审计，禁止通过自由 URL 绕过。' },
+                { field: '接口取值', meaning: '通过受控数据源获取默认值或计算结果。', defaultLimit: '在“数据与扩展 → 数据源绑定”中选择接口；实体引用的筛选范围在“引用选择配置”中选择已发布列表。', effect: '在扩展管理中注册接口，设计器保存 extensionId，并按绑定用途应用返回值。', publish: 'Provider 统一处理数据权限、超时和审计；选择列表发布后生效。' },
                 { field: '值联动：公式', meaning: '根据其他字段计算。', defaultLimit: '支持 + - * / ( )，使用 ${fieldCode}。', effect: '字段变化时重新计算。', publish: '空值、除零和字符串转数字必须测试。' }
               ]
             }

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { ref } from 'vue'
 
 import {
   normalizeRecordSelection,
@@ -98,5 +100,67 @@ assert.deepEqual(
   ['admin', 'reviewer'],
   '系统用户选择可以保持原有 username 编码值'
 )
+
+// 直接执行选择器方法并替换请求，验证旧配置不能改变查询入口，分页和回显仍正常。
+const selectorSource = readFileSync(new URL('../../components/EntitySelector.vue', import.meta.url), 'utf8')
+function selectorMethod(name, dependencies) {
+  const start = selectorSource.indexOf(`async function ${name}(`)
+  const end = selectorSource.indexOf('\n}\n', start) + 2
+  assert.ok(start >= 0 && end > start, `未找到选择器方法 ${name}`)
+  return new Function(...Object.keys(dependencies), `${selectorSource.slice(start, end)}\nreturn ${name}`)(...Object.values(dependencies))
+}
+for (const entityType of ['CUSTOM', 'USER', 'DEPT', 'ROLE', 'GROUP']) {
+  const calls = []
+  const tableData = ref([])
+  const loading = ref(false)
+  const total = ref(0)
+  let restored = 0
+  const dependencies = {
+    props: { entityType, apiUrl: 'https://legacy.example.invalid/query' },
+    effectiveEntityCode: ref('project'), effectiveRefEntityId: ref(''),
+    loading, tableData, total, pageNum: ref(2), pageSize: ref(20), searchKeyword: ref('项目 & A'),
+    request: { get: async url => { calls.push(url); return { records: [projectA], total: 35 } } },
+    ElMessage: { warning: assert.fail, error: assert.fail },
+    restoreCurrentPageSelection: async () => { restored += 1 }
+  }
+  await selectorMethod('loadData', dependencies)()
+  assert.equal(calls.length, 1)
+  const query = new URL(calls[0], 'http://localhost')
+  assert.equal(query.pathname, `/entity-selector/${entityType}`)
+  assert.equal(query.searchParams.get('pageNum'), '2')
+  assert.equal(query.searchParams.get('pageSize'), '20')
+  assert.equal(query.searchParams.get('keyword'), '项目 & A')
+  assert.equal(query.searchParams.get('entityCode'), entityType === 'CUSTOM' ? 'project' : null)
+  assert.deepEqual(tableData.value, [projectA])
+  assert.equal(total.value, 35)
+  assert.equal(loading.value, false)
+  assert.equal(restored, 1)
+  if (entityType === 'CUSTOM') {
+    dependencies.effectiveEntityCode.value = ''
+    dependencies.effectiveRefEntityId.value = 'entity-123'
+    await selectorMethod('loadData', dependencies)()
+    assert.equal(new URL(calls[1], 'http://localhost').searchParams.get('refEntityId'), 'entity-123')
+    dependencies.effectiveRefEntityId.value = ''
+    let warned = false
+    dependencies.ElMessage.warning = () => { warned = true }
+    await selectorMethod('loadData', dependencies)()
+    assert.equal(warned, true)
+    assert.equal(calls.length, 2, '缺少目标实体时不能发起无范围查询')
+  }
+}
+
+// 已发布选择列表仍由列表运行时加载；打开时保留已选值，不再额外查询默认列表。
+let selectedLoads = 0
+const dialogVisible = ref(false)
+const selectedRows = ref([])
+await selectorMethod('openSelector', {
+  props: { disabled: false }, dialogVisible, selectedRows,
+  selectedList: ref([projectA]), normalizeRecordSelection,
+  useUnifiedList: ref(true), loadSelectedData: async () => { selectedLoads += 1 },
+  loadData: assert.fail, pageNum: ref(2), searchKeyword: ref('')
+})()
+assert.equal(dialogVisible.value, true)
+assert.equal(selectedLoads, 1)
+assert.deepEqual(selectedRows.value, [projectA])
 
 console.log('entity record selection tests passed')

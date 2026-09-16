@@ -816,7 +816,15 @@
                     {{ hasEventConfig ? '已配置' : '未配置' }}
                   </el-tag>
                 </template>
-                <el-button plain :disabled="!isFieldNode" @click="openEventConfig">配置前端脚本</el-button>
+                <div class="field-script-overview">
+                  <el-button plain :disabled="!isFieldNode" @click="openEventConfig">配置前端脚本</el-button>
+                  <div v-if="configuredScriptEvents.length" class="field-script-overview__events" aria-label="已配置的前端事件">
+                    <el-tag v-for="event in configuredScriptEvents" :key="event.name" effect="plain">
+                      {{ event.label }}
+                    </el-tag>
+                  </div>
+                  <span v-else class="field-script-overview__empty">暂未配置事件</span>
+                </div>
               </SettingsSection>
 
               <SettingsSection
@@ -1911,7 +1919,13 @@ const selectedNodeInterfaces = computed(() =>
 
 // 草稿根属性和已保存的 componentProps.events 使用相同读取规则。
 const currentEventValues = computed(() => readFieldScripts(currentEventField.value))
-const hasEventConfig = computed(() => Object.keys(readFieldScripts(selectedField.value)).length > 0)
+const scriptEventLabels = { onInput: '输入中', onChange: '值变化', onBlur: '失焦', onFocus: '聚焦' }
+// 概览与编辑器共用读取规则，仅展示包含有效脚本的事件名称，不展示脚本内容。
+const configuredScriptEvents = computed(() => Object.keys(readFieldScripts(selectedField.value)).map(name => ({
+  name,
+  label: scriptEventLabels[name] ? `${scriptEventLabels[name]}（${name}）` : name
+})))
+const hasEventConfig = computed(() => configuredScriptEvents.value.length > 0)
 
 provide(FORM_DESIGNER_CONTEXT_KEY, {
   form, isCustomRendererMode,
@@ -3211,7 +3225,6 @@ function restoreFieldConfig(field) {
     if (compProps.refConfig) {
       field.refEntityType = compProps.refConfig.refEntityType || ''
       field.refEntityId = String(compProps.refConfig.refEntityId || '')
-      field.apiUrl = compProps.refConfig.apiUrl || ''
       field.refEntityCode = compProps.refConfig.entityCode || ''
       field.refListKey = compProps.refConfig.listKey || ''
     }
@@ -3302,8 +3315,7 @@ function buildSerializedFieldComponentProps(field) {
         refEntityType: field.refEntityType || '',
         refEntityId: field.refEntityId || '',
         entityCode: field.refEntityCode || '',
-        listKey: field.refListKey || '',
-        apiUrl: ''
+        listKey: field.refListKey || ''
       }
     }
 
@@ -3439,9 +3451,6 @@ function addField(entityField) {
   }
   if (entityField.refListKey) {
     newField.refListKey = entityField.refListKey
-  }
-  if (entityField.apiUrl) {
-    newField.apiUrl = entityField.apiUrl
   }
   if (entityField.childEntityId) {
     newField.childEntityId = String(entityField.childEntityId)
@@ -5148,6 +5157,36 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 18px;
   text-align: left;
+}
+
+.field-script-overview,
+.field-script-overview__events {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field-script-overview {
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.field-script-overview__events {
+  min-width: 0;
+}
+
+.field-script-overview__events :deep(.el-tag) {
+  max-width: 100%;
+  height: auto;
+  line-height: 22px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.field-script-overview__empty {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .node-settings-tabs {

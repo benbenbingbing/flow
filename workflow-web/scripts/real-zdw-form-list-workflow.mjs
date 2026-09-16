@@ -467,8 +467,7 @@ function fieldComponentProps(field, child) {
           refEntityType: field.refEntityType || type,
           refEntityId: '',
           entityCode: '',
-          listKey: '',
-          apiUrl: ''
+          listKey: ''
         }
       }
     case 'REFERENCE':
@@ -478,8 +477,7 @@ function fieldComponentProps(field, child) {
           refEntityType: field.refEntityType || 'CUSTOM',
           refEntityId: field.refEntityId || child.id,
           entityCode: child.entityCode,
-          listKey: 'list001',
-          apiUrl: ''
+          listKey: 'list001'
         }
       }
     default:

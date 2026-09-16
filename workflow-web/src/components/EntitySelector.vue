@@ -253,11 +253,6 @@ const props = defineProps({
     type: String,
     default: null
   },
-  // 数据接口URL（用于定制返回数据范围）
-  apiUrl: {
-    type: String,
-    default: null
-  },
   listKey: {
     type: String,
     default: ''
@@ -493,16 +488,8 @@ async function loadData() {
       }
     }
     
-    // 如果配置了自定义接口，使用接口获取数据
-    let url = `/api/entity-selector/${props.entityType}?${params}`
-    if (props.apiUrl) {
-      url = `${props.apiUrl}?${params}`
-    }
-    
-    const requestUrl = /^https?:\/\//i.test(url)
-      ? url
-      : url.replace(/^\/api(?=\/)/, '')
-    const result = await request.get(requestUrl)
+    // 默认选择器统一走实体查询；业务筛选范围由已发布的选择列表配置。
+    const result = await request.get(`/entity-selector/${props.entityType}?${params}`)
     tableData.value = result.records || result.list || []
     total.value = result.total || 0
     await restoreCurrentPageSelection()

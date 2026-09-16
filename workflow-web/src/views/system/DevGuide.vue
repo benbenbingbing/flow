@@ -123,7 +123,7 @@ Content-Type: application/json
             <li>属性抽屉默认关闭；选中画布节点后才从右侧打开。节点 ID、nodeKey、revision、orderKey、发布快照版本、bindingType 与 bindingRef 只能作为只读摘要展示。</li>
             <li>扩展 `configSchema` 的每个可编辑项应标注 `group: 'common' | 'advanced'`；也可使用自定义 group 对象。`order` 控制组内稳定顺序，`priority` 在未指定 order 时决定优先级，`advanced: true` 让低频或高风险组默认折叠，`visibleWhen` 使用结构化条件按当前配置显隐。未分组的历史 Schema 自动归入常用区。</li>
             <li>平台内置与扩展属性面板统一复用 `SettingsSection` 语义：常用区使用 `primary` 且不可折叠，高级区使用 `defaultExpanded=false`；不要为每个字段再创建一层折叠，也不要自行实现不同的展开状态和视觉规范。</li>
-            <li>`visibleWhen` 只能描述字段路径、equals/notEquals、in/notIn、includes、exists、truthy/falsy 以及 all/any/not 等结构化条件；来自服务端或迁移包的 Schema 不得携带可执行脚本。生产数据源必须引用 Provider，历史 apiUrl 只允许作为兼容数据迁移。</li>
+            <li>`visibleWhen` 只能描述字段路径、equals/notEquals、in/notIn、includes、exists、truthy/falsy 以及 all/any/not 等结构化条件；来自服务端或迁移包的 Schema 不得携带可执行脚本。生产数据源必须引用 Provider，实体引用的筛选范围通过已发布的选择列表配置。</li>
             <li>父容器是受限结构属性：TAB 只能选择 TAB_SET；TAB_SET 只直接接受 TAB；其他节点可位于根节点或 SECTION、GRID、TAB、COLLAPSE、SUB_FORM、REPEATER，不能直接放入 TAB_SET。</li>
             <li>创建与 PATCH 必须读取同一份 nodeType Schema 和服务端白名单；新增、编辑、整包 diff/upsert 不得出现不同的属性能力或绕过路径。</li>
             <li>历史节点编辑保存时按当前 Schema 归一化：不兼容的活动 props、rules、组件参数和数据源绑定必须清除，必要原值仅进入 `legacyProps` 等非活动兼容区，运行时和发布快照不得继续消费。</li>

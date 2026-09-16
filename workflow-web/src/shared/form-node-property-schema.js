@@ -519,10 +519,28 @@ function buildSubFormProps(field, componentProps) {
   })
 }
 
+/**
+ * 保存时清除已下线的自由接口配置，即使用户未打开引用或联动面板也不会再次写回。
+ * 仅处理平台拥有的配置层级，保留扩展组件的业务参数，并且不修改输入草稿。
+ */
+function omitRetiredFieldApiConfig(componentProps) {
+  if (componentProps.refConfig && typeof componentProps.refConfig === 'object') {
+    componentProps.refConfig = { ...componentProps.refConfig }
+    delete componentProps.refConfig.apiUrl
+    delete componentProps.refConfig.apiParams
+    delete componentProps.refConfig.apiResultField
+  }
+  if (componentProps.linkageRules && typeof componentProps.linkageRules === 'object') {
+    componentProps.linkageRules = { ...componentProps.linkageRules }
+    delete componentProps.linkageRules.valueApi
+  }
+  return componentProps
+}
+
 export function buildFormNodeProps(field, componentPropsValue = {}) {
   const nodeType = normalizeFormNodeType(field?.nodeType || field?.fieldType)
   const nodeSchema = getFormNodePropertySchema(nodeType)
-  const parsedComponentProps = parseObject(componentPropsValue)
+  const parsedComponentProps = omitRetiredFieldApiConfig(parseObject(componentPropsValue))
   const componentProps = nodeType === 'TEXT'
     ? extractFormNodeComponentConfig(nodeType, parsedComponentProps)
     : parsedComponentProps

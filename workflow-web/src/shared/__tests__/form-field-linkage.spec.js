@@ -8,16 +8,28 @@ import { readFieldStateConditions, updateFieldStateCondition } from '../form-fie
 import { buildFormNodePayload } from '../form-node-property-schema.js'
 
 const condition = createFlowConditionConfig(createFlowConditionGroup('AND', [{ type: 'CONDITION', property: 'amount', operator: '>', value: '0' }]))
+// 所有历史存储形态均忽略废弃接口，仍保留可执行的公式与映射，且读取不修改快照。
+const storedRules = { valueApi: { url: '/legacy' }, valueFormula: '${amount} * 2' }
+for (const legacyField of [
+  { ...storedRules },
+  { linkageRules: storedRules },
+  { componentProps: { linkageRules: storedRules } },
+  { componentProps: JSON.stringify({ linkageRules: storedRules }) }
+]) {
+  const original = JSON.stringify(legacyField)
+  assert.deepEqual(LinkageEngine.getFieldLinkageRules(legacyField), { valueFormula: '${amount} * 2' })
+  assert.equal(JSON.stringify(legacyField), original)
+}
 const untouched = {
   visibilityConditionConfig: condition,
   visibilityRule: '${amount > 0}',
-  valueApi: { url: '/legacy' },
   attachmentItemRequiredRules: { version: 1, items: [{ itemKey: 'receipt', requiredConditionConfig: condition }] }
 }
 const field = {
   id: 'total', nodeType: 'FIELD', fieldId: 'total', fieldCode: 'total', fieldType: 'DECIMAL',
+  valueApi: { url: '/legacy-root' },
   componentProps: JSON.stringify({ placeholder: 'total', linkageRules: {
-    ...untouched, calculationFormula: '${amount} * 2', calculationPrecision: 0, calculationEditable: true
+    ...untouched, valueApi: { url: '/legacy' }, calculationFormula: '${amount} * 2', calculationPrecision: 0, calculationEditable: true
   } })
 }
 const original = JSON.stringify(field)
@@ -37,6 +49,8 @@ try {
   assert.equal(saved.linkageRules.calculationPrecision, 0)
   assert.equal(saved.linkageRules.calculationEditable, true)
   assert.equal(saved.placeholder, 'total')
+  assert.equal(saved.linkageRules.valueApi, undefined, '显式编辑时清除废弃接口规则')
+  assert.equal(selected.value.valueApi, undefined, '根属性副本也不能继续透传')
   for (const [key, value] of Object.entries(untouched)) assert.deepEqual(saved.linkageRules[key], value)
   assert.equal(LinkageEngine.processAllLinkages([selected.value], { amount: 4 }).values.total, 12)
   const payload = buildFormNodePayload(selected.value, { componentProps: saved })
@@ -76,7 +90,7 @@ try {
   assert.equal('calculationFormula' in saved.linkageRules, false)
   assert.ok(saved.linkageRules.optionsLinkage)
   assert.ok(saved.linkageRules.requiredConditionConfig)
-  assert.ok(saved.linkageRules.valueApi)
+  assert.equal(saved.linkageRules.valueApi, undefined)
 
   // 外部回填会重建输入，禁用组件不会改写节点数据。
   patchFieldLinkageRules(current, ['valueFormula'], { valueFormula: '${amount} + 1' })

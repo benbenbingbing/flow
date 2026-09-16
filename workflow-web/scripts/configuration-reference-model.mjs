@@ -86,10 +86,9 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^advancedButton\\.',
     '^row\\.(enabled|key|label|modes|perm|placement|slotKey|sort)$'
   ]),
-  source('src/components/LinkageConfigPanel.vue', '实体配置', '表单字段联动', [
-    '^config\\.',
-    '^condition\\.',
-    '^rule\\.'
+  source('src/components/form-designer/FormNodeValueLinkage.vue', '实体配置', '表单字段联动', [
+    '^model\\.',
+    '^row\\.'
   ]),
   source('src/components/EventConfigPanel.vue', '实体配置', '旧字段脚本事件（受限）', [
     '^eventCodes(?:\\.|\\[)',
@@ -195,9 +194,6 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
   ],
   'src/components/FormButtonConfigPanel.vue': [
     '^activeMode$', '^advancedVisible$'
-  ],
-  'src/components/LinkageConfigPanel.vue': [
-    '^activeTab$'
   ],
   'src/components/EventConfigPanel.vue': [
     '^dialogVisible$', '^activeTab$', '^showAddEvent$'
@@ -701,7 +697,7 @@ const DEFAULT_LOCATION_BY_AREA = Object.freeze({
   '初始化与数据处理': '实体配置-表单-编辑-表单设置-初始化与数据处理-初始化数据',
   '表单按钮': '实体配置-表单-编辑-表单设置-按钮与操作',
   '表单操作栏结构': '实体配置-表单-编辑-表单设置-按钮与操作',
-  '表单字段联动': '实体配置-表单-编辑-字段属性-交互与规则',
+  '表单字段联动': '实体配置-表单-编辑-字段属性-联动与事件-值与计算',
   '表单字段校验': '实体配置-表单-编辑-字段属性-校验规则',
   '表单字段运行模式权限': '实体配置-表单-编辑-字段属性-模式权限',
   '旧字段脚本事件（受限）': '实体配置-表单-编辑-字段属性-事件',
@@ -773,13 +769,6 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^(form\\.|viewConfig\\.labelWidth$)', '实体配置-表单-编辑-表单设置-基本与布局'),
   locationRule('src/components/form-designer/FormInputParameterEditor.vue', '^row\\.', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
   locationRule('src/components/form-designer/FormNodeDataSettings.vue', '^selectedParameterContract$', '实体配置-表单-编辑-字段属性-数据与关系-参数传递'),
-
-  locationRule('src/components/LinkageConfigPanel.vue', '^(config\\.visibility|condition\\.)', '实体配置-表单-编辑-字段属性-交互与规则-显示条件'),
-  locationRule('src/components/LinkageConfigPanel.vue', '^config\\.disabled', '实体配置-表单-编辑-字段属性-交互与规则-禁用条件'),
-  locationRule('src/components/LinkageConfigPanel.vue', '^config\\.required', '实体配置-表单-编辑-字段属性-交互与规则-必填条件'),
-  locationRule('src/components/LinkageConfigPanel.vue', '^(config\\.(value|sourceField|api)|rule\\.(sourceValue|targetValue))', '实体配置-表单-编辑-字段属性-交互与规则-值联动'),
-  locationRule('src/components/LinkageConfigPanel.vue', '^(config\\.options|rule\\.(dependValue|allowedOptions))', '实体配置-表单-编辑-字段属性-交互与规则-选项联动'),
-  locationRule('src/components/LinkageConfigPanel.vue', '^config\\.calculation', '实体配置-表单-编辑-字段属性-交互与规则-自动计算'),
 
   locationRule('src/views/system/EntityVersionManagement.vue', '^draft\\.enabled$', '实体配置-数据版本-策略设置'),
   locationRule('src/views/system/EntityVersionManagement.vue', '^triggerEditor\\.', '实体配置-数据版本-生成时机'),
@@ -928,6 +917,26 @@ const formNodeProperty = (
 })
 
 export const STRUCTURED_CONFIGURATIONS = Object.freeze([
+  ...[
+    ['visibilityConditionConfig', '条件显示', '基础与布局', '条件成立时显示当前字段。'],
+    ['disabledConditionConfig', '条件禁用', '基础与布局', '条件成立时禁用当前字段。'],
+    ['requiredConditionConfig', '条件必填', '基础与布局', '条件成立且字段为空时阻止提交。']
+  ].map(([key, label, tab, effect]) => structured({
+    id: `structured-field-linkage-${key}`,
+    domain: '实体配置',
+    area: '表单字段联动',
+    label,
+    location: `实体配置-表单-编辑-字段属性-${tab}-条件状态`,
+    binding: `linkageRules.${key}`,
+    meaning: `配置控制字段“${label}”状态的条件组。`,
+    configureWhen: '字段状态需要根据其他字段值动态变化时配置。',
+    skipWhen: '字段状态固定或沿用默认状态时无需配置。',
+    example: 'amount > 1000',
+    expectedEffect: effect,
+    source: 'src/shared/form-field-state-conditions.js:13',
+    sourceToken: key,
+    verification: 'src/shared/__tests__/form-field-state-conditions.spec.js'
+  })),
   formNodeProperty('label', '节点标签', '设置分组、页签、字段或折叠面板的显示名称。', '基本信息', '画布、预览和运行时显示该标签。'),
   formNodeProperty('parentId', '父容器', '设置节点所属的容器或表单根节点。', 'section-basic', '节点移动到目标容器，并受节点层级规则校验。'),
   formNodeProperty('showPadding', '保留内边距', '控制父容器是否在内容与容器边缘之间保留默认留白。', false, '关闭后子节点贴合当前容器，减少多层嵌套产生的重复留白。', 'SECTION、GRID、TAB_SET、TAB、COLLAPSE、SUB_FORM、REPEATER'),
@@ -1253,9 +1262,6 @@ const KEY_GUIDANCE = Object.freeze({
   disabledEnabled: ['启用字段基于条件动态变为只读或禁用。', true, '条件成立时用户不能编辑该字段，现有值仍可展示和提交。'],
   requiredEnabled: ['启用字段基于条件动态变为必填。', true, '条件成立且字段为空时，表单校验阻止提交。'],
   valueLinkageEnabled: ['启用其他字段变化后自动计算或加载当前字段值。', true, '来源字段变化时按所选来源刷新当前字段。'],
-  valueSourceType: ['选择联动值来自字段、公式还是历史兼容接口。', 'field', '运行时按来源读取字段、计算公式或调用兼容接口。'],
-  apiUrl: ['设置历史值联动接口的相对地址。', '/api/region/getByParentId', '来源字段变化时调用该兼容接口；新增配置优先使用统一数据源。'],
-  apiParams: ['配置历史值联动接口请求参数及字段模板。', '{"parentId":"${sourceField}"}', '调用前用当前表单值替换模板并构造请求参数。'],
   calculationEnabled: ['启用当前字段的公式计算。', true, '依赖字段变化时重新计算，并把结果写入当前字段。'],
   calculationEditable: ['决定用户能否手工覆盖公式计算结果。', false, '关闭后计算字段只读；开启后用户可在计算值基础上修改。'],
   optionsLinkageEnabled: ['启用下拉、单选或多选字段的动态选项过滤。', true, '来源字段变化时按匹配规则重新计算可选项。'],
@@ -1354,7 +1360,6 @@ const KEY_GUIDANCE = Object.freeze({
   childFormReleaseId: ['锁定子表单节点使用的已发布版本 ID。', '30001', '父表单发布快照持续使用该版本，直到显式升级。'],
   templateId: ['选择当前字段、列表列或按钮继承的组件模板。', 'template-10001', '发布时锁定模板版本，并合并允许的本地覆盖。'],
   sourceField: ['选择值联动读取的当前表单来源字段。', 'project_id', '来源字段变化时重新计算或加载目标字段值。'],
-  apiResultField: ['设置历史联动接口响应中要取值的路径。', 'data.managerId', '接口成功后从该路径读取结果并写入当前字段。'],
   optionsDependField: ['选择选项联动依赖的来源字段。', 'request_type', '该字段变化时重新匹配允许选项规则。'],
   selectedProcessId: ['选择流程型实体绑定的流程定义。', '2082642342048706562', '实体记录可按该流程的已发布版本发起和同步状态。'],
   fieldMode: ['选择版本节点固化全部已发布字段，还是只固化明确选择的字段。', 'ALL_PUBLISHED', '生成版本时按发布快照冻结对应字段集合，之后字段配置变化不会改写历史版本。'],
@@ -1627,23 +1632,35 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: 'STANDARD',
     expectedEffect: '普通表单发布等待流程重新发布后生效；兼容热修复可按预检范围作用于活动版本。'
   },
-  'src/components/LinkageConfigPanel.vue:condition.operator': {
-    label: '显示条件运算符',
-    meaning: '选择联动条件对来源字段执行等于、不等于、大小、包含或空值判断。',
-    example: '==',
-    expectedEffect: '来源字段变化时重新比较，结果参与当前字段显示条件计算。'
+  'src/components/form-designer/FormNodeValueLinkage.vue:model.valueEnabled': {
+    label: '启用值联动',
+    meaning: '启用其他字段变化后的值映射或公式计算。',
+    example: true,
+    expectedEffect: '来源字段变化时重新计算并更新当前字段值。'
   },
-  'src/components/LinkageConfigPanel.vue:condition.field': {
-    label: '显示条件来源字段',
-    meaning: '选择当前表单中用于控制本字段是否显示的来源字段。',
+  'src/components/form-designer/FormNodeValueLinkage.vue:model.sourceType': {
+    label: '数据来源',
+    meaning: '选择通过源字段值映射还是计算公式获取当前字段值。',
+    example: 'field',
+    expectedEffect: '字段值方式按映射规则匹配，公式方式计算表达式结果。'
+  },
+  'src/components/form-designer/FormNodeValueLinkage.vue:model.formula': {
+    label: '计算公式',
+    meaning: '使用其他字段值和算术运算计算当前字段值。',
+    example: '${quantity} * ${price}',
+    expectedEffect: '数量或单价变化时重新计算当前字段。'
+  },
+  'src/components/form-designer/FormNodeValueLinkage.vue:model.optionsEnabled': {
+    label: '启用选项联动',
+    meaning: '启用选择类组件基于其他字段值的选项过滤。',
+    example: true,
+    expectedEffect: '依赖字段变化时重新匹配允许选项集合。'
+  },
+  'src/components/form-designer/FormNodeValueLinkage.vue:model.dependsOn': {
+    label: '依赖字段',
+    meaning: '选择选项过滤依赖的来源字段。',
     example: 'request_type',
-    expectedEffect: 'request_type 变化时重新计算该显示条件，但不会改写来源字段。'
-  },
-  'src/components/LinkageConfigPanel.vue:condition.value': {
-    label: '显示条件比较值',
-    meaning: '设置显示条件中与来源字段比较的目标值；为空和不为空运算符不使用该值。',
-    example: 'CHANGE',
-    expectedEffect: '来源字段 request_type 等于 CHANGE 时该条件成立，并参与字段可见性计算。'
+    expectedEffect: '该字段变化时重新匹配过滤规则。'
   },
   'src/components/ListButtonConfigPanel.vue:row.type': {
     label: '列表按钮类型',
@@ -2000,7 +2017,7 @@ const EVIDENCE_BY_AREA = Object.freeze({
   '表单节点数据绑定': 'src/shared/__tests__/form-node-property-schema.spec.js；workflow-entity EntityFormNodeServicePropertyPolicyTest',
   '初始化与数据处理': 'src/__tests__/runtime-integration.spec.js；workflow-entity UiDataSourceProviderPolicyTest / UiInterfaceExtensionServiceRevisionTest',
   '表单按钮': 'src/shared/__tests__/form-actions.spec.js；workflow-entity EntityFormActionConfigPolicyTest',
-  '表单字段联动': 'src/components/form-fields/composables/__tests__/useFormField.spec.js',
+  '表单字段联动': 'src/shared/__tests__/form-field-linkage.spec.js、src/shared/__tests__/form-field-state-conditions.spec.js',
   '实体选择后回填': 'src/shared/__tests__/entity-selection-mapping.spec.js',
   '表单与列表发布': 'workflow-app UiConfigReleaseServiceTest',
   '实体数据版本': 'workflow-entity EntityVersionConfigurationServiceV2Test / EntityRecordSnapshotServiceV2Test / EntityRecordVersionComparisonServiceTest',

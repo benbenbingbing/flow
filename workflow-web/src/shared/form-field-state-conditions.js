@@ -52,6 +52,8 @@ export function updateFieldStateCondition(field, name, state, getFieldType) {
   const definition = FIELD_STATE_CONDITIONS.find(item => item.name === name)
   if (!field || !definition) return
   const rules = { ...LinkageEngine.getFieldLinkageRules(field) }
+  // 旧自由接口规则已下线，编辑状态条件时也清理其根属性副本。
+  delete field.valueApi
   const keys = [definition.configKey, definition.expressionKey]
   keys.forEach(key => { delete rules[key] })
   if (state.enabled) {

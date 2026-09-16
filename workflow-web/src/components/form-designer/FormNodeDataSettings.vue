@@ -18,7 +18,7 @@
         <el-select
           :model-value="selectedField.refListKey" @update:model-value="isReferenceFieldNode && (selectedField.refListKey = $event)"
           clearable
-          placeholder="留空使用旧选择器"
+          placeholder="留空使用默认选择器"
           style="width: 100%"
         >
           <el-option

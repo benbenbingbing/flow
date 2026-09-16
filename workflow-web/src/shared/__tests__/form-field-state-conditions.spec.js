@@ -18,14 +18,14 @@ const root = createFlowConditionGroup('AND', [
 const fieldType = code => code === 'approved' ? 'boolean' : code === 'amount' ? 'number' : 'string'
 const otherRules = {
   valueMapping: { sourceField: 'amount', rules: [{ sourceValue: '1', targetValue: 'a' }] },
-  valueApi: { url: '/legacy' },
   optionsLinkage: { dependsOn: 'name', filterRules: { a: ['1'] } },
   calculationFormula: '${amount * 2}', calculationPrecision: 2, calculationEditable: true,
   attachmentItemRequiredRules: { version: 1, items: [{ itemKey: 'file', requiredConditionConfig: createFlowConditionConfig(root) }] }
 }
 const field = {
   id: 'a', nodeType: 'FIELD', fieldId: 'entity-a', fieldCode: 'a', fieldType: 'STRING',
-  componentProps: JSON.stringify({ showWordLimit: false, linkageRules: otherRules })
+  valueApi: { url: '/legacy-root' },
+  componentProps: JSON.stringify({ showWordLimit: false, linkageRules: { ...otherRules, valueApi: { url: '/legacy' } } })
 }
 
 const states = readFieldStateConditions(field)
@@ -34,6 +34,8 @@ states.visibility.root = root
 updateFieldStateCondition(field, 'visibility', states.visibility, fieldType)
 const saved = JSON.parse(field.componentProps)
 assert.equal(saved.showWordLimit, false)
+assert.equal(saved.linkageRules.valueApi, undefined)
+assert.equal(field.valueApi, undefined)
 for (const [key, value] of Object.entries(otherRules)) assert.deepEqual(saved.linkageRules[key], value)
 assert.equal(LinkageEngine.shouldShowField(field, { approved: true, amount: 10 }), true)
 assert.equal(LinkageEngine.shouldShowField(field, { approved: false, amount: 10 }), false)

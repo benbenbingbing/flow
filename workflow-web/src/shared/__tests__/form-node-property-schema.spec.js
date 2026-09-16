@@ -1283,4 +1283,28 @@ assert.equal(resolveFormNodeBinding({
   fieldId: 'entity-new', fieldCode: 'newField'
 }).bindingType, 'ENTITY_FIELD', '新节点仍应创建正确的实体字段绑定')
 
+// 未打开配置面板的旧节点也必须在整表保存、单节点保存时去除自由接口参数。
+const retiredApiProps = {
+  refConfig: { refEntityType: 'CUSTOM', entityCode: 'project', listKey: 'picker', apiUrl: '/legacy', apiParams: { status: 'active' }, apiResultField: 'data' },
+  linkageRules: { valueApi: { url: '/legacy-compute' }, valueFormula: '${amount} * 2', optionsLinkage: { dependsOn: 'kind' } },
+  placeholder: '请选择项目',
+  extensionParams: { apiUrl: '业务数据，不属于平台接口配置' }
+}
+const retiredApiOriginal = clone(retiredApiProps)
+for (const forPatch of [false, true]) {
+  for (const componentProps of [retiredApiProps, JSON.stringify(retiredApiProps)]) {
+    const payload = buildFormNodePayload({
+      nodeType: 'FIELD', fieldCode: 'project', fieldType: 'REFERENCE',
+      apiUrl: '/legacy-root', valueApi: { url: '/legacy-root' }
+    }, { forPatch, componentProps })
+    assert.deepEqual(payload.props.componentProps, {
+      ...retiredApiProps,
+      refConfig: { refEntityType: 'CUSTOM', entityCode: 'project', listKey: 'picker' },
+      linkageRules: { valueFormula: '${amount} * 2', optionsLinkage: { dependsOn: 'kind' } }
+    })
+    assertMissing(payload.props, ['apiUrl', 'valueApi'], '节点根属性不透传自由接口')
+  }
+}
+assert.deepEqual(retiredApiProps, retiredApiOriginal, '构建保存载荷不能修改输入草稿或扩展业务参数')
+
 console.log('form node property schema tests passed')
