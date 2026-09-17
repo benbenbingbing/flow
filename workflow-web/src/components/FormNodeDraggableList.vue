@@ -213,6 +213,19 @@ async function handleEnd() {
 }
 </script>
 
+<style scoped>
+/* 节点宽度已按 24 栅格占满一行，横向间隔由节点内部留白提供，不能再追加 gap。 */
+.root-design-drop-zone {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 12px 0;
+  min-width: 0;
+  min-height: 120px;
+}
+</style>
+
 <style>
 .form-node-drop-zone {
   min-width: 0;

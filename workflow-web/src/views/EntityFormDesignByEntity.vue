@@ -111,11 +111,6 @@
         <div class="panel-title">
           <span>表单设计（所见即所得）</span>
           <div class="layout-selector">
-            <el-radio-group v-model="form.layoutType" size="small">
-              <el-radio-button value="vertical">垂直</el-radio-button>
-              <el-radio-button value="horizontal">水平</el-radio-button>
-              <el-radio-button value="grid">网格</el-radio-button>
-            </el-radio-group>
             <el-dropdown trigger="click" @command="handleAddNodeCommand">
               <el-button type="primary" size="small" style="margin-left: 12px">
                 <el-icon><Plus /></el-icon>添加节点
@@ -1057,6 +1052,8 @@
 </template>
 
 <script setup>
+import { resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
+
 import { ref, computed, watch, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbParents } from '@/composables/useBreadcrumbParents'
@@ -1433,7 +1430,7 @@ const form = ref({
   entityId: entityId,
   formName: '',
   formKey: '',
-  layoutType: 'vertical',
+  layoutType: 'grid',
   status: 1,
   dataSourceBindingsDocument: null,
   customComponent: '',
@@ -1996,29 +1993,9 @@ function handlePreviewAction(action) {
   ElMessage.info(`预览模式不执行“${action?.label || '按钮'}”`)
 }
 
-// 表单标签宽度 - 与预览保持一致
-const formLabelWidth = computed(() => {
-  switch (form.value.layoutType) {
-    case 'horizontal':
-      return '120px'
-    case 'vertical':
-      return 'auto'
-    default:
-      return '120px'
-  }
-})
-
-// 表单标签位置 - 与预览保持一致
-const formLabelPosition = computed(() => {
-  switch (form.value.layoutType) {
-    case 'horizontal':
-      return 'right'
-    case 'vertical':
-      return 'top'
-    default:
-      return 'right'
-  }
-})
+// 标签位置和宽度共用运行时解析规则，调整后画布立即反映表单设置。
+const formLabelWidth = computed(() => resolveFormLabelWidth(form.value, viewConfig.value))
+const formLabelPosition = computed(() => resolveFormLabelPosition(form.value, viewConfig.value))
 
 // 当前选中的是否为节
 const isSelectedSection = computed(() => isSectionField(selectedField.value))
@@ -2633,7 +2610,7 @@ async function loadFormInfo({ strict = false } = {}) {
   
   try {
     const data = await getFormById(formId)
-    form.value = { ...form.value, ...data }
+    form.value = { ...form.value, ...data, layoutType: data.layoutType || 'vertical' }
     const parsedViewConfig = safeParseConfig(data.viewConfig)
     viewConfig.value = {
       labelWidth: 120,
@@ -5077,16 +5054,6 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-}
-
-.root-design-drop-zone {
-  display: flex;
-  flex: 1 1 100%;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 12px;
-  min-width: 0;
-  min-height: 120px;
 }
 
 .empty-tip {

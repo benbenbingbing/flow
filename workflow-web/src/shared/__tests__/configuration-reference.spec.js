@@ -101,14 +101,11 @@ assert.ok(
   '用户任务人工知会开关必须可配置并进入逐字段目录'
 )
 
-const formLayoutEntry = entries.find(entry =>
-  entry.area === '表单定义'
-    && entry.binding === 'form.layoutType'
-)
+const formLayoutEntry = entries.find(entry => entry.binding === 'formLabelPosition')
 assert.equal(
   formLayoutEntry?.location,
-  '实体配置-表单-编辑',
-  '表单定义中的布局类型位置应为“实体配置-表单-编辑”'
+  '实体配置-表单-编辑-表单设置-基本与布局',
+  '标签位置应收录在表单设置的基本与布局中'
 )
 assert.deepEqual(
   entries
@@ -175,8 +172,8 @@ assert.ok(
   '生成文档枚举表缺少“位置”列'
 )
 assert.ok(
-  generatedDocument.includes('| 布局类型 | 实体配置-表单-编辑 | `form.layoutType` |'),
-  '生成文档没有写入布局类型的示例位置'
+  generatedDocument.includes('| 标签位置 | 实体配置-表单-编辑-表单设置-基本与布局 | `formLabelPosition` |'),
+  '生成文档没有写入标签位置的配置入口'
 )
 for (const entry of entries) {
   assert.ok(

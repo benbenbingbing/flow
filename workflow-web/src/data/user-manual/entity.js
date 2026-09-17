@@ -597,7 +597,7 @@ export default {
               rows: [
                 { field: '表单名称', meaning: '业务显示名。', defaultLimit: '必填。', effect: '流程节点选择和预览时显示。', publish: '名称可改，流程绑定按表单 ID 不受影响。' },
                 { field: '表单标识', meaning: '稳定技术标识。', defaultLimit: '必填；以字母开头，可含字母、数字、下划线；后端还允许短横线，最大 100 字符。', effect: '用于扩展和配置迁移。', publish: '被外部组件引用后保持稳定。' },
-                { field: '布局类型', meaning: '垂直、水平或网格。', defaultLimit: '默认 vertical。', effect: '决定标签位置和字段排列。', publish: '改布局后检查移动端和长标签。' },
+                { field: '表单布局', meaning: '新建动态表单统一使用 24 栅格，在设计页按字段设置宽度。', defaultLimit: '新表单默认 grid；历史 vertical / horizontal 保留原排列。', effect: '24 格一行一个、12 格一行两个、8 格一行三个，也支持混排。', publish: '修改字段宽度后保存草稿并发布，检查窄屏和长标签。' },
                 { field: '状态', meaning: '启用或禁用。', defaultLimit: '默认启用 1。', effect: '禁用表单不应作为新运行节点选择。', publish: '流程已绑定表单时不要直接禁用。' },
                 { field: '描述', meaning: '说明使用场景。', defaultLimit: '可选。', effect: '便于区分新增、审批、查看等表单。', publish: '建议注明适用节点和角色。' },
                 { field: 'revision', meaning: '表单顶层草稿的乐观锁版本。', defaultLimit: '由系统维护；修改名称、布局、默认状态时必须携带 expectedRevision。', effect: '避免两个管理员互相覆盖。', publish: '409 冲突时先对比服务器当前值，再决定重试或放弃本地修改。' }
@@ -683,16 +683,17 @@ export default {
                 { field: '递归画布', meaning: '容器和内容节点按 parentId 组成树；画布用“Tab 集合 / Tab 页”“栅格容器”等轻量结构标题区分层级，不展示技术标签。', defaultLimit: '最大嵌套深度 8 层；不显示序号、nodeType、revision 或父级 ID 等技术元信息。', effect: '区块、栅格、Tab、折叠面板、子表和明细表可以递归组合；选中任一节点后可在属性抽屉移动到合法父容器。', publish: '保存和发布都会拒绝非法父子类型、循环引用、孤儿节点和移动整棵子树后超过 8 层的结构。' },
                 { field: '流程详情页签', meaning: '发布表单的根级 TAB_SET 在实体查看、编辑和审批弹窗中提升为外层页签。', defaultLimit: '只提升根级 TAB_SET；区块、栅格或 Tab 页内部的嵌套 TAB_SET 继续在原位置递归显示。', effect: '自定义表单页签与流程图、审批历史、动作执行记录处于同一页签栏，不再套在“基本信息”里面。', publish: '页签使用稳定 nodeId 定位；调整标题或顺序发布后生效，不改变字段绑定和流程历史快照。' },
                 { field: '节点拖拽', meaning: '悬停或选中节点后，拖拽右上角手柄调整同级顺序，或移动到区块、栅格、Tab 页、折叠面板、子表和明细表等兼容容器。Tab 页使用 Tab 集合内的页签拖拽手柄。', defaultLimit: 'TAB 只能进入 TAB_SET；普通节点不能直接进入 TAB_SET；禁止放入自身、后代或形成超过 8 层的结构。排序保存期间暂时禁用再次拖拽。', effect: '已保存节点立即通过独立排序接口携带 expectedRevision 写入草稿；未保存节点先更新本地树，点击“保存草稿”后落库。失败或 409 时重新加载服务器节点和 revision。', publish: '拖拽只修改草稿位置，不影响当前激活发布版本；发布前应在草稿预览中核对嵌套布局。' },
-                { field: '表单设置三页签', meaning: '“表单设置”统一收纳基本与布局、按钮与操作、初始化与数据处理。', defaultLimit: '关闭抽屉不清除编辑值；布局按钮和设置页读写同一个 layoutType。', effect: '表单身份、默认状态、按钮、生命周期数据源和事件不再散落在画布顶部；渲染方式及扩展配置保留在表单设计工作区。', publish: '只调整编辑入口，继续保存原 viewConfig、数据源绑定、事件绑定和扩展字段。' },
+                { field: '表单设置三页签', meaning: '“表单设置”统一收纳基本与布局、按钮与操作、初始化与数据处理。', defaultLimit: '关闭抽屉不清除编辑值；标签位置和宽度统一保存在 viewConfig 中。', effect: '表单身份、默认状态、按钮、生命周期数据源和事件不再散落在画布顶部；渲染方式及扩展配置保留在表单设计工作区。', publish: '只调整编辑入口，继续保存原 viewConfig、数据源绑定、事件绑定和扩展字段。' },
                 { field: '节点属性抽屉', meaning: '点击画布节点后从右侧打开属性配置；顶部只读展示名称、类型、绑定、编码、父级和保存状态。', defaultLimit: '关闭抽屉不会清除当前选中节点或未保存编辑值。', effect: '抽屉底部只保存当前节点；页面顶部只保存全部草稿，两个入口职责分离。', publish: '保存的是草稿；关闭抽屉或预览不会发布。' },
                 { field: '节点属性页签', meaning: '属性按“基础与布局、数据校验、联动与事件、子页面、数据与扩展”组织。', defaultLimit: '所有配置项保持显示，不适用的配置置灰；已有兼容配置继续保留。', effect: '基础页维护默认值和条件状态；联动页直接维护值、选项和事件；子页面维护子表单、参数传递和子列表；数据与扩展维护引用选择、数据源、模板和组件扩展。', publish: '分组和编辑方式不改变草稿、发布快照或运行时优先级。' },
                 { field: '稳定节点 ID', meaning: '每个容器、字段和展示项都有独立 ID。', defaultLimit: '创建后不随排序、改名或发布变化。', effect: '属性面板、模板覆盖、diff 和并发控制都精确定位单项。', publish: '不要使用数组下标或字段编码替代 nodeId。' },
                 { field: '节点绑定', meaning: '绑定实体字段、实体关系、计算值、运行上下文或不绑定数据。', defaultLimit: '按 nodeType 限定合法绑定；历史 RELATION 缺少 bindingRef 时先迁移修复，普通编辑不会自动解除绑定。', effect: '布局节点和文本节点无需伪造实体字段。', publish: '实体字段或关系不存在时发布失败。' },
-                { field: '统一栅格布局', meaning: '垂直布局默认每项 24 栅格，水平布局默认每项 12 栅格，网格布局按节点 gridSpan 排列。', defaultLimit: 'gridSpan 范围 1–24；兼容历史 span。', effect: '显式 GRID 容器优先决定其子节点排列，设计画布、草稿预览和发布运行时使用同一规则。', publish: '修改跨度后检查窄屏、长标签及嵌套 GRID。' },
+                { field: '统一栅格布局', meaning: '新表单按节点 gridSpan 排列；历史垂直表单保持每项 24 格，历史水平表单保持每项 12 格。', defaultLimit: 'gridSpan 范围 1–24；兼容历史 span。', effect: '显式 GRID 容器优先决定其子节点排列，设计画布、草稿预览和发布运行时使用同一规则。', publish: '修改跨度后检查窄屏、长标签及嵌套 GRID。' },
                 { field: '草稿预览', meaning: '预览读取当前草稿节点树和草稿数据源绑定。', defaultLimit: '默认动态表单优先递归渲染节点树；旧扁平表单保留兼容回退。', effect: 'SECTION、GRID、TAB_SET、TAB、COLLAPSE、TEXT、FIELD、SUB_FORM、REPEATER、ACTION_SLOT 的结构与运行时一致。', publish: '预览不影响当前激活 release，也不能代替真实角色和权限验证。' },
                 { field: '自定义组件', meaning: '使用已注册的自定义表单组件替代默认动态表单。', defaultLimit: '组件名必须同时存在前端注册和服务端扩展清单；扩展可面向全部实体，或指定一个、多个已发布的动态实体。', effect: '运行时整体表单由扩展组件渲染，并锁定实现版本与配置快照版本。', publish: '扩展未登记、已禁用、实体不在适用范围内、版本或快照协议不匹配时禁止发布。' },
                 { field: '扩展清单', meaning: '登记 FORM/NODE/FIELD/LIST 扩展的注册名、实现版本、快照版本、兼容范围和 Schema。', defaultLimit: '同类型、注册名和版本唯一；修改必须携带 revision。', effect: '设计器按目标环境真实 manifest 锁定版本。', publish: '清单不会传输可执行代码，目标环境仍须先部署对应扩展。' },
-                { field: '标签宽度', meaning: '动态表单标签宽度。', defaultLimit: '60–240，默认 120。', effect: '影响水平和网格布局对齐。', publish: '长标签需要实际预览。' },
+                { field: '标签位置', meaning: '在 viewConfig.labelPosition 中独立配置顶部、左对齐或右对齐。', defaultLimit: '新表单默认右对齐；历史配置缺省时沿用原布局位置。', effect: '改变标签位置，不改变字段的栅格宽度。', publish: '保存表单草稿并发布后生效。' },
+                { field: '标签宽度', meaning: 'viewConfig.labelWidth 控制整张表单的标签区域宽度。', defaultLimit: '60–240 px，默认 120；顶部标签时禁用且保留原值。', effect: '左对齐、右对齐时控制标签与输入框的间距，画布和运行时同步。', publish: '长标签需要实际预览。' },
                 { field: '组件参数', meaning: '按自定义组件 configSchema 生成结构化参数。', defaultLimit: '仅组件声明 schema 时显示。', effect: '作为 viewConfig.customComponentProps 传入组件。', publish: '目标环境组件版本必须支持相同参数。' }
               ]
             }

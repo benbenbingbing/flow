@@ -38,13 +38,6 @@
         <el-table-column type="index" width="50" />
         <el-table-column prop="formName" label="表单名称" min-width="150" />
         <el-table-column prop="formKey" label="表单标识" min-width="150" />
-        <el-table-column prop="layoutType" label="布局" width="100">
-          <template #default="{ row }">
-            <el-tag v-if="row.layoutType === 'vertical'">垂直</el-tag>
-            <el-tag v-else-if="row.layoutType === 'horizontal'" type="success">水平</el-tag>
-            <el-tag v-else-if="row.layoutType === 'grid'" type="warning">网格</el-tag>
-          </template>
-        </el-table-column>
         <el-table-column prop="isDefault" label="默认表单" width="100">
           <template #default="{ row }">
             <el-tag v-if="row.isDefault" type="success">默认</el-tag>
@@ -159,13 +152,6 @@
             <div class="field-help">组件参数在设计页中配置。</div>
           </el-form-item>
         </template>
-        <el-form-item v-else label="布局类型">
-          <el-radio-group v-model="form.layoutType">
-            <el-radio value="vertical">垂直</el-radio>
-            <el-radio value="horizontal">水平</el-radio>
-            <el-radio value="grid">网格</el-radio>
-          </el-radio-group>
-        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">启用</el-radio>
@@ -291,7 +277,7 @@ const form = reactive({
   entityId: entityId,
   formName: '',
   formKey: '',
-  layoutType: 'vertical',
+  layoutType: 'grid',
   status: 1,
   description: '',
   revision: null,
@@ -379,6 +365,8 @@ async function handleEdit(row) {
     for (const key of Object.keys(form)) {
       if (current[key] !== undefined) form[key] = current[key]
     }
+    // 编辑历史配置时不能继承新建表单的 grid 默认值。
+    form.layoutType = current.layoutType || 'vertical'
     formRendererMode.value = isSystemEntity.value
       ? FORM_RENDERER_MODE_DEFAULT
       : resolveFormRendererMode(form.customComponent)
@@ -580,7 +568,7 @@ function resetForm() {
   form.entityId = entityId
   form.formName = ''
   form.formKey = ''
-  form.layoutType = 'vertical'
+  form.layoutType = 'grid'
   form.status = 1
   form.description = ''
   form.revision = null

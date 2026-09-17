@@ -37,6 +37,8 @@
 </template>
 
 <script setup>
+import { resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
+
 import { ref, computed, watch } from 'vue'
 import FormFieldRenderer from './FormFieldRenderer.vue'
 import { evaluateExpression, formatCalcResult } from '@/utils/calcEngine'
@@ -108,29 +110,9 @@ const sortedFields = computed(() => {
   return [...fields].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 })
 
-// 标签位置
-const labelPosition = computed(() => {
-  switch (props.form?.layoutType) {
-    case 'horizontal':
-      return 'right'
-    case 'vertical':
-      return 'top'
-    default:
-      return 'right'
-  }
-})
-
-// 标签宽度
-const labelWidth = computed(() => {
-  switch (props.form?.layoutType) {
-    case 'horizontal':
-      return '120px'
-    case 'vertical':
-      return 'auto'
-    default:
-      return '120px'
-  }
-})
+// 与设计器共用标签设置；缺少新配置的历史表单继续使用原来的位置。
+const labelPosition = computed(() => resolveFormLabelPosition(props.form))
+const labelWidth = computed(() => resolveFormLabelWidth(props.form))
 
 // 获取字段样式
 function getFieldStyle(field) {

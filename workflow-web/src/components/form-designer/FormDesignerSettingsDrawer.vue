@@ -39,11 +39,11 @@
                 placeholder="说明表单的业务用途"
               />
             </el-form-item>
-            <el-form-item label="表单布局">
-              <el-segmented v-model="form.layoutType" :options="formLayoutOptions" />
+            <el-form-item label="标签位置">
+              <el-segmented v-model="formLabelPosition" :options="FORM_LABEL_POSITION_OPTIONS" />
             </el-form-item>
             <el-form-item label="标签宽度">
-              <el-input-number v-model="viewConfig.labelWidth" :min="60" :max="240" />
+              <el-input-number v-model="viewConfig.labelWidth" :min="60" :max="240" :disabled="formLabelPosition === 'top'" />
               <span class="field-unit">px</span>
             </el-form-item>
             <el-form-item label="默认表单">
@@ -176,6 +176,7 @@ import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import FormInputParameterEditor from './FormInputParameterEditor.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
+import { FORM_LABEL_POSITION_OPTIONS, resolveFormLabelPosition } from '@/shared/form-layout'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -230,11 +231,11 @@ const inputParameterCount = computed(() =>
     viewConfig.value?.inputParameterSchema?.properties || {}
   ).length
 )
-const formLayoutOptions = [
-  { value: 'vertical', label: '垂直' },
-  { value: 'horizontal', label: '水平' },
-  { value: 'grid', label: '网格' }
-]
+// 不在打开抽屉时回写默认值，历史表单只有主动修改标签位置才产生新配置。
+const formLabelPosition = computed({
+  get: () => resolveFormLabelPosition(form.value, viewConfig.value),
+  set: value => { viewConfig.value.labelPosition = value }
+})
 const drawerVisible = computed({
   get: () => props.modelValue,
   set: value => emit('update:modelValue', value)

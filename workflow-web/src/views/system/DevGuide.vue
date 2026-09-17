@@ -132,7 +132,7 @@ Content-Type: application/json
             <li>绑定迁移采用“新建目标节点 → 绑定新字段/关系 → 迁移标签、布局、兼容组件、模板和允许的数据源 → 预览与发布 → 删除旧节点”，禁止原地改 bindingType/bindingRef。</li>
             <li>扩展 manifest 必须声明适用 `nodeTypes`、supportedBindings 与 configSchema。设计器只渲染该类型允许的参数；后端 PATCH 仍须按节点类型白名单拒绝未知、不兼容或已锁定字段。</li>
             <li>组件切换只能发生在兼容的实体字段类型集合内；切换后应清除不兼容的组件参数、校验和数据源绑定，不能静默保留无效配置。</li>
-            <li>设计画布、草稿预览和激活 release 使用同一递归节点布局：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先；容器节点不能在预览中退回扁平字段列表。</li>
+            <li>设计画布、草稿预览和激活 release 使用同一递归节点布局：新表单统一 grid 并读取 gridSpan，历史垂直 / 水平仍按 24 / 12 栅格兼容，显式 GRID 容器优先；标签位置与宽度由 viewConfig.labelPosition / labelWidth 独立控制；容器节点不能在预览中退回扁平字段列表。</li>
           </ul>
           <CodeCard title="扩展属性自动分组" language="Vue">
             <pre v-pre><code>&lt;ConfigSchemaEditor

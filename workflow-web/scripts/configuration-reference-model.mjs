@@ -62,14 +62,14 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^form\\.'
   ]),
   source('src/views/EntityFormDesignByEntity.vue', '实体配置', '表单设计', [
-    '^form\\.layoutType$',
     '^selectedComponentConfig$',
     '^selectedField\\.',
     '^viewConfig\\.customComponentProps$'
   ]),
   source('src/components/form-designer/FormDesignerSettingsDrawer.vue', '实体配置', '表单设置', [
     '^form\\.',
-    '^viewConfig\\.'
+    '^viewConfig\\.',
+    '^formLabelPosition$'
   ]),
   source('src/components/form-designer/FormInputParameterEditor.vue', '实体配置', '子表单输入参数', [
     '^row\\.(name|code|type|required|defaultValue|description)$'
@@ -758,7 +758,6 @@ const LOCATION_RULES = Object.freeze([
 
   locationRule('src/views/EntityFormList.vue', '^form\\.', '实体配置-表单-编辑'),
 
-  locationRule('src/views/EntityFormDesignByEntity.vue', '^form\\.layoutType$', '实体配置-表单-编辑'),
   locationRule('src/views/EntityFormDesignByEntity.vue', '^selectedField\\.(fieldLabel|componentType|placeholder|gridSpan|isRequired|isReadonly|isHidden)$', '实体配置-表单-编辑-字段属性-常用'),
   locationRule('src/views/EntityFormDesignByEntity.vue', '^selectedField\\.(componentName|templateId)$', '实体配置-表单-编辑-字段属性-复用与扩展'),
   locationRule('src/views/EntityFormDesignByEntity.vue', '^(selectedComponentConfig|viewConfig\\.customComponentProps)$', '实体配置-表单-编辑-字段属性-复用与扩展-组件参数'),
@@ -766,7 +765,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.actionBar$', '实体配置-表单-编辑-表单设置-按钮与操作'),
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.inputParameterSchema$', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^form\\.customComponent$', '实体配置-表单-编辑-表单设置-渲染与扩展'),
-  locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^(form\\.|viewConfig\\.labelWidth$)', '实体配置-表单-编辑-表单设置-基本与布局'),
+  locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^(form\\.|viewConfig\\.labelWidth$|formLabelPosition$)', '实体配置-表单-编辑-表单设置-基本与布局'),
   locationRule('src/components/form-designer/FormInputParameterEditor.vue', '^row\\.', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
   locationRule('src/components/form-designer/FormNodeDataSettings.vue', '^selectedParameterContract$', '实体配置-表单-编辑-字段属性-数据与关系-参数传递'),
 
@@ -1706,11 +1705,13 @@ const CONTROL_OVERRIDES = Object.freeze({
     example: 'draft:草稿',
     expectedEffect: '该控件已禁用，不会修改发布配置；新选项必须改用系统代码表。'
   },
-  'src/views/EntityFormDesignByEntity.vue:form.layoutType': {
-    label: '表单布局',
-    meaning: '设置当前表单的顶层布局类型。',
-    example: 'GRID',
-    expectedEffect: '预览和运行时按选择的布局组织根节点。'
+  'src/components/form-designer/FormDesignerSettingsDrawer.vue:formLabelPosition': {
+    label: '标签位置',
+    meaning: '通过 viewConfig.labelPosition 设置整张表单标签的位置，独立于字段栅格宽度。',
+    configureWhen: '需要让标签显示在输入框顶部，或在左侧按左、右方向对齐时配置。',
+    skipWhen: '沿用当前标签位置时无需修改；历史表单缺省时保留原布局的位置。',
+    example: 'top',
+    expectedEffect: '顶部不占横向标签宽度；left、right 使用标签宽度设置。设计画布、预览和发布运行时保持一致。'
   },
   'src/views/EntityFormDesignByEntity.vue:selectedField.fieldLabel': {
     label: '字段标签',
