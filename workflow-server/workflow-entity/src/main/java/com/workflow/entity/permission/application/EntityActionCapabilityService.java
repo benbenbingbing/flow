@@ -106,8 +106,7 @@ public class EntityActionCapabilityService {
         List<Map<String, Object>> buttons = new java.util.ArrayList<>(
                 actionConfigService.resolveRowButtons(config, entityCode));
         actionConfigService.resolveToolbarButtons(config, entityCode).stream()
-                .filter(button -> List.of("batchDelete", "exportSelected")
-                        .contains(asString(button.get("key"))))
+                .filter(this::isSelectionToolbarButton)
                 .forEach(buttons::add);
         for (EntityDataDTO row : rows) {
             Map<String, EntityActionCapabilityDTO> capabilities = new LinkedHashMap<>();
@@ -151,13 +150,21 @@ public class EntityActionCapabilityService {
                 continue;
             }
             capabilities.put(key,
-                    List.of("batchDelete", "exportSelected").contains(key)
+                    isSelectionToolbarButton(button)
                             ? evaluateSelectionToolbarButton(
                                     entityCode, button, user)
                             : evaluateButton(
                                     entityCode, button, null, user, null));
         }
         return capabilities;
+    }
+
+    /** 关联内容工具栏按钮按选中记录评估条件，不能用空记录提前隐藏入口。 */
+    private boolean isSelectionToolbarButton(Map<String, Object> button) {
+        return List.of("batchDelete", "exportSelected")
+                .contains(asString(button.get("key")))
+                || ("custom".equals(button.get("type"))
+                    && "open-related-content".equals(button.get("customMode")));
     }
 
     /**

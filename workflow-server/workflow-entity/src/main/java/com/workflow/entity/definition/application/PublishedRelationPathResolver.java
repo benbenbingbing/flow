@@ -160,7 +160,7 @@ public class PublishedRelationPathResolver {
                 relation.getRelationType()
                         != EntityRelation.RelationType.ONE_TO_ONE,
                 null,
-                linkField(childReference));
+                relationLinkField(childReference, source.getEntityId()));
     }
 
     private CompiledHop compileReference(
@@ -262,7 +262,7 @@ public class PublishedRelationPathResolver {
                 || multiple != expected.multiple()
                 || expected.sourceLinkField() != null
                 || !sameLink(expected.targetLinkField(),
-                        linkField(childReference))) {
+                        relationLinkField(childReference, source.getEntityId()))) {
             throw invalid("关联路径第 " + expected.index()
                     + " 步关系定义与发布快照不一致");
         }
@@ -352,9 +352,8 @@ public class PublishedRelationPathResolver {
     /**
      * 校验关系定义在目标钉定快照中的实际外键。
      *
-     * <p>实体关系只能由子实体的单值自定义引用承载。兼容旧发布中为空的
-     * {@code refEntityType}，但拒绝系统引用和多值引用，避免关系元数据与
-     * 实际存储形态不一致。</p>
+     * <p>普通单值字符串也可承载关系，使用同一兼容规则校验精确发布快照，
+     * 不能放开引用字段自身的目标校验，也不能退回当前草稿字段。</p>
      */
     private EntityField requireRelationChildField(
             EntityPublishedSnapshot target,
@@ -369,21 +368,17 @@ public class PublishedRelationPathResolver {
                 .findFirst()
                 .orElseThrow(() -> invalid(label + "不存在: "
                         + requiredFieldCode));
-        if (field.getFieldType() != EntityField.FieldType.REFERENCE) {
-            throw invalid(label + "必须是单值实体引用: "
-                    + requiredFieldCode);
-        }
-        if (field.getRefEntityType() != null
-                && field.getRefEntityType()
-                        != EntityField.RefEntityType.CUSTOM) {
-            throw invalid(label + "必须是自定义实体引用: "
-                    + requiredFieldCode);
-        }
-        if (!same(expectedParentEntityId, field.getRefEntityId())) {
-            throw invalid(label + "未指向关系来源实体: "
-                    + requiredFieldCode);
+        var violation = EntityRelationFieldPolicy.violation(field, expectedParentEntityId);
+        if (violation != null) {
+            throw invalid(label + violation.message() + ": " + requiredFieldCode);
         }
         return field;
+    }
+
+    /** 普通字段没有引用元数据，链接投影的目标必须取自已校验的关系来源实体。 */
+    private LinkField relationLinkField(EntityField field, String parentEntityId) {
+        return new LinkField(field.getFieldCode(), LinkValueType.SCALAR_REFERENCE,
+                storageColumn(field), parentEntityId);
     }
 
     /** 从发布字段生成运行时唯一允许使用的最小投影描述。 */

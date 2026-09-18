@@ -6,10 +6,7 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="header-left">
-        <el-button link aria-label="返回列表配置" title="返回列表配置" @click="goBack">
-          <el-icon><ArrowLeft /></el-icon>
-        </el-button>
-        <span>列表配置设计：{{ configInfo.listName }}</span>
+        <span>{{ configInfo.listName || '新建列表' }}<template v-if="configInfo.listKey">（{{ configInfo.listKey }}）</template></span>
         <el-tag size="small" type="info">{{ entityName }}</el-tag>
         <el-tag :type="draftStatus.type" effect="plain">
           {{ draftStatus.label }}
@@ -526,6 +523,8 @@
               <ListButtonConfigPanel
                 type="toolbar"
                 v-model="toolbarButtons"
+                :related-contents="relatedContents"
+                @configure-related-content="openRelatedContent"
                 :entityCode="entityCode"
                 :entity-id="entityId"
                 :entityFields="entityFields"
@@ -541,6 +540,8 @@
               <ListButtonConfigPanel
                 type="row"
                 v-model="rowActionButtons"
+                :related-contents="relatedContents"
+                @configure-related-content="openRelatedContent"
                 :entityCode="entityCode"
                 :entity-id="entityId"
                 :entityFields="entityFields"
@@ -942,15 +943,17 @@
       :source-fields="entityFields"
       :source-content-fields="fieldConfigList"
       @count-change="relatedContentCount = $event"
+      @loaded="relatedContents = $event"
+      @configure-buttons="activeConfigTab = $event"
       @changed="handleRelatedContentChanged"
     />
   </div>
 </template>
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Connection, Delete, Document, Rank, Plus } from '@element-plus/icons-vue'
+import { Connection, Delete, Document, Rank, Plus } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityApi } from '@/api/entity'
@@ -970,6 +973,7 @@ import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
+import { findButtonRelatedContent, isRelatedContentButton } from '@/shared/list-related-content'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
 import { filterOptionsByEntity } from '@/shared/extension-entity-scope'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
@@ -1021,7 +1025,6 @@ import {
   SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
 } from '@/utils/selectionReturnMappings'
 const route = useRoute()
-const router = useRouter()
 const configId = route.params.id
 const selectionReturnMappingExampleCompactText =
   SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
@@ -1053,6 +1056,7 @@ const releaseHistoryDialogRef = ref(null)
 const runtimeCodeDialogRef = ref(null)
 const relatedContentPanelRef = ref(null)
 const relatedContentCount = ref(0)
+const relatedContents = ref([])
 const runtimeCodeLoading = ref(false)
 const diffInfo = ref({ changed: true, changedSections: [] })
 const diffLoadSucceeded = ref(false)
@@ -2004,6 +2008,11 @@ function applySavedAction(button, saved) {
   })
 }
 async function saveListAction(button, position, options = {}) {
+  if (button.enabled !== false && isRelatedContentButton(button)
+      && !findButtonRelatedContent(button, relatedContents.value)) {
+    ElMessage.warning('请选择当前列表中已启用且以弹窗、抽屉或页面显示的关联内容')
+    return false
+  }
   button._saving = true
   try {
     const payload = normalizeActionForSave(button, position)
@@ -2686,13 +2695,11 @@ async function handleRelatedContentChanged(event) {
 async function handleReleaseChanged(event) {
   if (event?.action === 'RESTORE_DRAFT') {
     await loadData()
+    await relatedContentPanelRef.value?.load()
     return
   }
   await refreshConfigRevision()
   await loadDiff()
-}
-function goBack() {
-  router.back()
 }
 </script>
 <style scoped>

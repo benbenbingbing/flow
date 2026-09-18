@@ -15,8 +15,8 @@ const router = read('../../router/index.js')
 ;[
   '`/entity/${entityId}/relations`',
   '`/entity/${entityId}/relations/${relationId}`',
-  "method: 'PUT'",
-  "method: 'DELETE'"
+  '`/entity/${entityId}/relations/${relationId}/delete`',
+  "method: 'POST'"
 ].forEach(marker => assert.ok(api.includes(marker), `实体关系 API 缺少契约: ${marker}`))
 
 ;[

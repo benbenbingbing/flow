@@ -73,11 +73,21 @@
                 <el-option label="组件" value="component" />
                 <el-option label="打开列表" value="open-list" />
                 <el-option label="打开表单" value="open-form" />
+                <el-option label="打开关联内容" value="open-related-content" />
                 <el-option label="业务接口" value="event" />
               </el-select>
             </div>
+            <div v-if="row.type === 'custom' && row.customMode === 'open-related-content'" class="execution-config__detail">
+              <el-select v-model="row.compositionKey" size="small" filterable clearable placeholder="选择已配置的关联内容" style="width: 100%">
+                <el-option v-for="item in relatedContentOptions" :key="item.compositionKey"
+                  :label="item.config.name || item.config.target?.contentName || item.compositionKey"
+                  :value="item.compositionKey" />
+              </el-select>
+              <div class="field-help">{{ type === 'row' ? '按当前行打开' : '选中一条记录后打开' }}，显示方式沿用关联内容配置。</div>
+              <el-button v-if="!relatedContentOptions.length" link type="primary" size="small" @click="$emit('configure-related-content')">先到“关联内容”配置弹窗、抽屉或页面</el-button>
+            </div>
             <el-button
-              v-if="row.type === 'custom' && row.customMode === 'open-list'"
+              v-else-if="row.type === 'custom' && row.customMode === 'open-list'"
               size="small"
               type="primary"
               text
@@ -196,9 +206,8 @@
             <el-option label="信息" value="info" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="type === 'row'" label="Link 样式">
-          <el-switch v-model="advancedButton.link" />
-          <span class="field-help">开启后以文字链接样式显示行按钮</span>
+        <el-form-item v-if="type === 'row'" label="展示方式">
+          <span class="field-help">操作列统一使用 link 文字链接样式，按钮样式用于设置文字颜色。</span>
         </el-form-item>
         <el-form-item v-if="canConfigureTargetForm(advancedButton)">
           <template #label>
@@ -400,8 +409,10 @@ import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry
 import { ACTION_RULE_VERSION, summarizeActionRule } from '@/shared/action-rules'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { resolveListButtonType } from '@/shared/list-config-design'
+import { isButtonRelatedContent } from '@/shared/list-related-content'
 
 const props = defineProps({
+  relatedContents: { type: Array, default: () => [] },
   type: {
     type: String,
     default: 'toolbar' // 'toolbar' | 'row'
@@ -437,8 +448,12 @@ const emit = defineEmits([
   'save',
   'remove',
   'upgrade-template',
-  'reorder'
+  'reorder',
+  'configure-related-content'
 ])
+
+const relatedContentOptions = computed(() => props.relatedContents.filter(item =>
+  item.config?.enabled !== false && isButtonRelatedContent(item)))
 
 const buttons = computed({
   get: () => props.modelValue || [],
@@ -526,6 +541,8 @@ function addCustom() {
 }
 
 function handleCustomModeChange(row) {
+  if (row.customMode !== 'open-related-content') delete row.compositionKey
+  else row.customHandler = ''
   if (row.customMode === 'open-form') {
     row.customHandler = ''
     row.targetFormMode = props.type === 'toolbar' ? 'CREATE' : 'VIEW'

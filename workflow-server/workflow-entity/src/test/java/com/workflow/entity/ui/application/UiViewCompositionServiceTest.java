@@ -10,6 +10,7 @@ import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
@@ -78,6 +79,51 @@ class UiViewCompositionServiceTest {
                                 "actionKey", "CHECK_RISK"))));
 
         assertFalse(result);
+    }
+
+    @Test
+    void listButtonsReferenceOnlyEnabledPopupContentInTheSameSnapshot() {
+        Fixture fixture = fixture();
+        Map<String, Object> button = new LinkedHashMap<>(Map.of(
+                "key", "requirements", "label", "需求", "type", "custom",
+                "customMode", "open-related-content", "compositionKey", "requirements"));
+        Map<String, Object> config = new LinkedHashMap<>(Map.of(
+                "enabled", true, "presentation", Map.of("position", "DRAWER")));
+        Map<String, Object> item = new LinkedHashMap<>(Map.of(
+                "compositionKey", "requirements", "anchorType", "LIST_ACTION", "config", config));
+        for (String anchor : List.of("LIST_ACTION", "ROW_ACTION", "TOOLBAR_ACTION")) {
+            item.put("anchorType", anchor);
+            // 发布快照的按钮既可能是 JSON 文档，也可能已被归一为数组。
+            Map<String, Object> owner = Map.of(
+                    "toolbarConfig", fixture.codec.write(List.of(button), "按钮"),
+                    "rowActionConfig", List.of(button));
+            assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(fixture.service,
+                    "validateListButtonReferences", owner, List.of(item)));
+        }
+        Map<String, Object> owner = Map.of("toolbarConfig", List.of(button));
+        IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validateReleaseSnapshot("LIST", "list-1", Map.of(
+                        "configType", "LIST", "list", Map.of(
+                                "id", "list-1", "entityId", "entity-1", "toolbarConfig", List.of(button)))));
+        assertTrue(missing.getMessage().contains("引用的关联内容不存在"));
+        assertThrows(IllegalArgumentException.class, () -> ReflectionTestUtils.invokeMethod(
+                fixture.service, "validateListButtonReferences", owner, List.of()));
+        config.put("enabled", false);
+        assertThrows(IllegalArgumentException.class, () -> ReflectionTestUtils.invokeMethod(
+                fixture.service, "validateListButtonReferences", owner, List.of(item)));
+        config.put("enabled", true);
+        config.put("presentation", Map.of("position", "INLINE"));
+        assertThrows(IllegalArgumentException.class, () -> ReflectionTestUtils.invokeMethod(
+                fixture.service, "validateListButtonReferences", owner, List.of(item)));
+        button.put("enabled", false);
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(fixture.service,
+                "validateListButtonReferences", owner, List.of()));
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(fixture.service,
+                "validateAnchorPlacement", "LIST", "LIST_ACTION",
+                Map.of("presentation", Map.of("position", "DIALOG"))));
+        assertThrows(IllegalArgumentException.class, () -> ReflectionTestUtils.invokeMethod(
+                fixture.service, "validateAnchorPlacement", "FORM", "LIST_ACTION",
+                Map.of("presentation", Map.of("position", "DIALOG"))));
     }
 
     @Test
@@ -929,6 +975,115 @@ class UiViewCompositionServiceTest {
         verify(fixture.formMapper).update(isNull(), any());
     }
 
+    @Test
+    void ordinaryIdRelationSurvivesCompositionSnapshotAndPublicationValidation() {
+        Fixture fixture = fixture();
+        stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_MANY);
+        EntityField field = fixture.targetSnapshot.getFields().stream()
+                .filter(item -> "projectId".equals(item.getFieldCode())).findFirst().orElseThrow();
+        field.setFieldType(EntityField.FieldType.STRING);
+        field.setRefEntityId(null);
+        UiViewComposition current = existing(fixture.codec, 1);
+        current.setAnchorType("OWNER");
+        current.setConfigDocument(fixture.codec.write(relationConfig(), "test"));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+        List<Map<String, Object>> snapshot = fixture.service.snapshot("FORM", "form-1");
+        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot(
+                "FORM", "form-1", ownerSnapshot(snapshot, List.of())));
+        field.setFieldType(EntityField.FieldType.LONG);
+        assertThrows(BusinessConflictException.class, () -> fixture.service.validateReleaseSnapshot(
+                "FORM", "form-1", ownerSnapshot(snapshot, List.of())));
+    }
+
+    @Test
+    void oneToManyRelationDisplaysListAndPinsRelationshipForPublication() {
+        Fixture fixture = fixture();
+        stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_MANY);
+        Map<String, Object> config = relationConfig();
+        assertDoesNotThrow(() -> fixture.service.validate("FORM", "form-1", config));
+
+        UiViewComposition current = existing(fixture.codec, 1);
+        current.setAnchorType("OWNER");
+        current.setConfigDocument(fixture.codec.write(config, "test"));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+        List<Map<String, Object>> snapshot = fixture.service.snapshot("FORM", "form-1");
+        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot(
+                "FORM", "form-1", ownerSnapshot(snapshot, List.of())));
+    }
+
+    @Test
+    void oneToOneRelationRejectsListAtSaveAndPublication() {
+        Fixture fixture = fixture();
+        stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_ONE);
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validate("FORM", "form-1", relationConfig()));
+        assertTrue(error.getMessage().contains("一对一"));
+
+        UiViewComposition current = existing(fixture.codec, 1);
+        current.setAnchorType("OWNER");
+        current.setConfigDocument(fixture.codec.write(relationConfig(), "test"));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+        List<Map<String, Object>> snapshot = fixture.service.snapshot("FORM", "form-1");
+        assertThrows(IllegalArgumentException.class, () -> fixture.service.validateReleaseSnapshot(
+                "FORM", "form-1", ownerSnapshot(snapshot, List.of())));
+    }
+
+    @Test
+    void oneToOneRelationAcceptsFormButOneToManyCannotUseThatForm() {
+        Fixture fixture = fixture();
+        EntityForm form = new EntityForm();
+        form.setId("form-target");
+        form.setEntityId("requirement-entity");
+        form.setActiveReleaseId("release-target");
+        when(fixture.formMapper.selectById("form-target")).thenReturn(form);
+        fixture.targetRelease.setConfigType("FORM");
+        fixture.targetRelease.setConfigId("form-target");
+        Map<String, Object> config = relationConfig();
+        config.put("target", Map.of("entityId", "requirement-entity",
+                "contentType", "FORM", "contentId", "form-target"));
+        stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_ONE);
+        assertDoesNotThrow(() -> fixture.service.validate("FORM", "form-1", config));
+        stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_MANY);
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validate("FORM", "form-1", config));
+        assertTrue(error.getMessage().contains("一对多"));
+    }
+
+    @Test
+    void relationDisplayRejectsWrongEntityAndDisabledRelation() {
+        Fixture fixture = fixture();
+        EntityRelation relation = stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_MANY);
+        relation.setChildEntityId("another-entity");
+        assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validate("FORM", "form-1", relationConfig()));
+        relation.setChildEntityId("requirement-entity");
+        relation.setEnabled(false);
+        assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validate("FORM", "form-1", relationConfig()));
+    }
+
+    private Map<String, Object> relationConfig() {
+        Map<String, Object> value = new LinkedHashMap<>(config());
+        value.put("relation", Map.of("type", "ENTITY_RELATION", "relationCode", "reqRelation"));
+        value.put("presentation", Map.of("position", "INLINE", "loadMode", "IMMEDIATE"));
+        return value;
+    }
+
+    private EntityRelation stubEntityRelation(Fixture fixture, EntityRelation.RelationType type) {
+        EntityRelation relation = new EntityRelation();
+        relation.setRelationCode("reqRelation");
+        relation.setParentEntityId("project-entity");
+        relation.setChildEntityId("requirement-entity");
+        relation.setChildRefFieldCode("projectId");
+        relation.setRelationType(type);
+        relation.setEnabled(true);
+        relation.setDeleted(0);
+        when(fixture.relationMapper.selectByRelationCode("project-entity", "reqRelation"))
+                .thenReturn(relation);
+        fixture.sourceSnapshot.setRelations(List.of(relation));
+        return relation;
+    }
+
     private Fixture fixture() {
         UiViewCompositionMapper mapper = mock(UiViewCompositionMapper.class);
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
@@ -1060,7 +1215,10 @@ class UiViewCompositionServiceTest {
                 extensionService,
                 containmentGuard,
                 codec,
-                release);
+                release,
+                relationMapper,
+                sourceSnapshot,
+                targetSnapshot);
     }
 
     private UiViewCompositionSaveRequest request(Integer revision) {
@@ -1365,6 +1523,9 @@ class UiViewCompositionServiceTest {
             UiExtensionDefinitionService extensionService,
             UiViewCompositionContainmentGuard containmentGuard,
             JsonDocumentCodec codec,
-            UiConfigRelease targetRelease) {
+            UiConfigRelease targetRelease,
+            EntityRelationMapper relationMapper,
+            EntityPublishedSnapshot sourceSnapshot,
+            EntityPublishedSnapshot targetSnapshot) {
     }
 }

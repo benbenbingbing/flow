@@ -5,15 +5,14 @@
   >
     <div class="design-header">
       <div class="header-left">
-        <el-button @click="$router.back()">
-          <el-icon><ArrowLeft /></el-icon>返回
-        </el-button>
-        <span class="title">表单设计 - {{ form.formName || '新建表单' }}</span>
+        <span class="title">{{ form.formName || '新建表单' }}<template v-if="form.formKey">（{{ form.formKey }}）</template></span>
       </div>
       <div class="header-right">
-        <el-tag :type="draftStatus.type" effect="plain">
-          {{ draftStatus.label }}
-        </el-tag>
+        <el-tooltip :content="draftStatus.label" placement="bottom">
+          <el-tag :type="draftStatus.type" effect="plain">
+            {{ draftStatusLabel }}
+          </el-tag>
+        </el-tooltip>
         <el-button
           v-if="canDiscardDraft"
           link
@@ -25,46 +24,58 @@
           撤销
         </el-button>
         <el-button
+          link
           :loading="runtimeCodeLoading"
           :disabled="initializing"
           @click="openRuntimeCode"
         >
-          <el-icon><Document /></el-icon>查看最终代码
+          <el-icon><Document /></el-icon>代码
         </el-button>
         <el-button
+          link
           :disabled="isCustomRendererMode && !form.customComponent"
           @click="showPreview = true"
         >
           <el-icon><View /></el-icon>预览
         </el-button>
-        <el-badge
-          :value="relatedContentCount"
-          :hidden="relatedContentCount === 0"
-          class="related-content-entry"
-        >
-          <el-button
-            :disabled="!form.id || initializing"
-            @click="openRelatedContent"
-          >
-            <el-icon><Connection /></el-icon>关联内容
-          </el-button>
-        </el-badge>
-        <el-button @click="showReleaseHistory">版本</el-button>
-        <el-button
-          type="success"
-          plain
-          :disabled="!isEdit || discardDraftLoading"
-          @click="handlePublish"
-        >
-          发布
+        <el-button link @click="showReleaseHistory">版本</el-button>
+        <el-divider direction="vertical" />
+        <el-button @click="openFormSettings('basic')">
+          <el-icon><Setting /></el-icon>设置
         </el-button>
+        <el-dropdown v-if="!isCustomRendererMode" trigger="click" @command="handleAddNodeCommand">
+          <el-button type="primary">
+            <el-icon><Plus /></el-icon>节点
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="SECTION_TITLE">节</el-dropdown-item>
+              <el-dropdown-item command="SECTION">区块</el-dropdown-item>
+              <el-dropdown-item command="GRID">栅格</el-dropdown-item>
+              <el-dropdown-item command="TAB_SET">Tab 集合</el-dropdown-item>
+              <el-dropdown-item command="TAB">Tab 页</el-dropdown-item>
+              <el-dropdown-item command="COLLAPSE">折叠面板</el-dropdown-item>
+              <el-dropdown-item command="TEXT">说明文本</el-dropdown-item>
+              <el-dropdown-item command="REPEATER">明细表</el-dropdown-item>
+              <el-dropdown-item command="ACTION_SLOT">动作插槽</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button
           type="primary"
           :loading="saving"
           :disabled="discardDraftLoading"
           @click="handleSave"
         >
-          <el-icon><Check /></el-icon>保存全部草稿
+          <el-icon><Check /></el-icon>保存全部
+        </el-button>
+        <el-button
+          type="success"
+          plain
+          :disabled="!isEdit || discardDraftLoading"
+          @click="handlePublish"
+        >
+          发&nbsp;&nbsp;布
         </el-button>
       </div>
     </div>
@@ -80,7 +91,6 @@
 
     <div v-if="!isCustomRendererMode" class="design-body">
       <div class="field-panel">
-        <div class="panel-title">实体字段</div>
         <div class="field-search">
           <el-input v-model="fieldSearch" placeholder="搜索字段" size="small" clearable>
             <template #prefix><el-icon><Search /></el-icon></template>
@@ -104,52 +114,33 @@
               <el-tag size="small" class="type-tag">{{ field.fieldType }}</el-tag>
             </div>
           </div>
+          <FormRelationPicker
+            ref="formRelationPickerRef"
+            :source-entity="entityInfo"
+            :owner-id="form.id"
+            :compositions="relatedContents"
+            @saved="handleRelationContentSaved"
+            @edit="openRelatedContent"
+          />
         </div>
       </div>
 
       <div class="canvas-panel">
-        <div class="panel-title">
-          <span>表单设计（所见即所得）</span>
-          <div class="layout-selector">
-            <el-dropdown trigger="click" @command="handleAddNodeCommand">
-              <el-button type="primary" size="small" style="margin-left: 12px">
-                <el-icon><Plus /></el-icon>添加节点
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="SECTION_TITLE">节</el-dropdown-item>
-                  <el-dropdown-item command="SECTION">区块</el-dropdown-item>
-                  <el-dropdown-item command="GRID">栅格</el-dropdown-item>
-                  <el-dropdown-item command="TAB_SET">Tab 集合</el-dropdown-item>
-                  <el-dropdown-item command="TAB">Tab 页</el-dropdown-item>
-                  <el-dropdown-item command="COLLAPSE">折叠面板</el-dropdown-item>
-                  <el-dropdown-item command="TEXT">说明文本</el-dropdown-item>
-                  <el-dropdown-item command="REPEATER">明细表</el-dropdown-item>
-                  <el-dropdown-item command="ACTION_SLOT">动作插槽</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-            <el-button size="small" @click="openFormSettings('basic')">
-              <el-icon><Setting /></el-icon>表单设置
-            </el-button>
-          </div>
-        </div>
-
         <div class="form-canvas-wrapper">
           <div class="form-canvas" :class="form.layoutType">
             <div v-if="formFields.length" class="form-drag-guide">
               <el-icon><Rank /></el-icon>
               <span>拖拽节点右上角手柄调整顺序，或移动到兼容容器；位置保存到草稿，发布后生效。</span>
             </div>
-            <div v-if="formFields.length === 0" class="empty-tip">
-              <el-empty description="点击左侧字段添加到表单">
+            <div v-if="formFields.length === 0 && !inlineRelationContents.length" class="empty-tip">
+              <el-empty description="点击左侧字段或实体关系添加到表单">
                 <template #image>
                   <el-icon :size="60" color="#dcdfe6"><DocumentAdd /></el-icon>
                 </template>
               </el-empty>
             </div>
             
-            <el-form v-else :label-width="formLabelWidth" :label-position="formLabelPosition" class="design-form">
+            <el-form v-if="formFields.length" :label-width="formLabelWidth" :label-position="formLabelPosition" class="design-form">
               <FormNodeDraggableList
                 :items="rootDesignNodes"
                 parent-id=""
@@ -182,6 +173,13 @@
                 </template>
               </FormNodeDraggableList>
             </el-form>
+            <RelationContentDesignPreview
+              v-for="item in inlineRelationContents"
+              :key="item.id || item.compositionKey"
+              :composition="item" editable
+              @edit="openRelatedContent"
+              @remove="removeRelatedContent"
+            />
           </div>
         </div>
       </div>
@@ -956,8 +954,24 @@
     <FormDesignerSettingsDrawer
       v-model="showFormSettings"
       v-model:active-tab="activeFormSettingsTab"
-      v-model:active-behavior-tab="activeFormBehaviorTab"
-    />
+      :related-content-count="relatedContentCount"
+    >
+      <template #related-content>
+        <RelatedContentPanel
+          ref="relatedContentPanelRef"
+          embedded
+          owner-type="FORM"
+          :owner-id="form.id || ''"
+          :source-entity="entityInfo"
+          :source-fields="entityFields"
+          :source-content-fields="formFields"
+          :anchor-options="relatedContentAnchorOptions"
+          @count-change="relatedContentCount = $event"
+          @loaded="relatedContents = $event"
+          @changed="handleRelatedContentChanged"
+        />
+      </template>
+    </FormDesignerSettingsDrawer>
 
     <el-dialog v-model="showPreview" title="表单预览" width="900px" destroy-on-close>
       <div class="preview-mode-toolbar">
@@ -977,6 +991,11 @@
           :entity-fields="entityFields"
           :form-actions="previewActions"
           @form-action="handlePreviewAction"
+        />
+        <RelationContentDesignPreview
+          v-for="item in inlineRelationContents"
+          :key="item.id || item.compositionKey"
+          :composition="item"
         />
       </div>
       <template #footer>
@@ -1036,17 +1055,6 @@
       @changed="handleReleaseChanged"
     />
     <RuntimeCodeViewerDialog ref="runtimeCodeDialogRef" />
-    <RelatedContentPanel
-      ref="relatedContentPanelRef"
-      owner-type="FORM"
-      :owner-id="form.id || ''"
-      :source-entity="entityInfo"
-      :source-fields="entityFields"
-      :source-content-fields="formFields"
-      :anchor-options="relatedContentAnchorOptions"
-      @count-change="relatedContentCount = $event"
-      @changed="handleRelatedContentChanged"
-    />
 
   </div>
 </template>
@@ -1054,11 +1062,11 @@
 <script setup>
 import { resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
 
-import { ref, computed, watch, onMounted, provide } from 'vue'
+import { ref, computed, watch, onMounted, provide, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBreadcrumbParents } from '@/composables/useBreadcrumbParents'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Check, View, Search, Document, Edit, DocumentAdd, Plus, Connection, Rank, Setting, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { Check, View, Search, Document, Edit, DocumentAdd, Plus, Rank, Setting, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import FormNodeDesignItem from '@/components/FormNodeDesignItem.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
@@ -1089,6 +1097,10 @@ import { getFieldStateConditionError } from '@/shared/form-field-state-condition
 import { supportsCrossFieldValidation, validateCrossFieldConfiguration } from '@/shared/form-cross-field-validation'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
+import { uiCompositionApi } from '@/api/uiComposition'
+import { normalizeRelatedContent } from '@/shared/related-content'
+import FormRelationPicker from '@/components/form-designer/FormRelationPicker.vue'
+import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
@@ -1243,7 +1255,6 @@ const persistedFormButtonKeys = ref([])
 const showPreview = ref(false)
 const showFormSettings = ref(false)
 const activeFormSettingsTab = ref('basic')
-const activeFormBehaviorTab = ref('data-source')
 const formRendererMode = ref(FORM_RENDERER_MODE_DEFAULT)
 const previewMode = ref('create')
 const propertyDrawerVisible = ref(false)
@@ -1255,6 +1266,13 @@ const releaseHistoryDialogRef = ref(null)
 const runtimeCodeDialogRef = ref(null)
 const relatedContentPanelRef = ref(null)
 const relatedContentCount = ref(0)
+const relatedContents = ref([])
+const formRelationPickerRef = ref(null)
+const inlineRelationContents = computed(() => relatedContents.value.filter(item =>
+  item.anchorType === 'OWNER'
+    && item.config?.presentation?.position === 'INLINE'
+    && item.config?.relation?.type === 'ENTITY_RELATION'
+    && item.config?.enabled !== false))
 const runtimeCodeLoading = ref(false)
 const currentEventField = ref(null)
 const activeNodeSettingsTab = ref('basic')
@@ -1454,6 +1472,13 @@ const draftStatus = computed(() => resolveUiConfigDraftStatus({
   diffLoadSucceeded: diffLoadSucceeded.value,
   diff: diffInfo.value
 }))
+// 工具栏使用短标签，悬停保留完整含义，避免将依赖变化误认为本地草稿修改。
+const draftStatusLabel = computed(() => ({
+  UNKNOWN: '状态未知',
+  LOCAL_DRAFT: '待发布',
+  DEPENDENCY_DRIFT: '依赖变更',
+  IN_SYNC: '已同步'
+})[draftStatus.value.key] || draftStatus.value.label)
 
 const selectedCustomFormSchema = computed(() =>
   getCustomFormDescriptor(form.value.customComponent)?.configSchema || []
@@ -1516,15 +1541,53 @@ function refreshExtensionCatalog() {
 }
 
 function openFormSettings(tab = 'basic', behaviorTab = '') {
-  activeFormSettingsTab.value = tab
-  if (tab === 'data-events' && behaviorTab) {
-    activeFormBehaviorTab.value = behaviorTab
-  }
+  // 兼容表单列表与自定义工作区的历史深链，直接定位到新的一级页签。
+  activeFormSettingsTab.value = tab === 'data-events' ? (behaviorTab || 'data-source') : tab
   showFormSettings.value = true
 }
 
-function openRelatedContent() {
-  relatedContentPanelRef.value?.open()
+async function openRelatedContent(item = null) {
+  openFormSettings('related-content')
+  await nextTick()
+  await relatedContentPanelRef.value?.open(item?.config ? item : null)
+}
+
+async function removeRelatedContent(item) {
+  await openRelatedContent()
+  await relatedContentPanelRef.value?.remove(item)
+}
+
+/** 设置抽屉按需挂载；未打开时也要加载关联配置，保证设计画布和快捷入口完整。 */
+async function loadRelatedContents() {
+  if (relatedContentPanelRef.value) {
+    return relatedContentPanelRef.value.load({ silent: true })
+  }
+  const ownerId = form.value.id
+  if (!ownerId) {
+    relatedContents.value = []
+    relatedContentCount.value = 0
+    return
+  }
+  try {
+    const response = await uiCompositionApi.list('FORM', ownerId)
+    if (ownerId !== form.value.id) return
+    const rows = [response, response?.records, response?.data, response?.list].find(Array.isArray) || []
+    relatedContents.value = rows
+      .map(item => normalizeRelatedContent(item, { ownerType: 'FORM', sourceEntity: entityInfo.value }))
+      .sort((left, right) => Number(left.orderKey || 0) - Number(right.orderKey || 0))
+    relatedContentCount.value = relatedContents.value.length
+  } catch (error) {
+    if (ownerId !== form.value.id) return
+    relatedContents.value = []
+    relatedContentCount.value = 0
+    ElMessage.error(error?.message || '关联内容加载失败，请在表单设置中刷新')
+  }
+}
+
+/** 快捷关系入口与高级关联内容共用草稿，重载后同步画布、发布状态和修订号。 */
+async function handleRelationContentSaved(event) {
+  await loadRelatedContents()
+  await handleRelatedContentChanged(event)
 }
 
 async function handleRelatedContentChanged(event) {
@@ -2745,9 +2808,9 @@ function nodeTypeOf(field) {
   return normalizeFormNodeType(field?.nodeType || legacyNodeType(field))
 }
 
-function nodeLabel(nodeId) {
-  const node = formFields.value.find(item => item.id === nodeId)
-  return node?.fieldLabel || node?.fieldName || node?.fieldCode || nodeId
+/** 放置位置使用设计节点的显示名称；未命名节点回退到稳定编码或 ID。 */
+function nodeLabel(node) {
+  return node?.fieldLabel || node?.fieldName || node?.fieldCode || node?.nodeKey || node?.id || ''
 }
 
 function nodeById(nodeId) {
@@ -3511,7 +3574,7 @@ function handleAddNodeCommand(command) {
 
 /**
  * 从按钮面板创建内嵌按钮时，同步建立一个稳定动作插槽。这里只修改同一份
- * 本地草稿；随后“保存全部草稿”会一起持久化按钮定义和节点树。
+ * 本地草稿；随后“保存全部”会一起持久化按钮定义和节点树。
  */
 function createActionSlotForButton({ buttonKey, buttonLabel } = {}) {
   if (isCustomRendererMode.value) {
@@ -4567,6 +4630,7 @@ async function openRuntimeCode() {
 
 async function handleReleaseChanged() {
   await loadFormInfo()
+  await loadRelatedContents()
   await loadDiff()
 }
 
@@ -4701,6 +4765,7 @@ async function reloadFormDesignerData({ resetInteraction = false } = {}) {
     await loadEntityInfo({ strict })
     await loadEntityFields({ strict })
     await loadFormFields({ strict })
+    await loadRelatedContents()
     await loadDataSources({ strict })
     await loadComponentTemplates({ strict })
     await loadExtensionDefinitions({ strict })
@@ -4785,10 +4850,6 @@ onMounted(async () => {
   background-color: #f5f7fa;
 }
 
-.related-content-entry {
-  display: inline-flex;
-}
-
 .system-config-alert {
   flex: 0 0 auto;
   margin: 12px 16px 0;
@@ -4821,6 +4882,10 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.header-right > .el-button {
+  margin-left: 0;
+}
+
 .title {
   font-size: 16px;
   font-weight: 500;
@@ -4841,22 +4906,12 @@ onMounted(async () => {
   flex: 0 0 260px;
   min-height: 0;
   width: 260px;
+  margin-top: 10px;
   border-right: 1px solid #dcdfe6;
   background-color: #fff;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.panel-title {
-  height: 44px;
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  font-weight: 500;
-  font-size: 14px;
-  border-bottom: 1px solid #e4e7ed;
-  background-color: #f5f7fa;
 }
 
 .field-search {
@@ -5005,26 +5060,10 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-.canvas-panel > .panel-title {
-  height: auto;
-  min-height: 44px;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.layout-selector {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .form-canvas-wrapper {
   flex: 1;
   min-height: 0;
-  padding: 20px;
+  padding: 10px;
   overflow: auto;
   background-color: #f0f2f5;
 }
@@ -5266,6 +5305,7 @@ onMounted(async () => {
     width: 240px;
     min-width: 0;
     min-height: 0;
+    margin-top: 6px;
   }
 
   .canvas-panel {
@@ -5275,7 +5315,7 @@ onMounted(async () => {
 
   .form-canvas-wrapper {
     min-height: 0;
-    padding: 12px;
+    padding: 6px;
   }
 
   .form-canvas {
@@ -5300,10 +5340,6 @@ onMounted(async () => {
   .canvas-panel {
     flex: 1 1 auto;
     min-height: 0;
-  }
-
-  .layout-selector {
-    justify-content: flex-start;
   }
 
 }

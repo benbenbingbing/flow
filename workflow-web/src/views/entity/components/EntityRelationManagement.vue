@@ -3,7 +3,7 @@
     <header class="relation-header">
       <div>
         <h2>实体关系</h2>
-        <p>独立定义父实体与子实体的数据边界，表单字段只负责展示，不再创建关系。</p>
+        <p>选择关联实体和实际关联字段。一对一在表单中显示关联表单，一对多显示关联列表。</p>
       </div>
       <div class="relation-actions">
         <el-button :loading="loading" @click="loadRelations">刷新</el-button>
@@ -69,12 +69,12 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="聚合数据键" min-width="150">
+      <el-table-column label="内部数据键" min-width="150">
         <template #default="{ row }">
           <code>{{ row.dataKey }}</code>
         </template>
       </el-table-column>
-      <el-table-column label="子实体 / 回溯字段" min-width="230">
+      <el-table-column label="关联实体 / 关联字段" min-width="230">
         <template #default="{ row }">
           <div class="primary-text">
             {{ row.childEntityName || row.childEntityCode || row.childEntityId }}
@@ -87,6 +87,11 @@
       <el-table-column label="基数" width="100" align="center">
         <template #default="{ row }">
           {{ relationTypeLabel(row.relationType) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="表单中展示" width="120" align="center">
+        <template #default="{ row }">
+          {{ row.relationType === 'ONE_TO_ONE' ? '关联表单' : '关联列表' }}
         </template>
       </el-table-column>
       <el-table-column label="所有权" width="110" align="center">
@@ -130,7 +135,7 @@
       class="relation-empty"
     >
       <template #description>
-        <p>尚未定义实体关系。关系创建后可供表单、版本固化和运行时查询共同引用。</p>
+        <p>先定义关系并发布实体，再到表单设计左侧“实体关系”选择要嵌入的表单或列表。</p>
       </template>
       <el-button v-if="canManage" type="primary" @click="openCreate">新增关系</el-button>
     </el-empty>
@@ -161,8 +166,8 @@
         status-icon
       >
         <SettingsSection
-          title="稳定标识"
-          description="关系名称可调整，编码与数据键在创建后锁定"
+          title="关系名称"
+          description="给这项关联起一个便于表单设计时识别的名称"
           :collapsible="false"
           primary
         >
@@ -174,50 +179,56 @@
               placeholder="例如：订单明细"
             />
           </el-form-item>
-          <el-form-item label="关系编码" prop="relationCode" required>
+        </SettingsSection>
+
+        <SettingsSection
+          title="内部标识（自动生成）"
+          description="无需创建同名字段；仅接口集成需要自定义时展开"
+          :default-expanded="false"
+        >
+          <el-form-item label="关系编码" prop="relationCode">
             <el-input
               v-model="editor.relationCode"
               :disabled="isEditing"
               maxlength="100"
-              placeholder="例如：orderItems"
-              @blur="fillDataKeyFromRelationCode"
+              placeholder="留空由系统自动生成"
             />
-            <div class="form-tip">字母开头，仅允许字母、数字和下划线；删除后编码不能复用。</div>
+            <div class="form-tip">这是关系自身的标识，不是实体字段。删除后编码不能复用。</div>
           </el-form-item>
-          <el-form-item label="聚合数据键" prop="dataKey" required>
+          <el-form-item label="内部数据键" prop="dataKey">
             <el-input
               v-model="editor.dataKey"
               :disabled="isEditing"
               maxlength="100"
-              placeholder="例如：items"
+              placeholder="留空自动生成，不与当前实体字段重名"
             />
-            <div class="form-tip">实体详情、表单和版本快照中承载子数据的稳定属性名。</div>
+            <div class="form-tip">用于承载关联结果，无需在任一实体中添加同名字段。实际关联使用下方选择的关联字段。</div>
           </el-form-item>
         </SettingsSection>
 
         <SettingsSection
-          title="关联端点"
-          description="选择子实体，以及子记录中保存父记录 ID 的字段"
+          title="数据怎么关联"
+          description="选择目标实体，再选择其中保存当前记录 ID 的字段"
           :collapsible="false"
         >
-          <el-form-item label="子实体" prop="childEntityId" required>
+          <el-form-item label="关联实体" prop="childEntityId" required>
             <EntityDefinitionPicker
               v-model="editor.childEntityId"
               value-key="id"
-              title="选择关系子实体"
-              placeholder="请选择子实体"
+              title="选择关联实体"
+              placeholder="请选择要展示数据的实体"
               :query="{ storageMode: 'DYNAMIC', status: 'PUBLISHED' }"
               :exclude-values="[String(entityId)]"
               @change="handleChildEntityChange"
             />
           </el-form-item>
-          <el-form-item label="子实体回溯字段" prop="childRefFieldCode" required>
+          <el-form-item label="关联字段" prop="childRefFieldCode" required>
             <el-select
               v-model="editor.childRefFieldCode"
               :loading="childFieldsLoading"
               :disabled="!editor.childEntityId"
               filterable
-              placeholder="请选择保存父记录 ID 的字段"
+              placeholder="选择保存当前记录 ID 的字段"
               style="width: 100%"
             >
               <el-option
@@ -227,15 +238,24 @@
                 :value="field.fieldCode"
               />
             </el-select>
-            <div class="form-tip">该字段位于子实体，用来保存当前父记录的 ID。</div>
+            <div class="form-tip">字段位于“{{ editor.childEntityName || '关联实体' }}”，支持指向当前实体的单值引用，以及主键类型兼容的普通字符串字段（长度至少 64）。</div>
           </el-form-item>
           <el-alert
             v-if="editor.childEntityId && !childFieldsLoading && !childFieldOptions.length"
-            title="所选子实体没有可用字段，请先完成子实体字段设计。"
+            title="关联实体中还没有兼容的 ID 字段"
+            description="请选择或新增长度至少 64 的文本字段，或指向当前实体的单值实体引用字段，保存并发布后重新选择。不支持数字、多值字段或引用其他实体的字段。"
             type="warning"
             :closable="false"
             show-icon
           />
+          <div v-if="editor.childRefFieldCode" class="form-tip">
+            匹配规则：{{ editor.childEntityName || editor.childEntityCode || '关联实体' }}.{{ editor.childRefFieldCode }} = 当前记录.id
+          </div>
+          <el-button
+            v-if="editor.childEntityId"
+            link type="primary"
+            @click="$router.push(`/entity/design/${editor.childEntityId}`)"
+          >前往关联实体配置字段</el-button>
         </SettingsSection>
 
         <SettingsSection
@@ -243,10 +263,10 @@
           description="定义数量、所有权、删除行为和运行状态"
           :collapsible="false"
         >
-          <el-form-item label="关系基数" prop="relationType" required>
+          <el-form-item label="关联数量" prop="relationType" required>
             <el-radio-group v-model="editor.relationType">
-              <el-radio-button value="ONE_TO_ONE">一对一</el-radio-button>
-              <el-radio-button value="ONE_TO_MANY">一对多</el-radio-button>
+              <el-radio-button value="ONE_TO_ONE">一对一 · 显示表单</el-radio-button>
+              <el-radio-button value="ONE_TO_MANY">一对多 · 显示列表</el-radio-button>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="所有权类型" prop="ownershipType" required>
@@ -311,6 +331,7 @@ import {
   ENTITY_RELATION_CODE_PATTERN,
   createEntityRelationDraft,
   normalizeEntityRelation,
+  relationReferenceFields,
   sortEntityRelations,
   toEntityRelationSavePayload
 } from '@/shared/entity-relation'
@@ -344,15 +365,12 @@ const childFieldsLoading = ref(false)
 let childFieldRequestSequence = 0
 
 const isEditing = computed(() => Boolean(editor.value.id))
-const childFieldOptions = computed(() => (childFields.value || [])
-  .filter(field => field.fieldCode)
-  .sort((left, right) =>
-    Number(left.sortOrder || 0) - Number(right.sortOrder || 0)))
+const childFieldOptions = computed(() => relationReferenceFields(childFields.value, props.entityId))
 
 const codeRule = {
   validator: (_rule, value, callback) => {
     if (!String(value || '').trim()) {
-      callback(new Error('请输入稳定编码'))
+      callback()
     } else if (!isEditing.value
       && !ENTITY_RELATION_CODE_PATTERN.test(String(value).trim())) {
       callback(new Error('必须以字母开头，且只能包含字母、数字和下划线'))
@@ -371,7 +389,7 @@ const editorRules = {
   relationCode: [codeRule],
   dataKey: [codeRule],
   childEntityId: [{ required: true, message: '请选择子实体', trigger: 'change' }],
-  childRefFieldCode: [{ required: true, message: '请选择子实体回溯字段', trigger: 'change' }],
+  childRefFieldCode: [{ required: true, message: '请选择关联实体中保存当前记录 ID 的字段', trigger: 'change' }],
   relationType: [{ required: true, message: '请选择关系基数', trigger: 'change' }],
   ownershipType: [{ required: true, message: '请选择所有权类型', trigger: 'change' }]
 }
@@ -426,20 +444,22 @@ async function openEdit(row) {
 }
 
 function resetEditor() {
+  // 关闭后忽略尚未完成的字段请求，避免下一次新建被上一次目标实体覆盖。
+  ++childFieldRequestSequence
+  childFieldsLoading.value = false
   editor.value = createEntityRelationDraft()
   childFields.value = []
   editorFormRef.value?.clearValidate()
 }
 
-function fillDataKeyFromRelationCode() {
-  if (!isEditing.value && !editor.value.dataKey) {
-    editor.value.dataKey = String(editor.value.relationCode || '').trim()
-  }
-}
-
 async function handleChildEntityChange(value) {
   editor.value.childRefFieldCode = ''
+  editor.value.childEntityName = ''
+  editor.value.childEntityCode = ''
   await loadChildFields(value)
+  if (!isEditing.value && childFieldOptions.value.length === 1) {
+    editor.value.childRefFieldCode = childFieldOptions.value[0].fieldCode
+  }
 }
 
 async function loadChildFields(childEntityId) {
@@ -453,6 +473,9 @@ async function loadChildFields(childEntityId) {
     const entity = await entityApi.getById(childEntityId)
     if (sequence !== childFieldRequestSequence) return
     childFields.value = entity?.fields || []
+    editor.value.childEntityName = entity?.entityName || ''
+    editor.value.childEntityCode = entity?.entityCode || ''
+    if (!editor.value.relationName) editor.value.relationName = entity?.entityName || ''
   } catch (error) {
     if (sequence !== childFieldRequestSequence) return
     console.error('加载子实体字段失败:', error)
@@ -482,10 +505,10 @@ async function handleSave() {
     const payload = toEntityRelationSavePayload(editor.value)
     if (isEditing.value) {
       await entityRelationApi.update(props.entityId, editor.value.id, payload)
-      ElMessage.success('实体关系已更新')
+      ElMessage.success('实体关系已更新，发布当前实体后生效')
     } else {
       await entityRelationApi.create(props.entityId, payload)
-      ElMessage.success('实体关系已创建')
+      ElMessage.success('关系已创建，请发布当前实体，再到表单设计选择关联表单或列表')
     }
     editorVisible.value = false
     await loadRelations()
@@ -586,6 +609,7 @@ function ownershipTypeLabel(value) {
   margin-top: 3px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .legacy-tag {
@@ -593,6 +617,7 @@ function ownershipTypeLabel(value) {
 }
 
 code {
+  overflow-wrap: anywhere;
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--el-fill-color-light);

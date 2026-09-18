@@ -9,11 +9,11 @@ import lombok.Data;
 @Data
 public class EntityRelationSaveRequest {
 
-    /** 稳定关系编码，创建后不可修改 */
+    /** 稳定关系编码；新建时留空自动生成，编辑时留空保留原值，创建后不可修改 */
     private String relationCode;
     /** 中文关系名称 */
     private String relationName;
-    /** 聚合数据中的稳定属性名，创建后不可修改 */
+    /** 聚合数据中的内部属性名；留空自动分配，编辑时保留原值，不是关联字段 */
     private String dataKey;
     /** 子实体 ID */
     private String childEntityId;

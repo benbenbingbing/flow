@@ -170,7 +170,7 @@ assert.equal(
 )
 
 const listAnchor = createEmptyRelatedContent({ ownerType: 'LIST', sourceEntity })
-assert.equal(listAnchor.anchorType, 'ROW_ACTION')
+assert.equal(listAnchor.anchorType, 'LIST_ACTION')
 assert.equal(listAnchor.anchorKey, listAnchor.compositionKey)
 listAnchor.config.presentation.position = 'ROW_EXPAND'
 updateRelatedContentAnchor(listAnchor, 'LIST')

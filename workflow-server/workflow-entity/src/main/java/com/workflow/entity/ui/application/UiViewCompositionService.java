@@ -11,6 +11,7 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
+import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -66,7 +67,7 @@ public class UiViewCompositionService {
     public static final Set<String> OWNER_TYPES = Set.of("FORM", "LIST");
     public static final Set<String> ANCHOR_TYPES = Set.of(
             "OWNER", "FORM_NODE", "PAGE_SECTION", "ROW_EXPAND",
-            "TOOLBAR_ACTION", "ROW_ACTION");
+            "TOOLBAR_ACTION", "ROW_ACTION", "LIST_ACTION");
 
     private static final Pattern COMPOSITION_KEY =
             Pattern.compile("[A-Za-z][A-Za-z0-9_.-]{0,99}");
@@ -544,6 +545,9 @@ public class UiViewCompositionService {
         String ownerEntityId = requireText(
                 owner.get("entityId"), 64, "关联内容宿主实体");
         Object rawItems = ownerSnapshot.get("viewCompositions");
+        if ("LIST".equals(type)) {
+            validateListButtonReferences(owner, rawItems);
+        }
         if (rawItems == null) {
             // 功能上线前的发布快照没有该字段，语义等同于没有关联内容。
             return;
@@ -820,8 +824,30 @@ public class UiViewCompositionService {
             throw new IllegalArgumentException(
                     "使用当前记录时，来源实体和目标实体必须相同");
         }
+        if ("ENTITY_RELATION".equals(relation.get("type"))) {
+            EntityRelation definition = relationMapper.selectByRelationCode(
+                    owner.entityId(), String.valueOf(relation.get("relationCode")));
+            if (definition == null || Integer.valueOf(1).equals(definition.getDeleted())
+                    || !Boolean.TRUE.equals(definition.getEnabled())) {
+                throw new IllegalArgumentException("所选实体关系不存在或已停用，请返回实体设计检查");
+            }
+            if (!Objects.equals(targetEntityId, definition.getChildEntityId())) {
+                throw new IllegalArgumentException("目标表单或列表必须属于该关系的关联实体");
+            }
+            validateRelationContentType(definition, contentType);
+        }
         validateSpecialHandling(owner.type(), requireMap(
                 config.get("specialHandling"), "特殊处理"));
+    }
+
+    /** 关系基数决定展示方式，避免多条记录被单条表单截断或到运行时才报错。 */
+    private void validateRelationContentType(EntityRelation relation, String contentType) {
+        boolean single = relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE;
+        if (!(single ? "FORM" : "LIST").equals(contentType)) {
+            throw new IllegalArgumentException(single
+                    ? "一对一实体关系请关联目标表单"
+                    : "一对多实体关系请关联目标列表，不能用单条表单展示");
+        }
     }
 
     /**
@@ -1875,7 +1901,8 @@ public class UiViewCompositionService {
                 }
             }
             case "ENTITY_RELATION" -> validatePinnedEntityRelation(
-                    relation, source, target, label);
+                    relation, source, target,
+                    String.valueOf(requireMap(config.get("target"), "目标内容").get("contentType")), label);
             case "INTERFACE_SERVICE" -> {
                 // 接口会返回受控记录或过滤条件，字段另在运行时
                 // 按同一份目标钉定快照校验。
@@ -1889,6 +1916,7 @@ public class UiViewCompositionService {
             Map<String, Object> relation,
             EntityPublishedSnapshot source,
             EntityPublishedSnapshot target,
+            String contentType,
             String label) {
         if (!source.isRelationsSnapshotAvailable()) {
             throw new BusinessConflictException(
@@ -1911,11 +1939,16 @@ public class UiViewCompositionService {
             throw pinnedRelationInvalid(
                     label, "已钉定的来源实体版本不包含该关系");
         }
-        pinnedField(
+        EntityField field = pinnedField(
                 target,
                 definition.getChildRefFieldCode(),
                 label,
                 "目标");
+        var violation = EntityRelationFieldPolicy.violation(field, source.getEntityId());
+        if (violation != null) {
+            throw pinnedRelationInvalid(label, violation.message());
+        }
+        validateRelationContentType(definition, contentType);
     }
 
     private void requirePinnedFieldOrId(
@@ -3052,20 +3085,62 @@ public class UiViewCompositionService {
             return;
         }
         if (!Set.of("PAGE_SECTION", "ROW_EXPAND",
-                "TOOLBAR_ACTION", "ROW_ACTION").contains(anchorType)) {
+                "TOOLBAR_ACTION", "ROW_ACTION", "LIST_ACTION").contains(anchorType)) {
             throw new IllegalArgumentException(
-                    "列表关联内容必须选择页面区块、行展开、工具栏或行操作挂载位置");
+                    "列表关联内容只支持页面区块、行展开或按钮打开");
         }
         boolean compatible = switch (anchorType) {
             case "PAGE_SECTION" -> "INLINE".equals(position);
             case "ROW_EXPAND" -> "ROW_EXPAND".equals(position);
-            case "TOOLBAR_ACTION", "ROW_ACTION" ->
+            case "TOOLBAR_ACTION", "ROW_ACTION", "LIST_ACTION" ->
                     Set.of("DIALOG", "DRAWER", "PAGE").contains(position);
             default -> false;
         };
         if (!compatible) {
             throw new IllegalArgumentException(
                     "列表挂载位置与显示方式不匹配，请重新选择显示位置");
+        }
+    }
+
+    /**
+     * 按钮只能引用同一列表快照中的弹出式关联内容。发布和历史激活共用此校验，
+     * 防止删除、停用或改成内嵌后留下无法打开的入口；未绑定按钮的内容允许先保存发布。
+     */
+    private void validateListButtonReferences(Map<String, Object> owner, Object rawItems) {
+        List<?> items = rawItems instanceof List<?> values ? values : List.of();
+        for (String field : List.of("toolbarConfig", "rowActionConfig")) {
+            Object rawButtons = owner.get(field);
+            List<?> buttons = rawButtons instanceof String document
+                    ? codec.readArray(document, "列表按钮")
+                    : rawButtons instanceof List<?> values ? values : List.of();
+            for (Object rawButton : buttons) {
+                Map<String, Object> button = requireMap(rawButton, "列表按钮");
+                if (!"custom".equals(button.get("type"))
+                        || !"open-related-content".equals(button.get("customMode"))
+                        || Boolean.FALSE.equals(button.get("enabled"))) continue;
+                String key = blankToNull(button.get("compositionKey"));
+                Map<String, Object> target = null;
+                for (Object rawItem : items) {
+                    if (rawItem instanceof Map<?, ?> item
+                            && key != null && key.equals(item.get("compositionKey"))) {
+                        target = stringMap(item);
+                        break;
+                    }
+                }
+                String label = "按钮“" + button.getOrDefault("label", button.get("key")) + "”";
+                if (target == null) {
+                    throw new IllegalArgumentException(label + "引用的关联内容不存在，请到按钮设置重新选择");
+                }
+                Map<String, Object> config = requireMap(target.get("config"), "关联内容配置");
+                Map<String, Object> presentation = requireMap(config.get("presentation"), "显示方式");
+                if (Boolean.FALSE.equals(config.get("enabled"))
+                        || !Set.of("LIST_ACTION", "ROW_ACTION", "TOOLBAR_ACTION").contains(
+                                String.valueOf(target.get("anchorType")))
+                        || !Set.of("DIALOG", "DRAWER", "PAGE").contains(
+                                String.valueOf(presentation.get("position")))) {
+                    throw new IllegalArgumentException(label + "必须选择已启用且以弹窗、抽屉或页面显示的关联内容");
+                }
+            }
         }
     }
 

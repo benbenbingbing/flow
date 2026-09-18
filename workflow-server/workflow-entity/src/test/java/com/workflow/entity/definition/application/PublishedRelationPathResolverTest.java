@@ -34,6 +34,36 @@ class PublishedRelationPathResolverTest {
     }
 
     @Test
+    void ordinaryIdFieldPinsParentIdentityAndPhysicalColumnWithoutReferenceMetadata() {
+        EntityPublishedSnapshot source = snapshot("parent", "parent", "parent-history", 1);
+        EntityPublishedSnapshot target = snapshot("child", "child", "child-history", 2);
+        source.setRelations(List.of(relation("children", target, "parentId")));
+        EntityField field = reference("parentId", null, false);
+        field.setFieldType(EntityField.FieldType.STRING);
+        field.setDbColumnName("external_parent_id");
+        target.setFields(List.of(field));
+        when(snapshotService.getPinnedByHistoryId("parent-history"))
+                .thenReturn(new PinnedEntitySnapshot(source, "parent-hash"));
+        when(snapshotService.getLatestPinnedByEntityId("child"))
+                .thenReturn(new PinnedEntitySnapshot(target, "child-hash"));
+        PublishedRelationPath path = resolver.compile("parent-history",
+                List.of(new StepSpec(StepType.RELATION, "children", null)));
+        assertEquals("parent", path.hops().get(0).targetLinkField().referenceEntityId());
+        assertEquals("external_parent_id", path.hops().get(0).targetLinkField().storageColumn());
+        when(snapshotService.getPinnedByHistoryId("child-history"))
+                .thenReturn(new PinnedEntitySnapshot(target, "child-hash"));
+        resolver.validate(path);
+        // 已固定字段变为数字或改了物理列时，运行时不能悄悄转换或改查其他列。
+        field.setFieldType(EntityField.FieldType.LONG);
+        assertThrows(IllegalArgumentException.class, () -> resolver.validate(path));
+        field.setFieldType(EntityField.FieldType.STRING);
+        field.setDbColumnName("changed_column");
+        assertThrows(IllegalArgumentException.class, () -> resolver.validate(path));
+        assertThrows(IllegalArgumentException.class, () -> resolver.compile("child-history",
+                List.of(new StepSpec(StepType.REFERENCE_FIELD, "parentId", null))));
+    }
+
+    @Test
     void compilesRelationAndRuntimeKeepsExactTargetRelease() {
         EntityPublishedSnapshot project = snapshot(
                 "project-id", "project", "project-history", 3);

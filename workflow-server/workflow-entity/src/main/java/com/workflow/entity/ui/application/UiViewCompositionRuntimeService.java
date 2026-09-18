@@ -15,6 +15,7 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
+import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -762,10 +763,14 @@ public class UiViewCompositionRuntimeService {
                     throw invalidRelation(
                             "实体关系不存在于来源实体发布快照或目标实体不匹配");
                 }
-                requireField(
+                EntityField field = requireField(
                         targetSchema,
                         publishedRelation.getChildRefFieldCode(),
                         "目标");
+                var violation = EntityRelationFieldPolicy.violation(field, sourceSchema.getEntityId());
+                if (violation != null) {
+                    throw invalidRelation(violation.message());
+                }
                 putEqualFilter(
                         filters,
                         publishedRelation.getChildRefFieldCode(),

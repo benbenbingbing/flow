@@ -16,11 +16,19 @@ import Runtime from '/src/components/FormPreviewLinkage.vue'
 import DesignItem from '/src/components/FormNodeDesignItem.vue'
 import DraggableList from '/src/components/FormNodeDraggableList.vue'
 import Settings from '/src/components/form-designer/FormDesignerSettingsDrawer.vue'
+import RelatedContentPanel from '/src/components/related-content/RelatedContentPanel.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '/src/components/form-designer/context.js'
 import { resolveFormLabelPosition, resolveFormLabelWidth } from '/src/shared/form-layout.js'
 import { resolveFormNodeLayoutSpan } from '/src/shared/form-node-property-schema.js'
 import { emptyFormActionBar } from '/src/shared/form-actions.js'
 import { uiEventBindingApi, uiExtensionApi } from '/src/api/uiConfig.js'
+import { uiCompositionApi } from '/src/api/uiComposition.js'
+import request from '/src/utils/request.js'
+// 关联内容弹窗也只访问内存适配器，保证验收不会读写当前业务库。
+request.defaults.adapter=async config=>({data:{code:200,data:[]},status:200,statusText:'OK',headers:{},config})
+let compositions=[{id:'related-1',compositionKey:'req',revision:1,config:{name:'关联需求',target:{contentType:'FORM',contentName:'需求表单'},presentation:{position:'INLINE'}}}]
+uiCompositionApi.list=async()=>compositions
+uiCompositionApi.remove=async()=>{compositions=[];return {ownerRevision:2}}
 uiEventBindingApi.list=async()=>[]
 uiEventBindingApi.catalog=async()=>({events:[]})
 uiExtensionApi.availableInterfaces=async()=>[]
@@ -29,7 +37,8 @@ nodes.push({id:'grid',nodeKey:'grid',nodeType:'GRID',props:{defaultSpan:12,gutte
 const fields=nodes.filter(n=>n.nodeType==='FIELD').map(n=>({id:n.bindingRef,fieldCode:n.props.fieldCode,fieldName:n.props.label,fieldType:'STRING',componentType:'input',gridSpan:n.props.gridSpan}))
 const form=ref({id:'form-layout',formName:'栅格验收',formKey:'grid-test',status:1,isDefault:false,layoutType:'grid',nodes,fields,viewConfig:{labelWidth:150,actionBar:emptyFormActionBar()}})
 const viewConfig=computed({get:()=>form.value.viewConfig,set:v=>form.value.viewConfig=v})
-const state=reactive({form, drawer:false, data:{}, saved:null})
+const state=reactive({form, drawer:false, activeTab:'basic',relatedCount:0,relatedChanges:0,data:{}, saved:null})
+const relatedPanel=ref(null), standalonePanel=ref(null)
 const designNodes=computed(()=>form.value.nodes.map(n=>({...n,...n.props,fieldLabel:n.props.label,componentProps:n.props})))
 const pos=computed(()=>resolveFormLabelPosition(form.value)),width=computed(()=>resolveFormLabelWidth(form.value))
 const noop=()=>{}
@@ -40,10 +49,11 @@ const app=createApp({setup(){
  h('section',{id:'design'},[h('h3','设计画布'),h(ElForm,{labelPosition:pos.value,labelWidth:width.value},()=>h(DraggableList,{items:designNodes.value.filter(n=>!n.parentId),canDrop:()=>false,zoneClass:'root-design-drop-zone'},{item:({element:n,index:i})=>h(DesignItem,{node:n,siblingIndex:i,siblingCount:4,layoutType:form.value.layoutType,childrenFor:id=>designNodes.value.filter(n=>n.parentId===id),nodeSpanFor:(n,fallback)=>resolveFormNodeLayoutSpan(n,'grid',fallback),nodeStyleFor:n=>{const width=100*resolveFormNodeLayoutSpan(n,form.value.layoutType)/24+'%';return {width,flex:'0 0 '+width}},legacyNodeType:n=>n.nodeType,nodeLabel:id=>designNodes.value.find(n=>n.id===id)?.fieldLabel||'',canDropNode:()=>false})}))]),
  h('section',{id:'runtime'},[h('h3','发布运行时'),h(Runtime,{form:form.value,modelValue:state.data,showHeader:false})]),
  h('section',{id:'preview'},[h('h3','旧字段预览'),h(Preview,{form:{...form.value,fields:fields.slice(0,3)},showHeader:false})]),
- h(Settings,{modelValue:state.drawer,'onUpdate:modelValue':v=>state.drawer=v})])
+ h(Settings,{modelValue:state.drawer,'onUpdate:modelValue':v=>state.drawer=v,activeTab:state.activeTab,'onUpdate:activeTab':v=>state.activeTab=v,relatedContentCount:state.relatedCount},{'related-content':()=>h(RelatedContentPanel,{ref:relatedPanel,embedded:true,ownerType:'FORM',ownerId:'form-layout',onCountChange:v=>state.relatedCount=v,onChanged:()=>state.relatedChanges++})}),
+ h(RelatedContentPanel,{ref:standalonePanel,ownerType:'LIST',ownerId:'list-layout'})])
 }})
 app.use(createPinia()).use(ElementPlus).mount('#app')
-window.layoutTest={state,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,350));await nextTick()}}
+window.layoutTest={state,standalonePanel,openRelated:async()=>{state.activeTab='related-content';state.drawer=true;await nextTick();if(!relatedPanel.value)throw Error('关联内容未随设置抽屉挂载');await relatedPanel.value.open()},settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,350));await nextTick()}}
 `
 const fixture = mkdtempSync(path.resolve('.form-layout-fixture-'))
 writeFileSync(path.join(fixture,'index.html'), '<html><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>')
@@ -122,6 +132,30 @@ try{
  await evaluate(`document.querySelector('main').style.width='960px'`);await evaluate('layoutTest.settle()')
  const screenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-grid-layout.png',Buffer.from(screenshot.data,'base64'))
  await open();const settingsImage=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-grid-settings.png',Buffer.from(settingsImage.data,'base64'))
+ // 一级页签切换与关联面板首次挂载、关闭后重开，都必须保留原有编辑能力。
+ const tabLabels=await evaluate(`[...document.querySelectorAll('.form-settings-tabs > .el-tabs__header [role="tab"]')].map(e=>e.textContent.trim().replace(/\\s*\\d+$/,''))`)
+ assert.deepEqual(tabLabels,['基本与布局','按钮与操作','初始化数据','表单事件','输入参数','关联内容'])
+ for(const name of ['data-source','events','input-parameters','related-content']){
+  await evaluate(`document.querySelector('.form-settings-tabs #tab-${name}').click();layoutTest.settle()`)
+  assert.equal(await evaluate('layoutTest.state.activeTab'),name)
+  assert.equal(await evaluate(`document.querySelector('.form-settings-tabs #pane-${name}').getClientRects().length>0`),true)
+ }
+ assert.equal(await evaluate("document.querySelector('.related-content-panel.is-embedded').innerText.includes('关联需求')"),true)
+ await close();await evaluate('layoutTest.openRelated()');await evaluate('layoutTest.settle()')
+ assert.equal(await evaluate(`[...document.querySelectorAll('.el-drawer')].filter(${visible}).length`),1,'表单关联内容不应再打开第二层抽屉')
+ const relatedImage=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-related-settings.png',Buffer.from(relatedImage.data,'base64'))
+ async function clickButton(label,selector){await evaluate(`(()=>{const el=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&e.textContent.trim()===${JSON.stringify(label)});if(!el)throw Error('找不到按钮 '+${JSON.stringify(label)});el.click()})();layoutTest.settle()`)}
+ await clickButton('编辑','.related-content-panel.is-embedded button')
+ assert.equal(await evaluate(`document.querySelector('.related-content-config-dialog').innerText.includes('编辑关联内容')`),true)
+ await clickButton('取消','.related-content-config-dialog button')
+ await clickButton('删除','.related-content-panel.is-embedded button')
+ await clickButton('确认删除','.el-message-box button')
+ assert.equal(await evaluate('layoutTest.state.relatedCount'),0)
+ assert.equal(await evaluate('layoutTest.state.relatedChanges'),1)
+ await close();await evaluate('layoutTest.openRelated()');await evaluate('layoutTest.settle()')
+ assert.equal(await evaluate("document.querySelector('.related-content-panel.is-embedded').innerText.includes('还没有关联内容')"),true)
+ await close();await evaluate('layoutTest.standalonePanel.value.open()');await evaluate('layoutTest.settle()')
+ assert.equal(await evaluate(`document.querySelector('.el-drawer.related-content-panel').innerText.includes('去操作列按钮设置')`),true,'列表继续使用原有独立关联抽屉')
  assert.deepEqual(errors,[])
- console.log('form layout browser acceptance passed: mixed grid widths, nested GRID, top/left/right labels, shared label widths, settings edits, JSON reload, unchanged historical layouts, narrow viewport')
+ console.log('form layout browser acceptance passed: grid and labels, settings tab order, embedded related content edit/delete/reopen, standalone list drawer, JSON reload, narrow viewport')
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}

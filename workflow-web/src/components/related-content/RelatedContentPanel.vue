@@ -1,13 +1,12 @@
 <template>
-  <el-drawer
-    v-model="visible"
-    title="关联内容"
-    direction="rtl"
-    size="min(920px, 92vw)"
-    append-to-body
+  <component
+    :is="embedded ? 'section' : ElDrawer"
+    v-bind="embedded ? {} : drawerProps"
+    @update:model-value="visible = $event"
     class="related-content-panel"
+    :class="{ 'is-embedded': embedded }"
   >
-    <template #header>
+    <template v-if="!embedded" #header>
       <div class="panel-heading">
         <div>
           <strong>关联内容</strong>
@@ -20,6 +19,17 @@
       </div>
     </template>
 
+    <div v-if="embedded" class="panel-heading">
+      <div>
+        <strong>关联内容</strong>
+        <span>在当前{{ ownerType === 'FORM' ? '表单' : '列表' }}中组合其他实体的表单或列表</span>
+      </div>
+      <el-button type="primary" :disabled="!ownerId || loading" @click="openCreate">
+        <el-icon><Plus /></el-icon>
+        新增关联内容
+      </el-button>
+    </div>
+
     <div v-loading="loading" class="panel-body">
       <el-alert
         title="普通场景按“显示什么、数据怎么关联、允许做什么”三步即可完成；复杂场景再展开特殊处理。"
@@ -27,6 +37,13 @@
         :closable="false"
         show-icon
       />
+
+      <el-alert v-if="ownerType === 'LIST'" type="info" :closable="false" show-icon class="load-error"
+        title="弹窗、抽屉和页面的入口在列表按钮中配置">
+        <p>到“工具栏按钮”或“操作列按钮”添加自定义按钮，执行方式选择“打开关联内容”，再选择这里的配置。按钮名称、图标、样式、权限和适用条件统一在那里设置。已有每行/工具栏关联内容也需要绑定按钮。</p>
+        <el-button size="small" @click="configureButtons('toolbar')">去工具栏按钮设置</el-button>
+        <el-button size="small" @click="configureButtons('rowActions')">去操作列按钮设置</el-button>
+      </el-alert>
 
       <el-alert
         v-if="loadError"
@@ -117,13 +134,13 @@
       :existing-count="rows.length"
       @saved="handleSaved"
     />
-  </el-drawer>
+  </component>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Link, Operation, Plus, Refresh, Tools } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElDrawer, ElMessage, ElMessageBox } from 'element-plus'
 import RelatedContentConfigDialog from './RelatedContentConfigDialog.vue'
 import { uiCompositionApi } from '@/api/uiComposition'
 import {
@@ -135,6 +152,7 @@ import {
 } from '@/shared/related-content'
 
 const props = defineProps({
+  embedded: { type: Boolean, default: false },
   ownerType: { type: String, required: true },
   ownerId: { type: [String, Number], default: '' },
   sourceEntity: { type: Object, default: () => ({}) },
@@ -143,13 +161,26 @@ const props = defineProps({
   anchorOptions: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['count-change', 'changed'])
+const emit = defineEmits(['count-change', 'changed', 'loaded', 'configure-buttons'])
 const visible = ref(false)
+// 表单设置直接承载面板；列表仍使用独立抽屉，共用同一套配置与保存逻辑。
+const drawerProps = computed(() => ({
+  modelValue: visible.value,
+  title: '关联内容',
+  direction: 'rtl',
+  size: 'min(920px, 92vw)',
+  appendToBody: true
+}))
 const loading = ref(false)
 const deletingId = ref('')
 const loadError = ref('')
 const rows = ref([])
 const dialogRef = ref(null)
+
+function configureButtons(tab) {
+  visible.value = false
+  emit('configure-buttons', tab)
+}
 
 function normalizeRows(response) {
   if (Array.isArray(response)) return response
@@ -167,6 +198,7 @@ async function load({ silent = false } = {}) {
   if (!props.ownerId) {
     rows.value = []
     emit('count-change', 0)
+    emit('loaded', [])
     return
   }
   loading.value = true
@@ -180,9 +212,11 @@ async function load({ silent = false } = {}) {
       }))
       .sort((left, right) => Number(left.orderKey || 0) - Number(right.orderKey || 0))
     emit('count-change', rows.value.length)
+    emit('loaded', rows.value)
   } catch (error) {
     rows.value = []
     emit('count-change', 0)
+    emit('loaded', [])
     loadError.value = error?.message || '关联内容加载失败，请重试'
     if (!silent) ElMessage.error(loadError.value)
   } finally {
@@ -190,9 +224,10 @@ async function load({ silent = false } = {}) {
   }
 }
 
-async function open() {
-  visible.value = true
+async function open(item = null) {
+  if (!props.embedded) visible.value = true
   await load({ silent: true })
+  if (item) openEdit(rows.value.find(row => row.id === item.id) || item)
 }
 
 function openCreate() {
@@ -258,7 +293,7 @@ watch(
   { immediate: true }
 )
 
-defineExpose({ open, load })
+defineExpose({ open, load, remove })
 </script>
 
 <style scoped>
@@ -275,6 +310,10 @@ defineExpose({ open, load })
 
 .panel-heading {
   width: 100%;
+}
+
+.is-embedded > .panel-heading {
+  margin-bottom: 16px;
 }
 
 .panel-heading > div,

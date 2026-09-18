@@ -17,6 +17,7 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelation
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;
+import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
@@ -947,11 +948,7 @@ public class EntityRelationRuntimeService {
         EntityField field = fieldMapper.findByEntityIdAndFieldCode(
                 definition.getId(),
                 relation.getChildRefFieldCode());
-        if (field == null
-                || field.getFieldType()
-                != EntityField.FieldType.REFERENCE
-                || !Objects.equals(
-                definition.getId(), field.getRefEntityId())) {
+        if (EntityRelationFieldPolicy.violation(field, definition.getId()) != null) {
             throw new BusinessConflictException(
                     "ENTITY_SELF_RELATION_REF_FIELD_INVALID",
                     "自关联关系的父引用字段配置无效: "

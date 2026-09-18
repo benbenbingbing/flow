@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -154,11 +155,17 @@ public class EntityRelationDefinitionService {
             throw new IllegalArgumentException("实体关系配置不能为空");
         }
         String relationCode = stableCode(
-                request.getRelationCode(),
+                StringUtils.hasText(request.getRelationCode())
+                        ? request.getRelationCode()
+                        : existing == null ? newRelationKey(parent.getId())
+                        : existing.getRelationCode(),
                 "关系编码",
                 existing == null);
         String dataKey = stableCode(
-                request.getDataKey(),
+                StringUtils.hasText(request.getDataKey())
+                        ? request.getDataKey()
+                        : existing == null ? availableDataKey(parent.getId(), relationCode)
+                        : effectiveDataKey(existing),
                 "关系数据键",
                 existing == null);
         if (existing != null
@@ -261,28 +268,20 @@ public class EntityRelationDefinitionService {
     }
 
     /**
-     * 校验关系承载字段确实是指向父实体的单值引用。
+     * 校验关系承载字段可存放父记录 ID，并保留已有引用目标约束。
      *
      * <p>组成关系和普通关联在所有权、删除语义上不同，但二者都依赖子记录上的
-     * 同一个权威父引用；若允许普通字段或指向其他实体的引用发布，运行时无法
-     * 可信判断归属、反向查询和自关联祖先链。</p>
+     * 同一个权威父 ID 字段；普通字段的目标由关系定义声明，不需要再配置
+     * 实体引用，但不能覆盖字段已经声明的其他引用目标。</p>
      */
     private void validateChildReference(
             EntityDefinition parent,
             EntityDefinition child,
             EntityField childRef) {
-        if (childRef.getFieldType() != EntityField.FieldType.REFERENCE) {
+        var violation = EntityRelationFieldPolicy.violation(childRef, parent.getId());
+        if (violation != null) {
             throw new BusinessConflictException(
-                    "ENTITY_RELATION_CHILD_REF_TYPE_INVALID",
-                    "关系承载字段必须是单值实体引用: "
-                            + child.getEntityCode() + "."
-                            + childRef.getFieldCode());
-        }
-        if (!Objects.equals(parent.getId(), childRef.getRefEntityId())) {
-            throw new BusinessConflictException(
-                    "ENTITY_RELATION_CHILD_REF_TARGET_INVALID",
-                    "关系承载字段必须指向父实体 “"
-                            + parent.getEntityName() + "”: "
+                    violation.code(), violation.message() + ": "
                             + child.getEntityCode() + "."
                             + childRef.getFieldCode());
         }
@@ -302,7 +301,8 @@ public class EntityRelationDefinitionService {
         if (!explicitLegacyBinding) {
             throw new BusinessConflictException(
                     "ENTITY_RELATION_DATA_KEY_FIELD_CONFLICT",
-                    "关系数据键与父实体字段编码冲突: " + dataKey);
+                    "关系数据键与当前实体的字段同名: " + dataKey
+                            + "。数据键是关系结果的内部标识，不是关联字段；新建时可留空自动生成，实际关联字段请在关联实体中选择。");
         }
         if (StringUtils.hasText(request.getParentFieldId())
                 && !Objects.equals(
@@ -423,6 +423,31 @@ public class EntityRelationDefinitionService {
             return relation.getParentFieldCode();
         }
         return relation.getRelationCode();
+    }
+
+    /**
+     * 为新关系生成内部标识；不要求业务人员创建同名实体字段。
+     * 查询包含退役关系，避免误用历史表单或快照仍引用的键。
+     */
+    private String newRelationKey(String parentId) {
+        String key;
+        do {
+            key = "rel_" + UUID.randomUUID().toString().replace("-", "");
+        } while (relationMapper.selectByRelationCode(parentId, key) != null
+                || !isDataKeyAvailable(parentId, key));
+        return key;
+    }
+
+    /** 自定义关系编码可以与业务字段同名，承载结果的数据键必须独立分配。 */
+    private String availableDataKey(String parentId, String relationCode) {
+        return isDataKeyAvailable(parentId, relationCode)
+                ? relationCode : newRelationKey(parentId);
+    }
+
+    private boolean isDataKeyAvailable(String parentId, String key) {
+        return !RESERVED_DATA_KEYS.contains(key.toLowerCase(Locale.ROOT))
+                && fieldMapper.findByEntityIdAndFieldCode(parentId, key) == null
+                && relationMapper.selectByDataKey(parentId, key) == null;
     }
 
     private String stableCode(

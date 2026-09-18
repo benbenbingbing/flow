@@ -329,6 +329,31 @@ class EntityActionCapabilityServiceTaskBindingTest {
         assertEquals("当前数据不满足显示条件", failure.getMessage());
     }
 
+    @Test
+    void relatedContentToolbarEvaluatesTheSelectedRecordsRules() {
+        Map<String, Object> button = Map.of("key", "requirements", "type", "custom",
+                "customMode", "open-related-content", "enabled", true);
+        when(actionConfigService.resolveToolbarButtons(listConfig, ENTITY_CODE)).thenReturn(List.of(button));
+        when(actionConfigService.permissionFor(ENTITY_CODE, button)).thenReturn(APPROVE_PERMISSION);
+        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        rule.setVisibleWhen(fieldCondition("visible", true));
+        rule.setEnabledWhen(fieldCondition("enabled", true));
+        when(actionConfigService.readRule(button)).thenReturn(rule);
+        assertTrue(service.evaluateToolbarActions(ENTITY_CODE, listConfig).get("requirements").isVisible());
+
+        EntityDataDTO row = multiInstanceRow();
+        row.setData(Map.of("visible", false, "enabled", true));
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        assertFalse(row.getActionCapabilities().get("requirements").isVisible());
+        row.setData(Map.of("visible", true, "enabled", false));
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        assertTrue(row.getActionCapabilities().get("requirements").isVisible());
+        assertFalse(row.getActionCapabilities().get("requirements").isEnabled());
+        row.setData(Map.of("visible", true, "enabled", true));
+        service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+        assertTrue(row.getActionCapabilities().get("requirements").isEnabled());
+    }
+
     /** 构造实体摘要指向其他会签人的兄弟任务。 */
     private EntityDataDTO multiInstanceRow() {
         EntityDataDTO row = new EntityDataDTO();

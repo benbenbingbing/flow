@@ -40,6 +40,8 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -293,13 +295,20 @@ class UiViewCompositionActionServiceTest {
         verify(mutationPort, never()).executeBatch(any());
     }
 
-    @Test
-    void reverseReferenceLinkAndUnlinkUseAtomicMutationBatch() {
+    @ParameterizedTest
+    @ValueSource(strings = {"REVERSE_REFERENCE", "ENTITY_RELATION", "PLAIN_ID"})
+    void scalarRelationLinkAndUnlinkUseAtomicMutationBatch(String fieldMode) {
         Fixture fixture = fixture(
                 List.of("VIEW", "LINK", "UNLINK"),
-                "REVERSE_REFERENCE",
+                "PLAIN_ID".equals(fieldMode) ? "ENTITY_RELATION" : fieldMode,
                 true,
                 EntityRelation.OwnershipType.ASSOCIATION);
+        if ("PLAIN_ID".equals(fieldMode)) {
+            EntityField field = entitySnapshotService.getPinnedByHistoryId("target-history")
+                    .snapshot().getFields().get(1);
+            field.setFieldType(EntityField.FieldType.STRING);
+            field.setRefEntityId(null);
+        }
         AtomicReference<String> current = new AtomicReference<>();
         when(dynamicDataService.findAccessibleById(
                 "target_entity", "target-1", "target-list-key"))
@@ -340,6 +349,24 @@ class UiViewCompositionActionServiceTest {
         assertEquals(fixture.sourceEntity().getEntityCode(),
                 batches.getAllValues().get(0).commands().get(0)
                         .context().sourceEntityCode());
+    }
+
+    @Test
+    void entityRelationRejectsIncompatibleFieldForCapabilitiesAndWrites() {
+        fixture(List.of("VIEW", "LINK", "UNLINK"), "ENTITY_RELATION", true,
+                EntityRelation.OwnershipType.ASSOCIATION);
+        EntityField field = entitySnapshotService.getPinnedByHistoryId("target-history")
+                .snapshot().getFields().get(1);
+        for (var type : List.of(EntityField.FieldType.REFERENCE, EntityField.FieldType.LONG)) {
+            field.setFieldType(type);
+            field.setRefEntityId("other-entity");
+            UiViewCompositionActionCapabilitiesRequest request = new UiViewCompositionActionCapabilitiesRequest();
+            request.setActionContextToken("action-token");
+            assertFalse(service.capabilities(request).getActionCapabilities().get("LINK").isAvailable());
+            assertThrows(BusinessForbiddenException.class, () -> service.execute(
+                    request("action-token", "LINK", "invalid-" + type, "target-1")));
+        }
+        verify(mutationPort, never()).executeBatch(any());
     }
 
     @Test

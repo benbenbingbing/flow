@@ -25,7 +25,7 @@ public class UiViewCompositionSaveRequest {
     private Integer expectedOwnerRevision;
     /** 宿主范围内稳定且唯一的业务编码。 */
     private String compositionKey;
-    /** OWNER/FORM_NODE/PAGE_SECTION/ROW_EXPAND/TOOLBAR_ACTION/ROW_ACTION。 */
+    /** OWNER/FORM_NODE/PAGE_SECTION/ROW_EXPAND/LIST_ACTION；兼容历史 TOOLBAR_ACTION/ROW_ACTION。 */
     private String anchorType;
     /** 非 OWNER 挂载点对应的节点、分区或操作编码。 */
     private String anchorKey;

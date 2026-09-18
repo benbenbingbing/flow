@@ -131,11 +131,11 @@
           :selection-mode="runtimeSelectionMode"
           :runtime-context="relatedContentRuntimeContext"
           :row-expand-compositions="rowExpandCompositions"
-          :row-action-compositions="relatedRowActionCompositions"
-          :toolbar-action-compositions="relatedToolbarActionCompositions"
+          :button-compositions="relatedButtonCompositions"
           :list-owner-id="listConfig?.id || ''"
           :list-release-id="listConfig?.releaseId || ''"
           :list-release-version="listConfig?.publishedVersion || 0"
+          :list-release-resolution-token="releaseResolutionToken || ''"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
@@ -255,6 +255,7 @@ import {
 } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { filterRelatedContentButtons } from '@/shared/related-content-runtime'
+import { isButtonRelatedContent, isRelatedContentButton } from '@/shared/list-related-content'
 import { withListButtonTypeDefault } from '@/shared/list-config-design'
 import { loadExplicitListButtonForm } from '@/shared/list-button-form-runtime'
 import {
@@ -389,16 +390,8 @@ const rowExpandCompositions = computed(() =>
     String(item?.anchorType || '').toUpperCase() === 'ROW_EXPAND'
   )
 )
-const relatedRowActionCompositions = computed(() =>
-  publishedRelatedContents.value.filter((item: any) =>
-    String(item?.anchorType || '').toUpperCase() === 'ROW_ACTION'
-  )
-)
-const relatedToolbarActionCompositions = computed(() =>
-  publishedRelatedContents.value.filter((item: any) =>
-    String(item?.anchorType || '').toUpperCase() === 'TOOLBAR_ACTION'
-  )
-)
+const relatedButtonCompositions = computed(() =>
+  publishedRelatedContents.value.filter(isButtonRelatedContent))
 const viewCompositionTraversalToken = computed(() => String(
   props.viewCompositionTraversalToken
   || props.context?.viewCompositionTraversalToken
@@ -747,6 +740,7 @@ const showSelectionColumn = computed(() => {
   return selectionScene.value
     || runtimeSelectionMode.value !== 'NONE'
     || toolbarButtons.value.some((b: any) => b.key === 'exportSelected' || b.key === 'batchDelete')
+    || toolbarButtons.value.some(isRelatedContentButton)
 })
 // 引用实体名称缓存
 const refEntityNameMap = ref<Record<string, string>>({})

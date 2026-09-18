@@ -1,6 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -8,6 +9,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DynamicTableServiceTest {
+
+    @Test
+    void relationFieldCompatibilityMatchesAuthoritativeStorageType() {
+        for (var type : EntityField.FieldType.values()) {
+            EntityField field = new EntityField();
+            field.setFieldCode("parentId");
+            field.setFieldType(type);
+            if (type == EntityField.FieldType.REFERENCE) field.setRefEntityId("parent");
+            if (EntityRelationFieldPolicy.violation(field, "parent") == null) {
+                assertEquals("VARCHAR(200)", DynamicTableService.getDbType(field), type.name());
+            }
+        }
+    }
 
     @Test
     void shouldRenderBooleanDefaultsAsNumericLiterals() {

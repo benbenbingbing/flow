@@ -17,6 +17,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -34,6 +36,65 @@ class EntityRelationDefinitionServiceTest {
     private final EntityRelationDefinitionService service =
             new EntityRelationDefinitionService(
                     entityMapper, fieldMapper, relationMapper);
+
+    @Test
+    void generatesInternalKeysWithoutRequiringMatchingEntityFields() {
+        stubEntitiesAndForeignKey();
+        EntityRelationSaveRequest request = request();
+        request.setRelationCode(null);
+        request.setDataKey("");
+
+        EntityRelationDTO result = service.create("parent-1", request);
+
+        assertTrue(result.getRelationCode().matches("rel_[a-f0-9]{32}"));
+        assertEquals(result.getRelationCode(), result.getDataKey());
+        assertEquals("parentId", result.getChildRefFieldCode());
+        assertNull(result.getParentFieldId());
+    }
+
+    @Test
+    void separatesCustomRelationCodeFromConflictingParentField() {
+        stubEntitiesAndForeignKey();
+        EntityRelationSaveRequest request = request();
+        request.setRelationCode("reqRelation");
+        request.setDataKey(null);
+        when(fieldMapper.findByEntityIdAndFieldCode("parent-1", "reqRelation"))
+                .thenReturn(new EntityField());
+
+        EntityRelationDTO result = service.create("parent-1", request);
+
+        assertEquals("reqRelation", result.getRelationCode());
+        assertNotEquals("reqRelation", result.getDataKey());
+        assertTrue(result.getDataKey().startsWith("rel_"));
+    }
+
+    @Test
+    void preservesHistoricalKeysWhenSimpleEditorOmitsThem() {
+        stubEntitiesAndForeignKey();
+        when(relationMapper.selectById("relation-1")).thenReturn(relation());
+        EntityRelationSaveRequest request = request();
+        request.setRelationCode(null);
+        request.setDataKey(null);
+
+        EntityRelationDTO result = service.update("parent-1", "relation-1", request);
+
+        assertEquals("detail_relation", result.getRelationCode());
+        assertEquals("details", result.getDataKey());
+    }
+
+    @Test
+    void generatedDataKeyDoesNotReuseRetiredKey() {
+        stubEntitiesAndForeignKey();
+        EntityRelation retired = relation();
+        retired.setDeleted(1);
+        when(relationMapper.selectByDataKey("parent-1", "detail_relation")).thenReturn(retired);
+        EntityRelationSaveRequest request = request();
+        request.setDataKey(null);
+
+        EntityRelationDTO result = service.create("parent-1", request);
+
+        assertNotEquals("detail_relation", result.getDataKey());
+    }
 
     @Test
     void createsRelationWithoutSubFormField() {
@@ -181,10 +242,25 @@ class EntityRelationDefinitionServiceTest {
     }
 
     @Test
-    void rejectsPublishWhenChildReferenceIsNotSingleReference() {
+    void ordinaryIdFieldCanBeCreatedUpdatedAndPublished() {
+        stubEntitiesAndForeignKey();
+        EntityField field = childReference(EntityField.FieldType.STRING, null);
+        field.setFieldLength(128);
+        when(fieldMapper.findByEntityIdAndFieldCode("child-1", "parentId")).thenReturn(field);
+        EntityRelationSaveRequest request = request();
+        request.setOwnershipType(EntityRelation.OwnershipType.ASSOCIATION);
+        assertEquals("parentId", service.create("parent-1", request).getChildRefFieldCode());
+        when(relationMapper.selectById("relation-1")).thenReturn(relation());
+        assertDoesNotThrow(() -> service.update("parent-1", "relation-1", request));
+        stubPublishedRelation();
+        assertDoesNotThrow(() -> service.validateForPublish("parent-1"));
+    }
+
+    @Test
+    void rejectsPublishWhenChildFieldIsNotIdCompatible() {
         stubEntitiesAndForeignKey();
         EntityField foreignKey = childReference(
-                EntityField.FieldType.STRING, "parent-1");
+                EntityField.FieldType.LONG, null);
         when(fieldMapper.findByEntityIdAndFieldCode(
                 "child-1", "parentId"))
                 .thenReturn(foreignKey);

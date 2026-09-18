@@ -91,7 +91,7 @@ export function normalizeListActionForSave(button, position) {
   for (const key of [
     'targetEntityCode', 'targetListKey', 'presentation', 'selectionMode',
     'openListTitle', 'relationKey', 'selectionHandler',
-    'targetFormId', 'targetFormMode'
+    'targetFormId', 'targetFormMode', 'compositionKey'
   ]) {
     if (button[key] !== undefined && button[key] !== '') actionParams[key] = button[key]
   }

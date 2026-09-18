@@ -164,6 +164,28 @@ class UiViewCompositionRuntimeServiceTest {
     }
 
     @Test
+    void ordinaryIdRelationUsesExactFilterAndRetainsFormCardinalityCheck() {
+        Fixture fixture = fixture("ENTITY_RELATION", "LIST", true);
+        EntityField field = entitySnapshotService.getPinnedByHistoryId("target-history")
+                .snapshot().getFields().get(0);
+        field.setFieldType(EntityField.FieldType.STRING);
+        field.setRefEntityId(null);
+        assertEquals(fixture.expectedFilters(), service.resolve(fixture.request()).getFixedFilters());
+        field.setFieldType(EntityField.FieldType.LONG);
+        assertThrows(BusinessConflictException.class, () -> service.resolve(fixture.request()));
+
+        Fixture form = fixture("ENTITY_RELATION", "FORM", true);
+        field = entitySnapshotService.getPinnedByHistoryId("target-history").snapshot().getFields().get(0);
+        field.setFieldType(EntityField.FieldType.STRING);
+        field.setRefEntityId(null);
+        when(dynamicDataService.findPage("target_entity", null, form.expectedFilters(), 1, 2))
+                .thenReturn(new PageResult<>(List.of(record("a", Map.of()), record("b", Map.of())), 2, 1, 2));
+        BusinessConflictException failure = assertThrows(BusinessConflictException.class,
+                () -> service.resolve(form.request()));
+        assertEquals("VIEW_COMPOSITION_FORM_CARDINALITY_CONFLICT", failure.getErrorCode());
+    }
+
+    @Test
     void signedPinnedFormOwnerReleaseRemainsResolvableAfterRepublish() {
         Fixture fixture = fixture("REVERSE_REFERENCE", "LIST", true);
         fixture.request().setReleaseResolutionToken(

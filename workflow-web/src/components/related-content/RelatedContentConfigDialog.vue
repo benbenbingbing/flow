@@ -172,15 +172,9 @@
                 v-if="ownerType === 'LIST' && ['DIALOG', 'DRAWER', 'PAGE'].includes(editor.config.presentation.position)"
               >
                 <template #label>
-                  <ConfigHelpLabel
-                    label="打开入口"
-                    content="是什么：用户从列表的哪里打开关联内容。何时使用：查看每条数据的关联详情选“每行操作”，对整个列表执行操作选“工具栏”。结果：决定是否自动带入当前行记录。"
-                  />
+                  <span>按钮入口</span>
                 </template>
-                <el-radio-group v-model="editor.anchorType" @change="handleListAnchorChange">
-                  <el-radio value="ROW_ACTION">每行操作（推荐）</el-radio>
-                  <el-radio value="TOOLBAR_ACTION">列表工具栏</el-radio>
-                </el-radio-group>
+                <el-alert type="info" :closable="false" title="保存后，到“工具栏按钮”或“操作列按钮”中添加自定义按钮，执行方式选择“打开关联内容”。" />
               </el-form-item>
               <el-form-item required>
                 <template #label>
@@ -932,6 +926,7 @@ import { entityApi } from '@/api/entity'
 import { getFormsByEntity, getEntityFields, getFormFields } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityRelationApi } from '@/api/entityRelation'
+import { relationContentType } from '@/shared/entity-relation'
 import { uiCompositionApi } from '@/api/uiComposition'
 import { uiExtensionApi } from '@/api/uiConfig'
 import {
@@ -1098,10 +1093,14 @@ const editor = reactive(createEmptyRelatedContent({
   sourceEntity: props.sourceEntity
 }))
 
-const contentTypeOptions = RELATED_CONTENT_TYPE_OPTIONS.map(option => ({
+const selectedEntityRelation = computed(() => editor.config.relation.type === 'ENTITY_RELATION'
+  ? sourceRelations.value.find(item => item.relationCode === editor.config.relation.relationCode)
+  : null)
+const contentTypeOptions = computed(() => RELATED_CONTENT_TYPE_OPTIONS.map(option => ({
   label: option.label,
-  value: option.value
-}))
+  value: option.value,
+  disabled: !!selectedEntityRelation.value && option.value !== relationContentType(selectedEntityRelation.value)
+})))
 const relationOptions = computed(() => RELATED_CONTENT_RELATION_OPTIONS.filter(option => {
   if (option.value !== 'SAME_RECORD') return true
   return String(props.sourceEntity.id || '') === String(editor.config.target.entityId || '')
@@ -1159,8 +1158,9 @@ const targetEditableFieldOptions = computed(() => contentScopedFieldOptions(
   true
 ))
 const matchingRelations = computed(() => sourceRelations.value.filter(relation =>
-  String(relation.childEntityId || '') === String(editor.config.target.entityId || '')
-  || String(relation.childEntityCode || '') === String(editor.config.target.entityCode || '')
+  relation.enabled !== false && relation.enabled !== 0
+    && (String(relation.childEntityId || '') === String(editor.config.target.entityId || '')
+      || (!!relation.childEntityCode && String(relation.childEntityCode) === String(editor.config.target.entityCode || '')))
 ))
 const sourceReferenceFieldOptions = computed(() => sourceFieldOptions.value.filter(option =>
   String(option.raw?.refEntityId || option.raw?.referenceEntityId || '') === String(editor.config.target.entityId || '')
@@ -1422,6 +1422,7 @@ function applyRecommendation() {
     targetFields: targetFields.value
   })
   Object.assign(editor.config.relation, recommendedRelation.value)
+  syncRelationContentType()
   const option = relationOptions.value.find(item => item.value === recommendedRelation.value.type)
   recommendationText.value = option
     ? `已根据实体关系推荐“${option.label}”，你可以确认或改用其他方式。`
@@ -1479,12 +1480,9 @@ function handleAnchorChange(value) {
   editor.anchorType = value ? 'FORM_NODE' : 'OWNER'
 }
 
-function handleListAnchorChange() {
-  editor.anchorKey = editor.compositionKey
-}
-
 function handleRelationTypeChange(type) {
   editor.config.relation.type = type
+  syncRelationContentType()
   if (type === 'INTERFACE_SERVICE') {
     toggleSpecial('INTERFACE_SERVICE', true)
     advancedSections.value = ['special']
@@ -1494,6 +1492,17 @@ function handleRelationTypeChange(type) {
 function handleRelationSelected(code) {
   const relation = matchingRelations.value.find(item => item.relationCode === code)
   editor.config.relation.relationName = relation?.relationName || code || ''
+  syncRelationContentType()
+}
+
+/** 高级入口同样由关系数量决定目标页面类型，类型切换时清除不兼容的目标和操作。 */
+function syncRelationContentType() {
+  if (!selectedEntityRelation.value) return
+  const type = relationContentType(selectedEntityRelation.value)
+  if (editor.config.target.contentType === type) return
+  editor.config.target.contentType = type
+  editor.config.actions = ['VIEW']
+  handleContentTypeChange()
 }
 
 function handleSourceFieldSelected(option) {
@@ -1786,6 +1795,12 @@ function testTargetSummary(ids = []) {
 }
 
 async function save() {
+  if (selectedEntityRelation.value
+    && editor.config.target.contentType !== relationContentType(selectedEntityRelation.value)) {
+    activeStep.value = 1
+    ElMessage.warning('一对一关系请选择表单，一对多关系请选择列表')
+    return
+  }
   const validation = validateRelatedContent(editor, props.ownerType)
   if (!validation.valid) {
     activeStep.value = validation.firstStep

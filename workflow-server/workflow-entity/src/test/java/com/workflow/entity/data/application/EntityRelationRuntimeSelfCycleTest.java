@@ -38,6 +38,20 @@ import static org.mockito.Mockito.when;
 class EntityRelationRuntimeSelfCycleTest {
 
     @Test
+    void ordinaryIdFieldRetainsSelfRelationCycleProtection() {
+        Fixture fixture = fixture(EntityRelation.OwnershipType.ASSOCIATION);
+        fixture.referenceField.setFieldType(EntityField.FieldType.STRING);
+        fixture.referenceField.setRefEntityId(null);
+        fixture.answerLockedRows(Map.of("A", row("A", null), "B", row("B", "A")));
+        assertDoesNotThrow(() -> fixture.service.validateSelfRelationWrite(
+                fixture.definition, "C", Map.of("parent_id", "B"), true));
+        BusinessConflictException failure = assertThrows(BusinessConflictException.class,
+                () -> fixture.service.validateSelfRelationWrite(
+                        fixture.definition, "A", Map.of("parent_id", "B"), false));
+        assertEquals("ENTITY_SELF_RELATION_CYCLE", failure.getErrorCode());
+    }
+
+    @Test
     void writeValidationLocksDefinitionEvenWithoutSelfRelation() {
         ProductionGuardFixture fixture = productionGuardFixture(List.of());
 

@@ -101,9 +101,8 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
     revision: 0,
     compositionKey,
     orderKey: 1000000,
-    // 列表默认以行操作打开目标表单；表单默认挂在页面末尾。默认模型本身
-    // 即满足后端的 anchor/presentation 组合约束，避免用户不改默认项也无法保存。
-    anchorType: listOwner ? 'ROW_ACTION' : 'OWNER',
+    // 列表的入口由标准按钮引用配置，关联内容本身不再决定工具栏或操作列。
+    anchorType: listOwner ? 'LIST_ACTION' : 'OWNER',
     anchorKey: listOwner ? compositionKey : '',
     config: {
       schemaVersion: 1,
@@ -326,11 +325,7 @@ export function updateRelatedContentAnchor(value, ownerType) {
       value.anchorType = 'PAGE_SECTION'
       value.anchorKey = 'PAGE_MAIN'
     } else {
-      if (!['TOOLBAR_ACTION', 'ROW_ACTION'].includes(value.anchorType)) {
-        value.anchorType = value?.config?.target?.contentType === 'FORM'
-          ? 'ROW_ACTION'
-          : 'TOOLBAR_ACTION'
-      }
+      value.anchorType = 'LIST_ACTION'
       value.anchorKey = value.compositionKey
     }
   } else {

@@ -797,7 +797,7 @@ assert.ok(listButtonConfig.includes('title="按钮更多设置"'), '列表按钮
 const lowFrequencyButtonFieldPatterns = [
   /label="(?:按钮)?图标"/,
   /label="(?:按钮)?样式"/,
-  /label="(?:(?:行按钮)?Link\s*(?:样式)?|链接样式)"/,
+  /label="展示方式"/,
   /label="(?:按钮|组件)?模板"/
 ]
 lowFrequencyButtonFieldPatterns.forEach((pattern) => {
@@ -989,7 +989,7 @@ assert.match(
 )
 assert.match(
   formDesigner,
-  /:type="draftStatus\.type"[\s\S]*?\{\{\s*draftStatus\.label\s*\}\}[\s\S]*?<\/el-tag>[\s\S]*?v-if="canDiscardDraft"[\s\S]*?\blink(?:\s|>)[\s\S]*?>\s*撤销\s*<\/el-button>/,
+  /:type="draftStatus\.type"[\s\S]*?\{\{\s*draftStatusLabel\s*\}\}[\s\S]*?<\/el-tag>[\s\S]*?v-if="canDiscardDraft"[\s\S]*?\blink(?:\s|>)[\s\S]*?>\s*撤销\s*<\/el-button>/,
   '表单撤销入口必须紧邻未发布状态，并使用 link 按钮'
 )
 ;[
@@ -1019,7 +1019,7 @@ const runtimeCodeGenerator = readFileSync(
 )
 ;[
   [formDesigner, 'buildFormDraftRuntimeSnapshot'],
-  [formDesigner, '查看最终代码'],
+  [formDesigner, '<el-icon><Document /></el-icon>代码'],
   [listDesigner, 'buildListDraftRuntimeSnapshot'],
   [listDesigner, '查看最终代码'],
   [runtimeCodeViewer, '等价 Vue SFC'],
@@ -1311,7 +1311,7 @@ assert.ok(
   'activeFormSettingsTab',
   'activeNodeSettingsTab',
   'availableNodeSettingsTabs',
-  '保存全部草稿',
+  '保存全部',
   '保存当前节点',
   'canConfigureSelectedNodeDataSource',
   'canConfigureSelectedNodeValidation',
@@ -1331,10 +1331,10 @@ const nodePropertyDrawer = formDesigner.slice(
   formDesigner.indexOf('</el-drawer>') + '</el-drawer>'.length
 )
 assert.ok(
-  formDesignerHeader.includes('保存全部草稿')
+  formDesignerHeader.includes('保存全部')
     && !formDesignerHeader.includes('保存当前节点')
     && !formDesignerHeader.includes('更多保存方式'),
-  '表单设计器外层工具栏只能保留保存全部草稿'
+  '表单设计器外层工具栏只能保留保存全部入口'
 )
 assert.ok(
   nodePropertyDrawer.includes('class="node-property-actions"')
@@ -2715,7 +2715,7 @@ assert.equal(
   "route.query.targetKey",
   'eventBindingDialogRef.value?.openField',
   'eventBindingDialogRef.value?.openButton',
-  'v-model:active-behavior-tab="activeFormBehaviorTab"'
+  'v-model:active-tab="activeFormSettingsTab"'
 ].forEach((marker) => {
   assert.ok(
     formDesigner.includes(marker),
@@ -2723,11 +2723,12 @@ assert.equal(
   )
 })
 assert.ok(
-  formSettingsDrawer.includes("'update:activeBehaviorTab'"),
-  '表单设置抽屉必须允许外部定位初始化数据二级页签'
+  formSettingsDrawer.includes("'update:activeTab'")
+    && formDesigner.includes("tab === 'data-events' ? (behaviorTab || 'data-source') : tab"),
+  '表单设置抽屉必须兼容历史深链并定位初始化数据一级页签'
 )
 assert.ok(
-  formSettingsDrawer.includes('@changed="onEventBindingsChanged"')
+  formSettingsDrawer.includes('@changed="handleEventBindingsChanged"')
     && formDesigner.includes('onEventBindingsChanged: loadDiff'),
   '表单事件主编辑入口保存后必须立即刷新草稿与发布差异'
 )

@@ -89,7 +89,7 @@ assert.ok(listRuntime.includes('viewCompositionContextToken'), '列表查询未�
 assert.ok(listRuntime.includes('viewCompositionTraversalToken'), '列表嵌套关联内容未透传安全导航链')
 assert.ok(listRuntime.includes('runtimeSelectionMode'), '列表页级关联内容未启用单选主从联动')
 assert.ok(listRuntime.includes('selectedRows.value[0]?.id'), '列表当前选择未成为关联内容来源记录')
-assert.ok(listTable.includes('rowActionCompositions'), '列表行操作未接入关联内容')
+assert.ok(listTable.includes('openRelatedContent(btn, row)'), '列表行按钮未接入关联内容')
 assert.ok(listTable.includes('viewCompositionTraversalToken'), '列表行级关联内容未透传安全导航链')
 assert.ok(runtime.includes('createLatestRequestGate'), '来源切换时未防止旧解析请求覆盖新上下文')
 assert.ok(runtime.includes('buildRelatedContentResolveInput'), '关联内容解析未使用统一的发布令牌请求契约')

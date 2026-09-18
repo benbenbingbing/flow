@@ -38,22 +38,9 @@
           @click="onToolbarClick(btn)"
         >
           <el-icon v-if="btn.icon && iconMap[btn.icon]"><component :is="iconMap[btn.icon]" /></el-icon>
-          {{ btn.label }}
+          <span>{{ btn.label }}</span>
         </el-button>
       </template>
-      <RelatedContentRuntime
-        v-for="item in toolbarActionCompositions"
-        :key="item.id || item.compositionKey"
-        :composition="item"
-        owner-type="LIST"
-        :owner-id="listOwnerId"
-        :release-id="listReleaseId"
-        :release-version="listReleaseVersion"
-        :source-record-id="toolbarSourceRecordId"
-        :traversal-context-token="viewCompositionTraversalToken"
-        compact
-        @target-saved="refresh"
-      />
     </div>
     <el-table
       ref="tableRef"
@@ -195,6 +182,7 @@
                 }"
               />
             </span>
+            <!-- 操作列沿用统一的文字链接样式；历史配置的 link=false 不能改变已有页面外观。 -->
             <el-button
               v-else
               :type="btn.buttonType || 'primary'"
@@ -203,26 +191,13 @@
               :title="getActionReason(row, btn.key)"
               @click="onRowActionClick(btn, row)"
             >
-              {{ btn.label }}
+              <el-icon v-if="btn.icon && iconMap[btn.icon]"><component :is="iconMap[btn.icon]" /></el-icon>
+              <span>{{ btn.label }}</span>
             </el-button>
           </template>
-          <RelatedContentRuntime
-            v-for="item in rowActionCompositions"
-            :key="item.id || item.compositionKey"
-            :composition="item"
-            owner-type="LIST"
-            :owner-id="listOwnerId"
-            :release-id="listReleaseId"
-            :release-version="listReleaseVersion"
-            :source-record-id="row.id"
-            :traversal-context-token="viewCompositionTraversalToken"
-            compact
-            @target-saved="refresh"
-          />
           <span
             v-if="!showVersionAction
-              && visibleRowButtons(row).length === 0
-              && rowActionCompositions.length === 0"
+              && visibleRowButtons(row).length === 0"
           >-</span>
         </template>
       </el-table-column>
@@ -240,6 +215,22 @@
         @current-change="(val) => emit('page-change', val)"
       />
     </div>
+
+    <RelatedContentRuntime
+      v-if="activeRelatedContent"
+      :key="`${activeRelatedContent.composition.compositionKey}:${activeRelatedContent.recordId}`"
+      ref="relatedContentRuntimeRef"
+      :composition="activeRelatedContent.composition"
+      owner-type="LIST"
+      :owner-id="listOwnerId"
+      :release-id="listReleaseId"
+      :release-version="listReleaseVersion"
+      :release-resolution-token="listReleaseResolutionToken || ''"
+      :source-record-id="activeRelatedContent.recordId"
+      :traversal-context-token="viewCompositionTraversalToken"
+      :show-trigger="false"
+      @target-saved="refresh"
+    />
 
     <EntityListLauncher
       v-if="openListState.targetEntityCode && openListState.targetListKey"
@@ -273,6 +264,7 @@ import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import EntityListLauncher from '@/components/EntityListLauncher.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
+import { findButtonRelatedContent, isRelatedContentButton, relatedContentSelectionReason } from '@/shared/list-related-content'
 import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButtonComponentRegistry'
 import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegistry'
 import { getFieldModelPath } from '@/shared/form-runtime'
@@ -314,16 +306,14 @@ const props = defineProps<{
   maxHeight?: number
   runtimeContext?: Record<string, any>
   rowExpandCompositions?: any[]
-  rowActionCompositions?: any[]
-  toolbarActionCompositions?: any[]
+  buttonCompositions?: any[]
   listOwnerId?: string
   listReleaseId?: string
   listReleaseVersion?: number
+  listReleaseResolutionToken?: string
 }>()
 
 const rowExpandCompositions = computed(() => props.rowExpandCompositions || [])
-const rowActionCompositions = computed(() => props.rowActionCompositions || [])
-const toolbarActionCompositions = computed(() => props.toolbarActionCompositions || [])
 const listOwnerId = computed(() => props.listOwnerId || '')
 const listReleaseId = computed(() => props.listReleaseId || '')
 const listReleaseVersion = computed(() => Number(props.listReleaseVersion || 0))
@@ -458,6 +448,10 @@ const onToolbarClick = (btn: any) => {
       })
       return
     }
+    if (isRelatedContentButton(btn)) {
+      openRelatedContent(btn, selectedRows.value[0])
+      return
+    }
     if (btn.customMode === 'open-list') {
       openConfiguredList(btn)
       return
@@ -499,6 +493,10 @@ const onRowActionClick = (btn: any, row: any) => {
   if (btn.type === 'built-in') {
     BUILTIN_ROW_ACTIONS[btn.key]?.(row, btn)
   } else if (btn.type === 'custom') {
+    if (isRelatedContentButton(btn)) {
+      openRelatedContent(btn, row)
+      return
+    }
     if (btn.customMode === 'event') {
       emit('event-action', {
         button: btn,
@@ -537,13 +535,22 @@ const onRowActionClick = (btn: any, row: any) => {
 
 // 当前选中行（由父组件通过 selection-change 同步）
 const selectedRows = defineModel<any[]>('selectedRows', { default: () => [] })
-const toolbarSourceRecordId = computed(() => String(
-  selectedRows.value.length === 1
-    ? selectedRows.value[0]?.id || ''
-    : props.runtimeContext?.sourceRecordId
-      || props.runtimeContext?.recordId
-      || ''
-))
+const relatedContentRuntimeRef = ref<InstanceType<typeof RelatedContentRuntime>>()
+const activeRelatedContent = ref<{ composition: any, recordId: string } | null>(null)
+let relatedContentOpenSequence = 0
+
+/** 只传当前行 ID；关联筛选、权限和固定发布版本仍由原有可信解析接口决定。 */
+async function openRelatedContent(button: any, row: any) {
+  const composition = findButtonRelatedContent(button, props.buttonCompositions)
+  if (!composition || !row?.id) {
+    ElMessage.warning(composition ? '请选择一条记录后打开关联内容' : '关联内容已停用或不存在，请检查按钮配置并重新发布')
+    return
+  }
+  const sequence = ++relatedContentOpenSequence
+  activeRelatedContent.value = { composition, recordId: String(row.id) }
+  await nextTick()
+  if (sequence === relatedContentOpenSequence) await relatedContentRuntimeRef.value?.open()
+}
 const tableRef = ref<any>()
 const restoringPageSelection = ref(false)
 const entityListLauncherRef = ref<InstanceType<typeof EntityListLauncher>>()
@@ -672,8 +679,7 @@ function handleOpenListConfirm(rows: any[]) {
 }
 
 const hasVisibleRowActions = computed(() =>
-  rowActionCompositions.value.length > 0
-  || props.showVersionAction
+  props.showVersionAction
   || props.dataList.some(row => visibleRowButtons(row).length > 0)
 )
 
@@ -689,8 +695,8 @@ const getActionReason = (row: any, buttonKey: string) => {
   return getActionCapabilityReason(row, buttonKey)
 }
 
-const isSelectionButton = (buttonKey: string) =>
-  buttonKey === 'batchDelete' || buttonKey === 'exportSelected'
+const isSelectionButton = (button: any) =>
+  button.key === 'batchDelete' || button.key === 'exportSelected' || isRelatedContentButton(button)
 
 /**
  * 工具栏先遵守列表级能力；选择集按钮再按当前选择行汇总 visibleWhen。
@@ -700,7 +706,7 @@ const isToolbarVisible = (btn: any) => {
   if (props.toolbarCapabilities?.[btn.key]?.visible === false) {
     return false
   }
-  if (!isSelectionButton(btn.key)) {
+  if (!isSelectionButton(btn)) {
     return true
   }
   return getSelectionActionState(selectedRows.value, btn.key).visible
@@ -711,14 +717,18 @@ const visibleToolbarButtons = computed(() =>
 )
 
 const isToolbarDisabled = (btn: any) => {
-  if (!isSelectionButton(btn.key)) {
+  if (isRelatedContentButton(btn) && relatedContentSelectionReason(selectedRows.value)) return true
+  if (!isSelectionButton(btn)) {
     return props.toolbarCapabilities?.[btn.key]?.enabled === false
   }
   return !getSelectionActionState(selectedRows.value, btn.key).enabled
 }
 
 const getToolbarReason = (btn: any) => {
-  if (!isSelectionButton(btn.key)) {
+  if (isRelatedContentButton(btn) && relatedContentSelectionReason(selectedRows.value)) {
+    return relatedContentSelectionReason(selectedRows.value)
+  }
+  if (!isSelectionButton(btn)) {
     return props.toolbarCapabilities?.[btn.key]?.reason || ''
   }
   return getSelectionActionState(selectedRows.value, btn.key).reason

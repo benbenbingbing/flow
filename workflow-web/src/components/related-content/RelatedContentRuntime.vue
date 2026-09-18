@@ -63,7 +63,7 @@
     </template>
 
     <el-button
-      v-else
+      v-else-if="showTrigger"
       type="primary"
       link
       :loading="loading"
@@ -267,7 +267,8 @@ const props = defineProps({
   rowContextToken: { type: String, default: '' },
   traversalContextToken: { type: String, default: '' },
   releaseResolutionToken: { type: String, default: '' },
-  compact: Boolean
+  compact: Boolean,
+  showTrigger: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['target-saved', 'source-patch'])
@@ -477,7 +478,8 @@ async function resolveComposition({ force = false } = {}) {
   if (!input.recordId && !input.rowContextToken) {
     loading.value = false
     clearResolvedState()
-    errorMessage.value = '请先保存当前记录，再加载关联内容。'
+    // 新建宿主还没有记录 ID，属于正常空状态，由展示层提示先保存，不显示加载失败。
+    errorMessage.value = ''
     return null
   }
   loading.value = true
@@ -1015,6 +1017,8 @@ watch(
   },
   { immediate: true }
 )
+// 列表按钮复用解析与展示能力，按钮本身由列表的统一渲染器管理。
+defineExpose({ open: openPresentation })
 </script>
 
 <style scoped>

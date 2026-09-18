@@ -10,9 +10,9 @@ export function createEntityRelationDraft(sortOrder = 0) {
     childEntityCode: '',
     childEntityName: '',
     childRefFieldCode: '',
-    relationType: 'ONE_TO_MANY',
-    ownershipType: 'COMPOSITION',
-    cascadeDelete: true,
+    relationType: 'ONE_TO_ONE',
+    ownershipType: 'ASSOCIATION',
+    cascadeDelete: false,
     required: false,
     sortOrder: Number(sortOrder) || 0,
     enabled: true,
@@ -74,4 +74,29 @@ export function sortEntityRelations(relations = []) {
       return String(left.relationName || left.relationCode)
         .localeCompare(String(right.relationName || right.relationCode), 'zh-CN')
     })
+}
+
+/** 与服务端 EntityRelationFieldPolicy 保持一致；类型按建表规则判断，不使用客户端 dbType。 */
+export function isRelationFieldCompatible(field, parentEntityId) {
+  if (!field?.fieldCode || field.fieldCode.toLowerCase() === 'id'
+    || String(field.dbColumnName || '').toLowerCase() === 'id'
+    || String(field.valueStorage || '').toUpperCase() === 'MULTI_TABLE'
+    || !['STRING', 'SELECT', 'RADIO', 'REFERENCE'].includes(field.fieldType)) return false
+  if (field.refEntityType && field.refEntityType !== 'CUSTOM') return false
+  if ((field.fieldType === 'REFERENCE' || field.refEntityId)
+    && String(field.refEntityId || '') !== String(parentEntityId || '')) return false
+  const length = field.fieldLength == null ? 200 : Number(field.fieldLength)
+  return Number.isInteger(length) && length >= 64 && length <= 4096
+}
+
+/** 普通字段由关系定义声明目标；保留已有引用目标约束，并优先显示正确的实体引用字段。 */
+export function relationReferenceFields(fields = [], parentEntityId) {
+  return fields.filter(field => isRelationFieldCompatible(field, parentEntityId))
+    .sort((left, right) => (Number(right.fieldType === 'REFERENCE') - Number(left.fieldType === 'REFERENCE'))
+      || Number(left.sortOrder || 0) - Number(right.sortOrder || 0))
+}
+
+/** 一个关联记录使用表单，多条关联记录使用列表；展示入口不再让用户重复选择基数。 */
+export function relationContentType(relation) {
+  return relation?.relationType === 'ONE_TO_ONE' ? 'FORM' : 'LIST'
 }

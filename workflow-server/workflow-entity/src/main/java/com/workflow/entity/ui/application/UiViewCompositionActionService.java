@@ -27,6 +27,7 @@ import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
+import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -1200,9 +1201,6 @@ public class UiViewCompositionActionService {
         } else {
             EntityRelation relation = requireAssociationRelation(context);
             fieldCode = relation.getChildRefFieldCode();
-            EntityField field = requirePinnedField(
-                    context.targetSchema(), fieldCode, "目标");
-            requireReference(field, context.sourceEntity().getId(), "目标");
         }
         for (int index = 0; index < targets.size(); index++) {
             EntityDataDTO target = targets.get(index);
@@ -1253,6 +1251,13 @@ public class UiViewCompositionActionService {
             throw conflict(
                     "VIEW_COMPOSITION_COMPOSITION_ACTION_REJECTED",
                     "组成型关系只能随父表单统一保存，不能独立建立或解除");
+        }
+        // 能力判断、候选查询和实际写入都经过这里，避免按钮可用但普通 ID 字段无法保存。
+        EntityField field = requirePinnedField(
+                context.targetSchema(), definition.getChildRefFieldCode(), "目标");
+        var violation = EntityRelationFieldPolicy.violation(field, context.sourceEntity().getId());
+        if (violation != null) {
+            throw conflict("VIEW_COMPOSITION_RELATION_INVALID", violation.message());
         }
         return definition;
     }

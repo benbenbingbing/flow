@@ -97,75 +97,86 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="初始化与数据处理" name="data-events">
+      <el-tab-pane name="data-source">
+        <template #label>
+          <span>初始化数据</span>
+          <el-tag
+            v-if="formDataSourceBindingCount"
+            size="small"
+            type="success"
+            effect="plain"
+            class="settings-tab-tag"
+          >
+            {{ formDataSourceBindingCount }}
+          </el-tag>
+        </template>
         <div class="form-settings-pane">
-          <el-tabs v-model="activeBehaviorTab" class="form-behavior-tabs">
-            <el-tab-pane name="input-parameters">
-              <template #label>
-                <span>输入参数</span>
-                <el-tag
-                  v-if="inputParameterCount"
-                  size="small"
-                  type="success"
-                  effect="plain"
-                  class="settings-tab-tag"
-                >
-                  {{ inputParameterCount }}
-                </el-tag>
-              </template>
-              <FormInputParameterEditor
-                v-model="viewConfig.inputParameterSchema"
-              />
-            </el-tab-pane>
-            <el-tab-pane name="data-source">
-              <template #label>
-                <span>初始化数据</span>
-                <el-tag
-                  v-if="formDataSourceBindingCount"
-                  size="small"
-                  type="success"
-                  effect="plain"
-                  class="settings-tab-tag"
-                >
-                  {{ formDataSourceBindingCount }}
-                </el-tag>
-              </template>
-              <div class="behavior-entry">
-                <div>
-                  <h3>初始化与数据处理</h3>
-                  <p>
-                    统一配置新增时的初始化数据、全模式加载后处理和提交前处理，并保留请求参数与返回字段映射。
-                  </p>
-                </div>
-                <el-button
-                  type="primary"
-                  :disabled="!form.id"
-                  @click="openFormDataSourceConfig"
-                >
-                  配置初始化与处理
-                </el-button>
-              </div>
-              <el-alert
-                v-if="!form.id"
-                type="info"
-                :closable="false"
-                show-icon
-                title="先保存表单草稿，再配置初始化与数据处理。"
-              />
-            </el-tab-pane>
-            <el-tab-pane label="表单事件" name="events">
-              <EventBindingEditor
-                owner-type="FORM"
-                :owner-id="form.id || ''"
-                owner-label="表单"
-                :field-options="eventFieldOptions"
-                @changed="handleEventBindingsChanged"
-              />
-            </el-tab-pane>
-          </el-tabs>
+          <div class="behavior-entry">
+            <div>
+              <h3>初始化与数据处理</h3>
+              <p>
+                统一配置新增时的初始化数据、全模式加载后处理和提交前处理，并保留请求参数与返回字段映射。
+              </p>
+            </div>
+            <el-button
+              type="primary"
+              :disabled="!form.id"
+              @click="openFormDataSourceConfig"
+            >
+              配置初始化与处理
+            </el-button>
+          </div>
+          <el-alert
+            v-if="!form.id"
+            type="info"
+            :closable="false"
+            show-icon
+            title="先保存表单草稿，再配置初始化与数据处理。"
+          />
         </div>
       </el-tab-pane>
 
+      <el-tab-pane label="表单事件" name="events">
+        <div class="form-settings-pane">
+          <EventBindingEditor
+            owner-type="FORM"
+            :owner-id="form.id || ''"
+            owner-label="表单"
+            :field-options="eventFieldOptions"
+            @changed="handleEventBindingsChanged"
+          />
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane name="input-parameters">
+        <template #label>
+          <span>输入参数</span>
+          <el-tag
+            v-if="inputParameterCount"
+            size="small"
+            type="success"
+            effect="plain"
+            class="settings-tab-tag"
+          >
+            {{ inputParameterCount }}
+          </el-tag>
+        </template>
+        <div class="form-settings-pane">
+          <FormInputParameterEditor v-model="viewConfig.inputParameterSchema" />
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane name="related-content">
+        <template #label>
+          <span>关联内容</span>
+          <el-tag v-if="relatedContentCount" size="small" type="success" effect="plain" class="settings-tab-tag">
+            {{ relatedContentCount }}
+          </el-tag>
+        </template>
+        <div class="form-settings-pane">
+          <slot name="related-content" />
+        </div>
+      </el-tab-pane>
     </el-tabs>
   </el-drawer>
 </template>
@@ -181,13 +192,12 @@ import { FORM_LABEL_POSITION_OPTIONS, resolveFormLabelPosition } from '@/shared/
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   activeTab: { type: String, default: 'basic' },
-  activeBehaviorTab: { type: String, default: 'data-source' }
+  relatedContentCount: { type: Number, default: 0 }
 })
 
 const emit = defineEmits([
   'update:modelValue',
-  'update:activeTab',
-  'update:activeBehaviorTab'
+  'update:activeTab'
 ])
 const context = inject(FORM_DESIGNER_CONTEXT_KEY)
 
@@ -222,10 +232,6 @@ function handleEventBindingsChanged() {
   return onEventBindingsChanged()
 }
 
-const activeBehaviorTab = computed({
-  get: () => props.activeBehaviorTab,
-  set: value => emit('update:activeBehaviorTab', value)
-})
 const inputParameterCount = computed(() =>
   Object.keys(
     viewConfig.value?.inputParameterSchema?.properties || {}
@@ -309,10 +315,6 @@ const currentTab = computed({
 .settings-tab-tag {
   margin-left: 4px;
   vertical-align: middle;
-}
-
-.form-behavior-tabs :deep(.el-tabs__content) {
-  overflow: visible;
 }
 
 .behavior-entry {
