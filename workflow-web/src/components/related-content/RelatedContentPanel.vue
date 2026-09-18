@@ -32,7 +32,7 @@
 
     <div v-loading="loading" class="panel-body">
       <el-alert
-        title="普通场景按“显示什么、数据怎么关联、允许做什么”三步即可完成；复杂场景再展开特殊处理。"
+        title="已有实体关系只需设置展示和操作；目标实体、匹配字段及关联数量统一在实体设计中维护。其他取数场景可新增关联内容。"
         type="info"
         :closable="false"
         show-icon

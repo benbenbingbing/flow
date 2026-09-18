@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="editor.id ? '编辑关联内容' : '新增关联内容'"
+    :title="dialogTitle"
     width="min(1120px, 96vw)"
     append-to-body
     destroy-on-close
@@ -11,10 +11,10 @@
     <template #header>
       <div class="dialog-heading">
         <div>
-          <strong>{{ editor.id ? '编辑关联内容' : '新增关联内容' }}</strong>
-          <span>按引导完成配置，不需要编写脚本或查询语句</span>
+          <strong>{{ dialogTitle }}</strong>
+          <span>{{ isRelationBound ? '已引用实体关系，只需设置展示和操作' : '按引导完成配置，不需要编写脚本或查询语句' }}</span>
         </div>
-        <el-tag type="primary" effect="plain">第 {{ activeStep }} 步，共 4 步</el-tag>
+        <el-tag type="primary" effect="plain">第 {{ stepNumber(activeStep) }} 步，共 {{ stepIds.length }} 步</el-tag>
       </div>
     </template>
 
@@ -30,9 +30,25 @@
         </div>
       </div>
 
-      <el-steps :active="activeStep - 1" align-center finish-status="success">
+      <section v-if="isRelationBound" class="entity-relation-binding">
+        <div class="relation-binding-heading">
+          <strong>继承实体关系：{{ boundEntityRelation?.relationName || boundRelationCode }}</strong>
+          <el-button link type="primary" @click="openEntityRelationManagement">去实体设计修改关系</el-button>
+        </div>
+        <el-alert v-if="relationBindingError" :title="relationBindingError" type="error" :closable="false" show-icon />
+        <template v-else-if="boundEntityRelation">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="关联实体">{{ boundEntityRelation.childEntityName || boundEntityRelation.childEntityCode }}</el-descriptions-item>
+            <el-descriptions-item label="关联数量">{{ boundEntityRelation.relationType === 'ONE_TO_ONE' ? '一对一 · 表单' : '一对多 · 列表' }}</el-descriptions-item>
+            <el-descriptions-item label="匹配规则" :span="2">{{ boundEntityRelation.childEntityCode }}.{{ boundEntityRelation.childRefFieldCode }} = 当前记录.id</el-descriptions-item>
+          </el-descriptions>
+          <p>目标实体、匹配字段和关联数量统一由实体关系决定。这里的设置只影响当前页面，发布当前页面后生效。</p>
+        </template>
+      </section>
+
+      <el-steps :active="stepNumber(activeStep) - 1" align-center finish-status="success">
         <el-step title="显示什么" description="目标和位置" />
-        <el-step title="数据怎么关联" description="安全找到目标数据" />
+        <el-step v-if="!isRelationBound" title="数据怎么关联" description="安全找到目标数据" />
         <el-step title="允许做什么" description="查看或操作范围" />
         <el-step title="特殊情况" description="复杂能力兜底" />
       </el-steps>
@@ -67,7 +83,9 @@
                     content="是什么：要查看或操作的数据类型。何时使用：例如从需求查看项目。结果：后续只显示该实体已发布的表单和列表。"
                   />
                 </template>
+                <span v-if="isRelationBound" class="inherited-target">{{ editor.config.target.entityName || editor.config.target.entityCode }}（由实体关系确定）</span>
                 <EntityDefinitionPicker
+                  v-else
                   v-model="editor.config.target.entityId"
                   value-key="id"
                   title="选择关联内容的目标实体"
@@ -83,7 +101,9 @@
                   />
                 </template>
                 <div class="stacked-control">
+                  <span v-if="isRelationBound">{{ editor.config.target.contentType === 'FORM' ? '一对一：选择关联实体的表单' : '一对多：选择关联实体的列表' }}</span>
                   <el-segmented
+                    v-else
                     v-model="editor.config.target.contentType"
                     :options="contentTypeOptions"
                     @change="handleContentTypeChange"
@@ -192,7 +212,7 @@
           </el-form>
         </section>
 
-        <section v-show="activeStep === 2">
+        <section v-if="!isRelationBound" v-show="activeStep === 2">
           <StepHeading
             number="2"
             title="数据怎么关联"
@@ -404,7 +424,7 @@
 
         <section v-show="activeStep === 3">
           <StepHeading
-            number="3"
+            :number="String(stepNumber(3))"
             title="允许做什么"
             description="选择用户可以执行的动作。目标实体的权限和数据范围仍会独立校验。"
           />
@@ -554,7 +574,7 @@
 
         <section v-show="activeStep === 4">
           <StepHeading
-            number="4"
+            :number="String(stepNumber(4))"
             title="特殊情况怎么处理"
             description="普通配置无法满足时，选择开发人员已经注册的扩展接口或自定义组件。"
           />
@@ -565,6 +585,10 @@
             :closable="false"
             show-icon
           />
+          <el-alert v-if="isRelationBound && useDataInterfaceService" type="warning" :closable="false"
+            title="此历史配置使用了取数接口。请移除接口取数，恢复按实体关系查找数据后再保存。">
+            <el-button link type="primary" @click="toggleDataInterfaceService(false)">改为使用实体关系取数</el-button>
+          </el-alert>
           <el-collapse v-model="advancedSections" class="special-collapse">
             <el-collapse-item name="special">
               <template #title>
@@ -580,8 +604,8 @@
                     :model-value="useInterfaceService"
                     :disabled="editor.config.relation.type === 'INTERFACE_SERVICE'"
                     @change="toggleSpecial('INTERFACE_SERVICE', $event)"
-                  >使用数据或动作扩展接口</el-checkbox>
-                  <small>复杂查询、计算、聚合或受控业务操作。</small>
+                  >{{ isRelationBound ? '使用动作扩展接口' : '使用数据或动作扩展接口' }}</el-checkbox>
+                  <small>{{ isRelationBound ? '扩展受控业务操作，数据仍按实体关系查找。' : '复杂查询、计算、聚合或受控业务操作。' }}</small>
                 </label>
                 <label class="special-choice" :class="{ 'is-selected': useCustomComponent }">
                   <el-checkbox
@@ -595,18 +619,21 @@
               <div v-if="useInterfaceService" class="special-config-card">
                 <div class="special-config-card__heading">
                   <div>
-                    <strong>数据或动作扩展接口</strong>
+                    <strong>{{ isRelationBound ? '动作扩展接口' : '数据或动作扩展接口' }}</strong>
                     <span>只能选择已注册能力，页面不能填写地址、密钥、脚本或 SQL。</span>
                   </div>
                   <el-tag effect="plain">服务端重新鉴权</el-tag>
                 </div>
+                <el-alert v-if="isRelationBound" type="info" :closable="false"
+                  title="目标数据由实体关系确定；可扩展操作或展示组件，无需另外配置取数接口。" />
                 <el-checkbox
+                  v-if="!isRelationBound"
                   :model-value="useDataInterfaceService"
                   :disabled="editor.config.relation.type === 'INTERFACE_SERVICE'"
                   class="data-service-toggle"
                   @change="toggleDataInterfaceService"
                 >使用接口查找目标数据</el-checkbox>
-                <el-form v-if="useDataInterfaceService" label-width="104px">
+                <el-form v-if="useDataInterfaceService && !isRelationBound" label-width="104px">
                   <div class="two-column-form">
                     <el-form-item required>
                       <template #label>
@@ -886,9 +913,9 @@
                 v-for="error in localValidation.errors"
                 :key="`${error.step}-${error.field}-${error.message}`"
                 type="button"
-                @click="activeStep = error.step"
+                @click="activeStep = visibleStep(error.step)"
               >
-                第 {{ error.step }} 步：{{ error.message }}
+                第 {{ stepNumber(visibleStep(error.step)) }} 步：{{ error.message }}
               </button>
             </div>
           </div>
@@ -900,14 +927,15 @@
       <div class="dialog-footer">
         <el-button @click="visible = false">取消</el-button>
         <div>
-          <el-button v-if="activeStep > 1" @click="activeStep -= 1">上一步</el-button>
+          <el-button v-if="activeStep > 1" @click="goPrevious">上一步</el-button>
           <el-button v-if="activeStep < 4" type="primary" @click="goNext">下一步</el-button>
           <el-button
-            v-else
+            v-if="isRelationBound || activeStep === 4"
             type="primary"
             :loading="saving"
+            :disabled="catalogLoading || !!relationBindingError || (isRelationBound && !boundEntityRelation)"
             @click="save"
-          >保存关联内容</el-button>
+          >{{ isRelationBound ? '保存显示配置' : '保存关联内容' }}</el-button>
         </div>
       </div>
     </template>
@@ -918,6 +946,7 @@
 import { computed, defineComponent, h, reactive, ref, resolveComponent } from 'vue'
 import { Connection, Plus, Right, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
@@ -927,6 +956,7 @@ import { getFormsByEntity, getEntityFields, getFormFields } from '@/api/entityFo
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityRelationApi } from '@/api/entityRelation'
 import { relationContentType } from '@/shared/entity-relation'
+import { applyEntityRelationBinding } from '@/shared/relation-content'
 import { uiCompositionApi } from '@/api/uiComposition'
 import { uiExtensionApi } from '@/api/uiConfig'
 import {
@@ -1069,6 +1099,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['saved'])
+const router = useRouter()
 const visible = ref(false)
 const saving = ref(false)
 const testing = ref(false)
@@ -1082,6 +1113,9 @@ const targetLists = ref([])
 const targetFields = ref([])
 const targetContentFields = ref([])
 const sourceRelations = ref([])
+const isRelationBound = ref(false)
+const boundRelationCode = ref('')
+const relationBindingError = ref('')
 const dataInterfaceOptions = ref([])
 const actionInterfaceOptions = ref([])
 const recommendedRelation = ref({ type: '' })
@@ -1092,6 +1126,20 @@ const editor = reactive(createEmptyRelatedContent({
   ownerType: props.ownerType,
   sourceEntity: props.sourceEntity
 }))
+
+// 编辑已保存的实体关系展示时固定关系身份，不能通过通用编辑器另建一套关联条件。
+const boundEntityRelation = computed(() => sourceRelations.value.find(item => item.relationCode === boundRelationCode.value))
+const dialogTitle = computed(() => isRelationBound.value ? '关系展示设置' : editor.id ? '编辑关联内容' : '新增关联内容')
+const stepIds = computed(() => isRelationBound.value ? [1, 3, 4] : [1, 2, 3, 4])
+const visibleStep = step => isRelationBound.value && step === 2 ? 1 : step
+const stepNumber = step => stepIds.value.indexOf(step) + 1
+
+/** 数据规则只能在实体设计中修改，新标签页保留当前展示草稿。 */
+function openEntityRelationManagement() {
+  if (!props.sourceEntity.id) return
+  const route = router.resolve({ path: `/entity/design/${props.sourceEntity.id}`, query: { tab: 'relations' } })
+  window.open(route.href, '_blank', 'noopener,noreferrer')
+}
 
 const selectedEntityRelation = computed(() => editor.config.relation.type === 'ENTITY_RELATION'
   ? sourceRelations.value.find(item => item.relationCode === editor.config.relation.relationCode)
@@ -1118,7 +1166,10 @@ const targetContentOptions = computed(() => {
   const rows = editor.config.target.contentType === 'FORM'
     ? targetForms.value
     : targetLists.value
-  return rows.map(item => {
+  return rows.filter(item => !isRelationBound.value || (
+    (!item.entityId || String(item.entityId) === String(editor.config.target.entityId))
+    && !(props.ownerType === 'FORM' && editor.config.target.contentType === 'FORM' && String(item.id) === String(props.ownerId))
+  )).map(item => {
     const isForm = editor.config.target.contentType === 'FORM'
     return {
       ...item,
@@ -1257,7 +1308,14 @@ const naturalSummary = computed(() => describeRelatedContent(editor, props.sourc
 const relationSummary = computed(() => describeRelatedContentRelation(editor))
 const actionSummary = computed(() => describeRelatedContentActions(editor))
 const specialSummary = computed(() => describeRelatedContentSpecial(editor))
-const localValidation = computed(() => validateRelatedContent(editor, props.ownerType))
+const localValidation = computed(() => {
+  const result = validateRelatedContent(editor, props.ownerType)
+  if (relationBindingError.value) result.errors.unshift({ step: 1, field: 'relation', message: relationBindingError.value })
+  if (isRelationBound.value && useDataInterfaceService.value) {
+    result.errors.push({ step: 4, field: 'interfaceService', message: '请移除接口取数，恢复使用实体关系' })
+  }
+  return { ...result, valid: !result.errors.length, firstStep: visibleStep(result.errors[0]?.step || 1) }
+})
 const canTest = computed(() => Boolean(
   props.ownerId
   && editor.config.target.entityId
@@ -1351,7 +1409,10 @@ async function loadCommonCatalog() {
   try {
     const [relations, dataRows, actionRows] = await Promise.all([
       props.sourceEntity.id
-        ? entityRelationApi.list(props.sourceEntity.id).catch(() => [])
+        ? entityRelationApi.list(props.sourceEntity.id).catch(error => {
+          if (isRelationBound.value) relationBindingError.value = error?.message || '实体关系加载失败，请关闭后重试'
+          return []
+        })
         : Promise.resolve([]),
       uiExtensionApi.availableInterfaces({
         ownerType: String(props.ownerType).toUpperCase(),
@@ -1535,6 +1596,8 @@ function resetRelationSelection() {
 }
 
 function isActionDisabled(action) {
+  // 实体关系的数量可能已变化，历史勾选项即使不再兼容也必须允许取消。
+  if (isRelationBound.value && editor.config.actions.includes(action)) return false
   if (action === 'SAVE_WITH_FORM') {
     // 新配置不能启用；历史草稿若已经勾选，仍允许用户取消勾选后保存。
     return !editor.config.actions.includes('SAVE_WITH_FORM')
@@ -1611,6 +1674,10 @@ function toggleDataInterfaceService(checked) {
     inputMappings: [],
     outputMappings: []
   })
+  if (isRelationBound.value) {
+    // 恢复关系取数后，保留既有动作接口和展示组件；没有扩展时回到平台默认能力。
+    updateSpecialMode({ service: editor.config.specialHandling.actionServices.length > 0 })
+  }
 }
 
 function addActionService() {
@@ -1737,7 +1804,11 @@ function goNext() {
     ElMessage.warning(error.message)
     return
   }
-  activeStep.value = Math.min(activeStep.value + 1, 4)
+  activeStep.value = stepIds.value[Math.min(stepNumber(activeStep.value), stepIds.value.length - 1)]
+}
+
+function goPrevious() {
+  activeStep.value = stepIds.value[Math.max(stepNumber(activeStep.value) - 2, 0)]
 }
 
 async function testWithRecord() {
@@ -1795,13 +1866,24 @@ function testTargetSummary(ids = []) {
 }
 
 async function save() {
+  if (catalogLoading.value) return
+  if (isRelationBound.value) {
+    if (relationBindingError.value) return
+    try {
+      applyEntityRelationBinding(editor, boundEntityRelation.value)
+    } catch (error) {
+      relationBindingError.value = error.message
+      activeStep.value = 1
+      return
+    }
+  }
   if (selectedEntityRelation.value
     && editor.config.target.contentType !== relationContentType(selectedEntityRelation.value)) {
     activeStep.value = 1
     ElMessage.warning('一对一关系请选择表单，一对多关系请选择列表')
     return
   }
-  const validation = validateRelatedContent(editor, props.ownerType)
+  const validation = localValidation.value
   if (!validation.valid) {
     activeStep.value = validation.firstStep
     ElMessage.warning(validation.errors[0].message)
@@ -1845,6 +1927,10 @@ async function open(value = null) {
   if (!value) next.orderKey = (props.existingCount + 1) * 1000000
   Object.keys(editor).forEach(key => delete editor[key])
   Object.assign(editor, next)
+  isRelationBound.value = !!value && next.config.relation.type === 'ENTITY_RELATION'
+  boundRelationCode.value = isRelationBound.value ? next.config.relation.relationCode : ''
+  sourceRelations.value = []
+  relationBindingError.value = ''
   syncCustomComponentArtifactDigest()
   activeStep.value = 1
   advancedSections.value = []
@@ -1854,6 +1940,13 @@ async function open(value = null) {
   sourceTestRecordId.value = ''
   visible.value = true
   await loadCommonCatalog()
+  if (isRelationBound.value && !relationBindingError.value) {
+    try {
+      applyEntityRelationBinding(editor, boundEntityRelation.value)
+    } catch (error) {
+      relationBindingError.value = error.message
+    }
+  }
   if (editor.config.target.entityId) {
     const [resolved] = await entityApi.resolveOptions({
       ids: [String(editor.config.target.entityId)]
@@ -1871,6 +1964,26 @@ defineExpose({ open })
 </script>
 
 <style scoped>
+.entity-relation-binding {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+.relation-binding-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.entity-relation-binding p {
+  margin: 12px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+.inherited-target { overflow-wrap: anywhere; }
+
 .dialog-heading,
 .dialog-footer,
 .configuration-summary,

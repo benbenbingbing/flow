@@ -37,7 +37,7 @@
       </el-form>
       <el-alert v-if="catalogError" :title="catalogError" type="error" :closable="false" />
       <el-alert v-else-if="!catalogLoading && !options.length" :title="`关联实体暂无可用的已发布${typeLabel(selectedRelation)}，请先配置并发布。`" type="info" :closable="false" />
-      <p class="help">保存后直接显示在当前表单下方，发布当前表单后生效。系统会按当前记录自动查找关联数据。</p>
+      <p class="help">此处引用实体中定义的关系，只选择展示页面。目标实体、匹配字段和关联数量在实体设计中维护；发布当前表单后按当前记录自动查找关联数据。</p>
       <template #footer>
         <el-button @click="visible = false">取消</el-button>
         <el-button type="primary" :loading="saving" :disabled="!contentId || catalogLoading || !!catalogError" @click="save">{{ editing ? '保存显示配置' : '添加到表单' }}</el-button>

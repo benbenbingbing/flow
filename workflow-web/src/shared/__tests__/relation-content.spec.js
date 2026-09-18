@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildRelationContent, isSimpleRelationContent, relationContentOptions } from '../relation-content.js'
+import { applyEntityRelationBinding, buildRelationContent, isSimpleRelationContent, relationContentOptions } from '../relation-content.js'
 import { buildRelatedContentPayload, validateRelatedContent } from '../related-content.js'
 
 const relation = {
@@ -50,4 +50,34 @@ assert.equal(isSimpleRelationContent({ ...form, config: { ...form.config, action
 assert.throws(() => buildRelationContent({ relation: { ...relation, enabled: false }, content: options[0], sourceEntity }), /停用/)
 assert.throws(() => buildRelationContent({ relation, content: null, sourceEntity }), /请选择/)
 assert.throws(() => buildRelationContent({ relation: { ...relation, childRefFieldCode: '' }, content: options[0], sourceEntity }), /关联定义不完整/)
-console.log('relation-content tests passed: cardinality, published targets, direct display, stable edits, invalid relations')
+
+// 已有高级展示只刷新来自关系的派生身份，不能丢失位置、权限或复用旧映射条件。
+const advanced = JSON.parse(JSON.stringify(saved))
+advanced.config.presentation.position = 'DRAWER'
+advanced.config.actions = ['EDIT']
+advanced.config.relation.targetField = 'obsolete_fk'
+advanced.config.relation.mappings = [{ sourceField: 'code', targetField: 'reqCode' }]
+applyEntityRelationBinding(advanced, { ...relation, relationName: '已更新的实体关系' })
+assert.equal(advanced.config.target.contentId, saved.config.target.contentId)
+assert.equal(advanced.config.relation.relationName, '已更新的实体关系')
+assert.equal(advanced.config.presentation.position, 'DRAWER')
+assert.deepEqual(advanced.config.actions, ['EDIT'])
+assert.equal(advanced.ownerRevision, saved.ownerRevision)
+assert.deepEqual(advanced.config.relation, { type: 'ENTITY_RELATION', relationCode: 'reqRelation', relationName: '已更新的实体关系' })
+assert.throws(() => applyEntityRelationBinding(advanced, null), /已不存在/)
+assert.throws(() => applyEntityRelationBinding(advanced, { ...relation, enabled: false }), /已停用/)
+assert.throws(() => applyEntityRelationBinding(advanced, { ...relation, deleted: 1 }), /已不存在/)
+assert.throws(() => applyEntityRelationBinding(advanced, { ...relation, relationCode: 'other' }), /不能替换/)
+assert.throws(() => applyEntityRelationBinding(advanced, { ...relation, childRefFieldCode: '' }), /不完整/)
+
+// 关系从单条改成多条或切换实体后，不能沿用旧的表单与发布版本。
+advanced.config.target.releaseId = 'old-form-release'
+applyEntityRelationBinding(advanced, { ...relation, relationType: 'ONE_TO_MANY' })
+assert.equal(advanced.config.target.contentType, 'LIST')
+assert.equal(advanced.config.target.contentId, '')
+assert.equal(advanced.config.target.releaseId, undefined)
+advanced.config.target.contentId = 'req-list'
+applyEntityRelationBinding(advanced, { ...relation, relationType: 'ONE_TO_MANY', childEntityId: 'other' })
+assert.equal(advanced.config.target.entityId, 'other')
+assert.equal(advanced.config.target.contentId, '')
+console.log('relation-content tests passed: cardinality, published targets, direct display, inherited binding, stable edits, invalid relations')

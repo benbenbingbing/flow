@@ -28,6 +28,43 @@ export function isSimpleRelationContent(item) {
 }
 
 /**
+ * 重新读取实体关系后同步展示配置中的派生信息；关系编码始终是唯一的关联依据。
+ * 关系失效时禁止降级为字段匹配。目标或基数变化时清除旧页面，要求重新选择，
+ * 其余展示位置、操作权限和修订信息保留，避免编辑展示时重置已有配置。
+ */
+export function applyEntityRelationBinding(item, relation) {
+  if (!relation || relation.deleted === 1 || relation.deleted === true) {
+    throw new Error('此实体关系已不存在，请到实体设计中检查')
+  }
+  if (relation.enabled === false || relation.enabled === 0) throw new Error('此实体关系已停用，请到实体设计中检查')
+  if (!relation.relationCode || !relation.childEntityId || !relation.childRefFieldCode) {
+    throw new Error('实体关系定义不完整，请到实体设计中检查')
+  }
+  if (item.config.relation.type !== 'ENTITY_RELATION'
+    || item.config.relation.relationCode !== relation.relationCode) {
+    throw new Error('展示配置不能替换已绑定的实体关系')
+  }
+  const target = item.config.target
+  const contentType = relationContentType(relation)
+  const sameTarget = String(target.entityId) === String(relation.childEntityId)
+    && target.contentType === contentType
+  item.config.target = {
+    ...(sameTarget ? target : { contentId: '', contentKey: '', contentName: '' }),
+    entityId: String(relation.childEntityId),
+    entityCode: relation.childEntityCode || '',
+    entityName: relation.childEntityName || relation.childEntityCode || '',
+    contentType
+  }
+  // 不复制外键、映射和筛选条件；服务端根据编码从实体发布版本解析真实规则。
+  item.config.relation = {
+    type: 'ENTITY_RELATION',
+    relationCode: relation.relationCode,
+    relationName: relation.relationName || relation.relationCode
+  }
+  return item
+}
+
+/**
  * 从权威关系构造展示配置，不创建实体字段，也不把 dataKey 当作外键。
  * 简单更新保留组合身份和修订号，发布时仍由服务端冻结目标表单/列表版本。
  */
