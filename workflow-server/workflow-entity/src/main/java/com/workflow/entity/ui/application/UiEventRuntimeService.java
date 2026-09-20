@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.list.application.validation.ListButtonSelectionPolicy;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -412,14 +414,9 @@ public class UiEventRuntimeService {
                     "列表按钮单次最多处理 "
                             + MAX_LIST_BUTTON_SELECTION + " 条数据");
         }
-        boolean selectionAction = Set.of(
-                "batchDelete", "exportSelected")
-                .contains(request.getTargetKey());
-        if (selectionAction && selectedIds.isEmpty()) {
-            throw new BusinessForbiddenException(
-                    "UI_EVENT_LIST_SELECTION_REQUIRED",
-                    "请先选择数据");
-        }
+        // 选择要求来自固定发布快照；先按去重 ID 校验数量，再加载记录、评估每行条件。
+        ListButtonSelectionPolicy.requireCount(button, selectedIds.size());
+        boolean selectionAction = ListButtonSelectionPolicy.requiresSelection(button);
         List<EntityDataDTO> rows = selectedIds.stream()
                 .map(id -> entityDataService.findAccessibleById(
                         chain.entityCode(), id, chain.listKey()))
@@ -428,9 +425,7 @@ public class UiEventRuntimeService {
             actionCapabilityService.requirePublishedListButton(
                     chain.entityCode(), request.getTargetKey(), button, rows);
         } else {
-            // 运行时能力契约只把两个内置批量动作定义为选择集按钮；其它
-            // 工具栏按钮始终在 row=null 上求值，不能由客户端提交 selectedIds
-            // 改变 availabilityRule 的判定上下文。
+            // 无需选择的按钮仍在 row=null 上求值；额外勾选记录不能改变其条件上下文。
             actionCapabilityService.requirePublishedListButton(
                     chain.entityCode(), request.getTargetKey(), button,
                     (EntityDataDTO) null);

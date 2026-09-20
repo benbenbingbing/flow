@@ -99,28 +99,35 @@
               :value="getFieldDisplayValue(row, field)"
               :field-name="field.fieldName"
             >
-              <!-- 自定义渲染组件 -->
-              <ListCellRenderer
-                v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
+              <ListCellAction
+                :button="getCellAction(field, row)"
                 :row="row"
-                :field="field"
-                :context="{
-                  entityCode,
-                  entityDefinition,
-                  entityStatusMap,
-                  getStatusText,
-                  refresh,
-                  refEntityNameMap
-                }"
-              />
-              <!-- 状态字段特殊渲染 -->
-              <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
-              <!-- 日期字段格式化 -->
-              <span v-else-if="isDateFieldCode(field.fieldCode)">
-                {{ formatDate(row[field.fieldCode]) }}
-              </span>
-              <!-- 默认显示 -->
-              <span v-else>{{ getFieldDisplayValue(row, field) }}</span>
+                :text="getFieldDisplayValue(row, field)"
+                @action="onRowActionClick"
+              >
+                <!-- 自定义渲染组件 -->
+                <ListCellRenderer
+                  v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
+                  :row="row"
+                  :field="field"
+                  :context="{
+                    entityCode,
+                    entityDefinition,
+                    entityStatusMap,
+                    getStatusText,
+                    refresh,
+                    refEntityNameMap
+                  }"
+                />
+                <!-- 状态字段特殊渲染 -->
+                <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
+                <!-- 日期字段格式化 -->
+                <span v-else-if="isDateFieldCode(field.fieldCode)">
+                  {{ formatDate(row[field.fieldCode]) }}
+                </span>
+                <!-- 默认显示 -->
+                <span v-else>{{ getFieldDisplayValue(row, field) }}</span>
+              </ListCellAction>
             </ListQuickCopyCell>
           </template>
         </el-table-column>
@@ -270,11 +277,14 @@ import EntityListLauncher from '@/components/EntityListLauncher.vue'
 import { mapPageParameters } from '@/shared/page-parameters'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { findButtonRelatedContent, isRelatedContentButton, relatedContentSelectionReason } from '@/shared/list-related-content'
+import { isSelectionToolbarButton as isSelectionButton, toolbarSelectionReason } from '@/shared/list-selection'
 import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButtonComponentRegistry'
 import { getListToolbarAction, getListRowAction } from '@/utils/listActionRegistry'
 import { getFieldModelPath } from '@/shared/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
+import ListCellAction from '@/components/ListCellAction.vue'
+import { buildCellActionMap, hidesMappedRowButton } from '@/shared/list-cell-action'
 import {
   refreshRecordPageSelection,
   reconcileRecordPageSelection,
@@ -363,6 +373,16 @@ const getListFieldProp = (fieldCode: string) => {
 }
 
 const getColumnConfig = (field: any) => safeParseConfig(field?.columnConfig)
+
+const cellActionMap = computed(() => props.useListConfig
+  ? buildCellActionMap(props.rowActionButtons, props.listFields)
+  : new Map())
+
+/** 功能映射只改变动作入口；规则隐藏的按钮不提供链接，字段数据仍正常展示。 */
+const getCellAction = (field: any, row: any) => {
+  const button = cellActionMap.value.get(field.fieldCode)
+  return button && isActionVisible(row, button.key) ? button : null
+}
 
 const getFieldDisplayValue = (row: any, field: any) => {
   return formatListFieldValue(
@@ -491,7 +511,7 @@ const BUILTIN_ROW_ACTIONS: Record<string, Function> = {
 
 // 操作列按钮点击分发
 const onRowActionClick = (btn: any, row: any) => {
-  if (!canAction(row, btn.key)) {
+  if (btn.enabled === false || !canAction(row, btn.key)) {
     ElMessage.warning(getActionReason(row, btn.key) || '当前数据不可操作')
     return
   }
@@ -699,7 +719,9 @@ const hasVisibleRowActions = computed(() =>
 )
 
 const visibleRowButtons = (row: any) => {
-  return props.rowActionButtons.filter(btn => isActionVisible(row, btn.key))
+  // 不从原始按钮集合中移除映射动作，后续执行仍需使用同一按钮的参数和发布快照。
+  return props.rowActionButtons.filter(btn => btn.enabled !== false && isActionVisible(row, btn.key)
+    && !hidesMappedRowButton(btn, cellActionMap.value))
 }
 
 const canAction = (row: any, buttonKey: string) => {
@@ -709,9 +731,6 @@ const canAction = (row: any, buttonKey: string) => {
 const getActionReason = (row: any, buttonKey: string) => {
   return getActionCapabilityReason(row, buttonKey)
 }
-
-const isSelectionButton = (button: any) =>
-  button.key === 'batchDelete' || button.key === 'exportSelected' || isRelatedContentButton(button)
 
 /**
  * 工具栏先遵守列表级能力；选择集按钮再按当前选择行汇总 visibleWhen。
@@ -732,7 +751,9 @@ const visibleToolbarButtons = computed(() =>
 )
 
 const isToolbarDisabled = (btn: any) => {
+  if (toolbarSelectionReason(btn, selectedRows.value)) return true
   if (isRelatedContentButton(btn) && relatedContentSelectionReason(selectedRows.value)) return true
+  if (props.toolbarCapabilities?.[btn.key]?.enabled === false) return true
   if (!isSelectionButton(btn)) {
     return props.toolbarCapabilities?.[btn.key]?.enabled === false
   }
@@ -740,12 +761,15 @@ const isToolbarDisabled = (btn: any) => {
 }
 
 const getToolbarReason = (btn: any) => {
+  const selectionReason = toolbarSelectionReason(btn, selectedRows.value)
+  if (selectionReason) return selectionReason
   if (isRelatedContentButton(btn) && relatedContentSelectionReason(selectedRows.value)) {
     return relatedContentSelectionReason(selectedRows.value)
   }
   if (!isSelectionButton(btn)) {
     return props.toolbarCapabilities?.[btn.key]?.reason || ''
   }
+  if (props.toolbarCapabilities?.[btn.key]?.enabled === false) return props.toolbarCapabilities[btn.key].reason || '当前操作不可用'
   return getSelectionActionState(selectedRows.value, btn.key).reason
 }
 

@@ -354,6 +354,27 @@ class EntityActionCapabilityServiceTaskBindingTest {
         assertTrue(row.getActionCapabilities().get("requirements").isEnabled());
     }
 
+    @Test
+    void customSelectionButtonsDeferConditionsAndEnrichEveryRow() {
+        for (String requirement : List.of("SINGLE", "AT_LEAST_ONE")) {
+            Map<String, Object> button = Map.of("key", "custom_archive", "type", "custom",
+                    "customMode", "event", "selectionRequirement", requirement);
+            when(actionConfigService.resolveToolbarButtons(listConfig, ENTITY_CODE)).thenReturn(List.of(button));
+            when(actionConfigService.permissionFor(ENTITY_CODE, button)).thenReturn(APPROVE_PERMISSION);
+            EntityActionRuleDTO rule = new EntityActionRuleDTO();
+            rule.setVisibleWhen(fieldCondition("visible", true));
+            rule.setEnabledWhen(fieldCondition("enabled", true));
+            when(actionConfigService.readRule(button)).thenReturn(rule);
+            assertTrue(service.evaluateToolbarActions(ENTITY_CODE, listConfig).get("custom_archive").isEnabled());
+
+            EntityDataDTO row = multiInstanceRow();
+            row.setData(Map.of("visible", true, "enabled", false));
+            service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
+            assertTrue(row.getActionCapabilities().get("custom_archive").isVisible());
+            assertFalse(row.getActionCapabilities().get("custom_archive").isEnabled());
+        }
+    }
+
     /** 构造实体摘要指向其他会签人的兄弟任务。 */
     private EntityDataDTO multiInstanceRow() {
         EntityDataDTO row = new EntityDataDTO();

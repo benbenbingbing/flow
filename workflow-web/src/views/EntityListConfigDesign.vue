@@ -167,6 +167,26 @@
                     </div>
                   </template>
                 </el-table-column>
+                <el-table-column label="列宽（px）" width="140">
+                  <template #header>
+                    <ConfigHelpLabel
+                      label="列宽（px）"
+                      help-key="entityList.columnWidth"
+                    />
+                  </template>
+                  <template #default="{ row }">
+                    <el-input-number
+                      v-model="row.width"
+                      :aria-label="`${row.fieldName}列宽（px）`"
+                      :min="0"
+                      :max="500"
+                      :disabled="!row.showInList"
+                      size="small"
+                      controls-position="right"
+                      style="width: 100%"
+                    />
+                  </template>
+                </el-table-column>
                 <el-table-column label="当前配置" min-width="320">
                   <template #default="{ row }">
                     <span class="field-config-summary" :title="fieldConfigSummary(row)">
@@ -375,11 +395,12 @@
                 </SettingsSection>
                 <SettingsSection
                   title="选择行为"
-                  description="配置列表是否允许选择，以及选择结果如何返回"
+                  class="selection-behavior-section"
+                  description="可选择时允许勾选多条；执行所需条数由各工具栏按钮决定"
                   :default-expanded="true"
                 >
                   <template #summary>
-                    {{ configInfo.selectionMode === 'NONE' ? '仅浏览' : '返回选择结果' }}
+                    {{ configInfo.selectionMode === 'NONE' ? '不可选择' : '可选择' }}
                   </template>
                   <el-form-item label="选择模式">
                     <template #label>
@@ -389,10 +410,10 @@
                       />
                     </template>
                     <el-radio-group v-model="configInfo.selectionMode">
-                      <el-radio-button value="NONE">不选择</el-radio-button>
-                      <el-radio-button value="SINGLE">单选</el-radio-button>
-                      <el-radio-button value="MULTIPLE">多选</el-radio-button>
+                      <el-radio-button value="NONE" :disabled="toolbarRequiresSelection">不可选择</el-radio-button>
+                      <el-radio-button value="MULTIPLE">可选择</el-radio-button>
                     </el-radio-group>
+                    <div v-if="toolbarRequiresSelection" class="field-help">已启用的工具栏按钮需要选择数据，已自动开启可选择。</div>
                   </el-form-item>
                   <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回值字段">
                     <el-select v-model="configInfo.selectionValueField" filterable style="width: 420px">
@@ -408,19 +429,18 @@
                   <el-form-item
                     v-if="configInfo.selectionMode !== 'NONE'"
                     class="view-config-item--full"
-                    label="返回映射 JSON"
+                    label="附加返回字段"
                   >
                     <template #label>
-                      <JsonConfigLabel
-                        label="返回映射 JSON"
+                      <ConfigHelpLabel
+                        label="附加返回字段"
                         help-key="entityList.selectionReturnMappings"
                       />
                     </template>
-                    <el-input
+                    <SelectionReturnMappingEditor
                       v-model="configInfo.selectionReturnMappingsText"
-                      type="textarea"
-                      :rows="3"
-                      :placeholder="`例如 ${selectionReturnMappingExampleCompactText}`"
+                      :fields="entityFields"
+                      :system-entity="isSystemEntity"
                     />
                   </el-form-item>
                 </SettingsSection>
@@ -475,6 +495,7 @@
               <ListButtonConfigPanel
                 type="row"
                 v-model="rowActionButtons"
+                :mapping-fields="fieldConfigList"
                 :related-contents="relatedContents"
                 @configure-related-content="openRelatedContent"
                 :entityCode="entityCode"
@@ -663,9 +684,16 @@
             :collapsible="false"
           >
             <el-form label-width="110px" size="small">
-              <el-form-item label="列宽">
+              <el-form-item label="列宽" for="">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="列宽"
+                    help-key="entityList.columnWidth"
+                  />
+                </template>
                 <el-input-number
                   v-model="editingField.width"
+                  aria-label="列宽"
                   :min="0"
                   :max="500"
                   :disabled="!editingField.showInList"
@@ -706,8 +734,14 @@
                   <el-option label="右侧" value="right" />
                 </el-select>
               </el-form-item>
-              <el-form-item label="最小宽度">
-                <el-input-number v-model="editingColumnConfig.minWidth" :min="60" :max="1000" />
+              <el-form-item label="最小宽度" for="">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="最小宽度"
+                    help-key="entityList.columnMinWidth"
+                  />
+                </template>
+                <el-input-number v-model="editingColumnConfig.minWidth" aria-label="最小宽度" :min="60" :max="1000" />
               </el-form-item>
               <el-form-item label="溢出提示">
                 <el-switch v-model="editingColumnConfig.showOverflowTooltip" />
@@ -901,14 +935,16 @@ import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import ListFixedFilterEditor from '@/components/ListFixedFilterEditor.vue'
+import SelectionReturnMappingEditor from '@/components/SelectionReturnMappingEditor.vue'
+import { validateSelectionReturnMappings } from '@/shared/selection-return-mapping-editor'
 import { readFixedFilterRows, writeFixedFilterRows } from '@/shared/list-fixed-filters'
 import ListButtonConfigPanel from '@/components/ListButtonConfigPanel.vue'
+import { cellMappingConflict, mappedFieldCode, supportsCellAction } from '@/shared/list-cell-action'
 import EntityDataSearchForm from '@/views/entity/components/EntityDataSearchForm.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
-import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import { listButtonEventOptions } from '@/components/ui-config/listButtonEventTargets'
@@ -916,6 +952,7 @@ import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigRelease
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { findButtonRelatedContent, isRelatedContentButton } from '@/shared/list-related-content'
+import { isSelectionToolbarButton, normalizeListSelectionMode } from '@/shared/list-selection'
 import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
 import { filterOptionsByEntity } from '@/shared/extension-entity-scope'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
@@ -955,7 +992,6 @@ import {
 } from '@/components/ui-config/interfaceExtensionModel'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useBreadcrumbParents } from '@/composables/useBreadcrumbParents'
-import { parseJsonConfig } from '@/utils/jsonConfig'
 import { applyListColumnTemplateSnapshot } from '@/shared/list-column-template'
 import {
   buildUiConfigDraftDiscardRequest,
@@ -963,13 +999,8 @@ import {
   isUiConfigDraftDiscardConflict,
   resolveUiConfigDraftStatus
 } from '@/shared/ui-config-draft'
-import {
-  SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
-} from '@/utils/selectionReturnMappings'
 const route = useRoute()
 const configId = route.params.id
-const selectionReturnMappingExampleCompactText =
-  SELECTION_RETURN_MAPPING_EXAMPLE_COMPACT_TEXT
 // 配置信息
 const configInfo = ref({})
 const fixedFilterRows = ref([])
@@ -1166,6 +1197,12 @@ const listColumnInterfaces = computed(() =>
 )
 // 工具栏按钮配置
 const toolbarButtons = ref([])
+const toolbarRequiresSelection = computed(() => toolbarButtons.value.some(button =>
+  button.enabled !== false && isSelectionToolbarButton(button)))
+// 按钮可单独保存；运行时也据按钮显示勾选列，避免列表设置尚未保存时没有选择入口。
+watch([toolbarRequiresSelection, () => configInfo.value.selectionMode], ([required, mode]) => {
+  if (required && mode !== 'MULTIPLE') configInfo.value.selectionMode = 'MULTIPLE'
+})
 // 操作列按钮配置
 const rowActionButtons = ref([])
 const eventButtonOptions = computed(() =>
@@ -1429,7 +1466,7 @@ async function loadData(options = {}) {
       configInfo.value = configRes
       configInfo.value.dataScopeMode = configRes.dataScopeMode || 'INHERIT'
       const selectionConfig = safeJsonParse(configRes.selectionConfig) || {}
-      configInfo.value.selectionMode = selectionConfig.selectionMode || 'NONE'
+      configInfo.value.selectionMode = normalizeListSelectionMode(selectionConfig.selectionMode)
       configInfo.value.selectionValueField = selectionConfig.valueField || 'id'
       configInfo.value.selectionReturnMappingsText = JSON.stringify(
         selectionConfig.returnMappings || [],
@@ -1786,6 +1823,9 @@ function applySavedAction(button, saved) {
     perm: saved.permissionCode || '',
     sort: saved.sortOrder ?? 0,
     enabled: saved.enabled !== false,
+    // 权威响应中缺失表示已解绑，不能保留 Object.assign 前的旧映射。
+    mappedFieldCode: params.mappedFieldCode || '',
+    hideWhenMapped: params.hideWhenMapped === true,
     // 关系型响应是保存后的权威值；null 表示用户已经显式清空条件。
     availabilityRule: availabilityRule || null,
     templateId: saved.templateId || null,
@@ -1794,6 +1834,13 @@ function applySavedAction(button, saved) {
   })
 }
 async function saveListAction(button, position, options = {}) {
+  if (position === 'ROW' && supportsCellAction(button) && mappedFieldCode(button)) {
+    const conflict = cellMappingConflict(button, rowActionButtons.value)
+    if (conflict) {
+      ElMessage.warning(`字段已映射到“${conflict.label || conflict.key}”，请先解除原映射`)
+      return false
+    }
+  }
   if (button.enabled !== false && isRelatedContentButton(button)
       && !findButtonRelatedContent(button, relatedContents.value)) {
     ElMessage.warning('请选择当前列表中已启用且以弹窗、抽屉或页面显示的关联内容')
@@ -2077,16 +2124,9 @@ async function saveListMetadata(options = {}) {
         : configInfo.value.dataScopeMode || 'INHERIT',
       accessPermissionCode: configInfo.value.accessPermissionCode || '',
       selectionConfig: {
-        selectionMode: configInfo.value.selectionMode || 'NONE',
+        selectionMode: toolbarRequiresSelection.value ? 'MULTIPLE' : normalizeListSelectionMode(configInfo.value.selectionMode),
         valueField: configInfo.value.selectionValueField || 'id',
-        returnMappings: parseJsonConfig(
-          configInfo.value.selectionReturnMappingsText,
-          {
-            fieldName: '返回映射',
-            expectedType: 'array',
-            emptyValue: []
-          }
-        )
+        returnMappings: validateSelectionReturnMappings(configInfo.value.selectionReturnMappingsText)
       },
       fixedFilterConfig,
       viewConfig: viewConfig.value,
@@ -2608,8 +2648,9 @@ async function handleReleaseChanged(event) {
     grid-column: 1 / -1;
   }
 }
-/* SettingsSection 的能力包装层需跨满分组网格，给条件行留出完整编辑宽度。 */
-.view-config-form :deep(.access-scope-section > .settings-section__body > .settings-capability) {
+/* 能力包装层需跨满分组网格，给条件行和返回映射表留出完整编辑宽度。 */
+.view-config-form :deep(.access-scope-section > .settings-section__body > .settings-capability),
+.view-config-form :deep(.selection-behavior-section > .settings-section__body > .settings-capability) {
   grid-column: 1 / -1;
 }
 .view-config-form :deep(.access-scope-section .form-tip) {

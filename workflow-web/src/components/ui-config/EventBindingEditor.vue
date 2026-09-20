@@ -47,7 +47,7 @@
     />
     <el-alert
       v-if="!compact && !formButtonOnlyContext"
-      title="除表单自定义按钮外，事件默认保留平台处理；只有执行链中加入 REPLACE 步骤，才会由自定义接口完全替代。"
+      title="各事件的默认行为不同，可查看执行链旁的说明。存在平台默认步骤时，“替代平台处理”才会接管该步骤；页面交互和事件扩展入口请以具体事件说明为准。"
       type="info"
       :closable="false"
       show-icon
@@ -101,7 +101,7 @@
       <el-table-column v-if="listOwnerContext" label="绑定对象" min-width="240">
         <template #default="{ row }">{{ bindingTargetLabel(row) }}</template>
       </el-table-column>
-      <el-table-column label="继承方式" :width="compact ? 112 : 130">
+      <el-table-column v-if="!entityOwnerContext" label="继承方式" :width="compact ? 112 : 130">
         <template #default="{ row }">
           <el-tag :type="inheritanceType(row.inheritanceMode)" effect="plain">
             {{ inheritanceLabel(row.inheritanceMode, row) }}
@@ -123,11 +123,9 @@
                 >
                   {{ item.label }}
                 </el-tag>
-                <ConfigHelpLabel
+                <EventDefaultProcessingHelp
                   v-if="item.kind === 'platform'"
-                  label="平台默认处理"
-                  :show-label="false"
-                  :content="platformDefaultHelp(row.eventCode)"
+                  :help="platformDefaultHelp(row.eventCode)"
                 />
               </span>
             </template>
@@ -182,13 +180,13 @@
     <el-dialog
       v-model="dialogVisible"
       :title="editor.id ? '编辑事件绑定' : '新增事件绑定'"
-      width="980px"
+      width="min(980px, calc(100vw - 32px))"
       append-to-body
       destroy-on-close
       :close-on-click-modal="false"
     >
       <el-form :model="editor" label-width="96px">
-        <div class="base-grid">
+        <div class="base-grid" :class="{ 'is-entity': entityOwnerContext }">
           <el-form-item label="触发事件" required>
             <el-select
               v-model="editor.eventCode"
@@ -219,7 +217,7 @@
             </el-select>
             <div class="event-scope-hint">{{ eventScopeHint }}</div>
           </el-form-item>
-          <el-form-item label="继承方式" required>
+          <el-form-item v-if="!entityOwnerContext" label="继承方式" label-width="112px" required>
             <template #label>
               <ConfigHelpLabel
                 label="继承方式"
@@ -231,6 +229,7 @@
               v-model="editor.inheritanceMode"
               :options="inheritanceOptions"
             />
+            <div class="event-scope-hint">{{ inheritanceScopeHint }}</div>
           </el-form-item>
         </div>
 
@@ -268,13 +267,26 @@
           </div>
         </el-form-item>
 
+        <div class="platform-default-summary" aria-live="polite">
+          <div class="platform-default-summary-title">
+            <strong>默认行为 · {{ selectedEventDefault.name }}</strong>
+            <EventDefaultProcessingHelp :help="selectedEventDefault" />
+          </div>
+          <div>{{ selectedEventDefault.description }}</div>
+          <div v-if="!selectedEventDefault.replaceable" class="secondary-text">
+            {{ selectedEventDefault.note }}
+          </div>
+        </div>
+
         <el-alert
           v-if="editor.inheritanceMode === 'DISABLE'"
           :title="formButtonExactTarget
             ? '当前按钮事件链已被清空；启用按钮无法以空链发布，请关闭按钮本身或选择其他继承方式。'
             : formButtonEventSelected
               ? '清空当前层及上级的表单按钮公共链；具体按钮仍必须通过本层或下级配置形成主处理。'
-              : '禁用当前层的自定义链，仅保留平台默认处理。'"
+              : selectedEventDefault.replaceable
+                ? '禁用截至当前层的自定义链，仅保留平台默认处理。'
+                : '禁用截至当前层的自定义链；页面自身行为和触发方式见上方说明。'"
           type="warning"
           :closable="false"
           class="editor-alert"
@@ -287,7 +299,9 @@
               <div class="secondary-text">
                 {{ formButtonEventSelected
                   ? '按前置处理、主处理、后置处理三个阶段执行；表单自定义按钮本身没有平台默认动作。'
-                  : '前置接口先执行，平台默认处理居中，后置接口最后执行。' }}
+                  : selectedEventDefault.replaceable
+                    ? '前置接口先执行，平台默认处理居中，后置接口最后执行。'
+                    : '此事件没有居中的平台默认步骤；具体页面行为和触发方式见上方说明。' }}
               </div>
             </div>
             <el-button type="primary" plain @click="addStep">
@@ -309,11 +323,9 @@
                 >
                   {{ item.label }}
                 </el-tag>
-                <ConfigHelpLabel
+                <EventDefaultProcessingHelp
                   v-if="item.kind === 'platform'"
-                  label="平台默认处理"
-                  :show-label="false"
-                  :content="platformDefaultHelp(editor.eventCode)"
+                  :help="platformDefaultHelp(editor.eventCode)"
                 />
               </span>
             </template>
@@ -322,8 +334,12 @@
           <el-empty
             v-if="editor.steps.length === 0"
             :description="formButtonEventSelected
-              ? '本层尚无步骤，将继承上级事件链；发布时最终链必须且只能包含一个主处理'
-              : '尚未增加接口步骤，将直接执行平台默认处理'"
+              ? entityOwnerContext
+                ? '尚未配置实体公共步骤，可由具体表单或按钮补充主处理；发布时最终链必须且只能包含一个主处理'
+                : '本层尚无步骤，将继承上级事件链；发布时最终链必须且只能包含一个主处理'
+              : selectedEventDefault.replaceable
+                ? '尚未增加接口步骤，将按已发布的继承链执行；没有替代步骤时执行平台默认处理'
+                : '尚未增加接口步骤，具体默认行为和触发方式见上方说明'"
             :image-size="72"
           />
 
@@ -542,6 +558,8 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
+import EventDefaultProcessingHelp from './EventDefaultProcessingHelp.vue'
+import { getEventDefaultProcessing as platformDefaultHelp } from './uiEventDefaultProcessing'
 import { getFormFieldComponentDescriptor } from '@/components/form-fields'
 import { fieldEventDisabledReason } from './uiFieldEventCapabilities'
 import { getConfigFieldHelp } from '@/shared/config-field-help'
@@ -595,26 +613,6 @@ const eventLabels = {
   FORM_BUTTON_CLICK: '表单按钮点击'
 }
 
-const platformDefaultDescriptions = {
-  LIST_LOAD: '按固定条件、用户筛选和数据范围查询列表；自定义查询请添加“替代平台处理”步骤并返回 records、total、pageNum、pageSize',
-  LIST_EXPORT: '按当前条件导出列表数据',
-  DETAIL_LOAD: '读取并展示当前记录详情',
-  DATA_CREATE: '完成权限、表单规则校验并新增实体记录',
-  DATA_UPDATE: '完成权限、表单规则校验并更新实体记录',
-  DATA_DELETE: '校验权限后删除当前实体记录',
-  DATA_BATCH_DELETE: '校验权限后批量删除所选实体记录',
-  FORM_OPEN: '加载记录或新增初始值并打开表单',
-  FORM_SAVE: '校验并提交当前表单数据',
-  FORM_RESET: '把表单恢复到本次打开时的初始值',
-  FIELD_CHANGE: '更新字段值并执行平台联动与校验',
-  ENTITY_SELECTED: '回填选中记录及已配置的字段映射',
-  FIELD_BUTTON_CLICK: '执行该字段按钮原有的内置动作',
-  SUBFORM_LOAD: '加载当前子表数据',
-  SUBFORM_SAVE: '校验并保存当前子表数据',
-  TOOLBAR_BUTTON_CLICK: '执行该工具栏按钮原有的内置动作',
-  ROW_BUTTON_CLICK: '执行该行按钮原有的内置动作'
-}
-
 const defaultInheritanceOptions = [
   { label: '继承并追加', value: 'INHERIT' },
   { label: '替换上级', value: 'REPLACE' },
@@ -649,6 +647,7 @@ let loadSequence = 0
 let interfaceSequence = 0
 
 const editor = reactive(emptyEditor())
+const selectedEventDefault = computed(() => platformDefaultHelp(editor.eventCode))
 
 const ownerTypeLabel = computed(() => ({
   ENTITY: '实体默认配置',
@@ -665,6 +664,9 @@ const fieldCapabilities = computed(() => {
     || (field?.componentExtensionType === 'FIELD' ? field?.componentName : '')
     || field?.componentType)?.capabilities || {}
 })
+
+const entityOwnerContext = computed(() =>
+  String(props.ownerType).toUpperCase() === 'ENTITY')
 
 const listOwnerContext = computed(() =>
   String(props.ownerType).toUpperCase() === 'LIST'
@@ -750,6 +752,17 @@ const formButtonInheritanceHelp = computed(() =>
     ? getConfigFieldHelp('uiEvent.formButtonInheritanceMode')
     : ''
 )
+// 列表弹窗还可切换到具体按钮，说明必须跟随当前绑定目标，而非仅看编辑器入口。
+const inheritanceScopeHint = computed(() => {
+  const owner = String(props.ownerType).toUpperCase() === 'LIST' ? '列表' : '表单'
+  const target = String(editor.targetType || 'OWNER').toUpperCase()
+  if (target === 'OWNER') {
+    return `“替换上级”会替换实体「默认事件」中配置的同名事件步骤，仅使用当前${owner}的步骤。`
+  }
+  const mode = formButtonExactTarget.value ? '仅使用当前层' : '替换上级'
+  const targetName = target === 'FIELD' ? '字段' : '按钮'
+  return `“${mode}”会替换实体默认事件及当前${owner}公共配置中的同名事件步骤，仅使用当前${targetName}的步骤。`
+})
 const formButtonStepStrategyHelp = computed(() =>
   formButtonEventSelected.value
     ? getConfigFieldHelp('uiEvent.formButtonStepStrategy')
@@ -769,7 +782,7 @@ const eventScopeHint = computed(() => {
     ? '按钮点击事件可按不同按钮分别新增；同一按钮的同一事件只配置一条绑定。'
     : owner === 'FORM'
       ? '仅显示表单生命周期、表单数据、字段、子表单和表单按钮事件；列表事件请到列表配置。'
-      : '当前为实体默认事件，可被表单或列表的同名事件继承。'
+      : '实体默认事件没有上级，可被该实体的表单或列表中的同名事件继承。'
 })
 
 const currentOutOfScopeBindings = computed(() =>
@@ -887,7 +900,16 @@ async function load() {
     ])
     // 内嵌列表随字段切换，丢弃旧字段/旧刷新的迟到响应，避免串用绑定。
     if (sequence !== loadSequence) return
-    bindings.value = Array.isArray(bindingRows) ? bindingRows : []
+    const rows = Array.isArray(bindingRows) ? bindingRows : []
+    // 实体是继承起点，INHERIT 与 REPLACE 等效；旧 DISABLE 转为停用显示，
+    // 仅在用户保存时写回，避免隐藏继承选项后意外启用历史自定义步骤。
+    bindings.value = entityOwnerContext.value
+      ? rows.map(row => ({
+          ...row,
+          inheritanceMode: 'INHERIT',
+          enabled: row.enabled !== false && row.inheritanceMode !== 'DISABLE'
+        }))
+      : rows
     catalog.value = bindingCatalog || {}
   } catch (error) {
     if (sequence === loadSequence) ElMessage.error(error.message || '加载事件绑定失败')
@@ -1135,7 +1157,7 @@ async function save() {
       targetType: editor.targetType,
       targetKey: editor.targetKey,
       eventCode: editor.eventCode,
-      inheritanceMode: editor.inheritanceMode,
+      inheritanceMode: entityOwnerContext.value ? 'INHERIT' : editor.inheritanceMode,
       steps,
       enabled: editor.enabled
     }
@@ -1241,19 +1263,6 @@ function bindingTargetLabel(row) {
     : targetName
 }
 
-/**
- * 说明事件链中间的“平台默认处理”究竟代表哪个原有动作，并明确替代语义。
- */
-function platformDefaultHelp(eventCode) {
-  const code = String(eventCode || '').toUpperCase()
-  if (isFormButtonEvent(code)) {
-    return '表单自定义按钮没有平台默认处理，最终继承链必须且只能包含一个主处理。'
-  }
-  const action = platformDefaultDescriptions[code]
-    || `执行“${eventLabel(code)}”原有的内置动作`
-  return `平台默认处理：${action}。前置步骤在它之前执行；“替代平台处理”会跳过它；后置步骤在它成功后执行。`
-}
-
 function isFormButtonEvent(eventCode) {
   return String(eventCode || '').toUpperCase() === 'FORM_BUTTON_CLICK'
 }
@@ -1291,6 +1300,16 @@ function inheritanceType(mode) {
   }[mode] || 'info'
 }
 
+/** 区分真实默认步骤与说明占位，避免把交互事件误标为自动查询或写入。 */
+function platformChainItem(eventCode) {
+  const help = platformDefaultHelp(eventCode)
+  return {
+    kind: 'platform',
+    label: help.replaceable ? '平台默认处理' : '无平台默认步骤',
+    type: help.replaceable ? 'success' : 'info'
+  }
+}
+
 function chainItems(row) {
   const formButton = isFormButtonEvent(row.eventCode)
   const exactFormButton = isExactFormButtonBinding(row)
@@ -1299,7 +1318,7 @@ function chainItems(row) {
       ? [{ kind: 'disabled', label: '清空继承链（空链不可发布）', type: 'danger' }]
       : formButton
         ? [{ kind: 'disabled', label: '清空截至当前层的公共步骤', type: 'info' }]
-      : [{ kind: 'platform', label: '平台默认处理', type: 'success' }]
+      : [platformChainItem(row.eventCode)]
   }
   const steps = row.steps || parseJson(row.stepsDocument, [])
   const before = steps.filter(step => step.strategy === 'BEFORE')
@@ -1333,7 +1352,7 @@ function chainItems(row) {
                   type: 'danger'
                 }]
               : [])
-          : [{ kind: 'platform', label: '平台默认处理', type: 'success' }])),
+          : [platformChainItem(row.eventCode)])),
     ...after.map(step => ({
       kind: 'step',
       label: stagedLabel(step, 'AFTER'),
@@ -1343,11 +1362,13 @@ function chainItems(row) {
   if (configured.length || !formButton) return configured
   return [{
     kind: 'inherit',
-    label: exactFormButton
-      ? '继承上级步骤（发布时校验）'
-      : row.inheritanceMode === 'REPLACE'
-        ? '当前层不提供公共步骤，由具体按钮补充主处理'
-        : '继承上级公共步骤',
+    label: entityOwnerContext.value
+      ? '实体未配置公共步骤，由表单或按钮补充主处理'
+      : exactFormButton
+        ? '继承上级步骤（发布时校验）'
+        : row.inheritanceMode === 'REPLACE'
+          ? '当前层不提供公共步骤，由具体按钮补充主处理'
+          : '继承上级公共步骤',
     type: 'info'
   }]
 }
@@ -1484,6 +1505,23 @@ defineExpose({ reload: load })
   gap: 4px;
 }
 
+.platform-default-summary {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.platform-default-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
 .base-grid,
 .step-grid,
 .condition-grid {
@@ -1493,6 +1531,10 @@ defineExpose({ reload: load })
 
 .base-grid {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.base-grid.is-entity {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .step-grid {

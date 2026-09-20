@@ -361,9 +361,8 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
     area: '列表选择模式',
     source: 'src/views/EntityListConfigDesign.vue',
     values: [
-      ['NONE', '不选择', '列表只用于浏览，不显示选择确认能力。'],
-      ['SINGLE', '单选', '调用方只能选择一条记录，并按返回值字段和映射返回。'],
-      ['MULTIPLE', '多选', '调用方可选择多条记录，返回数组结果。']
+      ['NONE', '不可选择', '普通列表不显示勾选框；需要选择数据的工具栏按钮会自动开启勾选。'],
+      ['MULTIPLE', '可选择', '普通列表允许勾选多条记录，各按钮分别约束执行所需条数。']
     ]
   },
   {
@@ -754,6 +753,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityListConfigDesign.vue', '^(editingDataSourceConfig|editingRenderConfig|editingField\\.(dataSourceType|interfaceExtensionId|renderComponent|templateId))', '实体配置-列表-编辑-字段高级配置-数据与显示'),
 
   locationRule('src/components/ListButtonConfigPanel.vue', '^row\\.', '实体配置-列表-编辑-工具栏或操作列按钮'),
+  locationRule('src/components/ListButtonConfigPanel.vue', '^advancedButton\\.(mappedFieldCode|hideWhenMapped)$', '实体配置-列表-编辑-操作列按钮-更多'),
   locationRule('src/components/ListButtonConfigPanel.vue', '^advancedButton\\.', '实体配置-列表-编辑-按钮配置-高级设置'),
   locationRule('src/components/ListButtonConfigPanel.vue', '^openListForm\\.', '实体配置-列表-编辑-按钮配置-打开实体列表'),
 
@@ -1115,8 +1115,9 @@ const KEY_GUIDANCE = Object.freeze({
   fixedFilterRows: ['选择字段、比较方式和值来配置固定过滤条件，多条条件必须同时满足。', '未添加条件', '不附加条件不等于授予权限；保存并发布后生效，用户筛选和自定义查询不能放宽范围。'],
   fixedFilterConfig: ['访问范围中始终生效的固定过滤约束，与数据权限取交集。', '{"status":"RUNNING","status_op":"EQ"}', '{} 不附加条件；省略 _op 按 EQ；用户筛选和自定义查询不能放宽范围，发布后生效。'],
   selectionMode: ['设置列表是否作为单选或多选选择器。', 'SINGLE', '运行时进入选择场景，并按所选模式返回记录。'],
+  selectionRequirement: ['设置自定义工具栏按钮执行前的选择要求。', 'SINGLE', 'NONE 不限制勾选数量，SINGLE 必须恰好一条，AT_LEAST_ONE 必须至少一条；在更多设置中配置。'],
   selectionValueField: ['指定选择器主返回值字段。', 'id', '确认选择后以该字段作为引用主值。'],
-  selectionReturnMappingsText: ['配置选择记录到调用方字段的返回映射。', '{"projectName":"project_name"}', '确认选择后批量返回映射字段。'],
+  selectionReturnMappingsText: ['通过“来源字段、返回名称”配置附加返回字段，无需编辑 JSON。', '[{"sourceField":"data.project_name","targetField":"projectName"}]', '确认选择后，每条记录的 selectionData.projectName 带回项目名称；表单回填需另行配置。'],
   queryProviderCode: ['绑定受管理的安全查询提供者。', 'projectVisibleQuery', '列表查询由注册提供者生成，不能执行任意 SQL。'],
   queryInterfaceExtensionId: ['历史查询接口槽位，仅用于旧版本兼容。', 'extension-list-project', '新配置统一使用 LIST_LOAD 的替代平台处理步骤。'],
   customComponent: ['绑定已注册的自定义组件。', 'ProjectSummaryForm', '运行时改用注册组件渲染；未注册组件会被阻止或回退。'],
@@ -1871,6 +1872,27 @@ const CONTROL_OVERRIDES = Object.freeze({
     meaning: '选择行按钮打开目标表单时使用查看模式还是编辑模式。',
     example: 'VIEW',
     expectedEffect: '选择 VIEW 时以只读详情打开当前记录；选择 EDIT 时进入可提交修改的编辑表单。'
+  },
+  'src/components/ListButtonConfigPanel.vue:advancedButton.mappedFieldCode': {
+    label: '功能映射',
+    meaning: '选择点击后执行本按钮动作的字段，使用字段编码保存；全部字段均可选择，不按是否展示过滤。',
+    configureWhen: '希望用户点击名称、编号等单元格即可执行查看或其他行按钮动作时配置。',
+    skipWhen: '只需要操作列按钮入口时留空；自定义组件按钮暂不支持。',
+    example: 'name',
+    expectedEffect: '名称内容显示为蓝色并执行同一行按钮动作；权限与适用条件跟随原按钮，每个字段只允许一个映射。'
+  },
+  'src/components/ListButtonConfigPanel.vue:advancedButton.hideWhenMapped': {
+    label: '映射后隐藏按钮',
+    meaning: '控制功能映射产生单元格入口后，是否隐藏操作列中的原按钮。',
+    configureWhen: '已通过单元格提供操作入口，不希望操作列重复显示同一按钮时开启。',
+    skipWhen: '希望同时保留按钮入口时使用默认关闭状态。',
+    example: true,
+    expectedEffect: '名称可点击且原按钮隐藏；映射字段未展示或映射被清空时恢复按钮。隐藏不会停用动作。'
+  },
+  'src/views/EntityListConfigDesign.vue:configInfo.selectionMode': {
+    meaning: '控制普通列表是否提供勾选入口，只保留不可选择和可选择。',
+    example: 'MULTIPLE',
+    expectedEffect: '可选择允许勾选多条；按钮自行约束执行条数，需要选择的按钮自动开启勾选。选择器模式由调用方独立设置。'
   },
   'src/views/EntityListConfigDesign.vue:selectedListTemplateId': {
     meaning: '选择一个已发布的列表列模板，用它初始化当前列的高级配置。',

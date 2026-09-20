@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import './list-cell-action.spec.js'
+import './list-selection.spec.js'
 import {
   calculateListActionOrderKey,
   describeListPublishChanges,

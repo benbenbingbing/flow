@@ -61,7 +61,6 @@ assert.equal(genericArrayHelp.shape, 'array')
 assert.deepEqual(genericArrayHelp.example, [{ value: 'a', label: 'A' }])
 
 const usages = [
-  ['src/views/EntityListConfigDesign.vue', 'configInfo.selectionReturnMappingsText', 'entityList.selectionReturnMappings'],
   ['src/components/form-designer/FormNodeDataSettings.vue', 'selectedField.dataSourceInputMappingText', 'entityForm.dataSourceInputMapping'],
   ['src/components/form-designer/FormNodeDataSettings.vue', 'selectedField.dataSourceOutputMappingText', 'entityForm.dataSourceOutputMapping'],
   ['src/components/ui-config/FormDataSourceDialog.vue', 'binding.inputMappingText', 'entityForm.dataSourceInputMapping'],

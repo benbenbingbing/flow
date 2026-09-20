@@ -193,6 +193,17 @@
 
     <el-dialog v-model="advancedDialogVisible" title="按钮更多设置" width="560px">
       <el-form v-if="advancedButton" label-width="100px" class="advanced-settings-form">
+        <el-form-item v-if="type === 'toolbar' && advancedButton.type === 'custom'" label="选择要求">
+          <el-radio-group
+            v-model="advancedButton.selectionRequirement"
+            :disabled="requiresSingleSourceRecord(advancedButton) || ['batchDelete', 'exportSelected'].includes(advancedButton.key)"
+          >
+            <el-radio-button v-for="option in TOOLBAR_SELECTION_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</el-radio-button>
+          </el-radio-group>
+          <div class="field-help">{{ requiresSingleSourceRecord(advancedButton)
+            ? '当前打开动作需要唯一的来源记录，固定为恰好一条。'
+            : '无需选择时不限制勾选数量；其他要求不满足时禁用按钮。' }}</div>
+        </el-form-item>
         <el-form-item label="图标">
           <el-input v-model="advancedButton.icon" placeholder="Element Plus 图标名" />
         </el-form-item>
@@ -208,6 +219,37 @@
         </el-form-item>
         <el-form-item v-if="type === 'row'" label="展示方式">
           <span class="field-help">操作列统一使用 link 文字链接样式，按钮样式用于设置文字颜色。</span>
+        </el-form-item>
+        <el-form-item v-if="type === 'row'" label="功能映射">
+          <el-select
+            v-model="advancedButton.mappedFieldCode"
+            clearable
+            filterable
+            :disabled="!supportsCellAction(advancedButton)"
+            placeholder="选择字段，点击该单元格执行本按钮"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="field in mappingFieldOptions"
+              :key="field.fieldCode"
+              :value="field.fieldCode"
+              :label="mappingFieldLabel(field)"
+              :disabled="Boolean(mappingFieldOwner(field.fieldCode))"
+            />
+          </el-select>
+          <div class="field-help">
+            {{ supportsCellAction(advancedButton)
+              ? '可选择全部字段；单元格点击沿用本按钮的权限、适用条件和执行方式。'
+              : '组件按钮自行管理交互，暂不支持功能映射。' }}
+          </div>
+        </el-form-item>
+        <el-form-item
+          v-if="type === 'row' && supportsCellAction(advancedButton) && advancedButton.mappedFieldCode"
+          label="映射后隐藏按钮"
+          label-width="130px"
+        >
+          <el-switch v-model="advancedButton.hideWhenMapped" inline-prompt active-text="是" inactive-text="否" />
+          <div class="field-help">仅隐藏操作列入口。映射字段未显示在列表中时，保留原按钮。</div>
         </el-form-item>
         <el-form-item v-if="canConfigureTargetForm(advancedButton)">
           <template #label>
@@ -383,9 +425,12 @@ import { resolveEntityPermissionOptions } from '@/utils/entityActionRuleRegistry
 import { ACTION_RULE_VERSION, summarizeActionRule } from '@/shared/action-rules'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { resolveListButtonType } from '@/shared/list-config-design'
+import { mappedFieldCode, supportsCellAction } from '@/shared/list-cell-action'
 import { isButtonRelatedContent } from '@/shared/list-related-content'
+import { TOOLBAR_SELECTION_OPTIONS, requiresSingleSourceRecord, toolbarSelectionRequirement } from '@/shared/list-selection'
 
 const props = defineProps({
+  mappingFields: { type: Array, default: () => [] },
   relatedContents: { type: Array, default: () => [] },
   type: {
     type: String,
@@ -436,6 +481,19 @@ const buttonTableRef = ref(null)
 const ruleEditorRef = ref()
 const advancedDialogVisible = ref(false)
 const advancedButton = ref(null)
+// 使用完整字段集合（含系统字段、隐藏字段和虚拟列），不依赖 showInList/isQuery。
+const mappingFieldOptions = computed(() => props.mappingFields.filter(field => field.fieldCode))
+
+/** 返回占用字段的其他按钮，避免同一个单元格映射到多个动作。 */
+function mappingFieldOwner(code) {
+  return buttons.value.find(button => button !== advancedButton.value
+    && mappedFieldCode(button) === code)
+}
+
+function mappingFieldLabel(field) {
+  const owner = mappingFieldOwner(field.fieldCode)
+  return `${field.fieldName || field.fieldCode} (${field.fieldCode})${owner ? ` · 已映射到${owner.label || owner.key}` : ''}`
+}
 const buttonParameterSchema = ref({})
 const listParameterSchema = ref({})
 const openListDialogVisible = ref(false)
@@ -508,6 +566,7 @@ function addCustom() {
     enabled: true,
     perm: '',
     customHandler: '',
+    selectionRequirement: 'NONE',
     link: props.type === 'row'
   })
 }
@@ -537,7 +596,11 @@ function configureButtonEvent(button) {
 }
 
 async function openAdvancedSettings(row) {
+  if (props.type === 'toolbar' && row.type === 'custom') {
+    row.selectionRequirement = toolbarSelectionRequirement(row)
+  }
   row.buttonType = resolveListButtonType(row)
+  row.hideWhenMapped = row.hideWhenMapped === true
   normalizeTargetFormMode(row)
   advancedButton.value = row
   if (canConfigureTargetForm(row)) {
@@ -779,6 +842,10 @@ function withDefaults(button) {
 
 function normalizeButtons() {
   for (const button of buttons.value) {
+    // 参数映射变化可能使打开动作需要唯一来源；同步更多设置的回显，避免保存值与显示不符。
+    if (props.type === 'toolbar' && button.type === 'custom') {
+      button.selectionRequirement = toolbarSelectionRequirement(button)
+    }
     if (!button.buttonType) {
       button.buttonType = resolveListButtonType(button)
     }
@@ -925,6 +992,18 @@ function ruleSummary(row) {
 
 .advanced-settings-form {
   padding-right: 12px;
+}
+
+.advanced-settings-form :deep(.el-form-item__content) {
+  min-width: 0;
+}
+
+.advanced-settings-form .field-help {
+  width: 100%;
+  margin: 6px 0 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 .field-help {

@@ -257,8 +257,9 @@ import {
 } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 import { filterRelatedContentButtons } from '@/shared/related-content-runtime'
-import { isButtonRelatedContent, isRelatedContentButton } from '@/shared/list-related-content'
+import { isButtonRelatedContent } from '@/shared/list-related-content'
 import { withListButtonTypeDefault } from '@/shared/list-config-design'
+import { isSelectionToolbarButton } from '@/shared/list-selection'
 import { loadExplicitListButtonForm } from '@/shared/list-button-form-runtime'
 import {
   buildEntityStatusMap,
@@ -422,7 +423,9 @@ const runtimeSelectionMode = computed(() => {
   if (effectiveSelectionMode.value !== 'NONE') {
     return effectiveSelectionMode.value
   }
-  return pageSectionCompositions.value.length > 0 ? 'SINGLE' : 'NONE'
+  // 普通列表允许多选；关联内容仍仅在唯一选中时取得来源 ID，按钮自行约束数量。
+  return pageSectionCompositions.value.length > 0 || toolbarButtons.value.some(isSelectionToolbarButton)
+    ? 'MULTIPLE' : 'NONE'
 })
 const loading = ref(false)
 const tableLoading = ref(false)
@@ -745,8 +748,7 @@ const showSelectionColumn = computed(() => {
   if (isSystemEntity.value) return false
   return selectionScene.value
     || runtimeSelectionMode.value !== 'NONE'
-    || toolbarButtons.value.some((b: any) => b.key === 'exportSelected' || b.key === 'batchDelete')
-    || toolbarButtons.value.some(isRelatedContentButton)
+    || toolbarButtons.value.some(isSelectionToolbarButton)
 })
 // 引用实体名称缓存
 const refEntityNameMap = ref<Record<string, string>>({})

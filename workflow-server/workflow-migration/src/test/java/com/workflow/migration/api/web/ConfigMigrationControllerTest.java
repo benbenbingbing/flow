@@ -31,6 +31,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -70,6 +71,24 @@ class ConfigMigrationControllerTest {
     @AfterEach
     void tearDown() {
         UserContext.clear();
+    }
+
+    /** 普通批次发布和回滚只需要原有权限，不要求任何候选权限。 */
+    @Test
+    void publishesAndRollsBackWithOnlyConfigMigrationPermissions() throws Exception {
+        when(menuMapper.selectPermsByUserId("migration-admin"))
+                .thenReturn(Set.of("config-migration:publish", "config-migration:rollback"));
+        when(importApplyService.publish("import-1")).thenReturn(Map.of("status", "PUBLISHED"));
+        when(importApplyService.rollback("import-1")).thenReturn(Map.of("status", "ROLLED_BACK"));
+
+        mockMvc.perform(post("/api/config-migration/imports/import-1/publish"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
+        mockMvc.perform(post("/api/config-migration/imports/import-1/rollback"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ROLLED_BACK"));
+        verify(importApplyService).publish("import-1");
+        verify(importApplyService).rollback("import-1");
     }
 
     /** 预检提示保持结构化响应；人工确认摘要通过 multipart 传给后端，不依赖前端跳过异常。 */

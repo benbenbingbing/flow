@@ -1122,10 +1122,10 @@ assert.ok(
   )
 })
 ;[
-  'platformDefaultDescriptions',
-  'DATA_BATCH_DELETE: \'校验权限后批量删除所选实体记录\'',
+  'EventDefaultProcessingHelp',
+  'getEventDefaultProcessing as platformDefaultHelp',
   'platformDefaultHelp(editor.eventCode)',
-  ':show-label="false"',
+  'selectedEventDefault.description',
   'availableEventGroups',
   'eventGroupsForScope(props.ownerType, props.targetType)',
   '列表事件请到列表配置',

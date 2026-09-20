@@ -3,7 +3,7 @@
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
-文档收录 V084 退役迁移后的 139 张平台表、2,024 个字段，其中七张为历史保留表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
+V084 时的文档基线收录 139 张平台表、2,024 个字段，其中七张为历史保留表；后续变更按各节的迁移说明更新，V099 已移除六张发布候选专属表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
 
 V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前向变更曾在隔离 MySQL 8.0 实例验证；V083—V084 按前向迁移和当前源码整理，发布前仍须在 MySQL 8 环境执行迁移验证。业务结构结合 V001—V079 SQL 迁移、V080 Java 迁移、V081—V084 SQL 迁移及当前源码说明；历史保留表按实际库结构登记。
 
@@ -145,12 +145,6 @@ V097 为动态实体补齐 ID、创建时间、更新时间、创建人、更新
   - [12.6 config_import_item 配置导入条目表](#126-config_import_item-配置导入条目表)
   - [12.7 config_migration_asset 配置迁移发布资产表](#127-config_migration_asset-配置迁移发布资产表)
   - [12.8 config_migration_asset_dependency 配置迁移资产依赖表](#128-config_migration_asset_dependency-配置迁移资产依赖表)
-  - [12.9 release_candidate 应用发布候选表](#129-release_candidate-应用发布候选表)
-  - [12.10 release_candidate_item 发布候选资产条目表](#1210-release_candidate_item-发布候选资产条目表)
-  - [12.11 release_candidate_dependency 发布候选依赖边表](#1211-release_candidate_dependency-发布候选依赖边表)
-  - [12.12 release_candidate_validation 发布候选预检结果表](#1212-release_candidate_validation-发布候选预检结果表)
-  - [12.13 release_candidate_step 发布候选执行步骤表](#1213-release_candidate_step-发布候选执行步骤表)
-  - [12.14 release_candidate_report 发布候选审计报告表](#1214-release_candidate_report-发布候选审计报告表)
 - [13. 字典文件与平台运维](#13-字典文件与平台运维)
   - [13.1 sys_dict 系统字典类型表](#131-sys_dict-系统字典类型表)
   - [13.2 sys_dict_item 系统字典明细表](#132-sys_dict_item-系统字典明细表)
@@ -1023,6 +1017,8 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 ```
 
 返回映射将选中记录的值写入 `row.selectionData`，上例生成 `row.selectionData.selectedRecordId`；它不会自行完成调用方表单回填。应用在缺省时补齐 `{"selectionMode":"NONE","valueField":"id","returnMappings":[]}`。
+
+列表设计器在“列表设置 → 选择行为 → 附加返回字段”提供“来源字段、返回名称”配置行，可添加、删除和查看返回字段，无需手写 JSON。旧 `sourcePath` / `targetPath` 别名及扩展属性继续保留；保存前校验必填、重名和父子路径冲突，存储仍使用上述 `returnMappings` 数组。保存列表设置后还需发布生效。
 
 **固定过滤 `fixed_filter_config`**
 
@@ -6158,7 +6154,7 @@ package_id 归属导出包，资产版本需要与包内依赖集合保持一致
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[ConfigImportPackageMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigImportPackageMapper.java)、[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)。
+实现定位：[ConfigImportPackageMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigImportPackageMapper.java)。
 
 ### 12.6 config_import_item 配置导入条目表
 
@@ -6213,7 +6209,7 @@ package_id 归属导出包，资产版本需要与包内依赖集合保持一致
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[ConfigImportItemMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigImportItemMapper.java)、[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)。
+实现定位：[ConfigImportItemMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigImportItemMapper.java)。
 
 ### 12.7 config_migration_asset 配置迁移发布资产表
 
@@ -6264,13 +6260,13 @@ package_id 归属导出包，资产版本需要与包内依赖集合保持一致
 
 #### 12.7.4 业务规则
 
-保留源发布历史、完整性和依赖统计，供导出与发布候选冻结输入。
+保留源发布历史、完整性和依赖统计，供配置迁移导出、导入分析和批次回滚使用。
 
 #### 12.7.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[ConfigMigrationAssetMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigMigrationAssetMapper.java)、[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ConfigMigrationAssetService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
+实现定位：[ConfigMigrationAssetMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigMigrationAssetMapper.java)、[ConfigMigrationAssetService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
 
 ### 12.8 config_migration_asset_dependency 配置迁移资产依赖表
 
@@ -6322,293 +6318,15 @@ V058 新增来源坐标、依赖强度和解析状态；UNKNOWN 或 INVALID 不�
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V058__list_experience_and_config_references.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V058__list_experience_and_config_references.sql)。
 
-实现定位：[ConfigMigrationAssetDependencyMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigMigrationAssetDependencyMapper.java)、[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ConfigMigrationAssetDependencyService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetDependencyService.java)。
+实现定位：[ConfigMigrationAssetDependencyMapper.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/infrastructure/persistence/mapper/ConfigMigrationAssetDependencyMapper.java)、[ConfigMigrationAssetDependencyService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetDependencyService.java)。
 
-### 12.9 release_candidate 应用发布候选表
+### 发布候选（已退役）
 
-#### 12.9.1 业务说明
+升级前置条件、保留能力及验证范围见[发布候选下线说明](./release-candidate-retirement.md)。
 
-将一组待发布资产汇成可预检、发布、恢复和补偿的候选版本。
+V099 删除了 `release_candidate`、`release_candidate_item`、`release_candidate_dependency`、`release_candidate_validation`、`release_candidate_step`、`release_candidate_report` 六张专属表及候选菜单、授权。历史结构见不可变的 V053 迁移；当前应用不再提供候选接口、预检、编排、续跑和候选报告。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 22 个。
-
-#### 12.9.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 发布候选ID。 | 现存 |
-| `candidate_no` | 发布候选编号 | `varchar(64)` | 否 | 无 | 发布候选编号。 | 现存 |
-| `candidate_name` | 发布候选名称 | `varchar(200)` | 否 | 无 | 发布候选名称。 | 现存 |
-| `description` | 说明 | `varchar(1000)` | 是 | `NULL` | 说明。 | 现存 |
-| `source_import_id` | 绑定的配置迁移导入批次ID | `varchar(64)` | 否 | 无 | 绑定的配置迁移导入批次ID。 | 现存 |
-| `source_package_checksum` | 冻结的导入包校验和 | `varchar(128)` | 是 | `NULL` | 冻结的导入包校验和。 | 现存 |
-| `migration_tag` | 冻结的迁移标记 | `varchar(100)` | 否 | 无 | 冻结的迁移标记。 | 现存 |
-| `status` | 状态 | `varchar(32)` | 否 | `'DRAFT'` | 状态。 | 现存 |
-| `preflight_status` | 预检状态 | `varchar(16)` | 否 | `'NOT_RUN'` | 预检状态。 | 现存 |
-| `revision` | 修订号 | `int` | 否 | `1` | 候选并发修订号。 | 现存 |
-| `candidate_hash` | 冻结内容SHA-256 | `char(64)` | 否 | 无 | 冻结内容SHA-256。 | 现存 |
-| `idempotency_key` | 幂等键 | `varchar(128)` | 是 | `NULL` | 最近一次发布幂等键。 | 现存 |
-| `failure_step_id` | 失败步骤ID | `varchar(64)` | 是 | `NULL` | 失败步骤ID。 | 现存 |
-| `created_by` | 创建人 | `varchar(100)` | 是 | `NULL` | 创建人。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-| `updated_by` | 修改人 | `varchar(100)` | 是 | `NULL` | 修改人。 | 现存 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
-| `validated_by` | 校验人员 | `varchar(100)` | 是 | `NULL` | 校验人员。 | 现存 |
-| `validated_at` | 校验时间 | `datetime` | 是 | `NULL` | 校验时间。 | 现存 |
-| `published_by` | 发布人 | `varchar(100)` | 是 | `NULL` | 发布人。 | 现存 |
-| `published_at` | 发布时间 | `datetime` | 是 | `NULL` | 发布时间。 | 现存 |
-| `deleted` | 逻辑删除标记 | `tinyint` | 否 | `0` | 逻辑删除标记。 | 现存 |
-
-#### 12.9.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_release_candidate_no` (`candidate_no`)``。
-- ``KEY `idx_release_candidate_status` (`status`, `update_time`)``。
-- ``KEY `idx_release_candidate_import` (`source_import_id`)``。
-
-本表未声明物理外键。
-
-#### 12.9.4 业务规则
-
-候选冻结内容与目标状态，revision、内容哈希和幂等键用于校验预检后状态及重复执行。
-
-#### 12.9.5 来源与迁移
-
-结构依据：[V053__release_candidate_orchestration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V053__release_candidate_orchestration.sql)。
-
-实现定位：[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ReleaseCandidateController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ReleaseCandidateController.java)。
-
-### 12.10 release_candidate_item 发布候选资产条目表
-
-#### 12.10.1 业务说明
-
-保存候选内每项资产、来源导入项及冻结的源目标版本和内容摘要。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
-
-#### 12.10.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `candidate_id` | 候选ID | `varchar(64)` | 否 | 无 | 候选ID。 | 现存 |
-| `source_import_item_id` | 来源导入条目ID | `varchar(64)` | 否 | 无 | 来源导入条目ID。 | 现存 |
-| `source_asset_id` | 关联迁移资产索引ID | `varchar(64)` | 是 | `NULL` | 关联迁移资产索引ID。 | 现存 |
-| `asset_type` | 资产类型 | `varchar(64)` | 否 | 无 | 资产类型。 | 现存 |
-| `business_key` | 业务键 | `varchar(200)` | 否 | 无 | 业务键。 | 现存 |
-| `asset_name` | 资产名称 | `varchar(300)` | 是 | `NULL` | 资产名称。 | 现存 |
-| `frozen_source_version` | 冻结来源版本 | `int` | 是 | `NULL` | 冻结来源版本。 | 现存 |
-| `frozen_source_hash` | 冻结来源哈希 | `varchar(128)` | 是 | `NULL` | 冻结来源哈希。 | 现存 |
-| `frozen_snapshot_hash` | 冻结快照哈希 | `char(64)` | 否 | 无 | 冻结快照哈希。 | 现存 |
-| `frozen_target_version` | 冻结目标版本 | `int` | 是 | `NULL` | 冻结目标版本。 | 现存 |
-| `frozen_target_hash` | 冻结目标哈希 | `varchar(128)` | 是 | `NULL` | 冻结目标哈希。 | 现存 |
-| `dependencies_json` | 依赖集合JSON | `longtext` | 是 | `NULL` | 依赖集合JSON。 | 现存 |
-| `sort_order` | 排序号 | `int` | 否 | `100` | 排序号。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-
-#### 12.10.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_release_candidate_source_item` (`candidate_id`, `source_import_item_id`)``。
-- ``KEY `idx_release_candidate_item_order` (`candidate_id`, `sort_order`, `business_key`)``。
-- ``KEY `idx_release_candidate_item_asset` (`source_asset_id`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `candidate_id` → [release_candidate](#129-release_candidate-应用发布候选表).`id`。
-
-#### 12.10.4 业务规则
-
-发布使用候选中冻结的源、目标版本及摘要，预检时核对这些信息。
-
-#### 12.10.5 来源与迁移
-
-结构依据：[V053__release_candidate_orchestration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V053__release_candidate_orchestration.sql)。
-
-实现定位：[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ReleaseCandidateController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ReleaseCandidateController.java)。
-
-### 12.11 release_candidate_dependency 发布候选依赖边表
-
-#### 12.11.1 业务说明
-
-冻结候选条目之间的依赖关系与解析结果，为顺序规划提供依据。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 10 个。
-
-#### 12.11.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `candidate_id` | 候选ID | `varchar(64)` | 否 | 无 | 候选ID。 | 现存 |
-| `dependent_item_id` | 依赖方候选条目 | `varchar(64)` | 否 | 无 | 依赖方候选条目。 | 现存 |
-| `required_item_id` | 候选内被依赖条目 | `varchar(64)` | 是 | `NULL` | 候选内被依赖条目。 | 现存 |
-| `dependency_type` | 依赖类型 | `varchar(64)` | 否 | 无 | 依赖类型。 | 现存 |
-| `dependency_key` | 依赖键 | `varchar(200)` | 否 | 无 | 依赖键。 | 现存 |
-| `required` | 是否必需 | `tinyint` | 否 | `1` | 是否必需。 | 现存 |
-| `resolved` | 解析完成 | `tinyint` | 否 | `0` | 解析完成。 | 现存 |
-| `source_description` | 来源说明 | `varchar(500)` | 是 | `NULL` | 来源说明。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-
-#### 12.11.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_release_candidate_dependency` (`candidate_id`, `dependent_item_id`)``。
-- ``KEY `idx_release_candidate_required` (`candidate_id`, `required_item_id`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `candidate_id` → [release_candidate](#129-release_candidate-应用发布候选表).`id`。
-
-#### 12.11.4 业务规则
-
-依赖关系用于判断缺失项、先后顺序和预检阻断。
-
-#### 12.11.5 来源与迁移
-
-结构依据：[V053__release_candidate_orchestration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V053__release_candidate_orchestration.sql)。
-
-实现定位：[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ReleaseCandidateController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ReleaseCandidateController.java)。
-
-### 12.12 release_candidate_validation 发布候选预检结果表
-
-#### 12.12.1 业务说明
-
-记录候选或条目校验的代码、严重性、结果和证据。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 8 个。
-
-#### 12.12.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `candidate_id` | 候选ID | `varchar(64)` | 否 | 无 | 候选ID。 | 现存 |
-| `item_id` | 条目ID | `varchar(64)` | 是 | `NULL` | 条目ID。 | 现存 |
-| `validation_code` | 校验编码 | `varchar(100)` | 否 | 无 | 校验编码。 | 现存 |
-| `severity` | 严重程度 | `varchar(16)` | 否 | 无 | 严重程度。 | 现存 |
-| `message` | 消息 | `varchar(1000)` | 否 | 无 | 消息。 | 现存 |
-| `detail_json` | 详情JSON | `longtext` | 是 | `NULL` | 详情JSON。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-
-#### 12.12.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``KEY `idx_release_candidate_validation` (`candidate_id`, `severity`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `candidate_id` → [release_candidate](#129-release_candidate-应用发布候选表).`id`。
-
-#### 12.12.4 业务规则
-
-预检结果绑定候选内容，内容变化后不能继续复用旧通过结论。
-
-#### 12.12.5 来源与迁移
-
-结构依据：[V053__release_candidate_orchestration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V053__release_candidate_orchestration.sql)。
-
-实现定位：[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ReleaseCandidateController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ReleaseCandidateController.java)。
-
-### 12.13 release_candidate_step 发布候选执行步骤表
-
-#### 12.13.1 业务说明
-
-持久化发布编排的有序步骤、输入输出、状态、耗时和恢复动作。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 18 个。
-
-#### 12.13.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `candidate_id` | 候选ID | `varchar(64)` | 否 | 无 | 候选ID。 | 现存 |
-| `item_id` | 条目ID | `varchar(64)` | 是 | `NULL` | 条目ID。 | 现存 |
-| `step_no` | 步骤编号 | `int` | 否 | 无 | 步骤编号。 | 现存 |
-| `step_key` | 步骤键 | `varchar(300)` | 否 | 无 | 步骤键。 | 现存 |
-| `step_type` | 步骤类型 | `varchar(64)` | 否 | 无 | 步骤类型。 | 现存 |
-| `status` | 状态 | `varchar(24)` | 否 | `'NOT_EXECUTED'` | 状态。 | 现存 |
-| `input_json` | 输入JSON | `longtext` | 是 | `NULL` | 输入JSON。 | 现存 |
-| `output_json` | 输出JSON | `longtext` | 是 | `NULL` | 输出JSON。 | 现存 |
-| `duration_ms` | 耗时毫秒 | `bigint` | 是 | `NULL` | 耗时毫秒。 | 现存 |
-| `operator` | 操作人 | `varchar(100)` | 是 | `NULL` | 操作人。 | 现存 |
-| `error_message` | 错误消息 | `varchar(2000)` | 是 | `NULL` | 错误消息。 | 现存 |
-| `recovery_action` | 恢复动作 | `varchar(1000)` | 是 | `NULL` | 恢复动作。 | 现存 |
-| `attempt_count` | 尝试次数数量 | `int` | 否 | `0` | 尝试次数数量。 | 现存 |
-| `started_at` | 开始时间 | `datetime` | 是 | `NULL` | 开始时间。 | 现存 |
-| `finished_at` | 完成时间 | `datetime` | 是 | `NULL` | 完成时间。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
-
-#### 12.13.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_release_candidate_step_no` (`candidate_id`, `step_no`)``。
-- ``KEY `idx_release_candidate_step_status` (`candidate_id`, `status`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `candidate_id` → [release_candidate](#129-release_candidate-应用发布候选表).`id`。
-
-#### 12.13.4 业务规则
-
-步骤状态、输入输出和恢复动作持久化保存，用于执行中断后的继续或补偿。
-
-#### 12.13.5 来源与迁移
-
-结构依据：[V053__release_candidate_orchestration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V053__release_candidate_orchestration.sql)。
-
-实现定位：[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ReleaseCandidateController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ReleaseCandidateController.java)。
-
-### 12.14 release_candidate_report 发布候选审计报告表
-
-#### 12.14.1 业务说明
-
-保存候选发布结果的不可变报告内容、编号及生成信息。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 6 个。
-
-#### 12.14.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `candidate_id` | 候选ID | `varchar(64)` | 否 | 无 | 候选ID。 | 现存 |
-| `report_no` | 报告编号 | `varchar(100)` | 否 | 无 | 报告编号。 | 现存 |
-| `report_json` | 报告JSON | `longtext` | 否 | 无 | 报告JSON。 | 现存 |
-| `generated_by` | 生成人员 | `varchar(100)` | 是 | `NULL` | 生成人员。 | 现存 |
-| `generated_at` | 生成时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 生成时间。 | 现存 |
-
-#### 12.14.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_release_candidate_report` (`candidate_id`)``。
-- ``UNIQUE KEY `uk_release_candidate_report_no` (`report_no`)``。
-
-本表未声明物理外键。
-
-业务关联：
-
-- `candidate_id` → [release_candidate](#129-release_candidate-应用发布候选表).`id`。
-
-#### 12.14.4 业务规则
-
-报告描述一次具体候选执行，不代替候选主表的实时执行状态。
-
-#### 12.14.5 来源与迁移
-
-结构依据：[V053__release_candidate_orchestration.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V053__release_candidate_orchestration.sql)。
-
-实现定位：[ReleaseCandidateService.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ReleaseCandidateService.java)、[ReleaseCandidateController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ReleaseCandidateController.java)。
+普通配置迁移的导入、导出、发布和批次回滚继续保留。回滚读取 `config_import_package`、`config_import_item` 和 `config_migration_asset` 中的批次与快照，不依赖候选表；执行 V099 不会撤销已发布配置。
 
 ## 13. 字典文件与平台运维
 

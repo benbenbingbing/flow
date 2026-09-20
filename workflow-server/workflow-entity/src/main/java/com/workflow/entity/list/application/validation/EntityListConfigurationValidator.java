@@ -91,6 +91,10 @@ public class EntityListConfigurationValidator {
         validateStructured(dto.getViewConfig(), "列表视图配置");
         validateStructured(dto.getToolbarConfig(), "工具栏配置");
         validateStructured(dto.getRowActionConfig(), "操作列配置");
+        ListCellActionMappingPolicy.validateButtons("TOOLBAR", dto.getToolbarConfig());
+        ListCellActionMappingPolicy.validateButtons("ROW", dto.getRowActionConfig());
+        ListButtonSelectionPolicy.validateButtons("TOOLBAR", dto.getToolbarConfig());
+        ListButtonSelectionPolicy.validateButtons("ROW", dto.getRowActionConfig());
         validateStructured(dto.getSelectionConfig(), "选择模式配置");
         validateStructured(dto.getFixedFilterConfig(), "固定查询条件");
 

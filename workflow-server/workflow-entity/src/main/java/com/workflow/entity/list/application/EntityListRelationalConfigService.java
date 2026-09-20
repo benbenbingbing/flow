@@ -1,6 +1,8 @@
 package com.workflow.entity.list.application;
 
 import com.workflow.entity.form.application.EntityFormNodeService;
+import com.workflow.entity.list.application.validation.ListCellActionMappingPolicy;
+import com.workflow.entity.list.application.validation.ListButtonSelectionPolicy;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.core.error.RevisionConflictException;
@@ -227,6 +229,7 @@ public class EntityListRelationalConfigService {
         if (!StringUtils.hasText(listConfigId)) {
             throw new IllegalArgumentException("列表配置ID不能为空");
         }
+        ListCellActionMappingPolicy.validateButtons(position, buttons);
         EntityListConfig listConfig = requireList(listConfigId);
         List<EntityListAction> existing =
                 actionMapper.findByListAndPosition(listConfigId, position);
@@ -682,6 +685,10 @@ public class EntityListRelationalConfigService {
                                 action.getActionParamsDocument(),
                                 "列表按钮参数"))
                         : new LinkedHashMap<>();
+        ListCellActionMappingPolicy.validate(action.getPosition(), action.getButtonType(),
+                action.getButtonKey(), action.getCustomMode(), params);
+        ListButtonSelectionPolicy.validate(action.getPosition(), action.getButtonType(),
+                action.getButtonKey(), action.getCustomMode(), params);
         if (params.containsKey("parameterMappings")) {
             params.put("parameterMappings", com.workflow.entity.ui.application.PageParameterPolicy.mappings(params.get("parameterMappings")));
         }

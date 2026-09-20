@@ -1,3 +1,6 @@
+import { mappedFieldCode, supportsCellAction } from './list-cell-action.js'
+import { toolbarSelectionRequirement } from './list-selection.js'
+
 export function listScopeBindingFingerprint(policyIds = []) {
   return JSON.stringify(
     [...new Set((policyIds || []).filter(Boolean).map(String))].sort()
@@ -30,7 +33,7 @@ export function listMetadataDetailEntries(config, viewConfig) {
     { key: 'accessPermissionCode', label: '列表设置：访问权限码', value: config.accessPermissionCode || '' },
     { key: 'selectionMode', label: '列表设置：选择模式', value: config.selectionMode || 'NONE' },
     { key: 'selectionValueField', label: '列表设置：返回值字段', value: config.selectionValueField || 'id' },
-    { key: 'selectionReturnMappingsText', label: '列表设置：返回映射', value: config.selectionReturnMappingsText || '' },
+    { key: 'selectionReturnMappingsText', label: '列表设置：附加返回字段', value: config.selectionReturnMappingsText || '' },
     { key: 'fixedFilterConfig', label: '列表设置：访问范围／固定条件', value: config.fixedFilterConfig || '' },
     { key: 'search.defaultVisibleCount', label: '列表设置：收起时显示条件数', value: viewConfig.search.defaultVisibleCount },
     { key: 'search.collapsible', label: '列表设置：启用查询区折叠', value: viewConfig.search.collapsible },
@@ -86,6 +89,14 @@ export function normalizeListActionForSave(button, position) {
     'targetFormId', 'targetFormMode', 'compositionKey', 'parameterMappings'
   ]) {
     if (button[key] !== undefined && button[key] !== '') actionParams[key] = button[key]
+  }
+  if (position === 'TOOLBAR' && button.type === 'custom') {
+    actionParams.selectionRequirement = toolbarSelectionRequirement(button)
+  }
+  // 映射属于行按钮；清空字段或切换为组件按钮时一并清除隐藏标记。
+  if (position === 'ROW' && supportsCellAction(button) && mappedFieldCode(button)) {
+    actionParams.mappedFieldCode = mappedFieldCode(button)
+    actionParams.hideWhenMapped = button.hideWhenMapped === true
   }
   return {
     expectedRevision: button.id ? button.revision : null,

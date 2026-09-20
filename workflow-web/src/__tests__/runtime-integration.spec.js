@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import '../shared/__tests__/list-selection-state.spec.js'
 import { resolveEntityFieldColumnName } from '../shared/entity-design/index.js'
 import { readFileSync } from 'node:fs'
 

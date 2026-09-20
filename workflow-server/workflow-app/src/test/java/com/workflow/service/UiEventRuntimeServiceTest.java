@@ -409,6 +409,64 @@ class UiEventRuntimeServiceTest {
                         .toList());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"SINGLE", "AT_LEAST_ONE"})
+    void customToolbarRequiresSelectionFromPublishedConfig(String requirement) {
+        UiEventExecuteRequest request = request("TOOLBAR_BUTTON_CLICK", "archive");
+        request.setInput(Map.of("button", Map.of("selectionRequirement", "NONE")));
+        stubPublishedListButtonChain(request, map("key", "archive", "type", "custom",
+                "customMode", "event", "selectionRequirement", requirement));
+        BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class, () -> service.execute(request));
+        assertEquals("SINGLE".equals(requirement) ? "UI_EVENT_LIST_SINGLE_SELECTION_REQUIRED" : "UI_EVENT_LIST_SELECTION_REQUIRED", error.getErrorCode());
+        verify(entityDataService, never()).findAccessibleById(any(), any(), any());
+        verify(valueMapper, never()).matches(any(), any());
+    }
+
+    @Test
+    void singleToolbarRejectsManyButDeduplicatesTheSameRecord() {
+        Map<String, Object> button = map("key", "archive", "type", "custom",
+                "customMode", "event", "selectionRequirement", "SINGLE");
+        UiEventExecuteRequest many = request("TOOLBAR_BUTTON_CLICK", "archive");
+        many.setSelectedIds(List.of("record-1", "record-2"));
+        stubPublishedListButtonChain(many, button);
+        assertEquals("UI_EVENT_LIST_SINGLE_SELECTION_REQUIRED",
+                assertThrows(BusinessForbiddenException.class, () -> service.execute(many)).getErrorCode());
+        verify(entityDataService, never()).findAccessibleById(any(), any(), any());
+
+        UiEventExecuteRequest single = request("TOOLBAR_BUTTON_CLICK", "archive");
+        single.setSelectedIds(List.of(" record-1 ", "record-1", ""));
+        stubPublishedListButtonChain(single, button);
+        EntityDataDTO row = new EntityDataDTO();
+        row.setId("record-1");
+        when(entityDataService.findAccessibleById("expense", "record-1", "default")).thenReturn(row);
+        service.execute(single);
+        assertEquals(List.of("record-1"), single.getSelectedIds());
+        verify(actionCapabilityService).requirePublishedListButton("expense", "archive", button, List.of(row));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"NONE", "AT_LEAST_ONE"})
+    void customToolbarAllowsMultipleAndUsesConfiguredConditionContext(String requirement) {
+        Map<String, Object> button = map("key", "archive", "type", "custom",
+                "customMode", "event", "selectionRequirement", requirement);
+        UiEventExecuteRequest request = request("TOOLBAR_BUTTON_CLICK", "archive");
+        request.setSelectedIds(List.of("record-1", "record-2"));
+        stubPublishedListButtonChain(request, button);
+        EntityDataDTO first = new EntityDataDTO();
+        first.setId("record-1");
+        EntityDataDTO second = new EntityDataDTO();
+        second.setId("record-2");
+        when(entityDataService.findAccessibleById("expense", "record-1", "default")).thenReturn(first);
+        when(entityDataService.findAccessibleById("expense", "record-2", "default")).thenReturn(second);
+        service.execute(request);
+        if ("NONE".equals(requirement)) {
+            verify(actionCapabilityService).requirePublishedListButton("expense", "archive", button, (EntityDataDTO) null);
+        } else {
+            verify(actionCapabilityService).requirePublishedListButton("expense", "archive", button, List.of(first, second));
+        }
+        assertEquals(2, ((List<?>) request.getInput().get("selectedRows")).size());
+    }
+
     @Test
     void pinnedListButtonUsesTrustedKeyAndOverwritesMappedIdentity() {
         UiEventExecuteRequest request = request(

@@ -20,11 +20,17 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entityList.dataScopeMode':
     '本列表只使用自己绑定的数据规则。未绑定允许规则时，有列表权限的人看到全部数据。',
   'entityList.selectionMode':
-    '决定列表是普通浏览页，还是给表单或其他页面返回一条或多条选中记录。选择模式还需配置返回值字段和返回映射。',
+    '不可选择时隐藏勾选框；可选择时允许勾选多条。需要数据的工具栏按钮会自动开启勾选，各按钮单独约束执行所需条数。表单选择器及打开列表的单选、多选由调用方配置。',
+  'entityList.selectionReturnMappings':
+    '点击“添加映射”，选择来源字段并填写返回名称。每条选中记录都会在 selectionData 中附加这些字段；不添加时保留原记录，不生成附加映射。表单自动回填需在引用字段的“配置快捷回填”中单独设置。',
   'entityList.defaultSort':
     '不配置时，平台默认查询按创建时间（create_time）降序，最新创建的记录在前。系统表没有创建时间字段时按 ID 升序；两者都没有时不指定排序。若使用自定义查询，则以该查询返回的顺序为准。',
   'entityList.queryType':
     '决定查询控件如何生成条件，例如等于、模糊、区间或多值匹配。可选项会按字段类型过滤。',
+  'entityList.columnWidth':
+    '单位为像素（px），例如 160 表示 160px。大于 0 时使用固定列宽；设为 0 时自动分配宽度，并以“最小宽度”为下限。',
+  'entityList.columnMinWidth':
+    '单位为像素（px），默认 100px。仅在“列宽”为 0（自动）时生效，自动分配的列宽不会小于此值；设置固定列宽后，此项不生效。',
   'entityList.dataSourceType':
     '自定义列数据源需实现 ListFieldDataProvider、加 @Component，并用 getDataSourceType() 返回唯一编码；实体字段可直接读取记录值。',
   'entityList.interfaceExtension':
@@ -84,9 +90,9 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'process.personResolver':
     '后端自定义需实现 PersonResolver、加 @Component，并在 descriptor() 中声明唯一编码、适用场景和参数 Schema。',
   'uiEvent.inheritanceMode':
-    '继承并追加会保留上级自定义事件链；替换上级只使用当前层自定义链；禁用自定义会清空自定义步骤。对存在平台默认动作的事件，是否替代该动作仍由步骤执行位置决定。',
+    '表单或列表的上级是实体「默认事件」中配置的同名事件；字段或按钮的上级还包括所在表单或列表的同名公共事件。继承并追加会保留上级步骤；替换上级会移除这些上级步骤，仅使用当前层步骤；禁用自定义会清空截至当前层的自定义步骤。是否替代平台默认动作仍由步骤执行位置决定。',
   'uiEvent.formButtonInheritanceMode':
-    '表单按钮目标中，“继承并追加”保留上级步骤，“仅使用当前层”清除上级步骤。自定义按钮没有平台默认动作；如需停用按钮，请关闭按钮的“启用”开关，不要用继承方式代替。',
+    '表单按钮的上级包括实体「默认事件」和当前表单公共配置中的同名事件。“继承并追加”保留这些上级步骤，“仅使用当前层”清除这些上级步骤，仅使用当前按钮的步骤。自定义按钮没有平台默认动作；如需停用按钮，请关闭按钮的“启用”开关，不要用继承方式代替。',
   'uiEvent.stepStrategy':
     '前置在平台默认处理前执行；替代平台处理会取代默认逻辑且同一事件最多一个；后置在默认处理成功后执行。',
   'uiEvent.formButtonStepStrategy':

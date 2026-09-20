@@ -1,5 +1,7 @@
 # 实体配置与流程配置能力实施交付说明
 
+> 2026-09-20 退役说明：发布候选功能已整体下线，V099 清理其专属菜单、授权和六张表。下文候选交付内容仅作历史记录；普通配置迁移的导入、导出、发布和批次回滚继续保留。
+
 > 本文件记录早期阶段交付状态，最新完整实现、测试与迁移结论请以
 > `entity-process-configuration-implementation-final-report.md` 为准。
 > 原“节点操作矩阵”现已被[节点操作权限三开关方案](./node-operation-permission-simplification.md)替代。

@@ -1,5 +1,7 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.entity.list.application.validation.ListButtonSelectionPolicy;
+
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.authorization.application.PermissionUtil;
@@ -159,12 +161,9 @@ public class EntityActionCapabilityService {
         return capabilities;
     }
 
-    /** 关联内容工具栏按钮按选中记录评估条件，不能用空记录提前隐藏入口。 */
+    /** 需要选择的工具栏按钮按选中记录评估条件，不能用空记录提前隐藏入口。 */
     private boolean isSelectionToolbarButton(Map<String, Object> button) {
-        return List.of("batchDelete", "exportSelected")
-                .contains(asString(button.get("key")))
-                || ("custom".equals(button.get("type"))
-                    && "open-related-content".equals(button.get("customMode")));
+        return ListButtonSelectionPolicy.requiresSelection(button);
     }
 
     /**

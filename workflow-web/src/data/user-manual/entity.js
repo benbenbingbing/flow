@@ -1031,7 +1031,8 @@ export default {
                 { field: '自定义列表组件', meaning: '使用注册组件替代默认动态列表。', defaultLimit: '默认空；可筛选、手工输入、清空；标识格式与扩展名规则一致。', effect: '整体列表由组件渲染。', publish: '目标环境必须注册同名组件并兼容运行时契约。' },
                 { field: '数据范围模式', meaning: '仅使用本列表绑定的规则。', defaultLimit: '未绑定 ALLOW 时执行列表安全默认策略。', effect: '数据权限与固定条件共同限制结果。', publish: '不再继承实体默认范围。' },
                 { field: '访问权限码', meaning: '控制用户能否打开该 listKey。', defaultLimit: '留空继承 entity:{code}:list。', effect: '菜单、直接 URL 和运行时 schema/query 都会校验。', publish: '列表专属权限应同步授予角色。' },
-                { field: '选择模式', meaning: 'NONE、SINGLE 或 MULTIPLE，并配置返回值字段。', defaultLimit: '默认 NONE，返回 id。', effect: '决定弹窗、抽屉和表单选择器的选择行为。', publish: '返回字段被表单映射引用后保持稳定。' },
+                { field: '选择模式', meaning: '不可选择或可选择；可选择时允许勾选多条。', defaultLimit: '需要选择数据的工具栏按钮会自动开启可选择，默认返回 id。', effect: '按钮自行约束执行所需条数；选择器的单选、多选由调用方或打开列表按钮设置。', publish: '保存列表设置并发布后生效；返回字段被表单映射引用后保持稳定。' },
+                { field: '附加返回字段', meaning: '点击“添加映射”，选择来源字段并填写返回名称，无需编辑 JSON。', defaultLimit: '默认不配置；支持添加、删除、搜索来源字段和输入完整路径。返回名称不可重复，也不能相互覆盖父子层级。', effect: '例如选择客户名称并填写 customerName，每条选中记录都会附加 selectionData.customerName。已有映射自动回显；这里不会自动回填表单，单选引用字段请另配“配置快捷回填”。', publish: '保存列表设置后发布生效，原有返回数据格式保持兼容。' },
                 { field: '固定条件', meaning: '访问范围中的固定过滤约束，不是查询框默认值。', defaultLimit: '未添加条件时不附加过滤；例如选择“状态 / 等于 / 运行中”。多个字段必须同时满足，同一字段只能配置一次。', effect: '无论是否绑定规则都始终生效；用户筛选、事件步骤和查询接口不能放宽范围。', publish: '保存后发布生效，只能缩小结果，不能代替权限授权。' },
                 { field: 'LIST_LOAD 自定义查询', meaning: '在列表事件绑定中添加替代平台处理步骤。', defaultLimit: '没有替代步骤时使用平台默认查询。', effect: '接口返回 records、total、pageNum、pageSize，平台再次校验固定条件和数据权限。', publish: '旧 LIST_QUERY 配置迁入事件步骤，历史发布仍按原接口契约执行。' },
                 { field: '组件参数', meaning: '按组件 configSchema 编辑。', defaultLimit: '组件声明 schema 时显示。', effect: '传入 viewConfig.customComponentProps。', publish: '迁移时确保组件版本一致。' },
@@ -1137,7 +1138,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '首屏只保留高频按钮设置',
-              text: '按钮表格首屏只编辑排序、启用、名称、执行方式、权限码和适用条件；图标、按钮颜色等低频展示参数统一进入当前按钮的“更多设置”。操作列统一使用 link 文字链接样式。保存仍只提交当前按钮，不会覆盖其他按钮。'
+              text: '按钮表格首屏只编辑排序、启用、名称、执行方式、权限码和适用条件；自定义工具栏按钮的选择要求，以及图标、按钮颜色等参数统一进入当前按钮的“更多设置”。操作列统一使用 link 文字链接样式。保存仍只提交当前按钮，不会覆盖其他按钮。'
             },
             {
               type: 'table',
@@ -1152,7 +1153,10 @@ export default {
                 { field: '图标', meaning: 'Element Plus 图标名。', defaultLimit: '位于“更多设置”，可空。', effect: '按钮显示图标。', publish: '图标名错误时通常只缺图标。' },
                 { field: '样式', meaning: 'default、primary、success、warning、danger、info。', defaultLimit: '位于“更多设置”；自定义默认 default。', effect: '改变颜色语义。', publish: '危险操作应使用 danger 并确认。' },
                 { field: '操作列展示方式', meaning: '操作列统一使用 link 文字链接样式。', defaultLimit: '内置和自定义操作列按钮均保持文字链接。', effect: '按钮样式控制文字颜色，不显示实心背景。', publish: '无权限影响。' },
+                { field: '功能映射', meaning: '在操作列按钮的“更多”中选择一个字段，点击该行单元格执行本按钮。', defaultLimit: '默认不映射；可选择全部字段，包含未显示字段和虚拟列；同一字段只能映射一个按钮。组件按钮暂不支持。', effect: '标准表格中可点击内容显示为蓝色；可见性、可用性、权限、参数与确认流程沿用原按钮。', publish: '保存当前按钮并发布列表后生效，不需要在字段配置里再绑定。' },
+                { field: '映射后隐藏按钮', meaning: '功能映射有效时隐藏操作列中的原按钮入口。', defaultLimit: '默认否；选择映射字段后可设置。', effect: '隐藏入口不会停用动作；映射字段未显示、清空映射或字段失效时保留原按钮。无权限时单元格恢复普通文本，不可用时显示禁用态和原因。', publish: '跟随当前按钮保存与列表发布。' },
                 { field: '权限码', meaning: '功能级授权标识。', defaultLimit: '可从标准/自定义权限选择，也可手工输入；内置按钮会自动归一为标准权限。', effect: '用户无权限时按钮不可用或不显示。', publish: '角色必须被授予相应 F 类型权限资源。' },
+                { field: '选择要求', meaning: '在自定义工具栏按钮的更多设置中选择无需选择、恰好一条或至少一条。', defaultLimit: '默认无需选择；打开关联内容或引用当前行参数时固定为恰好一条。', effect: '无需选择允许已有勾选；其他要求不满足时禁用按钮，需要选择时逐条检查适用条件。', publish: '保存按钮并发布列表后生效；业务接口执行由服务端按发布配置再次校验。' },
                 { field: '适用条件', meaning: '分别配置记录级或选择集级的显示条件与启用条件。', defaultLimit: '默认始终显示且可用，部分内置按钮有预设规则。', effect: '先判显示：不满足则隐藏；显示后再判启用：不满足则禁用并说明。', publish: '与权限码、数据权限三者同时生效。' }
               ]
             }

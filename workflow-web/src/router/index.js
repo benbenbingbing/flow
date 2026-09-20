@@ -334,15 +334,6 @@ const routes = [
         }
       },
       {
-        path: '/system/release-candidates',
-        name: 'ReleaseCandidateManagement',
-        component: () => import('@/views/system/ReleaseCandidateManagement.vue'),
-        meta: {
-          title: '发布候选',
-          requiredPermissions: ['release-candidate:list']
-        }
-      },
-      {
         path: '/system/assignee-incidents',
         name: 'AssigneeIncidentManagement',
         component: () => import('@/views/system/AssigneeIncidentManagement.vue'),
