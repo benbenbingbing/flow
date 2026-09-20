@@ -11,7 +11,8 @@
  * 宿主传入的 disabled 已包含联动和权限结果，组件必须遵守它。
  *
  * 复杂字段可额外 defineExpose({ validate })，无参返回 boolean/Promise<boolean>。
- * 单独继承 CustomValidator 不会使已有字段渲染器自动调用 validate(value, context)。
+ * 自定义校验类需 registerCustomValidator 并在设计器字段中绑定才会自动执行。
+ * 组件应 emit change/blur；宿主统一调用规则并在字段下方显示错误。
  */
 export const formFieldProps = {
   field: { type: Object, required: true },

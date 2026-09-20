@@ -555,12 +555,12 @@ assert.ok(
   '任一事件入口变更都必须刷新按钮引用缓存和设计器差异'
 )
 assert.ok(
-  formDesignerSource.includes('async function validateFormActionsForPersistence()')
+  formDesignerSource.includes('async function validateFormActionsForPersistence(')
     && formDesignerSource.includes('formActionPersistenceRevision.value += 1')
     && formDesignerSource.includes('rememberPersistedFormButtonKeys()')
-    && formDesignerSource.match(/async function handlePublish\(\)[\s\S]*?validateFormActionsForPersistence\(\)/)
-    && formDesignerSource.match(/async function handleSave\(\)[\s\S]*?validateFormActionsForPersistence\(\)/),
-  '保存和发布必须共用启用按钮与事件绑定校验'
+    && formDesignerSource.match(/async function handlePublish\(\)[\s\S]*?validateFormActionsForPersistence\(\{ requireEventBindings: true \}\)/)
+    && formDesignerSource.match(/async function handleSave\(\)[\s\S]*?validateFormActionsForPersistence\(\{ requireEventBindings: false \}\)/),
+  '草稿保存只校验按钮结构，发布前才要求点击事件链完整'
 )
 assert.ok(
   nodeDesignItemSource.includes('associatedActionButtons')

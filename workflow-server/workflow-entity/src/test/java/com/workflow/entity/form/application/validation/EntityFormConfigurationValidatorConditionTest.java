@@ -32,6 +32,21 @@ class EntityFormConfigurationValidatorConditionTest {
 
     private final EntityFormConfigurationValidator validator = validator();
 
+    /** 发布边界同时验证自定义校验协议；缺少实现版本不能生成有效配置。 */
+    @Test
+    void customValidatorBindingsAreValidatedAtPublishBoundary() {
+        EntityFormField target = field("amount");
+        target.setFieldType("DECIMAL");
+        target.setValidationRules("""
+                {"customValidators":{"version":1,"rules":[{"name":"amount","version":1,"params":{"maxAmount":1000},"triggers":["BLUR"]}]}}
+                """);
+        assertDoesNotThrow(() -> validator.validateForm(form(target)));
+        target.setValidationRules("""
+                {"customValidators":{"version":1,"rules":[{"name":"amount","params":{},"triggers":[]}]}}
+                """);
+        assertThrows(IllegalArgumentException.class, () -> validator.validateForm(form(target)));
+    }
+
     /** 三类条件都完整且引用当前表单字段时允许形成发布快照。 */
     @Test
     void acceptsCompleteVisibilityDisabledAndRequiredConditions() {

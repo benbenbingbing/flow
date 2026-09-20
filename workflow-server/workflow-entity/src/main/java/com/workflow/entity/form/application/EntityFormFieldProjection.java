@@ -16,6 +16,31 @@ public final class EntityFormFieldProjection {
         this.codec = codec;
     }
 
+    /**
+     * 返回节点树中仍存在的字段事件目标编码，与运行时字段投影使用相同的编码规则。
+     * 隐藏、只读和条件不可见不改变字段身份；子表单/明细节点也可以承载字段事件。
+     * 仅使用传入节点，避免发布历史版本时误读当前草稿的删除状态。
+     *
+     * @param nodes 本次处理的节点树；空列表表示没有字段事件目标
+     * @return 去重后的有效字段编码，不包含已删除节点或纯布局节点
+     */
+    public Set<String> fieldEventTargetKeys(List<EntityFormNode> nodes) {
+        Set<String> keys = new LinkedHashSet<>();
+        for (EntityFormNode node : nodes == null ? List.<EntityFormNode>of() : nodes) {
+            if (node == null || Integer.valueOf(1).equals(node.getDeleted())
+                    || !Set.of("FIELD", "SUB_FORM", "REPEATER").contains(node.getNodeType())) {
+                continue;
+            }
+            Map<String, Object> props = StringUtils.hasText(node.getPropsDocument())
+                    ? codec.readObject(node.getPropsDocument(), "字段事件目标节点属性") : Map.of();
+            String fieldCode = text(props.getOrDefault("fieldCode", node.getNodeKey()));
+            if (StringUtils.hasText(fieldCode)) {
+                keys.add(fieldCode.trim());
+            }
+        }
+        return keys;
+    }
+
     /** 草稿的字段完全由节点生成；发布快照可通过另一重载补充快照中的字段元数据。 */
     public List<EntityFormField> derive(String formId, List<EntityFormNode> nodes) {
         EntityForm form = new EntityForm();

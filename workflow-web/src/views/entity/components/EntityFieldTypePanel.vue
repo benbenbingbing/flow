@@ -7,7 +7,6 @@
       aria-controls="entity-field-type-list"
       :aria-label="fieldTypesPreference.state.value ? '展开字段类型' : '收起字段类型'"
       :title="fieldTypesPreference.state.error || (fieldTypesPreference.state.value ? '展开字段类型' : '收起字段类型')"
-      :disabled="fieldTypesPreference.state.loading && !fieldTypesPreference.state.loaded"
       @click="fieldTypesPreference.toggle()"
     >
       <span>字段类型</span>
@@ -77,7 +76,6 @@ onActivated(() => { void fieldTypesPreference.refresh() })
   outline-offset: 3px;
 }
 
-.field-types-toggle:disabled { cursor: wait; opacity: 0.6; }
 .field-types-preference-actions { display: flex; justify-content: flex-end; gap: 8px; margin: -8px 0 10px; font-size: 12px; color: #909399; }
 
 /* 收起后保留可聚焦的窄栏入口，释放的宽度由业务字段区域自然占用。 */

@@ -5,6 +5,9 @@
  * 在项目初始化入口明确注册一次；按需导入，普通校验代码只依赖 index.js 即可。
  */
 export {
+  registerCustomValidator, getCustomValidator, getCustomValidatorOptions, isCustomValidatorApplicable
+} from './validator-registry.js'
+export {
   registerCustomFormComponent, getCustomFormComponent, getCustomFormDescriptor,
   getCustomFormComponentOptions, getCustomFormComponentVersionOptions,
   registerCustomListComponent, getCustomListComponent, getCustomListDescriptor,

@@ -363,7 +363,8 @@
 
     <div v-else-if="fieldNode" class="design-field-node">
       <el-form-item
-        :label="node.fieldLabel || node.fieldName"
+        :label="isSubFormLayoutField(node) ? undefined : (node.fieldLabel || node.fieldName)"
+        :label-width="isSubFormLayoutField(node) ? '0px' : undefined"
         :required="node.isRequired === 1"
         class="design-form-item"
       >
@@ -441,6 +442,7 @@
 </template>
 
 <script setup>
+import { isSubFormLayoutField } from '@/shared/form-layout'
 import { computed, ref, watch } from 'vue'
 import {
   ArrowDown,

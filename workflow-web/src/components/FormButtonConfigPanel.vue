@@ -141,6 +141,7 @@
       >
         <template #title>
           先确定按钮在哪些模式和位置出现，再配置权限与显示条件，最后绑定事件链。
+          草稿可先保存按钮样式，点击事件链在发布前配置完整。
           稳定编码发布后请保持不变。
         </template>
       </el-alert>
@@ -148,12 +149,7 @@
       <el-table :data="draft.customButtons" border size="small">
         <el-table-column label="启用" width="64" align="center">
           <template #default="{ row }">
-            <el-switch
-              v-model="row.enabled"
-              :disabled="row.enabled === false
-                && (!formId || isLocallyCreatedButton(row))"
-              @change="handleEnabledChange(row, $event)"
-            />
+            <el-switch v-model="row.enabled" />
           </template>
         </el-table-column>
         <el-table-column label="按钮名称" min-width="150">
@@ -730,7 +726,7 @@ function configureBuiltInRule(key) {
 
 /**
  * 新按钮统一放入底部操作栏；如需内嵌，用户再从位置列选择已有动作插槽。
- * 新按钮默认停用，避免尚未配置事件链时形成可发布的空操作。
+ * 新按钮默认停用，便于先保存样式；启用后的点击事件链在发布阶段校验。
  */
 function addCustomButton() {
   const button = normalizeCustomButton({
@@ -827,13 +823,6 @@ function validSlotKey(slotKey) {
   return actionSlotOptions.value.some(option =>
     String(option.value) === String(slotKey || '')
   )
-}
-
-function handleEnabledChange(button, enabled) {
-  if (enabled && (!props.formId || isLocallyCreatedButton(button))) {
-    button.enabled = false
-    ElMessage.warning('请先保存表单草稿并配置事件链，再启用按钮')
-  }
 }
 
 function isEventConfigurationBlocked(button) {

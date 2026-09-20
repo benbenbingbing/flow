@@ -1,6 +1,6 @@
 <template>
   <el-dialog
-    v-model="dialogVisible"
+    v-model="presentedDialogVisible"
     width="75%"
     :class="[
       'entity-form-dialog',
@@ -166,6 +166,7 @@ import { isWorkflowReady } from '@/shared/entity-design'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 import { isEmbedDelegatedRequestEnabled } from '@/shared/request'
 import { createRuntimeFormDiscardGuard } from '@/shared/runtime-form-discard'
+import { useWorkspacePage } from '@/composables/useWorkspacePage'
 
 const props = withDefaults(defineProps<{
   entityCode: string
@@ -193,6 +194,8 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const dialogVisible = ref(false)
+const workspacePage = useWorkspacePage()
+const presentedDialogVisible = workspacePage.visibleWhenActive(dialogVisible)
 const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
 const dialogTitle = ref('')
 const formActions = ref<any[]>([])
@@ -242,10 +245,10 @@ const formData = reactive({
   startProcess: false
 })
 
-// 只保护当前有效 Embed 会话中的业务输入；会话撤销/销毁不得被确认框阻挡。
+// 工作区关闭标签和 Embed 关闭表单都保护输入；会话撤销时容器直接释放旧页面。
 const discardGuard = createRuntimeFormDiscardGuard({
   readValue: () => ({ name: formData.name, data: formData.data }),
-  enabled: () => dialogVisible.value && isEmbedDelegatedRequestEnabled(),
+  enabled: () => dialogVisible.value && (Boolean(workspacePage.page) || isEmbedDelegatedRequestEnabled()),
   confirm: () => ElMessageBox.confirm(
     '当前表单有未保存的修改，关闭或刷新后这些修改将丢失。',
     '确认放弃修改？',
@@ -258,6 +261,7 @@ const discardGuard = createRuntimeFormDiscardGuard({
     }
   )
 })
+workspacePage.registerGuard(discardGuard.isDirty)
 
 /** 供原生关闭和 Embed 刷新共同检查；提交中的表单不能被重新初始化。 */
 async function confirmDiscardChanges() {
@@ -367,6 +371,7 @@ const dialogRuntimeDiagnosticResetKey = computed(() => {
 })
 
 function handleDialogClosed() {
+  if (dialogVisible.value) return // 切换标签只是暂时隐藏，保留运行上下文及输入。
   runtimeDiagnosticsRef.value?.reset()
   processRuntimeMetadata.value = {}
   emit('closed')

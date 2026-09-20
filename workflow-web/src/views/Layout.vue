@@ -62,7 +62,7 @@
             circle
             :aria-label="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
             :aria-expanded="!sidebarCollapsed"
-            :title="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+            :title="sidebarPreference.state.error || (sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单')"
             @click="toggleSidebar"
           >
             <el-icon size="20">
@@ -70,7 +70,9 @@
               <Fold v-else />
             </el-icon>
           </el-button>
-          <el-breadcrumb separator="/" class="breadcrumb" v-if="breadcrumb.length > 0">
+          <WorkspaceTabs v-if="workspace.enabled" :tabs="workspace.tabs" :active-key="workspace.activeKey" :busy="workspace.busy"
+            @activate="activateWorkspaceTab" @close="closeWorkspaceTab" />
+          <el-breadcrumb v-else-if="breadcrumb.length > 0" separator="/" class="breadcrumb">
             <el-breadcrumb-item
               v-for="item in breadcrumb"
               :key="item.id"
@@ -94,6 +96,9 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="toggle-tabs" :disabled="workspace.busy">
+                  {{ workspace.enabled ? '关闭多标签页' : '开启多标签页' }}
+                </el-dropdown-item>
                 <el-dropdown-item command="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -101,7 +106,7 @@
         </div>
       </el-header>
       <el-main class="main-content">
-        <router-view />
+        <WorkspacePages />
       </el-main>
     </el-container>
 
@@ -140,10 +145,14 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Menu, Connection, ArrowDown, Expand, Fold } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useSidebarPreferenceStore } from '@/stores/sidebarPreference'
 import { getPermissions, logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
 import SidebarMenuItem from '@/components/SidebarMenuItem.vue'
 import MenuSearch from '@/components/MenuSearch.vue'
+import WorkspaceTabs from '@/components/workspace/WorkspaceTabs.vue'
+import WorkspacePages from '@/components/workspace/WorkspacePages.vue'
+import { useLayoutWorkspace } from '@/composables/useLayoutWorkspace'
 import { provideBreadcrumbParents } from '@/composables/useBreadcrumbParents'
 import {
   SIDEBAR_MENU_REFRESH_EVENT,
@@ -154,7 +163,6 @@ import {
   getActiveMenuPath
 } from '@/utils/breadcrumb'
 import {
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
   SIDEBAR_COLLAPSED_WIDTH,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
@@ -170,10 +178,11 @@ import {
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const sidebarPreference = useSidebarPreferenceStore()
 const mobileMenuVisible = ref(false)
 const initialSidebarLayout = readSidebarLayout()
 const sidebarWidth = ref(initialSidebarLayout.width)
-const sidebarCollapsed = ref(initialSidebarLayout.collapsed)
+const sidebarCollapsed = computed(() => sidebarPreference.state.value)
 const sidebarResizing = ref(false)
 
 const desktopSidebarWidth = computed(() => {
@@ -187,6 +196,7 @@ const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726
 // 菜单树
 const menuTree = ref([])
 const menusLoading = ref(false)
+const { workspace, toggleMode: toggleWorkspaceMode, activate: activateWorkspaceTab, closeTab: closeWorkspaceTab } = useLayoutWorkspace(menuTree)
 
 const activeMenuPath = computed(() => getActiveMenuPath(route))
 const breadcrumbParents = provideBreadcrumbParents()
@@ -194,8 +204,7 @@ const breadcrumb = computed(() => buildBreadcrumb(menuTree.value, route, breadcr
 
 const saveSidebarLayout = () => {
   persistSidebarLayout({
-    width: sidebarWidth.value,
-    collapsed: sidebarCollapsed.value
+    width: sidebarWidth.value
   })
 }
 
@@ -274,10 +283,10 @@ const resetSidebarWidth = () => {
   saveSidebarLayout()
 }
 
+/** 用户主动操作才保存个人覆盖；读取系统默认值和拖动宽度都不会产生覆盖。 */
 const toggleSidebar = () => {
   if (sidebarResizing.value) stopSidebarResize()
-  sidebarCollapsed.value = !sidebarCollapsed.value
-  saveSidebarLayout()
+  void sidebarPreference.toggle()
 }
 
 // 收集所有被禁用菜单的路径（用于路由守卫拦截）
@@ -333,27 +342,31 @@ const loadMenus = async () => {
 const handleStorageChange = event => {
   if (event.key === SIDEBAR_MENU_REVISION_KEY) {
     loadMenus()
-  } else if (
-    event.key === SIDEBAR_WIDTH_STORAGE_KEY ||
-    event.key === SIDEBAR_COLLAPSED_STORAGE_KEY
-  ) {
-    // 多标签页共享同一份布局偏好，避免切换页面时侧栏状态突然跳回旧值。
+  } else if (event.key === SIDEBAR_WIDTH_STORAGE_KEY) {
+    // 宽度仍按设备同步；折叠必须重新读取当前账号的有效设置。
     const savedLayout = readSidebarLayout()
     sidebarWidth.value = savedLayout.width
-    sidebarCollapsed.value = savedLayout.collapsed
   }
 }
 
 onMounted(() => {
   loadMenus()
+  void sidebarPreference.refresh()
   window.addEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
   window.addEventListener('storage', handleStorageChange)
+  window.addEventListener('focus', sidebarPreference.refresh)
 })
 
 onBeforeUnmount(() => {
   stopSidebarResize()
   window.removeEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
   window.removeEventListener('storage', handleStorageChange)
+  window.removeEventListener('focus', sidebarPreference.refresh)
+})
+
+// 系统默认值刷新也可能收起菜单，此时必须结束尚未完成的宽度拖拽。
+watch(sidebarCollapsed, collapsed => {
+  if (collapsed && sidebarResizing.value) stopSidebarResize()
 })
 
 watch(() => route.fullPath, () => {
@@ -361,8 +374,13 @@ watch(() => route.fullPath, () => {
 })
 
 async function handleCommand(command) {
+  if (command === 'toggle-tabs') {
+    await toggleWorkspaceMode()
+    return
+  }
   if (command === 'logout') {
     try {
+      if (!(await workspace.canDiscard(workspace.tabs.map(tab => tab.key)))) return
       await ElMessageBox.confirm('退出后需要重新输入账号和密码才能进入系统。', '退出登录', {
         type: 'warning',
         confirmButtonText: '确认退出',
@@ -499,6 +517,7 @@ async function handleCommand(command) {
 
 .header-left {
   display: flex;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   align-items: center;
@@ -536,7 +555,7 @@ async function handleCommand(command) {
   min-width: 0;
   background-color: #f0f2f5;
   padding: 10px;
-  overflow: auto;
+  overflow: hidden;
 }
 
 :deep(.mobile-nav-drawer .el-drawer__body) {

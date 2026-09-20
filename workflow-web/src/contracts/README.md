@@ -2,7 +2,7 @@
 
 本目录集中提供可导入的 JS 契约、可继承的校验类、Vue 模板和接入示例，减少自定义页面重复编写 props、事件、配置解析和表单逻辑。
 
-**本次只增加本目录内容。现有应用入口、组件、注册表实现、设计器、接口和数据库均未改造。** 现有页面仍使用原来的逻辑。模板和示例没有自动注册；新增校验器也不会被已有表单自动发现或执行。
+模板和示例按需注册。自定义校验已接入设计器、草稿/发布配置及表单运行时；应用默认注册了金额校验器。只有在当前表单字段中绑定规则才会执行，不会为其他表单自动增加规则。
 
 ## 1. 按修改范围选择契约
 
@@ -22,7 +22,7 @@
 | 关联内容自定义呈现 | [related-content.js](./related-content.js) / [RelatedContentTemplate.vue](./templates/RelatedContentTemplate.vue) | 按目标类型复用 FORM/LIST 注册入口，使用独立的 props/runtime |
 | 表单 / 字段 / 节点接口调用 | [data-source.js](./data-source.js) | 使用宿主传入的 `dataSourceRuntime`；接口先配置并发布 |
 | 子表单输入参数与初始化映射 | [subform.js](./subform.js) | 复用原参数解析契约 |
-| **新增：自定义校验** | [validation.js](./validation.js) / [AmountValidator.js](./examples/AmountValidator.js) | JS 类或对象实现 `validate(value, context)`，由页面显式调用 |
+| **新增：自定义校验** | [validation.js](./validation.js) / [AmountValidator.js](./examples/AmountValidator.js) | JS 类或对象实现 `validate(value, context)`，注册后在字段的“数据校验”中绑定，也可由独立页面调用 |
 
 单个格式、后缀、标题等优先作为 `configSchema` 参数暴露。整表单模板已包装标准 `FormPreviewLinkage`，可以仅修改顶部/底部展示，同时保留字段渲染、联动和标准校验。整列表模板是最小展示起点，只包含刷新、可读列、查看和分页；业务需要的查询、导出、选择和其他动作按契约添加。
 
@@ -75,7 +75,7 @@ registerCellComponent('BusinessAmountCell', Cell, {
 
 在列表字段配置中选择 `renderComponent: 'BusinessAmountCell'`，配置 `renderConfig: { suffix: ' 元' }`，沿现有流程保存并发布。只设置 `configSchema.defaultValue` 不能保证所有手工调用页面都补值，模板仍应给默认显示兜底。
 
-注册元数据详见 [component.js](./component.js)。完整十类注册函数示例见 [examples/register.js](./examples/register.js)，其中 `registerContractExamples()` **没有被应用调用**。本次不修改项目入口；后续正式接入时，按需将注册放到现有 `src/project/index.js` 的初始化路径，避免权限 Provider 重复追加。
+注册元数据详见 [component.js](./component.js)。完整十类注册函数示例见 [examples/register.js](./examples/register.js)，其中 `registerContractExamples()` **没有被应用调用**。业务扩展按需放到 `src/project/index.js` 的初始化路径，避免重复注册。校验器入口为 `src/project/validators/index.js`。
 
 ## 4. 自定义校验：JS 类或普通对象均可实现
 
@@ -106,7 +106,61 @@ export default class PositiveValueValidator extends CustomValidator {
 | `throw` / Promise rejection | 原样传播，由页面处理执行故障 |
 | 忘记返回、空字符串、数字等 | 抛 `TypeError`，避免误放行 |
 
-### 4.2 在普通 JS 或页面中调用
+### 4.2 在表单设计器绑定，以及实体范围
+
+金额校验已注册为 `amount@1`。打开目标实体的表单设计器 → 选中数值字段 → **数据校验 → 自定义校验 → 添加校验器**，选择“金额校验”，填写金额上限和触发时机，保存并发布表单。各表单字段可以使用不同上限。
+
+新实现放入 `src/project/validators/`，在同目录 `index.js` 的启动注册函数中调用：
+
+```js
+import { registerCustomValidator } from '@/contracts/validator-registry.js'
+import { AmountValidator } from '@/project/validators/AmountValidator.js'
+
+registerCustomValidator('expenseAmount', new AmountValidator(), {
+  label: '报销金额',
+  version: 1,
+  // [] 或 ['*'] = 全部实体；非空编码列表 = 仅指定实体，不是实体 ID。
+  supportedEntityCodes: ['expense', 'purchase_order'],
+  supportedFieldTypes: ['INTEGER', 'LONG', 'DECIMAL', 'DOUBLE'],
+  configSchema: [
+    { key: 'maxAmount', label: '金额上限', type: 'number', min: 0, required: true, defaultValue: 1000 }
+  ]
+})
+```
+
+**范围是校验器的注册声明**，用于决定哪些实体可选择、执行它；字段绑定属于当前表单，不会变成实体的全局强制规则。设计器筛选范围，运行时再次校验，子表使用子实体编码。受限规则缺少实体身份时会报错。修改实现、参数或适用范围请新增版本并保留旧版本，已发布表单不会自动使用新版本。
+
+配置保存到 `validationRules.customValidators`（节点为 `rules.validation.customValidators`），例如：
+
+```json
+{
+  "version": 1,
+  "rules": [
+    { "name": "amount", "version": 1, "params": { "maxAmount": 1000 }, "triggers": ["BLUR", "CHANGE"] }
+  ]
+}
+```
+
+- `BLUR`：仅在真实失焦或提交时检查。再次输入、程序回填及其他字段变化均不重跑，保留上次提示直到下一次失焦/提交。自定义控件须发出 `blur` 或调用 `onFieldBlur`；不发失焦事件的控件在提交时检查。
+- `CHANGE`：值变化时检查。`triggers: []` 表示仅提交检查。
+- 提交始终执行全部已绑定规则并等待异步结果；隐藏、只读字段跳过，首次加载不显示错误。
+- 未安装、版本不匹配、不适用、参数错误、抛异常或忘记返回均阻止提交并提示。数据或身份变化会取消旧结果。
+- 参数支持 `text`、`textarea`、`number`、`boolean`、`select`、`json`；只存 JSON，不存函数。每字段最多 20 个校验器；参数最多 12 层、1000 个值，单字符串最多 10000 字符。
+- 删除全部规则保存 `{ "version": 1, "rules": [] }`，明确覆盖旧配置。
+- 服务端校验并保存协议结构，**不执行前端 JS**。已有服务端业务校验继续生效；需要防止绕过浏览器的业务约束应另行实现服务端校验。
+
+标准表单、节点表单、子表行与自绘整表单的提交入口均接入规则。自绘整表单按契约 emit 新对象以触发 CHANGE；失焦和就地错误可这样接入：
+
+```vue
+<el-input :model-value="modelValue.amount"
+  @update:model-value="$emit('update:modelValue', { ...modelValue, amount: $event })"
+  @blur="context.formCustomValidation?.onFieldBlur('amount')" />
+<p>{{ context.formCustomValidation?.errorFor('amount') }}</p>
+```
+
+平台传入 `context.entityCode / field / fieldCode / form / formData / record.id / mode / params / trigger / signal`；子表还提供 `parent / row / pageParams`。数据是本次校验的副本，只读使用；异步请求应传递 `signal`。
+
+### 4.3 在普通 JS 或页面中调用
 
 ```js
 import { validateCustomValue } from '@/contracts/validation.js'
@@ -128,7 +182,7 @@ if (!result.valid) console.warn(result.message)
 
 异步请求失败不等于业务通过。输入过程中连续校验时，调用页应管理 `AbortSignal` 或调用序号，只展示最新结果；这个契约不管理页面状态。前端规则负责交互反馈，原服务端业务验证仍照常执行。
 
-### 4.3 Element Plus 表单适配
+### 4.4 Element Plus 表单适配
 
 ```js
 import { createElementPlusValidator } from '@/contracts/validation.js'
@@ -179,7 +233,7 @@ const rules = {
 - **声明式联动与字段事件**：沿用设计器的显隐、只读、必填、选项和值联动，以及已发布事件绑定。字段组件通过标准事件通知宿主；普通页面的内置字段通过 useFormField 执行前端脚本，异步完成后通知事件链；自定义字段若要复用脚本需使用该 composable 的处理方法。Embed 页面仍禁止执行脚本。参考 [FormFieldRendererLinkage.vue](../components/FormFieldRendererLinkage.vue)、[EventBindingEditor.vue](../components/ui-config/EventBindingEditor.vue)。
 - **列表列模板与扩展列数据**：列模板组合 `renderComponent/renderConfig` 与 `LIST_COLUMN` 接口绑定；前端渲染用单元格契约，数据 Provider 仍在后端。参考 [ListColumnTemplateEditorDialog.vue](../components/ui-config/ListColumnTemplateEditorDialog.vue)。
 - **子表单参数与初始化**：通过 [subform.js](./subform.js) 复用原解析方法。父级 `parameterContract.parameterMapping` 映射到子表单 `context.params`，输入结构由 `inputParameterSchema` 声明；`fieldInitializationMapping` 单独处理字段初始化。映射源及对象形式以 [原契约实现](../shared/subform-parameter-contract.js) 为准，建议用设计器生成配置。
-- **跨字段规则、唯一预检、必填和类型规则**：这些已有配置规则照常运行。自绘整表单需显示联动/字段错误，并按需要调用 `context.formUniqueness`；用 `runtime.js` 的 `buildRuntimeFieldRules` 复用内置单字段规则。本次新增校验尚未加入这些配置协议。
+- **跨字段规则、唯一预检、必填和类型规则**：这些已有配置规则照常运行。自绘整表单需显示联动/字段错误，并按需要调用 `context.formUniqueness`；用 `runtime.js` 的 `buildRuntimeFieldRules` 复用内置单字段规则。已绑定的自定义校验由宿主统一执行；自绘组件可通过 `context.formCustomValidation` 显示字段错误和触发失焦检查。
 - **外部页面嵌入**：已有独立包 [@flow/embed-sdk](../../packages/flow-embed-sdk/README.md)，宿主通过 `FlowEmbed.mount` 和 `widget.on` 订阅事件，命令/事件类型以包内 `types.d.ts` 为准。它不是应用内组件注册表，本目录不复制其传输和会话实现。
 
 ## 7. 核对来源与验证

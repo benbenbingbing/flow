@@ -6,6 +6,7 @@ import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
 import com.workflow.entity.form.application.FormUniqueRulePolicy;
 import com.workflow.entity.form.application.FormCrossFieldRulePolicy;
+import com.workflow.entity.form.application.FormCustomValidatorRulePolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
@@ -632,6 +633,9 @@ public class EntityFormConfigurationValidator {
 
     /** 校验字段校验规则：区间、长度、格式与正则表达式 */
     private void validateValidationRules(Map<String, Object> validation) {
+        if (validation.containsKey("customValidators")) {
+            FormCustomValidatorRulePolicy.validate(validation.get("customValidators"));
+        }
         if (validation.isEmpty()) {
             return;
         }

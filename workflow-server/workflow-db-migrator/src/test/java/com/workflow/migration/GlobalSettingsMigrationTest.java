@@ -13,8 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * 在真实 MySQL 上验证 V090 设置表与 V091 随机签名密钥、导入确认记录。
- * 只运行本次迁移，历史全量迁移重放由独立集成检查承担。
+ * 在真实 MySQL 上验证 V090 设置表、V091 随机签名密钥及 V100/V101 布局默认偏好。
+ * 仅运行设置相关迁移，历史全量迁移重放由独立集成检查承担。
  * 可通过 settingsTestJdbcUrl 指向预建的空白回环测试库；不读取业务数据库配置，不清理外部库。
  */
 class GlobalSettingsMigrationTest {
@@ -118,6 +118,42 @@ class GlobalSettingsMigrationTest {
         assertEquals("operator", scalar("SELECT signature_confirmed_by FROM config_import_package WHERE id = 'old-import'"));
         assertEquals(0, signing.migrate().migrationsExecuted);
         assertEquals(initializedKey, scalar(keyQuery), "重复启动不能轮换已初始化的密钥");
+
+        int existingSettings = count("SELECT COUNT(*) FROM sys_global_setting");
+        String sidebarSql;
+        try (var input = GlobalSettingsMigrationTest.class.getResourceAsStream("/db/migration/V100__sidebar_collapsed_setting.sql")) {
+            assertNotNull(input);
+            sidebarSql = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            Files.writeString(migrationDirectory.resolve("V100__sidebar_collapsed_setting.sql"), sidebarSql);
+        }
+        Flyway sidebar = flyway("100");
+        assertEquals(1, sidebar.migrate().migrationsExecuted);
+        sidebar.validate();
+        String sidebarQuery = "SELECT setting_value FROM sys_global_setting WHERE scope_type = 'SYSTEM' AND owner_id = '0' AND setting_key = 'ui.layout.sidebar_collapsed'";
+        assertEquals("false", scalar(sidebarQuery));
+        assertEquals("BOOLEAN", scalar("SELECT setting_value_type FROM sys_global_setting WHERE setting_key = 'ui.layout.sidebar_collapsed'"));
+        assertEquals(existingSettings + 1, count("SELECT COUNT(*) FROM sys_global_setting"));
+        assertEquals(0, count("SELECT COUNT(*) FROM sys_global_setting WHERE scope_type = 'USER' AND setting_key = 'ui.layout.sidebar_collapsed'"));
+        // 重复初始化不得覆盖管理员已调整的默认值，也不能改变既有设置或用户数据。
+        execute("UPDATE sys_global_setting SET setting_value = 'true' WHERE setting_key = 'ui.layout.sidebar_collapsed'");
+        execute(sidebarSql);
+        assertEquals("true", scalar(sidebarQuery));
+        assertEquals(0, sidebar.migrate().migrationsExecuted);
+        assertEquals(userCount, count("SELECT COUNT(*) FROM sys_user"));
+        assertEquals(initializedKey, scalar(keyQuery));
+        try (var input = GlobalSettingsMigrationTest.class.getResourceAsStream("/db/migration/V101__workspace_tabs_setting.sql")) {
+            assertNotNull(input);
+            Files.copy(input, migrationDirectory.resolve("V101__workspace_tabs_setting.sql"));
+        }
+        Flyway tabs = flyway("101");
+        assertEquals(1, tabs.migrate().migrationsExecuted);
+        tabs.validate();
+        String tabsQuery = "SELECT setting_value FROM sys_global_setting WHERE scope_type = 'SYSTEM' AND owner_id = '0' AND setting_key = 'ui.layout.tabs_enabled'";
+        assertEquals("false", scalar(tabsQuery));
+        assertEquals("BOOLEAN", scalar("SELECT setting_value_type FROM sys_global_setting WHERE setting_key = 'ui.layout.tabs_enabled'"));
+        assertEquals(0, count("SELECT COUNT(*) FROM sys_global_setting WHERE scope_type = 'USER' AND setting_key = 'ui.layout.tabs_enabled'"));
+        assertEquals(0, tabs.migrate().migrationsExecuted);
+        assertEquals("true", scalar(sidebarQuery), "新增标签模式不能重置其他系统偏好");
     }
 
     private static Flyway flyway(String target) {

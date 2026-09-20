@@ -57,10 +57,14 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageState from '@/components/PageState.vue'
 import { useUserStore } from '@/stores/user'
+import { SIDEBAR_COLLAPSED_SETTING_KEY, useSidebarPreferenceStore } from '@/stores/sidebarPreference'
+import { TABS_ENABLED_SETTING_KEY, useTabsPreferenceStore } from '@/stores/tabsPreference'
 import { listSystemSettings, saveSystemSetting, resetSystemSetting, settingVersion } from '@/api/system/settings'
 import { SETTING_VALUE_TYPE_LABELS, serializeSettingInput, settingInputText } from '@/shared/setting-value'
 
 const user = useUserStore()
+const sidebarPreference = useSidebarPreferenceStore()
+const tabsPreference = useTabsPreferenceStore()
 const canManage = computed(() => user.isSuperAdmin || user.permissions.includes('*') || user.permissions.includes('system:setting:manage'))
 const settings = ref([])
 const drafts = ref({})
@@ -92,6 +96,9 @@ async function mutate(item, operation) {
     const updated = await operation()
     settings.value = settings.value.map(row => row.settingKey === item.settingKey ? updated : row)
     drafts.value[item.settingKey] = settingInputText(updated)
+    // 后台刷新当前账号的有效值；偏好读取变慢或失败不阻塞设置页面继续操作。
+    if (item.settingKey === SIDEBAR_COLLAPSED_SETTING_KEY) void sidebarPreference.refresh()
+    if (item.settingKey === TABS_ENABLED_SETTING_KEY) void tabsPreference.refresh()
     ElMessage.success('系统设置已保存')
   } catch (error) {
     ElMessage.error(error?.message || '保存失败，请重试')

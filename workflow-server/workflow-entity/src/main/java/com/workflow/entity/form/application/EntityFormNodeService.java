@@ -24,6 +24,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapp
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -124,6 +125,7 @@ public class EntityFormNodeService {
         private final EntityDefinitionMapper definitionMapper;
         private final EntityFieldMapper fieldMapper;
         private final SystemEntityFieldPolicy systemEntityFieldPolicy;
+        private final UiEventBindingMapper eventBindingMapper;
         private final JsonDocumentCodec codec;
         private UiMutableInterfaceReferenceNormalizer interfaceReferenceNormalizer;
 
@@ -361,7 +363,8 @@ public class EntityFormNodeService {
         }
 
         /**
-         * 删除表单节点，存在子节点时拒绝删除。
+         * 删除表单节点，存在子节点时拒绝删除；同时清理失去最后一个节点的字段事件草稿。
+         * 已发布事件保存在独立快照中，不受草稿删除影响。
          *
          * @param formId           表单ID
          * @param nodeId           节点ID
@@ -392,7 +395,26 @@ public class EntityFormNodeService {
                 if (nodeMapper.update(null, wrapper) != 1) {
                         throw conflict(formId, nodeId);
                 }
+                removeDeletedFieldEventBindings(formId, current);
                 touchForm(formId);
+        }
+
+        /**
+         * 字段事件按编码绑定；仅在最后一个同编码节点删除后清理本表单的 FIELD 绑定。
+         * 与节点删除共用事务，防止重新添加同编码字段时接上旧执行链；
+         * OWNER、BUTTON、实体默认事件以及其他表单的绑定不属于本次删除范围。
+         */
+        private void removeDeletedFieldEventBindings(String formId, EntityFormNode removed) {
+                EntityFormFieldProjection projection = new EntityFormFieldProjection(codec);
+                Set<String> removedKeys = projection.fieldEventTargetKeys(List.of(removed));
+                if (removedKeys.isEmpty()) {
+                        return;
+                }
+                removedKeys.removeAll(projection.fieldEventTargetKeys(nodeMapper.findByFormId(formId)));
+                if (removedKeys.isEmpty()) {
+                        return;
+                }
+                eventBindingMapper.deleteFormFieldBindings(formId, removedKeys);
         }
 
         /**

@@ -18,7 +18,8 @@
         :style="getFieldStyle(field)"
       >
         <el-form-item
-          :label="field.fieldLabel || field.fieldName"
+          :label="isSubFormLayoutField(field) ? undefined : (field.fieldLabel || field.fieldName)"
+          :label-width="isSubFormLayoutField(field) ? '0px' : undefined"
           :prop="field.fieldCode || `field_${field.id}`"
           :rules="getFieldRules(field)"
           :required="field.isRequired === 1"
@@ -37,7 +38,7 @@
 </template>
 
 <script setup>
-import { resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
+import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
 
 import { ref, computed, watch } from 'vue'
 import FormFieldRenderer from './FormFieldRenderer.vue'

@@ -160,7 +160,7 @@
       </aside>
     </div>
   </div>
-<el-dialog v-model="emptyAssigneeDialogVisible" title="流程空办理人默认策略" width="600px" append-to-body destroy-on-close>
+<el-dialog v-model="presentedEmptyAssigneeDialogVisible" title="流程空办理人默认策略" width="600px" append-to-body destroy-on-close>
   <el-alert
     title="该配置会固化到 BPMN 版本快照，节点可选择继承或覆盖。"
     type="info"
@@ -182,6 +182,7 @@
 import EmptyAssigneePolicyEditor from '@/components/EmptyAssigneePolicyEditor.vue'
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useWorkspacePage } from '@/composables/useWorkspacePage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Document, Check, Back, Right, Setting, Close, InfoFilled } from '@element-plus/icons-vue'
 import { processApi } from '@/api/process'
@@ -232,6 +233,7 @@ const fixXmlLayout = async (xml) => {
 }
 
 const route = useRoute()
+const workspacePage = useWorkspacePage()
 const router = useRouter()
 const processId = route.params.id
 
@@ -306,6 +308,7 @@ const handleRedo = () => {
 
 // 键盘快捷键处理
 const handleKeydown = (e) => {
+  if (!workspacePage.active.value) return // 后台缓存设计器不得响应当前页的撤销/重做快捷键。
   // Ctrl+Z 撤销
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
     e.preventDefault()
@@ -442,6 +445,7 @@ const EMPTY_ASSIGNEE_PROPERTY = 'emptyAssigneeDefault'
 const BPMN_MODEL_NS = 'http://www.omg.org/spec/BPMN/20100524/MODEL'
 const FLOWABLE_NS = 'http://flowable.org/bpmn'
 const emptyAssigneeDialogVisible = ref(false)
+const presentedEmptyAssigneeDialogVisible = workspacePage.visibleWhenActive(emptyAssigneeDialogVisible)
 const emptyAssigneeDefault = ref(createEmptyAssigneeDefault())
 
 function createEmptyAssigneeDefault(value = {}) {

@@ -327,8 +327,9 @@ export function publishedFormButtonKeys(releases = [], activeReleaseId = '') {
 }
 
 /**
- * 在保存和发布前统一验证所有按钮的结构；权限与事件链只要求启用按钮。
- * 同时拒绝指向不存在按钮的遗留绑定，避免旧 targetKey 被静默保留。
+ * 保存和发布共用按钮结构校验；启用按钮仍需合法权限码。
+ * 草稿通过 requireEventBindings=false 暂缓事件绑定完整性检查，发布时启用。
+ * 传入事件绑定时同时检查遗留 targetKey，防止发布不存在按钮的事件。
  */
 export function validateFormActionConfiguration({
   actionBar,

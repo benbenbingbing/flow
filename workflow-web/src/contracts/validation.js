@@ -1,7 +1,7 @@
 /**
- * 新增的业务校验契约，尚未接入现有表单、设计器或发布配置。
+ * 业务校验契约，注册并在设计器字段中绑定后由表单宿主执行。
  * JS 文件可以继承 CustomValidator，也可导出 { validate(value, context) }，
- * 或通过 defineCustomValidator(fn) 实现。页面显式调用 validateCustomValue。
+ * 或通过 defineCustomValidator(fn) 实现。独立页面也可显式调用 validateCustomValue。
  * 此模块不注册全局规则、不发请求、不修改 value/context、不弹消息。
  *
  * @typedef {Object} ValidationContext

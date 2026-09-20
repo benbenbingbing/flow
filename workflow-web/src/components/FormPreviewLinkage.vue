@@ -13,6 +13,7 @@
       <h3>{{ form?.formName }}</h3>
     </div>
     
+    <el-alert v-if="customSubmissionError" :title="customSubmissionError" type="error" :closable="false" show-icon />
     <template v-if="form?.customComponent && hasCustomFormComponent(form.customComponent)">
       <el-alert
         v-if="firstCrossFieldError || firstUniqueError"
@@ -95,7 +96,8 @@
         </template>
         <el-form-item
           v-else
-          :label="field.fieldLabel || field.fieldName"
+          :label="isSubFormLayoutField(field) ? undefined : (field.fieldLabel || field.fieldName)"
+          :label-width="isSubFormLayoutField(field) ? '0px' : undefined"
           :prop="getFieldKey(field)"
           :rules="getFieldRules(field)"
           :error="uniqueErrorFor(field)"
@@ -144,7 +146,7 @@
 </template>
 
 <script setup>
-import { resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
+import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
 
 import { ref, computed, watch, onMounted, nextTick, provide, defineAsyncComponent } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
@@ -155,6 +157,7 @@ import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldValidation'
+import { useFormCustomValidation } from '@/composables/useFormCustomValidation'
 import { CROSS_FIELD_ERROR_CODE } from '@/shared/form-cross-field-validation'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
@@ -259,6 +262,7 @@ const previewStyle = computed(() => ({
 // 自定义表单组件数据更新回调
 function handleCustomFormUpdate(val) {
   crossValidation.touchChanged(formData.value, val)
+  customValidation.touchChanged(formData.value, val)
   formData.value = { ...val }
   emit('update:modelValue', formData.value)
 }
@@ -280,6 +284,15 @@ const customFormRef = ref(null)
 const nodeFormRef = ref(null)
 const fieldRendererRefs = ref({})
 const formData = ref(props.modelValue || {})
+const customValidation = useFormCustomValidation({
+  getForm: () => props.form, getRecord: () => formData.value,
+  getEntityFields: () => props.entityFields, getMode: () => props.mode,
+  getReadonly: () => props.readonly, getContext: () => props.context,
+  getEntityCode: () => props.entityCode || props.entityDefinition?.entityCode,
+  getRootParentId: () => props.nodeRootParentId, getExcludedNodeIds: () => props.excludedNodeIds
+})
+// 字段错误由各输入框展示；顶部仅保留无法归属字段的提交状态提示。
+const { firstError: firstCustomValidationError, submissionError: customSubmissionError } = customValidation
 const crossValidation = useFormCrossFieldValidation({
   getForm: () => props.form,
   getRecord: () => formData.value,
@@ -331,7 +344,8 @@ const runtimeContext = computed(() => ({
   entityCode: props.entityCode,
   entityDefinition: props.entityDefinition,
   formUniqueErrors: uniqueErrors.value,
-  formUniqueness: formUniquenessRuntime
+  formUniqueness: formUniquenessRuntime,
+  formCustomValidation: customValidation.runtime
 }))
 
 const runtimeReleaseId = computed(() =>
@@ -685,6 +699,11 @@ async function validate() {
       return false
     }
   }
+  const customResult = await customValidation.validate()
+  if (!customResult.valid) {
+    await revealCrossFieldError(customResult.errors[0]?.fieldCode)
+    return false
+  }
   return true
 }
 
@@ -706,7 +725,7 @@ defineExpose({
   validate,
   applyServerValidationError,
   getData: () => formData.value,
-  getValidationError: () => firstCrossFieldError.value || firstUniqueError.value
+  getValidationError: () => firstCustomValidationError.value || firstCrossFieldError.value || firstUniqueError.value
 })
 </script>
 

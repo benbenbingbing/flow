@@ -15,6 +15,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapp
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
+import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -301,6 +302,7 @@ class EntityFormNodeServicePropertyPolicyTest {
                         mock(EntityDefinitionMapper.class),
                         mock(EntityFieldMapper.class),
                         mock(SystemEntityFieldPolicy.class),
+                        mock(UiEventBindingMapper.class),
                         codec),
                 nodeMapper);
     }

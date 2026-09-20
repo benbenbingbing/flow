@@ -83,7 +83,7 @@ const view = (value, version = null) => ({ value, source: version === null ? 'SY
   assert.equal(state.overridden, false)
 }
 
-// 并发冲突不自动覆盖其他页面，新操作必须重新读取；错误不能标记为已保存。
+// 并发冲突不自动覆盖其他页面，也不能回退当前界面；新操作必须重新读取。
 {
   let state
   let reads = 0
@@ -96,11 +96,60 @@ const view = (value, version = null) => ({ value, source: version === null ? 'SY
   await preference.refresh()
   await preference.setValue(true)
   assert.equal(state.loaded, false)
-  assert.equal(state.value, false)
+  assert.equal(state.value, true)
   assert.match(state.error, /其他页面/)
   await preference.setValue(true)
   assert.equal(reads, 2)
   assert.equal(errors, 2)
+}
+
+// 读取失败也不阻止连续切换；网络恢复后的后台读取不能撤销尚未保存的选择。
+{
+  let state
+  let offline = true
+  const writes = []
+  const preference = createBooleanPreference({
+    read: async () => { if (offline) throw new Error('offline'); return view(false, 7) },
+    write: async data => { writes.push(data); return view(JSON.parse(data.settingValue), 8) },
+    onChange: next => { state = next }
+  })
+  await preference.setValue(true)
+  assert.equal(state.value, true)
+  await preference.setValue(false)
+  assert.equal(state.value, false)
+  await preference.setValue(true)
+  assert.equal(state.value, true)
+  assert.equal(writes.length, 0)
+  offline = false
+  await preference.refresh()
+  assert.equal(state.value, true, '后台读取不得撤销当前会话的选择')
+  assert.match(state.error, /未保存/)
+  assert.equal(writes.length, 0, '仅恢复网络和读取不自动创建个人覆盖')
+  await preference.setValue(false)
+  assert.deepEqual(writes, [{ settingValue: 'false', expectedId: 'mine', expectedVersion: 7 }])
+  assert.equal(state.error, '')
+}
+
+// 保存响应失败时保留最后一次点击，后续操作仍可继续，不回滚到服务端旧值。
+{
+  let state
+  let rejectWrite
+  const preference = createBooleanPreference({
+    read: async () => view(true, 1),
+    write: () => new Promise((resolve, reject) => { rejectWrite = reject }),
+    onChange: next => { state = next }
+  })
+  await preference.refresh()
+  const saving = preference.setValue(false)
+  preference.setValue(true)
+  preference.setValue(false)
+  rejectWrite(new Error('network error'))
+  await saving
+  assert.equal(state.value, false)
+  assert.equal(state.saving, false)
+  assert.match(state.error, /未保存/)
+  await preference.refresh()
+  assert.equal(state.value, false)
 }
 
 // 账号切换后，旧请求不能更新新账号状态或继续发送排队写入。
@@ -136,4 +185,4 @@ const view = (value, version = null) => ({ value, source: version === null ? 'SY
   assert.equal(writes, 1)
 }
 
-console.log('boolean preference tests passed (7 scenarios)')
+console.log('boolean preference tests passed (9 scenarios)')

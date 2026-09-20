@@ -246,7 +246,7 @@
                   <el-tag size="small" type="primary">{{ selectedNodeTypeLabel }}</el-tag>
                 </template>
 
-                <SettingsFormItem :disabled="!canEditNodeLabel" disabled-reason="当前节点不支持显示标签" :label="isSelectedSection ? '节标题' : '显示标签'">
+                <SettingsFormItem v-if="!isSubFormField(selectedField)" :disabled="!canEditNodeLabel" disabled-reason="当前节点不支持显示标签" :label="isSelectedSection ? '节标题' : '显示标签'">
                   <el-input v-model="selectedField.fieldLabel" />
                 </SettingsFormItem>
 
@@ -277,6 +277,16 @@
                     />
                   </el-form-item>
                 </SettingsCapability>
+
+                <SettingsFormItem
+                  :disabled="!canConfigureSelectedWordLimit" disabled-reason="仅文本输入和多行文本组件支持显示字数"
+                  label="显示字数"
+                >
+                  <el-switch
+                    :model-value="selectedWordLimitVisible"
+                    @update:model-value="updateSelectedNodeConfig('showWordLimit', $event)"
+                  />
+                </SettingsFormItem>
 
                 <SettingsFormItem :disabled="!isFieldNode" disabled-reason="仅实体字段支持此配置">
                   <template #label>
@@ -498,126 +508,135 @@
                   </el-tag>
                 </template>
 
-                <SettingsFormItem
-                  :disabled="!(selectedValidationCapabilities.length)" disabled-reason="仅文本类型支持长度校验"
-                  label="最小长度"
-                >
-                  <el-input-number
-                    :model-value="selectedValidationConfig.minLength"
-                    :min="0"
-                    :max="20000"
-                    @update:model-value="updateValidationConfig('minLength', $event)"
-                  />
-                </SettingsFormItem>
-                <SettingsFormItem
-                  :disabled="!(selectedValidationCapabilities.length)" disabled-reason="仅文本类型支持长度校验"
-                  label="最大长度"
-                >
-                  <el-input-number
-                    :model-value="selectedValidationMaxLength"
-                    :min="0"
-                    :max="20000"
-                    @update:model-value="updateValidationConfig('maxLength', $event)"
-                  />
-                </SettingsFormItem>
-                <SettingsFormItem
-                  :disabled="!canConfigureSelectedWordLimit" disabled-reason="仅文本输入和多行文本组件支持显示字数"
-                  label="显示字数"
-                >
-                  <el-switch
-                    :model-value="selectedWordLimitVisible"
-                    @update:model-value="updateSelectedNodeConfig('showWordLimit', $event)"
-                  />
-                </SettingsFormItem>
-                <SettingsFormItem
-                  :disabled="!(selectedValidationCapabilities.range)" disabled-reason="仅数值类型支持范围校验"
-                  label="最小值"
-                >
-                  <el-input-number
-                    :model-value="selectedValidationConfig.min"
-                    @update:model-value="updateValidationConfig('min', $event)"
-                  />
-                </SettingsFormItem>
-                <SettingsFormItem
-                  :disabled="!(selectedValidationCapabilities.range)" disabled-reason="仅数值类型支持范围校验"
-                  label="最大值"
-                >
-                  <el-input-number
-                    :model-value="selectedValidationConfig.max"
-                    @update:model-value="updateValidationConfig('max', $event)"
-                  />
-                </SettingsFormItem>
-                <SettingsFormItem
-                  :disabled="!(selectedValidationCapabilities.format)" disabled-reason="仅文本类型支持格式校验"
-                  label="格式"
-                >
-                  <el-select
-                    :model-value="selectedValidationConfig.format || ''"
-                    clearable
-                    style="width: 100%"
-                    @update:model-value="updateValidationConfig('format', $event)"
+                <div class="validation-rules-grid">
+                  <SettingsFormItem
+                    :disabled="!(selectedValidationCapabilities.length)" disabled-reason="仅文本类型支持长度校验"
+                    label="最小长度"
                   >
-                    <el-option label="邮箱" value="EMAIL" />
-                    <el-option label="手机号" value="PHONE" />
-                    <el-option label="URL" value="URL" />
-                  </el-select>
-                </SettingsFormItem>
-                <SettingsFormItem
-                  :disabled="!(selectedValidationCapabilities.pattern)" disabled-reason="仅文本类型支持正则校验"
-                  :error="selectedPatternError"
-                >
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="正则"
-                      content="输入 JavaScript/Java 通用的正则表达式本体，不要添加 / 包裹。需要校验完整内容时请使用 ^ 和 $；与“格式”同时配置时必须全部通过。"
+                    <el-input-number
+                      :model-value="selectedValidationConfig.minLength"
+                      :min="0"
+                      :max="20000"
+                      @update:model-value="updateValidationConfig('minLength', $event)"
                     />
-                  </template>
-                  <div class="regex-validation-editor">
-                    <div class="regex-pattern-row">
-                      <el-input
-                        :model-value="selectedValidationConfig.pattern || ''"
-                        clearable
-                        :maxlength="500"
-                        placeholder="例如：^[A-Z][A-Z0-9_]*$"
-                        @update:model-value="updateValidationConfig('pattern', $event)"
-                      />
-                      <el-button
-                        type="primary"
-                        link
-                        :aria-expanded="regexTestVisible"
-                        @click="toggleRegexTest"
-                      >
-                        test
-                      </el-button>
-                    </div>
-                    <div v-if="regexTestVisible" class="regex-test-row">
-                      <el-input
-                        v-model="regexTestValue"
-                        clearable
-                        :disabled="isRegexTestInputDisabled"
-                        placeholder="输入测试文本"
-                        @update:model-value="regexTestTouched = true"
-                      />
-                      <el-icon
-                        v-if="regexTestResult !== null"
-                        :class="[
-                          'regex-test-result',
-                          regexTestResult ? 'is-match' : 'is-mismatch'
-                        ]"
-                        :title="regexTestResult ? '匹配成功' : '不匹配'"
-                      >
-                        <CircleCheck v-if="regexTestResult" />
-                        <CircleClose v-else />
-                      </el-icon>
-                    </div>
-                    <div
-                      v-if="regexTestVisible && isRegexTestInputDisabled"
-                      class="regex-test-hint"
+                  </SettingsFormItem>
+                  <SettingsFormItem
+                    :disabled="!(selectedValidationCapabilities.length)" disabled-reason="仅文本类型支持长度校验"
+                    label="最大长度"
+                  >
+                    <el-input-number
+                      :model-value="selectedValidationMaxLength"
+                      :min="0"
+                      :max="20000"
+                      @update:model-value="updateValidationConfig('maxLength', $event)"
+                    />
+                  </SettingsFormItem>
+                  <SettingsFormItem
+                    :disabled="!(selectedValidationCapabilities.range)" disabled-reason="仅数值类型支持范围校验"
+                    label="最小值"
+                  >
+                    <el-input-number
+                      :model-value="selectedValidationConfig.min"
+                      @update:model-value="updateValidationConfig('min', $event)"
+                    />
+                  </SettingsFormItem>
+                  <SettingsFormItem
+                    :disabled="!(selectedValidationCapabilities.range)" disabled-reason="仅数值类型支持范围校验"
+                    label="最大值"
+                  >
+                    <el-input-number
+                      :model-value="selectedValidationConfig.max"
+                      @update:model-value="updateValidationConfig('max', $event)"
+                    />
+                  </SettingsFormItem>
+                  <SettingsFormItem
+                    :disabled="!(selectedValidationCapabilities.format)" disabled-reason="仅文本类型支持格式校验"
+                    label="格式"
+                  >
+                    <el-select
+                      :model-value="selectedValidationConfig.format || ''"
+                      clearable
+                      style="width: 100%"
+                      @update:model-value="updateValidationConfig('format', $event)"
                     >
-                      请先输入有效的正则表达式
+                      <el-option label="邮箱" value="EMAIL" />
+                      <el-option label="手机号" value="PHONE" />
+                      <el-option label="URL" value="URL" />
+                    </el-select>
+                  </SettingsFormItem>
+                  <SettingsFormItem
+                    :disabled="!(selectedValidationCapabilities.pattern)" disabled-reason="仅文本类型支持正则校验"
+                    :error="selectedPatternError"
+                  >
+                    <template #label>
+                      <ConfigHelpLabel
+                        label="正则"
+                        content="输入 JavaScript/Java 通用的正则表达式本体，不要添加 / 包裹。需要校验完整内容时请使用 ^ 和 $；与“格式”同时配置时必须全部通过。"
+                      />
+                    </template>
+                    <div class="regex-validation-editor">
+                      <div class="regex-pattern-row">
+                        <el-input
+                          :model-value="selectedValidationConfig.pattern || ''"
+                          clearable
+                          :maxlength="500"
+                          placeholder="例如：^[A-Z][A-Z0-9_]*$"
+                          @update:model-value="updateValidationConfig('pattern', $event)"
+                        />
+                        <el-button
+                          type="primary"
+                          link
+                          :aria-expanded="regexTestVisible"
+                          @click="toggleRegexTest"
+                        >
+                          test
+                        </el-button>
+                      </div>
+                      <div v-if="regexTestVisible" class="regex-test-row">
+                        <el-input
+                          v-model="regexTestValue"
+                          clearable
+                          :disabled="isRegexTestInputDisabled"
+                          placeholder="输入测试文本"
+                          @update:model-value="regexTestTouched = true"
+                        />
+                        <el-icon
+                          v-if="regexTestResult !== null"
+                          :class="[
+                            'regex-test-result',
+                            regexTestResult ? 'is-match' : 'is-mismatch'
+                          ]"
+                          :title="regexTestResult ? '匹配成功' : '不匹配'"
+                        >
+                          <CircleCheck v-if="regexTestResult" />
+                          <CircleClose v-else />
+                        </el-icon>
+                      </div>
+                      <div
+                        v-if="regexTestVisible && isRegexTestInputDisabled"
+                        class="regex-test-hint"
+                      >
+                        请先输入有效的正则表达式
+                      </div>
                     </div>
-                  </div>
-                </SettingsFormItem>
+                  </SettingsFormItem>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                v-if="isFieldNode"
+                v-show="activeNodeSettingsTab === 'rules'"
+                title="自定义校验"
+                description="选择适用于当前实体的校验器，并为当前字段配置参数"
+                :disabled="!canConfigureCustomValidation(selectedField)"
+                disabled-reason="请先将节点绑定到实体字段"
+              >
+                <FormCustomValidatorEditor
+                  :field="selectedField"
+                  :entity-code="customValidationEntityCode(selectedField)"
+                  :model-value="selectedValidationConfig.customValidators"
+                  @update:model-value="updateValidationConfig('customValidators', $event)"
+                />
               </SettingsSection>
 
               <SettingsSection
@@ -1096,6 +1115,8 @@ import FormDesignerSettingsDrawer from '@/components/form-designer/FormDesignerS
 import FormCustomRendererWorkspace from '@/components/form-designer/FormCustomRendererWorkspace.vue'
 import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
 import FormCrossFieldRuleEditor from '@/components/form-designer/FormCrossFieldRuleEditor.vue'
+import FormCustomValidatorEditor from '@/components/FormCustomValidatorEditor.vue'
+import { validateCustomValidationConfig } from '@/shared/form-custom-validation'
 import FormNodeStateConditions from '@/components/form-designer/FormNodeStateConditions.vue'
 import { getFieldStateConditionError } from '@/shared/form-field-state-conditions'
 import { supportsCrossFieldValidation, validateCrossFieldConfiguration } from '@/shared/form-cross-field-validation'
@@ -3994,6 +4015,25 @@ function cloneAttachmentItems(items) {
   }))
 }
 
+/** 子表字段使用最近子表容器的实体；身份尚未解析时不回退到父实体。 */
+function customValidationEntityCode(field) {
+  let parent = nodeById(field?.parentId)
+  const seen = new Set()
+  while (parent && !seen.has(parent.id)) {
+    seen.add(parent.id)
+    if (['SUB_FORM', 'REPEATER'].includes(nodeTypeOf(parent))) {
+      return entityCodeById.value[String(parent.childEntityId || parent.refEntityId)] || ''
+    }
+    parent = nodeById(parent.parentId)
+  }
+  return entityInfo.value?.entityCode || ''
+}
+
+/** 与发布字段投影一致，未绑定实体字段的展示节点不提供值校验。 */
+function canConfigureCustomValidation(field) {
+  return nodeTypeOf(field) === 'FIELD' && resolveFormNodeBinding(field, 'FIELD').bindingType === 'ENTITY_FIELD'
+}
+
 function updateValidationConfig(key, value) {
   if (!selectedField.value) return
   // 不适用项也会挂载；忽略控件初始化的规范化事件，避免浏览配置时改动节点。
@@ -4001,7 +4041,8 @@ function updateValidationConfig(key, value) {
     minLength: 'length', maxLength: 'length',
     min: 'range', max: 'range', format: 'format', pattern: 'pattern'
   }[key]
-  if (key === 'crossField' ? !canConfigureSelectedNodeCrossField.value
+  if (key === 'customValidators' ? !canConfigureCustomValidation(selectedField.value)
+    : key === 'crossField' ? !canConfigureSelectedNodeCrossField.value
     : !canConfigureSelectedNodeValidation.value || !selectedValidationCapabilities.value[capability]) return
   selectedField.value.validationRules = stringifyConfig(
     normalizeFormFieldValidation(
@@ -4101,6 +4142,14 @@ function validateNodeValidationRules(field) {
   const label =
     field?.fieldLabel || field?.fieldName || field?.fieldCode || '当前字段'
   if (patternError) throw new Error(`“${label}”${patternError}`)
+  const customErrors = validateCustomValidationConfig(config.customValidators, field, customValidationEntityCode(field))
+  if (config.customValidators?.rules?.length && !canConfigureCustomValidation(field)) customErrors.unshift('自定义校验需要绑定实体字段')
+  if (customErrors.length) {
+    selectedField.value = field
+    activeNodeSettingsTab.value = 'rules'
+    propertyDrawerVisible.value = true
+    throw new Error(`“${label}”${customErrors[0]}`)
+  }
   const crossFieldErrors = validateCrossFieldConfiguration(config.crossField, field, crossFieldCandidateFields.value)
   if (crossFieldErrors.length) throw new Error(`“${label}”${crossFieldErrors[0]}`)
   if (!config.uniqueness) return
@@ -4486,20 +4535,15 @@ function validateNodeDataSourceMappings(field) {
 }
 
 /**
- * 保存与发布共用同一套按钮校验，并始终从服务端重新读取事件绑定，避免面板
- * 缓存或并发修改让启用按钮在没有点击执行链时进入草稿/发布预检。
+ * 草稿只校验按钮配置结构，允许先设计样式、后接入点击事件。
+ * 发布时才重新读取事件绑定并检查完整性，避免面板缓存掩盖缺失或遗留的绑定。
+ * @param {object} options 校验阶段选项；requireEventBindings 仅在发布时启用。
+ * @returns {Promise<boolean>} 校验是否通过；失败时展示原因并打开按钮设置。
  */
-async function validateFormActionsForPersistence() {
+async function validateFormActionsForPersistence({ requireEventBindings = false } = {}) {
   let eventBindings = []
-  const enabledCustomButtons = normalizeFormActionBar(
-    viewConfig.value.actionBar
-  ).customButtons.filter(button => button.enabled !== false)
-  if (!form.value.id && enabledCustomButtons.length) {
-    ElMessage.warning('新表单的自定义按钮请先停用；保存表单后配置事件链，再启用按钮')
-    openFormSettings('actions')
-    return false
-  }
-  if (form.value.id) {
+  // 草稿保存不能依赖尚未准备好的事件接口，也不应因事件查询失败丢失设计进度。
+  if (requireEventBindings && form.value.id) {
     try {
       const rows = await uiEventBindingApi.list('FORM', String(form.value.id))
       eventBindings = Array.isArray(rows) ? rows : []
@@ -4513,7 +4557,7 @@ async function validateFormActionsForPersistence() {
     actionBar: viewConfig.value.actionBar,
     nodes: formFields.value,
     eventBindings,
-    requireEventBindings: true
+    requireEventBindings
   })
   if (result.valid) return true
 
@@ -4540,7 +4584,7 @@ async function handlePublish() {
     ElMessage.warning('当前渲染配置仍有未保存修改，请先保存草稿后再发布')
     return
   }
-  if (!await validateFormActionsForPersistence()) return
+  if (!await validateFormActionsForPersistence({ requireEventBindings: true })) return
   const diff = await getFormDiff(form.value.id)
   if (!diff.changed) {
     ElMessage.info('当前草稿与已发布版本一致')
@@ -4681,7 +4725,7 @@ async function handleSave() {
   }
 
   if (!validateRendererForSave()) return
-  if (!await validateFormActionsForPersistence()) return
+  if (!await validateFormActionsForPersistence({ requireEventBindings: false })) return
 
   const persistNodes = shouldSaveCurrentFormNodes()
   let orderedFields = []
@@ -5010,6 +5054,28 @@ onMounted(async () => {
   color: #606266;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.validation-rules-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 20px;
+  align-items: start;
+}
+
+.validation-rules-grid :deep(.el-form-item__content) {
+  min-width: 0;
+}
+
+.validation-rules-grid :deep(.el-input-number) {
+  width: 100%;
+}
+
+/* 属性抽屉占半屏，窄屏时改单列，避免标签和正则编辑器挤压输入区域。 */
+@media (max-width: 1100px) {
+  .validation-rules-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .regex-validation-editor {

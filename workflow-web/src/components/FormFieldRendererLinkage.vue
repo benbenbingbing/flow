@@ -17,14 +17,16 @@
       :data-source-runtime="dataSourceRuntime"
       :attachment-item-required-state="attachmentItemRequiredState"
       @change="handleRuntimeChange"
-      @blur="$emit('blur', $event)"
+      @blur="handleRuntimeBlur"
       @focus="$emit('focus', $event)"
     />
+    <div v-if="customValidationError" class="custom-validation-error" role="alert">{{ customValidationError }}</div>
   </div>
 </template>
 
 <script setup>
 import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
+import { CUSTOM_VALIDATION_CONTEXT_KEY } from '@/shared/form-custom-validation'
 import { computed, inject, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { resolveFieldComponent, TextField } from '@/components/form-fields'
@@ -71,6 +73,13 @@ const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 provideFieldScriptContext(() => props.context)
 const fieldComponentRef = ref(null)
 const uniquePrecheckContext = inject(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, null)
+const customValidationContext = inject(CUSTOM_VALIDATION_CONTEXT_KEY, null)
+const customValidationError = computed(() => customValidationContext?.errorFor(props.field) || '')
+
+async function handleRuntimeBlur(event) {
+  emit('blur', event)
+  await customValidationContext?.onFieldBlur(props.field)
+}
 
 const resolvedComponent = computed(() => {
   const component = resolveFieldComponent(props.field)
@@ -86,6 +95,7 @@ async function handleRuntimeChange(value) {
   }
   // 事件回填可能修改条件字段，必须用全部 effect 落地后的最终数据预检。
   await checkChangeOnlyUniqueField()
+  await customValidationContext?.checkField(props.field, 'CHANGE')
 }
 
 /**
@@ -237,6 +247,7 @@ defineExpose({ validate })
 </script>
 
 <style scoped>
+.custom-validation-error { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; padding-top: 4px; }
 .form-field-renderer-linkage {
   width: 100%;
 }

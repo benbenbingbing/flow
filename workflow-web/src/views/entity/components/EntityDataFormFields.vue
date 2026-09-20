@@ -7,6 +7,7 @@
     show-icon
     class="workflow-readiness-alert"
   />
+  <el-alert v-if="customSubmissionError" :title="customSubmissionError" type="error" :closable="false" show-icon />
   <div v-if="showCustomForm">
     <el-alert
       v-if="firstCustomCrossFieldError || firstCustomUniqueError"
@@ -40,6 +41,7 @@
         entityStatusOptions,
         formUniqueErrors: customUniqueErrors,
         formUniqueness: formUniquenessRuntime,
+        formCustomValidation: customValidation.runtime,
         releaseResolutionToken: defaultForm?.releaseResolutionToken
       }"
       :data-source-runtime="dataSourceRuntime"
@@ -84,7 +86,9 @@
       <el-form-item
         v-else
         v-show="isFieldVisible(field)"
-        :label="field.fieldName" :prop="`data.${field.fieldCode}`"
+        :label="isSubFormLayoutField(field) ? undefined : field.fieldName"
+        :label-width="isSubFormLayoutField(field) ? '0px' : undefined"
+        :prop="`data.${field.fieldCode}`"
         :rules="getFieldRules(field)"
       >
         <!-- 使用 FormFieldRendererLinkage 统一渲染 -->
@@ -112,10 +116,12 @@
 </template>
 
 <script setup lang="ts">
+import { isSubFormLayoutField } from '@/shared/form-layout'
 import { ref, computed, watch, nextTick, provide } from 'vue'
 import { ElMessage } from 'element-plus'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
 import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldValidation'
+import { useFormCustomValidation } from '@/composables/useFormCustomValidation'
 import { CROSS_FIELD_ERROR_CODE } from '@/shared/form-cross-field-validation'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
@@ -604,6 +610,15 @@ const renderFields = computed(() => {
 })
 
 // 暴露校验方法
+const customValidation = useFormCustomValidation({
+  getForm: () => showCustomForm.value || !hasConfiguredForm.value ? { ...props.defaultForm, fields: formFields.value } : {},
+  getRecord: () => formData.value.data || {},
+  getEntityFields: () => runtimeEntityFields.value,
+  getEntityCode: () => props.entityCode,
+  getMode: () => runtimeMode.value,
+  getContext: () => ({ ...props.runtimeContext, record: formData.value })
+})
+const { submissionError: customSubmissionError } = customValidation
 const customCrossValidation = useFormCrossFieldValidation({
   getForm: () => showCustomForm.value ? { ...props.defaultForm, fields: formFields.value } : {},
   getRecord: () => formData.value.data || {},
@@ -616,6 +631,7 @@ const { firstError: firstCustomCrossFieldError } = customCrossValidation
 /** 自定义组件更新也标记参与字段，平台校验不依赖组件自行实现 validate。 */
 function handleCustomCrossFieldUpdate(value: Record<string, unknown>) {
   customCrossValidation.touchChanged(formData.value.data, value)
+  customValidation.touchChanged(formData.value.data, value)
   formData.value.data = value
 }
 
@@ -670,6 +686,7 @@ async function validate() {
       }
     })
   }
+  if ((showCustomForm.value || !hasConfiguredForm.value) && !(await customValidation.validate()).valid) return false
   return true
 }
 

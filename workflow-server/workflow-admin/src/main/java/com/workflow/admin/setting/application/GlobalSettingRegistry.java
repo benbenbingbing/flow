@@ -22,12 +22,20 @@ public class GlobalSettingRegistry {
     public static final String SYSTEM = "SYSTEM";
     public static final String USER = "USER";
     public static final String FIELD_TYPES_COLLAPSED = "ui.entity_design.field_types_collapsed";
+    public static final String SIDEBAR_COLLAPSED = "ui.layout.sidebar_collapsed";
+    public static final String TABS_ENABLED = "ui.layout.tabs_enabled";
     public static final String MIGRATION_SIGNING_KEY = "config.migration.signing_key";
     private static final int MAX_VALUE_BYTES = 16 * 1024;
     private final ObjectMapper json = new ObjectMapper();
     private final List<Definition> definitions = List.of(new Definition(
             FIELD_TYPES_COLLAPSED, "实体设计字段类型面板收起状态",
             "true 表示收起，false 表示展开，默认展开。同一账号在所有实体设计页共用；用户设置优先于系统设置，删除个人记录后恢复继承。切换状态自动保存，不影响实体未保存状态和发布。",
+            ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
+            SIDEBAR_COLLAPSED, "左侧主菜单收起状态",
+            "true 表示收起，false 表示展开，默认展开。未保存个人偏好时使用系统设置；用户手动切换后自动保存个人偏好，同一账号跨页面和浏览器共用，用户配置优先于系统配置。仅控制桌面主菜单，移动端导航抽屉不受影响。",
+            ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
+            TABS_ENABLED, "启用顶部多标签页",
+            "true 表示在顶部面包屑位置显示页面选项卡，false 表示单页模式并显示面包屑，默认关闭。用户可在右上角用户菜单切换，个人配置优先于系统配置。切换标签保留页面状态，关闭未保存页面时确认；已打开标签和业务输入仅保留在当前会话内，刷新页面后不恢复。偏好保存失败不影响本次模式切换。",
             ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
             MIGRATION_SIGNING_KEY, "配置迁移签名密钥",
             "用于配置迁移包的 HMAC-SHA256 签名与验签。初始化时生成随机密钥；可将需要互认的环境设置为相同值。输入 32 至 256 字节的密钥，不能包含首尾空白。保存后立即生效，已生成的包保留原签名；签名不一致时需确认来源后导入。已保存的密钥不回显，也不支持个人覆盖或恢复默认值。",

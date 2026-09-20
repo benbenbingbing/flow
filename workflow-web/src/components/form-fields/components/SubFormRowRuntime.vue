@@ -1,13 +1,16 @@
 <template>
+  <el-alert v-if="customSubmissionError" :title="customSubmissionError" type="error" :closable="false" />
   <FormNodeRenderer
     ref="nodeFormRef"
     :nodes="nodes"
     :root-parent-id="rootParentId"
     :fields="fields"
+    :label-width="labelWidth"
+    :label-position="labelPosition"
     :model-value="row"
     :readonly="readonly"
     :mode="mode"
-    :context="context"
+    :context="{ ...context, formCustomValidation: customValidation.runtime }"
     :data-source-runtime="dataSourceRuntime"
     @update:model-value="$emit('update:modelValue', $event)"
   />
@@ -15,6 +18,7 @@
 
 <script setup>
 import { provide, ref, watch } from 'vue'
+import { useFormCustomValidation } from '@/composables/useFormCustomValidation'
 import FormNodeRenderer from '@/components/FormNodeRenderer.vue'
 import { precheckFormFieldUnique } from '@/api/entityForm'
 import {
@@ -27,6 +31,8 @@ import { FORM_UNIQUE_PRECHECK_CONTEXT_KEY } from '@/shared/form-runtime/uniquePr
 const props = defineProps({
   form: { type: Object, required: true },
   fields: { type: Array, default: () => [] },
+  labelWidth: { type: String, default: '100px' },
+  labelPosition: { type: String, default: 'right' },
   nodes: { type: Array, default: () => [] },
   row: { type: Object, required: true },
   rootParentId: { type: [String, Number], default: '' },
@@ -39,6 +45,15 @@ const props = defineProps({
 defineEmits(['update:modelValue'])
 
 const nodeFormRef = ref(null)
+const customValidation = useFormCustomValidation({
+  getForm: () => ({ ...props.form, fields: props.fields, nodes: props.nodes }),
+  getRecord: () => props.row,
+  getMode: () => props.mode,
+  getReadonly: () => props.readonly,
+  getContext: () => props.context,
+  getRootParentId: () => props.rootParentId
+})
+const { submissionError: customSubmissionError } = customValidation
 const uniqueErrors = ref({})
 const uniquePrecheckController = createFormUniquePrecheckController({
   request: precheckFormFieldUnique,
@@ -105,7 +120,13 @@ async function validate() {
     )
     return false
   }
-  return (await nodeFormRef.value?.validate()) !== false
+  if ((await nodeFormRef.value?.validate()) === false) return false
+  const customResult = await customValidation.validate()
+  if (!customResult.valid) {
+    await nodeFormRef.value?.revealValidationField?.(customResult.errors[0]?.fieldCode)
+    return false
+  }
+  return true
 }
 
 defineExpose({ validate })

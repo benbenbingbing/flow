@@ -190,7 +190,7 @@
       disabled-reason="仅子表单和明细表节点支持此配置"
       v-show="activeNodeSettingsTab === 'child-pages'"
       title="子表单配置"
-      description="查看子实体关系，配置子表单布局、表单和发布版本"
+      description="配置关联名称、标题显示、子表单布局和发布版本"
     >
       <template #summary>
         <el-tag size="small" type="info">子表关系</el-tag>
@@ -217,6 +217,17 @@
         </div>
       </div>
 
+      <el-form-item label="关联名称">
+        <el-input
+          :model-value="selectedField.fieldLabel"
+          @update:model-value="isSubFormField(selectedField) && (selectedField.fieldLabel = $event)"
+          placeholder="请输入关联名称"
+        />
+      </el-form-item>
+      <el-form-item label="显示名称">
+        <el-switch v-model="selectedSubFormShowTitle" />
+        <div class="form-tip">名称按“节”标题显示；关闭后仅隐藏标题，子表单内容仍显示。</div>
+      </el-form-item>
       <el-form-item label="布局">
         <template #label>
           <ConfigHelpLabel
@@ -471,6 +482,21 @@ const selectedChildFieldOptions = computed(() =>
       )
     )
 )
+
+// 名称沿用节点 label；显示开关保存在 subFormConfig，切换时保留发布版本和参数映射。
+const selectedSubFormShowTitle = computed({
+  get() {
+    return safeParseConfig(selectedField.value?.componentProps).subFormConfig?.showTitle !== false
+  },
+  set(value) {
+    if (!selectedField.value || !isSubFormField(selectedField.value)) return
+    const componentProps = safeParseConfig(selectedField.value.componentProps)
+    selectedField.value.componentProps = stringifyConfig({
+      ...componentProps,
+      subFormConfig: { ...(componentProps.subFormConfig || {}), showTitle: value }
+    })
+  }
+})
 
 const selectedParameterContract = computed({
   get() {

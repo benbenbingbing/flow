@@ -1,4 +1,4 @@
-import { computed, inject, onBeforeUnmount, provide, shallowRef } from 'vue'
+import { computed, inject, onActivated, onDeactivated, onBeforeUnmount, provide, shallowRef } from 'vue'
 
 const breadcrumbParentsKey = Symbol('breadcrumbParents')
 
@@ -18,8 +18,11 @@ export function useBreadcrumbParents(getParents) {
   if (!source) return
 
   source.value = getParents
-  onBeforeUnmount(() => {
+  const release = () => {
     // 新页面可能已注册自己的导航，只清理当前页面持有的条目。
     if (source.value === getParents) source.value = null
-  })
+  }
+  onActivated(() => { source.value = getParents })
+  onDeactivated(release)
+  onBeforeUnmount(release)
 }

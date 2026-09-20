@@ -14,6 +14,23 @@ class EntityFormFieldProjectionTest {
     private final JsonDocumentCodec codec = new JsonDocumentCodec(new ObjectMapper());
     private final EntityFormFieldProjection projection = new EntityFormFieldProjection(codec);
 
+    /** 自定义校验随复制/发布节点投影保留，显式清空优先于历史字段快照。 */
+    @Test
+    void customValidatorsRoundTripAndExplicitClearOverridesSnapshot() {
+        EntityFormField previous = field();
+        previous.setValidationRules("""
+                {"customValidators":{"version":1,"rules":[{"name":"amount","version":1,"params":{"maxAmount":1000},"triggers":["BLUR"]}]}}
+                """);
+        var copiedNodes = projection.materialize("copy-form", List.of(previous), List.of());
+        var copy = projection.derive("copy-form", copiedNodes).get(0);
+        assertEquals(codec.readObject(previous.getValidationRules(), "原规则"), codec.readObject(copy.getValidationRules(), "复制规则"));
+        EntityFormNode clear = node();
+        clear.setRulesDocument("{\"validation\":{\"customValidators\":{\"version\":1,\"rules\":[]}}}");
+        var restored = projection.derive("form-1", projection.materialize("form-1", List.of(previous), List.of(clear))).get(0);
+        var config = (java.util.Map<?, ?>) codec.readObject(restored.getValidationRules(), "清空规则").get("customValidators");
+        assertEquals(List.of(), config.get("rules"));
+    }
+
     @Test
     void newFormProjectsPropertiesAndValidationFromNodes() {
         EntityFormNode node = node();

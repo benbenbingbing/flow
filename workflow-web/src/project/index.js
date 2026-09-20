@@ -19,6 +19,7 @@ import {
   registerFormFieldComponent
 } from '@/components/form-fields'
 import ProjectMemberChangeForm from './forms/ProjectMemberChangeForm.vue'
+import { registerProjectValidators } from './validators/index.js'
 import ProjectExtensionAcceptanceForm from './forms/ProjectExtensionAcceptanceForm.vue'
 import ProjectAcceptanceBoardList from './lists/ProjectAcceptanceBoardList.vue'
 import ProjectAcceptanceScoreField from './fields/ProjectAcceptanceScoreField.vue'
@@ -61,6 +62,7 @@ export const PROJECT_ACCEPTANCE_RULE_CONDITION =
   'PROJECT:CUSTOM_CONDITION'
 
 export function registerProjectExtensions() {
+  registerProjectValidators()
   registerCustomFormComponent(
     PROJECT_MEMBER_CHANGE_FORM,
     ProjectMemberChangeForm,

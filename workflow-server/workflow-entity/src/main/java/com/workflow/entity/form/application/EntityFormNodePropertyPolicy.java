@@ -55,7 +55,7 @@ final class EntityFormNodePropertyPolicy {
     private static final Set<String> VALID_FORMATS = Set.of(
             "EMAIL", "PHONE", "URL");
     private static final Set<String> STRUCTURED_VALIDATION_KEYS = Set.of(
-            "minLength", "maxLength", "min", "max", "format", "pattern", "crossField");
+            "minLength", "maxLength", "min", "max", "format", "pattern", "crossField", "customValidators");
     private static final Map<String, Set<String>>
             BUILT_IN_COMPONENT_FIELD_TYPES = Map.ofEntries(
                     Map.entry("input", Set.of("STRING")),
@@ -228,6 +228,12 @@ final class EntityFormNodePropertyPolicy {
             Map<String, Object> source,
             Map<String, Object> props,
             boolean migrateUnsupported) {
+        // 在通用 meaningful 判断之前拒绝 null/空对象，不能将非法配置静默当成未配置。
+        Map<?, ?> originalValidation = source != null && source.get("validation") instanceof Map<?, ?> wrapped
+                ? wrapped : source;
+        if (originalValidation != null && originalValidation.containsKey("customValidators")) {
+            FormCustomValidatorRulePolicy.validate(originalValidation.get("customValidators"));
+        }
         Map<String, Object> rules = pruneMap(source);
         if (rules.isEmpty()) {
             return new NormalizedRules(Map.of(), Map.of());
@@ -758,6 +764,9 @@ final class EntityFormNodePropertyPolicy {
 
     private static void validateValidationValues(
             Map<String, Object> validation) {
+        if (validation.containsKey("customValidators")) {
+            FormCustomValidatorRulePolicy.validate(validation.get("customValidators"));
+        }
         requireIntegerRange(validation, "minLength", 0, 20_000);
         requireIntegerRange(validation, "maxLength", 0, 20_000);
         requireNumber(validation, "min");
@@ -913,6 +922,11 @@ final class EntityFormNodePropertyPolicy {
             return result;
         }
         for (Map.Entry<String, Object> entry : source.entrySet()) {
+            if ("customValidators".equals(entry.getKey())) {
+                // 校验前不裁剪空 rules、空 params 或非法 null，否则会改变协议含义。
+                result.put(entry.getKey(), copyValue(entry.getValue()));
+                continue;
+            }
             Object value = "crossField".equals(entry.getKey())
                     ? copyValue(entry.getValue()) : pruneValue(entry.getValue());
             if (meaningful(value)) {
@@ -926,6 +940,10 @@ final class EntityFormNodePropertyPolicy {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if ("customValidators".equals(entry.getKey())) {
+                    result.put(String.valueOf(entry.getKey()), copyValue(entry.getValue()));
+                    continue;
+                }
                 // rules=[] 是清空跨字段规则的显式值，不能被通用空值裁剪变成失效协议。
                 // 保留完整配置也让未知键/空规则对象能够被契约校验拒绝，而非静默修正。
                 Object nested = "crossField".equals(entry.getKey())

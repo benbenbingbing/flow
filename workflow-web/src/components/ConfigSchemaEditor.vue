@@ -7,16 +7,19 @@
       :image-size="48"
     />
     <el-form v-else label-width="110px" size="small" class="config-schema-form">
-      <SettingsSection
+      <component
+        :is="grouped ? SettingsSection : 'div'"
         v-for="group in schemaGroups"
         :key="group.key"
-        :title="group.label"
-        :description="group.description"
-        :collapsible="group.advanced"
-        :default-expanded="false"
-        :primary="group.primary"
+        v-bind="grouped ? {
+          title: group.label,
+          description: group.description,
+          collapsible: group.advanced,
+          defaultExpanded: false,
+          primary: group.primary
+        } : {}"
       >
-        <template #summary>
+        <template v-if="grouped" #summary>
           <span class="config-group-count">{{ group.items.length }} 项</span>
         </template>
 
@@ -90,7 +93,7 @@
           />
           <div v-if="item.description" class="config-help">{{ item.description }}</div>
         </el-form-item>
-      </SettingsSection>
+      </component>
     </el-form>
   </div>
 </template>
@@ -109,7 +112,9 @@ import { parseJsonConfig } from '@/utils/jsonConfig'
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
-  schema: { type: Array, default: () => [] }
+  schema: { type: Array, default: () => [] },
+  // 内嵌参数可直接展示全部可见配置项，省去分组标题、边框和折叠层级。
+  grouped: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['update:modelValue'])

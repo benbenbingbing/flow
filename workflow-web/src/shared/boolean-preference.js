@@ -1,11 +1,13 @@
 /**
  * 布尔偏好的串行保存器。快速操作只保留最后一次待保存意图，
+ * 界面切换始终立即生效；保存失败只丢弃持久化队列，当前会话继续保留用户选择。
  * 首次读取失败时必须重新读取版本后才能写入，避免默认值覆盖已保存的偏好。
  */
 export function createBooleanPreference({ read, write, remove, onChange, onError = () => {} }) {
   let active = true
   let snapshot = null
   let queued = null
+  let localIntent = null
   let running = null
   let loading = null
   let state = { value: false, loaded: false, loading: false, saving: false, source: 'DEFAULT', overridden: false, error: '' }
@@ -16,11 +18,13 @@ export function createBooleanPreference({ read, write, remove, onChange, onError
     onChange({ ...state })
   }
 
-  function accept(view) {
-    if (typeof view?.value !== 'boolean') throw new Error('面板偏好返回了无效值')
+  function accept(view, savedIntent = null) {
+    if (typeof view?.value !== 'boolean') throw new Error('偏好返回了无效值')
     snapshot = view
-    publish({ value: queued?.kind === 'save' ? queued.value : view.value,
-      loaded: true, source: view.source, overridden: Boolean(view.override), error: '' })
+    // 只有当前选择成功写入才释放本地覆盖；旧响应、后台刷新均不能撤销用户的新操作。
+    if (savedIntent && localIntent === savedIntent) localIntent = null
+    publish({ value: localIntent ? localIntent.value : view.value,
+      loaded: true, source: view.source, overridden: Boolean(view.override), error: localIntent ? state.error : '' })
   }
 
   /** 读取共享一个请求；处于保存队列时不从外部刷新，以免旧响应覆盖新意图。 */
@@ -34,7 +38,7 @@ export function createBooleanPreference({ read, write, remove, onChange, onError
         if (active) accept(view)
         return active
       } catch (error) {
-        publish({ loaded: false, error: '偏好读取失败，点击面板时将重试' })
+        publish({ loaded: false, error: '偏好读取失败，再次操作时将重试' })
         return false
       } finally {
         publish({ loading: false })
@@ -44,7 +48,7 @@ export function createBooleanPreference({ read, write, remove, onChange, onError
     return loading
   }
 
-  /** 同一账号跨页面复用此队列；失败回退并提示，下一次操作重新读取服务端状态。 */
+  /** 同一账号跨页面复用队列；失败保留本地选择，下一次操作再读取实际版本尝试保存。 */
   function drain() {
     if (running) return running
     publish({ saving: true, error: '' })
@@ -60,12 +64,12 @@ export function createBooleanPreference({ read, write, remove, onChange, onError
           const view = intent.kind === 'reset'
             ? await remove(version)
             : await write({ ...version, settingValue: JSON.stringify(intent.value) })
-          if (active) accept(view)
+          if (active) accept(view, intent)
         }
       } catch (error) {
         queued = null
-        publish({ value: snapshot?.value ?? false, loaded: false,
-          error: error?.status === 409 ? '偏好已在其他页面修改，请重试' : '偏好保存失败，请重试' })
+        publish({ loaded: false,
+          error: error?.status === 409 ? '偏好已在其他页面修改，本次选择仅在当前会话生效' : '偏好未保存，本次选择仅在当前会话生效' })
         if (active) onError(state.error)
       } finally {
         publish({ saving: false })
@@ -79,16 +83,16 @@ export function createBooleanPreference({ read, write, remove, onChange, onError
     refresh: () => active && !running ? load() : Promise.resolve(false),
     setValue(value) {
       if (!active || typeof value !== 'boolean') return Promise.resolve()
-      queued = { kind: 'save', value }
+      localIntent = queued = { kind: 'save', value }
       publish({ value })
       return drain()
     },
     reset() {
       if (!active) return Promise.resolve()
-      queued = { kind: 'reset' }
+      localIntent = queued = { kind: 'reset', value: state.value }
       return drain()
     },
     /** 账号切换后丢弃旧响应和待写意图，不允许用新账号继续旧账号队列。 */
-    dispose() { active = false; queued = null }
+    dispose() { active = false; queued = null; localIntent = null }
   }
 }

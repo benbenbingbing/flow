@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import {
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -23,7 +22,7 @@ assert.equal(calculateSidebarWidth(460, 100, 180), SIDEBAR_MAX_WIDTH)
 
 const values = new Map([
   [SIDEBAR_WIDTH_STORAGE_KEY, '312'],
-  [SIDEBAR_COLLAPSED_STORAGE_KEY, 'true']
+  ['workflow:sidebar-collapsed', 'true']
 ])
 const storage = {
   getItem(key) {
@@ -34,9 +33,14 @@ const storage = {
   }
 }
 
-assert.deepEqual(readSidebarLayout(storage), { width: 312, collapsed: true })
+// 旧设备折叠值不带用户归属，不能覆盖服务端给出的系统默认值或当前用户偏好。
+assert.deepEqual(readSidebarLayout(storage), { width: 312 })
 assert.equal(persistSidebarLayout({ width: 240, collapsed: false }, storage), true)
-assert.deepEqual(readSidebarLayout(storage), { width: 240, collapsed: false })
+assert.deepEqual(readSidebarLayout(storage), { width: 240 })
+assert.equal(values.get('workflow:sidebar-collapsed'), 'true', '调宽不得写入折叠状态')
+values.delete('workflow:sidebar-collapsed')
+persistSidebarLayout({ width: 260, collapsed: true }, storage)
+assert.equal(values.has('workflow:sidebar-collapsed'), false, '新浏览器也不创建通用折叠值')
 
 const unavailableStorage = {
   getItem() {
@@ -47,8 +51,7 @@ const unavailableStorage = {
   }
 }
 assert.deepEqual(readSidebarLayout(unavailableStorage), {
-  width: SIDEBAR_DEFAULT_WIDTH,
-  collapsed: false
+  width: SIDEBAR_DEFAULT_WIDTH
 })
 assert.equal(persistSidebarLayout({ width: 240, collapsed: true }, unavailableStorage), false)
 

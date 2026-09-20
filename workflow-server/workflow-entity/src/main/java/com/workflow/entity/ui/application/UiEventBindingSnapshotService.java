@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
+import com.workflow.entity.form.application.EntityFormFieldProjection;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
@@ -146,6 +148,32 @@ public class UiEventBindingSnapshotService {
             String configId,
             String entityId,
             boolean pinOperationReferences) {
+        return snapshot(configType, configId, entityId, pinOperationReferences, null);
+    }
+
+    /**
+     * 按本次表单节点树生成草稿/发布事件快照，过滤历史遗留的孤立 FIELD 绑定。
+     * 必须在解析接口和固定版本之前过滤，否则已删除字段引用的失效接口仍会阻断发布。
+     * 只排除本表单的字段目标，不影响公共默认链、按钮或不可变历史快照的激活。
+     *
+     * @param nodes 与本次表单快照相同的节点树；空列表表示全部字段已移除
+     * @param pinOperationReferences 是否固定发布接口版本
+     */
+    public List<Map<String, Object>> snapshotForm(
+            String formId,
+            String entityId,
+            List<EntityFormNode> nodes,
+            boolean pinOperationReferences) {
+        return snapshot("FORM", formId, entityId, pinOperationReferences,
+                new EntityFormFieldProjection(codec).fieldEventTargetKeys(nodes));
+    }
+
+    private List<Map<String, Object>> snapshot(
+            String configType,
+            String configId,
+            String entityId,
+            boolean pinOperationReferences,
+            Set<String> fieldTargetKeys) {
         String normalizedConfigType = normalize(configType);
         Map<String, UiExtensionDefinition> sourceCache =
                 new LinkedHashMap<>();
@@ -154,6 +182,11 @@ public class UiEventBindingSnapshotService {
                         configId,
                         entityId)
                 .stream()
+                .filter(binding -> fieldTargetKeys == null
+                        || !"FORM".equals(normalize(binding.getOwnerType()))
+                        || !Objects.equals(configId, binding.getOwnerId())
+                        || !"FIELD".equals(normalize(binding.getTargetType()))
+                        || fieldTargetKeys.contains(normalizedTargetKey(binding.getTargetKey())))
                 .filter(binding -> appliesToSnapshot(
                         binding,
                         normalizedConfigType))
@@ -354,7 +387,7 @@ public class UiEventBindingSnapshotService {
     /**
      * 实体级事件会被表单和列表共同查询，整条绑定先按事件消费域判断是否适用。
      * 接口步骤的 FORM/LIST 投影由 snapshotValue 逐步完成，纯映射步骤因此能在
-     * 两类适用快照中保留；配置自身的绑定不做静默过滤。
+     * 两类适用快照中保留；仍有目标的本地绑定必须继续校验，不能按接口上下文静默过滤。
      */
     private boolean appliesToSnapshot(
             UiEventBinding binding,

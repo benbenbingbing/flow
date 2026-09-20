@@ -99,6 +99,43 @@ import static org.mockito.Mockito.when;
  */
 class UiConfigReleaseServiceTest {
 
+    /** 已删除字段的坏接口绑定必须在草稿、普通发布和热修复预检中统一排除。 */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"STANDARD", "HOTFIX"})
+    void publishPreviewExcludesOrphanFieldInterfaceBeforeResolvingIt(String mode) {
+        TestContext context = context();
+        EntityForm draft = form();
+        draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1")).thenReturn(draft);
+        Map<String, Object> oldSnapshot = context.service().draftSnapshot("FORM", "form-1");
+        UiConfigRelease active = release(context.codec(), "release-1", oldSnapshot);
+        active.setStatus("ACTIVE");
+        String historicalDocument = active.getSnapshotDocument();
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(active);
+        when(context.processImpactPort().analyzeFormImpact("form-1")).thenReturn(UiHotfixProcessImpact.empty());
+        // 删除最后一个字段：兼容字段投影和节点树都为空，不能借旧字段补回目标。
+        draft.setNodes(List.of());
+        draft.setFields(List.of());
+        UiEventBinding orphan = new UiEventBinding();
+        orphan.setId("orphan-field-binding");
+        orphan.setOwnerType("FORM");
+        orphan.setOwnerId("form-1");
+        orphan.setTargetType("FIELD");
+        orphan.setTargetKey("name");
+        orphan.setEventCode("ENTITY_SELECTED");
+        orphan.setStepsDocument("[{\"extensionId\":\"removed-list-interface\"}]");
+        when(context.eventBindingMapper().findForSnapshot("FORM", "form-1", "entity-1"))
+                .thenReturn(List.of(orphan));
+
+        assertEquals(List.of(), context.service().draftSnapshot("FORM", "form-1").get("eventBindings"));
+        UiConfigPublishRequest request = new UiConfigPublishRequest();
+        request.setReleaseMode(mode);
+        assertDoesNotThrow(() -> context.service().publishPreview("FORM", "form-1", request));
+        org.mockito.Mockito.verifyNoInteractions(context.dataSourceService());
+        verify(context.dataSourceDefinitionMapper(), never()).selectById("removed-list-interface");
+        assertEquals(historicalDocument, active.getSnapshotDocument());
+    }
+
     @Test
     void listActivationRejectsV1AndAcceptsCompleteV2ActionRules() {
         TestContext context = context();

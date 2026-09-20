@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
 import { useUserStore } from './user'
 import { readMySetting, saveMySetting, resetMySetting } from '@/api/system/settings'
 import { createBooleanPreference } from '@/shared/boolean-preference'
@@ -23,8 +22,7 @@ export const useFieldTypesPreferenceStore = defineStore('fieldTypesPreference', 
       read: () => readMySetting(KEY),
       write: (data) => saveMySetting(KEY, data),
       remove: (data) => resetMySetting(KEY, data),
-      onChange: (value) => { state.value = value },
-      onError: (message) => ElMessage.warning(message)
+      onChange: (value) => { state.value = value }
     })
     void runtime.refresh()
   }, { immediate: true, flush: 'sync' })

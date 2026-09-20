@@ -1,6 +1,6 @@
 <template>
   <el-dialog
-    v-model="processDialogVisible"
+    v-model="presentedDialogVisible"
     width="75%"
     :class="[
       'entity-form-dialog',
@@ -145,6 +145,7 @@
 import { resolvePageParameters } from '@/shared/page-parameters'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useWorkspacePage } from '@/composables/useWorkspacePage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
@@ -231,6 +232,8 @@ const listReleaseContext = computed(() => ({
 }))
 
 const processDialogVisible = ref(false)
+const workspacePage = useWorkspacePage()
+const presentedDialogVisible = workspacePage.visibleWhenActive(processDialogVisible)
 const seamlessPresentation = computed(() => props.formPresentation === 'seamless')
 const activeDialogTab = ref('basic')
 const approveSubmitLoading = ref(false)
@@ -279,6 +282,12 @@ const {
   getProcessStatusText,
   loadProcessDetail
 } = useProcessDetail()
+
+// 审批表单仍使用弹窗，但关闭所属标签时也必须保护已填写的数据和意见。
+let savedApprovalFingerprint = ''
+const approvalFingerprint = () => JSON.stringify([entityData.value, approveForm])
+workspacePage.registerGuard(() => processDialogVisible.value && !isViewMode.value
+  && Boolean(savedApprovalFingerprint) && savedApprovalFingerprint !== approvalFingerprint())
 
 const approvalDialogTitle = computed(() => {
   const status = currentTask.value?.processStatus
@@ -425,6 +434,7 @@ const dialogRuntimeDiagnosticResetKey = computed(() => [
 ].join(':'))
 
 function handleDialogClosed() {
+  if (processDialogVisible.value) return // 缓存页暂时隐藏弹窗时不丢弃审批上下文。
   runtimeDiagnosticsRef.value?.reset()
   approvalConflictMessage.value = ''
   processRuntimeMetadata.value = {}
@@ -621,6 +631,8 @@ const openApprove = async (
   }
   await reloadExplicitFormDetail(row)
   await loadFormActions()
+  // 弹窗展示前记录基线，后续办理人预览请求期间输入的内容仍属于未保存修改。
+  savedApprovalFingerprint = approvalFingerprint()
   processDialogVisible.value = true
   await nextTick()
   await refreshNextApproverPreview()

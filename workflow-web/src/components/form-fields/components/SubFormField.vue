@@ -1,5 +1,7 @@
 <template>
   <div class="sub-form-field">
+    <SectionField v-if="showTitle" :field="field" class="sub-form-section-title" />
+    <el-alert v-if="legacyCustomSubmitError" :title="legacyCustomSubmitError" type="error" :closable="false" />
     <SubFormRenderer
       ref="subFormRendererRef"
       :model-value="fieldValue"
@@ -18,6 +20,8 @@
           :nodes="runtimeNodes"
           :root-parent-id="runtimeRootParentId"
           :fields="runtimeFields"
+          :label-width="parentForm?.labelWidth"
+          :label-position="parentForm?.labelPosition"
           :row="row"
           :readonly="isDisabled"
           :mode="context.mode || (isDisabled ? 'view' : 'edit')"
@@ -31,10 +35,14 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { formContextKey } from 'element-plus'
 import SubFormRenderer from '@/components/SubFormRenderer.vue'
+import SectionField from './SectionField.vue'
 import SubFormRowRuntime from './SubFormRowRuntime.vue'
 import { useFormField } from '../composables/useFormField.js'
+import { useSubFormCustomValidation } from '@/composables/useSubFormCustomValidation'
+import { entityApi } from '@/api/entity'
 import {
   getEntityFields,
   getFormRuntimeRelease,
@@ -73,9 +81,14 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 
 const { fieldValue, isDisabled, handleChange, parsedComponentProps } = useFormField(props, emit)
+// 嵌入的子行继承父表单标签设置，避免去掉外层标签后仍因默认宽度不同而错位。
+const parentForm = inject(formContextKey, null)
+// 历史配置未声明开关时继续显示名称；仅隐藏标题，不隐藏子表单数据。
+const showTitle = computed(() => parsedComponentProps.value.subFormConfig?.showTitle !== false)
 const subFormRendererRef = ref(null)
 const rowRuntimeRefs = ref({})
 const legacyUniqueErrors = ref({})
+const legacyCustomSubmitError = ref('')
 const legacyRowControllers = new Map()
 
 function setRowRuntimeRef(index, instance) {
@@ -131,6 +144,18 @@ const externalFormFields = ref([])
 const externalFormNodes = ref([])
 const refFormLayoutType = ref('vertical')
 const childFormDefinition = ref(null)
+const childEntityCode = ref('')
+// 使用子实体自己的编码匹配扩展范围；禁止继承父表 entityCode。
+watch(() => subFormMeta.value.refEntityId, async (id, _old, onCleanup) => {
+  let active = true
+  onCleanup(() => { active = false })
+  childEntityCode.value = ''
+  if (!id) return
+  try {
+    const options = await entityApi.resolveOptions({ ids: [String(id)] })
+    if (active) childEntityCode.value = options.find(item => String(item.id) === String(id))?.entityCode || ''
+  } catch { /* 缺少身份时受限校验器会明确报错，不能默认为父实体或全部实体。 */ }
+}, { immediate: true })
 const childReleaseIdentity = ref('')
 let releaseLoadSequence = 0
 let childInitializationSequence = 0
@@ -296,6 +321,10 @@ function normalizeExternalFields(fields) {
       fieldCode: f.fieldCode || f.fieldId || f.id,
       fieldName: f.fieldLabel || f.fieldName,
       fieldType: mapFieldType(f.componentType || f.fieldType),
+      validationFieldType: f.fieldType,
+      isHidden: f.isHidden,
+      isReadonly: f.isReadonly,
+      modeAccess: f.modeAccess,
       componentType: mapComponentType(f.componentType || f.fieldType),
       isEditable: true,
       isRequired: f.isRequired === 1 || f.isRequired === true,
@@ -527,6 +556,7 @@ function childRenderContext(row, index) {
     form: childFormDefinition.value || props.context?.form,
     entityId: childFormDefinition.value?.entityId
       || subFormMeta.value.refEntityId,
+    entityCode: childFormDefinition.value?.entityCode || childEntityCode.value,
     recordId: row?.id || null,
     record: {
       id: row?.id || null,
@@ -661,7 +691,10 @@ async function validate() {
       )
     )
     if (uniqueResults.some(result => !result.valid)) return false
-    return (await subFormRendererRef.value?.validate?.()) !== false
+    if ((await subFormRendererRef.value?.validate?.()) === false) return false
+    const customResult = await legacyCustomValidation.validate()
+    legacyCustomSubmitError.value = customResult.message
+    return customResult.valid
   }
 
   const structuralValid = (await subFormRendererRef.value?.validate?.()) !== false
@@ -743,7 +776,7 @@ const subFormConfig = computed(() => {
   }
 
   return {
-    label: field?.fieldName || '明细',
+    label: field?.fieldLabel || field?.fieldName || '明细',
     showHeaderTitle: false,
     fieldKey: field?.fieldCode || field?.fieldKey || 'detailList',
     required: field?.required || false,
@@ -761,6 +794,15 @@ const subFormConfig = computed(() => {
     relationType: subFormMeta.value.relationType,
     childRefFieldCode: subFormMeta.value.childRefFieldCode
   }
+})
+
+const legacyCustomValidation = useSubFormCustomValidation({
+  getRows: () => relationRows(fieldValue.value),
+  getFields: () => subFormConfig.value.fields || [],
+  getForm: () => childFormDefinition.value || {},
+  getContext: childRenderContext,
+  getReadonly: () => isDisabled.value,
+  enabled: () => !hasNodeTree.value
 })
 
 function legacyUniqueFields() {
@@ -885,6 +927,8 @@ function syncLegacyRowControllers() {
 
 function resolveLegacyUniqueError(index, field) {
   if (hasNodeTree.value) return ''
+  const customError = legacyCustomValidation.errorFor(index, field)
+  if (customError) return customError
   return legacyUniqueErrors.value[
     `${index}:${resolveFormFieldKey(field || {})}`
   ] || ''
@@ -903,6 +947,7 @@ function legacyControllerForEvent(payload) {
 }
 
 function handleLegacyFieldChange(payload) {
+  void legacyCustomValidation.check(payload, 'CHANGE')
   const entry = legacyControllerForEvent(payload)
   if (!entry
       || resolveFormUniqueValidationTrigger(payload.field) !== 'change') {
@@ -918,6 +963,7 @@ function handleLegacyFieldChange(payload) {
 }
 
 function handleLegacyFieldBlur(payload) {
+  void legacyCustomValidation.check(payload, 'BLUR')
   const entry = legacyControllerForEvent(payload)
   if (!entry) return
   return entry.controller.check(
@@ -950,5 +996,9 @@ defineExpose({ validate })
 <style scoped>
 .sub-form-field {
   width: 100%;
+}
+
+.sub-form-section-title {
+  margin-bottom: 12px;
 }
 </style>

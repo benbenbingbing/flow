@@ -1179,14 +1179,14 @@ assert.equal(
 assert.equal(
   formFieldRegistrySource.includes("key: 'showWordLimit'"),
   false,
-  '显示字数应由数据校验直接配置，不能继续留在组件参数中'
+  '显示字数应由基础属性直接配置，不能继续留在组件参数中'
 )
 ;[
   ':disabled="!canConfigureSelectedWordLimit"',
   'label="显示字数"',
   "updateSelectedNodeConfig('showWordLimit', $event)"
 ].forEach((marker) => {
-  assert.ok(formDesigner.includes(marker), `数据校验缺少字数显示配置: ${marker}`)
+  assert.ok(formDesigner.includes(marker), `基础属性缺少字数显示配置: ${marker}`)
 })
 ;[
   'selectedValidationMaxLength',
@@ -1202,14 +1202,20 @@ const validationMaxLengthIndex = formDesigner.indexOf(
   "updateValidationConfig('maxLength', $event)"
 )
 const wordLimitIndex = formDesigner.indexOf('label="显示字数"')
+const wordLimitSectionStart = formDesigner.indexOf('title="基础属性"')
+const wordLimitSectionEnd = formDesigner.indexOf('</SettingsSection>', wordLimitSectionStart)
+const validationSectionStart = formDesigner.indexOf('title="校验规则"')
 const regexIndex = formDesigner.indexOf('label="正则"')
 const extensionSettingsIndex = formDesigner.indexOf('title="复用与扩展"')
 assert.ok(
-  validationMaxLengthIndex >= 0
-    && wordLimitIndex > validationMaxLengthIndex
-    && regexIndex > wordLimitIndex
+  wordLimitSectionStart >= 0
+    && wordLimitIndex > wordLimitSectionStart
+    && wordLimitIndex < wordLimitSectionEnd
+    && validationSectionStart > wordLimitSectionEnd
+    && validationMaxLengthIndex > validationSectionStart
+    && regexIndex > validationMaxLengthIndex
     && extensionSettingsIndex > regexIndex,
-  '显示字数与正则应位于数据校验中，并在复用与扩展之前'
+  '显示字数应位于基础属性内，长度与正则应保留在数据校验中，并在复用与扩展之前'
 )
 ;[
   'getRuntimeRegexPatternError',

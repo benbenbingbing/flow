@@ -4569,10 +4569,10 @@ public class UiConfigReleaseService {
             snapshot.put(
                     "eventBindings",
                     snapshotSupport.stableValue(
-                            eventBindingSnapshotService.snapshot(
-                                    FORM,
+                            eventBindingSnapshotService.snapshotForm(
                                     configId,
                                     form.getEntityId(),
+                                    publishedNodes,
                                     pinRuntimeReferences)));
             snapshot.put(
                     "viewCompositions",

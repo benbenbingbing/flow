@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Delete;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * UI 事件绑定持久化入口。
@@ -59,6 +60,26 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
     int deleteByOwner(
             @Param("ownerType") String ownerType,
             @Param("ownerId") String ownerId);
+
+    /**
+     * 清理已经失去字段节点的本地事件草稿，包括同目标的旧逻辑删除行。
+     * 事件按字段编码而非节点 ID 绑定，清理后重新添加字段不会接上旧事件；
+     * 物理清理避免 deleted 参与唯一键时反复删除/重建产生冲突。
+     * 已发布事件保存在独立快照中，不受此操作影响。
+     *
+     * @param formId 当前表单 ID
+     * @param targetKeys 已经没有有效节点承载的字段编码，必须非空
+     */
+    @Delete({"<script>",
+            "DELETE FROM ui_event_binding WHERE owner_type = 'FORM'",
+            "AND owner_id = #{formId} AND target_type = 'FIELD' AND target_key IN",
+            "<foreach collection='targetKeys' item='key' open='(' separator=',' close=')'>",
+            "#{key}",
+            "</foreach>",
+            "</script>"})
+    int deleteFormFieldBindings(
+            @Param("formId") String formId,
+            @Param("targetKeys") Set<String> targetKeys);
 
     @Select("SELECT * FROM ui_event_binding "
             + "WHERE ((owner_type = 'ENTITY' AND owner_id = #{entityId}) "

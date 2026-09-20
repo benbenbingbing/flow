@@ -56,6 +56,61 @@ class GlobalSettingServiceTest {
         assertEquals(2, view.override().version());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {SIDEBAR_COLLAPSED, TABS_ENABLED})
+    void layoutPreferenceIsListedAndInheritsSystemWithoutCreatingPersonalOverride(String key) {
+        var definition = registry.require(key);
+        assertEquals(ValueType.BOOLEAN, definition.valueType());
+        assertEquals(Set.of(SYSTEM, USER), definition.scopes());
+        assertTrue(definition.clientReadable());
+        assertFalse(service.readMine(key).value().booleanValue());
+        assertTrue(service.listSystem().stream().anyMatch(item -> key.equals(item.settingKey())));
+
+        var system = row("sidebar-system", SYSTEM, "true", 0);
+        system.setSettingKey(key);
+        when(mapper.find(SYSTEM, "0", key)).thenReturn(system);
+        var inherited = service.readMine(key);
+        assertTrue(inherited.value().booleanValue());
+        assertEquals(SYSTEM, inherited.source());
+        assertNull(inherited.override());
+        verify(mapper, never()).insert(any(GlobalSettingRecord.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {SIDEBAR_COLLAPSED, TABS_ENABLED})
+    void layoutManualChoiceOverridesLaterSystemChangesAndBelongsOnlyToCurrentUser(String key) {
+        var system = row("sidebar-system", SYSTEM, "true", 0);
+        system.setSettingKey(key);
+        when(mapper.find(SYSTEM, "0", key)).thenReturn(system);
+        AtomicReference<GlobalSettingRecord> personal = new AtomicReference<>();
+        when(mapper.find(USER, "u1", key)).thenAnswer(call -> personal.get());
+        when(mapper.insert(any(GlobalSettingRecord.class))).thenAnswer(call -> {
+            GlobalSettingRecord stored = call.getArgument(0);
+            stored.setId("sidebar-personal"); personal.set(stored); return 1;
+        });
+
+        var saved = service.saveMine(key, new GlobalSettingRequests.Save("false", null, null));
+        assertFalse(saved.value().booleanValue());
+        assertEquals(USER, saved.source());
+        assertEquals("u1", personal.get().getOwnerId());
+        assertEquals(key, personal.get().getSettingKey());
+        assertEquals("BOOLEAN", personal.get().getSettingValueType());
+        for (String value : new String[]{"false", "true"}) {
+            system.setSettingValue(value);
+            assertFalse(service.readMine(key).value().booleanValue());
+            assertEquals(USER, service.readMine(key).source());
+        }
+
+        SysUser another = new SysUser();
+        another.setId("u2"); another.setStatus("0"); another.setDeleted(0);
+        when(users.selectById("u2")).thenReturn(another);
+        UserContext.setCurrentUser("u2", "another");
+        var otherUser = service.readMine(key);
+        assertTrue(otherUser.value().booleanValue());
+        assertEquals(SYSTEM, otherUser.source());
+        assertNull(otherUser.override());
+    }
+
     @Test
     void malformedPersonalValueInheritsSystemButKeepsPersonalVersionForRepair() {
         when(mapper.find(USER, "u1", KEY)).thenReturn(row("mine", USER, "broken", 2));

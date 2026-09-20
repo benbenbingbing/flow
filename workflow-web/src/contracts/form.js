@@ -27,6 +27,9 @@
  * @property {{errors: Object, onFieldBlur: Function, checkField: Function}} [formUniqueness]
  *   onFieldBlur(fieldOrCode) / checkField(fieldOrCode, 'CHANGE'|'BLUR'|'SUBMIT')。
  *   是否执行仍受发布规则约束。请用可选链访问，预览或独立页面可能未提供。
+ * @property {{errors: Object, onFieldBlur: Function, checkField: Function, errorFor: Function}} [formCustomValidation]
+ *   已绑定规则由宿主在提交时统一校验；自绘输入调用 onFieldBlur(fieldCode)，
+ *   errorFor(fieldCode) 读取错误文本。emit 新的 modelValue 触发 CHANGE。
  * @property {string} [releaseResolutionToken] 宿主发布上下文，只透传，不自行构造。
  */
 export const customFormProps = {

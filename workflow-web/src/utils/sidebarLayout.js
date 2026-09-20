@@ -5,7 +5,6 @@ export const SIDEBAR_COLLAPSED_WIDTH = 64
 export const SIDEBAR_RESIZE_STEP = 16
 
 export const SIDEBAR_WIDTH_STORAGE_KEY = 'workflow:sidebar-width'
-export const SIDEBAR_COLLAPSED_STORAGE_KEY = 'workflow:sidebar-collapsed'
 
 /**
  * 将用户输入或持久化的侧栏宽度收敛到桌面布局允许的范围内。
@@ -51,26 +50,26 @@ function resolveStorage(storage) {
 }
 
 /**
- * 读取侧栏偏好；浏览器禁用存储或数据异常时使用安全默认值。
+ * 只读取设备上的侧栏宽度；折叠状态由账号设置提供，忽略旧浏览器通用值。
  */
 export function readSidebarLayout(storage) {
   const targetStorage = resolveStorage(storage)
   if (!targetStorage) {
-    return { width: SIDEBAR_DEFAULT_WIDTH, collapsed: false }
+    return { width: SIDEBAR_DEFAULT_WIDTH }
   }
 
   try {
     return {
-      width: normalizeSidebarWidth(targetStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)),
-      collapsed: targetStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true'
+      width: normalizeSidebarWidth(targetStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY))
     }
   } catch {
-    return { width: SIDEBAR_DEFAULT_WIDTH, collapsed: false }
+    return { width: SIDEBAR_DEFAULT_WIDTH }
   }
 }
 
 /**
- * 保存侧栏宽度和折叠状态。存储不可用不应影响导航本身，因此失败时仅返回 false。
+ * 仅保存侧栏宽度，避免拖拽布局意外创建或覆盖用户的折叠偏好。
+ * 存储不可用不应影响导航本身，因此失败时仅返回 false。
  */
 export function persistSidebarLayout(layout, storage) {
   const targetStorage = resolveStorage(storage)
@@ -80,10 +79,6 @@ export function persistSidebarLayout(layout, storage) {
     targetStorage.setItem(
       SIDEBAR_WIDTH_STORAGE_KEY,
       String(normalizeSidebarWidth(layout?.width))
-    )
-    targetStorage.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      String(Boolean(layout?.collapsed))
     )
     return true
   } catch {

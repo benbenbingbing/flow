@@ -138,7 +138,8 @@
   <el-form-item
     v-else-if="runtimeField"
     v-show="visible"
-    :label="node.props.label || runtimeField.fieldLabel || runtimeField.fieldName"
+    :label="isSubFormLayoutField(runtimeField) ? undefined : (node.props.label || runtimeField.fieldLabel || runtimeField.fieldName)"
+    :label-width="isSubFormLayoutField(runtimeField) ? '0px' : undefined"
     :prop="fieldKey"
     :rules="fieldRules"
     :error="uniquePrecheckContext?.errorFor?.(fieldKey) || ''"
@@ -200,6 +201,7 @@
 </template>
 
 <script setup>
+import { isSubFormLayoutField } from '@/shared/form-layout'
 import { computed, defineComponent, defineAsyncComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'

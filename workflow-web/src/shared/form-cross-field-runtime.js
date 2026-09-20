@@ -10,7 +10,7 @@ const nodeProps = node => safeParseConfig(node?.propsDocument ?? node?.props)
  * 从发布节点投影本实体字段，保留隐藏的比较来源。实体元数据只补齐，不带入实体级校验。
  * 字段节点规则优先，包括显式清空；子表节点及后代不进入当前记录的比较作用域。
  */
-export function collectCrossFieldRuntimeFields(form = {}, entityFields = []) {
+export function collectCrossFieldRuntimeFields(form = {}, entityFields = [], { rootParentId = '' } = {}) {
   const fields = form.fields || []
   const nodes = form.nodes || []
   const metadata = field => entityFields.find(item => item.fieldCode === field.fieldCode) || {}
@@ -28,11 +28,13 @@ export function collectCrossFieldRuntimeFields(form = {}, entityFields = []) {
     let current = node
     const seen = new Set()
     while (current) {
+      // 子表行可以显式以子表容器为边界收集字段，不能继续爬到父实体。
+      if (rootParentId && String(current.id) === String(rootParentId)) return true
       if (seen.has(String(current.id)) || ['SUB_FORM', 'REPEATER'].includes(current.nodeType)) return false
       seen.add(String(current.id))
       current = byId.get(String(current.parentId))
     }
-    return true
+    return !rootParentId
   }).map(node => {
     const props = nodeProps(node)
     const code = props.fieldCode || node.bindingRef
