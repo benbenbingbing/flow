@@ -26,6 +26,8 @@ const TRUSTED_CONTEXT_KEYS = new Set([
   'queryinterfaceextensionid',
   'bindingcode',
   'requestid',
+  // 关联来源由服务端解析，包含空值时也不能作为普通事件上下文转发。
+  'sourcerecordid',
   'releaseid',
   'releaseversion',
   'releaseresolutiontoken',

@@ -1251,11 +1251,12 @@ public class UiEventRuntimeService {
     }
 
     /**
-     * 为 FORM_BUTTON_CLICK 构造可交给 Provider 的客户端上下文。
+     * 为事件映射状态和 Provider 请求构造不含服务端保留身份的业务上下文。
      *
-     * <p>主执行入口已经把 FORM_BUTTON context 重建为服务端正向白名单；这里的
-     * 保留键过滤是内部调用的二次防线。Provider 的完整身份仍只能从
-     * authorization/invocation context 读取。</p>
+     * <p>列表查询会把运行上下文 DTO 转为 Map，sourceRecordId 即使为 null 也会
+     * 触发接口防伪校验，因此所有事件都应剥离顶层保留键，并同步用于 eventState。
+     * 表单按钮额外过滤任务和流程身份；嵌套上下文及映射输入继续由接口授权递归校验。
+     * Provider 的完整身份仍只能从 authorization/invocation context 读取。</p>
      */
     private Map<String, Object> providerClientContext(
             UiEventExecuteRequest request) {
@@ -1263,14 +1264,14 @@ public class UiEventRuntimeService {
                 || request.getContext().isEmpty()) {
             return Map.of();
         }
-        if (!UiDataSourceUsages.FORM_BUTTON_CLICK.equals(normalize(
-                request.getEventCode()))) {
-            return new LinkedHashMap<>(request.getContext());
-        }
+        boolean formButton = UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
+                normalize(request.getEventCode()));
         Map<String, Object> context = new LinkedHashMap<>();
         request.getContext().forEach((key, value) -> {
-            if (!UiDataSourceExecutionAccessService
-                    .isReservedFormButtonRequestKey(key)) {
+            boolean reserved = formButton
+                    ? UiDataSourceExecutionAccessService.isReservedFormButtonRequestKey(key)
+                    : UiDataSourceExecutionAccessService.isReservedRequestKey(key);
+            if (!reserved) {
                 context.put(key, value);
             }
         });

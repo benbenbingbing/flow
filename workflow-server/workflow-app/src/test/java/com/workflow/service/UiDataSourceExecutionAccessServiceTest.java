@@ -48,6 +48,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
+import com.workflow.entity.list.api.response.EntityListRuntimeContextDTO;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
@@ -66,6 +67,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -619,6 +621,89 @@ class UiDataSourceExecutionAccessServiceTest {
                 UnsupportedOperationException.class,
                 () -> authorization.requestContext()
                         .put("unexpected", "value"));
+    }
+
+    /** 列表上下文 DTO 的来源身份不能泄漏到接口请求，前置接口仍应正常进入平台查询。 */
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"parent-record-1"})
+    void listLoadContextPassesRealAuthorizationBeforeDefaultQuery(String sourceRecordId) {
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> parameters = Map.of("keyword", "待处理");
+        EntityListRuntimeContextDTO listContext = new EntityListRuntimeContextDTO();
+        listContext.setSourceEntityCode("project");
+        listContext.setSourceRecordId(sourceRecordId);
+        listContext.setRelationKey("project_expenses");
+        listContext.setParameters(parameters);
+        Map<String, Object> eventContext = mapper.convertValue(listContext,
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        eventContext.put("params", parameters);
+        // 通用事件入口还会携带前端展示身份，包含大小写和分隔符变体。
+        eventContext.put("LIST_KEY", "display-only");
+        eventContext.put("Source-Record-Id", sourceRecordId);
+
+        UiEventExecuteRequest event = new UiEventExecuteRequest();
+        event.setConfigType("LIST");
+        event.setConfigId("list-1");
+        event.setEventCode("LIST_LOAD");
+        event.setContext(eventContext);
+        event.setInput(Map.of("params", parameters, "filters", Map.of(), "pageNum", 2, "pageSize", 20));
+        List<Map<String, Object>> steps = List.of(Map.of(
+                "strategy", "BEFORE", "extensionId", "source-1", "operationCode", "query"));
+        Map<String, Object> snapshot = Map.of(
+                "configType", "LIST", "list", Map.of("id", "list-1", "entityId", "entity-1"),
+                "eventBindings", List.of(Map.of(
+                        "ownerType", "LIST", "ownerId", "list-1", "targetType", "OWNER",
+                        "eventCode", "LIST_LOAD", "steps", steps)));
+        UiConfigRelease release = new UiConfigRelease();
+        release.setId("list-release-1");
+        release.setConfigType("LIST");
+        release.setConfigId("list-1");
+        release.setVersion(3);
+        release.setSnapshotDocument(context.codec().write(snapshot, "列表事件测试发布快照"));
+        when(context.listMapper().selectById("list-1")).thenReturn(list());
+        when(context.definitionMapper().selectById("entity-1")).thenReturn(entity());
+        when(context.releaseMapper().findActive("LIST", "list-1")).thenReturn(release);
+        when(context.menuMapper().selectPermsByUserId("user-1")).thenReturn(Set.of("entity:expense:list"));
+        when(context.userService().getById("user-1")).thenReturn(user());
+        when(context.dataPermissionEngine().calculatePermission("expense", "default", user()))
+                .thenReturn(DataPermissionResult.allowAll());
+        UiEventBindingService bindings = mock(UiEventBindingService.class);
+        when(bindings.resolvePublished(event)).thenReturn(new UiEventBindingService.ResolvedEventChain(
+                steps, "list-release-1", 3, "entity-1", "expense", "default", snapshot));
+        UiInterfaceExtensionService interfaces = mock(UiInterfaceExtensionService.class);
+        when(interfaces.executeOperation(eq("source-1"), eq("query"), any())).thenAnswer(invocation -> {
+            UiExtensionExecuteRequest request = invocation.getArgument(2);
+            UiDataSourceExecutionAuthorization authorization = context.service().authorizePublished(
+                    definition("REGISTERED_PROVIDER", "GLOBAL", null), request);
+            Map<String, Object> providerContext = authorization.requestContext();
+            assertFalse(providerContext.containsKey("sourceRecordId"));
+            assertFalse(providerContext.containsKey("Source-Record-Id"));
+            assertFalse(providerContext.containsKey("LIST_KEY"));
+            assertEquals(parameters, providerContext.get("params"));
+            assertEquals(parameters, providerContext.get("parameters"));
+            assertEquals("project_expenses", providerContext.get("relationKey"));
+            Map<?, ?> state = (Map<?, ?>) providerContext.get("eventState");
+            assertFalse(((Map<?, ?>) state.get("context")).containsKey("sourceRecordId"));
+            assertEquals("user-1", authorization.user().getId());
+            return Map.of("filters", Map.of("name", "待处理"));
+        });
+        UiEventRuntimeService runtime = new UiEventRuntimeService(
+                bindings, interfaces, new UiEventValueMapper(), mock(EntitySelectionRuntimeService.class),
+                mock(SystemAuditPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
+                mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper);
+
+        UiEventExecutionResult result = runtime.execute(event, input -> {
+            assertEquals(parameters, input.get("params"));
+            assertEquals(Map.of("name", "待处理"), input.get("filters"));
+            assertEquals(2, input.get("pageNum"));
+            assertEquals(20, input.get("pageSize"));
+            return Map.of("records", List.of(), "total", 0);
+        });
+
+        assertTrue(result.isDefaultExecuted());
+        assertEquals(Map.of("records", List.of(), "total", 0), result.getData());
+        assertTrue(eventContext.containsKey("sourceRecordId"));
     }
 
     /** 测试所有接口类型都拒绝客户端伪造用户身份：验证静态数据源也不能提交 userId */

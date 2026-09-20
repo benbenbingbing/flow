@@ -10,6 +10,8 @@ const source = {
   list_key: 'default',
   'ENTITY-CODE': 'expense',
   userId: 'forged-user',
+  sourceRecordId: null,
+  'Source-Record-Id': 'parent-record-1',
   taskId: 'forged-task',
   process_instance_id: 'forged-process',
   releaseResolutionToken: 'signed-release-token',
@@ -34,6 +36,21 @@ assert.deepEqual(
   }
 )
 assert.equal(source.listId, 'list-1')
+assert.equal(source.sourceRecordId, null)
+
+for (const sourceRecordId of [null, '', 'parent-record-1']) {
+  const payload = buildUiEventExecutionPayload({
+    configType: 'LIST',
+    configId: 'list-1',
+    input: { filters: { status: 'ACTIVE' }, pageNum: 2, pageSize: 20 },
+    context: { sourceRecordId, sourceEntityCode: 'project', params: { keyword: '待处理' } }
+  }, 'LIST_LOAD')
+  assert.deepEqual(payload.context, {
+    sourceEntityCode: 'project',
+    params: { keyword: '待处理' }
+  })
+  assert.deepEqual(payload.input, { filters: { status: 'ACTIVE' }, pageNum: 2, pageSize: 20 })
+}
 
 assert.deepEqual(
   sanitizeUiEventContext(source, 'FORM_BUTTON_CLICK'),
