@@ -162,8 +162,6 @@ export function buildEntitySelectionSourceFields(
     { fieldCode: 'id', fieldName: '数据 ID', fieldType: 'STRING' },
     { fieldCode: 'name', fieldName: '数据名称', fieldType: 'STRING' },
     { fieldCode: 'code', fieldName: '数据编码', fieldType: 'STRING' },
-    { fieldCode: 'dataNo', fieldName: '数据编号', fieldType: 'STRING' },
-    { fieldCode: 'title', fieldName: '数据标题', fieldType: 'STRING' },
     { fieldCode: 'status', fieldName: '状态', fieldType: 'STRING' }
   ]
   const result = standard.map(field => ({

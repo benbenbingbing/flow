@@ -69,8 +69,8 @@ public class EntityDataControllerTest {
         testData = new EntityDataDTO();
         testData.setId("1");
         testData.setEntityCode("test_entity");
-        testData.setDataNo("TEST-001");
-        testData.setTitle("测试数据");
+        testData.setCode("TEST-001");
+        testData.setName("测试数据");
         testData.setSubmitterId("user1");
         testData.setSubmitterName("张三");
         testData.setStatus("PENDING");
@@ -90,7 +90,7 @@ public class EntityDataControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data[0].entityCode").value("test_entity"))
-                .andExpect(jsonPath("$.data[0].dataNo").value("TEST-001"));
+                .andExpect(jsonPath("$.data[0].code").value("TEST-001"));
 
         verify(entityDataListConfigService, times(1)).findListWithConfig("test_entity", null, null);
     }
@@ -147,7 +147,7 @@ public class EntityDataControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("1"))
-                .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
+                .andExpect(jsonPath("$.data.code").value("TEST-001"));
 
         verify(entityDataActionService, times(1)).getDetailReadOnly(
                 eq("test_entity"),
@@ -230,7 +230,7 @@ public class EntityDataControllerTest {
                 .content(objectMapper.writeValueAsString(testData)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.dataNo").value("TEST-001"));
+                .andExpect(jsonPath("$.data.code").value("TEST-001"));
 
         verify(entityDataActionService, times(1)).create(
                 any(EntityDataDTO.class),

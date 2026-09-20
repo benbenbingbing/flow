@@ -38,7 +38,7 @@
       >
         <div class="identity-cell">
           <strong>{{ valueOf(row, 'name') || row.name || '-' }}</strong>
-          <small>{{ row.dataNo || row.code || row.id }}</small>
+          <small>{{ row.code || row.id }}</small>
         </div>
         <span>{{ sceneLabel(valueOf(row, 'acceptance_scene')) }}</span>
         <div class="score-cell">

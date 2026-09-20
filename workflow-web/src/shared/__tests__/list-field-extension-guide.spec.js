@@ -91,7 +91,7 @@ assert.match(guide, /\[A-Z\]\[A-Z0-9_\]\{1,63\}/)
 assert.match(templateProvider, /return "FIELD_TEMPLATE"/)
 assert.match(templateProvider, /\$\{fieldCode\}/)
 assert.match(guide, /FIELD_TEMPLATE/)
-assert.match(guide, /\$\{dataNo\} - \$\{name\}/)
+assert.match(guide, /\$\{code\} - \$\{name\}/)
 
 assert.match(projectProvider, /PROJECT_CUSTOM_FIELD/)
 assert.match(projectProvider, /record.getExtData\(\)\.put/)

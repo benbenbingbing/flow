@@ -6,25 +6,19 @@ import com.workflow.core.result.Result;
 import com.workflow.entity.list.api.request.EntityListActionDeleteRequest;
 import com.workflow.entity.list.api.request.EntityListActionSaveRequest;
 import com.workflow.entity.list.api.request.EntityListItemReorderRequest;
-import com.workflow.entity.list.api.request.EntityListSceneDeleteRequest;
-import com.workflow.entity.list.api.request.EntityListSceneSaveRequest;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListAction;
-import com.workflow.entity.list.infrastructure.persistence.record.EntityListScene;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 /**
- * 实体列表项（动作与场景）管理控制器。
- * <p>针对单个列表配置维护其行级动作（action）与场景（scene），
+ * 实体列表动作管理控制器。
+ * <p>针对单个列表配置维护其行级动作（action），
  * 所有操作均需通过列表访问权限校验。
  */
 @AuthenticatedApi(objectAuthorization = true)
@@ -103,65 +97,4 @@ public class EntityListItemController {
         return Result.success();
     }
 
-    /**
-     * 新增列表场景。POST /api/entity-list-config/{listId}/scenes
-     *
-     * @param listId  列表配置ID
-     * @param request 场景保存请求
-     * @return 创建后的场景
-     */
-    @PostMapping("/scenes")
-    public Result<EntityListScene> createScene(
-            @PathVariable String listId,
-            @RequestBody EntityListSceneSaveRequest request) {
-        accessService.requireListAccess(listId);
-        return Result.success(service.createScene(listId, request));
-    }
-
-    /**
-     * 查询列表全部场景项。GET /api/entity-list-config/{listId}/scenes
-     *
-     * @param listId 列表配置ID
-     * @return 场景列表
-     */
-    @GetMapping("/scenes")
-    public Result<List<EntityListScene>> scenes(@PathVariable String listId) {
-        accessService.requireListAccess(listId);
-        return Result.success(service.findSceneItems(listId));
-    }
-
-    /**
-     * 增量更新列表场景。POST /api/entity-list-config/{listId}/scenes/{sceneId}/patch
-     *
-     * @param listId  列表配置ID
-     * @param sceneId 场景ID
-     * @param request 场景保存请求
-     * @return 更新后的场景
-     */
-    @PostMapping("/scenes/{sceneId}/patch")
-    public Result<EntityListScene> patchScene(
-            @PathVariable String listId,
-            @PathVariable String sceneId,
-            @RequestBody EntityListSceneSaveRequest request) {
-        accessService.requireListAccess(listId);
-        return Result.success(service.patchScene(listId, sceneId, request));
-    }
-
-    /**
-     * 删除列表场景（乐观锁校验）。POST /api/entity-list-config/{listId}/scenes/{sceneId}/delete
-     *
-     * @param listId  列表配置ID
-     * @param sceneId 场景ID
-     * @param request 删除请求，携带期望版本号
-     * @return 无数据返回
-     */
-    @PostMapping("/scenes/{sceneId}/delete")
-    public Result<Void> deleteScene(
-            @PathVariable String listId,
-            @PathVariable String sceneId,
-            @RequestBody EntityListSceneDeleteRequest request) {
-        accessService.requireListAccess(listId);
-        service.deleteScene(listId, sceneId, request.getExpectedRevision());
-        return Result.success();
-    }
 }

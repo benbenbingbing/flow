@@ -390,11 +390,6 @@
       "description": "查询项目成员投入和状态。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": [
-        "PAGE",
-        "EMBEDDED",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -427,7 +422,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",

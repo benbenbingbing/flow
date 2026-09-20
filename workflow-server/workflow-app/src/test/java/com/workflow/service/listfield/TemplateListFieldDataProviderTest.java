@@ -39,11 +39,11 @@ class TemplateListFieldDataProviderTest {
         TemplateListFieldDataProvider provider = new TemplateListFieldDataProvider(new ObjectMapper());
         EntityListField field = new EntityListField();
         field.setFieldCode("summary");
-        field.setDataSourceConfig("{\"template\":\"${dataNo} / ${owner}\"}");
+        field.setDataSourceConfig("{\"template\":\"${code} / ${owner}\"}");
         field.setRenderConfig("{\"emptyText\":\"-\"}");
 
         EntityDataDTO row = new EntityDataDTO();
-        row.setDataNo("PO-001");
+        row.setCode("PO-001");
         row.setData(new HashMap<>(Map.of("owner", "张三")));
 
         provider.enrich(new ArrayList<>(List.of(row)), List.of(field), Map.of());
@@ -59,11 +59,11 @@ class TemplateListFieldDataProviderTest {
         EntityListField field = new EntityListField();
         field.setFieldCode("summary");
         field.setDataSourceConfig(
-                "{\"template\":\"${dataNo} / ${owner}\"}");
+                "{\"template\":\"${code} / ${owner}\"}");
         field.setRenderConfig("{\"emptyText\":\"未填写\"}");
 
         EntityDataDTO row = new EntityDataDTO();
-        row.setDataNo("PO-001");
+        row.setCode("PO-001");
         row.setData(new HashMap<>());
 
         provider.enrich(
@@ -74,5 +74,21 @@ class TemplateListFieldDataProviderTest {
         assertEquals(
                 "PO-001 / 未填写",
                 row.getExtData().get("summary"));
+    }
+    /** 模板占位符与实体字段编码保持一致，审计时间和人员可直接展示。 */
+    @Test
+    void rendersAuditFieldsByDatabaseColumnNames() {
+        TemplateListFieldDataProvider provider = new TemplateListFieldDataProvider(new ObjectMapper());
+        EntityListField field = new EntityListField();
+        field.setFieldCode("summary");
+        field.setDataSourceConfig("{\"template\":\"${create_time} / ${update_time} / ${create_by} / ${update_by}\"}");
+        EntityDataDTO row = new EntityDataDTO();
+        var created = java.time.LocalDateTime.of(2026, 9, 20, 10, 0);
+        row.setCreateTime(created);
+        row.setUpdateTime(created.plusHours(1));
+        row.setCreateBy("creator");
+        row.setUpdateBy("updater");
+        provider.enrich(new ArrayList<>(List.of(row)), List.of(field), Map.of());
+        assertEquals("2026-09-20T10:00 / 2026-09-20T11:00 / creator / updater", row.getExtData().get("summary"));
     }
 }

@@ -16,6 +16,7 @@
         class="design-tabs"
       >
         <el-tab-pane label="字段设计" name="fields" />
+        <el-tab-pane v-if="!isSystemEntity" label="数据权限" name="permissions" />
         <el-tab-pane
           :label="relationCount ? `实体关系 ${relationCount}` : '实体关系'"
           name="relations"
@@ -25,7 +26,6 @@
           label="默认事件"
           name="events"
         />
-        <el-tab-pane v-if="!isSystemEntity" label="数据权限" name="permissions" />
       </el-tabs>
     </div>
 
@@ -244,7 +244,7 @@
 
             <el-form-item label="数据库列名">
               <el-input
-                :model-value="formatDbColumnName(selectedField.fieldCode)"
+                :model-value="resolveEntityFieldColumnName(selectedField)"
                 disabled
               />
             </el-form-item>
@@ -344,8 +344,8 @@
             <!-- 子表单配置 -->
             <template v-if="isSubForm">
               <el-alert
-                title="实体关系已从 SUB_FORM 字段中拆分"
-                description="请在“实体关系”页签独立维护子实体、回溯字段、基数和级联规则。表单设计时再绑定关系，不要通过字段创建关系。"
+                title="子表单已改为页面组件"
+                description="在实体关系中定义组成关系，再从表单设计左侧添加子表单或明细编辑；数据随主表统一保存。"
                 type="info"
                 :closable="false"
                 show-icon
@@ -362,38 +362,10 @@
               </el-button>
             </template>
 
-            <!-- 子列表配置 -->
+            <!-- 展示组件统一在页面引用关系，旧字段仅保留识别提示。 -->
             <template v-if="isSubList">
-              <el-form-item label="目标实体" required>
-                <EntityDefinitionPicker
-                  v-model="selectedField.refEntityId"
-                  placeholder="选择已发布实体"
-                  value-key="id"
-                  title="选择子列表目标实体"
-                  :query="{ status: 'PUBLISHED' }"
-                  @selected="onSubListEntitySelected"
-                  @resolved="onSubListEntityResolved"
-                />
-              </el-form-item>
-              <el-form-item label="目标列表" required>
-                <el-select
-                  v-model="selectedField.refListKey"
-                  filterable
-                  placeholder="选择已发布列表"
-                  style="width: 100%"
-                  :disabled="!selectedField.refEntityId"
-                >
-                  <el-option
-                    v-for="list in subListOptions"
-                    :key="list.listKey"
-                    :label="`${list.listName || list.listKey} (${list.listKey})`"
-                    :value="list.listKey"
-                  />
-                </el-select>
-                <div class="form-tip">
-                  子列表只嵌入目标实体中允许“嵌入”场景的已发布列表；字段、排序、数据范围和权限均沿用该列表配置。
-                </div>
-              </el-form-item>
+              <el-alert title="子列表已改为页面组件" description="先在实体关系中定义关联，再到表单或列表的关联内容中选择目标列表；实体字段不再配置展示页面。" type="info" :closable="false" show-icon />
+              <el-button type="primary" link @click="activeDesignTab = 'relations'">前往实体关系管理</el-button>
             </template>
 
             <!-- 附件配置 -->
@@ -561,16 +533,6 @@
           <el-button type="primary" size="small" :disabled="permissionLoading || !entityData.entityCode" @click="handleAddPermission">
             <el-icon><Plus /></el-icon>添加规则
           </el-button>
-          <UserSelector
-            v-model="simulationUserId"
-            placeholder="选择模拟用户"
-            title="选择模拟用户"
-            value-key="id"
-            style="width: 220px"
-          />
-          <el-button size="small" :disabled="permissionLoading || !entityData.entityCode" @click="handlePreviewPermissionSql('')">
-            <el-icon><View /></el-icon>模拟可见范围
-          </el-button>
         </div>
         <PageState
           v-if="permissionError"
@@ -582,26 +544,6 @@
           @retry="loadPermissions"
         />
         <template v-else>
-          <el-table
-            v-if="availableListConfigs.length"
-            :data="availableListConfigs"
-            border
-            size="small"
-            style="margin-top: 12px"
-          >
-            <el-table-column prop="listName" label="列表" min-width="140" />
-            <el-table-column prop="listKey" label="列表 Key" min-width="130" />
-            <el-table-column label="范围模式" width="130">
-              <template #default="{ row }">
-                <el-tag :type="row.dataScopeMode === 'OVERRIDE' ? 'danger' : row.dataScopeMode === 'NARROW' ? 'warning' : 'info'">
-                  {{ getScopeModeLabel(row.dataScopeMode) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="已绑定规则" min-width="180">
-              <template #default="{ row }">{{ formatListBoundRules(row.listKey) }}</template>
-            </el-table-column>
-          </el-table>
           <el-table :data="permissionList" border size="small" style="margin-top: 12px">
             <el-table-column prop="ruleName" label="规则名称" width="140" />
             <el-table-column label="已绑定列表" min-width="160">
@@ -632,7 +574,7 @@
             <el-table-column label="操作" width="200" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button type="primary" size="small" text @click="handleEditPermission(row)">编辑</el-button>
-                <el-button size="small" text @click="handlePreviewPermissionSql(row.listKey)">模拟</el-button>
+                <el-button size="small" text @click="handlePreviewPermissionSql(row)">模拟</el-button>
                 <el-button type="danger" size="small" text @click="handleDeletePermission(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -937,43 +879,51 @@
     </template>
   </el-dialog>
 
-  <!-- 权限 SQL 预览对话框 -->
+  <!-- 单条规则模拟不等同于列表最终权限；未绑定、停用和适用对象不匹配仍可检查条件。 -->
   <el-dialog v-model="permissionSqlPreviewVisible" :title="permissionSqlPreviewTitle" width="700px">
-    <el-alert type="info" :closable="false" style="margin-bottom: 12px">
-      {{ permissionSqlPreview.hasPermission === false
-        ? '当前模拟用户无法查看该列表中的数据。'
-        : '以下是当前模拟用户命中的规则与最终可见范围。' }}
-    </el-alert>
-    <el-alert v-if="permissionSqlPreview.remark" type="warning" :closable="false" style="margin-bottom: 12px">
-      {{ permissionSqlPreview.remark }}
-    </el-alert>
+    <el-form label-width="90px" @submit.prevent>
+      <el-form-item label="模拟用户">
+        <UserSelector
+          v-model="simulationUserId"
+          placeholder="默认当前登录用户，可选择其他人员"
+          title="选择模拟用户"
+          value-key="id"
+          @change="loadPermissionPreview"
+        />
+      </el-form-item>
+    </el-form>
+    <div v-loading="permissionPreviewLoading" style="min-height: 100px">
+      <PageState
+        v-if="permissionPreviewError"
+        type="error"
+        title="规则模拟失败"
+        :description="permissionPreviewError"
+        retryable
+        compact
+        @retry="loadPermissionPreview"
+      />
+      <template v-else-if="permissionSqlPreview">
+        <el-alert type="info" :closable="false" style="margin-bottom: 12px">
+          以下是当前规则以模拟用户生成的数据条件。列表实际可见范围还取决于绑定规则、默认策略和范围绕过权限。
+        </el-alert>
+        <el-alert v-if="!permissionSqlPreview.enabled" type="warning" :closable="false" style="margin-bottom: 12px">
+          该规则已停用，以下 SQL 仅供检查规则配置。
+        </el-alert>
+        <el-alert v-if="!permissionSqlPreview.audienceMatched" type="warning" :closable="false" style="margin-bottom: 12px">
+          模拟用户不符合该规则的匹配范围，以下 SQL 仅展示数据条件，不表示该规则对模拟用户生效。
+        </el-alert>
+        <el-descriptions :column="2" border size="small" style="margin-bottom: 16px">
+          <el-descriptions-item label="规则名称">{{ permissionSqlPreview.ruleName }}</el-descriptions-item>
+          <el-descriptions-item label="模拟用户">{{ permissionSqlPreview.username || permissionSqlPreview.userId }}</el-descriptions-item>
+          <el-descriptions-item label="效果">{{ permissionSqlPreview.ruleEffect === 'DENY' ? '拒绝符合条件的数据' : '允许符合条件的数据' }}</el-descriptions-item>
+          <el-descriptions-item label="匹配范围">{{ permissionSqlPreview.audienceMatched ? '模拟用户符合' : '模拟用户不符合' }}</el-descriptions-item>
+        </el-descriptions>
 
-    <div v-if="permissionSqlPreview.matchedRules && permissionSqlPreview.matchedRules.length > 0" class="preview-section">
-      <div class="preview-section-title">命中规则明细</div>
-      <el-table :data="permissionSqlPreview.matchedRules" border size="small" style="margin-bottom: 16px">
-        <el-table-column prop="ruleName" label="规则名称" min-width="120" />
-        <el-table-column prop="ruleEffect" label="效果" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.ruleEffect === 'ALLOW' ? 'success' : 'danger'" size="small">{{ row.ruleEffect === 'ALLOW' ? '允许' : '拒绝' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="listKey" label="适用列表 Key" width="140" align="center" />
-        <el-table-column prop="sql" label="规则 SQL" min-width="250" show-overflow-tooltip />
-      </el-table>
-    </div>
-    <div v-else-if="permissionSqlPreview.hasPermission === false" class="preview-section">
-      <el-alert type="warning" :closable="false">没有命中任何允许方案，运行时将拒绝全部数据。</el-alert>
-    </div>
-    <div v-else-if="permissionSqlPreview.needFilter === false" class="preview-section">
-      <el-alert type="success" :closable="false">当前用户无需数据过滤，可以查看全部数据。</el-alert>
-    </div>
-    <div v-else class="preview-section">
-      <el-alert type="info" :closable="false">当前可见范围未返回规则明细，请以最终生效 SQL 和说明为准。</el-alert>
-    </div>
-
-    <div class="preview-section">
-      <div class="preview-section-title">最终生效 SQL</div>
-      <el-input v-model="permissionSqlPreview.sql" type="textarea" :rows="4" readonly />
+        <div class="preview-section">
+          <div class="preview-section-title">当前规则 SQL</div>
+          <el-input v-model="permissionSqlPreview.sql" type="textarea" :rows="4" readonly />
+        </div>
+      </template>
     </div>
   </el-dialog>
 
@@ -1014,17 +964,14 @@ import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useEntityValidationRules } from '@/composables/useEntityValidationRules'
 import { normalizeAttachmentFileTypes } from '@/shared/file-attachment'
 import {
-  ENTITY_FIELD_TYPES,
+  ENTITY_DESIGN_FIELD_TYPES,
   WORKFLOW_SYSTEM_FIELD_CODES,
   filterEntityFieldsByLifecycle,
+  resolveEntityFieldColumnName,
   getEntityFieldTypeLabel,
   getEntityFieldTypeTag,
   getEntityReferenceSelectionHint
 } from '@/shared/entity-design'
-import {
-  isPublishedSubListOption,
-  resolveSubListTargetSelection
-} from '@/shared/sub-list'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -1045,7 +992,7 @@ const canManageEntityDefinition = computed(() => userStore.isSuperAdmin
   || userStore.permissions.includes('entity:definition:manage'))
 
 // 字段类型定义
-const fieldTypes = ENTITY_FIELD_TYPES
+const fieldTypes = ENTITY_DESIGN_FIELD_TYPES
 
 const entityData = ref({})
 const fields = ref([])
@@ -1096,11 +1043,9 @@ useUnsavedChangesGuard(isDirty, {
 })
 
 const isWorkflowEntityMode = computed(() => entityData.value?.lifecycleMode === 'WORKFLOW')
-const lifecycleFields = computed(() =>
-  filterEntityFieldsByLifecycle(entityData.value, fields.value)
-)
-const businessFieldCount = computed(() => lifecycleFields.value.filter(field => !field.isSystem).length)
-const systemFieldCount = computed(() => lifecycleFields.value.filter(field => field.isSystem).length)
+// 实体设计展示完整字段结构，独立实体也可以查看数据库已有的流程系统列。
+const businessFieldCount = computed(() => fields.value.filter(field => !field.isSystem).length)
+const systemFieldCount = computed(() => fields.value.filter(field => field.isSystem).length)
 // 事件绑定独立保存，只提供服务端已保存字段，避免把尚未保存的字段编码写入执行链。
 const entityEventFieldOptions = computed(() => filterEntityFieldsByLifecycle(
   entityData.value,
@@ -1112,8 +1057,8 @@ const entityEventFieldOptions = computed(() => filterEntityFieldsByLifecycle(
     value: field.fieldCode
   })))
 const displayFields = computed(() => {
-  const businessFields = lifecycleFields.value.filter(field => !field.isSystem)
-  const systemFields = lifecycleFields.value.filter(field => field.isSystem)
+  const businessFields = fields.value.filter(field => !field.isSystem)
+  const systemFields = fields.value.filter(field => field.isSystem)
   return isSystemEntity.value || showSystemFields.value
     ? [...businessFields, ...systemFields]
     : businessFields
@@ -1125,7 +1070,6 @@ const isSelectedFieldStructureLocked = computed(() => Boolean(
 const draggedType = ref(null)
 const optionsText = ref('')
 const refEntityFields = ref([])
-const subListOptions = ref([])
 const dictOptions = ref([])
 const quickDictVisible = ref(false)
 const quickDictForm = ref({ dictName: '', dictCode: '' })
@@ -1138,10 +1082,14 @@ const permissionEditVisible = ref(false)
 const permissionForm = ref(createEmptyPermissionForm())
 const availableStatuses = ref([])
 const availableListConfigs = ref([])
-const permissionSqlPreview = ref({ sql: '', matchedRules: [], hasPermission: true, needFilter: false })
+const permissionSqlPreview = ref(null)
 const permissionSqlPreviewVisible = ref(false)
 const permissionSqlPreviewTitle = ref('权限 SQL 预览')
+const permissionPreviewRule = ref(null)
 const simulationUserId = ref('')
+const permissionPreviewLoading = ref(false)
+const permissionPreviewError = ref('')
+let permissionPreviewRequestId = 0
 const roleOptions = ref([])
 const groupOptions = ref([])
 const deptOptions = ref([])
@@ -1150,15 +1098,14 @@ const organizationOptions = ref([])
 const permissionSystemFields = computed(() => [
   { label: '数据名称', value: 'name' },
   { label: '数据编码', value: 'code' },
-  { label: '业务单号', value: 'dataNo' },
   { label: '状态', value: 'status' },
-  { label: '创建人', value: 'createdBy' },
+  { label: '创建人', value: 'create_by' },
   { label: '提交人', value: 'submitterId' },
   { label: '所属部门', value: 'deptId' },
   { label: '流程实例', value: 'processInstanceId' },
   { label: '当前办理人', value: 'currentTaskAssignee' },
-  { label: '创建时间', value: 'createdAt' },
-  { label: '更新时间', value: 'updatedAt' }
+  { label: '创建时间', value: 'create_time' },
+  { label: '更新时间', value: 'update_time' }
 ].filter(item => isWorkflowEntityMode.value || !WORKFLOW_SYSTEM_FIELD_CODES.has(item.value)))
 
 const permissionRuleFieldOptions = computed(() => [
@@ -1229,12 +1176,6 @@ const showOptions = computed(() => {
 const showFieldLength = computed(() => {
   return selectedField.value && ['STRING', 'TEXT', 'SELECT', 'RADIO', 'MULTI_SELECT', 'CHECKBOX', 'USER', 'DEPT', 'REFERENCE'].includes(selectedField.value.fieldType)
 })
-
-// 驼峰转下划线
-const formatDbColumnName = (fieldCode) => {
-  if (!fieldCode) return ''
-  return fieldCode.replace(/([a-z])([A-Z]+)/g, '$1_$2').toLowerCase()
-}
 
 // 是否显示子表单配置
 const isSubForm = computed(() => {
@@ -1330,11 +1271,6 @@ const handleAddField = (type) => {
     optionSource: ['SELECT', 'MULTI_SELECT', 'RADIO', 'CHECKBOX'].includes(type?.value) ? 'DICT' : undefined,
     dictType: ''
   }
-  if (newField.fieldType === 'SUB_LIST') {
-    newField.refEntityType = 'CUSTOM'
-    newField.refEntityId = ''
-    newField.refListKey = ''
-  }
   fields.value.push(newField)
   selectField(newField)
 }
@@ -1343,7 +1279,6 @@ const handleAddField = (type) => {
 const selectField = (field) => {
   selectedField.value = field
   refEntityFields.value = []
-  subListOptions.value = []
   if (showOptions.value) {
     field.optionSource = field.dictType ? 'DICT' : 'LEGACY_INLINE'
   }
@@ -1371,13 +1306,7 @@ const selectField = (field) => {
     optionsText.value = ''
   }
   
-  if (isSubList.value) {
-    field.refEntityType = 'CUSTOM'
-    field.refListKey = field.refListKey || ''
-    if (field.refEntityId) {
-      loadSubListOptions(field.refEntityId)
-    }
-  } else if (isReference.value && field.refEntityId) {
+  if (isReference.value && field.refEntityId) {
     field.refEntityType = 'CUSTOM'
     onRefEntityChange(field.refEntityId)
   }
@@ -1398,40 +1327,6 @@ const handleQuickDictCreated = async (dict) => {
   selectedField.value.dictType = dict.dictCode
   selectedField.value.optionsJson = null
   await loadDictOptions()
-}
-
-const applySubListEntitySelection = async (entity, resetListKey) => {
-  if (!selectedField.value) return
-  const selection = resolveSubListTargetSelection(
-    selectedField.value,
-    entity,
-    { resetListKey }
-  )
-  Object.assign(selectedField.value, selection)
-  await loadSubListOptions(selection.refEntityId)
-}
-
-const onSubListEntitySelected = entity =>
-  applySubListEntitySelection(entity, true)
-
-const onSubListEntityResolved = entity =>
-  applySubListEntitySelection(entity, false)
-
-const loadSubListOptions = async (targetEntityId) => {
-  if (!targetEntityId) {
-    subListOptions.value = []
-    return
-  }
-  try {
-    const response = await entityListConfigApi.getByEntityId(targetEntityId)
-    const lists = Array.isArray(response)
-      ? response
-      : response?.records || response?.list || response?.data || []
-    subListOptions.value = lists.filter(isPublishedSubListOption)
-  } catch (error) {
-    console.error('加载子列表配置失败:', error)
-    subListOptions.value = []
-  }
 }
 
 // 删除字段
@@ -1524,7 +1419,7 @@ const handleSave = async (options = {}) => {
 }
 
 // ============ 数据权限方法 ============
-/** 读取当前实体的规则目录及列表绑定，供数据权限页签展示；失败时保留重试入口。 */
+/** 读取规则目录及列表名称，供规则表和绑定摘要使用；失败时保留重试入口。 */
 const loadPermissions = async () => {
   if (!entityData.value.entityCode || isSystemEntity.value) return
   permissionLoading.value = true
@@ -1724,25 +1619,9 @@ const getFilterTypeLabel = (type) => {
   return labels[type] || type
 }
 
-const getScopeModeLabel = (mode) => {
-  const labels = {
-    INHERIT: '继承实体',
-    NARROW: '缩小范围',
-    OVERRIDE: '独立范围'
-  }
-  return labels[mode || 'INHERIT'] || mode
-}
-
 const formatBoundLists = (listKeys) => {
   const names = (listKeys || []).map(getListConfigName).filter(Boolean)
   return names.length ? names.join('、') : '未绑定'
-}
-
-const formatListBoundRules = (listKey) => {
-  const names = permissionList.value
-    .filter(item => (item.boundListKeys || []).includes(listKey))
-    .map(item => item.ruleName)
-  return names.length ? names.join('、') : '未绑定（可见全部）'
 }
 
 const getListConfigName = (listKey) => {
@@ -1751,27 +1630,37 @@ const getListConfigName = (listKey) => {
   return config?.listName || config?.listKey || listKey
 }
 
-const handlePreviewPermissionSql = async (requestedListKey) => {
-  if (!entityData.value.entityCode) return
+/** 按当前行规则模拟，禁止回退到默认列表，避免展示其他规则或范围绕过的结果。 */
+const handlePreviewPermissionSql = async (rule) => {
+  permissionPreviewRule.value = rule
+  permissionSqlPreviewTitle.value = `规则模拟：${rule.ruleName}`
+  permissionSqlPreviewVisible.value = true
+  await loadPermissionPreview()
+}
+
+/** 切换模拟人员后重新编译；只接受最后一次请求，避免较慢的旧用户结果覆盖当前选择。 */
+const loadPermissionPreview = async () => {
+  const rule = permissionPreviewRule.value
+  const policyId = rule?.policyId || rule?.id
+  if (!policyId) return
+  const requestId = ++permissionPreviewRequestId
+  permissionPreviewLoading.value = true
+  permissionPreviewError.value = ''
+  permissionSqlPreview.value = null
   try {
-    const targetList = requestedListKey
-      || availableListConfigs.value.find(config => config.isDefault)?.listKey
-      || availableListConfigs.value[0]?.listKey
-    if (!targetList) {
-      ElMessage.warning('请先配置并保存至少一个实体列表')
-      return
+    const preview = await entityListScopeRuleApi.previewSql(policyId, simulationUserId.value)
+    if (requestId !== permissionPreviewRequestId) return
+    if (!preview || typeof preview.sql !== 'string') {
+      throw new Error('规则模拟未返回 SQL')
     }
-    const preview = await entityListScopeRuleApi.previewSql(
-      entityData.value.entityCode,
-      targetList,
-      { userId: simulationUserId.value || undefined }
-    )
-    permissionSqlPreview.value = preview || { sql: '1=0', matchedRules: [], hasPermission: true, needFilter: false }
-    permissionSqlPreviewTitle.value = `可见范围模拟：${getListConfigName(targetList)}`
-    permissionSqlPreviewVisible.value = true
+    permissionSqlPreview.value = preview
+    permissionSqlPreviewTitle.value = `规则模拟：${preview.ruleName || rule.ruleName}`
   } catch (error) {
+    if (requestId !== permissionPreviewRequestId) return
     console.error('预览权限 SQL 失败:', error)
-    ElMessage.error('预览失败')
+    permissionPreviewError.value = error?.message || '无法读取规则模拟结果，请稍后重试。'
+  } finally {
+    if (requestId === permissionPreviewRequestId) permissionPreviewLoading.value = false
   }
 }
 

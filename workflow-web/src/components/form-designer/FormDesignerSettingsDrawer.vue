@@ -162,7 +162,7 @@
           </el-tag>
         </template>
         <div class="form-settings-pane">
-          <FormInputParameterEditor v-model="viewConfig.inputParameterSchema" />
+          <PageInputParameterSettings v-model="viewConfig" :fields="formFields" />
         </div>
       </el-tab-pane>
 
@@ -185,7 +185,7 @@
 import { computed, inject, ref } from 'vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
-import FormInputParameterEditor from './FormInputParameterEditor.vue'
+import PageInputParameterSettings from '@/components/page-parameters/PageInputParameterSettings.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 import { FORM_LABEL_POSITION_OPTIONS, resolveFormLabelPosition } from '@/shared/form-layout'
 

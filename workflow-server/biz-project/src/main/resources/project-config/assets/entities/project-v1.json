@@ -1405,10 +1405,6 @@
       "description": "本人发起、负责或参与治理的项目。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": [
-        "PAGE",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -1460,7 +1456,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",
@@ -1591,9 +1586,6 @@
       "description": "当前办理人为当前用户的项目立项。",
       "isDefault": false,
       "dataScopeMode": "NARROW",
-      "allowedScenes": [
-        "PAGE"
-      ],
       "selectionConfig": {
         "selectionMode": "NONE",
         "valueField": "id",
@@ -1626,7 +1618,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",
@@ -1713,10 +1704,6 @@
       "description": "已批准及后续生命周期项目。",
       "isDefault": false,
       "dataScopeMode": "NARROW",
-      "allowedScenes": [
-        "PAGE",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -1749,7 +1736,6 @@
           "CLOSED"
         ]
       },
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",

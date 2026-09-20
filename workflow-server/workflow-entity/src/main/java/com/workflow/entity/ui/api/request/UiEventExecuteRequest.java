@@ -46,6 +46,14 @@ public class UiEventExecuteRequest {
     @JsonIgnore
     private String serverIdempotencyKey;
 
+    /** 列表入口已验证发布坐标后设置；客户端不能凭 releaseId 请求历史事件链。 */
+    @JsonIgnore
+    private boolean serverPinnedRelease;
+
+    /** 列表入口合并的固定条件与可信关联条件，每个事件步骤执行时重新应用。 */
+    @JsonIgnore
+    private Map<String, Object> serverListFilters;
+
     /** 表单按钮鉴权后确认的模式，仅供同一次内部事件链使用。 */
     @JsonIgnore
     private String serverAuthorizedMode;

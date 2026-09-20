@@ -165,9 +165,6 @@ public class PermissionSqlBuilder {
         String deptField = safeField(mapping.getDeptField(), "dept_id");
         String userField = safeField(mapping.getUserField(), "create_by");
         String statusField = safeField(mapping.getStatusField(), "status");
-        if ("created_by".equalsIgnoreCase(userField)) {
-            userField = "create_by";
-        }
         if (deptField == null || userField == null || statusField == null) {
             return "1=0";
         }
@@ -630,7 +627,12 @@ public class PermissionSqlBuilder {
         }
         String column = columns.get(field);
         if (column == null) {
-            column = columns.get(toColumnName(field));
+            String inferredColumn = toColumnName(field);
+            // 审计字段只接受正式编码，不能借通用驼峰推算重新引入别名。
+            if (Set.of("create_time", "update_time", "create_by", "update_by").contains(inferredColumn)) {
+                return null;
+            }
+            column = columns.get(inferredColumn);
         }
         return column != null && SQL_IDENTIFIER.matcher(column).matches() ? column : null;
     }
@@ -953,9 +955,6 @@ public class PermissionSqlBuilder {
     private static Map<String, String> systemFieldColumns() {
         Map<String, String> columns = new LinkedHashMap<>();
         columns.put("id", "id");
-        columns.put("dataNo", "data_no");
-        columns.put("data_no", "data_no");
-        columns.put("title", "title");
         columns.put("name", "name");
         columns.put("code", "code");
         columns.put("status", "status");
@@ -979,15 +978,9 @@ public class PermissionSqlBuilder {
         columns.put("dept_id", "dept_id");
         columns.put("submitTime", "submit_time");
         columns.put("submit_time", "submit_time");
-        columns.put("createdAt", "create_time");
         columns.put("create_time", "create_time");
-        columns.put("updatedAt", "update_time");
         columns.put("update_time", "update_time");
-        columns.put("createdBy", "create_by");
-        columns.put("createBy", "create_by");
         columns.put("create_by", "create_by");
-        columns.put("updatedBy", "update_by");
-        columns.put("updateBy", "update_by");
         columns.put("update_by", "update_by");
         return columns;
     }

@@ -118,6 +118,7 @@ public class EntityFormConfigurationValidator {
                 Set.of(),
                 false);
         validateInputParameterSchema(viewConfig);
+        com.workflow.entity.ui.application.PageParameterPolicy.validate(viewConfig, "FORM", null);
         form.setViewConfig(StringUtils.hasText(form.getViewConfig())
                 ? structuredConfigValidator.writeJson(
                         viewConfig, "表单视图配置")
@@ -140,6 +141,9 @@ public class EntityFormConfigurationValidator {
         validateFields(form.getFields());
         List<EntityField> entityFields = entityFieldMapper.findByEntityId(
                 form.getEntityId());
+        // 用途字段至少必须属于目标实体；是否在当前模式可编辑由运行时再次约束。
+        com.workflow.entity.ui.application.PageParameterPolicy.validate(viewConfig, "FORM",
+                validEntityProperties(form, entityFields == null ? List.of() : entityFields));
         validateConditionalRules(
                 form.getFields(),
                 validEntityProperties(form, entityFields),

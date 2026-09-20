@@ -41,6 +41,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^editingQueryConfig\\.',
     '^editingRenderConfig$',
     '^listQueryEditor\\.',
+    '^fixedFilterRows$',
     '^row\\.(enabled|fieldCode|fieldName|isQuery|showInList)$',
     '^selectedListTemplateId$',
     '^(toolbarButtons|rowActionButtons)$',
@@ -165,7 +166,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^historyDialogVisible$', '^versionDiffDialogVisible$', '^publishDiffDialogVisible$'
   ],
   'src/views/EntityDesign.vue': [
-    '^showSystemFields$', '^codeRuleVisible$', '^permissionVisible$', '^permissionEditVisible$',
+    '^activeDesignTab$', '^showSystemFields$', '^codeRuleVisible$', '^permissionVisible$', '^permissionEditVisible$',
     '^permissionSqlPreviewVisible$', '^permissionSqlPreview\\.sql$', '^quickDictVisible$'
   ],
   'src/views/EntityListConfigDesign.vue': [
@@ -646,8 +647,8 @@ export const KNOWN_LIMITATIONS = Object.freeze([
     setting: '创建人字段',
     location: '实体配置-实体-设计-数据权限',
     status: '历史问题已关闭',
-    reason: '动态业务表实际字段为 create_by；前端默认值、SQL 构建器和兼容归一化当前均使用 create_by。',
-    recommendation: '新配置使用 create_by；旧配置写成 created_by 时由后端归一化。'
+    reason: '动态业务表及实体字段编码统一使用 create_by、update_by、create_time、update_time，不再保留旧审计别名。',
+    recommendation: '使用数据库中的正式字段编码；旧配置需修改并重新发布。'
   },
   {
     id: 'process.auto-skip.runtime-arrival',
@@ -684,7 +685,7 @@ export const KNOWN_LIMITATIONS = Object.freeze([
 const DEFAULT_LOCATION_BY_AREA = Object.freeze({
   '实体基础与状态': '实体配置-实体',
   '实体字段与数据权限': '实体配置-实体-设计',
-  '数据权限模拟（验证输入，不发布）': '实体配置-实体-设计-数据权限-模拟',
+  '数据权限模拟（验证输入，不发布）': '实体配置-实体-设计-数据权限-操作列模拟',
   '列表设计': '实体配置-列表-编辑',
   '列表按钮': '实体配置-列表-编辑-按钮配置',
   '列表按钮结构': '实体配置-列表-编辑-按钮配置',
@@ -736,14 +737,14 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityDesign.vue', '^codeRule\\.', '实体配置-实体-设计-编码规则'),
   locationRule('src/views/EntityDesign.vue', '^entityData\\.teamVisibility', '实体配置-实体-设计-团队可见性'),
   locationRule('src/views/EntityDesign.vue', '^(permissionForm\\.|cond\\.|row\\.enabled$)', '实体配置-实体-设计-数据权限-规则编辑'),
-  locationRule('src/views/EntityDesign.vue', '^simulationUserId$', '实体配置-实体-设计-数据权限-权限 SQL 预览'),
 
+  locationRule('src/views/EntityDesign.vue', '^simulationUserId$', '实体配置-实体-设计-数据权限-操作列模拟'),
   locationRule('src/views/EntityListConfigDesign.vue', '^row\\.', '实体配置-列表-编辑-字段配置'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^viewConfig\\.search\\.', '实体配置-列表-编辑-列表设置-常用体验-查询区'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^viewConfig\\.(table|pagination)\\.', '实体配置-列表-编辑-列表设置-常用体验-表格'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^viewConfig\\.search\\.', '实体配置-列表-编辑-列表设置-显示配置-查询区'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^viewConfig\\.(table|pagination)\\.', '实体配置-列表-编辑-列表设置-显示配置-表格'),
   locationRule('src/views/EntityListConfigDesign.vue', '^configInfo\\.(dataScopeMode|accessPermissionCode)', '实体配置-列表-编辑-列表设置-访问范围'),
   locationRule('src/views/EntityListConfigDesign.vue', '^configInfo\\.selection', '实体配置-列表-编辑-列表设置-选择行为'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^configInfo\\.(fixedFilterConfig|contextBindingConfig|queryProviderCode|queryInterfaceExtensionId)', '实体配置-列表-编辑-列表设置-查询实现'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^fixedFilterRows', '实体配置-列表-编辑-列表设置-访问范围'),
   locationRule('src/views/EntityListConfigDesign.vue', '^(configInfo\\.customComponent|viewConfig\\.customComponentProps)', '实体配置-列表-编辑-列表设置-扩展渲染'),
   locationRule('src/views/EntityListConfigDesign.vue', '^toolbarButtons$', '实体配置-列表-编辑-工具栏按钮'),
   locationRule('src/views/EntityListConfigDesign.vue', '^rowActionButtons$', '实体配置-列表-编辑-操作列按钮'),
@@ -1111,13 +1112,13 @@ const KEY_GUIDANCE = Object.freeze({
   cascadeDelete: ['控制删除主记录时是否级联删除明细。', false, '开启后主记录删除会连带处理子记录，需谨慎使用。'],
   accessPermissionCode: ['设置进入列表所需的权限码。', 'entity:purchase:list', '无此权限的用户不能访问该列表。'],
   dataScopeMode: ['设置列表权限与实体权限的组合方式。', 'INHERIT', '决定列表查询继承、收窄或使用独立数据范围。'],
-  fixedFilterConfig: ['配置所有用户都必须满足的固定查询条件。', '{"status":{"operator":"NE","value":"DELETED"}}', '运行时查询始终附加该条件，用户不能在查询区移除。'],
-  contextBindingConfig: ['把路由、流程或父记录上下文绑定为查询条件。', '{"project_id":"{{routeQuery.projectId}}"}', '打开列表时解析上下文并注入过滤条件。'],
+  fixedFilterRows: ['选择字段、比较方式和值来配置固定过滤条件，多条条件必须同时满足。', '未添加条件', '不附加条件不等于授予权限；保存并发布后生效，用户筛选和自定义查询不能放宽范围。'],
+  fixedFilterConfig: ['访问范围中始终生效的固定过滤约束，与数据权限取交集。', '{"status":"RUNNING","status_op":"EQ"}', '{} 不附加条件；省略 _op 按 EQ；用户筛选和自定义查询不能放宽范围，发布后生效。'],
   selectionMode: ['设置列表是否作为单选或多选选择器。', 'SINGLE', '运行时进入选择场景，并按所选模式返回记录。'],
   selectionValueField: ['指定选择器主返回值字段。', 'id', '确认选择后以该字段作为引用主值。'],
   selectionReturnMappingsText: ['配置选择记录到调用方字段的返回映射。', '{"projectName":"project_name"}', '确认选择后批量返回映射字段。'],
   queryProviderCode: ['绑定受管理的安全查询提供者。', 'projectVisibleQuery', '列表查询由注册提供者生成，不能执行任意 SQL。'],
-  queryInterfaceExtensionId: ['绑定列表查询使用的扩展接口。', 'extension-list-project', '运行时通过已发布 LIST_QUERY 绑定执行这条完整接口。'],
+  queryInterfaceExtensionId: ['历史查询接口槽位，仅用于旧版本兼容。', 'extension-list-project', '新配置统一使用 LIST_LOAD 的替代平台处理步骤。'],
   customComponent: ['绑定已注册的自定义组件。', 'ProjectSummaryForm', '运行时改用注册组件渲染；未注册组件会被阻止或回退。'],
   customComponentProps: ['传递给已注册自定义组件的受控参数。', '{"compact":true}', '组件按参数调整展示，参数本身不允许注入脚本。'],
   pageSize: ['设置列表首次加载的每页记录数。', 20, '分页默认按该数量查询，用户仍可在允许范围内切换。'],
@@ -1328,7 +1329,7 @@ const KEY_GUIDANCE = Object.freeze({
   actionName: ['设置流程动作实例的可读名称。', '审批前预算校验', '动作列表、执行日志和失败记录显示该名称。'],
   displayName: ['设置扩展处理器面向设计者的中文名称。', '同步审批结果', '流程动作处理器选择器显示该名称，稳定实现编码不变。'],
   summary: ['设置知会记录面向接收人的说明文案。', '请关注本次权限变更结果', '接收人的知会列表展示该说明。'],
-  subject: ['设置发送任务消息的标题及流程变量模板。', '采购申请 ${dataNo} 待处理', '发送时解析变量并作为站内信或扩展通知渠道的标题。'],
+  subject: ['设置发送任务消息的标题及流程变量模板。', '采购申请 ${code} 待处理', '发送时解析变量并作为站内信或扩展通知渠道的标题。'],
   content: ['设置发送任务消息正文及流程变量模板。', '申请人：${submitterName}', '发送时解析变量并作为消息正文。'],
   documentation: ['记录 BPMN 节点的设计备注和运维说明。', '金额超过 10 万时进入本节点', '备注随流程定义保存，供设计和排查使用，不直接改变流转。'],
   openListTitle: ['设置打开目标列表弹窗或抽屉时的标题。', '选择项目', '运行时容器顶部显示该标题，列表本身的名称不变。'],
@@ -1342,7 +1343,7 @@ const KEY_GUIDANCE = Object.freeze({
   businessFieldCode: ['选择用于解析业务归属部门或组织的实体字段编码。', 'applicant_dept_id', 'SLA 运行时从记录读取该字段，再匹配部门或组织日历。'],
   collectionResolverCode: ['选择运行时计算多实例办理人的受管理人员解析器。', 'projectApproverResolver', '创建多实例前调用该解析器生成去重后的人员集合。'],
   templateKey: ['选择发送任务使用的已注册消息模板键。', 'task_created_notice', '发送时加载模板并结合主题、正文或流程变量生成消息。'],
-  businessKey: ['设置调用活动传给子流程或案例的业务关联键表达式。', '${dataNo}', '父子实例可通过解析后的业务键建立可追踪关联。'],
+  businessKey: ['设置调用活动传给子流程或案例的业务关联键表达式。', '${code}', '父子实例可通过解析后的业务键建立可追踪关联。'],
   refListKey: ['选择实体引用控件打开的目标实体列表配置键。', 'project_picker', '点击选择时加载该列表的查询、权限、返回值和映射配置。'],
   targetEntityCode: ['选择列表按钮要打开的目标实体编码。', 'project', '运行时按该实体查找目标列表定义。'],
   targetListKey: ['选择列表按钮要打开的目标列表稳定键。', 'project_picker', '运行时加载该列表的已发布版本。'],
@@ -1374,7 +1375,7 @@ const KEY_GUIDANCE = Object.freeze({
   logic: ['选择固定过滤条件要求全部满足还是任一满足。', 'ALL', '固化关联数据时按该组合逻辑筛选记录，只有筛选结果进入版本。'],
   operator: ['选择固定过滤字段和值之间的参数化比较操作。', 'EQ', '固化范围查询使用该受控操作符生成过滤条件，不执行任意 SQL。'],
   childEntityId: ['选择子表单字段对应的子实体定义。', '2082642338789732355', '子表单按该实体的字段结构保存和查询明细。'],
-  simulationUserId: ['选择数据权限模拟时假设的当前用户。', '1', '模拟器以该用户的角色、组织和关系计算可见范围，不修改正式权限。'],
+  simulationUserId: ['选择当前规则模拟使用的人员，默认使用当前登录用户。', '1', '切换人员后重新编译当前规则 SQL，并显示该用户是否符合匹配范围，不修改规则或列表授权。'],
   conditionValue: ['设置统一事件步骤条件要比较的目标值。', 'APPROVED', '来源路径值与该值比较为真时执行步骤。'],
   sourceValue: ['设置字段值联动映射规则的来源值。', 'URGENT', '来源字段等于该值时，把对应目标值写入当前字段。'],
   targetValue: ['设置字段值联动规则命中后写入的目标值。', 'HIGH', '命中来源值后当前字段更新为该值。'],
@@ -2011,7 +2012,7 @@ const CONTROL_OVERRIDES = Object.freeze({
 
 const EVIDENCE_BY_AREA = Object.freeze({
   '实体字段与数据权限': 'src/shared/__tests__/entity-validation-rules.spec.js；workflow-entity EntityFieldValidationRuleServiceTest；workflow-app PermissionSqlBuilderTest / DataPermissionEngineTest',
-  '列表设计': 'src/shared/__tests__/list-config-design.spec.js；workflow-app EntityListIncrementalConfigurationTest / EntityListConfigurationValidatorTest',
+  '列表设计': 'src/shared/__tests__/list-fixed-filters.spec.js；src/shared/__tests__/list-config-design.spec.js；workflow-app EntityListIncrementalConfigurationTest / EntityListConfigurationValidatorTest',
   '列表按钮': 'src/shared/__tests__/list-config-design.spec.js；src/shared/__tests__/form-actions.spec.js',
   '表单设计': 'src/shared/__tests__/form-node-property-schema.spec.js；src/shared/__tests__/form-node-drag.spec.js；workflow-entity EntityFormNodePropertyPolicyTest / EntityFormNodeServicePropertyPolicyTest',
   '表单设置': 'src/shared/__tests__/form-actions.spec.js；workflow-app EntityFormConfigurationValidatorTest / EntityFormRuntimeServiceTest',
@@ -2040,8 +2041,8 @@ const USAGE_CONTEXT_BY_AREA = Object.freeze({
     '字段使用类型默认值且所有有权用户的数据范围一致时'
   ],
   '数据权限模拟（验证输入，不发布）': [
-    '发布权限规则前，需要以某个用户身份核对实际可见数据范围时',
-    '不做权限结果验证，或已有自动化证据覆盖当前规则时'
+    '需要检查某条规则对指定人员生成的数据条件和适用对象匹配结果时',
+    '仅检查当前登录用户时无需选择，清空选择即可恢复当前登录用户'
   ],
   '列表设计': [
     '当前实体需要独立调整查询条件、展示列、数据范围、排序或列表交互时',

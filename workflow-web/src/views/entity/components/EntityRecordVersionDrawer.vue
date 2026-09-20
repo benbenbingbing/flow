@@ -273,7 +273,7 @@ let drawerContextGeneration = 0
 
 const drawerSize = computed(() => viewportWidth.value < 768 ? '100%' : '88%')
 const snapshotDescriptionColumns = computed(() => viewportWidth.value < 768 ? 1 : 4)
-const recordTitle = computed(() => record.value?.name || record.value?.title || record.value?.code || record.value?.dataNo || record.value?.id || '业务数据')
+const recordTitle = computed(() => record.value?.name || record.value?.code || record.value?.id || '业务数据')
 const versionOptions = computed(() => [...versions.value].sort((a, b) => Number(a.versionNo) - Number(b.versionNo)))
 const rootNodes = computed(() => (comparison.value?.nodes || []).filter((node: any) => node.nodeKind === 'ROOT'))
 const relationNodes = computed(() => (comparison.value?.nodes || []).filter((node: any) => node.nodeKind !== 'ROOT'))

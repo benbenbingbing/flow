@@ -73,7 +73,7 @@ const ownerEventGroups = {
       ]
     },
     {
-      label: '列表按钮默认事件',
+      label: '列表按钮事件（按按钮绑定或公共默认）',
       events: ['TOOLBAR_BUTTON_CLICK', 'ROW_BUTTON_CLICK']
     }
   ]

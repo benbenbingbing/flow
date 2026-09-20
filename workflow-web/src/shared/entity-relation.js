@@ -98,5 +98,25 @@ export function relationReferenceFields(fields = [], parentEntityId) {
 
 /** 一个关联记录使用表单，多条关联记录使用列表；展示入口不再让用户重复选择基数。 */
 export function relationContentType(relation) {
-  return relation?.relationType === 'ONE_TO_ONE' ? 'FORM' : 'LIST'
+  return relation?.direction === 'REVERSE' || relation?.relationType === 'ONE_TO_ONE' ? 'FORM' : 'LIST'
+}
+
+/** 正反向共用关系定义；目标随使用方向确定，不允许页面自行改写外键。 */
+export function relationTarget(relation = {}) {
+  const prefix = relation.direction === 'REVERSE' ? 'parent' : 'child'
+  return { entityId: String(relation[`${prefix}EntityId`] || ''), entityCode: relation[`${prefix}EntityCode`] || '', entityName: relation[`${prefix}EntityName`] || relation[`${prefix}EntityCode`] || '' }
+}
+
+export function relationUsageKey(relation = {}) {
+  return `${relation.parentEntityId || ''}:${relation.relationCode || ''}:${relation.direction || 'FORWARD'}`
+}
+
+export function relationMatchLabel(relation = {}) {
+  return relation.direction === 'REVERSE'
+    ? `当前记录.${relation.childRefFieldCode} = ${relation.parentEntityCode || '所属记录'}.id`
+    : `${relation.childEntityCode || '关联记录'}.${relation.childRefFieldCode} = 当前记录.id`
+}
+
+export function isCompositionEditorRelation(relation = {}) {
+  return relation?.ownershipType === 'COMPOSITION' && relation?.direction !== 'REVERSE'
 }

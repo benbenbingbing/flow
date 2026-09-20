@@ -79,20 +79,24 @@
             />
           </el-col>
         </el-row>
-        <RelatedContentRuntime
-          v-for="item in relatedContentsForNode(tabNode)"
-          :key="item.id || item.compositionKey"
-          :composition="item"
-          owner-type="FORM"
-          :owner-id="runtimeForm.id"
-          :release-id="runtimeReleaseId"
-          :release-version="runtimeReleaseVersion"
-          :source-record-id="sourceRecordId"
-          :host-readonly="readonly"
-          :traversal-context-token="runtimeTraversalContextToken"
-          :release-resolution-token="runtimeReleaseResolutionToken"
-          @source-patch="applyRelatedContentPatch"
-        />
+        <template v-for="item in relatedContentsForNode(tabNode)" :key="item.id || item.compositionKey">
+          <RelationContentDesignPreview v-if="context.formDesignPreview" :composition="item" />
+          <RelatedContentRuntime
+            v-else
+            :composition="item"
+            owner-type="FORM"
+            :owner-id="runtimeForm.id"
+            :release-id="runtimeReleaseId"
+            :release-version="runtimeReleaseVersion"
+            :source-record-id="sourceRecordId"
+        :source-data="(context.getFormData?.() || context.record?.data || {})"
+        :source-parameters="context.params || context.parameters || {}"
+            :host-readonly="readonly"
+            :traversal-context-token="runtimeTraversalContextToken"
+            :release-resolution-token="runtimeReleaseResolutionToken"
+            @source-patch="applyRelatedContentPatch"
+          />
+        </template>
       </div>
     </el-tab-pane>
   </el-tabs>
@@ -175,27 +179,32 @@
     </el-row>
   </div>
 
-  <RelatedContentRuntime
-    v-for="item in relatedContentsForNode(node)"
-    :key="item.id || item.compositionKey"
-    :composition="item"
-    owner-type="FORM"
-    :owner-id="runtimeForm.id"
-    :release-id="runtimeReleaseId"
-    :release-version="runtimeReleaseVersion"
-    :source-record-id="sourceRecordId"
-    :host-readonly="readonly"
-    :traversal-context-token="runtimeTraversalContextToken"
-    :release-resolution-token="runtimeReleaseResolutionToken"
-    @source-patch="applyRelatedContentPatch"
-  />
+  <template v-for="item in relatedContentsForNode(node)" :key="item.id || item.compositionKey">
+    <RelationContentDesignPreview v-if="context.formDesignPreview" :composition="item" />
+    <RelatedContentRuntime
+      v-else
+      :composition="item"
+      owner-type="FORM"
+      :owner-id="runtimeForm.id"
+      :release-id="runtimeReleaseId"
+      :release-version="runtimeReleaseVersion"
+      :source-record-id="sourceRecordId"
+        :source-data="(context.getFormData?.() || context.record?.data || {})"
+        :source-parameters="context.params || context.parameters || {}"
+      :host-readonly="readonly"
+      :traversal-context-token="runtimeTraversalContextToken"
+      :release-resolution-token="runtimeReleaseResolutionToken"
+      @source-patch="applyRelatedContentPatch"
+    />
+  </template>
 </template>
 
 <script setup>
-import { computed, defineComponent, h, inject, ref, watch } from 'vue'
+import { computed, defineComponent, defineAsyncComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
+import { formRelatedContentsAt } from '@/shared/form-related-content'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
 import {
   getFieldModeAccess,
@@ -224,6 +233,8 @@ import {
   supportsFormContainerAppearance
 } from '@/shared/form-container-appearance'
 import { resolveFormNodeLayoutSpan } from '@/shared/form-node-property-schema'
+
+const RelationContentDesignPreview = defineAsyncComponent(() => import('@/components/form-designer/RelationContentDesignPreview.vue'))
 
 defineOptions({ name: 'FormNodeRuntimeItem' })
 
@@ -271,17 +282,10 @@ const runtimeReleaseResolutionToken = computed(() => String(
   || ''
 ))
 
+/** 草稿预览复用节点位置，运行时仍要求宿主发布版本，不能回退到草稿查询。 */
 function relatedContentsForNode(targetNode) {
-  if (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1) return []
-  const keys = new Set([
-    String(targetNode?.id || ''),
-    String(targetNode?.nodeKey || '')
-  ].filter(Boolean))
-  return (runtimeForm.value.viewCompositions || []).filter(item =>
-    String(item?.anchorType || '').toUpperCase() === 'FORM_NODE'
-      && keys.has(String(item?.anchorKey || ''))
-      && item?.config?.enabled !== false
-  )
+  if (!props.context.formDesignPreview && (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1)) return []
+  return formRelatedContentsAt(runtimeForm.value.viewCompositions, targetNode, { preview: props.context.formDesignPreview })
 }
 
 /**

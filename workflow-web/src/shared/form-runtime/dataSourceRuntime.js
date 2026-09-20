@@ -1,3 +1,4 @@
+import { resolvePageParameters, initializePageFields, pageParameterFields } from '@/shared/page-parameters'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { safeParseConfig } from '@/shared/config-runtime'
 
@@ -356,15 +357,20 @@ export function createFormDataSourceRuntime(options) {
       runtimeMode
     ].join(':')
     if (initialized.has(initializationKey)) return
-    initialized.add(initializationKey)
-
     const record = explicitRecord || currentRecord()
     const runtimeContext = mergeRuntimeContexts(initialRuntimeContext, {
       form,
       record,
-      recordId
+      recordId,
+      params: resolvePageParameters(form?.viewConfig, initialRuntimeContext.params || initialRuntimeContext.parameters || {})
     })
+    initialized.add(initializationKey)
     try {
+      // 目标页面声明用途，子表单也复用同一规则；查看/审批不通过参数改变显示记录。
+      if (['create', 'edit'].includes(runtimeMode) && ![true, 1, '1'].includes(form?.isReadonly)) {
+        Object.assign(record, initializePageFields(record, form?.viewConfig, runtimeContext.params,
+          pageParameterFields([...fields, ...nodes]), [initialRuntimeContext.relation?.childRefFieldCode].filter(Boolean), runtimeMode))
+      }
       // FORM_INIT 只定义“新增记录的初始值”；编辑、查看和审批不得覆盖已有业务数据。
       if (runtimeMode === 'create') {
         for (const result of await executeOwnerUsage(

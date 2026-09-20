@@ -15,10 +15,14 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '只写判断当前用户是否命中的条件，不要写完整语句。不能引用主表别名 biz。可用 #{userId}、#{username}、#{deptId}、#{orgId}。',
   'entity.permissionFilterSql':
     '选择「自定义 SQL」后只写 WHERE 条件。主表别名统一为 biz，例如 biz.create_by = #{userId}。运行时会替换成实体物理表。',
+  'entityList.fixedFilters':
+    '选择字段、比较方式和条件值；多条条件必须同时满足。固定条件保存并发布后与数据权限共同生效，用户筛选不能放宽它。留空仅表示不附加固定条件，不授予数据权限。',
   'entityList.dataScopeMode':
     '本列表只使用自己绑定的数据规则。未绑定允许规则时，有列表权限的人看到全部数据。',
   'entityList.selectionMode':
     '决定列表是普通浏览页，还是给表单或其他页面返回一条或多条选中记录。选择模式还需配置返回值字段和返回映射。',
+  'entityList.defaultSort':
+    '不配置时，平台默认查询按创建时间（create_time）降序，最新创建的记录在前。系统表没有创建时间字段时按 ID 升序；两者都没有时不指定排序。若使用自定义查询，则以该查询返回的顺序为准。',
   'entityList.queryType':
     '决定查询控件如何生成条件，例如等于、模糊、区间或多值匹配。可选项会按字段类型过滤。',
   'entityList.dataSourceType':
@@ -34,7 +38,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'uiConfig.releaseMode':
     '普通发布遵循标准版本切换；兼容热修复会先做影响预检并显示风险提醒，确认后按允许范围作用于当前可发起版本和运行中实例。历史完成实例仍使用原快照。',
   'form.inputParameterSchema':
-    '声明本表单作为子表单时允许父表单传入的运行参数。子表单的数据源、联动和事件通过 params.参数编码 读取；参数默认不落库，需要保存时应由父表单显式初始化到子实体字段。',
+    '声明当前页面接收的参数。来源表单、列表按钮或父表单可传入业务值，数据源和接口通过 params.参数编码 读取；在参数用途中配置字段初始化或列表查询，保存并发布后生效。',
   'formNode.subFormLayout':
     '“分行”用表单方式编辑单条或少量明细；“表格”适合多条结构相同的明细。',
   'formNode.subFormParameterContract':

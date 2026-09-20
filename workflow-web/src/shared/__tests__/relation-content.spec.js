@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { applyEntityRelationBinding, buildRelationContent, isSimpleRelationContent, relationContentOptions } from '../relation-content.js'
+import { applyEntityRelationBinding, restoreRelationEditorMetadata, buildRelationEditor, buildRelationContent, isSimpleRelationContent, relationContentOptions } from '../relation-content.js'
+import { buildFormNodePayload } from '../form-node-property-schema.js'
 import { buildRelatedContentPayload, validateRelatedContent } from '../related-content.js'
 
 const relation = {
@@ -81,3 +82,61 @@ applyEntityRelationBinding(advanced, { ...relation, relationType: 'ONE_TO_MANY',
 assert.equal(advanced.config.target.entityId, 'other')
 assert.equal(advanced.config.target.contentId, '')
 console.log('relation-content tests passed: cardinality, published targets, direct display, inherited binding, stable edits, invalid relations')
+
+// 反向展示复用所属实体上的定义；同名关系也不能忽略方向混用。
+const reverse = { ...relation, parentEntityId: 'all', parentEntityCode: 'ALL', parentEntityName: '验收', direction: 'REVERSE', relationType: 'ONE_TO_MANY' }
+const parentContent = buildRelationContent({ relation: reverse, content: { id: 'parent-form' }, sourceEntity: { id: 'req' } })
+assert.equal(parentContent.config.target.entityId, 'all')
+assert.equal(parentContent.config.target.contentType, 'FORM')
+assert.equal(buildRelatedContentPayload(parentContent, 'FORM', 'req-form').config.relation.direction, 'REVERSE')
+assert.throws(() => applyEntityRelationBinding(parentContent, { ...reverse, direction: 'FORWARD' }), /不能替换/)
+const composition = { ...relation, ownershipType: 'COMPOSITION' }
+for (const [type, nodeType] of [['ONE_TO_ONE', 'SUB_FORM'], ['ONE_TO_MANY', 'REPEATER']]) {
+  const node = buildRelationEditor({ relation: { ...composition, relationType: type }, content: { id: 'child-form' }, release: { id: 'release', version: 3 } })
+  assert.equal(node.nodeType, nodeType)
+  assert.equal(node.bindingType, 'RELATION')
+  assert.equal(node.bindingRef, relation.relationCode)
+  assert.equal(node.fieldCode, relation.dataKey)
+  assert.equal(node.childFormReleaseId, 'release')
+  assert.equal(node.childRefFieldCode, relation.childRefFieldCode)
+  assert.equal(node.fieldId, undefined, '主从组件无需实体展示字段')
+}
+assert.throws(() => buildRelationEditor({ relation: { ...relation, ownershipType: 'ASSOCIATION' } }), /组成关系/)
+assert.throws(() => buildRelationEditor({ relation: { ...composition, direction: 'REVERSE' } }), /组成关系/)
+assert.throws(() => buildRelationEditor({ relation: composition, content: { id: 'child-form' }, release: null }), /已发布/)
+
+// 无实体字段的节点保存后重开，基数、外键和发布身份仍保持不变。
+for (const relationType of ['ONE_TO_ONE', 'ONE_TO_MANY']) {
+  const node = buildRelationEditor({ relation: { ...composition, relationType }, content: { id: 'child-form' }, release: { id: 'release', version: 3 } })
+  const subFormConfig = { relationCode: node.bindingRef, dataKey: node.fieldCode, childEntityId: node.childEntityId, relationType, childRefFieldCode: node.childRefFieldCode }
+  const payload = buildFormNodePayload(node, { componentProps: { subFormConfig } })
+  assert.equal(payload.bindingType, 'RELATION')
+  assert.equal(payload.childFormReleaseVersion, 3)
+  const reopened = restoreRelationEditorMetadata({ nodeType: payload.nodeType, bindingRef: payload.bindingRef }, payload.props.componentProps.subFormConfig)
+  assert.equal(reopened.relationType, relationType)
+  assert.equal(reopened.childRefFieldCode, relation.childRefFieldCode)
+  assert.equal(reopened.childEntityId, relation.childEntityId)
+  assert.equal(reopened.repeatable, relationType === 'ONE_TO_MANY')
+}
+
+// 快捷入口与设置面板只改变锚点；设计态和运行时必须按同一节点定位。
+const { formRelatedContentsAt } = await import('../form-related-content.js')
+const atNode = (id, anchorKey, orderKey = 0, overrides = {}) => ({
+  id, anchorType: 'FORM_NODE', anchorKey, orderKey,
+  config: { enabled: true, presentation: { position: 'INLINE', loadMode: 'ON_DEMAND' }, ...overrides }
+})
+const placements = [
+  atNode('by-id', 'field-id', 2), atNode('by-key', 'field-key', 1),
+  atNode('other', 'other-key'), atNode('disabled', 'field-id', 0, { enabled: false }),
+  atNode('popup', 'field-id', 3, { presentation: { position: 'DIALOG' } }),
+  { ...atNode('owner', ''), anchorType: 'OWNER' },
+  atNode('tab', 'tab-key', 0, { presentation: { position: 'TAB' } })
+]
+const anchor = { id: 'field-id', nodeKey: 'field-key' }
+assert.deepEqual(formRelatedContentsAt(placements, anchor, { preview: true }).map(x => x.id), ['by-key', 'by-id'])
+assert.deepEqual(formRelatedContentsAt(placements, anchor).map(x => x.id), ['by-key', 'by-id', 'popup'])
+assert.deepEqual(formRelatedContentsAt(placements, null, { preview: true }).map(x => x.id), ['owner'])
+assert.deepEqual(formRelatedContentsAt(placements, { nodeKey: 'tab-key' }, { preview: true }).map(x => x.id), ['tab'])
+assert.deepEqual(formRelatedContentsAt(placements, { id: 'missing' }, { preview: true }), [])
+assert.equal(placements[0].id, 'by-id', '定位时不能修改原配置顺序')
+console.log('form related content placement tests passed')

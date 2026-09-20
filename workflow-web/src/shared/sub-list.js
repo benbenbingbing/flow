@@ -17,34 +17,11 @@ const FILTER_OPERATORS = new Set([
   'NOT_IN'
 ])
 
-export function normalizeListScenes(value) {
-  if (Array.isArray(value)) {
-    return value
-      .map(item => String(item || '').trim().toUpperCase())
-      .filter(Boolean)
-  }
-  if (typeof value !== 'string' || !value.trim()) return []
-  try {
-    return normalizeListScenes(JSON.parse(value))
-  } catch {
-    return value
-      .split(',')
-      .map(item => item.trim().toUpperCase())
-      .filter(Boolean)
-  }
-}
-
-export function supportsSubListEmbedding(list) {
-  const scenes = normalizeListScenes(list?.allowedScenes)
-  return scenes.length === 0 || scenes.includes(SUB_LIST_RUNTIME_SCENE)
-}
-
 export function isPublishedSubListOption(list) {
   return Boolean(
     list?.listKey
     && list.activeReleaseId
     && Number(list.publishedVersion) > 0
-    && supportsSubListEmbedding(list)
   )
 }
 

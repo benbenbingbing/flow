@@ -174,7 +174,7 @@ public class EntityActionRuleEvaluator {
             return false;
         }
         return switch (relation.toUpperCase(Locale.ROOT)) {
-            case "CURRENT_USER_IS_CREATOR" -> matchesUser(row.getCreatedBy(), user);
+            case "CURRENT_USER_IS_CREATOR" -> matchesUser(row.getCreateBy(), user);
             case "CURRENT_USER_IS_SUBMITTER" -> matchesUser(row.getSubmitterId(), user);
             case "CURRENT_USER_IS_ASSIGNEE" -> currentApprover
                     || matchesUser(row.getCurrentTaskAssignee(), user)
@@ -219,8 +219,6 @@ public class EntityActionRuleEvaluator {
         }
         return switch (field) {
             case "id" -> row.getId();
-            case "dataNo" -> row.getDataNo();
-            case "title" -> row.getTitle();
             case "name" -> row.getName();
             case "code" -> row.getCode();
             case "status" -> row.getStatus();
@@ -233,10 +231,11 @@ public class EntityActionRuleEvaluator {
             case "submitterId" -> row.getSubmitterId();
             case "submitterName" -> row.getSubmitterName();
             case "deptId" -> row.getDeptId();
-            case "createdAt" -> row.getCreatedAt();
-            case "updatedAt" -> row.getUpdatedAt();
-            case "createdBy" -> row.getCreatedBy();
-            case "updatedBy" -> row.getUpdatedBy();
+            case "create_time" -> row.getCreateTime();
+            case "update_time" -> row.getUpdateTime();
+            case "create_by" -> row.getCreateBy();
+            case "update_by" -> row.getUpdateBy();
+            case "deleted" -> row.getDeleted();
             default -> firstPresent(row.getData(), row.getExtData(), field);
         };
     }

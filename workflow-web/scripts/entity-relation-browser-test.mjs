@@ -16,9 +16,13 @@ import Management from '/src/views/entity/components/EntityRelationManagement.vu
 import Picker from '/src/components/form-designer/FormRelationPicker.vue'
 import Preview from '/src/components/form-designer/RelationContentDesignPreview.vue'
 import Runtime from '/src/components/FormPreviewLinkage.vue'
+import DesignNode from '/src/components/FormNodeDesignItem.vue'
+import { formRelatedContentsAt } from '/src/shared/form-related-content.js'
 import ButtonConfig from '/src/components/ListButtonConfigPanel.vue'
 import DataTable from '/src/views/entity/components/EntityDataTable.vue'
 import RelatedPanel from '/src/components/related-content/RelatedContentPanel.vue'
+import { buildFormNodePayload } from '/src/shared/form-node-property-schema.js'
+import { buildRelationEditor } from '/src/shared/relation-content.js'
 import { normalizeListActionForSave } from '/src/shared/list-config-design.js'
 import request from '/src/utils/request.js'
 const source={id:'all',entityCode:'ALL',entityName:'全流程验收'}
@@ -30,21 +34,24 @@ const fields=[{id:'name',fieldCode:'reqName',fieldName:'需求名称',fieldType:
  {id:'short',fieldCode:'shortId',fieldName:'长度不足的ID',fieldType:'STRING',fieldLength:32}]
 const target={id:'req',entityCode:'ZDWREQ',entityName:'需求管理',status:'PUBLISHED',storageMode:'DYNAMIC',fields}
 const relations=[{id:'r1',relationName:'关联需求',relationCode:'reqRelation',dataKey:'reqRelation',childEntityId:'req',childEntityName:'需求管理',childEntityCode:'ZDWREQ',childRefFieldCode:'acceptance_id',relationType:'ONE_TO_ONE',ownershipType:'ASSOCIATION',enabled:true,cascadeDelete:false},
- {id:'r2',relationName:'需求明细',relationCode:'reqItems',dataKey:'reqItems',childEntityId:'req',childEntityName:'需求管理',childEntityCode:'ZDWREQ',childRefFieldCode:'zdw_all_id',relationType:'ONE_TO_MANY',enabled:true}]
-const form={id:'req-form',entityId:'req',formName:'需求详情表单',formKey:'details',status:1,activeReleaseId:'req-release',layoutType:'vertical'}
+ {id:'r2',relationName:'需求明细',relationCode:'reqItems',dataKey:'reqItems',childEntityId:'req',childEntityName:'需求管理',childEntityCode:'ZDWREQ',childRefFieldCode:'zdw_all_id',relationType:'ONE_TO_MANY',ownershipType:'ASSOCIATION',enabled:true}]
+relations.forEach(relation=>{relation.parentEntityId='all';relation.direction='FORWARD'})
+relations.push({...relations[1],id:'owned',relationCode:'ownedDetails',dataKey:'ownedDetails',relationName:'组成明细',ownershipType:'COMPOSITION'},
+ {...relations[0],id:'reverse',relationCode:'reqRelation',relationName:'所属需求',direction:'REVERSE',parentEntityId:'req',parentEntityCode:'ZDWREQ',parentEntityName:'需求管理',childEntityId:'all',relationType:'ONE_TO_MANY'})
+const form={id:'req-form',entityId:'req',formName:'需求详情表单',formKey:'details',status:1,activeReleaseId:'req-release',layoutType:'vertical',viewConfig:{inputParameterSchema:{type:'object',properties:{sourceName:{type:'string'}}}}}
 const formFields=[{...fields[0],id:'field-name',fieldId:'name',fieldLabel:'需求名称'}]
 const nodes=[{id:'name-node',nodeKey:'reqName',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'reqName',props:{fieldCode:'reqName',label:'需求名称',componentType:'input'}}]
-const formRelease={id:'req-release',version:1,snapshotDocument:JSON.stringify({form,legacyFields:formFields,nodes})}
+const formRelease={id:'req-release',version:1,releaseResolutionToken:'req-release-token',snapshotDocument:JSON.stringify({form,legacyFields:formFields,nodes})}
 const listFields=[{id:'name-col',fieldCode:'reqName',fieldName:'需求名称',fieldLabel:'需求名称',fieldType:'STRING',showInList:true}]
-const list={id:'req-list',entityId:'req',listName:'需求明细列表',listKey:'requirements',activeReleaseId:'list-release',publishedVersion:1,fields:listFields}
-const listRelease={id:'list-release',version:1,snapshotDocument:JSON.stringify({list})}
-const state=reactive({compositions:[],published:false,sourceRecordId:'all-1',calls:[],relationWrites:[],unexpected:[],catalogFailure:false,listButtonTest:false,buttons:[],savedButton:null,selectedRows:[],tableRows:[{id:'all-1',name:'验收一',actionCapabilities:{requirements:{visible:true,enabled:true}}},{id:'all-2',name:'验收二',actionCapabilities:{requirements:{visible:true,enabled:true}}}]})
+const list={id:'req-list',entityId:'req',listName:'需求明细列表',listKey:'requirements',activeReleaseId:'list-release',publishedVersion:1,fields:listFields,viewConfig:{inputParameterSchema:{type:'object',properties:{sourceName:{type:'string'}}}}}
+const listRelease={id:'list-release',version:1,status:'ACTIVE',snapshotDocument:JSON.stringify({list})}
+const state=reactive({compositions:[],editorNodes:[],aggregateRuntime:false,aggregateData:{},published:false,sourceRecordId:'all-1',sourceData:{name:'未保存的验收名称'},parameterTest:false,calls:[],relationWrites:[],unexpected:[],catalogFailure:false,listButtonTest:false,buttons:[],savedButton:null,selectedRows:[],tableRows:[{id:'all-1',name:'验收一',actionCapabilities:{requirements:{visible:true,enabled:true}}},{id:'all-2',name:'验收二',actionCapabilities:{requirements:{visible:true,enabled:true}}}]})
 const buttonCompositions=()=>state.compositions.map(item=>({...item,anchorType:'LIST_ACTION',config:{...item.config,presentation:{...item.config.presentation,position:'DRAWER'}}}))
 request.defaults.adapter=async config=>{
  const url=config.url,method=config.method,body=typeof config.data==='string'?JSON.parse(config.data):config.data||{}
  state.calls.push({url,method,body,params:config.params})
  let data
- if(url==='/entity/all/relations'&&method==='get'){if(state.relationFailure)throw Error('模拟实体关系加载失败');data=relations}
+ if(['/entity/all/relations','/entity/all/relations/available'].includes(url)&&method==='get'){if(state.relationFailure)throw Error('模拟实体关系加载失败');data=relations}
  else if(url==='/entity/all/relations'&&method==='post'){state.relationWrites.push(body);data={...body,id:'new-relation',relationCode:body.relationCode||'rel_generated',dataKey:body.dataKey||'rel_generated'};relations.push(data)}
  else if(url==='/entity/options')data={records:[target],total:1}
  else if(url==='/entity/options/resolve')data=[target]
@@ -52,7 +59,7 @@ request.defaults.adapter=async config=>{
  else if(url==='/entity-form/entity/req'){if(state.catalogFailure)throw Error('模拟目录加载失败');data=[form,{id:'draft',formName:'未发布表单',status:1}]}
  else if(url==='/entity-list-config/entity/req')data=[list]
  else if(url==='/entity-form/req-form/fields')data=formFields
- else if(url==='/entity-forms/req-form/runtime-release')data=formRelease
+ else if(url==='/entity-forms/req-form/runtime-release')data=state.parameterTest?{...formRelease,snapshotDocument:JSON.stringify({form:{...form,dataSourceBindingsDocument:{AFTER_LOAD:[{extensionId:'parameter-reader',bindingCode:'parameter-reader'}]}},legacyFields:formFields,nodes})}:formRelease
  else if(url==='/entity-list-config/req-list')data=list
  else if(url==='/entity-list-config/req-list/releases')data=[listRelease]
  else if(url==='/ui-view-compositions/FORM/owner'&&method==='get')data=state.compositions.map(item=>({...item,ownerRevision:100}))
@@ -71,28 +78,51 @@ request.defaults.adapter=async config=>{
  else if(url.startsWith('/entity-data/entity/ZDWREQ/detail/'))data={id:'child-'+state.sourceRecordId,data:{reqName:'关联需求 '+state.sourceRecordId,zdw_all_id:state.sourceRecordId,acceptance_id:state.sourceRecordId}}
  else if(url==='/entity-lists/ZDWREQ/requirements/schema')data={...list,entityCode:'ZDWREQ',releaseId:'list-release',scene:'EMBEDDED',toolbarConfig:[],rowActionConfig:[]}
  else if(url==='/entity-lists/ZDWREQ/requirements/query'){
-   if(body.viewCompositionContextToken!=='list-'+state.sourceRecordId)throw Error('列表未携带当前记录的关联凭证')
+   if(!state.parameterTest&&body.viewCompositionContextToken!=='list-'+state.sourceRecordId)throw Error('列表未携带当前记录的关联凭证')
    data={records:[{id:'row-'+state.sourceRecordId,data:{reqName:'明细需求 '+state.sourceRecordId},reqName:'明细需求 '+state.sourceRecordId}],total:1}
  }
+ else if(url==='/ui-runtime/extensions/execute')data={data:{reqName:body.input.params.sourceName}}
+ else if(url==='/entity-form-resolve/new-data/ZDWREQ')data=null
  else if(url.includes('/entity-versions/records/'))data={enabled:false}
+ else if(url==='/ui-runtime/events/FIELD_CHANGE/execute')data={success:true,results:[],patch:{}}
  else if(url.includes('/entity-status/')||url.includes('/ui-event-bindings')||url.includes('/ui-extensions/')||url.includes('/entity-form/entity/req/fields'))data=[]
  else {state.unexpected.push(url);data=[]}
  return {data:{code:200,data},status:200,statusText:'OK',headers:{},config}
 }
+function aggregateForm(){
+ const fields=state.editorNodes.map(node=>({...node,componentProps:JSON.stringify({subFormConfig:{relationCode:node.bindingRef,dataKey:node.fieldCode,relationType:node.relationType,childEntityId:node.childEntityId,refEntityId:node.childEntityId,childRefFieldCode:node.childRefFieldCode,layout:'form'}})}))
+ return {id:'aggregate-owner',formName:'验收主从表单',fields,nodes:fields.map((node,index)=>buildFormNodePayload({...node,id:'agg-'+index,nodeKey:node.fieldCode},{componentProps:JSON.parse(node.componentProps)}))}
+}
+// 节点位置回归使用真实递归设计组件和预览渲染器，不将关联卡片统一追加到页面末尾。
+const placementNodes=[
+ {id:'text-node',nodeKey:'text-key',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'text',fieldCode:'text',fieldName:'我是文本',fieldType:'STRING',componentType:'input'},
+ {id:'section',nodeKey:'section-key',nodeType:'SECTION',componentProps:'{}'},
+ {id:'nested',nodeKey:'nested-key',parentId:'section',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'nested',fieldCode:'nested',fieldName:'区块内字段',fieldType:'STRING',componentType:'input'},
+ {id:'tabs',nodeKey:'tabs-key',nodeType:'TAB_SET',componentProps:'{}'},
+ {id:'tab',nodeKey:'tab-key',parentId:'tabs',nodeType:'TAB',componentProps:'{}'}
+]
+const placementChildren=id=>placementNodes.filter(node=>(node.parentId||'')===(id||''))
+const placementItems=()=>state.placementTest?state.compositions.filter(item=>item.config.relation.direction==='REVERSE'):[]
+const placementForm=()=>({id:'owner',fields:placementNodes.filter(node=>node.nodeType==='FIELD'),nodes:placementNodes.map((node,index)=>buildFormNodePayload({...node,sortOrder:index},{componentProps:{label:node.fieldName||node.nodeKey}})),viewCompositions:placementItems()})
 const picker=ref(null)
 const relatedPanel=ref(null)
 const app=createApp({setup(){return()=>h('main',{style:'width:1080px;margin:20px auto'},[
- h(RelatedPanel,{ref:relatedPanel,ownerType:'FORM',ownerId:'owner',sourceEntity:source}),
+ h(RelatedPanel,{ref:relatedPanel,ownerType:'FORM',ownerId:'owner',sourceEntity:source,sourceFields:[{fieldCode:'name',fieldName:'验收名称'}],anchorOptions:placementNodes.map(node=>({value:node.id,label:(node.fieldName||node.nodeKey)+'（节点之后）',nodeType:node.nodeType}))}),
+ state.aggregateRuntime?h('section',{id:'aggregate-runtime'},[h('h3','主从编辑运行时'),h(Runtime,{form:aggregateForm(),modelValue:state.aggregateData,'onUpdate:modelValue':value=>state.aggregateData=value,context:{record:{id:'all-1'}},mode:'edit',readonly:false,showHeader:false})]):null,
+ state.placementTest?h('section',{id:'placement-canvas',key:'canvas-'+(state.placementRemount||0)},[
+ ...placementChildren('').map((node,index)=>h(DesignNode,{node,siblingIndex:index,siblingCount:3,relatedContents:placementItems(),childrenFor:placementChildren,nodeSpanFor:()=>24,nodeStyleFor:()=>({width:'100%'}),legacyNodeType:n=>n.nodeType,nodeLabel:id=>placementNodes.find(n=>n.id===id)?.fieldName||id,canDropNode:()=>true,onEditRelatedContent:item=>{state.placementEdited=item.id;relatedPanel.value.open(item)},onRemoveRelatedContent:item=>{state.placementRemoved=item.id}})),
+ ...formRelatedContentsAt(placementItems(),null,{preview:true}).map(item=>h(Preview,{key:item.id,composition:item}))]):null,
+ state.placementTest?h('section',{id:'placement-preview',key:'preview-'+(state.placementRemount||0)},[h(Runtime,{form:placementForm(),designPreview:true,mode:state.placementMode||'create',showHeader:false})]):null,
  h('h2','实体关系：定义到展示'),h('section',{id:'definition'},[h(Management,{entityId:'all',canManage:true})]),
  h('div',{style:'display:grid;grid-template-columns:260px 1fr;gap:20px'},[
- h('aside',{id:'picker'},[h(Picker,{ref:picker,sourceEntity:source,ownerId:'owner',compositions:state.compositions,onEdit:item=>relatedPanel.value.open(item)})]),
+ h('aside',{id:'picker'},[h(Picker,{ref:picker,sourceEntity:source,ownerId:'owner',compositions:state.compositions,nodes:state.editorNodes,onAddEditor:selection=>state.editorNodes.push(buildRelationEditor(selection)),onEdit:item=>relatedPanel.value.open(item)})]),
  h('section',{id:'design'},[h('h3','设计画布'),...state.compositions.map(item=>h(Preview,{key:item.id,composition:item}))])]),
- state.published?h('section',{id:'runtime'},[h('h3','发布运行时'),h(Runtime,{form:{id:'owner',formName:'验收',fields:[],nodes:[],runtimeReleaseId:'owner-release',runtimeReleaseVersion:1,viewCompositions:state.compositions},context:{record:{id:state.sourceRecordId}},readonly:true,mode:'view',showHeader:false})]):null,
+ state.published?h('section',{id:'runtime'},[h('h3','发布运行时'),h(Runtime,{form:{id:'owner',formName:'验收',fields:[],nodes:[],runtimeReleaseId:'owner-release',runtimeReleaseVersion:1,viewCompositions:state.compositions},modelValue:state.sourceData,context:{record:{id:state.sourceRecordId}},readonly:true,mode:'view',showHeader:false})]):null,
  state.listButtonTest?h('section',{id:'button-config'},[h('h3','关联内容使用标准列表按钮'),h(ButtonConfig,{type:'row',modelValue:state.buttons,relatedContents:buttonCompositions(),onSave:button=>{state.savedButton=normalizeListActionForSave(button,'ROW')}})]):null,
  state.listButtonTest?h('section',{id:'button-runtime'},[h(DataTable,{dataList:state.tableRows,loading:false,total:2,pageNum:1,pageSize:10,listFields:[{fieldCode:'name',fieldLabel:'验收名称',fieldName:'验收名称'}],useListConfig:false,toolbarButtons:state.buttons.map(b=>({...b,label:'打开需求'})),toolbarCapabilities:{requirements:{visible:true,enabled:true}},rowActionButtons:state.buttons,showSelectionColumn:true,selectedRows:state.selectedRows,'onUpdate:selectedRows':rows=>state.selectedRows=rows,entityCode:'ALL',entityDefinition:source,entityStatusMap:{},refEntityNameMap:{},refresh:()=>{},buttonCompositions:buttonCompositions(),listOwnerId:'list-owner',listReleaseId:'list-release',listReleaseVersion:1,listReleaseResolutionToken:'pinned-list-token'})]):null
 ])}})
 app.use(createPinia()).use(createRouter({history:createMemoryHistory(),routes:[]})).use(ElementPlus).mount('#app')
-window.relationTest={state,picker,relatedPanel,relations,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,400));await nextTick()}}
+window.relationTest={state,picker,relatedPanel,relations,placementItems,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,400));await nextTick()}}
 `
 
 const fixture = mkdtempSync(path.resolve('.relation-fixture-'))
@@ -157,7 +187,14 @@ try {
   assert.ok(fieldOptions.some(text=>text.includes('zdw_all_id')),'原有正确引用字段仍可选')
   assert.ok(fieldOptions.every(text=>!['wrongRef','numericId','shortId'].some(code=>text.includes(code))))
   await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('acceptance_id')).click()")
-  await until("document.body.innerText.includes('acceptance_id = 当前记录.id')")
+  // 匹配规则随字段说明收进问号提示，实际悬停后仍应显示当前选择的关联字段。
+  const referenceHelpPoint = await evaluate(`(()=>{
+    const rect = document.querySelector('[aria-label="查看关联字段配置说明"]').getBoundingClientRect()
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  })()`)
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...referenceHelpPoint })
+  await until("[...document.querySelectorAll('[role=tooltip]')].some(e=>e.getClientRects().length&&e.innerText.includes('acceptance_id = 当前记录.id'))")
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 })
   await click('创建关系')
   await until('relationTest.state.relationWrites.length===1')
   const created = await evaluate('JSON.parse(JSON.stringify(relationTest.state.relationWrites[0]))')
@@ -318,15 +355,142 @@ try {
   assert.equal(await evaluate('relationTest.state.compositions[0].config.relation.relationCode'),'reqRelation')
   assert.deepEqual(await evaluate('Array.from(relationTest.state.compositions[0].config.actions)'),['VIEW'])
 
-  // 不引用已有关系的新增配置仍保留完整取数向导。
+  // 新建业务关联必须选择目录中的关系；扩展页面另有入口，不能再次输入字段匹配条件。
   await click('新增关联内容',"document.querySelector('.related-content-panel')")
-  await until(`${dialog}?.innerText.includes('新增关联内容')`)
+  await until(`${dialog}?.innerText.includes('继承实体关系：请选择')`)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),3)
+  assert.equal(await evaluate(`[...${dialog}.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存显示配置').disabled`),true)
+  await evaluate(`${dialog}.querySelector('.entity-relation-binding .el-select__wrapper').click()`)
+  await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('所属需求'))")
+  await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('所属需求')).click()")
+  await until(`${dialog}.innerText.includes('当前记录.acceptance_id = ZDWREQ.id')`)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods').length`),0)
+  await evaluate(`[...${dialog}.querySelectorAll('.el-form-item')].find(e=>e.querySelector('.el-form-item__label')?.textContent.includes('显示内容')).querySelector('.el-select__wrapper').click()`)
+  await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('需求详情表单'))")
+  await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('需求详情表单')).click()")
+  await click('保存显示配置',dialog)
+  await until("relationTest.state.compositions.some(c=>c.config.relation.direction==='REVERSE')")
+  assert.equal(await evaluate("relationTest.state.compositions.find(c=>c.config.relation.direction==='REVERSE').config.target.contentType"),'FORM')
+  await click('扩展页面',"document.querySelector('.related-content-panel')")
+  await until(`${dialog}?.innerText.includes('扩展页面')`)
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),4)
   assert.equal(await evaluate(`${dialog}.querySelector('.entity-relation-binding')===null`),true)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods button').length`),1)
   await click('取消',dialog)
+
+  // 组成关系直接生成主从编辑节点，不调用实体字段创建接口，也不创建独立保存的展示配置。
+  await click('Close this dialog', "document.querySelector('.related-content-panel')").catch(async()=>{
+    await evaluate("document.querySelector('.related-content-panel .el-drawer__close-btn')?.click();relationTest.settle()")
+  })
+  await click('添加主从编辑', "document.getElementById('picker')")
+  await until("document.body.innerText.includes('选择子记录使用的表单')")
+  assert.equal(await evaluate("document.body.innerText.includes('随主表单统一提交')"),true)
+  await click('添加到表单')
+  await until('relationTest.state.editorNodes.length===1')
+  const aggregate=await evaluate('JSON.parse(JSON.stringify(relationTest.state.editorNodes[0]))')
+  assert.equal(aggregate.bindingType,'RELATION')
+  assert.equal(aggregate.bindingRef,'ownedDetails')
+  assert.equal(aggregate.nodeType,'REPEATER')
+  assert.equal(aggregate.childFormReleaseId,'req-release')
+  assert.equal(aggregate.fieldId,undefined)
+  await evaluate('relationTest.state.aggregateRuntime=true;relationTest.settle()')
+  await until("document.querySelector('#aggregate-runtime .sub-form-field')")
+  await evaluate("(()=>{const button=[...document.querySelectorAll('#aggregate-runtime button')].find(b=>/添加|新增/.test(b.textContent));if(!button)throw Error('主从编辑缺少新增行');button.click()})();relationTest.settle()")
+  await until("document.querySelector('#aggregate-runtime input.el-input__inner')")
+  await evaluate("(()=>{const input=document.querySelector('#aggregate-runtime input.el-input__inner');input.value='新增需求明细';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}))})();relationTest.settle()")
+  await until("relationTest.state.aggregateData.ownedDetails?.[0]?.reqName==='新增需求明细'")
+  assert.equal(await evaluate("relationTest.state.calls.some(call=>call.method==='post'&&call.url.startsWith('/entity-data')&&/(create|update|save|delete|submit)([/]|$)/.test(call.url))"),false,'子表编辑只修改主表草稿，不独立提交')
+  const aggregateScreenshot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})
+  writeFileSync('/tmp/flow-unified-aggregate-editor.png',Buffer.from(aggregateScreenshot.data,'base64'))
+
+  // 从设置面板选择“我是文本之后”，无宿主发布版本和记录 ID 也应显示目标布局。
+  await evaluate('relationTest.state.published=false;relationTest.state.aggregateRuntime=false;relationTest.state.listButtonTest=false;relationTest.state.placementTest=true;relationTest.settle()')
+  await evaluate('relationTest.relatedPanel.value.open(relationTest.placementItems()[0]);relationTest.settle()')
+  await until(`${dialog}?.innerText.includes('关系展示设置')`)
+  async function selectPlacement(label, optionText) {
+    await evaluate(`[...${dialog}.querySelectorAll('.el-form-item')].find(e=>e.querySelector('.el-form-item__label')?.textContent.includes(${JSON.stringify(label)})).querySelector('.el-select__wrapper').click()`)
+    const option=`[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes(${JSON.stringify(optionText)}))`
+    await until(option)
+    await evaluate(`${option}.click();relationTest.settle()`)
+  }
+  await selectPlacement('显示位置','嵌入当前页面')
+  await selectPlacement('放置位置','我是文本')
+  await click('保存显示配置',dialog)
+  await until("relationTest.placementItems()[0].anchorKey==='text-node'")
+  await evaluate("document.querySelector('.related-content-panel .el-drawer__close-btn')?.click();relationTest.settle()")
+  await until("document.querySelector('#placement-canvas [data-node-id=\"text-node\"] .relation-design-preview input')")
+  await until("document.querySelector('#placement-preview .relation-design-preview input')")
+  const initialResolveCalls=await evaluate("relationTest.state.calls.filter(c=>c.url==='/ui-runtime/view-compositions/resolve').length")
+  for(const mode of ['create','edit','view']) {
+    await evaluate(`relationTest.state.placementMode=${JSON.stringify(mode)};relationTest.state.placementRemount=(relationTest.state.placementRemount||0)+1;relationTest.settle()`)
+    await until("document.querySelector('#placement-preview .relation-design-preview input')")
+    assert.equal(await evaluate("document.querySelectorAll('#placement-preview .relation-design-preview').length"),1)
+    assert.equal(await evaluate("document.querySelector('#placement-preview .form-node-root-row > .el-col').querySelectorAll('.relation-design-preview').length"),1,'应显示在字段所属节点之后，不能追加到表单末尾')
+  }
+  // 稳定 nodeKey、递归区块、Tab 和表单末尾均使用相同的布局预览，不重复渲染。
+  for(const [key,selector,position] of [
+    ['nested-key','[data-node-id="nested"]','INLINE'],
+    ['tab-key','.design-tab-panel','TAB'],
+    ['','','INLINE']
+  ]) {
+    await evaluate(`(()=>{const item=relationTest.placementItems()[0];item.anchorKey=${JSON.stringify(key)};item.anchorType=${JSON.stringify(key?'FORM_NODE':'OWNER')};item.config.presentation.position=${JSON.stringify(position)};item.config.presentation.loadMode='ON_DEMAND'})();relationTest.settle()`)
+    const canvasSelector='#placement-canvas '+selector+' .relation-design-preview'
+    await until(`document.querySelector(${JSON.stringify(canvasSelector)})?.querySelector('input')`)
+    await until("document.querySelector('#placement-preview .relation-design-preview input')")
+    assert.equal(await evaluate("document.querySelectorAll('#placement-canvas .relation-design-preview').length"),1)
+    assert.equal(await evaluate("document.querySelectorAll('#placement-preview .relation-design-preview').length"),1)
+    if(key==='tab-key') assert.equal(await evaluate("document.querySelectorAll('#placement-preview .node-tab-panel .relation-design-preview').length"),1)
+  }
+  // 停用立即生效；布局预览不能因为缺少记录偷偷查询业务数据。
+  await evaluate('relationTest.placementItems()[0].config.enabled=false;relationTest.settle()')
+  assert.equal(await evaluate("document.querySelectorAll('#placement-preview .relation-design-preview,#placement-canvas .relation-design-preview').length"),0)
+  assert.equal(await evaluate("relationTest.state.calls.filter(c=>c.url==='/ui-runtime/view-compositions/resolve').length"),initialResolveCalls)
+  await evaluate('relationTest.placementItems()[0].config.enabled=true;relationTest.placementItems()[0].anchorKey="text-node";relationTest.placementItems()[0].anchorType="FORM_NODE";relationTest.settle()')
+  await until("document.querySelector('#placement-preview .relation-design-preview input')")
+  const placementScreenshot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})
+  writeFileSync('/tmp/flow-related-content-placement.png',Buffer.from(placementScreenshot.data,'base64'))
+
+  // 从关系展示设置保存来源字段映射；只读关联仍可把当前未保存值传给目标数据接口。
+  await evaluate('relationTest.state.compositions=[relationTest.placementItems()[0]];relationTest.state.placementTest=false;relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()')
+  await until(`${dialog}?.querySelector('.page-parameter-mapping')`)
+  await click('增加映射',dialog)
+  async function selectParameter(index, label) {
+    await evaluate(`${dialog}.querySelectorAll('.parameter-row .el-select__wrapper')[${index}].click()`)
+    const option=`[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes(${JSON.stringify(label)}))`
+    await until(option); await evaluate(`${option}.click();relationTest.settle()`)
+  }
+  await selectParameter(2,'验收名称')
+  await click('保存显示配置',dialog)
+  await until("relationTest.state.compositions[0].config.parameterMappings?.[0]?.sourceField==='name'")
+  await evaluate("document.querySelector('.related-content-panel .el-drawer__close-btn')?.click();(()=>{const item=relationTest.state.compositions[0];item.anchorType='OWNER';item.anchorKey='';item.config.presentation={position:'INLINE',loadMode:'IMMEDIATE'};item.config.actions=['VIEW'];relationTest.state.compositions=[item];relationTest.state.parameterTest=true;relationTest.state.published=true})();relationTest.settle()")
+  await until("relationTest.state.calls.some(c=>c.url==='/ui-runtime/extensions/execute'&&c.body.input?.params?.sourceName==='未保存的验收名称')")
+  await until("document.querySelector('#runtime .related-content-runtime input')?.value==='未保存的验收名称'")
+  const lastResolve=await evaluate("JSON.parse(JSON.stringify(relationTest.state.calls.filter(c=>c.url==='/ui-runtime/view-compositions/resolve').at(-1).body))")
+  assert.equal(lastResolve.recordId,await evaluate('relationTest.state.sourceRecordId'))
+  assert.equal(lastResolve.sourceData,undefined,'传参不能进入可信关系解析')
+  await evaluate("relationTest.state.sourceData.name='再次修改但未保存';relationTest.settle()")
+  await until("document.querySelector('#runtime .related-content-runtime input')?.value==='再次修改但未保存'")
+  const resolveCount = await evaluate("relationTest.state.calls.filter(c=>c.url==='/ui-runtime/view-compositions/resolve').length")
+  await evaluate("relationTest.state.sourceData.unmapped='不影响目标';relationTest.settle()")
+  assert.equal(await evaluate("relationTest.state.calls.filter(c=>c.url==='/ui-runtime/view-compositions/resolve').length"),resolveCount,'未映射字段变化不能触发关联重复请求')
+  const parameterScreenshot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})
+  writeFileSync('/tmp/flow-page-parameters.png',Buffer.from(parameterScreenshot.data,'base64'))
+
+  // 普通工具栏打开列表：行字段映射必须唯一选中，不能静默取多选第一行。
+  await evaluate("relationTest.state.published=false;relationTest.state.buttons=[{key:'requirements',type:'custom',customMode:'open-list',label:'参数查询',targetEntityCode:'ZDWREQ',targetListKey:'requirements',parameterMappings:[{parameter:'sourceName',sourceType:'FIELD',sourceField:'name'}]}];relationTest.state.selectedRows=[];relationTest.state.listButtonTest=true;relationTest.settle()")
+  const queriesBefore=await evaluate("relationTest.state.calls.filter(c=>c.url.endsWith('/requirements/query')).length")
+  await click('打开需求',"document.getElementById('button-runtime')")
+  assert.equal(await evaluate("relationTest.state.calls.filter(c=>c.url.endsWith('/requirements/query')).length"),queriesBefore)
+  await evaluate('relationTest.state.selectedRows=[...relationTest.state.tableRows];relationTest.settle()')
+  await click('打开需求',"document.getElementById('button-runtime')")
+  assert.equal(await evaluate("relationTest.state.calls.filter(c=>c.url.endsWith('/requirements/query')).length"),queriesBefore)
+  await evaluate('relationTest.state.selectedRows=[relationTest.state.tableRows[1]];relationTest.settle()')
+  await click('打开需求',"document.getElementById('button-runtime')")
+  await until("relationTest.state.calls.some(c=>c.url.endsWith('/requirements/query')&&c.body.context?.parameters?.sourceName==='验收二')")
+
   assert.deepEqual(errors, [])
   assert.deepEqual(await evaluate('Array.from(relationTest.state.unexpected)'), [], '出现未覆盖的 API 路径')
-  console.log('entity relation browser acceptance passed: definition/form/list runtime, standard buttons, inherited relation editor, preserved settings/revisions, cardinality, disabled/deleted/failed relations, legacy interface recovery, generic creation')
+  console.log('entity relation browser acceptance passed: definition/form/list runtime, standard buttons, inherited relation editor, preserved settings/revisions, cardinality, disabled/deleted/failed relations, unified relation creation, reverse usage, composition editors, extension entry, saved anchor placement; page parameter UI save, latest unsaved source values, target interface usage, list button single-row guard and parameter delivery')
 } finally {
   ws?.close(); browser?.kill(); await server?.close(); await sleep(200)
   rmSync(fixture, { recursive: true, force: true })

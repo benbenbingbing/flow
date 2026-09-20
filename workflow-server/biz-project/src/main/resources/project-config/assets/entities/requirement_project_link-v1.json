@@ -318,11 +318,6 @@
       "description": "按需求和项目追踪分配及交付。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": [
-        "PAGE",
-        "EMBEDDED",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -355,9 +350,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {
-        "parentField": "project_id"
-      },
       "fields": [
         {
           "fieldCode": "code",

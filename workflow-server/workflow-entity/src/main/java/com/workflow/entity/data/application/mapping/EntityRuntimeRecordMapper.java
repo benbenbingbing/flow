@@ -28,7 +28,7 @@ public class EntityRuntimeRecordMapper {
 
     /** DTO 层系统字段集合（含驼峰与下划线形式），这些字段不视为自定义业务字段 */
     private static final Set<String> DTO_SYSTEM_FIELDS = new HashSet<>(Arrays.asList(
-            "id", "dataNo", "data_no", "title", "name", "code", "status",
+            "id", "name", "code", "status",
             "processInstanceId", "process_instance_id",
             "processStartTime", "process_start_time",
             "processEndTime", "process_end_time",
@@ -39,8 +39,7 @@ public class EntityRuntimeRecordMapper {
             "submitterName", "submitter_name",
             "deptId", "dept_id",
             "submitTime", "submit_time",
-            "createdTime", "create_time", "updatedTime", "update_time",
-            "createdBy", "createBy", "create_by", "updatedBy", "updateBy", "update_by",
+            "create_time", "update_time", "create_by", "update_by",
             "deleted", "entityCode", "entity_code", "entityName", "entity_name",
             "deptName", "dept_name", "startProcess", "start_process",
             "listKey", "list_key", "data",
@@ -50,7 +49,7 @@ public class EntityRuntimeRecordMapper {
 
     /** 存储层（动态表）系统列集合，提取自定义字段时需排除这些列 */
     private static final Set<String> STORAGE_SYSTEM_COLUMNS = new HashSet<>(Arrays.asList(
-            "id", "data_no", "title", "name", "code", "status",
+            "id", "name", "code", "status",
             "process_instance_id", "process_start_time", "process_end_time",
             "current_task_id", "current_task_name", "current_task_assignee",
             "submitter_id", "submitter_name", "dept_id", "submit_time",
@@ -85,8 +84,6 @@ public class EntityRuntimeRecordMapper {
         EntityDataDTO dto = new EntityDataDTO();
         dto.setId(getString(data, "id"));
         dto.setEntityCode(entityCode);
-        dto.setDataNo(getString(data, "data_no"));
-        dto.setTitle(getString(data, "title"));
         dto.setName(getString(data, "name"));
         dto.setCode(getString(data, "code"));
         dto.setStatus(getString(data, "status"));
@@ -100,10 +97,14 @@ public class EntityRuntimeRecordMapper {
         dto.setSubmitterName(getString(data, "submitter_name"));
         dto.setDeptId(getString(data, "dept_id"));
         dto.setSubmitTime(getDateTime(data, "submit_time"));
-        dto.setCreatedAt(getDateTime(data, "create_time"));
-        dto.setUpdatedAt(getDateTime(data, "update_time"));
-        dto.setCreatedBy(getString(data, "create_by"));
-        dto.setUpdatedBy(getString(data, "update_by"));
+        dto.setCreateTime(getDateTime(data, "create_time"));
+        dto.setUpdateTime(getDateTime(data, "update_time"));
+        dto.setCreateBy(getString(data, "create_by"));
+        dto.setUpdateBy(getString(data, "update_by"));
+        Object deleted = data.get("deleted");
+        // MySQL tinyint 的驱动返回值可能是 Boolean 或数值，统一为表单布尔值。
+        dto.setDeleted(deleted == null ? null
+                : Boolean.TRUE.equals(deleted) || "1".equals(String.valueOf(deleted)));
         dto.setData(extractCustomFields(data, fields));
         dto.setExtData(new HashMap<>());
         return dto;
@@ -120,8 +121,6 @@ public class EntityRuntimeRecordMapper {
         Map<String, Object> data = new HashMap<>();
 
         putIfNotNull(data, "id", dto.getId());
-        putIfNotNull(data, "data_no", dto.getDataNo());
-        putIfNotNull(data, "title", dto.getTitle());
         putIfNotNull(data, "name", dto.getName());
         putIfNotNull(data, "code", dto.getCode());
         putIfNotNull(data, "status", dto.getStatus());
@@ -195,7 +194,7 @@ public class EntityRuntimeRecordMapper {
     }
 
     /**
-     * 将驼峰命名字段名转换为下划线数据库列名（如 userName -> user_name）。
+     * 将字段编码转换为物理列名；下划线编码原样保留，驼峰编码转为下划线。
      *
      * @param fieldName 字段名
      * @return 下划线列名

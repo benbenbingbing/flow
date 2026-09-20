@@ -188,7 +188,9 @@ export function applySubFormFieldInitialization(
 }
 
 export function buildSubFormParentContext(context = {}) {
-  const record = context?.record
+  const latest = context.getFormData?.()
+  const record = latest && typeof latest === 'object'
+    ? { ...context.record, data: latest } : context?.record
   if (record?.data && typeof record.data === 'object') {
     return {
       recordId: context.recordId || record.id || record.data?.id || null,

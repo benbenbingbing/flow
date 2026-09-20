@@ -371,7 +371,6 @@
       "description": "按系统编码、名称、业务域、等级和负责人检索系统资产。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": ["PAGE"],
       "selectionConfig": {"selectionMode":"NONE","valueField":"id","returnMappings":[]},
       "toolbarConfig": [
         {"key":"create","type":"built-in","label":"新增资产","icon":"Plus","buttonType":"primary","sort":1,"enabled":true},
@@ -383,7 +382,6 @@
       ],
       "viewConfig": {"density":"compact","showIndex":true},
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {"fieldCode":"code","fieldName":"系统编码","sortOrder":10,"width":150,"showInList":true,"isQuery":true,"queryType":"LIKE","align":"left","dataSourceType":"ENTITY_FIELD"},
         {"fieldCode":"name","fieldName":"系统名称","sortOrder":20,"width":220,"showInList":true,"isQuery":true,"queryType":"LIKE","align":"left","dataSourceType":"ENTITY_FIELD"},

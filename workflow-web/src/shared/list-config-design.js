@@ -16,10 +16,8 @@ export function listMetadataFingerprint(config, viewConfig) {
     selectionValueField: config.selectionValueField || 'id',
     selectionReturnMappingsText: config.selectionReturnMappingsText || '',
     fixedFilterConfig: config.fixedFilterConfig || '',
-    contextBindingConfig: config.contextBindingConfig || '',
     viewConfig,
-    queryProviderCode: config.queryProviderCode || '',
-    queryInterfaceExtensionId: config.queryInterfaceExtensionId || ''
+    queryProviderCode: config.queryProviderCode || ''
   })
 }
 
@@ -33,8 +31,7 @@ export function listMetadataDetailEntries(config, viewConfig) {
     { key: 'selectionMode', label: '列表设置：选择模式', value: config.selectionMode || 'NONE' },
     { key: 'selectionValueField', label: '列表设置：返回值字段', value: config.selectionValueField || 'id' },
     { key: 'selectionReturnMappingsText', label: '列表设置：返回映射', value: config.selectionReturnMappingsText || '' },
-    { key: 'fixedFilterConfig', label: '列表设置：固定条件', value: config.fixedFilterConfig || '' },
-    { key: 'contextBindingConfig', label: '列表设置：上下文绑定', value: config.contextBindingConfig || '' },
+    { key: 'fixedFilterConfig', label: '列表设置：访问范围／固定条件', value: config.fixedFilterConfig || '' },
     { key: 'search.defaultVisibleCount', label: '列表设置：收起时显示条件数', value: viewConfig.search.defaultVisibleCount },
     { key: 'search.collapsible', label: '列表设置：启用查询区折叠', value: viewConfig.search.collapsible },
     { key: 'search.labelWidth', label: '列表设置：查询区标签宽度', value: viewConfig.search.labelWidth },
@@ -46,12 +43,7 @@ export function listMetadataDetailEntries(config, viewConfig) {
     { key: 'pagination.pageSizes', label: '列表设置：分页选项', value: viewConfig.pagination.pageSizes },
     { key: 'customComponent', label: '列表设置：自定义列表组件', value: config.customComponent || '' },
     { key: 'customComponentProps', label: '列表设置：组件参数', value: viewConfig.customComponentProps },
-    { key: 'queryProviderCode', label: '列表设置：安全查询提供者', value: config.queryProviderCode || '' },
-    {
-      key: 'queryInterfaceExtensionId',
-      label: '列表设置：查询扩展接口',
-      value: config.queryInterfaceExtensionId || ''
-    }
+    { key: 'queryProviderCode', label: '列表设置：安全查询提供者', value: config.queryProviderCode || '' }
   ]
 }
 
@@ -91,7 +83,7 @@ export function normalizeListActionForSave(button, position) {
   for (const key of [
     'targetEntityCode', 'targetListKey', 'presentation', 'selectionMode',
     'openListTitle', 'relationKey', 'selectionHandler',
-    'targetFormId', 'targetFormMode', 'compositionKey'
+    'targetFormId', 'targetFormMode', 'compositionKey', 'parameterMappings'
   ]) {
     if (button[key] !== undefined && button[key] !== '') actionParams[key] = button[key]
   }

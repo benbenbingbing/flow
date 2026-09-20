@@ -19,7 +19,6 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
-import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListSceneMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
@@ -162,7 +161,6 @@ class EntityListIncrementalConfigurationTest {
     @Test
     void actionCreatePersistsExplicitSortOrder() {
         EntityListActionMapper actionMapper = mock(EntityListActionMapper.class);
-        EntityListSceneMapper sceneMapper = mock(EntityListSceneMapper.class);
         EntityListConfigMapper configMapper = mock(EntityListConfigMapper.class);
         EntityListConfig config = new EntityListConfig();
         config.setId("list-1");
@@ -174,7 +172,6 @@ class EntityListIncrementalConfigurationTest {
         EntityListRelationalConfigService service =
                 new EntityListRelationalConfigService(
                         actionMapper,
-                        sceneMapper,
                         configMapper,
                         mock(com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper.class),
                         mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
@@ -211,7 +208,6 @@ class EntityListIncrementalConfigurationTest {
         EntityListRelationalConfigService service =
                 new EntityListRelationalConfigService(
                         actionMapper,
-                        mock(EntityListSceneMapper.class),
                         configMapper,
                         mock(EntityFormMapper.class),
                         mock(UiConfigReleaseMapper.class),
@@ -268,7 +264,6 @@ class EntityListIncrementalConfigurationTest {
         EntityListRelationalConfigService service =
                 new EntityListRelationalConfigService(
                         mock(EntityListActionMapper.class),
-                        mock(EntityListSceneMapper.class),
                         mock(EntityListConfigMapper.class),
                         mock(EntityFormMapper.class),
                         mock(UiConfigReleaseMapper.class),
@@ -314,7 +309,6 @@ class EntityListIncrementalConfigurationTest {
         EntityListRelationalConfigService service =
                 new EntityListRelationalConfigService(
                         actionMapper,
-                        mock(EntityListSceneMapper.class),
                         mock(EntityListConfigMapper.class),
                         mock(EntityFormMapper.class),
                         mock(UiConfigReleaseMapper.class),
@@ -345,7 +339,6 @@ class EntityListIncrementalConfigurationTest {
         EntityListRelationalConfigService service =
                 new EntityListRelationalConfigService(
                         actionMapper,
-                        mock(EntityListSceneMapper.class),
                         configMapper,
                         mock(EntityFormMapper.class),
                         mock(UiConfigReleaseMapper.class),
@@ -401,7 +394,6 @@ class EntityListIncrementalConfigurationTest {
         EntityListRelationalConfigService service =
                 new EntityListRelationalConfigService(
                         actionMapper,
-                        mock(EntityListSceneMapper.class),
                         configMapper,
                         formMapper,
                         releaseMapper,
@@ -488,7 +480,6 @@ class EntityListIncrementalConfigurationTest {
         EntityListRelationalConfigService service =
                 new EntityListRelationalConfigService(
                         actionMapper,
-                        mock(EntityListSceneMapper.class),
                         configMapper,
                         mock(EntityFormMapper.class),
                         mock(UiConfigReleaseMapper.class),

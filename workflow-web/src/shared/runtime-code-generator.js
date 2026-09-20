@@ -18,7 +18,6 @@ const STRUCTURED_KEYS = new Set([
   'availabilityRule',
   'columnConfig',
   'componentProps',
-  'contextBindingConfig',
   'dataSourceBindings',
   'dataSourceConfig',
   'extensionConfig',
@@ -39,7 +38,10 @@ const STRUCTURED_KEYS = new Set([
 const SERVER_ONLY_SNAPSHOT_KEYS = new Set(['executableSnapshot'])
 
 export function normalizeRuntimeSnapshot(value) {
-  return normalizeValue(value)
+  const normalized = normalizeValue(value)
+  // 旧发布原文保留用于哈希校验；等价代码只展示当前仍受支持的列表配置。
+  if (normalized?.list) delete normalized.list.contextBindingConfig
+  return normalized
 }
 
 export function selectRuntimeRelease(releases = [], activeReleaseId = '') {
@@ -80,20 +82,11 @@ export function buildListDraftRuntimeSnapshot({
   fields = [],
   toolbarActions = [],
   rowActions = [],
-  scenes = [],
   eventBindings = []
 } = {}) {
-  const allowedScenes = scenes.length > 0
-    ? scenes
-        .filter(scene => scene?.enabled !== false)
-        .map(scene => scene.sceneCode || scene.code || scene)
-        .filter(Boolean)
-    : normalizeSceneValues(
-        list.allowedSceneValues || list.allowedScenes
-      )
   const normalizedList = {
     ...withoutKeys(list, [
-      'allowedSceneValues',
+      'contextBindingConfig',
       'fields',
       'rowActionConfig',
       'selectionMode',
@@ -102,10 +95,6 @@ export function buildListDraftRuntimeSnapshot({
       'toolbarConfig',
       'viewConfig'
     ]),
-    allowedScenes,
-    contextBindingConfig: parseStructured(
-      list.contextBindingConfig
-    ),
     fields,
     fixedFilterConfig: parseStructured(
       list.fixedFilterConfig
@@ -205,16 +194,6 @@ function parseStructured(value) {
   } catch {
     return value
   }
-}
-
-function normalizeSceneValues(value) {
-  if (Array.isArray(value)) return value.filter(Boolean)
-  const parsed = parseStructured(value)
-  if (Array.isArray(parsed)) return parsed.filter(Boolean)
-  return String(value || '')
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
 }
 
 function resolveSelectionConfig(list) {
@@ -779,14 +758,6 @@ function collectListLogic(snapshot) {
       summarizeValue(list.fixedFilterConfig)
     ))
   }
-  if (hasContent(list.contextBindingConfig)) {
-    items.push(logicItem(
-      '上下文',
-      'list.contextBindingConfig',
-      '上下文绑定',
-      summarizeValue(list.contextBindingConfig)
-    ))
-  }
   if (list.dataScopeMode || list.accessPermissionCode) {
     items.push(logicItem(
       '权限',
@@ -808,14 +779,6 @@ function collectListLogic(snapshot) {
       'list.selectionConfig',
       '选择与返回映射',
       summarizeValue(list.selectionConfig)
-    ))
-  }
-  if ((list.allowedScenes || []).length > 0) {
-    items.push(logicItem(
-      '场景',
-      'list.allowedScenes',
-      '允许场景',
-      list.allowedScenes.join('、')
     ))
   }
   ;(list.fields || []).forEach((field, index) => {

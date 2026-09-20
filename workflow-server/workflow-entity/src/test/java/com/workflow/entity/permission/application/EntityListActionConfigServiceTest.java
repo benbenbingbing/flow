@@ -54,7 +54,7 @@ class EntityListActionConfigServiceTest {
         EntityActionRuleDTO edit = rule(buttons, "edit");
         EntityActionRuleDTO delete = rule(buttons, "delete");
         EntityDataDTO row = new EntityDataDTO();
-        row.setCreatedBy(creator);
+        row.setCreateBy(creator);
         row.setSubmitterId(submitter);
         row.setProcessInstanceId(processStarted ? "process-1" : null);
         SysUser user = new SysUser();

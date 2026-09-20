@@ -6,6 +6,7 @@
     <div class="design-header">
       <div class="header-left">
         <span class="title">{{ form.formName || '新建表单' }}<template v-if="form.formKey">（{{ form.formKey }}）</template></span>
+        <el-tag v-if="entityInfo.entityName" size="small" type="info">{{ entityInfo.entityName }}</el-tag>
       </div>
       <div class="header-right">
         <el-tooltip :content="draftStatus.label" placement="bottom">
@@ -56,7 +57,8 @@
               <el-dropdown-item command="TAB">Tab 页</el-dropdown-item>
               <el-dropdown-item command="COLLAPSE">折叠面板</el-dropdown-item>
               <el-dropdown-item command="TEXT">说明文本</el-dropdown-item>
-              <el-dropdown-item command="REPEATER">明细表</el-dropdown-item>
+              <el-dropdown-item command="RELATED_CONTENT">关联表单／列表</el-dropdown-item>
+              <el-dropdown-item command="RELATION_EDITOR">子表单／明细编辑</el-dropdown-item>
               <el-dropdown-item command="ACTION_SLOT">动作插槽</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -119,8 +121,11 @@
             :source-entity="entityInfo"
             :owner-id="form.id"
             :compositions="relatedContents"
+            :nodes="formFields"
             @saved="handleRelationContentSaved"
             @edit="openRelatedContent"
+            @add-editor="addRelationEditor"
+            @edit-node="openFieldProperties"
           />
         </div>
       </div>
@@ -162,6 +167,9 @@
                     :legacy-node-type="legacyNodeType"
                     :node-label="nodeLabel"
                     :action-buttons="viewConfig.actionBar.customButtons"
+                    :related-contents="relatedContents"
+                    @edit-related-content="openRelatedContent"
+                    @remove-related-content="removeRelatedContent"
                     :can-drop-node="canDropNode"
                     :drag-disabled="reorderingNode"
                     @select="selectField"
@@ -984,6 +992,7 @@
       <div class="preview-container">
         <FormPreviewLinkage
           :form="previewForm"
+          design-preview
           :mode="previewMode"
           :readonly="previewMode === 'view' || isSystemEntity"
           :entity-code="entityInfo.entityCode || ''"
@@ -991,11 +1000,6 @@
           :entity-fields="entityFields"
           :form-actions="previewActions"
           @form-action="handlePreviewAction"
-        />
-        <RelationContentDesignPreview
-          v-for="item in inlineRelationContents"
-          :key="item.id || item.compositionKey"
-          :composition="item"
         />
       </div>
       <template #footer>
@@ -1100,6 +1104,8 @@ import RelatedContentPanel from '@/components/related-content/RelatedContentPane
 import { uiCompositionApi } from '@/api/uiComposition'
 import { normalizeRelatedContent } from '@/shared/related-content'
 import FormRelationPicker from '@/components/form-designer/FormRelationPicker.vue'
+import { formRelatedContentsAt } from '@/shared/form-related-content'
+import { buildRelationEditor, restoreRelationEditorMetadata } from '@/shared/relation-content'
 import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
@@ -1268,11 +1274,7 @@ const relatedContentPanelRef = ref(null)
 const relatedContentCount = ref(0)
 const relatedContents = ref([])
 const formRelationPickerRef = ref(null)
-const inlineRelationContents = computed(() => relatedContents.value.filter(item =>
-  item.anchorType === 'OWNER'
-    && item.config?.presentation?.position === 'INLINE'
-    && item.config?.relation?.type === 'ENTITY_RELATION'
-    && item.config?.enabled !== false))
+const inlineRelationContents = computed(() => formRelatedContentsAt(relatedContents.value, null, { preview: true }))
 const runtimeCodeLoading = ref(false)
 const currentEventField = ref(null)
 const activeNodeSettingsTab = ref('basic')
@@ -2030,7 +2032,8 @@ const previewForm = computed(() => {
     ...form.value,
     viewConfig: viewConfig.value,
     fields: sortedFields,
-    nodes: previewNodes
+    nodes: previewNodes,
+    viewCompositions: relatedContents.value
   }
 })
 const previewModeOptions = computed(() =>
@@ -2066,7 +2069,7 @@ const isSelectedSection = computed(() => isSectionField(selectedField.value))
 // 过滤后的字段
 const filteredEntityFields = computed(() => {
   const configurableFields = entityFields.value.filter(
-    field => field.uiConfigurable !== false
+    field => field.uiConfigurable !== false && !['SUB_FORM', 'SUB_LIST'].includes(field.fieldType)
   )
   if (!fieldSearch.value) return configurableFields
   return configurableFields.filter(f =>
@@ -3209,6 +3212,7 @@ function restoreFieldConfig(field) {
     // 恢复子表单配置
     if (compProps.subFormConfig) {
       const subFormConfig = compProps.subFormConfig
+      restoreRelationEditorMetadata(field, subFormConfig)
       field.layout = subFormConfig.layout || 'form'
       field.refEntityId = subFormConfig.refEntityId || field.childEntityId || field.refEntityId || ''
       field.childFormId = field.childFormId
@@ -3469,7 +3473,7 @@ function addField(entityField) {
     fieldType: entityField.fieldType,
     componentType: getDefaultComponentType(entityField.fieldType),
     isRequired: entityField.isRequired ? 1 : 0,
-    isReadonly: isSystemEntity.value ? 1 : 0,
+    isReadonly: isSystemEntity.value || entityField.editable === false ? 1 : 0,
     isHidden: 0,
     validationRules: '',
     // 显式保存审批默认只读，保证设计器、运行时与后端提交校验使用同一权限语义。
@@ -3564,12 +3568,38 @@ function addSection() {
   })
 }
 
-function handleAddNodeCommand(command) {
+async function handleAddNodeCommand(command) {
+  if (command === 'RELATED_CONTENT') {
+    await openRelatedContent()
+    relatedContentPanelRef.value?.openCreate()
+    return
+  }
+  if (command === 'RELATION_EDITOR') {
+    document.querySelector('.form-relation-picker')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    ElMessage.info('在左侧实体关系中选择组成关系，添加随主表保存的子表单或明细')
+    return
+  }
   if (command === 'SECTION_TITLE') {
     addSection()
     return
   }
   addContainerNode(command)
+}
+
+/** 页面组件直接绑定组成关系，不再先创建一个无物理列的 SUB_FORM 实体字段。 */
+function addRelationEditor(selection) {
+  const model = buildRelationEditor(selection)
+  const existing = formFields.value.find(node => node.bindingType === 'RELATION' && node.bindingRef === model.bindingRef)
+  if (existing) { openFieldProperties(existing); return }
+  const stableId = `node_relation_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const parentId = resolveDefaultParentId(model.nodeType)
+  const placement = nextNodePlacement(parentId)
+  const node = { ...model, id: stableId, nodeId: stableId, nodeKey: stableId,
+    formId, revision: 0, parentId, orderKey: placement.orderKey, sortOrder: placement.sortOrder,
+    validationRules: '', extensionConfig: '' }
+  formFields.value.push(node)
+  openFieldProperties(node)
+  ElMessage.success('已添加主从编辑组件，保存并发布当前表单后生效')
 }
 
 /**
@@ -4841,7 +4871,8 @@ onMounted(async () => {
 
 <style scoped>
 .entity-form-design {
-  height: 100vh;
+  /* 与列表设计共用父级可用高度，字段面板和画布各自滚动，标题栏保持可见。 */
+  height: 100%;
   min-height: 0;
   min-width: 0;
   display: flex;
@@ -4872,6 +4903,10 @@ onMounted(async () => {
   align-items: center;
   min-width: 0;
   gap: 15px;
+}
+
+.header-left > .el-tag {
+  flex-shrink: 0;
 }
 
 .header-right {
@@ -5280,11 +5315,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 1300px) {
-  .entity-form-design {
-    height: 100vh;
-    min-height: 0;
-  }
-
   .design-header {
     padding: 10px 12px;
     align-items: flex-start;

@@ -66,6 +66,8 @@
             @move="$emit('move', $event)"
             @remove="$emit('remove', $event)"
             @drop="$emit('drop', $event)"
+            @edit-related-content="$emit('edit-related-content', $event)"
+            @remove-related-content="$emit('remove-related-content', $event)"
           />
         </template>
         <template #footer>
@@ -113,6 +115,8 @@
               @move="$emit('move', $event)"
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
+              @edit-related-content="$emit('edit-related-content', $event)"
+              @remove-related-content="$emit('remove-related-content', $event)"
             />
           </el-col>
         </template>
@@ -253,6 +257,8 @@
                   @move="$emit('move', $event)"
                   @remove="$emit('remove', $event)"
                   @drop="$emit('drop', $event)"
+                  @edit-related-content="$emit('edit-related-content', $event)"
+                  @remove-related-content="$emit('remove-related-content', $event)"
                 />
               </template>
               <template #footer>
@@ -264,6 +270,14 @@
                 </div>
               </template>
             </FormNodeDraggableList>
+            <RelationContentDesignPreview
+              v-for="item in relatedContentsAt(tabNode)"
+              :key="item.id || item.compositionKey"
+              :composition="item" editable
+              @click.stop @dblclick.stop
+              @edit="$emit('edit-related-content', $event)"
+              @remove="$emit('remove-related-content', $event)"
+            />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -295,6 +309,8 @@
               @move="$emit('move', $event)"
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
+              @edit-related-content="$emit('edit-related-content', $event)"
+              @remove-related-content="$emit('remove-related-content', $event)"
             />
           </template>
           <template #footer>
@@ -378,6 +394,8 @@
               @move="$emit('move', $event)"
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
+              @edit-related-content="$emit('edit-related-content', $event)"
+              @remove-related-content="$emit('remove-related-content', $event)"
             />
           </template>
           <template #footer>
@@ -406,9 +424,19 @@
           @move="$emit('move', $event)"
           @remove="$emit('remove', $event)"
           @drop="$emit('drop', $event)"
+          @edit-related-content="$emit('edit-related-content', $event)"
+          @remove-related-content="$emit('remove-related-content', $event)"
         />
       </template>
     </FormNodeDraggableList>
+    <RelationContentDesignPreview
+      v-for="item in relatedContentsAt(node)"
+      :key="item.id || item.compositionKey"
+      :composition="item" editable
+      @click.stop @dblclick.stop
+      @edit="$emit('edit-related-content', $event)"
+      @remove="$emit('remove-related-content', $event)"
+    />
   </div>
 </template>
 
@@ -424,6 +452,8 @@ import {
 } from '@element-plus/icons-vue'
 import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
+import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
+import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from '@/components/form-fields/components/SectionField.vue'
 import { safeParseConfig } from '@/shared/config-runtime'
 import {
@@ -446,11 +476,13 @@ const props = defineProps({
   legacyNodeType: { type: Function, required: true },
   nodeLabel: { type: Function, required: true },
   actionButtons: { type: Array, default: () => [] },
+  relatedContents: { type: Array, default: () => [] },
   canDropNode: { type: Function, required: true },
   dragDisabled: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'open-properties', 'move', 'remove', 'drop'])
+const emit = defineEmits(['select', 'open-properties', 'move', 'remove', 'drop', 'edit-related-content', 'remove-related-content'])
+const relatedContentsAt = node => formRelatedContentsAt(props.relatedContents, node, { preview: true })
 
 const containerTypes = new Set([
   'SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'ACTION_SLOT'
@@ -599,6 +631,7 @@ function childItemProps(child, index, parentNodeType = nodeType.value) {
     legacyNodeType: props.legacyNodeType,
     nodeLabel: props.nodeLabel,
     actionButtons: props.actionButtons,
+    relatedContents: props.relatedContents,
     canDropNode: props.canDropNode,
     dragDisabled: props.dragDisabled
   }

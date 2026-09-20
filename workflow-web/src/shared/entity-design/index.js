@@ -21,8 +21,12 @@ export const ENTITY_FIELD_TYPES = [
   { value: 'SUB_LIST', label: '子列表', icon: 'List' }
 ]
 
+// 新增用户、部门字段统一使用实体引用；完整类型表仍用于已有字段的名称回显。
+export const ENTITY_DESIGN_FIELD_TYPES = ENTITY_FIELD_TYPES.filter(
+  type => !['USER', 'DEPT', 'SUB_FORM', 'SUB_LIST'].includes(type.value)
+)
+
 export const WORKFLOW_SYSTEM_FIELD_CODES = new Set([
-  'dataNo',
   'processInstanceId',
   'processStartTime',
   'processEndTime',
@@ -84,4 +88,11 @@ export function getEntityFieldTypeTag(type) {
     SUB_LIST: 'warning'
   }
   return tags[type] || 'info'
+}
+
+/** 优先展示实体定义保存的物理列名；新字段未指定映射时才按编码推算。 */
+export function resolveEntityFieldColumnName(field = {}) {
+  const configured = String(field.dbColumnName || '').trim()
+  if (configured) return configured
+  return String(field.fieldCode || '').replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
 }

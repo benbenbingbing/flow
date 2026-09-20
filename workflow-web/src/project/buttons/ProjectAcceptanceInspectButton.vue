@@ -29,8 +29,7 @@ function inspect() {
     return
   }
   const selectedCount = props.context.selectedRows?.length || 0
-  const identity = props.row?.dataNo
-    || props.row?.code
+  const identity = props.row?.code
     || props.row?.id
   console.info('[ProjectExtensionAcceptance] 自定义按钮组件执行', {
     mode: props.mode,

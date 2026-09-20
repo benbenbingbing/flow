@@ -7,6 +7,10 @@
 
 V081 结构已与 2026-09-08 本机 `localhost:3306/workflow` 核对，V082 前向变更曾在隔离 MySQL 8.0 实例验证；V083—V084 按前向迁移和当前源码整理，发布前仍须在 MySQL 8 环境执行迁移验证。业务结构结合 V001—V079 SQL 迁移、V080 Java 迁移、V081—V084 SQL 迁移及当前源码说明；历史保留表按实际库结构登记。
 
+动态业务表从 V096 起只用 `name` 表示名称、`code` 表示业务编号，发布建表不再生成 `title`、`data_no`；实体接口与流程变量同步使用新字段。V096 Java 迁移按 `entity_definition.table_name` 删除 DYNAMIC 实体（含软删除实体）的两列及对应字段定义、字段选项、附件项和列表列，不复制旧值，也不转换旧发布配置。系统实体和未登记的表不在删列范围内。引用旧字段的表单、列表、权限或流程配置需要使用 `name`、`code` 重新发布。
+
+V097 为动态实体补齐 ID、创建时间、更新时间、创建人、更新人和删除标记六项只读系统字段定义。V098 将四项审计字段编码统一为实际数据库列名 `create_time`、`update_time`、`create_by`、`update_by`，实体记录接口及字段引用也只使用这些编码。正常更名保留字段 ID；同一实体已存在正式编码时归并字段表的直接引用。业务表中的四列及其数据不变，发布快照不改写，使用旧编码的表单、列表和权限配置需改为正式编码后重新发布。新建实体自动注册完整的 19 项系统字段，设计器优先展示字段定义保存的物理列名。
+
 字段表中的类型、可空性和默认值按数据库定义填写。“NULL（隐式）”表示可空列没有显式 DEFAULT；JSON 格式要求分别由应用校验或表内 CHECK 约束承担。表间业务关联与物理外键分别说明。
 
 “兼容使用中”表示字段仍保留读写或迁移路径；历史保留表的来源和使用情况在相应章节说明。
@@ -908,7 +912,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 - 已发布的完整列表：保存在 `ui_config_release` 的 LIST 类型快照中，本表记录当前激活快照指针及版本。
 - 数据权限规则及其发布：由独立的数据范围配置与发布体系管理；本表保存列表范围模式和未绑定规则时的默认策略。
 
-按钮和场景的整体保存会同步关系表，但逐项增量编辑主要修改关系表，并更新本表修订号。因此，本表 JSON 与关系表不能直接理解为始终一致的两份数据。运行时已解析的列表使用发布快照，不能从当前草稿关系表补入尚未发布的改动。
+按钮的整体保存会同步关系表，但逐项增量编辑主要修改关系表，并更新本表修订号。因此，本表 JSON 与关系表不能直接理解为始终一致的两份数据。运行时已解析的列表使用发布快照，不能从当前草稿关系表补入尚未发布的改动。
 
 #### 2.3.3 字段字典
 
@@ -927,12 +931,11 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 | `view_config` | 列表视图配置 | `longtext` | 是 | `NULL`（隐式） | JSON 对象，保存查询区、表格、分页与自定义组件参数；具体列定义在字段子表 | 现存 |
 | `toolbar_config` | 工具栏按钮配置 | `longtext` | 是 | `NULL`（隐式） | JSON 数组，保存工具栏按钮配置；与按钮关系表的读取优先级见 2.4.2 | 兼容回退 |
 | `row_action_config` | 行内操作配置 | `longtext` | 是 | `NULL`（隐式） | JSON 数组，保存每行操作按钮配置；与按钮关系表的读取优先级见 2.4.2 | 兼容回退 |
-| `allowed_scenes` | 允许的场景 | `longtext` | 是 | `NULL`（隐式） | JSON 字符串数组，限制列表可在哪些容器中使用；同时存在场景关系表 | 兼容回退 |
+| `allowed_scenes` | 历史场景配置 | `json` | 是 | 无 | 功能已移除，应用不再读写 | 停用 |
 | `selection_config` | 选数配置 | `longtext` | 是 | `NULL`（隐式） | JSON 对象，描述是否允许选数、主值字段及选中记录的返回映射 | 现存 |
-| `context_binding_config` | 上下文扩展配置 | `longtext` | 是 | `NULL`（隐式） | JSON 对象，随已发布 Schema 返回，供组件或查询扩展解释。默认动态查询不会自动将此对象转换为关联过滤条件 | 扩展保留 |
-| `fixed_filter_config` | 固定查询条件 | `longtext` | 是 | `NULL`（隐式） | JSON 对象。运行时将已发布固定条件合并到查询条件中，页面输入不能覆盖同名固定条件 | 现存 |
+| `fixed_filter_config` | 固定查询条件 | `longtext` | 是 | `NULL`（隐式） | JSON 对象。无论是否绑定数据范围规则均生效；与权限范围取交集，省略 `_op` 时按 `EQ`，用户筛选和自定义查询不能放宽条件 | 现存 |
 | `query_provider_code` | 查询提供者编码 | `varchar(100)` | 是 | `NULL` | 已注册 `EntityListDataProvider` 的编码，用于自定义列表查询；不能与接口扩展查询同时配置 | 现存 |
-| `query_interface_extension_id` | 查询接口扩展 ID | `varchar(64)` | 是 | `NULL` | 逻辑关联 `ui_extension_definition.id`，且目标必须是可用于 `LIST_QUERY` 的活动 `INTERFACE` 扩展；一条记录即一个完整接口，无需再选择操作 | 现存 |
+| `query_interface_extension_id` | 查询接口扩展 ID | `varchar(64)` | 是 | `NULL` | 历史查询槽位，逻辑关联 `ui_extension_definition.id`；V094 将存量草稿迁入 `LIST_LOAD` 替代步骤后清空，保留字段以读取旧发布 | 现存 |
 | `access_permission_code` | 列表访问权限码 | `varchar(200)` | 是 | `NULL` | 控制进入列表的权限；空值回退为 `entity:{entity_code}:list`。访问权限与可见记录范围分别校验 | 现存 |
 | `data_scope_mode` | 数据范围模式 | `varchar(20)` | 否 | `INHERIT` | 允许 `INHERIT`、`NARROW`、`OVERRIDE`；保留的模式标识。当前执行语义的限制见 2.4.4，不能仅凭字段名认定存在三套范围合并算法 | 旧语义待统一 |
 | `unbound_scope_policy` | 未绑定允许规则时的策略 | `varchar(30)` | 否 | `DENY_ALL` | 没有已启用且在有效期内的 ALLOW 绑定时，采用拒绝全部、本人数据或显式全量可见的默认范围 | 现存 |
@@ -941,7 +944,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 | `scope_default_confirmed_by` | 全量可见确认人 | `varchar(64)` | 是 | `NULL` | 记录确认操作的当前用户 ID；不代表本条列表配置的创建人 | 现存 |
 | `scope_default_confirmed_at` | 全量可见确认时间 | `datetime` | 是 | `NULL` | 记录显式确认发生的时间 | 现存 |
 | `scope_default_confirmation_note` | 全量可见确认原因 | `varchar(500)` | 是 | `NULL` | 记录放开数据范围的业务原因；首次确认时应用要求至少 5 个字符 | 现存 |
-| `revision` | 草稿修订号 | `int` | 否 | `1` | 列表编辑的并发控制版本。普通元数据更新校验 `expectedRevision`，成功后递增；字段、按钮、场景变更也会触碰主表修订号 | 现存 |
+| `revision` | 草稿修订号 | `int` | 否 | `1` | 列表编辑的并发控制版本。普通元数据更新校验 `expectedRevision`，成功后递增；字段、按钮变更也会触碰主表修订号 | 现存 |
 | `published_version` | 当前界面发布版本号 | `int` | 否 | `0` | `0` 为尚未发布；发布后对应当前激活的 LIST 快照版本。不是草稿修订号，也不是数据权限发布版本 | 现存 |
 | `active_release_id` | 当前激活快照 ID | `varchar(64)` | 是 | `NULL` | 逻辑关联 `ui_config_release.id`；对应快照必须属于本列表且为 LIST 类型。普通运行入口要求其与当前 ACTIVE 快照一致 | 现存 |
 | `draft_hash` | 草稿内容哈希 | `varchar(64)` | 是 | `NULL` | 保存规范化快照的 SHA-256 十六进制哈希。草稿编辑通常将其清空，发布时写入；需要比较完整草稿内容，不能只凭此字段判断有无变更 | 现存 |
@@ -949,7 +952,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 | `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 数据库提供插入默认时间，普通保存流程也会设置创建时间 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 含 `ON UPDATE CURRENT_TIMESTAMP`，应用更新时也会设置；不能当作发布时间或修订号 | 现存 |
 
-不配置接口扩展和查询提供者时，普通动态实体采用平台默认查询。接口查询以 `LIST_QUERY` 用途调用所选扩展；系统实体具有单独的只读查询限制，不应将普通动态实体的扩展规则套用到所有实体。
+普通列表、关联内容和 Embed 固定版本列表均通过同一发布版本的 `LIST_LOAD` 执行前置、替代和后置步骤。没有替代步骤时采用平台查询或内部查询 Provider；新自定义查询只在事件绑定中配置。旧查询槽位和 V094 迁移步骤保留 `LIST_QUERY` 调用约定以兼容旧 Provider。系统实体不能替代平台可信只读查询。
 
 `published_version` 在 V001 的初始默认值为 `1`，V041 已调整为 `0`，当前创建代码也显式设置为 `0`。文档采用迁移后的值。
 
@@ -1007,14 +1010,6 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 
 示例采用当前设计器的初始化配置。它不是数据库列默认值；具体字段的展示、查询控件与单元格渲染仍由 `entity_list_field` 管理。
 
-**允许场景 `allowed_scenes`**
-
-```json
-["PAGE", "DIALOG", "FORM_PICKER"]
-```
-
-当整体保存没有提供场景配置时，应用补齐全部七种场景；上例表示人为限制为三种场景。逐项维护后应以场景关系表和发布快照的实际内容为准。
-
 **选择模式 `selection_config`**
 
 ```json
@@ -1037,15 +1032,9 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 }
 ```
 
-示例要求目标实体存在相应字段与状态值。普通列表查询先接收用户条件，再合并已发布固定条件，故用户不能通过输入其他同名值覆盖这里的限制；之后还会合并受信任上下文条件并执行相应权限控制。
+示例要求目标实体存在相应字段与状态值。固定条件位于“列表设置 → 访问范围”，通过字段、比较方式和值可视化编辑，存储继续使用字段值与 `_op`、`_start`、`_end`。保存并发布后始终生效，与权限范围取交集；它不是查询框的默认值。省略 `_op` 时按 `EQ`；`{}` 不附加条件，也不授予权限。事件前置输出和接口参数映射之后仍会恢复固定条件。自定义查询返回的候选记录会再次通过固定条件、可信关联条件和数据权限校验；冲突的可信条件返回空页，不允许后来的条件覆盖前面的限制。
 
-**上下文扩展 `context_binding_config`**
-
-```json
-{}
-```
-
-尚未接入解释该配置的组件或查询扩展时保持空对象。默认受信任关联过滤通过调用上下文的 `relationKey` 找到已注册的 `EntityListContextResolver` 生成；向本字段填入 `parentField` 等键并不会自动实现关联查询。
+列表上下文扩展配置已通过 `V095__remove_list_context_binding_config.sql` 退役，删除草稿存储列及其数据。可信关联过滤继续通过 `relationKey`、已注册的 `EntityListContextResolver` 或已验证的关联内容配置生成。历史发布原文与哈希保留，运行时忽略其中的旧字段。
 
 #### 2.3.6 主键、索引与关联
 
@@ -1066,7 +1055,7 @@ Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`
 - `entity_list_action`：子表 `list_config_id` 对应本表 `id`；一个列表有零到多个工具栏或行内按钮。
 - `entity_list_scene`：子表 `list_config_id` 对应本表 `id`；一个列表有零到多个场景配置项；还存在本表 JSON 回退逻辑。
 - `ui_config_release`：快照 `config_type = 'LIST'` 且 `config_id = 本表.id`；一个列表有零到多个历史快照；本表 `active_release_id` 指向当前激活版本。
-- `ui_extension_definition`：本表 `query_interface_extension_id` 对应一条 `INTERFACE` 扩展；一个列表可绑定零或一个查询接口，同一接口扩展可被多个列表使用。
+- `ui_extension_definition`：历史 `query_interface_extension_id` 对应一条 `INTERFACE` 扩展；新查询接口由 `ui_event_binding` 的 `LIST_LOAD` 替代步骤引用。
 - 数据范围绑定与发布配置：按 `entity_code + list_key` 关联列表，发布快照通常按实体管理；决定该列表实际可见记录范围；其版本不使用本表 `published_version`。
 
 ```mermaid
@@ -1088,7 +1077,7 @@ erDiagram
 - 增量调整字段、按钮或场景：修改相应子表；触碰主表 `revision`、`draft_hash` 和修改时间；作为草稿变更，发布后供运行时使用。
 - 发布列表：构建并校验完整快照；激活 LIST 快照，回写 `active_release_id`、`published_version`、`draft_hash`；普通入口读取激活快照；若内容与当前发布完全一致，复用已有版本。
 - 修改列表数据规则与默认策略：专用权限服务维护绑定和本表安全字段，并在同一业务流程发布数据范围快照；数据权限独立生效；不能理解为必须等界面列表再次发布。
-- 删除列表：主表逻辑删除；当前删除服务物理删除字段、按钮、场景子记录；常规入口查不到列表；该删除方法未同步删除历史发布快照。
+- 删除列表：主表逻辑删除；当前删除服务物理删除字段、按钮子记录；常规入口查不到列表；该删除方法未同步删除历史发布快照。
 
 `revision` 描述草稿编辑进度，`published_version` 描述当前激活的界面版本，两者不要求相等。数据范围专用更新也不能简单等同于普通元数据编辑的修订流程。
 
@@ -1125,8 +1114,9 @@ erDiagram
 - [V088 接口扩展扁平化](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V088__flatten_interface_services_into_extensions.sql)：将历史服务操作迁移成单条 `INTERFACE` 扩展，把查询绑定收敛为 `query_interface_extension_id`。
 - [EntityListConfig](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/record/EntityListConfig.java)、[EntityListConfigMapper](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/mapper/EntityListConfigMapper.java)：ORM 字段映射、UUID、逻辑删除、查询与行锁。
 - [EntityListConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListConfigService.java)、[EntityListConfigurationValidator](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/validation/EntityListConfigurationValidator.java)：默认值、不可变识别字段、保存校验、草稿修订与删除。
-- [EntityListRelationalConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRelationalConfigService.java)、[EntityListActionConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/EntityListActionConfigService.java)：按钮和场景关系表、JSON 回退、增量编辑。
+- [EntityListRelationalConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRelationalConfigService.java)、[EntityListActionConfigService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/EntityListActionConfigService.java)：按钮关系表、JSON 回退、增量编辑。
 - [UiConfigReleaseService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiConfigReleaseService.java)、[UiConfigSnapshotSupport](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiConfigSnapshotSupport.java)：完整快照、哈希、发布版本、运行时版本一致性。
+- [V094 列表查询事件合并](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V094__merge_list_query_into_load_event.sql)：只迁移查询槽位草稿，不改写历史发布快照。
 - [EntityListRuntimeService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRuntimeService.java)：场景与访问检查、查询入口、固定条件、可信上下文。
 - [EntityListScopeService](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/EntityListScopeService.java)、[DataPermissionEngine](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/DataPermissionEngine.java)：未绑定策略、显式确认、独立权限发布、实际范围计算。
 - [EntityListConfigDesign.vue](../workflow-web/src/views/EntityListConfigDesign.vue)、[JSON 配置帮助](../workflow-web/src/shared/json-config-help.js)：视图初始化结构、选择返回映射、上下文配置的作用边界。
@@ -1259,7 +1249,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 
 #### 2.6.1 业务说明
 
-按列表维护允许的运行场景及顺序，供页面、弹窗、嵌入和表单选数入口校验。
+历史遗留表，场景配置功能已移除，应用不再读写此表或据此限制列表入口。历史迁移保留原结构。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 6 个。
 
@@ -1287,13 +1277,12 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 
 #### 2.6.4 业务规则
 
-同一列表场景不能重复；空关系表在当前读取逻辑中可能触发主表 allowed_scenes 回退。
+仅保留历史结构约束；当前应用不读取场景关系或主表 allowed_scenes。
 
 #### 2.6.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[EntityListSceneMapper.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/mapper/EntityListSceneMapper.java)、[EntityListScene.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/infrastructure/persistence/record/EntityListScene.java)、[EntityListRelationalConfigService.java](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRelationalConfigService.java)。
 
 ### 2.7 entity_form_unique_value_gate 表单唯一值事务门闩表
 

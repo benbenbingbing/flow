@@ -106,6 +106,7 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
     anchorKey: listOwner ? compositionKey : '',
     config: {
       schemaVersion: 1,
+      parameterMappings: [],
       name: '',
       enabled: true,
       source: {
@@ -127,7 +128,7 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
         loadMode: 'ON_DEMAND'
       },
       relation: {
-        type: 'REFERENCE_FIELD',
+        type: 'ENTITY_RELATION',
         relationCode: '',
         relationName: '',
         sourceField: '',
@@ -434,6 +435,9 @@ export function validateRelatedContent(value, ownerType = 'FORM') {
   if (!actions.length) add(3, 'actions', '请至少选择一种允许的操作')
   if (actions.includes('SELECT') && target.contentType !== 'LIST') {
     add(3, 'actions', '选择记录仅适用于目标列表')
+  }
+  if (relation.type === 'ENTITY_RELATION' && actions.includes('LINK') && target.contentType !== 'LIST') {
+    add(3, 'actions', '建立关联需要候选列表；单条表单请通过实体引用字段选择所属记录')
   }
   if ((actions.includes('CREATE') || actions.includes('EDIT'))
     && target.contentType !== 'FORM') {

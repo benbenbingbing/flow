@@ -1656,19 +1656,12 @@ async function ensureList(entity, listKey, payload) {
     dataScopeMode: payload.dataScopeMode || 'INHERIT',
     accessPermissionCode:
       payload.accessPermissionCode || '',
-    allowedScenes: payload.allowedScenes || [
-      'PAGE',
-      'DIALOG',
-      'FORM_PICKER'
-    ],
     selectionConfig: payload.selectionConfig || {
       selectionMode: 'MULTIPLE',
       valueField: 'id',
       returnMappings: []
     },
     fixedFilterConfig: payload.fixedFilterConfig || {},
-    contextBindingConfig:
-      payload.contextBindingConfig || {},
     queryProviderCode:
       payload.queryProviderCode || '',
     queryInterfaceExtensionId:
@@ -2857,7 +2850,7 @@ function fixtureSortValue(item, startProcess) {
     && item.currentTaskId
       ? '1'
       : '0'
-  return `${activeProcess}:${item.createdAt || ''}:${item.id || ''}`
+  return `${activeProcess}:${item.create_time || ''}:${item.id || ''}`
 }
 
 function isActiveProcessFixture(item) {

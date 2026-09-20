@@ -122,31 +122,36 @@
       </div>
     </el-form>
 
-    <RelatedContentRuntime
-      v-for="item in ownerRelatedContents"
-      :key="item.id || item.compositionKey"
-      :composition="item"
-      owner-type="FORM"
-      :owner-id="form.id"
-      :release-id="runtimeReleaseId"
-      :release-version="runtimeReleaseVersion"
-      :source-record-id="sourceRecordId"
-      :host-readonly="readonly"
-      :traversal-context-token="runtimeTraversalContextToken"
-      :release-resolution-token="runtimeReleaseResolutionToken"
-      @source-patch="applyRelatedContentPatch"
-    />
+    <template v-for="item in ownerRelatedContents" :key="item.id || item.compositionKey">
+      <RelationContentDesignPreview v-if="designPreview" :composition="item" />
+      <RelatedContentRuntime
+        v-else
+        :composition="item"
+        owner-type="FORM"
+        :owner-id="form.id"
+        :release-id="runtimeReleaseId"
+        :release-version="runtimeReleaseVersion"
+        :source-record-id="sourceRecordId"
+        :source-data="formData"
+        :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
+        :host-readonly="readonly"
+        :traversal-context-token="runtimeTraversalContextToken"
+        :release-resolution-token="runtimeReleaseResolutionToken"
+        @source-patch="applyRelatedContentPatch"
+      />
+    </template>
   </div>
 </template>
 
 <script setup>
 import { resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
 
-import { ref, computed, watch, onMounted, nextTick, provide } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, provide, defineAsyncComponent } from 'vue'
 import FormFieldRendererLinkage from './FormFieldRendererLinkage.vue'
 import FormNodeRenderer from './FormNodeRenderer.vue'
 import FormActionBar from './FormActionBar.vue'
 import RelatedContentRuntime from './related-content/RelatedContentRuntime.vue'
+import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from './form-fields/components/SectionField.vue'
 import LinkageEngine from '../utils/linkageEngine'
 import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldValidation'
@@ -176,7 +181,11 @@ import {
   safeParseConfig
 } from '@/shared/config-runtime'
 
+const RelationContentDesignPreview = defineAsyncComponent(() => import('./form-designer/RelationContentDesignPreview.vue'))
+
 const props = defineProps({
+  // 设计器草稿仅展示目标布局；业务页面仍要求有效发布版本和记录上下文。
+  designPreview: Boolean,
   form: {
     type: Object,
     required: true
@@ -311,6 +320,8 @@ function triggerCustomFormAction(actionOrKey) {
 }
 const runtimeContext = computed(() => ({
   ...props.context,
+  // 每个表单自行决定是否只预览布局，不能把设计态标记传染给嵌套目标表单。
+  formDesignPreview: props.designPreview,
   getFormData: () => formData.value,
   setFormFieldValue: handleFieldChange,
   scriptFields: processedFields.value,
@@ -348,12 +359,8 @@ const runtimeReleaseResolutionToken = computed(() => String(
 ))
 const ownerRelatedContents = computed(() =>
   !props.nodeRootParentId
-    && runtimeReleaseId.value
-    && runtimeReleaseVersion.value > 0
-    ? (props.form?.viewCompositions || []).filter(item =>
-        String(item?.anchorType || '').toUpperCase() === 'OWNER'
-          && item?.config?.enabled !== false
-      )
+    && (props.designPreview || (runtimeReleaseId.value && runtimeReleaseVersion.value > 0))
+    ? formRelatedContentsAt(props.form?.viewCompositions, null, { preview: props.designPreview })
     : []
 )
 

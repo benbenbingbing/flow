@@ -362,7 +362,20 @@ public class EntityDefinitionServiceTest {
         entityService.save(dto);
 
         ArgumentCaptor<EntityField> fieldCaptor = ArgumentCaptor.forClass(EntityField.class);
-        verify(fieldMapper, times(14)).insert(fieldCaptor.capture());
+        verify(fieldMapper, times(19)).insert(fieldCaptor.capture());
+        Map<String, String> auditColumns = Map.of(
+                "id", "id", "create_time", "create_time", "update_time", "update_time",
+                "create_by", "create_by", "update_by", "update_by", "deleted", "deleted");
+        auditColumns.forEach((code, column) -> {
+            EntityField field = fieldCaptor.getAllValues().stream()
+                    .filter(item -> code.equals(item.getFieldCode())).findFirst().orElseThrow();
+            assertEquals(column, field.getDbColumnName());
+            assertEquals(true, field.getIsSystem());
+            assertEquals(false, field.getEditable());
+            assertEquals(false, field.getIsRequired());
+        });
+        assertTrue(fieldCaptor.getAllValues().stream()
+                .noneMatch(field -> List.of("dataNo", "title").contains(field.getFieldCode())));
         EntityField departmentField = fieldCaptor.getAllValues().stream()
                 .filter(field -> "deptId".equals(field.getFieldCode()))
                 .findFirst()

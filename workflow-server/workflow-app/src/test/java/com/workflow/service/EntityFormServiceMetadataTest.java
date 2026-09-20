@@ -91,6 +91,42 @@ class EntityFormServiceMetadataTest {
         assertEquals(true, readBeanProperty(resolved, "cascadeDelete"));
     }
 
+    /** 系统维护字段不能被表单节点的可编辑配置解锁。 */
+    @Test
+    void systemManagedFieldsStayReadonlyWhenAddedToForms() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFieldMapper entityFieldMapper = mock(EntityFieldMapper.class);
+        EntityRelationMapper relationMapper = mock(EntityRelationMapper.class);
+        EntityFormService service = new EntityFormService(
+                mock(EntityFormMapper.class),
+                nodeMapper,
+                mock(EntityDefinitionMapper.class),
+                entityFieldMapper,
+                relationMapper,
+                mock(EntityFormConfigurationValidator.class),
+                mock(EntityUiConfigurationPolicy.class),
+                mock(SystemEntityFieldPolicy.class),
+                mock(com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper.class),
+                mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
+                new JsonDocumentCodec(new ObjectMapper())
+        );
+        for (String code : List.of("id", "create_time", "update_time", "create_by", "update_by", "deleted")) {
+            EntityFormNode node = new EntityFormNode();
+            node.setId("node-1");
+            node.setNodeKey(code);
+            node.setNodeType("FIELD");
+            node.setPropsDocument("{\"fieldId\":\"entity-field-1\",\"isReadonly\":0}");
+            EntityField field = new EntityField();
+            field.setFieldCode(code);
+            field.setFieldType(EntityField.FieldType.STRING);
+            field.setIsSystem(true);
+            field.setEditable(false);
+            when(nodeMapper.findByFormId("form-1")).thenReturn(List.of(node));
+            when(entityFieldMapper.findByIdString("entity-field-1")).thenReturn(field);
+            assertEquals(1, service.getFormFields("form-1").get(0).getIsReadonly(), code);
+        }
+    }
+
     /** 通过 Java Bean 内省读取目标对象指定属性的值，用于校验动态装配的元数据字段 */
     private static Object readBeanProperty(Object target, String propertyName) throws Exception {
         for (var descriptor : Introspector.getBeanInfo(target.getClass()).getPropertyDescriptors()) {

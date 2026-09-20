@@ -1132,11 +1132,12 @@ public class UiViewCompositionActionService {
             MutationPlan plan,
             boolean link) {
         if (!"REFERENCE_FIELD".equals(normalize(text(
-                context.relation().get("type"))))) {
+                context.relation().get("type")))) && !UiEntityRelationBinding.reverse(context.relation())) {
             return Map.of();
         }
-        String sourceField = requiredField(
-                context.relation(), "sourceField", "来源引用字段");
+        String sourceField = UiEntityRelationBinding.reverse(context.relation())
+                ? requireAssociationRelation(context).getChildRefFieldCode()
+                : requiredField(context.relation(), "sourceField", "来源引用字段");
         String linkedId = link && !plan.targetRecordIds().isEmpty()
                 ? plan.targetRecordIds().get(0)
                 : null;
@@ -1156,7 +1157,7 @@ public class UiViewCompositionActionService {
         List<String> targetIds = targets.stream()
                 .map(EntityDataDTO::getId)
                 .toList();
-        if ("REFERENCE_FIELD".equals(type)) {
+        if ("REFERENCE_FIELD".equals(type) || UiEntityRelationBinding.reverse(context.relation())) {
             if (targets.size() != 1) {
                 throw new IllegalArgumentException(
                         "单值引用字段每次只能建立或解除一条关系");
@@ -1165,11 +1166,14 @@ public class UiViewCompositionActionService {
             capabilityService.requireStandardPermission(
                     context.sourceEntity().getEntityCode(),
                     EntityPermissionAction.UPDATE);
-            String fieldCode = requiredField(
-                    context.relation(), "sourceField", "来源引用字段");
-            EntityField field = requirePinnedField(
-                    context.sourceSchema(), fieldCode, "来源");
-            requireReference(field, context.targetEntity().getId(), "来源");
+            String fieldCode;
+            if (UiEntityRelationBinding.reverse(context.relation())) {
+                fieldCode = requireAssociationRelation(context).getChildRefFieldCode();
+            } else {
+                fieldCode = requiredField(context.relation(), "sourceField", "来源引用字段");
+                EntityField field = requirePinnedField(context.sourceSchema(), fieldCode, "来源");
+                requireReference(field, context.targetEntity().getId(), "来源");
+            }
             String targetId = targets.get(0).getId();
             requireRelationshipState(
                     scalar(recordValue(source, fieldCode), fieldCode),
@@ -1227,11 +1231,14 @@ public class UiViewCompositionActionService {
      */
     private EntityRelation requireAssociationRelation(
             ActionContext context) {
+        boolean reverse = UiEntityRelationBinding.reverse(context.relation());
+        var ownerSchema = reverse ? context.targetSchema() : context.sourceSchema();
+        var childSchema = reverse ? context.sourceSchema() : context.targetSchema();
         String relationCode = requiredField(
                 context.relation(), "relationCode", "实体关系编码");
-        EntityRelation definition = context.sourceSchema().getRelations() == null
+        EntityRelation definition = ownerSchema.getRelations() == null
                 ? null
-                : context.sourceSchema().getRelations().stream()
+                : ownerSchema.getRelations().stream()
                 .filter(item -> Boolean.TRUE.equals(item.getEnabled()))
                 .filter(item -> Objects.equals(
                         relationCode, item.getRelationCode()))
@@ -1239,7 +1246,7 @@ public class UiViewCompositionActionService {
                 .orElse(null);
         if (definition == null
                 || !Objects.equals(
-                context.targetEntity().getId(),
+                childSchema.getEntityId(),
                 definition.getChildEntityId())
                 || !StringUtils.hasText(definition.getChildRefFieldCode())) {
             throw conflict(
@@ -1254,8 +1261,8 @@ public class UiViewCompositionActionService {
         }
         // 能力判断、候选查询和实际写入都经过这里，避免按钮可用但普通 ID 字段无法保存。
         EntityField field = requirePinnedField(
-                context.targetSchema(), definition.getChildRefFieldCode(), "目标");
-        var violation = EntityRelationFieldPolicy.violation(field, context.sourceEntity().getId());
+                childSchema, definition.getChildRefFieldCode(), "关系字段");
+        var violation = EntityRelationFieldPolicy.violation(field, ownerSchema.getEntityId());
         if (violation != null) {
             throw conflict("VIEW_COMPOSITION_RELATION_INVALID", violation.message());
         }
@@ -2186,7 +2193,7 @@ public class UiViewCompositionActionService {
         } catch (RuntimeException exception) {
             return denied(exception.getMessage());
         }
-        EntityDefinition writeEntity = "REFERENCE_FIELD".equals(type)
+        EntityDefinition writeEntity = ("REFERENCE_FIELD".equals(type) || UiEntityRelationBinding.reverse(context.relation()))
                 ? context.sourceEntity() : context.targetEntity();
         if (writeEntity.getStorageMode()
                 != EntityDefinition.StorageMode.DYNAMIC) {
@@ -2209,13 +2216,14 @@ public class UiViewCompositionActionService {
         Map<String, Object> listFixed = targetListFixedFilters(context);
         Map<String, Object> candidate = new LinkedHashMap<>();
         boolean matchNone = false;
-        if ("REFERENCE_FIELD".equals(relationType)) {
+        if ("REFERENCE_FIELD".equals(relationType) || UiEntityRelationBinding.reverse(context.relation())) {
             EntityDataDTO source = readAccessible(
                     context.sourceEntity(),
                     context.claims().sourceRecordId(),
                     null);
-            String sourceField = requiredField(
-                    context.relation(), "sourceField", "来源引用字段");
+            String sourceField = UiEntityRelationBinding.reverse(context.relation())
+                    ? requireAssociationRelation(context).getChildRefFieldCode()
+                    : requiredField(context.relation(), "sourceField", "来源引用字段");
             String currentId = trim(text(scalar(
                     recordValue(source, sourceField), sourceField)));
             if (StringUtils.hasText(currentId)) {

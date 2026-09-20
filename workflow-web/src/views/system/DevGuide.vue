@@ -29,7 +29,7 @@
         <section id="config-contract" class="guide-section">
           <h3>2. 稳定 ID、单项保存与乐观锁</h3>
           <ul class="check-list">
-            <li>表单节点、列表列、按钮和场景都以稳定 `id` 定位；禁止使用数组下标、显示名称或排序值充当业务键。</li>
+            <li>表单节点、列表列和按钮都以稳定 `id` 定位；禁止使用数组下标、显示名称或排序值充当业务键。</li>
             <li>属性面板只 PATCH 当前项目，拖拽单独保存 `orderKey`；不同项目可并行保存，不再全删全插。</li>
             <li>表单节点拖拽必须走平台递归拖拽容器与 reorder 接口：目标父容器按 nodeType、循环引用和最大 8 层校验，成功后重新读取节点 revision。自定义节点组件不得自行改 parentId 或绕过服务端校验。</li>
             <li>所有修改和删除请求必须携带 `expectedRevision`；成功后使用响应中的新 `revision` 更新 Store。</li>

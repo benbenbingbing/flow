@@ -75,7 +75,6 @@
       "description": "按来源需求、目标需求、关系类型和状态查询需求交叉关系。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": ["PAGE","EMBEDDED","SELECTION"],
       "selectionConfig": {"selectionMode":"MULTIPLE","valueField":"id","returnMappings":[]},
       "toolbarConfig": [
         {"key":"create","type":"built-in","label":"新增关系","icon":"Plus","buttonType":"primary","sort":1,"enabled":true},
@@ -87,7 +86,6 @@
       ],
       "viewConfig": {"density":"compact","showIndex":true},
       "fixedFilterConfig": {},
-      "contextBindingConfig": {"parentField":"source_requirement_id"},
       "fields": [
         {"fieldCode":"code","fieldName":"关系编号","sortOrder":10,"width":170,"showInList":true,"isQuery":true,"queryType":"LIKE","align":"left","dataSourceType":"ENTITY_FIELD"},
         {"fieldCode":"source_requirement_id","fieldName":"来源需求","sortOrder":20,"width":220,"showInList":true,"isQuery":true,"queryType":"EQ","align":"left","dataSourceType":"ENTITY_FIELD"},

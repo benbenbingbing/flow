@@ -397,11 +397,6 @@
       "description": "查询项目系统建设范围及生效状态。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": [
-        "PAGE",
-        "EMBEDDED",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -434,9 +429,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {
-        "parentField": "project_id"
-      },
       "fields": [
         {
           "fieldCode": "code",

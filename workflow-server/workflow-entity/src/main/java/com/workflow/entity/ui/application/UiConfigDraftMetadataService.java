@@ -2,7 +2,6 @@ package com.workflow.entity.ui.application;
 
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.list.application.EntityListConfigService;
-import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -44,7 +43,6 @@ public class UiConfigDraftMetadataService {
     private final EntityListConfigService listService;
     private final EntityFormConfigurationValidator formValidator;
     private final EntityListConfigurationValidator listValidator;
-    private final EntityListRelationalConfigService relationalConfigService;
     private final JsonDocumentCodec codec;
     /** 当前列表绑定位置可用接口操作查询服务。 */
     private final UiAvailableInterfaceService availableOperationService;
@@ -151,7 +149,7 @@ public class UiConfigDraftMetadataService {
     }
 
     /**
-     * 按补丁请求更新列表元数据，基于乐观锁更新并同步允许场景到关系型存储。
+     * 按补丁请求更新列表元数据，基于乐观锁更新。
      *
      * @param listId  列表配置ID
      * @param request 元数据补丁请求
@@ -187,12 +185,8 @@ public class UiConfigDraftMetadataService {
             updated.setAccessPermissionCode(clear.contains("accessPermissionCode")
                     ? null : blankToNull(request.getAccessPermissionCode()));
         }
-        if (request.getAllowedScenes() != null) updated.setAllowedScenes(request.getAllowedScenes());
         if (request.getSelectionConfig() != null) updated.setSelectionConfig(request.getSelectionConfig());
         if (request.getFixedFilterConfig() != null) updated.setFixedFilterConfig(request.getFixedFilterConfig());
-        if (request.getContextBindingConfig() != null) {
-            updated.setContextBindingConfig(request.getContextBindingConfig());
-        }
         if (request.getViewConfig() != null) updated.setViewConfig(request.getViewConfig());
         if (request.getQueryProviderCode() != null || clear.contains("queryProviderCode")) {
             updated.setQueryProviderCode(clear.contains("queryProviderCode")
@@ -218,10 +212,8 @@ public class UiConfigDraftMetadataService {
                 .set("custom_component", updated.getCustomComponent())
                 .set("data_scope_mode", updated.getDataScopeMode())
                 .set("access_permission_code", updated.getAccessPermissionCode())
-                .set("allowed_scenes", write(updated.getAllowedScenes(), "允许场景配置"))
                 .set("selection_config", write(updated.getSelectionConfig(), "选择模式配置"))
                 .set("fixed_filter_config", write(updated.getFixedFilterConfig(), "固定查询条件"))
-                .set("context_binding_config", write(updated.getContextBindingConfig(), "上下文绑定配置"))
                 .set("view_config", write(updated.getViewConfig(), "列表视图配置"))
                 .set("query_provider_code", updated.getQueryProviderCode())
                 .set("query_interface_extension_id",
@@ -233,9 +225,6 @@ public class UiConfigDraftMetadataService {
             throw new RevisionConflictException(
                     "列表元数据已被其他人修改，请刷新后重试",
                     listService.findById(listId));
-        }
-        if (request.getAllowedScenes() != null) {
-            relationalConfigService.replaceScenes(listId, request.getAllowedScenes());
         }
         return listService.findById(listId);
     }

@@ -38,6 +38,14 @@
     </div>
 
     <el-alert
+      v-if="listOwnerContext"
+      title="多个按钮可分别绑定：新增时选择点击事件和具体按钮。公共默认绑定由同类按钮继承，每个按钮可追加步骤或替换上级。按钮执行方式需设为“自定义 / 业务接口”，保存按钮并发布列表后生效。"
+      type="info"
+      :closable="false"
+      show-icon
+      class="binding-hint"
+    />
+    <el-alert
       v-if="!compact && !formButtonOnlyContext"
       title="除表单自定义按钮外，事件默认保留平台处理；只有执行链中加入 REPLACE 步骤，才会由自定义接口完全替代。"
       type="info"
@@ -89,6 +97,9 @@
           </div>
           <div class="secondary-text">{{ row.eventCode }}</div>
         </template>
+      </el-table-column>
+      <el-table-column v-if="listOwnerContext" label="绑定对象" min-width="240">
+        <template #default="{ row }">{{ bindingTargetLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="继承方式" :width="compact ? 112 : 130">
         <template #default="{ row }">
@@ -223,6 +234,40 @@
           </el-form-item>
         </div>
 
+        <el-form-item
+          v-if="listOwnerContext && isListButtonEvent(editor.eventCode)"
+          label="绑定对象"
+          required
+        >
+          <el-select
+            v-model="editor.targetKey"
+            aria-label="绑定对象"
+            filterable
+            style="width: 100%"
+            :disabled="Boolean(editor.id)"
+            @change="handleTargetChange"
+          >
+            <el-option
+              v-for="target in editorTargetOptions"
+              :key="target.targetKey"
+              :label="target.label"
+              :value="target.targetKey"
+              :disabled="!editor.id && Boolean(existingBinding(editor.eventCode, target))"
+            >
+              <span>{{ target.label }}</span>
+              <small
+                v-if="!editor.id && existingBinding(editor.eventCode, target)"
+                class="event-option-reason"
+              >已配置，请编辑已有绑定</small>
+            </el-option>
+          </el-select>
+          <div class="event-scope-hint">
+            {{ editor.targetType === 'BUTTON'
+              ? '仅当前按钮执行此绑定；其他按钮可继续新增各自的绑定。'
+              : '公共默认绑定会被所有同类业务接口按钮继承，每类只需配置一条。' }}
+          </div>
+        </el-form-item>
+
         <el-alert
           v-if="editor.inheritanceMode === 'DISABLE'"
           :title="formButtonExactTarget
@@ -349,6 +394,7 @@
                 </template>
                 <el-select
                   v-model="step.extensionId"
+                  @change="step.legacyListQuery = false"
                   filterable
                   clearable
                   placeholder="留空表示只做字段映射"
@@ -509,6 +555,7 @@ import {
   resolveInterfaceExtensionId
 } from '@/components/ui-config/interfaceExtensionModel'
 import { uiEventBindingApi, uiExtensionApi } from '@/api/uiConfig'
+import { findEventBinding, isListButtonEvent, listEventTargets } from './listButtonEventTargets'
 
 const props = defineProps({
   ownerType: { type: String, required: true },
@@ -521,7 +568,8 @@ const props = defineProps({
   targetField: { type: Object, default: null },
   compact: { type: Boolean, default: false },
   disabledReason: { type: String, default: '' },
-  fieldOptions: { type: Array, default: () => [] }
+  fieldOptions: { type: Array, default: () => [] },
+  buttonOptions: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['changed'])
@@ -548,7 +596,7 @@ const eventLabels = {
 }
 
 const platformDefaultDescriptions = {
-  LIST_LOAD: '按当前条件查询并展示列表数据',
+  LIST_LOAD: '按固定条件、用户筛选和数据范围查询列表；自定义查询请添加“替代平台处理”步骤并返回 records、total、pageNum、pageSize',
   LIST_EXPORT: '按当前条件导出列表数据',
   DETAIL_LOAD: '读取并展示当前记录详情',
   DATA_CREATE: '完成权限、表单规则校验并新增实体记录',
@@ -618,10 +666,16 @@ const fieldCapabilities = computed(() => {
     || field?.componentType)?.capabilities || {}
 })
 
+const listOwnerContext = computed(() =>
+  String(props.ownerType).toUpperCase() === 'LIST'
+  && String(props.targetType).toUpperCase() === 'OWNER')
+
 const visibleBindings = computed(() =>
   bindings.value.filter(row =>
-    String(row.targetType || 'OWNER').toUpperCase() === String(props.targetType).toUpperCase()
-    && String(row.targetKey || '') === String(props.targetKey || '')
+    (String(row.targetType || 'OWNER').toUpperCase() === String(props.targetType).toUpperCase()
+      && String(row.targetKey || '') === String(props.targetKey || ''))
+    || (listOwnerContext.value && String(row.targetType).toUpperCase() === 'BUTTON'
+      && isListButtonEvent(row.eventCode))
   )
 )
 
@@ -652,7 +706,20 @@ const availableEventGroups = computed(() => {
 
 const availableEvents = computed(() =>
   availableEventGroups.value.flatMap(group => group.events).filter(isEventAllowed))
-const creatableEvents = computed(() => availableEvents.value.filter(event => !existingBinding(event)))
+const creatableEvents = computed(() => availableEvents.value.filter(event =>
+  targetsForEvent(event).some(target => !existingBinding(event, target))))
+const editorTargetOptions = computed(() => {
+  const targets = targetsForEvent(editor.eventCode)
+  // 已删除或改变执行方式的按钮仍保留历史绑定身份，允许编辑或删除，不能误改成公共链。
+  if (editor.id && !targets.some(target => target.targetKey === editor.targetKey)) {
+    return [{
+      targetType: editor.targetType,
+      targetKey: editor.targetKey,
+      label: `按钮：${editor.targetKey}（不在当前业务接口按钮中）`
+    }, ...targets]
+  }
+  return targets
+})
 const formButtonEventSelected = computed(() =>
   String(editor.eventCode || '').toUpperCase() === 'FORM_BUTTON_CLICK'
 )
@@ -699,7 +766,7 @@ const eventScopeHint = computed(() => {
       : '仅显示表单按钮事件。'
   }
   return owner === 'LIST'
-    ? '仅显示列表加载、导出、数据操作和列表按钮事件。'
+    ? '按钮点击事件可按不同按钮分别新增；同一按钮的同一事件只配置一条绑定。'
     : owner === 'FORM'
       ? '仅显示表单生命周期、表单数据、字段、子表单和表单按钮事件；列表事件请到列表配置。'
       : '当前为实体默认事件，可被表单或列表的同名事件继承。'
@@ -735,6 +802,8 @@ function emptyEditor() {
     id: '',
     expectedRevision: null,
     eventCode: '',
+    targetType: String(props.targetType).toUpperCase(),
+    targetKey: String(props.targetKey || ''),
     inheritanceMode: 'INHERIT',
     steps: [],
     enabled: true
@@ -835,6 +904,7 @@ async function openCreate() {
       ? 'ENTITY_SELECTED' : creatableEvents.value[0],
     steps: []
   })
+  selectAvailableTarget(editor.eventCode)
   await loadAvailableInterfaces(editor.eventCode)
   if (sequence === loadSequence) dialogVisible.value = true
 }
@@ -847,6 +917,8 @@ async function openEdit(row) {
     id: row.id,
     expectedRevision: row.revision,
     eventCode: row.eventCode,
+    targetType: String(row.targetType || 'OWNER').toUpperCase(),
+    targetKey: String(row.targetKey || ''),
     inheritanceMode: row.inheritanceMode || 'INHERIT',
     enabled: row.enabled !== false,
     steps: steps.map(normalizeStep)
@@ -890,6 +962,7 @@ function moveStep(index, offset) {
 }
 
 function normalizeReplace(current) {
+  if (current.strategy !== 'REPLACE') current.legacyListQuery = false
   if (current.strategy !== 'REPLACE') return
   if (formButtonEventSelected.value) {
     clearStepCondition(current)
@@ -902,6 +975,7 @@ function normalizeReplace(current) {
   editor.steps.forEach(step => {
     if (step !== current && step.strategy === 'REPLACE') {
       step.strategy = 'BEFORE'
+      step.legacyListQuery = false
     }
   })
 }
@@ -939,8 +1013,10 @@ function extensionInterfaceHelp(step) {
 }
 
 async function handleEventChange(eventCode) {
+  selectAvailableTarget(eventCode)
   editor.steps.forEach(step => {
     step.extensionId = ''
+    step.legacyListQuery = false
   })
   await loadAvailableInterfaces(eventCode)
 }
@@ -979,6 +1055,8 @@ function serializeStep(step, index) {
     name: step.name || undefined,
     strategy: step.strategy,
     extensionId: step.extensionId || undefined,
+    // 已迁移的历史查询接口仍按原 LIST_QUERY 契约执行，避免旧 Provider 返回事件消息。
+    legacyListQuery: step.legacyListQuery === true || undefined,
     order: (index + 1) * 10,
     condition: serializeCondition(step),
     inputMapping: Object.fromEntries(
@@ -997,6 +1075,15 @@ async function save() {
   }
   if (eventOptionDisabledReason(editor.eventCode)) {
     ElMessage.warning(eventOptionDisabledReason(editor.eventCode))
+    return
+  }
+  if (!editor.id && existingBinding(editor.eventCode, editor)) {
+    ElMessage.warning('当前对象已配置此事件，请编辑已有绑定或选择其他按钮')
+    return
+  }
+  if (!editor.id && !targetsForEvent(editor.eventCode).some(target =>
+    target.targetType === editor.targetType && target.targetKey === editor.targetKey)) {
+    ElMessage.warning('绑定对象已变更，请重新选择按钮')
     return
   }
   if (formButtonExactTarget.value && editor.inheritanceMode === 'DISABLE') {
@@ -1045,8 +1132,8 @@ async function save() {
       expectedRevision: editor.expectedRevision,
       ownerType: String(props.ownerType).toUpperCase(),
       ownerId: String(props.ownerId),
-      targetType: String(props.targetType).toUpperCase(),
-      targetKey: String(props.targetKey || ''),
+      targetType: editor.targetType,
+      targetKey: editor.targetKey,
       eventCode: editor.eventCode,
       inheritanceMode: editor.inheritanceMode,
       steps,
@@ -1071,7 +1158,7 @@ async function save() {
 async function remove(row) {
   if (!canEdit.value) return
   await ElMessageBox.confirm(
-    `确认删除“${eventLabel(row.eventCode)}”绑定？`,
+    `确认删除“${eventLabel(row.eventCode)}”${listOwnerContext.value ? `（${bindingTargetLabel(row)}）` : ''}绑定？`,
     '删除事件绑定',
     { type: 'warning' }
   )
@@ -1102,13 +1189,31 @@ function eventDisabledReason(code) {
     : ''
 }
 
-function existingBinding(code) {
-  return visibleBindings.value.find(row => String(row.eventCode).toUpperCase() === String(code).toUpperCase())
+function targetsForEvent(code) {
+  return listOwnerContext.value
+    ? listEventTargets(code, props.buttonOptions)
+    : [{ targetType: String(props.targetType).toUpperCase(), targetKey: String(props.targetKey || '') }]
+}
+
+/** 切换事件时优先选取尚未绑定的具体按钮，公共默认链不会占用按钮的创建名额。 */
+function selectAvailableTarget(code) {
+  const targets = targetsForEvent(code)
+  const target = targets.find(item => !existingBinding(code, item)) || targets[0]
+  editor.targetType = target.targetType
+  editor.targetKey = target.targetKey
+}
+
+function handleTargetChange(key) {
+  editor.targetType = key ? 'BUTTON' : 'OWNER'
+}
+
+function existingBinding(code, target) {
+  return findEventBinding(bindings.value, code, target)
 }
 
 function eventOptionDisabledReason(code) {
   return eventDisabledReason(code)
-    || (!editor.id && existingBinding(code) ? '已配置，请编辑已有绑定增加步骤' : '')
+    || (!editor.id && !creatableEvents.value.includes(code) ? '已配置，请编辑已有绑定增加步骤' : '')
 }
 
 function isScopeContractAllowed(row) {
@@ -1119,6 +1224,12 @@ function isScopeContractAllowed(row) {
 }
 
 function bindingTargetLabel(row) {
+  if (listOwnerContext.value && isListButtonEvent(row.eventCode)) {
+    return listEventTargets(row.eventCode, props.buttonOptions).find(target =>
+      target.targetType === String(row.targetType || 'OWNER').toUpperCase()
+      && target.targetKey === String(row.targetKey || ''))?.label
+      || `按钮：${row.targetKey}`
+  }
   const targetType = String(row?.targetType || 'OWNER').toUpperCase()
   const targetName = targetType === 'FIELD'
     ? '字段'

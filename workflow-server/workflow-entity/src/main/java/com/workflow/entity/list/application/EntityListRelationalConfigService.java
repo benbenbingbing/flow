@@ -7,13 +7,10 @@ import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.list.api.request.EntityListActionSaveRequest;
 import com.workflow.entity.list.api.request.EntityListItemReorderRequest;
-import com.workflow.entity.list.api.request.EntityListSceneSaveRequest;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListAction;
-import com.workflow.entity.list.infrastructure.persistence.record.EntityListScene;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
-import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListSceneMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.permission.application.EntityListActionRulePolicy;
@@ -35,9 +32,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 实体列表关系型配置服务，管理按钮和场景的关系型存储与差异同步。
+ * 实体列表关系型配置服务，管理按钮的关系型存储与差异同步。
  *
- * <p>将列表工具栏、行内按钮和允许场景以关系型表存储，支持按 key 增量同步、
+ * <p>将列表工具栏和行内按钮以关系型表存储，支持按 key 增量同步、
  * 乐观锁补丁更新和基于 orderKey 的稀疏排序，便于发布快照与草稿差异比对。</p>
  */
 @Service
@@ -58,7 +55,6 @@ public class EntityListRelationalConfigService {
             "availabilityRuleDocument");
 
     private final EntityListActionMapper actionMapper;
-    private final EntityListSceneMapper sceneMapper;
     private final EntityListConfigMapper configMapper;
     private final EntityFormMapper formMapper;
     private final UiConfigReleaseMapper releaseMapper;
@@ -79,35 +75,6 @@ public class EntityListRelationalConfigService {
         return actionMapper.findByListAndPosition(listConfigId, position).stream()
                 .map(this::toButton)
                 .toList();
-    }
-
-    /**
-     * 查询列表允许的场景编码列表。
-     *
-     * @param listConfigId 列表配置ID
-     * @return 场景编码列表
-     */
-    public List<String> findScenes(String listConfigId) {
-        if (!StringUtils.hasText(listConfigId)) {
-            return List.of();
-        }
-        return sceneMapper.findByListConfigId(listConfigId).stream()
-                .map(EntityListScene::getSceneCode)
-                .toList();
-    }
-
-    /**
-     * 查询列表的场景配置项列表。
-     *
-     * @param listConfigId 列表配置ID
-     * @return 场景配置项列表
-     */
-    public List<EntityListScene> findSceneItems(String listConfigId) {
-        if (!StringUtils.hasText(listConfigId)) {
-            return List.of();
-        }
-        requireList(listConfigId);
-        return sceneMapper.findByListConfigId(listConfigId);
     }
 
     /**
@@ -307,65 +274,19 @@ public class EntityListRelationalConfigService {
                 .forEach(actionMapper::deleteById);
     }
 
-    /** 锁定列表按钮与场景草稿，供配置级撤销建立串行化边界。 */
+    /** 锁定列表按钮草稿，供配置级撤销建立串行化边界。 */
     public void lockDraftChildrenForRelease(String listConfigId) {
         actionMapper.findAllByListConfigIdForUpdate(listConfigId);
-        sceneMapper.findAllByListConfigIdForUpdate(listConfigId);
     }
 
     /**
-     * 全量替换列表允许的场景编码，按编码增量同步并删除多余项。
-     *
-     * @param listConfigId 列表配置ID
-     * @param scenes       场景编码列表
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public void replaceScenes(String listConfigId, List<String> scenes) {
-        List<EntityListScene> existing = sceneMapper.findByListConfigId(listConfigId);
-        Map<String, EntityListScene> existingByCode = new LinkedHashMap<>();
-        existing.forEach(scene -> existingByCode.put(scene.getSceneCode(), scene));
-        Set<String> retained = new java.util.HashSet<>();
-        int sort = 0;
-        for (String scene : scenes == null ? List.<String>of() : scenes) {
-            if (!StringUtils.hasText(scene)) {
-                continue;
-            }
-            String sceneCode = scene.trim().toUpperCase();
-            EntityListScene current = existingByCode.get(sceneCode);
-            if (current == null) {
-                EntityListScene value = new EntityListScene();
-                value.setListConfigId(listConfigId);
-                value.setSceneCode(sceneCode);
-                value.setSortOrder(sort);
-                value.setRevision(1);
-                value.setCreatedAt(LocalDateTime.now());
-                sceneMapper.insert(value);
-                retained.add(value.getId());
-            } else {
-                retained.add(current.getId());
-                if (!Objects.equals(current.getSortOrder(), sort)) {
-                    current.setSortOrder(sort);
-                    current.setRevision(
-                            current.getRevision() == null ? 2 : current.getRevision() + 1);
-                    sceneMapper.updateById(current);
-                }
-            }
-            sort++;
-        }
-        existing.stream()
-                .filter(scene -> !retained.contains(scene.getId()))
-                .forEach(sceneMapper::deleteById);
-    }
-
-    /**
-     * 删除指定列表的所有按钮和场景关系型配置。
+     * 删除指定列表的所有按钮关系型配置。
      *
      * @param listConfigId 列表配置ID
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteByListConfigId(String listConfigId) {
         actionMapper.deleteByListConfigId(listConfigId);
-        sceneMapper.deleteByListConfigId(listConfigId);
     }
 
     /**
@@ -516,91 +437,6 @@ public class EntityListRelationalConfigService {
                     "列表按钮已被其他人修改，请刷新后重试",
                     actionMapper.selectById(actionId));
         }
-        touchList(listConfigId);
-    }
-
-    /**
-     * 创建单个列表场景配置。
-     *
-     * @param listConfigId 列表配置ID
-     * @param request      场景保存请求
-     * @return 创建的场景
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public EntityListScene createScene(
-            String listConfigId,
-            EntityListSceneSaveRequest request) {
-        requireList(listConfigId);
-        EntityListScene scene = new EntityListScene();
-        scene.setListConfigId(listConfigId);
-        scene.setSceneCode(normalizedScene(request.getSceneCode()));
-        scene.setSortOrder(request.getSortOrder() == null
-                ? sceneMapper.findByListConfigId(listConfigId).size()
-                : request.getSortOrder());
-        scene.setRevision(1);
-        scene.setCreatedAt(LocalDateTime.now());
-        sceneMapper.insert(scene);
-        touchList(listConfigId);
-        return scene;
-    }
-
-    /**
-     * 按补丁请求更新单个场景，基于乐观锁更新。
-     *
-     * @param listConfigId 列表配置ID
-     * @param sceneId      场景ID
-     * @param request      场景保存请求
-     * @return 更新后的场景
-     * @throws RevisionConflictException 版本冲突时抛出
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public EntityListScene patchScene(
-            String listConfigId,
-            String sceneId,
-            EntityListSceneSaveRequest request) {
-        EntityListScene current = requireScene(listConfigId, sceneId);
-        if (request == null || request.getExpectedRevision() == null
-                || !request.getExpectedRevision().equals(current.getRevision())) {
-            throw new RevisionConflictException("列表场景已被其他人修改", current);
-        }
-        UpdateWrapper<EntityListScene> wrapper = new UpdateWrapper<>();
-        wrapper.eq("id", sceneId)
-                .eq("list_config_id", listConfigId)
-                .eq("revision", current.getRevision())
-                .set("scene_code", StringUtils.hasText(request.getSceneCode())
-                        ? normalizedScene(request.getSceneCode())
-                        : current.getSceneCode())
-                .set("sort_order", request.getSortOrder() == null
-                        ? current.getSortOrder()
-                        : request.getSortOrder())
-                .set("revision", current.getRevision() + 1);
-        if (sceneMapper.update(null, wrapper) != 1) {
-            throw new RevisionConflictException(
-                    "列表场景已被其他人修改，请刷新后重试",
-                    sceneMapper.selectById(sceneId));
-        }
-        touchList(listConfigId);
-        return requireScene(listConfigId, sceneId);
-    }
-
-    /**
-     * 删除单个场景，基于乐观锁校验。
-     *
-     * @param listConfigId     列表配置ID
-     * @param sceneId          场景ID
-     * @param expectedRevision 期望版本号
-     * @throws RevisionConflictException 版本冲突时抛出
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public void deleteScene(
-            String listConfigId,
-            String sceneId,
-            Integer expectedRevision) {
-        EntityListScene current = requireScene(listConfigId, sceneId);
-        if (expectedRevision == null || !expectedRevision.equals(current.getRevision())) {
-            throw new RevisionConflictException("列表场景已被其他人修改", current);
-        }
-        sceneMapper.deleteById(sceneId);
         touchList(listConfigId);
     }
 
@@ -846,6 +682,9 @@ public class EntityListRelationalConfigService {
                                 action.getActionParamsDocument(),
                                 "列表按钮参数"))
                         : new LinkedHashMap<>();
+        if (params.containsKey("parameterMappings")) {
+            params.put("parameterMappings", com.workflow.entity.ui.application.PageParameterPolicy.mappings(params.get("parameterMappings")));
+        }
         params.remove("targetFormReleaseId");
         params.remove("targetFormReleaseVersion");
 
@@ -919,6 +758,17 @@ public class EntityListRelationalConfigService {
         } else {
             params.remove("targetFormMode");
         }
+        // 参数名称由目标已发布页面声明；草稿中新增但未发布的参数不能作为按钮契约。
+        if (!com.workflow.entity.ui.application.PageParameterPolicy.mappings(params.get("parameterMappings")).isEmpty()) {
+            Map<String, Object> snapshot = codec.readObject(activeRelease.getSnapshotDocument(), "目标表单发布快照");
+            Map<String, Object> targetView = com.workflow.entity.ui.application.PageParameterPolicy.map(
+                    com.workflow.entity.ui.application.PageParameterPolicy.map(snapshot.get("form")).get("viewConfig"));
+            Map<String, Object> properties = com.workflow.entity.ui.application.PageParameterPolicy.map(
+                    com.workflow.entity.ui.application.PageParameterPolicy.map(targetView.get("inputParameterSchema")).get("properties"));
+            for (Map<String, Object> mapping : com.workflow.entity.ui.application.PageParameterPolicy.mappings(params.get("parameterMappings"))) {
+                if (!properties.containsKey(String.valueOf(mapping.get("parameter")))) throw new IllegalArgumentException("目标发布表单未声明输入参数: " + mapping.get("parameter"));
+            }
+        }
         params.put("targetFormId", targetFormId);
         action.setActionParamsDocument(codec.write(
                 params,
@@ -938,14 +788,6 @@ public class EntityListRelationalConfigService {
             throw new IllegalArgumentException("列表按钮不存在");
         }
         return action;
-    }
-
-    private EntityListScene requireScene(String listConfigId, String sceneId) {
-        EntityListScene scene = sceneMapper.selectById(sceneId);
-        if (scene == null || !listConfigId.equals(scene.getListConfigId())) {
-            throw new IllegalArgumentException("列表场景不存在");
-        }
-        return scene;
     }
 
     private void requireRevision(Integer expected, EntityListAction current) {
@@ -982,19 +824,6 @@ public class EntityListRelationalConfigService {
                 : TOOLBAR;
         if (!Set.of(TOOLBAR, ROW).contains(value)) {
             throw new IllegalArgumentException("按钮位置只能是 TOOLBAR 或 ROW");
-        }
-        return value;
-    }
-
-    private String normalizedScene(String scene) {
-        if (!StringUtils.hasText(scene)) {
-            throw new IllegalArgumentException("场景编码不能为空");
-        }
-        String value = scene.trim().toUpperCase();
-        if (!Set.of(
-                "MENU", "PAGE", "DIALOG", "DRAWER",
-                "EMBEDDED", "FORM_PICKER", "SUB_TABLE").contains(value)) {
-            throw new IllegalArgumentException("不支持的列表场景: " + value);
         }
         return value;
     }

@@ -142,6 +142,7 @@
 </template>
 
 <script setup lang="ts">
+import { resolvePageParameters } from '@/shared/page-parameters'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -328,6 +329,7 @@ const effectiveEntityCode = computed(() =>
 )
 const approvalRuntimeContext = computed(() => ({
   ...launchRuntimeContext.value,
+  params: resolvePageParameters(effectiveFormConfig.value?.viewConfig, launchRuntimeContext.value.params || launchRuntimeContext.value.parameters || {}),
   entityCode: effectiveEntityCode.value,
   mode: approvalRuntimeMode.value,
   record: entityData.value,
@@ -343,7 +345,7 @@ const dataSourceRuntime = createFormDataSourceRuntime({
   getListKey: () => props.listKey,
   getMode: () => approvalRuntimeMode.value,
   getForm: () => approvalNormalForm.value
-})
+}).withContext(() => ({ params: approvalRuntimeContext.value.params, context: approvalRuntimeContext.value }))
 
 const approvalNormalForm = computed(() => {
   const sourceForm = statusAwareFormConfig.value

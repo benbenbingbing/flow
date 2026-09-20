@@ -35,12 +35,12 @@ assert.equal(
 assert.equal(
   JSON.parse(listMetadataFingerprint(config, viewConfig))
     .queryInterfaceExtensionId,
-  'project-page-interface'
+  undefined
 )
 assert.equal(
   listMetadataDetailEntries(config, viewConfig)
     .find(item => item.key === 'queryInterfaceExtensionId')?.value,
-  'project-page-interface'
+  undefined
 )
 
 const action = normalizeListActionForSave({

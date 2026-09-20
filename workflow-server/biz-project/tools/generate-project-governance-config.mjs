@@ -188,12 +188,10 @@ const entityList = (
   {
     isDefault = false,
     dataScopeMode = "INHERIT",
-    allowedScenes = ["PAGE", "SELECTION"],
     createLabel,
     fixedFilterConfig = {},
     rowActions = defaultRowActions,
-    selectionMode = "MULTIPLE",
-    contextBindingConfig = {}
+    selectionMode = "MULTIPLE"
   } = {}
 ) => ({
   listKey,
@@ -201,7 +199,6 @@ const entityList = (
   description,
   isDefault,
   dataScopeMode,
-  allowedScenes,
   selectionConfig: {
     selectionMode,
     valueField: "id",
@@ -225,7 +222,6 @@ const entityList = (
     stickyActions: true
   },
   fixedFilterConfig,
-  contextBindingConfig,
   fields
 });
 
@@ -575,9 +571,7 @@ const requirementProjectLink = baseEntity({
       listField("planned_end_date", "计划完成", 70, 120, { queryType: "BETWEEN", align: "center" }),
       listField("status", "状态", 80, 110, { queryType: "IN", align: "center" })
     ], {
-      isDefault: true,
-      allowedScenes: ["PAGE", "EMBEDDED", "SELECTION"],
-      contextBindingConfig: { parentField: "project_id" }
+      isDefault: true
     })
   ],
   scopePolicies: [
@@ -724,7 +718,7 @@ const projectMember = baseEntity({
       listField("join_date", "加入日期", 70, 120, { queryType: "BETWEEN", align: "center" }),
       listField("planned_leave_date", "计划退出", 80, 120, { queryType: "BETWEEN", align: "center" }),
       listField("status", "状态", 90, 110, { queryType: "IN", align: "center" })
-    ], { isDefault: true, allowedScenes: ["PAGE", "EMBEDDED", "SELECTION"] })
+    ], { isDefault: true })
   ],
   scopePolicies: [
     creatorPolicy("project_member", "项目成员"),
@@ -966,7 +960,7 @@ const projectRoleAssignment = baseEntity({
       listField("effective_from", "生效日期", 80, 120, { queryType: "BETWEEN", align: "center" }),
       listField("effective_to", "失效日期", 90, 120, { queryType: "BETWEEN", align: "center" }),
       listField("status", "状态", 100, 100, { queryType: "IN", align: "center" })
-    ], { isDefault: true, allowedScenes: ["PAGE", "EMBEDDED", "SELECTION"] })
+    ], { isDefault: true })
   ],
   scopePolicies: [
     creatorPolicy("project_role_assignment", "项目角色分配"),
@@ -1142,9 +1136,7 @@ const projectSystemLink = baseEntity({
       listField("planned_end_date", "计划完成", 80, 120, { queryType: "BETWEEN", align: "center" }),
       listField("status", "状态", 90, 110, { queryType: "IN", align: "center" })
     ], {
-      isDefault: true,
-      allowedScenes: ["PAGE", "EMBEDDED", "SELECTION"],
-      contextBindingConfig: { parentField: "project_id" }
+      isDefault: true
     })
   ],
   scopePolicies: [
@@ -1622,7 +1614,6 @@ const project = baseEntity({
       listField("submitTime", "提交时间", 70, 170, { queryType: "BETWEEN", align: "center" })
     ], {
       dataScopeMode: "NARROW",
-      allowedScenes: ["PAGE"],
       selectionMode: "NONE",
       rowActions: [
         {
@@ -2168,7 +2159,6 @@ const projectSystemChangeRequest = baseEntity({
       listField("submitTime", "提交时间", 70, 170, { queryType: "BETWEEN", align: "center" })
     ], {
       dataScopeMode: "NARROW",
-      allowedScenes: ["PAGE"],
       selectionMode: "NONE",
       rowActions: [
         {
@@ -2512,7 +2502,6 @@ const projectMemberChangeRequest = baseEntity({
       })
     ], {
       dataScopeMode: "NARROW",
-      allowedScenes: ["PAGE"],
       selectionMode: "NONE",
       rowActions: [
         {

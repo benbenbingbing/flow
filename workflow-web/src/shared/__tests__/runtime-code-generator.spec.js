@@ -189,7 +189,6 @@ const listSnapshot = buildListDraftRuntimeSnapshot({
     enabled: true,
     availabilityRuleDocument: '{"expression":"row.status === \\"ACTIVE\\""}'
   }],
-  scenes: [{ sceneCode: 'PAGE' }, { sceneCode: 'EMBEDDED' }],
   eventBindings: [{
     eventCode: 'LIST_LOAD',
     steps: [{ strategy: 'REPLACE', extensionId: 'list-load-interface' }]
@@ -197,10 +196,9 @@ const listSnapshot = buildListDraftRuntimeSnapshot({
 })
 
 assert.equal(listSnapshot.list.fixedFilterConfig.status.value, 'ACTIVE')
-assert.equal(listSnapshot.list.contextBindingConfig.projectId, 'context.projectId')
+assert.equal('contextBindingConfig' in listSnapshot.list, false)
 assert.equal(listSnapshot.list.selectionConfig.selectionMode, 'MULTIPLE')
 assert.equal(listSnapshot.list.selectionMode, undefined)
-assert.deepEqual(listSnapshot.list.allowedScenes, ['PAGE', 'EMBEDDED'])
 
 const listArtifact = buildRuntimeCodeArtifact({
   configType: 'LIST',
@@ -239,5 +237,19 @@ const releases = [
 ]
 assert.equal(selectRuntimeRelease(releases)?.id, 'release-2')
 assert.equal(selectRuntimeRelease(releases, 'release-3')?.id, 'release-3')
+
+// 旧发布文档可展示等价代码，但不应重新带出已退役配置，也不能改写发布原文。
+const historicalList = {
+  configType: 'LIST',
+  list: {
+    listKey: 'all',
+    contextBindingConfig: { parentField: 'project_id' },
+    fixedFilterConfig: { status: 'APPROVED' }
+  }
+}
+const historicalArtifact = buildRuntimeCodeArtifact({ configType: 'LIST', snapshot: historicalList })
+assert.equal('contextBindingConfig' in historicalArtifact.definition.list, false)
+assert.equal(historicalArtifact.definition.list.fixedFilterConfig.status, 'APPROVED')
+assert.equal(historicalList.list.contextBindingConfig.parentField, 'project_id')
 
 console.log('runtime code generator tests passed')

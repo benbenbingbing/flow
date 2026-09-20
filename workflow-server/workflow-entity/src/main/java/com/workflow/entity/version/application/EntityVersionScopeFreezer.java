@@ -38,12 +38,12 @@ import java.util.Set;
 public class EntityVersionScopeFreezer {
 
     private static final Set<String> FILTER_SYSTEM_FIELDS = Set.of(
-            "id", "entityCode", "dataNo", "title", "name", "code",
+            "id", "entityCode", "name", "code",
             "status", "processInstanceId", "processStartTime",
             "processEndTime", "currentTaskId", "currentTaskName",
             "currentTaskAssignee", "submitterId", "submitterName",
-            "deptId", "deptName", "submitTime", "createdAt",
-            "updatedAt", "createdBy", "updatedBy");
+            "deptId", "deptName", "submitTime", "create_time",
+            "update_time", "create_by", "update_by");
 
     private final EntityPublishedSnapshotService snapshotService;
     private final ObjectMapper objectMapper;

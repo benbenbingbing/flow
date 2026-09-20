@@ -32,15 +32,21 @@
 
       <section v-if="isRelationBound" class="entity-relation-binding">
         <div class="relation-binding-heading">
-          <strong>继承实体关系：{{ boundEntityRelation?.relationName || boundRelationCode }}</strong>
+          <strong>继承实体关系：{{ boundEntityRelation?.relationName || boundRelationCode || '请选择' }}</strong>
           <el-button link type="primary" @click="openEntityRelationManagement">去实体设计修改关系</el-button>
         </div>
+        <el-select v-if="canSelectBinding" v-model="boundRelationKey" filterable placeholder="选择已定义的实体关系" style="width: 100%; margin-bottom: 12px" @change="selectBinding">
+          <el-option v-for="relation in sourceRelations" :key="relationUsageKey(relation)"
+            :value="relationUsageKey(relation)" :disabled="relation.enabled === false || relation.enabled === 0"
+            :label="`${relation.relationName} · ${relationTarget(relation).entityName} · ${relation.direction === 'REVERSE' ? '所属记录' : relation.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多'}`" />
+        </el-select>
+        <el-alert v-if="canSelectBinding && !catalogLoading && !sourceRelations.length && !relationBindingError" title="请先在实体设计中定义关系，再返回这里选择展示页面。" type="info" :closable="false" />
         <el-alert v-if="relationBindingError" :title="relationBindingError" type="error" :closable="false" show-icon />
         <template v-else-if="boundEntityRelation">
           <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="关联实体">{{ boundEntityRelation.childEntityName || boundEntityRelation.childEntityCode }}</el-descriptions-item>
-            <el-descriptions-item label="关联数量">{{ boundEntityRelation.relationType === 'ONE_TO_ONE' ? '一对一 · 表单' : '一对多 · 列表' }}</el-descriptions-item>
-            <el-descriptions-item label="匹配规则" :span="2">{{ boundEntityRelation.childEntityCode }}.{{ boundEntityRelation.childRefFieldCode }} = 当前记录.id</el-descriptions-item>
+            <el-descriptions-item label="关联实体">{{ relationTarget(boundEntityRelation).entityName }}</el-descriptions-item>
+            <el-descriptions-item label="关联数量">{{ boundEntityRelation.direction === 'REVERSE' ? '所属记录 · 表单' : relationContentType(boundEntityRelation) === 'FORM' ? '一对一 · 表单' : '一对多 · 列表' }}</el-descriptions-item>
+            <el-descriptions-item label="匹配规则" :span="2">{{ relationMatchLabel(boundEntityRelation) }}</el-descriptions-item>
           </el-descriptions>
           <p>目标实体、匹配字段和关联数量统一由实体关系决定。这里的设置只影响当前页面，发布当前页面后生效。</p>
         </template>
@@ -48,7 +54,7 @@
 
       <el-steps :active="stepNumber(activeStep) - 1" align-center finish-status="success">
         <el-step title="显示什么" description="目标和位置" />
-        <el-step v-if="!isRelationBound" title="数据怎么关联" description="安全找到目标数据" />
+        <el-step v-if="!isRelationBound" title="数据来源" description="当前记录或扩展接口" />
         <el-step title="允许做什么" description="查看或操作范围" />
         <el-step title="特殊情况" description="复杂能力兜底" />
       </el-steps>
@@ -210,13 +216,14 @@
               </el-form-item>
             </div>
           </el-form>
+          <PageParameterMappingEditor v-model="editor.config.parameterMappings" :schema="targetParameterSchema" :source-fields="sourceReadableFieldOptions.map(item => item.raw)" />
         </section>
 
         <section v-if="!isRelationBound" v-show="activeStep === 2">
           <StepHeading
             number="2"
-            title="数据怎么关联"
-            description="平台会优先推荐已有关系或引用字段；运行时仍由服务端重新校验。"
+            title="数据来源"
+            description="扩展页面使用当前记录或受控接口取数；业务关联请通过实体关系配置。"
           />
           <el-alert
             v-if="recommendationText"
@@ -230,8 +237,8 @@
             <el-form-item required>
               <template #label>
                 <ConfigHelpLabel
-                  label="关联方式"
-                  content="是什么：平台从当前记录找到目标数据的方法。何时使用：优先选择系统推荐项；只有复杂规则才使用扩展接口。结果：该条件只能缩小目标数据范围，不能绕过权限。"
+                  label="数据来源"
+                  content="当前记录用于同一条数据的另一张页面；扩展接口用于受控查询或计算，仍需遵守实体数据权限。"
                 />
               </template>
               <div class="relation-methods">
@@ -256,104 +263,6 @@
                 </button>
               </div>
             </el-form-item>
-
-            <el-form-item
-              v-if="editor.config.relation.type === 'ENTITY_RELATION'"
-              required
-            >
-              <template #label>
-                <ConfigHelpLabel
-                  label="实体关系"
-                  content="是什么：实体配置中已经定义的父子或关联关系。何时使用：目标数据就是当前实体的关系数据时。结果：平台按关系定义查询并校验基数。"
-                />
-              </template>
-              <el-select
-                v-model="editor.config.relation.relationCode"
-                filterable
-                placeholder="选择已有实体关系"
-                style="width: 100%"
-                @change="handleRelationSelected"
-              >
-                <el-option
-                  v-for="relation in matchingRelations"
-                  :key="relation.relationCode || relation.id"
-                  :label="relation.relationName || relation.relationCode"
-                  :value="relation.relationCode"
-                >
-                  <div class="business-option">
-                    <span>{{ relation.relationName || relation.relationCode }}</span>
-                    <small>{{ relation.relationCode }} · {{ relation.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多' }}</small>
-                  </div>
-                </el-option>
-              </el-select>
-            </el-form-item>
-
-            <el-form-item
-              v-if="editor.config.relation.type === 'REFERENCE_FIELD'"
-              required
-            >
-              <template #label>
-                <ConfigHelpLabel
-                  label="当前引用字段"
-                  content="是什么：当前实体中指向目标实体的字段。何时使用：例如需求的“所属项目”。结果：字段保存的目标记录 ID 用来打开目标表单或过滤列表。"
-                />
-              </template>
-              <FieldSelect
-                v-model="editor.config.relation.sourceField"
-                :options="sourceReferenceFieldOptions"
-                placeholder="选择指向目标实体的字段"
-                @selected="handleSourceFieldSelected"
-              />
-            </el-form-item>
-
-            <el-form-item
-              v-if="editor.config.relation.type === 'REVERSE_REFERENCE'"
-              required
-            >
-              <template #label>
-                <ConfigHelpLabel
-                  label="目标引用字段"
-                  content="是什么：目标实体中指向当前实体的字段。何时使用：例如项目查看所有“所属项目=当前项目”的需求。结果：平台自动附加可信筛选条件。"
-                />
-              </template>
-              <FieldSelect
-                v-model="editor.config.relation.targetField"
-                :options="targetReferenceFieldOptions"
-                placeholder="选择目标实体中指向当前实体的字段"
-                @selected="handleTargetFieldSelected"
-              />
-            </el-form-item>
-
-            <template v-if="editor.config.relation.type === 'FIELD_MATCH'">
-              <el-alert
-                title="字段匹配适合稳定的业务编码。若字段可能重复或为空，请先在实体配置中建立正式关系。"
-                type="warning"
-                :closable="false"
-                show-icon
-                class="field-match-alert"
-              />
-              <div class="field-match-grid">
-                <el-form-item label="当前字段" required>
-                  <FieldSelect
-                    v-model="editor.config.relation.sourceField"
-                    :options="sourceFieldOptions"
-                    placeholder="选择当前实体字段"
-                    @selected="handleSourceFieldSelected"
-                  />
-                </el-form-item>
-                <div class="match-arrow">
-                  <el-icon><Right /></el-icon>
-                </div>
-                <el-form-item label="目标字段" required>
-                  <FieldSelect
-                    v-model="editor.config.relation.targetField"
-                    :options="compatibleTargetFieldOptions"
-                    placeholder="选择目标实体字段"
-                    @selected="handleTargetFieldSelected"
-                  />
-                </el-form-item>
-              </div>
-            </template>
 
             <el-alert
               v-if="editor.config.relation.type === 'INTERFACE_SERVICE'"
@@ -944,18 +853,21 @@
 
 <script setup>
 import { computed, defineComponent, h, reactive, ref, resolveComponent } from 'vue'
-import { Connection, Plus, Right, Delete } from '@element-plus/icons-vue'
+import { Connection, Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
+import { validatePageParameterMappings } from '@/shared/page-parameters'
+import { safeParseConfig } from '@/shared/config-runtime'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import EntitySelector from '@/components/EntitySelector.vue'
 import { entityApi } from '@/api/entity'
-import { getFormsByEntity, getEntityFields, getFormFields } from '@/api/entityForm'
+import { getFormsByEntity, getEntityFields, getFormRuntimeRelease } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityRelationApi } from '@/api/entityRelation'
-import { relationContentType } from '@/shared/entity-relation'
+import { relationContentType, relationTarget, relationUsageKey, relationMatchLabel } from '@/shared/entity-relation'
 import { applyEntityRelationBinding } from '@/shared/relation-content'
 import { uiCompositionApi } from '@/api/uiComposition'
 import { uiExtensionApi } from '@/api/uiConfig'
@@ -983,7 +895,6 @@ import {
   describeRelatedContentRelation,
   describeRelatedContentSpecial,
   normalizeRelatedContent,
-  recommendRelatedContentRelation,
   relatedContentPositionOptions,
   updateRelatedContentAnchor,
   validateRelatedContent
@@ -1000,33 +911,6 @@ const StepHeading = defineComponent({
       h('span', { class: 'step-heading__number' }, props.number),
       h('div', [h('strong', props.title), h('small', props.description)])
     ])
-  }
-})
-
-const FieldSelect = defineComponent({
-  props: {
-    modelValue: { type: [String, Number], default: '' },
-    options: { type: Array, default: () => [] },
-    placeholder: { type: String, default: '请选择字段' }
-  },
-  emits: ['update:modelValue', 'selected'],
-  setup(props, { emit }) {
-    const change = value => {
-      emit('update:modelValue', value)
-      emit('selected', props.options.find(item => String(item.value) === String(value)) || null)
-    }
-    return () => h(resolveComponent('el-select'), {
-      modelValue: props.modelValue,
-      filterable: true,
-      clearable: true,
-      placeholder: props.placeholder,
-      style: 'width: 100%',
-      'onUpdate:modelValue': change
-    }, () => props.options.map(option => h(resolveComponent('el-option'), {
-      key: option.value,
-      label: option.label,
-      value: option.value
-    })))
   }
 })
 
@@ -1112,9 +996,13 @@ const targetForms = ref([])
 const targetLists = ref([])
 const targetFields = ref([])
 const targetContentFields = ref([])
+const targetParameterSchema = ref({})
+let targetSchemaSequence = 0
 const sourceRelations = ref([])
 const isRelationBound = ref(false)
 const boundRelationCode = ref('')
+const boundRelationKey = ref('')
+const canSelectBinding = ref(false)
 const relationBindingError = ref('')
 const dataInterfaceOptions = ref([])
 const actionInterfaceOptions = ref([])
@@ -1128,29 +1016,35 @@ const editor = reactive(createEmptyRelatedContent({
 }))
 
 // 编辑已保存的实体关系展示时固定关系身份，不能通过通用编辑器另建一套关联条件。
-const boundEntityRelation = computed(() => sourceRelations.value.find(item => item.relationCode === boundRelationCode.value))
-const dialogTitle = computed(() => isRelationBound.value ? '关系展示设置' : editor.id ? '编辑关联内容' : '新增关联内容')
+const boundEntityRelation = computed(() => sourceRelations.value.find(item => boundRelationKey.value
+  ? relationUsageKey(item) === boundRelationKey.value
+  : item.relationCode === boundRelationCode.value
+    && (item.direction || 'FORWARD') === (editor.config.relation.direction || 'FORWARD')
+    && (item.direction === 'REVERSE'
+      ? String(item.parentEntityId) === String(editor.config.target.entityId)
+      : !item.parentEntityId || String(item.parentEntityId) === String(props.sourceEntity.id))))
+const dialogTitle = computed(() => isRelationBound.value ? '关系展示设置' : '扩展页面')
 const stepIds = computed(() => isRelationBound.value ? [1, 3, 4] : [1, 2, 3, 4])
 const visibleStep = step => isRelationBound.value && step === 2 ? 1 : step
 const stepNumber = step => stepIds.value.indexOf(step) + 1
 
 /** 数据规则只能在实体设计中修改，新标签页保留当前展示草稿。 */
 function openEntityRelationManagement() {
-  if (!props.sourceEntity.id) return
-  const route = router.resolve({ path: `/entity/design/${props.sourceEntity.id}`, query: { tab: 'relations' } })
+  const entityId = boundEntityRelation.value?.parentEntityId || props.sourceEntity.id
+  if (!entityId) return
+  const route = router.resolve({ path: `/entity/design/${entityId}`, query: { tab: 'relations' } })
   window.open(route.href, '_blank', 'noopener,noreferrer')
 }
 
-const selectedEntityRelation = computed(() => editor.config.relation.type === 'ENTITY_RELATION'
-  ? sourceRelations.value.find(item => item.relationCode === editor.config.relation.relationCode)
-  : null)
+const selectedEntityRelation = computed(() => isRelationBound.value ? boundEntityRelation.value : null)
 const contentTypeOptions = computed(() => RELATED_CONTENT_TYPE_OPTIONS.map(option => ({
   label: option.label,
   value: option.value,
   disabled: !!selectedEntityRelation.value && option.value !== relationContentType(selectedEntityRelation.value)
 })))
 const relationOptions = computed(() => RELATED_CONTENT_RELATION_OPTIONS.filter(option => {
-  if (option.value !== 'SAME_RECORD') return true
+  if (option.value === 'INTERFACE_SERVICE') return true
+  if (option.value !== 'SAME_RECORD') return false
   return String(props.sourceEntity.id || '') === String(editor.config.target.entityId || '')
     || String(props.sourceEntity.entityCode || '') === String(editor.config.target.entityCode || '')
 }))
@@ -1208,26 +1102,6 @@ const targetEditableFieldOptions = computed(() => contentScopedFieldOptions(
   editor.config.target.contentType,
   true
 ))
-const matchingRelations = computed(() => sourceRelations.value.filter(relation =>
-  relation.enabled !== false && relation.enabled !== 0
-    && (String(relation.childEntityId || '') === String(editor.config.target.entityId || '')
-      || (!!relation.childEntityCode && String(relation.childEntityCode) === String(editor.config.target.entityCode || '')))
-))
-const sourceReferenceFieldOptions = computed(() => sourceFieldOptions.value.filter(option =>
-  String(option.raw?.refEntityId || option.raw?.referenceEntityId || '') === String(editor.config.target.entityId || '')
-  || String(option.raw?.refEntityCode || option.raw?.referenceEntityCode || '') === String(editor.config.target.entityCode || '')
-))
-const targetReferenceFieldOptions = computed(() => targetFieldOptions.value.filter(option =>
-  String(option.raw?.refEntityId || option.raw?.referenceEntityId || '') === String(props.sourceEntity.id || '')
-  || String(option.raw?.refEntityCode || option.raw?.referenceEntityCode || '') === String(props.sourceEntity.entityCode || '')
-))
-const compatibleTargetFieldOptions = computed(() => {
-  const source = props.sourceFields.find(field =>
-    String(field.fieldCode) === String(editor.config.relation.sourceField))
-  if (!source?.fieldType) return targetFieldOptions.value
-  return targetFieldOptions.value.filter(option =>
-    String(option.raw?.fieldType || '').toUpperCase() === String(source.fieldType).toUpperCase())
-})
 const dataInterfaces = computed(() =>
   normalizeInterfaceExtensions(dataInterfaceOptions.value)
     .filter(item => item.enabled && item.interfaceKind === 'READ')
@@ -1299,17 +1173,19 @@ const useInterfaceService = computed(() => ['INTERFACE_SERVICE', 'BOTH'].include
 const useDataInterfaceService = computed(() => editor.config.relation.type === 'INTERFACE_SERVICE'
   || Boolean(editor.config.specialHandling.interfaceService.extensionId))
 const useCustomComponent = computed(() => ['CUSTOM_COMPONENT', 'BOTH'].includes(specialMode.value))
-const supportsRelationshipMutation = computed(() => [
-  'REFERENCE_FIELD',
-  'REVERSE_REFERENCE',
-  'ENTITY_RELATION'
-].includes(editor.config.relation.type))
+const supportsRelationshipMutation = computed(() => editor.config.relation.type === 'ENTITY_RELATION')
 const naturalSummary = computed(() => describeRelatedContent(editor, props.sourceEntity.entityName || '当前页面'))
 const relationSummary = computed(() => describeRelatedContentRelation(editor))
 const actionSummary = computed(() => describeRelatedContentActions(editor))
 const specialSummary = computed(() => describeRelatedContentSpecial(editor))
 const localValidation = computed(() => {
   const result = validateRelatedContent(editor, props.ownerType)
+  const parameterError = validatePageParameterMappings(editor.config.parameterMappings, targetParameterSchema.value, sourceReadableFieldOptions.value.map(item => item.raw))
+  if (parameterError) result.errors.push({ step: 1, field: 'parameterMappings', message: parameterError })
+  if (isRelationBound.value && !boundEntityRelation.value) result.errors.unshift({ step: 1, field: 'relation', message: '请选择有效的实体关系' })
+  if (boundEntityRelation.value?.ownershipType === 'COMPOSITION' && editor.config.actions.some(action => action !== 'VIEW')) {
+    result.errors.push({ step: 3, field: 'actions', message: '组成关系在这里仅供查看；需要编辑时请从表单左侧实体关系添加主从编辑组件' })
+  }
   if (relationBindingError.value) result.errors.unshift({ step: 1, field: 'relation', message: relationBindingError.value })
   if (isRelationBound.value && useDataInterfaceService.value) {
     result.errors.push({ step: 4, field: 'interfaceService', message: '请移除接口取数，恢复使用实体关系' })
@@ -1322,10 +1198,12 @@ const canTest = computed(() => Boolean(
   && editor.config.target.contentId
   && validateRelatedContent(editor, props.ownerType).errors.every(error => error.step !== 2)
 ))
-const saveBoundaryTitle = computed(() => editor.config.actions.includes('SAVE_WITH_FORM')
+const saveBoundaryTitle = computed(() => boundEntityRelation.value?.ownershipType === 'COMPOSITION' ? '组成关系只读展示' : editor.config.actions.includes('SAVE_WITH_FORM')
   ? '请改用已有组成型子表单或重复器'
   : '目标内容独立保存')
-const saveBoundaryDescription = computed(() => editor.config.actions.includes('SAVE_WITH_FORM')
+const saveBoundaryDescription = computed(() => boundEntityRelation.value?.ownershipType === 'COMPOSITION'
+  ? '需要编辑子记录时，请从表单左侧实体关系添加主从编辑组件，随主表统一保存。'
+  : editor.config.actions.includes('SAVE_WITH_FORM')
   ? '关联内容尚未接入宿主统一提交，该选项不能发布；取消勾选后继续配置。'
   : '在目标表单中的新增或编辑会立即独立保存，取消当前页面不会撤销目标内容。')
 
@@ -1409,7 +1287,7 @@ async function loadCommonCatalog() {
   try {
     const [relations, dataRows, actionRows] = await Promise.all([
       props.sourceEntity.id
-        ? entityRelationApi.list(props.sourceEntity.id).catch(error => {
+        ? entityRelationApi.available(props.sourceEntity.id).catch(error => {
           if (isRelationBound.value) relationBindingError.value = error?.message || '实体关系加载失败，请关闭后重试'
           return []
         })
@@ -1457,17 +1335,21 @@ async function loadTargetCatalog(entityId, { recommend = false } = {}) {
 }
 
 async function loadTargetContentFields(contentId = editor.config.target.contentId) {
+  const sequence = ++targetSchemaSequence
   targetContentFields.value = []
+  targetParameterSchema.value = {}
   if (!contentId) return
   try {
-    if (editor.config.target.contentType === 'FORM') {
-      targetContentFields.value = normalizeRows(await getFormFields(contentId))
-    } else {
-      const detail = await entityListConfigApi.getById(contentId)
-      targetContentFields.value = normalizeRows(
-        detail?.fields || detail?.fieldConfigs || detail?.listFields || []
-      )
-    }
+    // 映射只消费目标已发布的参数声明，避免草稿参数在运行时不存在。
+    const isForm = editor.config.target.contentType === 'FORM'
+    const release = isForm
+      ? await getFormRuntimeRelease(contentId)
+      : (await entityListConfigApi.getReleases(contentId)).find(item => item.status === 'ACTIVE')
+    if (sequence !== targetSchemaSequence) return
+    const snapshot = safeParseConfig(release?.snapshotDocument)
+    const content = isForm ? snapshot.form : (snapshot.config || snapshot.list)
+    targetParameterSchema.value = safeParseConfig(content?.viewConfig).inputParameterSchema || {}
+    targetContentFields.value = normalizeRows(isForm ? snapshot.legacyFields : (snapshot.list?.fields || snapshot.fields))
   } catch {
     // 目录加载失败时退回实体字段；发布和运行时仍按精确快照 fail-closed。
     targetContentFields.value = []
@@ -1475,20 +1357,26 @@ async function loadTargetContentFields(contentId = editor.config.target.contentI
 }
 
 function applyRecommendation() {
-  recommendedRelation.value = recommendRelatedContentRelation({
-    sourceEntity: props.sourceEntity,
-    targetEntity: targetEntity.value || editor.config.target,
-    relations: sourceRelations.value,
-    sourceFields: props.sourceFields,
-    targetFields: targetFields.value
-  })
-  Object.assign(editor.config.relation, recommendedRelation.value)
-  syncRelationContentType()
-  const option = relationOptions.value.find(item => item.value === recommendedRelation.value.type)
-  recommendationText.value = option
-    ? `已根据实体关系推荐“${option.label}”，你可以确认或改用其他方式。`
-    : ''
-  syncFieldMapping()
+  if (isRelationBound.value) return
+  const type = String(props.sourceEntity.id) === String(editor.config.target.entityId) ? 'SAME_RECORD' : 'INTERFACE_SERVICE'
+  editor.config.relation = { type }
+  recommendedRelation.value = { type }
+  recommendationText.value = type === 'SAME_RECORD' ? '展示当前记录的另一张页面，不建立新的业务关系。' : '跨实体扩展页面由受控接口提供数据。普通业务关联请使用实体关系。'
+  handleRelationTypeChange(type)
+}
+
+/** 新建展示只引用关系身份，不复制字段匹配条件；正反向使用也共享同一条定义。 */
+async function selectBinding() {
+  const relation = boundEntityRelation.value
+  if (!relation) return
+  boundRelationCode.value = relation.relationCode
+  relationBindingError.value = ''
+  editor.config.relation = { type: 'ENTITY_RELATION', relationCode: relation.relationCode, direction: relation.direction || 'FORWARD' }
+  editor.config.target = { ...relationTarget(relation), contentType: relationContentType(relation), contentId: '', contentKey: '', contentName: '' }
+  editor.config.actions = ['VIEW']
+  if (!editor.config.name) editor.config.name = relation.relationName
+  applyEntityRelationBinding(editor, relation)
+  await loadTargetCatalog(editor.config.target.entityId)
 }
 
 async function handleTargetEntitySelected(entity) {
@@ -1501,7 +1389,7 @@ async function handleTargetEntitySelected(entity) {
     contentKey: '',
     contentName: ''
   })
-  resetRelationSelection()
+  editor.config.relation = { type: 'INTERFACE_SERVICE' }
   await loadTargetCatalog(entity?.id, { recommend: true })
 }
 
@@ -1543,66 +1431,22 @@ function handleAnchorChange(value) {
 
 function handleRelationTypeChange(type) {
   editor.config.relation.type = type
-  syncRelationContentType()
   if (type === 'INTERFACE_SERVICE') {
     toggleSpecial('INTERFACE_SERVICE', true)
     advancedSections.value = ['special']
   }
 }
 
-function handleRelationSelected(code) {
-  const relation = matchingRelations.value.find(item => item.relationCode === code)
-  editor.config.relation.relationName = relation?.relationName || code || ''
-  syncRelationContentType()
-}
-
-/** 高级入口同样由关系数量决定目标页面类型，类型切换时清除不兼容的目标和操作。 */
-function syncRelationContentType() {
-  if (!selectedEntityRelation.value) return
-  const type = relationContentType(selectedEntityRelation.value)
-  if (editor.config.target.contentType === type) return
-  editor.config.target.contentType = type
-  editor.config.actions = ['VIEW']
-  handleContentTypeChange()
-}
-
-function handleSourceFieldSelected(option) {
-  editor.config.relation.sourceFieldName = option?.label || ''
-  syncFieldMapping()
-}
-
-function handleTargetFieldSelected(option) {
-  editor.config.relation.targetFieldName = option?.label || ''
-  syncFieldMapping()
-}
-
-function syncFieldMapping() {
-  const relation = editor.config.relation
-  relation.mappings = relation.sourceField && relation.targetField
-    ? [{ sourceField: relation.sourceField, targetField: relation.targetField }]
-    : []
-}
-
-function resetRelationSelection() {
-  Object.assign(editor.config.relation, {
-    relationCode: '',
-    relationName: '',
-    sourceField: '',
-    sourceFieldName: '',
-    targetField: '',
-    targetFieldName: '',
-    mappings: []
-  })
-}
-
 function isActionDisabled(action) {
   // 实体关系的数量可能已变化，历史勾选项即使不再兼容也必须允许取消。
   if (isRelationBound.value && editor.config.actions.includes(action)) return false
+  if (boundEntityRelation.value?.ownershipType === 'COMPOSITION') return action !== 'VIEW'
   if (action === 'SAVE_WITH_FORM') {
     // 新配置不能启用；历史草稿若已经勾选，仍允许用户取消勾选后保存。
     return !editor.config.actions.includes('SAVE_WITH_FORM')
   }
   if (action === 'SELECT') return editor.config.target.contentType !== 'LIST'
+  if (action === 'LINK' && editor.config.target.contentType !== 'LIST') return true
   if (['CREATE', 'EDIT'].includes(action)) {
     return editor.config.target.contentType !== 'FORM'
   }
@@ -1842,7 +1686,7 @@ async function testWithRecord() {
 
 function testSourceLabel(source = {}) {
   if (!source?.id) return '当前权限范围内没有可用来源记录'
-  const title = source.title || source.name || source.code || '来源记录'
+  const title = source.name || source.code || '来源记录'
   return `${title}（记录标识：${source.id}）`
 }
 
@@ -1917,7 +1761,7 @@ async function save() {
   }
 }
 
-async function open(value = null) {
+async function open(value = null, { extension = false } = {}) {
   const next = value
     ? normalizeRelatedContent(value, { ownerType: props.ownerType, sourceEntity: props.sourceEntity })
     : createEmptyRelatedContent({ ownerType: props.ownerType, sourceEntity: props.sourceEntity })
@@ -1927,7 +1771,11 @@ async function open(value = null) {
   if (!value) next.orderKey = (props.existingCount + 1) * 1000000
   Object.keys(editor).forEach(key => delete editor[key])
   Object.assign(editor, next)
-  isRelationBound.value = !!value && next.config.relation.type === 'ENTITY_RELATION'
+  isRelationBound.value = value ? !['SAME_RECORD', 'INTERFACE_SERVICE'].includes(next.config.relation.type) : !extension
+  canSelectBinding.value = isRelationBound.value && (!value || next.config.relation.type !== 'ENTITY_RELATION')
+  if (canSelectBinding.value) editor.config.relation = { type: 'ENTITY_RELATION', relationCode: '' }
+  else if (!value) editor.config.relation = { type: 'INTERFACE_SERVICE' }
+  boundRelationKey.value = ''
   boundRelationCode.value = isRelationBound.value ? next.config.relation.relationCode : ''
   sourceRelations.value = []
   relationBindingError.value = ''
@@ -1940,7 +1788,7 @@ async function open(value = null) {
   sourceTestRecordId.value = ''
   visible.value = true
   await loadCommonCatalog()
-  if (isRelationBound.value && !relationBindingError.value) {
+  if (isRelationBound.value && !canSelectBinding.value && !relationBindingError.value) {
     try {
       applyEntityRelationBinding(editor, boundEntityRelation.value)
     } catch (error) {

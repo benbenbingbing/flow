@@ -53,6 +53,7 @@ public class EntityFieldDefinitionService {
             String entityId,
             EntityFieldDTO dto) {
         EntityDefinition entity = requireDynamicEntity(entityId);
+        requireDataFieldType(dto);
         validateSingleField(entityId, null, dto);
         EntityField saved = createDefinition(entityId, dto);
         entityMapper.touchUpdateTime(entityId);
@@ -88,6 +89,7 @@ public class EntityFieldDefinitionService {
     public EntityField createDefinition(
             String entityId,
             EntityFieldDTO dto) {
+        requireDataFieldType(dto);
         EntityField field = convertToEntity(dto);
         field.setId(null);
         field.setEntityId(entityId);
@@ -103,6 +105,7 @@ public class EntityFieldDefinitionService {
     public void updateDefinition(
             EntityField existingField,
             EntityFieldDTO fieldDTO) {
+        if (existingField.getFieldType() != fieldDTO.getFieldType()) requireDataFieldType(fieldDTO);
         assertPublishedStructureUnchanged(existingField, fieldDTO);
         boolean structureLocked =
                 Boolean.TRUE.equals(existingField.getIsSystem())
@@ -429,6 +432,14 @@ public class EntityFieldDefinitionService {
     private boolean isRelationField(EntityFieldDTO dto) {
         return dto != null
                 && dto.getFieldType() == EntityField.FieldType.SUB_FORM;
+    }
+
+    /** 子表单、关联列表属于页面组件，不能再通过实体字段写入创建展示或关系配置。 */
+    static void requireDataFieldType(EntityFieldDTO dto) {
+        if (dto != null && (dto.getFieldType() == EntityField.FieldType.SUB_FORM
+                || dto.getFieldType() == EntityField.FieldType.SUB_LIST)) {
+            throw new IllegalArgumentException("子表单和子列表已改为页面组件，请先配置实体关系，再在表单设计中添加");
+        }
     }
 
     private String resolveValueStorage(EntityFieldDTO field) {

@@ -395,8 +395,9 @@ public class UiDataSourceBindingMatcher {
                     text(binding.get("ownerId"))))) {
                 continue;
             }
-            if (!usage.equals(normalize(
-                    text(binding.get("eventCode"))))) {
+            boolean legacyListQuery = UiDataSourceUsages.LIST_QUERY.equals(usage)
+                    && UiDataSourceUsages.LIST_LOAD.equals(normalize(text(binding.get("eventCode"))));
+            if (!legacyListQuery && !usage.equals(normalize(text(binding.get("eventCode"))))) {
                 continue;
             }
             if (!eventTargetMatches(
@@ -410,6 +411,11 @@ public class UiDataSourceBindingMatcher {
                 steps = parseArray(
                         binding.get("stepsDocument"),
                         "UI事件绑定步骤");
+            }
+            // 仅迁移标记的替代步骤允许使用旧 LIST_QUERY 契约，不能借用任意 LIST_LOAD 接口。
+            if (legacyListQuery) {
+                steps = mapList(steps).stream().filter(step -> Boolean.TRUE.equals(step.get("legacyListQuery"))
+                        && "REPLACE".equals(normalize(text(step.get("strategy"))))).toList();
             }
             if (containsOperation(
                     steps,

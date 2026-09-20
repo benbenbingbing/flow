@@ -234,7 +234,7 @@ GET /api/workbench/data   聚合 runtime(待办统计) + auth(用户/菜单)
 | 8 | gateway → runtime+auth | (BFF 聚合，非 Feign 契约) | 工作台 |
 | 9 | all → auth | `DictClient.items(dictCode)` | 字典（配合 Redis 缓存） |
 
-**协议固化**：流程变量 `entityCode/entityDataId/dataNo/submitterId` 作为 runtime 与 design 间的显式数据契约，写入接口文档。
+**协议固化**：流程变量 `entityCode/entityDataId/code/submitterId` 作为 runtime 与 design 间的显式数据契约，写入接口文档。
 
 ## 6. 共享基础设施设计
 

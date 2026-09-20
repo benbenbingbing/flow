@@ -121,7 +121,13 @@ public class EntityEmbedRuntimeAdapter implements EmbedRuntimeEntityPort {
         Map<String, Object> extData;
         BeanWrapper bean = null;
         if (source instanceof EntityDataDTO dto) {
-            object = Collections.singletonMap("id", dto.getId());
+            // 审计字段使用公开的数据库列名，BeanWrapper 的 Java 属性名不能作为字段编码。
+            object = new LinkedHashMap<>();
+            object.put("id", dto.getId());
+            object.put("create_time", dto.getCreateTime());
+            object.put("update_time", dto.getUpdateTime());
+            object.put("create_by", dto.getCreateBy());
+            object.put("update_by", dto.getUpdateBy());
             data = dto.getData() == null ? Map.of() : dto.getData();
             extData = dto.getExtData() == null ? Map.of() : dto.getExtData();
             bean = new BeanWrapperImpl(dto);
@@ -147,8 +153,8 @@ public class EntityEmbedRuntimeAdapter implements EmbedRuntimeEntityPort {
             }
         }
         Instant updatedAt = null;
-        if (source instanceof EntityDataDTO dto && dto.getUpdatedAt() != null) {
-            updatedAt = dto.getUpdatedAt().toInstant(ZoneOffset.UTC);
+        if (source instanceof EntityDataDTO dto && dto.getUpdateTime() != null) {
+            updatedAt = dto.getUpdateTime().toInstant(ZoneOffset.UTC);
         }
         return new Row(
                 Objects.toString(object.get("id"), null),

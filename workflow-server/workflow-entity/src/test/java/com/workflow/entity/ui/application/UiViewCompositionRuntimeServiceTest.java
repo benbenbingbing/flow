@@ -186,6 +186,24 @@ class UiViewCompositionRuntimeServiceTest {
     }
 
     @Test
+    void reverseEntityRelationReadsParentByOrdinaryIdAndEmptyIdNeverLoadsAll() {
+        Fixture fixture = fixture("ENTITY_RELATION_REVERSE", "FORM", true);
+        EntityField fk = entitySnapshotService.getPinnedByHistoryId("source-history").snapshot().getFields().get(0);
+        fk.setFieldType(EntityField.FieldType.STRING);
+        fk.setRefEntityId(null);
+        when(dynamicDataService.findAccessibleById("target_entity", "target-record", null))
+                .thenReturn(record("target-record", Map.of("businessCode", "PARENT")));
+        assertEquals("target-record", service.resolve(fixture.request()).getTargetRecordId());
+        assertEquals(Map.of(), service.resolve(fixture.request()).getFixedFilters());
+        when(dynamicDataService.findAccessibleById("source_entity", "source-record", null))
+                .thenReturn(record("source-record", Map.of()));
+        assertTrue(service.resolve(fixture.request()).isMatchNone());
+        // 外键类型不能通过客户端展示配置绕过实体关系的存储类型校验。
+        fk.setFieldType(EntityField.FieldType.LONG);
+        assertThrows(BusinessConflictException.class, () -> service.resolve(fixture.request()));
+    }
+
+    @Test
     void signedPinnedFormOwnerReleaseRemainsResolvableAfterRepublish() {
         Fixture fixture = fixture("REVERSE_REFERENCE", "LIST", true);
         fixture.request().setReleaseResolutionToken(
@@ -510,7 +528,15 @@ class UiViewCompositionRuntimeServiceTest {
                             .PinnedEntitySnapshot(targetSchema, "b".repeat(64)));
         }
 
+        if ("ENTITY_RELATION_REVERSE".equals(relationType)) {
+            EntityRelation reverse = relation();
+            reverse.setParentEntityId(targetEntityId);
+            reverse.setChildEntityId(sourceEntity.getId());
+            reverse.setChildRefFieldCode("projectRef");
+            targetSchema.setRelations(List.of(reverse));
+        }
         Map<String, Object> relationConfig = switch (relationType) {
+            case "ENTITY_RELATION_REVERSE" -> Map.of("type", "ENTITY_RELATION", "direction", "REVERSE", "relationCode", "project-requirements");
             case "REFERENCE_FIELD" -> Map.of(
                     "type", relationType,
                     "sourceField", "projectRef");
@@ -675,7 +701,7 @@ class UiViewCompositionRuntimeServiceTest {
         return switch (type) {
             case "SAME_RECORD" -> Map.of(
                     "id", "source-record", "id_op", "EQ");
-            case "REFERENCE_FIELD" -> Map.of(
+            case "REFERENCE_FIELD", "ENTITY_RELATION_REVERSE" -> Map.of(
                     "id", "target-record", "id_op", "EQ");
             case "FIELD_MATCH" -> Map.of(
                     "businessCode", "BIZ-001",

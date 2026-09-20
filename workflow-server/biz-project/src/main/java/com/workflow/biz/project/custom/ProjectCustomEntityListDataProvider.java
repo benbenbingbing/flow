@@ -120,12 +120,10 @@ public class ProjectCustomEntityListDataProvider
         result.setId("PROJECT-CUSTOM-LIST-SAMPLE");
         result.setEntityCode(entityCode);
         result.setEntityName("项目扩展验收单");
-        result.setDataNo("EXT-PROVIDER-001");
         result.setCode("EXT-PROVIDER-001");
         result.setName("安全查询 Provider 演示记录");
-        result.setTitle("安全查询 Provider 演示记录");
         result.setStatus("DRAFT");
-        result.setCreatedAt(LocalDateTime.now());
+        result.setCreateTime(LocalDateTime.now());
         Map<String, Object> data =
                 new LinkedHashMap<>();
         data.put("name", result.getName());

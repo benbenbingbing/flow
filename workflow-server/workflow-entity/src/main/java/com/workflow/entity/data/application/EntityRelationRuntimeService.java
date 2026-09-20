@@ -1172,8 +1172,6 @@ public class EntityRelationRuntimeService {
         putIfPresent(data, "id", childDto.getId());
         putIfPresent(data, "name", childDto.getName());
         putIfPresent(data, "code", childDto.getCode());
-        putIfPresent(data, "title", childDto.getTitle());
-        putIfPresent(data, "dataNo", childDto.getDataNo());
         putIfPresent(data, "status", childDto.getStatus());
         putIfPresent(data, "deptId", childDto.getDeptId());
         putIfPresent(data, "submitterId", childDto.getSubmitterId());

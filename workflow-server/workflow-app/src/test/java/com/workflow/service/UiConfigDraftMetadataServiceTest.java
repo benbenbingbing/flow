@@ -2,7 +2,6 @@ package com.workflow.service;
 
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.list.application.EntityListConfigService;
-import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.ui.application.UiConfigDraftMetadataService;
 import com.workflow.entity.ui.application.UiAvailableInterfaceService;
 
@@ -52,7 +51,6 @@ class UiConfigDraftMetadataServiceTest {
                         mock(EntityListConfigService.class),
                         formValidator,
                         mock(EntityListConfigurationValidator.class),
-                        mock(EntityListRelationalConfigService.class),
                         new JsonDocumentCodec(
                                 new ObjectMapper()),
                         mock(UiAvailableInterfaceService.class));

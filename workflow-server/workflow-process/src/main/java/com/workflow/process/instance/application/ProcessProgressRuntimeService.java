@@ -770,8 +770,6 @@ public class ProcessProgressRuntimeService {
         putIfNotNull(result, "id", entityData.getId());
         putIfNotNull(result, "entityCode", entityData.getEntityCode());
         putIfNotNull(result, "entityName", entityData.getEntityName());
-        putIfNotNull(result, "dataNo", entityData.getDataNo());
-        putIfNotNull(result, "title", entityData.getTitle());
         putIfNotNull(result, "name", entityData.getName());
         putIfNotNull(result, "code", entityData.getCode());
         putIfNotNull(result, "status", entityData.getStatus());
@@ -798,10 +796,10 @@ public class ProcessProgressRuntimeService {
         putIfNotNull(result, "deptId", entityData.getDeptId());
         putIfNotNull(result, "deptName", entityData.getDeptName());
         putIfNotNull(result, "submitTime", entityData.getSubmitTime());
-        putIfNotNull(result, "createdAt", entityData.getCreatedAt());
-        putIfNotNull(result, "updatedAt", entityData.getUpdatedAt());
-        putIfNotNull(result, "createdBy", entityData.getCreatedBy());
-        putIfNotNull(result, "updatedBy", entityData.getUpdatedBy());
+        putIfNotNull(result, "create_time", entityData.getCreateTime());
+        putIfNotNull(result, "update_time", entityData.getUpdateTime());
+        putIfNotNull(result, "create_by", entityData.getCreateBy());
+        putIfNotNull(result, "update_by", entityData.getUpdateBy());
         return result;
     }
 

@@ -27,10 +27,8 @@ const entityFieldTypes = [
   { option: '选择（复选框）CHECKBOX', meaning: '少量可多选项直接平铺显示。', notes: '选项 value 应稳定，发布后不要随意复用旧 value 表达新含义。' },
   { option: '文件 FILE', meaning: '上传、预览、下载通用附件。', notes: '通过“附件项”配置类型、单文件大小和数量；保存后再发布实体。' },
   { option: '图片 IMAGE', meaning: '上传图片并支持预览。', notes: '附件限制与 FILE 相同；应结合存储容量和图片安全扫描策略。' },
-  { option: '用户 USER', meaning: '选择系统用户。', notes: '可配置字符串长度；用户停用后历史值仍需可回显。' },
-  { option: '部门 DEPT', meaning: '选择系统组织部门。', notes: '组织调整可能影响数据权限和历史显示，发布前确认部门字段映射。' },
-  { option: '实体记录单选 REFERENCE', meaning: '从一个目标实体中引用一条记录，也可引用系统用户、部门、角色或用户组。', notes: '配置阶段只选择一个目标实体；业务填写时选择一条数据。' },
-  { option: '实体记录多选 MULTI_REFERENCE', meaning: '从一个目标实体中引用多条记录。', notes: '配置阶段仍只选择一个目标实体；业务填写时可跨页选择多条数据。' },
+  { option: '实体记录单选 REFERENCE', meaning: '从一个目标实体中引用一条记录，也可引用系统用户、部门、角色或用户组。', notes: '选择用户时目标实体设为系统用户（sys_user），选择部门时设为组织部门（sys_organization）；不再单独提供用户、部门字段类型。' },
+  { option: '实体记录多选 MULTI_REFERENCE', meaning: '从一个目标实体中引用多条记录，也支持选择多个系统用户或部门。', notes: '配置阶段仍只选择一个目标实体；业务填写时可跨页选择多条数据。' },
   { option: '子表单 SUB_FORM', meaning: '父记录关联一个子记录，默认关系为一对一。', notes: '必须选择子实体与子表外键；默认级联删除开启。' },
   { option: '子列表 SUB_LIST', meaning: '在表单中嵌入其他已发布实体列表，可把父表单字段、父记录ID、运行上下文或固定值作为参数传入。', notes: '参数可作为固定查询条件，并在子列表新增数据时初始化目标字段；子列表自身数据不随父表单提交。' }
 ]
@@ -50,7 +48,7 @@ export default {
     {
       title: '保存不等于发布',
       type: 'warning',
-      text: '表单节点、列表列、按钮和场景的“保存”只更新当前草稿项目；生产运行时继续读取当前激活发布版本。列表只允许 STANDARD 普通发布；只有流程表单需要立即作用于当前流程时才考虑 HOTFIX。发布前必须按稳定 ID 核对差异、风险、数据源、权限、嵌套关系和迁移兼容结果。'
+      text: '表单节点、列表列和按钮的“保存”只更新当前草稿项目；生产运行时继续读取当前激活发布版本。列表只允许 STANDARD 普通发布；只有流程表单需要立即作用于当前流程时才考虑 HOTFIX。发布前必须按稳定 ID 核对差异、风险、数据源、权限、嵌套关系和迁移兼容结果。'
     }
   ],
   sections: [
@@ -993,7 +991,7 @@ export default {
               type: 'bullets',
               items: [
                 '“设计”进入列表设计器；“编辑”只改方案基本信息；“删除”前检查菜单、权限规则和页面引用。',
-                '列、按钮和场景分别按记录新增、PATCH、删除；保存一个项目不会重写其他配置。',
+                '列和按钮分别按记录新增、PATCH、删除；保存一个项目不会重写其他配置。',
                 '列表配置保存后仍是草稿；预览读取草稿，生产运行时读取当前激活 release。'
               ]
             }
@@ -1007,9 +1005,9 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '稳定 ID', meaning: '每个列、按钮和场景都有独立 ID。', defaultLimit: '迁移时保留已有 ID，缺失时生成并固定。', effect: '局部 PATCH、diff 和模板覆盖不会依赖数组位置。', publish: '上线后不要通过导入随意重建 ID。' },
+                { field: '稳定 ID', meaning: '每个列和按钮都有独立 ID。', defaultLimit: '迁移时保留已有 ID，缺失时生成并固定。', effect: '局部 PATCH、diff 和模板覆盖不会依赖数组位置。', publish: '上线后不要通过导入随意重建 ID。' },
                 { field: 'expectedRevision', meaning: '客户端读取配置时保存的 revision。', defaultLimit: '所有 PATCH 和删除请求必填。', effect: '相同项目并发修改返回 409；不同项目可并行保存。', publish: '冲突响应的 data 是服务器当前项目，data.revision 即 serverRevision；界面必须展示差异。' },
-                { field: '页面保存入口', meaning: '列使用行内“保存”，按钮使用当前行“保存”，场景勾选后即时保存当前场景。', defaultLimit: '页头不提供整包保存；列表设置仍有独立保存按钮。', effect: '只提交当前项目，不覆盖其他管理员正在编辑的列、按钮或场景。', publish: '所有单项保存仍只进入草稿，必须点击“发布”后线上生效。' },
+                { field: '页面保存入口', meaning: '列使用行内“保存”，按钮使用当前行“保存”。', defaultLimit: '页头不提供整包保存；列表设置仍有独立保存按钮。', effect: '只提交当前项目，不覆盖其他管理员正在编辑的列或按钮。', publish: '所有单项保存仍只进入草稿，必须点击“发布”后线上生效。' },
                 { field: 'orderKey', meaning: '稀疏排序键。', defaultLimit: '拖拽通常只修改被移动项目。', effect: '避免每次排序更新整张列表。', publish: '排序键耗尽时由后端受控重平衡，并记录审计。' },
                 { field: '未发布提示', meaning: '草稿与激活快照内容哈希不同。', defaultLimit: '页面常驻显示。', effect: '提醒管理员线上尚未生效。', publish: '发布成功后提示清除；发布失败保持原激活版本。' }
               ]
@@ -1024,20 +1022,18 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '列表设置分组',
-              text: '列表级设置按任务拆为“常用体验、访问范围、选择行为、查询实现、扩展渲染”。常用体验和业务访问首屏可见，Provider、固定条件、上下文绑定和统一数据源归入默认折叠的查询实现。字段主表只保留名称、编码、列表/查询用途、当前配置摘要和单项操作；字段弹窗把常用查询与列展示放首屏，冻结列、最小宽度和溢出提示归入“高级列布局”，数据源与单元格渲染合并为“数据与显示”，模板归入“高级模板”。'
+              text: '列表级设置按任务拆为“常用体验、访问范围、选择行为、扩展渲染”。常用体验和访问范围首屏可见；固定条件在访问范围中通过字段、比较方式和值可视化配置，无论是否绑定规则都与数据范围取交集。自定义查询统一在“事件绑定 → 加载列表（LIST_LOAD）→ 替代平台处理”配置，并返回分页数据。字段主表只保留名称、编码、列表/查询用途、当前配置摘要和单项操作；字段弹窗把常用查询与列展示放首屏，冻结列、最小宽度和溢出提示归入“高级列布局”，数据源与单元格渲染合并为“数据与显示”，模板归入“高级模板”。'
             },
             {
               type: 'table',
               columns: fieldColumns,
               rows: [
                 { field: '自定义列表组件', meaning: '使用注册组件替代默认动态列表。', defaultLimit: '默认空；可筛选、手工输入、清空；标识格式与扩展名规则一致。', effect: '整体列表由组件渲染。', publish: '目标环境必须注册同名组件并兼容运行时契约。' },
-                { field: '数据范围模式', meaning: 'INHERIT 继承、NARROW 缩小、OVERRIDE 独立。', defaultLimit: '默认 INHERIT；OVERRIDE 仅超级管理员可保存。', effect: '决定实体默认 ALLOW 与列表 ALLOW 的组合方式。', publish: 'NARROW 必须至少存在一个列表 ALLOW 绑定。' },
+                { field: '数据范围模式', meaning: '仅使用本列表绑定的规则。', defaultLimit: '未绑定 ALLOW 时执行列表安全默认策略。', effect: '数据权限与固定条件共同限制结果。', publish: '不再继承实体默认范围。' },
                 { field: '访问权限码', meaning: '控制用户能否打开该 listKey。', defaultLimit: '留空继承 entity:{code}:list。', effect: '菜单、直接 URL 和运行时 schema/query 都会校验。', publish: '列表专属权限应同步授予角色。' },
-                { field: '允许场景', meaning: 'MENU、PAGE、DIALOG、DRAWER、EMBEDDED、FORM_PICKER、SUB_TABLE。', defaultLimit: '默认全部。', effect: '阻止列表在未授权展示场景复用。', publish: '弹窗和选择器使用前必须勾选对应场景。' },
                 { field: '选择模式', meaning: 'NONE、SINGLE 或 MULTIPLE，并配置返回值字段。', defaultLimit: '默认 NONE，返回 id。', effect: '决定弹窗、抽屉和表单选择器的选择行为。', publish: '返回字段被表单映射引用后保持稳定。' },
-                { field: '固定条件', meaning: '平台服务端附加的不可被客户端覆盖的结构化查询条件。', defaultLimit: '界面按对象编辑并由后端校验，数据库以可移植大文本保存。', effect: '只能缩小显示结果，不能替代数据范围授权。', publish: '字段必须存在且适合数据库查询。' },
-                { field: '上下文绑定', meaning: '以结构化对象声明 relationKey 等来源记录关系。', defaultLimit: '后端校验对象结构，前端不再进行二次 JSON 编解码。', effect: '后端通过 EntityListContextResolver 重新加载来源记录并生成可信条件。', publish: '不能把前端直接传入的客户、部门或项目 ID 当作权限依据。' },
-                { field: 'LIST_QUERY 数据源', meaning: '从统一目录选择实体查询或注册 Provider。', defaultLimit: '默认使用实体查询。', effect: '整表查询统一接收不可绕过的 DataScopePlan。', publish: '任意 SQL、脚本、URL 或缺失 Provider 均阻止发布。' },
+                { field: '固定条件', meaning: '访问范围中的固定过滤约束，不是查询框默认值。', defaultLimit: '未添加条件时不附加过滤；例如选择“状态 / 等于 / 运行中”。多个字段必须同时满足，同一字段只能配置一次。', effect: '无论是否绑定规则都始终生效；用户筛选、事件步骤和查询接口不能放宽范围。', publish: '保存后发布生效，只能缩小结果，不能代替权限授权。' },
+                { field: 'LIST_LOAD 自定义查询', meaning: '在列表事件绑定中添加替代平台处理步骤。', defaultLimit: '没有替代步骤时使用平台默认查询。', effect: '接口返回 records、total、pageNum、pageSize，平台再次校验固定条件和数据权限。', publish: '旧 LIST_QUERY 配置迁入事件步骤，历史发布仍按原接口契约执行。' },
                 { field: '组件参数', meaning: '按组件 configSchema 编辑。', defaultLimit: '组件声明 schema 时显示。', effect: '传入 viewConfig.customComponentProps。', publish: '迁移时确保组件版本一致。' },
                 { field: '收起时显示条件数', meaning: '查询区收起时保留显示的条件数量。', defaultLimit: '1–20，默认 4。', effect: '超出数量的条件在展开后显示。', publish: '高频条件排在前面。' },
                 { field: '启用查询区折叠', meaning: '查询条件较多时是否允许展开和收起。', defaultLimit: '默认开启。', effect: '开启后节省页面空间；关闭时全部常驻。', publish: '关闭后“收起时显示条件数”不参与运行时展示。' },
@@ -1141,7 +1137,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '首屏只保留高频按钮设置',
-              text: '按钮表格首屏只编辑排序、启用、名称、执行方式、权限码和适用条件；图标、按钮颜色、模板及其他低频展示参数统一进入当前按钮的“更多设置”。操作列统一使用 link 文字链接样式。保存仍只提交当前按钮，不会覆盖其他按钮。'
+              text: '按钮表格首屏只编辑排序、启用、名称、执行方式、权限码和适用条件；图标、按钮颜色等低频展示参数统一进入当前按钮的“更多设置”。操作列统一使用 link 文字链接样式。保存仍只提交当前按钮，不会覆盖其他按钮。'
             },
             {
               type: 'table',
@@ -1156,7 +1152,6 @@ export default {
                 { field: '图标', meaning: 'Element Plus 图标名。', defaultLimit: '位于“更多设置”，可空。', effect: '按钮显示图标。', publish: '图标名错误时通常只缺图标。' },
                 { field: '样式', meaning: 'default、primary、success、warning、danger、info。', defaultLimit: '位于“更多设置”；自定义默认 default。', effect: '改变颜色语义。', publish: '危险操作应使用 danger 并确认。' },
                 { field: '操作列展示方式', meaning: '操作列统一使用 link 文字链接样式。', defaultLimit: '内置和自定义操作列按钮均保持文字链接。', effect: '按钮样式控制文字颜色，不显示实心背景。', publish: '无权限影响。' },
-                { field: '模板', meaning: '绑定版本化按钮模板并支持显式升级。', defaultLimit: '位于“更多设置”；留空表示复制后独立。', effect: '复用按钮展示与扩展配置，不自动跟随模板升级。', publish: '升级前查看差异并保留本地覆盖。' },
                 { field: '权限码', meaning: '功能级授权标识。', defaultLimit: '可从标准/自定义权限选择，也可手工输入；内置按钮会自动归一为标准权限。', effect: '用户无权限时按钮不可用或不显示。', publish: '角色必须被授予相应 F 类型权限资源。' },
                 { field: '适用条件', meaning: '分别配置记录级或选择集级的显示条件与启用条件。', defaultLimit: '默认始终显示且可用，部分内置按钮有预设规则。', effect: '先判显示：不满足则隐藏；显示后再判启用：不满足则禁用并说明。', publish: '与权限码、数据权限三者同时生效。' }
               ]
@@ -1347,16 +1342,16 @@ export default {
         },
         {
           id: 'entity-template-upgrade',
-          title: '组件模板版本锁定与升级',
+          title: '列表列模板',
           blocks: [
             {
               type: 'bullets',
               items: [
-                '模板可覆盖字段组、表单区块、子表、列表列组和按钮组；每个模板版本都是不可变快照。',
-                '实例保存 templateId + templateVersion + localOverrides，不会自动跟随模板新版本变化。',
-                '升级前展示当前模板、目标模板和实例本地覆盖三方差异；只有管理员显式确认后才写入草稿。',
-                '三方合并优先保留本地覆盖，冲突必须逐项处理；升级完成仍需预览和发布。',
-                '不需要后续升级的场景使用“复制后独立”，复制项不再保留模板关系。'
+                '在“配置管理 → 列表列模板”中维护可复用的列配置。',
+                '在列表字段配置的“模板初始化”中选择模板，将模板配置复制到当前列草稿。',
+                '复制后独立编辑，不绑定模板版本；后续修改模板不会影响已配置的列表列。',
+                '应用模板后仍需保存当前列，并预览、发布列表后生效。',
+                '列表按钮直接配置名称、执行方式、权限、适用条件和展示样式，不使用组件模板。'
               ]
             }
           ]
@@ -1371,7 +1366,7 @@ export default {
                 '旧表单字段转换为一级 FIELD 节点，历史 componentProps 中可识别的子表、引用、事件和选项迁移到显式属性。',
                 '无法识别的历史属性保存在 legacyProps，并在迁移报告中列出，不得静默丢弃。',
                 '编辑历史节点时按当前 nodeType Schema 重新归一化；不兼容的活动 props、rules、组件参数和数据源绑定会被清除，必要原值只作为非活动 legacyProps 兼容数据保留，不再参与运行时。',
-                '列表列、按钮和场景保留已有稳定 ID；缺失 ID 时只生成一次，重复执行迁移结果一致。',
+                '列表列和按钮保留已有稳定 ID；缺失 ID 时只生成一次，重复执行迁移结果一致。',
                 '为已有表单和列表生成初始 release，快照内容哈希与旧运行时输出核对一致。',
                 'V037 创建流程 UI release 绑定、热修复目标和发布审计表，并把既有 release 标记为 STANDARD；启动时通过 workflow.ui-hotfix.binding-backfill-enabled 控制存量 node_forms_snapshot 的幂等回填，默认开启。',
                 '大库升级可先设置 workflow.ui-hotfix.binding-backfill-enabled=false 完成结构迁移，再在受控窗口开启回填；日志应核对 histories、inserted、updated、missingRelease、invalidSnapshot 和 skippedExisting。',

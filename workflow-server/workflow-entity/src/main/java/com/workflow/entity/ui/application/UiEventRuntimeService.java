@@ -21,6 +21,7 @@ import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.entity.list.application.EntityListFixedFilters;
 import com.workflow.core.logging.LogValue;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -137,6 +138,7 @@ public class UiEventRuntimeService {
                     bindingService.resolvePublished(request);
             requireExecutableFormButtonChain(request, chain);
             requireExecutionPermission(request, chain);
+            bindListFixedFilters(request, chain);
             canonicalizeFormButtonRequest(request);
             if (UiDataSourceExecutionAccessService.isFormFieldEvent(
                     request.getConfigType(), request.getTargetType(), request.getEventCode())) {
@@ -237,6 +239,7 @@ public class UiEventRuntimeService {
                     state,
                     result);
         } else if (defaultHandler != null) {
+            restoreListFilters(request, state);
             latest = defaultHandler.apply(
                     new LinkedHashMap<>(mutableInput(state)));
             result.setDefaultExecuted(true);
@@ -918,6 +921,7 @@ public class UiEventRuntimeService {
             UiEventBindingService.ResolvedEventChain chain,
             Map<String, Object> state,
             UiEventExecutionResult result) {
+        restoreListFilters(request, state);
         if (!valueMapper.matches(step.get("condition"), state)) {
             trace(result, stepLabel(step), "SKIPPED", null);
             return null;
@@ -939,7 +943,10 @@ public class UiEventRuntimeService {
                 }
                 UiExtensionExecuteRequest execute =
                         new UiExtensionExecuteRequest();
-                execute.setUsage(normalize(request.getEventCode()));
+                boolean legacyListQuery = UiDataSourceUsages.LIST_LOAD.equals(normalize(request.getEventCode()))
+                        && "REPLACE".equals(normalize(text(step.get("strategy"))))
+                        && Boolean.TRUE.equals(step.get("legacyListQuery"));
+                execute.setUsage(legacyListQuery ? UiDataSourceUsages.LIST_QUERY : normalize(request.getEventCode()));
                 execute.setOperationCode(firstText(
                         step.get("operationCode")));
                 if (!StringUtils.hasText(text(step.get("extensionId")))
@@ -973,6 +980,19 @@ public class UiEventRuntimeService {
                                 ? trustedListButtonInput(
                                         stringMap(inputMap), request)
                                 : stringMap(inputMap));
+                if (UiDataSourceUsages.LIST_LOAD.equals(normalize(request.getEventCode()))) {
+                    Map<String, Object> queryInput = new LinkedHashMap<>(execute.getInput());
+                    queryInput.put("filters", EntityListFixedFilters.apply(
+                            stringMap(queryInput.get("filters")), request.getServerListFilters()));
+                    if (legacyListQuery) {
+                        // 迁移前查询槽位的标准输入必须保留，旧 Provider 不能因改为事件步骤而改变契约。
+                        queryInput.putIfAbsent("sorts", List.of());
+                        queryInput.putIfAbsent("currentRow", Map.of());
+                        queryInput.putIfAbsent("selectedRows", List.of());
+                        queryInput.putIfAbsent("records", List.of());
+                    }
+                    execute.setInput(queryInput);
+                }
                 execute.setContext(runtimeContext(request, state));
                 Integer pageNum = positiveInteger(
                         mutableInput(state).get("pageNum"));
@@ -984,7 +1004,7 @@ public class UiEventRuntimeService {
                 execute.setServerIdempotencyKey(
                         request.getServerIdempotencyKey());
                 execute.setServerPinnedRelease(
-                        StringUtils.hasText(
+                        request.isServerPinnedRelease() || StringUtils.hasText(
                                 request.getReleaseResolutionToken()));
                 if (formButton || formField) {
                     // 字段与按钮都按本次已验真的有效快照授权，并保留 OWNER 默认绑定的来源身份。
@@ -1075,6 +1095,26 @@ public class UiEventRuntimeService {
             }
             throw exception;
         }
+    }
+
+    /** 即使通过通用事件入口执行，也从已验证发布快照恢复固定条件，客户端无法伪造或清空。 */
+    private void bindListFixedFilters(
+            UiEventExecuteRequest request, UiEventBindingService.ResolvedEventChain chain) {
+        if (!"LIST".equals(normalize(request.getConfigType()))
+                || !UiDataSourceUsages.LIST_LOAD.equals(normalize(request.getEventCode()))) return;
+        Map<String, Object> list = stringMap(chain.snapshot().get("list"));
+        Map<String, Object> required = new LinkedHashMap<>(request.getServerListFilters() == null
+                ? Map.of() : request.getServerListFilters());
+        required.putAll(EntityListFixedFilters.normalize(stringMap(list.get("fixedFilterConfig"))));
+        request.setServerListFilters(Collections.unmodifiableMap(required));
+    }
+
+    /** BEFORE 输出、输入映射都可能替换 filters，每次执行前恢复可信条件。 */
+    private void restoreListFilters(UiEventExecuteRequest request, Map<String, Object> state) {
+        if (request.getServerListFilters() == null || request.getServerListFilters().isEmpty()) return;
+        Map<String, Object> input = mutableInput(state);
+        input.put("filters", EntityListFixedFilters.apply(
+                stringMap(input.get("filters")), request.getServerListFilters()));
     }
 
     /**
@@ -1291,7 +1331,8 @@ public class UiEventRuntimeService {
                 "MAPPING");
     }
 
-    private Map<String, Object> stringMap(Map<?, ?> source) {
+    private Map<String, Object> stringMap(Object sourceValue) {
+        if (!(sourceValue instanceof Map<?, ?> source)) return Map.of();
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) ->
                 result.put(String.valueOf(key), value));

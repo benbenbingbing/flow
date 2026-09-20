@@ -39,7 +39,7 @@ public final class WorkflowReservedVariables {
             "submitterName",
             "entityCode",
             "entityDataId",
-            "dataNo",
+            "code",
             LEGACY_SKIP_NODE_ENABLED_VARIABLE,
             FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE,
             ACTIVITI_SKIP_EXPRESSION_ENABLED_VARIABLE,

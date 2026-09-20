@@ -228,6 +228,7 @@ public class EntityDefinitionService {
         // 保存字段（新建时确保字段ID为空，避免重复使用旧ID）
         if (dto.getFields() != null) {
             for (EntityFieldDTO fieldDTO : dto.getFields()) {
+                EntityFieldDefinitionService.requireDataFieldType(fieldDTO);
                 EntityField field = convertToEntity(fieldDTO);
                 field.setId(null); // 新建实体时，字段ID必须为空
                 field.setEntityId(entity.getId());
@@ -246,10 +247,15 @@ public class EntityDefinitionService {
      * 系统字段说明：
      * - name: 数据名称（可编辑字段大小）
      * - code: 数据编码（可编辑字段大小）
-     * - 其他字段：系统自动维护，不可编辑
+     * - deptId: 所属部门（可编辑）
+     * - ID、审计、状态与流程字段：系统自动维护，不可编辑
      */
     private void addSystemFields(String entityId) {
         int sortOrder = 0;
+
+        // 主键和审计列已有物理存储，注册为只读系统字段供设计器展示与绑定。
+        fieldMapper.insert(createSystemField(entityId, "id", "ID",
+                EntityField.FieldType.STRING, "varchar(64)", 64, false, sortOrder));
 
         // 1. name - 数据名称（可编辑）
         EntityField nameField = createSystemField(entityId, "name", "数据名称",
@@ -307,8 +313,6 @@ public class EntityDefinitionService {
                                 entityId));
         fieldMapper.insert(deptIdField);
 
-        fieldMapper.insert(createSystemField(entityId, "dataNo", "业务单号",
-                EntityField.FieldType.STRING, "varchar(100)", 100, false, ++sortOrder));
         fieldMapper.insert(createSystemField(entityId, "submitTime", "提交时间",
                 EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder));
         fieldMapper.insert(createSystemField(entityId, "currentTaskId", "当前任务ID",
@@ -317,6 +321,17 @@ public class EntityDefinitionService {
                 EntityField.FieldType.STRING, "varchar(200)", 200, false, ++sortOrder));
         fieldMapper.insert(createSystemField(entityId, "currentTaskAssignee", "当前任务办理人",
                 EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder));
+
+        fieldMapper.insert(createSystemField(entityId, "create_time", "创建时间",
+                EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "update_time", "更新时间",
+                EntityField.FieldType.DATETIME, "datetime", null, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "create_by", "创建人",
+                EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "update_by", "更新人",
+                EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder));
+        fieldMapper.insert(createSystemField(entityId, "deleted", "删除标记",
+                EntityField.FieldType.BOOLEAN, "tinyint", null, false, ++sortOrder));
 
         log.info("已为实体 [{}] 添加系统标准字段", LogValue.safe(entityId));
     }
@@ -333,6 +348,8 @@ public class EntityDefinitionService {
         field.setFieldName(fieldName);
         field.setFieldType(fieldType);
         field.setDbType(dbType);
+        field.setDbColumnName(fieldCode.replaceAll("([a-z0-9])([A-Z])", "$1_$2")
+                .toLowerCase(java.util.Locale.ROOT));
         field.setFieldLength(fieldLength);
         field.setIsRequired(false);
         field.setIsSystem(true); // 标记为系统字段
@@ -356,8 +373,6 @@ public class EntityDefinitionService {
         sortOrder = ensureSystemField(entityId, "submitterId", "提交人ID",
                 EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
         sortOrder = ensureSystemField(entityId, "submitterName", "提交人",
-                EntityField.FieldType.STRING, "varchar(100)", 100, sortOrder);
-        sortOrder = ensureSystemField(entityId, "dataNo", "业务单号",
                 EntityField.FieldType.STRING, "varchar(100)", 100, sortOrder);
         sortOrder = ensureSystemField(entityId, "submitTime", "提交时间",
                 EntityField.FieldType.DATETIME, "datetime", null, sortOrder);

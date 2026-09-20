@@ -41,6 +41,10 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
     @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
     List<EntityRelation> selectAllByParentEntityId(@Param("parentEntityId") String parentEntityId);
 
+    /** 页面可反向引用既有关系，关系本身仍只在父实体定义一次。 */
+    @Select("SELECT * FROM entity_relation WHERE child_entity_id = #{entityId} AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
+    List<EntityRelation> selectAllByChildEntityId(@Param("entityId") String entityId);
+
     /**
      * 根据父实体 ID 和稳定关系编码查询关系（包含逻辑删除记录，防止稳定编码复用）。
      */

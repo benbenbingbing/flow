@@ -226,7 +226,8 @@ import { getEntityStatusList } from '@/api/entityStatus'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { uiCompositionRuntimeApi } from '@/api/uiCompositionRuntime'
 import { normalizeRuntimeFormRelease } from '@/shared/list-button-form-runtime'
-import { normalizeEntityRecordForForm } from '@/shared/form-runtime'
+import { mapPageParameters, resolvePageParameters } from '@/shared/page-parameters'
+import { normalizeEntityRecordForForm, createFormDataSourceRuntime } from '@/shared/form-runtime'
 import {
   buildEntityStatusMap,
   getEffectiveEntityStatusOptions
@@ -263,6 +264,8 @@ const props = defineProps({
   releaseId: { type: String, required: true },
   releaseVersion: { type: Number, required: true },
   sourceRecordId: { type: [String, Number], default: '' },
+  sourceData: { type: Object, default: () => ({}) },
+  sourceParameters: { type: Object, default: () => ({}) },
   hostReadonly: { type: Boolean, default: false },
   rowContextToken: { type: String, default: '' },
   traversalContextToken: { type: String, default: '' },
@@ -287,10 +290,12 @@ const candidateContext = ref(null)
 const targetEntity = ref(null)
 const targetForm = ref(null)
 const targetRecord = ref(null)
+const targetParameters = ref({})
 const targetEntityStatusOptions = ref(getEffectiveEntityStatusOptions())
 const formDialogRef = ref(null)
 const resolvedContextFingerprint = ref('')
 const requestGate = createLatestRequestGate()
+const targetDataSourceRuntime = ref(null)
 
 const config = computed(() => props.composition?.config || {})
 const presentation = computed(() => config.value.presentation || {})
@@ -468,7 +473,7 @@ function renderFailureState(title, description) {
  */
 async function resolveComposition({ force = false } = {}) {
   const input = currentResolveInput()
-  const inputFingerprint = JSON.stringify(input)
+  const inputFingerprint = parameterFingerprint()
   if (!force
     && resolved.value
     && resolvedContextFingerprint.value === inputFingerprint) {
@@ -486,6 +491,9 @@ async function resolveComposition({ force = false } = {}) {
   errorMessage.value = ''
   clearResolvedState()
   try {
+    const parameters = mapPageParameters(config.value.parameterMappings, {
+      data: props.sourceData, recordId: props.sourceRecordId, params: props.sourceParameters
+    })
     const value = assertRelatedContentResolveContract(
       await uiCompositionRuntimeApi.resolve(input)
     )
@@ -499,9 +507,11 @@ async function resolveComposition({ force = false } = {}) {
     // 表单弹窗会复用组件。切换记录时旧请求可能后返回，只有仍对应当前
     // 宿主上下文的最后一次请求可以提交结果，避免展示或编辑上一条记录。
     if (!requestGate.isCurrent(requestRevision)
-      || JSON.stringify(currentResolveInput()) !== inputFingerprint) {
+      || parameterFingerprint() !== inputFingerprint) {
       return null
     }
+    targetParameters.value = targetState
+      ? resolvePageParameters(targetState.form.viewConfig, parameters) : parameters
     resolved.value = value
     actionCapabilities.value = capabilityState.capabilities
     actionCapabilityError.value = capabilityState.error
@@ -511,6 +521,16 @@ async function resolveComposition({ force = false } = {}) {
       targetForm.value = targetState.form
       targetRecord.value = targetState.record
       targetEntityStatusOptions.value = targetState.statuses
+      // 独立运行时只持有本次解析快照，切换来源时旧初始化不能写入新目标记录。
+      const runtime = createFormDataSourceRuntime({
+        entityCode: value.targetEntityCode, getForm: () => targetState.form,
+        getRecord: () => targetState.record || {}, getRecordId: () => value.targetRecordId,
+        getMode: () => 'view', getEntityDefinition: () => targetState.entity
+      }).withContext({ params: targetParameters.value, viewCompositionTraversalToken: value.traversalContextToken, context: { viewCompositionTraversalToken: value.traversalContextToken } })
+      targetDataSourceRuntime.value = runtime
+      if (targetState.record) await runtime.initialize({ form: targetState.form,
+        fields: targetState.form.fields, nodes: targetState.form.nodes,
+        record: targetState.record, recordId: value.targetRecordId })
     }
     return value
   } catch (error) {
@@ -597,6 +617,23 @@ async function loadTargetForm(value) {
   }
 }
 
+// 参数仅用于目标页面业务上下文，不进入服务端关系解析或权限凭证。
+function parameterFingerprint() {
+  return JSON.stringify([currentResolveInput(), sourceParameterFingerprint()])
+}
+
+// 只观察实际映射的值。无传参的关联不能因宿主任意字段输入而反复请求。
+function sourceParameterFingerprint() {
+  try {
+    return JSON.stringify([config.value.parameterMappings, mapPageParameters(config.value.parameterMappings, {
+      data: props.sourceData, recordId: props.sourceRecordId, params: props.sourceParameters
+    })])
+  } catch {
+    // 不在 watch/render 抛异常，交给 resolveComposition 显示可重试的错误。
+    return JSON.stringify(config.value.parameterMappings)
+  }
+}
+
 function currentResolveInput() {
   return buildRelatedContentResolveInput({
     ownerType: props.ownerType,
@@ -617,6 +654,8 @@ function clearResolvedState() {
   targetEntity.value = null
   targetForm.value = null
   targetRecord.value = null
+  targetParameters.value = {}
+  targetDataSourceRuntime.value = null
   targetEntityStatusOptions.value = getEffectiveEntityStatusOptions()
   actionCapabilities.value = {}
   actionCapabilityError.value = ''
@@ -666,6 +705,8 @@ async function editTarget() {
     {
       form: targetForm.value,
       context: {
+        params: targetParameters.value,
+        parameters: targetParameters.value,
         viewCompositionActionContextToken: actionContextToken.value,
         viewCompositionTraversalToken:
           resolved.value.traversalContextToken
@@ -685,6 +726,8 @@ async function createTarget() {
     initialData:
       actionCapabilities.value?.CREATE?.initialValues || {},
     context: {
+      params: targetParameters.value,
+      parameters: targetParameters.value,
       viewCompositionActionContextToken: actionContextToken.value,
       viewCompositionTraversalToken:
         resolved.value.traversalContextToken
@@ -863,6 +906,7 @@ async function queryTarget(input = {}) {
       releaseId: value.targetReleaseId,
       releaseVersion: value.targetReleaseVersion,
       viewCompositionContextToken: value.listContextToken,
+      context: { parameters: targetParameters.value },
       filters: input.filters || {}
     }
   )
@@ -911,6 +955,7 @@ const RuntimeBody = defineComponent({
       if (customComponent.value) {
         return h(customComponent.value, {
           form: targetForm.value,
+          dataSourceRuntime: targetDataSourceRuntime.value,
           modelValue: targetRecord.value || {},
           readonly: !actions.value.has('EDIT'),
           fields: targetForm.value?.fields || [],
@@ -918,6 +963,8 @@ const RuntimeBody = defineComponent({
           entityDefinition: targetEntity.value,
           config: customComponentConfig.value.props || {},
           context: {
+            params: targetParameters.value,
+            parameters: targetParameters.value,
             compositionKey: resolved.value.compositionKey,
             targetReleaseId: resolved.value.targetReleaseId,
             targetReleaseVersion: resolved.value.targetReleaseVersion,
@@ -939,6 +986,7 @@ const RuntimeBody = defineComponent({
       }
       if (resolved.value.targetContentType === 'LIST') {
         return h(AsyncEntityDataList, {
+          context: { params: targetParameters.value, parameters: targetParameters.value },
           entityCode: resolved.value.targetEntityCode,
           listKey: resolved.value.targetContentKey,
           releaseId: resolved.value.targetReleaseId,
@@ -962,6 +1010,7 @@ const RuntimeBody = defineComponent({
       if (targetForm.value && targetRecord.value) {
         return h(AsyncFormPreviewLinkage, {
           form: targetForm.value,
+          dataSourceRuntime: targetDataSourceRuntime.value,
           modelValue: targetRecord.value,
           // 内嵌表单始终只读；编辑通过独立目标表单保存，避免用户误认为
           // 目标数据会跟随宿主表单一并提交。
@@ -973,6 +1022,8 @@ const RuntimeBody = defineComponent({
           entityDefinition: targetEntity.value,
           entityFields: targetEntity.value?.fields || [],
           context: {
+            params: targetParameters.value,
+            parameters: targetParameters.value,
             record: {
               id: resolved.value.targetRecordId,
               data: targetRecord.value
@@ -1004,14 +1055,16 @@ watch(
     props.sourceRecordId,
     props.rowContextToken,
     props.traversalContextToken,
-    props.releaseResolutionToken
+    props.releaseResolutionToken,
+    sourceParameterFingerprint()
   ],
   () => {
+    const reloadInline = inlinePresentation.value && (loadImmediately.value || Boolean(resolved.value))
     requestGate.invalidate()
     loading.value = false
     errorMessage.value = ''
     clearResolvedState()
-    if (inlinePresentation.value && loadImmediately.value) {
+    if (reloadInline) {
       resolveComposition()
     }
   },

@@ -91,12 +91,14 @@ public class EntityListConfigurationValidator {
         validateStructured(dto.getViewConfig(), "列表视图配置");
         validateStructured(dto.getToolbarConfig(), "工具栏配置");
         validateStructured(dto.getRowActionConfig(), "操作列配置");
-        validateStructured(dto.getAllowedScenes(), "允许场景配置");
         validateStructured(dto.getSelectionConfig(), "选择模式配置");
         validateStructured(dto.getFixedFilterConfig(), "固定查询条件");
-        validateStructured(dto.getContextBindingConfig(), "上下文绑定配置");
 
         List<EntityListField> fields = dto.getFields();
+        com.workflow.entity.ui.application.PageParameterPolicy.validate(
+                com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getViewConfig()), "LIST",
+                fields == null ? null : fields.stream().filter(field -> Boolean.TRUE.equals(field.getIsQuery()))
+                        .map(EntityListField::getFieldCode).collect(Collectors.toSet()));
         interfaceReferenceValidator.validateListDraft(
                 dto.getId(),
                 dto.getEntityId(),

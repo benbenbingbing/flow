@@ -741,12 +741,15 @@ public class UiViewCompositionRuntimeService {
                 }
             }
             case "ENTITY_RELATION" -> {
+                boolean reverse = UiEntityRelationBinding.reverse(relation);
+                EntityPublishedSnapshot ownerSchema = reverse ? targetSchema : sourceSchema;
+                EntityPublishedSnapshot childSchema = reverse ? sourceSchema : targetSchema;
                 String relationCode = trim(text(
                         relation.get("relationCode")));
                 EntityRelation publishedRelation =
-                        sourceSchema.getRelations() == null
+                        ownerSchema.getRelations() == null
                                 ? null
-                                : sourceSchema.getRelations().stream()
+                                : ownerSchema.getRelations().stream()
                                 .filter(item -> Boolean.TRUE.equals(
                                         item.getEnabled()))
                                 .filter(item -> Objects.equals(
@@ -756,7 +759,7 @@ public class UiViewCompositionRuntimeService {
                                 .orElse(null);
                 if (publishedRelation == null
                         || !Objects.equals(
-                        targetSchema.getEntityId(),
+                        childSchema.getEntityId(),
                         publishedRelation.getChildEntityId())
                         || !StringUtils.hasText(
                         publishedRelation.getChildRefFieldCode())) {
@@ -764,14 +767,21 @@ public class UiViewCompositionRuntimeService {
                             "实体关系不存在于来源实体发布快照或目标实体不匹配");
                 }
                 EntityField field = requireField(
-                        targetSchema,
+                        childSchema,
                         publishedRelation.getChildRefFieldCode(),
                         "目标");
-                var violation = EntityRelationFieldPolicy.violation(field, sourceSchema.getEntityId());
+                var violation = EntityRelationFieldPolicy.violation(field, ownerSchema.getEntityId());
                 if (violation != null) {
                     throw invalidRelation(violation.message());
                 }
-                putEqualFilter(
+                if (reverse) {
+                    Object value = scalarValue(recordValue(sourceRecord, publishedRelation.getChildRefFieldCode()), publishedRelation.getChildRefFieldCode());
+                    if (value == null) matchNone = true;
+                    else {
+                        directRecordId = String.valueOf(value);
+                        putEqualFilter(filters, "id", value);
+                    }
+                } else putEqualFilter(
                         filters,
                         publishedRelation.getChildRefFieldCode(),
                         sourceRecord.getId());

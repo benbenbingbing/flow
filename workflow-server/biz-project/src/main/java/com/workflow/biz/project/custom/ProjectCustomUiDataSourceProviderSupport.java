@@ -213,7 +213,7 @@ abstract class ProjectCustomUiDataSourceProviderSupport
                 continue;
             }
             String identity =
-                    recordValue(record, "dataNo");
+                    recordValue(record, "code");
             result.put(
                     recordId,
                     valuePrefix + ":"
@@ -334,8 +334,6 @@ abstract class ProjectCustomUiDataSourceProviderSupport
         if (record instanceof EntityDataDTO value) {
             String direct = switch (key) {
                 case "id" -> value.getId();
-                case "dataNo" -> value.getDataNo();
-                case "title" -> value.getTitle();
                 case "name" -> value.getName();
                 case "code" -> value.getCode();
                 default -> null;

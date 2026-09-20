@@ -262,8 +262,6 @@ public class EntityEmbedNativeFormAccessAdapter
             String code) {
         Object value = switch (code) {
             case "id" -> row.getId();
-            case "dataNo" -> row.getDataNo();
-            case "title" -> row.getTitle();
             case "name" -> row.getName();
             case "code" -> row.getCode();
             case "status" -> row.getStatus();
@@ -278,10 +276,11 @@ public class EntityEmbedNativeFormAccessAdapter
             case "deptId" -> row.getDeptId();
             case "deptName" -> row.getDeptName();
             case "submitTime" -> row.getSubmitTime();
-            case "createdAt" -> row.getCreatedAt();
-            case "updatedAt" -> row.getUpdatedAt();
-            case "createdBy" -> row.getCreatedBy();
-            case "updatedBy" -> row.getUpdatedBy();
+            case "create_time" -> row.getCreateTime();
+            case "update_time" -> row.getUpdateTime();
+            case "create_by" -> row.getCreateBy();
+            case "update_by" -> row.getUpdateBy();
+            case "deleted" -> row.getDeleted();
             default -> null;
         };
         return Optional.ofNullable(value);

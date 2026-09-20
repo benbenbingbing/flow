@@ -369,11 +369,12 @@ class UiViewCompositionActionServiceTest {
         verify(mutationPort, never()).executeBatch(any());
     }
 
-    @Test
-    void singleReferenceMutationReturnsAuthoritativeHostPatch() {
+    @ParameterizedTest
+    @ValueSource(strings = {"REFERENCE_FIELD", "ENTITY_RELATION_REVERSE"})
+    void singleReferenceMutationReturnsAuthoritativeHostPatch(String relationType) {
         fixture(
                 List.of("VIEW", "LINK", "UNLINK"),
-                "REFERENCE_FIELD",
+                relationType,
                 true,
                 EntityRelation.OwnershipType.ASSOCIATION);
         AtomicReference<String> current = new AtomicReference<>();
@@ -1078,7 +1079,15 @@ class UiViewCompositionActionServiceTest {
                 List.of(displayName, sourceRef),
                 List.of());
 
+        if ("ENTITY_RELATION_REVERSE".equals(relationType)) {
+            entityRelation.setParentEntityId(targetEntity.getId());
+            entityRelation.setChildEntityId(sourceEntity.getId());
+            entityRelation.setChildRefFieldCode("targetRef");
+            sourceSchema.setRelations(List.of());
+            targetSchema.setRelations(List.of(entityRelation));
+        }
         Map<String, Object> relation = switch (relationType) {
+            case "ENTITY_RELATION_REVERSE" -> Map.of("type", "ENTITY_RELATION", "direction", "REVERSE", "relationCode", "source-targets");
             case "REFERENCE_FIELD" -> Map.of(
                     "type", relationType,
                     "sourceField", "targetRef");

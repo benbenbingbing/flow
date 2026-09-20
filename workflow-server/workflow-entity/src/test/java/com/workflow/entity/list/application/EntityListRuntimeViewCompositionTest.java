@@ -37,6 +37,8 @@ import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.ArrayList;
@@ -74,7 +76,6 @@ class EntityListRuntimeViewCompositionTest {
     private SysUserService sysUserService;
     private DataPermissionEngine dataPermissionEngine;
     private EntityActionCapabilityService actionCapabilityService;
-    private EntityListRelationalConfigService relationalConfigService;
     private EntityListPublishedRuntimeService publishedRuntimeService;
     private EntityListPageResultNormalizer pageResultNormalizer;
     private UiEventRuntimeService uiEventRuntimeService;
@@ -105,12 +106,18 @@ class EntityListRuntimeViewCompositionTest {
         dataPermissionEngine = mock(DataPermissionEngine.class);
         actionCapabilityService = mock(
                 EntityActionCapabilityService.class);
-        relationalConfigService =
-                mock(EntityListRelationalConfigService.class);
         publishedRuntimeService =
                 mock(EntityListPublishedRuntimeService.class);
         pageResultNormalizer = new EntityListPageResultNormalizer();
         uiEventRuntimeService = mock(UiEventRuntimeService.class);
+        when(uiEventRuntimeService.execute(any(), any())).thenAnswer(invocation -> {
+            com.workflow.entity.ui.api.request.UiEventExecuteRequest event = invocation.getArgument(0);
+            Function<Map<String, Object>, Object> handler = invocation.getArgument(1);
+            if (event == null || handler == null) return new UiEventExecutionResult();
+            UiEventExecutionResult result = new UiEventExecutionResult();
+            result.setData(handler.apply(event.getInput()));
+            return result;
+        });
         uiDataSourceService = mock(UiInterfaceExtensionService.class);
         tokenService = mock(UiViewCompositionTokenService.class);
         dataProviders = new ArrayList<>();
@@ -133,11 +140,9 @@ class EntityListRuntimeViewCompositionTest {
                 objectMapper,
                 new JsonDocumentCodec(objectMapper),
                 mock(EntityListActionConfigService.class),
-                relationalConfigService,
                 publishedRuntimeService,
                 pageResultNormalizer,
                 uiEventRuntimeService,
-                uiDataSourceService,
                 mock(CurrentUserRoleService.class),
                 tokenService,
                 List.of(),
@@ -148,6 +153,59 @@ class EntityListRuntimeViewCompositionTest {
     @AfterEach
     void tearDown() {
         UserContext.clear();
+    }
+
+    /** 入口标识只作为查询上下文，不限制列表加载或数据查询。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"MENU", "PAGE", "DIALOG", "DRAWER", "EMBEDDED",
+            "FORM_PICKER", "SUB_TABLE", "CUSTOM_ENTRY"})
+    void schemaAndQueryAcceptAnyEntry(String scene) {
+        EntityListConfig published = publishedList();
+        configureActiveList(published);
+        when(publishedRuntimeService.resolveFields(eq(published), any()))
+                .thenReturn(List.of());
+        PageResult<EntityDataDTO> expected = new PageResult<>(
+                List.of(record("record-1", "可见记录")), 1, 1, 10);
+        when(dataListService.findPageWithResolvedConfig(
+                "target_entity", "default", published, Map.of(), 1, 10))
+                .thenReturn(expected);
+        when(uiEventRuntimeService.execute(any(), any()))
+                .thenAnswer(invocation -> {
+                    com.workflow.entity.ui.api.request.UiEventExecuteRequest event =
+                            invocation.getArgument(0);
+                    assertEquals(scene, event.getInput().get("scene"));
+                    Function<Map<String, Object>, Object> handler = invocation.getArgument(1);
+                    UiEventExecutionResult result = new UiEventExecutionResult();
+                    result.setData(handler.apply(event.getInput()));
+                    return result;
+                });
+
+        assertEquals(scene, service.schema("target_entity", "default", scene).getScene());
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setScene(scene);
+        PageResult<?> result = (PageResult<?>) service.query("target_entity", "default", request);
+        assertEquals(1, result.getTotal());
+        assertEquals(expected.getRecords(), result.getRecords());
+        verify(dataListService).findPageWithResolvedConfig(
+                "target_entity", "default", published, Map.of(), 1, 10);
+    }
+
+    /** 去掉入口限制不影响列表访问权限，未授权请求仍在查询前被拒绝。 */
+    @Test
+    void listAccessPermissionStillAppliesToEveryEntry() {
+        configureActiveList(publishedList());
+        SysMenuMapper menuMapper = mock(SysMenuMapper.class);
+        when(menuMapper.selectPermsByUserId("runtime-user")).thenReturn(Set.of());
+        ReflectionTestUtils.setField(PermissionUtil.class, "staticMenuMapper", menuMapper);
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setScene("CUSTOM_ENTRY");
+
+        assertThrows(ForbiddenException.class,
+                () -> service.schema("target_entity", "default", "CUSTOM_ENTRY"));
+        assertThrows(ForbiddenException.class,
+                () -> service.query("target_entity", "default", request));
+        verify(dataListService, never()).findPageWithResolvedConfig(
+                any(), any(), any(), anyMap(), anyLong(), anyLong());
     }
 
     @Test
@@ -215,6 +273,7 @@ class EntityListRuntimeViewCompositionTest {
                 new PageResult<>(List.of(), 0, 1, 10);
         Map<String, Object> expectedFilters = Map.of(
                 "status", "ACTIVE",
+                "status_op", "EQ",
                 "projectId", "project-1",
                 "projectId_op", "EQ");
         when(dataListService.findPageWithResolvedConfig(
@@ -294,12 +353,7 @@ class EntityListRuntimeViewCompositionTest {
         EntityListConfig published = publishedList();
         published.setQueryInterfaceExtensionId("connector-query");
         configurePinnedList(published);
-        when(uiDataSourceService.execute(
-                eq("connector-query"), any()))
-                .thenReturn(Map.of(
-                        "records", List.of(
-                                Map.of("recordId", "foreign-1")),
-                        "total", 80));
+        stubReplacement(Map.of("records", List.of(Map.of("recordId", "foreign-1")), "total", 80));
         when(dataListService.findPageWithResolvedConfig(
                 eq("target_entity"),
                 eq("default"),
@@ -633,6 +687,7 @@ class EntityListRuntimeViewCompositionTest {
         Map<String, Object> expected = new LinkedHashMap<>();
         expected.put("title", "pump");
         expected.put("status", "ACTIVE");
+        expected.put("status_op", "EQ");
         expected.put("supplier_id", "S-10086");
         expected.put("supplier_id_op", "EQ");
         PageResult<EntityDataDTO> page = new PageResult<>(List.of(), 0, 1, 20);
@@ -649,7 +704,9 @@ class EntityListRuntimeViewCompositionTest {
         assertEquals(page, result);
         verify(dataListService).findPageWithResolvedConfig(
                 "target_entity", "default", published, expected, 1, 20);
-        verify(uiEventRuntimeService, never()).execute(any(), any());
+        verify(uiEventRuntimeService).execute(org.mockito.ArgumentMatchers.argThat(event ->
+                event.isServerPinnedRelease() && "target-release".equals(event.getReleaseId())
+                        && event.getReleaseVersion() == 3 && "LIST_LOAD".equals(event.getEventCode())), any());
     }
 
     @Test
@@ -699,6 +756,8 @@ class EntityListRuntimeViewCompositionTest {
                         "total", 1));
         dataProviders.add(provider);
         stubProviderPermission();
+        when(dynamicService.findAccessibleById("target_entity", "record-1", "default"))
+                .thenReturn(record("record-1", "平台记录"));
 
         PageResult<?> result = (PageResult<?>) service.queryPinned(
                 "target_entity", "default", "target-release", 3,
@@ -720,24 +779,85 @@ class EntityListRuntimeViewCompositionTest {
         field.setRenderComponent("native-rich-column");
         published.setRuntimeFields(List.of(field));
         configurePinnedList(published);
-        when(uiDataSourceService.execute(
-                eq("external-source"), any()))
-                .thenReturn(Map.of(
-                        "records", List.of(Map.of("id", "record-1")),
-                        "total", 1));
+        stubReplacement(Map.of("records", List.of(Map.of("id", "record-1")), "total", 1));
+        when(dynamicService.findAccessibleById("target_entity", "record-1", "default"))
+                .thenReturn(record("record-1", "平台记录"));
 
         PageResult<?> result = (PageResult<?>) service.queryPinned(
                 "target_entity", "default", "target-release", 3,
                 1, 20, Map.of(), Map.of());
 
         assertEquals(1, result.getTotal());
-        verify(uiDataSourceService).execute(
-                eq("external-source"), any());
+        verify(uiEventRuntimeService).execute(org.mockito.ArgumentMatchers.argThat(event ->
+                event.isServerPinnedRelease() && "LIST_LOAD".equals(event.getEventCode())), any());
+        verify(uiDataSourceService, never()).execute(any(), any());
         verify(dataListService, never()).findPageWithResolvedConfig(
                 any(), any(), any(), anyMap(), anyLong(), anyLong());
     }
 
+    /** 前置步骤故意清空筛选时，默认查询仍应应用固定值及其运算符。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"INHERIT", "NARROW", "OVERRIDE"})
+    void fixedFiltersSurviveBeforeStepForEveryScopeMode(String mode) {
+        EntityListConfig published = publishedList();
+        published.setDataScopeMode(mode);
+        published.setFixedFilterConfig("{\"status\":\"ACTIVE\"}");
+        configureActiveList(published);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            Function<Map<String, Object>, Object> handler = invocation.getArgument(1);
+            UiEventExecutionResult result = new UiEventExecutionResult();
+            result.setData(handler.apply(Map.of("filters", Map.of("status", "DELETED", "status_op", "NE"))));
+            return result;
+        }).when(uiEventRuntimeService).execute(any(), any());
+        when(dataListService.findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong()))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 10));
+
+        service.query("target_entity", "default", new EntityListQueryRequest());
+
+        verify(dataListService).findPageWithResolvedConfig(eq("target_entity"), eq("default"), eq(published),
+                eq(Map.of("status", "ACTIVE", "status_op", "EQ")), anyLong(), anyLong());
+    }
+
+    /** REPLACE 和 AFTER 的结果都由 replaced 标记触发同一服务端复核，不能返回范围外的候选 ID。 */
+    @Test
+    void replacementCannotBypassPublishedFixedFilters() {
+        EntityListConfig published = publishedList();
+        published.setFixedFilterConfig("{\"status\":\"ACTIVE\"}");
+        configureActiveList(published);
+        stubReplacement(Map.of("records", List.of(Map.of("id", "deleted-record")), "total", 100));
+        when(dataListService.findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong()))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 1));
+
+        assertThrows(ForbiddenException.class, () -> service.query(
+                "target_entity", "default", new EntityListQueryRequest()));
+        verify(dataListService).findPageWithResolvedConfig(eq("target_entity"), eq("default"), eq(published),
+                eq(Map.of("status", "ACTIVE", "status_op", "EQ", "id", List.of("deleted-record"), "id_op", "IN")),
+                eq(1L), eq(1L));
+    }
+
+    @Test
+    void conflictingCompositionContextCannotOverrideFixedFilters() {
+        EntityListConfig published = publishedList();
+        published.setFixedFilterConfig("{\"status\":\"ACTIVE\"}");
+        configurePinnedList(published);
+        when(tokenService.verifyListContext("signed-list-context"))
+                .thenReturn(claims(Map.of("status", "DELETED"), false));
+
+        PageResult<?> result = (PageResult<?>) service.query("target_entity", "default", compositionRequest(1, 10));
+
+        assertEquals(0, result.getTotal());
+        verify(uiEventRuntimeService, never()).execute(any(), any());
+    }
+
+    private void stubReplacement(Object data) {
+        UiEventExecutionResult replacement = new UiEventExecutionResult();
+        replacement.setReplaced(true);
+        replacement.setData(data);
+        org.mockito.Mockito.doReturn(replacement).when(uiEventRuntimeService).execute(any(), any());
+    }
+
     private void configurePinnedList(EntityListConfig published) {
+        published.setPinnedRelease(true);
         EntityDefinition definition = definition(
                 EntityDefinition.StorageMode.DYNAMIC);
         when(definitionMapper.findByEntityCode("target_entity"))
@@ -750,11 +870,6 @@ class EntityListRuntimeViewCompositionTest {
         when(publishedRuntimeService.resolveViewCompositionConfig(
                 draft, "target-release", 3))
                 .thenReturn(published);
-        when(publishedRuntimeService.resolveScenes(
-                published, List.of()))
-                .thenReturn(List.of());
-        when(relationalConfigService.findScenes("target-list"))
-                .thenReturn(List.of());
     }
 
     private void configureActiveList(EntityListConfig published) {
@@ -769,11 +884,6 @@ class EntityListRuntimeViewCompositionTest {
                 null,
                 null))
                 .thenReturn(published);
-        when(publishedRuntimeService.resolveScenes(
-                published, List.of()))
-                .thenReturn(List.of());
-        when(relationalConfigService.findScenes("target-list"))
-                .thenReturn(List.of());
     }
 
     private EntityDefinition definition(
@@ -850,6 +960,51 @@ class EntityListRuntimeViewCompositionTest {
         request.setPageNum(pageNum);
         request.setPageSize(pageSize);
         return request;
+    }
+
+    @Test
+    void pageParametersCannotReplaceTrustedRelationBounds() {
+        when(tokenService.verifyListContext("signed-list-context")).thenReturn(claims(Map.of("projectId", "owned"), false));
+        EntityListConfig config = publishedList();
+        config.setViewConfig("""
+                {"inputParameterSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]},
+                "inputParameterBindings":[{"parameter":"project","usage":"FILTER","targetField":"projectId","operator":"EQ"}]}
+                """);
+        configurePinnedList(config);
+        EntityListField field = new EntityListField();
+        field.setFieldCode("projectId");
+        field.setIsQuery(true);
+        when(publishedRuntimeService.resolveFields(eq(config), any())).thenReturn(List.of(field));
+        EntityListQueryRequest request = compositionRequest(1, 10);
+        var context = new com.workflow.entity.list.api.response.EntityListRuntimeContextDTO();
+        context.setParameters(Map.of("project", "foreign"));
+        request.setContext(context);
+        PageResult<?> page = (PageResult<?>) service.query("target_entity", "default", request);
+        assertEquals(0, page.getTotal());
+        verify(dataListService, never()).findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong());
+        verify(uiEventRuntimeService, never()).execute(any(), any());
+    }
+
+    @Test
+    void pageParameterFilterAndRelationBothReachPublishedQuery() {
+        when(tokenService.verifyListContext("signed-list-context")).thenReturn(claims(Map.of("projectId", "owned"), false));
+        EntityListConfig config = publishedList();
+        config.setViewConfig("""
+                {"inputParameterSchema":{"properties":{"keyword":{"type":"string"}}},
+                "inputParameterBindings":[{"parameter":"keyword","usage":"FILTER","targetField":"name","operator":"EQ"}]}
+                """);
+        configurePinnedList(config);
+        EntityListField field = new EntityListField(); field.setFieldCode("name"); field.setIsQuery(true);
+        when(publishedRuntimeService.resolveFields(eq(config), any())).thenReturn(List.of(field));
+        when(dataListService.findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong()))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 10));
+        EntityListQueryRequest request = compositionRequest(1, 10);
+        var context = new com.workflow.entity.list.api.response.EntityListRuntimeContextDTO();
+        context.setParameters(Map.of("keyword", "unsaved-name")); request.setContext(context);
+        service.query("target_entity", "default", request);
+        verify(dataListService).findPageWithResolvedConfig(any(), any(), eq(config),
+                org.mockito.ArgumentMatchers.argThat(filters -> "owned".equals(filters.get("projectId"))
+                        && "unsaved-name".equals(filters.get("name")) && "EQ".equals(filters.get("name_op"))), anyLong(), anyLong());
     }
 
     private EntityListConfig publishedList() {

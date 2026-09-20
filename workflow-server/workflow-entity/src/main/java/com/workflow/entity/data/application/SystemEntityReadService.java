@@ -488,11 +488,10 @@ public class SystemEntityReadService {
         dto.setStatus(text(data.get("status")));
         dto.setCode(resolveCode(definition.getEntityCode(), data));
         dto.setName(resolveName(definition.getEntityCode(), data));
-        dto.setTitle(dto.getName());
-        dto.setCreatedAt(dateTime(data.get("create_time")));
-        dto.setUpdatedAt(dateTime(data.get("update_time")));
-        dto.setCreatedBy(text(data.get("create_by")));
-        dto.setUpdatedBy(text(data.get("update_by")));
+        dto.setCreateTime(dateTime(data.get("create_time")));
+        dto.setUpdateTime(dateTime(data.get("update_time")));
+        dto.setCreateBy(text(data.get("create_by")));
+        dto.setUpdateBy(text(data.get("update_by")));
         dto.setData(data);
         return dto;
     }

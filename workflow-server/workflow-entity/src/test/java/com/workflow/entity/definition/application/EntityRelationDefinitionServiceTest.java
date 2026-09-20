@@ -38,6 +38,22 @@ class EntityRelationDefinitionServiceTest {
                     entityMapper, fieldMapper, relationMapper);
 
     @Test
+    void availableCatalogReusesCanonicalDefinitionInBothDirections() {
+        stubEntitiesAndForeignKey();
+        EntityRelation relation = relation();
+        when(relationMapper.selectAllByParentEntityId("parent-1")).thenReturn(List.of(relation));
+        when(relationMapper.selectAllByChildEntityId("child-1")).thenReturn(List.of(relation));
+        EntityRelationDTO forward = service.available("parent-1").get(0);
+        EntityRelationDTO reverse = service.available("child-1").get(0);
+        assertEquals("FORWARD", forward.getDirection());
+        assertEquals("REVERSE", reverse.getDirection());
+        assertEquals(forward.getRelationCode(), reverse.getRelationCode());
+        assertEquals(forward.getParentEntityId(), reverse.getParentEntityId());
+        assertEquals("订单", reverse.getParentEntityName());
+        assertEquals(forward.getChildRefFieldCode(), reverse.getChildRefFieldCode());
+    }
+
+    @Test
     void generatesInternalKeysWithoutRequiringMatchingEntityFields() {
         stubEntitiesAndForeignKey();
         EntityRelationSaveRequest request = request();

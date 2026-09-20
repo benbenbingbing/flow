@@ -331,8 +331,6 @@ public class EntitySelectorController {
         simplified.put("id", data.get("id"));
         simplified.put("name", data.get("name"));
         simplified.put("code", data.get("code"));
-        simplified.put("dataNo", data.get("data_no"));
-        simplified.put("title", data.get("title"));
         simplified.put("status", data.get("status"));
         simplified.put("entityType", "CUSTOM");
         return simplified;
@@ -350,15 +348,6 @@ public class EntitySelectorController {
         simplified.put(
                 "code",
                 firstValue(detail.getCode(), data.get("code")));
-        simplified.put(
-                "dataNo",
-                firstValue(
-                        detail.getDataNo(),
-                        data.get("dataNo"),
-                        data.get("data_no")));
-        simplified.put(
-                "title",
-                firstValue(detail.getTitle(), data.get("title")));
         simplified.put(
                 "status",
                 firstValue(detail.getStatus(), data.get("status")));

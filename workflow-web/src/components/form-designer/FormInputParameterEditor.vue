@@ -4,11 +4,11 @@
       <div>
         <h3>
           <ConfigHelpLabel
-            label="子表单输入参数"
+            label="输入参数"
             help-key="form.inputParameterSchema"
           />
         </h3>
-        <p>声明本表单作为子表单使用时允许父表单传入的参数。</p>
+        <p>声明当前页面接收的参数，可由来源表单、列表按钮或父表单传入。</p>
       </div>
       <el-button type="primary" plain @click="addParameter">添加参数</el-button>
     </div>
@@ -17,7 +17,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="参数只存在于运行时，不会写入实体数据；需要保存时，请在父表单的子表单节点中映射到子实体字段。"
+      title="参数可用于字段初始化、列表查询或接口取值；映射到字段并保存后才会写入实体数据。"
     />
 
     <el-table :data="rows" border class="parameter-table">
@@ -54,7 +54,7 @@
             v-if="row.type === 'boolean'"
             v-model="row.defaultValue"
             clearable
-            placeholder="父表单未传值时使用"
+            placeholder="来源页面未传值时使用"
           >
             <el-option label="true" :value="true" />
             <el-option label="false" :value="false" />
@@ -64,7 +64,7 @@
             v-model="row.defaultValue"
             :precision="row.type === 'integer' ? 0 : undefined"
             controls-position="right"
-            placeholder="父表单未传值时使用"
+            placeholder="来源页面未传值时使用"
           />
           <el-input
             v-else
@@ -195,7 +195,7 @@ function removeParameter(index) {
 function defaultValuePlaceholder(type) {
   if (type === 'object') return '例如：{"source":"FORM"}'
   if (type === 'array') return '例如：["A","B"]'
-  return '父表单未传值时使用'
+  return '来源页面未传值时使用'
 }
 
 function matchesStructuredDefault(value, type) {

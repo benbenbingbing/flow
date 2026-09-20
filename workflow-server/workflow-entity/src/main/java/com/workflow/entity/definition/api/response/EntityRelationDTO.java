@@ -12,6 +12,9 @@ public class EntityRelationDTO {
     private String id;
     private String parentEntityId;
     private String parentEntityCode;
+    private String parentEntityName;
+    /** 页面使用方向；不改变关系的所有权和外键定义。 */
+    private String direction = "FORWARD";
     private String relationCode;
     private String relationName;
     private String dataKey;

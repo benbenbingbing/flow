@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { resolveEntityFieldColumnName } from '../shared/entity-design/index.js'
 import { readFileSync } from 'node:fs'
 
 import {
@@ -152,10 +153,14 @@ assert.equal(
   'a.png'
 )
 
-assert.equal(isSystemField('createdAt'), true)
+assert.equal(isSystemField('create_time'), true)
 assert.equal(isSystemField('customName'), false)
-assert.equal(getFieldModelPath('createdAt'), 'createdAt')
+assert.equal(getFieldModelPath('create_time'), 'create_time')
 assert.equal(getFieldModelPath('customName'), 'data.customName')
+assert.equal(isSystemField('dataNo'), false)
+assert.equal(isSystemField('title'), false)
+assert.equal(isSystemField('name'), true)
+assert.equal(isSystemField('code'), true)
 assert.equal(getFieldKey({ fieldKey: 'fallbackKey' }), 'fallbackKey')
 assert.equal(isRuntimeFormReadonly({ isReadonly: true }), true)
 assert.equal(isRuntimeFormReadonly({ isReadonly: 0 }), false)
@@ -170,7 +175,8 @@ assert.equal(mergeRuntimeFormConfigs([configA, configB]), configA)
 assert.deepEqual(
   normalizeEntityRecordForForm({
     id: 'data-1',
-    title: '费用申请',
+    name: '费用申请',
+    code: 'EXP-001',
     processInstanceId: 'pi-1',
     processStartTime: '2026-07-25T10:30:00',
     data: { amount: 100 }
@@ -178,7 +184,8 @@ assert.deepEqual(
   {
     amount: 100,
     id: 'data-1',
-    title: '费用申请',
+    name: '费用申请',
+    code: 'EXP-001',
     processInstanceId: 'pi-1',
     processStartTime: '2026-07-25T10:30:00'
   }
@@ -957,4 +964,26 @@ const entityValidationRules = buildRuntimeFieldRules(
 )
 assert.equal(entityValidationRules.length, 1)
 
+
+// 系统字段在表单和列表中读取同一顶层值，尤其不能把 false 删除标记视为空值。
+const auditRecord = {
+  id: 'record-1', create_time: '2026-09-20 10:00:00', update_time: '2026-09-20 11:00:00',
+  create_by: 'creator', update_by: 'updater', deleted: false,
+  data: { id: 'untrusted', deleted: true, amount: 10 }
+}
+const auditForm = normalizeEntityRecordForForm(auditRecord)
+for (const code of ['id', 'create_time', 'update_time', 'create_by', 'update_by', 'deleted']) {
+  assert.equal(isSystemField(code), true)
+  assert.equal(getFieldModelPath(code), code)
+  assert.equal(auditForm[code], auditRecord[code])
+  assert.equal(getCellValue({ ...auditRecord, data: { amount: 10 } }, { fieldCode: code, isSystem: true }), auditRecord[code])
+}
+
+// 列名优先使用已保存映射，新字段才从编码推算；旧审计名称不再是系统字段。
+assert.equal(resolveEntityFieldColumnName({ fieldCode: 'auditTime', dbColumnName: 'create_time' }), 'create_time')
+assert.equal(resolveEntityFieldColumnName({ fieldCode: 'create_time' }), 'create_time')
+assert.equal(resolveEntityFieldColumnName({ fieldCode: 'orderDate' }), 'order_date')
+for (const retired of ['createdAt', 'updatedAt', 'createdBy', 'updatedBy']) {
+  assert.equal(isSystemField(retired), false)
+}
 console.log('runtime integration tests passed')

@@ -138,7 +138,6 @@ public class EntityDataMutationService {
         if (creating) {
             insert(
                     dto,
-                    definition,
                     tableName,
                     data,
                     currentUserId,
@@ -440,9 +439,9 @@ public class EntityDataMutationService {
                 null);
     }
 
+    /** 新记录统一生成 code 作为业务编号，独立实体与流程实体使用同一套编码规则。 */
     private void insert(
             EntityDataDTO dto,
-            EntityDefinition definition,
             String tableName,
             Map<String, Object> data,
             String currentUserId,
@@ -473,13 +472,6 @@ public class EntityDataMutationService {
                         dto.getEntityCode());
         data.put("code", code);
         dto.setCode(code);
-        if (definition.getLifecycleMode()
-                == EntityDefinition.LifecycleMode.WORKFLOW) {
-            String dataNo =
-                    generateDataNo(dto.getEntityCode());
-            data.put("data_no", dataNo);
-            dto.setDataNo(dataNo);
-        }
         if (dto.getData() != null
                 && dto.getData().get("name") != null) {
             String name =
@@ -601,22 +593,6 @@ public class EntityDataMutationService {
                 .replace("-", "");
     }
 
-    private String generateDataNo(
-            String entityCode) {
-        String prefix =
-                entityCode.toUpperCase();
-        String timestamp =
-                String.valueOf(System.nanoTime());
-        String timePart = timestamp.substring(
-                Math.max(
-                        0,
-                        timestamp.length() - 8));
-        String random = String.format(
-                "%06d",
-                (int) (Math.random() * 1000000));
-        return prefix + "-" + timePart + random;
-    }
-
     private String asText(Object value) {
         return value == null
                 ? null : String.valueOf(value);
@@ -662,7 +638,7 @@ public class EntityDataMutationService {
                                 processDefinitionId,
                                 dto.getEntityCode(),
                                 dto.getId(),
-                                dto.getDataNo(),
+                                dto.getCode(),
                                 dto.getSubmitterId(),
                                 dto.getSubmitterName(),
                                 getStatusByCategory(

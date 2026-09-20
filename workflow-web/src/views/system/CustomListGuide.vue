@@ -59,7 +59,7 @@ registerCustomListComponent('ProjectKanban', ProjectKanban, {
         </section>
 
         <section id="item-config" class="guide-section">
-          <h3>3. 列、按钮和场景的单项扩展</h3>
+          <h3>3. 列和按钮的单项扩展</h3>
           <p>只需要新增一列、改变一个单元格或增加一个按钮时，不要接管整页。每个列表项目都有稳定 `id`、稀疏 `orderKey` 和独立 `revision`。</p>
           <CodeCard title="保存单个列表列" language="HTTP">
             <pre v-pre><code>POST /api/entity-list-config/lst_order/fields/col_risk/patch
@@ -85,7 +85,7 @@ Content-Type: application/json
 }</code></pre>
           </CodeCard>
           <ul class="check-list">
-            <li>列右侧保存当前列，按钮行保存当前按钮，场景勾选后即时保存当前场景；不同项目可以并行修改。</li>
+            <li>列右侧保存当前列，按钮行保存当前按钮；不同项目可以并行修改。</li>
             <li>同一项目 revision 不一致时返回 HTTP `409`，服务器当前项目位于响应 `data`；客户端以 `data.revision` 作为 serverRevision、以 `data` 作为 currentData，禁止静默覆盖。</li>
             <li>拖拽排序单独保存 `orderKey`，通常只更新被移动项目，不触碰其他项目的更新时间。</li>
             <li>旧整包保存接口仅用于导入兼容，后端按稳定 ID diff-upsert，不允许全删全插。</li>
@@ -188,7 +188,7 @@ function remove(row) {
         <section id="release" class="guide-section">
           <h3>8. STANDARD、固定版本与历史恢复</h3>
           <el-descriptions :column="1" border>
-            <el-descriptions-item label="/draft">设计器读取列、按钮、场景和列表顶层草稿；生产运行时不读取草稿。</el-descriptions-item>
+            <el-descriptions-item label="/draft">设计器读取列、按钮和列表顶层草稿；生产运行时不读取草稿。</el-descriptions-item>
             <el-descriptions-item label="/diff">按稳定 ID 展示新增、修改、移动和删除，并校验数据源、权限与组件依赖；响应中的 `changedItems[]` 返回 section、id、label、changeType、changedFields，`changedSections` 保留给旧客户端兼容。</el-descriptions-item>
             <el-descriptions-item label="/publish-preview">后端判定 SAFE/REVIEW，并返回 draftHash、activeReleaseId、riskItems 和 blockers；风险仅用于发布前审阅。</el-descriptions-item>
             <el-descriptions-item label="/publish">列表只接受 `STANDARD`，创建不可变快照后原子切换全局 ACTIVE。</el-descriptions-item>
@@ -274,7 +274,7 @@ emit('pageChange', 2)</code></pre>
         <section id="migration" class="guide-section">
           <h3>12. 迁移与发布回退</h3>
           <ul class="check-list">
-            <li>迁移保留已有列、按钮和场景 ID；缺失 ID 时只生成一次，重复执行结果幂等。</li>
+            <li>迁移保留已有列和按钮 ID；缺失 ID 时只生成一次，重复执行结果幂等。</li>
             <li>升级时为既有列表生成初始 release，并核对列数、查询结果、按钮能力和快照哈希。</li>
             <li>V037 将既有 UI release 标记为 STANDARD，并创建热修复审计与目标结构；流程绑定回填开关 `workflow.ui-hotfix.binding-backfill-enabled` 主要服务表单流程目标，不改变列表全局 ACTIVE 语义。</li>
             <li>新运行时只读取当前激活 release；父表单携带签名上下文时读取其固定的列表 release，不存在有效发布时直接拒绝运行，绝不回退草稿。</li>
@@ -291,7 +291,7 @@ emit('pageChange', 2)</code></pre>
             <li>路由切换实体或列表配置后，不保留上一实体的本地状态。</li>
             <li>组件异常或未注册时能安全回退。</li>
             <li>表单选择器只显示选择能力，不出现新增、编辑、审批、删除等业务操作。</li>
-            <li>修改一个列、按钮或场景后，其他项目的 ID、revision、更新时间和内容不变。</li>
+            <li>修改一个列或按钮后，其他项目的 ID、revision、更新时间和内容不变。</li>
             <li>草稿预览不影响线上；列表只允许 STANDARD 发布，并原子切换全局 ACTIVE。已发布父表单仍按签名上下文读取其固定列表版本。</li>
             <li>SAFE/REVIEW 风险提示、权限拒绝、带原因的历史版本激活、恢复历史快照到草稿和存量 HOTFIX 兼容撤回均已验证。</li>
             <li>模板不会自动级联，三方升级保留 localOverrides。</li>

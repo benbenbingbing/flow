@@ -146,7 +146,7 @@ public class EntityDataExportService {
                                 record);
                         return !capability.isVisible() || !capability.isEnabled();
                     })
-                    .map(record -> StringUtils.hasText(record.getDataNo()) ? record.getDataNo() : record.getId())
+                    .map(record -> StringUtils.hasText(record.getCode()) ? record.getCode() : record.getId())
                     .toList();
             if (!denied.isEmpty()) {
                 throw new ForbiddenException("以下数据不允许导出：" + String.join("、", denied));
@@ -213,6 +213,14 @@ public class EntityDataExportService {
     private Object getFieldValue(EntityDataDTO record, String fieldCode) {
         if (record == null || !StringUtils.hasText(fieldCode)) {
             return null;
+        }
+        // 审计字段的外部编码就是物理列名，不能用编码反射 Java 驼峰属性。
+        switch (fieldCode) {
+            case "create_time": return record.getCreateTime();
+            case "update_time": return record.getUpdateTime();
+            case "create_by": return record.getCreateBy();
+            case "update_by": return record.getUpdateBy();
+            default: break;
         }
         // 1. 优先从 DTO 属性取值
         try {

@@ -152,7 +152,7 @@ public class EntityListConfigService {
     }
 
     /**
-     * 锁定列表字段、按钮和场景草稿，供配置级撤销重算 canonical hash。
+     * 锁定列表字段和按钮草稿，供配置级撤销重算 canonical hash。
      */
     public void lockDraftChildrenForRelease(String listConfigId) {
         fieldMapper.findAllByListConfigIdForUpdate(listConfigId);
@@ -421,17 +421,11 @@ public class EntityListConfigService {
                 config, config.getEntityCode()));
         dto.setRowActionConfig(actionConfigService.resolveRowButtons(
                 config, config.getEntityCode()));
-        List<String> scenes = relationalConfigService.findScenes(config.getId());
-        dto.setAllowedScenes(scenes.isEmpty()
-                ? readList(config.getAllowedScenes(), "允许场景配置")
-                : scenes);
         dto.setViewConfig(readMap(config.getViewConfig(), "列表视图配置"));
         dto.setSelectionConfig(readMap(
                 config.getSelectionConfig(), "选择模式配置"));
         dto.setFixedFilterConfig(readMap(
                 config.getFixedFilterConfig(), "固定查询条件"));
-        dto.setContextBindingConfig(readMap(
-                config.getContextBindingConfig(), "上下文绑定配置"));
         if (config != null && StringUtils.hasText(config.getEntityCode())) {
             dto.setToolbarCapabilities(actionCapabilityService.evaluateToolbarActions(
                     config.getEntityCode(),
@@ -591,10 +585,8 @@ public class EntityListConfigService {
         candidate.setViewConfig(source.getViewConfig());
         candidate.setDataScopeMode(source.getDataScopeMode());
         candidate.setAccessPermissionCode(source.getAccessPermissionCode());
-        candidate.setAllowedScenes(source.getAllowedScenes());
         candidate.setSelectionConfig(source.getSelectionConfig());
         candidate.setFixedFilterConfig(source.getFixedFilterConfig());
-        candidate.setContextBindingConfig(source.getContextBindingConfig());
         candidate.setQueryProviderCode(source.getQueryProviderCode());
         candidate.setQueryInterfaceExtensionId(source.getQueryInterfaceExtensionId());
         candidate.setFields(source.getFields());
@@ -636,18 +628,12 @@ public class EntityListConfigService {
         config.setViewConfig(write(candidate.getViewConfig(), "列表视图配置"));
         config.setDataScopeMode(candidate.getDataScopeMode());
         config.setAccessPermissionCode(candidate.getAccessPermissionCode());
-        config.setAllowedScenes(write(
-                candidate.getAllowedScenes(),
-                "允许场景配置"));
         config.setSelectionConfig(write(
                 candidate.getSelectionConfig(),
                 "选择模式配置"));
         config.setFixedFilterConfig(write(
                 candidate.getFixedFilterConfig(),
                 "固定查询条件"));
-        config.setContextBindingConfig(write(
-                candidate.getContextBindingConfig(),
-                "上下文绑定配置"));
         config.setQueryProviderCode(candidate.getQueryProviderCode());
         config.setQueryInterfaceExtensionId(candidate.getQueryInterfaceExtensionId());
         applyConfigDefaults(config);
@@ -656,11 +642,6 @@ public class EntityListConfigService {
     private void applyConfigDefaults(EntityListConfig config) {
         if (!StringUtils.hasText(config.getDataScopeMode())) {
             config.setDataScopeMode("INHERIT");
-        }
-        if (!StringUtils.hasText(config.getAllowedScenes())) {
-            config.setAllowedScenes(
-                    "[\"MENU\",\"PAGE\",\"DIALOG\",\"DRAWER\","
-                            + "\"EMBEDDED\",\"FORM_PICKER\",\"SUB_TABLE\"]");
         }
         if (!StringUtils.hasText(config.getSelectionConfig())) {
             config.setSelectionConfig(
@@ -697,11 +678,8 @@ public class EntityListConfigService {
                 .set("data_scope_mode", config.getDataScopeMode())
                 .set("access_permission_code",
                         config.getAccessPermissionCode())
-                .set("allowed_scenes", config.getAllowedScenes())
                 .set("selection_config", config.getSelectionConfig())
                 .set("fixed_filter_config", config.getFixedFilterConfig())
-                .set("context_binding_config",
-                        config.getContextBindingConfig())
                 .set("query_provider_code", config.getQueryProviderCode())
                 .set("query_interface_extension_id",
                         config.getQueryInterfaceExtensionId());
@@ -967,13 +945,5 @@ public class EntityListConfigService {
         return StringUtils.hasText(document)
                 ? jsonDocumentCodec.readObject(document, label)
                 : new LinkedHashMap<>();
-    }
-    private List<String> readList(String document, String label) {
-        if (!StringUtils.hasText(document)) {
-            return List.of();
-        }
-        return jsonDocumentCodec.readArray(document, label).stream()
-                .map(String::valueOf)
-                .toList();
     }
 }

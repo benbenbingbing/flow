@@ -630,7 +630,7 @@ const getDisplayVariables = (node) => {
     'skipNodeEnabled',
     'entityCode',
     'entityDataId',
-    'dataNo',
+    'code',
     'submitterId',
     'submitterName',
     '_approvers_'

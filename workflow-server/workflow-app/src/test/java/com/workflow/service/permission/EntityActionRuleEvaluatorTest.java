@@ -180,13 +180,13 @@ class EntityActionRuleEvaluatorTest {
 
     /** 构造带归属人、提交人、流程实例与状态的实体数据行 */
     private EntityDataDTO row(
-            String createdBy,
+            String creator,
             String submitterId,
             String processInstanceId,
             String status) {
         EntityDataDTO row = new EntityDataDTO();
         row.setId("data-1");
-        row.setCreatedBy(createdBy);
+        row.setCreateBy(creator);
         row.setSubmitterId(submitterId);
         row.setProcessInstanceId(processInstanceId);
         row.setStatus(status);

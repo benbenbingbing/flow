@@ -640,15 +640,13 @@ function getEntityTypeDesc(type) {
 
 function getItemLabel(item) {
   return item?.name
-    || item?.title
     || item?.code
-    || item?.dataNo
     || item?.id
     || '未命名记录'
 }
 
 function getItemSecondary(item) {
-  return item?.dataNo || item?.code || item?.id || ''
+  return item?.code || item?.id || ''
 }
 
 function getStatusLabel(status) {

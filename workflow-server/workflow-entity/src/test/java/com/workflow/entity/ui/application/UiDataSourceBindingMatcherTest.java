@@ -14,6 +14,19 @@ import static org.mockito.Mockito.mock;
 
 class UiDataSourceBindingMatcherTest {
 
+    @Test
+    void onlyMigratedReplacementAuthorizesLegacyQueryUsage() {
+        Map<String, Object> snapshot = Map.of("eventBindings", List.of(Map.of(
+                "targetType", "OWNER", "eventCode", "LIST_LOAD", "steps", List.of(
+                        Map.of("strategy", "REPLACE", "extensionId", "migrated", "legacyListQuery", true),
+                        Map.of("strategy", "BEFORE", "extensionId", "before", "legacyListQuery", true),
+                        Map.of("strategy", "REPLACE", "extensionId", "ordinary")))));
+        assertEquals("$.release.eventBindings[0].steps", matcher.findPublished(
+                "LIST", snapshot, "LIST_QUERY", "OWNER", null, "migrated", null));
+        assertNull(matcher.findPublished("LIST", snapshot, "LIST_QUERY", "OWNER", null, "before", null));
+        assertNull(matcher.findPublished("LIST", snapshot, "LIST_QUERY", "OWNER", null, "ordinary", null));
+    }
+
     private final ObjectMapper objectMapper =
             new ObjectMapper();
     private final UiDataSourceBindingMatcher matcher =

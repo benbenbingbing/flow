@@ -1,15 +1,6 @@
 <template>
   <div class="process-list">
     <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>流程列表</span>
-          <el-button type="primary" @click="handleCreate">
-            <el-icon><Plus /></el-icon>新建流程
-          </el-button>
-        </div>
-      </template>
-
       <!-- 查询条件 -->
       <el-form :model="queryParams" inline class="search-form">
         <el-form-item label="流程名称">
@@ -32,7 +23,11 @@
           <el-button @click="handleReset">重置</el-button>
         </el-form-item>
       </el-form>
-      
+      <div class="table-toolbar">
+        <el-button type="primary" @click="handleCreate">
+          <el-icon><Plus /></el-icon>新建流程
+        </el-button>
+      </div>
       <PageState
         v-if="fetchError"
         type="error"
@@ -723,10 +718,12 @@ onMounted(() => {
   height: 100%;
 }
 
-.card-header {
+.table-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .more-action-info {

@@ -375,7 +375,7 @@ public class UiViewCompositionService {
                     owner, normalized, source, validated.summary());
         }
         FilterResolution resolution = resolveFilters(
-                owner, relation, source);
+                owner, relation, source, String.valueOf(requireMap(normalized.get("target"), "目标内容").get("entityId")));
         if (!resolution.ready()) {
             return UiViewCompositionTestDTO.builder()
                     .authorized(true)
@@ -780,6 +780,7 @@ public class UiViewCompositionService {
     private void validateReferences(
             OwnerState owner,
             Map<String, Object> config) {
+        UiViewCompositionConfigValidator.requireUnifiedRelation(config);
         Map<String, Object> target = requireMap(
                 config.get("target"), "目标内容");
         String contentType = String.valueOf(target.get("contentType"));
@@ -826,15 +827,19 @@ public class UiViewCompositionService {
         }
         if ("ENTITY_RELATION".equals(relation.get("type"))) {
             EntityRelation definition = relationMapper.selectByRelationCode(
-                    owner.entityId(), String.valueOf(relation.get("relationCode")));
+                    UiEntityRelationBinding.ownerId(relation, owner.entityId(), targetEntityId), String.valueOf(relation.get("relationCode")));
             if (definition == null || Integer.valueOf(1).equals(definition.getDeleted())
                     || !Boolean.TRUE.equals(definition.getEnabled())) {
                 throw new IllegalArgumentException("所选实体关系不存在或已停用，请返回实体设计检查");
             }
-            if (!Objects.equals(targetEntityId, definition.getChildEntityId())) {
+            boolean reverse = UiEntityRelationBinding.reverse(relation);
+            if (!Objects.equals(reverse ? owner.entityId() : targetEntityId, definition.getChildEntityId())) {
                 throw new IllegalArgumentException("目标表单或列表必须属于该关系的关联实体");
             }
-            validateRelationContentType(definition, contentType);
+            if (reverse) {
+                if (!"FORM".equals(contentType)) throw new IllegalArgumentException("反向关系指向一条所属记录，请选择表单");
+            } else validateRelationContentType(definition, contentType);
+            validateRelationSaveBoundary(definition, config);
         }
         validateSpecialHandling(owner.type(), requireMap(
                 config.get("specialHandling"), "特殊处理"));
@@ -847,6 +852,15 @@ public class UiViewCompositionService {
             throw new IllegalArgumentException(single
                     ? "一对一实体关系请关联目标表单"
                     : "一对多实体关系请关联目标列表，不能用单条表单展示");
+        }
+    }
+
+    /** 组成数据必须经主从聚合提交；展示入口不能另开独立写入通道。 */
+    private void validateRelationSaveBoundary(EntityRelation relation, Map<String, Object> config) {
+        if (relation.getOwnershipType() == EntityRelation.OwnershipType.COMPOSITION
+                && config.get("actions") instanceof List<?> actions
+                && actions.stream().anyMatch(action -> !"VIEW".equals(action))) {
+            throw new IllegalArgumentException("组成关系的关联内容仅供查看；需要编辑时请添加随主表保存的子表单或明细组件");
         }
     }
 
@@ -1367,7 +1381,7 @@ public class UiViewCompositionService {
     private FilterResolution resolveFilters(
             OwnerState owner,
             Map<String, Object> relation,
-            EntityDataDTO source) {
+            EntityDataDTO source, String targetEntityId) {
         String type = String.valueOf(relation.get("type"));
         Map<String, Object> filters = new LinkedHashMap<>();
         switch (type) {
@@ -1386,8 +1400,9 @@ public class UiViewCompositionService {
                     String.valueOf(relation.get("targetField")),
                     source.getId());
             case "ENTITY_RELATION" -> {
+                boolean reverse = UiEntityRelationBinding.reverse(relation);
                 EntityRelation definition = relationMapper.selectByRelationCode(
-                        owner.entityId(),
+                        UiEntityRelationBinding.ownerId(relation, owner.entityId(), targetEntityId),
                         String.valueOf(relation.get("relationCode")));
                 if (definition == null
                         || Integer.valueOf(1).equals(definition.getDeleted())
@@ -1395,7 +1410,11 @@ public class UiViewCompositionService {
                     return FilterResolution.notReady(
                             "所选实体关系不存在、已删除或未启用");
                 }
-                filters.put(definition.getChildRefFieldCode(), source.getId());
+                if (reverse) {
+                    Object value = sourceValue(source, definition.getChildRefFieldCode());
+                    if (isMissing(value)) return FilterResolution.notReady("当前记录尚未关联所属记录");
+                    filters.put("id", value);
+                } else filters.put(definition.getChildRefFieldCode(), source.getId());
             }
             case "FIELD_MATCH" -> {
                 List<Map<String, Object>> mappings = mappingList(
@@ -1464,11 +1483,9 @@ public class UiViewCompositionService {
         }
         return switch (normalized) {
             case "id" -> source.getId();
-            case "title" -> source.getTitle();
             case "name" -> source.getName();
             case "code" -> source.getCode();
             case "status" -> source.getStatus();
-            case "dataNo" -> source.getDataNo();
             default -> nestedValue(source.getData(), normalized);
         };
     }
@@ -1521,8 +1538,8 @@ public class UiViewCompositionService {
     private Map<String, Object> minimalRecord(EntityDataDTO value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());
-        result.put("title", firstNonBlank(
-                value.getTitle(), value.getName(), value.getCode(), value.getId()));
+        result.put("name", firstNonBlank(value.getName(), value.getCode(), value.getId()));
+        result.put("code", value.getCode());
         result.put("entityCode", value.getEntityCode());
         return result;
     }
@@ -1702,6 +1719,8 @@ public class UiViewCompositionService {
             Map<String, Object> ownerSnapshot,
             Map<String, Object> config,
             String label) {
+        // 导入或重新激活快照也遵循统一规则，不能绕过新草稿的发布入口。
+        UiViewCompositionConfigValidator.requireUnifiedRelation(config);
         Map<String, Object> target = requireMap(
                 config.get("target"), label + "目标内容");
         UiConfigRelease targetRelease = validatePinnedTarget(target, label);
@@ -1901,7 +1920,7 @@ public class UiViewCompositionService {
                 }
             }
             case "ENTITY_RELATION" -> validatePinnedEntityRelation(
-                    relation, source, target,
+                    relation, config, source, target,
                     String.valueOf(requireMap(config.get("target"), "目标内容").get("contentType")), label);
             case "INTERFACE_SERVICE" -> {
                 // 接口会返回受控记录或过滤条件，字段另在运行时
@@ -1914,10 +1933,18 @@ public class UiViewCompositionService {
 
     private void validatePinnedEntityRelation(
             Map<String, Object> relation,
+            Map<String, Object> config,
             EntityPublishedSnapshot source,
             EntityPublishedSnapshot target,
             String contentType,
             String label) {
+        boolean reverse = UiEntityRelationBinding.reverse(relation);
+        // 相同定义的反向使用从目标实体快照读取规则，外键仍位于原来的子实体。
+        if (reverse) {
+            EntityPublishedSnapshot originalSource = source;
+            source = target;
+            target = originalSource;
+        }
         if (!source.isRelationsSnapshotAvailable()) {
             throw new BusinessConflictException(
                     "UI_VIEW_COMPOSITION_RELATION_SNAPSHOT_REQUIRED",
@@ -1931,13 +1958,22 @@ public class UiViewCompositionService {
                         relationCode, item.getRelationCode()))
                 .findFirst()
                 .orElse(null);
-        if (definition == null
-                || !Objects.equals(
+        if (definition == null) {
+            // 关系在来源实体发布后新建时，已钉定的发布版本里找不到它；
+            // 必须给出可操作的指引，而不是只陈述校验失败。
+            throw pinnedRelationInvalid(
+                    label,
+                    "已钉定的来源实体版本(v" + source.getVersion()
+                            + ")不包含实体关系 " + relationCode
+                            + "；该关系是在实体发布后新增的，请先在实体设计中"
+                            + "重新发布来源实体，再发布宿主配置");
+        }
+        if (!Objects.equals(
                 definition.getChildEntityId(), target.getEntityId())
                 || !StringUtils.hasText(
                 definition.getChildRefFieldCode())) {
             throw pinnedRelationInvalid(
-                    label, "已钉定的来源实体版本不包含该关系");
+                    label, "已钉定的来源实体版本中的该关系与目标实体不一致");
         }
         EntityField field = pinnedField(
                 target,
@@ -1948,7 +1984,10 @@ public class UiViewCompositionService {
         if (violation != null) {
             throw pinnedRelationInvalid(label, violation.message());
         }
-        validateRelationContentType(definition, contentType);
+        if (reverse) {
+            if (!"FORM".equals(contentType)) throw pinnedRelationInvalid(label, "反向关系只允许目标表单");
+        } else validateRelationContentType(definition, contentType);
+        validateRelationSaveBoundary(definition, config);
     }
 
     private void requirePinnedFieldOrId(
@@ -2062,6 +2101,23 @@ public class UiViewCompositionService {
             Map<String, Object> config,
             PinnedSchemas schemas,
             String label) {
+        // 发布时按固定目标版本校验参数声明，同时复核来源发布页面真正暴露的字段。
+        Map<String, Object> content = PageParameterPolicy.map(targetSnapshot.get(
+                "FORM".equals(target.get("contentType")) ? "form" : "list"));
+        Map<String, Object> parameterConfig = PageParameterPolicy.map(content.get("viewConfig"));
+        Map<String, Object> properties = PageParameterPolicy.map(
+                PageParameterPolicy.map(parameterConfig.get("inputParameterSchema")).get("properties"));
+        int parameterIndex = 0;
+        for (Map<String, Object> mapping : PageParameterPolicy.mappings(config.get("parameterMappings"))) {
+            parameterIndex++;
+            if (!properties.containsKey(String.valueOf(mapping.get("parameter")))) {
+                throw new IllegalArgumentException(label + "目标发布页面未声明输入参数: " + mapping.get("parameter"));
+            }
+            if ("FIELD".equals(mapping.get("sourceType"))) {
+                requirePublishedOwnerReadableField(ownerType, ownerSnapshot, schemas.source(),
+                        String.valueOf(mapping.get("sourceField")), label, "页面传参", parameterIndex);
+            }
+        }
         Map<String, Object> settings = requireMap(
                 config.get("actionSettings"), label + "操作设置");
         List<String> actions = config.get("actions") instanceof List<?> values
@@ -2563,6 +2619,7 @@ public class UiViewCompositionService {
     private void pinPublishedDependencies(
             Map<String, Object> config,
             String ownerEntityId) {
+        UiViewCompositionConfigValidator.requireUnifiedRelation(config);
         Map<String, Object> target = requireMutableMap(
                 config.get("target"), "目标内容");
         pinEntitySnapshots(config, target, ownerEntityId);

@@ -257,16 +257,6 @@ async function patchListAction(listId, action, expectedRevision, buttonLabel) {
   })
 }
 
-async function patchListScene(listId, scene, expectedRevision, sortOrder) {
-  return request(`/entity-list-config/${listId}/scenes/${scene.id}/patch`, {
-    method: 'POST',
-    body: JSON.stringify({
-      expectedRevision,
-      sortOrder
-    })
-  })
-}
-
 async function acceptList(form) {
   const lists = await request(`/entity-list-config/entity/${form.entity.id}`)
   const list = preferredListId
@@ -277,11 +267,8 @@ async function acceptList(form) {
   const configBefore = await request(`/entity-list-config/${list.id}`)
   const field = configBefore.fields?.find(item => item.id && item.revision)
   const action = configBefore.toolbarConfig?.find(item => item.id && item.revision)
-  const scenesBefore = await request(`/entity-list-config/${list.id}/scenes`)
-  const scene = scenesBefore.find(item => item.sceneCode === 'DIALOG') || scenesBefore[0]
   assert(field, '验收列表没有可修改的列')
   assert(action, '验收列表没有可修改的工具栏按钮')
-  assert(scene, '验收列表没有可修改的允许场景')
 
   const releasesBefore = await request(`/entity-list-config/${list.id}/releases`)
   const baselineRelease = releasesBefore.find(release => release.status === 'ACTIVE')
@@ -289,11 +276,9 @@ async function acceptList(form) {
 
   const originalFieldName = field.fieldName
   const originalActionLabel = action.label
-  const originalSceneSort = scene.sortOrder
   const testSuffix = `单项验收-${Date.now()}`
   const testFieldName = `${originalFieldName}-${testSuffix}`
   const testActionLabel = `${originalActionLabel}-${testSuffix}`
-  const testSceneSort = originalSceneSort + 100
   const otherFieldsBefore = stableOtherFields(configBefore.fields, field.id)
   const otherActionsBefore = stableOtherActions(configBefore.toolbarConfig, action.id)
   let draftChanged = false
@@ -332,16 +317,7 @@ async function acceptList(form) {
     )
     assert(patchedAction.revision === action.revision + 1, '单按钮保存未递增 revision')
 
-    const patchedScene = await patchListScene(
-      list.id,
-      scene,
-      scene.revision,
-      testSceneSort
-    )
-    assert(patchedScene.revision === scene.revision + 1, '单场景保存未递增 revision')
-
     const configAfterPatch = await request(`/entity-list-config/${list.id}`)
-    const scenesAfterPatch = await request(`/entity-list-config/${list.id}/scenes`)
     assert(
       stableOtherFields(configAfterPatch.fields, field.id) === otherFieldsBefore,
       '单列保存修改了其他列'
@@ -350,19 +326,6 @@ async function acceptList(form) {
       stableOtherActions(configAfterPatch.toolbarConfig, action.id) === otherActionsBefore,
       '单按钮保存修改了其他按钮'
     )
-    assert(
-      scenesAfterPatch
-        .filter(item => item.id !== scene.id)
-        .every(item => {
-          const before = scenesBefore.find(original => original.id === item.id)
-          return before
-            && before.sceneCode === item.sceneCode
-            && before.sortOrder === item.sortOrder
-            && before.revision === item.revision
-        }),
-      '单场景保存修改了其他场景'
-    )
-
     await requestConflict(`/entity-list-config/${list.id}/fields/${field.id}/patch`, {
       expectedRevision: field.revision,
       field: { fieldName: `${testFieldName}-冲突写入` }
@@ -371,11 +334,6 @@ async function acceptList(form) {
       expectedRevision: action.revision,
       buttonLabel: `${testActionLabel}-冲突写入`
     })
-    await requestConflict(`/entity-list-config/${list.id}/scenes/${scene.id}/patch`, {
-      expectedRevision: scene.revision,
-      sortOrder: testSceneSort + 1
-    })
-
     const runtimeDraft = await request(
       `/entity-lists/${configBefore.entityCode}/${configBefore.listKey}/schema?scene=PAGE`
     )
@@ -401,13 +359,6 @@ async function acceptList(form) {
       publishedRelease.version > baselineRelease.version,
       '列表发布版本号未递增'
     )
-    const publishedSnapshot = JSON.parse(publishedRelease.snapshotDocument)
-    const publishedScenes = publishedSnapshot.list?.allowedScenes || []
-    assert(
-      publishedScenes.at(-1) === scene.sceneCode,
-      '发布快照未包含场景单项排序修改'
-    )
-
     const runtimePublished = await request(
       `/entity-lists/${configBefore.entityCode}/${configBefore.listKey}/schema?scene=PAGE`
     )
@@ -439,11 +390,8 @@ async function acceptList(form) {
     const latestConfig = await request(`/entity-list-config/${list.id}`)
     const latestField = latestConfig.fields.find(item => item.id === field.id)
     const latestAction = latestConfig.toolbarConfig.find(item => item.id === action.id)
-    const latestScenes = await request(`/entity-list-config/${list.id}/scenes`)
-    const latestScene = latestScenes.find(item => item.id === scene.id)
     await patchListField(list.id, latestField, latestField.revision, originalFieldName)
     await patchListAction(list.id, latestAction, latestAction.revision, originalActionLabel)
-    await patchListScene(list.id, latestScene, latestScene.revision, originalSceneSort)
     draftChanged = false
 
     const restoredDiff = await request(`/entity-list-config/${list.id}/diff`)
@@ -455,18 +403,15 @@ async function acceptList(form) {
       listKey: configBefore.listKey,
       fieldId: field.id,
       actionId: action.id,
-      sceneId: scene.id,
       baselineReleaseId: baselineRelease.id,
       publishedReleaseId: publishedRelease.id,
       checks: [
         'initial-diff-clean',
         'single-field-isolation',
         'single-action-isolation',
-        'single-scene-isolation',
-        'field-action-scene-stale-revision-409',
+        'field-action-stale-revision-409',
         'draft-does-not-affect-runtime',
         'publish-affects-runtime',
-        'published-snapshot-includes-scene-change',
         'historical-activate-rolls-back-runtime',
         'draft-restored'
       ]
@@ -483,10 +428,8 @@ async function acceptList(form) {
     }
     if (draftChanged) {
       const latestConfig = await request(`/entity-list-config/${list.id}`).catch(() => null)
-      const latestScenes = await request(`/entity-list-config/${list.id}/scenes`).catch(() => [])
       const latestField = latestConfig?.fields?.find(item => item.id === field.id)
       const latestAction = latestConfig?.toolbarConfig?.find(item => item.id === action.id)
-      const latestScene = latestScenes.find(item => item.id === scene.id)
       if (latestField) {
         await patchListField(
           list.id,
@@ -501,14 +444,6 @@ async function acceptList(form) {
           latestAction,
           latestAction.revision,
           originalActionLabel
-        ).catch(() => {})
-      }
-      if (latestScene) {
-        await patchListScene(
-          list.id,
-          latestScene,
-          latestScene.revision,
-          originalSceneSort
         ).catch(() => {})
       }
     }

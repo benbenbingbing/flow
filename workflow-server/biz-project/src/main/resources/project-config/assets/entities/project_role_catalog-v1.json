@@ -201,10 +201,6 @@
       "description": "项目角色基础目录。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": [
-        "PAGE",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -247,7 +243,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",

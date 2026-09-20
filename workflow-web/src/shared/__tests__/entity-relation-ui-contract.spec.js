@@ -23,7 +23,8 @@ const router = read('../../router/index.js')
   'name="relations"',
   '<EntityRelationManagement',
   ':can-manage="canManageEntityDefinition"',
-  '实体关系已从 SUB_FORM 字段中拆分'
+  '子表单已改为页面组件',
+  '子列表已改为页面组件'
 ].forEach(marker => assert.ok(designer.includes(marker), `实体设计器缺少独立关系入口: ${marker}`))
 
 assert.equal(

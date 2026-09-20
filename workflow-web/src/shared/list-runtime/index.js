@@ -104,7 +104,7 @@ export function getCellValue(row, field, fallback = '') {
 }
 
 export function isDateFieldCode(fieldCode) {
-  return ['createdAt', 'processStartTime', 'processEndTime', 'submitTime', 'updatedAt'].includes(fieldCode)
+  return ['create_time', 'processStartTime', 'processEndTime', 'submitTime', 'update_time'].includes(fieldCode)
 }
 
 export function formatDateValue(date) {

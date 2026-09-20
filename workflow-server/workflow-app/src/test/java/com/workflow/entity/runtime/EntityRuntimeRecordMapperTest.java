@@ -41,7 +41,8 @@ class EntityRuntimeRecordMapperTest {
         LocalDateTime now = LocalDateTime.now();
         Map<String, Object> row = Map.of(
                 "id", "data-1",
-                "data_no", "NO-1",
+                "code", "NO-1",
+                "name", "费用申请",
                 "status", "PENDING",
                 "current_task_assignee", "admin",
                 "create_time", now,
@@ -53,10 +54,11 @@ class EntityRuntimeRecordMapperTest {
 
         assertEquals("data-1", dto.getId());
         assertEquals("expense", dto.getEntityCode());
-        assertEquals("NO-1", dto.getDataNo());
+        assertEquals("NO-1", dto.getCode());
+        assertEquals("费用申请", dto.getName());
         assertEquals("PENDING", dto.getStatus());
         assertEquals("admin", dto.getCurrentTaskAssignee());
-        assertEquals(now, dto.getCreatedAt());
+        assertEquals(now, dto.getCreateTime());
         assertEquals(12, dto.getData().get("amountTotal"));
         assertInstanceOf(Map.class, dto.getData().get("detailJson"));
     }
@@ -98,6 +100,8 @@ class EntityRuntimeRecordMapperTest {
         EntityDataDTO dto = new EntityDataDTO();
         dto.setId("data-1");
         dto.setEntityCode("expense");
+        dto.setName("费用申请");
+        dto.setCode("EXP-001");
         dto.setCurrentTaskAssignee("admin");
         dto.setData(Map.of(
                 "amountTotal", 12,
@@ -109,6 +113,13 @@ class EntityRuntimeRecordMapperTest {
         Map<String, Object> row = mapper.toStorageMap(dto);
 
         assertEquals("data-1", row.get("id"));
+        assertEquals("费用申请", row.get("name"));
+        assertEquals("EXP-001", row.get("code"));
+        assertFalse(row.containsKey("data_no"));
+        assertFalse(row.containsKey("title"));
+        Map<String, Object> serialized = objectMapper.convertValue(dto, new TypeReference<>() { });
+        assertFalse(serialized.containsKey("dataNo"));
+        assertFalse(serialized.containsKey("title"));
         assertEquals("admin", row.get("current_task_assignee"));
         assertEquals(12, row.get("amount_total"));
         assertNull(row.get("empty_value"));
@@ -140,5 +151,48 @@ class EntityRuntimeRecordMapperTest {
         Map<String, Object> customData = mapper.extractRequestCustomData(request);
 
         assertEquals(Map.of("amount_total", 12), customData);
+    }
+
+    /** 主键和审计字段使用顶层契约，客户端嵌套数据不能改写系统维护列。 */
+    @Test
+    void auditFieldsAreReadableButExcludedFromCustomWrites() {
+        LocalDateTime created = LocalDateTime.of(2026, 9, 20, 10, 0);
+        LocalDateTime updated = created.plusHours(1);
+        Map<String, Object> columns = Map.of(
+                "id", "record-1", "create_time", created, "update_time", updated,
+                "create_by", "creator", "update_by", "updater", "deleted", 0);
+        EntityDataDTO dto = mapper.toDto(columns, "expense");
+        assertEquals(created, dto.getCreateTime());
+        assertEquals(updated, dto.getUpdateTime());
+        assertEquals("creator", dto.getCreateBy());
+        assertEquals("updater", dto.getUpdateBy());
+        assertEquals(false, dto.getDeleted());
+        assertEquals(Map.of(), dto.getData());
+        assertEquals(true, mapper.toDto(Map.of("deleted", true), "expense").getDeleted());
+        assertEquals(true, mapper.toDto(Map.of("deleted", 1), "expense").getDeleted());
+
+        Map<String, Object> patch = Map.of(
+                "id", "forged", "create_time", updated, "update_time", created,
+                "create_by", "forged", "update_by", "forged", "deleted", true,
+                "amountTotal", 10);
+        ObjectMapper jsonMapper = new ObjectMapper().findAndRegisterModules();
+        Map<String, Object> json = jsonMapper.convertValue(dto, new TypeReference<>() { });
+        assertEquals("creator", json.get("create_by"));
+        assertEquals("updater", json.get("update_by"));
+        org.junit.jupiter.api.Assertions.assertTrue(json.containsKey("create_time"));
+        org.junit.jupiter.api.Assertions.assertTrue(json.containsKey("update_time"));
+        for (String retired : java.util.List.of("createdAt", "updatedAt", "createdBy", "updatedBy",
+                "createTime", "updateTime", "createBy", "updateBy")) {
+            assertFalse(json.containsKey(retired), retired);
+        }
+        EntityDataDTO roundTrip = jsonMapper.convertValue(json, EntityDataDTO.class);
+        assertEquals(created, roundTrip.getCreateTime());
+        assertEquals(updated, roundTrip.getUpdateTime());
+        dto.setData(patch);
+        assertEquals(Map.of("id", "record-1", "amount_total", 10), mapper.toStorageMap(dto));
+        assertEquals(Map.of("amount_total", 10), mapper.extractRequestCustomData(Map.of("data", patch)));
+        Map.of("create_time", "create_time", "update_time", "update_time",
+                "create_by", "create_by", "update_by", "update_by")
+                .forEach((code, column) -> assertEquals(column, mapper.toColumnName(code)));
     }
 }

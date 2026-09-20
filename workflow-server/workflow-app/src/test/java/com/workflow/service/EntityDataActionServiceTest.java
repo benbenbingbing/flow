@@ -852,11 +852,11 @@ class EntityDataActionServiceTest {
                                                 .toList());
         }
 
-        /** 构造一条包含 id 与 dataNo 的实体数据 DTO */
-        private EntityDataDTO row(String id, String dataNo) {
+        /** 构造一条包含 id 与 code 的实体数据 DTO */
+        private EntityDataDTO row(String id, String code) {
                 EntityDataDTO row = new EntityDataDTO();
                 row.setId(id);
-                row.setDataNo(dataNo);
+                row.setCode(code);
                 return row;
         }
 

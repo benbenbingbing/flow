@@ -598,9 +598,9 @@ public class EntityFormService {
             field.setRefListKey(entityField.getRefListKey());
         }
         enrichRelationMetadata(field, entityField);
-        // 系统可编辑字段强制非只读（避免表单设计器误设为只读导致无法交互）
-        if (Boolean.TRUE.equals(entityField.getIsSystem()) && Boolean.TRUE.equals(entityField.getEditable())) {
-            field.setIsReadonly(0);
+        // 系统维护字段即使被节点配置为可编辑也必须只读，避免误导用户修改主键或审计信息。
+        if (Boolean.TRUE.equals(entityField.getIsSystem())) {
+            field.setIsReadonly(Boolean.TRUE.equals(entityField.getEditable()) ? 0 : 1);
         }
     }
 

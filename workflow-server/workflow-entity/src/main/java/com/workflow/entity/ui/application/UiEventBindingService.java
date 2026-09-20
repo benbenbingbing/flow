@@ -438,7 +438,10 @@ public class UiEventBindingService {
             return chain;
         }
         UiConfigReleaseService.ResolvedEntityListRelease resolved =
-                releaseService.resolveRuntimeListRelease(
+                request.isServerPinnedRelease()
+                        ? releaseService.resolveServerPinnedRuntimeListRelease(
+                                request.getConfigId(), request.getReleaseId(), request.getReleaseVersion())
+                        : releaseService.resolveRuntimeListRelease(
                         request.getConfigId(),
                         request.getReleaseId(),
                         request.getReleaseVersion(),
@@ -568,6 +571,19 @@ public class UiEventBindingService {
                 .filter(step -> "REPLACE".equals(
                         normalize(text(step.get("strategy")))))
                 .count();
+        // 历史发布快照不可改写：仅在没有有效替代步骤时，把旧查询槽位投影到统一链。
+        // 新草稿由 V094 迁移为可编辑的 LIST_LOAD 步骤，旧 Provider 保留 LIST_QUERY 契约。
+        if (replacements == 0 && "LIST".equals(normalize(request.getConfigType()))
+                && UiDataSourceUsages.LIST_LOAD.equals(eventCode)
+                && snapshot != null && snapshot.get("list") instanceof Map<?, ?> list
+                && StringUtils.hasText(text(list.get("queryInterfaceExtensionId")))) {
+            effective.add(new LinkedHashMap<>(Map.of(
+                    "name", "列表查询接口（已迁移）",
+                    "strategy", "REPLACE",
+                    "extensionId", text(list.get("queryInterfaceExtensionId")),
+                    "legacyListQuery", true,
+                    "failurePolicy", "STOP")));
+        }
         if (replacements > 1) {
             if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)) {
                 // 损坏或历史发布快照也可能绕过当前保存/发布校验；表单按钮
@@ -760,6 +776,10 @@ public class UiEventBindingService {
             if (!STRATEGIES.contains(strategy)) {
                 throw new IllegalArgumentException(
                         "不支持的执行位置: " + strategy);
+            }
+            if (Boolean.TRUE.equals(step.get("legacyListQuery"))
+                    && (!UiDataSourceUsages.LIST_LOAD.equals(eventCode) || !"REPLACE".equals(strategy))) {
+                throw new IllegalArgumentException("历史查询接口标记只能用于 LIST_LOAD 的替代平台处理步骤");
             }
             if (!FAILURE_POLICIES.contains(failure)) {
                 throw new IllegalArgumentException(

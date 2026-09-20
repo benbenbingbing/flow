@@ -5,6 +5,13 @@ export const entityListScopeApi = {
     return request.get(`/entity-list-scopes/${entityCode}`)
   },
 
+  /** 预览已保存规则自身的 SQL，不合并列表权限或使用范围绕过结果。 */
+  previewPolicy(id, userId) {
+    return request.get(`/entity-list-scopes/policies/${id}/preview`, {
+      params: { userId: userId || undefined }
+    })
+  },
+
   createPolicy(data) {
     return request.post('/entity-list-scopes/policies', data)
   },

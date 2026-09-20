@@ -16,35 +16,6 @@ const HELP_ENTRIES = {
       '单选和多选都会逐条应用；这里只改变返回数据，不会自动回填表单。'
     ]
   },
-  'entityList.fixedFilters': {
-    title: '固定条件怎么用',
-    shape: 'object',
-    summary:
-      '键为实体字段编码，值为固定查询值。运行时会在用户查询条件之后合并该对象，因此同名固定条件不能被页面输入覆盖。',
-    example: {
-      status: 'APPROVED'
-    },
-    result: '该列表只查询 status=APPROVED 的记录。',
-    notes: [
-      '这是服务端可信条件，保存后需发布列表配置才会生效。',
-      '需要运算符时使用字段对应的 _op 配置；不确定时优先使用等值条件。'
-    ]
-  },
-  'entityList.contextBinding': {
-    title: '上下文绑定怎么用',
-    shape: 'object',
-    summary:
-      '该对象会随已发布列表 Schema 返回，供自定义列表组件或查询扩展解释。平台默认动态查询不会仅凭这里的键自动生成关联条件。',
-    example: {
-      parentField: 'project_id'
-    },
-    result:
-      '只有自定义组件或 Provider 明确读取 parentField 时才会产生对应效果。',
-    notes: [
-      '默认可信关联过滤来自调用方 context.relationKey 和已注册的 EntityListContextResolver。',
-      '不要在这里保存用户可篡改的值或密钥；未接入扩展时请保持 {}。'
-    ]
-  },
   'entityList.statusLabelMap': {
     title: '文本映射怎么用',
     shape: 'object',

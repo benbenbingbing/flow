@@ -414,6 +414,17 @@ class EntityFormNodeCommandBoundaryTest {
     }
 
     /** 构造关系子表单创建请求，subFormConfig 为可定制属性。 */
+    @Test
+    void associationCannotMasqueradeAsAggregateEditor() {
+        Fixture fixture = fixture();
+        EntityRelation relation = relation("details_relation", "child-1", EntityRelation.RelationType.ONE_TO_ONE);
+        relation.setOwnershipType(EntityRelation.OwnershipType.ASSOCIATION);
+        when(fixture.relationMapper().selectActiveByBindingRef("entity-1", "details_relation")).thenReturn(relation);
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service().create("form-1", relationCreateRequest(Map.of())));
+        assertTrue(failure.getMessage().contains("组成关系"));
+    }
+
     private EntityFormNodeCreateRequest relationCreateRequest(
             Map<String, Object> subFormConfig) {
         EntityFormNodeCreateRequest request =
@@ -489,6 +500,7 @@ class EntityFormNodeCommandBoundaryTest {
         relation.setChildEntityId(childEntityId);
         relation.setChildRefFieldCode("parent_id");
         relation.setRelationType(relationType);
+        relation.setOwnershipType(EntityRelation.OwnershipType.COMPOSITION);
         relation.setEnabled(true);
         relation.setDeleted(0);
         return relation;

@@ -522,7 +522,7 @@ class ProcessProgressRuntimeServiceTest {
         void entityData() {
             EntityDataDTO dto = new EntityDataDTO();
             dto.setId("data-1");
-            dto.setDataNo("EXP-1");
+            dto.setCode("EXP-1");
             dto.setProcessInstanceId("pi-1");
             dto.setProcessStartTime(LocalDateTime.of(2026, 7, 25, 10, 30));
             dto.setCurrentTaskId("task-1-runtime");

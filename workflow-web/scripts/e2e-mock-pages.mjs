@@ -313,7 +313,7 @@ function apiData(pathname) {
       { id: 'f-date', fieldCode: 'planDate', fieldName: '计划日期', fieldType: 'DATE', componentType: 'date' }
     ]
   }
-  const row = { id: 'row-1', dataNo: 'D-001', name: '演示数据', status: 'DRAFT', createdAt: '2026-07-15T08:00:00Z', data: { name: '演示数据', priority: 'HIGH', planDate: '2026-07-15' } }
+  const row = { id: 'row-1', code: 'D-001', name: '演示数据', status: 'DRAFT', create_time: '2026-07-15T08:00:00Z', data: { name: '演示数据', priority: 'HIGH', planDate: '2026-07-15' } }
   const listFields = [
     { fieldCode: 'name', fieldName: '名称', fieldType: 'STRING', showInList: true, isQuery: true, queryType: 'LIKE', width: 160, align: 'left' },
     { fieldCode: 'priority', fieldName: '优先级', fieldType: 'SELECT', showInList: true, isQuery: true, queryType: 'EQ', optionsJson: '[{"label":"高","value":"HIGH"},{"label":"低","value":"LOW"}]', width: 100, align: 'center' }

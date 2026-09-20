@@ -1332,9 +1332,9 @@ public class UiConfigReleaseService {
                 "list",
                 "列表设置",
                 withoutKeys(draftList, Set.of(
-                        "fields", "toolbarConfig", "rowActionConfig", "allowedScenes")),
+                        "fields", "toolbarConfig", "rowActionConfig")),
                 withoutKeys(activeList, Set.of(
-                        "fields", "toolbarConfig", "rowActionConfig", "allowedScenes")));
+                        "fields", "toolbarConfig", "rowActionConfig")));
         appendCollectionChanges(
                 changes,
                 "fields",
@@ -1362,12 +1362,6 @@ public class UiConfigReleaseService {
                 List.of("id", "key", "actionCode"),
                 List.of("label", "name", "key", "actionCode"),
                 true);
-        appendValueCollectionChanges(
-                changes,
-                "allowedScenes",
-                "列表场景",
-                draftList.get("allowedScenes"),
-                activeList.get("allowedScenes"));
         appendViewCompositionChanges(changes, draft, active);
         appendEventBindingChanges(
                 changes,
@@ -1490,24 +1484,6 @@ public class UiConfigReleaseService {
                 itemLabel(active, labelKeys, defaultLabel),
                 "REMOVED",
                 List.of())));
-    }
-
-    private void appendValueCollectionChanges(
-            List<UiConfigDiffItemDTO> changes,
-            String section,
-            String label,
-            Object draft,
-            Object active) {
-        Set<String> draftValues = textSet(draft);
-        Set<String> activeValues = textSet(active);
-        for (String value : draftValues) {
-            if (!activeValues.remove(value)) {
-                changes.add(itemChange(
-                        section, value, value, "ADDED", List.of()));
-            }
-        }
-        activeValues.forEach(value -> changes.add(itemChange(
-                section, value, value, "REMOVED", List.of())));
     }
 
     private UiConfigDiffItemDTO itemChange(
@@ -1794,20 +1770,6 @@ public class UiConfigReleaseService {
             }
         }
         return "";
-    }
-
-    private Set<String> textSet(Object source) {
-        Set<String> result = new LinkedHashSet<>();
-        if (!(source instanceof List<?> list)) {
-            return result;
-        }
-        for (Object value : list) {
-            String text = text(value);
-            if (StringUtils.hasText(text)) {
-                result.add(text);
-            }
-        }
-        return result;
     }
 
     /**
@@ -4763,12 +4725,28 @@ public class UiConfigReleaseService {
         return List.copyOf(result);
     }
 
+    /** 新发布统一使用关系组件；历史展示字段不能再形成第二套关联规则。 */
+    private void validateUnifiedRelationComponents(Map<String, Object> snapshot) {
+        for (EntityFormNode node : snapshotNodes(snapshot)) {
+            Map<String, Object> props = StringUtils.hasText(node.getPropsDocument())
+                    ? codec.readObject(node.getPropsDocument(), "关系组件属性") : Map.of();
+            if (isSubListNode(props)) {
+                throw new IllegalArgumentException("子列表实体字段已停用，请删除该节点并从关联内容中选择实体关系和列表");
+            }
+            if (Set.of("SUB_FORM", "REPEATER").contains(normalize(node.getNodeType()))
+                    && (!"RELATION".equals(node.getBindingType()) || !StringUtils.hasText(node.getBindingRef()))) {
+                throw new IllegalArgumentException("子表单和明细编辑必须绑定组成关系，请从实体关系重新添加组件");
+            }
+        }
+    }
+
     private void validateForPublish(
             String configType,
             String configId,
             Map<String, Object> snapshot) {
         if (FORM.equals(configType)) {
             formNodeService.validateTree(configId);
+            validateUnifiedRelationComponents(snapshot);
             formConfigurationValidator.validateForm(runtimeForm(snapshot));
             validateSubListReferences(snapshot);
             validateFormActions(snapshot);
@@ -4888,10 +4866,9 @@ public class UiConfigReleaseService {
         EntityListConfigDTO published = runtimeList(
                 verifiedSnapshot(release), target.getId());
         if (!Objects.equals(entityCode, published.getEntityCode())
-                || !Objects.equals(listKey, published.getListKey())
-                || !supportsEmbeddedScene(published)) {
+                || !Objects.equals(listKey, published.getListKey())) {
             throw new IllegalArgumentException(
-                    "open-list 目标列表发布快照不允许嵌入: "
+                    "open-list 目标列表发布快照归属不一致: "
                             + entityCode + "/" + listKey);
         }
         button.put("targetListId", target.getId());
@@ -4984,8 +4961,7 @@ public class UiConfigReleaseService {
         EntityListConfigDTO published = runtimeList(
                 verifiedSnapshot(release), listId);
         if (!Objects.equals(entityCode, published.getEntityCode())
-                || !Objects.equals(listKey, published.getListKey())
-                || !supportsEmbeddedScene(published)) {
+                || !Objects.equals(listKey, published.getListKey())) {
             throw new IllegalArgumentException(
                     position + " open-list 目标列表发布快照归属不一致");
         }
@@ -5225,11 +5201,6 @@ public class UiConfigReleaseService {
                 throw new IllegalArgumentException(
                         "子列表固定版本与目标实体或列表编码不一致: " + label);
             }
-            if (!supportsEmbeddedScene(publishedList)) {
-                throw new IllegalArgumentException(
-                        "子列表固定版本未开放 EMBEDDED 场景: "
-                                + targetEntityCode + "/" + listKey);
-            }
         }
     }
 
@@ -5271,16 +5242,6 @@ public class UiConfigReleaseService {
                             + targetEntityCode + "/" + listKey);
         }
         return list;
-    }
-
-    private boolean supportsEmbeddedScene(
-            EntityListConfigDTO list) {
-        List<String> scenes = list.getAllowedScenes() == null
-                ? List.of()
-                : list.getAllowedScenes();
-        return scenes.isEmpty()
-                || scenes.stream().anyMatch(
-                        "EMBEDDED"::equalsIgnoreCase);
     }
 
     private void validateFormActions(Map<String, Object> snapshot) {

@@ -231,7 +231,7 @@ public class EntityListActionConfigService {
     }
 
     /**
-     * 将按钮和场景配置同步到关系型存储表。
+     * 将按钮配置同步到关系型存储表。
      *
      * @param config 列表配置
      */
@@ -244,8 +244,6 @@ public class EntityListActionConfigService {
                 config.getId(), EntityListRelationalConfigService.TOOLBAR, toolbar);
         relationalConfigService.replaceActions(
                 config.getId(), EntityListRelationalConfigService.ROW, row);
-        relationalConfigService.replaceScenes(
-                config.getId(), parseScenes(config.getAllowedScenes()));
     }
 
     /**
@@ -269,12 +267,10 @@ public class EntityListActionConfigService {
                 config.getId(), EntityListRelationalConfigService.TOOLBAR, toolbar);
         relationalConfigService.replaceActionsForRelease(
                 config.getId(), EntityListRelationalConfigService.ROW, row);
-        relationalConfigService.replaceScenes(
-                config.getId(), parseScenes(config.getAllowedScenes()));
     }
 
     /**
-     * 删除指定列表配置的关系型按钮和场景配置。
+     * 删除指定列表配置的关系型按钮配置。
      *
      * @param listConfigId 列表配置ID
      */
@@ -474,19 +470,6 @@ public class EntityListActionConfigService {
             result.add(button);
         }
         return result;
-    }
-
-    private List<String> parseScenes(String json) {
-        if (!StringUtils.hasText(json)) {
-            return List.of(
-                    "MENU", "PAGE", "DIALOG", "DRAWER",
-                    "EMBEDDED", "FORM_PICKER", "SUB_TABLE");
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<>() {});
-        } catch (Exception exception) {
-            throw new IllegalArgumentException("列表允许场景JSON格式不正确", exception);
-        }
     }
 
     private List<Map<String, Object>> parseButtons(String json) {

@@ -113,11 +113,10 @@ public class ListFieldConditionEvaluator {
         // 系统基础字段映射
         return switch (fieldCode) {
             case "id" -> record.getId();
-            case "dataNo" -> record.getDataNo();
+            case "code" -> record.getCode();
             case "name" -> record.getName();
-            case "title" -> record.getTitle();
             case "status" -> record.getStatus();
-            case "createdBy" -> record.getCreatedBy();
+            case "create_by" -> record.getCreateBy();
             case "submitterId" -> record.getSubmitterId();
             case "submitterName" -> record.getSubmitterName();
             case "deptId" -> record.getDeptId();
@@ -129,8 +128,10 @@ public class ListFieldConditionEvaluator {
             case "currentTaskAssignee" -> record.getCurrentTaskAssignee();
             case "processStartTime" -> record.getProcessStartTime();
             case "processEndTime" -> record.getProcessEndTime();
-            case "createdAt" -> record.getCreatedAt();
-            case "updatedAt" -> record.getUpdatedAt();
+            case "create_time" -> record.getCreateTime();
+            case "update_time" -> record.getUpdateTime();
+            case "update_by" -> record.getUpdateBy();
+            case "deleted" -> record.getDeleted();
             default -> null;
         };
     }

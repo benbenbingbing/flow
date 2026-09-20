@@ -2,6 +2,7 @@ package com.workflow.entity.list.api.response;
 
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -10,9 +11,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 实体列表配置 DTO
+ * 实体列表配置 DTO。
+ * 历史发布和旧导入包可能带有已退役的上下文绑定，读取时忽略，且不再序列化或持久化。
  */
 @Data
+@JsonIgnoreProperties("contextBindingConfig")
 public class EntityListConfigDTO {
 
     /** 列表配置 ID */
@@ -62,22 +65,16 @@ public class EntityListConfigDTO {
     /** 访问权限码 */
     private String accessPermissionCode;
 
-    /** 允许的场景列表 */
-    private List<String> allowedScenes;
-
     /** 选择配置（多选/单选等） */
     private Map<String, Object> selectionConfig;
 
     /** 固定过滤配置 */
     private Map<String, Object> fixedFilterConfig;
 
-    /** 上下文绑定配置（父子数据联动等） */
-    private Map<String, Object> contextBindingConfig;
-
     /** 数据查询提供者编码 */
     private String queryProviderCode;
 
-    /** 列表查询绑定的可调用接口扩展 ID。 */
+    /** 历史查询槽位，仅用于旧配置兼容；新查询接口通过 LIST_LOAD 替代步骤配置。 */
     private String queryInterfaceExtensionId;
 
     /** 已发布版本号 */

@@ -6,7 +6,7 @@
       : targetType === 'BUTTON'
         ? `${targetName || '按钮'}事件绑定`
         : `${ownerLabel}事件绑定`"
-    width="1040px"
+    :width="ownerType === 'LIST' && targetType === 'OWNER' ? '1200px' : '1040px'"
     append-to-body
     destroy-on-close
   >
@@ -19,6 +19,7 @@
       :target-field="targetField"
       :allowed-events="allowedEvents"
       :field-options="fieldOptions"
+      :button-options="buttonOptions"
       :title="`${ownerLabel}执行链`"
       @changed="emit('changed')"
     />
@@ -35,6 +36,7 @@ const props = defineProps({
   ownerId: { type: [String, Number], default: '' },
   ownerLabel: { type: String, default: '配置' },
   fieldOptions: { type: Array, default: () => [] },
+  buttonOptions: { type: Array, default: () => [] },
   ownerEvents: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['changed'])

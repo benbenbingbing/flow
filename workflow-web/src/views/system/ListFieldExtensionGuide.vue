@@ -153,11 +153,11 @@ registerCellComponent('AmountBarCell', AmountBarCell, {
             <li>实体 → 列表设计 → 字段配置 → <strong>添加虚拟列</strong>。</li>
             <li>改名称，比如「摘要」。编码预填 <code>virtual_时间戳</code>，可改成 <code>summary</code>。</li>
             <li>「设置」→「数据与显示」→ 字段数据源选「字段组合模板」。</li>
-            <li>组合模板填 <code v-pre>${dataNo} - ${name}</code>。占位符是 <code v-pre>${字段编码}</code>，字段编码以字母开头，只做替换，不跑脚本。</li>
+            <li>组合模板填 <code v-pre>${code} - ${name}</code>。占位符是 <code v-pre>${字段编码}</code>，字段编码以字母开头，只做替换，不跑脚本。</li>
             <li>空值文本配在单元格 <code>renderConfig.emptyText</code>，默认 <code>-</code>。</li>
             <li>保存当前列，发布列表。</li>
           </ol>
-          <p>后端 <code>TemplateListFieldDataProvider</code> 渲染后写入 <code>record.extData[字段编码]</code>。占位符取值顺序：<code>extData</code> → <code>data</code> → 系统字段（<code>id / dataNo / name / title / status / submitterName</code>）。</p>
+          <p>后端 <code>TemplateListFieldDataProvider</code> 渲染后写入 <code>record.extData[字段编码]</code>。占位符取值顺序：<code>extData</code> → <code>data</code> → 系统字段（<code>id / code / name / status / submitterName</code>）。</p>
           <p>这个数据源 <code>supportsQuery()</code> 为 true，可以勾「查询」。勾上之后，平台先补值，再在内存里按列的 <code>queryType</code> 过滤，不会把虚拟列写进实体 SQL。</p>
         </section>
 
@@ -298,8 +298,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
   "row": {
     "id": "2038628006255251457",
     "entityCode": "expense",
-    "dataNo": "BX-001",
-    "title": "差旅报销",
+    "code": "BX-001",
     "name": "差旅报销",
     "status": "PENDING",
     "data": { "amount": 1200, "customerId": "c1" },
@@ -308,7 +307,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
     "submitterName": "张三",
     "deptId": "dept-1",
     "deptName": "销售部",
-    "createdBy": "zhangsan",
+    "create_by": "zhangsan",
     "actionCapabilities": {
       "edit": { "visible": true, "enabled": true, "reason": "" }
     }
@@ -355,7 +354,7 @@ const score = computed(() => {
 
 // 同一行旁路字段：自定义字段在 row.data，系统字段在行顶层
 const customerId = computed(() => props.row?.data?.customerId)
-const dataNo = computed(() => props.row?.dataNo)
+const code = computed(() => props.row?.code)
 
 // 引用显示名：key 是 类型:实体ID:记录ID
 const customerName = computed(() => {
@@ -465,7 +464,7 @@ function reloadList() {
             <el-table-column prop="method" label="方法" width="240" />
             <el-table-column prop="whenSet" label="你写了之后" />
           </el-table>
-          <p>模板列配满时，<code>dataSourceType=FIELD_TEMPLATE</code>，<code>dataSourceConfig</code> 只有 <code>template</code>，例如 <code v-pre>{"template":"${dataNo} - ${name}"}</code>；空值在 <code>renderConfig.emptyText</code>。占位符取值同样是 <code>extData &gt; data &gt; 系统字段</code>。</p>
+          <p>模板列配满时，<code>dataSourceType=FIELD_TEMPLATE</code>，<code>dataSourceConfig</code> 只有 <code>template</code>，例如 <code v-pre>{"template":"${code} - ${name}"}</code>；空值在 <code>renderConfig.emptyText</code>。占位符取值同样是 <code>extData &gt; data &gt; 系统字段</code>。</p>
         </section>
 
         <section id="designer" class="guide-section">

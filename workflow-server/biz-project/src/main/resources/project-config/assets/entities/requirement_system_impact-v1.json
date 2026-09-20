@@ -201,7 +201,6 @@
       "description": "仅用于嵌入式关系查看和数据核对。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": ["EMBEDDED","SELECTION"],
       "selectionConfig": {"selectionMode":"MULTIPLE","valueField":"id","returnMappings":[]},
       "toolbarConfig": [],
       "rowActionConfig": [
@@ -210,7 +209,6 @@
       ],
       "viewConfig": {"density":"compact","showIndex":true},
       "fixedFilterConfig": {},
-      "contextBindingConfig": {"parentField":"requirement_id"},
       "fields": [
         {"fieldCode":"system_scope_type","fieldName":"范围类型","sortOrder":10,"width":110,"showInList":true,"isQuery":true,"queryType":"EQ","align":"center","dataSourceType":"ENTITY_FIELD"},
         {"fieldCode":"system_id","fieldName":"涉及系统","sortOrder":20,"width":180,"showInList":true,"isQuery":true,"queryType":"EQ","align":"left","dataSourceType":"ENTITY_FIELD"},

@@ -12,6 +12,12 @@ import {
   resolveRuntimeEntitySelectionReference
 } from '../entity-selection-mapping.js'
 
+assert.deepEqual(
+  buildEntitySelectionSourceFields('CUSTOM').map(field => field.value),
+  ['selection.id', 'selection.name', 'selection.code', 'selection.status'],
+  '实体回填统一使用 name/code，不再提供退役字段'
+)
+
 const firstFormBinding = {
   eventCode: 'ENTITY_SELECTED',
   steps: mergeEntitySelectionMappings([], [{

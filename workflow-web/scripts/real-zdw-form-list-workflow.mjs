@@ -1232,15 +1232,6 @@ async function configureEntityList(entity) {
     },
     dataScopeMode: 'INHERIT',
     accessPermissionCode: null,
-    allowedScenes: [
-      'MENU',
-      'PAGE',
-      'DIALOG',
-      'DRAWER',
-      'EMBEDDED',
-      'FORM_PICKER',
-      'SUB_TABLE'
-    ],
     selectionConfig: parentList
       ? {
           selectionMode: 'MULTIPLE',
@@ -1263,12 +1254,6 @@ async function configureEntityList(entity) {
           ]
         },
     fixedFilterConfig: {},
-    contextBindingConfig: parentList
-      ? {}
-      : {
-          parentField: 'reqId',
-          relationCode: 'ZDWREQ_reqItemForm'
-        },
     queryProviderCode: null,
     expectedRevision: list.revision,
     fields
@@ -1343,8 +1328,6 @@ async function configureEntityList(entity) {
       })),
     viewConfig: schema.viewConfig,
     selectionConfig: schema.selectionConfig,
-    allowedScenes: schema.allowedScenes,
-    contextBindingConfig: schema.contextBindingConfig,
     pageSizeCap: page.pageSize || page.size,
     illegalFilter
   })

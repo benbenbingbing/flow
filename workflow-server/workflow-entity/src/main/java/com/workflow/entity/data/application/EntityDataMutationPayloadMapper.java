@@ -116,8 +116,6 @@ public class EntityDataMutationPayloadMapper {
         values.put("name", "name");
         values.put("code", "code");
         values.put("status", "status");
-        values.put("title", "title");
-        values.put("dataNo", "data_no");
         values.put(
                 "processInstanceId",
                 "process_instance_id");

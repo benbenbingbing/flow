@@ -36,11 +36,9 @@ public class EntityRelationDefinitionService {
     private static final Set<String> RESERVED_DATA_KEYS = Set.of(
             "id",
             "data",
-            "title",
             "name",
             "code",
             "status",
-            "datano",
             "processinstanceid",
             "processstarttime",
             "processendtime",
@@ -90,6 +88,19 @@ public class EntityRelationDefinitionService {
             String parentEntityId,
             String relationId) {
         return toDto(requireOwned(parentEntityId, relationId));
+    }
+
+    /** 返回当前实体可引用的正向和反向关系；只返回目录，运行时仍按发布快照鉴权。 */
+    @Transactional(readOnly = true)
+    public List<EntityRelationDTO> available(String entityId) {
+        var result = new java.util.ArrayList<>(list(entityId));
+        var incoming = relationMapper.selectAllByChildEntityId(entityId);
+        for (var relation : incoming == null ? List.<EntityRelation>of() : incoming) {
+            var dto = toDto(relation);
+            dto.setDirection("REVERSE");
+            result.add(dto);
+        }
+        return result;
     }
 
     @Transactional
@@ -374,6 +385,8 @@ public class EntityRelationDefinitionService {
         dto.setId(relation.getId());
         dto.setParentEntityId(relation.getParentEntityId());
         dto.setParentEntityCode(relation.getParentEntityCode());
+        EntityDefinition parent = entityMapper.selectById(relation.getParentEntityId());
+        dto.setParentEntityName(parent == null ? relation.getParentEntityCode() : parent.getEntityName());
         dto.setRelationCode(relation.getRelationCode());
         dto.setRelationName(relation.getRelationName());
         dto.setDataKey(effectiveDataKey(relation));

@@ -262,35 +262,7 @@
           </el-radio-group>
           <el-tag v-else type="info">新增</el-tag>
         </el-form-item>
-        <el-form-item label="组件模板">
-          <div class="template-settings">
-            <el-select
-              v-model="advancedButton.templateId"
-              clearable
-              filterable
-              placeholder="复制后独立"
-              style="width: 100%"
-              @change="handleTemplateChange(advancedButton, $event)"
-            >
-              <el-option
-                v-for="template in templates"
-                :key="template.id"
-                :label="`${template.templateName} (v${template.currentVersion})`"
-                :value="template.id"
-              />
-            </el-select>
-            <div v-if="advancedButton.templateId" class="template-version">
-              <span>当前锁定 v{{ advancedButton.templateVersion || 1 }}</span>
-              <el-button
-                link
-                type="primary"
-                @click="$emit('upgrade-template', advancedButton)"
-              >
-                检查并升级版本
-              </el-button>
-            </div>
-          </div>
-        </el-form-item>
+        <PageParameterMappingEditor v-if="canConfigureTargetForm(advancedButton) && advancedButton.targetFormId" v-model="advancedButton.parameterMappings" :schema="buttonParameterSchema" :source-fields="entityFields" />
         <el-alert
           title="这里直接编辑当前按钮草稿，关闭弹窗不会丢失修改；仍需点击表格中的“保存”提交。"
           type="info"
@@ -316,7 +288,7 @@
           />
         </el-form-item>
         <el-form-item label="目标列表" required>
-          <el-select v-model="openListForm.targetListKey" placeholder="选择 listKey" style="width: 100%">
+          <el-select v-model="openListForm.targetListKey" @change="loadListParameterSchema" placeholder="选择 listKey" style="width: 100%">
             <el-option
               v-for="list in targetListOptions"
               :key="list.listKey"
@@ -325,6 +297,7 @@
             />
           </el-select>
         </el-form-item>
+        <PageParameterMappingEditor v-model="openListForm.parameterMappings" :schema="listParameterSchema" :source-fields="entityFields" />
         <el-form-item label="打开方式">
           <el-radio-group v-model="openListForm.presentation">
             <el-radio-button value="DIALOG">弹窗</el-radio-button>
@@ -385,6 +358,7 @@
           : ['TOOLBAR_BUTTON_CLICK']"
         :field-options="eventFieldOptions"
         title="按钮执行链"
+        @changed="emit('events-changed')"
       />
     </el-dialog>
   </div>
@@ -398,9 +372,9 @@ import Sortable from 'sortablejs'
 import { getEntityPermissionOptions } from '@/api/system/menu'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { entityApi } from '@/api/entity'
-import { getFormsByEntity } from '@/api/entityForm'
+import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
+import { getFormsByEntity, getFormRuntimeRelease } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
-import { uiComponentTemplateApi } from '@/api/uiConfig'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
@@ -433,10 +407,6 @@ const props = defineProps({
     type: [String, Number],
     default: ''
   },
-  templates: {
-    type: Array,
-    default: () => []
-  },
   modelValue: {
     type: Array,
     default: () => []
@@ -447,8 +417,8 @@ const emit = defineEmits([
   'update:modelValue',
   'save',
   'remove',
-  'upgrade-template',
   'reorder',
+  'events-changed',
   'configure-related-content'
 ])
 
@@ -466,6 +436,8 @@ const buttonTableRef = ref(null)
 const ruleEditorRef = ref()
 const advancedDialogVisible = ref(false)
 const advancedButton = ref(null)
+const buttonParameterSchema = ref({})
+const listParameterSchema = ref({})
 const openListDialogVisible = ref(false)
 const buttonEventDialogVisible = ref(false)
 const buttonEventTarget = ref(null)
@@ -552,6 +524,7 @@ function handleCustomModeChange(row) {
   delete row.targetFormId
   delete row.targetFormReleaseId
   delete row.targetFormReleaseVersion
+  loadButtonParameterSchema(row)
 }
 
 function configureButtonEvent(button) {
@@ -570,6 +543,7 @@ async function openAdvancedSettings(row) {
   if (canConfigureTargetForm(row)) {
     await loadFormOptions()
   }
+  await loadButtonParameterSchema(row)
   advancedDialogVisible.value = true
 }
 
@@ -613,6 +587,29 @@ async function loadFormOptions() {
 function handleTargetFormChange(row) {
   delete row.targetFormReleaseId
   delete row.targetFormReleaseVersion
+  loadButtonParameterSchema(row)
+}
+
+/** 参数下拉读取已发布声明，与发布后运行的目标版本保持同一契约。 */
+async function loadButtonParameterSchema(row) {
+  buttonParameterSchema.value = {}
+  if (!row?.targetFormId) return
+  try {
+    const release = await getFormRuntimeRelease(row.targetFormId)
+    if (advancedButton.value !== row) return
+    buttonParameterSchema.value = safeParseConfig(safeParseConfig(release?.snapshotDocument).form?.viewConfig).inputParameterSchema || {}
+  } catch (error) { ElMessage.error(error?.message || '加载目标输入参数失败') }
+}
+async function loadListParameterSchema() {
+  listParameterSchema.value = {}
+  const target = targetListOptions.value.find(item => item.listKey === openListForm.value.targetListKey)
+  if (!target) return
+  try {
+    const releases = await entityListConfigApi.getReleases(target.id)
+    if (openListForm.value.targetListKey !== target.listKey) return
+    const release = releases.find(item => item.status === 'ACTIVE')
+    listParameterSchema.value = safeParseConfig(safeParseConfig(release?.snapshotDocument).list?.viewConfig).inputParameterSchema || {}
+  } catch (error) { ElMessage.error(error?.message || '加载目标输入参数失败') }
 }
 
 function targetFormSummary(row) {
@@ -623,34 +620,11 @@ function targetFormSummary(row) {
   return row.targetFormId ? '已配置表单' : '配置表单'
 }
 
-async function handleTemplateChange(row, templateId) {
-  if (!templateId) {
-    row.templateVersion = null
-    row.localOverridesDocument = null
-    return
-  }
-  const template = props.templates.find(item => item.id === templateId)
-  if (!template) return
-  try {
-    const versions = await uiComponentTemplateApi.versions(templateId)
-    const latest = versions.find(item => item.version === template.currentVersion)
-      || versions[0]
-    if (!latest) return
-    const snapshot = safeParseConfig(latest.snapshotDocument)
-    Object.assign(row, snapshot.button || snapshot)
-    row.templateId = templateId
-    row.templateVersion = latest.version
-    row.localOverridesDocument = {}
-    ElMessage.success(`已锁定按钮模板 v${latest.version}`)
-  } catch (error) {
-    ElMessage.error(error?.message || '加载按钮模板失败')
-  }
-}
-
 function createOpenListForm(button = {}) {
   return {
     targetEntityCode: button.targetEntityCode || '',
     targetListKey: button.targetListKey || '',
+    parameterMappings: button.parameterMappings || [],
     presentation: button.presentation || 'DIALOG',
     selectionMode: button.selectionMode || 'NONE',
     openListTitle: button.openListTitle || '',
@@ -689,6 +663,7 @@ async function loadTargetLists(entityCode, reset = true) {
         || targetListOptions.value[0]?.listKey
         || ''
     }
+    await loadListParameterSchema()
   } catch (error) {
     console.error('加载目标列表失败:', error)
     targetListOptions.value = []
@@ -988,19 +963,6 @@ function ruleSummary(row) {
   overflow: hidden;
   color: var(--el-text-color-secondary);
   text-overflow: ellipsis;
-}
-
-.template-settings {
-  width: 100%;
-}
-
-.template-version {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 6px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 
 .permission-option {

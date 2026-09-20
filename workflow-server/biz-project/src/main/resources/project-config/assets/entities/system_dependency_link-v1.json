@@ -78,7 +78,6 @@
       "description": "按来源系统、目标系统、类型、数据等级和状态查询依赖。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": ["PAGE","EMBEDDED","SELECTION"],
       "selectionConfig": {"selectionMode":"MULTIPLE","valueField":"id","returnMappings":[]},
       "toolbarConfig": [
         {"key":"create","type":"built-in","label":"新增依赖","icon":"Plus","buttonType":"primary","sort":1,"enabled":true},
@@ -90,7 +89,6 @@
       ],
       "viewConfig": {"density":"compact","showIndex":true},
       "fixedFilterConfig": {},
-      "contextBindingConfig": {"parentField":"source_system_id"},
       "fields": [
         {"fieldCode":"code","fieldName":"依赖编号","sortOrder":10,"width":170,"showInList":true,"isQuery":true,"queryType":"LIKE","align":"left","dataSourceType":"ENTITY_FIELD"},
         {"fieldCode":"source_system_id","fieldName":"来源系统","sortOrder":20,"width":220,"showInList":true,"isQuery":true,"queryType":"EQ","align":"left","dataSourceType":"ENTITY_FIELD"},

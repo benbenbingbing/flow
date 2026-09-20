@@ -1352,10 +1352,6 @@
       "description": "查询全部项目系统关系变更。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": [
-        "PAGE",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -1407,7 +1403,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",
@@ -1516,9 +1511,6 @@
       "description": "当前办理人为当前用户的变更。",
       "isDefault": false,
       "dataScopeMode": "NARROW",
-      "allowedScenes": [
-        "PAGE"
-      ],
       "selectionConfig": {
         "selectionMode": "NONE",
         "valueField": "id",
@@ -1551,7 +1543,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",
@@ -1638,10 +1629,6 @@
       "description": "已成功写入项目系统关系的变更。",
       "isDefault": false,
       "dataScopeMode": "NARROW",
-      "allowedScenes": [
-        "PAGE",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -1669,7 +1656,6 @@
           "EFFECTIVE"
         ]
       },
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",

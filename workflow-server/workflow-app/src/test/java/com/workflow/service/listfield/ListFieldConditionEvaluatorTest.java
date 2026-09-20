@@ -22,6 +22,17 @@ class ListFieldConditionEvaluatorTest {
     /** 被测条件求值器 */
     private final ListFieldConditionEvaluator evaluator = new ListFieldConditionEvaluator();
 
+    /** 自定义列表返回的 DTO 编号位于 code，筛选不依赖业务 data 子对象。 */
+    @Test
+    void filtersByStandardRecordCode() {
+        EntityDataDTO first = new EntityDataDTO();
+        first.setCode("CODE-001");
+        EntityDataDTO second = new EntityDataDTO();
+        second.setCode("CODE-002");
+        assertEquals(List.of(second), evaluator.filter(
+                List.of(first, second), List.of(field("code", "EQ")), Map.of("code", "CODE-002")));
+    }
+
     /** 测试 provider 增强后过滤虚拟字段：验证 LIKE 条件仅保留匹配的行 */
     @Test
     void filtersVirtualFieldAfterProviderEnrichment() {

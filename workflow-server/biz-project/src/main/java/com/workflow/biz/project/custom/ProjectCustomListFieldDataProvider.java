@@ -102,10 +102,10 @@ public class ProjectCustomListFieldDataProvider
                     record.setExtData(new HashMap<>());
                 }
                 String identity =
-                        record.getDataNo() == null
-                                || record.getDataNo().isBlank()
+                        record.getCode() == null
+                                || record.getCode().isBlank()
                                 ? record.getId()
-                                : record.getDataNo();
+                                : record.getCode();
                 record.getExtData().put(
                         field.getFieldCode(),
                         labelPrefix

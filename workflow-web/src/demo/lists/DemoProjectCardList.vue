@@ -32,8 +32,8 @@
         <template #header>
           <div class="card-header">
             <div>
-              <strong>{{ getValue(row, 'projectName') || row.name || row.title || '-' }}</strong>
-              <div class="project-code">{{ row.code || getValue(row, 'projectCode') || row.dataNo }}</div>
+              <strong>{{ getValue(row, 'projectName') || row.name || '-' }}</strong>
+              <div class="project-code">{{ row.code || getValue(row, 'projectCode') || row.id }}</div>
             </div>
             <el-tag :type="getStatusType(row.status)">
               {{ getStatusText(row.status) || row.status }}

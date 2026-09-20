@@ -94,10 +94,10 @@ public class ProjectCustomActionRuleConditionProvider
         }
         return switch (field) {
             case "id" -> row.getId();
-            case "dataNo" -> row.getDataNo();
+            case "code" -> row.getCode();
             case "name" -> row.getName();
             case "status" -> row.getStatus();
-            case "createdBy" -> row.getCreatedBy();
+            case "create_by" -> row.getCreateBy();
             case "submitterId" -> row.getSubmitterId();
             default -> firstPresent(
                     row.getData(),

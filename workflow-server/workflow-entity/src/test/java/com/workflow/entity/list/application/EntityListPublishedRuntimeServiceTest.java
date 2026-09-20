@@ -54,7 +54,6 @@ class EntityListPublishedRuntimeServiceTest {
         published.setEntityCode("asset");
         published.setListKey("default");
         published.setListName("发布列表");
-        published.setAllowedScenes(List.of("EMBEDDED"));
         published.setFields(List.of());
         published.setToolbarConfig(List.of());
         published.setRowActionConfig(List.of());

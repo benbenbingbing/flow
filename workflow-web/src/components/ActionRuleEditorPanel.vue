@@ -8,128 +8,134 @@
       title="系统先判断显示条件：不满足则隐藏；按钮显示后再判断启用条件：不满足则禁用并展示原因。功能权限和数据范围仍优先校验。"
     />
 
-    <section class="rule-branch" aria-label="显示条件">
-      <header class="rule-branch__header">
-        <div>
-          <h3>显示条件</h3>
-          <p>条件全部通过时显示按钮；不满足则隐藏，且不再判断启用条件。</p>
-        </div>
-        <el-tag type="info" effect="plain">不满足则隐藏</el-tag>
-      </header>
-      <el-form label-position="top" class="rule-branch__form">
-        <el-form-item label="常用预设" class="rule-preset-item">
-          <el-select
-            v-model="visiblePreset"
-            clearable
-            placeholder="选择预设并应用到显示条件"
-            @change="value => applyPreset('visibleWhen', value)"
-          >
-            <el-option v-for="item in visiblePresets" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item class="rule-condition-item">
-          <template #label>
-            <ConfigHelpLabel label="显示规则" help-key="actionRule.visibleWhen" />
-          </template>
-          <div class="rule-condition-editor">
-            <el-alert
-              v-if="!rule.visibleWhen"
-              type="info"
-              :closable="false"
-              title="未配置显示条件，按钮默认显示。"
-            />
-            <ActionRuleGroupEditor
-              v-if="rule.visibleWhen"
-              :node="rule.visibleWhen"
-              :fields="fieldOptions"
-              :statuses="statuses"
-              :allow-custom-conditions="allowCustomConditions"
-            />
-            <div class="rule-condition-actions">
-              <el-button
+    <el-collapse v-model="expandedBranches" class="rule-branches">
+      <el-collapse-item name="visibleWhen" class="rule-branch" aria-label="显示条件">
+        <template #title>
+          <header class="rule-branch__header">
+            <div>
+              <h3>显示条件</h3>
+              <p>条件全部通过时显示按钮；不满足则隐藏，且不再判断启用条件。</p>
+            </div>
+            <el-tag type="info" effect="plain">不满足则隐藏</el-tag>
+          </header>
+        </template>
+        <el-form label-position="top" class="rule-branch__form">
+          <el-form-item label="常用预设" class="rule-preset-item">
+            <el-select
+              v-model="visiblePreset"
+              clearable
+              placeholder="选择预设并应用到显示条件"
+              @change="value => applyPreset('visibleWhen', value)"
+            >
+              <el-option v-for="item in visiblePresets" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="rule-condition-item">
+            <template #label>
+              <ConfigHelpLabel label="显示规则" help-key="actionRule.visibleWhen" />
+            </template>
+            <div class="rule-condition-editor">
+              <el-alert
                 v-if="!rule.visibleWhen"
-                type="primary"
-                text
-                @click="createRoot('visibleWhen')"
-              >添加显示条件</el-button>
-              <el-button
-                v-else
-                type="danger"
-                text
-                @click="rule.visibleWhen = null"
-              >清空显示条件</el-button>
+                type="info"
+                :closable="false"
+                title="未配置显示条件，按钮默认显示。"
+              />
+              <ActionRuleGroupEditor
+                v-if="rule.visibleWhen"
+                :node="rule.visibleWhen"
+                :fields="fieldOptions"
+                :statuses="statuses"
+                :allow-custom-conditions="allowCustomConditions"
+              />
+              <div class="rule-condition-actions">
+                <el-button
+                  v-if="!rule.visibleWhen"
+                  type="primary"
+                  text
+                  @click="createRoot('visibleWhen')"
+                >添加显示条件</el-button>
+                <el-button
+                  v-else
+                  type="danger"
+                  text
+                  @click="rule.visibleWhen = null"
+                >清空显示条件</el-button>
+              </div>
             </div>
-          </div>
-        </el-form-item>
-      </el-form>
-    </section>
+          </el-form-item>
+        </el-form>
+      </el-collapse-item>
 
-    <section class="rule-branch" aria-label="启用条件">
-      <header class="rule-branch__header">
-        <div>
-          <h3>启用条件</h3>
-          <p>按钮已显示时再判断；不满足则保留按钮并禁用，向用户解释原因。</p>
-        </div>
-        <el-tag type="warning" effect="plain">不满足则禁用</el-tag>
-      </header>
-      <el-form label-position="top" class="rule-branch__form rule-branch__form--enabled">
-        <el-form-item label="常用预设" class="rule-preset-item">
-          <el-select
-            v-model="enabledPreset"
-            clearable
-            placeholder="选择预设并应用到启用条件"
-            @change="value => applyPreset('enabledWhen', value)"
-          >
-            <el-option v-for="item in enabledPresets" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item class="rule-message-item" :required="Boolean(rule.enabledWhen)">
-          <template #label>
-            <ConfigHelpLabel label="禁用提示" help-key="actionRule.disabledMessage" />
-          </template>
-          <el-input
-            v-model="rule.disabledMessage"
-            maxlength="300"
-            show-word-limit
-            placeholder="例如：仅本人未流转草稿可以删除"
-          />
-        </el-form-item>
-        <el-form-item class="rule-condition-item">
-          <template #label>
-            <ConfigHelpLabel label="启用规则" help-key="actionRule.enabledWhen" />
-          </template>
-          <div class="rule-condition-editor">
-            <el-alert
-              v-if="!rule.enabledWhen"
-              type="info"
-              :closable="false"
-              title="未配置启用条件，显示后的按钮默认可用。"
-            />
-            <ActionRuleGroupEditor
-              v-if="rule.enabledWhen"
-              :node="rule.enabledWhen"
-              :fields="fieldOptions"
-              :statuses="statuses"
-              :allow-custom-conditions="allowCustomConditions"
-            />
-            <div class="rule-condition-actions">
-              <el-button
-                v-if="!rule.enabledWhen"
-                type="primary"
-                text
-                @click="createRoot('enabledWhen')"
-              >添加启用条件</el-button>
-              <el-button
-                v-else
-                type="danger"
-                text
-                @click="rule.enabledWhen = null"
-              >清空启用条件</el-button>
+      <el-collapse-item name="enabledWhen" class="rule-branch" aria-label="启用条件">
+        <template #title>
+          <header class="rule-branch__header">
+            <div>
+              <h3>启用条件</h3>
+              <p>按钮已显示时再判断；不满足则保留按钮并禁用，向用户解释原因。</p>
             </div>
-          </div>
-        </el-form-item>
-      </el-form>
-    </section>
+            <el-tag type="warning" effect="plain">不满足则禁用</el-tag>
+          </header>
+        </template>
+        <el-form label-position="top" class="rule-branch__form rule-branch__form--enabled">
+          <el-form-item label="常用预设" class="rule-preset-item">
+            <el-select
+              v-model="enabledPreset"
+              clearable
+              placeholder="选择预设并应用到启用条件"
+              @change="value => applyPreset('enabledWhen', value)"
+            >
+              <el-option v-for="item in enabledPresets" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="rule-message-item" :required="Boolean(rule.enabledWhen)">
+            <template #label>
+              <ConfigHelpLabel label="禁用提示" help-key="actionRule.disabledMessage" />
+            </template>
+            <el-input
+              v-model="rule.disabledMessage"
+              maxlength="300"
+              show-word-limit
+              placeholder="例如：仅本人未流转草稿可以删除"
+            />
+          </el-form-item>
+          <el-form-item class="rule-condition-item">
+            <template #label>
+              <ConfigHelpLabel label="启用规则" help-key="actionRule.enabledWhen" />
+            </template>
+            <div class="rule-condition-editor">
+              <el-alert
+                v-if="!rule.enabledWhen"
+                type="info"
+                :closable="false"
+                title="未配置启用条件，显示后的按钮默认可用。"
+              />
+              <ActionRuleGroupEditor
+                v-if="rule.enabledWhen"
+                :node="rule.enabledWhen"
+                :fields="fieldOptions"
+                :statuses="statuses"
+                :allow-custom-conditions="allowCustomConditions"
+              />
+              <div class="rule-condition-actions">
+                <el-button
+                  v-if="!rule.enabledWhen"
+                  type="primary"
+                  text
+                  @click="createRoot('enabledWhen')"
+                >添加启用条件</el-button>
+                <el-button
+                  v-else
+                  type="danger"
+                  text
+                  @click="rule.enabledWhen = null"
+                >清空启用条件</el-button>
+              </div>
+            </div>
+          </el-form-item>
+        </el-form>
+      </el-collapse-item>
+    </el-collapse>
   </div>
 </template>
 
@@ -157,19 +163,19 @@ const rule = defineModel({
 })
 const visiblePreset = ref('')
 const enabledPreset = ref('')
+const expandedBranches = ref(['visibleWhen', 'enabledWhen'])
 
 const systemFields = [
   { label: '数据名称', value: 'name' },
   { label: '数据编码', value: 'code' },
-  { label: '业务单号', value: 'dataNo' },
   { label: '状态', value: 'status' },
-  { label: '创建人', value: 'createdBy' },
+  { label: '创建人', value: 'create_by' },
   { label: '提交人', value: 'submitterId' },
   { label: '所属部门', value: 'deptId' },
   { label: '流程实例', value: 'processInstanceId' },
   { label: '当前办理人', value: 'currentTaskAssignee' },
-  { label: '创建时间', value: 'createdAt' },
-  { label: '更新时间', value: 'updatedAt' }
+  { label: '创建时间', value: 'create_time' },
+  { label: '更新时间', value: 'update_time' }
 ]
 
 const fieldOptions = computed(() => [
@@ -215,7 +221,11 @@ const fieldOperators = new Set([
   'CONTAINS', 'NOT_CONTAINS', 'EMPTY', 'NOT_EMPTY', 'GT', 'GTE', 'LT', 'LTE'
 ])
 
-watch(rule, resetPresets)
+watch(rule, () => {
+  resetPresets()
+  // 打开按钮时会替换规则草稿，恢复两个面板展开；编辑条件内容不重置折叠状态。
+  expandedBranches.value = ['visibleWhen', 'enabledWhen']
+})
 
 /**
  * 校验并生成可持久化的 v2 规则。面板本身不提示消息，便于弹窗和内嵌场景
@@ -348,8 +358,13 @@ defineExpose({ buildValidatedRule, resetPresets })
   margin-bottom: 16px;
 }
 
+.rule-branches {
+  border: 0;
+  --el-collapse-header-bg-color: transparent;
+  --el-collapse-content-bg-color: transparent;
+}
+
 .rule-branch {
-  padding: 16px 18px 18px;
   border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
   background: var(--el-fill-color-extra-light);
@@ -359,12 +374,29 @@ defineExpose({ buildValidatedRule, resetPresets })
   margin-top: 16px;
 }
 
+.rule-branch :deep(.el-collapse-item__header) {
+  height: auto;
+  padding: 16px 18px;
+  border-bottom: 0;
+  text-align: left;
+}
+
+.rule-branch :deep(.el-collapse-item__wrap) {
+  border-bottom: 0;
+}
+
+.rule-branch :deep(.el-collapse-item__content) {
+  padding: 0 18px 18px;
+}
+
 .rule-branch__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
+  flex: 1;
+  min-width: 0;
+  margin-right: 12px;
 }
 
 .rule-branch__header h3 {
@@ -406,8 +438,12 @@ defineExpose({ buildValidatedRule, resetPresets })
 }
 
 @media (max-width: 760px) {
-  .rule-branch {
+  .rule-branch :deep(.el-collapse-item__header) {
     padding: 14px;
+  }
+
+  .rule-branch :deep(.el-collapse-item__content) {
+    padding: 0 14px 14px;
   }
 
   .rule-branch__header,

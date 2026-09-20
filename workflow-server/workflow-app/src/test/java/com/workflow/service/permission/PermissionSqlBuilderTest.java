@@ -226,6 +226,25 @@ class PermissionSqlBuilderTest {
                 sql);
     }
 
+    /** 审计条件只接受数据库字段编码，历史别名不能再解析为系统列。 */
+    @Test
+    void auditConditionsUseCanonicalColumnNamesOnly() {
+        for (String code : List.of("create_time", "update_time", "create_by", "update_by")) {
+            FilterConfigDTO filter = new FilterConfigDTO();
+            filter.setType("RULE");
+            filter.setRoot(condition("FIELD", code, "EQ", "value"));
+            assertTrue(builder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1"))
+                    .contains(code + " = 'value'"));
+        }
+        for (String code : List.of("createdAt", "updatedAt", "createdBy", "updatedBy", "createBy", "updateBy")) {
+            FilterConfigDTO filter = new FilterConfigDTO();
+            filter.setType("RULE");
+            filter.setRoot(condition("FIELD", code, "EQ", "value"));
+            assertEquals("1=0", builder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1")));
+            assertThrows(IllegalArgumentException.class, () -> builder.validateFilter("expense", filter));
+        }
+    }
+
     /** 测试编译跨用户、状态与自定义字段的嵌套结构化条件：验证 SQL 含 create_by、amount、status 条件并用 AND 连接 */
     @Test
     void compilesNestedStructuredConditionsAcrossUserStatusAndCustomFields() {

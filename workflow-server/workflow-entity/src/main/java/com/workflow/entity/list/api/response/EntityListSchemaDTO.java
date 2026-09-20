@@ -43,12 +43,8 @@ public class EntityListSchemaDTO {
     private List<Map<String, Object>> rowActionConfig;
     /** 自定义列表组件注册名 */
     private String customComponent;
-    /** 允许的场景列表 */
-    private List<String> allowedScenes;
     /** 固定过滤配置 */
     private Map<String, Object> fixedFilterConfig;
-    /** 上下文绑定配置 */
-    private Map<String, Object> contextBindingConfig;
     /** 数据查询提供者编码 */
     private String queryProviderCode;
     /** 当前用户的工具栏运行时能力 */

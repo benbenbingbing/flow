@@ -220,7 +220,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         variables.putAll(WorkflowReservedVariables.sanitize(request.variables()));
         variables.put("entityCode", request.entityCode());
         variables.put("entityDataId", request.entityRecordId());
-        variables.put("dataNo", request.dataNo());
+        // 编号取自服务端实体记录，覆盖表单或扩展变量中的同名输入。
+        variables.put("code", request.code());
         variables.put("submitterId", request.submitterId());
         variables.put("submitterName", request.submitterName());
         // 历史部署可能包含旧 UI 保存的任意 UEL；只有全部表达式通过当前

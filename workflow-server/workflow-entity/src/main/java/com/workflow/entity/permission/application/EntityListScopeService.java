@@ -8,6 +8,7 @@ import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeConfigurationDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeDefaultDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
+import com.workflow.entity.permission.api.response.EntityListScopePolicyPreviewDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.api.response.MatchConfigDTO;
@@ -21,6 +22,7 @@ import com.workflow.entity.permission.infrastructure.persistence.record.EntityLi
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.audit.AuditAction;
 import com.workflow.contracts.audit.AuditModule;
 import com.workflow.contracts.audit.AuditRiskLevel;
@@ -124,6 +126,45 @@ public class EntityListScopeService {
                     toScopeDefaultDTO(config));
         }
         return result;
+    }
+
+    /**
+     * 模拟目录中单条已保存规则，直接编译该规则的数据条件，不计算列表最终权限。
+     *
+     * @param id 已保存规则 ID，无需先绑定列表或发布
+     * @param user 经管理端授权选择的模拟用户，用于解析用户、部门等条件变量
+     * @return 规则 SQL、启用状态和适用对象匹配结果；停用或未匹配时仍返回条件供检查
+     * @throws IllegalArgumentException 规则、用户不存在或规则配置非法时抛出
+     * @throws IllegalStateException 规则 JSON 损坏时抛出
+     */
+    @Transactional(readOnly = true)
+    public EntityListScopePolicyPreviewDTO previewPolicy(String id, SysUser user) {
+        if (user == null || !StringUtils.hasText(user.getId())) {
+            throw new IllegalArgumentException("模拟用户不存在");
+        }
+        EntityListScopePolicy policy = policyMapper.selectById(id);
+        if (policy == null || Integer.valueOf(1).equals(policy.getDeleted())) {
+            throw new IllegalArgumentException("数据范围方案不存在");
+        }
+        requireEntity(policy.getEntityCode());
+        FilterConfigDTO filter = readJson(policy.getFilterConfig(), FilterConfigDTO.class);
+        sqlBuilder.validateFilter(policy.getEntityCode(), filter);
+        // 与新建列表绑定一致，旧规则未保存适用对象时按全部用户处理。
+        MatchConfigDTO audience = filter.getAudience() == null
+                ? allUsersMatch() : filter.getAudience();
+        validateMatchConfig(audience);
+
+        EntityListScopePolicyPreviewDTO preview = new EntityListScopePolicyPreviewDTO();
+        preview.setPolicyId(policy.getId());
+        preview.setRuleName(policy.getPolicyName());
+        preview.setRuleEffect(normalized(filter.getRuleEffect(), "ALLOW"));
+        preview.setUserId(user.getId());
+        preview.setUsername(user.getUsername());
+        preview.setEnabled(Integer.valueOf(1).equals(policy.getEnabled()));
+        preview.setAudienceMatched(ruleMatcher.matches(audience, user));
+        // 行内模拟必须展示本规则条件，不能被管理员绕过权限或列表默认策略折叠为 1=1。
+        preview.setSql(sqlBuilder.buildFilterSql(policy.getEntityCode(), filter, user));
+        return preview;
     }
 
     /**

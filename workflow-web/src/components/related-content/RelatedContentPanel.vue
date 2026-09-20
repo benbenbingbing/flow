@@ -12,6 +12,7 @@
           <strong>关联内容</strong>
           <span>在当前{{ ownerType === 'FORM' ? '表单' : '列表' }}中组合其他实体的表单或列表</span>
         </div>
+        <el-button link type="primary" :disabled="!ownerId || loading" @click="openExtension">扩展页面</el-button>
         <el-button type="primary" :disabled="!ownerId || loading" @click="openCreate">
           <el-icon><Plus /></el-icon>
           新增关联内容
@@ -24,6 +25,7 @@
         <strong>关联内容</strong>
         <span>在当前{{ ownerType === 'FORM' ? '表单' : '列表' }}中组合其他实体的表单或列表</span>
       </div>
+      <el-button link type="primary" :disabled="!ownerId || loading" @click="openExtension">扩展页面</el-button>
       <el-button type="primary" :disabled="!ownerId || loading" @click="openCreate">
         <el-icon><Plus /></el-icon>
         新增关联内容
@@ -32,7 +34,7 @@
 
     <div v-loading="loading" class="panel-body">
       <el-alert
-        title="已有实体关系只需设置展示和操作；目标实体、匹配字段及关联数量统一在实体设计中维护。其他取数场景可新增关联内容。"
+        title="关联内容引用实体关系，只设置展示和操作。需随主表保存的子表单或明细，请从表单左侧的组成关系添加；当前记录或接口取数请使用“扩展页面”。"
         type="info"
         :closable="false"
         show-icon
@@ -234,6 +236,10 @@ function openCreate() {
   dialogRef.value?.open()
 }
 
+function openExtension() {
+  dialogRef.value?.open(null, { extension: true })
+}
+
 function openEdit(item) {
   dialogRef.value?.open(item)
 }
@@ -293,7 +299,7 @@ watch(
   { immediate: true }
 )
 
-defineExpose({ open, load, remove })
+defineExpose({ open, load, remove, openCreate })
 </script>
 
 <style scoped>

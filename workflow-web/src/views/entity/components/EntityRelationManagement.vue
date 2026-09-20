@@ -3,7 +3,7 @@
     <header class="relation-header">
       <div>
         <h2>实体关系</h2>
-        <p>选择关联实体和实际关联字段。一对一在表单中显示关联表单，一对多显示关联列表。</p>
+        <p>统一定义数据关系。普通关联独立展示和保存；组成关系用于随主表保存的子表单或明细。</p>
       </div>
       <div class="relation-actions">
         <el-button :loading="loading" @click="loadRelations">刷新</el-button>
@@ -89,9 +89,9 @@
           {{ relationTypeLabel(row.relationType) }}
         </template>
       </el-table-column>
-      <el-table-column label="表单中展示" width="120" align="center">
+      <el-table-column label="表单中使用" width="120" align="center">
         <template #default="{ row }">
-          {{ row.relationType === 'ONE_TO_ONE' ? '关联表单' : '关联列表' }}
+          {{ row.ownershipType === 'COMPOSITION' ? (row.relationType === 'ONE_TO_ONE' ? '子表单编辑' : '明细编辑') : (row.relationType === 'ONE_TO_ONE' ? '关联表单' : '关联列表') }}
         </template>
       </el-table-column>
       <el-table-column label="所有权" width="110" align="center">
@@ -149,15 +149,6 @@
       :close-on-click-modal="false"
       @closed="resetEditor"
     >
-      <el-alert
-        v-if="isEditing"
-        title="稳定标识创建后不可修改"
-        description="关系编码和聚合数据键会被表单、版本配置及外部接口引用；如需改变语义，请新建关系并迁移引用。"
-        type="info"
-        :closable="false"
-        show-icon
-        class="editor-alert"
-      />
       <el-form
         ref="editorFormRef"
         :model="editor"
@@ -165,81 +156,72 @@
         label-width="120px"
         status-icon
       >
-        <SettingsSection
-          title="关系名称"
-          description="给这项关联起一个便于表单设计时识别的名称"
-          :collapsible="false"
-          primary
-        >
-          <el-form-item label="关系名称" prop="relationName" required>
-            <el-input
-              v-model="editor.relationName"
-              maxlength="200"
-              show-word-limit
-              placeholder="例如：订单明细"
+        <el-form-item label="关系名称" prop="relationName" required>
+          <template #label>
+            <ConfigHelpLabel label="关系名称" content="给这项关联起一个便于表单设计时识别的名称。" />
+          </template>
+          <el-input
+            v-model="editor.relationName"
+            maxlength="200"
+            show-word-limit
+            placeholder="例如：订单明细"
+          />
+        </el-form-item>
+        <el-form-item label="关系编码" prop="relationCode">
+          <template #label>
+            <ConfigHelpLabel label="关系编码" content="留空由系统自动生成，仅接口集成需要时自定义。这是关系自身的稳定标识，不是实体字段；创建后不可修改，删除后编码不能复用。" />
+          </template>
+          <el-input
+            v-model="editor.relationCode"
+            :disabled="isEditing"
+            maxlength="100"
+            placeholder="留空由系统自动生成"
+          />
+        </el-form-item>
+        <el-form-item label="内部数据键" prop="dataKey">
+          <template #label>
+            <ConfigHelpLabel label="内部数据键" content="用于承载关联结果，留空自动生成，创建后不可修改且不能与当前实体字段重名。无需在任一实体中添加同名字段；实际关联使用下方选择的关联字段。" />
+          </template>
+          <el-input
+            v-model="editor.dataKey"
+            :disabled="isEditing"
+            maxlength="100"
+            placeholder="留空自动生成，不与当前实体字段重名"
+          />
+        </el-form-item>
+        <el-form-item label="关联实体" prop="childEntityId" required>
+          <template #label>
+            <ConfigHelpLabel label="关联实体" content="选择要关联的已发布业务实体，再选择其中保存当前记录 ID 的字段。" />
+          </template>
+          <EntityDefinitionPicker
+            v-model="editor.childEntityId"
+            value-key="id"
+            title="选择关联实体"
+            placeholder="请选择要展示数据的实体"
+            :query="{ storageMode: 'DYNAMIC', status: 'PUBLISHED' }"
+            :exclude-values="[String(entityId)]"
+            @change="handleChildEntityChange"
+          />
+        </el-form-item>
+        <el-form-item label="关联字段" prop="childRefFieldCode" required>
+          <template #label>
+            <ConfigHelpLabel label="关联字段" :content="childRefFieldHelp" />
+          </template>
+          <el-select
+            v-model="editor.childRefFieldCode"
+            :loading="childFieldsLoading"
+            :disabled="!editor.childEntityId"
+            filterable
+            placeholder="选择保存当前记录 ID 的字段"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="field in childFieldOptions"
+              :key="field.fieldCode"
+              :label="`${field.fieldName || field.fieldCode} / ${field.fieldCode} · ${field.fieldType || '未知类型'}`"
+              :value="field.fieldCode"
             />
-          </el-form-item>
-        </SettingsSection>
-
-        <SettingsSection
-          title="内部标识（自动生成）"
-          description="无需创建同名字段；仅接口集成需要自定义时展开"
-          :default-expanded="false"
-        >
-          <el-form-item label="关系编码" prop="relationCode">
-            <el-input
-              v-model="editor.relationCode"
-              :disabled="isEditing"
-              maxlength="100"
-              placeholder="留空由系统自动生成"
-            />
-            <div class="form-tip">这是关系自身的标识，不是实体字段。删除后编码不能复用。</div>
-          </el-form-item>
-          <el-form-item label="内部数据键" prop="dataKey">
-            <el-input
-              v-model="editor.dataKey"
-              :disabled="isEditing"
-              maxlength="100"
-              placeholder="留空自动生成，不与当前实体字段重名"
-            />
-            <div class="form-tip">用于承载关联结果，无需在任一实体中添加同名字段。实际关联使用下方选择的关联字段。</div>
-          </el-form-item>
-        </SettingsSection>
-
-        <SettingsSection
-          title="数据怎么关联"
-          description="选择目标实体，再选择其中保存当前记录 ID 的字段"
-          :collapsible="false"
-        >
-          <el-form-item label="关联实体" prop="childEntityId" required>
-            <EntityDefinitionPicker
-              v-model="editor.childEntityId"
-              value-key="id"
-              title="选择关联实体"
-              placeholder="请选择要展示数据的实体"
-              :query="{ storageMode: 'DYNAMIC', status: 'PUBLISHED' }"
-              :exclude-values="[String(entityId)]"
-              @change="handleChildEntityChange"
-            />
-          </el-form-item>
-          <el-form-item label="关联字段" prop="childRefFieldCode" required>
-            <el-select
-              v-model="editor.childRefFieldCode"
-              :loading="childFieldsLoading"
-              :disabled="!editor.childEntityId"
-              filterable
-              placeholder="选择保存当前记录 ID 的字段"
-              style="width: 100%"
-            >
-              <el-option
-                v-for="field in childFieldOptions"
-                :key="field.fieldCode"
-                :label="`${field.fieldName || field.fieldCode} / ${field.fieldCode} · ${field.fieldType || '未知类型'}`"
-                :value="field.fieldCode"
-              />
-            </el-select>
-            <div class="form-tip">字段位于“{{ editor.childEntityName || '关联实体' }}”，支持指向当前实体的单值引用，以及主键类型兼容的普通字符串字段（长度至少 64）。</div>
-          </el-form-item>
+          </el-select>
           <el-alert
             v-if="editor.childEntityId && !childFieldsLoading && !childFieldOptions.length"
             title="关联实体中还没有兼容的 ID 字段"
@@ -247,66 +229,68 @@
             type="warning"
             :closable="false"
             show-icon
+            class="relation-field-alert"
           />
-          <div v-if="editor.childRefFieldCode" class="form-tip">
-            匹配规则：{{ editor.childEntityName || editor.childEntityCode || '关联实体' }}.{{ editor.childRefFieldCode }} = 当前记录.id
-          </div>
           <el-button
             v-if="editor.childEntityId"
             link type="primary"
             @click="$router.push(`/entity/design/${editor.childEntityId}`)"
           >前往关联实体配置字段</el-button>
-        </SettingsSection>
-
-        <SettingsSection
-          title="关系规则"
-          description="定义数量、所有权、删除行为和运行状态"
-          :collapsible="false"
-        >
-          <el-form-item label="关联数量" prop="relationType" required>
-            <el-radio-group v-model="editor.relationType">
-              <el-radio-button value="ONE_TO_ONE">一对一 · 显示表单</el-radio-button>
-              <el-radio-button value="ONE_TO_MANY">一对多 · 显示列表</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="所有权类型" prop="ownershipType" required>
-            <el-radio-group v-model="editor.ownershipType" @change="handleOwnershipChange">
-              <el-radio-button value="COMPOSITION">组成关系</el-radio-button>
-              <el-radio-button value="ASSOCIATION">普通关联</el-radio-button>
-            </el-radio-group>
-            <div class="form-tip">
-              组成关系表示子记录属于父记录生命周期；普通关联不会随父记录删除。
-            </div>
-          </el-form-item>
-          <el-form-item label="级联删除">
-            <el-switch
-              v-model="editor.cascadeDelete"
-              :disabled="editor.ownershipType !== 'COMPOSITION'"
+        </el-form-item>
+        <el-form-item label="关联数量" prop="relationType" required>
+          <template #label>
+            <ConfigHelpLabel label="关联数量" content="一对一关联单条记录，一对多关联多条记录；表单设计据此提供关联表单、关联列表或对应的子表单、明细编辑。" />
+          </template>
+          <el-radio-group v-model="editor.relationType">
+            <el-radio-button value="ONE_TO_ONE">一对一 · 单条记录</el-radio-button>
+            <el-radio-button value="ONE_TO_MANY">一对多 · 多条记录</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="所有权类型" prop="ownershipType" required>
+          <template #label>
+            <ConfigHelpLabel label="所有权类型" content="组成关系的子数据随主表统一保存；普通关联的数据独立保存，不随父记录删除。" />
+          </template>
+          <el-radio-group v-model="editor.ownershipType" @change="handleOwnershipChange">
+            <el-radio-button value="COMPOSITION">组成关系</el-radio-button>
+            <el-radio-button value="ASSOCIATION">普通关联</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="级联删除">
+          <template #label>
+            <ConfigHelpLabel
+              label="级联删除"
+              :content="editor.ownershipType === 'COMPOSITION' ? '开启后，删除父记录时同时删除子记录。' : '普通关联不允许级联删除。'"
             />
-            <span class="switch-tip">
-              {{ editor.ownershipType === 'COMPOSITION'
-                ? '删除父记录时同时删除子记录'
-                : '普通关联不允许级联删除' }}
-            </span>
-          </el-form-item>
-          <el-form-item label="是否必填">
-            <el-switch v-model="editor.required" />
-            <span class="switch-tip">保存聚合数据时要求至少存在对应子记录</span>
-          </el-form-item>
-          <el-form-item label="排序号">
-            <el-input-number
-              v-model="editor.sortOrder"
-              :min="0"
-              :max="9999"
-              controls-position="right"
-              style="width: 180px"
-            />
-          </el-form-item>
-          <el-form-item label="是否启用">
-            <el-switch v-model="editor.enabled" />
-            <span class="switch-tip">停用后运行时不再加载该关系</span>
-          </el-form-item>
-        </SettingsSection>
+          </template>
+          <el-switch
+            v-model="editor.cascadeDelete"
+            :disabled="editor.ownershipType !== 'COMPOSITION'"
+          />
+        </el-form-item>
+        <el-form-item label="是否必填">
+          <template #label>
+            <ConfigHelpLabel label="是否必填" content="保存聚合数据时要求至少存在对应子记录。" />
+          </template>
+          <el-switch v-model="editor.required" />
+        </el-form-item>
+        <el-form-item label="排序号">
+          <template #label>
+            <ConfigHelpLabel label="排序号" content="用于排列实体关系，数值越小越靠前。" />
+          </template>
+          <el-input-number
+            v-model="editor.sortOrder"
+            :min="0"
+            :max="9999"
+            controls-position="right"
+            style="width: 180px"
+          />
+        </el-form-item>
+        <el-form-item label="是否启用">
+          <template #label>
+            <ConfigHelpLabel label="是否启用" content="停用后运行时不再加载该关系。" />
+          </template>
+          <el-switch v-model="editor.enabled" />
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -326,7 +310,7 @@ import { entityApi } from '@/api/entity'
 import { entityRelationApi } from '@/api/entityRelation'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
 import PageState from '@/components/PageState.vue'
-import SettingsSection from '@/components/SettingsSection.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import {
   ENTITY_RELATION_CODE_PATTERN,
   createEntityRelationDraft,
@@ -366,6 +350,14 @@ let childFieldRequestSequence = 0
 
 const isEditing = computed(() => Boolean(editor.value.id))
 const childFieldOptions = computed(() => relationReferenceFields(childFields.value, props.entityId))
+// 将字段约束和当前匹配规则放在同一提示中，切换关联实体或字段时同步更新。
+const childRefFieldHelp = computed(() => {
+  const entityName = editor.value.childEntityName || editor.value.childEntityCode || '关联实体'
+  const description = `字段位于“${entityName}”，支持指向当前实体的单值引用，以及主键类型兼容的普通字符串字段（长度至少 64）。`
+  return editor.value.childRefFieldCode
+    ? `${description}匹配规则：${entityName}.${editor.value.childRefFieldCode} = 当前记录.id。`
+    : description
+})
 
 const codeRule = {
   validator: (_rule, value, callback) => {
@@ -508,7 +500,7 @@ async function handleSave() {
       ElMessage.success('实体关系已更新，发布当前实体后生效')
     } else {
       await entityRelationApi.create(props.entityId, payload)
-      ElMessage.success('关系已创建，请发布当前实体，再到表单设计选择关联表单或列表')
+      ElMessage.success('关系已创建，请发布实体，再到表单设计添加关联展示或主从编辑')
     }
     editorVisible.value = false
     await loadRelations()
@@ -591,8 +583,7 @@ function ownershipTypeLabel(value) {
   gap: 8px;
 }
 
-.relation-alert,
-.editor-alert {
+.relation-alert {
   margin-bottom: 16px;
 }
 
@@ -624,18 +615,8 @@ code {
   color: var(--el-color-primary);
 }
 
-.form-tip {
-  width: 100%;
-  margin-top: 4px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.switch-tip {
-  margin-left: 10px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
+.relation-field-alert {
+  margin-top: 8px;
 }
 
 @media (max-width: 768px) {

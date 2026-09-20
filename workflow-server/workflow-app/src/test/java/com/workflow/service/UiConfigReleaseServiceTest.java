@@ -1879,7 +1879,7 @@ class UiConfigReleaseServiceTest {
 
     /**
      * 测试列表首次发布前的差异计算：
-     * 验证没有激活版本时，允许场景差异被报告而不会修改不可变空集合。
+     * 验证没有激活版本时，首次列表设置能够正常生成差异。
      */
     @Test
     void reportsInitialListDiffWhenNoActiveReleaseExists() {
@@ -1894,7 +1894,6 @@ class UiConfigReleaseServiceTest {
         list.setEntityCode("demo_entity");
         list.setListKey("default");
         list.setListName("默认列表");
-        list.setAllowedScenes(List.of("PAGE", "DIALOG"));
         list.setFields(List.of());
         when(listConfigService.findById("list-1")).thenReturn(list);
         when(releaseMapper.findActive(
@@ -1939,13 +1938,7 @@ class UiConfigReleaseServiceTest {
 
         assertTrue(diff.isChanged());
         assertTrue(diff.getChangedItems().stream().anyMatch(item ->
-                "allowedScenes".equals(item.getSection())
-                        && "PAGE".equals(item.getId())
-                        && "ADDED".equals(item.getChangeType())));
-        assertTrue(diff.getChangedItems().stream().anyMatch(item ->
-                "allowedScenes".equals(item.getSection())
-                        && "DIALOG".equals(item.getId())
-                        && "ADDED".equals(item.getChangeType())));
+                "list".equals(item.getSection())));
     }
 
     /**
@@ -2982,78 +2975,6 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    void rejectsActivationWhenSubListDoesNotAllowEmbeddedScene() {
-        TestContext context = context();
-        Map<String, Object> fieldNode =
-                node("embedded-list-scene", null, "FIELD");
-        fieldNode.put(
-                "propsDocument",
-                context.codec().write(
-                        Map.of(
-                                "fieldCode", "embeddedList",
-                                "fieldName", "子列表",
-                                "fieldType", "SUB_LIST",
-                                "componentType", "sub_list",
-                                "componentProps", Map.of(
-                                        "subListConfig", Map.of(
-                                                "targetEntityId", "target-1",
-                                                "targetEntityCode", "target_entity",
-                                                "listKey", "default",
-                                                "listId", "target-list-1",
-                                                "listReleaseId", "target-list-release-1",
-                                                "listReleaseVersion", 1))),
-                        "测试子列表节点属性"));
-        UiConfigRelease formRelease = release(
-                context.codec(),
-                "release-sub-list-scene",
-                formSnapshot(List.of(fieldNode)));
-        EntityDefinition target = new EntityDefinition();
-        target.setId("target-1");
-        target.setEntityCode("target_entity");
-        EntityListConfig targetList = new EntityListConfig();
-        targetList.setId("target-list-1");
-        targetList.setEntityId("target-1");
-        targetList.setEntityCode("target_entity");
-        targetList.setListKey("default");
-        targetList.setPublishedVersion(1);
-        targetList.setActiveReleaseId("target-list-release-1");
-        UiConfigRelease listRelease = release(
-                context.codec(),
-                "target-list-release-1",
-                Map.of(
-                        "list",
-                        Map.of(
-                                "id", "target-list-1",
-                                "entityId", "target-1",
-                                "entityCode", "target_entity",
-                                "listKey", "default",
-                                "allowedScenes", List.of("PAGE"))));
-        listRelease.setConfigType("LIST");
-        listRelease.setConfigId("target-list-1");
-        when(context.releaseMapper().selectById(
-                "release-sub-list-scene"))
-                .thenReturn(formRelease);
-        when(context.releaseMapper().selectById(
-                "target-list-release-1"))
-                .thenReturn(listRelease);
-        when(context.entityDefinitionMapper().selectById("target-1"))
-                .thenReturn(target);
-        when(context.listConfigMapper().findByEntityIdAndListKey(
-                "target-1",
-                "default"))
-                .thenReturn(targetList);
-
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> context.service().activate(
-                        "FORM",
-                        "form-1",
-                        "release-sub-list-scene"));
-
-        assertTrue(exception.getMessage().contains("EMBEDDED"));
-    }
-
-    @Test
     void activatesFormWithHistoricalPinnedSubListRelease() {
         TestContext context = context();
         Map<String, Object> fieldNode =
@@ -3098,8 +3019,7 @@ class UiConfigReleaseServiceTest {
                                 "id", "target-list-1",
                                 "entityId", "target-1",
                                 "entityCode", "target_entity",
-                                "listKey", "default",
-                                "allowedScenes", List.of("EMBEDDED"))));
+                                "listKey", "default")));
         historicalListRelease.setConfigType("LIST");
         historicalListRelease.setConfigId("target-list-1");
         when(context.releaseMapper().selectById(

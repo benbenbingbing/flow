@@ -2,6 +2,9 @@ import request from '@/utils/request'
 
 /** 独立实体关系管理 API。 */
 export const entityRelationApi = {
+  available(entityId) {
+    return request.get(`/entity/${entityId}/relations/available`)
+  },
   list(entityId) {
     return request.get(`/entity/${entityId}/relations`)
   },

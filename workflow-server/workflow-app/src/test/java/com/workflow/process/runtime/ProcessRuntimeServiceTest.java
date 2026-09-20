@@ -52,8 +52,9 @@ class ProcessRuntimeServiceTest {
                                 "admin",
                                 "管理员",
                                 "PENDING",
-                                Map.of("amount", 100),
+                                Map.of("amount", 100, "code", "forged-form-code"),
                                 Map.of(
+                                        "code", "forged-variable-code",
                                         "_FLOWABLE_SKIP_EXPRESSION_ENABLED", false,
                                         "_ACTIVITI_SKIP_EXPRESSION_ENABLED", false,
                                         "skipNodeEnabled", false));
@@ -70,6 +71,8 @@ class ProcessRuntimeServiceTest {
                 assertEquals("expense", variableCaptor.getValue().get("entityCode"));
                 assertEquals("admin", variableCaptor.getValue().get("initiator"));
                 assertEquals(100, variableCaptor.getValue().get("amount"));
+                assertEquals("EXP-1", variableCaptor.getValue().get("code"));
+                assertFalse(variableCaptor.getValue().containsKey("dataNo"));
                 assertEquals(true, variableCaptor.getValue().get(
                                 WorkflowReservedVariables
                                                 .FLOWABLE_SKIP_EXPRESSION_ENABLED_VARIABLE));

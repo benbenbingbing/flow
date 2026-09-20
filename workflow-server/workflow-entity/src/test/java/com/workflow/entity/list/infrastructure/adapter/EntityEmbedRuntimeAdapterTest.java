@@ -56,7 +56,7 @@ class EntityEmbedRuntimeAdapterTest {
         EntityDataDTO row = new EntityDataDTO();
         row.setId("record-1");
         row.setData(Map.of("status", "PROCESSING", "secret", "hidden"));
-        row.setUpdatedAt(LocalDateTime.of(2026, 8, 27, 8, 20));
+        row.setUpdateTime(LocalDateTime.of(2026, 8, 27, 8, 20));
         row.setActionCapabilities(Map.of(
                 "view", EntityActionCapabilityDTO.allowed()));
         when(runtimeService.queryPinned(
@@ -98,5 +98,26 @@ class EntityEmbedRuntimeAdapterTest {
         assertEquals("CONTAINS", adapter.loadListSchema(
                 "work_order", "supplier_open", "list-release-7", 7)
                 .fields().get(0).queryOperator());
+    }
+
+    /** 嵌入列表按发布字段编码读取审计值，避免 BeanWrapper 找不到下划线属性。 */
+    @Test
+    void mapsCanonicalAuditFieldValues() {
+        EntityDataDTO row = new EntityDataDTO();
+        row.setId("record-1");
+        LocalDateTime created = LocalDateTime.of(2026, 9, 20, 10, 0);
+        row.setCreateTime(created);
+        row.setUpdateTime(created.plusHours(1));
+        row.setCreateBy("creator");
+        row.setUpdateBy("updater");
+        when(runtimeService.queryPinned("work_order", "supplier_open", "list-release-7", 7,
+                1, 20, Map.of(), Map.of())).thenReturn(new PageResult<>(List.of(row), 1, 1, 20));
+        for (var entry : Map.of("create_time", created, "update_time", created.plusHours(1),
+                "create_by", "creator", "update_by", "updater").entrySet()) {
+            listField.setFieldCode(entry.getKey());
+            var page = adapter.queryList("work_order", "supplier_open", "list-release-7", 7,
+                    1, 20, Map.of(), Map.of());
+            assertEquals(entry.getValue(), page.rows().get(0).values().get(entry.getKey()));
+        }
     }
 }

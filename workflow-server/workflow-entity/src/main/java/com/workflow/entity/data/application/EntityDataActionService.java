@@ -792,7 +792,7 @@ public class EntityDataActionService {
                     "batchDelete",
                     row);
             if (!capability.isVisible() || !capability.isEnabled()) {
-                denied.add((StringUtils.hasText(row.getDataNo()) ? row.getDataNo() : row.getId())
+                denied.add((StringUtils.hasText(row.getCode()) ? row.getCode() : row.getId())
                         + "：" + capability.getReason());
             }
         }

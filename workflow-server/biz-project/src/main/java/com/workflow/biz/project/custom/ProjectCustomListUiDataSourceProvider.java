@@ -200,12 +200,10 @@ public class ProjectCustomListUiDataSourceProvider
                 ? "project_extension_acceptance"
                 : context.entityCode());
         result.setEntityName("项目扩展验收单");
-        result.setDataNo("EXT-UI-LIST-001");
         result.setCode("EXT-UI-LIST-001");
         result.setName("LIST 统一数据源演示记录");
-        result.setTitle("LIST 统一数据源演示记录");
         result.setStatus("DRAFT");
-        result.setCreatedAt(LocalDateTime.now());
+        result.setCreateTime(LocalDateTime.now());
         Map<String, Object> data =
                 new LinkedHashMap<>();
         data.put("name", result.getName());

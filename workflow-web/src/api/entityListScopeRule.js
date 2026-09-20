@@ -1,5 +1,4 @@
 import { entityListScopeApi } from './entityListScope'
-import { entityListRuntimeApi } from './entityListRuntime'
 
 function parse(value, fallback) {
   if (!value) return fallback
@@ -111,9 +110,9 @@ export const entityListScopeRuleApi = {
     )
   },
 
-  previewSql(entityCode, listKey, data = {}) {
-    return entityListRuntimeApi.simulate(entityCode, listKey, data)
-      .then(result => result.preview)
+  /** 行内模拟按规则 ID 读取目录配置，未绑定列表的规则也可预览。 */
+  previewSql(policyId, userId) {
+    return entityListScopeApi.previewPolicy(policyId, userId)
   },
 
   publish(entityCode, description) {

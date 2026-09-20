@@ -135,6 +135,7 @@
 </template>
 
 <script setup lang="ts">
+import { resolvePageParameters, initializePageFields, pageParameterFields } from '@/shared/page-parameters'
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -676,6 +677,13 @@ async function handleReset() {
   nextTick(() => refreshFormLinkage())
 }
 
+/** 参数初始化先于打开事件，且只填可编辑空字段，可信关联初值和已有记录均优先。 */
+function initializeParameterFields() {
+  if ([true, 1, '1'].includes(runtimeForm.value?.isReadonly)) return
+  formData.data = initializePageFields(formData.data, runtimeForm.value?.viewConfig,
+    launchRuntimeContext.value.params, pageParameterFields([...(runtimeForm.value?.fields || []), ...(runtimeForm.value?.nodes || [])]), [], isEdit.value ? 'edit' : 'create')
+}
+
 // 新增
 const openCreate = async (options: any = {}) => {
   runtimeDiagnosticsRef.value?.reset()
@@ -686,11 +694,11 @@ const openCreate = async (options: any = {}) => {
   currentProcessStatus.value = ''
   currentProcessName.value = ''
   activeTab.value = firstFormTabName.value
-  const inputParameters = {
+  const inputParameters = resolvePageParameters(runtimeForm.value?.viewConfig, {
     ...(options?.context?.parameters || {}),
     ...(options?.context?.params || {}),
     ...(options?.parameters || {})
-  }
+  })
   const initialData =
     options?.initialData && typeof options.initialData === 'object'
       ? options.initialData
@@ -708,6 +716,7 @@ const openCreate = async (options: any = {}) => {
     : '新增数据'
 
   applyCreateInitialData(initialData)
+  initializeParameterFields()
 
   try {
     await executeFormEvent('FORM_OPEN')
@@ -736,6 +745,7 @@ const openEdit = async (row: any, options: any = {}) => {
   isEdit.value = true
   launchRuntimeContext.value = {
     ...(options?.context || {}),
+    params: resolvePageParameters(runtimeForm.value?.viewConfig, { ...(options?.context?.parameters || {}), ...(options?.context?.params || {}), ...(options?.parameters || {}) }),
     initializationKey: `edit:${row?.id || 'record'}:${++launchSequence}`
   }
   formData.startProcess = false
@@ -750,6 +760,7 @@ const openEdit = async (row: any, options: any = {}) => {
   formData.id = detail.id
   formData.name = detail.name
   formData.data = normalizeEntityRecordForForm(detail)
+  initializeParameterFields()
 
   processInstanceId.value = detail.processInstanceId || ''
   if (processInstanceId.value) {

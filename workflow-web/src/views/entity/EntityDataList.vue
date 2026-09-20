@@ -56,6 +56,8 @@
           :release-id="listConfig.releaseId"
           :release-version="listConfig.publishedVersion"
           :source-record-id="listSourceRecordId"
+          :source-data="selectedRows.length === 1 ? selectedRows[0] : (context.record?.data || {})"
+          :source-parameters="relatedContentRuntimeContext.params || {}"
           :traversal-context-token="viewCompositionTraversalToken"
           @target-saved="loadDataList"
         />
@@ -271,6 +273,7 @@ import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue
 import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vue'
 import { useEntityDataSelectionState } from './composables/useEntityDataSelectionState'
 import PageState from '@/components/PageState.vue'
+import { mapPageParameters, resolvePageParameters } from '@/shared/page-parameters'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
@@ -397,8 +400,11 @@ const viewCompositionTraversalToken = computed(() => String(
   || props.context?.viewCompositionTraversalToken
   || ''
 ))
+const resolvedInputParameters = ref({})
 const relatedContentRuntimeContext = computed(() => ({
   ...props.context,
+  params: resolvedInputParameters.value,
+  parameters: resolvedInputParameters.value,
   viewCompositionTraversalToken:
     viewCompositionTraversalToken.value
 }))
@@ -409,7 +415,7 @@ const { effectiveSelectionMode, selectionScene, selectedRows } =
 const listSourceRecordId = computed(() => String(
   props.context?.sourceRecordId
   || props.context?.recordId
-  || selectedRows.value[0]?.id
+  || (selectedRows.value.length === 1 ? selectedRows.value[0]?.id : '')
   || ''
 ))
 const runtimeSelectionMode = computed(() => {
@@ -1001,6 +1007,7 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
   tableLoading.value = true
   dataError.value = ''
   try {
+    resolvedInputParameters.value = resolvePageParameters(listConfig.value?.viewConfig, props.context?.params || props.context?.parameters || {})
     const params = buildRequestFilters()
     const res = await entityListRuntimeApi.query(
       entityCode.value,
@@ -1014,7 +1021,7 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
         releaseResolutionToken: props.releaseResolutionToken,
         viewCompositionContextToken: props.viewCompositionContextToken,
         filters: params,
-        context: props.context
+        context: relatedContentRuntimeContext.value
       }
     )
     if (Array.isArray(res)) {
@@ -1210,10 +1217,20 @@ const getActionReason = (row: any, buttonKey: string) => {
   return getActionCapabilityReason(row, buttonKey)
 }
 // 打开新增弹窗
+/** 工具栏只有唯一选中行时才允许取行字段，避免多选时静默使用第一条。 */
+function buttonParameters(button: any, row?: any) {
+  const mappings = button?.parameterMappings || []
+  if (!row && mappings.some((item: any) => ['FIELD', 'RECORD_ID'].includes(item.sourceType))) {
+    if (selectedRows.value.length !== 1) throw new Error('此按钮需要当前行数据，请先选择一条记录')
+    row = selectedRows.value[0]
+  }
+  return mapPageParameters(mappings, { data: row || {}, recordId: row?.id, params: relatedContentRuntimeContext.value.params })
+}
 const handleCreate = async (button?: any) => {
   if (createFormLoading.value) return
   createFormLoading.value = true
   try {
+    const parameters = buttonParameters(button)
     let form = null
     if (button?.targetFormId) {
       form = await loadRuntimeButtonForm(button, 'TOOLBAR')
@@ -1228,7 +1245,8 @@ const handleCreate = async (button?: any) => {
       parameters: {
         ...(props.context?.parameters || {}),
         ...(props.createContext?.parameters || {}),
-        ...(props.createContext?.params || {})
+        ...(props.createContext?.params || {}),
+        ...parameters
       },
       context: {
         ...relatedContentRuntimeContext.value,
@@ -1256,7 +1274,7 @@ const handleEdit = async (row: any, button?: any) => {
     await nextTick()
     await formDialogRef.value?.openEdit(row, {
       form,
-      context: relatedContentRuntimeContext.value
+      context: { ...relatedContentRuntimeContext.value, params: { ...relatedContentRuntimeContext.value.params, ...buttonParameters(button, row) } }
     })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
@@ -1269,7 +1287,7 @@ const handleView = async (row: any, button?: any) => {
     const form = await loadRuntimeButtonForm(button, 'ROW')
     await approvalDialogRef.value?.openView(row, {
       form,
-      context: relatedContentRuntimeContext.value
+      context: { ...relatedContentRuntimeContext.value, params: { ...relatedContentRuntimeContext.value.params, ...buttonParameters(button, row) } }
     })
   } catch (error: any) {
     ElMessage.error(error?.message || '加载按钮指定表单失败')
@@ -1383,7 +1401,7 @@ function clearQueryForm() {
 
 function runtimeInputFingerprint() {
   try {
-    return JSON.stringify(props.fixedFilters || {})
+    return JSON.stringify([props.fixedFilters || {}, props.context?.params || props.context?.parameters || {}])
   } catch {
     return 'unserializable-fixed-filters'
   }

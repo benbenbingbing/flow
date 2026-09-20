@@ -9,7 +9,7 @@ public final class PublishedFormRecordView {
     private static final Set<String> SYSTEM_MANAGED_FIELDS = Set.of(
             "id", "status", "processInstanceId", "processStartTime", "processEndTime",
             "currentTaskId", "currentTaskName", "currentTaskAssignee", "submitterId", "submitterName",
-            "submitTime", "createdAt", "updatedAt", "createdBy", "updatedBy");
+            "submitTime", "create_time", "update_time", "create_by", "update_by", "deleted");
 
     private PublishedFormRecordView() {}
 

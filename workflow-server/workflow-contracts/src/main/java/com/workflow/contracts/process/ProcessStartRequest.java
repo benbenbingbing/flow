@@ -7,12 +7,14 @@ import java.util.Objects;
 
 /**
  * 实体模块发起流程时传递的稳定请求模型，不暴露实体模块 DTO 或持久化对象。
+ *
+ * @param code 实体记录的业务编号，由服务端写入同名流程变量，不使用实体类型编码代替
  */
 public record ProcessStartRequest(
         String processDefinitionId,
         String entityCode,
         String entityRecordId,
-        String dataNo,
+        String code,
         String submitterId,
         String submitterName,
         String processingStatus,

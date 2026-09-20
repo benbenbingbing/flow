@@ -26,7 +26,7 @@ public class UiViewCompositionConfigValidator {
     private static final Set<String> ROOT_KEYS = Set.of(
             "schemaVersion", "name", "enabled", "source",
             "target", "presentation", "relation", "actions",
-            "actionSettings", "specialHandling", "entitySnapshots");
+            "actionSettings", "specialHandling", "entitySnapshots", "parameterMappings");
     private static final Set<String> SOURCE_KEYS = Set.of(
             "entityId", "entityCode", "entityName");
     private static final Set<String> TARGET_KEYS = Set.of(
@@ -36,7 +36,7 @@ public class UiViewCompositionConfigValidator {
     private static final Set<String> PRESENTATION_KEYS = Set.of(
             "position", "loadMode", "title", "emptyText");
     private static final Set<String> RELATION_KEYS = Set.of(
-            "type", "relationCode", "relationName",
+            "type", "relationCode", "relationName", "direction",
             "sourceField", "sourceFieldName",
             "targetField", "targetFieldName", "mappings");
     private static final Set<String> MAPPING_KEYS = Set.of(
@@ -159,6 +159,7 @@ public class UiViewCompositionConfigValidator {
         normalized.put("presentation", presentation);
         normalized.put("relation", relation);
         normalized.put("actions", actions);
+        normalized.put("parameterMappings", PageParameterPolicy.mappings(config.get("parameterMappings")));
         normalized.put("actionSettings", actionSettings);
         normalized.put("specialHandling", special);
         if (!entitySnapshots.isEmpty()) {
@@ -244,6 +245,9 @@ public class UiViewCompositionConfigValidator {
         String type = requireEnum(
                 value.get("type"), RELATION_TYPES, "关联方式");
         result.put("type", type);
+        if (value.get("direction") != null) {
+            result.put("direction", requireEnum(value.get("direction"), Set.of("FORWARD", "REVERSE"), "关系使用方向"));
+        }
         putOptionalBusinessKey(result, "relationCode", value.get("relationCode"));
         putOptionalText(result, "relationName", value.get("relationName"), 200);
         putOptionalBusinessKey(result, "sourceField", value.get("sourceField"));
@@ -275,6 +279,30 @@ public class UiViewCompositionConfigValidator {
             }
         }
         return result;
+    }
+
+    /** 新草稿和新发布只接受统一关系；扩展页面显式使用注册接口，不能覆盖实体关系取数。 */
+    public static void requireUnifiedRelation(Map<String, Object> config) {
+        Map<?, ?> relation = (Map<?, ?>) config.get("relation");
+        if (!Set.of("ENTITY_RELATION", "INTERFACE_SERVICE", "SAME_RECORD").contains(relation.get("type"))) {
+            throw new IllegalArgumentException("页面不再单独定义关联条件，请先建立实体关系；特殊查询请使用扩展页面的数据接口");
+        }
+        if ("ENTITY_RELATION".equals(relation.get("type"))) {
+            // 单条表单没有候选列表。不能发布一个显示按钮但无法执行的“建立关联”入口。
+            if (config.get("target") instanceof Map<?, ?> target && "FORM".equals(target.get("contentType"))
+                    && config.get("actions") instanceof List<?> actions && actions.contains("LINK")) {
+                throw new IllegalArgumentException("建立关联需要候选列表；单条关联表单请通过实体引用字段选择所属记录");
+            }
+            if (relation.containsKey("sourceField") || relation.containsKey("targetField")
+                    || relation.get("mappings") instanceof List<?> mappings && !mappings.isEmpty()) {
+                throw new IllegalArgumentException("实体关系展示不能自行配置字段匹配条件");
+            }
+            Map<?, ?> special = (Map<?, ?>) config.get("specialHandling");
+            if (special != null && special.get("interfaceService") instanceof Map<?, ?> service
+                    && service.get("extensionId") != null && !String.valueOf(service.get("extensionId")).isBlank()) {
+                throw new IllegalArgumentException("实体关系的数据规则不能被取数接口覆盖，请使用独立的扩展页面");
+            }
+        }
     }
 
     private List<String> normalizeActions(Object raw) {

@@ -504,7 +504,6 @@ class EntityWholePackageCasServiceTest {
                 .thenReturn(List.of());
         when(actionConfigService.resolveRowButtons(any(), any()))
                 .thenReturn(List.of());
-        when(relationalConfigService.findScenes(any())).thenReturn(List.of());
         return new ListContext(
                 service,
                 configMapper,

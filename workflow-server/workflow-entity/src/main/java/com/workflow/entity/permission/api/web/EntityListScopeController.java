@@ -7,13 +7,17 @@ import com.workflow.entity.permission.api.request.EntityListScopePublishRequest;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeConfigurationDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
+import com.workflow.entity.permission.api.response.EntityListScopePolicyPreviewDTO;
 
 import com.workflow.core.result.Result;
 import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
+import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.permission.application.EntityListScopeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -30,6 +34,7 @@ public class EntityListScopeController {
 
     private final EntityListScopeService scopeService;
     private final CurrentUserRoleService currentUserRoleService;
+    private final SysUserService sysUserService;
 
     /**
      * 查询实体的数据范围配置（策略与绑定）。GET /api/entity-list-scopes/{entityCode}
@@ -42,6 +47,24 @@ public class EntityListScopeController {
             @PathVariable String entityCode) {
         requireAdministrator();
         return Result.success(scopeService.getConfiguration(entityCode));
+    }
+
+    /**
+     * 以指定用户模拟规则；仅读取规则和编译条件，不查询业务记录或改变授权。
+     *
+     * @param id 规则 ID
+     * @param userId 模拟用户 ID，省略时使用当前登录用户
+     * @return 单条规则的 SQL 和适用状态
+     */
+    @GetMapping("/policies/{id}/preview")
+    public Result<EntityListScopePolicyPreviewDTO> previewPolicy(
+            @PathVariable String id,
+            @RequestParam(required = false) String userId) {
+        // 与列表范围模拟保持同一授权边界，只有超级管理员可代入其他用户身份。
+        currentUserRoleService.requireSuperAdmin();
+        String targetUserId = StringUtils.hasText(userId) ? userId : UserContext.getUserId();
+        return Result.success(scopeService.previewPolicy(
+                id, sysUserService.getById(targetUserId)));
     }
 
     /**

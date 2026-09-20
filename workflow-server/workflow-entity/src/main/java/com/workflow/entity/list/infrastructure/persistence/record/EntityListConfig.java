@@ -131,12 +131,6 @@ public class EntityListConfig {
     private String accessPermissionCode;
 
     /**
-     * 允许的运行场景JSON
-     */
-    @TableField("allowed_scenes")
-    private String allowedScenes;
-
-    /**
      * 单选、多选和返回映射JSON
      */
     @TableField("selection_config")
@@ -149,18 +143,12 @@ public class EntityListConfig {
     private String fixedFilterConfig;
 
     /**
-     * 来源记录上下文绑定JSON
-     */
-    @TableField("context_binding_config")
-    private String contextBindingConfig;
-
-    /**
      * 自定义安全查询提供者编码
      */
     @TableField("query_provider_code")
     private String queryProviderCode;
 
-    /** 列表查询绑定的可调用接口扩展 ID。 */
+    /** 历史查询槽位，仅用于旧配置兼容；新查询接口通过 LIST_LOAD 替代步骤配置。 */
     @TableField("query_interface_extension_id")
     private String queryInterfaceExtensionId;
 

@@ -54,8 +54,6 @@ public class EntityRecordSnapshotService {
 
     private static final List<SystemField> SYSTEM_FIELDS = List.of(
             new SystemField("id", "数据ID", "STRING"),
-            new SystemField("dataNo", "业务编号", "STRING"),
-            new SystemField("title", "标题", "STRING"),
             new SystemField("name", "名称", "STRING"),
             new SystemField("code", "编码", "STRING"),
             new SystemField("status", "实体状态", "STATUS"),
@@ -70,10 +68,10 @@ public class EntityRecordSnapshotService {
             new SystemField("deptId", "所属部门ID", "DEPT"),
             new SystemField("deptName", "所属部门", "STRING"),
             new SystemField("submitTime", "提交时间", "DATETIME"),
-            new SystemField("createdAt", "创建时间", "DATETIME"),
-            new SystemField("updatedAt", "更新时间", "DATETIME"),
-            new SystemField("createdBy", "创建人", "USER"),
-            new SystemField("updatedBy", "更新人", "USER"));
+            new SystemField("create_time", "创建时间", "DATETIME"),
+            new SystemField("update_time", "更新时间", "DATETIME"),
+            new SystemField("create_by", "创建人", "USER"),
+            new SystemField("update_by", "更新人", "USER"));
 
     private final EntityPublishedSnapshotService publishedSnapshotService;
     private final EntityFieldOptionMapper optionMapper;
@@ -329,10 +327,8 @@ public class EntityRecordSnapshotService {
                 capturedRows.add(new DatasetRowCapture(
                         childId,
                         firstText(
-                                row.get("title"),
                                 row.get("name"),
                                 row.get("code"),
-                                row.get("dataNo"),
                                 childId),
                         order++,
                         values,
@@ -719,7 +715,7 @@ public class EntityRecordSnapshotService {
         if (value instanceof Map<?, ?> map) {
             for (String key : List.of(
                     "displayName", "label", "name",
-                    "title", "code", "id")) {
+                    "code", "id")) {
                 if (map.get(key) != null) {
                     return map.get(key);
                 }

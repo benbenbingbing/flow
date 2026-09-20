@@ -52,7 +52,7 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
     @Override
     public List<Map<String, Object>> getConfigSchema() {
         return List.of(
-                schema("template", "组合模板", "textarea", true, "${dataNo} - ${name}"));
+                schema("template", "组合模板", "textarea", true, "${code} - ${name}"));
     }
 
     /**
@@ -119,11 +119,14 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
         }
         return switch (fieldCode) {
             case "id" -> record.getId();
-            case "dataNo" -> record.getDataNo();
+            case "code" -> record.getCode();
             case "name" -> record.getName();
-            case "title" -> record.getTitle();
             case "status" -> record.getStatus();
             case "submitterName" -> record.getSubmitterName();
+            case "create_time" -> record.getCreateTime();
+            case "update_time" -> record.getUpdateTime();
+            case "create_by" -> record.getCreateBy();
+            case "update_by" -> record.getUpdateBy();
             default -> null;
         };
     }

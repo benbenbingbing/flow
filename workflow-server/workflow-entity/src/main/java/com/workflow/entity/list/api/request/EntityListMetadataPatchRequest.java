@@ -2,7 +2,6 @@ package com.workflow.entity.list.api.request;
 
 import lombok.Data;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -27,19 +26,15 @@ public class EntityListMetadataPatchRequest {
     private String dataScopeMode;
     /** 访问权限码 */
     private String accessPermissionCode;
-    /** 允许的场景列表 */
-    private List<String> allowedScenes;
     /** 选择配置 */
     private Map<String, Object> selectionConfig;
     /** 固定过滤配置 */
     private Map<String, Object> fixedFilterConfig;
-    /** 上下文绑定配置 */
-    private Map<String, Object> contextBindingConfig;
     /** 视图配置 */
     private Map<String, Object> viewConfig;
     /** 数据查询提供者编码 */
     private String queryProviderCode;
-    /** 列表查询绑定的可调用接口扩展 ID。 */
+    /** 历史查询槽位，仅用于旧配置兼容；新查询接口通过 LIST_LOAD 替代步骤配置。 */
     private String queryInterfaceExtensionId;
     /** 需要清空的字段集合（局部更新时置空指定字段） */
     private Set<String> clearFields;

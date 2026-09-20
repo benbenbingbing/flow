@@ -60,8 +60,8 @@ assert.doesNotMatch(
 )
 assert.match(
   entityDesign,
-  /min\(1440px, 94vw\)/,
-  '实体权限弹窗应使用更宽的视口宽度'
+  /label="数据权限" name="permissions"/,
+  '实体权限应通过数据权限页签访问'
 )
 
 assert.match(

@@ -237,7 +237,7 @@ class UiViewCompositionConfigValidatorTest {
                 IllegalArgumentException.class,
                 () -> validator.validate(config));
 
-        assertTrue(error.getMessage().contains("只能绑定一个接口服务"));
+        assertTrue(error.getMessage().contains("只能绑定一个接口扩展"));
     }
 
     private Map<String, Object> frontendDraft() {

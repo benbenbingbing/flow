@@ -62,7 +62,7 @@ public class UiConfigSemanticPatchService {
             "propsDocument", "rulesDocument", "legacyPropsDocument",
             "localOverridesDocument", "viewConfig", "columnConfig",
             "queryConfig", "renderConfig", "selectionConfig",
-            "fixedFilterConfig", "contextBindingConfig", "componentProps",
+            "fixedFilterConfig", "componentProps",
             "configDocument");
 
     private final JsonDocumentCodec codec;
@@ -112,8 +112,6 @@ public class UiConfigSemanticPatchService {
                     removeMapList(sourceList, "rowActionConfig");
             List<Map<String, Object>> targetRows =
                     removeMapList(targetList, "rowActionConfig");
-            Object sourceScenes = sourceList.remove("allowedScenes");
-            Object targetScenes = targetList.remove("allowedScenes");
             diffMap("list", "list", sourceList, targetList, "", operations);
             diffCollection(
                     "fields",
@@ -133,17 +131,6 @@ public class UiConfigSemanticPatchService {
                     targetRows,
                     List.of("id", "key", "actionCode"),
                     operations);
-            if (!equivalent(sourceScenes, targetScenes)) {
-                operations.add(operation(
-                        "allowedScenes",
-                        "allowedScenes",
-                        "UPDATED",
-                        "/allowedScenes",
-                        sourceScenes,
-                        targetScenes,
-                        REVIEW,
-                        "列表适用场景变化会改变运行入口，发布前需要复核"));
-            }
         }
         diffCollection(
                 "eventBindings",

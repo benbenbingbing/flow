@@ -13,8 +13,7 @@ export function projectAcceptanceToolbarAction(context = {}) {
 }
 
 export function projectAcceptanceRowAction(context = {}) {
-  const identity = context.row?.dataNo
-    || context.row?.code
+  const identity = context.row?.code
     || context.row?.id
     || '-'
   console.info(LOG_PREFIX, '行自定义处理器执行', {

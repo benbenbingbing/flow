@@ -38,6 +38,12 @@ public class EntityRelationController {
                 relationService.get(entityId, relationId));
     }
 
+    /** 表单和列表共用关系目录，包含反向查看所属记录的入口。 */
+    @GetMapping("/available")
+    public ApiResponse<List<EntityRelationDTO>> available(@PathVariable String entityId) {
+        return ApiResponse.success(relationService.available(entityId));
+    }
+
     @PostMapping
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityRelationDTO> create(

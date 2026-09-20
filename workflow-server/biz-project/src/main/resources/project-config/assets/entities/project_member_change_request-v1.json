@@ -722,10 +722,6 @@
       "description": "查询全部成员变更申请和当前流程状态。",
       "isDefault": true,
       "dataScopeMode": "INHERIT",
-      "allowedScenes": [
-        "PAGE",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -777,7 +773,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",
@@ -897,9 +892,6 @@
       "description": "当前办理人为当前用户的成员变更申请。",
       "isDefault": false,
       "dataScopeMode": "NARROW",
-      "allowedScenes": [
-        "PAGE"
-      ],
       "selectionConfig": {
         "selectionMode": "NONE",
         "valueField": "id",
@@ -932,7 +924,6 @@
         "stickyActions": true
       },
       "fixedFilterConfig": {},
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",
@@ -1019,10 +1010,6 @@
       "description": "已成功写入项目成员和角色结果的申请。",
       "isDefault": false,
       "dataScopeMode": "NARROW",
-      "allowedScenes": [
-        "PAGE",
-        "SELECTION"
-      ],
       "selectionConfig": {
         "selectionMode": "MULTIPLE",
         "valueField": "id",
@@ -1050,7 +1037,6 @@
           "EFFECTIVE"
         ]
       },
-      "contextBindingConfig": {},
       "fields": [
         {
           "fieldCode": "code",

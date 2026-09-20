@@ -5,13 +5,11 @@ import {
   isParentEntityReferenceTarget,
   isPublishedSubListOption,
   isSubListTargetFieldWritable,
-  normalizeListScenes,
   normalizeSubListDisplayConfig,
   normalizeSubListParameterContract,
   resolveDefaultSubListParameterSource,
   resolveSubListParameterContract,
-  resolveSubListTargetSelection,
-  supportsSubListEmbedding
+  resolveSubListTargetSelection
 } from '../sub-list.js'
 
 assert.deepEqual(
@@ -51,46 +49,10 @@ assert.deepEqual(
   'current sub-list configs must preserve explicit action visibility settings'
 )
 
-assert.deepEqual(
-  normalizeListScenes('["PAGE","embedded"]'),
-  ['PAGE', 'EMBEDDED']
-)
-assert.equal(supportsSubListEmbedding({ allowedScenes: [] }), true)
-assert.equal(
-  supportsSubListEmbedding({ allowedScenes: ['PAGE'] }),
-  false
-)
-assert.equal(
-  supportsSubListEmbedding({ allowedScenes: ['PAGE', 'EMBEDDED'] }),
-  true
-)
-assert.equal(
-  isPublishedSubListOption({
-    listKey: 'default',
-    activeReleaseId: 'release-1',
-    publishedVersion: 1,
-    allowedScenes: ['EMBEDDED']
-  }),
-  true
-)
-assert.equal(
-  isPublishedSubListOption({
-    listKey: 'default',
-    activeReleaseId: 'release-1',
-    publishedVersion: 1,
-    allowedScenes: ['PAGE']
-  }),
-  false
-)
-assert.equal(
-  isPublishedSubListOption({
-    listKey: 'default',
-    activeReleaseId: 'release-1',
-    publishedVersion: 0,
-    allowedScenes: ['EMBEDDED']
-  }),
-  false
-)
+// 已发布列表均可作为子列表候选，候选筛选只关心发布状态。
+assert.equal(isPublishedSubListOption({ listKey: 'default', activeReleaseId: 'release-1', publishedVersion: 1 }), true)
+assert.equal(isPublishedSubListOption({ listKey: 'default', activeReleaseId: 'release-1', publishedVersion: 0 }), false)
+assert.equal(isPublishedSubListOption({ listKey: 'default', publishedVersion: 1 }), false)
 
 const parentReferenceField = {
   fieldCode: 'reqId',

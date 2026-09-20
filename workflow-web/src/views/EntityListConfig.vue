@@ -20,6 +20,13 @@
         <el-table-column prop="listName" label="列表名称" min-width="150" />
         <el-table-column prop="listKey" label="列表标识" min-width="120" />
         <el-table-column prop="description" label="说明" min-width="200" show-overflow-tooltip />
+        <el-table-column label="数据权限" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="permissionLoading">加载中…</span>
+            <span v-else-if="permissionLoadError">加载失败</span>
+            <span v-else>{{ formatListBoundRules(row.listKey) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="默认" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.isDefault" type="success" size="small">是</el-tag>
@@ -90,6 +97,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowLeft } from '@element-plus/icons-vue'
 import { entityListConfigApi } from '@/api/entityListConfig'
+import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import { entityApi } from '@/api/entity'
 import {
   buildEntityConfigKey,
@@ -101,10 +109,13 @@ const route = useRoute()
 const router = useRouter()
 const entityId = route.params.entityId
 
-const loading = ref(false)
+const loading = ref(true)
 const configList = ref([])
 const entityName = ref('')
 const entityCode = ref('')
+const permissionRules = ref([])
+const permissionLoading = ref(true)
+const permissionLoadError = ref(false)
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -135,9 +146,10 @@ const formRules = {
   ]
 }
 
-onMounted(() => {
-  loadEntityInfo()
-  loadConfigList()
+onMounted(async () => {
+  // 规则目录按实体编码查询，先加载实体信息，避免权限列错误显示为未绑定。
+  await loadEntityInfo()
+  await loadConfigList()
 })
 
 async function loadEntityInfo() {
@@ -156,7 +168,10 @@ async function loadEntityInfo() {
 async function loadConfigList() {
   loading.value = true
   try {
-    const res = await entityListConfigApi.getByEntityId(entityId)
+    const [res] = await Promise.all([
+      entityListConfigApi.getByEntityId(entityId),
+      loadPermissionRules()
+    ])
     configList.value = res || []
   } catch (e) {
     console.error('加载列表配置失败:', e)
@@ -164,6 +179,33 @@ async function loadConfigList() {
   } finally {
     loading.value = false
   }
+}
+
+/** 刷新实体规则及列表绑定；读取失败单独标记，仍允许查看和维护列表配置。 */
+async function loadPermissionRules() {
+  permissionLoading.value = true
+  permissionLoadError.value = false
+  permissionRules.value = []
+  try {
+    if (!entityCode.value) {
+      permissionLoadError.value = true
+      return
+    }
+    permissionRules.value = await entityListScopeRuleApi.getByEntityCode(entityCode.value)
+  } catch (error) {
+    permissionLoadError.value = true
+    console.error('加载列表数据权限失败:', error)
+  } finally {
+    permissionLoading.value = false
+  }
+}
+
+/** 展示列表实际绑定的规则名称（包括停用规则）；未绑定不代表可见全部数据。 */
+function formatListBoundRules(listKey) {
+  const names = permissionRules.value
+    .filter(rule => (rule.boundListKeys || []).includes(listKey))
+    .map(rule => rule.ruleName)
+  return names.length ? names.join('、') : '未绑定'
 }
 
 function handleCreate() {

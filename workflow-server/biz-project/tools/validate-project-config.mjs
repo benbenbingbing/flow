@@ -19,8 +19,8 @@ const signingKey = keyFileIndex >= 0
   : null;
 
 const systemFields = new Set([
-  "id", "code", "name", "status", "createdBy", "createdAt", "updatedBy",
-  "updatedAt", "submitterId", "submitterName", "submitTime",
+  "id", "code", "name", "status", "create_by", "create_time", "update_by",
+  "update_time", "submitterId", "submitterName", "submitTime",
   "processInstanceId", "processDefinitionId", "processStatus",
   "currentTaskId", "currentTaskName", "currentAssignee"
 ]);

@@ -40,7 +40,7 @@ public class DynamicTableService {
     private static final int MAX_DECIMAL_SCALE = 30;
     private static final int MAX_DEFAULT_LENGTH = 4096;
     private static final Set<String> BASE_COLUMNS = Set.of(
-            "id", "data_no", "title", "name", "code", "status",
+            "id", "name", "code", "status",
             "process_instance_id", "process_start_time", "process_end_time",
             "current_task_id", "current_task_name", "current_task_assignee",
             "submitter_id", "submitter_name", "submit_time", "dept_id",
@@ -356,8 +356,6 @@ public class DynamicTableService {
         
         // 基础字段
         sql.append("  `id` VARCHAR(64) NOT NULL COMMENT '主键ID',\n");
-        sql.append("  `data_no` VARCHAR(100) DEFAULT NULL COMMENT '业务单号',\n");
-        sql.append("  `title` VARCHAR(500) DEFAULT NULL COMMENT '数据标题',\n");
         sql.append("  `name` VARCHAR(200) DEFAULT NULL COMMENT '数据名称',\n");
         sql.append("  `code` VARCHAR(100) DEFAULT NULL COMMENT '数据编码',\n");
         sql.append("  `status` VARCHAR(50) DEFAULT NULL COMMENT '数据状态',\n");

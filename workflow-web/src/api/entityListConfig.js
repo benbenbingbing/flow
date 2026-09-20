@@ -133,24 +133,6 @@ export const entityListConfigApi = {
     })
   },
 
-  createScene(id, data) {
-    return request.post(`/entity-list-config/${id}/scenes`, data)
-  },
-
-  getScenes(id) {
-    return request.get(`/entity-list-config/${id}/scenes`)
-  },
-
-  patchScene(id, sceneId, data) {
-    return request.post(`/entity-list-config/${id}/scenes/${sceneId}/patch`, data)
-  },
-
-  deleteScene(id, sceneId, expectedRevision) {
-    return request.post(`/entity-list-config/${id}/scenes/${sceneId}/delete`, {
-      expectedRevision
-    })
-  },
-
   previewActionRule(id, data) {
     return request.post(`/entity-list-config/${id}/action-rule/preview`, data)
   },

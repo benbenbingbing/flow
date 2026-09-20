@@ -650,8 +650,6 @@ const apiExpectations = {
     'patchMetadata',
     'patchAction',
     'deleteAction',
-    'patchScene',
-    'deleteScene',
     'publish',
     'delete'
   ],
@@ -777,8 +775,6 @@ const entityListConfigApiSource = readFileSync(
 for (const route of [
   '/actions/${actionId}/patch',
   '/actions/${actionId}/delete',
-  '/scenes/${sceneId}/patch',
-  '/scenes/${sceneId}/delete'
 ]) {
   assert.ok(
     entityListConfigApiSource.includes(route),
@@ -856,7 +852,7 @@ assert.ok(
 const pageFeatureExpectations = {
   'src/views/ProcessList.vue': ['handleCreate', 'handleEdit', 'handleDelete', 'handlePublish', 'handleDisable', 'handleDesign', 'handleViewVersions', 'handleDeleteVersion'],
   'src/views/EntityList.vue': ['handleCreate', 'handleDelete', 'handlePublish', 'handleRepublish', 'handleDesign', 'handleListConfig', 'handleForm', 'handleUpgradeWorkflow', 'handleBindWorkflow', 'handleUnbindWorkflow', 'handleStatusConfig'],
-  'src/views/EntityListConfigDesign.vue': ['saveListMetadata', 'saveCurrentField', 'saveListAction', 'toggleScene'],
+  'src/views/EntityListConfigDesign.vue': ['saveListMetadata', 'saveCurrentField', 'saveListAction'],
   'src/views/entity/EntityDataList.vue': ['handleSearch', 'handleReset', 'handleCreate', 'handleEdit', 'handleDelete', 'handleExport'],
   'src/views/entity/components/EntityDataFormDialog.vue': ['openCreate', 'openEdit', 'handleSubmit', 'resetForm'],
   'src/views/Home.vue': ['loadTaskOperations', 'openAddSignDialog', 'submitAddSign', 'handleCancelAddSign', 'openCcDialog', 'submitCc', 'loadCcList', 'readCc'],

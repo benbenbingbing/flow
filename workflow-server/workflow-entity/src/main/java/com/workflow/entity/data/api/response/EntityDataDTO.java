@@ -1,5 +1,6 @@
 package com.workflow.entity.data.api.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -19,12 +20,8 @@ public class EntityDataDTO {
     private String entityCode;
     /** 实体名称 */
     private String entityName;
-    /** 数据编号（业务编号） */
-    private String dataNo;
-    /** 数据标题 */
-    private String title;
     private String name;                    // 数据名称（系统标准字段）
-    private String code;                    // 数据编码（系统标准字段）
+    private String code;                    // 业务编号（按实体编码规则生成的系统标准字段）
     private String status;                  // 状态（与流程节点同步）
     private String processInstanceId;       // 流程实例ID
     private LocalDateTime processStartTime; // 流程开始时间
@@ -38,10 +35,16 @@ public class EntityDataDTO {
     private String deptId;                  // 所属部门ID
     private String deptName;                // 所属部门名称
     private LocalDateTime submitTime;       // 提交时间
-    private LocalDateTime createdAt;        // 创建时间
-    private LocalDateTime updatedAt;        // 更新时间
-    private String createdBy;               // 创建人
-    private String updatedBy;               // 最后更新人
+    // 实体字段编码及 JSON 属性统一使用物理列名，不提供历史 created*/updated* 别名。
+    @JsonProperty("create_time")
+    private LocalDateTime createTime;       // 创建时间
+    @JsonProperty("update_time")
+    private LocalDateTime updateTime;       // 更新时间
+    @JsonProperty("create_by")
+    private String createBy;               // 创建人
+    @JsonProperty("update_by")
+    private String updateBy;               // 最后更新人
+    private Boolean deleted;                // 删除标记（系统只读字段）
     
     /**
      * 是否同时发起流程

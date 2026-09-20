@@ -925,6 +925,9 @@ public class EntityFormNodeService {
         private Map<String, Object> normalizeRelationBoundSubFormProps(
                         EntityFormNode node) {
                 EntityRelation relation = requireBoundRelation(node);
+                if (relation.getOwnershipType() != EntityRelation.OwnershipType.COMPOSITION) {
+                        throw new IllegalArgumentException("子表单／明细编辑必须使用组成关系；普通关联请添加关联表单或列表");
+                }
                 String expectedNodeType = relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE
                                 ? "SUB_FORM"
                                 : "REPEATER";
@@ -1430,6 +1433,10 @@ public class EntityFormNodeService {
                 }
                 if (!BINDING_TYPES.contains(node.getBindingType())) {
                         throw new IllegalArgumentException("不支持的节点绑定类型: " + node.getBindingType());
+                }
+                // 发布前再次核对权威关系，防止保存节点后实体关系已改为普通关联或更换外键。
+                if (SUB_FORM_NODE_TYPES.contains(node.getNodeType()) && "RELATION".equals(node.getBindingType())) {
+                        normalizeRelationBoundSubFormProps(node);
                 }
                 validateSubFormReleaseBinding(node);
                 if (StringUtils.hasText(node.getComponentName())

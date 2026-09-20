@@ -20,7 +20,7 @@
     </div>
     <div v-show="!fieldTypesPreference.state.value" id="entity-field-type-list" class="field-type-list">
       <div
-        v-for="type in fieldTypes.filter(t => !['RADIO', 'CHECKBOX'].includes(t.value))"
+        v-for="type in fieldTypes"
         :key="type.value"
         class="field-type-item"
         draggable="true"
@@ -37,10 +37,10 @@
 <script setup>
 import { onActivated, onMounted } from 'vue'
 import { useFieldTypesPreferenceStore } from '@/stores/fieldTypesPreference'
-import { ENTITY_FIELD_TYPES } from '@/shared/entity-design'
+import { ENTITY_DESIGN_FIELD_TYPES } from '@/shared/entity-design'
 
 const emit = defineEmits(['add-field', 'drag-start'])
-const fieldTypes = ENTITY_FIELD_TYPES
+const fieldTypes = ENTITY_DESIGN_FIELD_TYPES.filter(type => !['RADIO', 'CHECKBOX'].includes(type.value))
 const fieldTypesPreference = useFieldTypesPreferenceStore()
 
 // 重新进入实体页面时读取最新默认值；共享保存队列阻止旧响应覆盖正在保存的操作。

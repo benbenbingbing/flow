@@ -69,6 +69,8 @@
             :release-id="listReleaseId"
             :release-version="listReleaseVersion"
             :source-record-id="row.id"
+            :source-data="row"
+            :source-parameters="runtimeContext?.params || runtimeContext?.parameters || {}"
             :traversal-context-token="viewCompositionTraversalToken"
             @target-saved="refresh"
           />
@@ -125,7 +127,7 @@
       </template>
       <!-- 默认列 -->
       <template v-else>
-        <el-table-column prop="dataNo" label="编号" width="150" />
+        <el-table-column prop="code" label="编号" width="150" />
         <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
         <el-table-column v-for="field in listFields" :key="field.fieldCode" 
                         :label="field.fieldName" min-width="120" show-overflow-tooltip>
@@ -139,9 +141,9 @@
             <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="150">
+        <el-table-column prop="create_time" label="创建时间" width="150">
           <template #default="{ row }">
-            {{ formatDate(row.createdAt) }}
+            {{ formatDate(row.create_time) }}
           </template>
         </el-table-column>
       </template>
@@ -227,6 +229,8 @@
       :release-version="listReleaseVersion"
       :release-resolution-token="listReleaseResolutionToken || ''"
       :source-record-id="activeRelatedContent.recordId"
+      :source-data="activeRelatedContent.data"
+      :source-parameters="runtimeContext?.params || runtimeContext?.parameters || {}"
       :traversal-context-token="viewCompositionTraversalToken"
       :show-trigger="false"
       @target-saved="refresh"
@@ -263,6 +267,7 @@ import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecke
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import EntityListLauncher from '@/components/EntityListLauncher.vue'
+import { mapPageParameters } from '@/shared/page-parameters'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { findButtonRelatedContent, isRelatedContentButton, relatedContentSelectionReason } from '@/shared/list-related-content'
 import { hasListButtonComponent, getListButtonComponent } from '@/utils/listButtonComponentRegistry'
@@ -536,7 +541,7 @@ const onRowActionClick = (btn: any, row: any) => {
 // 当前选中行（由父组件通过 selection-change 同步）
 const selectedRows = defineModel<any[]>('selectedRows', { default: () => [] })
 const relatedContentRuntimeRef = ref<InstanceType<typeof RelatedContentRuntime>>()
-const activeRelatedContent = ref<{ composition: any, recordId: string } | null>(null)
+const activeRelatedContent = ref<{ composition: any, recordId: string, data: any } | null>(null)
 let relatedContentOpenSequence = 0
 
 /** 只传当前行 ID；关联筛选、权限和固定发布版本仍由原有可信解析接口决定。 */
@@ -547,7 +552,7 @@ async function openRelatedContent(button: any, row: any) {
     return
   }
   const sequence = ++relatedContentOpenSequence
-  activeRelatedContent.value = { composition, recordId: String(row.id) }
+  activeRelatedContent.value = { composition, recordId: String(row.id), data: row }
   await nextTick()
   if (sequence === relatedContentOpenSequence) await relatedContentRuntimeRef.value?.open()
 }
@@ -602,6 +607,14 @@ watch(
 )
 
 async function openConfiguredList(button: any, row?: any) {
+  if (!row && (button.parameterMappings || []).some((item: any) => ['FIELD', 'RECORD_ID'].includes(item.sourceType))) {
+    if (selectedRows.value.length !== 1) { ElMessage.warning('此按钮需要当前行数据，请先选择一条记录'); return }
+    row = selectedRows.value[0]
+  }
+  let parameters
+  try {
+    parameters = mapPageParameters(button.parameterMappings, { data: row || {}, recordId: row?.id, params: props.runtimeContext?.params || props.runtimeContext?.parameters })
+  } catch (error: any) { ElMessage.error(error.message); return }
   if (!button.targetEntityCode || !button.targetListKey) {
     ElMessage.warning('按钮未配置目标实体和列表')
     return
@@ -649,8 +662,10 @@ async function openConfiguredList(button: any, row?: any) {
       || props.runtimeContext?.relationKey
       || null,
     parameters: {
-      ...(props.runtimeContext?.parameters || {})
-    }
+      ...(props.runtimeContext?.parameters || {}),
+      ...parameters
+    },
+    params: { ...(props.runtimeContext?.parameters || {}), ...parameters }
   }
   await nextTick()
   entityListLauncherRef.value?.open()

@@ -258,7 +258,7 @@ class ProjectCustomBackendExtensionsTest {
                 new ProjectCustomUiDataSourceProvider();
         EntityDataDTO uiRecord = new EntityDataDTO();
         uiRecord.setId("PROJECT-UI-1");
-        uiRecord.setDataNo("PRJ-UI-001");
+        uiRecord.setCode("PRJ-UI-001");
         EntityListField uiField = new EntityListField();
         uiField.setFieldCode("unifiedSummary");
         Object uiResult = uiProvider.execute(
@@ -451,7 +451,7 @@ class ProjectCustomBackendExtensionsTest {
 
         EntityDataDTO record = new EntityDataDTO();
         record.setId("PROJECT-1");
-        record.setDataNo("PRJ-001");
+        record.setCode("PRJ-001");
         EntityListField field =
                 new EntityListField();
         field.setFieldCode("customSummary");
@@ -646,6 +646,7 @@ class ProjectCustomBackendExtensionsTest {
         EntityDataDTO row = new EntityDataDTO();
         row.setId("PROJECT-1");
         row.setData(Map.of("riskLevel", "HIGH"));
+        row.setCode("PROJECT-001");
         EntityActionRuleDTO.RuleNode condition =
                 new EntityActionRuleDTO.RuleNode();
         condition.setType(
@@ -661,6 +662,10 @@ class ProjectCustomBackendExtensionsTest {
                                 row,
                                 user,
                                 "PROCESSING"));
+        condition.setField("code");
+        condition.setValue("PROJECT-001");
+        assertTrue(new ProjectCustomActionRuleConditionProvider()
+                .evaluate(condition, row, user, "PROCESSING"));
         assertEquals(
                 "1=0",
                 new ProjectCustomDataPermissionFilterProvider()

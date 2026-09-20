@@ -151,11 +151,8 @@ public class EntityListPublishedRuntimeService {
         config.setToolbarConfig(write(snapshot.getToolbarConfig(), "发布工具栏配置"));
         config.setRowActionConfig(write(snapshot.getRowActionConfig(), "发布操作列配置"));
         config.setViewConfig(write(snapshot.getViewConfig(), "发布列表视图配置"));
-        config.setAllowedScenes(write(snapshot.getAllowedScenes(), "发布允许场景"));
         config.setSelectionConfig(write(snapshot.getSelectionConfig(), "发布选择配置"));
         config.setFixedFilterConfig(write(snapshot.getFixedFilterConfig(), "发布固定条件"));
-        config.setContextBindingConfig(
-                write(snapshot.getContextBindingConfig(), "发布上下文绑定"));
         config.setActiveReleaseId(releaseId);
         config.setPublishedVersion(releaseVersion);
         config.setPublishedSnapshot(true);
@@ -251,30 +248,6 @@ public class EntityListPublishedRuntimeService {
                 "ROW_ACTION",
                 buttons,
                 config.getReleaseResolutionToken());
-    }
-
-    /**
-     * 解析允许场景，发布快照存在时返回快照场景，否则回退。
-     *
-     * @param config   列表配置
-     * @param fallback 草稿场景回退列表
-     * @return 运行时允许场景列表
-     */
-    public List<String> resolveScenes(
-            EntityListConfig config,
-            List<String> fallback) {
-        if (config == null || !Boolean.TRUE.equals(config.getPublishedSnapshot())) {
-            return fallback;
-        }
-        if (!StringUtils.hasText(config.getAllowedScenes())) {
-            return List.of();
-        }
-        return codec.readArray(
-                        config.getAllowedScenes(),
-                        "发布允许场景")
-                .stream()
-                .map(String::valueOf)
-                .toList();
     }
 
     private String write(Object value, String label) {

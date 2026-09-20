@@ -569,10 +569,10 @@ const entityDataSearchForm = readFileSync(
 ;['addVirtualField', 'getExtensionOptions', 'ConfigSchemaEditor', 'renderConfig', 'queryConfig', 'columnConfig', 'filterOptionsByEntity', 'selectableCellComponentOptions', 'supportedEntityCodes'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设计器缺少动态配置能力: ${marker}`)
 })
-;['dataScopeMode', 'allowedSceneValues', 'selectionMode', 'fixedFilterConfig', 'contextBindingConfig'].forEach((marker) => {
+;['dataScopeMode', 'selectionMode', 'fixedFilterConfig'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设计器缺少统一运行时配置: ${marker}`)
 })
-;['getScenes', 'toggleScene', 'saveListAction', 'removeListAction', 'saveAll'].forEach((marker) => {
+;['saveListAction', 'removeListAction', 'saveAll'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设计器缺少单项增量保存能力: ${marker}`)
 })
 assert.equal(listDesigner.includes('@click="handleSave"'), false, '列表设计器不应继续暴露整包保存入口')
@@ -797,8 +797,7 @@ assert.ok(listButtonConfig.includes('title="按钮更多设置"'), '列表按钮
 const lowFrequencyButtonFieldPatterns = [
   /label="(?:按钮)?图标"/,
   /label="(?:按钮)?样式"/,
-  /label="展示方式"/,
-  /label="(?:按钮|组件)?模板"/
+  /label="展示方式"/
 ]
 lowFrequencyButtonFieldPatterns.forEach((pattern) => {
   assert.equal(pattern.test(listButtonTableSource), false, `列表按钮低频字段不应继续占用主表格: ${pattern}`)
@@ -879,7 +878,7 @@ assert.equal(
 )
 ;[
   [entitySettingsDesigner, 'designMode', ['label="数据库列名"', '<EntityValidationRuleEditor']],
-  [listDesigner, 'configMode', ['title="查询实现"', 'title="扩展渲染"', 'label="数据与显示"']]
+  [listDesigner, 'configMode', ['title="扩展渲染"', 'label="数据与显示"']]
 ].forEach(([source, modeVariable, visibleMarkers]) => {
   assert.equal(source.includes(modeVariable), false, `设计器不得再按模式隐藏配置: ${modeVariable}`)
   visibleMarkers.forEach((marker) => {
@@ -1021,7 +1020,7 @@ const runtimeCodeGenerator = readFileSync(
   [formDesigner, 'buildFormDraftRuntimeSnapshot'],
   [formDesigner, '<el-icon><Document /></el-icon>代码'],
   [listDesigner, 'buildListDraftRuntimeSnapshot'],
-  [listDesigner, '查看最终代码'],
+  [listDesigner, '<el-icon><Document /></el-icon>代码'],
   [runtimeCodeViewer, '等价 Vue SFC'],
   [runtimeCodeViewer, '@codemirror/lang-vue'],
   [runtimeCodeViewer, 'vue()'],
@@ -1672,12 +1671,12 @@ assert.match(
   '实体设计器应默认展示系统字段'
 )
 ;[
-  'v-else-if="permissionSqlPreview.hasPermission === false"',
-  'v-else-if="permissionSqlPreview.needFilter === false"',
-  '当前用户无需数据过滤，可以查看全部数据。',
-  '当前可见范围未返回规则明细，请以最终生效 SQL 和说明为准。'
+  'v-if="!permissionSqlPreview.enabled"',
+  'v-if="!permissionSqlPreview.audienceMatched"',
+  '当前规则 SQL',
+  'handlePreviewPermissionSql(row)'
 ].forEach((marker) => {
-  assert.ok(entityDesigner.includes(marker), `权限范围预览缺少准确的空规则结果分支: ${marker}`)
+  assert.ok(entityDesigner.includes(marker), `单条权限规则模拟缺少独立条件或适用状态: ${marker}`)
 })
 ;[
   'ActionRuleGroupEditor',
@@ -2113,10 +2112,9 @@ assert.equal(
 )
 
 ;[
-  'title="常用体验"',
+  'title="显示配置"',
   'title="访问范围"',
   'title="选择行为"',
-  'title="查询实现"',
   'title="扩展渲染"',
   'title="查询项"',
   'title="列展示"',
@@ -2374,7 +2372,7 @@ const configurationArchitectureExpectations = {
     '运行时回退',
     '常用配置优先',
     '基础与布局、数据校验、联动与事件、子页面、数据与扩展',
-    '访问范围、选择行为、查询实现',
+    '访问范围、选择行为、扩展渲染',
     '值与计算、事件与回填',
     '更多设置'
   ],

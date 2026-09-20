@@ -10,6 +10,7 @@ import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.EntityFieldValidationRuleService;
 import com.workflow.contracts.process.port.ProcessRuntimePort;
 import com.workflow.contracts.process.ProcessStartResult;
+import com.workflow.contracts.process.ProcessStartRequest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -80,6 +81,10 @@ class EntityDataDynamicServiceSubFormTest {
         verify(fixture.dynamicMapper).insert(eq("wf_parent"), parentCaptor.capture());
         assertFalse(parentCaptor.getValue().containsKey("detail_list"));
         assertFalse(parentCaptor.getValue().containsKey("detailList"));
+        assertEquals("主数据", parentCaptor.getValue().get("name"));
+        assertEquals("P001", parentCaptor.getValue().get("code"));
+        assertFalse(parentCaptor.getValue().containsKey("data_no"));
+        assertFalse(parentCaptor.getValue().containsKey("title"));
 
         ArgumentCaptor<Map<String, Object>> childCaptor = ArgumentCaptor.forClass(Map.class);
         verify(fixture.dynamicMapper).insert(eq("wf_child"), childCaptor.capture());
@@ -88,6 +93,8 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals(dto.getId(), childData.get("parentId"));
         assertEquals(0, childData.get("deleted"));
         assertEquals("C001", childData.get("code"));
+        assertFalse(childData.containsKey("data_no"));
+        assertFalse(childData.containsKey("title"));
     }
 
     /**
@@ -426,6 +433,16 @@ class EntityDataDynamicServiceSubFormTest {
         dto.setData(new HashMap<>(Map.of("name", "流程数据")));
 
         service.save(dto);
+
+        ArgumentCaptor<Map<String, Object>> insertCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(fixture.dynamicMapper).insert(eq("wf_parent"), insertCaptor.capture());
+        assertEquals("流程数据", insertCaptor.getValue().get("name"));
+        assertEquals("P001", insertCaptor.getValue().get("code"));
+        assertFalse(insertCaptor.getValue().containsKey("data_no"));
+        assertFalse(insertCaptor.getValue().containsKey("title"));
+        ArgumentCaptor<ProcessStartRequest> startCaptor = ArgumentCaptor.forClass(ProcessStartRequest.class);
+        verify(fixture.processRuntimePort).start(startCaptor.capture());
+        assertEquals("P001", startCaptor.getValue().code());
 
         ArgumentCaptor<Map<String, Object>> updateCaptor =
                 ArgumentCaptor.forClass(Map.class);

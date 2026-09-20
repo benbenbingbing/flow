@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -22,7 +23,7 @@ import static org.mockito.Mockito.when;
 class EntityFieldRelationDecouplingTest {
 
     @Test
-    void creatingLegacySubFormFieldDoesNotCreateOrDeleteRelation() {
+    void newDisplayFieldTypesAreRejectedWithoutCreatingFieldsOrRelations() {
         EntityDefinitionMapper entityMapper =
                 mock(EntityDefinitionMapper.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
@@ -32,7 +33,7 @@ class EntityFieldRelationDecouplingTest {
         parent.setId("parent-1");
         parent.setEntityCode("order");
         parent.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
-        when(entityMapper.selectById("parent-1")).thenReturn(parent);
+        when(entityMapper.findByIdForUpdate("parent-1")).thenReturn(java.util.Optional.of(parent));
 
         EntityFieldDefinitionService service =
                 new EntityFieldDefinitionService(
@@ -51,7 +52,10 @@ class EntityFieldRelationDecouplingTest {
         field.setChildEntityId("child-1");
         field.setChildRefFieldCode("parentId");
 
-        service.createField("parent-1", field);
+        assertThrows(IllegalArgumentException.class, () -> service.createField("parent-1", field));
+        field.setFieldType(EntityField.FieldType.SUB_LIST);
+        assertThrows(IllegalArgumentException.class, () -> service.createField("parent-1", field));
+        verify(fieldMapper, never()).insert(any(EntityField.class));
 
         verify(relationMapper, never()).insert(any(EntityRelation.class));
         verify(relationMapper, never()).deleteByParentField(any(), any());

@@ -1,7 +1,5 @@
 export const SYSTEM_FIELD_CODES = [
   'id',
-  'dataNo',
-  'title',
   'name',
   'code',
   'status',
@@ -15,10 +13,11 @@ export const SYSTEM_FIELD_CODES = [
   'submitterName',
   'deptId',
   'submitTime',
-  'createdAt',
-  'updatedAt',
-  'createdBy',
-  'updatedBy'
+  'create_time',
+  'update_time',
+  'create_by',
+  'update_by',
+  'deleted'
 ]
 
 export const SYSTEM_FIELDS = new Set(SYSTEM_FIELD_CODES)

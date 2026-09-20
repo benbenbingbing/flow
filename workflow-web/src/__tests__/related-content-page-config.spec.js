@@ -27,7 +27,9 @@ const publishDialog = read('src/components/UiConfigPublishDialog.vue')
 
 ;[
   '显示什么',
-  '数据怎么关联',
+  '数据来源',
+  '继承实体关系',
+  '选择已定义的实体关系',
   '允许做什么',
   '特殊情况怎么处理',
   '使用一条真实数据测试',
@@ -45,7 +47,7 @@ const publishDialog = read('src/components/UiConfigPublishDialog.vue')
   '组件版本',
   'failurePolicy'
 ].forEach(marker => {
-  assert.ok(dialog.includes(marker), `四步关联内容编辑器缺少：${marker}`)
+  assert.ok(dialog.includes(marker), `关系展示／扩展页面编辑器缺少：${marker}`)
 })
 
 ;[

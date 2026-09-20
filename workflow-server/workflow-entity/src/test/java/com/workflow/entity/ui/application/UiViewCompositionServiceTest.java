@@ -486,6 +486,7 @@ class UiViewCompositionServiceTest {
     @Test
     void releaseSnapshotValidatesCreateInitialMappingsAgainstPinnedForm() {
         Fixture fixture = fixture();
+        stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_ONE);
         EntityForm targetForm = new EntityForm();
         targetForm.setId("form-target");
         targetForm.setEntityId("requirement-entity");
@@ -1062,6 +1063,71 @@ class UiViewCompositionServiceTest {
                 () -> fixture.service.validate("FORM", "form-1", relationConfig()));
     }
 
+    @Test
+    void rejectsPageOwnedBusinessMappingsAtValidationAndPublication() {
+        Fixture fixture = fixture();
+        for (String type : List.of("REFERENCE_FIELD", "REVERSE_REFERENCE", "FIELD_MATCH")) {
+            Map<String, Object> config = new LinkedHashMap<>(config());
+            config.put("relation", Map.of("type", type, "sourceField", "projectCode", "targetField", "projectId"));
+            assertThrows(IllegalArgumentException.class, () -> fixture.service.validate("FORM", "form-1", config));
+            UiViewComposition current = existing(fixture.codec, 1);
+            current.setConfigDocument(fixture.codec.write(config, "test"));
+            when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+            assertThrows(IllegalArgumentException.class, () -> fixture.service.snapshot("FORM", "form-1"));
+        }
+        Map<String, Object> overridden = relationConfig();
+        overridden.put("relation", Map.of("type", "ENTITY_RELATION", "relationCode", "reqRelation", "targetField", "projectId"));
+        assertThrows(IllegalArgumentException.class, () -> fixture.service.validate("FORM", "form-1", overridden));
+        overridden.put("relation", Map.of("type", "ENTITY_RELATION", "relationCode", "reqRelation"));
+        overridden.put("specialHandling", Map.of("mode", "INTERFACE_SERVICE", "failurePolicy", "ERROR",
+                "interfaceService", Map.of("extensionId", "reader")));
+        assertThrows(IllegalArgumentException.class, () -> fixture.service.validate("FORM", "form-1", overridden));
+    }
+
+    @Test
+    void compositionDisplayCannotOpenIndependentWriteBoundary() {
+        Fixture fixture = fixture();
+        EntityRelation relation = stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_MANY);
+        relation.setOwnershipType(EntityRelation.OwnershipType.COMPOSITION);
+        Map<String, Object> config = relationConfig();
+        assertDoesNotThrow(() -> fixture.service.validate("FORM", "form-1", config));
+        config.put("actions", List.of("UNLINK"));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validate("FORM", "form-1", config));
+        assertTrue(failure.getMessage().contains("随主表保存"));
+    }
+
+    @Test
+    void reverseRelationPinsParentDefinitionAndDoesNotRedefineForeignKey() {
+        Fixture fixture = fixture();
+        EntityRelation reverse = stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_MANY);
+        reverse.setParentEntityId("requirement-entity");
+        reverse.setChildEntityId("project-entity");
+        reverse.setChildRefFieldCode("projectCode");
+        fixture.sourceSnapshot.setRelations(List.of());
+        fixture.targetSnapshot.setRelations(List.of(reverse));
+        when(fixture.relationMapper.selectByRelationCode("requirement-entity", "reqRelation")).thenReturn(reverse);
+        EntityForm target = new EntityForm();
+        target.setId("form-target");
+        target.setStatus(1);
+        target.setEntityId("requirement-entity");
+        target.setActiveReleaseId("release-target");
+        when(fixture.formMapper.selectById("form-target")).thenReturn(target);
+        updateTargetRelease(fixture, "FORM", "form-target", targetFormReleaseDocument(false));
+        Map<String, Object> config = relationConfig();
+        config.put("relation", Map.of("type", "ENTITY_RELATION", "relationCode", "reqRelation", "direction", "REVERSE"));
+        config.put("target", Map.of("entityId", "requirement-entity", "contentType", "FORM", "contentId", "form-target"));
+        assertDoesNotThrow(() -> fixture.service.validate("FORM", "form-1", config));
+        UiViewComposition current = existing(fixture.codec, 1);
+        current.setAnchorType("OWNER");
+        current.setConfigDocument(fixture.codec.write(config, "test"));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+        List<Map<String, Object>> snapshot = fixture.service.snapshot("FORM", "form-1");
+        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot("FORM", "form-1", ownerSnapshot(snapshot, List.of())));
+        reverse.setChildEntityId("other-child");
+        assertThrows(IllegalArgumentException.class, () -> fixture.service.validate("FORM", "form-1", config));
+    }
+
     private Map<String, Object> relationConfig() {
         Map<String, Object> value = new LinkedHashMap<>(config());
         value.put("relation", Map.of("type", "ENTITY_RELATION", "relationCode", "reqRelation"));
@@ -1076,6 +1142,7 @@ class UiViewCompositionServiceTest {
         relation.setChildEntityId("requirement-entity");
         relation.setChildRefFieldCode("projectId");
         relation.setRelationType(type);
+        relation.setOwnershipType(EntityRelation.OwnershipType.ASSOCIATION);
         relation.setEnabled(true);
         relation.setDeleted(0);
         when(fixture.relationMapper.selectByRelationCode("project-entity", "reqRelation"))
@@ -1206,7 +1273,7 @@ class UiViewCompositionServiceTest {
                 new UiViewCompositionConfigValidator(),
                 containmentGuard,
                 codec);
-        return new Fixture(
+        Fixture fixture = new Fixture(
                 service,
                 mapper,
                 formMapper,
@@ -1219,6 +1286,8 @@ class UiViewCompositionServiceTest {
                 relationMapper,
                 sourceSnapshot,
                 targetSnapshot);
+        stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_MANY);
+        return fixture;
     }
 
     private UiViewCompositionSaveRequest request(Integer revision) {
@@ -1254,11 +1323,7 @@ class UiViewCompositionServiceTest {
                 "contentName", "需求列表"));
         config.put("presentation", Map.of(
                 "position", "INLINE", "loadMode", "ON_DEMAND"));
-        config.put("relation", Map.of(
-                "type", "REVERSE_REFERENCE",
-                "targetField", "projectId",
-                "targetFieldName", "所属项目",
-                "mappings", List.of()));
+        config.put("relation", Map.of("type", "ENTITY_RELATION", "relationCode", "reqRelation"));
         config.put("actions", List.of("VIEW"));
         config.put("specialHandling", Map.of(
                 "mode", "NONE",
@@ -1313,6 +1378,7 @@ class UiViewCompositionServiceTest {
             boolean includeMappings,
             boolean includeComponent) {
         Map<String, Object> config = new LinkedHashMap<>(config());
+        config.put("relation", Map.of("type", "INTERFACE_SERVICE"));
         List<Map<String, Object>> inputMappings = includeMappings
                 ? List.of(Map.of(
                 "sourceField", "ownerId",
@@ -1363,7 +1429,7 @@ class UiViewCompositionServiceTest {
         EntityDataDTO result = new EntityDataDTO();
         result.setId(id);
         result.setEntityCode(entityCode);
-        result.setTitle(id);
+        result.setName(id);
         result.setData(data);
         return result;
     }
