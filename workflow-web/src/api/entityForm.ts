@@ -1,4 +1,6 @@
 import request from '@/utils/request'
+import { createFormRuntimeApi } from '@flow/workflow-api/formRuntime'
+const runtimeApi = createFormRuntimeApi(request)
 
 // 获取实体的表单列表
 export const getFormsByEntity = (entityId: string) => {
@@ -157,20 +159,7 @@ export const getFormReleaseSummaries = (
   return request.get(`/entity-forms/${id}/release-summaries`, { params })
 }
 
-export const getFormRuntimeRelease = (
-  id: string,
-  releaseId?: string | null,
-  version?: number | null,
-  releaseResolutionToken?: string | null
-) => {
-  return request.get(`/entity-forms/${id}/runtime-release`, {
-    params: {
-      releaseId: releaseId || undefined,
-      version: version ?? undefined,
-      releaseResolutionToken: releaseResolutionToken || undefined
-    }
-  })
-}
+export const getFormRuntimeRelease = runtimeApi.getFormRuntimeRelease
 
 export interface FormFieldUniquePrecheckRequest {
   releaseId?: string
@@ -198,11 +187,7 @@ export interface FormFieldUniquePrecheckResponse {
 export const precheckFormFieldUnique = (
   formId: string,
   data: FormFieldUniquePrecheckRequest
-) => request.post<FormFieldUniquePrecheckResponse>(
-  `/entity-form/${formId}/unique-precheck`,
-  data,
-  { silentError: true }
-)
+): Promise<FormFieldUniquePrecheckResponse> => runtimeApi.precheckFormFieldUnique(formId, data)
 
 export const previewFormActivation = (id: string, releaseId: string) => {
   return request.get(

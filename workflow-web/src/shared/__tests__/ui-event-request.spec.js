@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   buildUiEventExecutionPayload,
   sanitizeUiEventContext
-} from '../ui-event-request.js'
+} from '@flow/workflow-core/ui-event-request'
 
 const source = {
   listId: 'list-1',

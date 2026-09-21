@@ -131,7 +131,7 @@ function relation(value) {
 }
 
 function condition(type, operator, value) {
-  return { type, operator, value }
+  return { type, operator, value, ...(type === 'PROCESS_STATE' ? { lifecycleVersion: 1 } : {}) }
 }
 
 function isSetOperator(operator) {

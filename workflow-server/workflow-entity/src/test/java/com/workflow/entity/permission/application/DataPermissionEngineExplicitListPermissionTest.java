@@ -70,7 +70,7 @@ class DataPermissionEngineExplicitListPermissionTest {
         doNothing().when(sqlBuilder).validateFilter(
                 eq(ENTITY_CODE), any());
         when(sqlBuilder.buildFilterSql(
-                eq(ENTITY_CODE), any(), eq(user)))
+                eq(ENTITY_CODE), any(), eq(user), any()))
                 .thenReturn("secret_flag = 0");
 
         ExplicitListPermission result = engine
@@ -91,7 +91,7 @@ class DataPermissionEngineExplicitListPermissionTest {
         doNothing().when(sqlBuilder).validateFilter(
                 eq(ENTITY_CODE), any());
         when(sqlBuilder.buildFilterSql(
-                eq(ENTITY_CODE), any(), eq(user)))
+                eq(ENTITY_CODE), any(), eq(user), any()))
                 .thenReturn("owner_id = 'u-1'");
 
         ExplicitListPermission result = engine

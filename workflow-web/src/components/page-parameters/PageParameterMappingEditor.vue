@@ -22,7 +22,7 @@
 </template>
 <script setup>
 import { computed } from 'vue'
-import { getInputParameterDefinitions } from '@/shared/subform-parameter-contract'
+import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
 const props = defineProps({ modelValue: { type: Array, default: () => [] }, schema: { type: Object, default: () => ({}) }, sourceFields: { type: Array, default: () => [] } })
 const emit = defineEmits(['update:modelValue'])
 const parameters = computed(() => getInputParameterDefinitions(props.schema))

@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 实体状态服务
@@ -29,6 +31,21 @@ public class EntityStatusService {
      */
     public List<EntityStatus> findByEntityCode(String entityCode) {
         return entityStatusMapper.findByEntityCode(entityCode);
+    }
+
+    /**
+     * 返回实体自定义状态的显示名称；列表调用方可在单次请求内按实体缓存，避免逐行查询配置。
+     * 未配置名称的状态不加入映射，由客户端按内置状态或原始编码回退。
+     */
+    public Map<String, String> getStatusNameMap(String entityCode) {
+        Map<String, String> names = new LinkedHashMap<>();
+        for (EntityStatus status : findByEntityCode(entityCode)) {
+            if (status.getStatusCode() != null && status.getStatusName() != null
+                    && !status.getStatusName().isBlank()) {
+                names.put(status.getStatusCode(), status.getStatusName());
+            }
+        }
+        return names;
     }
     
     /**

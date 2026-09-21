@@ -47,7 +47,7 @@ import {
   isRegisteredFormButtonIcon,
   normalizeFormButtonAppearance,
   resolveFormButtonAppearanceProps
-} from '@/shared/form-actions'
+} from '@flow/workflow-core/form-actions'
 
 const props = defineProps({
   actions: { type: Array, default: () => [] },

@@ -32,6 +32,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EntityStatusUpdateListener implements FlowableEventListener {
 
+        @org.springframework.beans.factory.annotation.Autowired
+        private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
+
         /** Flowable 运行时服务，查询流程实例与变量 */
         private final RuntimeService runtimeService;
         /** 实体统一变更端口 */
@@ -72,6 +75,11 @@ public class EntityStatusUpdateListener implements FlowableEventListener {
                                                 .singleResult();
 
                                 if (processInstance == null) {
+                                        return;
+                                }
+
+                                if (statusPolicy != null && statusPolicy.usesTransitions(
+                                                processInstance.getProcessDefinitionId())) {
                                         return;
                                 }
 

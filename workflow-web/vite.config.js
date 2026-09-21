@@ -1,3 +1,4 @@
+import { workflowBoundaryPlugin } from '../scripts/workflow-boundary.mjs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { flowExtensionsPlugin } from './build/extensions/vite-plugin.mjs'
@@ -6,7 +7,7 @@ import { resolve } from 'path'
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080'
 
 export default defineConfig({
-  plugins: [flowExtensionsPlugin(), vue()],
+  plugins: [workflowBoundaryPlugin('pc'), flowExtensionsPlugin(), vue()],
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
@@ -30,7 +31,9 @@ export default defineConfig({
       }
     }
   },
+  optimizeDeps: { exclude: ['@flow/workflow-core', '@flow/workflow-api'] },
   resolve: {
+    dedupe: ['vue', 'pinia', 'vue-router'],
     alias: {
       '@': resolve(__dirname, 'src'),
     },

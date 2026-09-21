@@ -9,7 +9,7 @@ import {
   recordSelectionIds,
   recordSelectionValues,
   removeRecordSelection
-} from '../entity-record-selection.js'
+} from '@flow/workflow-core/entity-record-selection'
 
 const projectA = { id: 'project-a', name: '项目 A' }
 const projectB = { id: 'project-b', name: '项目 B' }

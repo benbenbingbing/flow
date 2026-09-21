@@ -1,0 +1,202 @@
+export const SYSTEM_FIELD_CODES = [
+  'id',
+  'name',
+  'code',
+  'status',
+  'processInstanceId',
+  'processStatus',
+  'processStartTime',
+  'processEndTime',
+  'currentTaskId',
+  'currentTaskName',
+  'currentTaskAssignee',
+  'submitterId',
+  'submitterName',
+  'deptId',
+  'submitTime',
+  'create_time',
+  'update_time',
+  'create_by',
+  'update_by',
+  'deleted'
+]
+
+export const SYSTEM_FIELDS = new Set(SYSTEM_FIELD_CODES)
+
+export function normalizeEntityRecordForForm(record = {}) {
+  const result = {
+    ...(record?.data && typeof record.data === 'object' ? record.data : {})
+  }
+  SYSTEM_FIELD_CODES.forEach((fieldCode) => {
+    const value = record?.[fieldCode]
+    if (value !== null && value !== undefined) {
+      result[fieldCode] = value
+    }
+  })
+  return result
+}
+
+export function filterRuntimeFormSubmissionData(
+  data = {},
+  form = {},
+  entityFields = []
+) {
+  const result = {
+    ...(data && typeof data === 'object' ? data : {})
+  }
+  const declaredFieldCodes = collectRuntimeFormFieldCodes(form)
+  entityFields
+    .filter(isRelationEntityField)
+    .map(getFieldKey)
+    .filter(Boolean)
+    .forEach((fieldCode) => {
+      if (!declaredFieldCodes.has(fieldCode)) {
+        delete result[fieldCode]
+      }
+    })
+  return result
+}
+
+export function getFieldKey(field) {
+  return String(field?.fieldCode || field?.fieldKey || field?.fieldId || field?.id || '')
+}
+
+export function collectRuntimeFormFieldCodes(form = {}) {
+  const fieldCodes = new Set()
+  const addFieldCode = (value) => {
+    const fieldCode = String(value || '').trim()
+    if (fieldCode) fieldCodes.add(fieldCode)
+  }
+
+  ;(form?.fields || []).forEach((field) => {
+    addFieldCode(getFieldKey(field))
+  })
+  ;(form?.nodes || []).forEach((node) => {
+    const props = parseRuntimeObject(
+      node?.propsDocument || node?.props || node?.legacyPropsDocument
+    )
+    addFieldCode(props?.fieldCode)
+    if (String(node?.bindingType || '').toUpperCase() === 'ENTITY_FIELD') {
+      addFieldCode(node?.bindingRef)
+    }
+  })
+  return fieldCodes
+}
+
+export function parseRuntimeDefaultValue(value) {
+  if (value == null || typeof value !== 'string') return value
+  const normalized = value.trim()
+  if (!normalized) return value
+  try {
+    return JSON.parse(normalized)
+  } catch {
+    return value
+  }
+}
+
+export function applyRuntimeFieldDefaults(target = {}, form = {}, entityFields = []) {
+  const defaultsByField = new Map()
+  const addFieldDefault = (field = {}) => {
+    const fieldKey = getFieldKey(field)
+    if (!fieldKey || field.defaultValue == null || field.defaultValue === '') return
+    defaultsByField.set(fieldKey, field.defaultValue)
+  }
+
+  entityFields.forEach(addFieldDefault)
+  ;(form?.fields || []).forEach(addFieldDefault)
+  ;(form?.nodes || []).forEach(node => {
+    const nodeType = String(node?.nodeType || '').toUpperCase()
+    if (!['FIELD', 'SUB_FORM', 'REPEATER'].includes(nodeType)) return
+    const props = typeof node?.propsDocument === 'string'
+      ? parseRuntimeDefaultValue(node.propsDocument)
+      : (node?.propsDocument || node?.props || {})
+    if (!props || typeof props !== 'object' || Array.isArray(props)) return
+    addFieldDefault(props)
+  })
+
+  defaultsByField.forEach((value, fieldKey) => {
+    if (target[fieldKey] == null || target[fieldKey] === '') {
+      target[fieldKey] = parseRuntimeDefaultValue(value)
+    }
+  })
+  return target
+}
+
+export function isSystemField(fieldOrCode) {
+  const fieldCode = typeof fieldOrCode === 'string' ? fieldOrCode : getFieldKey(fieldOrCode)
+  return SYSTEM_FIELDS.has(fieldCode)
+}
+
+export function getFieldModelPath(fieldOrCode) {
+  const fieldCode = typeof fieldOrCode === 'string' ? fieldOrCode : getFieldKey(fieldOrCode)
+  return isSystemField(fieldCode) ? fieldCode : `data.${fieldCode}`
+}
+
+function isRelationEntityField(field = {}) {
+  return [
+    'SUB_FORM',
+    'SUBFORM',
+    'REPEATER'
+  ].includes(String(field?.fieldType || '').trim().toUpperCase())
+}
+
+function parseRuntimeObject(value) {
+  if (!value) return {}
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+  if (typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+export function isRuntimeFormReadonly(form) {
+  return form?.isReadonly === true || form?.isReadonly === 1 || form?.isReadonly === '1'
+}
+
+export function isRuntimeFieldReadonly(field, forceReadonly = false, mode = 'view') {
+  return isFieldReadonlyForMode(field, mode, forceReadonly)
+}
+
+export function isRuntimeFieldVisible(field, mode = 'view') {
+  return isFieldVisibleForMode(field, mode)
+}
+
+export { buildRuntimeFieldRules }
+export {
+  buildFormDataSourceExecutionRequest,
+  createFormDataSourceRuntime,
+  getClientBeforeSubmitBindings,
+  isClientPrevalidationBinding,
+  getFormDataSourceBindings
+} from './dataSourceRuntime.js'
+export {
+  FORM_DATA_SOURCE_USAGE_OPTIONS,
+  assertUniqueFormDataSourceOutputTargets,
+  countFormDataSourceBindings,
+  formatFormDataSourceBindingSummary,
+  getFormDataSourceBindingStepLabel,
+  totalFormDataSourceBindings
+} from './formDataSourceBindings.js'
+export { resolveRuntimeFormTabLayout } from './runtimeFormTabs.js'
+
+export function normalizeRuntimeFormConfigs(progressRes) {
+  if (Array.isArray(progressRes?.formConfigs) && progressRes.formConfigs.length > 0) {
+    return [progressRes.formConfigs[0]]
+  }
+  return progressRes?.formConfig ? [progressRes.formConfig] : []
+}
+
+export function mergeRuntimeFormConfigs(configs) {
+  if (!configs || configs.length === 0) return null
+  return configs[0]
+}
+import {
+  buildRuntimeFieldRules,
+  isFieldReadonlyForMode,
+  isFieldVisibleForMode
+} from '../config-runtime/index.js'

@@ -42,7 +42,7 @@ import {
   CROSS_FIELD_OPERATORS,
   areCrossFieldTypesCompatible,
   validateCrossFieldConfiguration
-} from '@/shared/form-cross-field-validation'
+} from '@flow/workflow-core/form-cross-field-validation'
 
 const props = defineProps({
   modelValue: { default: null },

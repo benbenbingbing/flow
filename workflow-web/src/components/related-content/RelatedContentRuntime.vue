@@ -211,6 +211,7 @@
 </template>
 
 <script setup>
+import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import {
   computed,
   defineAsyncComponent,
@@ -226,12 +227,12 @@ import { getEntityStatusList } from '@/api/entityStatus'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { uiCompositionRuntimeApi } from '@/api/uiCompositionRuntime'
 import { normalizeRuntimeFormRelease } from '@/shared/list-button-form-runtime'
-import { mapPageParameters, resolvePageParameters } from '@/shared/page-parameters'
-import { normalizeEntityRecordForForm, createFormDataSourceRuntime } from '@/shared/form-runtime'
+import { mapPageParameters, resolvePageParameters } from '@flow/workflow-core/page-parameters'
+import { normalizeEntityRecordForForm, createFormDataSourceRuntime } from '@flow/workflow-core/form-runtime'
 import {
   buildEntityStatusMap,
   getEffectiveEntityStatusOptions
-} from '@/shared/entity-status-runtime'
+} from '@flow/workflow-core/entity-status-runtime'
 import {
   assertRelatedContentResolveContract,
   buildRelatedContentResolveInput,
@@ -523,6 +524,7 @@ async function resolveComposition({ force = false } = {}) {
       targetEntityStatusOptions.value = targetState.statuses
       // 独立运行时只持有本次解析快照，切换来源时旧初始化不能写入新目标记录。
       const runtime = createFormDataSourceRuntime({
+  executeDataSource: uiExtensionRuntimeApi.execute,
         entityCode: value.targetEntityCode, getForm: () => targetState.form,
         getRecord: () => targetState.record || {}, getRecordId: () => value.targetRecordId,
         getMode: () => 'view', getEntityDefinition: () => targetState.entity

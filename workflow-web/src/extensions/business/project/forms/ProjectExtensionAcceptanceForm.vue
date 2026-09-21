@@ -126,7 +126,9 @@
 </template>
 
 <script setup>
+import { createAcceptanceValue as createValue } from '@flow/workflow-core/business/project/acceptanceModel'
 import { computed, reactive, ref, watch } from 'vue'
+import { showRequestError } from '@/shared/request'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 
@@ -176,19 +178,6 @@ watch(
   { deep: true }
 )
 
-function createValue(value = {}) {
-  return {
-    ...value,
-    name: value.name || '',
-    acceptance_scene: value.acceptance_scene || 'FULL_EXTENSION',
-    owner_name: value.owner_name || '',
-    planned_date: value.planned_date || '',
-    acceptance_score: Number(value.acceptance_score ?? 65),
-    description: value.description || '',
-    provider_trace: value.provider_trace || '',
-    extension_result: value.extension_result || ''
-  }
-}
 
 function syncValue() {
   emit('update:modelValue', { ...localValue })
@@ -229,7 +218,7 @@ async function executeFormDataSource() {
     ElMessage.success(`表单统一数据源已执行，共返回 ${results.length} 个结果`)
   } catch (error) {
     console.error('[ProjectExtensionAcceptance] 整表单统一数据源执行失败', error)
-    ElMessage.error(error.message || '表单统一数据源执行失败')
+    showRequestError(error, '表单统一数据源执行失败')
   } finally {
     dataSourceLoading.value = false
   }

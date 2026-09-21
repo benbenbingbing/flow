@@ -94,8 +94,9 @@
 </template>
 
 <script setup>
+import { createDemoProjectValue as createValue } from '@flow/workflow-core/business/project/acceptanceModel'
 import { computed, reactive, ref, watch } from 'vue'
-import { isFieldReadonlyForMode } from '@/shared/config-runtime'
+import { isFieldReadonlyForMode } from '@flow/workflow-core/config-runtime'
 
 const props = defineProps({
   form: { type: Object, default: () => ({}) },
@@ -165,16 +166,6 @@ watch(
   { deep: true }
 )
 
-function createValue(value = {}) {
-  return {
-    projectName: value.projectName || value.name || '',
-    code: value.code || '',
-    ownerName: value.ownerName || '',
-    budget: value.budget ?? 0,
-    riskScore: value.riskScore ?? 20,
-    description: value.description || ''
-  }
-}
 
 function syncValue() {
   emit('update:modelValue', { ...props.modelValue, ...localValue, name: localValue.projectName })

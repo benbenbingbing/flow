@@ -106,7 +106,7 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import {
   buildInputParameterSchema,
   getInputParameterDefinitions
-} from '@/shared/subform-parameter-contract'
+} from '@flow/workflow-core/subform-parameter-contract'
 
 const schema = defineModel({ type: Object, default: () => ({}) })
 

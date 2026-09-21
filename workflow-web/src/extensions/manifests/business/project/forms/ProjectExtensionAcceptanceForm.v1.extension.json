@@ -45,5 +45,19 @@
     "usageContexts": [
       "PAGE"
     ]
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/ProjectExtensionAcceptanceForm.vue",
+        "export": "default",
+        "kind": "COMPONENT"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
   }
 }

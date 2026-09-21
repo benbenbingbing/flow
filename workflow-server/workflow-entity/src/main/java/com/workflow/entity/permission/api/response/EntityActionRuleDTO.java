@@ -29,6 +29,8 @@ public class EntityActionRuleDTO {
     public static class RuleNode {
         /** 节点类型：GROUP / CONDITION */
         private String type;
+        /** 1 为独立三态生命周期；缺省保留旧发布规则语义，避免扩大授权。 */
+        private Integer lifecycleVersion;
         /** GROUP 节点逻辑：AND / OR */
         private String logic;
         /** 子节点列表（GROUP 类型时使用） */

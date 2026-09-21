@@ -35,8 +35,8 @@
 <script setup>
 import { computed } from 'vue'
 import ConfigSchemaEditor from './ConfigSchemaEditor.vue'
-import { getCustomValidator, getCustomValidatorOptions } from '@/extensions/core/registries/validatorRegistry.js'
-import { CUSTOM_VALIDATION_MAX_RULES, customValidatorDefaults, validateCustomValidationConfig } from '@/shared/form-custom-validation'
+import { getCustomValidator, getCustomValidatorOptions } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
+import { CUSTOM_VALIDATION_MAX_RULES, customValidatorDefaults, validateCustomValidationConfig } from '@flow/workflow-core/form-custom-validation'
 
 const props = defineProps({ modelValue: { default: undefined }, field: { type: Object, required: true }, entityCode: { type: String, default: '' } })
 const emit = defineEmits(['update:modelValue'])

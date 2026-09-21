@@ -16,7 +16,7 @@ import { computed } from 'vue'
 import {
   normalizeFieldDefaultValue,
   useFormField
-} from '../composables/useFormField.js'
+} from '@flow/workflow-core/vue/useFormField'
 
 const props = defineProps({
   field: { type: Object, required: true },

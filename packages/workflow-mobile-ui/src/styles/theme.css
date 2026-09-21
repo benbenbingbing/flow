@@ -1,0 +1,24 @@
+.flow-mobile {
+  --flow-mobile-accent: #196b62;
+  --flow-mobile-accent-text: #196b62;
+  --flow-mobile-on-accent: #fff;
+  --flow-mobile-accent-soft: #eaf2f1;
+  --flow-mobile-accent-border: #c6dad8;
+  --flow-mobile-active: #165e56;
+  --flow-mobile-text: #18312e;
+  --flow-mobile-muted: #74817d;
+  --flow-mobile-surface: #fff;
+  --flow-mobile-background: #f4f7f6;
+  --flow-mobile-border: #e8eeec;
+  --flow-mobile-inset: #f7f8f8;
+  --flow-mobile-success: #196b62;
+  --flow-mobile-success-soft: #e8f4f0;
+  --van-primary-color: var(--flow-mobile-accent);
+  --van-text-color: var(--flow-mobile-text);
+  --van-background: var(--flow-mobile-background);
+  --van-radius-lg: 14px;
+  color: var(--flow-mobile-text);
+}
+
+/* Vant 的 plain 按钮默认直接用主色作文字，浅主色时改用派生的可读前景。 */
+.flow-mobile .van-button--plain.van-button--primary { color: var(--flow-mobile-accent-text); }

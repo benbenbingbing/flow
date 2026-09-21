@@ -17,7 +17,7 @@
 <script setup>
 import { computed } from 'vue'
 import EntitySelector from '@/components/EntitySelector.vue'
-import { recordSelectionValues } from '@/shared/entity-record-selection'
+import { recordSelectionValues } from '@flow/workflow-core/entity-record-selection'
 
 const props = defineProps({
   modelValue: {

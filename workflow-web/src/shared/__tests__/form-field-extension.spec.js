@@ -5,7 +5,7 @@ import {
   isFormFieldExtensionNode,
   resolveFormFieldExtensionName,
   resolveRuntimeFormFieldComponentType
-} from '../form-field-extension.js'
+} from '@flow/workflow-core/form-field-extension'
 
 const fieldNode = {
   nodeType: 'FIELD',

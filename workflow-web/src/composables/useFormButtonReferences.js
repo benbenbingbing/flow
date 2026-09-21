@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { getFormReleases } from '@/api/entityForm'
 import { uiEventBindingApi } from '@/api/uiConfig'
-import { publishedFormButtonKeys } from '@/shared/form-actions'
+import { publishedFormButtonKeys } from '@flow/workflow-core/form-actions'
 
 /**
  * 统一维护表单按钮的草稿绑定、发布引用和本地新增状态。

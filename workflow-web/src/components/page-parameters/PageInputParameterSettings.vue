@@ -14,9 +14,9 @@
 </template>
 <script setup>
 import { computed } from 'vue'
-import { pageParameterFields } from '@/shared/page-parameters'
+import { pageParameterFields } from '@flow/workflow-core/page-parameters'
 import FormInputParameterEditor from '@/components/form-designer/FormInputParameterEditor.vue'
-import { getInputParameterDefinitions } from '@/shared/subform-parameter-contract'
+import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
 const props = defineProps({ kind: { type: String, default: 'FORM' }, fields: { type: Array, default: () => [] } })
 const config = defineModel({ type: Object, default: () => ({}) })
 const schema = computed({ get: () => config.value.inputParameterSchema || {}, set: value => { config.value = { ...config.value, inputParameterSchema: value } } })

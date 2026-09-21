@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { effectScope, nextTick, ref } from 'vue'
-import { useFormCrossFieldValidation } from '../../composables/useFormCrossFieldValidation.js'
+import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
 
 // 保存按钮切换 loading 会让父组件重建 context；内容未变时必须保留就地错误。
 const config = { version: 1, rules: [{

@@ -1,0 +1,30 @@
+{
+  "name": "@flow/workflow-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./request": "./dist/request.js",
+    "./auth": "./dist/auth.js",
+    "./processTask": "./dist/processTask.js",
+    "./entity": "./dist/entity.js",
+    "./file": "./dist/file.js",
+    "./uiConfig": "./dist/uiConfig.js",
+    "./entityFormResolve": "./dist/entityFormResolve.js",
+    "./entityStatus": "./dist/entityStatus.js",
+    "./uiCompositionRuntime": "./dist/uiCompositionRuntime.js",
+    "./formRuntime": "./dist/formRuntime.js",
+    "./memberChange": "./dist/memberChange.js",
+    "./entityListRuntime": "./dist/entityListRuntime.js"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-module-package.mjs",
+    "dev": "node ../../scripts/build-module-package.mjs --watch"
+  },
+  "dependencies": {
+    "axios": "1.18.1",
+    "@flow/workflow-core": "1.0.0"
+  }
+}

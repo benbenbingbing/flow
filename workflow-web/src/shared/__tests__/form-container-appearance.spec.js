@@ -5,13 +5,13 @@ import {
   getDefaultFormContainerAppearance,
   resolveFormContainerAppearance,
   supportsFormContainerAppearance
-} from '../form-container-appearance.js'
+} from '@flow/workflow-core/form-container-appearance'
 import {
   buildFormNodePayload,
   extractFormNodeComponentConfig,
   formNodeSupports,
   getFormNodePropertySchema
-} from '../form-node-property-schema.js'
+} from '@flow/workflow-core/form-node-property-schema'
 
 assert.deepEqual(FORM_CONTAINER_APPEARANCE_DEFAULTS, {
   SECTION: { showPadding: true, showBorder: true },

@@ -1,0 +1,545 @@
+import axios from 'axios'
+import {
+  createSingleFlight,
+  isAccessTokenExpired,
+  isTerminalAuthError,
+  shouldRefreshAccessToken
+} from '@flow/workflow-core/auth-session'
+
+export const API_SUCCESS_CODES = new Set([0, 200, '0', '200'])
+export const BUSINESS_TRACE_HEADER = 'X-Business-Trace-Key'
+export const FLOW_EMBED_PROTOCOL_HEADER = 'X-Flow-Embed-Protocol'
+
+/**
+ * 同一次失败只提示一次。transport 保留抛错供页面恢复状态；页面补充兜底提示时
+ * 复用同一错误对象，避免请求层和业务 catch 各弹一次。不同请求不会按文案误合并。
+ */
+export function notifyRequestError(error, notify, fallback = '操作失败') {
+  if (error?.notificationShown) return
+  notify(error?.message || fallback)
+  if (error && typeof error === 'object') error.notificationShown = true
+}
+
+export function createBusinessTraceKey() {
+  if (globalThis.crypto?.randomUUID) {
+    return `ui_${globalThis.crypto.randomUUID()}`
+  }
+  return `ui_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+}
+
+export function ensureBusinessTraceHeader(config = {}) {
+  const method = String(config.method || 'get').toLowerCase()
+  if (!['post', 'put', 'patch', 'delete'].includes(method)) {
+    return config
+  }
+  config.headers ||= {}
+  const existing = typeof config.headers.get === 'function'
+    ? config.headers.get(BUSINESS_TRACE_HEADER)
+    : config.headers[BUSINESS_TRACE_HEADER]
+      || config.headers[BUSINESS_TRACE_HEADER.toLowerCase()]
+  if (!existing) {
+    const traceKey = createBusinessTraceKey()
+    if (typeof config.headers.set === 'function') {
+      config.headers.set(BUSINESS_TRACE_HEADER, traceKey)
+    } else {
+      config.headers[BUSINESS_TRACE_HEADER] = traceKey
+    }
+  }
+  return config
+}
+
+export function toPageParams(page = {}) {
+  const pageNum = page.pageNum ?? page.currentPage ?? page.page ?? 1
+  const pageSize = page.pageSize ?? page.size ?? page.limit ?? 10
+  return { pageNum, pageSize }
+}
+
+export function normalizePageResult(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { list: [], total: 0, pageNum: 1, pageSize: 10 }
+  }
+
+  const list = payload.list ?? payload.records ?? payload.rows ?? payload.data ?? []
+  const total = payload.total ?? payload.count ?? 0
+  const pageNum = payload.pageNum ?? payload.current ?? payload.currentPage ?? payload.page ?? 1
+  const pageSize = payload.pageSize ?? payload.size ?? payload.limit ?? list.length
+
+  return { ...payload, list, total, pageNum, pageSize }
+}
+
+export function isPageResult(payload) {
+  return Boolean(payload && typeof payload === 'object' && (
+    Array.isArray(payload.list) ||
+    Array.isArray(payload.records) ||
+    Array.isArray(payload.rows) ||
+    typeof payload.total !== 'undefined'
+  ))
+}
+
+export function normalizeApiResponse(payload) {
+  if (!payload || typeof payload !== 'object' || typeof payload.code === 'undefined') {
+    return payload
+  }
+
+  const data = payload.data
+  return isPageResult(data) ? normalizePageResult(data) : data
+}
+
+export function getApiErrorMessage(payload, fallback = '请求失败') {
+  return payload?.message || payload?.msg || fallback
+}
+
+/**
+ * 创建宿主独享的请求运行时。会话、提示和导航均由应用注入；PC、Embed 与移动端
+ * 不共享可变认证状态。adapter 可由协议测试注入，生产默认使用 Axios 传输。
+ */
+export function createRequestRuntime({
+  baseURL = '/api', getSession, notifyError = () => {},
+  onAuthExpired = () => {}, onPasswordResetRequired = () => {},
+  getOrigin = () => undefined, adapter
+} = {}) {
+  if (typeof getSession !== 'function') throw new TypeError('请求运行时需要会话 getter')
+const ACCESS_EXPIRED_ERROR_CODE = 'AUTH_ACCESS_EXPIRED'
+const NO_AUTH_RETRY = Symbol('NO_AUTH_RETRY')
+
+let authTerminationHandled = false
+let bootstrapPromise = null
+let embedDelegatedRequestContext = null
+
+/**
+ * 将通用 Flow API client 切换到 Embed 委托会话。
+ *
+ * 原生列表/表单运行时仍然调用与主应用完全相同的 API 模块；唯一差异集中在这里：
+ * token 只通过内存 getter 读取，请求不携带 Cookie，也绝不触发普通登录刷新或跳转。
+ * 这样以后注册的新字段组件无需再为 Embed 增加另一套请求适配。
+ */
+function configureEmbedDelegatedRequest({ getAccessToken } = {}) {
+  if (typeof getAccessToken !== 'function') {
+    throw new TypeError('Embed 委托请求缺少 token getter')
+  }
+  embedDelegatedRequestContext = Object.freeze({ getAccessToken })
+}
+
+/** 清除 iframe 当前的委托会话；不会读取或修改任何浏览器认证存储。 */
+function resetEmbedDelegatedRequest() {
+  embedDelegatedRequestContext = null
+}
+
+function isEmbedDelegatedRequestEnabled() {
+  return Boolean(embedDelegatedRequestContext)
+}
+
+function createApiError(
+  message,
+  source,
+  status
+) {
+  const error = new Error(message || '请求失败')
+  error.source = source
+  error.errorCode = source?.errorCode
+  // 原生页面委托请求同样由 Embed controller 回传诊断，不能只把关联 ID 留在 source 中。
+  error.traceId = source?.traceId ?? null
+  error.currentData = source?.data
+  error.status = status ?? (Number(source?.code) || undefined)
+  return error
+}
+
+function isAuthLifecycleRequest(config = {}) {
+  const url = String(config.url || '').split(/[?#]/, 1)[0]
+  return [
+    '/auth/login',
+    '/auth/refresh',
+    '/auth/logout'
+  ].some(path => url.endsWith(path))
+}
+
+function isTrustedApiRequest(config = {}) {
+  const url = String(config.url || '')
+  if (!/^https?:\/\//i.test(url)) {
+    return true
+  }
+  if (!getOrigin()) return false
+  const apiOrigin = new URL(
+    baseURL,
+    getOrigin()
+  ).origin
+  return new URL(url).origin === apiOrigin
+}
+
+function setAuthorizationHeader(config, token) {
+  config.headers ||= {}
+  if (typeof config.headers.set === 'function') {
+    if (token) {
+      config.headers.set('Authorization', `Bearer ${token}`)
+    } else {
+      config.headers.delete?.('Authorization')
+    }
+    return
+  }
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  } else {
+    delete config.headers.Authorization
+  }
+}
+
+function setEmbedProtocolHeader(config, enabled) {
+  config.headers ||= {}
+  if (typeof config.headers.set === 'function') {
+    if (enabled) {
+      config.headers.set(FLOW_EMBED_PROTOCOL_HEADER, '1')
+    } else {
+      config.headers.delete?.(FLOW_EMBED_PROTOCOL_HEADER)
+    }
+    return
+  }
+  if (enabled) {
+    config.headers[FLOW_EMBED_PROTOCOL_HEADER] = '1'
+  } else {
+    delete config.headers[FLOW_EMBED_PROTOCOL_HEADER]
+    delete config.headers[FLOW_EMBED_PROTOCOL_HEADER.toLowerCase()]
+  }
+}
+
+function terminateAuthSession(
+  message,
+  {
+    notify = true,
+    broadcast = true
+  } = {}
+) {
+  const userStore = getSession()
+  userStore.clearAuth({
+    broadcast,
+    reason: 'invalidated'
+  })
+  if (authTerminationHandled) return
+
+  authTerminationHandled = true
+  if (notify) {
+    notifyError(message || '登录已过期，请重新登录')
+  }
+  onAuthExpired()
+}
+
+const refreshClient = axios.create({
+  baseURL,
+  ...(adapter ? { adapter } : {}),
+  timeout: 30000,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json;charset=UTF-8'
+  }
+})
+
+async function executeRefresh() {
+  if (embedDelegatedRequestContext) {
+    throw createApiError('Embed 会话不能刷新普通登录态', {
+      errorCode: 'EMBED_OPERATION_NOT_ALLOWED'
+    })
+  }
+  let response
+  try {
+    response = await refreshClient.post('/auth/refresh')
+  } catch (error) {
+    if (error.response) {
+      throw createApiError(
+        getApiErrorMessage(
+          error.response.data,
+          '登录会话刷新失败'
+        ),
+        error.response.data,
+        error.response.status
+      )
+    }
+    throw error
+  }
+  const payload = response.data
+  if (
+    !payload
+    || typeof payload.code === 'undefined'
+    || !API_SUCCESS_CODES.has(payload.code)
+  ) {
+    throw createApiError(
+      getApiErrorMessage(payload, '登录会话刷新失败'),
+      payload,
+      response.status
+    )
+  }
+
+  const session = normalizeApiResponse(payload)
+  const userStore = getSession()
+  userStore.applySession(session)
+  authTerminationHandled = false
+  return session
+}
+
+/**
+ * 同一标签页内所有请求共用一次 Refresh 调用。
+ */
+const refreshAuthSession =
+  createSingleFlight(executeRefresh)
+
+/**
+ * 路由首次初始化时尝试通过 HttpOnly Cookie 恢复会话。
+ */
+function restoreAuthSession() {
+  if (embedDelegatedRequestContext) return Promise.resolve(false)
+  if (!bootstrapPromise) {
+    bootstrapPromise = refreshAuthSession()
+      .then(() => true)
+      .catch((error) => {
+        if (isTerminalAuthError(error.errorCode)) {
+          terminateAuthSession(error.message, {
+            notify: false,
+            broadcast: false
+          })
+          return false
+        }
+        return Boolean(getSession().token)
+      })
+  }
+  return bootstrapPromise
+}
+
+const request = axios.create({
+  baseURL,
+  ...(adapter ? { adapter } : {}),
+  timeout: 30000,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json;charset=UTF-8'
+  }
+})
+
+request.interceptors.request.use(
+  async (config) => {
+    ensureBusinessTraceHeader(config)
+    const trustedApiRequest = isTrustedApiRequest(config)
+
+    // Embed LIST/FORM 直接复用 Flow 原生 API/组件。认证差异只能存在于这个单点传输
+    // 边界，不能散落到日期、下拉框、自定义组件等各个实现中。
+    if (embedDelegatedRequestContext) {
+      config.skipAuthRefresh = true
+      config.withCredentials = false
+      if (!trustedApiRequest) {
+        setAuthorizationHeader(config, '')
+        setEmbedProtocolHeader(config, false)
+        return config
+      }
+      if (isAuthLifecycleRequest(config)) {
+        const error = createApiError('Embed 会话不能调用普通登录接口', {
+          errorCode: 'EMBED_OPERATION_NOT_ALLOWED'
+        })
+        error.config = config
+        throw error
+      }
+      const token = embedDelegatedRequestContext.getAccessToken()
+      if (!token) {
+        const error = createApiError('Embed 会话不可用', {
+          errorCode: 'EMBED_SESSION_MISSING'
+        }, 401)
+        error.config = config
+        throw error
+      }
+      setEmbedProtocolHeader(config, true)
+      setAuthorizationHeader(config, token)
+      return config
+    }
+
+    const userStore = getSession()
+    if (userStore.token && authTerminationHandled) {
+      authTerminationHandled = false
+    }
+
+    if (!trustedApiRequest) {
+      config.skipAuthRefresh = true
+      config.withCredentials = false
+      setAuthorizationHeader(config, '')
+      return config
+    }
+
+    const mayRefresh = !config.skipAuthRefresh
+      && !isAuthLifecycleRequest(config)
+    if (
+      mayRefresh
+      && shouldRefreshAccessToken(
+        userStore.token,
+        userStore.tokenExpiresAt
+      )
+    ) {
+      try {
+        await refreshAuthSession()
+      } catch (error) {
+        if (isTerminalAuthError(error.errorCode)) {
+          terminateAuthSession(error.message)
+          throw error
+        }
+        if (isAccessTokenExpired(userStore.tokenExpiresAt)) {
+          throw error
+        }
+      }
+    }
+
+    setAuthorizationHeader(config, userStore.token)
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
+async function retryAfterRefresh(config, payload) {
+  if (
+    config?.skipAuthRefresh
+    || config?._authRetried
+    || payload?.errorCode !== ACCESS_EXPIRED_ERROR_CODE
+  ) {
+    return NO_AUTH_RETRY
+  }
+
+  try {
+    await refreshAuthSession()
+    return request({
+      ...config,
+      _authRetried: true
+    })
+  } catch (error) {
+    if (isTerminalAuthError(error.errorCode)) {
+      terminateAuthSession(error.message)
+    }
+    throw error
+  }
+}
+
+async function handleApiPayload(
+  payload,
+  config = {},
+  status
+) {
+  if (!payload || typeof payload.code === 'undefined') {
+    return payload
+  }
+
+  if (API_SUCCESS_CODES.has(payload.code)) {
+    return normalizeApiResponse(payload)
+  }
+
+  if (Number(payload.code) === 401) {
+    const retried = await retryAfterRefresh(config, payload)
+    if (retried !== NO_AUTH_RETRY) return retried
+    if (
+      !config.skipAuthRefresh
+      && isTerminalAuthError(payload.errorCode)
+    ) {
+      const message = getApiErrorMessage(
+        payload,
+        '登录已过期，请重新登录'
+      )
+      terminateAuthSession(message)
+      throw createApiError(message, payload, status)
+    }
+  }
+
+  const message = getApiErrorMessage(payload)
+  const error = createApiError(message, payload, status)
+  if (!config.silentError) {
+    notifyRequestError(error, notifyError)
+  }
+  throw error
+}
+
+request.interceptors.response.use(
+  async (response) => {
+    const payload = response.data
+
+    if (response.config?.responseType === 'blob') {
+      const contentType =
+        response.headers?.['content-type'] || ''
+      if (contentType.includes('application/json')) {
+        const text = await payload.text()
+        try {
+          return await handleApiPayload(
+            JSON.parse(text),
+            response.config,
+            response.status
+          )
+        } catch (error) {
+          if (error instanceof SyntaxError) {
+            return payload
+          }
+          throw error
+        }
+      }
+      return payload
+    }
+
+    return handleApiPayload(
+      payload,
+      response.config || {},
+      response.status
+    )
+  },
+  async (error) => {
+    const { response, config = {} } = error
+    error.traceId = response?.data?.traceId ?? error.traceId ?? null
+    if (response?.status === 401) {
+      let payload = response.data
+      if (
+        config.responseType === 'blob'
+        && payload
+        && typeof payload.text === 'function'
+      ) {
+        try {
+          payload = JSON.parse(await payload.text())
+        } catch {
+          payload = response.data
+        }
+      }
+      const retried = await retryAfterRefresh(
+        config,
+        payload
+      )
+      if (retried !== NO_AUTH_RETRY) return retried
+      if (
+        !config.skipAuthRefresh
+        && isTerminalAuthError(payload?.errorCode)
+      ) {
+        const message = getApiErrorMessage(
+          payload,
+          '登录已过期，请重新登录'
+        )
+        terminateAuthSession(message)
+        error.message = message
+        error.errorCode = payload.errorCode
+        error.currentData = payload.data
+        error.status = response.status
+        return Promise.reject(error)
+      }
+    }
+    if (
+      response?.status === 428
+      && !config.skipAuthRefresh
+
+    ) {
+      onPasswordResetRequired()
+    }
+
+    const message = response
+      ? getApiErrorMessage(response.data)
+      : error.message || '网络错误'
+    error.message = message
+    // 请求拦截器（例如 Embed 委托模式）可能已经给出结构化错误；没有 HTTP
+    // response 时必须保留它，不能在统一响应出口覆写成 undefined。
+    error.errorCode = response?.data?.errorCode ?? error.errorCode
+    error.currentData = response?.data?.data ?? error.currentData
+    error.status = response?.status ?? error.status
+    if (!config.silentError) {
+      notifyRequestError(error, notifyError)
+    }
+    return Promise.reject(error)
+  }
+)
+
+
+
+return { request, configureEmbedDelegatedRequest, resetEmbedDelegatedRequest, isEmbedDelegatedRequestEnabled, refreshAuthSession, restoreAuthSession }
+}

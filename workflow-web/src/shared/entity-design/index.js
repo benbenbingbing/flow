@@ -28,6 +28,7 @@ export const ENTITY_DESIGN_FIELD_TYPES = ENTITY_FIELD_TYPES.filter(
 
 export const WORKFLOW_SYSTEM_FIELD_CODES = new Set([
   'processInstanceId',
+  'processStatus',
   'processStartTime',
   'processEndTime',
   'currentTaskId',

@@ -10,11 +10,16 @@ import org.flowable.engine.HistoryService;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
+import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.engine.runtime.ProcessInstanceQuery;
+import org.flowable.engine.history.HistoricProcessInstance;
+import org.flowable.engine.history.HistoricProcessInstanceQuery;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -208,6 +213,60 @@ class NodeOperationCapabilityServiceTest {
         when(query.active()).thenReturn(query);
         when(query.list()).thenReturn(activeTasks);
         return query;
+    }
+
+    @Test
+    void withdrawalRequiresStarterAndEveryParallelBranch() {
+        runtimeStarter("starter");
+        Task first = task("task-1", "review-a", "definition-1", "process-1");
+        Task second = task("task-2", "review-b", "definition-1", "process-1");
+        query(first, List.of(first, second));
+        when(repositoryService.getBpmnModel("definition-1")).thenReturn(model(
+                userTask("review-a", "{\"allowTerminate\":true}"),
+                userTask("review-b", "{\"allowTerminate\":true}")));
+        when(legacyDecisionService.availableActions("task-1")).thenReturn(withdrawDecision(true));
+        when(legacyDecisionService.availableActions("task-2")).thenReturn(withdrawDecision(false));
+        assertEquals(false, service.canWithdrawProcess("process-1", "other"));
+        assertEquals(false, service.canWithdrawProcess("process-1", "starter"));
+        when(legacyDecisionService.availableActions("task-2")).thenReturn(withdrawDecision(true));
+        assertEquals(true, service.canWithdrawProcess("process-1", "starter"));
+        // 新开关仍是硬门禁，旧撤回矩阵允许不能越过它。
+        when(repositoryService.getBpmnModel("definition-1")).thenReturn(model(
+                userTask("review-a", "{\"allowTerminate\":true}"),
+                userTask("review-b", "{\"allowTerminate\":false}")));
+        assertEquals(false, service.canWithdrawProcess("process-1", "starter"));
+    }
+
+    @Test
+    void withdrawalUsesHistoricalStarterAndClosesWhenNoActiveTask() {
+        runtimeStarter(null);
+        HistoricProcessInstanceQuery historyQuery = mock(HistoricProcessInstanceQuery.class);
+        HistoricProcessInstance historic = mock(HistoricProcessInstance.class);
+        when(historyService.createHistoricProcessInstanceQuery()).thenReturn(historyQuery);
+        when(historyQuery.processInstanceId("process-1")).thenReturn(historyQuery);
+        when(historyQuery.singleResult()).thenReturn(historic);
+        when(historic.getStartUserId()).thenReturn("starter");
+        Task first = task("task-1", "review", "definition-1", "process-1");
+        TaskQuery tasks = query(first, List.of(first));
+        when(repositoryService.getBpmnModel("definition-1")).thenReturn(model(userTask("review", null)));
+        when(legacyDecisionService.availableActions("task-1")).thenReturn(withdrawDecision(true));
+        assertEquals(true, service.canWithdrawProcess("process-1", "starter"));
+        when(tasks.list()).thenReturn(List.of());
+        assertEquals(false, service.canWithdrawProcess("process-1", "starter"));
+    }
+
+    private void runtimeStarter(String starter) {
+        ProcessInstanceQuery query = mock(ProcessInstanceQuery.class);
+        ProcessInstance instance = mock(ProcessInstance.class);
+        when(runtimeService.createProcessInstanceQuery()).thenReturn(query);
+        when(query.processInstanceId("process-1")).thenReturn(query);
+        when(query.singleResult()).thenReturn(instance);
+        when(instance.getStartUserId()).thenReturn(starter);
+    }
+
+    private Map<String, NodeOperationDecisionService.ActionDecision> withdrawDecision(boolean allowed) {
+        return Map.of("withdraw", new NodeOperationDecisionService.ActionDecision(
+                "withdraw", allowed, "", "", null));
     }
 
     private Task task(

@@ -274,6 +274,11 @@ public class EntityDefinitionService {
         statusField.setDefaultValue("DRAFT");
         fieldMapper.insert(statusField);
 
+        EntityField processStatusField = createSystemField(entityId, "processStatus", "流程状态",
+                EntityField.FieldType.STRING, "varchar(20)", 20, false, ++sortOrder);
+        processStatusField.setDefaultValue("NOT_STARTED");
+        fieldMapper.insert(processStatusField);
+
         // 4. processInstanceId - 流程实例ID（不可编辑）
         EntityField processIdField = createSystemField(entityId, "processInstanceId", "流程实例ID",
                 EntityField.FieldType.STRING, "varchar(64)", 64, false, ++sortOrder);
@@ -364,6 +369,8 @@ public class EntityDefinitionService {
                 .filter(java.util.Objects::nonNull)
                 .max(Integer::compareTo)
                 .orElse(0);
+        sortOrder = ensureSystemField(entityId, "processStatus", "流程状态",
+                EntityField.FieldType.STRING, "varchar(20)", 20, sortOrder);
         sortOrder = ensureSystemField(entityId, "processInstanceId", "流程实例ID",
                 EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
         sortOrder = ensureSystemField(entityId, "processStartTime", "流程开始时间",

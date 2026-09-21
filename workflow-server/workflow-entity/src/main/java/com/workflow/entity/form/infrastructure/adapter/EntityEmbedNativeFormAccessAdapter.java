@@ -265,6 +265,7 @@ public class EntityEmbedNativeFormAccessAdapter
             case "name" -> row.getName();
             case "code" -> row.getCode();
             case "status" -> row.getStatus();
+            case "processStatus" -> row.getProcessStatus();
             case "processInstanceId" -> row.getProcessInstanceId();
             case "processStartTime" -> row.getProcessStartTime();
             case "processEndTime" -> row.getProcessEndTime();

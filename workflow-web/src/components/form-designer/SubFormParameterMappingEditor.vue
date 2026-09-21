@@ -81,7 +81,7 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import {
   normalizeSubFormParameterContract,
   SUBFORM_PARAMETER_CONTRACT_VERSION
-} from '@/shared/subform-parameter-contract'
+} from '@flow/workflow-core/subform-parameter-contract'
 
 const props = defineProps({
   parameterOptions: { type: Array, default: () => [] },

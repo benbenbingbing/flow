@@ -42,7 +42,7 @@ import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth }
 
 import { ref, computed, watch } from 'vue'
 import FormFieldRenderer from './FormFieldRenderer.vue'
-import { evaluateExpression, formatCalcResult } from '@/utils/calcEngine'
+import { evaluateExpression, formatCalcResult } from '@flow/workflow-core/utils/calcEngine'
 
 const props = defineProps({
   form: {

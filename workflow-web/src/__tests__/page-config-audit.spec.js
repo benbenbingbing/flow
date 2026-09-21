@@ -6,7 +6,7 @@ import {
   canContainFormNode,
   canPlaceFormNodeAtRoot,
   isFormNodeContainer
-} from '../shared/form-node-hierarchy.js'
+} from '@flow/workflow-core/form-node-hierarchy'
 
 const root = process.cwd()
 const backendRoot = path.resolve(root, '../workflow-server')
@@ -360,8 +360,8 @@ const dynamicRuntimeFiles = [
   'src/components/FormFieldRenderer.vue',
   'src/components/ListCellRenderer.vue',
   'src/components/ConfigSchemaEditor.vue',
-  'src/shared/config-runtime/index.js',
-  'src/shared/form-runtime/index.js',
+  '../packages/workflow-core/src/shared/config-runtime/index.js',
+  '../packages/workflow-core/src/shared/form-runtime/index.js',
   'src/shared/list-runtime/index.js'
 ]
 
@@ -399,7 +399,7 @@ const entityApprovalDialog = readFileSync(
   'utf8'
 )
 const runtimeFormTabs = readFileSync(
-  path.join(root, 'src/shared/form-runtime/runtimeFormTabs.js'),
+  path.join(root, '../packages/workflow-core/src/shared/form-runtime/runtimeFormTabs.js'),
   'utf8'
 )
 const entityDataTableSource = readFileSync(
@@ -558,7 +558,7 @@ const uiConfigDraftShared = readFileSync(
   'utf8'
 )
 const uiConfigApiSource = readFileSync(
-  path.join(root, 'src/api/uiConfig.js'),
+  new URL(import.meta.resolve('@flow/workflow-api/uiConfig')),
   'utf8'
 )
 const listDesignerImplementation = `${listDesigner}\n${listDesignerShared}`
@@ -1168,7 +1168,7 @@ assert.ok(
 )
 const formFieldRegistrySource = readFileSync(path.join(root, 'src/extensions/core/registries/formFieldRegistry.js'), 'utf8')
 assert.ok(
-  readFileSync(path.join(root, 'src/extensions/core/fieldPolicy.js'), 'utf8').includes('fieldDefinitions.map'),
+  readFileSync(path.join(root, '../packages/workflow-core/src/extensions/core/fieldPolicy.js'), 'utf8').includes('fieldDefinitions.map'),
   '字段兼容策略必须来自 JSON 清单生成的数据'
 )
 assert.equal(
@@ -1356,12 +1356,12 @@ assert.equal(
 const formNodeDesignItem = readFileSync(path.join(root, 'src/components/FormNodeDesignItem.vue'), 'utf8')
 const formNodeDraggableList = readFileSync(path.join(root, 'src/components/FormNodeDraggableList.vue'), 'utf8')
 const formNodeDrag = readFileSync(path.join(root, 'src/shared/form-node-drag.js'), 'utf8')
-const formNodeHierarchy = readFileSync(path.join(root, 'src/shared/form-node-hierarchy.js'), 'utf8')
+const formNodeHierarchy = readFileSync(path.join(root, '../packages/workflow-core/src/shared/form-node-hierarchy.js'), 'utf8')
 const formPreviewLinkage = readFileSync(path.join(root, 'src/components/FormPreviewLinkage.vue'), 'utf8')
 const formNodeRenderer = readFileSync(path.join(root, 'src/components/FormNodeRenderer.vue'), 'utf8')
 const formNodeRuntimeItem = readFileSync(path.join(root, 'src/components/FormNodeRuntimeItem.vue'), 'utf8')
 const formNodePropertySchema = readFileSync(
-  path.join(root, 'src/shared/form-node-property-schema.js'),
+  path.join(root, '../packages/workflow-core/src/shared/form-node-property-schema.js'),
   'utf8'
 )
 const entityDataFormFields = readFileSync(

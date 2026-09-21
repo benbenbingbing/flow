@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { effectScope, nextTick, ref } from 'vue'
 import { getFieldLinkageDraftError, useFieldValueLinkage } from '../../composables/useFieldValueLinkage.js'
 import { getAttachmentConditionError, patchFieldLinkageRules, readFieldValueLinkage, updateFieldValueLinkage } from '../form-field-linkage.js'
-import { LinkageEngine } from '../../utils/linkageEngine.js'
-import { createFlowConditionConfig, createFlowConditionGroup } from '../../utils/flowConditionGroups.js'
+import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
+import { createFlowConditionConfig, createFlowConditionGroup } from '@flow/workflow-core/utils/flowConditionGroups'
 import { readFieldStateConditions, updateFieldStateCondition } from '../form-field-state-conditions.js'
-import { buildFormNodePayload } from '../form-node-property-schema.js'
+import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
 
 const condition = createFlowConditionConfig(createFlowConditionGroup('AND', [{ type: 'CONDITION', property: 'amount', operator: '>', value: '0' }]))
 // 所有历史存储形态均忽略废弃接口，仍保留可执行的公式与映射，且读取不修改快照。

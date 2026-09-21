@@ -38,5 +38,19 @@
       ],
       "supportsReadonly": true
     }
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/ProjectAcceptanceScoreField.vue",
+        "export": "default",
+        "kind": "COMPONENT"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
   }
 }

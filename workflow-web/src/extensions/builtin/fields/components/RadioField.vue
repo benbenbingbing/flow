@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import { useFormField } from '../composables/useFormField.js'
+import { useFormField } from '@flow/workflow-core/vue/useFormField'
 
 const props = defineProps({
   field: { type: Object, required: true },

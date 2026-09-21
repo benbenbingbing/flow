@@ -1,6 +1,6 @@
 import { provide } from 'vue'
 import { ElMessage } from 'element-plus'
-import { FIELD_SCRIPT_CONTEXT } from '../shared/field-event-scripts.js'
+import { FIELD_SCRIPT_CONTEXT } from '@flow/workflow-core/browser/field-event-scripts'
 
 /** 为字段脚本提供当前表单的读写入口，保留父表单的响应式同步与联动校验。 */
 export function provideFieldScriptContext(getContext) {

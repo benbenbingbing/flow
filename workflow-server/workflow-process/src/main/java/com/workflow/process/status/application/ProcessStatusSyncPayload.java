@@ -20,7 +20,7 @@ public record ProcessStatusSyncPayload(
             require(targetStatus, "targetStatus");
         } else if ("PROCESS_END".equals(eventType)) {
             require(statusCategory, "statusCategory");
-            require(fallbackStatus, "fallbackStatus");
+            // 新发布版本不携带业务状态兜底，结束仅更新生命周期。
         } else {
             throw new IllegalArgumentException(
                     "未知状态同步事件: " + eventType);

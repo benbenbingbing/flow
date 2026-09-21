@@ -33,6 +33,11 @@ public class UiBoundExtensionExecuteRequest {
     private String targetKey;
     /** 可调用接口扩展 ID。 */
     private String extensionId;
-    /** 客户端可提交的业务输入，不包含可信身份元数据。 */
+    /**
+     * 仅用于不可变历史快照的 serviceId + operationCode 解析；新绑定不提交。
+     * 解析得到的接口仍须通过发布绑定和权限校验，不能据此任意选择 Provider 方法。
+     */
+    private String legacyOperationCode;
+    /** 客户端业务输入；同名用户/部门字段不构成身份声明，不能覆盖服务端授权上下文。 */
     private Map<String, Object> input;
 }

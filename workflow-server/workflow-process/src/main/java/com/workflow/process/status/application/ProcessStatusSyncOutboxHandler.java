@@ -55,6 +55,7 @@ public class ProcessStatusSyncOutboxHandler
             if (entityProcessLinkMapper.closeActive(
                     payload.processInstanceId(),
                     payload.fallbackStatus()) == 1) {
+                entityProcessLinkMapper.recordEndType(payload.processInstanceId(), payload.statusCategory());
                 entityRecordPort.markProcessEnded(
                         payload.processInstanceId(),
                         payload.entityCode(),

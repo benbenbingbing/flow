@@ -10,9 +10,7 @@ const dialog = source('../EntityApprovalDialog.vue')
 const entityDataList = source('../../../EntityDataList.vue')
 const section = source('../../../../../components/NextApproverSection.vue')
 const selector = source('../../../../../components/ControlledUserSelector.vue')
-const previewComposable = source(
-  '../../../../../composables/useNextApproverPreview.js'
-)
+const previewComposable = readFileSync(new URL(import.meta.resolve('@flow/workflow-core/vue/useNextApproverPreview')), 'utf8')
 
 assert.ok(
   panel.indexOf('class="approval-opinion-section"')
@@ -115,7 +113,7 @@ assert.doesNotMatch(
 )
 assert.match(
   previewComposable,
-  /createBusinessTraceKey\(\)[\s\S]*?previewNextApproval\([\s\S]*?BUSINESS_TRACE_HEADER[\s\S]*?lastTraceKey\s*=\s*requestTraceKey/,
+  /createBusinessTraceKey\(\)[\s\S]*?previewNextApproval\([\s\S]*?traceHeader[\s\S]*?lastTraceKey\s*=\s*requestTraceKey/,
   '当前预览必须保存与其输入绑定的业务追踪键'
 )
 assert.match(
@@ -158,3 +156,5 @@ assert.match(
 )
 
 console.log('next approver panel contract tests passed')
+
+assert.match(source('../../../../../composables/useNextApproverPreview.js'), /traceHeader: BUSINESS_TRACE_HEADER/, 'PC 适配器必须注入公共追踪头')

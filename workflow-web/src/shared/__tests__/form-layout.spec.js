@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { resolveFormLabelPosition, resolveFormLabelWidth } from '../form-layout.js'
-import { resolveFormNodeLayoutSpan } from '../form-node-property-schema.js'
+import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
 
 // 历史快照中被布局模式覆盖的 gridSpan 不能因升级而突然生效。
 for (const [layoutType, labelPosition, span] of [

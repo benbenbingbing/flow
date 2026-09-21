@@ -103,7 +103,7 @@ import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
-import { applySchemaDefaults, sanitizeConfigObject } from '@/shared/config-runtime'
+import { applySchemaDefaults, sanitizeConfigObject } from '@flow/workflow-core/config-runtime'
 import {
   buildSchemaJsonHelp,
   getJsonConfigHelp

@@ -173,6 +173,8 @@ public class DataPermissionEngine {
         List<PermissionPreviewDTO.MatchedRuleDTO> matched = new ArrayList<>();
         List<String> listAllows = new ArrayList<>();
         List<String> denies = new ArrayList<>();
+        // 所有规则共享参数命名空间，合并 SQL 时保留各自的绑定值。
+        Map<String, Object> sqlParameters = new LinkedHashMap<>();
         LocalDateTime now = LocalDateTime.now();
         boolean hasAllowBinding = false;
 
@@ -205,7 +207,8 @@ public class DataPermissionEngine {
                 String sql = sqlBuilder.buildFilterSql(
                         entityCode,
                         policy.getFilterConfig(),
-                        user);
+                        user,
+                        sqlParameters);
                 PermissionPreviewDTO.MatchedRuleDTO detail =
                         detail(policy, binding, sql);
                 matched.add(detail);
@@ -235,7 +238,7 @@ public class DataPermissionEngine {
                 : null;
         String allow = unboundAllow ? unboundDecision.sql() : or(listAllows);
         String delegatedAllow = buildDelegatedAllow(
-                entityCode, snapshot, policyMap, user);
+                entityCode, snapshot, policyMap, user, sqlParameters);
         allow = orNonNull(allow, delegatedAllow);
         if (!StringUtils.hasText(allow)) {
             return denied(
@@ -261,7 +264,7 @@ public class DataPermissionEngine {
 
         DataPermissionResult result = "1=1".equals(finalSql)
                 ? DataPermissionResult.allowAll()
-                : DataPermissionResult.withCondition(finalSql, Map.of());
+                : DataPermissionResult.withCondition(finalSql, sqlParameters);
         result.setMatchedRuleNames(matched.stream()
                 .map(PermissionPreviewDTO.MatchedRuleDTO::getRuleName)
                 .toList());
@@ -334,7 +337,8 @@ public class DataPermissionEngine {
             String entityCode,
             EntityListScopeSnapshotDTO snapshot,
             Map<String, EntityListScopePolicyDTO> policyMap,
-            SysUser recipient) {
+            SysUser recipient,
+            Map<String, Object> sqlParameters) {
         List<EntityListScopeDelegation> delegations =
                 delegationMapper.findActiveByToUserId(recipient.getId(), entityCode);
         if (delegations == null || delegations.isEmpty()) {
@@ -353,9 +357,9 @@ public class DataPermissionEngine {
                     case "SUBMITTED" -> userRelation("submitter_id", delegator);
                     case "CURRENT_TASK" -> userRelation("current_task_assignee", delegator);
                     case "POLICY" -> compileDelegatedPolicy(
-                            entityCode, policyMap.get(delegation.getPolicyId()), delegator);
+                            entityCode, policyMap.get(delegation.getPolicyId()), delegator, sqlParameters);
                     case "CONDITION" -> compileDelegatedCondition(
-                            entityCode, delegation.getDelegateConfig(), delegator);
+                            entityCode, delegation.getDelegateConfig(), delegator, sqlParameters);
                     default -> "(" + userRelation("create_by", delegator)
                             + ") OR (" + userRelation("submitter_id", delegator) + ")";
                 };
@@ -373,25 +377,27 @@ public class DataPermissionEngine {
     private String compileDelegatedPolicy(
             String entityCode,
             EntityListScopePolicyDTO policy,
-            SysUser delegator) {
+            SysUser delegator,
+            Map<String, Object> sqlParameters) {
         if (policy == null || !Integer.valueOf(1).equals(policy.getEnabled())) {
             return null;
         }
         sqlBuilder.validateFilter(entityCode, policy.getFilterConfig());
-        return sqlBuilder.buildFilterSql(entityCode, policy.getFilterConfig(), delegator);
+        return sqlBuilder.buildFilterSql(entityCode, policy.getFilterConfig(), delegator, sqlParameters);
     }
 
     private String compileDelegatedCondition(
             String entityCode,
             String config,
-            SysUser delegator) {
+            SysUser delegator,
+            Map<String, Object> sqlParameters) {
         if (!StringUtils.hasText(config)) {
             return null;
         }
         try {
             FilterConfigDTO filter = objectMapper.readValue(config, FilterConfigDTO.class);
             sqlBuilder.validateFilter(entityCode, filter);
-            return sqlBuilder.buildFilterSql(entityCode, filter, delegator);
+            return sqlBuilder.buildFilterSql(entityCode, filter, delegator, sqlParameters);
         } catch (Exception exception) {
             throw new IllegalArgumentException("委托条件配置损坏", exception);
         }

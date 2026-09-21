@@ -5,7 +5,7 @@ import { registerCellComponent } from '../registries/listCellRegistry.js'
 import { registerListButtonComponent } from '../registries/listButtonComponentRegistry.js'
 import { registerListToolbarAction, registerListRowAction } from '../registries/listActionRegistry.js'
 import { registerEntityActionRuleCondition, registerEntityPermissionOptionProvider } from '../registries/entityActionRuleRegistry.js'
-import { registerCustomValidator } from '../registries/validatorRegistry.js'
+import { registerCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
 
 /** 平台内部注册适配器；业务新增实现只写 JSON，value 已经由安装器校验并实例化。 */
 export const extensionAdapters = {

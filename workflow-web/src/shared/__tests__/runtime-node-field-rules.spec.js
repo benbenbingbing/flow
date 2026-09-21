@@ -6,7 +6,7 @@ import {
   resolveRuntimeNodeFieldRules,
   resolveTextFieldMaxLength,
   resolveVarcharFieldLength
-} from '../config-runtime/index.js'
+} from '@flow/workflow-core/config-runtime'
 
 const resolved = resolveRuntimeNodeFieldRules(
   {

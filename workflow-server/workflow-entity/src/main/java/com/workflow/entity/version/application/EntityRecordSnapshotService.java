@@ -60,6 +60,7 @@ public class EntityRecordSnapshotService {
             new SystemField("processInstanceId", "流程实例ID", "STRING"),
             new SystemField("processStartTime", "流程开始时间", "DATETIME"),
             new SystemField("processEndTime", "流程结束时间", "DATETIME"),
+            new SystemField("processStatus", "流程状态", "SELECT"),
             new SystemField("currentTaskId", "当前任务ID", "STRING"),
             new SystemField("currentTaskName", "当前任务名称", "STRING"),
             new SystemField("currentTaskAssignee", "当前任务办理人", "USER"),

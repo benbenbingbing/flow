@@ -20,8 +20,9 @@
         </div>
         <p class="setting-remark">{{ item.remark }}</p>
         <div class="setting-control">
+          <MobileThemeEditor v-if="item.settingKey === MOBILE_THEME_SETTING_KEY" :model-value="item.value" :disabled="!canManage || Boolean(savingKey)" :readonly="!canManage" :saving="savingKey === item.settingKey" @save="value => save(item, JSON.stringify(value))" />
           <el-switch
-            v-if="item.settingValueType === 'BOOLEAN'"
+            v-else-if="item.settingValueType === 'BOOLEAN'"
             :model-value="item.value"
             :aria-label="item.name"
             :disabled="!canManage || Boolean(savingKey)"
@@ -56,6 +57,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageState from '@/components/PageState.vue'
+import MobileThemeEditor from './components/MobileThemeEditor.vue'
+import { MOBILE_THEME_SETTING_KEY } from '@flow/workflow-core/mobile-theme'
 import { useUserStore } from '@/stores/user'
 import { SIDEBAR_COLLAPSED_SETTING_KEY, useSidebarPreferenceStore } from '@/stores/sidebarPreference'
 import { TABS_ENABLED_SETTING_KEY, useTabsPreferenceStore } from '@/stores/tabsPreference'

@@ -6,7 +6,7 @@ import {
   resolveEntityStatusLabel,
   withEntityStatusFieldOptions,
   withEntityStatusRuntimeForm
-} from '@/shared/entity-status-runtime'
+} from '@flow/workflow-core/entity-status-runtime'
 import { formatListFieldValue } from '@/shared/list-runtime'
 
 const statuses = [
@@ -87,5 +87,11 @@ assert.equal(
   ),
   '待填写'
 )
+
+assert.equal(formatListFieldValue(
+  { processStatus: 'COMPLETED', status: 'REJECTED' },
+  { fieldCode: 'processStatus', fieldType: 'STRING' },
+  {}, { COMPLETED: '业务自定义名称' }
+), '已完成')
 
 console.log('entity status runtime tests passed')

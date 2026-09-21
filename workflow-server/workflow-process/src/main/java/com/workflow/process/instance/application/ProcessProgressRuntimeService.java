@@ -124,13 +124,10 @@ public class ProcessProgressRuntimeService {
                         historicInstance.getProcessDefinitionId());
             }
             startUserId = historicInstance != null ? historicInstance.getStartUserId() : null;
-            if (historicInstance != null && historicInstance.getDeleteReason() != null
-                    && (historicInstance.getDeleteReason().contains("终止")
-                            || historicInstance.getDeleteReason().contains("terminated"))) {
-                progress.setStatus("TERMINATED");
-            } else {
-                progress.setStatus("COMPLETED");
+            if (historicInstance == null || historicInstance.getEndTime() == null) {
+                throw new IllegalArgumentException("流程实例不存在或历史状态不完整: " + processInstanceId);
             }
+            progress.setStatus("COMPLETED");
         }
         // 2. 获取流程定义信息
         String processDefinitionId = progress.getProcessDefinitionId();
@@ -247,7 +244,7 @@ public class ProcessProgressRuntimeService {
             progress.setActiveNodes(new ArrayList<>());
         }
         // 6.1 终止流程：识别被终止时正在执行的节点
-        if ("TERMINATED".equals(progress.getStatus())) {
+        if (historicInstance != null && historicInstance.getDeleteReason() != null) {
             historicInstance = historyService.createHistoricProcessInstanceQuery()
                     .processInstanceId(processInstanceId)
                     .singleResult();

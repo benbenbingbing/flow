@@ -40,6 +40,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProcessRuntimeServiceTest {
+        @Test
+        void transitionModeDoesNotImplicitlySetBusinessStatusWhenStarting() {
+                Fixture fixture = new Fixture();
+                ProcessRuntimeService service = fixture.service();
+                var policy = mock(com.workflow.process.status.application.ProcessEntityStatusPolicy.class);
+                when(policy.usesTransitions("definition-v3")).thenReturn(true);
+                org.springframework.test.util.ReflectionTestUtils.setField(service, "statusPolicy", policy);
+                var result = service.start(new ProcessStartRequest("process-config-1", "expense", "data-1",
+                        "EXP-1", "admin", "管理员", "PENDING", Map.of(), Map.of()));
+                org.junit.jupiter.api.Assertions.assertNull(result.entityStatus());
+                assertEquals("RUNNING", result.processStatus());
+        }
+
 
         @Test
         void startsFlowableAndReturnsRuntimeFields() {
@@ -184,7 +197,7 @@ class ProcessRuntimeServiceTest {
                         when(taskService.createTaskQuery()).thenReturn(taskQuery);
                         when(taskQuery.processInstanceId("pi-1")).thenReturn(taskQuery);
                         when(taskQuery.active()).thenReturn(taskQuery);
-                        when(taskQuery.singleResult()).thenReturn(task);
+                        when(taskQuery.listPage(0, 1)).thenReturn(java.util.List.of(task));
                 }
 
                 ProcessRuntimeService service() {

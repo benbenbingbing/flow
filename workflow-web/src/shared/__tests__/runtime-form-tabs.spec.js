@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { resolveRuntimeFormTabLayout } from '../form-runtime/runtimeFormTabs.js'
+import { resolveRuntimeFormTabLayout } from '@flow/workflow-core/form-runtime/runtimeFormTabs'
 
 const form = {
   fields: [{ id: 'field-a', fieldCode: 'name' }],

@@ -156,6 +156,23 @@ public class PermissionSqlBuilder {
      * @return SQL 条件片段
      */
     public String buildFilterSql(String entityCode, FilterConfigDTO filter, SysUser user) {
+        // 无参数容器的入口仅供条件预览；执行查询须使用携带参数容器的重载。
+        return buildFilterSql(entityCode, filter, user, new LinkedHashMap<>());
+    }
+
+    /**
+     * 编译权限条件，并将待办记录 ID 作为绑定参数写入当前查询的参数容器。
+     *
+     * @param entityCode 实体编码，用于解析业务表
+     * @param filter 数据范围配置
+     * @param user 当前用户或委托人
+     * @param parameters 当前查询共享的可变参数容器，多条允许、拒绝及委托规则须复用同一容器
+     * @return SQL 条件片段；占位符由 Mapper 的 permissionParameters 参数提供值
+     */
+    public String buildFilterSql(
+            String entityCode, FilterConfigDTO filter, SysUser user,
+            Map<String, Object> parameters) {
+        Objects.requireNonNull(parameters, "权限 SQL 参数容器不能为空");
         if (filter == null || user == null) {
             return "1=0";
         }
@@ -175,7 +192,7 @@ public class PermissionSqlBuilder {
             case "PERSONAL" -> matchesUserSql(userField, user);
             case "SUBMITTER" -> matchesUserSql("submitter_id", user);
             case "CURRENT_ASSIGNEE" -> matchesUserSql("current_task_assignee", user);
-            case "HAS_TODO" -> currentProcessTaskSql(entityCode, user);
+            case "HAS_TODO" -> currentProcessTaskSql(entityCode, user, parameters);
             case "TEAM" -> buildTeamSql(entityCode, user);
             case "SQL" -> buildConfiguredSql(entityCode, filter, user);
             case "DEPT" -> equalsSql(deptField, user.getDeptId());
@@ -284,7 +301,9 @@ public class PermissionSqlBuilder {
                     depth,
                     count);
             case "RELATION" -> buildRelationSql(entityCode, node.getRelation(), user);
-            case "PROCESS_STATE" -> buildProcessStateComparison(
+            case "PROCESS_STATE" -> Integer.valueOf(1).equals(node.getLifecycleVersion())
+                    ? buildComparisonSql("process_status", node.getOperator(), node.getValue())
+                    : buildProcessStateComparison(
                     entityCode,
                     node.getOperator(),
                     node.getValue());
@@ -557,7 +576,11 @@ public class PermissionSqlBuilder {
             case "PROCESS_STATE" -> {
                 requireOperator(node.getOperator(), SIMPLE_OPERATORS);
                 requireValues(node.getOperator(), node.getValue(), "流程状态");
-                requireAllowedValues(node.getValue(), PROCESS_STATES, "流程状态");
+                if (node.getLifecycleVersion() != null && node.getLifecycleVersion() != 1) {
+                    throw new IllegalArgumentException("不支持的流程状态规则版本");
+                }
+                requireAllowedValues(node.getValue(), Integer.valueOf(1).equals(node.getLifecycleVersion())
+                        ? Set.of("NOT_STARTED", "RUNNING", "COMPLETED") : PROCESS_STATES, "流程状态");
             }
             case "STATUS_CODE" -> {
                 requireOperator(node.getOperator(), SIMPLE_OPERATORS);
@@ -699,7 +722,8 @@ public class PermissionSqlBuilder {
      * 当前用户存在真实可审批任务，包括未认领候选任务。
      * 通过流程契约查询当前实体记录 ID，限定外层业务表，不能把任务投影当作权限来源。
      */
-    private String currentProcessTaskSql(String entityCode, SysUser user) {
+    private String currentProcessTaskSql(
+            String entityCode, SysUser user, Map<String, Object> parameters) {
         if (!StringUtils.hasText(entityCode) || user == null || taskAccessPort == null) {
             return "1=0";
         }
@@ -712,18 +736,23 @@ public class PermissionSqlBuilder {
         String idList = recordIds.stream()
                 .filter(StringUtils::hasText)
                 .distinct()
-                .map(this::taskRecordIdLiteral)
+                .map(id -> bindTaskRecordId(id, parameters))
                 .collect(java.util.stream.Collectors.joining(","));
         return idList.isEmpty() ? "1=0" : "`" + tableName + "`.id IN (" + idList + ")";
     }
 
     /**
-     * 将端口返回的记录 ID 编译成 UTF-8 数据字面量，不能解释为 SQL。
-     * 使用十六进制避免单引号和反斜杠转义受 MySQL sql_mode 影响。
+     * 将记录 ID 交给 MyBatis/JDBC 绑定，避免手动转义和数据库专有字符转换。
+     * 参数名在当前查询中唯一，防止多个权限规则或不同委托人的记录 ID 相互覆盖。
      */
-    private String taskRecordIdLiteral(String id) {
-        String hex = java.util.HexFormat.of().formatHex(id.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        return "CONVERT(X'" + hex + "' USING utf8mb4)";
+    private String bindTaskRecordId(String id, Map<String, Object> parameters) {
+        int index = parameters.size();
+        String key = "todoRecordId" + index;
+        while (parameters.containsKey(key)) {
+            key = "todoRecordId" + ++index;
+        }
+        parameters.put(key, id);
+        return "#{permissionParameters." + key + ",jdbcType=VARCHAR}";
     }
 
     private String resolvePhysicalTable(String entityCode) {
@@ -958,6 +987,8 @@ public class PermissionSqlBuilder {
         columns.put("name", "name");
         columns.put("code", "code");
         columns.put("status", "status");
+        columns.put("processStatus", "process_status");
+        columns.put("process_status", "process_status");
         columns.put("processInstanceId", "process_instance_id");
         columns.put("process_instance_id", "process_instance_id");
         columns.put("processStartTime", "process_start_time");

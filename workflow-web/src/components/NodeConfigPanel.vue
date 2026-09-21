@@ -87,7 +87,7 @@
       <section v-if="isSequenceFlow && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="实体状态"
-          description="流程经过此连线时更新绑定实体的业务状态"
+          description="实际经过此连线时更新业务状态；未配置则保持原值，流程结束不会自动改为通过"
           :default-expanded="!!statusForm.entityStatusCode"
         >
           <template #summary>
@@ -1978,7 +1978,7 @@ import {
   createNextApproverSelectionConfig,
   normalizeUserKeys,
   validateNextApproverSelectionConfig
-} from '@/shared/next-approver'
+} from '@flow/workflow-core/next-approver'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   getOrganizationBusinessLevels,
@@ -1991,7 +1991,7 @@ import {
   parseFlowConditionConfig,
   parseFlowConditionExpression,
   serializeFlowConditionConfig
-} from '@/utils/flowConditionGroups'
+} from '@flow/workflow-core/utils/flowConditionGroups'
 import {
   DEFAULT_NODE_FORM_VALUE,
   buildNodeFormPersistencePlan,
@@ -2007,7 +2007,7 @@ import {
   transitionAutoSkipMode,
   validateAutoSkipExpression
 } from '@/shared/node-auto-skip'
-import { validateApprovalOptionActionCodes } from '@/shared/workflow-operation-guards'
+import { validateApprovalOptionActionCodes } from '@flow/workflow-core/workflow-operation-guards'
 
 const router = useRouter()
 

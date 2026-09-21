@@ -3,7 +3,7 @@ import {
   filterOptionsByEntity,
   matchesSupportedEntityCodes,
   normalizeSupportedEntityCodes
-} from '../extension-entity-scope.js'
+} from '@flow/workflow-core/extension-entity-scope'
 
 assert.deepEqual(normalizeSupportedEntityCodes(undefined), [])
 assert.deepEqual(normalizeSupportedEntityCodes('*'), [])

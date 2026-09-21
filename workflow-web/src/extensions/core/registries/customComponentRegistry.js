@@ -52,7 +52,7 @@
  * 暴露异步提交校验。
  */
 
-import { normalizeExtensionDescriptor } from '../../../shared/config-runtime/index.js'
+import { normalizeExtensionDescriptor } from '@flow/workflow-core/config-runtime'
 
 const listRegistry = new Map()
 const formRegistry = new Map()

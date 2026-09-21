@@ -126,6 +126,7 @@ public class ListFieldConditionEvaluator {
             case "currentTaskId" -> record.getCurrentTaskId();
             case "currentTaskName" -> record.getCurrentTaskName();
             case "currentTaskAssignee" -> record.getCurrentTaskAssignee();
+            case "processStatus", "process_status" -> record.getProcessStatus();
             case "processStartTime" -> record.getProcessStartTime();
             case "processEndTime" -> record.getProcessEndTime();
             case "create_time" -> record.getCreateTime();

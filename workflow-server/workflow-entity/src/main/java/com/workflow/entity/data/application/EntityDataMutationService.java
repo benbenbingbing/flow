@@ -380,50 +380,66 @@ public class EntityDataMutationService {
                 currentTaskAssignee);
     }
 
+    /** 兼容内部旧调用；跨模块事件必须使用携带实例 ID 的重载。 */
     @Transactional(rollbackFor = Exception.class)
-    public void markProcessEnded(
-            String entityCode,
-            String entityDataId,
-            String statusCategory,
-            String fallbackStatus) {
+    public void markProcessEnded(String entityCode, String entityDataId,
+            String statusCategory, String fallbackStatus) {
+        markProcessEnded(null, entityCode, entityDataId, statusCategory, fallbackStatus);
+    }
+
+    /**
+     * 回写流程结束投影。正常结束只更新新版本生命周期；fallbackStatus 用于旧版兼容及明确的终止等特殊操作。
+     * 延迟事件必须匹配当前实例，避免旧一代流程结束覆盖重新发起的流程。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void markProcessEnded(String processInstanceId, String entityCode, String entityDataId,
+            String statusCategory, String fallbackStatus) {
         String tableName =
                 dynamicTableService.getTableName(entityCode);
         LocalDateTime endedAt = LocalDateTime.now();
         Map<String, Object> existingData =
-                dynamicMapper.selectById(
+                dynamicMapper.selectByIdForUpdate(
                         tableName,
                         entityDataId);
-        String currentStatus = existingData == null
-                ? null
-                : asText(existingData.get("status"));
-        EntityStatus currentDefinition =
-                StringUtils.hasText(currentStatus)
-                        ? entityStatusMapper
-                                .findByEntityAndCode(
-                                        entityCode,
-                                        currentStatus)
-                        : null;
-        String statusCode =
-                EntityProcessStatusPolicy.shouldPreserve(
-                                currentDefinition == null
-                                        ? null
-                                        : currentDefinition
-                                                .getStatusCategory(),
-                                statusCategory)
-                        ? currentStatus
-                        : getStatusByCategory(
-                                entityCode,
-                                statusCategory,
-                                fallbackStatus);
+        if (processInstanceId != null && (existingData == null
+                || !processInstanceId.equals(asText(existingData.get("process_instance_id"))))) {
+            throw new com.workflow.entity.data.domain.policy.StaleProcessEventException(processInstanceId);
+        }
         Map<String, Object> updateData =
                 new HashMap<>();
         updateData.put("id", entityDataId);
-        updateData.put("status", statusCode);
+        updateData.put("process_status", "COMPLETED");
+        // 空 fallback 表示连线模式，不按流程结束结果猜测业务状态。
+        if (StringUtils.hasText(fallbackStatus)) {
+            String currentStatus = existingData == null
+                    ? null
+                    : asText(existingData.get("status"));
+            EntityStatus currentDefinition =
+                    StringUtils.hasText(currentStatus)
+                            ? entityStatusMapper
+                                    .findByEntityAndCode(
+                                            entityCode,
+                                            currentStatus)
+                            : null;
+            String statusCode =
+                    EntityProcessStatusPolicy.shouldPreserve(
+                                    currentDefinition == null
+                                            ? null
+                                            : currentDefinition
+                                                    .getStatusCategory(),
+                                    statusCategory)
+                            ? currentStatus
+                            : getStatusByCategory(
+                                    entityCode,
+                                    statusCategory,
+                                    fallbackStatus);
+            updateData.put("status", statusCode);
+        }
         updateData.put(
                 "process_end_time",
                 endedAt);
         updateData.put("update_time", endedAt);
-        if ("COMPLETED".equals(statusCategory)) {
+        if (StringUtils.hasText(fallbackStatus) && "COMPLETED".equals(statusCategory)) {
             putPublishedTimestampIfPresent(
                     entityCode,
                     updateData,
@@ -465,6 +481,8 @@ public class EntityDataMutationService {
         }
         String defaultStatus =
                 getDefaultStatus(dto.getEntityCode());
+        data.put("process_status", "NOT_STARTED");
+        dto.setProcessStatus("NOT_STARTED");
         data.put("status", defaultStatus);
         dto.setStatus(defaultStatus);
         String code =
@@ -659,9 +677,13 @@ public class EntityDataMutationService {
         updateData.put(
                 "process_start_time",
                 startedAt);
-        updateData.put(
-                "status",
-                result.entityStatus());
+        updateData.put("process_status", result.processStatus());
+        // 新版本的开始连线可能已更新业务状态，禁止用启动前的状态覆盖。
+        if (result.entityStatus() != null) {
+            updateData.put("status", result.entityStatus());
+        }
+        updateData.put("process_end_time", "COMPLETED".equals(result.processStatus())
+                ? startedAt : null);
         updateData.put("update_time", startedAt);
         updateData.put(
                 "current_task_id",
@@ -684,7 +706,12 @@ public class EntityDataMutationService {
 
         dto.setProcessInstanceId(
                 result.processInstanceId());
-        dto.setStatus(result.entityStatus());
+        Map<String, Object> current = dynamicMapper.selectById(
+                dynamicTableService.getTableName(dto.getEntityCode()), dto.getId());
+        dto.setStatus(current == null ? result.entityStatus() : asText(current.get("status")));
+        dto.setProcessStatus(result.processStatus());
+        dto.setProcessStartTime(startedAt);
+        dto.setProcessEndTime("COMPLETED".equals(result.processStatus()) ? startedAt : null);
         dto.setCurrentTaskId(result.currentTaskId());
         dto.setCurrentTaskName(result.currentTaskName());
         dto.setCurrentTaskAssignee(

@@ -18,15 +18,15 @@
 
 <script setup>
 import { provide, ref, watch } from 'vue'
-import { useFormCustomValidation } from '@/composables/useFormCustomValidation'
+import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
 import FormNodeRenderer from '@/components/FormNodeRenderer.vue'
 import { precheckFormFieldUnique } from '@/api/entityForm'
 import {
   createFormUniquePrecheckController,
   resolveFormFieldUniqueness,
   resolveFormUniqueRuntimeIdentity
-} from '@/shared/form-field-uniqueness'
-import { FORM_UNIQUE_PRECHECK_CONTEXT_KEY } from '@/shared/form-runtime/uniquePrecheckContext'
+} from '@flow/workflow-core/form-field-uniqueness'
+import { FORM_UNIQUE_PRECHECK_CONTEXT_KEY } from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 
 const props = defineProps({
   form: { type: Object, required: true },

@@ -210,11 +210,12 @@
   </div>
 </template>
 <script setup>
+import { changeMemberOperation, finalizeMemberChangeValue } from '@flow/workflow-core/business/project/memberChangeModel'
 import { computed, reactive, ref, watch } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import ProjectMemberChangeSections from './ProjectMemberChangeSections.vue'
-import { isFieldReadonlyForMode } from '@/shared/config-runtime'
+import { isFieldReadonlyForMode } from '@flow/workflow-core/config-runtime'
 import { loadMemberChangeContext } from '../api/memberChange.js'
 import {
   MEMBER_CHANGE_OPERATIONS,
@@ -371,23 +372,7 @@ watch(
 )
 function handleOperationChange() {
   validationMessages.value = []
-  if (isJoin.value) {
-    localValue.project_member_id = ''
-    localValue.handover_member_id = ''
-    localValue.handover_description = ''
-    localValue.permission_revoke_deadline = ''
-  } else {
-    localValue.target_user_id = ''
-    localValue.source_dept_id = ''
-    localValue.planned_leave_date = ''
-    localValue.account_required_flag = false
-    localValue.environment_access_required_flag = false
-    localValue.environment_scope = []
-    localValue.sensitive_access_flag = false
-    if (!showsAllocation.value) {
-      localValue.new_allocation_percentage = 0
-    }
-  }
+  Object.assign(localValue, changeMemberOperation(localValue))
   syncAndLoad()
 }
 function syncAndLoad() {
@@ -395,17 +380,8 @@ function syncAndLoad() {
   loadContext()
 }
 function syncValue() {
-  Object.assign(localValue, routeFlags.value)
-  localValue.name = [
-    operationLabel(localValue.operation_type),
-    localValue.project_id || '未选项目',
-    localValue.target_user_id || localValue.project_member_id || '未选人员'
-  ].join('-')
-  emit('update:modelValue', {
-    ...props.modelValue,
-    ...localValue,
-    ...routeFlags.value
-  })
+  Object.assign(localValue, finalizeMemberChangeValue(localValue, memberContext))
+  emit('update:modelValue', { ...props.modelValue, ...localValue })
 }
 async function loadContext() {
   const sequence = ++contextRequestSequence

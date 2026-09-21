@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
-import { safeParseConfig } from '@/shared/config-runtime'
-import { normalizeRecordSelection } from '@/shared/entity-record-selection'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { normalizeRecordSelection } from '@flow/workflow-core/entity-record-selection'
 import { normalizeListSelectionMode } from '@/shared/list-selection'
 
 export function useEntityDataSelectionState(props, runtimeScene, listConfig) {

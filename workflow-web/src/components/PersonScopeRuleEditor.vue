@@ -106,7 +106,7 @@ import UserSelector from '@/components/UserSelector.vue'
 import {
   normalizeNextApproverScope,
   validateNextApproverSelectionConfig
-} from '@/shared/next-approver'
+} from '@flow/workflow-core/next-approver'
 
 const props = defineProps({
   modelValue: {

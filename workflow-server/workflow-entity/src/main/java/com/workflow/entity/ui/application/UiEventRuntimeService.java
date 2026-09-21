@@ -135,6 +135,11 @@ public class UiEventRuntimeService {
             Function<Map<String, Object>, Object> defaultHandler) {
         long startedAt = System.nanoTime();
         try {
+            // 在条件、映射及不可变复制之前统一限制原始业务树；字段名不承担身份校验。
+            UiDataSourceExecutionAccessService.validateBusinessInput(
+                    request == null ? null : request.getInput());
+            UiDataSourceExecutionAccessService.validateBusinessInput(
+                    request == null ? null : request.getContext());
             requireFormButtonRequestShape(request);
             UiEventBindingService.ResolvedEventChain chain =
                     bindingService.resolvePublished(request);
@@ -142,11 +147,6 @@ public class UiEventRuntimeService {
             requireExecutionPermission(request, chain);
             bindListFixedFilters(request, chain);
             canonicalizeFormButtonRequest(request);
-            if (UiDataSourceExecutionAccessService.isFormFieldEvent(
-                    request.getConfigType(), request.getTargetType(), request.getEventCode())) {
-                UiDataSourceExecutionAccessService.validateFormFieldClientInput(
-                        request.getInput());
-            }
             bindTrustedPinnedExecution(request, chain);
             UiEventExecutionResult result =
                     UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
@@ -603,7 +603,7 @@ public class UiEventRuntimeService {
     /**
      * 在任何 condition/inputMapping 运行前重建表单按钮输入。
      *
-     * <p>原始 input 先按与 Provider 访问层相同的规则递归校验；随后只保留精确
+     * <p>原始 input 已通过统一结构校验；此处只保留精确
      * {@code input.form} 业务树，并注入已发布按钮、已鉴权模式和记录。客户端
      * button/task/process/record/mode 均不能参与事件语义。FORM_BUTTON 的原始
      * context 不属于业务输入，全部丢弃后只注入服务端已验证的路由坐标。</p>
@@ -615,10 +615,6 @@ public class UiEventRuntimeService {
                         request.getEventCode()))) {
             return;
         }
-        UiDataSourceExecutionAccessService.validateFormButtonClientInput(
-                request.getInput());
-        UiDataSourceExecutionAccessService.validateFormButtonClientContext(
-                request.getContext());
 
         Object rawForm = request.getInput() == null
                 ? null : request.getInput().get("form");
@@ -1187,7 +1183,7 @@ public class UiEventRuntimeService {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("input", input);
         state.put("data", input);
-        state.put("context", providerClientContext(request));
+        state.put("context", eventClientContext(request));
         state.put("selection", selection);
         state.put("recordId", request.getRecordId());
         state.put("selectedIds", request.getSelectedIds() == null
@@ -1205,7 +1201,8 @@ public class UiEventRuntimeService {
             UiEventExecuteRequest request,
             Map<String, Object> state) {
         Map<String, Object> context = new LinkedHashMap<>();
-        context.putAll(providerClientContext(request));
+        // 客户端 params/initialData 也可能包含部门、用户等业务字段，只留在引擎 state
+        // 供映射读取。Provider 通过独立 input 接收映射结果，不能把业务 hint 再当作元数据传递。
         if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(normalize(
                 request.getEventCode()))) {
             // mode 与 recordId 都来自刚完成的服务端按钮鉴权，不能继续沿用
@@ -1218,21 +1215,14 @@ public class UiEventRuntimeService {
         context.put("recordId", request.getRecordId());
         context.put("selectedIds", request.getSelectedIds() == null
                 ? List.of() : request.getSelectedIds());
-        context.put("eventState",
-                UiDataSourceUsages.FORM_BUTTON_CLICK.equals(normalize(
-                        request.getEventCode()))
-                        || UiDataSourceExecutionAccessService.isFormFieldEvent(
-                                request.getConfigType(), request.getTargetType(),
-                                request.getEventCode())
-                        ? providerEventState(state)
-                        : state);
+        context.put("eventState", providerEventState(state));
         return context;
     }
 
     /**
      * Provider 已通过独立 input 接收映射后的业务值；可信 context 不再重复嵌套
      * 原始 input/context/result，以免动态字段名被误认为身份元数据或被实现方错用。
-     * 表单按钮和字段事件使用此摘要；完整 state 仍留在事件引擎内供条件与回填映射使用。
+     * 所有事件统一使用此摘要；完整 state 仍留在事件引擎内供条件与回填映射使用。
      */
     private Map<String, Object> providerEventState(
             Map<String, Object> state) {
@@ -1246,14 +1236,11 @@ public class UiEventRuntimeService {
     }
 
     /**
-     * 为事件映射状态和 Provider 请求构造不含服务端保留身份的业务上下文。
-     *
-     * <p>列表查询会把运行上下文 DTO 转为 Map，sourceRecordId 即使为 null 也会
-     * 触发接口防伪校验，因此所有事件都应剥离顶层保留键，并同步用于 eventState。
-     * 表单按钮额外过滤任务和流程身份；嵌套上下文及映射输入继续由接口授权递归校验。
-     * Provider 的完整身份仍只能从 authorization/invocation context 读取。</p>
+     * 为事件内部映射状态保留客户端业务 hint，兼容旧客户端的展示坐标。
+     * 根层服务端身份声明会被丢弃；业务 hint 只供条件和 inputMapping 使用，
+     * 不再复制到 Provider context。Provider 身份和权限始终来自独立授权参数。
      */
-    private Map<String, Object> providerClientContext(
+    private Map<String, Object> eventClientContext(
             UiEventExecuteRequest request) {
         if (request.getContext() == null
                 || request.getContext().isEmpty()) {

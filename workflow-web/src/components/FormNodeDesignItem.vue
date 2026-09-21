@@ -457,11 +457,11 @@ import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
-import { safeParseConfig } from '@/shared/config-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import {
   resolveFormContainerAppearance,
   supportsFormContainerAppearance
-} from '@/shared/form-container-appearance'
+} from '@flow/workflow-core/form-container-appearance'
 
 defineOptions({ name: 'FormNodeDesignItem' })
 

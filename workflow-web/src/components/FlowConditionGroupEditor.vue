@@ -136,7 +136,7 @@
 
 <script setup>
 import { Delete } from '@element-plus/icons-vue'
-import { createFlowCondition, createFlowConditionGroup } from '@/utils/flowConditionGroups'
+import { createFlowCondition, createFlowConditionGroup } from '@flow/workflow-core/utils/flowConditionGroups'
 import {
   getProcessConditionFieldCode,
   getProcessConditionFieldLabel,

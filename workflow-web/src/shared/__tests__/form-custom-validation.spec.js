@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { registerCustomValidator, getCustomValidatorOptions, isCustomValidatorApplicable } from '../../extensions/core/registries/validatorRegistry.js'
+import { registerCustomValidator, getCustomValidatorOptions, isCustomValidatorApplicable } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
 import { installTestValidators } from '../../extensions/__tests__/helpers/install-node-extensions.mjs'
-import { evaluateCustomValidators, validateCustomValidationConfig } from '../form-custom-validation.js'
-import { createCustomValidationController } from '../form-custom-validation-runtime.js'
-import { collectCrossFieldRuntimeFields } from '../form-cross-field-runtime.js'
-import { normalizeFormFieldValidation } from '../form-node-property-schema.js'
+import { evaluateCustomValidators, validateCustomValidationConfig } from '@flow/workflow-core/form-custom-validation'
+import { createCustomValidationController } from '@flow/workflow-core/form-custom-validation-runtime'
+import { collectCrossFieldRuntimeFields } from '@flow/workflow-core/form-cross-field-runtime'
+import { normalizeFormFieldValidation } from '@flow/workflow-core/form-node-property-schema'
 
 await installTestValidators()
 const binding = (name = 'amount', params = { maxAmount: 1000 }, triggers = ['BLUR'], version = 1) => ({ name, version, params, triggers })

@@ -2,6 +2,9 @@ package com.workflow.service;
 
 import com.workflow.process.instance.application.ProcessInstanceService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
+import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.definition.application.EntityStatusService;
 
 import com.workflow.process.task.api.request.ReceiveTaskTriggerRequest;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
@@ -51,6 +54,35 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 public class ProcessInstanceServiceTest {
+    @Test
+    void startedListPagesBeforeEnrichmentAndUsesHistoricalEndInsteadOfCurrentEntityState() {
+        var history = mock(org.flowable.engine.history.HistoricProcessInstanceQuery.class, RETURNS_SELF);
+        when(historyService.createHistoricProcessInstanceQuery()).thenReturn(history);
+        when(history.count()).thenReturn(25L);
+        var ended = mock(org.flowable.engine.history.HistoricProcessInstance.class);
+        when(ended.getId()).thenReturn("old-process");
+        when(ended.getEndTime()).thenReturn(new Date());
+        when(ended.getProcessVariables()).thenReturn(Map.of("entityDataId", "record", "entityCode", "expense"));
+        when(history.listPage(10, 10)).thenReturn(List.of(ended));
+        var definitions = mock(ProcessDefinitionQuery.class, RETURNS_SELF);
+        when(repositoryService.createProcessDefinitionQuery()).thenReturn(definitions);
+        // 同一实体已进入新一轮流程，历史实例仍显示已完成，业务状态则展示实体当前值。
+        EntityDataDTO record = new EntityDataDTO();
+        record.setStatus("FINANCE_REVIEW");
+        record.setProcessStatus("RUNNING");
+        when(entityDataDynamicService.findById("expense", "record")).thenReturn(record);
+        when(entityStatusService.getStatusNameMap("expense")).thenReturn(Map.of("FINANCE_REVIEW", "财务复核中"));
+        var result = processInstanceService.getMyStartedList("u", 2, 10, null, null, null);
+        assertEquals(25, result.getTotal());
+        assertEquals(1, result.getRecords().size());
+        assertEquals("COMPLETED", result.getRecords().get(0).getStatus());
+        assertEquals("FINANCE_REVIEW", result.getRecords().get(0).getEntityStatus());
+        assertEquals("财务复核中", result.getRecords().get(0).getEntityStatusText());
+        verify(history).listPage(10, 10);
+        verify(history, never()).list();
+        verifyNoInteractions(runtimeService);
+    }
+
 
     @Mock
     private RuntimeService runtimeService;
@@ -69,6 +101,12 @@ public class ProcessInstanceServiceTest {
 
     @Mock
     private ProcessInstanceAccessService processInstanceAccessService;
+
+    @Mock
+    private EntityDataDynamicService entityDataDynamicService;
+
+    @Mock
+    private EntityStatusService entityStatusService;
 
     @InjectMocks
     private ProcessInstanceService processInstanceService;

@@ -100,6 +100,36 @@ class ProcessStatusSyncOutboxHandlerTest {
     }
 
     @Test
+    void lifecycleOnlyEndCanBeDeliveredAndEndTypeIsStored() throws Exception {
+        Fixture fixture = fixture();
+        ProcessStatusSyncPayload payload = new ProcessStatusSyncPayload(
+                "process-1",
+                "PROCESS_END",
+                "END",
+                "expense",
+                "record-1",
+                null,
+                "COMPLETED",
+                null);
+        when(fixture.mapper.insertApplying(any())).thenReturn(1);
+        when(fixture.mapper.markApplied("event-1")).thenReturn(1);
+        when(fixture.linkMapper.closeActive("process-1", null))
+                .thenReturn(1);
+
+        fixture.handler.handle(fixture.event(payload));
+
+        verify(fixture.entityRecordPort).markProcessEnded(
+                "process-1",
+                "expense",
+                "record-1",
+                "COMPLETED",
+                null);
+        verify(fixture.linkMapper).closeActive("process-1", null);
+        verify(fixture.linkMapper).recordEndType("process-1", "COMPLETED");
+        verify(fixture.mapper).markApplied("event-1");
+    }
+
+    @Test
     void staleTaskEventCannotOverwriteAnEndedGeneration() throws Exception {
         Fixture fixture = fixture();
         ProcessStatusSyncPayload payload = new ProcessStatusSyncPayload(

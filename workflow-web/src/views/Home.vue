@@ -605,11 +605,11 @@ import {
   isTaskOperationExplicitlyAllowed,
   resolveAllowedAddSignTypes,
   selectAllowedAddSignType
-} from '@/shared/workflow-operation-guards'
+} from '@flow/workflow-core/workflow-operation-guards'
 import {
   getTodoTaskMoreActions,
   isTaskClaimable
-} from '@/shared/workflow-task-actions'
+} from '@flow/workflow-core/workflow-task-actions'
 
 // 统计数据
 const statistics = reactive({
@@ -1420,8 +1420,8 @@ function getStatusLabel(status) {
   return {
     RUNNING: '进行中',
     COMPLETED: '已完成',
-    TERMINATED: '已终止',
-    SUSPENDED: '已暂停'
+    TERMINATED: '已完成',
+    SUSPENDED: '运行中'
   }[status] || '未知状态'
 }
 

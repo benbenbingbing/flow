@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { applyEntityRelationBinding, restoreRelationEditorMetadata, buildRelationEditor, buildRelationContent, isSimpleRelationContent, relationContentOptions } from '../relation-content.js'
-import { buildFormNodePayload } from '../form-node-property-schema.js'
+import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
 import { buildRelatedContentPayload, validateRelatedContent } from '../related-content.js'
 
 const relation = {

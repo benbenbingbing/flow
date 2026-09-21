@@ -83,6 +83,12 @@ public class MyStartedProcessVO {
      */
     private String statusText;
 
+    /** 关联实体数据的当前业务状态，不覆盖本条历史流程实例的 status。 */
+    private String entityStatus;
+
+    /** 实体配置中的状态名称；未配置时由客户端按状态编码回退。 */
+    private String entityStatusText;
+
     /** 当前登录发起人是否可以终止该运行中流程。 */
     private Boolean canTerminate;
 }

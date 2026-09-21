@@ -232,6 +232,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, toRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { showRequestError } from '@/shared/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { entityVersionApi } from '@/api/entityVersion'
@@ -255,7 +256,7 @@ import {
   getCellValue,
   isReferenceListField
 } from '@/shared/list-runtime'
-import { safeParseConfig } from '@/shared/config-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { filterRelatedContentButtons } from '@/shared/related-content-runtime'
 import { isButtonRelatedContent } from '@/shared/list-related-content'
 import { withListButtonTypeDefault } from '@/shared/list-config-design'
@@ -266,7 +267,7 @@ import {
   getEffectiveEntityStatusOptions,
   resolveEntityStatusLabel,
   withEntityStatusFieldOptions
-} from '@/shared/entity-status-runtime'
+} from '@flow/workflow-core/entity-status-runtime'
 import EntityDataSearchForm from './components/EntityDataSearchForm.vue'
 import EntityDataTable from './components/EntityDataTable.vue'
 import EntityDataFormDialog from './components/EntityDataFormDialog.vue'
@@ -274,7 +275,7 @@ import EntityApprovalDialog from './components/approval/EntityApprovalDialog.vue
 import EntityRecordVersionDrawer from './components/EntityRecordVersionDrawer.vue'
 import { useEntityDataSelectionState } from './composables/useEntityDataSelectionState'
 import PageState from '@/components/PageState.vue'
-import { mapPageParameters, resolvePageParameters } from '@/shared/page-parameters'
+import { mapPageParameters, resolvePageParameters } from '@flow/workflow-core/page-parameters'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
@@ -1185,7 +1186,7 @@ const handleEventAction = async ({
       ElMessage.success(result.message)
     }
   } catch (error: any) {
-    ElMessage.error(error.message || '按钮操作执行失败')
+    showRequestError(error, '按钮操作执行失败')
   }
 }
 async function applyButtonEffects(effects: any[]) {

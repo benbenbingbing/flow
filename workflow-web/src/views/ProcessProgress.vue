@@ -591,7 +591,7 @@ const getStatusText = (status) => {
   const texts = {
     'RUNNING': '运行中',
     'COMPLETED': '已完成',
-    'SUSPENDED': '已挂起'
+    'SUSPENDED': '运行中'
   }
   return texts[status] || status
 }

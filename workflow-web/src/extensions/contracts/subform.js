@@ -20,4 +20,4 @@ export {
   normalizeInputParameterSchema, buildInputParameterSchema, getInputParameterDefinitions,
   normalizeSubFormParameterContract, resolveSubFormParameters, validateSubFormParameters,
   applySubFormFieldInitialization, buildSubFormParentContext
-} from '../../shared/subform-parameter-contract.js'
+} from '@flow/workflow-core/subform-parameter-contract'

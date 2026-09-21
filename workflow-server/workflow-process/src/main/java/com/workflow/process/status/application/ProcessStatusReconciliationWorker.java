@@ -18,6 +18,8 @@ public class ProcessStatusReconciliationWorker {
     private final EntityProcessLinkMapper entityProcessLinkMapper;
     private final HistoryService historyService;
     private final ProcessStatusSyncPublisher publisher;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProcessEntityStatusPolicy statusPolicy;
 
     @Value("${workflow.status-sync.reconciliation-batch-size:100}")
     private int batchSize = 100;
@@ -51,13 +53,15 @@ public class ProcessStatusReconciliationWorker {
         if (historic == null) {
             return;
         }
-        String category = category(historic.getDeleteReason());
+        String category = statusPolicy == null ? category(historic.getDeleteReason()) : statusPolicy.endCategory(historic);
         publisher.republishProcessEnd(
                 link.getProcessInstanceId(),
                 link.getEntityCode(),
                 link.getEntityRecordId(),
                 category,
-                fallbackStatus(category));
+                (historic.getDeleteReason() == null || historic.getDeleteReason().isBlank())
+                        && statusPolicy != null && statusPolicy.usesTransitions(historic.getProcessDefinitionId())
+                        ? null : fallbackStatus(category));
         log.warn("补发流程结束状态同步事件: processInstanceId={}",
                 link.getProcessInstanceId());
     }

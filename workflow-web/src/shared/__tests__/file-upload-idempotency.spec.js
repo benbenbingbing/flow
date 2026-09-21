@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { getFileUploadIdempotencyKey } from '../file-upload-idempotency.js'
+import { getFileUploadIdempotencyKey } from '@flow/workflow-core/file-upload-idempotency'
 
 const first = {}
 const second = {}

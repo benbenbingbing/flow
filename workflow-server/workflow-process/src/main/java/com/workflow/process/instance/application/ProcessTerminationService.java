@@ -138,6 +138,10 @@ public class ProcessTerminationService {
                     LogValue.safe(deleteReason));
             return Result.success(null);
         } catch (Exception exception) {
+            // 返回业务错误也必须回滚已推进的引擎与实体状态，避免吞异常后提交半成品。
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+                org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            }
             log.error(
                     "流程终止失败: processInstanceId={}, userId={}",
                     LogValue.safe(processInstanceId),

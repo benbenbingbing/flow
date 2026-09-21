@@ -106,6 +106,64 @@ class UiInterfaceExtensionServiceTest {
         assertEquals("UI_EVENT_RUNTIME_REQUIRED", error.getErrorCode());
     }
 
+    /** 历史 pair 只负责恢复接口 ID，执行仍必须通过发布绑定授权。 */
+    @Test
+    void legacyBoundOperationResolvesPairAndStillRequiresAuthorization() {
+        TestContext context = context(List.of());
+        UiExtensionDefinition definition = definition(context.codec(), "STATIC_OPTIONS", null,
+                Map.of(), Map.of(), Map.of("options", List.of("ok")));
+        definition.setLegacyServiceId("legacy-service");
+        when(context.mapper().selectOne(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class)))
+                .thenReturn(definition);
+        UiBoundExtensionExecuteRequest request = new UiBoundExtensionExecuteRequest();
+        request.setOwnerType("LIST");
+        request.setOwnerId("list-1");
+        request.setBindingCode("LIST_QUERY");
+        request.setTargetType("OWNER");
+        request.setExtensionId("legacy-service");
+        request.setLegacyOperationCode("query");
+        request.setInput(Map.of("filters", Map.of("deptId", "business-dept")));
+        authorize(context, plan("1=1", 7));
+
+        assertEquals(List.of("ok"), context.service().executeBoundOperation(request));
+        ArgumentCaptor<UiExtensionExecuteRequest> internal =
+                ArgumentCaptor.forClass(UiExtensionExecuteRequest.class);
+        verify(context.executionAccessService()).authorizePublished(eq(definition), internal.capture());
+        assertEquals("query", internal.getValue().getOperationCode());
+        assertEquals(request.getInput(), internal.getValue().getInput());
+
+        when(context.executionAccessService().authorizePublished(any(), any()))
+                .thenThrow(new BusinessForbiddenException(
+                        "UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED", "未绑定该接口"));
+        BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class,
+                () -> context.service().executeBoundOperation(request));
+        assertEquals("UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED", error.getErrorCode());
+    }
+
+    /** 新接口 ID 已唯一确定操作，历史客户端字段不能更改它的 Provider 路由。 */
+    @Test
+    void modernBoundOperationIgnoresLegacyOperationClaim() {
+        TestContext context = context(List.of());
+        UiExtensionDefinition definition = definition(context.codec(), "STATIC_OPTIONS", null,
+                Map.of(), Map.of(), Map.of("options", List.of("ok")));
+        when(context.mapper().selectById("source-1")).thenReturn(definition);
+        authorize(context, plan("1=1", 7));
+        UiBoundExtensionExecuteRequest request = new UiBoundExtensionExecuteRequest();
+        request.setOwnerType("LIST");
+        request.setOwnerId("list-1");
+        request.setBindingCode("LIST_QUERY");
+        request.setTargetType("OWNER");
+        request.setExtensionId("source-1");
+        request.setLegacyOperationCode("arbitrary-method");
+
+        assertEquals(List.of("ok"), context.service().executeBoundOperation(request));
+        ArgumentCaptor<UiExtensionExecuteRequest> internal =
+                ArgumentCaptor.forClass(UiExtensionExecuteRequest.class);
+        verify(context.executionAccessService()).authorizePublished(eq(definition), internal.capture());
+        assertEquals("query", internal.getValue().getOperationCode());
+        verify(context.mapper(), never()).selectOne(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
+    }
+
     /** 测试保存时拒绝畸形 schema：验证 required 非字符串数组时抛出 IllegalArgumentException */
     @Test
     void rejectsMalformedSchemaWhenSaving() {

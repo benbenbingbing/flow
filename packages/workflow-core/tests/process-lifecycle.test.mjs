@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { withEntityStatusRuntimeForm, PROCESS_STATUS_OPTIONS, resolveProcessStatusLabel } from '../src/shared/entity-status-runtime.js'
+import { normalizeEntityRecordForForm } from '../src/shared/form-runtime/index.js'
+import { useProcessDetail } from '../src/composables/useProcessDetail.js'
+
+test('lifecycle options are independent, readonly, and available to forms', () => {
+  const form = withEntityStatusRuntimeForm({ fields: [{ id: 'f', fieldCode: 'processStatus' }], nodes: [{ nodeType: 'FIELD', bindingRef: 'f' }] }, [], [{ statusCode: 'RUNNING', statusName: '业务自定义状态' }])
+  assert.deepEqual(form.fields[0].options, PROCESS_STATUS_OPTIONS)
+  assert.equal(form.fields[0].editable, false)
+  assert.equal(form.nodes[0].props.disabled, true)
+  assert.equal(resolveProcessStatusLabel('COMPLETED'), '已完成')
+  assert.equal(normalizeEntityRecordForForm({ processStatus: 'RUNNING', data: { processStatus: 'FORGED' } }).processStatus, 'RUNNING')
+})
+
+test('discarded progress requests cannot repopulate a newly opened record', async () => {
+  let resolve
+  let historyCalls = 0
+  const detail = useProcessDetail({ request: { get: () => new Promise(done => { resolve = done }) }, getProcessHistory: async () => { historyCalls++; return [] } })
+  const old = detail.loadProcessDetail('old')
+  detail.resetProcessDetail()
+  resolve({ bpmnXml: 'old xml', processInstanceId: 'old' })
+  assert.equal(await old, false)
+  assert.equal(detail.bpmnXml.value, '')
+  assert.deepEqual(detail.processRuntimeMetadata.value, {})
+  assert.equal(historyCalls, 0)
+})
+
+test('history returned after switching records is also ignored', async () => {
+  let resolveHistory
+  const detail = useProcessDetail({ request: { get: async () => ({ processInstanceId: 'old' }) }, getProcessHistory: () => new Promise(done => { resolveHistory = done }) })
+  const old = detail.loadProcessDetail('old')
+  await Promise.resolve()
+  detail.resetProcessDetail()
+  resolveHistory([{ taskName: 'old task' }])
+  assert.equal(await old, false)
+  assert.deepEqual(detail.processHistory.value, [])
+})

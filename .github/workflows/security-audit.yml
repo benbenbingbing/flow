@@ -84,12 +84,12 @@ jobs:
         with:
           node-version: "22.23.1"
           cache: npm
-          cache-dependency-path: workflow-web/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: 检查前端依赖公告
         id: frontend-audit
         continue-on-error: true
-        working-directory: workflow-web
+        working-directory: .
         run: |
           npm ci --registry=https://registry.npmjs.org
           npm audit \
@@ -146,7 +146,8 @@ jobs:
         continue-on-error: true
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: ./workflow-web
+          context: .
+          file: workflow-web/Dockerfile
           load: true
           tags: flow-security-web:${{ github.sha }}
           cache-from: type=gha,scope=security-web
@@ -222,15 +223,17 @@ jobs:
         with:
           node-version: "22.23.1"
           cache: npm
-          cache-dependency-path: workflow-web/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: 验证前端测试、规范与生产构建
         id: frontend-standards
         continue-on-error: true
-        working-directory: workflow-web
+        working-directory: .
         run: |
           npm ci --registry=https://registry.npmjs.org
-          npm test
+          npm run test:web
+          npm run test:packages
+          npm run test:mobile
           npm run build
 
       - name: 检查 Shell 脚本

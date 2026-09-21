@@ -142,10 +142,12 @@
 </template>
 
 <script setup lang="ts">
-import { resolvePageParameters } from '@/shared/page-parameters'
+import { uiExtensionRuntimeApi } from '@/api/uiConfig'
+import { resolvePageParameters } from '@flow/workflow-core/page-parameters'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'
+import { showRequestError } from '@/shared/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
@@ -156,7 +158,7 @@ import {
   createFormDataSourceRuntime,
   normalizeEntityRecordForForm,
   resolveRuntimeFormTabLayout
-} from '@/shared/form-runtime'
+} from '@flow/workflow-core/form-runtime'
 import { useProcessDetail } from '@/composables/useProcessDetail'
 import { useNextApproverPreview } from '@/composables/useNextApproverPreview'
 import { useUserStore } from '@/stores/user'
@@ -169,27 +171,27 @@ import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vu
 import {
   resolveApprovalEntityCode,
   resolveApprovalFormConfig
-} from './entityApprovalDisplay.js'
+} from '@flow/workflow-core/workflow/approval-display'
 import {
   acquireFormActionExecution,
   executeCustomFormAction,
   resolveRuntimeFormActions
 } from '@/shared/form-action-runtime'
-import { footerFormActions } from '@/shared/form-actions'
+import { footerFormActions } from '@flow/workflow-core/form-actions'
 import { isWorkflowReady } from '@/shared/entity-design'
 import {
   buildEntityStatusMap,
   withEntityStatusRuntimeForm
-} from '@/shared/entity-status-runtime'
+} from '@flow/workflow-core/entity-status-runtime'
 import {
   hasNextApproverPresentation,
   normalizeNextApproverPreview
-} from '@/shared/next-approver'
+} from '@flow/workflow-core/next-approver'
 import { BUSINESS_TRACE_HEADER } from '@/shared/request'
 import { resolveActionableTaskId } from '@/utils/listButtonPermission'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
-import { isReservedApprovalActionCode } from '@/shared/workflow-operation-guards'
-import { taskApprovalConflictMessage } from '@/shared/workflow-task-actions'
+import { isReservedApprovalActionCode } from '@flow/workflow-core/workflow-operation-guards'
+import { taskApprovalConflictMessage } from '@flow/workflow-core/workflow-task-actions'
 
 const props = withDefaults(defineProps<{
   entityCode?: string
@@ -349,6 +351,7 @@ const approvalRuntimeContext = computed(() => ({
   releaseResolutionToken: effectiveFormConfig.value?.releaseResolutionToken
 }))
 const dataSourceRuntime = createFormDataSourceRuntime({
+  executeDataSource: uiExtensionRuntimeApi.execute,
   getRecord: () => entityData.value || {},
   getRecordId: () => entityData.value?.id,
   getListKey: () => props.listKey,
@@ -561,7 +564,7 @@ watch(
       })
     } catch (error) {
       console.warn('审批表单数据源初始化失败:', error)
-      ElMessage.error('审批表单初始化失败')
+      showRequestError(error, '审批表单初始化失败')
     }
   }
 )

@@ -10,7 +10,7 @@ import {
   mergeEntitySelectionMappings,
   resolveEntitySelectionRefConfig,
   resolveRuntimeEntitySelectionReference
-} from '../entity-selection-mapping.js'
+} from '@flow/workflow-core/entity-selection-mapping'
 
 assert.deepEqual(
   buildEntitySelectionSourceFields('CUSTOM').map(field => field.value),

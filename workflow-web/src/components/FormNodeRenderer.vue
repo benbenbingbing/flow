@@ -43,8 +43,8 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import FormNodeRuntimeItem from '@/components/FormNodeRuntimeItem.vue'
-import { safeParseConfig } from '@/shared/config-runtime'
-import { resolveFormNodeLayoutSpan } from '@/shared/form-node-property-schema'
+import { normalizeRuntimeNodes } from '@flow/workflow-core/form-runtime/nodeProjection'
+import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
 
 const props = defineProps({
   nodes: { type: Array, default: () => [] },
@@ -67,22 +67,7 @@ defineEmits(['update:modelValue'])
 const formRef = ref()
 const revealFieldCode = ref('')
 
-const normalizedNodes = computed(() =>
-  (props.nodes || []).map(node => ({
-    ...node,
-    nodeType: String(node.nodeType || 'FIELD').toUpperCase(),
-    bindingType: String(node.bindingType || 'NONE').toUpperCase(),
-    props: safeParseConfig(node.propsDocument || node.props),
-    rules: safeParseConfig(node.rulesDocument || node.rules),
-    dataSourceBindings: safeParseConfig(
-      node.dataSourceBindingsDocument || node.dataSourceBindings
-    ),
-    legacyProps: safeParseConfig(node.legacyPropsDocument || node.legacyProps),
-    localOverrides: safeParseConfig(
-      node.localOverridesDocument || node.localOverrides
-    )
-  })).sort((left, right) => Number(left.orderKey || 0) - Number(right.orderKey || 0))
-)
+const normalizedNodes = computed(() => normalizeRuntimeNodes(props.nodes))
 
 const childrenMap = computed(() => {
   const result = new Map()

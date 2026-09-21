@@ -94,7 +94,9 @@
     "vue": "^3.4.0",
     "vue-codemirror": "^6.1.1",
     "vue-router": "^4.2.0",
-    "xml-formatter": "^3.7.0"
+    "xml-formatter": "^3.7.0",
+    "@flow/workflow-core": "1.0.0",
+    "@flow/workflow-api": "1.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "6.0.8",

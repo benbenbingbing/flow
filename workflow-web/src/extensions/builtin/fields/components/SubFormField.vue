@@ -40,24 +40,24 @@ import { formContextKey } from 'element-plus'
 import SubFormRenderer from '@/components/SubFormRenderer.vue'
 import SectionField from './SectionField.vue'
 import SubFormRowRuntime from './SubFormRowRuntime.vue'
-import { useFormField } from '../composables/useFormField.js'
-import { useSubFormCustomValidation } from '@/composables/useSubFormCustomValidation'
+import { useFormField } from '@flow/workflow-core/vue/useFormField'
+import { useSubFormCustomValidation } from '@flow/workflow-core/vue/useSubFormCustomValidation'
 import { entityApi } from '@/api/entity'
 import {
   getEntityFields,
   getFormRuntimeRelease,
   precheckFormFieldUnique
 } from '@/api/entityForm'
-import { safeParseConfig } from '@/shared/config-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import {
   createFormUniquePrecheckController,
   resolveFormFieldKey,
   resolveFormFieldUniqueness,
   resolveFormUniqueRuntimeIdentity
-} from '@/shared/form-field-uniqueness'
+} from '@flow/workflow-core/form-field-uniqueness'
 import {
   resolveFormUniqueValidationTrigger
-} from '@/shared/form-runtime/uniquePrecheckContext'
+} from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 import {
   applySubFormFieldInitialization,
   buildSubFormParentContext,
@@ -65,9 +65,9 @@ import {
   normalizeSubFormParameterContract,
   resolveSubFormParameters,
   validateSubFormParameters
-} from '@/shared/subform-parameter-contract'
-import { areSubFormValuesEqual } from '@/shared/subform-value-sync'
-import { resolveFormContainerAppearance } from '@/shared/form-container-appearance'
+} from '@flow/workflow-core/subform-parameter-contract'
+import { areSubFormValuesEqual } from '@flow/workflow-core/subform-value-sync'
+import { resolveFormContainerAppearance } from '@flow/workflow-core/form-container-appearance'
 
 const props = defineProps({
   field: { type: Object, required: true },

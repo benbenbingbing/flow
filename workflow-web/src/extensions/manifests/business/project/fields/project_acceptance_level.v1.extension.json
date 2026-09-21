@@ -23,5 +23,19 @@
       "executesManagedDataSource": true,
       "supportsReadonly": true
     }
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/ProjectAcceptanceLevelField.vue",
+        "export": "default",
+        "kind": "COMPONENT"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
   }
 }

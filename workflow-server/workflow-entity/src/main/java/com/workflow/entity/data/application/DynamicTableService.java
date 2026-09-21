@@ -40,13 +40,13 @@ public class DynamicTableService {
     private static final int MAX_DECIMAL_SCALE = 30;
     private static final int MAX_DEFAULT_LENGTH = 4096;
     private static final Set<String> BASE_COLUMNS = Set.of(
-            "id", "name", "code", "status",
+            "id", "name", "code", "status", "process_status",
             "process_instance_id", "process_start_time", "process_end_time",
             "current_task_id", "current_task_name", "current_task_assignee",
             "submitter_id", "submitter_name", "submit_time", "dept_id",
             "create_by", "update_by", "create_time", "update_time", "deleted");
     private static final Set<String> SYSTEM_FIELD_CODES = Set.of(
-            "name", "code", "status", "processInstanceId", "processInstance_id",
+            "name", "code", "status", "processStatus", "process_status", "processInstanceId", "processInstance_id",
             "processStartTime", "process_startTime", "processStart_time",
             "processEndTime", "process_endTime", "processEnd_time",
             "submitterId", "submitter_id", "submitterName", "submitter_name",
@@ -359,6 +359,7 @@ public class DynamicTableService {
         sql.append("  `name` VARCHAR(200) DEFAULT NULL COMMENT '数据名称',\n");
         sql.append("  `code` VARCHAR(100) DEFAULT NULL COMMENT '数据编码',\n");
         sql.append("  `status` VARCHAR(50) DEFAULT NULL COMMENT '数据状态',\n");
+        sql.append("  `process_status` VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED' COMMENT '流程生命周期',\n");
         sql.append("  `process_instance_id` VARCHAR(64) DEFAULT NULL COMMENT '流程实例ID',\n");
         sql.append("  `process_start_time` DATETIME DEFAULT NULL COMMENT '流程开始时间',\n");
         sql.append("  `process_end_time` DATETIME DEFAULT NULL COMMENT '流程结束时间',\n");

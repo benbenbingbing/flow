@@ -962,7 +962,7 @@ import PageState from '@/components/PageState.vue'
 import { useEntityFieldDraftSave } from '@/composables/useEntityFieldDraftSave'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useEntityValidationRules } from '@/composables/useEntityValidationRules'
-import { normalizeAttachmentFileTypes } from '@/shared/file-attachment'
+import { normalizeAttachmentFileTypes } from '@flow/workflow-core/file-attachment'
 import {
   ENTITY_DESIGN_FIELD_TYPES,
   WORKFLOW_SYSTEM_FIELD_CODES,

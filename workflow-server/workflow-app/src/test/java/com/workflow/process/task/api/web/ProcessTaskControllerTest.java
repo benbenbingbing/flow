@@ -4,6 +4,8 @@ import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.form.application.EntityFormActionService;
+import com.workflow.entity.definition.application.EntityStatusService;
+import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.api.response.TaskVO;
 import com.workflow.process.task.api.request.TaskCompleteRequest;
@@ -61,7 +63,7 @@ class ProcessTaskControllerTest {
                 mock(EntityDataDynamicService.class),
                 mock(HistoryService.class),
                 mock(SysUserService.class),
-                mock(EntityFormActionService.class));
+                mock(EntityFormActionService.class), mock(EntityStatusService.class));
         LocalDateTime responseDue = LocalDateTime.of(
                 2026, 8, 4, 2, 21, 20);
         LocalDateTime completionDue = responseDue.plusMinutes(1);
@@ -72,9 +74,9 @@ class ProcessTaskControllerTest {
         task.setDueTime(completionDue);
 
         Method converter = ProcessTaskController.class
-                .getDeclaredMethod("convertToTaskVO", ProcessTask.class);
+                .getDeclaredMethod("convertToTaskVO", ProcessTask.class, Map.class);
         converter.setAccessible(true);
-        TaskVO result = (TaskVO) converter.invoke(controller, task);
+        TaskVO result = (TaskVO) converter.invoke(controller, task, new java.util.HashMap<>());
 
         assertEquals("BREACHED", result.getSlaStatus());
         assertEquals(
@@ -83,6 +85,51 @@ class ProcessTaskControllerTest {
         assertEquals(
                 Date.from(completionDue.toInstant(ZoneOffset.UTC)),
                 result.getDueTime());
+    }
+
+    /** 待办和已办均保留真实发起人，实体状态不能被任务结果或办理人替代。 */
+    @ParameterizedTest
+    @CsvSource({"todo", "done"})
+    void taskListSeparatesStarterEntityStatusAndTaskResult(String taskStatus) throws Exception {
+        EntityDataDynamicService records = mock(EntityDataDynamicService.class);
+        EntityStatusService statuses = mock(EntityStatusService.class);
+        HistoryService history = mock(HistoryService.class);
+        SysUserService users = mock(SysUserService.class);
+        var query = mock(org.flowable.engine.history.HistoricProcessInstanceQuery.class,
+                org.mockito.Mockito.RETURNS_SELF);
+        var instance = mock(org.flowable.engine.history.HistoricProcessInstance.class);
+        when(history.createHistoricProcessInstanceQuery()).thenReturn(query);
+        when(query.singleResult()).thenReturn(instance);
+        when(instance.getStartUserId()).thenReturn("starter");
+        when(users.getDisplayName("starter")).thenReturn("流程发起人");
+        EntityDataDTO record = new EntityDataDTO();
+        record.setStatus("FINANCE_REVIEW");
+        record.setProcessStatus("RUNNING");
+        when(records.findById("expense", "record-1")).thenReturn(record);
+        when(statuses.getStatusNameMap("expense")).thenReturn(Map.of("FINANCE_REVIEW", "财务复核中"));
+        ProcessTask task = new ProcessTask();
+        task.setProcessInstanceId("instance-1");
+        task.setEntityCode("expense");
+        task.setEntityDataId("record-1");
+        task.setAssigneeName("另一位办理人");
+        task.setStatus(taskStatus);
+        task.setAction("approve");
+        var controller = new ProcessTaskController(mock(ProcessTaskService.class), mock(TaskDetailService.class),
+                mock(TaskActionService.class), mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
+                records, history, users, mock(EntityFormActionService.class), statuses);
+        Method converter = ProcessTaskController.class.getDeclaredMethod("convertToTaskVO", ProcessTask.class, Map.class);
+        converter.setAccessible(true);
+        Map<String, Map<String, String>> cache = new java.util.HashMap<>();
+
+        TaskVO result = (TaskVO) converter.invoke(controller, task, cache);
+        converter.invoke(controller, task, cache);
+
+        assertEquals("流程发起人", result.getStartUserName());
+        assertEquals("另一位办理人", result.getAssigneeName());
+        assertEquals("FINANCE_REVIEW", result.getEntityStatus());
+        assertEquals("财务复核中", result.getEntityStatusText());
+        assertEquals("approve", result.getResult());
+        verify(statuses).getStatusNameMap("expense");
     }
 
     @Test
@@ -98,7 +145,7 @@ class ProcessTaskControllerTest {
                 mock(EntityDataDynamicService.class),
                 mock(HistoryService.class),
                 mock(SysUserService.class),
-                mock(EntityFormActionService.class));
+                mock(EntityFormActionService.class), mock(EntityStatusService.class));
         UserContext.setCurrentUser("user-1", "admin");
 
         controller.withdrawProcess(Map.of(
@@ -121,10 +168,10 @@ class ProcessTaskControllerTest {
         task.setAssigneeType(assigneeType);
         task.setStatus(status);
         task.setNodeType(nodeType);
-        Method converter = ProcessTaskController.class.getDeclaredMethod("convertToTaskVO", ProcessTask.class);
+        Method converter = ProcessTaskController.class.getDeclaredMethod("convertToTaskVO", ProcessTask.class, Map.class);
         converter.setAccessible(true);
 
-        TaskVO result = (TaskVO) converter.invoke(controller(mock(TaskActionService.class)), task);
+        TaskVO result = (TaskVO) converter.invoke(controller(mock(TaskActionService.class)), task, new java.util.HashMap<>());
 
         assertEquals(canClaim, result.getCanClaim());
     }
@@ -180,7 +227,7 @@ class ProcessTaskControllerTest {
         ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class), detailService,
                 actionService, mock(ProcessInstanceAccessService.class), addSignService,
                 mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
-                mock(EntityFormActionService.class));
+                mock(EntityFormActionService.class), mock(EntityStatusService.class));
         if (!authorized) {
             doThrow(new ForbiddenException("无加签审批权"))
                     .when(detailService).requireLocalAddSignTaskAccess("addsign-1");
@@ -201,7 +248,7 @@ class ProcessTaskControllerTest {
         ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class), detailService,
                 actionService, mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
                 mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
-                mock(EntityFormActionService.class));
+                mock(EntityFormActionService.class), mock(EntityStatusService.class));
         doThrow(new ForbiddenException("无审批权")).when(actionService).requireTaskAccess("task-1");
 
         assertThrows(ForbiddenException.class, () -> controller.getTaskDetail("task-1"));
@@ -232,6 +279,6 @@ class ProcessTaskControllerTest {
         return new ProcessTaskController(mock(ProcessTaskService.class), mock(TaskDetailService.class),
                 taskActionService, mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
                 mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
-                mock(EntityFormActionService.class));
+                mock(EntityFormActionService.class), mock(EntityStatusService.class));
     }
 }

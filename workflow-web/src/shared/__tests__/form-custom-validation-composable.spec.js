@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { effectScope, nextTick, ref } from 'vue'
-import { useFormCustomValidation } from '../../composables/useFormCustomValidation.js'
-import { useSubFormCustomValidation } from '../../composables/useSubFormCustomValidation.js'
+import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
+import { useSubFormCustomValidation } from '@flow/workflow-core/vue/useSubFormCustomValidation'
 import { installTestValidators } from '../../extensions/__tests__/helpers/install-node-extensions.mjs'
-import { registerCustomValidator } from '../../extensions/core/registries/validatorRegistry.js'
+import { registerCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
 
 await installTestValidators()
 const config = { version: 1, rules: [{ name: 'amount', version: 1, params: { maxAmount: 10 }, triggers: ['CHANGE', 'BLUR'] }] }

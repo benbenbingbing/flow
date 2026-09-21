@@ -34,8 +34,8 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useFormField } from '../composables/useFormField.js'
-import { resolveTextFieldMaxLength } from '@/shared/config-runtime'
+import { useFormField } from '@flow/workflow-core/vue/useFormField'
+import { resolveTextFieldMaxLength } from '@flow/workflow-core/config-runtime'
 
 const props = defineProps({
   field: { type: Object, required: true },

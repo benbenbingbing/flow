@@ -64,6 +64,11 @@ public class EntityAggregateWriter {
     public WriteResult apply(
             EntityMutationCommand command,
             PreparedUniqueClaims prepared) {
+        Object internalMode = command.payload().get(EntityMutationSystemFields.MODE_KEY);
+        if (internalMode != null && command.context().sourceType()
+                != com.workflow.contracts.entity.mutation.EntityMutationSourceType.PROCESS_RUNTIME) {
+            throw new IllegalArgumentException("流程运行态字段只能由流程引擎维护");
+        }
         return switch (command.operationType()) {
             case CREATE -> create(command, prepared);
             case UPDATE, APPLY_CHANGE ->
@@ -127,6 +132,7 @@ public class EntityAggregateWriter {
                 .get(EntityMutationSystemFields.MODE_KEY));
         if (EntityMutationSystemFields.PROCESS_END.equals(mode)) {
             mutationService.markProcessEnded(
+                    command.context().processInstanceId(),
                     command.entityCode(),
                     command.recordId(),
                     text(command.payload()

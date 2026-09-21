@@ -202,12 +202,12 @@ class UiDataSourceExecutionAccessServiceTest {
                 exception.getErrorCode());
     }
 
-    /** 测试拒绝连接器客户端伪造租户元数据：验证 input 含 orgId 时抛出上下文伪造异常 */
+    /** 测试拒绝连接器客户端伪造租户元数据：验证 context 含 orgId 时抛出上下文伪造异常 */
     @Test
     void rejectsConnectorClientSpoofingTenantMetadata() {
         UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", null);
-        request.setInput(Map.of(
+        request.setContext(Map.of(
                 "orgId",
                 "forged-tenant"));
 
@@ -226,12 +226,12 @@ class UiDataSourceExecutionAccessServiceTest {
         verifyNoInteractions(context.releaseMapper());
     }
 
-    /** 嵌套映射也不能绕过可信元数据检查，包含数组中的对象同样应被拒绝。 */
+    /** 嵌套上下文也不能绕过可信元数据检查，包含数组中的对象同样应被拒绝。 */
     @Test
     void rejectsNestedTrustedMetadataInMappedPayload() {
         UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", null);
-        request.setInput(Map.of(
+        request.setContext(Map.of(
                 "payload", Map.of(
                         "rows", List.of(Map.of(
                                 "tenantId", "forged-tenant")))));
@@ -273,12 +273,12 @@ class UiDataSourceExecutionAccessServiceTest {
         verifyNoInteractions(context.releaseMapper());
     }
 
-    /** 测试拒绝连接器客户端伪造幂等键：验证 input 含 idempotencyKey 时抛出上下文伪造异常 */
+    /** 测试拒绝连接器客户端伪造幂等键：验证 context 含 idempotencyKey 时抛出上下文伪造异常 */
     @Test
     void rejectsConnectorClientSpoofingIdempotencyKey() {
         UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", null);
-        request.setInput(Map.of(
+        request.setContext(Map.of(
                 "idempotencyKey",
                 "client-forged"));
 
@@ -310,7 +310,7 @@ class UiDataSourceExecutionAccessServiceTest {
         UiExtensionExecuteRequest request =
                 request("BEFORE_SUBMIT", "form-1", "release-1");
         request.setServerIdempotencyKey("server-seed");
-        request.setInput(Map.of(
+        request.setContext(Map.of(
                 "idempotencyKey",
                 "server-seed"));
 
@@ -579,8 +579,9 @@ class UiDataSourceExecutionAccessServiceTest {
         assertEquals("user-1", authorization.user().getId());
         assertEquals("org-1", authorization.user().getOrgId());
         assertEquals(
-                "owner_id = 'user-1'",
+                "owner_id = #{permissionParameters.ownerId}",
                 authorization.dataScopePlan().sqlFragment());
+        assertEquals(Map.of("ownerId", "user-1"), authorization.dataScopePlan().parameters());
         assertEquals("edit", authorization.requestContext().get("mode"));
     }
 
@@ -680,11 +681,12 @@ class UiDataSourceExecutionAccessServiceTest {
             assertFalse(providerContext.containsKey("sourceRecordId"));
             assertFalse(providerContext.containsKey("Source-Record-Id"));
             assertFalse(providerContext.containsKey("LIST_KEY"));
-            assertEquals(parameters, providerContext.get("params"));
-            assertEquals(parameters, providerContext.get("parameters"));
-            assertEquals("project_expenses", providerContext.get("relationKey"));
+            assertFalse(providerContext.containsKey("params"));
+            assertFalse(providerContext.containsKey("parameters"));
+            assertFalse(providerContext.containsKey("relationKey"));
             Map<?, ?> state = (Map<?, ?>) providerContext.get("eventState");
-            assertFalse(((Map<?, ?>) state.get("context")).containsKey("sourceRecordId"));
+            assertFalse(state.containsKey("context"));
+            assertFalse(state.containsKey("input"));
             assertEquals("user-1", authorization.user().getId());
             return Map.of("filters", Map.of("name", "待处理"));
         });
@@ -826,52 +828,15 @@ class UiDataSourceExecutionAccessServiceTest {
     }
 
     @Test
-    void formButtonRejectsNormalizedAliasesOfBusinessFormContainer() {
+    void formButtonStillRejectsNestedContextIdentity() {
         UiExtensionExecuteRequest request = resolvedButtonRequest();
-        Map<String, Object> input = new LinkedHashMap<>();
-        input.put("form", Map.of(
-                "userId", "legitimate-business-field"));
-        input.put("f-orm", Map.of());
-        request.setInput(input);
-
+        request.setContext(Map.of("nested", Map.of("userId", "forged-user")));
         BusinessForbiddenException error = assertThrows(
                 BusinessForbiddenException.class,
                 () -> context.service().authorizeResolvedFormButton(
                         definition("REGISTERED_PROVIDER", "GLOBAL", null),
-                        request,
-                        resolvedButtonSnapshot(),
-                        "effective-hash"));
-
-        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
-                error.getErrorCode());
-    }
-
-    @Test
-    void formButtonStillRejectsRootInputAndNestedContextIdentity() {
-        UiExtensionExecuteRequest rootInput = resolvedButtonRequest();
-        rootInput.setInput(Map.of("userId", "forged-user"));
-        BusinessForbiddenException rootError = assertThrows(
-                BusinessForbiddenException.class,
-                () -> context.service().authorizeResolvedFormButton(
-                        definition("REGISTERED_PROVIDER", "GLOBAL", null),
-                        rootInput,
-                        resolvedButtonSnapshot(),
-                        "effective-hash"));
-        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
-                rootError.getErrorCode());
-
-        UiExtensionExecuteRequest nestedContext = resolvedButtonRequest();
-        nestedContext.setContext(Map.of(
-                "nested", Map.of("userId", "forged-user")));
-        BusinessForbiddenException contextError = assertThrows(
-                BusinessForbiddenException.class,
-                () -> context.service().authorizeResolvedFormButton(
-                        definition("REGISTERED_PROVIDER", "GLOBAL", null),
-                        nestedContext,
-                        resolvedButtonSnapshot(),
-                        "effective-hash"));
-        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
-                contextError.getErrorCode());
+                        request, resolvedButtonSnapshot(), "effective-hash"));
+        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED", error.getErrorCode());
     }
 
     /** 业务部门/用户字段可传给 Provider，但认证身份仍取自服务端当前用户。 */
@@ -912,17 +877,7 @@ class UiDataSourceExecutionAccessServiceTest {
     }
 
     @Test
-    void formFieldEventsStillRejectIdentityOutsideBusinessContainers() {
-        for (Map<String, Object> input : List.<Map<String, Object>>of(
-                Map.of("deptId", "forged-dept"),
-                Map.of("payload", Map.of("userId", "forged-user")),
-                Map.of("form", Map.of(), "Form", Map.of()),
-                Map.of("sele_ction", Map.of()),
-                Map.of("Value", Map.of()))) {
-            UiExtensionExecuteRequest request = fieldEventRequest("ENTITY_SELECTED");
-            request.setInput(input);
-            assertSpoofedFieldEvent(request);
-        }
+    void formFieldEventsStillRejectIdentityInsideClientContext() {
         UiExtensionExecuteRequest request = fieldEventRequest("ENTITY_SELECTED");
         request.setContext(Map.of("eventState", Map.of(
                 "input", Map.of("form", Map.of("deptId", "forged-dept")))));
@@ -948,19 +903,38 @@ class UiDataSourceExecutionAccessServiceTest {
                 Map.of("form", values, "selection", values))) {
             UiExtensionExecuteRequest request = fieldEventRequest("ENTITY_SELECTED");
             request.setInput(input);
-            assertSpoofedFieldEvent(request);
+            BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class,
+                    () -> context.service().authorizePublished(
+                            definition("REGISTERED_PROVIDER", "GLOBAL", null), request));
+            assertEquals("UI_DATA_SOURCE_INPUT_STRUCTURE_INVALID", error.getErrorCode());
         }
     }
 
-    @Test
-    void businessContainerExceptionDoesNotApplyToOtherUsagesOrTargets() {
-        UiExtensionExecuteRequest otherUsage = fieldEventRequest("FIELD_OPTIONS");
-        otherUsage.setInput(Map.of("form", Map.of("deptId", "dept")));
-        assertSpoofedFieldEvent(otherUsage);
-        UiExtensionExecuteRequest otherTarget = fieldEventRequest("ENTITY_SELECTED");
-        otherTarget.setTargetType("OWNER");
-        otherTarget.setInput(Map.of("form", Map.of("deptId", "dept")));
-        assertSpoofedFieldEvent(otherTarget);
+    /** 原生数据源和各类事件共用业务输入契约，不依赖特定容器名或事件白名单。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"FORM_OPEN", "FORM_SAVE", "FORM_RESET", "FORM_INIT",
+            "AFTER_LOAD", "BEFORE_SUBMIT", "FIELD_OPTIONS", "ENTITY_SELECTED"})
+    void allUsagesAllowBusinessFieldsWithoutChangingAuthorization(String usage) {
+        allowPublishedForm("release-1", context.codec().write(
+                Map.of(usage, Map.of("serviceId", "source-1", "operationCode", "query")),
+                "测试绑定"));
+        UiExtensionExecuteRequest request = request(usage, "form-1", "release-1");
+        Map<String, Object> business = Map.of(
+                "deptId", "", "userId", "selected-user", "tenantId", "business-tenant",
+                "idempotencyKey", "business-key", "dataScopePlan", Map.of("allowed", true));
+        request.setInput(Map.of("deptId", "selected-dept", "userId", "selected-user",
+                "form", business, "formData", business, "rows", List.of(business)));
+        request.setServerIdempotencyKey("server-seed");
+
+        UiDataSourceExecutionAuthorization authorization = context.service().authorizePublished(
+                definition("REGISTERED_PROVIDER", "GLOBAL", null), request);
+
+        assertEquals("user-1", authorization.user().getId());
+        assertEquals("dept-1", authorization.user().getDeptId());
+        assertEquals("server-seed", authorization.idempotencySeed());
+        assertEquals(business, request.getInput().get("form"));
+        assertEquals("owner_id = #{permissionParameters.ownerId}", authorization.dataScopePlan().sqlFragment());
+        assertEquals(Map.of("ownerId", "user-1"), authorization.dataScopePlan().parameters());
     }
 
     private UiExtensionExecuteRequest fieldEventRequest(String eventCode) {
@@ -1334,7 +1308,7 @@ class UiDataSourceExecutionAccessServiceTest {
                 .thenReturn(user());
         DataPermissionResult permission =
                 DataPermissionResult.withCondition(
-                        "owner_id = 'user-1'");
+                        "owner_id = #{permissionParameters.ownerId}", Map.of("ownerId", "user-1"));
         permission.setMatchedRuleNames(List.of("owner-rule"));
         permission.setReleaseVersion(8);
         when(context.dataPermissionEngine().calculatePermission(

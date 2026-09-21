@@ -223,7 +223,7 @@ import {
 import {
   formatFormDataSourceBindingSummary,
   totalFormDataSourceBindings
-} from '@/shared/form-runtime'
+} from '@flow/workflow-core/form-runtime'
 import { formatDateValue } from '@/shared/list-runtime'
 import PageState from '@/components/PageState.vue'
 import {

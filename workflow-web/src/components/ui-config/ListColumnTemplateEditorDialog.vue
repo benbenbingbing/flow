@@ -316,7 +316,7 @@ import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import ObjectMappingEditor from '@/components/ui-config/ObjectMappingEditor.vue'
 import { uiComponentTemplateApi } from '@/api/uiConfig'
-import { applySchemaDefaults } from '@/shared/config-runtime'
+import { applySchemaDefaults } from '@flow/workflow-core/config-runtime'
 import {
   buildListColumnTemplateSnapshot,
   createListColumnTemplateEditor,

@@ -155,7 +155,7 @@ import { ElMessage } from 'element-plus'
 import { patchFormMetadata } from '@/api/entityForm'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
-import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
+import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   normalizeMutableInterfaceBinding,
@@ -165,7 +165,7 @@ import {
   FORM_DATA_SOURCE_USAGE_OPTIONS,
   assertUniqueFormDataSourceOutputTargets,
   getFormDataSourceBindingStepLabel
-} from '@/shared/form-runtime'
+} from '@flow/workflow-core/form-runtime'
 
 const props = defineProps({
   form: { type: Object, required: true },

@@ -263,25 +263,19 @@ class UiEventRuntimeServiceTest {
     }
 
     @Test
-    void formButtonRejectsReservedRawInputBeforeConditionOrMapping() {
-        UiEventExecuteRequest request = formButtonRequest(
-                "request-raw-task-spoof");
-        request.setInput(Map.of(
-                "form", Map.of("amount", 10),
-                "taskId", "forged-task"));
-        stubPublishedChain(request);
+    void formButtonRejectsCyclicBusinessInputBeforeConditionOrMapping() {
+        UiEventExecuteRequest request = formButtonRequest("request-invalid-structure");
+        Map<String, Object> cycle = new LinkedHashMap<>();
+        cycle.put("self", cycle);
+        request.setInput(Map.of("form", cycle));
 
-        com.workflow.core.error.BusinessForbiddenException error =
-                assertThrows(
-                        com.workflow.core.error.BusinessForbiddenException.class,
-                        () -> service.execute(request));
+        BusinessForbiddenException error = assertThrows(
+                BusinessForbiddenException.class, () -> service.execute(request));
 
-        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
-                error.getErrorCode());
+        assertEquals("UI_DATA_SOURCE_INPUT_STRUCTURE_INVALID", error.getErrorCode());
         verify(valueMapper, never()).matches(any(), any());
         verify(valueMapper, never()).apply(any(), any(), any());
-        verify(executionReceiptService, never()).execute(
-                any(), any(), any());
+        verify(executionReceiptService, never()).execute(any(), any(), any());
     }
 
     @Test
@@ -915,6 +909,7 @@ class UiEventRuntimeServiceTest {
                 "event-code", "DATA_DELETE",
                 "TARGET_type", "OWNER",
                 "Target-Key", "forged-button",
+                "params", Map.of("deptId", "business-dept"),
                 "clientHint", "safe"));
         request.setInput(Map.of(
                 "recordId", "forged-record-b",
@@ -1281,25 +1276,46 @@ class UiEventRuntimeServiceTest {
                 result.getEffects().get(0).get("data"));
     }
 
-    /** 原始身份声明不能通过条件或输入映射改名成为普通参数。 */
-    @Test
-    void fieldEventRejectsForgedRootIdentityBeforeMapping() {
-        UiEventExecuteRequest request = request("ENTITY_SELECTED", "singleUser");
+    /** 完整表单供事件映射使用，但不得复制到接口 context 触发身份误拦截。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"FORM_OPEN", "FORM_SAVE", "FORM_RESET"})
+    void formLifecycleKeepsBusinessInputOutOfProviderContext(String eventCode) {
+        service = new UiEventRuntimeService(
+                bindingService, dataSourceService, new UiEventValueMapper(),
+                selectionRuntimeService, auditPort, actionCapabilityService,
+                formActionService, executionReceiptService, entityDataService, objectMapper);
+        UiEventExecuteRequest request = request(eventCode, "");
         request.setConfigType("FORM");
         request.setConfigId("form-1");
-        request.setTargetType("FIELD");
-        request.setInput(Map.of("userId", "forged-user"));
-        stubPublishedChain(request);
+        request.setTargetType("OWNER");
+        Map<String, Object> business = Map.of("deptId", "", "userId", "selected-user");
+        request.setInput(Map.of("form", business));
+        request.setContext(Map.of("mode", "create", "params", business, "initialData", business));
+        Map<String, Object> step = map("strategy", "AFTER", "extensionId", "source-1",
+                "inputMapping", Map.of("form", "input.form"),
+                "outputMapping", List.of(Map.of("sourcePath", "state.context.params.userId",
+                        "targetPath", "form.owner")));
+        when(bindingService.resolvePublished(request)).thenReturn(
+                new UiEventBindingService.ResolvedEventChain(
+                        List.of(step), "release-1", 1, "entity-1", "expense", null,
+                        formSnapshot(), "release-1", null));
+        when(dataSourceService.executeOperation(any(), any(), any())).thenReturn(Map.of());
 
-        BusinessForbiddenException error = assertThrows(
-                BusinessForbiddenException.class, () -> service.execute(request));
+        UiEventExecutionResult result = service.execute(request);
 
-        assertEquals("UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED", error.getErrorCode());
-        verify(selectionRuntimeService, never()).resolve(any(), any());
-        verify(valueMapper, never()).matches(any(), any());
-        verify(valueMapper, never()).apply(any(), any(), any());
-        verify(dataSourceService, never()).executeOperation(any(), any(), any());
-        verify(dataSourceService, never()).executeResolvedFormFieldOperation(any(), any(), any(), any(), any());
+        ArgumentCaptor<com.workflow.entity.ui.api.request.UiExtensionExecuteRequest> provider =
+                ArgumentCaptor.forClass(com.workflow.entity.ui.api.request.UiExtensionExecuteRequest.class);
+        verify(dataSourceService).executeOperation(
+                org.mockito.ArgumentMatchers.eq("source-1"),
+                org.mockito.ArgumentMatchers.isNull(), provider.capture());
+        assertEquals(business, provider.getValue().getInput().get("form"));
+        Map<?, ?> state = (Map<?, ?>) provider.getValue().getContext().get("eventState");
+        assertFalse(state.containsKey("input"));
+        assertFalse(state.containsKey("data"));
+        assertFalse(provider.getValue().getContext().containsKey("params"));
+        assertFalse(provider.getValue().getContext().containsKey("initialData"));
+        assertEquals(Map.of("form", Map.of("owner", "selected-user")),
+                result.getEffects().get(0).get("data"));
     }
 
     private UiEventExecuteRequest request(String eventCode, String targetKey) {

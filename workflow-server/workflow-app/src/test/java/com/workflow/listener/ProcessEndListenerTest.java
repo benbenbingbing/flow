@@ -93,6 +93,53 @@ class ProcessEndListenerTest {
     }
 
     @Test
+    void newCompletionPublishesLifecycleWithoutApprovedFallback() {
+        HistoryService historyService = mock(HistoryService.class);
+        ProcessStatusSyncPublisher publisher =
+                mock(ProcessStatusSyncPublisher.class);
+        HistoricVariableInstanceQuery entityCodeQuery =
+                variableQuery("expense");
+        HistoricVariableInstanceQuery entityIdQuery =
+                variableQuery("record-1");
+        when(historyService.createHistoricVariableInstanceQuery())
+                .thenReturn(entityCodeQuery, entityIdQuery);
+        HistoricProcessInstanceQuery processQuery =
+                mock(HistoricProcessInstanceQuery.class);
+        HistoricProcessInstance historic =
+                mock(HistoricProcessInstance.class);
+        when(historyService.createHistoricProcessInstanceQuery())
+                .thenReturn(processQuery);
+        when(processQuery.processInstanceId("process-1"))
+                .thenReturn(processQuery);
+        when(processQuery.singleResult()).thenReturn(historic);
+
+        ProcessInstance processInstance = mock(ProcessInstance.class);
+        when(processInstance.getId()).thenReturn("process-1");
+        FlowableEntityEventImpl event =
+                mock(FlowableEntityEventImpl.class);
+        when(event.getType())
+                .thenReturn(FlowableEngineEventType.PROCESS_COMPLETED);
+        when(event.getEntity()).thenReturn(processInstance);
+        ProcessEndListener listener =
+                new ProcessEndListener(
+                        historyService,
+                        publisher);
+
+        var policy = mock(com.workflow.process.status.application.ProcessEntityStatusPolicy.class);
+        when(policy.usesTransitions(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        org.springframework.test.util.ReflectionTestUtils.setField(listener, "statusPolicy", policy);
+        listener.onEvent(event);
+
+        verify(publisher).publishProcessEnd(
+                "process-1",
+                "expense",
+                "record-1",
+                "COMPLETED",
+                null);
+        assertTrue(listener.isFailOnException());
+    }
+
+    @Test
     void processCancellationPublishesWithdrawnEndEvent() {
         HistoryService historyService = mock(HistoryService.class);
         ProcessStatusSyncPublisher publisher =

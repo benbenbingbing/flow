@@ -20,6 +20,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 已撤回归属删除、自定义字段条件求值等场景。
  */
 class EntityActionRuleEvaluatorTest {
+    @Test
+    void lifecycleRuleUsesIndependentProjectionAndKeepsLegacyMeaning() {
+        EntityDataDTO row = row("u", "u", "p", "TERMINATED");
+        row.setProcessStatus("COMPLETED");
+        row.setProcessEndTime(java.time.LocalDateTime.now());
+        var node = new EntityActionRuleDTO.RuleNode();
+        node.setType("PROCESS_STATE"); node.setOperator("EQ"); node.setValue("COMPLETED");
+        node.setLifecycleVersion(1);
+        var rule = node;
+        assertTrue(evaluator.evaluate(rule, row, user("u", "u", "d"), "TERMINATED"));
+        node.setLifecycleVersion(null);
+        assertFalse(evaluator.evaluate(rule, row, user("u", "u", "d"), "TERMINATED"));
+        node.setLifecycleVersion(1); node.setOperator("NE"); node.setValue("RUNNING"); row.setProcessStatus(null);
+        assertFalse(evaluator.evaluate(rule, row, user("u", "u", "d"), "TERMINATED"));
+    }
+
 
     /** 被测规则求值器（无扩展关系） */
     private final EntityActionRuleEvaluator evaluator = new EntityActionRuleEvaluator(List.of());

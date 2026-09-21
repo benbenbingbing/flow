@@ -4,7 +4,7 @@ import {
   findFormNodeContainingValidationField,
   formNodeMatchesValidationField,
   formNodeSubtreeContainsValidationField
-} from '../form-runtime/validationReveal.js'
+} from '@flow/workflow-core/form-runtime/validationReveal'
 
 const nodes = [
   { id: 'tabs', nodeKey: 'tabs', nodeType: 'TAB_SET', props: {} },

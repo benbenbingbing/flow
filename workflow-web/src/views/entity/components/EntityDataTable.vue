@@ -120,6 +120,7 @@
                   }"
                 />
                 <!-- 状态字段特殊渲染 -->
+                <el-tag v-else-if="field.fieldCode === 'processStatus' || field.fieldCode === 'process_status'">{{ resolveProcessStatusLabel(row.processStatus) }}</el-tag>
                 <el-tag v-else-if="field.fieldCode === 'status'" :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
                 <!-- 日期字段格式化 -->
                 <span v-else-if="isDateFieldCode(field.fieldCode)">
@@ -268,28 +269,29 @@
 </template>
 
 <script setup lang="ts">
+import { resolveProcessStatusLabel } from '@flow/workflow-core/entity-status-runtime'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import EntityListLauncher from '@/components/EntityListLauncher.vue'
-import { mapPageParameters } from '@/shared/page-parameters'
+import { mapPageParameters } from '@flow/workflow-core/page-parameters'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { findButtonRelatedContent, isRelatedContentButton, relatedContentSelectionReason } from '@/shared/list-related-content'
 import { isSelectionToolbarButton as isSelectionButton, toolbarSelectionReason } from '@/shared/list-selection'
 import { hasListButtonComponent, getListButtonComponent } from '@/extensions/core/registries/listButtonComponentRegistry.js'
 import { getListToolbarAction, getListRowAction } from '@/extensions/core/registries/listActionRegistry.js'
-import { getFieldModelPath } from '@/shared/form-runtime'
+import { getFieldModelPath } from '@flow/workflow-core/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
-import { safeParseConfig } from '@/shared/config-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import ListCellAction from '@/components/ListCellAction.vue'
 import { buildCellActionMap, hidesMappedRowButton } from '@/shared/list-cell-action'
 import {
   refreshRecordPageSelection,
   reconcileRecordPageSelection,
   recordSelectionIds
-} from '@/shared/entity-record-selection'
+} from '@flow/workflow-core/entity-record-selection'
 import {
   canExecuteAction,
   getActionCapabilityReason,

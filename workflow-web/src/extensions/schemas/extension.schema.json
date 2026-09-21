@@ -363,6 +363,73 @@
         }
       },
       "description": "可执行钩子的源码引用；在 JSON 中只写路径和导出，不写脚本字符串。"
+    },
+    "platforms": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mobile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "implementation",
+            "capabilities"
+          ],
+          "properties": {
+            "implementation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "export",
+                "kind"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "相对 workflow-web 的源码路径；只允许 src 下本地文件。"
+                },
+                "export": {
+                  "type": "string",
+                  "pattern": "^(default|[A-Za-z_$][A-Za-z0-9_$]*)$",
+                  "description": "导出名称，支持 default 或具名导出。"
+                },
+                "kind": {
+                  "enum": [
+                    "COMPONENT",
+                    "FUNCTION",
+                    "OBJECT",
+                    "CLASS",
+                    "FACTORY"
+                  ],
+                  "description": "组件/处理函数/对象/无参类/同步实例工厂。"
+                }
+              }
+            },
+            "capabilities": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "readonly",
+                "editable",
+                "validate"
+              ],
+              "properties": {
+                "readonly": {
+                  "type": "boolean"
+                },
+                "editable": {
+                  "type": "boolean"
+                },
+                "validate": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

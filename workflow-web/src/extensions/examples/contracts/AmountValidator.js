@@ -1,4 +1,4 @@
-import { defineCustomValidator } from '../../contracts/validation.js'
+import { defineCustomValidator } from '@flow/workflow-core/extensions/contracts/validation'
 
 // 示例与应用注册复用同一实现，避免两个金额校验产生不同结果。
 export { AmountValidator } from '../../common/validators/AmountValidator.js'

@@ -620,6 +620,7 @@ public class EntityListActionConfigService {
     private EntityActionRuleDTO.RuleNode condition(String type, String operator, Object value) {
         EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
         node.setType(type);
+        if ("PROCESS_STATE".equals(type)) node.setLifecycleVersion(1);
         node.setOperator(operator);
         node.setValue(value);
         return node;

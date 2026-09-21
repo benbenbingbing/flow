@@ -10,7 +10,7 @@ import {
   parseFlowConditionConfig,
   parseFlowConditionExpression,
   serializeFlowConditionConfig
-} from '../flowConditionGroups.js'
+} from '@flow/workflow-core/utils/flowConditionGroups'
 
 const fieldType = field => field === 'amount' ? 'number' : 'string'
 

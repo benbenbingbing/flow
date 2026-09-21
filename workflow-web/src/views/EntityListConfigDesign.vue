@@ -954,14 +954,14 @@ import RelatedContentPanel from '@/components/related-content/RelatedContentPane
 import { findButtonRelatedContent, isRelatedContentButton } from '@/shared/list-related-content'
 import { isSelectionToolbarButton, normalizeListSelectionMode } from '@/shared/list-selection'
 import { getCellComponentOptions, getCellDescriptor } from '@/extensions/core/registries/listCellRegistry.js'
-import { filterOptionsByEntity } from '@/shared/extension-entity-scope'
+import { filterOptionsByEntity } from '@flow/workflow-core/extension-entity-scope'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/extensions/core/registries/customComponentRegistry.js'
 import { getFormFieldComponentOptions } from '@/extensions/core/registries/formFieldRegistry.js'
 import {
   applySchemaDefaults,
   safeParseConfig,
   stringifyConfig
-} from '@/shared/config-runtime'
+} from '@flow/workflow-core/config-runtime'
 import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
 import {
   calculateListActionOrderKey as localActionOrderKey,

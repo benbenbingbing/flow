@@ -362,7 +362,12 @@ public class EntityDefinitionServiceTest {
         entityService.save(dto);
 
         ArgumentCaptor<EntityField> fieldCaptor = ArgumentCaptor.forClass(EntityField.class);
-        verify(fieldMapper, times(19)).insert(fieldCaptor.capture());
+        verify(fieldMapper, times(20)).insert(fieldCaptor.capture());
+        EntityField lifecycle = fieldCaptor.getAllValues().stream()
+                .filter(field -> "processStatus".equals(field.getFieldCode())).findFirst().orElseThrow();
+        assertEquals("process_status", lifecycle.getDbColumnName());
+        assertEquals(false, lifecycle.getEditable());
+        assertEquals("NOT_STARTED", lifecycle.getDefaultValue());
         Map<String, String> auditColumns = Map.of(
                 "id", "id", "create_time", "create_time", "update_time", "update_time",
                 "create_by", "create_by", "update_by", "update_by", "deleted", "deleted");

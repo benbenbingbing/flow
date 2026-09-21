@@ -10,7 +10,7 @@ import {
   resolveFormButtonAppearanceProps,
   resolveLocalFormActions,
   validateFormActionConfiguration
-} from '../form-actions.js'
+} from '@flow/workflow-core/form-actions'
 
 const baseForm = {
   id: 'form-1',

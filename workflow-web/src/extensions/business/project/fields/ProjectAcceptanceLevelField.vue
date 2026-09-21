@@ -31,7 +31,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { showRequestError } from '@/shared/request'
 import { Refresh } from '@element-plus/icons-vue'
 import { getFormId } from '@/shared/form-action-runtime'
 
@@ -141,7 +141,7 @@ async function loadRuntimeData() {
       '[ProjectExtensionAcceptance] 复核级别字段数据源加载失败',
       error
     )
-    ElMessage.error(error.message || '复核级别数据源加载失败')
+    showRequestError(error, '复核级别数据源加载失败')
   } finally {
     if (sequence === loadSequence) {
       loading.value = false

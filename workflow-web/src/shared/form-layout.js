@@ -1,4 +1,4 @@
-import { safeParseConfig } from './config-runtime/index.js'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 
 export const FORM_LABEL_POSITION_OPTIONS = [
   { value: 'top', label: '顶部' },

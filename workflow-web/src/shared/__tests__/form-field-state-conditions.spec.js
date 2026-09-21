@@ -6,9 +6,9 @@ import {
   readFieldStateConditions,
   updateFieldStateCondition
 } from '../form-field-state-conditions.js'
-import { LinkageEngine } from '../../utils/linkageEngine.js'
-import { createFlowConditionConfig, createFlowConditionGroup } from '../../utils/flowConditionGroups.js'
-import { buildFormNodePayload } from '../form-node-property-schema.js'
+import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
+import { createFlowConditionConfig, createFlowConditionGroup } from '@flow/workflow-core/utils/flowConditionGroups'
+import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
 
 const condition = (property, operator, value) => ({ type: 'CONDITION', property, operator, value })
 const root = createFlowConditionGroup('AND', [

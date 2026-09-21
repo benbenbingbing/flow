@@ -67,6 +67,9 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 登录页仅需公开的固定主题投影；其他设置及写操作仍必须认证。
+        if ("GET".equals(request.getMethod()) && "/api/system/mobile-theme".equals(uri)) return true;
+
         // Embed 委托只能信任服务端认证过滤器写入的 request attribute；协议头本身
         // 绝不能跳过 JWT。UserContext 已由同一过滤器按映射 Flow 用户建立，后续
         // EndpointAuthorizationInterceptor 与 DataScope 继续照常执行。

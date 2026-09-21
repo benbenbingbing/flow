@@ -408,14 +408,14 @@ import SettingsFormItem from '@/components/SettingsFormItem.vue'
 import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
 import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
-import { safeParseConfig, stringifyConfig } from '@/shared/config-runtime'
+import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListParameterContract } from '@/shared/sub-list'
 import {
   getInputParameterDefinitions,
   getPublishedFormFields,
   getPublishedFormParameterSchema,
   normalizeSubFormParameterContract
-} from '@/shared/subform-parameter-contract'
+} from '@flow/workflow-core/subform-parameter-contract'
 
 const context = inject(FORM_DESIGNER_CONTEXT_KEY)
 

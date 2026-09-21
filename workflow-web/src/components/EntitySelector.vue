@@ -226,7 +226,7 @@ import { ArrowDown, Close, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import {
   resolveRuntimeEntitySelectionReference
-} from '@/shared/entity-selection-mapping'
+} from '@flow/workflow-core/entity-selection-mapping'
 import {
   normalizeRecordSelection,
   refreshRecordPageSelection,
@@ -234,7 +234,7 @@ import {
   recordSelectionIds,
   recordSelectionValues,
   removeRecordSelection
-} from '@/shared/entity-record-selection'
+} from '@flow/workflow-core/entity-record-selection'
 import request from '@/utils/request'
 
 const props = defineProps({

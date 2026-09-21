@@ -46,5 +46,19 @@
     "usageContexts": [
       "PAGE"
     ]
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/DemoProjectForm.vue",
+        "export": "default",
+        "kind": "COMPONENT"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
   }
 }

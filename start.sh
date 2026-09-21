@@ -11,7 +11,10 @@ SCHEMA_WORKER_LOG="$ROOT_DIR/workflow-server/schema-worker.log"
 WEB_LOG="$ROOT_DIR/workflow-web/web.log"
 SERVER_JAR="$ROOT_DIR/workflow-server/workflow-app/target/workflow-server-1.0.0.jar"
 MIGRATOR_JAR="$ROOT_DIR/workflow-server/workflow-db-migrator/target/workflow-db-migrator-1.0.0-exec.jar"
-WEB_EXECUTABLE="$ROOT_DIR/workflow-web/node_modules/.bin/vite"
+WEB_EXECUTABLE="$ROOT_DIR/node_modules/.bin/vite"
+MOBILE_PID_FILE="$ROOT_DIR/workflow-mobile/mobile.pid"
+MOBILE_LOG="$ROOT_DIR/workflow-mobile/mobile.log"
+PACKAGE_SERVICES=(workflow-core workflow-api workflow-mobile-ui)
 WEB_PROCESS_PATTERN="node_modules/.bin/vite"
 
 action="${1:-start}"
@@ -19,9 +22,11 @@ environment_file="${FLOW_ENV_FILE:-$ROOT_DIR/.env}"
 
 usage() {
     cat <<'EOF'
-Usage: ./start.sh [start|stop|status]
+Usage: ./start.sh [start|restart|stop|pause|status]
 
   start   Build, migrate, and restart the local application (default)
+  restart Build and restart backend, PC, mobile and shared package watchers
+  pause   Alias for stop
   stop    Stop application processes started by this script
   status  Show local process and endpoint status
 
@@ -50,7 +55,7 @@ load_environment() {
         # shellcheck disable=SC1090
         source "$environment_file"
         set +a
-    elif [[ "$action" == "start" ]]; then
+    elif [[ "$action" == "start" || "$action" == "restart" ]]; then
         fail "Missing $environment_file. Copy .env.example and replace every placeholder."
     fi
 
@@ -60,9 +65,20 @@ load_environment() {
 
     export SERVER_PORT="${SERVER_PORT:-8080}"
     export WEB_PORT="${WEB_PORT:-3000}"
-    # 独立 Embed Origin 会直接访问 Flow 原生数据面，必须与管理端 Origin
-    # 一起进入精确 CORS 白名单；Grant 中的 3443 是父页面 Origin，不能替代 8443。
-    export CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT},https://localhost:8443}"
+    export MOBILE_PORT="${MOBILE_PORT:-3001}"
+    # 本地入口使用实际端口拼接精确来源；保留原有 Embed 和显式局域网来源。
+    local origin host
+    CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-https://localhost:8443}"
+    for host in localhost 127.0.0.1 "${FLOW_DEV_HOST:-}"; do
+        [[ -n "$host" ]] || continue
+        for origin in "http://${host}:${WEB_PORT}" "http://${host}:${MOBILE_PORT}"; do
+            case ",$CORS_ALLOWED_ORIGINS," in
+                *",$origin,"*) ;;
+                *) CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:+$CORS_ALLOWED_ORIGINS,}$origin" ;;
+            esac
+        done
+    done
+    export CORS_ALLOWED_ORIGINS
     export DB_HOST="${DB_HOST:-localhost}"
     export DB_PORT="${DB_PORT:-3306}"
     export DB_NAME="${DB_NAME:-workflow}"
@@ -111,6 +127,8 @@ validate_start_environment() {
 
     validate_port SERVER_PORT "$SERVER_PORT"
     validate_port WEB_PORT "$WEB_PORT"
+    validate_port MOBILE_PORT "$MOBILE_PORT"
+    [[ "$WEB_PORT" != "$MOBILE_PORT" && "$WEB_PORT" != "$SERVER_PORT" && "$MOBILE_PORT" != "$SERVER_PORT" ]] || fail "WEB_PORT, MOBILE_PORT and SERVER_PORT must be different"
     validate_port DB_PORT "$DB_PORT"
 }
 
@@ -129,7 +147,8 @@ validate_toolchain() {
 
     node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
     [[ "$node_major" =~ ^[0-9]+$ ]] || fail "Unable to determine the Node.js version"
-    ((node_major >= 22)) || fail "Node.js 22 or newer is required; found Node.js $node_major"
+    node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 12) ? 0 : 1)' \
+        || fail "Node.js 22.12 or newer is required"
 }
 
 pid_command() {
@@ -229,6 +248,13 @@ wait_for_port_release() {
 }
 
 stop_application() {
+    local package pattern
+    stop_pid_file "$MOBILE_PID_FILE" "mobile" "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-mobile"
+    for package in "${PACKAGE_SERVICES[@]}"; do
+        pattern="build-module-package.mjs --watch"
+        [[ "$package" != "workflow-mobile-ui" ]] || pattern="$WEB_PROCESS_PATTERN"
+        stop_pid_file "$ROOT_DIR/packages/$package/watch.pid" "$package watch" "$pattern" "$ROOT_DIR/packages/$package"
+    done
     stop_pid_file \
         "$WEB_PID_FILE" "web" \
         "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-web"
@@ -244,6 +270,8 @@ stop_application() {
     stop_owned_listener \
         "$SERVER_PORT" "server" \
         "workflow-server-1.0.0.jar" "$ROOT_DIR"
+    stop_owned_listener "$MOBILE_PORT" "mobile" "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-mobile"
+    wait_for_port_release "$MOBILE_PORT" "mobile"
     wait_for_port_release "$WEB_PORT" "web"
     wait_for_port_release "$SERVER_PORT" "server"
 }
@@ -268,6 +296,11 @@ show_status() {
     process_status "server" "$SERVER_PID_FILE"
     process_status "schema-worker" "$SCHEMA_WORKER_PID_FILE"
     process_status "web" "$WEB_PID_FILE"
+    process_status "mobile" "$MOBILE_PID_FILE"
+    local package
+    for package in "${PACKAGE_SERVICES[@]}"; do
+        process_status "$package" "$ROOT_DIR/packages/$package/watch.pid"
+    done
 
     if curl --fail --silent --max-time 2 \
         "http://127.0.0.1:${SERVER_PORT}/healthz" >/dev/null 2>&1; then
@@ -280,6 +313,11 @@ show_status() {
         printf '%-16s %s\n' "web health" "ready"
     else
         printf '%-16s %s\n' "web health" "unavailable"
+    fi
+    if curl --fail --silent --max-time 2 "http://127.0.0.1:${MOBILE_PORT}/m/" >/dev/null 2>&1; then
+        printf '%-16s %s\n' "mobile health" "ready"
+    else
+        printf '%-16s %s\n' "mobile health" "unavailable"
     fi
 }
 
@@ -317,9 +355,9 @@ build_application() {
         mvn -B -ntp -pl workflow-app -am clean package -DskipTests
     )
 
-    log "Installing and building frontend"
+    log "Installing workspace and building shared packages, PC and mobile"
     (
-        cd "$ROOT_DIR/workflow-web"
+        cd "$ROOT_DIR"
         npm ci
         npm run build
     )
@@ -399,6 +437,40 @@ start_web() {
         --strictPort
 }
 
+start_mobile() {
+    log "Starting mobile development server"
+    start_detached "$MOBILE_PID_FILE" "$MOBILE_LOG" "$ROOT_DIR/workflow-mobile" \
+        env VITE_API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://127.0.0.1:${SERVER_PORT}}" \
+        VITE_WEB_PORT="$WEB_PORT" "$WEB_EXECUTABLE" --host 0.0.0.0 --port "$MOBILE_PORT" --strictPort
+}
+
+# 直接启动构建器而非 npm 包装进程，让 PID 文件对应真实服务并可独立停止。
+start_package_watchers() {
+    local package pid ready attempt
+    for package in "${PACKAGE_SERVICES[@]}"; do
+        if [[ "$package" == "workflow-mobile-ui" ]]; then
+            start_detached "$ROOT_DIR/packages/$package/watch.pid" "$ROOT_DIR/packages/$package/watch.log" \
+                "$ROOT_DIR/packages/$package" "$WEB_EXECUTABLE" build --watch
+        else
+            start_detached "$ROOT_DIR/packages/$package/watch.pid" "$ROOT_DIR/packages/$package/watch.log" \
+                "$ROOT_DIR/packages/$package" node "$ROOT_DIR/scripts/build-module-package.mjs" --watch
+        fi
+        pid="$(cat "$ROOT_DIR/packages/$package/watch.pid")"
+        ready=false
+        # Vite watch 会先清理 dist；首次输出完成后再启动消费者，避免随机缺失入口。
+        for attempt in {1..30}; do
+            pid_is_running "$pid" || fail "$package watcher exited; see packages/$package/watch.log"
+            if [[ -s "$ROOT_DIR/packages/$package/dist/index.js" ]] \
+                && grep -q 'built' "$ROOT_DIR/packages/$package/watch.log"; then
+                ready=true
+                break
+            fi
+            sleep 1
+        done
+        [[ "$ready" == true ]] || fail "$package watcher did not become ready"
+    done
+}
+
 cleanup_failed_start() {
     local startup_status=$?
     trap - EXIT
@@ -445,14 +517,19 @@ start_application() {
     wait_for_process \
         "server" "$SERVER_PID_FILE" \
         "http://127.0.0.1:${SERVER_PORT}/healthz" "$SERVER_LOG"
+    start_package_watchers
     start_web
     wait_for_process \
         "web" "$WEB_PID_FILE" \
         "http://127.0.0.1:${WEB_PORT}/" "$WEB_LOG"
 
     log ""
+    start_mobile
+    wait_for_process "mobile" "$MOBILE_PID_FILE" "http://127.0.0.1:${MOBILE_PORT}/m/" "$MOBILE_LOG"
+
     log "Flow is running."
     log "Web:    http://127.0.0.1:${WEB_PORT}"
+    log "Mobile: http://127.0.0.1:${MOBILE_PORT}/m/"
     log "API:    http://127.0.0.1:${SERVER_PORT}/api"
     log "Logs:   $SERVER_LOG"
     log "        $SCHEMA_WORKER_LOG"
@@ -463,10 +540,10 @@ start_application() {
 load_environment
 
 case "$action" in
-    start)
+    start|restart)
         start_application
         ;;
-    stop)
+    stop|pause)
         require_command lsof
         require_command ps
         stop_application

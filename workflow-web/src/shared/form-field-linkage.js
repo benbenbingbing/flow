@@ -1,6 +1,6 @@
-import { LinkageEngine } from '../utils/linkageEngine.js'
-import { safeParseConfig } from './config-runtime/index.js'
-import { isFlowConditionGroupComplete, parseFlowConditionConfig } from '../utils/flowConditionGroups.js'
+import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { isFlowConditionGroupComplete, parseFlowConditionConfig } from '@flow/workflow-core/utils/flowConditionGroups'
 
 const VALUE_KEYS = ['valueMapping', 'valueFormula', 'calculationFormula', 'calculationPrecision', 'calculationEditable']
 const clone = value => JSON.parse(JSON.stringify(value))

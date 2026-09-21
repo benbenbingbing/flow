@@ -198,8 +198,8 @@ import FormFieldRenderer from './FormFieldRenderer.vue'
 import {
   areSubFormValuesEqual,
   cloneSubFormValue
-} from '@/shared/subform-value-sync'
-import { resolveFormContainerAppearance } from '@/shared/form-container-appearance'
+} from '@flow/workflow-core/subform-value-sync'
+import { resolveFormContainerAppearance } from '@flow/workflow-core/form-container-appearance'
 
 const props = defineProps({
   config: {

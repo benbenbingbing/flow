@@ -28,7 +28,7 @@ public class EntityRuntimeRecordMapper {
 
     /** DTO 层系统字段集合（含驼峰与下划线形式），这些字段不视为自定义业务字段 */
     private static final Set<String> DTO_SYSTEM_FIELDS = new HashSet<>(Arrays.asList(
-            "id", "name", "code", "status",
+            "id", "name", "code", "status", "processStatus", "process_status",
             "processInstanceId", "process_instance_id",
             "processStartTime", "process_start_time",
             "processEndTime", "process_end_time",
@@ -49,7 +49,7 @@ public class EntityRuntimeRecordMapper {
 
     /** 存储层（动态表）系统列集合，提取自定义字段时需排除这些列 */
     private static final Set<String> STORAGE_SYSTEM_COLUMNS = new HashSet<>(Arrays.asList(
-            "id", "name", "code", "status",
+            "id", "name", "code", "status", "processStatus", "process_status",
             "process_instance_id", "process_start_time", "process_end_time",
             "current_task_id", "current_task_name", "current_task_assignee",
             "submitter_id", "submitter_name", "dept_id", "submit_time",
@@ -88,6 +88,7 @@ public class EntityRuntimeRecordMapper {
         dto.setCode(getString(data, "code"));
         dto.setStatus(getString(data, "status"));
         dto.setProcessInstanceId(getString(data, "process_instance_id"));
+        dto.setProcessStatus(getString(data, "process_status"));
         dto.setProcessStartTime(getDateTime(data, "process_start_time"));
         dto.setProcessEndTime(getDateTime(data, "process_end_time"));
         dto.setCurrentTaskId(getString(data, "current_task_id"));

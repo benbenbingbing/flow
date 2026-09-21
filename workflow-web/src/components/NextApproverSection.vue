@@ -83,7 +83,7 @@ import {
   normalizeUserKeys,
   reconcileNextApproverDraftState,
   validateNextApproverDraft
-} from '@/shared/next-approver'
+} from '@flow/workflow-core/next-approver'
 
 const props = defineProps({
   preview: {

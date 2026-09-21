@@ -1,4 +1,4 @@
-import { normalizeExtensionDescriptor } from '../../../shared/config-runtime/index.js'
+import { normalizeExtensionDescriptor } from '@flow/workflow-core/config-runtime'
 
 // 包含平台与业务单元格，均由 JSON 安装器填充；导入本文件不会自动注册。
 const registry = new Map()

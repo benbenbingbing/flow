@@ -17,6 +17,8 @@ public class EntityProcessLink {
     private String processDefinitionKey;
     private String processInstanceId;
     private String state;
+    /** 实际结束类型，不能从统一 COMPLETED 推断业务通过。 */
+    private String endType;
     private String requestId;
     private String entityStatus;
     private LocalDateTime endedAt;

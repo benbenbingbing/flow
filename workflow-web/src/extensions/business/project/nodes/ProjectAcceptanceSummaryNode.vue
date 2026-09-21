@@ -40,6 +40,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { showRequestError } from '@/shared/request'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 
@@ -90,7 +91,7 @@ async function executeNodeDataSource() {
     ElMessage.success('自定义节点数据源已执行')
   } catch (error) {
     console.error('[ProjectExtensionAcceptance] 自定义节点数据源执行失败', error)
-    ElMessage.error(error.message || '自定义节点数据源执行失败')
+    showRequestError(error, '自定义节点数据源执行失败')
   } finally {
     loading.value = false
   }

@@ -7,7 +7,7 @@ import java.util.Set;
 /** 表单终检与实体持久化一致的字段级补丁视图：缺省保留，显式 null 清空。 */
 public final class PublishedFormRecordView {
     private static final Set<String> SYSTEM_MANAGED_FIELDS = Set.of(
-            "id", "status", "processInstanceId", "processStartTime", "processEndTime",
+            "id", "status", "processStatus", "processInstanceId", "processStartTime", "processEndTime",
             "currentTaskId", "currentTaskName", "currentTaskAssignee", "submitterId", "submitterName",
             "submitTime", "create_time", "update_time", "create_by", "update_by", "deleted");
 

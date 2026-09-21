@@ -1,8 +1,10 @@
-import { isSystemField } from '@/shared/form-runtime'
+import { isSystemField } from '@flow/workflow-core/form-runtime'
 import {
   isEntityStatusField,
-  resolveEntityStatusLabel
-} from '@/shared/entity-status-runtime'
+  resolveEntityStatusLabel,
+  isProcessStatusField,
+  resolveProcessStatusLabel
+} from '@flow/workflow-core/entity-status-runtime'
 
 export function parseJsonOptions(optionsJson) {
   if (!optionsJson) return []
@@ -168,6 +170,8 @@ export function formatListFieldValue(
   if (displayValue !== null && displayValue !== undefined && displayValue !== '') {
     return displayValue
   }
+
+  if (isProcessStatusField(field)) return resolveProcessStatusLabel(value)
 
   if (isEntityStatusField(field)) {
     return resolveEntityStatusLabel(value, entityStatusMap)

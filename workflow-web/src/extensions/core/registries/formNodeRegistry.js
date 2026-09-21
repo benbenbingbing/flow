@@ -1,4 +1,4 @@
-import { normalizeExtensionDescriptor } from '../../../shared/config-runtime/index.js'
+import { normalizeExtensionDescriptor } from '@flow/workflow-core/config-runtime'
 
 const nodeRegistry = new Map()
 

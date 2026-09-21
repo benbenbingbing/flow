@@ -4,7 +4,7 @@ import {
   isAccessTokenExpired,
   isTerminalAuthError,
   shouldRefreshAccessToken
-} from '../auth-session.js'
+} from '@flow/workflow-core/auth-session'
 
 const now = Date.parse('2026-08-12T03:30:00.000Z')
 

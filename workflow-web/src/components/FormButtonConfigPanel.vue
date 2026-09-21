@@ -501,7 +501,7 @@ import {
   isRegisteredFormButtonIcon,
   normalizeCustomButton,
   normalizeFormActionBar
-} from '@/shared/form-actions'
+} from '@flow/workflow-core/form-actions'
 
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },

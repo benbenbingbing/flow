@@ -50,8 +50,8 @@ jobs:
         with:
           node-version: "22.23.1"
           cache: npm
-          cache-dependency-path: workflow-web/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: 构建前端
-        working-directory: workflow-web
+        working-directory: .
         run: npm ci --registry=https://registry.npmjs.org && npm run build

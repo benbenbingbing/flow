@@ -24,6 +24,19 @@ import static org.junit.jupiter.api.Assertions.assertNull;
      * 以及从请求中提取动态列数据。</p>
  */
 class EntityRuntimeRecordMapperTest {
+    @Test
+    void lifecycleIsReadFromStorageButNeverAcceptedFromFormOrDto() {
+        var dto = mapper.toDto(Map.of("id", "1", "status", "BUSINESS", "process_status", "RUNNING"), "expense");
+        assertEquals("RUNNING", dto.getProcessStatus());
+        assertFalse(dto.getData().containsKey("processStatus"));
+        dto.setProcessStatus("COMPLETED");
+        dto.setData(Map.of("processStatus", "COMPLETED", "process_status", "COMPLETED", "amount", 7));
+        var stored = mapper.toStorageMap(dto);
+        assertFalse(stored.containsKey("process_status"));
+        assertEquals(7, stored.get("amount"));
+        assertEquals(Map.of("amount", 7), mapper.extractRequestCustomData(Map.of("data", dto.getData())));
+    }
+
 
     /** JSON 序列化器 */
     private final ObjectMapper objectMapper = new ObjectMapper();

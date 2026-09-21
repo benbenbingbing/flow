@@ -30,6 +30,9 @@ public class ProcessEndListener implements FlowableEventListener {
         private final HistoryService historyService;
         private final ProcessStatusSyncPublisher statusSyncPublisher;
 
+        @org.springframework.beans.factory.annotation.Autowired
+        private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
+
         @Override
         public void onEvent(FlowableEvent event) {
                 String eventType = event.getType() == null
@@ -51,11 +54,11 @@ public class ProcessEndListener implements FlowableEventListener {
                 }
 
                 try {
-                        String entityCode = getHistoricVariable(
-                                        processInstanceId,
+                        String entityCode = getEntityVariable(
+                                        processInstance, processInstanceId,
                                         "entityCode");
-                        String entityDataId = getHistoricVariable(
-                                        processInstanceId,
+                        String entityDataId = getEntityVariable(
+                                        processInstance, processInstanceId,
                                         "entityDataId");
                         if (entityCode == null || entityDataId == null) {
                                 log.debug(
@@ -95,7 +98,11 @@ public class ProcessEndListener implements FlowableEventListener {
                                         entityCode,
                                         entityDataId,
                                         statusCategory,
-                                        defaultEndStatus(statusCategory));
+                                        // BPMN 终止/错误结束仍是经过连线的结束，不属于人工取消操作。
+                                        (deleteReason == null || deleteReason.isBlank()) && statusPolicy != null && statusPolicy.usesTransitions(
+                                                processInstance != null ? processInstance.getProcessDefinitionId()
+                                                        : ((FlowableEngineEvent) event).getProcessDefinitionId())
+                                                ? null : defaultEndStatus(statusCategory));
                         log.info(
                                         "流程结束状态同步事件已入队，等待提交后消费: entityCode={}, entityDataId={}, "
                                                         + "processInstanceId={}, statusCategory={}, idempotencyKey={}",
@@ -136,9 +143,15 @@ public class ProcessEndListener implements FlowableEventListener {
                                 : "APPROVED";
         }
 
-        private String getHistoricVariable(
+        private String getEntityVariable(
+                        ProcessInstance instance,
                         String processInstanceId,
                         String variableName) {
+                // 发起后立即结束的实例，历史变量可能尚未刷入数据库；优先读取事件中的执行作用域。
+                if (instance instanceof org.flowable.variable.api.delegate.VariableScope scope) {
+                        Object value = scope.getVariable(variableName);
+                        if (value != null) return value.toString();
+                }
                 var variable = historyService
                                 .createHistoricVariableInstanceQuery()
                                 .processInstanceId(processInstanceId)

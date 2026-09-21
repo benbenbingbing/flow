@@ -116,22 +116,23 @@
 </template>
 
 <script setup lang="ts">
+import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { isSubFormLayoutField } from '@/shared/form-layout'
 import { ref, computed, watch, nextTick, provide } from 'vue'
 import { ElMessage } from 'element-plus'
 import FormPreviewLinkage from '@/components/FormPreviewLinkage.vue'
-import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldValidation'
-import { useFormCustomValidation } from '@/composables/useFormCustomValidation'
-import { CROSS_FIELD_ERROR_CODE } from '@/shared/form-cross-field-validation'
+import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
+import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
+import { CROSS_FIELD_ERROR_CODE } from '@flow/workflow-core/form-cross-field-validation'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
-import { LinkageEngine } from '@/utils/linkageEngine'
+import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
 import { parseJsonOptions } from '@/shared/list-runtime'
 import {
   createCustomFormActionSlotContract,
   formActionsForOwner
-} from '@/shared/form-actions'
+} from '@flow/workflow-core/form-actions'
 import { entityDataApi } from '@/api/entity.js'
 import { precheckFormFieldUnique } from '@/api/entityForm'
 import { getItemTreeByDictCode } from '@/api/system/dict'
@@ -140,23 +141,23 @@ import {
   createFormDataSourceRuntime,
   isRuntimeFieldReadonly,
   isRuntimeFieldVisible
-} from '@/shared/form-runtime'
-import { safeParseConfig } from '@/shared/config-runtime'
+} from '@flow/workflow-core/form-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { isWorkflowReady } from '@/shared/entity-design'
 import {
   createFormUniquePrecheckController,
   resolveFormFieldUniqueness,
   resolveFormUniqueRuntimeIdentity
-} from '@/shared/form-field-uniqueness'
+} from '@flow/workflow-core/form-field-uniqueness'
 import {
   createFormUniquePrecheckRuntime,
   FORM_UNIQUE_PRECHECK_CONTEXT_KEY
-} from '@/shared/form-runtime/uniquePrecheckContext'
+} from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 import {
   buildEntityStatusMap,
   withEntityStatusFieldOptions,
   withEntityStatusRuntimeForm
-} from '@/shared/entity-status-runtime'
+} from '@flow/workflow-core/entity-status-runtime'
 
 const props = defineProps<{
   entityCode: string
@@ -377,6 +378,7 @@ async function executeFieldDataSource(field: any, usage: string) {
 }
 
 const internalDataSourceRuntime = createFormDataSourceRuntime({
+  executeDataSource: uiExtensionRuntimeApi.execute,
   entityCode: props.entityCode,
   getRecord: () => formData.value?.data || {},
   getRecordId: () => formData.value?.id,

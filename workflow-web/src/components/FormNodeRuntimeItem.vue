@@ -202,22 +202,23 @@
 
 <script setup>
 import { isSubFormLayoutField } from '@/shared/form-layout'
+import { resolveRuntimeNodeField } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { computed, defineComponent, defineAsyncComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
-import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
+import { buildRuntimeFieldRules, getFieldKey } from '@flow/workflow-core/form-runtime'
 import {
   getFieldModeAccess,
   resolveRuntimeNodeFieldRules,
   safeParseConfig
-} from '@/shared/config-runtime'
+} from '@flow/workflow-core/config-runtime'
 import { hasFormFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
 import {
   isFormFieldExtensionNode,
   resolveRuntimeFormFieldComponentType
-} from '@/shared/form-field-extension'
+} from '@flow/workflow-core/form-field-extension'
 import {
   migrateFormNodeConfig,
   resolveFormNodeDescriptor
@@ -225,16 +226,16 @@ import {
 import {
   appendFormUniqueBlurRule,
   FORM_UNIQUE_PRECHECK_CONTEXT_KEY
-} from '@/shared/form-runtime/uniquePrecheckContext'
+} from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 import {
   findFormNodeContainingValidationField,
   formNodeSubtreeContainsValidationField
-} from '@/shared/form-runtime/validationReveal'
+} from '@flow/workflow-core/form-runtime/validationReveal'
 import {
   resolveFormContainerAppearance,
   supportsFormContainerAppearance
-} from '@/shared/form-container-appearance'
-import { resolveFormNodeLayoutSpan } from '@/shared/form-node-property-schema'
+} from '@flow/workflow-core/form-container-appearance'
+import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
 
 const RelationContentDesignPreview = defineAsyncComponent(() => import('@/components/form-designer/RelationContentDesignPreview.vue'))
 
@@ -427,99 +428,9 @@ function updateCollapseNames(value) {
 
 const nestedNodes = computed(() => collectDescendants(props.node.id))
 
-const runtimeField = computed(() => {
-  if (!['FIELD', 'SUB_FORM', 'REPEATER'].includes(props.node.nodeType)) return null
-  const nodeProps = props.node.props || {}
-  const componentProps = nodeProps.componentProps || {}
-  const ref = props.node.bindingRef || nodeProps.fieldCode || nodeProps.fieldId
-  const linked = props.fields.find(field =>
-    String(field.id) === String(ref)
-      || String(field.fieldId) === String(ref)
-      || field.fieldCode === ref
-  )
-  const subFormConfig = componentProps.subFormConfig || nodeProps.subFormConfig || {}
-  const nodeFieldRules = resolveRuntimeNodeFieldRules(
-    linked || {},
-    props.node.rules
-  )
-  const fallback = props.node.nodeType === 'REPEATER'
-    ? {
-        fieldType: 'SUB_FORM',
-        componentType: 'sub_form'
-      }
-    : {
-        fieldType: props.node.nodeType,
-        componentType: 'sub_form'
-      }
-  const fallbackComponentType =
-    nodeProps.componentType
-    || linked?.componentType
-    || fallback.componentType
-  return {
-    ...(linked || {}),
-    ...fallback,
-    id: props.node.id,
-    nodeType: props.node.nodeType,
-    fieldId: nodeProps.fieldId ?? linked?.fieldId,
-    fieldCode: nodeProps.fieldCode || linked?.fieldCode || props.node.nodeKey,
-    fieldName: nodeProps.fieldName || linked?.fieldName || nodeProps.label || props.node.nodeKey,
-    fieldLabel: nodeProps.label || linked?.fieldLabel || linked?.fieldName || props.node.nodeKey,
-    fieldType: nodeProps.fieldType || linked?.fieldType || fallback.fieldType,
-    componentType: resolveRuntimeFormFieldComponentType(
-      props.node,
-      fallbackComponentType,
-      hasFormFieldComponent
-    ),
-    placeholder: nodeProps.placeholder ?? linked?.placeholder,
-    defaultValue: nodeProps.defaultValue ?? linked?.defaultValue,
-    isRequired: nodeProps.required === true ? 1 : (linked?.isRequired || 0),
-    isReadonly: nodeProps.readonly === true ? 1 : (linked?.isReadonly || 0),
-    isHidden: nodeProps.hidden === true ? 1 : (linked?.isHidden || 0),
-    options: nodeProps.options ?? linked?.options,
-    optionsJson: nodeProps.optionsJson ?? linked?.optionsJson,
-    componentProps: Object.keys(componentProps).length ? componentProps : linked?.componentProps,
-    validationRules: nodeFieldRules.validationRules,
-    extensionConfig: nodeFieldRules.extensionConfig,
-    relationType: nodeProps.relationType
-      || linked?.relationType
-      || subFormConfig.relationType,
-    childEntityId: nodeProps.childEntityId
-      || linked?.childEntityId
-      || subFormConfig.childEntityId
-      || subFormConfig.refEntityId,
-    refEntityId: nodeProps.refEntityId
-      || linked?.refEntityId
-      || subFormConfig.refEntityId,
-    childRefFieldCode: nodeProps.childRefFieldCode
-      || linked?.childRefFieldCode
-      || subFormConfig.childRefFieldCode
-      || subFormConfig.refFieldCode,
-    childFormId: nodeProps.childFormId
-      || nodeProps.refFormId
-      || nodeProps.publishedFormId
-      || linked?.childFormId
-      || subFormConfig.childFormId
-      || subFormConfig.refFormId
-      || subFormConfig.publishedFormId,
-    childFormReleaseId: nodeProps.childFormReleaseId
-      || nodeProps.refFormReleaseId
-      || nodeProps.publishedFormReleaseId
-      || linked?.childFormReleaseId
-      || subFormConfig.childFormReleaseId
-      || subFormConfig.refFormReleaseId
-      || subFormConfig.publishedFormReleaseId,
-    childFormReleaseVersion: nodeProps.childFormReleaseVersion
-      ?? nodeProps.refFormReleaseVersion
-      ?? nodeProps.publishedFormReleaseVersion
-      ?? linked?.childFormReleaseVersion
-      ?? subFormConfig.childFormReleaseVersion
-      ?? subFormConfig.refFormReleaseVersion
-      ?? subFormConfig.publishedFormReleaseVersion,
-    runtimeNodes: nestedNodes.value,
-    runtimeRootParentId: props.node.id,
-    runtimeFields: props.fields
-  }
-})
+const runtimeField = computed(() => resolveRuntimeNodeField(
+  props.node, props.fields, nestedNodes.value, hasFormFieldComponent
+))
 
 const fieldKey = computed(() => getFieldKey(runtimeField.value || props.node))
 const crossFieldError = computed(() => props.crossFieldErrors[fieldKey.value]?.message || '')

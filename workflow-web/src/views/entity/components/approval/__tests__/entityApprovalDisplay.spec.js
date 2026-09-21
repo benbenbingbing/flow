@@ -8,7 +8,7 @@ import {
   resolveApprovalEntityCode,
   resolveApprovalFieldLabel,
   resolveApprovalFormConfig
-} from '../entityApprovalDisplay.js'
+} from '@flow/workflow-core/workflow/approval-display'
 
 assert.equal(isFileUrl('/api/files/design.pdf'), true)
 assert.equal(isFileUrl('https://example.test/design.pdf'), true)

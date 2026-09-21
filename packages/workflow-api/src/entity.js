@@ -1,0 +1,253 @@
+
+/** 为指定 transport 创建接口集合，不在包内持有应用单例。 */
+export function createEntityApi(request) {
+
+/**
+ * 实体定义管理API
+ */
+const entityApi = {
+  /**
+   * 获取实体定义分页列表
+   */
+  getList(params = {}) {
+    return request.get('/entity', { params })
+  },
+
+  /**
+   * 获取实体选择器使用的轻量分页选项。
+   */
+  getOptions(params = {}) {
+    return request.get('/entity/options', { params })
+  },
+
+  /**
+   * 批量解析已保存的实体 ID 或编码，用于分页选择器回显。
+   */
+  resolveOptions(data = {}) {
+    return request.post('/entity/options/resolve', data)
+  },
+
+  /**
+   * 根据ID获取实体定义
+   */
+  getById(id) {
+    return request.get(`/entity/${id}`)
+  },
+
+  /**
+   * 根据编码获取实体定义
+   */
+  getByCode(code, runtimeContext = {}) {
+    return request.get(`/entity/code/${code}`, {
+      params: {
+        viewCompositionTraversalToken:
+          runtimeContext.viewCompositionTraversalToken || undefined
+      }
+    })
+  },
+
+  /**
+   * 创建实体定义
+   */
+  create(data) {
+    return request.post('/entity', data)
+  },
+
+  /**
+   * 更新实体定义
+   */
+  update(id, data) {
+    return request.post(`/entity/${id}/update`, data)
+  },
+
+  /**
+   * 新增单个实体字段，不提交其他字段草稿。
+   */
+  createField(entityId, data) {
+    return request.post(`/entity/${entityId}/fields`, data)
+  },
+
+  /**
+   * 更新单个实体字段，不提交其他字段草稿。
+   */
+  updateField(entityId, fieldId, data) {
+    return request.post(`/entity/${entityId}/fields/${fieldId}/update`, data)
+  },
+
+  /**
+   * 删除实体定义
+   */
+  delete(id) {
+    return request.post(`/entity/${id}/delete`)
+  },
+
+  /**
+   * 发布实体定义
+   */
+  publish(id, data = {}) {
+    return request.post(`/entity/${id}/publish`, data)
+  },
+
+  bindWorkflow(entityId, processDefinitionId) {
+    return request.post(`/entity/${entityId}/workflow-binding/update`, { processDefinitionId })
+  },
+
+  unbindWorkflow(entityId) {
+    return request.post(`/entity/${entityId}/workflow-binding/delete`)
+  },
+
+  updateLifecycleMode(entityId, lifecycleMode) {
+    return request.post(`/entity/${entityId}/lifecycle-mode`, { lifecycleMode })
+  },
+
+  /**
+   * 获取实体的表单列表
+   */
+  getEntityForms(entityId) {
+    return request.get(`/entity-form/entity/${entityId}`)
+  },
+
+  /**
+   * 保存实体表单配置
+   */
+  saveEntityForm(entityId, data) {
+    return request.post('/entity-form', data)
+  },
+
+  /**
+   * 获取表单字段
+   */
+  getFormFields(formId) {
+    return request.get(`/entity-form/${formId}/fields`)
+  }
+}
+
+/**
+ * 实体数据管理API
+ */
+const entityDataApi = {
+  /**
+   * 获取某实体的所有数据
+   */
+  getList(entityCode, params = {}) {
+    return request.get(`/entity-data/entity/${entityCode}`, { params })
+  },
+
+  /**
+   * 获取某实体的数据列表（带列表配置扩展字段）
+   */
+  getListWithConfig(entityCode, listKey, params = {}) {
+    const queryParams = { ...params }
+    if (listKey) queryParams.listKey = listKey
+    return request.get(`/entity-data/entity/${entityCode}/list-with-config`, { params: queryParams })
+  },
+
+  /**
+   * 根据ID获取数据
+   */
+  getById(id) {
+    return request.get(`/entity-data/${id}`)
+  },
+
+  /**
+   * 获取实体数据详情
+   */
+  getDetail(
+    entityCode,
+    id,
+    listKey,
+    formId,
+    releaseContext = {},
+    formReleaseContext = {}
+  ) {
+    const params = {
+      ...releaseContext,
+      formReleaseId: formReleaseContext.releaseId,
+      formReleaseVersion: formReleaseContext.releaseVersion,
+      formReleaseResolutionToken:
+        formReleaseContext.releaseResolutionToken,
+      // 关联内容的非根实体只能沿服务端签名的遍历链读取。
+      // 这是 Flow 共享详情 API 的可选上下文，不是 Embed 专用分支。
+      viewCompositionTraversalToken:
+        formReleaseContext.viewCompositionTraversalToken
+        || releaseContext.viewCompositionTraversalToken
+        || undefined
+    }
+    if (listKey) params.listKey = listKey
+    if (formId) params.formId = formId
+    return request.post(`/entity-data/entity/${entityCode}/detail/${id}/load`, {}, {
+      params
+    })
+  },
+
+  /**
+   * 保存数据
+   * @param data 数据对象
+   * @param startProcess 是否同时发起流程
+   */
+  save(data, startProcess = false, releaseContext = {}) {
+    return request.post('/entity-data', {
+      ...data,
+      startProcess,
+      listReleaseId: releaseContext.releaseId,
+      listReleaseVersion: releaseContext.releaseVersion,
+      listReleaseResolutionToken:
+        releaseContext.releaseResolutionToken,
+      formReleaseId: data.formReleaseId,
+      formReleaseVersion: data.formReleaseVersion,
+      formReleaseResolutionToken:
+        data.formReleaseResolutionToken
+    })
+  },
+
+  /**
+   * 更新数据
+   */
+  update(entityCode, id, data, startProcess = false, listKey, releaseContext = {}) {
+    return request.post(`/entity-data/entity/${entityCode}/detail/${id}/update`,
+      { ...data, startProcess },
+      {
+        params: {
+          ...(listKey ? { listKey } : {}),
+          ...releaseContext
+        }
+      }
+    )
+  },
+
+  /**
+   * 删除数据
+   */
+  delete(entityCode, id, listKey, releaseContext = {}) {
+    return request.post(
+      `/entity-data/entity/${entityCode}/detail/${id}/delete`,
+      {},
+      {
+        params: {
+          ...(listKey ? { listKey } : {}),
+          ...releaseContext
+        }
+      }
+    )
+  },
+
+  batchDelete(entityCode, ids, listKey, releaseContext = {}) {
+    return request.post(`/entity-data/entity/${entityCode}/batch-delete`, {
+      ids,
+      listKey,
+      ...releaseContext
+    })
+  },
+
+  /**
+   * 导出实体数据（选中或全部）
+   */
+  exportData(entityCode, data) {
+    return request.post(`/entity-data/entity/${entityCode}/export`, data, {
+      responseType: 'blob'
+    })
+  }
+}
+
+return { entityApi, entityDataApi }
+}

@@ -14,7 +14,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createElementPlusValidator } from '@/extensions/contracts/validation.js'
+import { createElementPlusValidator } from '@flow/workflow-core/extensions/contracts/validation'
 import { AmountValidator, requiredValidator } from '@/extensions/examples/contracts/AmountValidator.js'
 
 const model = reactive({ amount: null })

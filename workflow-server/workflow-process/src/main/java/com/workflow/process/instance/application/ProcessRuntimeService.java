@@ -58,6 +58,11 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final EntityProcessLinkMapper entityProcessLinkMapper;
 
+    @Autowired
+    private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
+    @Autowired
+    private org.flowable.engine.HistoryService historyService;
+
     /** 可选字段注入仅用于兼容直接 new 的旧测试；生产环境必须由 Spring 提供。 */
     @Autowired
     private InitiatorOrganizationSnapshotService initiatorSnapshotService;
@@ -126,7 +131,7 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(processInstance.getId())
                 .active()
-                .singleResult();
+                .listPage(0, 1).stream().findFirst().orElse(null);
         processTaskService.syncTasksFromFlowable(processInstance.getId());
 
         log.info("实体数据 {} 发起流程 {}，流程实例ID: {}",
@@ -134,10 +139,12 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                 LogValue.safe(processInstance.getId()));
         return new ProcessStartResult(
                 processInstance.getId(),
-                request.processingStatus(),
+                statusPolicy != null && statusPolicy.usesTransitions(deployedDefinition.getId())
+                        ? null : request.processingStatus(),
                 currentTask == null ? null : currentTask.getId(),
                 currentTask == null ? null : currentTask.getName(),
-                currentTask == null ? null : currentTask.getAssignee());
+                currentTask == null ? null : currentTask.getAssignee(),
+                processInstance.isEnded() ? "COMPLETED" : "RUNNING");
     }
 
     private EntityProcessLink reserveLink(
@@ -183,14 +190,25 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         return locked;
     }
 
+    /** 启动重试复用原实例；结束通知尚未消费时不能把已完成实例重新标为运行中。 */
     private ProcessStartResult existingResult(EntityProcessLink link) {
+        ProcessInstance running = runtimeService.createProcessInstanceQuery()
+                .processInstanceId(link.getProcessInstanceId()).singleResult();
+        if (running == null) {
+            var historic = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceId(link.getProcessInstanceId()).singleResult();
+            if (historic == null || historic.getEndTime() == null) {
+                throw new IllegalStateException("活动流程链接缺少可确认的引擎实例: " + link.getProcessInstanceId());
+            }
+            return new ProcessStartResult(link.getProcessInstanceId(), null, null, null, null, "COMPLETED");
+        }
         Task currentTask = taskService.createTaskQuery()
                 .processInstanceId(link.getProcessInstanceId())
                 .active()
-                .singleResult();
+                .listPage(0, 1).stream().findFirst().orElse(null);
         return new ProcessStartResult(
                 link.getProcessInstanceId(),
-                link.getEntityStatus(),
+                null, // 重放启动请求不能覆盖后续连线已经更新的业务状态。
                 currentTask == null ? null : currentTask.getId(),
                 currentTask == null ? null : currentTask.getName(),
                 currentTask == null ? null : currentTask.getAssignee());

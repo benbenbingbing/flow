@@ -79,9 +79,13 @@ public final class EntityActionRuleBuiltInPolicy {
                     node.get("relation"), RELATIONS,
                     "不支持的按钮用户关系: ");
             case "PROCESS_STATE" -> {
+                if (node.get("lifecycleVersion") != null && !"1".equals(node.get("lifecycleVersion").toString())) {
+                    throw new IllegalArgumentException("不支持的流程状态规则版本");
+                }
                 requireOperator(node, SIMPLE_OPERATORS);
                 requireAllowed(
-                        node.get("value"), PROCESS_STATES,
+                        node.get("value"), node.get("lifecycleVersion") != null
+                                ? Set.of("NOT_STARTED", "RUNNING", "COMPLETED") : PROCESS_STATES,
                         "不支持的流程状态: ");
             }
             case "STATUS_CODE" -> {

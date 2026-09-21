@@ -209,7 +209,7 @@ assert.equal(
 )
 
 const formActionRuntimeSource = readFileSync(
-  new URL('../form-action-runtime.js', import.meta.url),
+  new URL(import.meta.resolve('@flow/workflow-core/form-action-runtime')),
   'utf8'
 )
 assert.match(

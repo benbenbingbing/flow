@@ -84,7 +84,7 @@ public interface EntityProcessLinkMapper {
     @Update("""
             UPDATE entity_process_link
             SET state = 'ENDED',
-                entity_status = #{entityStatus},
+                entity_status = COALESCE(#{entityStatus}, entity_status),
                 ended_at = UTC_TIMESTAMP(6),
                 version = version + 1,
                 update_time = UTC_TIMESTAMP(6)
@@ -94,6 +94,10 @@ public interface EntityProcessLinkMapper {
     int closeActive(
             @Param("processInstanceId") String processInstanceId,
             @Param("entityStatus") String entityStatus);
+
+    /** 在关联关闭事务中独立记录真实结束原因，生命周期仍统一为 ENDED。 */
+    @Update("UPDATE entity_process_link SET end_type = #{endType} WHERE process_instance_id = #{instanceId}")
+    int recordEndType(@Param("instanceId") String instanceId, @Param("endType") String endType);
 
     @Update("""
             UPDATE entity_process_link

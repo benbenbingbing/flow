@@ -7,7 +7,7 @@ import {
   compareCrossFieldValues,
   evaluateCrossField,
   validateCrossFieldConfiguration
-} from '../form-cross-field-validation.js'
+} from '@flow/workflow-core/form-cross-field-validation'
 
 const fixtures = JSON.parse(readFileSync(new URL('../../../../docs/testing/fixtures/form-cross-field-comparisons.json', import.meta.url)))
 for (const item of fixtures) {

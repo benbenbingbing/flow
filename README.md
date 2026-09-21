@@ -95,7 +95,7 @@ docs/                  领域设计、数据库、测试和历史资料
 
 - JDK 21
 - Maven 3.9+
-- Node.js 22 和 npm
+- Node.js 22.12+ 和 npm 10+
 - Docker（使用脚本自动启动本地 MySQL 时需要）
 - MySQL 8.4（也可使用已有实例）
 
@@ -114,10 +114,11 @@ cp .env.example .env
 
 推荐使用根目录脚本启动。默认情况下，当 `DB_HOST` 为 `localhost` 时，脚本会通过
 Compose 启动 MySQL、重放数据库授权、构建前后端、执行独立迁移器，并依次启动
-schema worker、后端和 Vite：
+schema worker、后端、共享包 watch、PC Vite 和移动端 Vite：
 
 ```bash
 ./start.sh
+./start.sh restart
 ./start.sh status
 ```
 
@@ -125,6 +126,8 @@ schema worker、后端和 Vite：
 
 ```bash
 ./start.sh stop
+# pause 是 stop 的别名，保留数据库数据
+./start.sh pause
 ```
 
 使用已有 MySQL 时，在 `.env` 中设置连接和账号，并配置：
@@ -142,7 +145,8 @@ docker compose --env-file .env ps
 
 两种启动方式会占用相同的默认端口，不要同时运行。默认访问地址：
 
-- 前端：`http://localhost:3000`
+- PC：`http://localhost:3000`
+- 移动端 H5：`http://localhost:3001/m/`（Compose 同域部署为 `http://localhost:3000/m/`）
 - 后端 API：`http://localhost:8080/api`
 - 存活检查：`http://localhost:8080/livez`
 - 就绪检查：`http://localhost:8080/healthz`
@@ -151,6 +155,15 @@ docker compose --env-file .env ps
 手工运行 Vite 时，`/api` 默认代理到 `http://localhost:8080`。`start.sh` 会根据
 `SERVER_PORT` 自动设置代理目标；需要代理到其他地址时可显式设置
 `VITE_API_PROXY_TARGET`。
+
+`WEB_PORT`、`MOBILE_PORT` 分别控制两端端口。真机调试在 `.env` 中设置
+`FLOW_DEV_HOST=开发机局域网IP`，重启后用手机访问该 IP 的移动端端口；脚本会将
+PC 和移动端的实际 Origin 加入开发环境 CORS 白名单。两端请求均使用相对 `/api`。
+
+前端采用根目录 npm workspaces 和唯一 workspace 锁文件。`start.sh` 自动安装依赖并
+构建 `workflow-core`、`workflow-api`、`workflow-mobile-ui`、PC（含 Embed）和移动端。
+共享包源码修改由 watch 重建。移动端的组件位置、扩展注册与限制见
+[`workflow-mobile/README.md`](workflow-mobile/README.md)。
 
 `start.sh` 只管理本地应用进程，不参与 CI，也不是生产部署入口。它会核对 PID 对应
 的进程命令，发现端口属于其他程序时会中止启动并报错，不会直接终止无关进程。
@@ -209,14 +222,16 @@ mvn verify
 前端完整验证：
 
 ```bash
-cd workflow-web
 npm ci
-npm test
 npm run build
+npm run test:packages
+npm run test:mobile
+npm run test:e2e --workspace workflow-mobile
+npm run test:web
 ```
 
 真实环境验收使用单独的环境变量，不会从本地文件读取业务对象标识。执行
-`npm run test:acceptance:real` 前，除 `TEST_USERNAME`、`TEST_PASSWORD` 和
+`npm run test:acceptance:real --workspace workflow-web` 前，除 `TEST_USERNAME`、`TEST_PASSWORD` 和
 `WORKFLOW_WEB_BASE` 外，还必须提供已发布且可访问的
 `VISUAL_ENTITY_ID`、`VISUAL_ENTITY_CODE`、`VISUAL_PROCESS_ID`、`VISUAL_FORM_ID` 和
 `VISUAL_LIST_CONFIG_ID`。可选的 `VISUAL_LIST_KEY`、`VISUAL_ENTITY_NAME`、

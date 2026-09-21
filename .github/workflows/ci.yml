@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: workflow-web
+        working-directory: .
     steps:
       - name: 检出代码
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -68,7 +68,7 @@ jobs:
         with:
           node-version: "22.23.1"
           cache: npm
-          cache-dependency-path: workflow-web/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: 安装依赖
         run: npm ci --registry=https://registry.npmjs.org
@@ -107,8 +107,16 @@ jobs:
       #     FLOW_EMBED_E2E_REQUIRE_BROWSER: "1"
       #   run: npm run test:embed:e2e
 
-      - name: 构建生产版本
+      - name: 构建公共包与两端生产版本
         run: npm run build
+
+      - name: 验证共享协议与移动组件
+        run: npm run test:packages && npm run test:mobile
+
+      - name: 安装浏览器并验证移动端交互
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e --workspace workflow-mobile
 
   manifests:
     name: 部署清单校验
@@ -152,7 +160,8 @@ jobs:
       - name: 构建前端镜像
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: ./workflow-web
+          context: .
+          file: workflow-web/Dockerfile
           load: true
           tags: flow-web:${{ github.sha }}
           cache-from: type=gha,scope=web

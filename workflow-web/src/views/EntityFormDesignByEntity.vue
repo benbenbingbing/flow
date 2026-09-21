@@ -1099,7 +1099,7 @@ import FormNodeAttachmentConditions from '@/components/form-designer/FormNodeAtt
 import { getFieldLinkageDraftError } from '@/composables/useFieldValueLinkage'
 import { getAttachmentConditionError } from '@/shared/form-field-linkage'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
-import { readFieldScripts, writeFieldScripts } from '@/shared/field-event-scripts'
+import { readFieldScripts, writeFieldScripts } from '@flow/workflow-core/browser/field-event-scripts'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import FormNodeEventBindings from '@/components/form-designer/FormNodeEventBindings.vue'
 import FormDataSourceDialog from '@/components/ui-config/FormDataSourceDialog.vue'
@@ -1116,10 +1116,10 @@ import FormCustomRendererWorkspace from '@/components/form-designer/FormCustomRe
 import FormNodeDataSettings from '@/components/form-designer/FormNodeDataSettings.vue'
 import FormCrossFieldRuleEditor from '@/components/form-designer/FormCrossFieldRuleEditor.vue'
 import FormCustomValidatorEditor from '@/components/FormCustomValidatorEditor.vue'
-import { validateCustomValidationConfig } from '@/shared/form-custom-validation'
+import { validateCustomValidationConfig } from '@flow/workflow-core/form-custom-validation'
 import FormNodeStateConditions from '@/components/form-designer/FormNodeStateConditions.vue'
 import { getFieldStateConditionError } from '@/shared/form-field-state-conditions'
-import { supportsCrossFieldValidation, validateCrossFieldConfiguration } from '@/shared/form-cross-field-validation'
+import { supportsCrossFieldValidation, validateCrossFieldConfiguration } from '@flow/workflow-core/form-cross-field-validation'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { uiCompositionApi } from '@/api/uiComposition'
@@ -1156,7 +1156,7 @@ import {
   canPlaceFormNodeAtRoot,
   formNodeTypeLabel,
   normalizeFormNodeType
-} from '@/shared/form-node-hierarchy'
+} from '@flow/workflow-core/form-node-hierarchy'
 import {
   buildFormNodeDropPlan,
   getFormNodeDepth as getSharedFormNodeDepth,
@@ -1175,33 +1175,33 @@ import {
   normalizeFormFieldValidation,
   resolveFormNodeBinding,
   resolveFormNodeLayoutSpan
-} from '@/shared/form-node-property-schema'
+} from '@flow/workflow-core/form-node-property-schema'
 import {
   resolveFormContainerAppearance,
   supportsFormContainerAppearance
-} from '@/shared/form-container-appearance'
+} from '@flow/workflow-core/form-container-appearance'
 import {
   normalizeFormFieldUniqueness,
   supportsFormFieldUniqueness,
   validateFormFieldUniqueness
-} from '@/shared/form-field-uniqueness'
+} from '@flow/workflow-core/form-field-uniqueness'
 import {
   createFlowConditionConfig,
   createFlowConditionGroup
-} from '@/utils/flowConditionGroups'
+} from '@flow/workflow-core/utils/flowConditionGroups'
 import {
   getDefaultFormFieldComponentType as getDefaultComponentType
-} from '@/extensions/core/fieldPolicy.js'
+} from '@flow/workflow-core/extensions/core/fieldPolicy'
 import {
   FORM_FIELD_EXTENSION_TYPE,
   resolveFormFieldExtensionName
-} from '@/shared/form-field-extension'
+} from '@flow/workflow-core/form-field-extension'
 import {
   getRuntimeRegexPatternError,
   resolveVarcharFieldLength,
   safeParseConfig,
   stringifyConfig
-} from '@/shared/config-runtime'
+} from '@flow/workflow-core/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {
   filterEntityFieldsByLifecycle,
@@ -1223,7 +1223,7 @@ import {
   normalizeFormActionBar,
   resolveLocalFormActions,
   validateFormActionConfiguration
-} from '@/shared/form-actions'
+} from '@flow/workflow-core/form-actions'
 import {
   buildFormDraftRuntimeSnapshot,
   buildRuntimeCodeArtifact,

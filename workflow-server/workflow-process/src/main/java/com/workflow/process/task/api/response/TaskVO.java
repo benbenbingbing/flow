@@ -140,6 +140,12 @@ public class TaskVO {
      * 流程状态
      */
     private String processStatus;
+
+    /** 关联实体数据的当前业务状态，独立于任务办理结果和流程生命周期。 */
+    private String entityStatus;
+
+    /** 实体配置中的状态名称；未配置时由客户端按状态编码回退。 */
+    private String entityStatusText;
     
     // ========== 表单和实体数据扩展字段 ==========
     

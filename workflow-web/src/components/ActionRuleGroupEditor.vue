@@ -54,8 +54,8 @@
             <el-option label="未发起" value="NOT_STARTED" />
             <el-option label="进行中" value="RUNNING" />
             <el-option label="已完成" value="COMPLETED" />
-            <el-option label="已终止" value="TERMINATED" />
-            <el-option label="已撤回" value="WITHDRAWN" />
+            <el-option v-if="child.lifecycleVersion !== 1" label="已终止（旧规则）" value="TERMINATED" />
+            <el-option v-if="child.lifecycleVersion !== 1" label="已撤回（旧规则）" value="WITHDRAWN" />
           </el-select>
         </template>
 
@@ -249,6 +249,7 @@ function resetCondition(condition) {
     condition.type = definition.type
     return
   }
+  if (condition.type === 'PROCESS_STATE') condition.lifecycleVersion = 1
   if (condition.type === 'RELATION') {
     condition.relation = 'CURRENT_USER_IS_CREATOR'
   } else {

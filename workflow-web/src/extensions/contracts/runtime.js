@@ -7,10 +7,10 @@
  * safeParseConfig(value, fallback)：解析 JSON 配置；applySchemaDefaults(schema, config)
  * 为参数补默认值；buildRuntimeFieldRules(field, required, label) 复用已有字段规则。
  */
-export { useFormField } from '../builtin/fields/composables/useFormField.js'
+export { useFormField } from '@flow/workflow-core/vue/useFormField'
 export {
   safeParseConfig, applySchemaDefaults, buildRuntimeFieldRules,
   isFieldVisibleForMode, isFieldReadonlyForMode
-} from '../../shared/config-runtime/index.js'
-export { createCustomFormActionSlotContract } from '../../shared/form-actions.js'
+} from '@flow/workflow-core/config-runtime'
+export { createCustomFormActionSlotContract } from '@flow/workflow-core/form-actions'
 export { formatListFieldValue } from '../../shared/list-runtime/index.js'

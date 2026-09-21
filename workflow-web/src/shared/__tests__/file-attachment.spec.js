@@ -10,7 +10,7 @@ import {
   normalizeAttachmentFileTypes,
   resolveAttachmentItems,
   setAttachmentItemValue
-} from '../file-attachment.js'
+} from '@flow/workflow-core/file-attachment'
 
 assert.deepEqual(
   normalizeAttachmentFileTypes(['PDF', '.docx', 'dwg, .tar.gz', 'pdf']),

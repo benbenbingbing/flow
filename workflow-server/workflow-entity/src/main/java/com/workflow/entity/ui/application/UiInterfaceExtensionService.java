@@ -480,7 +480,7 @@ public class UiInterfaceExtensionService {
                                 request.getExtensionId().trim(),
                                 null);
                 UiExtensionDefinition definition = requireExecutableDefinition(
-                                bindingPoint.extensionId());
+                                bindingPoint.extensionId(), request.getLegacyOperationCode());
                 UiExtensionExecuteRequest internal = new UiExtensionExecuteRequest();
                 internal.setUsage(bindingPoint.bindingCode());
                 internal.setOperationCode(

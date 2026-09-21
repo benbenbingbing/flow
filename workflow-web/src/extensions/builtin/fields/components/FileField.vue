@@ -77,9 +77,9 @@
 import { computed, ref, watch } from 'vue'
 import { Document, View, Download } from '@element-plus/icons-vue'
 import FileUploader from '@/components/FileUploader.vue'
-import { useFormField } from '../composables/useFormField.js'
+import { useFormField } from '@flow/workflow-core/vue/useFormField'
 import request from '@/utils/request'
-import { resolveEntityFileUploadContext } from '@/shared/entity-file-upload-context'
+import { resolveEntityFileUploadContext } from '@flow/workflow-core/entity-file-upload-context'
 
 const props = defineProps({
   field: { type: Object, required: true },

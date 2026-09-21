@@ -11,11 +11,11 @@ import {
   resolveFormFieldUniqueness,
   supportsFormFieldUniqueness,
   validateFormFieldUniqueness
-} from '../form-field-uniqueness.js'
+} from '@flow/workflow-core/form-field-uniqueness'
 import {
   createFormUniquePrecheckRuntime,
   resolveFormUniqueValidationTrigger
-} from '../form-runtime/uniquePrecheckContext.js'
+} from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 
 function uniqueField(overrides = {}) {
   return {
@@ -424,7 +424,7 @@ const customComponentRegistrySource = readFileSync(
   'utf8'
 )
 const apiSource = readFileSync(
-  new URL('../../api/entityForm.ts', import.meta.url),
+  new URL(import.meta.resolve('@flow/workflow-api/formRuntime')),
   'utf8'
 )
 assert.match(designerSource, /title="唯一性"/)

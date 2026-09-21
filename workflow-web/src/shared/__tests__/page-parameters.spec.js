@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { mapPageParameters, resolvePageParameters, initializePageFields, pageParameterFields, validatePageParameterMappings } from '../page-parameters.js'
-import { buildSubFormParentContext } from '../subform-parameter-contract.js'
+import { mapPageParameters, resolvePageParameters, initializePageFields, pageParameterFields, validatePageParameterMappings } from '@flow/workflow-core/page-parameters'
+import { buildSubFormParentContext } from '@flow/workflow-core/subform-parameter-contract'
 
 const schema = { type: 'object', properties: { project: { type: 'string' }, count: { type: 'integer', default: 3 }, enabled: { type: 'boolean' }, info: { type: 'object' } }, required: ['project'] }
 const mappings = [{ parameter: 'project', sourceType: 'FIELD', sourceField: 'projectId' }, { parameter: 'enabled', sourceType: 'LITERAL', value: 'false' }, { parameter: 'info', sourceType: 'PARAMETER', sourceField: 'parentInfo' }]
@@ -28,7 +28,7 @@ assert.equal(pageParameterFields([{ bindingType: 'ENTITY_FIELD', bindingRef: 'pr
 console.log('page parameters passed: current edits, row data, snapshots, defaults/types, required, readonly/identity protection, subform latest values')
 
 // 覆盖真正的数据源生命周期：目标参数先初始化空字段，再供接口 input.params 使用。
-const { createFormDataSourceRuntime } = await import('../form-runtime/dataSourceRuntime.js')
+const { createFormDataSourceRuntime } = await import('@flow/workflow-core/form-runtime/dataSourceRuntime')
 const calls = []
 const targetForm = { id: 'target', runtimeReleaseId: 'release-1', runtimeReleaseVersion: 1, releaseResolutionToken: 'signed-release',
   viewConfig: { inputParameterSchema: schema, inputParameterBindings: [{ parameter: 'project', usage: 'INITIALIZE', targetField: 'projectId' }] },

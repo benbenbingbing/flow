@@ -19,8 +19,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import LinkageConditionRuleEditor from '@/components/LinkageConditionRuleEditor.vue'
-import { LinkageEngine } from '@/utils/linkageEngine'
-import { createFlowConditionConfig, createFlowConditionGroup, parseFlowConditionConfig } from '@/utils/flowConditionGroups'
+import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
+import { createFlowConditionConfig, createFlowConditionGroup, parseFlowConditionConfig } from '@flow/workflow-core/utils/flowConditionGroups'
 import { patchFieldLinkageRules } from '@/shared/form-field-linkage'
 
 const props = defineProps({

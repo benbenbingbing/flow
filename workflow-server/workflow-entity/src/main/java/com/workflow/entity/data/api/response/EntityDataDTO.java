@@ -22,7 +22,9 @@ public class EntityDataDTO {
     private String entityName;
     private String name;                    // 数据名称（系统标准字段）
     private String code;                    // 业务编号（按实体编码规则生成的系统标准字段）
-    private String status;                  // 状态（与流程节点同步）
+    private String status;                  // 实体业务状态，由连线或业务操作维护
+    /** 当前关联流程的只读生命周期：NOT_STARTED / RUNNING / COMPLETED。 */
+    private String processStatus;
     private String processInstanceId;       // 流程实例ID
     private LocalDateTime processStartTime; // 流程开始时间
     private LocalDateTime processEndTime;   // 流程结束时间

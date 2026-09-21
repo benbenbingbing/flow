@@ -4,7 +4,7 @@ import {
   canPlaceFormNodeAtRoot,
   isFormNodeContainer,
   normalizeFormNodeType
-} from './form-node-hierarchy.js'
+} from '@flow/workflow-core/form-node-hierarchy'
 
 function normalizeNodeId(value) {
   return value == null ? '' : String(value)

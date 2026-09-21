@@ -25,7 +25,7 @@ import { isSingleEntitySelectionEventField } from './uiFieldEventCapabilities'
 import {
   isPersistedEntitySelectionField,
   resolveEntitySelectionRefConfig
-} from '@/shared/entity-selection-mapping'
+} from '@flow/workflow-core/entity-selection-mapping'
 
 const props = defineProps({
   formId: { type: [String, Number], default: '' },

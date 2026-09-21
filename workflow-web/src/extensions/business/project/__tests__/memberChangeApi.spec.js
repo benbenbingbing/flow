@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 
 const source = readFileSync(
-  new URL('../api/memberChange.js', import.meta.url),
+  new URL(import.meta.resolve('@flow/workflow-api/memberChange')),
   'utf8'
 )
 

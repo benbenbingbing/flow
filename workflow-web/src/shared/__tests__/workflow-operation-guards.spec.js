@@ -6,7 +6,7 @@ import {
   resolveAllowedAddSignTypes,
   selectAllowedAddSignType,
   validateApprovalOptionActionCodes
-} from '../workflow-operation-guards.js'
+} from '@flow/workflow-core/workflow-operation-guards'
 
 const allAddSignTypes = ['BEFORE', 'PARALLEL', 'AFTER']
 

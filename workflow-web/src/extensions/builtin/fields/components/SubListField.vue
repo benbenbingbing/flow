@@ -40,14 +40,14 @@
 <script setup>
 import { computed } from 'vue'
 import EntityDataList from '@/views/entity/EntityDataList.vue'
-import { safeParseConfig } from '@/shared/config-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import {
   normalizeSubListDisplayConfig,
   normalizeSubListParameterContract,
   resolveSubListParameterContract,
   SUB_LIST_RUNTIME_SCENE
 } from '@/shared/sub-list'
-import { buildSubFormParentContext } from '@/shared/subform-parameter-contract'
+import { buildSubFormParentContext } from '@flow/workflow-core/subform-parameter-contract'
 
 const props = defineProps({
   field: { type: Object, required: true },

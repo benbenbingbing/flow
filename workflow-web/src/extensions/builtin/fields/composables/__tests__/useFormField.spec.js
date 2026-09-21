@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import {
   normalizeFieldCollectionValue,
   normalizeFieldDefaultValue
-} from '../useFormField.js'
+} from '@flow/workflow-core/vue/useFormField'
 
 const booleanField = { fieldType: 'BOOLEAN', componentType: 'switch' }
 

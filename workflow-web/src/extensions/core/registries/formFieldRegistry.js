@@ -1,5 +1,5 @@
-import { normalizeExtensionDescriptor } from '../../../shared/config-runtime/index.js'
-import fieldDefinitions from '../../generated/field-definitions.js'
+import { normalizeExtensionDescriptor } from '@flow/workflow-core/config-runtime'
+import fieldDefinitions from '@flow/workflow-core/extensions/generated/field-definitions'
 
 // 元数据在纯 JS 策略中可用；可执行组件只由统一安装器写入这里。
 const registryKey = Symbol.for('workflow.formFieldExtensionRegistry')

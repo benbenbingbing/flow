@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/target
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.log
+**/*.pid
+.codex-artifacts
+workflow-server

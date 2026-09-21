@@ -89,9 +89,6 @@ public class UiDataSourceExecutionAccessService {
     /** 仅表单按钮将待办坐标视作服务端身份，其他 UI 事件保留既有业务字段语义。 */
     private static final Set<String> FORM_BUTTON_RESERVED_REQUEST_KEYS =
             Set.of("taskid", "processinstanceid");
-    /** 字段事件协议中的业务值容器，不可作为认证用户或配置身份使用。 */
-    private static final Set<String> FORM_FIELD_INPUT_CONTAINERS =
-            Set.of("form", "selection", "value");
 
     private final UiConfigReleaseMapper releaseMapper;
     private final UiDataSourceBindingMatcher bindingMatcher;
@@ -837,7 +834,7 @@ public class UiDataSourceExecutionAccessService {
         return new DataScopePlan(
                 permission.isHasPermission(),
                 sqlFragment,
-                Map.of(),
+                permission.getSqlParameters(),
                 List.of(),
                 permission.getMatchedRuleNames() == null
                         ? List.of() : List.copyOf(permission.getMatchedRuleNames()),
@@ -859,14 +856,12 @@ public class UiDataSourceExecutionAccessService {
                 : reservedKey(
                         request.getContext(),
                         request.getServerIdempotencyKey());
-        if (!StringUtils.hasText(rejected)) {
-            rejected = reservedInputKey(request);
-        }
         if (StringUtils.hasText(rejected)) {
             throw spoofed(
                     "接口操作请求不能提交服务端保留的可信字段: "
                             + rejected);
         }
+        validateBusinessInput(request.getInput());
     }
 
     private static String reservedKey(
@@ -900,30 +895,25 @@ public class UiDataSourceExecutionAccessService {
     }
 
     /**
-     * 表单按钮的 input.form，以及表单字段事件的 input.form/selection/value
-     * 都是业务值容器，允许出现 deptId/userId 等字段编码，不能据此当作身份伪造。仍执行
-     * 深度、节点数和循环结构限制；Provider 必须只从 UiInvocationContext 读取身份。
-     * input 根层、其他子树以及全部 context 继续严格拒绝保留键。
+     * 所有接口和事件的 input 都是业务数据，字段名不构成认证身份声明。
+     * 输入 Schema 在接口执行前校验；用户、部门、权限及幂等身份只能从独立的
+     * 服务端授权上下文读取。保留统一的结构预算，防止映射或复制异常输入耗尽资源。
+     *
+     * @param input 原始或映射后的业务输入
+     * @throws BusinessForbiddenException 输入过深、过大或包含循环引用
      */
-    private String reservedInputKey(
-            UiExtensionExecuteRequest request) {
-        Map<String, Object> input = request.getInput();
-        if (isFormFieldEvent(request.getConfigType(),
-                request.getTargetType(), request.getUsage())) {
-            return reservedFormFieldInputKey(
-                    input, request.getServerIdempotencyKey());
+    static void validateBusinessInput(Map<String, Object> input) {
+        String rejected = reservedKey(input, null, "$", 0,
+                new int[] {0}, Collections.newSetFromMap(new IdentityHashMap<>()),
+                false, false);
+        if (StringUtils.hasText(rejected)) {
+            throw new BusinessForbiddenException(
+                    "UI_DATA_SOURCE_INPUT_STRUCTURE_INVALID",
+                    "接口业务输入结构无效: " + rejected);
         }
-        if (input == null || input.isEmpty()
-                || !UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
-                        normalize(request.getUsage()))) {
-            return reservedKey(
-                    input, request.getServerIdempotencyKey());
-        }
-        return reservedFormButtonInputKey(
-                input, request.getServerIdempotencyKey());
     }
 
-    /** 仅对表单字段事件启用业务容器语义，其他接口用途仍沿用原有校验。 */
+    /** 字段事件使用已验真的有效表单快照解析其精确绑定。 */
     static boolean isFormFieldEvent(
             String configType, String targetType, String eventCode) {
         return FORM.equals(normalize(configType))
@@ -935,131 +925,9 @@ public class UiDataSourceExecutionAccessService {
     }
 
     /**
-     * 字段事件在条件和参数映射之前校验原始输入，防止保留身份被映射改名后绕过校验。
-     * 业务字段仅能放在协议约定的 form/selection/value 容器内。
-     *
-     * @param input 客户端原始字段事件输入
-     * @throws BusinessForbiddenException 输入包含身份声明、容器别名或异常结构
-     */
-    static void validateFormFieldClientInput(Map<String, Object> input) {
-        String rejected = reservedFormFieldInputKey(input, null);
-        if (StringUtils.hasText(rejected)) {
-            throw new BusinessForbiddenException(
-                    "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
-                    "表单字段事件输入不能提交服务端保留的可信字段: " + rejected);
-        }
-    }
-
-    private static String reservedFormFieldInputKey(
-            Map<String, Object> input, String trustedIdempotencyKey) {
-        // 对完整输入共用结构预算，不能通过拆分多个业务容器绕过深度、大小和循环限制。
-        String rejected = reservedKey(input, trustedIdempotencyKey, "$", 0,
-                new int[] {0}, Collections.newSetFromMap(new IdentityHashMap<>()),
-                false, false);
-        if (StringUtils.hasText(rejected) || input == null) {
-            return rejected;
-        }
-        Map<String, Object> strict = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : input.entrySet()) {
-            if (FORM_FIELD_INPUT_CONTAINERS.contains(
-                    normalizeRequestKey(entry.getKey()))) {
-                // 精确匹配协议键，避免 Form/sele_ction 等别名造成解释歧义。
-                if (!FORM_FIELD_INPUT_CONTAINERS.contains(entry.getKey())) {
-                    return "$." + entry.getKey();
-                }
-            } else {
-                strict.put(entry.getKey(), entry.getValue());
-            }
-        }
-        return reservedKey(strict, trustedIdempotencyKey);
-    }
-
-    /**
-     * 在事件条件和 inputMapping 读取客户端输入之前执行同一套 FORM_BUTTON_CLICK
-     * 结构与可信字段校验。否则恶意字段可先影响条件或被映射改名，再绕过 Provider
-     * 请求阶段的后置检查。
-     *
-     * @param input 客户端提交的原始事件 input
-     * @throws BusinessForbiddenException 包含保留身份、别名 form 容器或异常结构
-     */
-    static void validateFormButtonClientInput(
-            Map<String, Object> input) {
-        String rejected = reservedFormButtonInputKey(input, null);
-        if (StringUtils.hasText(rejected)) {
-            throw new BusinessForbiddenException(
-                    "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
-                    "表单按钮输入不能提交服务端保留的可信字段: "
-                            + rejected);
-        }
-    }
-
-    /**
-     * 兼容旧客户端在 context 根层携带 formId/listKey 等展示坐标：这些根字段会
-     * 被事件运行时丢弃；仍递归拒绝保留下来的业务 hint 内嵌套可信身份。
-     */
-    static void validateFormButtonClientContext(
-            Map<String, Object> context) {
-        if (context == null || context.isEmpty()) {
-            return;
-        }
-        Map<String, Object> retained = new LinkedHashMap<>();
-        context.forEach((key, value) -> {
-            if (!isReservedFormButtonRequestKey(key)) {
-                retained.put(key, value);
-            }
-        });
-        String rejected = reservedFormButtonKey(retained, null);
-        if (StringUtils.hasText(rejected)) {
-            throw new BusinessForbiddenException(
-                    "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
-                    "表单按钮上下文不能提交服务端保留的可信字段: "
-                            + rejected);
-        }
-    }
-
-    private static String reservedFormButtonInputKey(
-            Map<String, Object> input,
-            String trustedIdempotencyKey) {
-        if (input == null || input.isEmpty()) {
-            return null;
-        }
-        Map<String, Object> strict = new LinkedHashMap<>();
-        Object businessForm = null;
-        for (Map.Entry<String, Object> entry : input.entrySet()) {
-            String normalized = normalizeRequestKey(entry.getKey());
-            if ("form".equals(entry.getKey())) {
-                businessForm = entry.getValue();
-            } else if ("form".equals(normalized)) {
-                // 只允许一个精确的 input.form 业务容器；大小写或分隔符别名
-                // 会造成多个规范化同名树并绕过深度/节点数检查，必须拒绝。
-                return "$." + entry.getKey();
-            } else {
-                strict.put(entry.getKey(), entry.getValue());
-            }
-        }
-        String rejected = reservedKey(
-                strict, trustedIdempotencyKey, true);
-        if (StringUtils.hasText(rejected) || businessForm == null) {
-            return rejected;
-        }
-        return reservedKey(
-                businessForm,
-                trustedIdempotencyKey,
-                "$.form",
-                1,
-                new int[] {0},
-                Collections.newSetFromMap(new IdentityHashMap<>()),
-                false,
-                true);
-    }
-
-    /**
-     * 递归检查接口输入中的可信元数据键。
-     *
-     * <p>字段映射允许有限层级对象，如果只检查顶层，调用方可把 tenantId、
-     * userId 等身份字段包在 payload/context 内交给 Provider。服务端幂等种子
-     * 只允许位于根层且必须精确匹配；除明确标记为纯业务值的协议容器外，
-     * 嵌套同名字段仍视为伪造。</p>
+     * 检查上下文中的保留元数据，或仅检查业务输入的深度、大小和循环结构。
+     * 业务输入与可信身份分别传给 Provider，不能按业务字段名推断认证语义。
+     * 上下文仍拒绝嵌套身份声明；服务端幂等种子仅允许出现在根层且必须精确匹配。
      */
     private static String reservedKey(
             Object value,
@@ -1164,7 +1032,7 @@ public class UiDataSourceExecutionAccessService {
     /**
      * 判断客户端上下文键是否属于只能由服务端注入的可信元数据。
      * 包内事件运行时复用此规则，在构造 Provider 请求前剥离前端展示上下文中的
-     * formId/listKey 等身份声明；嵌套或 input 中的伪造值仍由递归校验拒绝。
+     * formId/listKey 等身份声明；上下文中嵌套的伪造值仍由递归校验拒绝。
      */
     static boolean isReservedRequestKey(String key) {
         if (key == null) {

@@ -41,11 +41,11 @@ import {
   formatLinkageConditionLiteral,
   LinkageEngine,
   normalizeLegacyBooleanComparisons
-} from '@/utils/linkageEngine.js'
+} from '@flow/workflow-core/utils/linkageEngine'
 import {
   createFlowConditionConfig,
   createFlowConditionGroup
-} from '@/utils/flowConditionGroups.js'
+} from '@flow/workflow-core/utils/flowConditionGroups'
 import { translate as translateBpmn } from '@/utils/bpmn-i18n.js'
 import {
   getNodeTypeDescription,
@@ -688,7 +688,9 @@ const apiExpectations = {
 }
 
 for (const [file, names] of Object.entries(apiExpectations)) {
-  const source = readFileSync(file, 'utf8')
+  // 宿主适配器只创建客户端；API 方法实现在 workspace 共享包中。
+  const shared = { 'src/api/auth.js': 'auth', 'src/api/entity.js': 'entity', 'src/api/processTask.js': 'processTask' }[file]
+  const source = readFileSync(file, 'utf8') + (shared ? readFileSync(new URL(import.meta.resolve(`@flow/workflow-api/${shared}`)), 'utf8') : '')
   for (const name of names) {
     assert.ok(source.includes(name), `${file} 缺少功能 API: ${name}`)
   }
@@ -865,7 +867,9 @@ const pageFeatureExpectations = {
 }
 
 for (const [file, names] of Object.entries(pageFeatureExpectations)) {
-  const source = readFileSync(file, 'utf8')
+  // 宿主适配器只创建客户端；API 方法实现在 workspace 共享包中。
+  const shared = { 'src/api/auth.js': 'auth', 'src/api/entity.js': 'entity', 'src/api/processTask.js': 'processTask' }[file]
+  const source = readFileSync(file, 'utf8') + (shared ? readFileSync(new URL(import.meta.resolve(`@flow/workflow-api/${shared}`)), 'utf8') : '')
   for (const name of names) {
     assert.ok(source.includes(name), `${file} 缺少页面功能入口: ${name}`)
   }

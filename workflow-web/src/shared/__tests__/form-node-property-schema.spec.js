@@ -11,13 +11,13 @@ import {
   normalizeFormFieldValidation,
   resolveFormNodeLayoutSpan,
   resolveFormNodeBinding
-} from '../form-node-property-schema.js'
+} from '@flow/workflow-core/form-node-property-schema'
 import {
   getBuiltInFormFieldSupportedTypes,
   getDefaultFormFieldComponentType,
   isBuiltInFormFieldComponentCompatible,
   normalizeFormNodeFieldType
-} from '../../extensions/core/fieldPolicy.js'
+} from '@flow/workflow-core/extensions/core/fieldPolicy'
 
 const clone = value => JSON.parse(JSON.stringify(value))
 

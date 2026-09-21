@@ -139,7 +139,7 @@ import {
   mergeEntitySelectionMappings,
   parseBindingSteps,
   resolveEntitySelectionRefConfig
-} from '@/shared/entity-selection-mapping'
+} from '@flow/workflow-core/entity-selection-mapping'
 
 const props = defineProps({
   formId: { type: [String, Number], required: true },

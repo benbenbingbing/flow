@@ -545,7 +545,7 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: '当前用户关系 RELATION', meaning: '创建人、提交人、当前办理人、同部门。', notes: '关系值由后端从登录用户与记录系统字段计算。' },
-                { option: '流程状态 PROCESS_STATE', meaning: '未发起、进行中、已完成、已终止、已撤回。', notes: '终止和撤回结合实体状态分类判断。' },
+                { option: '流程状态 PROCESS_STATE', meaning: '未发起、运行中、已完成；终止也属于已完成。', notes: '新规则读取独立 process_status；旧发布条件保留原语义。' },
                 { option: '状态编码 / 状态分类', meaning: '按具体状态编码或 NEW、PROCESSING、COMPLETED、TERMINATED、WITHDRAWN 分类过滤。', notes: '状态分类会展开为当前实体配置的状态编码。' },
                 { option: '数据字段 FIELD', meaning: '比较系统字段或实体自定义字段。', notes: '支持等于、不等于、IN、包含、为空、大小比较等白名单操作符。' },
                 { option: '当前用户属性 USER_FIELD', meaning: '按用户 ID、用户名、部门、组织或角色集合决定条件是否成立。', notes: '结果编译为恒真或恒假条件，不允许访问任意对象。' },
@@ -1225,7 +1225,7 @@ export default {
               columns: optionColumns,
               rows: [
                 { option: '当前用户关系 RELATION', meaning: '创建人、提交人、当前办理人、同部门。', notes: '依赖记录系统字段与当前任务信息。' },
-                { option: '流程状态 PROCESS_STATE', meaning: 'NOT_STARTED、RUNNING、COMPLETED、TERMINATED、WITHDRAWN。', notes: '支持 EQ/NE。' },
+                { option: '流程状态 PROCESS_STATE', meaning: 'NOT_STARTED、RUNNING、COMPLETED。', notes: '支持 EQ/NE。' },
                 { option: '状态编码 STATUS_CODE', meaning: '按实体状态编码比较。', notes: '支持 EQ、NE、IN、NOT_IN；集合操作时多选。' },
                 { option: '状态分类 STATUS_CATEGORY', meaning: 'NEW、PROCESSING、COMPLETED、TERMINATED、WITHDRAWN。', notes: '状态编码的分类变化会影响规则。' },
                 { option: '当前用户属性 USER_FIELD', meaning: 'id、username、deptId、orgId、roleIds。', notes: '可用等于、不等于、集合、包含、空值和大小比较。' },

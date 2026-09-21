@@ -19,6 +19,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +40,19 @@ import static org.mockito.Mockito.when;
  * 缺失/未知结构化值拒绝、未知状态码与标量 IN 操作拒绝等场景。
  */
 class PermissionSqlBuilderTest {
+    @Test
+    void lifecycleRuleUsesOnlyBusinessTableProjection() {
+        var filter = new FilterConfigDTO(); filter.setType("RULE");
+        var node = condition("PROCESS_STATE", null, "EQ", "COMPLETED");
+        node.setLifecycleVersion(1); filter.setRoot(node);
+        String sql = builder.buildFilterSql("expense", filter, user("u", "u", "d"));
+        assertTrue(sql.contains("process_status = 'COMPLETED'"));
+        assertFalse(sql.contains("process_end_time"));
+        verifyNoInteractions(statusMapper);
+        node.setValue("TERMINATED");
+        assertThrows(IllegalArgumentException.class, () -> builder.validateFilter("expense", filter));
+    }
+
 
     private final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
     private final EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
@@ -108,12 +123,14 @@ class PermissionSqlBuilderTest {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
 
+        Map<String, Object> parameters = new LinkedHashMap<>();
         String sql = todoBuilder.buildFilterSql(
                 "expense",
                 filter,
-                user("2038628006255251457", "lisi", "dept-1"));
+                user("2038628006255251457", "lisi", "dept-1"), parameters);
 
-        assertEquals("`wf_expense`.id IN (CONVERT(X'7265636f72642d31' USING utf8mb4))", sql);
+        assertEquals("`wf_expense`.id IN (#{permissionParameters.todoRecordId0,jdbcType=VARCHAR})", sql);
+        assertEquals(Map.of("todoRecordId0", "record-1"), parameters);
         verify(taskAccess).findActionableEntityDataIds("2038628006255251457", "expense");
         assertFalse(sql.contains("process_task"));
         assertFalse(sql.contains("_team"));
@@ -138,7 +155,7 @@ class PermissionSqlBuilderTest {
     }
 
     @Test
-    void hasTodoIdsAreEncodedAsDataRatherThanExecutableSql() {
+    void hasTodoIdsAreBoundAsDataRatherThanExecutableSql() {
         EntityPhysicalTableResolver resolver = mock(EntityPhysicalTableResolver.class);
         ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
         when(resolver.resolve("expense")).thenReturn("wf_expense");
@@ -149,10 +166,11 @@ class PermissionSqlBuilderTest {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
 
-        String sql = todoBuilder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1"));
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        String sql = todoBuilder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1"), parameters);
 
-        String hex = java.util.HexFormat.of().formatHex(unusualId.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        assertEquals("`wf_expense`.id IN (CONVERT(X'" + hex + "' USING utf8mb4))", sql);
+        assertEquals("`wf_expense`.id IN (#{permissionParameters.todoRecordId0,jdbcType=VARCHAR})", sql);
+        assertEquals(Map.of("todoRecordId0", unusualId), parameters);
         assertFalse(sql.contains(" OR 1=1"));
         assertFalse(sql.contains("\\"));
     }

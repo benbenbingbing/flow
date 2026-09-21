@@ -34,5 +34,19 @@
       "readsWholeForm": true,
       "executesManagedDataSource": true
     }
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/ProjectAcceptanceSummaryNode.vue",
+        "export": "default",
+        "kind": "COMPONENT"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
   }
 }

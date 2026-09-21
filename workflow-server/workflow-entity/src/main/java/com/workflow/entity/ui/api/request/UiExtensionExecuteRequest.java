@@ -31,7 +31,7 @@ public class UiExtensionExecuteRequest {
     private String entityCode;
     /** 服务端内部链路声明的列表编码。 */
     private String listKey;
-    /** 表单值、筛选条件、记录等业务输入。 */
+    /** 表单值、筛选条件、记录等业务输入；所有字段均不构成服务端认证身份。 */
     private Map<String, Object> input;
     /** 精确绑定目标类型，例如 OWNER、FIELD、COLUMN 或 BUTTON。 */
     private String targetType;

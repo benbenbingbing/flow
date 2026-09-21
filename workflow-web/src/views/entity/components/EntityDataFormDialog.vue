@@ -135,9 +135,11 @@
 </template>
 
 <script setup lang="ts">
-import { resolvePageParameters, initializePageFields, pageParameterFields } from '@/shared/page-parameters'
+import { uiExtensionRuntimeApi } from '@/api/uiConfig'
+import { resolvePageParameters, initializePageFields, pageParameterFields } from '@flow/workflow-core/page-parameters'
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
+import { showRequestError } from '@/shared/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { uiEventBindingApi } from '@/api/uiConfig'
@@ -149,7 +151,7 @@ import {
   filterRuntimeFormSubmissionData,
   normalizeEntityRecordForForm,
   resolveRuntimeFormTabLayout
-} from '@/shared/form-runtime'
+} from '@flow/workflow-core/form-runtime'
 import EntityDataFormFields from './EntityDataFormFields.vue'
 import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
 import EntityApprovalDiagram from './approval/EntityApprovalDiagram.vue'
@@ -161,7 +163,7 @@ import {
   executeCustomFormAction,
   resolveRuntimeFormActions
 } from '@/shared/form-action-runtime'
-import { footerFormActions } from '@/shared/form-actions'
+import { footerFormActions } from '@flow/workflow-core/form-actions'
 import { isWorkflowReady } from '@/shared/entity-design'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 import { isEmbedDelegatedRequestEnabled } from '@/shared/request'
@@ -210,6 +212,8 @@ const activeTab = ref('form')
 const processInstanceId = ref('')
 const currentProcessStatus = ref('')
 const currentProcessName = ref('')
+const processDetailsLoadedFor = ref('')
+let processDetailsPendingFor = ''
 const resetSnapshot = ref<any>(null)
 const launchRuntimeContext = ref<Record<string, any>>({})
 const activeForm = ref<any>(null)
@@ -280,6 +284,7 @@ const hasProcessInfo = computed(() => !!processInstanceId.value)
 const canStartProcess = computed(() => !hasProcessInfo.value)
 const footerActions = computed(() => footerFormActions(formActions.value))
 const rootDataSourceRuntime = createFormDataSourceRuntime({
+  executeDataSource: uiExtensionRuntimeApi.execute,
   entityCode: props.entityCode,
   getRecord: () => formData.data || {},
   getRecordId: () => formData.id,
@@ -305,7 +310,8 @@ const {
   progressData,
   processHistory,
   processRuntimeMetadata,
-  loadProcessDetail
+  loadProcessDetail,
+  resetProcessDetail
 } = useProcessDetail()
 
 /**
@@ -632,7 +638,7 @@ async function handleFormAction(action: any) {
     }
   } catch (error: any) {
     await showServerValidationErrors(error)
-    ElMessage.error(error.message || '按钮操作执行失败')
+    showRequestError(error, '按钮操作执行失败')
   } finally {
     actionLoadingKey.value = ''
     releaseAction()
@@ -677,7 +683,7 @@ async function handleReset() {
   try {
     await executeFormEvent('FORM_RESET')
   } catch (error: any) {
-    ElMessage.error(error.message || '表单重置事件执行失败')
+    showRequestError(error, '表单重置事件执行失败')
   }
   nextTick(() => refreshFormLinkage())
 }
@@ -692,7 +698,9 @@ function initializeParameterFields() {
 // 新增
 const openCreate = async (options: any = {}) => {
   runtimeDiagnosticsRef.value?.reset()
-  processRuntimeMetadata.value = {}
+  resetProcessDetail()
+  processDetailsLoadedFor.value = ''
+  processDetailsPendingFor = ''
   activeForm.value = options?.form || null
   isEdit.value = false
   processInstanceId.value = ''
@@ -726,7 +734,7 @@ const openCreate = async (options: any = {}) => {
   try {
     await executeFormEvent('FORM_OPEN')
   } catch (error: any) {
-    ElMessage.error(error.message || '表单打开事件执行失败')
+    showRequestError(error, '表单打开事件执行失败')
   }
   applyCreateInitialData(initialData)
   captureResetSnapshot()
@@ -739,10 +747,25 @@ const openCreate = async (options: any = {}) => {
   discardGuard.markSaved()
 }
 
+// 图与历史按需加载；失败保留可重试状态，切换实体时不沿用旧实例内容。
+watch([activeTab, processInstanceId, dialogVisible], async ([tab, instanceId, visible]) => {
+  if (!visible || !instanceId || !['diagram', 'history'].includes(String(tab))
+      || processDetailsLoadedFor.value === instanceId || processDetailsPendingFor === instanceId) return
+  processDetailsPendingFor = String(instanceId)
+  try {
+    const loaded = await loadProcessDetail(String(instanceId))
+    if (loaded && processInstanceId.value === instanceId) processDetailsLoadedFor.value = String(instanceId)
+  } finally {
+    if (processDetailsPendingFor === instanceId) processDetailsPendingFor = ''
+  }
+})
+
 // 编辑
 const openEdit = async (row: any, options: any = {}) => {
   runtimeDiagnosticsRef.value?.reset()
-  processRuntimeMetadata.value = {}
+  resetProcessDetail()
+  processDetailsLoadedFor.value = ''
+  processDetailsPendingFor = ''
   processInstanceId.value = ''
   currentProcessStatus.value = ''
   currentProcessName.value = ''
@@ -768,17 +791,10 @@ const openEdit = async (row: any, options: any = {}) => {
   initializeParameterFields()
 
   processInstanceId.value = detail.processInstanceId || ''
-  if (processInstanceId.value) {
-    await loadProcessDetail(processInstanceId.value, {
-      onLoad: (progressRes: any) => {
-        currentProcessStatus.value = progressRes.status || ''
-        currentProcessName.value = progressRes.processName || ''
-      }
-    })
-  } else {
-    currentProcessStatus.value = ''
-    currentProcessName.value = ''
-  }
+  // 普通编辑表单已经由实体详情和固定发布配置提供数据，不为状态标签等待整张流程图。
+  currentProcessStatus.value = detail.processStatus || ''
+  currentProcessName.value = ''
+  processDetailsLoadedFor.value = ''
 
   activeTab.value = firstFormTabName.value
 
@@ -786,7 +802,7 @@ const openEdit = async (row: any, options: any = {}) => {
   try {
     await executeFormEvent('FORM_OPEN')
   } catch (error: any) {
-    ElMessage.error(error.message || '表单打开事件执行失败')
+    showRequestError(error, '表单打开事件执行失败')
   }
   captureResetSnapshot()
   await loadFormActions()
@@ -935,7 +951,7 @@ const handleSubmit = async (startProcess = false) => {
     emit('success', result)
   } catch (error: any) {
     await showServerValidationErrors(error)
-    ElMessage.error(error.message || '操作失败')
+    showRequestError(error, '操作失败')
   }
 }
 

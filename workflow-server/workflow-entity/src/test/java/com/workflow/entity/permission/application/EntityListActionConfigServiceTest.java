@@ -57,6 +57,7 @@ class EntityListActionConfigServiceTest {
         row.setCreateBy(creator);
         row.setSubmitterId(submitter);
         row.setProcessInstanceId(processStarted ? "process-1" : null);
+        row.setProcessStatus(processStarted ? "RUNNING" : "NOT_STARTED");
         SysUser user = new SysUser();
         user.setId("u1");
 

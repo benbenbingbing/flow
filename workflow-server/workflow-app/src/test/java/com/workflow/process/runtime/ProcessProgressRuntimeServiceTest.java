@@ -416,6 +416,7 @@ class ProcessProgressRuntimeServiceTest {
         void completedInstance() {
             HistoricProcessInstance historicInstance =
                     mock(HistoricProcessInstance.class);
+            when(historicInstance.getEndTime()).thenReturn(new java.util.Date());
             when(historicInstance.getProcessDefinitionId())
                     .thenReturn("pd-1");
             when(historicProcessQuery.singleResult())

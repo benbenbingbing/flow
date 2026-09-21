@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import { formFieldProps, formFieldEmits } from '@/extensions/contracts/form-field.js'
+import { formFieldProps, formFieldEmits } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useFormField } from '@/extensions/contracts/runtime.js'
 
 const props = defineProps(formFieldProps)

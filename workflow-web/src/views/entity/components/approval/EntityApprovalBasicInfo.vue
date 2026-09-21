@@ -91,14 +91,14 @@ import {
   isFileUrl,
   isGroupedFileValue,
   resolveApprovalFieldLabel
-} from './entityApprovalDisplay.js'
+} from '@flow/workflow-core/workflow/approval-display'
 import {
   buildEntityStatusMap,
   isEntityStatusField,
   resolveEntityStatusLabel,
   withEntityStatusFieldOptions,
   withEntityStatusRuntimeForm
-} from '@/shared/entity-status-runtime'
+} from '@flow/workflow-core/entity-status-runtime'
 
 const props = defineProps<{
   entityData: any

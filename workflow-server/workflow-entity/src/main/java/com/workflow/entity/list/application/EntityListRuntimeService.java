@@ -919,7 +919,7 @@ public class EntityListRuntimeService {
             DataScopePlan plan = new DataScopePlan(
                     permission.isHasPermission(),
                     permission.isNeedFilter() ? permission.getSqlCondition() : "1=1",
-                    Map.of(),
+                    permission.getSqlParameters(),
                     List.of(),
                     permission.getMatchedRuleNames() == null
                             ? List.of() : permission.getMatchedRuleNames(),

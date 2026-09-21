@@ -24,6 +24,7 @@ public class FlowableEventListenerConfig {
     private final RuntimeService runtimeService;
     /** 实体状态更新监听器：监听任务完成事件以同步实体流程状态 */
     private final EntityStatusUpdateListener entityStatusUpdateListener;
+    private final com.workflow.process.engine.infrastructure.flowable.EntityTransitionStatusListener entityTransitionStatusListener;
     /** 流程结束监听器：监听流程结束事件以执行收尾逻辑 */
     private final ProcessEndListener processEndListener;
     /** 多实例集合监听器：为会签/多实例任务自动准备集合变量 */
@@ -51,6 +52,7 @@ public class FlowableEventListenerConfig {
     public void init() {
         // 注册任务完成事件监听器（不指定事件类型，监听所有事件，在监听器中过滤）
         runtimeService.addEventListener(entityStatusUpdateListener);
+        runtimeService.addEventListener(entityTransitionStatusListener);
 
         // 注册流程结束事件监听器（监听所有事件，在监听器中过滤）
         runtimeService.addEventListener(processEndListener);

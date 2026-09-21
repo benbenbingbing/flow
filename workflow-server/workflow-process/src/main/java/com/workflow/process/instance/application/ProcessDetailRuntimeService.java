@@ -79,7 +79,7 @@ public class ProcessDetailRuntimeService {
             detail.setStatus("RUNNING");
             detail.setProcessDefinitionId(processInstance.getProcessDefinitionId());
         } else if (historicInstance != null) {
-            detail.setStatus(historicInstance.getEndTime() != null ? "COMPLETED" : "SUSPENDED");
+            detail.setStatus(historicInstance.getEndTime() != null ? "COMPLETED" : "RUNNING");
             detail.setProcessDefinitionId(historicInstance.getProcessDefinitionId());
         }
 

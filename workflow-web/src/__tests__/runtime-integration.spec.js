@@ -22,7 +22,7 @@ import {
   mergeRuntimeFormConfigs,
   normalizeEntityRecordForForm,
   normalizeRuntimeFormConfigs
-} from '@/shared/form-runtime'
+} from '@flow/workflow-core/form-runtime'
 import {
   formatDateValue,
   formatListFieldValue,
@@ -48,7 +48,7 @@ import {
   isFieldVisibleForMode,
   safeParseConfig,
   stringifyConfig
-} from '@/shared/config-runtime'
+} from '@flow/workflow-core/config-runtime'
 import {
   normalizeApiResponse,
   normalizePageResult,

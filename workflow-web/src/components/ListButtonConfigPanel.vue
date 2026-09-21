@@ -423,7 +423,7 @@ import SettingsSection from '@/components/SettingsSection.vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import { resolveEntityPermissionOptions } from '@/extensions/core/registries/entityActionRuleRegistry.js'
 import { ACTION_RULE_VERSION, summarizeActionRule } from '@/shared/action-rules'
-import { safeParseConfig } from '@/shared/config-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { resolveListButtonType } from '@/shared/list-config-design'
 import { mappedFieldCode, supportsCellAction } from '@/shared/list-cell-action'
 import { isButtonRelatedContent } from '@/shared/list-related-content'
@@ -886,7 +886,7 @@ function defaultRule(key) {
               type: 'GROUP',
               logic: 'AND',
               children: [
-                { type: 'PROCESS_STATE', operator: 'EQ', value: 'NOT_STARTED' },
+                { type: 'PROCESS_STATE', lifecycleVersion: 1, operator: 'EQ', value: 'NOT_STARTED' },
                 { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'NEW' }
               ]
             },
@@ -911,7 +911,7 @@ function defaultRule(key) {
         logic: 'AND',
         children: [
           { type: 'RELATION', relation: 'CURRENT_USER_IS_ASSIGNEE' },
-          { type: 'PROCESS_STATE', operator: 'EQ', value: 'RUNNING' }
+          { type: 'PROCESS_STATE', lifecycleVersion: 1, operator: 'EQ', value: 'RUNNING' }
         ]
       },
       enabledWhen: null,

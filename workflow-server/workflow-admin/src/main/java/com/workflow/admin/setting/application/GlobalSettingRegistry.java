@@ -24,6 +24,7 @@ public class GlobalSettingRegistry {
     public static final String FIELD_TYPES_COLLAPSED = "ui.entity_design.field_types_collapsed";
     public static final String SIDEBAR_COLLAPSED = "ui.layout.sidebar_collapsed";
     public static final String TABS_ENABLED = "ui.layout.tabs_enabled";
+    public static final String MOBILE_THEME = "ui.mobile.theme";
     public static final String MIGRATION_SIGNING_KEY = "config.migration.signing_key";
     private static final int MAX_VALUE_BYTES = 16 * 1024;
     private final ObjectMapper json = new ObjectMapper();
@@ -37,6 +38,9 @@ public class GlobalSettingRegistry {
             TABS_ENABLED, "启用顶部多标签页",
             "true 表示在顶部面包屑位置显示页面选项卡，false 表示单页模式并显示面包屑，默认关闭。用户可在右上角用户菜单切换，个人配置优先于系统配置。切换标签保留页面状态，关闭未保存页面时确认；已打开标签和业务输入仅保留在当前会话内，刷新页面后不恢复。偏好保存失败不影响本次模式切换。",
             ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
+            MOBILE_THEME, "移动端主题",
+            "系统统一的移动端配色。支持预设与自定义浅色主题，保存后刷新移动端页面即可生效；不支持个人覆盖，不影响电脑端配色。",
+            ValueType.JSON, MobileThemeConfiguration.defaultValue(), Set.of(SYSTEM), true, false), new Definition(
             MIGRATION_SIGNING_KEY, "配置迁移签名密钥",
             "用于配置迁移包的 HMAC-SHA256 签名与验签。初始化时生成随机密钥；可将需要互认的环境设置为相同值。输入 32 至 256 字节的密钥，不能包含首尾空白。保存后立即生效，已生成的包保留原签名；签名不一致时需确认来源后导入。已保存的密钥不回显，也不支持个人覆盖或恢复默认值。",
             ValueType.STRING, NullNode.instance, Set.of(SYSTEM), false, true));
@@ -62,6 +66,7 @@ public class GlobalSettingRegistry {
      */
     public JsonNode parse(Definition definition, String text) {
         JsonNode value = parse(definition.valueType(), text);
+        if (MOBILE_THEME.equals(definition.key())) return MobileThemeConfiguration.normalize(value);
         if (MIGRATION_SIGNING_KEY.equals(definition.key())) {
             String key = value.textValue();
             int bytes = key.getBytes(StandardCharsets.UTF_8).length;

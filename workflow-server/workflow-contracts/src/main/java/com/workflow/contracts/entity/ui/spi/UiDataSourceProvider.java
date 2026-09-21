@@ -62,7 +62,9 @@ public interface UiDataSourceProvider {
      * @param context UI 数据源上下文
      * @param dataScopePlan 数据范围查询计划
      * @param configuration 数据源配置
-     * @param input 调用输入
+     * @param input 按接口 Schema 校验的业务输入，允许 userId/deptId 等业务字段。
+     *              这些值不代表认证身份；身份只能读取 context，数据权限只能读取
+     *              dataScopePlan，不得用 input 中的同名值覆盖或放宽授权。
      * @return 查询结果
      */
     Object execute(

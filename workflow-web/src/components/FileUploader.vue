@@ -169,7 +169,7 @@ import {
   isAttachmentFileTypeAllowed,
   resolveAttachmentItems,
   setAttachmentItemValue
-} from '@/shared/file-attachment'
+} from '@flow/workflow-core/file-attachment'
 
 const props = defineProps({
   modelValue: {

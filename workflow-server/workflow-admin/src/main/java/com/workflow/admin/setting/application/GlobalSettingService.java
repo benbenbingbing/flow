@@ -64,6 +64,15 @@ public class GlobalSettingService {
         return value.deepCopy();
     }
 
+    /** 公开外观只投影白名单字段；读取限定 SYSTEM，忽略任何遗留个人覆盖。 */
+    @Transactional(readOnly = true)
+    public MobileThemeView readMobileTheme() {
+        JsonNode value = readSystemValue(MOBILE_THEME);
+        return new MobileThemeView(value.path("version").intValue(), value.path("preset").textValue(),
+                value.path("primaryColor").textValue(), value.path("backgroundColor").textValue(),
+                value.path("surfaceColor").textValue());
+    }
+
     /** 保存当前用户的覆盖值；未知键、仅系统设置或过期版本均拒绝写入。 */
     @Transactional(rollbackFor = Exception.class)
     public GlobalSettingView saveMine(String key, GlobalSettingRequests.Save request) {

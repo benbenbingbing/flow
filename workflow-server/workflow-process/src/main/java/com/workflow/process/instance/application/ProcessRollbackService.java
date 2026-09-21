@@ -40,6 +40,8 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class ProcessRollbackService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
 
     private final RuntimeService runtimeService;
     private final TaskService taskService;
@@ -122,15 +124,18 @@ public class ProcessRollbackService {
             // 7. 同步待办状态
             processTaskService.syncTasksFromFlowable(processInstanceId);
 
-            // 8. 更新实体状态为"被驳回"
-            updateEntityStatusToRejected(
-                    processInstanceId,
-                    taskId,
-                    userId);
+            // 新版本驳回通过实际连线路由；不能在连线回写后再无条件覆盖业务状态。
+            if (statusPolicy == null || !statusPolicy.usesTransitions(processDefinitionId)) {
+                updateEntityStatusToRejected(processInstanceId, taskId, userId);
+            }
 
             return Result.success(null);
 
         } catch (Exception e) {
+            // 返回业务错误也必须回滚已推进的引擎与实体状态，避免吞异常后提交半成品。
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+                org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            }
             log.error("驳回任务失败: taskId={}, userId={}, failureType={}",
                     LogValue.safe(taskId), LogValue.safe(userId), LogValue.failureType(e));
             return Result.error(500, "驳回失败: " + e.getMessage());

@@ -103,7 +103,8 @@ class UiInvocationContextFactoryTest {
                         "index", 2),
                 "requestId", "forged-request",
                 "entityCode", "forged-entity",
-                "userId", "forged-user"));
+                "userId", "forged-user",
+                "deptId", "business-dept", "tenantId", "business-tenant"));
 
         UiInvocationContext raw = factory.create(
                 definition,
@@ -116,6 +117,7 @@ class UiInvocationContextFactoryTest {
         assertEquals("费用编辑", context.formName());
         assertEquals("approverId", context.fieldCode());
         assertEquals("user-a", context.common().userId());
+        assertEquals("dept-a", context.common().departmentId());
         assertEquals("org-a", context.common().organizationId());
         assertEquals("org-a", context.common().tenantId());
         assertEquals("parent-a", context.parentRecordId());

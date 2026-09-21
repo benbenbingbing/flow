@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { workflowBoundaryPlugin } from '../scripts/workflow-boundary.mjs'
 import { flowExtensionsPlugin } from './build/extensions/vite-plugin.mjs'
 import { resolve } from 'path'
 
@@ -11,7 +12,7 @@ import { resolve } from 'path'
  * 扩展 registry；禁止再用 alias/stub 裁剪，否则未来新增组件会再次发生 Embed 漂移。
  */
 export default defineConfig({
-  plugins: [flowExtensionsPlugin(), vue()],
+  plugins: [flowExtensionsPlugin(), vue(), workflowBoundaryPlugin('pc')],
   // Library mode 不会像普通 Vite 应用一样替换 Vue bundler 的 Node 环境探测；
   // 若保留裸 process.env，独立 iframe 会在浏览器启动阶段直接失败。
   define: {
@@ -19,6 +20,7 @@ export default defineConfig({
     'process.env': JSON.stringify({})
   },
   resolve: {
+    dedupe: ['vue', 'pinia', 'vue-router'],
     alias: {
       '@': resolve(__dirname, 'src')
     }

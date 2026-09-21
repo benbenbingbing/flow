@@ -84,7 +84,8 @@ public class EntityRecordMutationAdapter
             String statusCategory,
             String fallbackStatus) {
         boolean completed =
-                "COMPLETED".equals(statusCategory);
+                "COMPLETED".equals(statusCategory)
+                        && fallbackStatus != null && !fallbackStatus.isBlank();
         String key = String.join(
                 ":",
                 "process-end",
@@ -127,6 +128,8 @@ public class EntityRecordMutationAdapter
                                     "流程引擎")
                             .trace(key, key)
                             .build()));
+        } catch (com.workflow.entity.data.domain.policy.StaleProcessEventException exception) {
+            log.info("忽略已被新实例替代的结束事件: {}", processInstanceId);
         } catch (EntityMutationTargetNotFoundException exception) {
             log.info(
                     "流程结束状态同步跳过已删除实体: processInstanceId={}, entityCode={}, entityRecordId={}",

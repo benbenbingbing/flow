@@ -45,5 +45,19 @@
     "usageContexts": [
       "PAGE"
     ]
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/ProjectMemberChangeForm.vue",
+        "export": "default",
+        "kind": "COMPONENT"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
   }
 }

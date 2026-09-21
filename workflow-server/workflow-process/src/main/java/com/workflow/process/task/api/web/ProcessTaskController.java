@@ -16,6 +16,7 @@ import com.workflow.process.task.api.response.NextApprovalPreviewResponse;
 import com.workflow.process.task.api.response.NextApproverCandidateDTO;
 import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.form.application.EntityFormActionService;
+import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskListFilter;
@@ -38,6 +39,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -60,6 +62,7 @@ public class ProcessTaskController {
     private final org.flowable.engine.HistoryService historyService;
     private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
     private final EntityFormActionService formActionService;
+    private final EntityStatusService entityStatusService;
 
     @Autowired
     private NextApprovalPreviewService nextApprovalPreviewService;
@@ -82,9 +85,9 @@ public class ProcessTaskController {
         String currentUser = UserContext.getUsername();
         currentUser = requireCurrentUser(currentUser);
         List<ProcessTask> tasks = processTaskService.getTodoList(currentUser);
-
+        Map<String, Map<String, String>> statusNames = new HashMap<>();
         List<TaskVO> voList = TaskListFilter.filter(tasks.stream()
-                .map(this::convertToTaskVO)
+                .map(task -> convertToTaskVO(task, statusNames))
                 .collect(Collectors.toList()), keyword, startUserName, priority, startDate, endDate);
 
         return Result.success(page(voList, pageNum, pageSize));
@@ -105,9 +108,9 @@ public class ProcessTaskController {
         String currentUser = UserContext.getUsername();
         currentUser = requireCurrentUser(currentUser);
         List<ProcessTask> tasks = processTaskService.getDoneList(currentUser);
-
+        Map<String, Map<String, String>> statusNames = new HashMap<>();
         List<TaskVO> voList = TaskListFilter.filter(tasks.stream()
-                .map(this::convertToTaskVO)
+                .map(task -> convertToTaskVO(task, statusNames))
                 .collect(Collectors.toList()), keyword, startUserName, priority, startDate, endDate);
 
         return Result.success(page(voList, pageNum, pageSize));
@@ -386,9 +389,10 @@ public class ProcessTaskController {
     }
 
     /**
-     * 将ProcessTask转换为TaskVO
+     * 将任务转换为列表摘要，发起人取流程历史，业务状态取关联实体当前记录。
+     * @param statusNames 单次列表请求内的实体状态名称缓存，避免相同实体重复查询配置
      */
-    private TaskVO convertToTaskVO(ProcessTask task) {
+    private TaskVO convertToTaskVO(ProcessTask task, Map<String, Map<String, String>> statusNames) {
         TaskVO vo = new TaskVO();
         vo.setTaskId(task.getTaskId());
         vo.setTaskName(task.getNodeName());
@@ -441,7 +445,7 @@ public class ProcessTaskController {
         vo.setEntityDataId(task.getEntityDataId());
         vo.setFormKey(task.getFormKey());
 
-        // 查询实体数据填充 name、code、currentTaskName
+        // 实体业务状态与任务结果独立返回，不能用 todo/done 或 approve 推断实体状态。
         try {
             String entityCode = task.getEntityCode();
             String entityDataId = task.getEntityDataId();
@@ -461,6 +465,11 @@ public class ProcessTaskController {
                     vo.setName(entityData.getName());
                     vo.setCode(entityData.getCode());
                     vo.setCurrentTaskName(entityData.getCurrentTaskName());
+                    vo.setEntityStatus(entityData.getStatus());
+                    if (entityData.getStatus() != null && entityCode != null) {
+                        vo.setEntityStatusText(statusNames.computeIfAbsent(
+                                entityCode, entityStatusService::getStatusNameMap).get(entityData.getStatus()));
+                    }
                 }
             }
         } catch (Exception e) {

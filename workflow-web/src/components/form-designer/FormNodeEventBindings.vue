@@ -34,7 +34,7 @@
 import { computed, ref } from 'vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import EntitySelectionMappingDialog from '@/components/ui-config/EntitySelectionMappingDialog.vue'
-import { isPersistedEntitySelectionField } from '@/shared/entity-selection-mapping'
+import { isPersistedEntitySelectionField } from '@flow/workflow-core/entity-selection-mapping'
 import { isSingleEntitySelectionEventField } from '@/components/ui-config/uiFieldEventCapabilities'
 
 const props = defineProps({

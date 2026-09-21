@@ -20,7 +20,7 @@
 <script setup>
 import { computed } from 'vue'
 import EntitySelector from '@/components/EntitySelector.vue'
-import { useFormField } from '../composables/useFormField.js'
+import { useFormField } from '@flow/workflow-core/vue/useFormField'
 
 const props = defineProps({
   field: { type: Object, required: true },

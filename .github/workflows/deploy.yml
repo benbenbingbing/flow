@@ -70,7 +70,8 @@ jobs:
       - name: 构建前端镜像
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: ./workflow-web
+          context: .
+          file: workflow-web/Dockerfile
           load: true
           tags: flow-web:${{ env.IMAGE_TAG }}
           cache-from: type=gha,scope=web

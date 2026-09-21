@@ -134,6 +134,7 @@ public class ProcessBpmnPublishSanitizer {
         result = ensureFlowableNamespace(result);
         result = normalizeProcessIdentity(result, processKey);
         result = normalizeDataObjectNames(result);
+        result = installEntityStatusPolicy(result);
         result = removeInvalidMultiInstanceConfig(result);
         result = fixMultiInstanceAssignee(result);
         result = fixExplicitCcTasks(result);
@@ -147,6 +148,7 @@ public class ProcessBpmnPublishSanitizer {
         result = installEntryDynamicResolverCollectionHandlers(result);
         result = fixScriptTasks(result);
         validateProtectedMultiInstanceVariables(result);
+        validateParallelEntityStates(result);
         BpmnExecutableContentValidator.validate(result);
 
         return result;
@@ -420,6 +422,33 @@ public class ProcessBpmnPublishSanitizer {
                 "flowable:delegateExpression",
                 "${relativeOrgPositionCollectionHandler}");
         extensionElements.appendChild(handler);
+    }
+
+    /** 拒绝可能竞争写不同业务状态的并发分支，避免实体最终状态由执行先后决定。 */
+    private void validateParallelEntityStates(String xml) {
+        try {
+            EntityTransitionStateValidator.validate(parseXml(xml));
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("无法校验流程连线状态", exception);
+        }
+    }
+
+    /** 将状态语义固定在部署 XML 中，旧部署不受新代码发布影响。 */
+    private String installEntityStatusPolicy(String xml) {
+        try {
+            Document document = parseXml(xml);
+            NodeList processes = document.getElementsByTagNameNS(BPMN_NAMESPACE, "process");
+            for (int i = 0; i < processes.getLength(); i++) {
+                upsertFlowableProperty(document, (Element) processes.item(i),
+                        com.workflow.process.status.application.ProcessEntityStatusPolicy.PROPERTY,
+                        com.workflow.process.status.application.ProcessEntityStatusPolicy.TRANSITION);
+            }
+            return writeXml(document);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("无法固定流程业务状态规则", exception);
+        }
     }
 
     /** 在用户任务扩展属性中保存平台生成的动态 collection 契约。 */

@@ -4,7 +4,7 @@ import {
   readFieldStateConditions,
   updateFieldStateCondition
 } from '../shared/form-field-state-conditions.js'
-import { createFlowConditionGroup } from '../utils/flowConditionGroups.js'
+import { createFlowConditionGroup } from '@flow/workflow-core/utils/flowConditionGroups'
 
 /** 管理抽屉内三个条件的编辑副本，外部回填时刷新，本地输入时保留组件状态。 */
 export function useFieldStateConditions(getField, getFieldType) {

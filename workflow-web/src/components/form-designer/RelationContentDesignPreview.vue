@@ -31,7 +31,7 @@ import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { getFormRuntimeRelease } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { normalizeRuntimeFormRelease } from '@/shared/list-button-form-runtime'
-import { safeParseConfig } from '@/shared/config-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 
 const FormPreviewLinkage = defineAsyncComponent(() => import('@/components/FormPreviewLinkage.vue'))
 const props = defineProps({ composition: { type: Object, required: true }, editable: Boolean })

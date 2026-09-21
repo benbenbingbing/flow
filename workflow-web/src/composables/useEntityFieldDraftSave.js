@@ -4,7 +4,7 @@ import { entityApi } from '@/api/entity'
 import {
   attachmentFileTypesToString,
   normalizeAttachmentFileTypes
-} from '@/shared/file-attachment'
+} from '@flow/workflow-core/file-attachment'
 
 const isTemporaryField = (field) =>
   !field?.id || String(field.id).startsWith('temp_')

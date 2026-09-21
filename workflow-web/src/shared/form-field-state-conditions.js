@@ -1,4 +1,4 @@
-import { LinkageEngine } from '../utils/linkageEngine.js'
+import { LinkageEngine } from '@flow/workflow-core/utils/linkageEngine'
 import {
   buildFlowConditionExpression,
   createFlowConditionConfig,
@@ -6,8 +6,8 @@ import {
   isFlowConditionGroupComplete,
   parseFlowConditionConfig,
   parseFlowConditionExpression
-} from '../utils/flowConditionGroups.js'
-import { safeParseConfig } from './config-runtime/index.js'
+} from '@flow/workflow-core/utils/flowConditionGroups'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 
 export const FIELD_STATE_CONDITIONS = [
   { name: 'visibility', title: '条件显示', configKey: 'visibilityConditionConfig', expressionKey: 'visibilityRule', description: '满足条件时显示当前字段；关闭时不附加显示条件。' },

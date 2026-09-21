@@ -8,7 +8,7 @@ import {
   isEmbedRuntimeLocation,
   normalizeEmbedHosts,
   resolveRuntimeMode
-} from '../src/runtime/app-mode.js'
+} from '@flow/workflow-core/runtime/app-mode'
 import {
   EmbedEntryConfigError,
   clearEmbedEntryFragment,

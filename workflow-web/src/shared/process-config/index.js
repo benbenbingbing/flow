@@ -1,4 +1,4 @@
-import { createNextApproverSelectionConfig } from '../next-approver.js'
+import { createNextApproverSelectionConfig } from '@flow/workflow-core/next-approver'
 
 export const LEGACY_MULTI_INSTANCE_COLLECTION = '${_wfMultiInstanceUsers_}'
 export const ASSIGNMENT_CONFIG_VERSION = 2

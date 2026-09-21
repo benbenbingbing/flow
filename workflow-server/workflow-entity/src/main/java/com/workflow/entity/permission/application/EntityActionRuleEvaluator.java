@@ -132,7 +132,15 @@ public class EntityActionRuleEvaluator {
         return switch (node.getType().toUpperCase(Locale.ROOT)) {
             case "GROUP" -> evaluateGroup(node, row, user, statusCategory, currentApprover);
             case "RELATION" -> evaluateRelation(node.getRelation(), row, user, currentApprover);
-            case "PROCESS_STATE" -> compare(processState(row, statusCategory), node.getOperator(), node.getValue());
+            case "PROCESS_STATE" -> {
+                // 新规则缺失投影时一律不授权，尤其不能因 null != RUNNING 而意外放行。
+                if (node.getLifecycleVersion() != null) {
+                    yield Integer.valueOf(1).equals(node.getLifecycleVersion())
+                            && lifecycleState(row) != null
+                            && compare(lifecycleState(row), node.getOperator(), node.getValue());
+                }
+                yield compare(processState(row, statusCategory), node.getOperator(), node.getValue());
+            }
             case "STATUS_CODE" -> compare(row == null ? null : row.getStatus(), node.getOperator(), node.getValue());
             case "STATUS_CATEGORY" -> compare(statusCategory, node.getOperator(), node.getValue());
             case "FIELD" -> compare(readField(row, node.getField()), node.getOperator(), node.getValue());
@@ -197,6 +205,11 @@ public class EntityActionRuleEvaluator {
         return assigneeLookup != null && assigneeLookup.isCurrentAssignee(row, user);
     }
 
+    /** 新条件只读取独立投影；缺失投影不能猜测为运行或完成。 */
+    private String lifecycleState(EntityDataDTO row) {
+        return row == null ? "NOT_STARTED" : row.getProcessStatus();
+    }
+
     private String processState(EntityDataDTO row, String statusCategory) {
         if (row == null || !StringUtils.hasText(row.getProcessInstanceId())) {
             return "NOT_STARTED";
@@ -222,6 +235,7 @@ public class EntityActionRuleEvaluator {
             case "name" -> row.getName();
             case "code" -> row.getCode();
             case "status" -> row.getStatus();
+            case "processStatus", "process_status" -> row.getProcessStatus();
             case "processInstanceId" -> row.getProcessInstanceId();
             case "processStartTime" -> row.getProcessStartTime();
             case "processEndTime" -> row.getProcessEndTime();

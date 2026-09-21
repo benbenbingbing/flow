@@ -1,4 +1,4 @@
-import { safeParseConfig } from './config-runtime/index.js'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 
 const DOCUMENT_KEY_ALIASES = {
   propsDocument: 'props',

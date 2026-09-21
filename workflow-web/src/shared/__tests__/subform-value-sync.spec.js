@@ -3,7 +3,7 @@ import { nextTick, reactive, ref, watch } from 'vue'
 import {
   areSubFormValuesEqual,
   cloneSubFormValue
-} from '../subform-value-sync.js'
+} from '@flow/workflow-core/subform-value-sync'
 
 const source = reactive([
   {

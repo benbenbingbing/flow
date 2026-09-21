@@ -96,7 +96,7 @@ import SettingsSection from '@/components/SettingsSection.vue'
 import {
   createNextApproverSelectionConfig,
   validateNextApproverSelectionConfig
-} from '@/shared/next-approver'
+} from '@flow/workflow-core/next-approver'
 
 const props = defineProps({
   modelValue: {

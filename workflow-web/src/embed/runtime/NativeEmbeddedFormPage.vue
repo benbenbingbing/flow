@@ -62,7 +62,7 @@ import { entityApi } from '@/api/entity'
 import { getFormRuntimeRelease } from '@/api/entityForm'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { normalizeRuntimeFormRelease } from '@/shared/list-button-form-runtime'
-import { getEffectiveEntityStatusOptions } from '@/shared/entity-status-runtime'
+import { getEffectiveEntityStatusOptions } from '@flow/workflow-core/entity-status-runtime'
 import EntityDataFormDialog from '@/views/entity/components/EntityDataFormDialog.vue'
 import EntityApprovalDialog from '@/views/entity/components/approval/EntityApprovalDialog.vue'
 

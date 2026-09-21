@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { resolveEntityFileUploadContext } from '../entity-file-upload-context.js'
+import { resolveEntityFileUploadContext } from '@flow/workflow-core/entity-file-upload-context'
 
 const field = { fieldCode: 'requirementsFile' }
 
@@ -73,7 +73,7 @@ assert.equal(
 )
 
 const fileApiSource = readFileSync(
-  new URL('../../api/file.js', import.meta.url),
+  new URL(import.meta.resolve('@flow/workflow-api/file')),
   'utf8'
 )
 assert.match(fileApiSource, /formData\.append\('action', context\.action\)/)

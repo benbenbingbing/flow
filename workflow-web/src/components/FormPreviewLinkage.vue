@@ -155,34 +155,34 @@ import FormActionBar from './FormActionBar.vue'
 import RelatedContentRuntime from './related-content/RelatedContentRuntime.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from '../extensions/builtin/fields/components/SectionField.vue'
-import LinkageEngine from '../utils/linkageEngine'
-import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldValidation'
-import { useFormCustomValidation } from '@/composables/useFormCustomValidation'
-import { CROSS_FIELD_ERROR_CODE } from '@/shared/form-cross-field-validation'
+import LinkageEngine from '@flow/workflow-core/utils/linkageEngine'
+import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
+import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
+import { CROSS_FIELD_ERROR_CODE } from '@flow/workflow-core/form-cross-field-validation'
 import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
-import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
+import { buildRuntimeFieldRules, getFieldKey } from '@flow/workflow-core/form-runtime'
 import {
   createCustomFormActionSlotContract,
   formActionsForOwner,
   slotFormActions
-} from '@/shared/form-actions'
+} from '@flow/workflow-core/form-actions'
 import { precheckFormFieldUnique } from '@/api/entityForm'
 import {
   createFormUniquePrecheckController,
   filterFormUniquenessFieldsForNodeScope,
   resolveFormFieldUniqueness,
   resolveFormUniqueRuntimeIdentity
-} from '@/shared/form-field-uniqueness'
+} from '@flow/workflow-core/form-field-uniqueness'
 import {
   appendFormUniqueBlurRule,
   createFormUniquePrecheckRuntime,
   FORM_UNIQUE_PRECHECK_CONTEXT_KEY
-} from '@/shared/form-runtime/uniquePrecheckContext'
+} from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 import {
   isFieldReadonlyForMode,
   isFieldVisibleForMode,
   safeParseConfig
-} from '@/shared/config-runtime'
+} from '@flow/workflow-core/config-runtime'
 
 const RelationContentDesignPreview = defineAsyncComponent(() => import('./form-designer/RelationContentDesignPreview.vue'))
 

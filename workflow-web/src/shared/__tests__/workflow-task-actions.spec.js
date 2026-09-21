@@ -5,7 +5,7 @@ import {
   getTodoTaskMoreActions,
   isTaskClaimable,
   taskApprovalConflictMessage
-} from '../workflow-task-actions.js'
+} from '@flow/workflow-core/workflow-task-actions'
 
 const task = { taskId: 'task-1', canClaim: true }
 assert.equal(isTaskClaimable(task), true)

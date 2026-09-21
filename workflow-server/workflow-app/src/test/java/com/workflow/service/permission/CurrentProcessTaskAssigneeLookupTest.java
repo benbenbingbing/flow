@@ -304,17 +304,19 @@ class CurrentProcessTaskAssigneeLookupTest {
     private List<String> executeMapperSql(SqlSource source, Map<String, Object> params) {
         BoundSql boundSql = source.getBoundSql(params);
         Object[] args = boundSql.getParameterMappings().stream()
-                .map(parameter -> params.get(parameter.getProperty())).toArray();
+                .map(parameter -> new Configuration().newMetaObject(params)
+                        .getValue(parameter.getProperty())).toArray();
         return jdbc.queryForList(boundSql.getSql(), String.class, args);
     }
 
-    /** 执行 HAS_TODO 最终动态表 SQL；H2 使用等价的 UTF8TOSTRING 解码 MySQL 十六进制字面量。 */
+    /** 执行 HAS_TODO 最终条件及绑定参数，无需对数据库专有转换语法做适配。 */
     private void assertHasTodoRecords(List<String> expected) {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
-        String permissionSql = permissionSqlBuilder.buildFilterSql("EXPENSE", filter, alice);
-        String h2Sql = permissionSql.replaceAll(
-                "CONVERT\\((X'[0-9a-f]+') USING utf8mb4\\)", "UTF8TOSTRING($1)");
-        assertEquals(expected, jdbc.queryForList("SELECT id FROM wf_expense WHERE " + h2Sql + " ORDER BY id", String.class));
+        Map<String, Object> parameters = new HashMap<>();
+        String permissionSql = permissionSqlBuilder.buildFilterSql("EXPENSE", filter, alice, parameters);
+        SqlSource source = new XMLLanguageDriver().createSqlSource(new Configuration(),
+                "SELECT id FROM wf_expense WHERE " + permissionSql + " ORDER BY id", Map.class);
+        assertEquals(expected, executeMapperSql(source, Map.of("permissionParameters", parameters)));
     }
 }

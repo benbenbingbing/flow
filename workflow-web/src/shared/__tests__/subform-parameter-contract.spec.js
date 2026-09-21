@@ -7,7 +7,7 @@ import {
   normalizeSubFormParameterContract,
   resolveSubFormParameters,
   validateSubFormParameters
-} from '../subform-parameter-contract.js'
+} from '@flow/workflow-core/subform-parameter-contract'
 
 const schema = buildInputParameterSchema([
   {

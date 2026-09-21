@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { evaluateExpression, formatCalcResult } from '../calcEngine.js'
+import { evaluateExpression, formatCalcResult } from '@flow/workflow-core/utils/calcEngine'
 
 assert.equal(
   evaluateExpression('(${amount} + ${fee}) * ${rate}', {

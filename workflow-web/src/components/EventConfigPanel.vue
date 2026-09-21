@@ -109,7 +109,7 @@ import { Plus } from '@element-plus/icons-vue'
 import { Codemirror } from 'vue-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { compileFieldScript, fieldScriptEventSupported } from '@/shared/field-event-scripts'
+import { compileFieldScript, fieldScriptEventSupported } from '@flow/workflow-core/browser/field-event-scripts'
 
 const props = defineProps({
   field: { type: Object, default: null },

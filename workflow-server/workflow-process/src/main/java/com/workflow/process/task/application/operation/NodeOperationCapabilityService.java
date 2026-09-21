@@ -136,6 +136,39 @@ public class NodeOperationCapabilityService {
      * 查询发起人是否可终止运行中流程。身份校验与节点能力都满足才返回 true。
      */
     public boolean canTerminateProcess(String processInstanceId, String userId) {
+        if (!isRuntimeStarter(processInstanceId, userId)) return false;
+        try {
+            requireTerminateAllowed(
+                    processInstanceId,
+                    NodeOperationDecisionService.CheckContext.availability());
+            return true;
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    /**
+     * 发起人撤回的只读能力查询。使用撤回矩阵（不是终止矩阵），并行分支全部通过才开放。
+     * 理由等提交参数由写接口再次校验；此处只评估权限、状态、时限和节点开关。
+     */
+    public boolean canWithdrawProcess(String processInstanceId, String userId) {
+        if (!isRuntimeStarter(processInstanceId, userId)) return false;
+        try {
+            List<Task> tasks = activeTasks(processInstanceId);
+            if (tasks.isEmpty()) return false;
+            requireConfiguredTerminateAllowed(tasks);
+            return tasks.stream().allMatch(task -> {
+                NodeOperationDecisionService.ActionDecision decision =
+                        legacyDecisionService.availableActions(task.getId()).get("withdraw");
+                return decision != null && decision.allowed();
+            });
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    /** 与撤回写接口一致，运行时缺失发起人时查询历史，无法确认身份则拒绝。 */
+    private boolean isRuntimeStarter(String processInstanceId, String userId) {
         if (!StringUtils.hasText(processInstanceId) || !StringUtils.hasText(userId)) {
             return false;
         }
@@ -156,14 +189,7 @@ public class NodeOperationCapabilityService {
         if (!userId.equals(startUserId)) {
             return false;
         }
-        try {
-            requireTerminateAllowed(
-                    processInstanceId,
-                    NodeOperationDecisionService.CheckContext.availability());
-            return true;
-        } catch (RuntimeException exception) {
-            return false;
-        }
+        return true;
     }
 
     private List<Task> activeTasks(String processInstanceId) {

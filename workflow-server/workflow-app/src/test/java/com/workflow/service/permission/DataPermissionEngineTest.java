@@ -230,7 +230,8 @@ class DataPermissionEngineTest {
         var result = todoEngine.calculatePermission("expense", "default", lisi);
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.getSqlCondition().contains("`wf_expense`.id IN (CONVERT(X'7265636f72642d31' USING utf8mb4))"));
+        assertTrue(result.getSqlCondition().contains("`wf_expense`.id IN (#{permissionParameters.todoRecordId0,jdbcType=VARCHAR})"));
+        assertEquals(Map.of("todoRecordId0", "record-1"), result.getSqlParameters());
         assertFalse(result.getSqlCondition().contains("assignee_id"));
         assertFalse(result.getSqlCondition().contains("_team"));
     }

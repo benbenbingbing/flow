@@ -16,7 +16,7 @@ import {
   reorderNextApproverValues,
   validateNextApproverDraft,
   validateNextApproverSelectionConfig
-} from '../next-approver.js'
+} from '@flow/workflow-core/next-approver'
 import {
   buildAssigneeConfig,
   buildNodeScopedMultiInstanceCollection,
@@ -43,10 +43,7 @@ const personScopeRuleEditorSource = readFileSync(new URL(
   '../../components/PersonScopeRuleEditor.vue',
   import.meta.url
 ), 'utf8')
-const nextApproverPreviewComposableSource = readFileSync(new URL(
-  '../../composables/useNextApproverPreview.js',
-  import.meta.url
-), 'utf8')
+const nextApproverPreviewComposableSource = readFileSync(new URL(import.meta.resolve('@flow/workflow-core/vue/useNextApproverPreview')), 'utf8')
 
 const nextApproverSectionIndex = approvalDecisionPanelSource.indexOf(
   '<NextApproverSection'

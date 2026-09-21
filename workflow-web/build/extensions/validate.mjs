@@ -51,7 +51,7 @@ export function resolveImplementation(root, reference) {
 }
 
 /** 校验单份清单及类型专属属性；这里只读源码，不执行模块或业务工厂。 */
-export function validateManifest(manifest, root, filename) {
+export function validateManifest(manifest, root, filename, { platform = 'pc', implementationRoot = root } = {}) {
   validateValue(manifest, schema, filename)
   const { type, implementation, metadata = {}, hooks = {} } = manifest
   const fail = message => { throw new Error(`${filename}: ${message}`) }
@@ -72,7 +72,11 @@ export function validateManifest(manifest, root, filename) {
   if (scope.includes('*') && scope.length !== 1) fail('全部实体范围只使用 ["*"]')
   const keys = (metadata.configSchema || []).map(item => item.key)
   if (new Set(keys).size !== keys.length) fail('configSchema 参数 key 重复')
-  for (const ref of [implementation, ...Object.values(hooks)]) resolveImplementation(root, ref)
+  // 共享描述始终校验，源码路径只解析目标平台，移动构建不依赖 PC 组件文件存在。
+  const references = platform === 'mobile'
+    ? (manifest.platforms?.mobile ? [manifest.platforms.mobile.implementation] : [])
+    : [implementation, ...Object.values(hooks)]
+  for (const ref of references) resolveImplementation(implementationRoot, ref)
 }
 
 /** 按最终注册规则校验所有启用项，避免大小写、别名或单版本表的后写覆盖。 */

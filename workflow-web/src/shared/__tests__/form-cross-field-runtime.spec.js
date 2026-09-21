@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { collectCrossFieldRuntimeFields, createCrossFieldController, resolveCrossFieldRuntimeState } from '../form-cross-field-runtime.js'
-import { normalizeFormFieldValidation } from '../form-node-property-schema.js'
+import { collectCrossFieldRuntimeFields, createCrossFieldController, resolveCrossFieldRuntimeState } from '@flow/workflow-core/form-cross-field-runtime'
+import { normalizeFormFieldValidation } from '@flow/workflow-core/form-node-property-schema'
 
 const config = { version: 1, rules: [{ id: 'range', operator: 'GE', targetFieldCode: 'start', message: '结束不得早于开始' }] }
 const start = { id: 's', fieldCode: 'start', fieldType: 'INTEGER', isHidden: 1 }
