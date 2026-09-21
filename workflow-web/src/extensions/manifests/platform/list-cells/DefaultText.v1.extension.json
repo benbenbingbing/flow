@@ -1,5 +1,6 @@
 {
   "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：默认文本。name=DefaultText 是业务配置的稳定引用，移动文件不要改名。 在列表列的 renderComponent 中选择 name；该列 renderConfig 作为 config 传入。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "LIST_CELL",
   "name": "DefaultText",
@@ -17,9 +18,9 @@
         "key": "emptyText",
         "label": "空值文本",
         "type": "text",
-        "defaultValue": "-"
+        "defaultValue": "-",
+        "description": "没有展示值时显示的占位文字，不修改记录中的原值。"
       }
     ]
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

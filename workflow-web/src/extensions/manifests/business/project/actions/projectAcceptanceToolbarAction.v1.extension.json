@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：projectAcceptanceToolbarAction。name=projectAcceptanceToolbarAction 是业务配置的稳定引用，移动文件不要改名。 在列表按钮 customHandler 或选择回调 selectionHandler 中填写 name；处理器在交互时收到 context，启动时不会执行。 实现：path 相对 workflow-web；projectAcceptanceToolbarAction 是具名导出；kind=FUNCTION 表示保留函数引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 targets=TOOLBAR 决定安装到工具栏或行动作表；双位置共享同一函数。",
   "schemaVersion": 1,
   "type": "LIST_ACTION",
   "name": "projectAcceptanceToolbarAction",
@@ -15,6 +16,5 @@
   "metadata": {},
   "targets": [
     "TOOLBAR"
-  ],
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  ]
 }

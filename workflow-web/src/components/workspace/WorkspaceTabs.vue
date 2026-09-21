@@ -57,7 +57,15 @@ async function navigateKeys(event, tab) {
 </script>
 
 <style scoped>
-.workspace-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; gap: 5px; margin-left: 12px; scrollbar-width: thin; }
+.workspace-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; gap: 5px; margin-left: 12px; scrollbar-width: thin; scrollbar-color: #d4d8df transparent; }
+/* Chromium/WebKit 使用明确的 4px 高度；标准 thin 仅供其他浏览器回退，避免覆盖伪元素尺寸。 */
+@supports selector(::-webkit-scrollbar) {
+  .workspace-tabs { scrollbar-width: auto; scrollbar-color: auto; }
+  .workspace-tabs::-webkit-scrollbar { height: 4px; }
+  .workspace-tabs::-webkit-scrollbar-track { background: transparent; }
+  .workspace-tabs::-webkit-scrollbar-thumb { background: #d4d8df; border-radius: 999px; }
+  .workspace-tabs::-webkit-scrollbar-thumb:hover { background: #b6bbc4; }
+}
 .workspace-tab { flex: 0 0 auto; display: flex; align-items: center; border-radius: 6px; background: #f5f7fa; border: 1px solid transparent; }
 .workspace-tab.is-active { background: #ecf5ff; border-color: #b3d8ff; color: #409eff; }
 .workspace-tab button { border: 0; background: none; color: inherit; cursor: pointer; font: inherit; font-size: 13px; }

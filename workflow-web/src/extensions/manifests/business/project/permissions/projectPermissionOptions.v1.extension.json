@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：项目自定义权限候选。name=projectPermissionOptions 是业务配置的稳定引用，移动文件不要改名。 权限编辑器按当前实体上下文调用该函数收集候选；返回选项不等于授予权限，实际授权由后端执行。 实现：path 相对 workflow-web；default 是默认导出；kind=FUNCTION 表示保留函数引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。",
   "schemaVersion": 1,
   "type": "PERMISSION_PROVIDER",
   "name": "projectPermissionOptions",
@@ -12,6 +13,5 @@
     "export": "default",
     "kind": "FUNCTION"
   },
-  "metadata": {},
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  "metadata": {}
 }

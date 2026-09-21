@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：契约示例·字段条件。name=CONTRACT_EXAMPLE:FIELD_EQUALS 是业务配置的稳定引用，移动文件不要改名。 在按钮操作条件中选择该 name；前端只编辑参数，实际判定需要后端支持同一条件 type。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 示例需同时满足 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。 defaultConfig 在每次新建条件时深复制，宿主补 type；不可与 hooks.createDefault 同时声明。",
   "schemaVersion": 1,
   "type": "ACTION_CONDITION",
   "name": "CONTRACT_EXAMPLE:FIELD_EQUALS",
@@ -17,6 +18,5 @@
     "field": "",
     "operator": "EQ",
     "value": ""
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

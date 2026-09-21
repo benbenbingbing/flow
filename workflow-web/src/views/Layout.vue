@@ -502,6 +502,8 @@ async function handleCommand(command) {
 
 .desktop-sidebar-toggle {
   flex-shrink: 0;
+  /* 移动端按钮虽然隐藏，仍会触发 Element Plus 相邻按钮的默认左间距。 */
+  margin-left: 0;
 }
 
 .header {
@@ -512,7 +514,7 @@ async function handleCommand(command) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 20px 0 8px;
 }
 
 .header-left {

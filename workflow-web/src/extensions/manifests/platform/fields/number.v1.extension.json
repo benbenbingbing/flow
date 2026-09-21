@@ -1,5 +1,6 @@
 {
   "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：数字。name=number 是业务配置的稳定引用，移动文件不要改名。 在表单设计器的字段组件中选择 name；实例参数由 field.componentProps 传入。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 aliases 是该平台控件的历史名称，不是支持的字段类型；大小写归一后不能冲突。 defaultForFieldTypes 决定新增实体字段的默认控件；修改后运行 extensions:generate。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "FIELD",
   "name": "number",
@@ -21,12 +22,14 @@
       {
         "key": "min",
         "label": "最小值",
-        "type": "number"
+        "type": "number",
+        "description": "数字控件允许输入的最小值；需要服务端强制约束时另配业务校验。"
       },
       {
         "key": "max",
         "label": "最大值",
-        "type": "number"
+        "type": "number",
+        "description": "数字控件允许输入的最大值；需要服务端强制约束时另配业务校验。"
       },
       {
         "key": "precision",
@@ -34,19 +37,22 @@
         "type": "number",
         "min": 0,
         "max": 10,
-        "defaultValue": 0
+        "defaultValue": 0,
+        "description": "数字输入的小数精度，0 表示整数显示/输入精度。"
       },
       {
         "key": "step",
         "label": "步长",
         "type": "number",
-        "defaultValue": 1
+        "defaultValue": 1,
+        "description": "数字控件每次增减的步长。"
       },
       {
         "key": "controls",
         "label": "显示控制器",
         "type": "boolean",
-        "defaultValue": true
+        "defaultValue": true,
+        "description": "是否显示数字输入框的增减按钮。"
       }
     ]
   },
@@ -61,6 +67,5 @@
     "LONG",
     "DOUBLE",
     "DECIMAL"
-  ],
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  ]
 }

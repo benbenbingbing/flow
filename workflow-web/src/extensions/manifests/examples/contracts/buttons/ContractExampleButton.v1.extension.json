@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：ContractExampleButton。name=ContractExampleButton 是业务配置的稳定引用，移动文件不要改名。 在列表按钮中配置 type=custom、customMode=component、customHandler=name；组件遵守 disabled/reason，按 context 执行业务。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 示例需同时满足 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。",
   "schemaVersion": 1,
   "type": "LIST_BUTTON",
   "name": "ContractExampleButton",
@@ -12,6 +13,5 @@
     "export": "default",
     "kind": "COMPONENT"
   },
-  "metadata": {},
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  "metadata": {}
 }

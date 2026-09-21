@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：Demo·项目卡片列表。name=DemoProjectCardList 是业务配置的稳定引用，移动文件不要改名。 在实体列表中选择 name，实例参数由 viewConfig.customComponentProps 传入 config。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 示例需同时满足 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。 usageContexts=PAGE 用于普通页面；关联内容组件必须使用独立契约。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "LIST",
   "name": "DemoProjectCardList",
@@ -20,25 +21,29 @@
         "type": "number",
         "min": 1,
         "max": 4,
-        "defaultValue": 3
+        "defaultValue": 3,
+        "description": "卡片列表的显示列数；按可用宽度及 Schema 的数值范围填写。"
       },
       {
         "key": "compact",
         "label": "紧凑模式",
         "type": "boolean",
-        "defaultValue": false
+        "defaultValue": false,
+        "description": "是否启用卡片紧凑样式，只影响展示间距。"
       },
       {
         "key": "showDescription",
         "label": "显示项目说明",
         "type": "boolean",
-        "defaultValue": true
+        "defaultValue": true,
+        "description": "是否在卡片中展示描述内容。"
       },
       {
         "key": "searchPlaceholder",
         "label": "搜索提示",
         "type": "text",
-        "defaultValue": "搜索项目名称"
+        "defaultValue": "搜索项目名称",
+        "description": "列表查询输入框的提示文案；实际查询仍使用宿主提供的查询能力。"
       }
     ],
     "capabilities": {
@@ -48,6 +53,5 @@
     "usageContexts": [
       "PAGE"
     ]
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

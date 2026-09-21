@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：项目·验收摘要节点。name=ProjectAcceptanceSummaryNode 是业务配置的稳定引用，移动文件不要改名。 在表单节点扩展中选择 name；宿主按节点类型、绑定类型解析实现，并传入组件 config。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 nodeTypes/supportedBindings 限制可用节点和绑定；snapshotVersion 是配置结构版本。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "NODE",
   "name": "ProjectAcceptanceSummaryNode",
@@ -25,13 +26,13 @@
         "key": "title",
         "label": "摘要标题",
         "type": "text",
-        "defaultValue": "扩展执行摘要"
+        "defaultValue": "扩展执行摘要",
+        "description": "当前组件实例显示的标题；只改变展示文案，不修改实体或表单的业务名称。"
       }
     ],
     "capabilities": {
       "readsWholeForm": true,
       "executesManagedDataSource": true
     }
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

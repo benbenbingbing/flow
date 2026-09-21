@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：契约示例·整表单。name=ContractExampleForm 是业务配置的稳定引用，移动文件不要改名。 在实体表单中选择 name，实例参数由 viewConfig.customComponentProps 传入 config。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 示例需同时满足 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。 usageContexts=PAGE 用于普通页面；关联内容组件必须使用独立契约。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "FORM",
   "name": "ContractExampleForm",
@@ -26,12 +27,12 @@
       {
         "key": "title",
         "label": "标题",
-        "type": "text"
+        "type": "text",
+        "description": "当前组件实例显示的标题；只改变展示文案，不修改实体或表单的业务名称。"
       }
     ],
     "usageContexts": [
       "PAGE"
     ]
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

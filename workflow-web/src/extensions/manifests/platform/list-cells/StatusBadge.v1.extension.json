@@ -1,5 +1,6 @@
 {
   "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：状态标签。name=StatusBadge 是业务配置的稳定引用，移动文件不要改名。 在列表列的 renderComponent 中选择 name；该列 renderConfig 作为 config 传入。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "LIST_CELL",
   "name": "StatusBadge",
@@ -31,7 +32,8 @@
             "label": "大",
             "value": "large"
           }
-        ]
+        ],
+        "description": "状态标签尺寸，可选值以 options 为准。"
       },
       {
         "key": "labelMap",
@@ -58,6 +60,5 @@
         "description": "小写状态值到标签类型的映射。"
       }
     ]
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

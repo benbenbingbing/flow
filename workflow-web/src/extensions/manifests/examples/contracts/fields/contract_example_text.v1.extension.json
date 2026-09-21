@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：契约示例·文本字段。name=contract_example_text 是业务配置的稳定引用，移动文件不要改名。 在表单设计器的字段组件中选择 name；实例参数由 field.componentProps 传入。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 示例需同时满足 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "FIELD",
   "name": "contract_example_text",
@@ -21,9 +22,9 @@
       {
         "key": "suffix",
         "label": "后缀",
-        "type": "text"
+        "type": "text",
+        "description": "附加在展示值或输入框后的文字；不写入原始业务字段值。"
       }
     ]
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

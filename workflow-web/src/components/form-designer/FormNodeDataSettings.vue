@@ -196,10 +196,10 @@
         <el-tag size="small" type="info">子表关系</el-tag>
       </template>
 
-      <div class="relation-summary">
+      <div class="relation-summary relation-summary--inline">
         <div>
           <span>子实体</span>
-          <strong>
+          <strong :title="getEntityNameById(selectedField.childEntityId || selectedField.refEntityId) || '-'">
             {{ getEntityNameById(selectedField.childEntityId || selectedField.refEntityId) || '-' }}
           </strong>
         </div>
@@ -211,7 +211,7 @@
         </div>
         <div>
           <span>外键</span>
-          <strong>
+          <strong :title="selectedField.childRefFieldCode || selectedField.refFieldCode || '-'">
             {{ selectedField.childRefFieldCode || selectedField.refFieldCode || '-' }}
           </strong>
         </div>
@@ -682,5 +682,27 @@ const selectedSubListParameterContract = computed({
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 子表关系摘要固定同排，窄空间下只省略值，保留三项标签以便识别。 */
+.relation-summary--inline {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 24px;
+}
+
+.relation-summary--inline > div {
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.relation-summary--inline span {
+  flex-shrink: 0;
+}
+
+.relation-summary--inline strong {
+  min-width: 0;
+  max-width: none;
+  text-align: left;
 }
 </style>

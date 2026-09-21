@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：Demo·风险进度。name=DemoRiskProgressCell 是业务配置的稳定引用，移动文件不要改名。 在列表列的 renderComponent 中选择 name；该列 renderConfig 作为 config 传入。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 示例需同时满足 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "LIST_CELL",
   "name": "DemoRiskProgressCell",
@@ -26,7 +27,8 @@
         "type": "number",
         "min": 0,
         "max": 100,
-        "defaultValue": 40
+        "defaultValue": 40,
+        "description": "风险数值达到此阈值时进入警告等级；建议小于 dangerAt。"
       },
       {
         "key": "dangerAt",
@@ -34,21 +36,23 @@
         "type": "number",
         "min": 0,
         "max": 100,
-        "defaultValue": 70
+        "defaultValue": 70,
+        "description": "风险数值达到此阈值时进入高风险等级；建议大于 warningAt。"
       },
       {
         "key": "showText",
         "label": "显示百分比",
         "type": "boolean",
-        "defaultValue": true
+        "defaultValue": true,
+        "description": "是否显示风险进度对应的数值文本。"
       },
       {
         "key": "showLevel",
         "label": "显示风险等级",
         "type": "boolean",
-        "defaultValue": true
+        "defaultValue": true,
+        "description": "是否显示风险等级标签。"
       }
     ]
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

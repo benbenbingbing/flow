@@ -1,5 +1,6 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "用途：契约示例·必填。name=contract_required 是业务配置的稳定引用，移动文件不要改名。 在表单字段自定义校验中绑定 name/version；每个字段的规则 params 作为 validate(value, context) 的 context.params 传入。 实现：path 相对 workflow-web；requiredValidator 是具名导出；kind=OBJECT 表示直接使用带 validate 方法的对象。 示例需同时满足 enabled=true 和 Demo 开关；开发模式默认打开 Demo，生产需 VITE_ENABLE_DEMO_EXTENSIONS=true。",
   "schemaVersion": 1,
   "type": "VALIDATOR",
   "name": "contract_required",
@@ -11,6 +12,5 @@
     "export": "requiredValidator",
     "kind": "OBJECT"
   },
-  "metadata": {},
-  "$comment": "默认禁用。启用此清单并打开 Demo 开关后，在字段自定义校验中选择；无需添加注册代码。"
+  "metadata": {}
 }

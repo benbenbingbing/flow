@@ -1,5 +1,6 @@
 {
   "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：金额校验。name=amount 是业务配置的稳定引用，移动文件不要改名。 在表单字段自定义校验中绑定 name/version；每个字段的规则 params 作为 validate(value, context) 的 context.params 传入。 实现：path 相对 workflow-web；AmountValidator 是具名导出；kind=CLASS 表示无参 new 类实例，实例必须提供 validate。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 supportedEntityCodes 使用实体编码；空数组或 [\"*\"] 表示不限，不是授权配置。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
   "schemaVersion": 1,
   "type": "VALIDATOR",
   "name": "amount",
@@ -31,9 +32,9 @@
         "type": "number",
         "required": true,
         "min": 0,
-        "defaultValue": 1000
+        "defaultValue": 1000,
+        "description": "金额上限，必须是非负有限数字；每个字段独立配置。空值交给必填规则，0 仍参与范围判断。"
       }
     ]
-  },
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  }
 }

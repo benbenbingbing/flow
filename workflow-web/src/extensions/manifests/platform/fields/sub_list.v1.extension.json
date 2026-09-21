@@ -1,5 +1,6 @@
 {
   "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：子列表。name=sub_list 是业务配置的稳定引用，移动文件不要改名。 在表单设计器的字段组件中选择 name；实例参数由 field.componentProps 传入。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 defaultForFieldTypes 决定新增实体字段的默认控件；修改后运行 extensions:generate。",
   "schemaVersion": 1,
   "type": "FIELD",
   "name": "sub_list",
@@ -19,6 +20,5 @@
   "aliases": [],
   "defaultForFieldTypes": [
     "SUB_LIST"
-  ],
-  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+  ]
 }
